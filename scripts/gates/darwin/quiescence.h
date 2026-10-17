@@ -55,7 +55,7 @@ static int quiescence_report(const char *call, int error, int birth, struct quie
   for (int index = 0; index < 16; index++) fprintf(stderr, "%s%d", index ? "," : "", counts->fd_failed_results[index]);
   fputs("],\"fdWriteDeniedReadResults\":{", stderr);
   for (int index = 0; index < 4; index++) fprintf(stderr, "%s\"%s\":{\"allowed\":%d,\"denied\":%d}", index ? "," : "", slots[index * 2], counts->fd_read_allowed[index], counts->fd_read_denied[index]);
-  const char *terminations[] = {"none", "read-error", "short-read", "zero-size", "limit", "overflow", "end-not-past-request"};
+  const char *terminations[] = {"none", "read-error", "short-read", "zero-size", "limit", "overflow", "end-not-past-request", "end-confirmation"};
   fprintf(stderr, "},\"regionPartialDetail\":{\"errno\":\"%s\",\"regionsRead\":%d,\"mainImageSeen\":%d,\"termination\":\"%s\",\"regionKind\":\"%s\",\"lastBeforeEINVAL\":\"%s\"},\"platformFailures\":{", quiescence_errno(counts->partial_errno), counts->partial_regions, counts->partial_image_seen, terminations[counts->partial_kind], counts->partial_submap == 2 ? "submap" : counts->partial_submap == 1 ? "mapping" : "unobserved", counts->partial_kind ? "unknown" : "not-applicable");
   for (int index = 0; index < 19; index++) fprintf(stderr, "%s\"%s\":%d", index ? "," : "", platform_conditions[index], counts->platform_failures[index]);
   fprintf(stderr, "},\"regionZeroSizeDetail\":{\"returnLength\":\"%s\",\"shareMode\":\"%s\",\"regionKind\":\"%s\",\"lastBeforeEINVAL\":\"%s\"}}\n", counts->zero_observed ? "exact" : "unobserved", counts->zero_observed ? quiescence_share_mode(counts->zero_share_mode) : "UNOBSERVED", counts->zero_observed ? counts->zero_submap ? "submap" : "mapping" : "unobserved", !counts->zero_observed ? "not-applicable" : counts->zero_end == 1 ? "yes" : counts->zero_end == 2 ? "no" : "unknown");
@@ -71,6 +71,23 @@ static int root_path(const char *path, const char *root) {
 }
 struct root_inode { unsigned long long dev, ino; };
 static struct root_inode root_inodes[1000000];
+static int root_inode_compare(const void *left, const void *right) {
+  const struct root_inode *a = left, *b = right;
+  if (a->dev != b->dev) return a->dev < b->dev ? -1 : 1;
+  return a->ino < b->ino ? -1 : a->ino > b->ino;
+}
+static int root_inode_match(unsigned long long dev, unsigned long long ino, int count) {
+  struct root_inode key = {dev, ino};
+  int lower = 0, upper = count;
+  while (lower < upper) {
+    int middle = lower + (upper - lower) / 2;
+    int order = root_inode_compare(&key, &root_inodes[middle]);
+    if (!order) return 1;
+    if (order < 0) upper = middle;
+    else lower = middle + 1;
+  }
+  return 0;
+}
 static int gate_launch_pids[1000000], gate_launch_count;
 struct gate_birth { int pid, ppid; unsigned long long sec, usec; };
 static struct gate_birth gate_births[1000000];
@@ -105,7 +122,19 @@ static enum region_state region_walk(int pid, struct proc_bsdinfo *birth, int in
     if (same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) return REGION_REJECTED;
     if (got != (int)sizeof(region) || error) {
       if (!index && !got && error) { counts->region_unavailable++; return REGION_UNAVAILABLE_FIRST; }
-      if (!got && error == EINVAL) { if (zero_seen) counts->zero_end = last_zero ? 1 : 2; return REGION_COMPLETE; }
+      if (!got && error == EINVAL) {
+        if (address == ~0ULL) { region_partial_detail(counts, 0, index, *image_seen, 5, 0); return REGION_PARTIAL; }
+        if (same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) return REGION_REJECTED;
+        struct proc_regionwithpathinfo confirm;
+        memset(&confirm, 0, sizeof(confirm));
+        errno = 0;
+        int confirmed = proc_pidinfo(pid, PROC_PIDREGIONPATHINFO, address + 1, &confirm, sizeof(confirm));
+        int confirm_error = errno;
+        if (same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) return REGION_REJECTED;
+        if (confirmed || confirm_error != EINVAL) { region_partial_detail(counts, confirm_error, index, *image_seen, 7, 0); return REGION_PARTIAL; }
+        if (zero_seen) counts->zero_end = last_zero ? 1 : 2;
+        return REGION_COMPLETE;
+      }
       region_partial_detail(counts, error, index, *image_seen, error ? 1 : 2, 0);
       return REGION_PARTIAL;
     }
@@ -128,7 +157,7 @@ static enum region_state region_walk(int pid, struct proc_bsdinfo *birth, int in
     unsigned long long dev = (unsigned int)region.prp_vip.vip_vi.vi_stat.vst_dev, ino = region.prp_vip.vip_vi.vi_stat.vst_ino;
     if (ino) {
       counts->region_compared++;
-      for (int item = 0; item < inode_count; item++) if (root_inodes[item].dev == dev && root_inodes[item].ino == ino) { counts->platform_inode_match++; return REGION_REJECTED; }
+      if (root_inode_match(dev, ino, inode_count)) { counts->platform_inode_match++; return REGION_REJECTED; }
       if (image_ino && dev == image_dev && ino == image_ino) *image_seen = 1;
     }
     if (size > ~0ULL - start || address == ~0ULL) { region_partial_detail(counts, 0, index + 1, *image_seen, 5, submap); return REGION_PARTIAL; }
@@ -168,7 +197,7 @@ static int platform_fd_proof(int pid, struct proc_bsdinfo *birth, int unlinked, 
   if (stat(canonical, &file)) { counts->platform_inode_unobserved++; return platform_failure(counts, 12); }
   if (same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) { counts->platform_inode_unobserved++; return platform_failure(counts, 13); }
   unsigned long long dev = (unsigned int)file.st_dev, ino = file.st_ino;
-  for (int index = 0; index < inode_count; index++) if (root_inodes[index].dev == dev && root_inodes[index].ino == ino) { counts->platform_inode_match++; return platform_failure(counts, 14); }
+  if (root_inode_match(dev, ino, inode_count)) { counts->platform_inode_match++; return platform_failure(counts, 14); }
   int image_seen = 0;
   enum region_state state = region_walk(pid, birth, inode_count, counts, dev, ino, &image_seen);
   if (state == REGION_COMPLETE && image_seen) return 1;
@@ -183,6 +212,7 @@ static int quiescence(int controller, const char *root, unsigned long long creat
   int inode_count = 0;
   if (created < 2000000 || scanf("%d", &inode_count) != 1 || inode_count < 0 || inode_count > 1000000) return quiescence_failure("root", EINVAL, -1, &counts);
   for (int index = 0; index < inode_count; index++) if (scanf("%llu %llu", &root_inodes[index].dev, &root_inodes[index].ino) != 2) return quiescence_failure("root", EINVAL, -1, &counts);
+  qsort(root_inodes, (size_t)inode_count, sizeof(root_inodes[0]), root_inode_compare);
   if (scanf("%d", &gate_launch_count) != 1 || gate_launch_count < 0 || gate_launch_count > 1000000) return quiescence_failure("root", EINVAL, -1, &counts);
   for (int index = 0; index < gate_launch_count; index++) if (scanf("%d", &gate_launch_pids[index]) != 1 || gate_launch_pids[index] <= 0) return quiescence_failure("root", EINVAL, -1, &counts);
   if (scanf("%d", &gate_birth_count) != 1 || gate_birth_count < 0 || gate_birth_count > 1000000) return quiescence_failure("root", EINVAL, -1, &counts);

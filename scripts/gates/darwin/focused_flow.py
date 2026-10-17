@@ -20,6 +20,40 @@ import focused_trace
 
 
 LIMITATIONS = ['post-exit profile proof is exact only on hook-mediated SIGKILL; natural exit races test cleanup and fails closed.', 'kill hooks refuse signals to exited descendants; such calls fail the row rather than returning ESRCH/false.']
+CONTROLLER_BOOTSTRAPS = {}
+
+
+def observe_controller(api, root, helper):
+    births = api.scope_call(helper, 'identity', os.getpid())
+    if len(births) != 1 or str(births[0][0]) != str(os.getpid()):
+        raise ValueError('controller birth unavailable')
+    birth = list(map(str, births[0]))
+    result = subprocess.run([str(helper), 'executable', *birth], capture_output=True, text=True, timeout=2)
+    path = result.stdout.rstrip('\n')
+    if result.returncode != 0 or not path.startswith('/') or '\n' in path or '\r' in path or not path:
+        raise ValueError('controller kernel executable unavailable')
+    if [list(map(str, row)) for row in api.scope_call(helper, 'identity', os.getpid())] != [birth]:
+        raise ValueError('controller birth changed during executable observation')
+    record = {'birth': birth, 'executable': path, 'source': 'birth-fenced scope proc_pidpath of controller'}
+    CONTROLLER_BOOTSTRAPS[str(root.resolve())] = record
+    api.write_json(root / 'controller-bootstrap.json', record, root)
+    return record
+
+
+def bootstrap_matches(executable, birth, launch_birth, controller, current_controller):
+    return bool(controller and executable == controller['executable'] and
+                tuple(map(str, birth)) == tuple(map(str, launch_birth)) and
+                str(birth[1]) == str(controller['birth'][0]) and
+                tuple(map(str, current_controller)) == tuple(map(str, controller['birth'])))
+
+
+def require_bootstrap(api, root, helper, executable, birth, launch_birth):
+    controller = CONTROLLER_BOOTSTRAPS.get(str(root.resolve()))
+    if controller is None:
+        raise ValueError('controller bootstrap identity was not observed')
+    current = api.scope_call(helper, 'identity', controller['birth'][0])
+    if len(current) != 1 or not bootstrap_matches(executable, birth, launch_birth, controller, current[0]):
+        raise ValueError('own executable outside sibling allowlist')
 
 def workload_profile(base, tools):
     literals = [tools['clang'], tools['ld'], '/usr/bin/cc', '/usr/bin/c++', '/usr/bin/gcc', '/usr/bin/g++', '/usr/bin/clang', '/usr/bin/clang++', '/usr/bin/ld', '/usr/bin/as', '/usr/bin/xcrun', '/usr/bin/xcodebuild']
@@ -185,8 +219,8 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                             if trace is not None:
                                 trace.node_pids.add(int(row[0]))
                                 trace.node_observations.append(executable_samples[-1])
-                        elif executable != '/usr/bin/sandbox-exec' and not (int(row[0]) == proc.pid and executable == str(Path(sys.executable).resolve())):
-                            raise ValueError('own executable outside sibling allowlist')
+                        elif executable != '/usr/bin/sandbox-exec':
+                            require_bootstrap(api, root, helper, executable, row, birth)
                 if mediation is not None and trace is not None:
                     for event in trace.records:
                         if event.get('kind') == 'hello' and event.get('role') == 'reader' and event.get('entry') == mediation.reader:
@@ -386,9 +420,16 @@ def run(api, root, workspace, env, tools, real_home):
                 api.write_json(root / ('focused-launchagents-before-' + mode + '.json'), before_agents, root)
             pattern = '^(?:' + '|'.join(re.escape(name) for name in names) + ')$'
             command = [active_node, '--test', '--test-concurrency=1', '--test-reporter=tap', '--test-name-pattern=' + pattern, item['path']]
+            tmux_diagnostics = None
+            if mode == 'outer' and item['path'] == 'v2/daemon/tests/multiline-fallback-tmux.test.ts':
+                tmux_diagnostics = root / 'logs/focused-tmux-diagnostics.jsonl'
+                descriptor = os.open(tmux_diagnostics, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+                os.close(descriptor)
+                child_env['SCG_TMUX_DIAGNOSTIC_FILE'] = str(tmux_diagnostics)
+                command[1:1] = ['--import', str(active_workspace / 'scripts/gates/darwin/focused-tmux-diagnostics.mjs')]
             if mode == 'sibling-instrumented':
                 command.insert(2, '--test-isolation=none')
-            verdict = {'ok': False, 'file': item['path'], 'mode': mode, 'harnessOutsideOuterSeatbelt': sibling, 'excludedNotProof': item['excluded']}
+            verdict = {'ok': False, 'file': item['path'], 'mode': mode, 'harnessOutsideOuterSeatbelt': sibling, 'excludedNotProof': item['excluded'], 'excludedDisclosures': item.get('excludedDisclosures', {})}
             try:
                 mediation = focused_mediation.Mediation(root, active_workspace, active_node, child_env['TMPDIR'], names[0], manifest['recipientPolicy'], active_workspace / 'scripts/gates/darwin/focused-render-profile.mjs', dict(child_env, NODE_DISABLE_COMPILE_CACHE='1'), ['/usr/bin/sandbox-exec', '-f', str(sealed_context[0] / 'control/workload.sb')], helper=sealed_context[0] / 'control/scope', entries={str(active_workspace / row['path']): row['role'] for row in audit['nodeEntries']}) if sibling else None
                 trace = focused_trace.Trace(root, active_workspace, active_node, audit, active_artifacts, mediation=mediation) if mode == 'sibling-instrumented' else None
@@ -399,6 +440,9 @@ def run(api, root, workspace, env, tools, real_home):
                     verdict['isolationReason'] = 'default test runner child is born before preloader hooks and loses inherited trace fd; instrumented only uses isolation=none; plain run uses default isolation'
                 verdict.update(focused_tap.adjudicate(log.read_text(), names, result['exit']))
                 verdict['processReason'] = result['reason']
+                if tmux_diagnostics is not None:
+                    verdict['tmuxDiagnostics'] = load_tmux_diagnostics(tmux_diagnostics, names)
+                    verdict['tmuxDiagnostics']['failureEnums'] = sorted(set(re.findall(r'^# SCG_TMUX_DIAGNOSTIC_FAILURE=(append_eacces|append_enospc|append_emfile|append_other|realpath_failed|capture_failed|emit_failed|metadata_failed|hook_failed|diagnostic_failed)$', log.read_text(), re.M)))
                 if result['reason']:
                     verdict['ok'] = False
                 matrix_rows = [row for row in verdict['expectedRows'] if row['fullName'].startswith('Darwin OS-level file read outside cwd: ')]
@@ -447,5 +491,51 @@ def run(api, root, workspace, env, tools, real_home):
     pair = focused_diagnostics.compare_pair(pairs['sibling-instrumented'], pairs['sibling-production'])
     api.write_json(root / 'focused-pair.json', pair, root)
     ok = bool(outcomes) and all(row['ok'] for row in outcomes) and passed == expected and pair['ok']
-    api.write_json(root / 'focused-summary.json', {'ok': ok, 'limitations': LIMITATIONS, 'required': expected, 'passed': passed, 'excludedNotProof': sum(len(item['excluded']) for item in manifest['files']), 'siblingRows': sum(len(item['sibling']) for item in manifest['files']), 'harnessOutsideOuterSeatbelt': True}, root)
+    api.write_json(root / 'focused-summary.json', {'ok': ok, 'limitations': LIMITATIONS, 'excludedDisclosures': {name: text for item in manifest['files'] for name, text in item.get('excludedDisclosures', {}).items()}, 'required': expected, 'passed': passed, 'excludedNotProof': sum(len(item['excluded']) for item in manifest['files']), 'siblingRows': sum(len(item['sibling']) for item in manifest['files']), 'harnessOutsideOuterSeatbelt': True}, root)
     return 0 if ok else 95
+
+
+def load_tmux_diagnostics(path, names):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    try:
+        import stat
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 8388608:
+            raise ValueError('tmux diagnostic evidence unsafe or oversized')
+        with os.fdopen(fd, 'rb') as stream:
+            fd = None
+            data = stream.read(8388609)
+        if len(data) > 8388608:
+            raise ValueError('tmux diagnostic evidence grew beyond bound')
+        rows = [json.loads(line) for line in data.splitlines()]
+        if any(not valid_tmux_row(row, names) for row in rows):
+            raise ValueError('tmux diagnostic row outside selected manifest')
+        return {'path': str(path), 'rows': {name: [row for row in rows if row['row'] == name] for name in names}, 'serverStderrScope': 'fixed classifications, byte counts and hashes only; daemon-only stderr is not separately redirected', 'terminalCaptureBound': 'at most four panes, last 80 lines and 32768 captured bytes per command; counts, hashes and fixed fixture-marker booleans only; at most 128 records per row'}
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def valid_tmux_row(row, names):
+    failures = {None, 'append_eacces', 'append_enospc', 'append_emfile', 'append_other', 'realpath_failed', 'capture_failed', 'emit_failed', 'metadata_failed', 'hook_failed', 'diagnostic_failed'}
+    errors = {None, 'ENOENT', 'EACCES', 'EPERM', 'ENOSPC', 'EMFILE', 'ENFILE', 'EINVAL', 'EIO', 'ENOMEM', 'ETIMEDOUT', 'ENOBUFS', 'EPIPE', 'OTHER'}
+    classes = {'forkpty_failed', 'posix_openpt_failed', 'operation_not_permitted', 'permission_denied', 'not_a_terminal', 'no_server_running', 'server_exited_unexpectedly', 'error_connecting', 'socket_path', 'create_window_failed', 'other_nonempty', 'empty'}
+    kinds = {'tmux-command': {'operation'}, 'pane-list': set(), 'terminal-capture': {'pane'}}
+    base = {'row', 'kind', 'exit', 'signal', 'error', 'stderr', 'diagnosticFailure'}
+    if not isinstance(row, dict) or not isinstance(row.get('kind'), str) or row['kind'] not in kinds or set(row) != base | kinds[row['kind']] or row.get('row') not in names:
+        return False
+    if any(value is not None and not isinstance(value, str) for value in (row['diagnosticFailure'], row['error'])):
+        return False
+    if row['diagnosticFailure'] not in failures or row['error'] not in errors or any(value is not None and type(value) is not int for value in (row['exit'], row['signal'])):
+        return False
+    def hashed(value, keys):
+        return isinstance(value, dict) and set(value) == keys and type(value['byteCount']) is int and value['byteCount'] >= 0 and isinstance(value['sha256'], str) and re.fullmatch(r'[0-9a-f]{64}', value['sha256']) is not None
+    if not hashed(row['stderr'], {'byteCount', 'sha256', 'classes'}) or not isinstance(row['stderr']['classes'], list) or not row['stderr']['classes'] or any(not isinstance(value, str) or value not in classes for value in row['stderr']['classes']):
+        return False
+    if row['kind'] == 'terminal-capture':
+        pane = row['pane']
+        if not hashed(pane, {'byteCount', 'sha256', 'lineCount', 'markers'}) or type(pane['lineCount']) is not int or pane['lineCount'] < 0 or not isinstance(pane['markers'], dict) or set(pane['markers']) != {'phoneTerminalReady', 'received', 'pointer'} or any(type(value) is not bool for value in pane['markers'].values()):
+            return False
+    if row['kind'] == 'tmux-command' and (not isinstance(row['operation'], str) or row['operation'] not in {'new-session', 'new-window', 'kill-server', 'kill-session', 'kill-pane', 'list-panes', 'list-sessions', 'capture-pane', 'display-message', 'show-options', 'set-option', 'set-options', 'send-keys', 'load-buffer', 'paste-buffer', 'delete-buffer', 'resize-pane', 'select-pane', 'has-session', 'other'}):
+        return False
+    return True

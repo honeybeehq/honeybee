@@ -221,3 +221,71 @@ The precise footprint source does NOT explain erebor's zero-size row: [bsd_vm.c:
 The helper declares the public SDK struct proc_regionwithpathinfo from sys/proc_info.h, passes sizeof(region), and reads prp_prinfo.pri_address and pri_size only after an exact-size successful return with errno zero. No local ABI replacement is used on Darwin. A successful short read, including the first, is PARTIAL; the previously approved UNAVAILABLE-FIRST remains limited to a first API return0 with nonzero errno, without reading fields. regionZeroSizeDetail records returnLength exact/unobserved, shareMode as a fixed SM_* or UNKNOWN enum, and the mapping/submap flag. Its lastBeforeEINVAL is yes/no only after that walk actually reaches EINVAL, otherwise unknown; not-applicable means no empty record was observed. These are count/enum diagnostics, not identities or raw addresses. The public SDK struct/layout and actual return length remain checked in the real helper; Linux stubs are not SDK ABI proof.
 
 The sixteenth commit closes Q2-R: unobservedOwnChildren contains only a fixed allowlisted fixture/step label and its count. No input pid, argv, path, reason or other field is copied from an unverified candidate; an unknown label collapses to unverified-child. Callers handling fixture-file PIDs no longer pass those identities into recording. Only retained own births enter leftoverChild. Receipt, exception and captured-output regressions use unverified identity markers and verify their absence. No signal consumer or acceptance rule changes.
+
+Focused real-run follow-up (Queen, 17 Oct 22:00Z): the controller records its own
+birth-fenced kernel executable path using scope, rather than inferring it from
+Python's launcher path. A sibling's temporary start_wait Python is admitted only
+with that exact path, the sibling root-launch birth, and the controller's pid and
+rechecked birth as its parent. No other Python executable or descendant is admitted.
+The observation is retained in controller-bootstrap.json and receipt.controllerBootstrap.
+
+The exact HSR re-adoption row is excluded as Darwin NOT-PROVEN:
+"HSR re-adoption on Darwin needs a ps-based zombie census the gate forbids; recovery logic is platform-neutral and proven on Linux (receipt 7668b5f6)"
+The focused manifest therefore requires 48 rows (46 outer and 2 sibling), with 21
+excluded rows. Its changed SHA requires an audit-only gatePins.manifestSha256 update
+in the candidate before a run.
+
+Only the outer multiline tmux file imports the gate-owned tmux diagnostic observer.
+It keeps the ordinary test isolation and existing Seatbelt profile. The observer
+records each tmux invocation's numeric exit/signal and fixed error-code enum.
+Stderr is reduced to fixed classifications, byte count and SHA256; no raw stderr,
+environment or command payload is retained. Before kill-server and after each row,
+it attempts bounded pane listing and capture inside the same sandbox. These extra
+read-only tmux commands can fail under that profile; their failures remain evidence,
+not permissions. The phase receipt groups records by exact test row; the raw file is
+logs/focused-tmux-diagnostics.jsonl. Each row has at most 128 records, with at most
+four panes and 80 captured lines (32768 acquisition bytes per diagnostic command).
+Pane text is never retained: only line/byte counts, SHA256 and three fixed fixture
+marker booleans are stored. Controller reads remain capped at 8 MiB.
+This captures tmux invocation and startup stderr, not separately redirected stderr
+from an already detached server. It does not change daemonization or add -D/-vv.
+The existing write denial outside the run root also covers PTY device writes; no
+PTY, mach-lookup, socket, executable or library grant is added by these diagnostics.
+
+Queen 17 Oct 21:33Z LOW follow-up: COMPLETE now requires two adjacent end responses. After the first 0/EINVAL, the helper checks birth again, queries the end request plus one, and checks birth after that call. The confirmation must also be exactly 0/EINVAL. A returned region, short read, other errno, identity change or increment overflow fails. The diagnostic termination is end-confirmation for disagreement. Enumeration stays bounded to 65536 iterations plus at most one confirmation call per walk; existing helper deadlines remain. This reduces dependence on a single mid-map EINVAL but does not prove the map was immutable or exclude an identical error at both adjacent addresses. Empty-record lastBeforeEINVAL is committed only after confirmed completion.
+
+The root dev/ino inventory is sorted once after reading it; region and main-image checks use exact unsigned binary lookup. Duplicates remain harmless membership matches. Linux tests cover unsorted input, duplicate keys, distinct devices with the same inode, unsigned extremes, empty inventory, and first/middle/last/missing keys in a million-entry inventory with a bounded comparison count. This removes the inventory-times-regions linear lookup; it is not a measured busy-Mac runtime claim, and slow kernel calls or a large inventory may still hit the fail-safe two-second helper deadline.
+
+Operator note: avoid opening sandboxed applications during a gate run. If a newly started same-uid app denies fd inspection, it cannot satisfy the exception's pre-controller/non-gate birth condition (d), so the gate intentionally refuses even when that app is unrelated to the candidate. Preserve the root and receipt and coordinate any retry through the run's authorization path; do not weaken the condition or kill the unrelated app as part of gate cleanup. This follow-up is separate from #52's focused-run authorization.
+
+
+Checker B1/B2 follow-up: the fixture-marker table is fixed to phoneTerminalReady
+("phone terminal ready", v2/driver-tmux/test-agent/phone-terminal.mjs:6), received
+("received", that fixture:23), and pointer ("full text: ", #52's
+v2/daemon/tests/multiline-fallback-tmux.test.ts:58). No marker value is taken from
+pane data. The fixed stderr class set is forkpty_failed, posix_openpt_failed,
+operation_not_permitted, permission_denied, not_a_terminal, no_server_running,
+server_exited_unexpectedly, error_connecting, socket_path, create_window_failed,
+other_nonempty and empty. No error message is stored. If spawnSync returned bytes,
+hashes/counts use those bytes; if the caller requested text, hashes/counts use the
+UTF-8 encoding of the returned text, without changing the original invocation's
+encoding or return value. Capture commands request bytes.
+
+Every diagnostic append, realpath, capture and emit is isolated. A failure records
+one fixed diagnosticFailure enum per row; if append itself fails, the observer
+writes only a fixed SCG_TMUX_DIAGNOSTIC_FAILURE enum to the already-open stderr
+pipe. The controller extracts only the fixed enum set into the receipt. If that
+fallback also fails, no diagnostic evidence can be guaranteed, but the original
+command and teardown still run. The original spawnSync call is always invoked
+once and its original result is returned; original exceptions retain their normal
+behavior. Diagnostic failures never introduce an exception into the test, and
+capture can never prevent kill-server. Strict controller schemas reject raw or
+unknown fields before retaining diagnostic JSON.
+
+B2-R: fallback enum output uses only fs.writeSync(2, fixedLine) inside try/catch,
+including the hook-setup fallback. It never accesses process.stderr or changes
+stream listeners, so EPIPE/EBADF cannot create a later Writable error event. Linux
+subprocess regressions exercise an inherited pipe with no reader and a temporarily
+invalid fd 2 through the actual preloader. Both keep the test outcome and teardown;
+the invalid-fd case mocks the original command result while fd 2 is closed and
+restores fd 2 before returning to Node's event loop.
