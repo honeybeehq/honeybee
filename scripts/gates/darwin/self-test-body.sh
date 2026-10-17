@@ -12,6 +12,7 @@
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_signal_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_mediation_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_ipc_test.py || exit $?
+"$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_pax_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_seed_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_revision_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_roles_test.py || exit $?
