@@ -36,7 +36,7 @@ for (const bracketed of [true, false]) test(`private tmux multiline transport: b
       return rows().some(row => row.ready) && flag === "0";
     });
     flagTransitions.push(flag);
-    tmuxVersion = server.run(["-V"]).stdout.trim();
+    tmuxVersion = server.run(["-V"]).trim();
     if (bracketed) {
       server.run(["send-keys", "-t", pane, "C-b"]);
       await wait(() => {
