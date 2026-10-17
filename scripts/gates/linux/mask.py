@@ -1,6 +1,7 @@
 import os, sys, pathlib, json, ctypes, subprocess, time, stat, uuid, socket, fcntl, struct, hashlib
 from home_guard import entry_guard
 from policy import mask_targets
+from git_boundary import prepare as prepare_git_boundary
 from filesystem import seal_filesystem, mount_readonly, assert_filesystem, filesystem_probes
 from test_capabilities import SETPRIV_ARGS
 R = pathlib.Path(sys.argv[1])
@@ -96,6 +97,8 @@ try:
     mount(str(private_tmp), '/tmp', None, 4096)
     os.close(outfd)
     outfd = os.open(out, os.O_RDONLY | os.O_DIRECTORY)
+    boundary_directory = prepare_git_boundary(CACHE, label)
+    mount(str(boundary_directory), '/mnt', None, 4096)
     seal_filesystem(CACHE)
     parent_namespaces=dict(receipt['namespaces'])
     outer_uid,outer_gid=os.getuid(),os.getgid()

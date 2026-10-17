@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 from filesystem import proc_receipt_valid
+from git_boundary import snapshot as git_boundary_snapshot, receipt_valid as git_boundary_receipt_valid
 import uuid
 import threading
 import pwd
@@ -314,6 +315,15 @@ def adjudicate(home, root, out, physical, before, after):
     valid_mask = valid_mask and filesystem.get('state', {}).get('asserted', False) and fs_probes.get('asserted', False) and fs_probes.get('privilegeChecks') is True and {item.get('operation') for item in fs_probes.get('privilegeProbes', [])} == {'remount-proc-rw','remount-root-rw','umount-tmp','unshare-mount'} and all(item.get('refused') and item.get('childExit') == 0 for item in fs_probes['privilegeProbes'])
     temporary = tmp_audit(root, out)
     valid_mask = valid_mask and temporary['asserted']
+    fixture_path = root / 'git-boundary' / physical['label'] / 'fixture.json'
+    boundary_path = out / 'git-boundary-tests.json'
+    boundary_valid = False
+    if fixture_path.exists() and boundary_path.exists():
+        fixture = read(fixture_path)
+        outside_after = git_boundary_snapshot(fixture['backingTarget'])
+        save(out / 'git-boundary-outside.json', dict(metadataAndHashesOnly=True, entries=outside_after, unchanged=outside_after == fixture['before']))
+        boundary_valid = git_boundary_receipt_valid(read(boundary_path), fixture, outside_after)
+    valid_mask = valid_mask and boundary_valid
     coverage = [dict(pid=birth['pid'],outcome=mapping_coverage(birth,inv['hostPidMap'],raw.get('errors',[]))) for birth in raw.get('births',[])]
     save(out/'mapping-coverage.json',coverage)
     missing_mappings = [item['pid'] for item in coverage if item['outcome']=='FAIL']
