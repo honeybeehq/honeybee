@@ -331,6 +331,10 @@ def require_quiescent(root, helper):
 QUIESCENCE_OBSERVATIONS = []
 
 
+PLATFORM_FAILURE_CONDITIONS = ('unlinked', 'birthBeforePath', 'pidpath', 'birthAfterPath', 'realpath', 'pathChanged', 'prefix', 'csopsUnavailable', 'birthBeforeCsops', 'csops', 'birthAfterCsops', 'notPlatform', 'stat', 'birthAfterStat', 'inodeMatch', 'regionRejected', 'regionUnavailableFirst', 'regionPartial', 'mainImageMissing')
+QUIESCENCE_ERRNOS = ('NONE', 'EPERM', 'EACCES', 'ESRCH', 'EBADF', 'ENOENT', 'EINVAL', 'ENOMEM', 'EINTR', 'EFAULT', 'EIO', 'ENOTSUP', 'EOVERFLOW', 'EBUSY', 'EAGAIN', 'ENOSYS', 'OTHER')
+
+
 def quiescence_evidence(result):
     import json
     foreign = dict.fromkeys(('cwd', 'exe', 'fd'), 0)
@@ -345,9 +349,9 @@ def quiescence_evidence(result):
             if len(result.stderr) > 4096:
                 raise ValueError('oversized quiescence diagnostic')
             reason = json.loads(result.stderr)
-            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts', 'fdAllowedByQuery', 'fdFailedQueryResults', 'fdWriteDeniedReadResults'} or reason['type'] != ('QuiescenceFailure' if result.returncode else 'QuiescenceComplete'):
+            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts', 'fdAllowedByQuery', 'fdFailedQueryResults', 'fdWriteDeniedReadResults', 'regionPartialDetail', 'platformFailures'} or reason['type'] != ('QuiescenceFailure' if result.returncode else 'QuiescenceComplete'):
                 raise ValueError('unexpected quiescence diagnostic schema')
-            if reason['call'] not in ('root', 'allocation', 'proc_listpids', 'pidinfo vnode', 'pidpath', 'listfds', 'fdinfo', 'birth', 'none', 'unlinked policy', 'region inode') or reason['errno'] not in ('NONE', 'EPERM', 'EACCES', 'ESRCH', 'EBADF', 'ENOENT', 'EINVAL', 'ENOMEM', 'EINTR', 'OTHER'):
+            if reason['call'] not in ('root', 'allocation', 'proc_listpids', 'pidinfo vnode', 'pidpath', 'listfds', 'fdinfo', 'birth', 'none', 'unlinked policy', 'region inode') or reason['errno'] not in QUIESCENCE_ERRNOS:
                 raise ValueError('unexpected quiescence diagnostic value')
             if type(reason['errnoNumber']) is not int or type(reason['sameBirth']) is not int or reason['sameBirth'] not in (-1, 0, 3, 4):
                 raise ValueError('unexpected quiescence numeric value')
@@ -361,6 +365,12 @@ def quiescence_evidence(result):
             reads = reason['fdWriteDeniedReadResults']
             if not isinstance(reads, dict) or set(reads) != {'root:read', 'probe:read', 'src:read', 'absent:read'} or any(not isinstance(row, dict) or set(row) != {'allowed', 'denied'} or any(type(value) is not int or value < 0 for value in row.values()) for row in reads.values()):
                 raise ValueError('unexpected write-denied read diagnostics')
+            partial = reason['regionPartialDetail']
+            if not isinstance(partial, dict) or set(partial) != {'errno', 'regionsRead', 'mainImageSeen', 'termination'} or partial['errno'] not in QUIESCENCE_ERRNOS or type(partial['regionsRead']) is not int or not 0 <= partial['regionsRead'] <= 65536 or type(partial['mainImageSeen']) is not int or partial['mainImageSeen'] not in (0, 1) or partial['termination'] not in ('none', 'read-error', 'short-read', 'nonprogress', 'limit'):
+                raise ValueError('unexpected anonymous partial-region diagnostic')
+            failures = reason['platformFailures']
+            if not isinstance(failures, dict) or set(failures) != set(PLATFORM_FAILURE_CONDITIONS) or any(type(value) is not int or value < 0 for value in failures.values()):
+                raise ValueError('unexpected platform-condition counts')
             evidence['reason'] = reason
         except (ValueError, TypeError, KeyError):
             evidence['reason'] = {'type': 'UnobservedQuiescenceFailure'}

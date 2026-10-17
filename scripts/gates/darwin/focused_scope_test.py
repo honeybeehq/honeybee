@@ -98,9 +98,9 @@ static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int 
  (void)size;if(pid==12)foreign_read=1;
  if(flavor==PROC_PIDREGIONPATHINFO){
  int first=arg==0;
- if((mode==24||mode==25||(mode>=80&&mode<=99&&mode!=97)||(mode>=100&&mode!=107))&&first){struct proc_regionwithpathinfo *r=out;r->prp_prinfo.pri_address=4096;r->prp_prinfo.pri_size=4096;r->prp_vip.vip_vi.vi_stat.vst_dev=7;r->prp_vip.vip_vi.vi_stat.vst_ino=mode==24||mode==93?42:43;return sizeof(*r);}
+ if((mode==24||mode==25||(mode>=80&&mode<=99&&mode!=97)||(mode>=100&&mode!=107))&&first){struct proc_regionwithpathinfo *r=out;r->prp_prinfo.pri_address=4096;r->prp_prinfo.pri_size=4096;r->prp_vip.vip_vi.vi_stat.vst_dev=7;r->prp_vip.vip_vi.vi_stat.vst_ino=mode==24||mode==93?42:mode==108||mode==109?44:43;return sizeof(*r);}
  if((mode==102||mode==105)&&!first&&arg==8192){struct proc_regionwithpathinfo *r=out;r->prp_prinfo.pri_address=8192;r->prp_prinfo.pri_size=4096;r->prp_vip.vip_vi.vi_stat.vst_dev=7;r->prp_vip.vip_vi.vi_stat.vst_ino=42;return sizeof(*r);}
- if((mode==100||mode==101||mode==103||mode==104)&&!first){errno=mode==100||mode==103?EPERM:0;return mode==100||mode==103?0:1;}
+ if((mode==100||mode==101||mode==103||mode==104||mode==108)&&!first){errno=mode==100||mode==103||mode==108?EPERM:0;return mode==100||mode==103||mode==108?0:1;}
  errno=(mode==18||mode==97||mode==107)?EPERM:EINVAL;return 0;}
 
  if(flavor==PROC_PIDVNODEPATHINFO){stage=1;if(mode==3||mode==9){errno=mode==3?ESRCH:EACCES;return -1;}strcpy(((struct proc_vnodepathinfo*)out)->pvi_cdir.vip_path,mode>=18&&mode!=22&&mode!=48?"/outside":"/fixture/cwd");return sizeof(struct proc_vnodepathinfo);}
@@ -141,7 +141,7 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                 9: ('live vnode read error', 4), 10: ('live fd-list error', 4),
                 11: ('birth mismatch', 4), 12: ('live EBADF skips fd and continues', 0),
                 13: ('exit after matched paths before final fence', 0),
-                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('read-only alternative or data-write refusal',0 if mode%2==0 else 4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4),60:('read allowed twelve writes denied accepts',0),**{mode:('each of twelve write allows fails',4) for mode in range(61,73)},73:('unknown write-create op errors',4),**{mode:('platform binary prefix and status proof',0 if mode in (80,94,95,96) else 4) for mode in range(80,100)},100:('region mid-walk error refuses ENOENT',4),101:('region short read refuses ENOENT',4),102:('later inventory inode refuses ENOENT',4),103:('main image then error refuses platform',4),104:('main image then short read refuses platform',4),105:('main image then inventory inode refuses platform',4),106:('complete platform walk accepts main image',0),107:('first unavailable refuses platform',4)}
+                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('read-only alternative or data-write refusal',0 if mode%2==0 else 4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4),60:('read allowed twelve writes denied accepts',0),**{mode:('each of twelve write allows fails',4) for mode in range(61,73)},73:('unknown write-create op errors',4),**{mode:('platform binary prefix and status proof',0 if mode in (80,94,95,96) else 4) for mode in range(80,100)},100:('region mid-walk error refuses ENOENT',4),101:('region short read refuses ENOENT',4),102:('later inventory inode refuses ENOENT',4),103:('main image then error refuses platform',4),104:('main image then short read refuses platform',4),105:('main image then inventory inode refuses platform',4),106:('complete platform walk accepts main image',0),107:('first unavailable refuses platform',4),108:('partial before main-image proof',4),109:('complete without main-image proof',4)}
             for mode, (name, expected) in cases.items():
                 with self.subTest(case=name):
                     result = subprocess.run([str(binary), str(mode)], input="1\n7 42\n2\n77\n88\n1\n11 10 100 1\n", capture_output=True, text=True, timeout=2)
@@ -178,8 +178,15 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                         reason = json.loads(result.stderr)
                         self.assertEqual(reason['type'], 'QuiescenceFailure')
                         self.assertEqual(reason['counts']['failed'], 1)
-                        if mode in (100,101,103,104):
+                        if mode in (100,101,103,104,108):
                             self.assertEqual(reason['counts']['regionPartial'],1)
+                            self.assertEqual(reason['regionPartialDetail'], {'errno':'EPERM' if mode in (100,103,108) else 'NONE','regionsRead':1,'mainImageSeen':int(mode in (103,104)), 'termination':'read-error' if mode in (100,103,108) else 'short-read'})
+                        if mode in (103,104,108):
+                            self.assertEqual(reason['platformFailures']['regionPartial'],1)
+                        if mode==109:
+                            self.assertEqual(reason['platformFailures']['mainImageMissing'],1)
+                        if 80 <= mode <= 109 and mode not in (100,101,102):
+                            self.assertEqual(sum(reason['platformFailures'].values()),1)
                         if mode==107:
                             self.assertEqual(reason['counts']['regionUnavailable'],1)
                         self.assertNotIn('/fixture', result.stderr)
