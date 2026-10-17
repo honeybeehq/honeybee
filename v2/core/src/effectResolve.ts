@@ -79,6 +79,13 @@ export class EffectLedger {
     }
     this.db.prepare("INSERT INTO rpc_effect_keys(key,verb,state,receipt,created_at) VALUES(?,?,'committed',?,?)").run(receipt.key, receipt.verb, JSON.stringify(receipt), receipt.createdAt);
   }
+  observe(id: string, verb: EffectVerb): EffectResolution {
+    const row = this.raw(id), binding = { ...this.coverage, verb, idempotencyKey: id };
+    if (row && row.verb !== verb) throw new EffectKeyError("idempotency_conflict", "Effect key belongs to another verb");
+    if (row?.receipt) return { ...binding, status: "committed", receipt: row.receipt };
+    if (this.covered(id) && row?.state === "fenced") return { ...binding, status: "never_seen_fenced" };
+    throw new EffectKeyError("rpc_effect_history_unknown", "No authoritative execution receipt or current non-execution fence; hold the effect");
+  }
   resolve(id: string, verb: EffectVerb, inFlight: boolean, commandExists: boolean): EffectResolution {
     const row = this.raw(id), binding = { ...this.coverage, verb, idempotencyKey: id };
     if (row && row.verb !== verb) throw new EffectKeyError("idempotency_conflict", "Effect key belongs to another verb");

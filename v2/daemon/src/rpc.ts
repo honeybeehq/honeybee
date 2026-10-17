@@ -1,3 +1,4 @@
+import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { EffectKeyError } from "../../core/src/effectResolve.ts";
 import { PeerCredentials, type PeerConnection } from "./peerCredentials.ts";
 import { LocalRpcTrust, type LocalTrustConfig } from "./localRpcTrust.ts";
@@ -70,6 +71,7 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly executionCoordinatorUid?: number;
   readonly authenticatedBeeId?: string;
   readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
   readonly ingress?: "local_unix" | "node_relay" | "remote";
@@ -138,6 +140,7 @@ function isRpcVerb(value: unknown): value is RpcVerb {
 
 /** Map any thrown error onto the closed RPC error list. */
 export function toRpcError(err: unknown): { code: RpcErrorCode; message: string; details?: Record<string, unknown> } {
+  if (err instanceof ExecutionFenceError) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof EffectKeyError) return { code: err.code, message: err.message };
   if (err instanceof RpcError) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof LoginFlowRefusal) return { code: err.code, message: err.message };
@@ -270,7 +273,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => capability !== "question.withdraw.v1" || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => !["question.withdraw.v1", "rpc-execution-fence.archive-send.v1"].includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
   }
 
   private onConnection(socket: Socket): void {
@@ -399,6 +402,12 @@ export class RpcServer {
         if (verb === "account.limits.observe" || verb === "account.limits.observation.discard" || (verb === "account.limits.observation" && params.id !== undefined)) {
           if (!peer && this.trust.enabled) throw new RpcError("caller_not_trusted", "Observation trust requires a local Unix connection.");
           if (peer) this.trust.require(peer, conn.ingress);
+        }
+        if (verb.startsWith("rpc.execution.")) {
+          if (!this.capabilities.includes("rpc-execution-fence.archive-send.v1") || !peer || conn.ingress !== "local_unix") throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing requires a trusted registered local coordinator; org transport is unsupported");
+          this.trust.require(peer, conn.ingress);
+          if (peer.state !== "verified" || !peer.current()) throw new RpcError("caller_not_trusted", "Execution coordinator identity is unavailable");
+          return this.opts.dispatch(verb, params, { ...conn, executionCoordinatorUid: peer.peer.uid });
         }
         if (verb === "question.withdraw") {
           if (!this.capabilities.includes("question.withdraw.v1")) throw new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee.");
