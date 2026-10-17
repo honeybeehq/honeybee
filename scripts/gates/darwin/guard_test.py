@@ -23,6 +23,26 @@ from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, close_socket
 
 
 class GuardTests(unittest.TestCase):
+    def test_git_config_exception_is_exact_and_fixture_only(self):
+        env = {'PATH': '/usr/bin:/bin', 'HOME': str(self.base)}
+        result = subprocess.CompletedProcess([], 0, '0' * 40 + '\n', '')
+        with patch('git_boundary.Path.is_file', return_value=True), patch('git_boundary.os.access', return_value=True), patch('git_boundary.snapshot', return_value={}), patch('git_boundary.subprocess.run', return_value=result) as invoked:
+            git_boundary.prepare(self.base, env)
+        git_calls = [call for call in invoked.call_args_list if call.args[0][0] in git_boundary.GIT_CANDIDATES]
+        self.assertTrue(git_calls)
+        for call in git_calls:
+            argv = call.args[0]
+            self.assertEqual(argv[1:3], ['-c', 'http.extraHeader='])
+            self.assertEqual(argv.count('-c'), 1)
+            self.assertEqual({key: value for key, value in call.kwargs['env'].items() if key.startswith('GIT_CONFIG_')}, {'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null'})
+        for name in ('gate-run.sh', 'darwin-gate.sh', 'syntax-matrix-run.sh'):
+            text = (Path(__file__).parent / name).read_text()
+            self.assertNotRegex(text, r'GIT_CONFIG_|\bgit\s+-c\b')
+        tree = ast.parse((Path(__file__).parent / 'guard.py').read_text())
+        source = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'source_copy')
+        text = ast.get_source_segment((Path(__file__).parent / 'guard.py').read_text(), source)
+        self.assertNotRegex(text, r'GIT_CONFIG_|git_command|lab_environment')
+
     def test_git_sealed_target_deny_follows_root_allow(self):
         policy = profile(self.base, self.base / 'real-home', self.base / 'lane')
         allowed = '(allow file-write* (subpath ' + json.dumps(str(self.base)) + '))'
@@ -43,6 +63,8 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(calls.call_args_list[1].args[0][-1], 'https://192.0.2.1/x.git')
         for call in calls.call_args_list:
             self.assertEqual(call.args[0][:3], [controls['git'], '-c', 'http.extraHeader='])
+            self.assertEqual(call.args[0].count('-c'), 1)
+            self.assertEqual({key: value for key, value in call.kwargs['env'].items() if key.startswith('GIT_CONFIG_')}, {'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null'})
             self.assertEqual(call.kwargs['env']['GIT_CONFIG_NOSYSTEM'], '1')
             self.assertEqual(call.kwargs['env']['GIT_CONFIG_GLOBAL'], '/dev/null')
         self.assertNotIn('stderr', json.dumps(rows))

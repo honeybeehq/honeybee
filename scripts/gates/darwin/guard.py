@@ -213,7 +213,7 @@ def close_socket_controls(root):
 def source_copy(lane, source, root, env):
     archive_path = root / 'source.tar'
     with archive_path.open('xb') as stream:
-        subprocess.run(git_boundary.git_command('git', 'archive', source), cwd=lane, env=git_boundary.lab_environment(env), stdout=stream, check=True)
+        subprocess.run(['git', 'archive', source], cwd=lane, env=env, stdout=stream, check=True)
     workspace = root / 'src'
     workspace.mkdir()
     manifest = {}
