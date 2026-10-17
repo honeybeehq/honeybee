@@ -18,11 +18,46 @@ ENUMS = {'NONE', 'EPERM', 'EACCES', 'EAGAIN', 'ENOENT', 'ENOTTY', 'EINVAL', 'EBA
 FIELDS = {'foreignBefore', 'foreignAfter', 'nonTty', 'posixOpenpt', 'grantpt', 'unlockpt', 'slaveOpen', 'ttyIoctl', 'forkExec', 'trueExit'}
 CHAIN = ('posixOpenpt', 'grantpt', 'unlockpt', 'slaveOpen', 'ttyIoctl')
 
+PINNED_BUILD = '25G83'
+PTY_RULES = '(allow pseudo-tty)(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))(allow file-read* file-write* (require-all (regex #"^/dev/ttys[0-9]+$") (extension "com.apple.sandbox.pty")))'
+DISCLOSURE = "Darwin outer profile admits PTY allocation (pseudo-tty, /dev/ptmx read/write/ioctl) and slave ttys only under the kernel-issued com.apple.sandbox.pty extension; foreign same-uid terminals are denied by OS policy (self-test proves before and after own allocation); a same-uid process holding a pty extension could pass a token over IPC, which is not excluded; PTY allocation adds host PTY-exhaustion capacity."
+
+
+def os_build(env):
+    result = {}
+    for name, flag in (('ProductVersion', '-productVersion'), ('BuildVersion', '-buildVersion')):
+        observed = subprocess.run(['/usr/bin/sw_vers', flag], env=env, capture_output=True, text=True, timeout=2)
+        value = observed.stdout.strip()
+        if observed.returncode or not re.fullmatch(r'[0-9A-Za-z.]{1,32}', value):
+            raise ValueError('os_build_unobserved')
+        result[name] = value
+    return result
+
+
+def require_precondition(root, build):
+    row = REPORTS.get(str(root.resolve()))
+    if build.get('BuildVersion') != PINNED_BUILD:
+        raise ValueError('os_build_changed: fresh self-test required')
+    if not isinstance(row, dict) or row.get('ok') is not True or row.get('runRoot') != str(root.resolve()) or row.get('osBuild') != build or row.get('productionProfileUnchanged') is not True:
+        raise ValueError('pty_precondition_missing_or_failed')
+    rows = row.get('rows', [])
+    if len(rows) != 2 or [item.get('candidate') for item in rows] != [False, True] or any(not adjudicate(item.get('observations'), item['candidate'])['ok'] for item in rows):
+        raise ValueError('pty_precondition_controls_failed')
+    if rows[0]['observations']['posixOpenpt'] != 'EPERM' or row.get('tmux', {}).get('ok') is not True:
+        raise ValueError('pty_precondition_differential_failed')
+    return row
+
+
+def production_profile(base):
+    if base.count('(deny file-write*)') != 1 or PTY_RULES in base:
+        raise ValueError('PTY base profile shape')
+    return base.replace('(deny file-write*)', '(deny file-write*)' + PTY_RULES, 1)
+
 
 def candidate_profile(base, *, self_test=False):
     if self_test is not True:
         raise ValueError('PTY candidate is self-test only')
-    return base + '(allow pseudo-tty)(allow file-read* file-write* file-ioctl (literal "/dev/ptmx"))(allow file-read* file-write* (require-all (regex #"^/dev/ttys[0-9]+$") (extension "com.apple.sandbox.pty")))'
+    return production_profile(base)
 
 
 def adjudicate(value, candidate):
@@ -223,12 +258,18 @@ def tmux_control(api, root, workspace, helper, env, profile, fixture):
     return report
 
 
-def run(api, root, workspace, helper, env, compile_command, *, self_test=False):
-    if self_test is not True or sys.platform != 'darwin' or env.get('SCG_SELF_TEST') != '1':
-        raise ValueError('PTY controls require Darwin self-test entry')
-    report = {'ok': False, 'selfTestOnly': True, 'productionProfileUnchanged': False, 'rows': [], 'extensionTokenLimit': 'a PTY extension token passed over IPC is not excluded; this candidate is self-test only'}
+def run(api, root, workspace, helper, env, compile_command, *, self_test=False, focused_precondition=False, baseline_policy=None):
+    if (self_test is not True and focused_precondition is not True) or sys.platform != 'darwin' or (env.get('SCG_SELF_TEST') != '1' and focused_precondition is not True):
+        raise ValueError('PTY controls require approved Darwin control entry')
+    report = {'ok': False, 'selfTestOnly': True, 'productionProfileUnchanged': False, 'rows': [], 'extensionTokenLimit': DISCLOSURE}
     REPORTS[str(root.resolve())] = report
     original = (root / 'workload.sb').read_bytes()
+    build = os_build(env)
+    report.update(osBuild=build, runRoot=str(root.resolve()), disclosure=DISCLOSURE, selfTestOnly=False, sameInvocation=True)
+    if build['BuildVersion'] != PINNED_BUILD:
+        raise ValueError('os_build_changed: fresh self-test required')
+    if not isinstance(baseline_policy, str) or original.decode() != candidate_profile(baseline_policy, self_test=True):
+        raise ValueError('PTY production profile differs from approved delta')
     fixture = root / 't/pty-controls'
     fixture.mkdir(mode=0o700)
     source = workspace / 'scripts/gates/darwin/pty_control.c'
@@ -259,7 +300,7 @@ def run(api, root, workspace, helper, env, compile_command, *, self_test=False):
         report['controllerNonTtyOpenAllowed'] = True
         for candidate in (False, True):
             profile = fixture / ('candidate.sb' if candidate else 'current.sb')
-            profile.write_text(candidate_profile(original.decode(), self_test=True) if candidate else original.decode())
+            profile.write_text(original.decode() if candidate else baseline_policy)
             profile.chmod(0o600)
             if hashlib.sha256(binary.read_bytes()).hexdigest() != binary_pin:
                 raise ValueError('PTY control binary changed')

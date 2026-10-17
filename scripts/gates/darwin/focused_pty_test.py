@@ -15,23 +15,59 @@ import pty_controls
 class PtyTests(unittest.TestCase):
     def test_candidate_requires_self_test_and_keeps_production_unchanged(self):
         import guard
-        base = guard.profile(Path('/private/var/tmp/g.12345678'), Path('/Users/fixture'), Path('/lane'))
+        base = guard.profile(Path('/private/var/tmp/g.12345678'), Path('/Users/fixture'), Path('/lane'), pty=False)
         for value in (False, None, 1, '1'):
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'self-test only'):
                 pty_controls.candidate_profile(base, self_test=value)
         candidate = pty_controls.candidate_profile(base, self_test=True)
-        self.assertTrue(candidate.startswith(base))
+        self.assertEqual(candidate, base.replace('(deny file-write*)', '(deny file-write*)' + pty_controls.PTY_RULES, 1))
+        self.assertEqual(candidate, guard.profile(Path('/private/var/tmp/g.12345678'), Path('/Users/fixture'), Path('/lane')))
         self.assertNotIn('com.apple.sandbox.pty', base)
         self.assertIn('(require-all (regex #"^/dev/ttys[0-9]+$") (extension "com.apple.sandbox.pty"))', candidate)
         self.assertNotIn('(subpath "/dev")', candidate)
         tree = ast.parse((Path(__file__).parent / 'guard.py').read_text())
         calls = []
         for node in ast.walk(tree):
-            if isinstance(node, ast.If) and ast.unparse(node.test) == 'args.self_test':
+            if isinstance(node, ast.If) and ast.unparse(node.test) == "args.self_test or args.body == 'scripts/gates/darwin/focused-manifest-body.sh'":
                 calls.extend(inner for inner in ast.walk(node) if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute) and ast.unparse(inner.func) == 'pty_controls.run')
         self.assertEqual(len(calls), 1)
-        self.assertNotIn('pty_controls', (Path(__file__).parent / 'focused_flow.py').read_text())
-        self.assertEqual(base, guard.profile(Path('/private/var/tmp/g.12345678'), Path('/Users/fixture'), Path('/lane')))
+        compiler = [node.value for node in ast.walk(tree) if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == 'build_policy' for target in node.targets)]
+        self.assertEqual(len(compiler), 1)
+        self.assertEqual(ast.unparse(compiler[0]), 'compiler_profile(profile(root, real_home, lane, pty=False), tools)')
+        manifest = json.loads((Path(__file__).parent / 'focused-manifest.json').read_text())
+        self.assertEqual(sum(len(row['outer']) for row in manifest['files']), 46)
+        self.assertEqual(sum(len(row['sibling']) for row in manifest['files']), 2)
+        self.assertEqual(len(manifest['files'][2]['outer']), 8)
+        self.assertIn('pty_controls.require_precondition(root, pty_controls.os_build(env))', (Path(__file__).parent / 'focused_flow.py').read_text())
+        self.assertEqual(base, guard.profile(Path('/private/var/tmp/g.12345678'), Path('/Users/fixture'), Path('/lane'), pty=False))
+
+    def test_permanent_precondition_requires_build_and_same_invocation_proofs(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            build = {'ProductVersion': '26.6.2', 'BuildVersion': '25G83'}
+            with patch.dict(pty_controls.REPORTS, {}, clear=True):
+                with self.assertRaisesRegex(ValueError, 'missing'):
+                    pty_controls.require_precondition(root, build)
+                import focused_flow
+                with patch('pty_controls.os_build', return_value=build), self.assertRaisesRegex(ValueError, 'missing'):
+                    focused_flow.run(None, root, root, {}, None, None)
+                value = {key: 'NONE' for key in pty_controls.FIELDS - {'trueExit'}}
+                value.update(foreignBefore={'open': 'DENIED_EPERM', 'write': 'NOT_RUN'}, foreignAfter={'open': 'DENIED_EPERM', 'write': 'NOT_RUN'}, nonTty='EPERM', trueExit=0)
+                baseline = dict(value, posixOpenpt='EPERM', grantpt='NOT_RUN', unlockpt='NOT_RUN', slaveOpen='NOT_RUN', ttyIoctl='NOT_RUN')
+                row = {'ok': True, 'runRoot': str(root), 'osBuild': build, 'productionProfileUnchanged': True, 'tmux': {'ok': True}, 'rows': [{'candidate': False, 'observations': baseline}, {'candidate': True, 'observations': value}]}
+                pty_controls.REPORTS[str(root)] = row
+                self.assertIs(pty_controls.require_precondition(root, build), row)
+                with self.assertRaisesRegex(ValueError, 'os_build_changed: fresh self-test required'):
+                    pty_controls.require_precondition(root, dict(build, BuildVersion='25G84'))
+                for phase in ('foreignBefore', 'foreignAfter'):
+                    changed = dict(value, **{phase: {'open': 'OPENED', 'write': 'EPERM'}})
+                    row['rows'][1]['observations'] = changed
+                    with self.assertRaisesRegex(ValueError, 'controls_failed'):
+                        pty_controls.require_precondition(root, build)
+                row['rows'][1]['observations'] = value
+                row['runRoot'] = str(root / 'other')
+                with self.assertRaisesRegex(ValueError, 'missing'):
+                    pty_controls.require_precondition(root, build)
 
     def test_negative_controls_fail_independently_and_no_raw_fields(self):
         value = {key: 'NONE' for key in pty_controls.FIELDS - {'trueExit'}}

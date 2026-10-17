@@ -13,6 +13,7 @@ import focused_diagnostics
 import focused_native
 import focused_mediation
 import focused_sentinel
+import pty_controls
 import focused_seal
 import focused_roles
 import focused_tap
@@ -306,6 +307,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
 
 
 def run(api, root, workspace, env, tools, real_home):
+    pty_controls.require_precondition(root, pty_controls.os_build(env))
     manifest_path = workspace / 'scripts/gates/darwin/focused-manifest.json'
     manifest = json.loads(manifest_path.read_text())
     if manifest['version'] != 1 or tuple(item['path'] for item in manifest['files']) != focused_audit.FILES:
