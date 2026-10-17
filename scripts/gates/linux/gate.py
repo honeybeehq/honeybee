@@ -20,8 +20,10 @@ import pwd
 from home_guard import entry_guard, pull_destination
 from birth_identity import birth_identity
 from test_capabilities import SETPRIV_ARGS, capability_receipt_valid
+from stat_observation import parse_stat, resolve_stat_observation, STAT_RETRY_LIMIT, STAT_RETRY_DELAY
+from error_summary import error_summary_valid, error_summary_totals
 
-from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,probe_failed
+from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,probe_failed,pid_observation
 
 
 def save(path, value):
@@ -212,6 +214,18 @@ def outside_assertion(home, out, before):
     save(out / ('GO.json' if asserted else 'ABORT.json'), result)
 
 
+def host_stat(pid):
+    try:
+        return parse_stat(pathlib.Path(f'/proc/{pid}/stat').read_text())
+    except OSError as error:
+        return dict(errno=error.errno, error=type(error).__name__)
+
+
+def host_observation(pid, tree_listed, stamp):
+    observation = dict(time=stamp, **pid_observation(tree_listed, host_stat(pid), os.path.exists(f'/proc/{pid}')))
+    return resolve_stat_observation(observation, lambda: host_stat(pid), lambda: os.path.exists(f'/proc/{pid}'))
+
+
 def map_host_pids(group, out, stopped):
     births = {}
     with (out / 'host-cgroup-sightings.jsonl').open('w', buffering=1) as sightings:
@@ -225,16 +239,7 @@ def map_host_pids(group, out, stopped):
                     if 'readError' in known and 'nextSample' not in known['readError']:
                         changed=True
                         error = known['readError']
-                        current = {}
-                        if known['hostPid'] in pids:
-                            try:
-                                raw = pathlib.Path(f"/proc/{known['hostPid']}/stat").read_text()
-                                values = raw[raw.rfind(')')+2:].split()
-                                current = dict(state=values[0],starttime=values[19])
-                            except OSError:
-                                pass
-                        gone = known['hostPid'] not in pids and not os.path.exists(f"/proc/{known['hostPid']}")
-                        error['nextSample']=dict(time=stamp,state='pid_gone' if gone else 'pid_present',procStat=current)
+                        error['nextSample'] = host_observation(known['hostPid'], known['hostPid'] in pids, stamp)
                         error['verdict']=error_verdict(error,dict(cgroupSightingTime=known['scopeSightingAt']),False,'')
                 for pid in pids:
                     if pid in births:
@@ -244,9 +249,10 @@ def map_host_pids(group, out, stopped):
                     try:
                         status = pathlib.Path('/proc') / str(pid) / 'status'
                         def proc_stat():
-                            raw = (status.parent / 'stat').read_text()
-                            values = raw[raw.rfind(')')+2:].split()
-                            return dict(state=values[0], ppid=int(values[1]), starttime=values[19])
+                            value = host_stat(pid)
+                            if not value.get('state'):
+                                raise OSError(value.get('errno') or 11, 'host stat unavailable or empty')
+                            return value
                         first = proc_stat()
                         item['procStat'] = first
                         fields = dict(line.split(':', 1) for line in status.read_text().splitlines() if ':' in line)
@@ -271,21 +277,23 @@ def map_host_pids(group, out, stopped):
             stopped.wait(.02)
     for item in births.values():
         if 'readError' in item and 'nextSample' not in item['readError']:
-            gone = not os.path.exists(f"/proc/{item['hostPid']}")
-            item['readError']['nextSample']=dict(time=time.time(),state='pid_gone' if gone else 'pid_present')
+            item['readError']['nextSample'] = host_observation(item['hostPid'], False, time.time())
             item['readError']['verdict']=error_verdict(item['readError'],dict(cgroupSightingTime=item['scopeSightingAt']),False,'')
     save(out / 'host-pid-map.json',list(births.values()))
 
 
 def adjudicate(home, root, out, physical, before, after):
     raw = read(out / 'result.json') if (out / 'result.json').exists() else {}
+    diagnostic_reads = read(out / 'diagnostic-stat-reads.json') if (out / 'diagnostic-stat-reads.json').exists() else None
+    observation_retries = read(out / 'stat-observation-retries.json') if (out / 'stat-observation-retries.json').exists() else None
+    summary_accepted = error_summary_valid(raw.get('errorSummary'), raw.get('errors'), diagnostic_reads, observation_retries)
     guard_names = ['mask','init','monitor','workload']
     if pathlib.Path(physical['command'][-1]).name == 'policy_test.py':
         guard_names.append('tests')
     guard_records = {name: read(out / ('entry-guard-'+name+'.json')) if (out / ('entry-guard-'+name+'.json')).exists() else None for name in guard_names}
     entry_guards = bool(read(root/'config.json').get('entryGuard',{}).get('allowed')) and all(record and record.get('allowed') and record.get('beforeFirstWrite') and record.get('ruleVersion') == RULE_VERSION for record in guard_records.values())
     capabilities = read(out / 'capability-drop.json') if (out / 'capability-drop.json').exists() else None
-    entry_guards = entry_guards and capability_receipt_valid(capabilities, read(root / 'config.json'), physical['command'], physical['label'])
+    entry_guards = entry_guards and summary_accepted and capability_receipt_valid(capabilities, read(root / 'config.json'), physical['command'], physical['label'])
     save(out/'entry-guards.json',dict(asserted=entry_guards,records=guard_records))
     inv = inventory(out)
     audit = log_audit(home, out, before, after, inv, root)
@@ -317,6 +325,7 @@ def adjudicate(home, root, out, physical, before, after):
     ok = physical.get('scopeExit') == 0 and guard_accepted
     warnings = sum(item['verdict'] == 'WARN' for item in changes) + sum(item['verdict'] == 'WARN' for item in pre['changes']) + raw.get('errorCounts', {}).get('masked_unknown_prior_WARN', 0)
     result = dict(ruleVersion=RULE_VERSION, outcome=('WARN' if warnings else 'PASS') if ok else 'FAIL', guardAccepted=guard_accepted, testCapabilities=capabilities, testExit=raw.get('exit'), testEvidence=raw.get('testEvidence'),missingHostPidMappings=missing_mappings,hostMapErrors=host_errors,preExec=pre, closingChanges=changes, errorCounts=raw.get('errorCounts'), errnoCounts=raw.get('errnoCounts'), samplerClean=clean, logAudit=audit, maskAsserted=valid_mask, citedAttempt=physical['attemptId'] if ok else None, physical=physical)
+    result.update(errorSummary=raw.get('errorSummary'), errorSummaryAccepted=summary_accepted)
     save(out / 'adjudication.json', result)
     return result
 
@@ -388,7 +397,7 @@ def run_step(config, step):
         result = dict(ruleVersion=RULE_VERSION, outcome='FAIL', citedAttempt=None, error=type(error).__name__ + ': ' + str(error), physical=attempt)
         save(out / 'adjudication.json', result)
     record_attempt(root, dict(event='finished', attemptId=attempt['attemptId'], rulesVersion=RULE_VERSION, outcome=result['outcome'], citedAttempt=result['citedAttempt'], label=label, receipt=str(out), preExecChanges=result.get('preExec', {}).get('changes', [])))
-    print(json.dumps(dict(step=label, outcome=result['outcome'], receipt=str(out))), flush=True)
+    print(json.dumps(dict(step=label, outcome=result['outcome'], receipt=str(out), samplerErrors=result.get('errorSummary'))), flush=True)
     return result
 
 
@@ -461,6 +470,7 @@ def main():
     config = dict(runRoot=str(root), realHome=str(home), gateSha=gate_sha,controllerEnvironmentKeys=sorted(os.environ), path=os.environ['PATH'], shas=shas, rulesVersion=RULE_VERSION, lsofExclusions=args.lsof_exclude, cacheSource=str(pathlib.Path(args.npm_cache).absolute()), cacheSha256=args.npm_cache_sha256, provenance='findings/hb-turn-quiet-netcup2-script-bundle.json v1', flakePlan=flakes)
     config['toolHashes'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in pathlib.Path(__file__).parent.iterdir() if path.is_file()}
     config['testCapabilities'] = dict(setprivArgv=SETPRIV_ARGS, assertedSets=['CapEff','CapPrm','CapBnd','CapInh','CapAmb'], expectedValue=0, noNewPrivs=1, appliesTo='every workload command', appliedAfter='mask assertions and locked-mount negative probes')
+    config['statObservationRetries'] = dict(limit=STAT_RETRY_LIMIT, delaySeconds=STAT_RETRY_DELAY, unresolved='FAIL', explicitEnoent='pid_gone')
     config['ledger'] = str(parent / 'attempt-ledger.jsonl')
     config['entryGuard'] = controller_guard
     config['passwdHome'] = str(passwd_home)
@@ -524,6 +534,7 @@ def main():
         flake_results.append(dict(**flake, **flake_verdict(rows, flake['count'])))
     pre_warnings = sum(any(change['verdict'] == 'WARN' and change.get('category') == 'WAL/SHM mtime-only' for change in item.get('preExec', {}).get('changes', [])) for item in results)
     summary = dict(config=config, planned=len(plan), completed=len(results), overall='PASS' if len(results) == len(plan) and all(item['outcome'] != 'FAIL' for item in results) else 'FAIL', abortReason=abort_reason,preExecWalShmWarnAttempts=pre_warnings, physicalAttempts=len(results), preExecWalShmWarnRate=pre_warnings / len(results), flakeResults=flake_results, steps=[dict(label=item['physical']['label'], outcome=item['outcome'], citedAttempt=item['citedAttempt']) for item in results])
+    summary['samplerErrors'] = error_summary_totals([item.get('errorSummary') if item.get('errorSummaryAccepted') else None for item in results])
     save(root / 'receipt.json', summary)
     print(json.dumps(summary), flush=True)
     return 0 if summary['overall'] == 'PASS' else 1

@@ -20,6 +20,16 @@ def birth_identity(proc_stat, status, namespaces, confirmation):
     return result
 
 
+def scope_parent(birth):
+    first = birth.get('procStat')
+    if first is None:
+        return birth.get('ppid'), 'recorded birth parent field'
+    parent = first.get('ppid')
+    if first.get('state') in ('X', 'x') or parent in (None, 0):
+        return birth.get('observedParentEdge'), 'recorded first-sight children/task edge'
+    return parent, 'recorded first-sight proc stat'
+
+
 def parent_chain(pid, births):
     path, visited = [], set()
     while pid != 1:
@@ -27,5 +37,5 @@ def parent_chain(pid, births):
             return False, path
         visited.add(pid)
         path.append(pid)
-        pid = births[pid].get('ppid')
+        pid, unused = scope_parent(births[pid])
     return True, path + [1]
