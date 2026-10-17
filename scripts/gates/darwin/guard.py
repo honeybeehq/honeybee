@@ -114,6 +114,66 @@ def launchagents(home):
             os.close(fd)
 
 
+def validate_seed_headers(source):
+    pending = None
+    expected = []
+    with source.open('rb') as stream:
+        while True:
+            offset = stream.tell()
+            block = stream.read(512)
+            if not block or block == bytes(512):
+                if pending:
+                    raise Refusal('unfinished seed PAX header')
+                return expected
+            try:
+                member = tarfile.TarInfo.frombuf(block, 'utf-8', 'strict')
+            except (tarfile.HeaderError, UnicodeError) as error:
+                raise Refusal('invalid seed tar header') from error
+            if member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE, tarfile.XHDTYPE):
+                raise Refusal('unsupported seed tar extension or member')
+            if member.size < 0:
+                raise Refusal('negative seed tar member size')
+            if member.type == tarfile.DIRTYPE and member.size != 0:
+                raise Refusal('seed directory payload refused')
+            if member.type == tarfile.XHDTYPE:
+                if pending or not 0 < member.size <= 16384:
+                    raise Refusal('invalid seed PAX path header')
+                payload = stream.read(member.size)
+                if len(payload) != member.size:
+                    raise Refusal('truncated seed PAX header')
+                position = 0
+                fields = set()
+                while position < len(payload):
+                    space = payload.find(b' ', position)
+                    if space < 0 or not payload[position:space].isdigit():
+                        raise Refusal('invalid seed PAX record')
+                    length = int(payload[position:space])
+                    end = position + length
+                    record = payload[space + 1:end]
+                    if end > len(payload) or length <= space - position + 1 or not record.endswith(b'\n'):
+                        raise Refusal('invalid seed PAX record length')
+                    key, separator, value = record[:-1].partition(b'=')
+                    if key != b'path' or not separator or key in fields:
+                        raise Refusal('seed PAX supports path only')
+                    try:
+                        effective_name = value.decode('utf-8').rstrip('/')
+                        path = Path(effective_name)
+                    except UnicodeError as error:
+                        raise Refusal('invalid seed PAX path encoding') from error
+                    if b'\0' in value or path.is_absolute() or '..' in path.parts or not path.parts or path.parts[0] not in ('npm', 'pnpm', 'node'):
+                        raise Refusal('unsafe seed PAX path')
+                    fields.add(key)
+                    position = end
+                if fields != {b'path'}:
+                    raise Refusal('seed PAX path required')
+                stream.seek((-member.size) % 512, 1)
+                pending = (offset, effective_name)
+            else:
+                expected.append((pending[0] if pending else offset, member.type, pending[1] if pending else member.name, member.size))
+                stream.seek(((member.size + 511) // 512) * 512, 1)
+                pending = None
+
+
 def seed_cache(source, expected, root, lane):
     source = Path(source).resolve()
     if not inside(source, root) and not inside(source, lane):
@@ -121,12 +181,15 @@ def seed_cache(source, expected, root, lane):
     digest = hashlib.sha256(source.read_bytes()).hexdigest()
     if digest != expected:
         raise Refusal('cache seed hash mismatch')
-    with tarfile.open(source) as archive:
+    expected = validate_seed_headers(source)
+    with tarfile.open(source, 'r:') as archive:
         members = archive.getmembers()
+        if expected != [(member.offset, member.type, member.name, member.size) for member in members]:
+            raise Refusal('seed raw headers and tar parser disagree')
         names = set()
         for member in members:
             path = Path(member.name)
-            if path.is_absolute() or '..' in path.parts or not path.parts or path.parts[0] not in ('npm', 'pnpm', 'node') or path.as_posix() in names or not (member.isfile() or member.isdir()):
+            if set(member.pax_headers) - {'path'} or path.is_absolute() or '..' in path.parts or not path.parts or path.parts[0] not in ('npm', 'pnpm', 'node') or path.as_posix() in names or not (member.isfile() or member.isdir()):
                 raise Refusal('unsafe cache seed member')
             names.add(path.as_posix())
         for member in members:
