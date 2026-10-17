@@ -13,7 +13,8 @@ from gate import fake_env, lab_home, socket_path_lengths
 from home_guard import home_guard, entry_guard, pull_destination, PROVIDER_DIRS, PROVIDER_KEYS, APIARY_DIRS
 from thread_records import ThreadRecords
 from birth_identity import birth_identity, parent_chain
-from test_capabilities import assert_capabilities, is_test_command, CAPABILITY_SETS
+from test_capabilities import assert_capabilities, capability_receipt_valid, SETPRIV_ARGS, CAPABILITY_SETS
+from policy import RULE_VERSION
 from filesystem import assert_filesystem, filesystem_probes
 
 HOME = '/home/lab'
@@ -31,6 +32,8 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(record['probes']['devNull'])
         self.assertTrue(record['probes']['devUrandom'])
         self.assertTrue(record['probes']['ptyAllocation'])
+        self.assertEqual({probe['operation'] for probe in record['probes']['privilegeProbes']},{'remount-proc-rw','remount-root-rw','umount-tmp','unshare-mount'})
+        self.assertTrue(all(probe['refused'] for probe in record['probes']['privilegeProbes']))
         for probe in record['probes']['mkdir']:
             self.assertIn(probe['errno'], (errno.EACCES, errno.EROFS))
 
@@ -76,20 +79,35 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(record['NSpid'], [])
             self.assertEqual(record['namespaces'], {})
 
-    def test_dac_drop_asserts_every_set_and_no_new_privileges(self):
-        fields = {key:'000001fffffffff9' for key in CAPABILITY_SETS}
+    def test_all_capabilities_dropped_in_every_set_with_no_new_privileges(self):
+        fields = {key:'0000000000000000' for key in CAPABILITY_SETS}
         fields['NoNewPrivs'] = '1'
         assert_capabilities(fields)
         for key in CAPABILITY_SETS:
-            for bit in (2,4):
+            for bit in (1,2,4,1<<21):
                 with self.assertRaises(ValueError):
                     assert_capabilities(dict(fields, **{key:format(int(fields[key],16)|bit,'x')}))
         with self.assertRaises(ValueError):
             assert_capabilities(dict(fields,NoNewPrivs='0'))
-        for command in (['npm','test'],['npm','run','v2:test'],['npm','run','v2:daemon'],['npm','run','v2:driver'],['npm','run','v2:driver2'],['npm','run','v2:harness'],['node','--test','a.test.ts'],['python3','-B','/run/policy_test.py']):
-            self.assertTrue(is_test_command(command))
-        for command in (['npm','ci'],['npm','run','build'],['npm','run','check'],['npm','run','v2:check'],['@prepare']):
-            self.assertFalse(is_test_command(command))
+
+    def test_capability_receipt_binds_helper_hash_argv_sets_and_guard(self):
+        digest='a'*64
+        config=dict(toolHashes={'test_capabilities.py':digest},runRoot='/runroot')
+        command=['npm','test']
+        record=dict(asserted=True,helperSha256=digest,execArgv=['python3','-B','/runroot/workload.py','/runroot','candidate-step0-0',*command],setprivArgv=SETPRIV_ARGS,command=command,status={**{key:'0' for key in CAPABILITY_SETS},'NoNewPrivs':'1'},entryGuard=dict(allowed=True,beforeFirstWrite=True,ruleVersion=RULE_VERSION))
+        self.assertTrue(capability_receipt_valid(record,config,command,'candidate-step0-0'))
+        for missing in ('helperSha256','setprivArgv','command','status','entryGuard','asserted','execArgv'):
+            changed=dict(record);del changed[missing]
+            self.assertFalse(capability_receipt_valid(changed,config,command,'candidate-step0-0'))
+        for updates in (dict(helperSha256='b'*64),dict(execArgv=['other']),dict(setprivArgv=['setpriv','--no-new-privs']),dict(command=['npm','run','build']),dict(asserted=False),dict(entryGuard=dict(record['entryGuard'],beforeFirstWrite=False))):
+            self.assertFalse(capability_receipt_valid(dict(record,**updates),config,command,'candidate-step0-0'))
+        for key in CAPABILITY_SETS:
+            fields=dict(record['status']);del fields[key]
+            self.assertFalse(capability_receipt_valid(dict(record,status=fields),config,command,'candidate-step0-0'))
+            self.assertFalse(capability_receipt_valid(dict(record,status=dict(record['status'],**{key:'200000'})),config,command,'candidate-step0-0'))
+        self.assertFalse(capability_receipt_valid(dict(record,status=dict(record['status'],NoNewPrivs='0')),config,command,'candidate-step0-0'))
+        self.assertFalse(capability_receipt_valid(record,dict(toolHashes={},runRoot='/runroot'),command,'candidate-step0-0'))
+        self.assertFalse(capability_receipt_valid(None,config,command,'candidate-step0-0'))
 
     def test_auto_title_preexec_exception_is_exact_and_identity_preserving(self):
         path = HIVE + '/v2/auto-title.json'

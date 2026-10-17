@@ -1,6 +1,7 @@
 import os, sys, pathlib, json, ctypes, subprocess, time, stat, uuid, socket, fcntl, struct, hashlib
 from home_guard import entry_guard
 from filesystem import seal_filesystem, mount_readonly, assert_filesystem, filesystem_probes
+from test_capabilities import SETPRIV_ARGS
 R = pathlib.Path(sys.argv[1])
 ENTRY_GUARD = entry_guard(R)
 H = pathlib.Path(json.loads((R / 'config.json').read_text())['realHome'])
@@ -132,7 +133,7 @@ try:
     receipt['lockedMountProbes']=probe_records
     save('locked-mount-probes.json',dict(probes=probe_records,childExit=os.waitstatus_to_exitcode(probe_status)))
     if probe_status or len(probe_records)!=3 or not all(item['expectedFailure'] for item in probe_records):raise RuntimeError('locked mount negative probe failed; workload forbidden')
-    receipt['filesystemProbes'] = filesystem_probes(CACHE)
+    receipt['filesystemProbes'] = filesystem_probes(CACHE, privilege_checks=False)
     save('filesystem-proof.json', dict(state=receipt['filesystem'], probes=receipt['filesystemProbes']))
     if not receipt['filesystemProbes']['asserted']:
         raise RuntimeError('filesystem write-exclusion or device probe failed; workload forbidden')
@@ -151,7 +152,7 @@ try:
     receipt.update(outsideAssertion=go, maskAsserted=True, maskAssertedAt=time.time())
     save('mask-proof.json', receipt)
     os.close(outfd)
-    os.execvpe('python3', ['python3','-B',str(R/'init.py'),str(R),label,'python3','-B', str(R / 'monitor.py'), str(R), label, 'python3','-B', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
+    os.execvpe('python3', ['python3','-B',str(R/'init.py'),str(R),label,'python3','-B', str(R / 'monitor.py'), str(R), label, *SETPRIV_ARGS, 'python3','-B',str(R/'test_capabilities.py'),str(R),label,'python3','-B', str(R / 'workload.py'), str(R), label, *cmd], os.environ)
 except BaseException as e:
     receipt.update(maskAsserted=False, error=type(e).__name__ + ': ' + str(e), failedAt=time.time())
     save('mask-failure.json', receipt)

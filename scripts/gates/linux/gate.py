@@ -18,7 +18,7 @@ import threading
 import pwd
 from home_guard import entry_guard, pull_destination
 from birth_identity import birth_identity
-from test_capabilities import SETPRIV_ARGS, is_test_command, assert_capabilities
+from test_capabilities import SETPRIV_ARGS, capability_receipt_valid
 
 from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,probe_failed
 
@@ -284,19 +284,15 @@ def adjudicate(home, root, out, physical, before, after):
     guard_records = {name: read(out / ('entry-guard-'+name+'.json')) if (out / ('entry-guard-'+name+'.json')).exists() else None for name in guard_names}
     entry_guards = bool(read(root/'config.json').get('entryGuard',{}).get('allowed')) and all(record and record.get('allowed') and record.get('beforeFirstWrite') and record.get('ruleVersion') == RULE_VERSION for record in guard_records.values())
     capabilities = read(out / 'capability-drop.json') if (out / 'capability-drop.json').exists() else None
-    if is_test_command(physical['command']):
-        try:
-            assert capabilities and capabilities.get('asserted') and capabilities.get('setprivArgv') == SETPRIV_ARGS and capabilities.get('command') == physical['command'] and capabilities.get('entryGuard', {}).get('beforeFirstWrite') and capabilities['entryGuard'].get('allowed')
-            assert_capabilities(capabilities['status'])
-        except (AssertionError, KeyError, ValueError, TypeError):
-            entry_guards = False
+    entry_guards = entry_guards and capability_receipt_valid(capabilities, read(root / 'config.json'), physical['command'], physical['label'])
     save(out/'entry-guards.json',dict(asserted=entry_guards,records=guard_records))
     inv = inventory(out)
     audit = log_audit(home, out, before, after, inv, root)
     mask = read(out / 'mask-proof.json') if (out / 'mask-proof.json').exists() else {}
     valid_mask = mask.get('maskAsserted', False)
     filesystem = read(out / 'filesystem-workload.json') if (out / 'filesystem-workload.json').exists() else {}
-    valid_mask = valid_mask and filesystem.get('state', {}).get('asserted', False) and filesystem.get('probes', {}).get('asserted', False)
+    fs_probes = filesystem.get('probes', {})
+    valid_mask = valid_mask and filesystem.get('state', {}).get('asserted', False) and fs_probes.get('asserted', False) and fs_probes.get('privilegeChecks') is True and {item.get('operation') for item in fs_probes.get('privilegeProbes', [])} == {'remount-proc-rw','remount-root-rw','umount-tmp','unshare-mount'} and all(item.get('refused') and item.get('childExit') == 0 for item in fs_probes['privilegeProbes'])
     temporary = tmp_audit(root, out)
     valid_mask = valid_mask and temporary['asserted']
     coverage = [dict(pid=birth['pid'],outcome=mapping_coverage(birth,inv['hostPidMap'],raw.get('errors',[]))) for birth in raw.get('births',[])]
@@ -462,7 +458,7 @@ def main():
     root.mkdir()
     config = dict(runRoot=str(root), realHome=str(home), gateSha=gate_sha,controllerEnvironmentKeys=sorted(os.environ), path=os.environ['PATH'], shas=shas, rulesVersion=RULE_VERSION, lsofExclusions=args.lsof_exclude, cacheSource=str(pathlib.Path(args.npm_cache).absolute()), cacheSha256=args.npm_cache_sha256, provenance='findings/hb-turn-quiet-netcup2-script-bundle.json v1', flakePlan=flakes)
     config['toolHashes'] = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in pathlib.Path(__file__).parent.iterdir() if path.is_file()}
-    config['testCapabilities'] = dict(setprivArgv=SETPRIV_ARGS, assertedSets=['CapEff','CapPrm','CapBnd','CapInh','CapAmb'], noNewPrivs=1, appliedAfter='mask assertions and locked-mount negative probes')
+    config['testCapabilities'] = dict(setprivArgv=SETPRIV_ARGS, assertedSets=['CapEff','CapPrm','CapBnd','CapInh','CapAmb'], expectedValue=0, noNewPrivs=1, appliesTo='every workload command', appliedAfter='mask assertions and locked-mount negative probes')
     config['ledger'] = str(parent / 'attempt-ledger.jsonl')
     config['entryGuard'] = controller_guard
     config['passwdHome'] = str(passwd_home)

@@ -1,5 +1,6 @@
 import ctypes
 import errno
+import json
 import os
 import pathlib
 import pty
@@ -52,7 +53,39 @@ def assert_filesystem(root):
     return dict(asserted=True, uid=os.getuid(), gid=os.getgid(), mounts=mounts, writableRoot=root, privateTmp=temporary)
 
 
-def filesystem_probes(root):
+def privilege_probe(operation):
+    readfd, writefd = os.pipe()
+    child = os.fork()
+    if child == 0:
+        os.close(readfd)
+        libc = ctypes.CDLL(None, use_errno=True)
+        row = dict(operation=operation, refused=False)
+        try:
+            if operation == 'unshare-mount':
+                if libc.unshare(ctypes.c_int(0x10000000 | 0x00020000)) != 0:
+                    raise OSError(ctypes.get_errno(), 'unshare refused')
+                row['unshareSucceeded'] = True
+            if operation == 'umount-tmp':
+                if libc.umount2(b'/tmp', 0) != 0:
+                    raise OSError(ctypes.get_errno(), 'umount refused')
+            else:
+                target = '/' if operation == 'remount-root-rw' else '/proc'
+                mount_readonly(target, False)
+                mount_readonly(target, True)
+        except OSError as error:
+            row.update(errno=error.errno, refused=error.errno in (errno.EPERM, errno.EACCES, errno.EINVAL, errno.EROFS))
+        os.write(writefd, json.dumps(row).encode())
+        os._exit(0)
+    os.close(writefd)
+    with os.fdopen(readfd) as stream:
+        row = json.load(stream)
+    unused, status = os.waitpid(child, 0)
+    row['childExit'] = os.waitstatus_to_exitcode(status)
+    row['refused'] = row['refused'] and row['childExit'] == 0
+    return row
+
+
+def filesystem_probes(root, privilege_checks=True):
     nonce = uuid.uuid4().hex
     rows = []
     for path in ('/runners', '/hbl-' + nonce, '/etc/hbl-' + nonce):
@@ -80,4 +113,5 @@ def filesystem_probes(root):
     finally:
         os.close(master)
         os.close(slave)
-    return dict(asserted=all(row['refused'] for row in rows) and random_ok and pty_ok, mkdir=rows, runRootWritable=True, privateTmpWrite=dict(name=name, source=temporary['source'], observedUnderRunRoot=True), devNull=True, devUrandom=random_ok, ptyAllocation=pty_ok)
+    privileges = [privilege_probe(operation) for operation in ('remount-proc-rw', 'remount-root-rw', 'umount-tmp', 'unshare-mount')] if privilege_checks else []
+    return dict(asserted=all(row['refused'] for row in rows) and random_ok and pty_ok and all(row['refused'] for row in privileges), privilegeChecks=privilege_checks, privilegeProbes=privileges, mkdir=rows, runRootWritable=True, privateTmpWrite=dict(name=name, source=temporary['source'], observedUnderRunRoot=True), devNull=True, devUrandom=random_ok, ptyAllocation=pty_ok)

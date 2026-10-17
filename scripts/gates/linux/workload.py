@@ -6,7 +6,6 @@ import sys
 import tarfile
 import time
 from home_guard import entry_guard
-from test_capabilities import is_test_command, SETPRIV_ARGS
 from filesystem import assert_filesystem, filesystem_probes
 
 root = pathlib.Path(sys.argv[1])
@@ -85,6 +84,4 @@ if command[:2] == ['npm', 'ci']:
         stream.extractall(cache, filter='data')
     save('cache-seed.json', dict(source=config['cacheSource'], sha256=config['cacheSha256'], files=sum(member.isfile() for member in members), destination=str(cache), offline=True, audit=False, fund=False))
     os.environ.update(npm_config_offline='true', npm_config_audit='false', npm_config_fund='false', npm_config_cache=str(cache))
-if is_test_command(command):
-    command = [*SETPRIV_ARGS, sys.executable, '-B', str(root / 'test_capabilities.py'), str(root), label, *command]
 os.execvpe(command[0], command, os.environ)
