@@ -69,6 +69,24 @@ class PolicyTests(unittest.TestCase):
             birth['nextBirthSample']=observation
             self.assertEqual(mapping_coverage(birth,[],[]),'FAIL')
 
+    def test_false_exists_never_proves_an_unreadable_stat_is_gone(self):
+        for value in ({}, dict(errno=errno.EACCES), dict(errno=errno.EIO)):
+            initial = dict(sample=2, **pid_observation(True, value, False))
+            self.assertEqual(initial['state'], 'pid_unobserved')
+            reads = []
+            def read():
+                reads.append(1)
+                return value
+            unresolved = resolve_stat_observation(initial, read, exists=lambda:False, wait=lambda _:None)
+            self.assertEqual(len(reads), STAT_RETRY_LIMIT)
+            self.assertEqual(unresolved['state'], 'pid_unobserved')
+            self.assertTrue(unresolved['statRetryExhausted'])
+            birth = dict(ownTreeAtFirstSight=True, procStat=dict(state='Z', starttime='77'), nextBirthSample=unresolved)
+            self.assertEqual(error_verdict(dict(slot='cwd', errno=errno.ENOENT, atErrorStat=birth['procStat'], nextSample=unresolved), birth, True, HIVE), 'FAIL')
+            self.assertEqual(mapping_coverage(dict(birth, pid=120215), [], []), 'FAIL')
+            gone = resolve_stat_observation(initial, lambda:dict(errno=errno.ENOENT), exists=lambda:False, wait=lambda _:None)
+            self.assertEqual(gone['state'], 'pid_gone')
+
     def test_recovered_alive_non_z_without_mapping_still_fails(self):
         birth=dict(pid=130601,ownTreeAtFirstSight=True,procStat=dict(state='R',starttime='77'))
         observation=resolve_stat_observation(dict(sample=2,**pid_observation(True,{})),lambda:dict(state='S',starttime='77'),wait=lambda _:None)
@@ -395,7 +413,7 @@ class PolicyTests(unittest.TestCase):
             current=pid_observation(True,dict(errno=number))
             self.assertEqual(current['state'],'pid_unobserved')
             self.assertEqual(error_verdict(dict(error,nextSample=current),birth,True,HIVE),'FAIL')
-        self.assertEqual(pid_observation(False,None,False)['state'],'pid_gone')
+        self.assertEqual(pid_observation(False,None,False)['state'],'pid_unobserved')
         self.assertEqual(pid_observation(False,None,True)['state'],'pid_unobserved')
 
     def test_raw_r16_sleeping_runner_exit(self):

@@ -25,7 +25,7 @@ def pid_transition(before, observation):
 
 def pid_observation(tree_listed, proc_stat, proc_exists=None):
     stat_enoent = (proc_stat or {}).get('errno') == errno.ENOENT
-    gone = stat_enoent or proc_exists is False
+    gone = stat_enoent
     observed = bool((proc_stat or {}).get('state') and (proc_stat or {}).get('starttime'))
     state = 'pid_gone' if gone else 'pid_unobserved' if not observed else 'pid_present' if tree_listed else 'pid_outside_scope'
     return dict(treeListed=tree_listed, procStat=proc_stat, statEnoent=stat_enoent, procExistsObserved=proc_exists, state=state)
