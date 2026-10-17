@@ -1,4 +1,4 @@
-struct quiescence_counts { int scanned, skipped_gone, skipped_uid_changed, skipped_fd_closed, matched, failed, exe_unlinked_pre_root, region_compared, region_unavailable, region_partial, session_leader_not_uid_listed, fd_unobservable, fd_non_gate_failed, fd_clean_failed, fd_sandbox_failed, fd_denied_queries, fd_allowed_queries, fd_query_errors, fd_not_sandboxed, fd_write_denied, fd_platform, platform_not, platform_path_disallowed, platform_csops_error, platform_csops_unavailable, platform_inode_match, platform_inode_unobserved, fd_read_allowed[4], fd_read_denied[4], fd_allowed_by_query[16], fd_failed_results[16], partial_errno, partial_regions, partial_image_seen, partial_kind, platform_failures[19]; };
+struct quiescence_counts { int scanned, skipped_gone, skipped_uid_changed, skipped_fd_closed, matched, failed, exe_unlinked_pre_root, region_compared, region_unavailable, region_partial, session_leader_not_uid_listed, fd_unobservable, fd_non_gate_failed, fd_clean_failed, fd_sandbox_failed, fd_denied_queries, fd_allowed_queries, fd_query_errors, fd_not_sandboxed, fd_write_denied, fd_platform, platform_not, platform_path_disallowed, platform_csops_error, platform_csops_unavailable, platform_inode_match, platform_inode_unobserved, fd_read_allowed[4], fd_read_denied[4], fd_allowed_by_query[16], fd_failed_results[16], partial_errno, partial_regions, partial_image_seen, partial_kind, partial_submap, platform_failures[19]; };
 static const char *quiescence_errno(int value) {
   switch (value) {
     case 0: return "NONE";
@@ -25,12 +25,13 @@ static int platform_failure(struct quiescence_counts *counts, int condition) {
   counts->platform_failures[condition]++;
   return 0;
 }
-static void region_partial_detail(struct quiescence_counts *counts, int error, int regions, int image_seen, int kind) {
+static void region_partial_detail(struct quiescence_counts *counts, int error, int regions, int image_seen, int kind, int submap) {
   counts->region_partial++;
   counts->partial_errno = error;
   counts->partial_regions = regions;
   counts->partial_image_seen = image_seen;
   counts->partial_kind = kind;
+  counts->partial_submap = submap;
 }
 static int quiescence_report(const char *call, int error, int birth, struct quiescence_counts *counts) {
   fprintf(stderr, "{\"type\":\"%s\",\"call\":\"%s\",\"errno\":\"%s\",\"errnoNumber\":%d,\"sameBirth\":%d,\"counts\":{\"scanned\":%d,\"skippedGone\":%d,\"skippedUidChanged\":%d,\"skippedFdClosed\":%d,\"matched\":%d,\"failed\":%d,\"exeUnlinkedPreRoot\":%d,\"regionCompared\":%d,\"regionUnavailable\":%d,\"regionPartial\":%d,\"sessionLeaderNotUidListed\":%d,\"fdUnobservableSandboxDenied\":%d,\"fdNonGateFailed\":%d,\"fdCleanFailed\":%d,\"fdSandboxFailed\":%d,\"fdDeniedQueries\":%d,\"fdAllowedQueries\":%d,\"fdQueryErrors\":%d,\"fdNotSandboxed\":%d,\"fdUnobservableWriteDenied\":%d,\"fdUnobservablePlatformBinary\":%d,\"notPlatform\":%d,\"pathDisallowed\":%d,\"csopsError\":%d,\"csopsUnavailable\":%d,\"inodeMatch\":%d,\"platformInodeUnobserved\":%d}", counts->failed ? "QuiescenceFailure" : "QuiescenceComplete", call, quiescence_errno(error), error, birth, counts->scanned, counts->skipped_gone, counts->skipped_uid_changed, counts->skipped_fd_closed, counts->matched, counts->failed, counts->exe_unlinked_pre_root, counts->region_compared, counts->region_unavailable, counts->region_partial, counts->session_leader_not_uid_listed, counts->fd_unobservable, counts->fd_non_gate_failed, counts->fd_clean_failed, counts->fd_sandbox_failed, counts->fd_denied_queries, counts->fd_allowed_queries, counts->fd_query_errors, counts->fd_not_sandboxed, counts->fd_write_denied, counts->fd_platform, counts->platform_not, counts->platform_path_disallowed, counts->platform_csops_error, counts->platform_csops_unavailable, counts->platform_inode_match, counts->platform_inode_unobserved);
@@ -41,8 +42,8 @@ static int quiescence_report(const char *call, int error, int birth, struct quie
   for (int index = 0; index < 16; index++) fprintf(stderr, "%s%d", index ? "," : "", counts->fd_failed_results[index]);
   fputs("],\"fdWriteDeniedReadResults\":{", stderr);
   for (int index = 0; index < 4; index++) fprintf(stderr, "%s\"%s\":{\"allowed\":%d,\"denied\":%d}", index ? "," : "", slots[index * 2], counts->fd_read_allowed[index], counts->fd_read_denied[index]);
-  const char *terminations[] = {"none", "read-error", "short-read", "nonprogress", "limit"};
-  fprintf(stderr, "},\"regionPartialDetail\":{\"errno\":\"%s\",\"regionsRead\":%d,\"mainImageSeen\":%d,\"termination\":\"%s\"},\"platformFailures\":{", quiescence_errno(counts->partial_errno), counts->partial_regions, counts->partial_image_seen, terminations[counts->partial_kind]);
+  const char *terminations[] = {"none", "read-error", "short-read", "zero-size", "limit", "overflow", "end-not-past-request"};
+  fprintf(stderr, "},\"regionPartialDetail\":{\"errno\":\"%s\",\"regionsRead\":%d,\"mainImageSeen\":%d,\"termination\":\"%s\",\"regionKind\":\"%s\",\"lastBeforeEINVAL\":\"%s\"},\"platformFailures\":{", quiescence_errno(counts->partial_errno), counts->partial_regions, counts->partial_image_seen, terminations[counts->partial_kind], counts->partial_submap == 2 ? "submap" : counts->partial_submap == 1 ? "mapping" : "unobserved", counts->partial_kind ? "unknown" : "not-applicable");
   for (int index = 0; index < 19; index++) fprintf(stderr, "%s\"%s\":%d", index ? "," : "", platform_conditions[index], counts->platform_failures[index]);
   fputs("}}\n", stderr);
   return counts->failed ? 4 : 0;
@@ -91,7 +92,7 @@ static enum region_state region_walk(int pid, struct proc_bsdinfo *birth, int in
     if (got != (int)sizeof(region) || error) {
       if (!index) { counts->region_unavailable++; return REGION_UNAVAILABLE_FIRST; }
       if (!got && error == EINVAL) return REGION_COMPLETE;
-      region_partial_detail(counts, error, index, *image_seen, error ? 1 : 2);
+      region_partial_detail(counts, error, index, *image_seen, error ? 1 : 2, 0);
       return REGION_PARTIAL;
     }
     unsigned long long dev = (unsigned int)region.prp_vip.vip_vi.vi_stat.vst_dev, ino = region.prp_vip.vip_vi.vi_stat.vst_ino;
@@ -100,11 +101,16 @@ static enum region_state region_walk(int pid, struct proc_bsdinfo *birth, int in
       for (int item = 0; item < inode_count; item++) if (root_inodes[item].dev == dev && root_inodes[item].ino == ino) { counts->platform_inode_match++; return REGION_REJECTED; }
       if (image_ino && dev == image_dev && ino == image_ino) *image_seen = 1;
     }
-    unsigned long long next = region.prp_prinfo.pri_address + region.prp_prinfo.pri_size;
-    if (!region.prp_prinfo.pri_size || next <= address || next < region.prp_prinfo.pri_address) { region_partial_detail(counts, 0, index + 1, *image_seen, 3); return REGION_PARTIAL; }
-    address = next;
+    unsigned long long start = region.prp_prinfo.pri_address, size = region.prp_prinfo.pri_size;
+    int submap = region.prp_prinfo.pri_flags & PROC_REGION_SUBMAP ? 2 : 1;
+    if (!size) { region_partial_detail(counts, 0, index + 1, *image_seen, 3, submap); return REGION_PARTIAL; }
+    if (size > ~0ULL - start || address == ~0ULL) { region_partial_detail(counts, 0, index + 1, *image_seen, 5, submap); return REGION_PARTIAL; }
+    unsigned long long end = start + size;
+    if (end <= address) { region_partial_detail(counts, 0, index + 1, *image_seen, 6, submap); return REGION_PARTIAL; }
+    unsigned long long after_request = address + 1;
+    address = end > after_request ? end : after_request;
   }
-  region_partial_detail(counts, 0, 65536, *image_seen, 4);
+  region_partial_detail(counts, 0, 65536, *image_seen, 4, 0);
   return REGION_PARTIAL;
 }
 static int platform_fd_proof(int pid, struct proc_bsdinfo *birth, int unlinked, int inode_count, struct quiescence_counts *counts) {
