@@ -3591,9 +3591,12 @@ export class CoreStore {
       const runtime = this.currentRuntime(message.beeId);
       if (!runtime || runtime.generation !== generation || !LIVE_STATES.includes(runtime.state)) return undefined;
       const previous = this.multilineDelivery(messageId);
-      if (previous && previous.stage !== "waiting") return previous;
+      const typeAfterWait = previous !== undefined && previous.stage !== "waiting" && previous.heldSince === null && detail === "multiline_type_mode";
+      if (previous && previous.stage !== "waiting" && !typeAfterWait) return previous;
       const at = this.now();
-      const progress = advanceMultilineUnsupported(previous ?? null, detail, at);
+      const progress = typeAfterWait
+        ? { attempts: previous.attempts, unsupportedMs: previous.unsupportedMs, lastAttemptAt: previous.lastAttemptAt, lastUnsupported: previous.lastUnsupported, hold: true }
+        : advanceMultilineUnsupported(previous ?? null, detail, at);
       if (!previous && progress.attempts === 0) return undefined;
       const typeHeld = progress.hold && detail === "multiline_type_mode";
       let receipt: DeliveryHoldReceipt | null = previous?.receipt ?? null;
@@ -3606,7 +3609,7 @@ export class CoreStore {
       }
       const row: MultilineDeliveryRow = {
         messageId, beeId: message.beeId,
-        attempts: progress.attempts, unsupportedMs: progress.unsupportedMs, lastAttemptAt: at, lastUnsupported: progress.lastUnsupported,
+        attempts: progress.attempts, unsupportedMs: progress.unsupportedMs, lastAttemptAt: typeAfterWait ? previous.lastAttemptAt : at, lastUnsupported: progress.lastUnsupported,
         heldAt: previous?.heldAt ?? at, heldSince: typeHeld ? at : null, receipt, detail: detail ?? previous?.detail ?? "",
         stage: typeHeld ? "held" : progress.hold ? "expired" : "waiting", notice: previous?.notice ?? null,
       };

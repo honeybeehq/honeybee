@@ -168,3 +168,31 @@ for (const sender of ["operator", "remote:node-a/phone-0123456789abcdef"]) test(
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   } finally { store.close(); h.cleanup(); }
 });
+
+for (const malformed of ["not-json", "{}", '{"stage":"waiting","attempts":"bad"}']) test(`malformed waiting reopen becomes type HOLD once without restarting counters: ${malformed}`, () => {
+  const h = harness(); let store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    const sender = store.createBee({ name: "sender", agent: "inbox", substrate: "hsr", cwd: "/tmp/sender" }).bee;
+    bootToRunning(store, bee.id, 100, 1);
+    const first = store.send(bee.id, "one\ntwo", { sender: sender.id }).message;
+    const later = store.send(bee.id, "later").message;
+    store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode");
+    store.close();
+    const db = new DatabaseSync(h.path); db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(malformed, first.id); db.close();
+    store = h.open();
+    const previous = store.multilineDelivery(first.id)!;
+    assert.equal(previous.stage, "expired");
+    const held = store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode")!;
+    assert.equal(held.stage, "held");
+    assert.deepEqual([held.attempts, held.unsupportedMs, held.lastAttemptAt], [previous.attempts, previous.unsupportedMs, previous.lastAttemptAt]);
+    assert.equal(held.receipt?.code, "delivery_unsupported_multiline");
+    assert.deepEqual(store.readDaemonWork()[0]!.pending.map(row => row.id), [later.id]);
+    for (let index = 0; index < 3; index++) assert.deepEqual(store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode"), held);
+    assert.equal(store.listMessages(sender.id).length, 1);
+    assert.equal(store.auditRows().filter(row => row.kind === "mail.delivery_unsupported_multiline").length, 1);
+    store.markDelivered(later.id, 1);
+    assert.equal(store.getMessage(first.id)?.deliveredAt, null);
+    assert.equal(store.multilineDelivery(first.id)?.notice, "delivered later messages; this one is held");
+  } finally { store.close(); h.cleanup(); }
+});
