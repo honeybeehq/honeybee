@@ -30,7 +30,7 @@ def capability_receipt_valid(record, config, command, label):
         guard = record['entryGuard']
         assert guard['allowed'] is True and guard['beforeFirstWrite'] is True and guard['ruleVersion'] == RULE_VERSION
         assert_capabilities(record['status'])
-    except (AssertionError, KeyError, ValueError, TypeError):
+    except (AssertionError, KeyError, ValueError, TypeError, AttributeError):
         return False
     return True
 

@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import time
+from filesystem import proc_receipt_valid
 import uuid
 import threading
 import pwd
@@ -292,6 +293,7 @@ def adjudicate(home, root, out, physical, before, after):
     valid_mask = mask.get('maskAsserted', False)
     filesystem = read(out / 'filesystem-workload.json') if (out / 'filesystem-workload.json').exists() else {}
     fs_probes = filesystem.get('probes', {})
+    valid_mask = valid_mask and proc_receipt_valid(filesystem, root, mask.get('namespaces', {}).get('pid'))
     valid_mask = valid_mask and filesystem.get('state', {}).get('asserted', False) and fs_probes.get('asserted', False) and fs_probes.get('privilegeChecks') is True and {item.get('operation') for item in fs_probes.get('privilegeProbes', [])} == {'remount-proc-rw','remount-root-rw','umount-tmp','unshare-mount'} and all(item.get('refused') and item.get('childExit') == 0 for item in fs_probes['privilegeProbes'])
     temporary = tmp_audit(root, out)
     valid_mask = valid_mask and temporary['asserted']

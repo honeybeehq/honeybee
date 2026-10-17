@@ -112,8 +112,7 @@ try:
     pathlib.Path('/proc/self/gid_map').write_text(f'1000 {outer_gid} 1')
     assert os.getuid() == os.getgid() == 1000
     receipt['workloadIdentity'] = dict(uid=1000, gid=1000, uidMap=pathlib.Path('/proc/self/uid_map').read_text(), gidMap=pathlib.Path('/proc/self/gid_map').read_text())
-    mount_readonly('/proc', True, recursive=True)
-    receipt['filesystem'] = assert_filesystem(CACHE)
+    receipt['filesystem'] = assert_filesystem(CACHE, 'mask.py')
     receipt['namespaces']={key:os.readlink('/proc/self/ns/'+key) for key in ('user','mnt','net','pid')}
     receipt['parentNamespaces']=parent_namespaces
     readfd,writefd=os.pipe()
