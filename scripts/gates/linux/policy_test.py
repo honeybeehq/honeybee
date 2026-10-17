@@ -34,14 +34,14 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(record['probes']['ptyAllocation'])
         self.assertEqual(record['state']['uid'],1000)
         self.assertEqual(record['state']['gid'],1000)
-        self.assertTrue(proc_receipt_valid(record,root,record['state']['privateProc']['pid1Namespace']))
+        self.assertTrue(proc_receipt_valid(record,root,record['state']['privateProc']['pidNamespace']))
         self.assertFalse(proc_receipt_valid(record,root,'pid:[foreign]'))
         for key in ('privateProc',):
             changed=__import__('copy').deepcopy(record);del changed['state'][key]
-            self.assertFalse(proc_receipt_valid(changed,root,record['state']['privateProc']['pid1Namespace']))
+            self.assertFalse(proc_receipt_valid(changed,root,record['state']['privateProc']['pidNamespace']))
         for key in ('sysctlWrites','outsideStorage','nestedUserNamespace'):
             changed=__import__('copy').deepcopy(record);del changed['probes']['privateProc'][key]
-            self.assertFalse(proc_receipt_valid(changed,root,record['state']['privateProc']['pid1Namespace']))
+            self.assertFalse(proc_receipt_valid(changed,root,record['state']['privateProc']['pidNamespace']))
         self.assertEqual({probe['operation'] for probe in record['probes']['privilegeProbes']},{'remount-proc-rw','remount-root-rw','umount-tmp','unshare-mount'})
         self.assertTrue(all(probe['refused'] for probe in record['probes']['privilegeProbes']))
         for probe in record['probes']['mkdir']:

@@ -55,9 +55,10 @@ def assert_filesystem(root, init_name='init.py'):
     init_argv = pathlib.Path('/proc/1/cmdline').read_bytes().split(b'\0')
     pidns = os.readlink('/proc/self/ns/pid')
     assert proc_type == 'proc' and proc['writable'], 'private procfs must be writable: ' + str(proc)
-    assert os.readlink('/proc/1/ns/pid') == pidns, 'private procfs pid 1 namespace differs'
+    pid1_stat = pathlib.Path('/proc/1/stat').read_text()
+    assert pid1_stat.startswith('1 ('), 'private procfs pid 1 stat differs'
     assert os.fsencode(str(pathlib.Path(root) / init_name)) in init_argv, 'private procfs pid 1 argv differs: ' + repr(init_argv)
-    return dict(asserted=True, uid=os.getuid(), gid=os.getgid(), mounts=mounts, writableRoot=root, privateTmp=temporary, privateProc=dict(filesystem=proc_type, writable=True, pid1Namespace=pidns, pid1Argv=[os.fsdecode(value) for value in init_argv if value], asserted=True))
+    return dict(asserted=True, uid=os.getuid(), gid=os.getgid(), mounts=mounts, writableRoot=root, privateTmp=temporary, privateProc=dict(filesystem=proc_type, writable=True, pidNamespace=pidns, pid1Stat=pid1_stat, pid1Argv=[os.fsdecode(value) for value in init_argv if value], asserted=True))
 
 
 def privilege_probe(operation):
@@ -138,7 +139,7 @@ def proc_receipt_valid(filesystem, root, namespace):
         assert state['uid'] == state['gid'] == 1000
         proc = state['privateProc']
         assert proc['asserted'] is True and proc['filesystem'] == 'proc' and proc['writable'] is True
-        assert proc['pid1Namespace'] == namespace and str(pathlib.Path(root) / 'init.py') in proc['pid1Argv']
+        assert proc['pidNamespace'] == namespace and proc['pid1Stat'].startswith('1 (') and str(pathlib.Path(root) / 'init.py') in proc['pid1Argv']
         probes = filesystem['probes']['privateProc']
         assert probes['asserted'] is True
         denied = probes['sysctlWrites']
