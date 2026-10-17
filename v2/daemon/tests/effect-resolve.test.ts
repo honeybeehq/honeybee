@@ -1,4 +1,5 @@
 import { EFFECT_RESULT_REQUIRED_FIELDS, type EffectVerb } from "../../core/src/effectResolve.ts";
+import { executionRequestDigest, type ExecutionClaim } from "../../core/src/executionFence.ts";
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -38,6 +39,30 @@ async function fixture(t: TestContext) {
   return { client, owner, calls, get store() { return store; }, reopen() { store.close(); store = openCoreStore(path, { ephemeral: true }); owner.store = store; } };
 }
 const refusal = (code: string) => (value: unknown) => value instanceof RpcError && value.code === code;
+
+test("dark fenced-spawn production writer satisfies the shared effect-result contract", async t => {
+  const f = await fixture(t), uid = process.geteuid!();
+  const args = { id: "fenced-writer", name: "fenced-writer", agent: "stub", substrate: "hsr", cwd: tmpdir(), account: null };
+  const resource = { beeId: args.id }, coverage = f.store.effectCoverage();
+  const claim: ExecutionClaim = { version: 1, issuerId: "writer-project", continuationId: "spawn", claimId: "one", generation: 1, grantDigest: "sha256:" + "a".repeat(64), ...coverage, digestVersion: 1, verb: "spawn", resource, requestDigest: executionRequestDigest("spawn", resource, args), idempotencyKey: `effect-v1:${coverage.coverageId}:fenced-writer` };
+  f.store.registerExecutionCoordinator(claim.issuerId, uid);
+  f.store.compareAndSetExecutionClaim({ transitionId: "one", expectedClaim: null, claim }, uid);
+  const { verb, resource: target, digestVersion, requestDigest, idempotencyKey, ...executionFence } = claim;
+  const request = { verb, resource: target, digestVersion, requestDigest, idempotencyKey, executionFence, args };
+  const invoke = () => (f.owner.rpcFencedSpawn as (params: Record<string, unknown>, conn: Parameters<RpcDispatch>[2]) => Promise<{ admissionReceipt: { result: unknown; commandId: number | null }; executionReceipt: { result: unknown } }>).call(f.owner, request, { executionCoordinatorUid: uid } as Parameters<RpcDispatch>[2]);
+  const first = await invoke();
+  assertWriterResult("spawn", first.admissionReceipt.result);
+  assertWriterResult("spawn", first.executionReceipt.result);
+  const produced = first.admissionReceipt.result as SpawnResult;
+  assert.equal(produced.beeId, args.id);
+  assert.equal(produced.commandId, first.admissionReceipt.commandId);
+  assert.ok(produced.commandId !== null && Number.isSafeInteger(produced.commandId) && produced.commandId > 0);
+  const resolved = f.store.resolveEffect(idempotencyKey, "spawn");
+  assert.equal(resolved.status, "committed");
+  if (resolved.status === "committed") assert.deepEqual(resolved.receipt.result, produced);
+  assert.deepEqual(await invoke(), first);
+  assert.equal(f.store.listBees().length, 1);
+});
 
 test("effect RPC commits spawn/send/archive once and resolves despite cache pruning and reopen", async t => {
   const f = await fixture(t), coverage = await f.client.effectCoverage();

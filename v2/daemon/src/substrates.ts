@@ -1,3 +1,5 @@
+import { ExecutionFenceError } from "../../core/src/executionFence.ts";
+import type { ExecutionStart } from "../../core/src/executionStart.ts";
 /**
  * SubstrateRouter — one RuntimeDriver over the node's substrate drivers.
  *
@@ -73,8 +75,10 @@ export class SubstrateRouter implements RuntimeDriver {
   // RuntimeDriver
   // -------------------------------------------------------------------------
 
-  start(beeId: string, generation: number): void {
-    this.driverFor(beeId).start(beeId, generation);
+  start(beeId: string, generation: number, execution?: ExecutionStart | null): void {
+    const driver = this.driverFor(beeId);
+    if (execution && driver === this.tmux) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Tmux has no owner-validated release handshake");
+    driver.start(beeId, generation, execution);
   }
 
   deliver(beeId: string, generation: number, messageId: number, body: string): DeliverOutcome {

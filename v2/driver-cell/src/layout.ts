@@ -12,6 +12,7 @@
  * keeps the checkout byte-clean: `git status` inside a fresh cell is empty.
  */
 import { basename, join, resolve } from "node:path";
+import { stateDirectory } from "../../harness/src/statePath.ts";
 
 /** Mirrors the old system's CELL_SPACE_DIRECTORY / Apiary's CELL_DIRECTORY_PATTERN. */
 export const CELL_SPACE_DIRECTORY = /^[a-z0-9][a-z0-9-]*-space-[a-z0-9]+$/;
@@ -45,6 +46,7 @@ export function sanitizeComponent(raw: string): string {
 }
 
 export function cellPaths(cellsRoot: string, wrapper: string, repoName: string, cellId: string): CellPaths {
+  const root = stateDirectory(cellsRoot, "cellsRoot");
   const w = sanitizeComponent(wrapper);
   const repo = sanitizeComponent(repoName);
   const id = sanitizeComponent(cellId);
@@ -52,7 +54,7 @@ export function cellPaths(cellsRoot: string, wrapper: string, repoName: string, 
   if (!CELL_SPACE_DIRECTORY.test(spaceName)) {
     throw new Error(`cell layout: space name '${spaceName}' violates the -space- shape`);
   }
-  const wrapperDir = join(resolve(cellsRoot), w);
+  const wrapperDir = join(root, w);
   const boxDir = join(wrapperDir, "box");
   return {
     wrapperDir,

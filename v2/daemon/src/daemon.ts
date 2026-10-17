@@ -1,10 +1,11 @@
+import type { ExecutionStart } from "../../core/src/executionStart.ts";
+import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
 import { type PhoneOriginRequest, parsePhoneOrigin } from "../../core/src/phoneOrigin.ts";
 const PHONE_CONTEXT = Symbol("phoneOrigin");
 const PHONE_LANE = Symbol("phoneLane");
 const PHONE_DIGEST = Symbol("phoneDigest");
 const PHONE_CARRIER_DIGEST = Symbol("phoneCarrierDigest");
 import { knownAccountLease } from "../../core/src/accountLease.ts";
-import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { effectVerb } from "../../core/src/effectResolve.ts";
 import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../../src/apiarySwap.ts";
 import { canonicalDigest } from "../../../src/comb/canonical.ts";
@@ -220,6 +221,7 @@ import {
   loadNodeConfig,
   patchNamingConfig,
   publicNamingConfig,
+  validateNodeStatePaths,
   type AgentSpecConfig,
   type NamingConfig,
   type ResolvedNamingConfig,
@@ -747,6 +749,7 @@ export class HiveDaemon {
   private readonly beeTmpOverrideLogged = new Set<string>();
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
+    validateNodeStatePaths(cfg);
     this.cfg = cfg;
     this.deps = deps;
     this.beeTmp = resolveBeeTmpPolicy(cfg.nodeKind, cfg.beeTmpRoot, process.env);
@@ -878,6 +881,16 @@ export class HiveDaemon {
       stopKillGraceMs: this.cfg.stopKillGraceMs,
       adoptToleranceMs: this.cfg.adoptToleranceMs,
       onWriteLaneReady: () => this.requestTick(),
+      execution: store.executionRuntimeHooks(),
+      executionStartFor: (beeId: string, generation: number) => store.existingExecutionStart(beeId,generation),
+      executionHostFor: (start: ExecutionStart) => store.executionStartHost(start),
+      resolveExecutionAdapter: (beeId: string) => {
+        const bee = store.getBee(beeId), spec = bee ? this.cfg.agents[bee.agent] : null;
+        if (!bee || !spec) throw new ExecutionFenceError("rpc_execution_history_unknown","Fenced adapter cannot be resolved read-only");
+        const adapter = composeSpawn(spec,spec.adapter ?? bee.agent,bee,[],null).adapter;
+        if (!adapter) throw new ExecutionFenceError("rpc_execution_history_unknown","Fenced adapter is unavailable");
+        return adapter;
+      },
       socketDir: this.runnerSocketDir,
     };
     const hsr = new HsrDriver({ ...hsrConfig, resolve: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation) });
@@ -892,7 +905,7 @@ export class HiveDaemon {
       resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
       log: (op: string) => this.log(op),
-      onCellMaterialized: (beeId: string) => this.onCellMaterialized(beeId),
+      onCellMaterialized: (beeId: string, execution?: ExecutionStart) => this.onCellMaterialized(beeId,execution),
       ...(this.cfg.cellRetention.fetchUpstream ? { upstreamRefresh: { root: upstreamRootFor(this.cfg.dataDir) } } : {}),
       onUpstreamRefreshed: (originRepo, result) => {
         const sync = result.sync;
@@ -1144,6 +1157,8 @@ export class HiveDaemon {
    * remain tracked; core skips only affected runtime-start commands while
    * other bees and non-start work continue.
    */
+  private readonly executionStartHolds = new Set<string>();
+
   private refreshAccountActivations(): void {
     const store = this.store;
     const accounts = this.accounts;
@@ -1170,6 +1185,16 @@ export class HiveDaemon {
     }
 
     for (const [beeId, command] of candidates) {
+      let execution: ExecutionStart | null = null;
+      try {
+        const rt = store.currentRuntime(beeId);
+        execution = store.prepareExecutionStart(beeId,rt && rt.state !== "stopped" ? rt.generation : (rt?.generation ?? 0)+1);
+        if (execution) store.executionRuntimeHooks().check(execution,"account_selection");
+        this.executionStartHolds.delete(beeId);
+      } catch (error) {
+        if (!(error instanceof ExecutionFenceError)) throw error;
+        this.executionStartHolds.add(beeId); continue;
+      }
       let bee = store.getBee(beeId);
       if (!bee?.account) {
         this.accountActivations.delete(beeId);
@@ -1177,7 +1202,7 @@ export class HiveDaemon {
       }
       let account = store.getAccount(bee.account);
       if (!account) continue;
-      if (this.moveOffWeeklyCeiling(bee, account)) {
+      if (!execution && this.moveOffWeeklyCeiling(bee, account)) {
         bee = store.getBee(beeId);
         account = bee?.account ? store.getAccount(bee.account) : null;
         if (!bee || !account) continue;
@@ -1199,14 +1224,21 @@ export class HiveDaemon {
       // Defer even the synchronous home-activation prefix until after this
       // executor turn. Slow filesystem work never holds the SQLite writer or
       // prevents unrelated commands in the same core step from progressing.
-      const task = Promise.resolve().then(() => accounts.activateForSpawn(account, bee)).then(
+      const hooks = store.executionRuntimeHooks();
+      const lease = execution ? hooks.begin(execution,"account_activation") : null;
+      const task = Promise.resolve().then(() => {
+        if (execution) hooks.check(execution,"account_activation");
+        return accounts.activateForSpawn(account,bee);
+      }).then(
         () => {
+          if (execution && lease) { hooks.finish(execution,lease,true); hooks.check(execution,"account_activation_ready"); }
           if (this.accountActivations.get(beeId) !== state) return;
           state.status = "ready";
           // The blocked start command can claim immediately.
           this.requestTick();
         },
         (error: unknown) => {
+          if (execution && lease) { try { hooks.finish(execution,lease,false); } catch {} }
           if (this.accountActivations.get(beeId) !== state) return;
           state.status = "failed";
           state.error = activationFailureName(error);
@@ -1226,7 +1258,7 @@ export class HiveDaemon {
   private prepareRuntimeStartCommands(): ReadonlySet<string> {
     this.authResume?.reconcile();
     this.refreshAccountActivations();
-    const blocked = new Set(this.blockedRuntimeStartBeeIds());
+    const blocked = new Set([...this.blockedRuntimeStartBeeIds(),...this.executionStartHolds]);
     for (const row of this.mustStore().listLiveAuthInterruptions()) if (this.authResume?.holdsStoppedRuntime(row)) {
       blocked.add(row.beeId);
       if (this.runtimeStartHolds.get(row.beeId) !== "account_auth_needed") {
@@ -1693,6 +1725,16 @@ export class HiveDaemon {
     return message.beeId;
   }
 
+  private async rpcFencedSpawn(params: Record<string, unknown>, conn: RpcConn) {
+    if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires a protected coordinator");
+    const begun = this.mustStore().beginFencedSpawn(params, conn.executionCoordinatorUid);
+    if (begun.fresh) {
+      try { await this.rpcSpawnWithAccount({ ...begun.request.args, idempotencyKey: begun.request.idempotencyKey }, begun.request); }
+      catch { this.mustStore().markSpawnUnknown(begun.request.idempotencyKey); throw new ExecutionFenceError("rpc_execution_history_unknown","Spawn preparation may have committed; reconcile the original execution"); }
+    }
+    return this.mustStore().resolveExecution(params, conn.executionCoordinatorUid);
+  }
+
   private rpcExecution(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
     switch (verb) {
       case "rpc.execution.coordinator.register":
@@ -1706,7 +1748,7 @@ export class HiveDaemon {
         if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
         return this.mustStore().resolveExecution(params, conn.executionCoordinatorUid);
       case "rpc.execution.execute": {
-        if (params.verb === "spawn") throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Spawn execution fencing requires phase B; no fallback is permitted");
+        if (params.verb === "spawn") return this.rpcFencedSpawn(params, conn);
         if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires an authenticated local coordinator");
         const receipt = this.mustStore().executeWithFence(params, conn.executionCoordinatorUid, request => {
           const result = request.verb === "send" ? this.rpcSend(request.args) : this.rpcEnqueue("archive", request.resource.beeId, {}, { idempotencyKey: request.idempotencyKey });
@@ -2444,13 +2486,14 @@ export class HiveDaemon {
     return entry.promise;
   }
 
-  private async rpcSpawnWithAccount(params: Record<string, unknown>): Promise<SpawnResult> {
+  private async rpcSpawnWithAccount(params: Record<string, unknown>, execution?: ExecutionRequest): Promise<SpawnResult> {
     const store = this.mustStore();
     const key = this.idempotencyKeyOf(params);
     // A replayed key answers from the record without paying a limits fetch.
     if (key != null && store.lookupRpcResult(key)) return this.withIdempotency("spawn", params, () => this.rpcSpawn(params, null));
     const rawAgent = this.param(params, "agent");
     if (this.isMailboxOnlyAgentToken(rawAgent)) {
+      if (execution) throw new RpcError("rpc_execution_fence_unsupported", "Mailbox-only spawn has no agent-start handshake");
       return this.withIdempotency("spawn", params, () => this.rpcSpawnMailboxOnly(params));
     }
     const embedded = this.embeddedSpawnAccount(rawAgent, params.account !== undefined);
@@ -2462,6 +2505,7 @@ export class HiveDaemon {
     if (request === "auto" && this.accounts && !claim && this.accounts.allocationMode() === "shadow") {
       await this.accounts.ensureFreshAdmissionLimits(agent, { model: this.modelParamOf(normalizedParams, agent) });
     }
+    if (execution) return store.admitFencedSpawn(execution, () => this.rpcSpawn(normalizedParams, request, execution));
     return this.withIdempotency("spawn", normalizedParams, () => this.rpcSpawn(normalizedParams, request));
   }
 
@@ -3077,7 +3121,7 @@ export class HiveDaemon {
     return { account: admission.account, reason: admission.reason, allocation: admission.receipt, reservationId: admission.reservation?.id };
   }
 
-  private rpcSpawn(params: Record<string, unknown>, accountRequest: string | null): SpawnResult {
+  private rpcSpawn(params: Record<string, unknown>, accountRequest: string | null, execution?: ExecutionRequest): SpawnResult {
     const store = this.mustStore();
     const key = this.idempotencyKeyOf(params);
     // Belt-and-braces guard for a key already stamped on a command at the
@@ -3119,6 +3163,7 @@ export class HiveDaemon {
     const driver = this.driver;
     // v7: the account is resolved BEFORE the row is written ('auto' is never
     // stored); the home env is derived from the account row.
+    if (execution) store.checkSpawnPreparation(execution, "account_admission");
     const { account, reason: pickReason, allocation, reservationId, claim } = this.resolveSpawnAccount(
       accountRequest, agent, params, key ?? `spawn:${id}`, "spawn", 0, null, id,
     );
@@ -3130,6 +3175,7 @@ export class HiveDaemon {
     // is the id/name gate) and before the spawn command is enqueued —
     // inside the idempotency transaction, so a failure here leaves no bee.
     const cell = substrate === "cell" ? this.planCell(id, name, this.cellParam(params)) : null;
+    if (execution) store.checkSpawnPreparation(execution, "create_bee");
     const { bee: created } = store.createBee({
       ...(this.phoneOriginOf(params) && params.prompt == null ? { phoneOperation: this.phoneSendOptions(params).phone } : {}),
       id,
@@ -3146,14 +3192,17 @@ export class HiveDaemon {
       env: { ...requestedEnv, ...accountEnv },
       ...(account ? { account: account.id } : {}),
     });
+    if (execution) store.checkSpawnPreparation(execution, "consume_account_claim");
     if (claim) this.consumeAccountClaim(claim, created.id);
     else if (reservationId) store.bindAccountAdmission(reservationId, created.id);
     if (cell) {
+      if (execution) store.checkSpawnPreparation(execution, "cell_reserve");
       reserveCell(this.cfg.cellsRoot, cell.reserve);
       const identity = localRepoIdentity(cell.reserve.originRepo);
       if (!identity) {
         throw new RpcError("invalid_request", `spawn: cannot read git identity of ${cell.reserve.originRepo}`);
       }
+      if (execution) store.checkSpawnPreparation(execution, "cell_registry");
       store.putCell({
         sourceBeeId: id,
         originRepo: cell.reserve.originRepo,
@@ -3425,17 +3474,19 @@ export class HiveDaemon {
   }
 
   /** v31 — the driver put a checkout back under an evicted allocation: `evicted → active`. */
-  private onCellMaterialized(beeId: string): void {
+  private onCellMaterialized(beeId: string, execution?: ExecutionStart): void {
     const store = this.store;
     if (!store) return;
     const bee = store.getBee(beeId);
     if (!bee?.cellId) return;
+    if (execution) store.executionRuntimeHooks().check(execution,"reactivate_cell");
     try {
       const res = store.reactivateCell(bee.cellId);
       if (res.applied) this.log(`cell.reprovisioned bee=${beeId} cell=${bee.cellId} sha=${res.cell.sha}`);
     } catch (err) {
       this.log(`cell.reprovision_record_failed bee=${beeId} ${err instanceof Error ? err.message : String(err)}`);
     }
+    if (execution) store.executionRuntimeHooks().check(execution,"restore_cell_env");
     try {
       const row = store.getCell(bee.cellId);
       const restored = row ? restoreEnvFiles(this.cfg.cellsRoot, row.spaceDir) : [];
@@ -3443,6 +3494,7 @@ export class HiveDaemon {
     } catch (err) {
       this.log(`cell.env.restore_failed bee=${beeId} ${err instanceof Error ? err.message : String(err)}`);
     }
+    if (execution) store.executionRuntimeHooks().check(execution,"restore_kept_paths");
     try {
       const row = store.getCell(bee.cellId);
       const { restored, conflicts } = row ? restoreKeptPaths(this.cfg.cellsRoot, row.spaceDir) : { restored: [], conflicts: [] };

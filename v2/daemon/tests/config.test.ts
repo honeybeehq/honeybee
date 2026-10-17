@@ -4,7 +4,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, readdirSync } from "node:fs";
+import { StatePathError } from "../../harness/src/statePath.ts";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -16,6 +17,7 @@ import {
   loadNodeConfig,
   patchNamingConfig,
   publicNamingConfig,
+  validateNodeStatePaths,
 } from "../src/config.ts";
 
 function withDir(fn: (dir: string) => void): void {
@@ -26,6 +28,27 @@ function withDir(fn: (dir: string) => void): void {
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+test("node state roots refuse missing or relative paths before filesystem effects",()=>{
+  const invalid=(error:unknown)=>error instanceof StatePathError&&error.code==="invalid_runtime_root";
+  for(const root of [undefined,"","relative","/","/tmp/.."]){
+    assert.throws(()=>loadNodeConfig(root as string),invalid);
+  }
+  withDir(dir=>{
+    const cfg=loadNodeConfig(dir);
+    for(const field of ["dataDir","cellsRoot","sessionLogDir","socketPath","logPath","storePath","telemetryPath"] as const){
+      for(const value of [undefined,"","relative","/","/tmp/.."]){
+        assert.throws(()=>validateNodeStatePaths({...cfg,[field]:value} as typeof cfg),invalid);
+        assert.deepEqual(readdirSync(dir),[]);
+      }
+    }
+    for(const field of ["socketPath","sessionLogDir"]){
+      writeFileSync(join(dir,"config.json"),JSON.stringify({[field]:""}));
+      assert.throws(()=>loadNodeConfig(dir),(error:unknown)=>error instanceof ConfigError&&error.message===`config: ${field} must be a non-empty string`);
+      assert.deepEqual(readdirSync(dir),["config.json"]);
+    }
+  });
+});
 
 test("config.1: absent file resolves to pure defaults (the file may be absent)", () => {
   withDir((dir) => {

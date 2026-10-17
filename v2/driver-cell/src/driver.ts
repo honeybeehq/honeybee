@@ -1,3 +1,6 @@
+import type { ExecutionStart } from "../../core/src/executionStart.ts";
+import { ExecutionFenceError } from "../../core/src/executionFence.ts";
+import { stateDirectory } from "../../harness/src/statePath.ts";
 /**
  * CellDriver — runtime encapsulation by PURE DELEGATION (WP5, spec 05).
  *
@@ -108,7 +111,7 @@ export interface CellDriverConfig {
    * provision, background provision, or a warm-pool claim). The daemon uses
    * it to move an `evicted` registry row back to `active`. Idempotent.
    */
-  onCellMaterialized?(beeId: string): void;
+  onCellMaterialized?(beeId: string, execution?: ExecutionStart): void;
 }
 
 export interface UpstreamRefreshPolicy {
@@ -171,6 +174,9 @@ export class CellDriver implements RuntimeDriver {
   private upstreamTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(cfg: CellDriverConfig) {
+    stateDirectory(cfg.cellsRoot, "cellsRoot");
+    if (cfg.gitImagesRoot !== undefined) stateDirectory(cfg.gitImagesRoot, "gitImagesRoot");
+    if (cfg.upstreamRefresh !== undefined) stateDirectory(cfg.upstreamRefresh.root, "upstreamRefresh.root");
     this.cfg = cfg;
     this.upstreamPolicy = cfg.upstreamRefresh == null ? null : { ...DEFAULT_UPSTREAM_REFRESH, ...cfg.upstreamRefresh };
     this.inner = new HsrDriver({
@@ -183,7 +189,9 @@ export class CellDriver implements RuntimeDriver {
   // RuntimeDriver — pure delegation
   // -------------------------------------------------------------------------
 
-  start(beeId: string, generation: number): void {
+  start(beeId: string, generation: number, execution?: ExecutionStart | null): void {
+    const start = execution ?? this.cfg.hsr.executionStartFor?.(beeId,generation) ?? null;
+    if (start) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced Cell preparation is NOT_COVERED until descendant containment is reviewed and proven");
     // Provisioning is idempotent and ledger-keyed: a replayed spawn command
     // (crash mid-provision, executor replay) resumes instead of redoing.
     const opId = `start-${beeId}-g${generation}`;

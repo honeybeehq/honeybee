@@ -1,3 +1,8 @@
+import { ExecutionFenceError } from "../../core/src/executionFence.ts";
+import type { ExecutionStart, ExecutionRuntimeHooks, ExecutionProcess } from "../../core/src/executionStart.ts";
+import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
+import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
+import { canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
 import { TurnQuiet } from "../../driver-tmux/src/turn-quiet.ts";
 import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
@@ -88,6 +93,10 @@ export interface SpawnSpec {
 }
 
 export interface HsrDriverConfig {
+  execution?: ExecutionRuntimeHooks;
+  executionStartFor?(beeId: string, generation: number): ExecutionStart | null;
+  executionHostFor?(start: ExecutionStart): ExecutionProcess | null;
+  resolveExecutionAdapter?(beeId: string): HarnessAdapter;
   /** Resolve the spawn spec for a bee (agent binary + adapter). */
   resolve(beeId: string, generation?: number): SpawnSpec;
   /** Directory for session logs; one `<beeId>.jsonl` per bee, verbatim native stream. */
@@ -192,6 +201,9 @@ export interface ObservationCursorEvidence {
 }
 
 interface ManagedProcess {
+  executionStart?: ExecutionStart;
+  executionHost?: ExecutionProcess;
+  executionAccepted?: boolean;
   beeId: string;
   generation: number;
   pid: number;
@@ -375,7 +387,7 @@ export class HsrDriver implements RuntimeDriver {
    * dying is deferred here and spawned from the old process's exit callback —
    * still "returns immediately; boot progress arrives as observations".
    */
-  private readonly pendingStarts = new Map<string, { generation: number }>();
+  private readonly pendingStarts = new Map<string, { generation: number; execution?: ExecutionStart | null }>();
   private events: DriverObservation[] = [];
   private evidence: FlagEvidence[] = [];
   private sessions: SessionEvidence[] = [];
@@ -385,6 +397,9 @@ export class HsrDriver implements RuntimeDriver {
 
   constructor(cfg: HsrDriverConfig) {
     this.cfg = cfg;
+    stateDirectory(cfg.sessionLogDir, "sessionLogDir");
+    this.runnersDir();
+    this.socketDir();
     this.hostLaunch = this.selectHostLaunch();
     this.now = cfg.now ?? Date.now;
     this.graceMs = cfg.stopKillGraceMs ?? 5000;
@@ -394,7 +409,13 @@ export class HsrDriver implements RuntimeDriver {
   }
 
   private runnersDir(): string {
-    return this.cfg.runnersDir ?? resolvePath(this.cfg.sessionLogDir, "..", "runners");
+    if (this.cfg.runnersDir !== undefined) return stateDirectory(this.cfg.runnersDir, "runnersDir");
+    const parent = stateDirectory(dirname(stateDirectory(this.cfg.sessionLogDir, "sessionLogDir")), "default runners parent");
+    return resolvePath(parent, "runners");
+  }
+
+  private socketDir(): string {
+    return stateDirectory(this.cfg.socketDir === undefined ? tmpdir() : this.cfg.socketDir, "socketDir");
   }
 
   private selectHostLaunch(): HostLaunch {
@@ -439,7 +460,7 @@ export class HsrDriver implements RuntimeDriver {
       .slice(0, 16);
     return {
       config: `${base}.json`,
-      socket: join(this.cfg.socketDir ?? tmpdir(), `hb-rh-${digest}.sock`),
+      socket: join(this.socketDir(), `hb-rh-${digest}.sock`),
       status: `${base}.status.json`,
       observations: `${base}.observations.jsonl`,
     };
@@ -460,20 +481,25 @@ export class HsrDriver implements RuntimeDriver {
   // RuntimeDriver — the fixed WP2 contract
   // -------------------------------------------------------------------------
 
-  start(beeId: string, generation: number): void {
+  start(beeId: string, generation: number, execution?: ExecutionStart | null): void {
+    const start = execution ?? this.cfg.executionStartFor?.(beeId,generation) ?? null;
+    if (start && (start.beeId !== beeId || start.runtimeGeneration !== generation)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Start intent does not bind the requested bee and runtime generation");
+    if (start && !this.cfg.execution) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced HSR start requires owner hooks");
+    if (start) this.cfg.execution!.check(start,"hsr_start");
     if (this.detached) return;
     const existing = this.procs.get(beeId);
     if (existing) {
       if (existing.stopCause != null || this.pendingStarts.has(beeId)) {
         // The previous generation is dying (exit event pending). Defer the
         // spawn to its exit callback — one live process per bee, always.
-        this.pendingStarts.set(beeId, { generation });
+        this.pendingStarts.set(beeId, { generation, execution: start });
         return;
       }
       throw new Error(
         `hsr driver: bee ${beeId} already has a live process (generation ${existing.generation}, pid ${existing.pid})`,
       );
     }
+    if (start) this.cfg.execution!.check(start,"spawn_spec");
     const spec = this.cfg.resolve(beeId, generation);
     if (process.env.HIVE_SPAWN_TRACE) {
       // Diagnostics only: exact spawn shape for post-mortem replay.
@@ -486,7 +512,11 @@ export class HsrDriver implements RuntimeDriver {
     // pipe down: the runtime survives, and boot re-adoption reconnects with
     // full capability instead of the old degraded stop-on-mail rotation.
     const paths = this.runnerPaths(beeId, generation);
+    const ownerBirth = start ? exactProcessBirth(process.pid) : null;
+    if (start && !ownerBirth) throw new ExecutionFenceError("rpc_execution_history_unknown", "Owner process birth is unavailable");
+    if (start) this.cfg.execution!.check(start,"host_config");
     const hostConfig: RunnerHostConfig = {
+      ...(start ? { executionStart: start, executionOwner: { pid: process.pid, birth: ownerBirth! } } : {}),
       beeId,
       generation,
       command: spec.command,
@@ -502,12 +532,15 @@ export class HsrDriver implements RuntimeDriver {
     };
     writeFileSync(paths.config, JSON.stringify(hostConfig));
     const launch = this.hostCommandFor(paths.config);
+    if (start) this.cfg.execution!.dispatch(start);
     const child = spawn(launch.command, launch.args, {
       env: nativeNodeEnv(),
       detached: true,
-      stdio: ["ignore", "ignore", "ignore"],
+      stdio: start ? ["ignore", "ignore", "ignore", "ipc"] : ["ignore", "ignore", "ignore"],
     });
+    const hostBirth = start && child.pid ? exactProcessBirth(child.pid) : null;
     const proc: ManagedProcess = {
+      ...(start ? { executionStart: start, ...(hostBirth && child.pid ? { executionHost: { pid: child.pid, birth: hostBirth } } : {}) } : {}),
       beeId,
       generation,
       // pid captured AT SPAWN (WP2 amendment) — the HOST's pid: host liveness
@@ -551,6 +584,19 @@ export class HsrDriver implements RuntimeDriver {
       socketBroken: false,
     };
     this.procs.set(beeId, proc);
+    if (start) child.on("message", (value: unknown) => {
+      if (!value || typeof value !== "object") return;
+      const frame = value as Record<string, unknown>, host = frame.host as ExecutionProcess | undefined;
+      const digest = canonicalDigest(start as unknown as JsonValue);
+      if (frame.intentId !== start.intentId || frame.bindingDigest !== digest || !host || !proc.executionHost || host.pid !== proc.pid || host.birth !== proc.executionHost.birth || exactProcessBirth(proc.pid) !== host.birth) return;
+      try {
+        if (frame.op === "execution_ready") {
+          this.cfg.execution!.bindAndRelease(start,host);
+          child.send({ op: "execution_release", intentId: start.intentId, bindingDigest: digest, host }, () => {});
+        } else if (frame.op === "execution_started") this.acceptExecutionStarted(proc, frame.agent as ExecutionProcess);
+      } catch { this.appendSidecar(beeId,"execution handshake held; owner reconciliation required\n"); }
+    });
+
 
     // Host spawn failure (missing node/CLI — configuration, not the agent):
     // surface as exited(crashed) through the daemon's spawn-retry path.
@@ -566,7 +612,7 @@ export class HsrDriver implements RuntimeDriver {
 
     this.connectSocket(proc);
 
-    if (spec.adapter.readyAtSpawn) {
+    if (!start && spec.adapter.readyAtSpawn) {
       // claude stream-json emits nothing until the first stdin message: the
       // harness accept point opens now. Delivery still waits for the runner
       // socket, leaving startup mail durable instead of buffering it in the
@@ -601,6 +647,14 @@ export class HsrDriver implements RuntimeDriver {
    * until it is connected and the daemon's delivery loop retries — the same
    * bounded-refusal contract a booting runtime already has.
    */
+  private acceptExecutionStarted(p: ManagedProcess, agent: ExecutionProcess): void {
+    if (!p.executionStart || !p.executionHost || p.executionAccepted) return;
+    if (!agent || exactProcessBirth(p.executionHost.pid) !== p.executionHost.birth || exactProcessBirth(agent.pid) !== agent.birth) throw new ExecutionFenceError("rpc_execution_history_unknown", "Agent-start identity is unavailable");
+    this.cfg.execution!.started(p.executionStart,p.executionHost,agent);
+    p.executionAccepted = true;
+    if (p.adapter?.readyAtSpawn) p.phase = "idle";
+  }
+
   private connectSocket(p: ManagedProcess): void {
     if (p.exited || p.socket || p.socketRetry || !p.socketPath) return;
     const attempt = connect(p.socketPath);
@@ -629,6 +683,13 @@ export class HsrDriver implements RuntimeDriver {
     if (p.exited) return;
     this.pumpHostTail(p);
     const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
+    if (p.executionStart) {
+      let dead = p.child?.exitCode !== null && p.child?.exitCode !== undefined || p.child?.signalCode !== null && p.child?.signalCode !== undefined;
+      const currentBirth = p.executionHost ? exactProcessBirth(p.pid) : null;
+      if (p.executionHost && currentBirth && currentBirth !== p.executionHost.birth) dead = true;
+      try { process.kill(p.pid,0); } catch(error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") dead = true; }
+      try { this.cfg.execution?.hostExited(p.executionStart,dead ? p.executionHost ?? null : null); } catch {}
+    }
     if (status?.spawnError && !p.spawnError) {
       p.spawnError = status.spawnError;
     }
@@ -872,6 +933,13 @@ export class HsrDriver implements RuntimeDriver {
     if (p.statusPath && (p.agentPid == null || (!p.socket && !p.socketBroken))) {
       const status = readRunnerStatus(p.statusPath);
       if (status) {
+        if (p.executionStart) {
+          if (status.hostPid !== p.pid || status.hostBirth !== p.executionHost?.birth || status.executionIntentId !== p.executionStart.intentId || status.executionDigest !== canonicalDigest(p.executionStart as unknown as JsonValue)) return;
+          if (!p.executionAccepted && status.agentPid && status.agentBirth) {
+            try { this.acceptExecutionStarted(p,{pid:status.agentPid,birth:status.agentBirth}); } catch { return; }
+          }
+          if (!p.executionAccepted) return;
+        }
         if (status.socketError && !p.socketBroken) {
           p.socketBroken = true;
           this.appendSidecar(p.beeId, `runner host socket failed: ${status.socketError}\n`);
@@ -1040,19 +1108,27 @@ export class HsrDriver implements RuntimeDriver {
   ): boolean {
     if (pid <= 0) return false;
     if (this.procs.has(beeId) || this.pendingStarts.has(beeId)) return false;
-    if (!verifyProcessIdentity(pid, pidStartedAt, this.adoptTolMs)) return false;
+    let execution: ExecutionStart | null = null, executionHost: ExecutionProcess | null = null;
+    try {
+      execution = this.cfg.executionStartFor?.(beeId,generation) ?? null;
+      executionHost = execution ? this.cfg.executionHostFor?.(execution) ?? null : null;
+      if (execution && (!this.cfg.execution || !executionHost || executionHost.pid !== pid || exactProcessBirth(pid) !== executionHost.birth)) return false;
+    } catch { return false; }
+
+    if (!execution && !verifyProcessIdentity(pid, pidStartedAt, this.adoptTolMs)) return false;
     // WP5: a runtime with runner-host artifacts for this exact (pid ==
     // host pid) re-adopts at FULL capability — reconnect the write socket,
     // resume the log tail, keep delivering. The degraded stop-on-mail
     // rotation below remains only for runtimes spawned by a pre-host daemon.
     const paths = this.runnerPaths(beeId, generation);
     const status = readRunnerStatus(paths.status);
+    if (execution && (!status || status.hostBirth !== executionHost?.birth || status.executionIntentId !== execution.intentId || status.executionDigest !== canonicalDigest(execution as unknown as JsonValue))) return false;
     if (status && status.hostPid === pid && !status.exited) {
       const hasGenerationIdentity = status.beeId !== undefined || status.generation !== undefined;
       const exactGenerationIdentity = status.beeId === beeId && status.generation === generation;
       let adapter: HarnessAdapter | null = null;
       try {
-        adapter = this.cfg.resolve(beeId).adapter;
+        adapter = execution ? this.cfg.resolveExecutionAdapter?.(beeId) ?? null : this.cfg.resolve(beeId).adapter;
       } catch {
         adapter = null; // unresolvable harness: fall through to degraded
       }
@@ -1109,6 +1185,7 @@ export class HsrDriver implements RuntimeDriver {
           // degraded-runtime policy; silence never changes its phase.
         } else {
           const proc: ManagedProcess = {
+            ...(execution && executionHost ? { executionStart: execution, executionHost } : {}),
             beeId,
             generation,
             pid,
@@ -1162,12 +1239,14 @@ export class HsrDriver implements RuntimeDriver {
             pendingWrites: [],
             socketBroken: false,
           };
-          this.procs.set(beeId, proc);
+          if (execution && status.agentPid && status.agentBirth) { try { this.acceptExecutionStarted(proc,{pid:status.agentPid,birth:status.agentBirth}); } catch { return false; } }
+          this.procs.set(beeId,proc);
           this.connectSocket(proc);
           return true;
         }
       }
     }
+    if (execution) return false;
     this.procs.set(beeId, {
       beeId,
       generation,
@@ -1292,7 +1371,7 @@ export class HsrDriver implements RuntimeDriver {
 
   /** Verbatim native-stream session log path for a bee (Q1; v23: the current transcript segment's file). */
   sessionLogPath(beeId: string): string {
-    return this.cfg.sessionLogPathFor?.(beeId) ?? join(this.cfg.sessionLogDir, `${beeId}.jsonl`);
+    return stateFile(this.cfg.sessionLogPathFor?.(beeId) ?? join(stateDirectory(this.cfg.sessionLogDir,"sessionLogDir"), `${beeId}.jsonl`), "sessionLogPath");
   }
 
   /** Output-only recovery journal for exactly one runtime generation. */
@@ -1337,6 +1416,7 @@ export class HsrDriver implements RuntimeDriver {
       // reconnects its own. Destroying it never touches the agent.
       p.socket?.destroy();
       p.socket = null;
+      if (p.executionStart && p.child?.connected) p.child.disconnect();
       p.child?.unref();
       // stdio pipes are net.Socket instances (unref exists at runtime).
       for (const stream of [p.child?.stdin, p.child?.stdout, p.child?.stderr]) {
@@ -1601,7 +1681,8 @@ export class HsrDriver implements RuntimeDriver {
     const pending = this.pendingStarts.get(p.beeId);
     if (pending) {
       this.pendingStarts.delete(p.beeId);
-      this.start(p.beeId, pending.generation);
+      if (pending.execution) { try { this.start(p.beeId,pending.generation,pending.execution); } catch { this.appendSidecar(p.beeId,"deferred execution start held; reconcile original binding\n"); } }
+      else this.start(p.beeId, pending.generation);
     }
   }
 
