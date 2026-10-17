@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import tarfile
+import unicodedata
 
 import seed_policy
 
@@ -24,9 +25,31 @@ def verify_input(path, expected):
         raise ValueError('seed input hash mismatch')
 
 
+def folded_path(value):
+    return unicodedata.normalize('NFD', unicodedata.normalize('NFD', value).casefold())
+
+
+def check_member_names(members):
+    seen = set()
+    prefixes = {}
+    for member in members:
+        parts = Path(member.name).parts
+        key = folded_path('/'.join(parts))
+        if key in seen:
+            raise ValueError('case or normalization colliding archive members')
+        seen.add(key)
+        for size in range(1, len(parts) + 1):
+            original = '/'.join(parts[:size])
+            normalized = folded_path(original)
+            if normalized in prefixes and prefixes[normalized] != original:
+                raise ValueError('case or normalization colliding archive paths')
+            prefixes[normalized] = original
+
+
 def scan_tarball(data):
     with tarfile.open(fileobj=io.BytesIO(data), mode='r:gz') as archive:
         members = archive.getmembers()
+        check_member_names(members)
         roots = [m for m in members if m.isfile() and len(Path(m.name).parts) == 2 and Path(m.name).name == 'package.json']
         if len(roots) != 1:
             raise ValueError('seed package manifest ambiguous')
@@ -39,7 +62,7 @@ def scan_tarball(data):
                 continue
             if VERSIONS.get(package['name']) != package['version'] or ALLOWED.get(package['name'], {}).get(event) != command:
                 raise ValueError('unexpected dependency lifecycle: ' + package['name'] + ':' + event)
-        gyp = [m.name for m in members if Path(m.name).name == 'binding.gyp']
+        gyp = [m.name for m in members if folded_path(Path(m.name).name) == 'binding.gyp']
         if gyp and (package['name'] != 'node-pty' or package['version'] != VERSIONS['node-pty'] or gyp != ['package/binding.gyp'] or any(scripts.get(event) != command for event, command in ALLOWED['node-pty'].items())):
             raise ValueError('unexpected binding.gyp')
         return {'name': package['name'], 'version': package['version'], 'lifecycle': scripts, 'bindingGyp': gyp, 'sha256': hashlib.sha256(data).hexdigest()}
