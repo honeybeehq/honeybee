@@ -26,6 +26,7 @@ const WORK_MESSAGES_SQL = `SELECT message.id,
          )
          AND message.bee_id = runtime.bee_id
          AND message.delivered_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id = message.id AND held.held_since IS NOT NULL)
        ORDER BY runtime.bee_id, message.id`;
 const PENDING_BEES_CTE_SQL = `SELECT DISTINCT bee_id
          FROM mailbox
@@ -163,7 +164,7 @@ test("pending projections keep exact order, grouping, identity, and membership t
   assert.deepEqual({ i1: i1Shape(store), work: [...workShape(store).entries()] }, before, "reopen preserves projections exactly");
 });
 
-test("pending-metadata index is covering for the actual projection SQL and stays body/JSON-free", (t) => {
+for (const withHold of [false, true]) test(`pending-metadata index is covering for the actual projection SQL and stays body/JSON-free; holds=${withHold}`, (t) => {
   const h = harness();
   t.after(() => h.cleanup());
   const store = h.open();
@@ -179,6 +180,8 @@ test("pending-metadata index is covering for the actual projection SQL and stays
   for (const m of store.undeliveredMessages(bee.id)) {
     if (m.id !== first.id) assert.deepEqual(store.markDelivered(m.id, 1), { applied: true });
   }
+  if (withHold) for (let attempt = 0; attempt < 3; attempt++) store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode");
+  assert.equal(store.multilineDelivery(first.id)?.stage, withHold ? "held" : undefined);
   store.close(); // EXCLUSIVE locking: release before the read-only inspection
 
   const check = new DatabaseSync(h.path, { readOnly: true });
@@ -206,6 +209,12 @@ test("pending-metadata index is covering for the actual projection SQL and stays
     ] as const) {
       const details = plan(sql);
       assert.match(details, access, `${name} must be covering:\n${details}`);
+      assert.doesNotMatch(details, /SCAN message|SCAN held/);
+      if (name === "work-messages") {
+        assert.match(details, /SEARCH held USING INTEGER PRIMARY KEY/);
+        const legacy = plan(sql.replace(/\s+AND NOT EXISTS \(SELECT 1 FROM multiline_delivery[^\n]+/, ""));
+        assert.equal(details.replace(/\nCORRELATED SCALAR SUBQUERY 2\nSEARCH held USING INTEGER PRIMARY KEY \(rowid=\?\)/, ""), legacy);
+      }
       assert.doesNotMatch(details, /USE TEMP B-TREE FOR ORDER BY$/m, `${name} order must come from the index:\n${details}`);
     }
   } finally {
