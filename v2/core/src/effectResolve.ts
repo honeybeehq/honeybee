@@ -27,6 +27,30 @@ function key(value: string): void {
   if (typeof value !== "string" || !value.length) throw new EffectKeyError("invalid_request", "Effect key must be a nonempty string");
 }
 
+function validEffectResult(verb: string, value: unknown, commandId: number | null): boolean {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const result = value as Record<string, unknown>;
+  const text = (v: unknown) => typeof v === "string" && v.length > 0;
+  const number = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  const positive = (v: unknown) => number(v) && Number.isSafeInteger(v) && (v as number) > 0;
+  const object = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+  const optional = (row: Record<string, unknown>, name: string, check: (v: unknown) => boolean) => !Object.hasOwn(row, name) || check(row[name]);
+  if (verb === "spawn" && !text(result.beeId) || verb === "send" && !positive(result.messageId) || verb === "archive" && !positive(result.commandId)) return false;
+  if (!optional(result, "commandId", v => v === commandId) || !optional(result, "messageId", v => v === null || positive(v))) return false;
+  for (const name of ["agent", "accountReason", "allocationClaimId"]) if (!optional(result, name, text)) return false;
+  for (const name of ["handle", "humanRef", "issuingNamespace", "account"]) if (!optional(result, name, v => v === null || text(v))) return false;
+  for (const name of ["unarchived", "deduped"]) if (!optional(result, name, v => typeof v === "boolean")) return false;
+  if (!optional(result, "status", v => ["queued", "running", "done", "failed"].includes(String(v)))) return false;
+  if (!optional(result, "runtimeStartHold", v => object(v) && v.code === "account_auth_needed" && v.message === "Waiting for refreshed account material")) return false;
+  if (!optional(result, "cellBase", v => object(v) && text(v.sha) && ["pinned", "head", "upstream"].includes(String(v.source)) && optional(v, "upstreamRef", text) && optional(v, "upstreamSha", text) && optional(v, "fetchedAt", number))) return false;
+  if (!optional(result, "allocation", v => object(v) && v.version === 1 && ["shadow", "active"].includes(String(v.mode)) && text(v.scope)
+    && (v.revision === null || text(v.revision)) && number(v.observedAt) && ["spawn", "fork", "handoff", "swap", "revive"].includes(String(v.operation))
+    && ["selected", "wait"].includes(String(v.outcome)) && (v.account === null || text(v.account)) && text(v.reason) && (v.retryAt === null || number(v.retryAt))
+    && Array.isArray(v.candidates) && v.candidates.every(c => object(c) && text(c.accountId) && ["eligible", "ineligible", "uncertain", "protected"].includes(String(c.status))
+      && optional(c, "reason", text) && ["rate", "fairFinish", "maxProjectedPercent"].every(name => optional(c, name, number))))) return false;
+  return true;
+}
+
 export class EffectLedger {
   private coverage!: EffectCoverage;
   private readonly db: DatabaseSync;
@@ -63,15 +87,7 @@ export class EffectLedger {
     if (receipt === null || typeof receipt !== "object" || Array.isArray(receipt)) return unknown();
     const value = receipt as EffectReceipt;
     if (value.key !== id || !(EFFECT_VERBS as readonly string[]).includes(value.verb) || row && value.verb !== row.verb || !Number.isFinite(value.createdAt) || value.commandId !== null && (!Number.isSafeInteger(value.commandId) || value.commandId <= 0) || !Object.hasOwn(value, "result")) return unknown();
-    if (value.result === null || typeof value.result !== "object" || Array.isArray(value.result)) return unknown();
-    const result = value.result as Record<string, unknown>;
-    const positive = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) && v > 0;
-    if (value.verb === "spawn" && (typeof result.beeId !== "string" || !result.beeId.length)
-      || value.verb === "send" && !positive(result.messageId)
-      || value.verb === "archive" && !positive(result.commandId)
-      || Object.hasOwn(result, "commandId") && result.commandId !== null && !positive(result.commandId)
-      || Object.hasOwn(result, "messageId") && result.messageId !== null && !positive(result.messageId)
-      || Object.hasOwn(result, "unarchived") && typeof result.unarchived !== "boolean") return unknown();
+    if (!validEffectResult(value.verb, value.result, value.commandId)) return unknown();
     if (row?.state !== "committed") this.db.prepare("INSERT INTO rpc_effect_keys(key,verb,state,receipt,created_at) VALUES(?,?,'committed',?,?) ON CONFLICT(key) DO UPDATE SET verb=excluded.verb,state=excluded.state,receipt=excluded.receipt,created_at=excluded.created_at").run(id, value.verb, JSON.stringify(value), value.createdAt);
     return { verb: value.verb, state: "committed", receipt: value };
   }

@@ -116,7 +116,7 @@ test("effect owner corruption fails closed with the real ledger error, never sec
   finally { h.cleanup(); }
 });
 
-for (const result of ["{}", '{"beeId":7}', '{"beeId":']) {
+for (const result of ["{}", '{"beeId":7}', '{"beeId":', '{"beeId":"known","agent":[]}', '{"beeId":"known","allocation":[]}', '{"beeId":"known","commandId":7}']) {
   test(`effect legacy unreadable result stays unknown through reopen: ${result}`, () => {
     const h = harness();
     h.open().close();
@@ -147,7 +147,7 @@ test("effect lazy legacy lookup validates send and archive receipts and preserve
   for (const [id, verb, result] of [
     ["send-good", "send", { messageId: 1 }], ["archive-good", "archive", { commandId: 1 }],
     ["send-bad", "send", { messageId: "1" }], ["archive-bad", "archive", { commandId: "1" }],
-  ] as const) seed.prepare("INSERT INTO rpc_idempotency VALUES(?,?,?,?,?)").run(id, verb, null, JSON.stringify(result), 1);
+  ] as const) seed.prepare("INSERT INTO rpc_idempotency VALUES(?,?,?,?,?)").run(id, verb, verb === "archive" && id === "archive-good" ? 1 : null, JSON.stringify(result), 1);
   seed.close();
   try {
     for (let reopen = 0; reopen < 2; reopen++) {
