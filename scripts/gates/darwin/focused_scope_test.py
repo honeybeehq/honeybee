@@ -51,5 +51,56 @@ int main(void) {
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
+
+    def test_same_uid_quiescence_census_count_and_fd_paths(self):
+        function = Path(__file__).with_name('quiescence.h').read_text()
+        stub = r'''#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#define PATH_MAX 4096
+#define PROC_PIDPATHINFO_MAXSIZE 4096
+#define PROC_PIDVNODEPATHINFO 1
+#define PROC_PIDLISTFDS 2
+#define PROC_PIDFDVNODEPATHINFO 3
+#define PROX_FDTYPE_VNODE 1
+struct proc_bsdinfo { unsigned int pbi_uid,pbi_status; unsigned long long pbi_start_tvsec,pbi_start_tvusec; };
+struct vnode_path { char vip_path[4096]; };
+struct proc_vnodepathinfo { struct vnode_path pvi_cdir; };
+struct proc_fdinfo { unsigned int proc_fdtype; int proc_fd; };
+struct vnode_fdinfowithpath { struct vnode_path pvip; };
+static int mode=0,foreign_read=0;
+static unsigned int getuid(void) { return 501; }
+static int getpid(void) { return 99; }
+static char *realpath(const char *input,char *out) { strcpy(out,input);return out; }
+static int identity(int pid,struct proc_bsdinfo *b) { b->pbi_uid=pid==12?999:501;b->pbi_status=1;b->pbi_start_tvsec=100;b->pbi_start_tvusec=1;return 1; }
+static int same_birth(int pid,unsigned long long sec,unsigned long long usec) { (void)pid;(void)sec;(void)usec;return 0; }
+static int proc_listallpids(void *out,int bytes) { if(mode==1){errno=EPERM;return 0;}if(out){int p[]={10,11,12,99};if(bytes<16)return -1;memcpy(out,p,sizeof(p));}return 4; }
+static int proc_pidpath(int pid,void *out,unsigned int size) { (void)size;if(pid==12)foreign_read=1;strcpy(out,"/fixture/node");return 14; }
+static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int size) {
+ (void)arg;(void)size;if(pid==12)foreign_read=1;
+ if(flavor==PROC_PIDVNODEPATHINFO){strcpy(((struct proc_vnodepathinfo*)out)->pvi_cdir.vip_path,"/fixture/cwd");return sizeof(struct proc_vnodepathinfo);}
+ if(!out)return sizeof(struct proc_fdinfo);
+ if(mode==2){errno=EPERM;return -1;}
+ ((struct proc_fdinfo*)out)->proc_fdtype=PROX_FDTYPE_VNODE;((struct proc_fdinfo*)out)->proc_fd=3;return sizeof(struct proc_fdinfo);
+}
+static int proc_pidfdinfo(int pid,int fd,int flavor,void *out,int size) { (void)pid;(void)fd;(void)flavor;(void)size;strcpy(((struct vnode_fdinfowithpath*)out)->pvip.vip_path,"/fixture/open");return sizeof(struct vnode_fdinfowithpath); }
+'''
+        main = r'''
+int main(void) { if(quiescence(10,"/fixture")||foreign_read)return 1;mode=1;if(quiescence(10,"/fixture")!=4)return 2;mode=2;if(quiescence(10,"/fixture")!=4)return 3;return 0; }
+'''
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'quiescent.c'
+            source.write_text(stub + function + main)
+            binary = root / 'quiescent'
+            result = subprocess.run(['/usr/bin/cc', '-std=c11', '-Wall', '-Wextra', '-Werror', str(source), '-o', str(binary)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=2)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('11\t/fixture/open', result.stdout)
+            self.assertIn('COMPLETE', result.stdout)
+
 if __name__ == '__main__':
     unittest.main()

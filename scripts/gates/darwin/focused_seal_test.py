@@ -84,7 +84,7 @@ class SealTests(unittest.TestCase):
     def test_same_uid_open_file_cwd_and_image_are_all_root_uses(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
-            output = 'p10\nn' + str(root / 'controller') + '\np11\nn' + str(root / 'cwd') + '\nn' + str(root / 'node') + '\nn' + str(root / 'open') + '\np12\nn/elsewhere\n'
+            output = '10\t' + str(root / 'controller') + '\n11\t' + str(root / 'cwd') + '\n11\t' + str(root / 'node') + '\n11\t' + str(root / 'open') + '\n12\t/elsewhere\nCOMPLETE\n'
             rows = root_users(root, output, 10)
             self.assertEqual([row['pid'] for row in rows], [11, 11, 11])
             with self.assertRaisesRegex(ValueError, 'absent'):

@@ -19,6 +19,8 @@ import focused_tap
 import focused_trace
 
 
+LIMITATIONS = ['post-exit profile proof is exact only on hook-mediated SIGKILL; natural exit races test cleanup and fails closed.', 'kill hooks refuse signals to exited descendants; such calls fail the row rather than returning ESRCH/false.']
+
 def workload_profile(base, tools):
     literals = [tools['clang'], tools['ld'], '/usr/bin/cc', '/usr/bin/c++', '/usr/bin/gcc', '/usr/bin/g++', '/usr/bin/clang', '/usr/bin/clang++', '/usr/bin/ld', '/usr/bin/as', '/usr/bin/xcrun', '/usr/bin/xcodebuild']
     return base + '(deny process-exec ' + ' '.join('(literal ' + json.dumps(path) + ')' for path in literals) + ' (subpath ' + json.dumps(tools['toolchain']) + ') (subpath "/Library/Developer/CommandLineTools"))'
@@ -33,6 +35,25 @@ def control_state(root, workspace, node):
         info = path.stat()
         result[str(path)] = (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, focused_native.digest(path))
     return result
+
+
+def sealed_control_state(sealed, workspace):
+    result = {}
+    for directory in (sealed / 'control', workspace / 'scripts/gates/darwin'):
+        if directory.resolve(strict=True) != directory.absolute():
+            raise ValueError('sealed control directory redirected')
+        for path in sorted(directory.rglob('*')):
+            if path.is_symlink():
+                raise ValueError('sealed control symlink')
+            if path.is_file():
+                info = path.stat()
+                result[str(path)] = (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, focused_native.digest(path))
+    return result
+
+
+def require_sealed_controls(sealed, workspace, expected):
+    if sealed_control_state(sealed, workspace) != expected:
+        raise ValueError('sealed control changed between focused rows')
 
 
 def dependency_state(workspace):
@@ -146,7 +167,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                             raise ValueError('unresolved own executable observation')
                         if executable == env['SCG_NODE_BIN']:
                             if mediation is not None:
-                                detail = subprocess.run([str(helper), 'node-observation', *row, env['SCG_NODE_BIN']], capture_output=True, text=True, timeout=2)
+                                detail = subprocess.run([str(helper), 'node-observation', *row, env['SCG_NODE_BIN'], mediation.reader, str(trace.policy['preloader']) if trace is not None else '-'], capture_output=True, text=True, timeout=2)
                                 executable_samples[-1]['nodeObservation'] = {'exit': detail.returncode, 'stdout': detail.stdout, 'diagnostic': detail.stderr}
                                 if detail.returncode != 0:
                                     raise ValueError('own Node argv/cwd/sandbox observation unresolved: ' + detail.stderr.strip())
@@ -217,7 +238,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                     api.LEFTOVER_CHILDREN.append({'pid': proc.pid, 'birth': None, 'reason': 'birth unobserved, not fenced'})
     if sibling:
         try:
-            focused_seal.require_quiescent(root)
+            focused_seal.require_quiescent(root, helper)
         except focused_seal.BusyRoot as error:
             reason = reason or 'same-uid run-root process remains after fenced cleanup'
             for pid in sorted({row['pid'] for row in error.rows}):
@@ -312,8 +333,9 @@ def run(api, root, workspace, env, tools, real_home):
     sealed_context = None
     for mode in ('outer', 'sibling-instrumented', 'sibling-production'):
         if mode != 'outer' and sealed_context is None:
-            focused_seal.require_quiescent(root)
+            focused_seal.require_quiescent(root, root / 'scope')
             sealed_context = focused_seal.prepare(root, workspace, env['SCG_NODE_BIN'], audit, controls, before_artifact, dependencies)
+            sealed_controls = sealed_control_state(sealed_context[0], sealed_context[1])
             sealed_artifacts = artifacts(sealed_context[1], root)
             sealed_dependencies = dependency_state(sealed_context[1])
             sealed_node_digest = focused_native.digest(Path(sealed_context[2]))
@@ -337,7 +359,8 @@ def run(api, root, workspace, env, tools, real_home):
             active_node = sealed_context[2] if sibling else env['SCG_NODE_BIN']
             active_artifacts = sealed_artifacts if sibling else before_artifact
             if sibling:
-                focused_seal.require_quiescent(root)
+                require_sealed_controls(sealed_context[0], active_workspace, sealed_controls)
+                focused_seal.require_quiescent(root, sealed_context[0] / 'control/scope')
                 fresh = sealed_context[0] / (('i' if mode == 'sibling-instrumented' else 'p') + str(number))
                 fresh.mkdir(mode=0o700)
                 child_env = api.environment(fresh, active_node)
@@ -397,6 +420,7 @@ def run(api, root, workspace, env, tools, real_home):
                     focused_audit.validate_gate_pins(active_workspace, audit['gatePins'])
                     verdict['artifactUnchanged'] = artifacts(active_workspace, root) == active_artifacts
                     if sibling:
+                        require_sealed_controls(sealed_context[0], active_workspace, sealed_controls)
                         verdict['sealedDependenciesUnchanged'] = dependency_state(active_workspace) == sealed_dependencies
                         if focused_native.digest(focused_native.confined(Path(active_node), root)) != sealed_node_digest:
                             raise api.Refusal('sealed Node bytes changed')
@@ -409,6 +433,8 @@ def run(api, root, workspace, env, tools, real_home):
                     verdict.update({'ok': False, 'closingError': str(error)})
                 outcomes.append(verdict)
                 api.write_json(root / 'focused-rows.json', outcomes, root)
+    if sealed_context is not None:
+        require_sealed_controls(sealed_context[0], sealed_context[1], sealed_controls)
     expected = sum(len(item['outer']) + len(item['sibling']) for item in manifest['files'])
     passed = sum(row.get('classification') == 'PASS' for outcome in outcomes if outcome['mode'] != 'sibling-instrumented' for row in outcome.get('expectedRows', []))
     pairs = {}
@@ -420,5 +446,5 @@ def run(api, root, workspace, env, tools, real_home):
     pair = focused_diagnostics.compare_pair(pairs['sibling-instrumented'], pairs['sibling-production'])
     api.write_json(root / 'focused-pair.json', pair, root)
     ok = bool(outcomes) and all(row['ok'] for row in outcomes) and passed == expected and pair['ok']
-    api.write_json(root / 'focused-summary.json', {'ok': ok, 'required': expected, 'passed': passed, 'excludedNotProof': sum(len(item['excluded']) for item in manifest['files']), 'siblingRows': sum(len(item['sibling']) for item in manifest['files']), 'harnessOutsideOuterSeatbelt': True}, root)
+    api.write_json(root / 'focused-summary.json', {'ok': ok, 'limitations': LIMITATIONS, 'required': expected, 'passed': passed, 'excludedNotProof': sum(len(item['excluded']) for item in manifest['files']), 'siblingRows': sum(len(item['sibling']) for item in manifest['files']), 'harnessOutsideOuterSeatbelt': True}, root)
     return 0 if ok else 95

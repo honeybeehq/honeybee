@@ -28,6 +28,7 @@ static int same_birth(int pid, unsigned long long sec, unsigned long long usec) 
   if (b.pbi_start_tvsec != sec || b.pbi_start_tvusec != usec) return 4;
   return b.pbi_status == 5 ? 3 : 0;
 }
+#include "quiescence.h"
 static int listeners(int pid, unsigned long long sec, unsigned long long usec, int connected) {
   int rc = same_birth(pid, sec, usec);
   if (rc) return rc;
@@ -112,7 +113,7 @@ typedef int (*sandbox_check_function)(pid_t, const char *, int, ...);
 static sandbox_check_function sandbox_checker(void) {
   return (sandbox_check_function)dlsym(RTLD_DEFAULT, "sandbox_check");
 }
-static int node_observation(int pid, unsigned long long sec, unsigned long long usec, const char *expected_node) {
+static int node_observation(int pid, unsigned long long sec, unsigned long long usec, const char *expected_node, const char *reader, const char *preloader) {
   int rc = same_birth(pid, sec, usec);
   if (rc) return rc;
   char image[PROC_PIDPATHINFO_MAXSIZE];
@@ -139,6 +140,7 @@ static int node_observation(int pid, unsigned long long sec, unsigned long long 
   if (entry >= count || proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &paths, sizeof(paths)) != sizeof(paths) || !realpath(paths.pvi_cdir.vip_path, cwd)) { explicit_bzero(buffer, capacity); free(buffer); return 4; }
   int printed = snprintf(candidate, sizeof(candidate), "%s%s%s", buffer[args[entry].start] == '/' ? "" : cwd, buffer[args[entry].start] == '/' ? "" : "/", buffer + args[entry].start);
   int valid = printed > 0 && printed < sizeof(candidate) && realpath(candidate, resolved_entry) != NULL;
+  if (valid && !strcmp(resolved_entry, reader) && !reader_argv_exact(buffer, args, count, expected_node, reader, preloader)) valid = 0;
   explicit_bzero(buffer, capacity);
   free(buffer);
   if (!valid) return 4;
@@ -214,6 +216,7 @@ int main(int argc, char **argv) {
     print_identity(pid, &b);
     return 0;
   }
+  if (!strcmp(argv[1], "quiescence")) return argc == 4 ? quiescence(pid, argv[3]) : 2;
   if (argc < 6) return 2;
   unsigned long long sec = strtoull(argv[4], NULL, 10), usec = strtoull(argv[5], NULL, 10);
   if (!strcmp(argv[1], "group")) return group_members(pid, sec, usec, 0, 0, NULL);
@@ -223,7 +226,7 @@ int main(int argc, char **argv) {
     if (sig != SIGTERM && sig != SIGKILL) return 2;
     return group_members(pid, sec, usec, sig, argc - 7, argv + 7);
   }
-  if (!strcmp(argv[1], "node-observation")) return argc == 7 ? node_observation(pid, sec, usec, argv[6]) : 2;
+  if (!strcmp(argv[1], "node-observation")) return argc == 9 ? node_observation(pid, sec, usec, argv[6], argv[7], argv[8]) : 2;
   if (!strcmp(argv[1], "write-policy")) return argc == 9 ? write_policy(pid, sec, usec, argv + 6) : 2;
   if (!strcmp(argv[1], "listeners")) return listeners(pid, sec, usec, 0);
   if (!strcmp(argv[1], "connections")) return listeners(pid, sec, usec, 1);

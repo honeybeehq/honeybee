@@ -162,21 +162,17 @@ def prepare(root, workspace, node, audit, controls, native, dependencies):
 
 def root_users(root, output, controller_pid):
     root = str(root.resolve(strict=True))
-    pid = None
+    lines = output.splitlines()
+    if not lines or lines[-1] != 'COMPLETE':
+        raise ValueError('same-uid root-use observation absent or incomplete')
     rows = []
-    for line in output.splitlines():
-        if not line:
-            continue
-        if line[0] == 'p':
-            if not line[1:].isdigit():
-                raise ValueError('malformed same-uid process observation')
-            pid = int(line[1:])
-        elif line[0] == 'n' and pid != controller_pid:
-            path = line[1:]
-            if path == root or path.startswith(root + '/'):
-                rows.append({'pid': pid, 'path': path})
-    if pid is None:
-        raise ValueError('same-uid root-use observation absent')
+    for line in lines[:-1]:
+        parts = line.split('\t')
+        if len(parts) != 2 or not parts[0].isdigit() or int(parts[0]) <= 0:
+            raise ValueError('malformed same-uid process observation')
+        pid, path = int(parts[0]), parts[1]
+        if pid != controller_pid and (path == root or path.startswith(root + '/')):
+            rows.append({'pid': pid, 'path': path})
     return rows
 
 
@@ -186,9 +182,9 @@ class BusyRoot(ValueError):
         super().__init__('another same-uid process retains run-root access: ' + str(rows))
 
 
-def require_quiescent(root):
-    observed = subprocess.run(['/usr/sbin/lsof', '-nP', '-a', '-u', str(os.getuid()), '-Fpn'], cwd='/', env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, capture_output=True, text=True, timeout=2)
-    if observed.returncode != 0 or observed.stderr:
+def require_quiescent(root, helper):
+    observed = subprocess.run([str(helper), 'quiescence', str(os.getpid()), str(root)], cwd='/', env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, capture_output=True, text=True, timeout=2)
+    if observed.returncode != 0:
         raise ValueError('same-uid root-use observation unresolved')
     rows = root_users(root, observed.stdout, os.getpid())
     if rows:

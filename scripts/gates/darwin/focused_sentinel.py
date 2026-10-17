@@ -7,7 +7,7 @@ import stat
 DIRECTORIES = ('Library/LaunchAgents', 'Library/Keychains', '.ssh', '.gnupg')
 PROVIDER_ROOTS = ('.claude', '.codex', '.grok', '.kimi', '.gemini', '.cursor', '.muse', '.config/opencode', '.config/muse')
 CONFIG_NAMES = ('.claude.json', 'config.toml', 'mcp.json', 'opencode.json', 'opencode.jsonc', 'settings.json', 'tui.toml')
-FILES = ('.gitconfig', '.zshrc', '.zprofile', '.bashrc', '.profile', '.claude.json') + tuple(root + '/' + name for root in PROVIDER_ROOTS for name in CONFIG_NAMES)
+FILES = ('.gitconfig', '.zshrc', '.zprofile', '.bashrc', '.profile') + tuple(root + '/' + name for root in PROVIDER_ROOTS for name in CONFIG_NAMES)
 
 
 def metadata(info):
@@ -36,7 +36,7 @@ def snapshot(home):
                     os.close(fd)
                     fd = child
                 info = os.stat(parts[-1], dir_fd=fd, follow_symlinks=False)
-                rows[relative] = metadata(info)
+                rows[relative] = ({'names': []} if relative == 'Library/Keychains' else {'scope': 'selected file metadata'} if relative == '.ssh' else metadata(info))
                 if relative in DIRECTORIES and stat.S_ISDIR(info.st_mode):
                     child = os.open(parts[-1], flags, dir_fd=fd)
                     try:
@@ -48,7 +48,12 @@ def snapshot(home):
                         except OSError as error:
                             rows[relative].update(inaccessible(error))
                             names = []
+                        if relative == 'Library/Keychains':
+                            rows[relative] = {'names': names}
+                            continue
                         for name in names:
+                            if relative == '.ssh' and name not in ('config', 'authorized_keys') and not name.startswith('id_'):
+                                continue
                             try:
                                 rows[relative + '/' + name] = metadata(os.stat(name, dir_fd=child, follow_symlinks=False))
                             except OSError as error:
