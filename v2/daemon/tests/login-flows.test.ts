@@ -1385,7 +1385,7 @@ test("redaction: userinfo and nested credentials refuse; Claude flag is restrict
 
 test("redaction: unsafe CLI URLs fail typed without reaching persisted or mirrored fields", async () => {
   for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
-    for (const url of ["https://user:planted-pass@auth.openai.com/oauth/authorize", "https://auth.openai.com/oauth/authorize?next=https%3A%2F%2Fcallback.example%2F%3Ftoken%3Dplanted-nested", "https://auth.openai.com/oauth/authorize?extra=sk-planted-key"]) {
+    for (const url of ["https://user:planted-pass@auth.openai.com/oauth/authorize?client_id=app", "https://auth.openai.com/oauth/authorize?next=https%3A%2F%2Fcallback.example%2F%3Ftoken%3Dplanted-nested", "https://auth.openai.com/oauth/authorize?extra=sk-planted-key"]) {
       const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" }) });
       const { flows } = services(r);
       try {
@@ -1398,6 +1398,22 @@ test("redaction: unsafe CLI URLs fail typed without reaching persisted or mirror
         await flows.shutdown();
         r.cleanup();
       }
+    }
+  }
+});
+
+test("redaction: CLI-echoed callback URLs never project codes, tokens or fragments", async () => {
+  for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"], ["codex", "CODEX_HOME", "auth.json"], ["muse", "XDG_CONFIG_HOME", "muse/auth.json"], ["cursor", "CURSOR_CONFIG_DIR", "auth.json"]]) {
+    const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: "https://callback.example/callback?code=planted-code&token=planted-token&client_secret=planted-secret#planted-fragment", FAKE_CLI_EXIT_NO_CRED_MS: "200" }) });
+    const { flows } = services(r);
+    try {
+      const { flow } = await flows.start(account(r, harness!, "callback"));
+      await waitFor(() => r.store.getLoginFlow(flow.id)?.phase === "failed" ? true : null, "callback process consumed", CLI_READY_TIMEOUT_MS, 20);
+      assert.doesNotMatch(redactionSurfaces(r), /planted-/);
+      if (harness !== "codex") assert.ok(r.store.auditRows().some((row) => JSON.stringify(row.payload).includes("https://callback.example/callback")));
+    } finally {
+      await flows.shutdown();
+      r.cleanup();
     }
   }
 });
