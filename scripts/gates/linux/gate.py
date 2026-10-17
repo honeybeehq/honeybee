@@ -23,7 +23,7 @@ from test_capabilities import SETPRIV_ARGS, capability_receipt_valid
 from stat_observation import parse_stat, resolve_stat_observation, STAT_RETRY_LIMIT, STAT_RETRY_DELAY
 from error_summary import error_summary_valid, error_summary_totals
 
-from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,probe_failed,pid_observation
+from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,mask_probe_failed,pid_observation
 
 
 def save(path, value):
@@ -532,8 +532,9 @@ def main():
         results.append(result)
         probe_path = pathlib.Path(result['physical']['receipt'])/'locked-mount-probes.json'
         inside_path = probe_path.parent / 'mask-inside.json'
-        targets = [item['path'] for item in read(inside_path)['maskTargets']] if inside_path.exists() else []
-        if probe_failed(read(probe_path) if probe_path.exists() else None, home, targets):
+        inside = read(inside_path) if inside_path.exists() else None
+        before = read(probe_path.parent / 'before.json')
+        if mask_probe_failed(read(probe_path) if probe_path.exists() else None, inside, home, root, before):
             abort_reason = 'locked mount negative probe failed; invocation aborted before any further step'
             record_attempt(root,dict(event='invocation-aborted',rulesVersion=RULE_VERSION,attemptId=result['physical']['attemptId'],reason=abort_reason,at=time.time()))
             break

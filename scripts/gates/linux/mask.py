@@ -1,5 +1,6 @@
 import os, sys, pathlib, json, ctypes, subprocess, time, stat, uuid, socket, fcntl, struct, hashlib
 from home_guard import entry_guard
+from policy import mask_targets
 from filesystem import seal_filesystem, mount_readonly, assert_filesystem, filesystem_probes
 from test_capabilities import SETPRIV_ARGS
 R = pathlib.Path(sys.argv[1])
@@ -56,15 +57,7 @@ try:
     sock.close()
     before = json.loads((out / 'before.json').read_text())
     assert before['entries'] and str(H / '.hive/v2/hived.sock') in before['entries'] and (not before['errors'])
-    explicit = ['.hive', '.claude', '.codex', '.grok', '.kimi', '.gemini', '.cursor', '.muse', '.ssh', '.gnupg', '.config/systemd/user', '.config/opencode', '.config/muse', '.local/share/opencode', 'Code', 'Projects']
-    scaffolds = {str(H), str(H / '.cache'), str(H / '.config'), str(H / '.config/systemd'), str(H / '.local'), str(H / '.local/share')}
-    targets = set((str(H / p) for p in explicit))
-    for path, meta in before['entries'].items():
-        p = pathlib.Path(path)
-        if p.parent == H and str(p) not in scaffolds:
-            targets.add(str(p))
-    targets.discard(str(CACHE))
-    targets.discard(str(H / '.cache'))
+    targets, scaffolds = mask_targets(H, CACHE, before['entries'])
     empty = R / 'empty' / label
     empty.mkdir(parents=True, exist_ok=True)
     cachefd = os.open(CACHE, os.O_PATH | os.O_DIRECTORY)
