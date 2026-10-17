@@ -13,6 +13,31 @@ import { TmuxDriver } from "../../driver-tmux/src/driver.ts";
 import { TmuxServer } from "../../driver-tmux/src/tmux.ts";
 import { ensureDeliveryFileArtifact } from "./delivery-file-build.ts";
 import { DeliveryFiles } from "../src/deliveryFile.ts";
+import { cleanupTmuxFixture, ownedTmuxEndpointGone } from "./multiline-fallback-cleanup.ts";
+import type { TmuxResult } from "../../driver-tmux/src/tmux.ts";
+
+function cleanupOwnedTmux(driver: TmuxDriver, server: TmuxServer, closeStore: () => void, root: string): Promise<void> {
+  const noServer = (result: TmuxResult) => result.status === 1 && /no server running|failed to connect|error connecting/.test(result.stderr);
+  return cleanupTmuxFixture({
+    disposeAll: () => driver.disposeAll(),
+    killServer: () => {
+      const bridge = server as unknown as {raw: (args: string[]) => TmuxResult};
+      const raw = bridge.raw;
+      const outcomes: TmuxResult[] = [];
+      bridge.raw = function(args) {
+        const result = raw.call(server, args);
+        if (args[0] === "kill-server") outcomes.push(result);
+        return result;
+      };
+      try {server.killServer();} finally {bridge.raw = raw;}
+      const outcome = outcomes[0];
+      if (!outcome || outcome.status !== 0 && !noServer(outcome)) throw new Error("tmux_fixture_kill_server_failed");
+    },
+    serverAndPanesGone: async () => noServer(server.try(["list-sessions"])) && noServer(server.try(["list-panes", "-a"])) && await ownedTmuxEndpointGone(server.socketPath),
+    closeStore,
+    removeRoot: () => rmSync(root, {recursive: true, force: true}),
+  });
+}
 
 for (const corruptAfterRead of [false, true]) test(`real type-mode terminal phone pointer ${corruptAfterRead ? "post-Enter file-read commit-throw corruption warns may-have-delivered once" : "reads original frame and never repeats after store reopen"}`, async t => {
   ensureDeliveryFileArtifact();
@@ -24,7 +49,7 @@ for (const corruptAfterRead of [false, true]) test(`real type-mode terminal phon
   const fixture = fileURLToPath(new URL("../../driver-tmux/test-agent/phone-terminal.mjs", import.meta.url));
   const driver = new TmuxDriver({socketPath, eventsDir: join(root, "events"), allowKillServer: true, stopKillGraceMs: 100,
     resolve: () => ({command: process.execPath, args: [fixture, "off"], cwd: work, env: {...process.env, PHONE_PROVIDER_RECEIPT: receipt, PHONE_FALLBACK_ROOT: data}, deliveryMode: "type", observation: {paneFallback: true, quiesceMs: 10, deliveryGraceMs: 1000}})});
-  t.after(() => {driver.disposeAll(); server.killServer(); store.close(); rmSync(root, {recursive: true, force: true});});
+  t.after(() => cleanupOwnedTmux(driver, server, () => store.close(), root));
   const makeCore = () => new DaemonCore({store, driver, now: () => 1000, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}});
   let core = makeCore(); core.boot();
   const rows = (): {ready?: boolean; submittedBody?: string; fallbackRead?: {sha256: string; header: string}}[] => {try {return readFileSync(receipt, "utf8").trim().split("\n").map(line => JSON.parse(line));} catch {return [];}};
@@ -92,7 +117,7 @@ test("real ordinary paste post-Enter commit failure and corruption cannot claim 
   const fixture = fileURLToPath(new URL("../../driver-tmux/test-agent/phone-terminal.mjs", import.meta.url));
   const driver = new TmuxDriver({socketPath, eventsDir: join(root, "events"), allowKillServer: true, stopKillGraceMs: 100,
     resolve: () => ({command: process.execPath, args: [fixture, "off"], cwd: work, env: {...process.env, PHONE_PROVIDER_RECEIPT: receipt}, deliveryMode: "paste", observation: {paneFallback: true, quiesceMs: 10, deliveryGraceMs: 1000}})});
-  t.after(() => {driver.disposeAll(); server.killServer(); store.close(); rmSync(root, {recursive: true, force: true});});
+  t.after(() => cleanupOwnedTmux(driver, server, () => store.close(), root));
   const makeCore = () => new DaemonCore({store, driver, now: () => 1000, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}});
   let core = makeCore(); core.boot();
   const rows = (): {ready?: boolean; bracketedEnabled?: boolean; submittedBody?: string}[] => {try {return readFileSync(receipt, "utf8").trim().split("\n").map(line => JSON.parse(line));} catch {return [];}};
@@ -143,7 +168,7 @@ for (const clearWorks of [true, false, "unset_failure", "missing_identity", "leg
   const fixture = fileURLToPath(new URL("../../driver-tmux/test-agent/phone-terminal.mjs", import.meta.url));
   const driver = new TmuxDriver({socketPath, eventsDir: join(root, "events"), allowKillServer: true, stopKillGraceMs: 100,
     resolve: () => ({command: process.execPath, args: [fixture, "off"], cwd: work, env: {...process.env, PHONE_PROVIDER_RECEIPT: receipt, PHONE_FALLBACK_ROOT: data, PHONE_IGNORE_CLEAR: clearWorks ? "0" : "1"}, deliveryMode: "type", observation: {paneFallback: true, quiesceMs: 10, deliveryGraceMs: 1000}})});
-  t.after(() => {driver.disposeAll(); server.killServer(); store.close(); rmSync(root, {recursive: true, force: true});});
+  t.after(() => cleanupOwnedTmux(driver, server, () => store.close(), root));
   const core = new DaemonCore({store, driver, now: () => 1000, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}}); core.boot();
   const rows = (): {ready?: boolean; submittedBody?: string}[] => {try {return readFileSync(receipt, "utf8").trim().split("\n").map(line => JSON.parse(line));} catch {return [];}};
   const wait = async (condition: () => boolean) => {for (let i = 0; i < 400; i++) {if (condition()) return; await new Promise(resolve => setTimeout(resolve, 15));} assert.fail("partial terminal timed out");};
