@@ -6,7 +6,7 @@ import { validateDaemonNode } from "../../../src/nodeRuntime.ts";
  * (children survive — the next boot re-adopts them).
  */
 import { existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, parse, resolve } from "node:path";
 import { measureDirectoryBytes } from "../../driver-cell/src/index.ts";
 import { ConfigError, defaultDataDir, loadNodeConfig, type ResolvedNodeConfig } from "./config.ts";
 import { HiveDaemon } from "./daemon.ts";
@@ -36,7 +36,9 @@ function resolveDaemonDataDir(args: DaemonRunArgs): string {
   const dataDir = args.dataDir ?? defaultDataDir();
   if (typeof dataDir !== "string" || dataDir.length === 0) throw new ConfigError("daemon run: --data-dir requires a non-empty path");
   const resolved = resolve(dataDir);
-  if (dirname(resolved) === resolved) throw new ConfigError("daemon run: --data-dir must not be the filesystem root");
+  if (resolved === parse(resolved).root || dirname(resolved) === parse(resolved).root) {
+    throw Object.assign(new ConfigError("daemon run: --data-dir / HIVE_V2_DATA_DIR must use a nested directory, not the filesystem root or its direct child"), { code: "invalid_runtime_root" as const });
+  }
   return resolved;
 }
 

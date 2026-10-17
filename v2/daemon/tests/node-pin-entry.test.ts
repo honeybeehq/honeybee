@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -60,7 +62,7 @@ for (const cwd of ["fixture", "/"] as const) {
           : invalid === "filesystem root" ? ["--data-dir", "/"]
           : invalid === "option as value" ? ["--data-dir", "--socket", "./socket"] : [];
         const beforeRoot = readdirSync(root).sort(), beforeCwd = readdirSync(process.cwd()).sort();
-        const expected = invalid === "filesystem root" ? "daemon run: --data-dir must not be the filesystem root" : "daemon run: --data-dir requires a non-empty path";
+        const expected = invalid === "filesystem root" ? "daemon run: --data-dir / HIVE_V2_DATA_DIR must use a nested directory, not the filesystem root or its direct child" : "daemon run: --data-dir requires a non-empty path";
         await assert.rejects(runDaemon(argv), (error: unknown) => error instanceof ConfigError && error.message === expected);
         assert.deepEqual(readdirSync(root).sort(), beforeRoot);
         assert.deepEqual(readdirSync(process.cwd()).sort(), beforeCwd);
@@ -73,7 +75,29 @@ test("daemon entry refuses a relative path resolving to root before Node pin eff
   await withEntryDir(async root => {
     process.chdir("/");
     const before = readdirSync("/").sort();
-    await assert.rejects(runDaemon(["--data-dir", "."]), (error: unknown) => error instanceof ConfigError && error.message === "daemon run: --data-dir must not be the filesystem root");
+    await assert.rejects(runDaemon(["--data-dir", "."]), (error: unknown) => error instanceof ConfigError && error.message === "daemon run: --data-dir / HIVE_V2_DATA_DIR must use a nested directory, not the filesystem root or its direct child");
+    assert.deepEqual(readdirSync("/").sort(), before);
+    assert.deepEqual(readdirSync(root), []);
+  });
+});
+
+for (const source of ["absolute flag", "relative flag", "env"] as const) test(`daemon entry refuses a root child from ${source} before filesystem effects`, async () => {
+  await withEntryDir(async root => {
+    process.chdir("/");
+    const before = readdirSync("/").sort();
+    if (source === "env") process.env.HIVE_V2_DATA_DIR = "/x";
+    const argv = source === "env" ? [] : ["--data-dir", source === "absolute flag" ? "/x" : "x"];
+    const attempts: string[] = [];
+    const methods = ["mkdirSync", "openSync", "renameSync", "rmSync"] as const;
+    const spies = methods.map(method => mock.method(fs, method, () => { attempts.push(method); throw new Error(`unexpected ${method}`); }));
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(runDaemon(argv), (error: unknown) => error instanceof ConfigError && "code" in error && error.code === "invalid_runtime_root" && error.message.includes("nested directory"));
+      assert.deepEqual(attempts, []);
+    } finally {
+      for (const spy of spies) spy.mock.restore();
+      syncBuiltinESMExports();
+    }
     assert.deepEqual(readdirSync("/").sort(), before);
     assert.deepEqual(readdirSync(root), []);
   });
