@@ -71,6 +71,32 @@ def fake_env(home, search_path):
     return env
 
 
+def tmp_snapshot():
+    entries, errors = {}, []
+    for path in [pathlib.Path('/tmp'), *pathlib.Path('/tmp').iterdir()]:
+        try:
+            meta = path.lstat()
+            entries[str(path)] = dict(inode=meta.st_ino, device=meta.st_dev, size=meta.st_size, mtime_ns=meta.st_mtime_ns, mode=meta.st_mode, uid=meta.st_uid, gid=meta.st_gid)
+        except OSError as error:
+            errors.append(dict(path=str(path), errno=error.errno))
+    return dict(entries=entries, errors=errors, valid=bool(entries) and not errors, metadataOnly=True, directEntriesOnly=True)
+
+
+def tmp_audit(root, out):
+    before, after = read(out / 'host-tmp-before.json'), read(out / 'host-tmp-after.json')
+    changes = differences(before['entries'], after['entries'])
+    probes = []
+    for name in ('filesystem-proof.json', 'filesystem-workload.json', 'filesystem-tests.json'):
+        if not (out / name).exists():
+            continue
+        probe = read(out / name)['probes']['privateTmpWrite']
+        assert re.fullmatch('hbl-private-[a-f0-9]{32}', probe['name']) and within(probe['source'], str(root))
+        probes.append(dict(name=probe['name'], hostPathAbsent=not os.path.lexists('/tmp/' + probe['name']), physicalFileUnderRunRoot=(pathlib.Path(probe['source']) / probe['name']).is_file()))
+    result = dict(asserted=before['valid'] and after['valid'] and not changes and bool(probes) and all(item['hostPathAbsent'] and item['physicalFileUnderRunRoot'] for item in probes), changes=changes, privateProbeFiles=probes, metadataOnly=True, directEntriesOnly=True)
+    save(out / 'host-tmp-audit.json', result)
+    return result
+
+
 def lab_home(root, index):
     return pathlib.Path(root) / 'h' / format(index, 'x')
 
@@ -271,6 +297,8 @@ def adjudicate(home, root, out, physical, before, after):
     valid_mask = mask.get('maskAsserted', False)
     filesystem = read(out / 'filesystem-workload.json') if (out / 'filesystem-workload.json').exists() else {}
     valid_mask = valid_mask and filesystem.get('state', {}).get('asserted', False) and filesystem.get('probes', {}).get('asserted', False)
+    temporary = tmp_audit(root, out)
+    valid_mask = valid_mask and temporary['asserted']
     coverage = [dict(pid=birth['pid'],outcome=mapping_coverage(birth,inv['hostPidMap'],raw.get('errors',[]))) for birth in raw.get('births',[])]
     save(out/'mapping-coverage.json',coverage)
     missing_mappings = [item['pid'] for item in coverage if item['outcome']=='FAIL']
@@ -307,6 +335,7 @@ def run_step(config, step):
             pathlib.Path(directory).mkdir(parents=True, exist_ok=True)
     before = snapshot(home)
     save(out / 'before.json', before)
+    save(out / 'host-tmp-before.json', tmp_snapshot())
     attempt = dict(attemptId=str(uuid.uuid4()), label=label, version=step['version'], command=step['command'], rulesVersion=RULE_VERSION, start=time.time(), scopeExit=None, workloadStarted=False, receipt=str(out))
     record_attempt(root, dict(event='started', **attempt))
     if before['valid']:
@@ -349,6 +378,10 @@ def run_step(config, step):
     test_guard = fake/'entry-guard-tests.json'
     if test_guard.exists():
         shutil.copyfile(test_guard,out/'entry-guard-tests.json')
+    filesystem_test = fake / 'filesystem-tests.json'
+    if filesystem_test.exists():
+        shutil.copyfile(filesystem_test, out / 'filesystem-tests.json')
+    save(out / 'host-tmp-after.json', tmp_snapshot())
     after = snapshot(home)
     save(out / 'after.json', after)
     try:

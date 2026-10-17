@@ -22,28 +22,40 @@ def seal_filesystem(root):
     mount_readonly('/', True, recursive=True)
     mount_readonly(root, False)
     mount_readonly('/proc', False)
+    mount_readonly('/tmp', False)
+
+
+def private_tmp(root):
+    destination = os.stat('/tmp')
+    matches = [path for path in (pathlib.Path(root) / 'lab-tmp').iterdir() if (path.stat().st_dev, path.stat().st_ino) == (destination.st_dev, destination.st_ino)]
+    if len(matches) != 1:
+        raise RuntimeError('/tmp is not a private run-root bind')
+    return dict(source=str(matches[0]), destination='/tmp', device=destination.st_dev, inode=destination.st_ino)
 
 
 def assert_filesystem(root):
     root = str(root)
+    temporary = private_tmp(root)
     mounts = []
     for line in pathlib.Path('/proc/self/mountinfo').read_text().splitlines():
         fields = line.split()
         target, options = fields[4], fields[5].split(',')
         writable = 'rw' in options
-        allowed = target == root or target.startswith(root + '/')
+        allowed = target == root or target.startswith(root + '/') or target == '/tmp'
+        if target == '/tmp':
+            temporary['filesystem'] = line.split(' - ', 1)[1].split()[0]
         mounts.append(dict(path=target, options=options, writable=writable, allowedWritable=allowed))
         if writable and not allowed:
             raise RuntimeError('writable mount outside run root: ' + target)
     assert any(row['path'] == '/' and not row['writable'] for row in mounts)
     assert any(row['path'] == root and row['writable'] for row in mounts)
-    return dict(asserted=True, uid=os.getuid(), gid=os.getgid(), mounts=mounts, writableRoot=root)
+    return dict(asserted=True, uid=os.getuid(), gid=os.getgid(), mounts=mounts, writableRoot=root, privateTmp=temporary)
 
 
 def filesystem_probes(root):
     nonce = uuid.uuid4().hex
     rows = []
-    for path in ('/runners', '/hbl-' + nonce, '/tmp/hbl-' + nonce, '/etc/hbl-' + nonce):
+    for path in ('/runners', '/hbl-' + nonce, '/etc/hbl-' + nonce):
         try:
             os.mkdir(path)
         except OSError as error:
@@ -54,6 +66,10 @@ def filesystem_probes(root):
     control = pathlib.Path(root) / ('filesystem-control-' + nonce)
     control.mkdir()
     control.rmdir()
+    temporary = private_tmp(root)
+    name = 'hbl-private-' + nonce
+    pathlib.Path('/tmp', name).write_bytes(b'private tmp gate probe')
+    assert (pathlib.Path(temporary['source']) / name).read_bytes() == b'private tmp gate probe'
     with open('/dev/null', 'wb') as stream:
         stream.write(b'gate probe')
     with open('/dev/urandom', 'rb') as stream:
@@ -64,4 +80,4 @@ def filesystem_probes(root):
     finally:
         os.close(master)
         os.close(slave)
-    return dict(asserted=all(row['refused'] for row in rows) and random_ok and pty_ok, mkdir=rows, runRootWritable=True, devNull=True, devUrandom=random_ok, ptyAllocation=pty_ok)
+    return dict(asserted=all(row['refused'] for row in rows) and random_ok and pty_ok, mkdir=rows, runRootWritable=True, privateTmpWrite=dict(name=name, source=temporary['source'], observedUnderRunRoot=True), devNull=True, devUrandom=random_ok, ptyAllocation=pty_ok)

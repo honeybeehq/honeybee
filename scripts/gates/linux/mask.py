@@ -96,6 +96,10 @@ try:
     assert sorted(os.listdir(CACHE.parent)) == [CACHE.name]
     assert not os.path.lexists(H / '.hive/v2/hived.sock')
     libc=ctypes.CDLL(None,use_errno=True)
+    private_tmp = CACHE / 'lab-tmp' / label
+    private_tmp.mkdir(parents=True, mode=0o1777)
+    private_tmp.chmod(0o1777)
+    mount(str(private_tmp), '/tmp', None, 4096)
     os.close(outfd)
     outfd = os.open(out, os.O_RDONLY | os.O_DIRECTORY)
     seal_filesystem(CACHE)
