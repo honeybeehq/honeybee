@@ -417,8 +417,13 @@
       "siblingClosure": true
     },
     {
+      "path": "v2/daemon/tests/delivery-file-read-root.ts",
+      "sha256": "29a3fb2396e898db6c3582fcc9c08e4474b178148fc5f42934b0b10308ff36f7",
+      "siblingClosure": true
+    },
+    {
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "sha256": "abe90e1ba001009cf4a14ed38a08c400e827676fee6eac6f9b82d3405f4f30c7",
+      "sha256": "29b5ce61b2e10963583b3734028eb677ff063ec0d6ebf4c2b2c2db9172cfc697",
       "siblingClosure": true
     },
     {
@@ -991,7 +996,7 @@
     {
       "kind": "reference",
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "line": 78,
+      "line": 88,
       "context": "    syncBuiltinESMExports();",
       "module": "node:module",
       "manualReview": true
@@ -999,7 +1004,7 @@
     {
       "kind": "reference",
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "line": 82,
+      "line": 92,
       "context": "    syncBuiltinESMExports();",
       "module": "node:module",
       "manualReview": true
@@ -1007,7 +1012,7 @@
     {
       "kind": "reference",
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "line": 183,
+      "line": 193,
       "context": "  const child = spawn(process.execPath, [\"--input-type=module\", \"-e\", code], {cwd: root, env: process.env, stdio: [\"ignore\", \"pipe\", \"pipe\"]});",
       "module": "node:child_process",
       "manualReview": true
@@ -1255,9 +1260,9 @@
       "executable": "/bin/ps",
       "runtime": "forbidden",
       "reachabilityProof": [
-        "v2/daemon/tests/delivery-file-read.test.ts:44",
-        "v2/daemon/tests/delivery-file-read.test.ts:45",
-        "v2/daemon/tests/delivery-file-read.test.ts:46",
+        "v2/daemon/tests/delivery-file-read.test.ts:54",
+        "v2/daemon/tests/delivery-file-read.test.ts:55",
+        "v2/daemon/tests/delivery-file-read.test.ts:56",
         "v2/driver-hsr/src/driver.ts:537",
         "v2/driver-hsr/src/driver.ts:538",
         "v2/driver-hsr/src/driver.ts:539",
@@ -1306,9 +1311,9 @@
       "executable": "ps",
       "runtime": "forbidden",
       "reachabilityProof": [
-        "v2/daemon/tests/delivery-file-read.test.ts:44",
-        "v2/daemon/tests/delivery-file-read.test.ts:45",
-        "v2/daemon/tests/delivery-file-read.test.ts:46",
+        "v2/daemon/tests/delivery-file-read.test.ts:54",
+        "v2/daemon/tests/delivery-file-read.test.ts:55",
+        "v2/daemon/tests/delivery-file-read.test.ts:56",
         "v2/driver-hsr/src/driver.ts:537",
         "v2/driver-hsr/src/driver.ts:538",
         "v2/driver-hsr/src/driver.ts:539",
@@ -1396,7 +1401,7 @@
     },
     {
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "line": 27,
+      "line": 37,
       "context": "  const fixture = fileURLToPath(new URL(\"./fixtures/delivery-file-reader.mjs\", import.meta.url));",
       "role": "reader-entry"
     }
@@ -1414,7 +1419,7 @@
     {
       "role": "test-runner",
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "sha256": "abe90e1ba001009cf4a14ed38a08c400e827676fee6eac6f9b82d3405f4f30c7"
+      "sha256": "29b5ce61b2e10963583b3734028eb677ff063ec0d6ebf4c2b2c2db9172cfc697"
     },
     {
       "role": "runner-host-main",
