@@ -5489,7 +5489,7 @@ export class HiveDaemon {
   private rpcDeployInfo(): DeployInfoResult {
     return {
       protocol: PROTOCOL,
-      capabilities: this.rpc?.capabilities ?? DAEMON_CAPABILITIES.filter(c => c !== "question.withdraw.v1" && c !== "rpc-execution-fence.archive-send.v1"),
+      capabilities: this.rpc?.capabilities ?? DAEMON_CAPABILITIES.filter(c => c !== "question.withdraw.v1"),
       daemonVersion: DAEMON_VERSION,
       identity: BUILD_IDENTITY,
       nodeVersion: process.version,

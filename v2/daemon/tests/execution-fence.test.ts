@@ -42,7 +42,7 @@ async function fixture(t: TestContext, enabled = true) {
     try { return (owner.rpcExecution as RpcDispatch).call(owner, verb, params, { executionCoordinatorUid: process.geteuid!() } as Parameters<RpcDispatch>[2]) as T; }
     catch (error) { const wire = toRpcError(error); throw new RpcError(wire.code, wire.message, wire.details); }
   } };
-  const plan = async (verb: "send" | "archive", suffix = verb) => {
+  const plan = async (verb: "send" | "archive", suffix: string = verb) => {
     const { bee } = store.createBee({ name: suffix, agent: "stub", substrate: "hsr", cwd: root }), resource = { beeId: bee.id };
     const args: Record<string, JsonValue> = verb === "send" ? { beeId: bee.id, body: "once" } : { beeId: bee.id };
     const claim: ExecutionClaim = { version: 1, issuerId: "project-home", continuationId: suffix, grantDigest: "sha256:" + "a".repeat(64), generation: 1, claimId: "claim-1", ...store.effectCoverage(), digestVersion: 1, verb, resource, requestDigest: executionRequestDigest(verb, resource, args), idempotencyKey: `effect-v1:${store.effectCoverage().coverageId}:${suffix}` };

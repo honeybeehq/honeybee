@@ -118,3 +118,19 @@ test("archive lifecycle transaction rechecks the live grant after command claim"
     const resolved = f.store.resolveExecution(f.request); assert.ok("executionReceipt" in resolved); assert.equal(resolved.executionReceipt.status, "refused_stale");
   } finally { f.cleanup(); }
 });
+
+test("paused old invocation refuses after owner ACK, records zero-effect receipt, and replacement keeps original key", () => {
+  const f = setup();
+  try {
+    const next = f.advance();
+    assert.throws(f.execute, error => code("rpc_execution_stale")(error) && (error as ExecutionFenceError).details?.executionReceipt !== undefined);
+    assert.equal(f.store.getCommandByIdempotencyKey(f.claim.idempotencyKey), null);
+    assert.equal(f.store.getBee(f.bee.id)?.lifecycle, "active");
+    const observed = f.store.resolveExecution(f.request); assert.ok("executionReceipt" in observed); assert.equal(observed.executionReceipt.status, "refused_stale");
+    const { digestVersion, verb, resource, requestDigest, idempotencyKey, ...executionFence } = next;
+    const replacement = f.execute({ digestVersion, verb, resource, requestDigest, idempotencyKey, executionFence, args: f.request.args });
+    assert.equal(replacement.idempotencyKey, f.claim.idempotencyKey);
+    assert.equal(replacement.generation, 2);
+    assert.equal(replacement.status, "queued");
+  } finally { f.cleanup(); }
+});
