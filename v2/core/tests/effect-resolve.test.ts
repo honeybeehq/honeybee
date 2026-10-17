@@ -115,3 +115,49 @@ test("effect owner corruption fails closed with the real ledger error, never sec
   try { assert.throws(() => h.open(), value => value instanceof EffectKeyError && /Corrupt effect owner/.test(value.message)); }
   finally { h.cleanup(); }
 });
+
+for (const result of ["{}", '{"beeId":7}', '{"beeId":']) {
+  test(`effect legacy unreadable result stays unknown through reopen: ${result}`, () => {
+    const h = harness();
+    h.open().close();
+    const seed = new DatabaseSync(h.path);
+    seed.prepare("INSERT INTO rpc_idempotency VALUES(?,?,?,?,?)").run("legacy-unknown", "spawn", null, result, 1);
+    seed.close();
+    try {
+      for (let reopen = 0; reopen < 2; reopen++) {
+        const store = h.open();
+        try {
+          assert.throws(() => store.resolveEffect("legacy-unknown", "spawn"), error("rpc_effect_history_unknown"));
+          assert.throws(() => store.lookupRpcResult("legacy-unknown"), error("rpc_effect_history_unknown"));
+          assert.throws(() => store.recordRpcResult("legacy-unknown", "spawn", null, { beeId: "replacement" }), error("rpc_effect_history_unknown"));
+        } finally { store.close(); }
+        const inspect = new DatabaseSync(h.path, { readOnly: true });
+        try {
+          assert.equal(inspect.prepare("SELECT result FROM rpc_idempotency WHERE key=?").get("legacy-unknown")?.result, result);
+          assert.equal(inspect.prepare("SELECT COUNT(*) AS n FROM rpc_effect_keys WHERE key=?").get("legacy-unknown")?.n, 0);
+        } finally { inspect.close(); }
+      }
+    } finally { h.cleanup(); }
+  });
+}
+
+test("effect lazy legacy lookup validates send and archive receipts and preserves valid history", () => {
+  const h = harness(); h.open().close();
+  const seed = new DatabaseSync(h.path);
+  for (const [id, verb, result] of [
+    ["send-good", "send", { messageId: 1 }], ["archive-good", "archive", { commandId: 1 }],
+    ["send-bad", "send", { messageId: "1" }], ["archive-bad", "archive", { commandId: "1" }],
+  ] as const) seed.prepare("INSERT INTO rpc_idempotency VALUES(?,?,?,?,?)").run(id, verb, null, JSON.stringify(result), 1);
+  seed.close();
+  try {
+    for (let reopen = 0; reopen < 2; reopen++) {
+      const store = h.open();
+      try {
+        assert.equal(store.resolveEffect("send-good", "send").status, "committed");
+        assert.equal(store.resolveEffect("archive-good", "archive").status, "committed");
+        assert.throws(() => store.resolveEffect("send-bad", "send"), error("rpc_effect_history_unknown"));
+        assert.throws(() => store.resolveEffect("archive-bad", "archive"), error("rpc_effect_history_unknown"));
+      } finally { store.close(); }
+    }
+  } finally { h.cleanup(); }
+});

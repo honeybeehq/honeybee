@@ -40,23 +40,40 @@ export class EffectLedger {
     this.db.prepare("INSERT INTO meta(key,value) VALUES('rpc_effect_owner',?) ON CONFLICT(key) DO NOTHING").run(ownerStoreId);
     this.coverage = { ownerStoreId, coverageId: randomUUID() };
     this.db.prepare("INSERT INTO meta(key,value) VALUES('rpc_effect_coverage',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(this.coverage.coverageId);
-    for (const row of this.db.prepare("SELECT * FROM rpc_idempotency WHERE verb IN ('spawn','send','archive')").all()) {
-      const existing = this.raw(String(row.key));
-      if (existing?.state === "committed") continue;
-      if (existing) this.db.prepare("DELETE FROM rpc_effect_keys WHERE key=?").run(String(row.key));
-      this.record({ key: String(row.key), verb: String(row.verb), commandId: row.command_id === null ? null : Number(row.command_id), result: JSON.parse(String(row.result)), createdAt: Number(row.created_at) });
-    }
+
   }
   status(): EffectCoverage { return { ...this.coverage }; }
   private raw(id: string): { verb: string; state: string; receipt: EffectReceipt | null } | null {
     key(id);
     const row = this.db.prepare("SELECT * FROM rpc_effect_keys WHERE key=?").get(id);
-    if (!row) return null;
-    effectVerb(row.verb);
-    if (row.state !== "committed" && row.state !== "fenced") throw new EffectKeyError("invalid_request", "Corrupt effect key state");
-    const receipt = row.receipt === null ? null : JSON.parse(String(row.receipt)) as EffectReceipt;
-    if ((row.state === "committed") !== (receipt !== null) || receipt && (receipt.key !== id || receipt.verb !== row.verb || typeof receipt.createdAt !== "number" || !Object.hasOwn(receipt, "result") || receipt.commandId !== null && !Number.isSafeInteger(receipt.commandId))) throw new EffectKeyError("invalid_request", "Corrupt effect receipt");
-    return { verb: String(row.verb), state: String(row.state), receipt };
+    const legacy = this.db.prepare("SELECT * FROM rpc_idempotency WHERE key=? AND verb IN ('spawn','send','archive')").get(id);
+    const unknown = (): never => { throw new EffectKeyError("rpc_effect_history_unknown", "Effect receipt is unreadable or unknown; hold the effect"); };
+    if (!row && !legacy) return null;
+    if (row && (typeof row.verb !== "string" || !(EFFECT_VERBS as readonly string[]).includes(row.verb) || row.state !== "committed" && row.state !== "fenced")) return unknown();
+    if (row?.state === "fenced" && !legacy) {
+      if (row.receipt !== null) return unknown();
+      return { verb: String(row.verb), state: "fenced", receipt: null };
+    }
+    let receipt: unknown;
+    try {
+      receipt = row?.state === "committed"
+        ? JSON.parse(String(row.receipt))
+        : { key: id, verb: legacy!.verb, commandId: legacy!.command_id, result: JSON.parse(String(legacy!.result)), createdAt: legacy!.created_at };
+    } catch { return unknown(); }
+    if (receipt === null || typeof receipt !== "object" || Array.isArray(receipt)) return unknown();
+    const value = receipt as EffectReceipt;
+    if (value.key !== id || !(EFFECT_VERBS as readonly string[]).includes(value.verb) || row && value.verb !== row.verb || !Number.isFinite(value.createdAt) || value.commandId !== null && (!Number.isSafeInteger(value.commandId) || value.commandId <= 0) || !Object.hasOwn(value, "result")) return unknown();
+    if (value.result === null || typeof value.result !== "object" || Array.isArray(value.result)) return unknown();
+    const result = value.result as Record<string, unknown>;
+    const positive = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) && v > 0;
+    if (value.verb === "spawn" && (typeof result.beeId !== "string" || !result.beeId.length)
+      || value.verb === "send" && !positive(result.messageId)
+      || value.verb === "archive" && !positive(result.commandId)
+      || Object.hasOwn(result, "commandId") && result.commandId !== null && !positive(result.commandId)
+      || Object.hasOwn(result, "messageId") && result.messageId !== null && !positive(result.messageId)
+      || Object.hasOwn(result, "unarchived") && typeof result.unarchived !== "boolean") return unknown();
+    if (row?.state !== "committed") this.db.prepare("INSERT INTO rpc_effect_keys(key,verb,state,receipt,created_at) VALUES(?,?,'committed',?,?) ON CONFLICT(key) DO UPDATE SET verb=excluded.verb,state=excluded.state,receipt=excluded.receipt,created_at=excluded.created_at").run(id, value.verb, JSON.stringify(value), value.createdAt);
+    return { verb: value.verb, state: "committed", receipt: value };
   }
   lookup(id: string, verb?: string): EffectReceipt | null {
     const row = this.raw(id);
