@@ -4,7 +4,7 @@ import { assertCanonicalData, canonicalDigest, type JsonValue } from "../../../s
 import type { EffectCoverage } from "./effectResolve.ts";
 
 export const EXECUTION_FENCE_CAPABILITY = "rpc-execution-fence.archive-send.v1";
-export type ExecutionVerb = "send" | "archive";
+export type ExecutionVerb = "send" | "archive" | "spawn";
 export type ExecutionCode = "rpc_execution_stale" | "rpc_execution_busy" | "rpc_execution_history_unknown" | "rpc_execution_fence_unsupported" | "idempotency_conflict" | "invalid_request" | "caller_not_trusted";
 export class ExecutionFenceError extends CoreError {
   readonly code: ExecutionCode;
@@ -34,8 +34,8 @@ export interface ExecutionRequest extends ExecutionBinding {
   args: Record<string, JsonValue>;
 }
 export type ExecutionReceipt = ExecutionClaim & {
-  status: "queued" | "completed" | "refused_stale";
-  boundary: "mailbox-admission" | "lifecycle-transaction";
+  status: "preparing" | "queued" | "completed" | "refused_stale" | "outcome_unknown";
+  boundary: "mailbox-admission" | "lifecycle-transaction" | "agent-start-handshake";
   commandId: number | null;
   result: unknown;
 };
@@ -60,8 +60,7 @@ export function executionToken(value: unknown): ExecutionToken {
   return { version: 1, issuerId: text(row.issuerId), continuationId: text(row.continuationId), generation: Number(row.generation), claimId: text(row.claimId), grantDigest: digest(row.grantDigest), ownerStoreId: text(row.ownerStoreId), coverageId: text(row.coverageId) };
 }
 function binding(value: Record<string, unknown>): ExecutionBinding {
-  if (value.verb === "spawn") throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Spawn execution fencing requires phase B; no fallback is permitted");
-  if (value.verb !== "send" && value.verb !== "archive") invalid("Execution verb must be send or archive");
+  if (value.verb !== "send" && value.verb !== "archive" && value.verb !== "spawn") invalid("Execution verb must be send or archive");
   if (value.digestVersion !== 1) invalid("Unsupported execution digest version");
   const resource = object(value.resource, ["beeId"]);
   return { digestVersion: 1, verb: value.verb, resource: { beeId: text(resource.beeId) }, requestDigest: digest(value.requestDigest), idempotencyKey: text(value.idempotencyKey) };
@@ -77,11 +76,14 @@ export function executionRequest(value: unknown): ExecutionRequest {
   const row = object(value, [...BINDING_KEYS, "executionFence", "args"]), bound = binding(row);
   if (!row.args || typeof row.args !== "object" || Array.isArray(row.args)) invalid("Execution args must be an object");
   const args = row.args as Record<string, JsonValue>;
-  const allowed = bound.verb === "archive" ? ["beeId"] : ["beeId", "body", "sender", "urgency", "senderKind"];
-  if (Object.keys(args).some(key => !allowed.includes(key)) || args.beeId !== bound.resource.beeId || bound.verb === "send" && typeof args.body !== "string") invalid("Execution args do not match the resource or verb");
+  const allowed = bound.verb === "spawn" ? ["id","name","agent","substrate","cwd","account","args","env","tags","title","parentId","parentExternal","prompt","cell","allocationContext","allocationClaim"] : bound.verb === "archive" ? ["beeId"] : ["beeId", "body", "sender", "urgency", "senderKind"];
+  if (Object.keys(args).some(key => !allowed.includes(key)) || (bound.verb === "spawn" ? args.id : args.beeId) !== bound.resource.beeId || bound.verb === "send" && typeof args.body !== "string") invalid("Execution args do not match the resource or verb");
   try { assertCanonicalData(args); } catch { invalid("Execution args must be canonical JSON data"); }
   if (executionRequestDigest(bound.verb, bound.resource, args) !== bound.requestDigest) invalid("Execution request digest mismatch");
   return { ...bound, executionFence: executionToken(row.executionFence), args };
+}
+export function executionBoundary(verb: ExecutionVerb): ExecutionReceipt["boundary"] {
+  return verb === "send" ? "mailbox-admission" : verb === "spawn" ? "agent-start-handshake" : "lifecycle-transaction";
 }
 function same(a: unknown, b: unknown): boolean { return canonicalDigest(a as JsonValue) === canonicalDigest(b as JsonValue); }
 
@@ -89,8 +91,9 @@ export class ExecutionLedger {
   private readonly db: DatabaseSync;
   private readonly coverage: () => EffectCoverage;
   private readonly now: () => number;
+  private readonly beforeAdvance: (claim: ExecutionClaim) => void;
   private readonly audit: (kind: string, beeId: string | null, data: Record<string, unknown>) => void;
-  constructor(db: DatabaseSync, now: () => number, coverage: () => EffectCoverage, audit: (kind: string, beeId: string | null, data: Record<string, unknown>) => void) { this.db = db; this.now = now; this.coverage = coverage; this.audit = audit; }
+  constructor(db: DatabaseSync, now: () => number, coverage: () => EffectCoverage, audit: (kind: string, beeId: string | null, data: Record<string, unknown>) => void, beforeAdvance: (claim: ExecutionClaim) => void = () => {}) { this.beforeAdvance = beforeAdvance; this.db = db; this.now = now; this.coverage = coverage; this.audit = audit; }
   open(): void {
     this.db.exec("CREATE TABLE IF NOT EXISTS rpc_execution_coordinators (issuer_id TEXT PRIMARY KEY, uid INTEGER NOT NULL) STRICT; CREATE TABLE IF NOT EXISTS rpc_execution_claims (issuer_id TEXT NOT NULL, continuation_id TEXT NOT NULL, claim TEXT NOT NULL, PRIMARY KEY(issuer_id,continuation_id)) STRICT; CREATE TABLE IF NOT EXISTS rpc_execution_transitions (issuer_id TEXT NOT NULL, transition_id TEXT NOT NULL, request TEXT NOT NULL, receipt TEXT NOT NULL, PRIMARY KEY(issuer_id,transition_id)) STRICT; CREATE TABLE IF NOT EXISTS rpc_execution_effects (key TEXT PRIMARY KEY, binding TEXT NOT NULL, receipt TEXT NOT NULL, command_id INTEGER UNIQUE) STRICT; CREATE TABLE IF NOT EXISTS rpc_execution_refusals (digest TEXT PRIMARY KEY, receipt TEXT NOT NULL) STRICT");
   }
@@ -129,11 +132,13 @@ export class ExecutionLedger {
     if (!same(expected, current) || claim.generation !== (current?.generation ?? 0) + 1) throw new ExecutionFenceError("rpc_execution_stale", "Execution claim CAS failed");
     if (!claim.idempotencyKey.startsWith(`effect-v1:${claim.coverageId}:`) || !/^[a-zA-Z0-9_-]{1,128}$/.test(claim.idempotencyKey.slice(`effect-v1:${claim.coverageId}:`.length))) invalid("Execution claim requires a current covered effect key");
     if (current) {
+      this.beforeAdvance(current);
+      if (this.db.prepare("SELECT 1 FROM rpc_execution_effects WHERE json_extract(binding,'$.issuerId')=? AND json_extract(binding,'$.continuationId')=? AND json_extract(receipt,'$.status') IN ('preparing','outcome_unknown')").get(current.issuerId,current.continuationId)) throw new ExecutionFenceError("rpc_execution_busy", "Spawn preparation or execution history remains unresolved");
       const { generation: oldGeneration, claimId: oldClaimId, ...immutable } = current;
       const { generation: newGeneration, claimId: newClaimId, ...proposed } = claim;
       if (!same(immutable, proposed)) throw new ExecutionFenceError("idempotency_conflict", "Claim advancement cannot change the immutable grant, resource, digest or original effect key");
-      const pending = this.db.prepare("SELECT e.key,c.status FROM rpc_execution_effects e JOIN commands c ON c.id=e.command_id WHERE json_extract(e.binding,'$.issuerId')=? AND json_extract(e.binding,'$.continuationId')=? AND json_extract(e.receipt,'$.status')='queued'").all(claim.issuerId, claim.continuationId);
-      if (pending.some(row => row.status !== "queued")) throw new ExecutionFenceError("rpc_execution_busy", "An admitted archive may be executing; reconcile before advancing");
+      const pending = this.db.prepare("SELECT e.key,e.binding,c.status FROM rpc_execution_effects e JOIN commands c ON c.id=e.command_id WHERE json_extract(e.binding,'$.issuerId')=? AND json_extract(e.binding,'$.continuationId')=? AND json_extract(e.receipt,'$.status')='queued'").all(claim.issuerId, claim.continuationId);
+      if (pending.some(row => row.status !== "queued" && executionClaim(JSON.parse(String(row.binding))).verb !== "spawn")) throw new ExecutionFenceError("rpc_execution_busy", "An admitted archive may be executing; reconcile before advancing");
       for (const row of pending) this.refuse(String(row.key));
     }
     this.db.prepare("INSERT INTO rpc_execution_claims VALUES(?,?,?) ON CONFLICT(issuer_id,continuation_id) DO UPDATE SET claim=excluded.claim").run(claim.issuerId, claim.continuationId, JSON.stringify(claim));
@@ -146,8 +151,8 @@ export class ExecutionLedger {
     if (!row) return null;
     const bound = executionClaim(JSON.parse(String(row.binding))), receipt = JSON.parse(String(row.receipt)) as ExecutionReceipt;
     object(receipt, [...TOKEN_KEYS, ...BINDING_KEYS, "status", "boundary", "commandId", "result"]);
-    if (bound.idempotencyKey !== key || receipt.boundary !== (bound.verb === "send" ? "mailbox-admission" : "lifecycle-transaction") || receipt.commandId !== null && !Number.isSafeInteger(receipt.commandId) || bound.verb === "archive" && (receipt.commandId === null || receipt.commandId !== Number(row.command_id))) throw new ExecutionFenceError("rpc_execution_history_unknown", "Corrupt execution receipt binding; hold the effect");
-    if (!["queued", "completed", "refused_stale"].includes(receipt.status) || !same(executionClaim(Object.fromEntries([...TOKEN_KEYS, ...BINDING_KEYS].map(key => [key, receipt[key as keyof ExecutionReceipt]]))), bound)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Corrupt execution receipt; hold the effect");
+    if (bound.idempotencyKey !== key || receipt.boundary !== executionBoundary(bound.verb) || receipt.commandId !== null && !Number.isSafeInteger(receipt.commandId) || bound.verb === "archive" && (receipt.commandId === null || receipt.commandId !== Number(row.command_id))) throw new ExecutionFenceError("rpc_execution_history_unknown", "Corrupt execution receipt binding; hold the effect");
+    if (!["preparing", "queued", "completed", "refused_stale", "outcome_unknown"].includes(receipt.status) || !same(executionClaim(Object.fromEntries([...TOKEN_KEYS, ...BINDING_KEYS].map(key => [key, receipt[key as keyof ExecutionReceipt]]))), bound)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Corrupt execution receipt; hold the effect");
     return { binding: bound, receipt };
   }
   prepare(request: ExecutionRequest): ExecutionReceipt | null {
@@ -160,6 +165,34 @@ export class ExecutionLedger {
     if (!same(this.current(claim), claim)) throw new ExecutionFenceError("rpc_execution_stale", "Execution claim is not current");
     return null;
   }
+  validateCurrent(claim: ExecutionClaim): void {
+    if (!this.covered(claim)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Spawn coverage is retired; hold preparation");
+    if (!same(this.current(claim), claim)) throw new ExecutionFenceError("rpc_execution_stale", "Spawn execution claim is stale");
+  }
+  beginSpawn(request: ExecutionRequest): ExecutionReceipt {
+    const receipt = this.record(request, null, null);
+    const preparing = { ...receipt, status: "preparing" as const };
+    this.db.prepare("UPDATE rpc_execution_effects SET receipt=? WHERE key=?").run(JSON.stringify(preparing), request.idempotencyKey);
+    return preparing;
+  }
+  admitSpawn(request: ExecutionRequest, commandId: number, result: unknown): ExecutionReceipt {
+    const old = this.row(request.idempotencyKey);
+    if (!old || old.receipt.status !== "preparing") throw new ExecutionFenceError("rpc_execution_history_unknown", "Spawn is not owned by its preparing admission");
+    this.validateCurrent(old.binding);
+    const receipt = { ...old.receipt, commandId, result, status: "queued" as const };
+    this.db.prepare("UPDATE rpc_execution_effects SET receipt=?,command_id=? WHERE key=?").run(JSON.stringify(receipt), commandId, request.idempotencyKey);
+    return receipt;
+  }
+  spawnUnknown(key: string): void {
+    const old = this.row(key); if (!old || old.receipt.status === "completed") return;
+    this.db.prepare("UPDATE rpc_execution_effects SET receipt=? WHERE key=?").run(JSON.stringify({ ...old.receipt, status: "outcome_unknown" }),key);
+    this.audit("rpc.execution.spawn_unknown",old.binding.resource.beeId,{idempotencyKey:key});
+  }
+  spawnStarted(key: string): void {
+    const old = this.row(key);
+    if (!old || old.binding.verb !== "spawn" || old.receipt.status !== "queued") throw new ExecutionFenceError("rpc_execution_history_unknown", "Spawn lacks a durable queued admission");
+    this.db.prepare("UPDATE rpc_execution_effects SET receipt=? WHERE key=?").run(JSON.stringify({ ...old.receipt, status: "completed" }),key);
+  }
   observation(request: ExecutionRequest): ExecutionReceipt | null {
     const claim = { ...request.executionFence, digestVersion: request.digestVersion, verb: request.verb, resource: request.resource, requestDigest: request.requestDigest, idempotencyKey: request.idempotencyKey };
     const refusal = this.db.prepare("SELECT receipt FROM rpc_execution_refusals WHERE digest=?").get(canonicalDigest(claim as unknown as JsonValue));
@@ -168,7 +201,7 @@ export class ExecutionLedger {
   }
   refusedAdmission(request: ExecutionRequest): ExecutionReceipt {
     const claim = { ...request.executionFence, digestVersion: request.digestVersion, verb: request.verb, resource: request.resource, requestDigest: request.requestDigest, idempotencyKey: request.idempotencyKey };
-    const receipt: ExecutionReceipt = { ...claim, status: "refused_stale", boundary: request.verb === "send" ? "mailbox-admission" : "lifecycle-transaction", commandId: null, result: null };
+    const receipt: ExecutionReceipt = { ...claim, status: "refused_stale", boundary: executionBoundary(request.verb), commandId: null, result: null };
     const id = canonicalDigest(claim as unknown as JsonValue);
     const previous = this.db.prepare("SELECT receipt FROM rpc_execution_refusals WHERE digest=?").get(id);
     if (previous) return JSON.parse(String(previous.receipt)) as ExecutionReceipt;
@@ -178,8 +211,8 @@ export class ExecutionLedger {
   }
   record(request: ExecutionRequest, commandId: number | null, result: unknown): ExecutionReceipt {
     const claim = { ...request.executionFence, digestVersion: request.digestVersion, verb: request.verb, resource: request.resource, requestDigest: request.requestDigest, idempotencyKey: request.idempotencyKey };
-    const receipt: ExecutionReceipt = { ...claim, status: request.verb === "send" ? "completed" : "queued", boundary: request.verb === "send" ? "mailbox-admission" : "lifecycle-transaction", commandId, result };
-    this.db.prepare("INSERT INTO rpc_execution_effects VALUES(?,?,?,?)").run(request.idempotencyKey, JSON.stringify(claim), JSON.stringify(receipt), request.verb === "archive" ? commandId : null);
+    const receipt: ExecutionReceipt = { ...claim, status: request.verb === "send" ? "completed" : "queued", boundary: executionBoundary(request.verb), commandId, result };
+    this.db.prepare("INSERT INTO rpc_execution_effects VALUES(?,?,?,?)").run(request.idempotencyKey, JSON.stringify(claim), JSON.stringify(receipt), request.verb === "send" ? null : commandId);
     this.audit("rpc.execution.admitted", request.resource.beeId, { receipt });
     return receipt;
   }
@@ -195,7 +228,7 @@ export class ExecutionLedger {
     }
     const effect = this.row(String(row.key))!;
     const command = this.db.prepare("SELECT bee_id,verb,idempotency_key FROM commands WHERE id=?").get(commandId);
-    if (!command || command.verb !== "archive" || command.bee_id !== effect.binding.resource.beeId || command.idempotency_key !== effect.binding.idempotencyKey) throw new ExecutionFenceError("rpc_execution_history_unknown", "Archive command differs from its durable execution resource; hold the effect");
+    if (!command || command.verb !== effect.binding.verb || command.bee_id !== effect.binding.resource.beeId || command.idempotency_key !== effect.binding.idempotencyKey) throw new ExecutionFenceError("rpc_execution_history_unknown", "Archive command differs from its durable execution resource; hold the effect");
     if (effect.receipt.status === "completed") {
       this.db.prepare("UPDATE commands SET status='done',finished_at=? WHERE id=? AND status IN ('queued','running')").run(this.now(), commandId);
       this.audit("rpc.execution.completed_replay", effect.binding.resource.beeId, { commandId, disposition: "settled_noop" });

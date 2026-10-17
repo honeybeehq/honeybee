@@ -76,8 +76,13 @@ static napi_value alive(napi_env e,napi_callback_info info) {
   int ready=fd<0?-1:poll(&p,1,0); napi_value v;
   napi_get_boolean(e,ready==0,&v); return v;
 }
+static napi_value process_birth(napi_env e,napi_callback_info info) {
+  int pid=argument(e,info); char b[96]; if(pid<=0) return nil(e);
+  birth((pid_t)pid,b,sizeof(b)); if(!b[0]) return nil(e);
+  napi_value v; napi_create_string_utf8(e,b,NAPI_AUTO_LENGTH,&v); return v;
+}
 static napi_value init(napi_env e,napi_value o) {
-  napi_property_descriptor d[]={{"inspect",0,inspect,0,0,0,napi_default,0},{"pin",0,pin,0,0,0,napi_default,0},{"alive",0,alive,0,0,0,napi_default,0}};
-  napi_define_properties(e,o,3,d); return o;
+  napi_property_descriptor d[]={{"inspect",0,inspect,0,0,0,napi_default,0},{"pin",0,pin,0,0,0,napi_default,0},{"alive",0,alive,0,0,0,napi_default,0},{"processBirth",0,process_birth,0,0,0,napi_default,0}};
+  napi_define_properties(e,o,4,d); return o;
 }
 NAPI_MODULE(NODE_GYP_MODULE_NAME,init)

@@ -66,6 +66,17 @@ await build({
 });
 await build({
   absWorkingDir: root,
+  entryPoints: [join(root, "v2", "driver-cell", "src", "fencedProvisionWorker.ts")],
+  outfile: join(outDir, "fenced-provision-worker.js"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  preserveSymlinks: true,
+  logLevel: "silent",
+});
+await build({
+  absWorkingDir: root,
   entryPoints: [join(root, "v2", "driver-cell", "src", "poolWorker.ts")],
   outfile: join(outDir, "pool-worker.js"),
   bundle: true,

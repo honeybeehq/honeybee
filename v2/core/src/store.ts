@@ -1,3 +1,4 @@
+import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
 import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
@@ -1601,6 +1602,7 @@ export class CoreStore {
   readonly path: string;
   private readonly effectLedger: EffectLedger;
   private readonly executionLedger: ExecutionLedger;
+  private readonly executionStarts: ExecutionStarts;
   private executionKey: string | null = null;
   private readonly db: DatabaseSync;
   private readonly now: () => number;
@@ -1625,7 +1627,8 @@ export class CoreStore {
     this.maxRpcIdempotencyRows = opts.maxRpcIdempotencyRows ?? 10_000;
     this.db = new DatabaseSync(path);
     this.effectLedger = new EffectLedger(this.db, this.now);
-    this.executionLedger = new ExecutionLedger(this.db, this.now, () => this.effectCoverage(), (kind, beeId, data) => { this.audit(kind, beeId, data); });
+    this.executionLedger = new ExecutionLedger(this.db, this.now, () => this.effectCoverage(), (kind, beeId, data) => { this.audit(kind, beeId, data); }, claim => this.executionStarts.assertAdvance(claim));
+    this.executionStarts = new ExecutionStarts(this.db, claim => this.executionLedger.validateCurrent(claim), (kind,beeId,data) => { this.audit(kind,beeId,data); }, key => this.executionLedger.spawnStarted(key));
     try {
       // Fail immediately (no waiting) if another writer holds the lock.
       this.db.exec("PRAGMA busy_timeout = 0");
@@ -1646,7 +1649,7 @@ export class CoreStore {
         // Version gate + explicit migrations FIRST (before any other write
         // touches possibly-old tables), atomically with the stamp.
         this.ensureSchemaVersion();
-        try { this.effectLedger.open(); this.executionLedger.open(); }
+        try { this.effectLedger.open(); this.executionLedger.open(); this.executionStarts.open(); }
         catch (error) {
           if (error instanceof CoreError) throw error;
           throw new CoreError("Effect ledger initialization failed; store recovery required");
@@ -4653,6 +4656,73 @@ export class CoreStore {
   afterCommit(callback: () => void): void {
     if (this.inTransaction) this.commitCallbacks.push(callback);
     else queueMicrotask(callback);
+  }
+
+  holdExecutionCommand(id: number, code: string): void {
+    this.tx(() => {
+      const command = this.getCommand(id); if (!command || command.status !== "running") return;
+      const args = { ...command.args, executionHold: code };
+      this.db.prepare("UPDATE commands SET status='queued',args=? WHERE id=?").run(JSON.stringify(args),id);
+      if (command.args.executionHold !== code) this.audit("rpc.execution.command_held",command.beeId,{commandId:id,code});
+    });
+  }
+
+  beginFencedSpawn(value: unknown, uid: number) {
+    const request = executionRequest(value);
+    if (request.verb !== "spawn" || !["hsr","cell"].includes(String(request.args.substrate ?? "hsr"))) throw new ExecutionFenceError("rpc_execution_fence_unsupported", "Fenced spawn requires HSR or Cell agent-start handshake");
+    return this.tx(() => {
+      this.executionLedger.requireCoordinator(request.executionFence.issuerId, uid);
+      const prior = this.executionLedger.prepare(request);
+      if (prior) return { request, receipt: prior, fresh: false };
+      if (this.lookupRpcResult(request.idempotencyKey) || this.getCommandByIdempotencyKey(request.idempotencyKey)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Spawn key has unknown prior admission");
+      const receipt = this.executionLedger.beginSpawn(request);
+      this.executionStarts.bindBee({ ...request.executionFence, digestVersion: request.digestVersion, verb: request.verb, resource: request.resource, requestDigest: request.requestDigest, idempotencyKey: request.idempotencyKey });
+      return { request, receipt, fresh: true };
+    });
+  }
+
+  checkSpawnPreparation(request: ExecutionRequest, operation: string): void {
+    this.tx(() => {
+      const claim = this.executionStarts.bee(request.resource.beeId);
+      if (!claim || claim.idempotencyKey !== request.idempotencyKey) throw new ExecutionFenceError("rpc_execution_history_unknown", "Spawn preparation lacks its durable origin");
+      this.executionLedger.validateCurrent(claim);
+      this.audit("rpc.execution.spawn_preparation_checked", request.resource.beeId, { idempotencyKey: request.idempotencyKey, operation });
+    });
+  }
+
+  admitFencedSpawn<T extends { commandId: number }>(request: ExecutionRequest, effect: () => T): T {
+    return this.tx(() => {
+      this.checkSpawnPreparation(request, "admission");
+      const previous = this.executionKey; this.executionKey = request.idempotencyKey;
+      try {
+        const result = effect();
+        this.recordRpcResult(request.idempotencyKey, "spawn", result.commandId, result);
+        this.executionLedger.admitSpawn(request, result.commandId, result);
+        return result;
+      } finally { this.executionKey = previous; }
+    });
+  }
+
+  markSpawnUnknown(key: string): void { this.tx(() => this.executionLedger.spawnUnknown(key)); }
+
+  prepareExecutionStart(beeId: string, generation: number): ExecutionStart | null {
+    return this.tx(() => this.executionStarts.prepare(beeId, generation));
+  }
+
+  executionOrigin(beeId: string) { return this.executionStarts.bee(beeId); }
+  existingExecutionStart(beeId: string, generation: number) { return this.executionStarts.existing(beeId,generation); }
+  executionStartHost(start: ExecutionStart) { return this.executionStarts.host(start); }
+
+  executionRuntimeHooks(): ExecutionRuntimeHooks {
+    return {
+      check: (start, operation) => this.tx(() => this.executionStarts.check(start, operation)),
+      begin: (start, operation) => this.tx(() => this.executionStarts.begin(start, operation)),
+      finish: (start, lease, quiescent) => this.tx(() => this.executionStarts.finish(start, lease, quiescent)),
+      dispatch: start => this.tx(() => this.executionStarts.dispatch(start)),
+      bindAndRelease: (start, host) => this.tx(() => this.executionStarts.bindAndRelease(start, host)),
+      started: (start, host, agent) => this.tx(() => this.executionStarts.started(start, host, agent)),
+      hostExited: (start, host) => this.tx(() => this.executionStarts.hostExited(start, host)),
+    };
   }
 
   registerExecutionCoordinator(issuerId: unknown, uid: number) {

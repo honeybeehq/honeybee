@@ -1,3 +1,5 @@
+import { runGatedRunnerHost } from "./gated-runner-host.ts";
+import type { ExecutionStart, ExecutionProcess } from "../../core/src/executionStart.ts";
 import { nativeNodeEnv } from "../../../src/runtimeEnvironment.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -47,6 +49,8 @@ import { dirname } from "node:path";
  */
 
 export interface RunnerHostConfig {
+  executionStart?: ExecutionStart;
+  executionOwner?: ExecutionProcess;
   beeId: string;
   generation: number;
   command: string;
@@ -64,6 +68,11 @@ export interface RunnerHostConfig {
 }
 
 export interface RunnerStatus {
+  hostBirth?: string;
+  agentBirth?: string;
+  executionIntentId?: string;
+  executionDigest?: string;
+  executionState?: "waiting" | "released" | "started" | "cancelled";
   hostPid: number;
   /** Present on v15+ hosts; absence identifies a legacy non-replayable host. */
   beeId?: string;
@@ -169,6 +178,7 @@ function bindToTestFixtureLease(lease: string | undefined): void {
 export function runRunnerHost(configPath: string): void {
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
   bindToTestFixtureLease(process.env.HIVE_TEST_FIXTURE_LEASE);
+  if (cfg.executionStart) { runGatedRunnerHost(cfg,sessionLogLine); return; }
   mkdirSync(dirname(cfg.sessionLogPath), { recursive: true });
   mkdirSync(dirname(cfg.observationLogPath), { recursive: true });
   // Exact generation journal exists before the status becomes adoptable.

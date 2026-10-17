@@ -1,3 +1,4 @@
+import type { ExecutionStart } from "../../core/src/executionStart.ts";
 /**
  * RuntimeDriver — the substrate driver interface.
  *
@@ -109,7 +110,7 @@ export interface RuntimeDriver {
    * progress arrives as a `booted` observation. Throws if the bee already has
    * a live process — one live runtime per bee is a driver-level invariant.
    */
-  start(beeId: string, generation: number): void;
+  start(beeId: string, generation: number, execution?: ExecutionStart | null): void;
 
   /**
    * Inject one delivered message into the runtime's input (the "fuzzy last

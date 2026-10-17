@@ -1,3 +1,4 @@
+import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 /**
  * DaemonCore — the daemon's loop cores (WP4 of the reset), extracted from the
@@ -920,6 +921,7 @@ export class DaemonCore {
       try {
         settled = this.execute(cmd);
       } catch (err) {
+        if (err instanceof ExecutionFenceError) { this.store.holdExecutionCommand(cmd.id,err.code); return; }
         if (!(err instanceof CoreError)) throw err;
         // A contract rejection means the intent is moot (bee deleted, state moved
         // on, …) — settle done, mirroring B6's no-op philosophy.
@@ -945,7 +947,8 @@ export class DaemonCore {
   private startRuntime(cmd: CommandRow, generation: number): boolean {
     try {
       this.assertRuntimeStartReady(cmd);
-      this.driver.start(cmd.beeId, generation);
+      const execution = this.store.prepareExecutionStart(cmd.beeId,generation);
+      this.driver.start(cmd.beeId, generation, execution);
       return true;
     } catch (err) {
       if (err instanceof CoreError) throw err; // contract rejections keep their moot path
@@ -1097,6 +1100,7 @@ export class DaemonCore {
           this.log(`cmd.${cmd.verb} id=${cmd.id} bee=${cmd.beeId} timeout`);
           return false;
         }
+        this.store.prepareExecutionStart(cmd.beeId,(rt?.generation ?? 0)+1);
         const next = this.store.reviveBee(cmd.beeId, reviveArgs === undefined ? {} : { args: reviveArgs });
         if (!this.startRuntime(cmd, next.generation)) return false;
         this.recordProcAtSpawn(cmd.beeId, next.generation);
