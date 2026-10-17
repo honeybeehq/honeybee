@@ -1628,7 +1628,7 @@ export class CoreStore {
     this.db = new DatabaseSync(path);
     this.effectLedger = new EffectLedger(this.db, this.now);
     this.executionLedger = new ExecutionLedger(this.db, this.now, () => this.effectCoverage(), (kind, beeId, data) => { this.audit(kind, beeId, data); }, claim => this.executionStarts.assertAdvance(claim));
-    this.executionStarts = new ExecutionStarts(this.db, claim => this.executionLedger.validateCurrent(claim), (kind,beeId,data) => { this.audit(kind,beeId,data); }, key => this.executionLedger.spawnStarted(key));
+    this.executionStarts = new ExecutionStarts(this.db, claim => this.executionLedger.validateCurrent(claim), (kind,beeId,data) => { this.audit(kind,beeId,data); }, key => this.executionLedger.spawnStarted(key), key => this.executionLedger.spawnUnknown(key));
     try {
       // Fail immediately (no waiting) if another writer holds the lock.
       this.db.exec("PRAGMA busy_timeout = 0");

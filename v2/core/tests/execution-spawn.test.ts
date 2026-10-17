@@ -113,3 +113,22 @@ test("additive start tables reopen without parsing malformed legacy audit payloa
     assert.ok(store.effectCoverage().coverageId);
   }finally{store.close();h.cleanup();}
 });
+
+test("host death after release without agent-start evidence remains unknown, never a stale no-op",()=>{
+  const f=fixture();try{
+    f.begin();f.admit();const start=f.store.prepareExecutionStart("fenced-bee",1)!,hooks=f.store.executionRuntimeHooks(),host={pid:100,birth:"linux:123456789"};
+    hooks.dispatch(start);hooks.bindAndRelease(start,host);hooks.hostExited(start,host);
+    assert.throws(f.advance,code("rpc_execution_busy"));
+    const observed=f.store.resolveExecution(f.request,1000);assert.ok("executionReceipt" in observed);
+    assert.equal(observed.executionReceipt.status,"outcome_unknown");
+    assert.throws(()=>hooks.bindAndRelease(start,host),code("rpc_execution_stale"));
+  }finally{f.close();}
+});
+test("exact unreleased host death permits revocation but not a second start attempt",()=>{
+  const f=fixture();try{
+    f.begin();f.admit();const start=f.store.prepareExecutionStart("fenced-bee",1)!,hooks=f.store.executionRuntimeHooks();
+    hooks.dispatch(start);hooks.hostExited(start,{pid:100,birth:"linux:123456789"});
+    f.advance();
+    assert.throws(()=>hooks.bindAndRelease(start,{pid:100,birth:"linux:123456789"}),code("rpc_execution_stale"));
+  }finally{f.close();}
+});

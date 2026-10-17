@@ -25,8 +25,9 @@ export class ExecutionStarts {
   private readonly validate: (claim: ExecutionClaim) => void;
   private readonly audit: (kind: string, beeId: string, data: Record<string, unknown>) => void;
   private readonly complete: (key: string) => void;
-  constructor(db: DatabaseSync, validate: (claim: ExecutionClaim) => void, audit: (kind: string, beeId: string, data: Record<string, unknown>) => void, complete: (key: string) => void) {
-    this.db = db; this.validate = validate; this.audit = audit; this.complete = complete;
+  private readonly unknown: (key: string) => void;
+  constructor(db: DatabaseSync, validate: (claim: ExecutionClaim) => void, audit: (kind: string, beeId: string, data: Record<string, unknown>) => void, complete: (key: string) => void, unknown: (key: string) => void) {
+    this.db = db; this.validate = validate; this.audit = audit; this.complete = complete; this.unknown = unknown;
   }
   open(): void {
     this.db.exec("CREATE TABLE IF NOT EXISTS rpc_execution_bees (bee_id TEXT PRIMARY KEY, binding TEXT NOT NULL) STRICT; CREATE TABLE IF NOT EXISTS rpc_execution_starts (intent_id TEXT PRIMARY KEY, bee_id TEXT NOT NULL, runtime_generation INTEGER NOT NULL, context TEXT NOT NULL, state TEXT NOT NULL, host TEXT, agent TEXT, UNIQUE(bee_id,runtime_generation)) STRICT; CREATE TABLE IF NOT EXISTS rpc_execution_start_ops (lease_id TEXT PRIMARY KEY, intent_id TEXT NOT NULL, operation TEXT NOT NULL, state TEXT NOT NULL) STRICT");
@@ -128,8 +129,10 @@ export class ExecutionStarts {
   hostExited(start: ExecutionStart, host: ExecutionProcess | null): void {
     const row = this.row(start);
     if (row.state === "started") return;
-    if (host === null || row.host !== null && String(row.host) !== JSON.stringify(host)) {
+    if (row.state === "release_committed" || row.state === "outcome_unknown" || host === null || row.host !== null && String(row.host) !== JSON.stringify(host)) {
       this.db.prepare("UPDATE rpc_execution_starts SET state='outcome_unknown' WHERE intent_id=?").run(start.intentId);
+      this.unknown(start.claim.idempotencyKey);
+      this.audit("rpc.execution.start_outcome_unknown", start.beeId, { intentId: start.intentId, host });
       return;
     }
     this.db.prepare("UPDATE rpc_execution_starts SET state='host_exited',host=? WHERE intent_id=?").run(JSON.stringify(host), start.intentId);
