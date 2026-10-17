@@ -81,8 +81,9 @@ export class SubstrateRouter implements RuntimeDriver {
     driver.start(beeId, generation, execution);
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string): DeliverOutcome {
-    return this.driverFor(beeId, generation).deliver(beeId, generation, messageId, body);
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean }): DeliverOutcome {
+    const driver = this.driverFor(beeId, generation);
+    return driver === this.tmux ? driver.deliver(beeId, generation, messageId, body, options) : driver.deliver(beeId, generation, messageId, body);
   }
 
   stop(beeId: string, generation: number, cause: StopCause): { hadProcess: boolean } {

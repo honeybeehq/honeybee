@@ -1,3 +1,4 @@
+import { MULTILINE_DELIVERY_SQL, advanceMultilineUnsupported, deliveryHold, readMultilineDelivery, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
 import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
@@ -2097,6 +2098,7 @@ export class CoreStore {
       }
     }
     this.db.exec(PHONE_PROVENANCE_SQL);
+    this.db.exec(MULTILINE_DELIVERY_SQL);
     if (stored < 40) this.redactRpcIdempotencyEnv();
     this.db
       .prepare(
@@ -3563,6 +3565,59 @@ export class CoreStore {
    * bee has no row → BeeNotFoundError). Archived bees auto-unarchive (Q3). When no
    * live runtime exists, a `send_wake` command is enqueued in the SAME transaction.
    */
+  multilineDelivery(messageId: number): MultilineDeliveryRow | undefined {
+    const row = this.stmt("SELECT * FROM multiline_delivery WHERE message_id = ?").get(messageId) as Row | undefined;
+    return row ? readMultilineDelivery(String(row.row_json), Number(row.message_id), String(row.bee_id), row.held_at == null ? null : Number(row.held_at)) : undefined;
+  }
+
+  listMultilineDeliveries(): MultilineDeliveryRow[] {
+    return (this.stmt("SELECT * FROM multiline_delivery ORDER BY message_id").all() as Row[]).map(row => readMultilineDelivery(String(row.row_json), Number(row.message_id), String(row.bee_id), row.held_at == null ? null : Number(row.held_at)));
+  }
+
+  private putMultilineDelivery(row: MultilineDeliveryRow, kind: string): void {
+    this.stmt(`INSERT INTO multiline_delivery(message_id, bee_id, held_at, row_json) VALUES (?, ?, ?, ?)
+      ON CONFLICT(message_id) DO UPDATE SET held_at=excluded.held_at, row_json=excluded.row_json`)
+      .run(row.messageId, row.beeId, row.heldAt, JSON.stringify(row));
+    this.audit(kind, row.beeId, { row });
+  }
+
+  recordMultilineDeliveryRefusal(messageId: number, generation: number, detail: string | undefined): MultilineDeliveryRow | undefined {
+    return this.tx(() => {
+      const message = this.getMessage(messageId);
+      if (!message || message.deliveredAt !== null) return undefined;
+      const runtime = this.currentRuntime(message.beeId);
+      if (!runtime || runtime.generation !== generation || !LIVE_STATES.includes(runtime.state)) return undefined;
+      const previous = this.multilineDelivery(messageId);
+      if (previous && previous.stage !== "waiting") return previous;
+      const at = this.now();
+      const progress = advanceMultilineUnsupported(previous ?? null, detail, at);
+      if (!previous && progress.attempts === 0) return undefined;
+      const row: MultilineDeliveryRow = {
+        messageId, beeId: message.beeId,
+        attempts: progress.attempts, unsupportedMs: progress.unsupportedMs, lastAttemptAt: at, lastUnsupported: progress.lastUnsupported,
+        heldAt: previous?.heldAt ?? at, detail: detail ?? previous?.detail ?? "",
+        stage: progress.hold ? "expired" : "waiting", notice: previous?.notice ?? null,
+      };
+      this.putMultilineDelivery(row, progress.hold ? "mail.delivery_hold_expired" : previous ? "mail.multiline_progress" : "mail.delivery_held");
+      return row;
+    });
+  }
+
+  private resetMultilineDeliveryProgress(messageId: number, beeId: string): void {
+    const previous = this.multilineDelivery(messageId);
+    if (!previous || previous.stage === "delivered") return;
+    this.putMultilineDelivery({ ...previous, stage: "delivered" }, "mail.multiline_completed");
+  }
+
+  private recordMultilineReorder(beeId: string, deliveredId: number): void {
+    const held = this.stmt("SELECT held.* FROM multiline_delivery AS held JOIN mailbox AS message ON message.id = held.message_id WHERE held.bee_id = ? AND held.held_at IS NOT NULL AND held.message_id < ? AND message.delivered_at IS NULL ORDER BY held.message_id").all(beeId, deliveredId) as Row[];
+    for (const raw of held) {
+      const row = readMultilineDelivery(String(raw.row_json), Number(raw.message_id), String(raw.bee_id), raw.held_at == null ? null : Number(raw.held_at));
+      if (row.notice !== null) continue;
+      this.putMultilineDelivery({ ...row, notice: "delivered later messages; this one is held" }, "mail.delivery_reordered");
+    }
+  }
+
   phoneInput(messageId: number): PhoneInput | undefined {
     const row = this.stmt("SELECT input_json FROM phone_inputs WHERE message_id = ?").get(messageId) as Row | undefined;
     return row ? JSON.parse(String(row.input_json)) as PhoneInput : undefined;
@@ -3570,13 +3625,15 @@ export class CoreStore {
 
   private withPhoneInput<T extends object>(message: T, messageId: number): T & { phoneOrigin?: PhoneInput["envelope"] } {
     const input = this.phoneInput(messageId);
-    return { ...message, ...(input ? { phoneOrigin: input.envelope } : {}) };
+    const hold = this.multilineDelivery(messageId);
+    return { ...message, ...(input ? { phoneOrigin: input.envelope } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}) };
   }
 
   private mapPhoneMessage(row: Row): MessageRow {
     const message = mapMessage(row), input = this.phoneInput(message.id);
     if (input && (phoneDigest(input.originalContent) !== input.envelope.contentDigest || renderPhoneInput(input.originalContent) !== message.body)) throw new CoreError("Phone input and body shadow differ");
-    return input ? { ...message, phoneInput: input, renderedBody: message.body } : message;
+    const hold = this.multilineDelivery(message.id);
+    return { ...message, ...(input ? { phoneInput: input, renderedBody: message.body } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}) };
   }
 
   checkPhoneBinding(key: string, verb: string, lane: string, digest: string): void {
@@ -4022,6 +4079,7 @@ export class CoreStore {
         });
         return { applied: false };
       }
+      this.resetMultilineDeliveryProgress(messageId, message.beeId);
       const at = this.now();
       this.db
         .prepare("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?")
@@ -4040,6 +4098,7 @@ export class CoreStore {
       });
       // v24: an action instruction reached its runtime — delivery evidence only, never completion.
       this.applyActionDelivered(messageId, generation, at);
+      this.recordMultilineReorder(message.beeId, messageId);
       return { applied: true };
     });
   }
@@ -5096,10 +5155,7 @@ export class CoreStore {
   readDaemonStepInputs(): DaemonStepInputs {
     const runtimes = this.readDaemonLiveRuntimes();
     const i1 = this.readI1PendingSnapshotData();
-    const work: DaemonWorkRow[] = runtimes.map((runtime) => ({
-      runtime,
-      pending: i1.byBee.get(runtime.beeId)?.pending ?? [],
-    }));
+    const work: DaemonWorkRow[] = runtimes.map((runtime) => ({ runtime, pending: i1.byBee.get(runtime.beeId)?.pending ?? [] }));
     return { work, i1: i1.rows };
   }
 
@@ -9796,6 +9852,7 @@ export class CoreStore {
       actions: this.listActionViews(),
       actionQueues: this.listActionQueueViews(),
       threadOperations: this.listThreadOperations(),
+      ...(this.listMultilineDeliveries().length ? { deliveryHolds: this.listMultilineDeliveries() } : {}),
     };
   }
 }

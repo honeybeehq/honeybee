@@ -1667,7 +1667,7 @@ export class DaemonCore {
           }),
         );
       }
-      const outcome = this.driver.deliver(rt.beeId, rt.generation, msg.id, body);
+      const outcome = this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
       if (outcome.accepted) {
         this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer));
         this.interruptRequested.delete(msg.id);
@@ -1686,6 +1686,7 @@ export class DaemonCore {
         }
         this.log(`deliver bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} urgency=${msg.urgency}`);
       } else {
+        if (body.includes("\n") && outcome.reason === "not_ready") this.store.recordMultilineDeliveryRefusal(msg.id, rt.generation, outcome.detail);
         this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}`);
       }
     }

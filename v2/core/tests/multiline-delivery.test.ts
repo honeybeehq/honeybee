@@ -1,0 +1,123 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { advanceMultilineUnsupported } from "../src/multilineDelivery.ts";
+
+test("unsupported versions never hold; supported off expires after three attempts", () => {
+  assert.equal(advanceMultilineUnsupported(null, "multiline_bracketed_paste_version_unsupported", 0).hold, false);
+  const first = advanceMultilineUnsupported(null, "multiline_bracketed_paste_disabled", 0);
+  const second = advanceMultilineUnsupported(first, "multiline_bracketed_paste_disabled", 100);
+  const third = advanceMultilineUnsupported(second, "multiline_bracketed_paste_disabled", 200);
+  assert.equal(first.hold, false);
+  assert.equal(second.hold, false);
+  assert.equal(third.hold, true);
+});
+
+test("unsupported time holds at thirty seconds; ordinary busy does not count", () => {
+  const first = advanceMultilineUnsupported(null, "multiline_bracketed_paste_disabled", 0);
+  assert.equal(advanceMultilineUnsupported(first, "multiline_bracketed_paste_disabled", 30_000).hold, true);
+  const busy = advanceMultilineUnsupported(first, undefined, 100_000);
+  assert.equal(busy.hold, false);
+  assert.equal(busy.attempts, 1);
+  assert.equal(busy.unsupportedMs, 0);
+  const next = advanceMultilineUnsupported(busy, "multiline_bracketed_paste_disabled", 200_000);
+  assert.equal(next.hold, false);
+  assert.equal(next.unsupportedMs, 0);
+  assert.equal(next.attempts, 2);
+});
+
+test("busy bracketed-on recipient never accumulates unsupported attempts", () => {
+  let state = advanceMultilineUnsupported(null, undefined, 0);
+  for (let index = 1; index <= 10; index++) state = advanceMultilineUnsupported(state, undefined, index * 30_000);
+  assert.equal(state.hold, false);
+  assert.equal(state.attempts, 0);
+  assert.equal(state.unsupportedMs, 0);
+});
+
+import { harness, makeBee, bootToRunning } from "./helpers.ts";
+import { replayAudit } from "../src/audit.ts";
+
+test("durable bounded wait preserves FIFO, stays visible and replays across reopen", () => {
+  const h = harness(); let store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    bootToRunning(store, bee.id, 100, 1);
+    const first = store.send(bee.id, "one\ntwo").message;
+    const second = store.send(bee.id, "later-one").message;
+    const third = store.send(bee.id, "later-two").message;
+    const generation = store.currentRuntime(bee.id)!.generation;
+    const one = store.recordMultilineDeliveryRefusal(first.id, generation, "multiline_bracketed_paste_disabled")!;
+    const two = store.recordMultilineDeliveryRefusal(first.id, generation, "multiline_bracketed_paste_disabled")!;
+    assert.equal(one.stage, "waiting");
+    assert.equal(two.stage, "waiting");
+    const held = store.recordMultilineDeliveryRefusal(first.id, generation, "multiline_bracketed_paste_disabled")!;
+    assert.equal(held.stage, "expired");
+    assert.equal(held.notice, null);
+    assert.deepEqual(store.readDaemonWork()[0]!.pending.map(row => row.id), [first.id, second.id, third.id]);
+    assert.deepEqual(store.readDaemonStepInputs().work[0]!.pending.map(row => row.id), [first.id, second.id, third.id]);
+    assert.equal(store.getMessage(first.id)!.deliveryHold?.code, "delivery_unsupported_multiline");
+    assert.equal(store.pendingMail(bee.id).messages.find(row => row.id === first.id)?.deliveryHold?.code, "delivery_unsupported_multiline");
+    assert.equal(store.mailHistory().messages.find(row => row.messageId === first.id)?.deliveryHold?.code, "delivery_unsupported_multiline");
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+    store.close(); store = h.open();
+    assert.deepEqual(store.multilineDelivery(first.id), held);
+    store.markDelivered(first.id, generation);
+    assert.equal(store.multilineDelivery(first.id)?.stage, "delivered");
+    store.markDelivered(second.id, generation);
+    assert.equal(store.multilineDelivery(first.id)?.notice, null);
+    assert.deepEqual(store.readDaemonWork()[0]!.pending.map(row => row.id), [third.id]);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  } finally { store.close(); h.cleanup(); }
+});
+
+test("static unsupported never holds; busy never holds and inline acceptance completes progress", () => {
+  const h = harness(), store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    bootToRunning(store, bee.id, 100, 1);
+    const generation = store.currentRuntime(bee.id)!.generation;
+    const immediate = store.send(bee.id, "one\ntwo").message;
+    assert.equal(store.recordMultilineDeliveryRefusal(immediate.id, generation, "multiline_bracketed_paste_version_unsupported"), undefined);
+    const waiting = store.send(bee.id, "three\nfour").message;
+    for (let index = 0; index < 5; index++) assert.equal(store.recordMultilineDeliveryRefusal(waiting.id, generation, undefined), undefined);
+    assert.equal(store.recordMultilineDeliveryRefusal(waiting.id, generation, "multiline_type_mode")?.attempts, 1);
+    assert.equal(store.recordMultilineDeliveryRefusal(waiting.id, generation, undefined)?.attempts, 1);
+    assert.equal(store.recordMultilineDeliveryRefusal(waiting.id, generation, "multiline_type_mode")?.attempts, 2);
+    store.markDelivered(waiting.id, generation);
+    assert.equal(store.multilineDelivery(waiting.id)?.stage, "delivered");
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  } finally { store.close(); h.cleanup(); }
+});
+
+import { DatabaseSync } from "node:sqlite";
+
+for (const malformed of ["not-json", "{}", '{"stage":"waiting","attempts":"bad"}']) test(`malformed hold projection is lazy unknown on reopen: ${malformed}`, () => {
+  const h = harness(); let store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    bootToRunning(store, bee.id, 100, 1);
+    const message = store.send(bee.id, "one\ntwo").message;
+    store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_bracketed_paste_disabled");
+    store.close();
+    const db = new DatabaseSync(h.path);
+    db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(malformed, message.id);
+    db.close();
+    store = h.open();
+    assert.equal(store.getMessage(message.id)?.deliveryHold?.detail, "delivery_hold_state_unknown");
+    assert.equal(store.multilineDelivery(message.id)?.stage, "expired");
+  } finally { store.close(); h.cleanup(); }
+});
+
+test("reorder notice requires an actual later delivery and a still-undelivered original", () => {
+  const h = harness(), store = h.open();
+  try {
+    const { bee } = makeBee(store);
+    bootToRunning(store, bee.id, 100, 1);
+    const first = store.send(bee.id, "one\ntwo").message;
+    const later = store.send(bee.id, "later").message;
+    store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_bracketed_paste_disabled");
+    assert.equal(store.multilineDelivery(first.id)?.notice, null);
+    store.markDelivered(later.id, 1);
+    assert.equal(store.multilineDelivery(first.id)?.notice, "delivered later messages; this one is held");
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  } finally { store.close(); h.cleanup(); }
+});
