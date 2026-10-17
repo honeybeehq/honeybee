@@ -18,6 +18,8 @@ trap scg_self_test_exit EXIT
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_seal_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_profile_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_argv_test.py || exit $?
+"$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_node_flags_test.py || exit $?
+"$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_pty_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_signal_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_mediation_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_ipc_test.py || exit $?

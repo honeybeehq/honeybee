@@ -134,6 +134,23 @@ class FlowTests(unittest.TestCase):
             self.assertNotIn('fixture-pty-denied', evidence.read_text())
             self.assertLess(next(i for i, row in enumerate(data) if row['kind'] == 'terminal-capture'), next(i for i, row in enumerate(data) if row.get('operation') == 'kill-server'))
 
+    def test_tmux_config_is_absent_and_confined_to_fake_home(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            home = root / 'h'
+            home.mkdir()
+            env = {'HOME': str(home), 'XDG_CONFIG_HOME': str(home / '.config')}
+            self.assertTrue(focused_flow.require_tmux_config_absent(root, env)['ok'])
+            with self.assertRaisesRegex(ValueError, 'outside fake HOME'):
+                focused_flow.require_tmux_config_absent(root, dict(env, XDG_CONFIG_HOME=str(root / 'config')))
+            (home / '.tmux.conf').write_text('fixture')
+            with self.assertRaisesRegex(ValueError, 'configuration present'):
+                focused_flow.require_tmux_config_absent(root, env)
+            (home / '.tmux.conf').unlink()
+            (home / '.config').symlink_to(root)
+            with self.assertRaisesRegex(ValueError, 'redirected'):
+                focused_flow.require_tmux_config_absent(root, env)
+
     def test_flow_requires_exactly_two_unique_native_edges(self):
         a = {'artifact': 'src/dist/v2/delivery-file/darwin-arm64/delivery-file.node'}
         b = {'artifact': 'src/dist/v2/peercred/darwin-arm64/peercred.node'}
