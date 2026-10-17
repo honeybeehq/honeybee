@@ -1,9 +1,11 @@
 import hashlib
+import errno
 import json
 import os
 from pathlib import Path
 import re
 import stat
+import socket
 import subprocess
 
 
@@ -50,6 +52,49 @@ def prepare(root, env):
     return controls
 
 
+def permission_denial(stderr, row):
+    if re.search(r'could not resolve|nodename nor servname|timed out|\b(?:401|403)\b|authentication failed|does not appear to be a git repository|not a git repository|no such file|does not exist|missing.path', stderr, re.IGNORECASE):
+        return False
+    if row == 'sealed-target-push':
+        errors = '\n'.join(line for line in stderr.splitlines() if re.search(r'\b(?:fatal|error):|\[remote rejected\]', line, re.IGNORECASE) and not re.search(r'^\s*warning:', line, re.IGNORECASE))
+        return bool(re.search(r'unable to create temporary object directory|unpacker error|cannot lock ref|unable to create[^\n]*(?:Operation not permitted|Permission denied)|(?:object|ref|write|creat)[^\n]*Permission denied', errors, re.IGNORECASE))
+    fatal = [match.group(1) for line in stderr.splitlines() for match in [re.search(r'\bfatal:\s*(.*)', line, re.IGNORECASE)] if match]
+    if not fatal:
+        return False
+    last = fatal[-1]
+    if not re.search(r'Operation not permitted|Permission denied|\bEPERM\b|\bEACCES\b', last, re.IGNORECASE):
+        return False
+    return row in ('non-loopback-fetch', 'non-loopback-push') and bool(re.search(r'\bconnect', last, re.IGNORECASE))
+
+
+def storage_probes(root):
+    rows = []
+    for directory in ('objects', 'refs'):
+        for operation in ('mkdir', 'open'):
+            path = root / 'sealed-target' / directory / ('gate-denial-' + operation)
+            try:
+                if operation == 'mkdir':
+                    path.mkdir()
+                else:
+                    fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_EXCL, 0o600)
+                    os.close(fd)
+            except OSError as error:
+                rows.append({'operation': operation, 'path': str(path), 'errno': error.errno, 'refused': error.errno in (errno.EPERM, errno.EACCES)})
+            else:
+                rows.append({'operation': operation, 'path': str(path), 'errno': 0, 'refused': False})
+    return rows
+
+
+def network_probe():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+        client.settimeout(2)
+        try:
+            client.connect(('192.0.2.1', 443))
+        except OSError as error:
+            return {'address': '192.0.2.1', 'port': 443, 'errno': error.errno, 'refused': error.errno == errno.EPERM}
+    return {'address': '192.0.2.1', 'port': 443, 'errno': 0, 'refused': False}
+
+
 def workload(root):
     controls = json.loads((root / 'git-controls.json').read_text())
     git = controls['git']
@@ -57,21 +102,35 @@ def workload(root):
         raise ValueError('invalid Git boundary controls')
     env = dict(os.environ, GIT_ALLOW_PROTOCOL='file:https', GIT_TERMINAL_PROMPT='0')
     rows = []
+    storage = []
+    network = None
     try:
-        subprocess.run([git, '--version'], env=env, check=True, capture_output=True)
         url = 'https://192.0.2.1/x.git'
         if url != 'https://192.0.2.1/x.git':
             raise ValueError('network fixture URL not allowlisted')
         commands = [('sealed-target-push', ['push', controls['target'], 'refs/heads/fixture:refs/heads/denied']), ('non-loopback-fetch', ['fetch', url]), ('non-loopback-push', ['push', url, 'refs/heads/fixture:refs/heads/denied'])]
         for name, args in commands:
             argv = [git, '-C', controls['source'], *args]
-            result = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=10)
-            denied = result.returncode != 0 and bool(re.search(r'Operation not permitted|Permission denied|\bEPERM\b|\bEACCES\b', result.stderr))
-            rows.append({'row': name, 'argv': argv, 'exit': result.returncode, 'stderr': result.stderr[-8192:], 'permissionDenied': denied, 'realGit': True})
-            if not denied:
-                raise ValueError('Git boundary row lacks permission-denial evidence: ' + name)
+            try:
+                result = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=10)
+                denied = result.returncode != 0 and permission_denial(result.stderr, name)
+                rows.append({'row': name, 'argv': argv, 'exit': result.returncode, 'stderr': result.stderr[-8192:], 'permissionDenied': denied, 'realGit': True})
+            except (OSError, subprocess.TimeoutExpired) as error:
+                rows.append({'row': name, 'argv': argv, 'error': str(error), 'permissionDenied': False, 'realGit': True})
+            if name == 'sealed-target-push':
+                storage = storage_probes(root)
+                rows[-1]['writeFailureClass'] = rows[-1]['permissionDenied']
+                rows[-1]['permissionDenied'] = rows[-1]['permissionDenied'] and len(storage) == 4 and all(row['refused'] for row in storage)
+        network = network_probe()
+        for row in rows:
+            if row['row'].startswith('non-loopback-'):
+                row['fatalConnectDenied'] = row['permissionDenied']
+                row['permissionDenied'] = row['permissionDenied'] and network['refused']
     finally:
-        (root / 'git-boundary-workload.json').write_text(json.dumps({'rows': rows, 'allDenied': len(rows) == 3 and all(row['permissionDenied'] for row in rows)}, indent=2) + '\n')
+        accepted = len(rows) == 3 and all(row['permissionDenied'] for row in rows) and len(storage) == 4 and all(row['refused'] for row in storage) and network is not None and network['refused']
+        (root / 'git-boundary-workload.json').write_text(json.dumps({'rows': rows, 'storageProbes': storage, 'networkProbe': network, 'allDenied': accepted}, indent=2) + '\n')
+    if not accepted:
+        raise ValueError('Git boundary rows lack operation-bound permission evidence or direct syscall denial')
 
 
 if __name__ == '__main__':

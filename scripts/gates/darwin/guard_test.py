@@ -32,16 +32,45 @@ class GuardTests(unittest.TestCase):
     def test_git_boundary_requires_permission_evidence_for_every_row(self):
         controls = {'git': git_boundary.GIT_CANDIDATES[0], 'target': str(self.base / 'sealed-target'), 'source': str(self.base / 'git-source')}
         (self.base / 'git-controls.json').write_text(json.dumps(controls))
-        refused = subprocess.CompletedProcess([], 128, '', 'Operation not permitted')
-        with patch('git_boundary.subprocess.run', side_effect=[subprocess.CompletedProcess([], 0, '', ''), refused, refused, refused]) as calls:
+        sealed = subprocess.CompletedProcess([], 128, '', 'error: remote unpack failed: unable to create temporary object directory\n ! [remote rejected] fixture -> denied (unpacker error)')
+        network = subprocess.CompletedProcess([], 128, '', 'fatal: Failed to connect: Operation not permitted')
+        probes = [{'refused': True}] * 4
+        with patch('git_boundary.subprocess.run', side_effect=[sealed, network, network]) as calls, patch('git_boundary.storage_probes', return_value=probes), patch('git_boundary.network_probe', return_value={'refused': True, 'errno': 1}):
             git_boundary.workload(self.base)
         rows = json.loads((self.base / 'git-boundary-workload.json').read_text())
         self.assertTrue(rows['allDenied'])
         self.assertEqual(len(rows['rows']), 3)
-        self.assertEqual(calls.call_args_list[2].args[0][-1], 'https://192.0.2.1/x.git')
-        with patch('git_boundary.subprocess.run', side_effect=[subprocess.CompletedProcess([], 0, '', ''), subprocess.CompletedProcess([], 128, '', 'Could not resolve host')]), self.assertRaisesRegex(ValueError, 'lacks permission-denial evidence'):
+        self.assertEqual(calls.call_args_list[1].args[0][-1], 'https://192.0.2.1/x.git')
+        with patch('git_boundary.subprocess.run', side_effect=[subprocess.CompletedProcess([], 128, '', 'Could not resolve host'), network, network]) as calls, patch('git_boundary.storage_probes', return_value=probes), patch('git_boundary.network_probe', return_value={'refused': True, 'errno': 1}), self.assertRaisesRegex(ValueError, 'lack operation-bound'):
             git_boundary.workload(self.base)
+        self.assertEqual(calls.call_count, 3)
         self.assertFalse(json.loads((self.base / 'git-boundary-workload.json').read_text())['allDenied'])
+
+    def test_git_direct_syscall_denials_require_expected_errnos(self):
+        with patch('git_boundary.Path.mkdir', side_effect=PermissionError(1, 'denied')), patch('git_boundary.os.open', side_effect=PermissionError(13, 'denied')):
+            probes = git_boundary.storage_probes(self.base)
+        self.assertEqual(len(probes), 4)
+        self.assertTrue(all(row['refused'] for row in probes))
+        client = unittest.mock.MagicMock()
+        client.__enter__.return_value = client
+        with patch('git_boundary.socket.socket', return_value=client):
+            client.connect.side_effect = PermissionError(1, 'denied')
+            self.assertTrue(git_boundary.network_probe()['refused'])
+            client.connect.side_effect = PermissionError(13, 'denied')
+            self.assertFalse(git_boundary.network_probe()['refused'])
+
+    def test_git_permission_warning_cannot_mask_fatal_transport_failure(self):
+        warning = 'warning: config: Permission denied\n'
+        for fatal in ('fatal: Could not resolve host', 'fatal: nodename nor servname provided', 'fatal: connect timed out', 'fatal: Authentication failed', 'fatal: HTTP error 401', 'fatal: HTTP error 403', 'fatal: Could not read from remote repository'):
+            self.assertFalse(git_boundary.permission_denial(warning + fatal, 'non-loopback-fetch'), fatal)
+        for forbidden in ('Could not resolve', 'timed out', 'Authentication failed', '401', '403'):
+            self.assertFalse(git_boundary.permission_denial(forbidden + '\nfatal: connect: Operation not permitted', 'non-loopback-push'), forbidden)
+        self.assertFalse(git_boundary.permission_denial('fatal: config open: Permission denied', 'non-loopback-fetch'))
+        self.assertFalse(git_boundary.permission_denial('fatal: connect: Permission denied', 'sealed-target-push'))
+        self.assertTrue(git_boundary.permission_denial('fatal: cannot create object: Permission denied', 'sealed-target-push'))
+        self.assertTrue(git_boundary.permission_denial('fatal: Failed to connect: Operation not permitted', 'non-loopback-fetch'))
+        for failure in ('does not appear to be a git repository', 'not a git repository', 'No such file or directory', "fatal: 'target' does not exist"):
+            self.assertFalse(git_boundary.permission_denial('error: unpacker error\n' + failure, 'sealed-target-push'))
 
     def test_git_target_snapshot_detects_ref_or_object_changes(self):
         target = self.base / 'sealed-target'
