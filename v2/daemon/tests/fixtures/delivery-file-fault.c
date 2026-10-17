@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/stat.h>
 
 static int seen;
 static int selected(int fd,const char *op) {
@@ -37,5 +38,23 @@ int close(int fd) {
   int (*real_close)(int)=dlsym(RTLD_NEXT,"close");
   int hit=selected(fd,"close"),result=real_close(fd);
   if(hit) { errno=EIO; return -1; }
+  return result;
+}
+int fstat(int fd,struct stat *st) {
+  int (*real_fstat)(int,struct stat *)=dlsym(RTLD_NEXT,"fstat");
+  int result=real_fstat(fd,st);
+  if(result==0 && selected(fd,"fstat")) st->st_uid=geteuid()+1;
+  return result;
+}
+int linkat(int from,const char *source,int to,const char *destination,int flags) {
+  int (*real_linkat)(int,const char *,int,const char *,int)=dlsym(RTLD_NEXT,"linkat");
+  int result=real_linkat(from,source,to,destination,flags);
+  if(result==0 && selected(to,"swap")) {
+    const char *root=getenv("HB_FILE_ROOT");
+    char content[8192],detached[8192];
+    snprintf(content,sizeof(content),"%s/delivery-content",root);
+    snprintf(detached,sizeof(detached),"%s/detached",root);
+    if(rename(content,detached)<0 || mkdir(content,0700)<0) _exit(92);
+  }
   return result;
 }

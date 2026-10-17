@@ -79,7 +79,7 @@ test("published content reconciles leftover partial stages durably",t=>{
  assert.equal(readFileSync(stage,"utf8"),"untrusted");
 });
 const binary=fileURLToPath(new URL(`../../../dist/v2/delivery-file/${process.platform}-${process.arch}/delivery-file.node`,import.meta.url));
-const nativePublish='const [binary,root,bee,id]=process.argv.slice(1);require(binary).publish(root,bee,id,Buffer.from("content"));';
+const nativePublish='const [binary,root,bee,id,text="content"]=process.argv.slice(1);require(binary).publish(root,bee,id,Buffer.from(text));';
 test("concurrent matching publishers converge without replacing the final inode",async t=>{
  const f=fixture();t.after(f.close);const directory=createHash("sha256").update(JSON.stringify([owner,bee])).digest("hex");
  await Promise.all(Array.from({length:8},()=>new Promise<void>((resolve,reject)=>{
@@ -107,4 +107,49 @@ for(const operation of ["unlinkat","close"])test(`publication ${operation} error
  assert.equal(result.error,undefined);assert.equal(result.status,1);
  const row=f.files.publish(f.root,owner,bee,f.id,"content",[]);
  assert.equal(readFileSync(row.path,"utf8"),"content");assert.deepEqual(requireEntries(dirname(row.path)),[f.id+".txt"]);
+});
+for(const mode of [0o700,0o755,0o720,0o702,0o1777])test(`accepting root mode ${mode.toString(8)} is checked natively`,t=>{
+ const f=fixture();t.after(f.close);chmodSync(f.root,mode);
+ if(mode&0o22)assert.throws(()=>f.files.publish(f.root,owner,bee,f.id,"content",[]),code("delivery_file_directory"));
+ else assert.equal(readFileSync(f.files.publish(f.root,owner,bee,f.id,"content",[]).path,"utf8"),"content");
+});
+for(const operation of ["fstat","swap"])test(`native ${operation==="fstat"?"simulated foreign-owned root":"directory swap after link"} refuses publication`,{skip:process.platform!=="linux"},t=>{
+ const f=fixture();t.after(f.close);const shim=join(f.root,"fault.so");
+ execFileSync("cc",["-shared","-fPIC","-Wall","-Wextra","-Werror",fileURLToPath(new URL("./fixtures/delivery-file-fault.c",import.meta.url)),"-ldl","-o",shim]);
+ const directory=createHash("sha256").update(JSON.stringify([owner,bee])).digest("hex");
+ const result=spawnSync(process.execPath,["-e",nativePublish,binary,f.root,directory,f.id],{env:{...process.env,LD_PRELOAD:shim,HB_FILE_ROOT:f.root,HB_FILE_OP:operation,HB_FILE_N:"1",HB_FILE_MODE:"error"},encoding:"utf8"});
+ assert.equal(result.error,undefined);assert.equal(result.status,1);assert.match(result.stderr,/delivery_file_(directory|publish)/);
+ if(operation==="fstat")assert.equal(existsSync(join(f.root,"delivery-content")),false);
+ else assert.equal(readFileSync(join(f.root,"detached",directory,f.id+".txt"),"utf8"),"content");
+});
+test("development scale: publication and retry with ten thousand retained files",t=>{
+ const f=fixture();t.after(f.close);const row=f.files.publish(f.root,owner,bee,f.id,"content",[]),directory=dirname(row.path);
+ for(let i=0;i<10000;i++)writeFileSync(join(directory,randomUUID()+".txt"),"retained",{mode:0o600});
+ const publication:number[]=[],retry:number[]=[];
+ for(let i=0;i<21;i++) {
+ const id=randomUUID();let start=performance.now();f.files.publish(f.root,owner,bee,id,"content",[]);publication.push(performance.now()-start);
+ start=performance.now();f.files.publish(f.root,owner,bee,id,"content",[]);retry.push(performance.now()-start);
+ }
+ const summary=(values:number[])=>{values.sort((a,b)=>a-b);return {medianMs:values[10],p95Ms:values[19],maxMs:values[20]};};
+ console.log("development-only retained10000",JSON.stringify({publication:summary(publication),retry:summary(retry)}));
+});
+test("competing different-content publishers cannot replace the winning bytes",async t=>{
+ const f=fixture();t.after(f.close);const directory=createHash("sha256").update(JSON.stringify([owner,bee])).digest("hex");
+ const results=await Promise.all(["first","second"].map(text=>new Promise<{text:string;status:number|null}>((resolve,reject)=>{
+ const child=spawn(process.execPath,["-e",nativePublish,binary,f.root,directory,f.id,text],{stdio:"ignore"});child.once("error",reject);child.once("exit",status=>resolve({text,status}));
+ })));
+ const winner=results.find(result=>result.status===0);assert.ok(winner);assert.equal(results.filter(result=>result.status===0).length,1);
+ const path=join(f.root,"delivery-content",directory,f.id+".txt"),inode=statSync(path).ino;assert.equal(readFileSync(path,"utf8"),winner.text);
+ f.files.publish(f.root,owner,bee,f.id,winner.text,[]);assert.equal(statSync(path).ino,inode);
+});
+test("remove racing a publication leaves either absent or complete content and retry converges",async t=>{
+ const f=fixture();t.after(f.close);const directory=createHash("sha256").update(JSON.stringify([owner,bee])).digest("hex");
+ const nativeRemove='const [binary,root,bee,id]=process.argv.slice(1);require(binary).remove(root,bee,id);';
+ await Promise.all([nativePublish,nativeRemove].map(script=>new Promise<void>((resolve,reject)=>{
+ const child=spawn(process.execPath,["-e",script,binary,f.root,directory,f.id],{stdio:"ignore"});child.once("error",reject);child.once("exit",status=>status===0||status===1?resolve():reject(new Error(`exit ${status}`)));
+ })));
+ const path=join(f.root,"delivery-content",directory,f.id+".txt");if(existsSync(path))assert.equal(readFileSync(path,"utf8"),"content");
+ f.files.publish(f.root,owner,bee,f.id,"content",[]);assert.equal(readFileSync(path,"utf8"),"content");
+ assert.deepEqual(requireEntries(dirname(path)),[f.id+".txt"]);
+ f.files.remove(f.root,owner,bee,f.id,[]);assert.equal(existsSync(dirname(path)),false);
 });
