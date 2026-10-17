@@ -1,5 +1,6 @@
 import os, sys, pathlib, json, ctypes, subprocess, time, stat, uuid, socket, fcntl, struct, hashlib
 from home_guard import entry_guard
+from filesystem import seal_filesystem, mount_readonly, assert_filesystem, filesystem_probes
 R = pathlib.Path(sys.argv[1])
 ENTRY_GUARD = entry_guard(R)
 H = pathlib.Path(json.loads((R / 'config.json').read_text())['realHome'])
@@ -95,12 +96,15 @@ try:
     assert sorted(os.listdir(CACHE.parent)) == [CACHE.name]
     assert not os.path.lexists(H / '.hive/v2/hived.sock')
     libc=ctypes.CDLL(None,use_errno=True)
+    seal_filesystem(CACHE)
     parent_namespaces=dict(receipt['namespaces'])
     outer_uid,outer_gid=os.getuid(),os.getgid()
     if libc.unshare(ctypes.c_int(0x10000000|0x00020000))!=0:raise OSError(ctypes.get_errno(),'nested user/mount unshare failed')
     pathlib.Path('/proc/self/setgroups').write_text('deny')
     pathlib.Path('/proc/self/uid_map').write_text(f'0 {outer_uid} 1')
     pathlib.Path('/proc/self/gid_map').write_text(f'0 {outer_gid} 1')
+    mount_readonly('/proc', True, recursive=True)
+    receipt['filesystem'] = assert_filesystem(CACHE)
     receipt['namespaces']={key:os.readlink('/proc/self/ns/'+key) for key in ('user','mnt','net','pid')}
     receipt['parentNamespaces']=parent_namespaces
     readfd,writefd=os.pipe()
@@ -122,6 +126,10 @@ try:
     receipt['lockedMountProbes']=probe_records
     save('locked-mount-probes.json',dict(probes=probe_records,childExit=os.waitstatus_to_exitcode(probe_status)))
     if probe_status or len(probe_records)!=3 or not all(item['expectedFailure'] for item in probe_records):raise RuntimeError('locked mount negative probe failed; workload forbidden')
+    receipt['filesystemProbes'] = filesystem_probes(CACHE)
+    save('filesystem-proof.json', dict(state=receipt['filesystem'], probes=receipt['filesystemProbes']))
+    if not receipt['filesystemProbes']['asserted']:
+        raise RuntimeError('filesystem write-exclusion or device probe failed; workload forbidden')
     receipt.update(maskTargets=assertions, syntheticScaffolds=sorted(scaffolds), realHomeOverlay=mounts[str(H)], cacheException=dict(path=str(CACHE), inode=cacheid.st_ino, device=cacheid.st_dev), insideAsserted=True, insideAssertedAt=time.time(), loopbackUp=True, cwdAfter=os.getcwd())
     save('mask-inside.json', receipt)
     save('mask-ready.json', dict(nonce=nonce, time=time.time(), insideAsserted=True))

@@ -7,6 +7,7 @@ import tarfile
 import time
 from home_guard import entry_guard
 from test_capabilities import is_test_command, SETPRIV_ARGS
+from filesystem import assert_filesystem, filesystem_probes
 
 root = pathlib.Path(sys.argv[1])
 ENTRY_GUARD = entry_guard(root)
@@ -26,6 +27,9 @@ def save(name, value):
     (out / name).write_text(json.dumps(value, indent=2))
 
 save('entry-guard-workload.json', ENTRY_GUARD)
+filesystem = dict(state=assert_filesystem(root), probes=filesystem_probes(root))
+save('filesystem-workload.json', filesystem)
+assert filesystem['probes']['asserted']
 
 
 def verify():

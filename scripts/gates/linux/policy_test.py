@@ -14,6 +14,7 @@ from home_guard import home_guard, entry_guard, pull_destination, PROVIDER_DIRS,
 from thread_records import ThreadRecords
 from birth_identity import birth_identity, parent_chain
 from test_capabilities import assert_capabilities, is_test_command, CAPABILITY_SETS
+from filesystem import assert_filesystem, filesystem_probes
 
 HOME = '/home/lab'
 HIVE = HOME + '/.hive'
@@ -21,6 +22,18 @@ META = dict(inode=1, size=100, mtime_ns=10000000000, mode=33152, uid=1000, gid=1
 
 
 class PolicyTests(unittest.TestCase):
+    def test_workload_cannot_write_outside_run_root_and_devices_work(self):
+        root = pathlib.Path(__file__).parent
+        record = dict(state=assert_filesystem(root), probes=filesystem_probes(root))
+        (pathlib.Path(os.environ['HOME']) / 'filesystem-tests.json').write_text(__import__('json').dumps(record))
+        self.assertTrue(record['state']['asserted'])
+        self.assertTrue(record['probes']['asserted'])
+        self.assertTrue(record['probes']['devNull'])
+        self.assertTrue(record['probes']['devUrandom'])
+        self.assertTrue(record['probes']['ptyAllocation'])
+        for probe in record['probes']['mkdir']:
+            self.assertIn(probe['errno'], (errno.EACCES, errno.EROFS))
+
     def test_birth_stat_parent_survives_dead_status_13f09289(self):
         first = dict(state='Z', ppid=36, starttime='307527235')
         birth = dict(pid=27349, **birth_identity(first, dict(State='X (dead)', PPid='0', NSpid='0'), dict(user='user:[lab]', mnt='mnt:[lab]'), dict(errno=errno.ENOENT)))

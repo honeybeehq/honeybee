@@ -269,6 +269,8 @@ def adjudicate(home, root, out, physical, before, after):
     audit = log_audit(home, out, before, after, inv, root)
     mask = read(out / 'mask-proof.json') if (out / 'mask-proof.json').exists() else {}
     valid_mask = mask.get('maskAsserted', False)
+    filesystem = read(out / 'filesystem-workload.json') if (out / 'filesystem-workload.json').exists() else {}
+    valid_mask = valid_mask and filesystem.get('state', {}).get('asserted', False) and filesystem.get('probes', {}).get('asserted', False)
     coverage = [dict(pid=birth['pid'],outcome=mapping_coverage(birth,inv['hostPidMap'],raw.get('errors',[]))) for birth in raw.get('births',[])]
     save(out/'mapping-coverage.json',coverage)
     missing_mappings = [item['pid'] for item in coverage if item['outcome']=='FAIL']
