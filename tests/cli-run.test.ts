@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
-import { mkdtemp, rm, readdir } from "node:fs/promises";
+import { mkdtemp, rm, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 import { after, test } from "node:test";
 import { scaledMs } from "./timeScale.js";
 import { hasSession, kill } from "../src/tmux.js";
@@ -68,6 +69,8 @@ test("run --rm cleans up when known driver readiness fails", { skip: !detachedRu
   const storeRoot = await mkdtemp(join(tmpdir(), "honeybee-run-store-"));
   const cwd = await mkdtemp(join(tmpdir(), "honeybee-run-cwd-"));
   const name = `hive-test-cleanup-${process.pid}`;
+  const fixture = fileURLToPath(new URL("./fixtures/cli-never-ready.mjs", import.meta.url));
+  const pidFile = join(cwd, "never-ready.pid");
   try {
     const result = await runCli(
       [
@@ -82,15 +85,14 @@ test("run --rm cleans up when known driver readiness fails", { skip: !detachedRu
         "--boot-ms",
         "300",
         "--rm",
-        "--",
-        String(Math.ceil(scaledMs(10_000) / 1_000)),
       ],
-      { HIVE_STORE_ROOT: storeRoot, HIVE_CLAUDE_CMD: "sleep" },
+      { HIVE_STORE_ROOT: storeRoot, HIVE_CLAUDE_CMD: `${JSON.stringify(process.execPath)} ${JSON.stringify(fixture)}`, HIVE_TEST_NEVER_READY_PID_FILE: pidFile },
     );
 
     assert.notEqual(result.code, 0);
     assert.match(result.stderr, /Timed out waiting for claude to become ready/);
     assert.equal(await hasSession(name), false);
+    await assertFixtureProcessGone(pidFile);
     // --rm now retires (archives) instead of deleting: the record survives as status=archived.
     const files = await sessionFiles(storeRoot);
     assert.equal(files.length, 1, "retired record should remain on disk");
@@ -197,4 +199,20 @@ async function runCli(args: string[], env: Record<string, string>): Promise<{ co
 
 async function sessionFiles(storeRoot: string): Promise<string[]> {
   return readdir(join(storeRoot, "sessions")).catch(() => []);
+}
+
+async function assertFixtureProcessGone(pidFile: string): Promise<void> {
+  const pid = Number(await readFile(pidFile, "utf8"));
+  assert.ok(Number.isSafeInteger(pid) && pid > 1, "fixture must record its own pid");
+  const gone = (): boolean => {
+    try {
+      process.kill(pid, 0);
+      return false;
+    } catch (error) {
+      return (error as NodeJS.ErrnoException).code === "ESRCH";
+    }
+  };
+  const deadline = Date.now() + scaledMs(1_000);
+  while (!gone() && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.ok(gone(), "never-ready fixture must be gone after readiness-failure cleanup");
 }
