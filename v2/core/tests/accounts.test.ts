@@ -1,3 +1,4 @@
+import { knownAccountLease } from "../src/accountLease.ts";
 /**
  * Schema v7 — accounts at the core tier (spec 08 tests 1, 9, 10 groundwork):
  * account CRUD (remove refused while referenced), status / penalty / login /
@@ -932,7 +933,7 @@ test("v36 migrates native accounts as local without credential material", () => 
     old.close();
     const migrated = h.open();
     assert.equal(migrated.getAccount("claude-native")?.source, "local");
-    assert.equal(migrated.getAccount("claude-native")?.leasedFrom, null);
+    assert.equal(knownAccountLease(migrated.getAccount("claude-native")), null);
     migrated.close();
   } finally { h.cleanup(); }
 });
@@ -952,8 +953,8 @@ test("v37 migrates ended lease metadata to revoked without losing account or bee
     const migrated = h.open();
     const row = migrated.getAccount(account.id)!;
     assert.equal(row.source, "leased");
-    assert.equal(row.leasedFrom?.revokedAt, 1234);
-    assert.equal("endedAt" in row.leasedFrom!, false);
+    assert.equal(knownAccountLease(row)?.revokedAt, 1234);
+    assert.equal("endedAt" in knownAccountLease(row)!, false);
     assert.equal(migrated.getBee(bee.id)?.account, account.id);
     assert.throws(() => migrated.removeAccount(account.id), AccountReferencedError);
     migrated.close();
@@ -1055,4 +1056,31 @@ test("authority instance: v41 active authority is scoped once, disabled stays le
     assert.equal(store.getAccountCredentialAuthority("claude-scope")!.authorityInstanceId, id);
     store.close();
   } finally { h.cleanup(); }
+});
+
+test("lease migration preserves canonical revocation and reopens without rewriting rows", () => {
+  for (const revokedAt of [123, null]) {
+    const h = harness();
+    const initial = h.open();
+    initial.createAccount({ id: "claude-precedence", harness: "claude", homePath: join(dirname(h.path), "account-home"), label: "precedence" });
+    initial.close();
+    const seed = new DatabaseSync(h.path);
+    seed.prepare("UPDATE accounts SET source='leased', leased_from=?").run(JSON.stringify({ shareId: "s", authorityNodeId: "n", epoch: 1, expiresAt: null, adoptedAt: null, revokedAt, endedAt: revokedAt === null ? 456 : null }));
+    seed.close();
+    let previous: string | null = null;
+    try {
+      for (let reopen = 0; reopen < 2; reopen++) {
+        const store = h.open();
+        assert.equal(knownAccountLease(store.getAccount("claude-precedence"))?.revokedAt, revokedAt);
+        store.close();
+        const inspect = new DatabaseSync(h.path, { readOnly: true });
+        try {
+          const raw = String(inspect.prepare("SELECT leased_from FROM accounts").get()?.leased_from);
+          assert.equal(Object.hasOwn(JSON.parse(raw), "endedAt"), false);
+          if (previous !== null) assert.equal(raw, previous);
+          previous = raw;
+        } finally { inspect.close(); }
+      }
+    } finally { h.cleanup(); }
+  }
 });

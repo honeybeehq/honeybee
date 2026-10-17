@@ -1,3 +1,4 @@
+import { knownAccountLease } from "../../core/src/accountLease.ts";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -265,7 +266,7 @@ for (const boundary of ["read", "remove"]) test(`native login arriving at awaite
     });
     assert.ok(readFileSync(join(r.account.homePath, r.primary)).equals(Buffer.from(native)), "new native material is preserved");
     assert.equal(r.hash(r.accounts.vaultDirOf(r.account), r.primary), vaultBefore);
-    assert.equal(r.store.getAccount(r.account.id)?.leasedFrom?.revokedAt, null);
+    assert.equal(knownAccountLease(r.store.getAccount(r.account.id))?.revokedAt, null);
   } finally { r.close(); }
 });
 

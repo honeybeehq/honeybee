@@ -301,7 +301,7 @@ test("mail pending rebuild infers durable legacy spawn origin and fails unknown 
     const bee = makeBee(initial, "history-origin-rebuild").bee;
     const spawned = initial.send(bee.id, "spawn admission", { origin: "spawn.prompt" }).message;
     const legacy = initial.send(bee.id, "legacy ordinary send").message;
-    initial.recordRpcResult("legacy-spawn", "spawn", null, { beeId: bee.id, messageId: spawned.id });
+    initial.recordRpcResult("legacy-spawn", "spawn", null, { commandId: null, beeId: bee.id, messageId: spawned.id });
     initial.close();
 
     const fixture = new DatabaseSync(rig.path);

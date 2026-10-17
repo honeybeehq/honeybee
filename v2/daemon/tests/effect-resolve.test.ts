@@ -1,3 +1,4 @@
+import { EFFECT_RESULT_REQUIRED_FIELDS, type EffectVerb } from "../../core/src/effectResolve.ts";
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -7,7 +8,22 @@ import { openCoreStore } from "../../core/src/index.ts";
 import { HiveDaemon } from "../src/daemon.ts";
 import { RpcServer, type RpcDispatch } from "../src/rpc.ts";
 import { RpcClient } from "../../cli/src/client.ts";
-import { RpcError, type SpawnResult } from "../src/protocol.ts";
+import { RpcError, type SpawnResult, type SendRpcResult, type MutationResult } from "../src/protocol.ts";
+
+type RequiredFields<T> = { [K in keyof T]-?: object extends Pick<T, K> ? never : K }[keyof T];
+type WriterResults = { spawn: SpawnResult; send: SendRpcResult; archive: MutationResult };
+const writerFieldCoverage: { [V in EffectVerb]: Exclude<RequiredFields<WriterResults[V]>, keyof typeof EFFECT_RESULT_REQUIRED_FIELDS[V]> extends never ? true : false } = { spawn: true, send: true, archive: true };
+function assertWriterResult(verb: EffectVerb, value: unknown): void {
+  assert.equal(writerFieldCoverage[verb], true);
+  assert.ok(value !== null && typeof value === "object" && !Array.isArray(value));
+  for (const [field, type] of Object.entries(EFFECT_RESULT_REQUIRED_FIELDS[verb])) {
+    assert.ok(Object.hasOwn(value, field), `${verb} writer missing ${field}`);
+    const entry: unknown = (value as Record<string, unknown>)[field];
+    if (type === "nonempty-string") assert.ok(typeof entry === "string" && entry.length > 0);
+    else if (type === "boolean") assert.equal(typeof entry, "boolean");
+    else if (entry !== null || type !== "command-id-or-null") assert.ok(typeof entry === "number" && Number.isSafeInteger(entry) && entry > 0);
+  }
+}
 
 async function fixture(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), "effect-rpc-")), path = join(dir, "core.sqlite3");
@@ -32,6 +48,7 @@ test("effect RPC commits spawn/send/archive once and resolves despite cache prun
   const sent = await f.client.request("send", { beeId: first.beeId, body: "mail", idempotencyKey: key("send") });
   const archive = await f.client.request("archive", { beeId: first.beeId, idempotencyKey: key("archive") });
   for (const verb of ["spawn", "send", "archive"] as const) {
+    assertWriterResult(verb, { spawn: first, send: sent, archive }[verb]);
     const resolution = await f.client.resolveEffect(verb, key(verb), coverage);
     assert.equal(resolution.status, "committed");
     if (resolution.status === "committed") assert.deepEqual(resolution.receipt.result, { spawn: first, send: sent, archive }[verb]);

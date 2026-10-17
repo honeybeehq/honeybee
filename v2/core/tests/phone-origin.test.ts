@@ -35,7 +35,7 @@ test("phone data, shadow, history, audit replay and key bindings survive reopen 
     const message = store.transact(() => {
       store.bindPhoneAdmission("k", "send", "envelope-v1", "digest");
       const sent = store.send(bee.id, body, { phone: { origin: origin(bee.id), key: "k" } });
-      store.recordRpcResult("k", "send", sent.wakeCommand?.id ?? null, { messageId: sent.message.id });
+      store.recordRpcResult("k", "send", sent.wakeCommand?.id ?? null, { commandId: sent.wakeCommand?.id ?? null, unarchived: sent.unarchived, messageId: sent.message.id });
       return sent.message;
     });
     assert.equal(SCHEMA_VERSION, 44);
@@ -118,9 +118,9 @@ test("durable effect fingerprint survives RPC cache pruning and missing binding 
   try {
     store.transact(() => {
       store.bindPhoneAdmission("original", "send", "envelope-v1", "request-sha");
-      store.recordRpcResult("original", "send", null, { messageId: 9, requestBinding: { version: 1, verb: "send", lane: "envelope-v1", requestDigest: "request-sha" } });
+      store.recordRpcResult("original", "send", null, { commandId: null, unarchived: false, messageId: 9, requestBinding: { version: 1, verb: "send", lane: "envelope-v1", requestDigest: "request-sha" } });
     });
-    store.recordRpcResult("evict-cache", "send", null, { messageId: 10 });
+    store.recordRpcResult("evict-cache", "send", null, { commandId: null, unarchived: false, messageId: 10 });
     const coverage = store.effectCoverage();
     const fencedKey = `effect-v1:${coverage.coverageId}:not-seen`;
     assert.equal(store.resolveEffect(fencedKey, "send").status, "never_seen_fenced");

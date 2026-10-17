@@ -1,3 +1,4 @@
+import { knownAccountLease } from "../../core/src/accountLease.ts";
 /**
  * v19 account.lease — the credential-lease mint (RN7a; credential-leases.md,
  * validated by docs/RN7A_EXPERIMENTS.md):
@@ -2050,7 +2051,7 @@ test("peer lease adoption preserves native material and refuses working or opera
     assert.ok(installed.backupPath);
     assert.equal(readFileSync(join(installed.backupPath, "home", ".credentials.json"), "utf8"), nativeRaw);
     assert.equal(installed.account.source, "leased");
-    assert.deepEqual(installed.account.leasedFrom, { authorityNodeId: input.authorityNodeId, shareId: input.shareId, epoch: 1, expiresAt: input.expiresAt, revokedAt: null, adoptedAt: r.now() });
+    assert.deepEqual(knownAccountLease(installed.account), { authorityNodeId: input.authorityNodeId, shareId: input.shareId, epoch: 1, expiresAt: input.expiresAt, revokedAt: null, adoptedAt: r.now() });
     await assert.rejects(accounts.captureAccount(installed.account), (error: unknown) => error instanceof RpcError && error.code === "account_leased");
     await assert.rejects(accounts.mintLease(installed.account), (error: unknown) => error instanceof RpcError && error.code === "account_leased");
     await assert.rejects(accounts.centralCredentials.enable(installed.account), (error: unknown) => error instanceof RpcError && error.code === "account_leased");
@@ -2123,15 +2124,15 @@ test("revoked leases retain all account rows and bee bindings, audit once and ac
     assert.throws(() => r.store.removeAccount(installed.account.id));
     assert.equal(receipt.disposition, "revoked");
     const ended = r.store.getAccount(installed.account.id)!;
-    assert.equal(ended.leasedFrom?.revokedAt, r.now());
+    assert.equal(knownAccountLease(ended)?.revokedAt, r.now());
     assert.equal(accounts.credentialHealthOf(ended), "absent");
     assert.equal(accounts.credentialReadiness(ended).ready, false);
     assert.equal(r.store.getBee(bee.id)?.account, installed.account.id);
     assert.ok(r.store.getAccount(installed.account.id));
     await assert.rejects(accounts.installLease({ ...input, authorityNodeId: "foreign-authority" }), (error: unknown) => error instanceof RpcError && error.code === "account_lease_conflict");
     const renewed = await accounts.installLease({ ...input, authorityNodeId: "new-authority", epoch: 2 });
-    assert.equal(renewed.account.leasedFrom?.authorityNodeId, "new-authority");
-    assert.equal(renewed.account.leasedFrom?.revokedAt, null);
+    assert.equal(knownAccountLease(renewed.account)?.authorityNodeId, "new-authority");
+    assert.equal(knownAccountLease(renewed.account)?.revokedAt, null);
     await accounts.removeLease(installed.account.id);
     r.store.setBeeAccount(bee.id, null);
     assert.ok(r.store.getAccount(installed.account.id));
@@ -2253,15 +2254,15 @@ test("versioned lease publication: generation is not eligible until home, mirror
     try {
       await entered;
       const partial = r.store.getAccount(installed.account.id)!;
-      assert.equal(partial.leasedFrom?.generation, 2);
-      assert.equal(partial.leasedFrom?.materialPublished, false);
+      assert.equal(knownAccountLease(partial)?.generation, 2);
+      assert.equal(knownAccountLease(partial)?.materialPublished, false);
       assert.equal(accounts.homeCredentialState(partial), "usable", "a still-valid previous file is not a published new generation");
       assert.equal(accounts.authDeathMaterial(partial), null);
     } finally { release(); codec.keychain!.publish = publish; }
     const completed = await pending;
-    assert.equal(completed.account.leasedFrom?.materialPublished, true);
+    assert.equal(knownAccountLease(completed.account)?.materialPublished, true);
     assert.equal(accounts.authDeathMaterial(completed.account)?.epoch, 2);
-    r.store.setAccountLease(completed.account.id, { ...completed.account.leasedFrom!, materialPublished: false });
+    r.store.setAccountLease(completed.account.id, { ...knownAccountLease(completed.account)!, materialPublished: false });
     assert.equal(service(r).authDeathMaterial(r.store.getAccount(completed.account.id)!), null, "recreated service cannot infer completion from usable bytes");
     const retry = await accounts.installLease({ ...input, epoch: 2, generation: 2 });
     assert.equal(accounts.authDeathMaterial(retry.account)?.generation, 2);

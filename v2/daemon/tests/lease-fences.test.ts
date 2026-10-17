@@ -1,3 +1,4 @@
+import { knownAccountLease } from "../../core/src/accountLease.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
@@ -67,7 +68,7 @@ for (const order of ["old-before-new", "new-before-old"]) test(`forwarded fences
     if (order === "old-before-new") await r.accounts.installLease(delivery(r, "instance-B", 3, { retiredAuthorityInstanceIds: ["instance-A"], fencesForwarded: false }));
     r.reopen();
     await assert.rejects(async () => r.accounts.installLease(delivery(r, "instance-A", 99)), conflict("retired_instance"));
-    assert.equal(r.store.getAccount(r.account.id)?.leasedFrom?.authorityInstanceId, "instance-B");
+    assert.equal(knownAccountLease(r.store.getAccount(r.account.id))?.authorityInstanceId, "instance-B");
     assert.ok(r.store.getLeaseMaterialProof(r.account.id), "forwarded publication records private T23 issuance proof");
     assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
   } finally { r.close(); }
@@ -78,15 +79,15 @@ test("forwarded floors clamp to carried generation, ignore foreign floors and ne
   try {
     await r.accounts.installLease(delivery(r, "instance-A", 5));
     const result = await r.accounts.installLease(delivery(r, "instance-B", 3, { retiredAuthorityInstanceIds: ["instance-A"], authorityGenerationFloor: 99, legacyAuthorityInstanceId: "foreign-instance", legacyAuthorityGenerationFloor: 100 }));
-    assert.equal(result.account.leasedFrom?.authorityGenerationFloor, 3);
-    assert.equal(result.account.leasedFrom?.legacyAuthorityInstanceId, undefined);
+    assert.equal(knownAccountLease(result.account)?.authorityGenerationFloor, 3);
+    assert.equal(knownAccountLease(result.account)?.legacyAuthorityInstanceId, undefined);
     r.reopen();
     await assert.rejects(async () => r.accounts.installLease(delivery(r, "instance-B", 2, { authorityGenerationFloor: 0 })), conflict("generation_floor"));
     const raised = await r.accounts.installLease(delivery(r, "instance-B", 7, { authorityGenerationFloor: 1, legacyAuthorityInstanceId: "instance-B", legacyAuthorityGenerationFloor: 99 }));
-    assert.equal(raised.account.leasedFrom?.authorityGenerationFloor, 7);
-    assert.equal(raised.account.leasedFrom?.legacyAuthorityGenerationFloor, undefined);
+    assert.equal(knownAccountLease(raised.account)?.authorityGenerationFloor, 7);
+    assert.equal(knownAccountLease(raised.account)?.legacyAuthorityGenerationFloor, undefined);
     const newInstance = await r.accounts.installLease(delivery(r, "instance-C", 1));
-    assert.equal(newInstance.account.leasedFrom?.authorityGenerationFloor, 1);
+    assert.equal(knownAccountLease(newInstance.account)?.authorityGenerationFloor, 1);
   } finally { r.close(); }
 });
 
@@ -97,7 +98,7 @@ test("forwarded union compares full history before cap, keeps deterministic newe
     await r.accounts.installLease(delivery(r, "instance-A", 5, { retiredAuthorityInstanceIds: local }));
     const incoming = ["old-5", "old-6", "old-7", "old-8", "old-9", "old-10"];
     const result = await r.accounts.installLease(delivery(r, "instance-B", 3, { retiredAuthorityInstanceIds: incoming }));
-    assert.deepEqual(result.account.leasedFrom?.retiredAuthorityInstanceIds, ["old-1", "old-2", "old-3", "old-4", "old-5", "old-6", "instance-A", "old-10"]);
+    assert.deepEqual(knownAccountLease(result.account)?.retiredAuthorityInstanceIds, ["old-1", "old-2", "old-3", "old-4", "old-5", "old-6", "instance-A", "old-10"]);
     r.reopen();
     const before = r.store.dumpState();
     await assert.rejects(async () => r.accounts.installLease(delivery(r, "old-4", 99, { retiredAuthorityInstanceIds: ["extra-1", "extra-2", "extra-3", "extra-4", "extra-5", "extra-6", "extra-7", "extra-8"] })), conflict("retired_instance"));
@@ -112,19 +113,19 @@ test("forwarded issuer binding and one-hop marker persist through direct renewal
     await r.accounts.installLease(delivery(r, "instance-A", 5));
     await assert.rejects(async () => r.accounts.installLease(delivery(r, "instance-B", 1, { retiredAuthorityInstanceIds: ["instance-A"], viaNodeId: "wrong-issuer" })), conflict("issuer_conflict"));
     const forwarded = await r.accounts.installLease(delivery(r, "instance-B", 1, { retiredAuthorityInstanceIds: ["instance-A"], fencesForwarded: false }));
-    assert.equal(forwarded.account.leasedFrom?.fencesForwarded, true);
+    assert.equal(knownAccountLease(forwarded.account)?.fencesForwarded, true);
     r.reopen();
     await assert.rejects(r.accounts.exportLeasedMaterial(r.account.id), error => error instanceof RpcError && error.code === "account_lease_export_refused" && error.details?.reason === "forwarding_depth_exceeded");
     await assert.rejects(async () => r.accounts.installLease(delivery(r, "instance-B", 2, { enrol: undefined, viaNodeId: "authority-test" })), conflict("issuer_conflict"));
     await r.accounts.installLease(delivery(r, "instance-B", 2, { enrol: undefined, viaNodeId: undefined }));
-    assert.equal(r.store.getAccount(r.account.id)?.leasedFrom?.fencesForwarded, true);
-    assert.deepEqual(r.store.getAccount(r.account.id)?.leasedFrom?.retiredAuthorityInstanceIds, ["instance-A"]);
+    assert.equal(knownAccountLease(r.store.getAccount(r.account.id))?.fencesForwarded, true);
+    assert.deepEqual(knownAccountLease(r.store.getAccount(r.account.id))?.retiredAuthorityInstanceIds, ["instance-A"]);
     await assert.rejects(async () => r.accounts.installLease(delivery(r, "instance-B", 3, { fencesForwarded: true, viaNodeId: "via-test" })), conflict("forwarding_depth_exceeded"));
     await assert.rejects(r.accounts.exportLeasedMaterial(r.account.id), error => error instanceof RpcError && error.details?.reason === "forwarding_depth_exceeded");
     await r.accounts.removeLease(r.account.id);
     const reinstalled = await r.accounts.installLease(delivery(r, "instance-C", 1, { enrol: undefined, authorityNodeId: "new-authority", viaNodeId: "via-test", epoch: 2 }));
-    assert.equal(reinstalled.account.leasedFrom?.fencesForwarded, true, "revocation and new authority do not erase the row's one-hop boundary");
-    assert.deepEqual(reinstalled.account.leasedFrom?.retiredAuthorityInstanceIds, ["instance-A", "instance-B"]);
+    assert.equal(knownAccountLease(reinstalled.account)?.fencesForwarded, true, "revocation and new authority do not erase the row's one-hop boundary");
+    assert.deepEqual(knownAccountLease(reinstalled.account)?.retiredAuthorityInstanceIds, ["instance-A", "instance-B"]);
     await assert.rejects(async () => r.accounts.installLease(delivery(r, "instance-A", 99, { enrol: undefined, authorityNodeId: "new-authority", viaNodeId: "via-test", epoch: 2 })), conflict("retired_instance"));
     r.reopen();
     await assert.rejects(r.accounts.exportLeasedMaterial(r.account.id), error => error instanceof RpcError && error.details?.reason === "forwarding_depth_exceeded");
@@ -157,7 +158,7 @@ test("forwarded retirement fences a stale T15 verdict without claiming dead mate
     await r.accounts.installLease(delivery(r, "instance-B", 3, { retiredAuthorityInstanceIds: ["instance-A"], authorityGenerationFloor: 3 }));
     assert.equal(r.store.claimAuthDeathRecovery(row.id, { ...stamp.material, generation: 99 }, "stale", "continue"), false);
     assert.equal(r.store.listCommands().filter(command => command.args.authDeathRecoveryId === row.id).length, 0);
-    assert.equal(r.store.getAccount(r.account.id)?.leasedFrom?.authorityInstanceId, "instance-B");
+    assert.equal(knownAccountLease(r.store.getAccount(r.account.id))?.authorityInstanceId, "instance-B");
   } finally { r.close(); }
 });
 
@@ -169,14 +170,14 @@ test("forwarded novel history cannot evict local retirements; only local churn h
     await r.accounts.installLease(delivery(r, "instance-Y", 1));
     const novel = Array.from({ length: 8 }, (_, i) => `incoming-${i + 1}`);
     const z = await r.accounts.installLease(delivery(r, "instance-Z", 1, { retiredAuthorityInstanceIds: novel }));
-    assert.deepEqual(z.account.leasedFrom?.retiredAuthorityInstanceIds, ["instance-X", "instance-Y", ...novel.slice(-6)]);
+    assert.deepEqual(knownAccountLease(z.account)?.retiredAuthorityInstanceIds, ["instance-X", "instance-Y", ...novel.slice(-6)]);
     r.reopen();
     await assert.rejects(async () => r.accounts.installLease(delivery(r, "instance-X", 50)), conflict("retired_instance"));
-    const local = z.account.leasedFrom!.retiredAuthorityInstanceIds!;
+    const local = knownAccountLease(z.account)!.retiredAuthorityInstanceIds!;
     const renewal = await r.accounts.installLease(delivery(r, "instance-Z", 2, { retiredAuthorityInstanceIds: ["other-1", "other-2", "other-3"] }));
-    assert.deepEqual(renewal.account.leasedFrom?.retiredAuthorityInstanceIds, local, "eight local entries ignore incoming history");
+    assert.deepEqual(knownAccountLease(renewal.account)?.retiredAuthorityInstanceIds, local, "eight local entries ignore incoming history");
     const churn = await r.accounts.installLease(delivery(r, "instance-next", 1, { retiredAuthorityInstanceIds: novel }));
-    assert.deepEqual(churn.account.leasedFrom?.retiredAuthorityInstanceIds, [...local.slice(1), "instance-Z"], "only newly retired local instance evicts oldest local entry");
+    assert.deepEqual(knownAccountLease(churn.account)?.retiredAuthorityInstanceIds, [...local.slice(1), "instance-Z"], "only newly retired local instance evicts oldest local entry");
     assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
   } finally { r.close(); }
 });
@@ -190,7 +191,7 @@ test("a same-instance generation floor survives an origin change even after a ge
     r.reopen();
     await assert.rejects(async () => r.accounts.installLease(delivery(r, "instance-A", 4, { authorityNodeId: "new-authority", epoch: 2 })), conflict("generation_floor"));
     const next = await r.accounts.installLease(delivery(r, "instance-A", 6, { authorityNodeId: "new-authority", epoch: 2 }));
-    assert.equal(next.account.leasedFrom?.authorityGenerationFloor, 6);
+    assert.equal(knownAccountLease(next.account)?.authorityGenerationFloor, 6);
   } finally { r.close(); }
 });
 
@@ -200,8 +201,8 @@ test("a local plain install may preset the issuer before the first forwarded hop
   try {
     await r.accounts.installLease(delivery(r, "instance-A", 5));
     const preset = await r.accounts.installLease(delivery(r, "instance-A", 6, { enrol: undefined, viaNodeId: "preset-issuer" }));
-    assert.equal(preset.account.leasedFrom?.viaNodeId, "preset-issuer");
-    assert.equal(preset.account.leasedFrom?.fencesForwarded, undefined);
+    assert.equal(knownAccountLease(preset.account)?.viaNodeId, "preset-issuer");
+    assert.equal(knownAccountLease(preset.account)?.fencesForwarded, undefined);
     await r.accounts.installLease(delivery(r, "instance-B", 1, { enrol: undefined, viaNodeId: "preset-issuer", fencesForwarded: false }));
     await assert.rejects(async () => r.accounts.installLease(delivery(r, "instance-B", 2, { enrol: undefined, viaNodeId: "another-issuer" })), conflict("issuer_conflict"));
   } finally { r.close(); }

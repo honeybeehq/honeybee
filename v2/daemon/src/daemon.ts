@@ -3,6 +3,7 @@ const PHONE_CONTEXT = Symbol("phoneOrigin");
 const PHONE_LANE = Symbol("phoneLane");
 const PHONE_DIGEST = Symbol("phoneDigest");
 const PHONE_CARRIER_DIGEST = Symbol("phoneCarrierDigest");
+import { knownAccountLease } from "../../core/src/accountLease.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { effectVerb } from "../../core/src/effectResolve.ts";
 import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../../src/apiarySwap.ts";
@@ -1980,7 +1981,7 @@ export class HiveDaemon {
       case "revive": {
         const bee = this.mustStore().getBee(this.param(params, "beeId"));
         const account = bee?.account ? this.mustStore().getAccount(bee.account) : null;
-        if (account?.source === "leased" && account.leasedFrom?.revokedAt != null) {
+        if (account?.source === "leased" && knownAccountLease(account)?.revokedAt != null) {
           const readiness = this.mustAccounts().credentialReadiness(account);
           if (!readiness.ready) throw new RpcError(readiness.code, readiness.message, { account: account.id });
         }
@@ -5681,7 +5682,9 @@ export class HiveDaemon {
   }
 
   private requireAccount(params: Record<string, unknown>, key = "id"): AccountRow {
-    return this.resolveAccountSelector(this.accountIdParam(params, key));
+    const account = this.resolveAccountSelector(this.accountIdParam(params, key));
+    knownAccountLease(account);
+    return account;
   }
 
   /** One daemon-owned resolver for every operator-facing account selector. */
@@ -5714,7 +5717,7 @@ export class HiveDaemon {
 
   private rpcAccountGet(params: Record<string, unknown>): AccountGetResult {
     const store = this.mustStore();
-    const account = this.requireAccount(params);
+    const account = this.resolveAccountSelector(this.accountIdParam(params));
     return {
       account: this.mirrorAccount(account),
       limits: store.getAccountLimits(account.id),
@@ -5775,12 +5778,12 @@ export class HiveDaemon {
   private async rpcAccountRemove(params: Record<string, unknown>, conn: RpcConn): Promise<AccountRemoveResult> {
     const account = this.requireAccount(params);
     const assertRemovalIngress = () => {
-      const origin = this.mustStore().getAccount(account.id)?.leasedFrom;
+      const origin = knownAccountLease(this.mustStore().getAccount(account.id));
       if (origin?.fencesForwarded && conn.ingress !== "local_unix") throw new RpcError("account_lease_conflict", "Removing an account with lease fences requires a direct local Unix-socket call.", { account: account.id, reason: "local_required" });
     };
     assertRemovalIngress();
     this.mustAccounts().assertLeaseWriteIdle(account.id);
-    if (account.source === "leased" && account.leasedFrom?.revokedAt == null) this.mustAccounts().assertLocalAccount(account);
+    if (account.source === "leased" && knownAccountLease(account)?.revokedAt == null) this.mustAccounts().assertLocalAccount(account);
     try { this.mustAccounts().authorityFor(account)?.assertDisabled(account); }
     catch (error) { throw new RpcError("account_unavailable", error instanceof Error ? error.message : "Credential cleanup failed"); }
     // v16: a login worker never outlives its account (the store cascades the rows).
@@ -5816,6 +5819,7 @@ export class HiveDaemon {
     const importExisting = params.importExisting === undefined ? false : params.importExisting;
     if (typeof importExisting !== "boolean") throw new RpcError("invalid_request", "account.add: importExisting must be a boolean");
     return this.withAsyncIdempotency("account.add", params, async () => {
+      knownAccountLease(store.getAccount(id));
       if (store.getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
       // F2: a fresh account starts LOGGED OUT. Pre-existing credentials at the
       // home (a machine's live harness home handed in as homePath) or in a
@@ -5843,7 +5847,8 @@ export class HiveDaemon {
       let imported: AccountAddResult["imported"] = null;
       if (importExisting) {
         const outcome = await accounts.importExistingCredentials({ harness, id, homePath });
-        if (store.getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
+        knownAccountLease(store.getAccount(id));
+      if (store.getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
         if (!outcome.ok) {
           const checked = outcome.checked.length > 0 ? outcome.checked.map((c) => `${c.path} (${c.state})`).join(", ") : `${harness} has no identity recipe`;
           throw new RpcError(
@@ -5890,7 +5895,8 @@ export class HiveDaemon {
     if (typeof penalty !== "number") throw new RpcError("invalid_request", "account.add: penalty must be a number");
     const label = typeof params.label === "string" && params.label.trim().length > 0 ? params.label : native.label;
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : accountIdFor(harness, label);
-    if (store.getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
+    knownAccountLease(store.getAccount(id));
+      if (store.getAccount(id)) throw new RpcError("invalid_request", `account already exists: ${id}`);
     const homePath = accounts.nativeHomeOf(harness)!;
     const account = store.createAccount({ id, harness, label, homePath, penalty, native: true, status: accounts.honestStatus({ harness, id, homePath }, "ok") });
     const credentialHealth = accounts.credentialHealthOf(account);
