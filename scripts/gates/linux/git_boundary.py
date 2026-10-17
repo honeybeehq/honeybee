@@ -8,6 +8,7 @@ import re
 import socket
 import stat
 import subprocess
+from home_guard import entry_guard
 
 
 def snapshot(repo):
@@ -46,6 +47,7 @@ def checked(binary, cwd, args):
 
 def prepare(root, label):
     root = pathlib.Path(root)
+    guard = entry_guard(root)
     directory = root / 'git-boundary' / label
     directory.mkdir(parents=True)
     binary = pathlib.Path(shutil.which('git')).resolve(strict=True)
@@ -61,7 +63,7 @@ def prepare(root, label):
     attempted = checked(str(binary), source, ['rev-parse', 'HEAD'])
     bare = checked(str(binary), target, ['rev-parse', '--is-bare-repository']) == 'true'
     seed = checked(str(binary), target, ['rev-parse', 'refs/heads/seed'])
-    record = dict(binary=str(binary), binarySha256=hashlib.sha256(binary.read_bytes()).hexdigest(), source=str(source), backingTarget=str(target), outsideTarget='/mnt/target.git', bare=bare, seed=seed, attempted=attempted, before=snapshot(target))
+    record = dict(entryGuard=guard, binary=str(binary), binarySha256=hashlib.sha256(binary.read_bytes()).hexdigest(), source=str(source), backingTarget=str(target), outsideTarget='/mnt/target.git', bare=bare, seed=seed, attempted=attempted, before=snapshot(target))
     assert bare and record['before']
     (directory / 'fixture.json').write_text(json.dumps(record))
     return directory
@@ -69,7 +71,7 @@ def prepare(root, label):
 
 NETWORK_URL = 'git://192.0.2.1/git-boundary.git'
 OUTSIDE_TARGET = '/mnt/target.git'
-FORBIDDEN = re.compile(r'not (?:a )?git repository|does not appear to be a git repository|does not exist|no such file|permission denied|operation not permitted|ownership|unsafe repository|auth|could not read username|timed? out|timeout|could not resolve|access denied', re.IGNORECASE)
+FORBIDDEN = re.compile(r'not (?:a )?git repository|does not appear to be a git repository|does not exist|no such file|permission denied|operation not permitted|ownership|unsafe repository|auth|could not read username|timed?[ -]out|timeout|connection (?:refused|reset|closed|aborted|terminated)|closed (?:by|connection)|reset by peer|broken pipe|unexpected (?:disconnect|eof)|remote end hung up|empty reply|connected to|connection established|could not resolve|access denied', re.IGNORECASE)
 LOCAL_ERROR = re.compile(r'(?:remote: )?(?:fatal|error): .*?(?:unable to create temporary object directory|unpacker error|cannot lock ref|[Rr]ead-only file system).*')
 NETWORK_FATAL = re.compile(r'fatal: unable to connect to 192\.0\.2\.1:')
 NETWORK_DETAIL = re.compile(r'192\.0\.2\.1\[0: 192\.0\.2\.1\]: errno=(?:Network is unreachable|No route to host)')
@@ -137,18 +139,20 @@ def run(root, label):
     storage = storage_probes(target)
     classified = classify_stderr(push.stderr.decode(errors='replace'), 'push', target)
     after = snapshot(target)
-    local = dict(asserted=bare and seed_present and source_ready and readonly and push.returncode != 0 and classified['classification'] == 'local_write_failure' and all(row['refused'] for row in storage) and before == after == fixture['before'], operation='push', path=target, bare=bare, seedPresent=seed_present, sourceReady=source_ready, readOnly=readonly, pushExit=push.returncode, storageProbes=storage, before=before, after=after, unchanged=before == after == fixture['before'], metadataAndHashesOnly=True, **classified)
+    local = dict(proof='combined boundary proof: git write-failure class plus direct EROFS syscall probes plus an unchanged tree', asserted=bare and seed_present and source_ready and readonly and push.returncode != 0 and classified['classification'] == 'local_write_failure' and all(row['refused'] for row in storage) and before == after == fixture['before'], operation='push', path=target, bare=bare, seedPresent=seed_present, sourceReady=source_ready, readOnly=readonly, pushExit=push.returncode, storageProbes=storage, before=before, after=after, unchanged=before == after == fixture['before'], metadataAndHashesOnly=True, **classified)
     network = []
     for operation, args in [('fetch', ['fetch', NETWORK_URL]), ('push', ['push', NETWORK_URL, 'HEAD:refs/heads/boundary'])]:
         result = git_call(binary, source, args)
         probe = network_probe()
         classified = classify_stderr(result.stderr.decode(errors='replace'), operation, NETWORK_URL)
         network.append(dict(operation=operation, url=NETWORK_URL, exit=result.returncode, connectProbe=probe, asserted=result.returncode != 0 and classified['classification'] == 'network_unreachable' and probe['refused'], **classified))
-    return dict(asserted=local['asserted'] and all(row['asserted'] for row in network), binary=binary, binarySha256=fixture['binarySha256'], outsidePush=local, network=network, fixtureOnlyException=['GIT_CONFIG_NOSYSTEM=1', 'GIT_CONFIG_GLOBAL=/dev/null'])
+    return dict(entryGuard=fixture['entryGuard'], asserted=local['asserted'] and all(row['asserted'] for row in network), binary=binary, binarySha256=fixture['binarySha256'], outsidePush=local, network=network, fixtureOnlyException=['GIT_CONFIG_NOSYSTEM=1', 'GIT_CONFIG_GLOBAL=/dev/null'])
 
 
 def receipt_valid(record, fixture, outside_after):
     try:
+        guard = record['entryGuard']
+        assert guard == fixture['entryGuard'] and guard['allowed'] is True and guard['beforeFirstWrite'] is True
         local = record['outsidePush']
         assert record['asserted'] is True and record['binary'] == fixture['binary'] and record['binarySha256'] == fixture['binarySha256']
         assert local['asserted'] is True and local['operation'] == 'push' and local['path'] == OUTSIDE_TARGET and local['bare'] is True and local['readOnly'] is True and local['seedPresent'] is True and local['sourceReady'] is True
@@ -172,5 +176,7 @@ def receipt_valid(record, fixture, outside_after):
 
 if __name__ == '__main__':
     import sys
+    root = pathlib.Path(sys.argv[1])
+    entry_guard(root)
     subprocess.run(['ip', 'link', 'set', 'lo', 'up'], check=True, capture_output=True)
-    prepare(pathlib.Path(sys.argv[1]), sys.argv[2])
+    prepare(root, sys.argv[2])

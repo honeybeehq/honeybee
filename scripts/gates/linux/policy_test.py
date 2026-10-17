@@ -419,6 +419,14 @@ class PolicyTests(unittest.TestCase):
         changed[-1] = dict(probes[-2])
         self.assertTrue(probe_failed(dict(valid, probes=changed), HOME, targets))
 
+    def test_git_boundary_entry_guard_precedes_setup(self):
+        import git_boundary
+        with patch('git_boundary.entry_guard', side_effect=SystemExit(2)), patch('git_boundary.pathlib.Path.mkdir') as mkdir, patch('git_boundary.git_call') as command:
+            with self.assertRaises(SystemExit):
+                git_boundary.prepare(pathlib.Path('/runroot'), 'fixture')
+            mkdir.assert_not_called()
+            command.assert_not_called()
+
     def test_git_boundary_classification_and_receipts(self):
         from git_boundary import classify_stderr, receipt_valid, NETWORK_URL, OUTSIDE_TARGET
         from copy import deepcopy
@@ -428,21 +436,25 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(classify_stderr(network_text, 'fetch', NETWORK_URL)['classification'], 'network_unreachable')
         for text, operation, target in [(network_text, 'push', OUTSIDE_TARGET), (local_text, 'fetch', NETWORK_URL), (network_text, 'clone', NETWORK_URL), (network_text, 'fetch', 'git://192.0.2.2/x'), ('', 'fetch', NETWORK_URL), ('unrelated', 'fetch', NETWORK_URL)]:
             self.assertNotIn(classify_stderr(text, operation, target)['classification'], ('local_write_failure', 'network_unreachable'))
-        for forbidden in ('not a git repository', 'does not exist', 'No such file', 'Permission denied', 'dubious ownership', 'Authentication failed', 'connection timed out'):
+        for forbidden in ('not a git repository', 'does not exist', 'No such file', 'Permission denied', 'dubious ownership', 'Authentication failed', 'connection timed out', 'Connection refused', 'Connection reset by peer', 'connection timed-out', 'connection closed by peer', 'connection established', 'Broken pipe', 'remote end hung up unexpectedly'):
             for text, operation, target in [(local_text, 'push', OUTSIDE_TARGET), (network_text, 'fetch', NETWORK_URL)]:
                 self.assertEqual(classify_stderr(text + '\n' + forbidden, operation, target)['classification'], 'forbidden_error')
         manifest = {'.': dict(inode=1), 'HEAD': dict(sha256='head'), 'config': dict(sha256='config')}
-        fixture = dict(binary='/usr/bin/git', binarySha256='hash', before=manifest)
+        guard = dict(allowed=True, beforeFirstWrite=True)
+        fixture = dict(entryGuard=guard, binary='/usr/bin/git', binarySha256='hash', before=manifest)
         storage = [dict(path=OUTSIDE_TARGET + '/' + directory + '/gate-write-' + operation, operation=operation, errno=errno.EROFS, refused=True) for directory in ('objects', 'refs') for operation in ('mkdir', 'open')]
         local = dict(asserted=True, operation='push', path=OUTSIDE_TARGET, bare=True, readOnly=True, seedPresent=True, sourceReady=True, pushExit=1, unchanged=True, before=manifest, after=manifest, storageProbes=storage, **classify_stderr(local_text, 'push', OUTSIDE_TARGET))
         network = [dict(asserted=True, operation=operation, url=NETWORK_URL, exit=128, connectProbe=dict(address='192.0.2.1', port=9418, errno=errno.ENETUNREACH, refused=True), **classify_stderr(network_text, operation, NETWORK_URL)) for operation in ('fetch', 'push')]
-        record = dict(asserted=True, binary='/usr/bin/git', binarySha256='hash', outsidePush=local, network=network)
+        record = dict(entryGuard=guard, asserted=True, binary='/usr/bin/git', binarySha256='hash', outsidePush=local, network=network)
         self.assertTrue(receipt_valid(record, fixture, manifest))
         for field, value in [('classification', 'network_unreachable'), ('operation', 'fetch'), ('path', '/wrong'), ('matchedEvidence', []), ('matchedEvidence', ['unrelated']), ('matchedEvidence', [local_text, 'Permission denied']), ('after', {}), ('pushExit', 0)]:
             changed = deepcopy(record); changed['outsidePush'][field] = value
             self.assertFalse(receipt_valid(changed, fixture, manifest))
         for field, value in [('classification', 'local_write_failure'), ('operation', 'clone'), ('url', 'git://192.0.2.2/x'), ('matchedEvidence', []), ('matchedEvidence', [network_text, 'Authentication failed']), ('exit', 0)]:
             changed = deepcopy(record); changed['network'][0][field] = value
+            self.assertFalse(receipt_valid(changed, fixture, manifest))
+        for reachable in ('Connection refused', 'Connection reset by peer', 'connection closed', 'connection timed-out'):
+            changed = deepcopy(record); changed['network'][0]['matchedEvidence'].append(reachable)
             self.assertFalse(receipt_valid(changed, fixture, manifest))
         changed = deepcopy(record); changed['outsidePush']['storageProbes'][0]['errno'] = errno.EACCES
         self.assertFalse(receipt_valid(changed, fixture, manifest))
