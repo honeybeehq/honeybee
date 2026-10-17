@@ -52,12 +52,18 @@ def profile_state(path, expected):
 def parse_node_observation(output, node):
     lines = output.splitlines()
     prefixes = ('NODE ', 'ENTRY ', 'CWD ', 'SANDBOX ')
-    if len(lines) != 4 or not all(line.startswith(prefix) for line, prefix in zip(lines, prefixes)):
+    if len(lines) < 4 or not all(line.startswith(prefix) for line, prefix in zip(lines[:4], prefixes)):
         raise ValueError('Node argv/cwd/sandbox observation incomplete')
-    values = [line[len(prefix):] for line, prefix in zip(lines, prefixes)]
+    values = [line[len(prefix):] for line, prefix in zip(lines[:4], prefixes)]
+    flags = []
+    for line in lines[4:]:
+        match = re.fullmatch(r'FLAG (--[a-z0-9-]{1,92}) ([^\s]{1,2048})', line)
+        if match is None:
+            raise ValueError('Node flag observation malformed')
+        flags.append({'name': match.group(1), 'value': match.group(2)})
     if values[0] != node or values[3] not in ('0', '1') or not all(Path(value).is_absolute() for value in values[:3]):
         raise ValueError('Node observation differs from pinned executable or is ambiguous')
-    return {'node': values[0], 'entry': values[1], 'cwd': values[2], 'sandboxed': values[3] == '1'}
+    return {'node': values[0], 'entry': values[1], 'cwd': values[2], 'sandboxed': values[3] == '1', 'flags': flags}
 
 
 def parse_write_policy(output):

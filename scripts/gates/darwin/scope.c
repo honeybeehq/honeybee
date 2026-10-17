@@ -14,6 +14,7 @@
 #include <dlfcn.h>
 #include <limits.h>
 #include "argv_observation.h"
+#include "node_flags.h"
 
 static void secure_zero(void *pointer, size_t size) {
 #ifdef __APPLE__
@@ -170,50 +171,64 @@ static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned l
   return writes_denied ? 2 : 0;
 
 }
-static int node_observation(int pid, unsigned long long sec, unsigned long long usec, const char *expected_node, const char *reader, const char *preloader) {
+static int node_observation(int pid, unsigned long long sec, unsigned long long usec, const char *expected_node, const char *reader, const char *preloader, const char *test, const char *host) {
   int rc = same_birth(pid, sec, usec);
   if (rc) return rc;
-  char image[PROC_PIDPATHINFO_MAXSIZE];
-  if (proc_pidpath(pid, image, sizeof(image)) <= 0 || strcmp(image, expected_node)) return 4;
-  size_t capacity = 1048576, size = capacity;
+  size_t capacity = 1048576, size = capacity, count = 0, entry = 0;
   unsigned char *buffer = calloc(1, capacity);
-  if (!buffer) return 4;
+  if (!buffer) { fputs("procargs_read\n", stderr); return 4; }
   struct argv_span args[1024];
-  size_t count = 0;
-  int mib[] = {CTL_KERN, KERN_PROCARGS2, pid};
-  errno = 0;
-  int got = sysctl(mib, 3, buffer, &size, NULL, 0);
-  rc = same_birth(pid, sec, usec);
-  if (got || rc || size >= capacity || !parse_argv_only(buffer, size, args, 1024, &count)) { secure_zero(buffer, capacity); free(buffer); return rc ? rc : 4; }
-  size_t entry = 1;
-  while (entry < count && buffer[args[entry].start] == '-') {
-    const char *flag = (char *)buffer + args[entry].start;
-    if (!strcmp(flag, "--import")) { entry += 2; continue; }
-    if (!strcmp(flag, "--experimental-strip-types") || !strcmp(flag, "--no-warnings") || !strcmp(flag, "--test") || !strncmp(flag, "--test-", 7)) { entry++; continue; }
-    secure_zero(buffer, capacity); free(buffer); return 4;
-  }
-  struct proc_vnodepathinfo paths;
-  char cwd[PATH_MAX], resolved_entry[PATH_MAX], candidate[PATH_MAX];
-  if (entry >= count || proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &paths, sizeof(paths)) != sizeof(paths) || !realpath(paths.pvi_cdir.vip_path, cwd)) { secure_zero(buffer, capacity); free(buffer); return 4; }
-  int printed = snprintf(candidate, sizeof(candidate), "%s%s%s", buffer[args[entry].start] == '/' ? "" : cwd, buffer[args[entry].start] == '/' ? "" : "/", buffer + args[entry].start);
-  int valid = printed > 0 && printed < sizeof(candidate) && realpath(candidate, resolved_entry) != NULL;
-  if (valid && !strcmp(resolved_entry, reader) && !reader_argv_exact(buffer, args, count, expected_node, reader, preloader)) valid = 0;
+  char image[PROC_PIDPATHINFO_MAXSIZE], cwd[PATH_MAX], resolved_entry[PATH_MAX], candidate[PATH_MAX], bad[96] = "missing_entry";
+  const char *reason = "procargs_read";
+  rc = 4;
+  do {
+    if (proc_pidpath(pid, image, sizeof(image)) <= 0 || strcmp(image, expected_node)) { reason = "entry_mismatch"; break; }
+    int mib[] = {CTL_KERN, KERN_PROCARGS2, pid};
+    errno = 0;
+    int got = sysctl(mib, 3, buffer, &size, NULL, 0);
+    int identity_status = same_birth(pid, sec, usec);
+    if (got || identity_status || size >= capacity || size < sizeof(int)) { if (identity_status) rc = identity_status; break; }
+    int argc = 0; memcpy(&argc, buffer, sizeof(argc));
+    if (argc <= 0 || argc > 1024) { reason = "argc_bound"; break; }
+    if (!parse_argv_only(buffer, size, args, 1024, &count)) break;
+    if (!node_flags_entry(buffer, args, count, preloader, &entry, bad)) {
+      if (entry >= count) { reason = "entry_mismatch"; break; }
+      fprintf(stderr, "unsupported_flag:%s\n", bad);
+      print_node_flags(stderr, buffer, args, count, count, preloader, 0);
+      reason = NULL;
+      break;
+    }
+    struct proc_vnodepathinfo paths;
+    if (proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &paths, sizeof(paths)) != sizeof(paths) || !realpath(paths.pvi_cdir.vip_path, cwd)) { reason = "cwd_read"; break; }
+    int printed = snprintf(candidate, sizeof(candidate), "%s%s%s", buffer[args[entry].start] == '/' ? "" : cwd, buffer[args[entry].start] == '/' ? "" : "/", buffer + args[entry].start);
+    if (printed <= 0 || printed >= (int)sizeof(candidate) || !realpath(candidate, resolved_entry)) { reason = "entry_mismatch"; break; }
+    if (!node_role_argv(buffer, args, count, entry, expected_node, reader, preloader, test, host, resolved_entry, bad)) {
+      if (!strcmp(bad, "--experimental-strip-types")) { fprintf(stderr, "unsupported_flag:%s\n", bad); reason = NULL; }
+      else reason = "entry_mismatch";
+      break;
+    }
+    sandbox_check_function check = sandbox_checker();
+    if (!check) { reason = "sandbox_read"; break; }
+    errno = 0;
+    int sandboxed = check(pid, NULL, 0);
+    if (errno || (sandboxed != 0 && sandboxed != 1)) { reason = "sandbox_read"; break; }
+    rc = same_birth(pid, sec, usec);
+    if (rc) break;
+    if (proc_pidpath(pid, image, sizeof(image)) <= 0 || strcmp(image, expected_node)) { rc = 4; reason = "entry_mismatch"; break; }
+    for (const char *part = cwd; *part; part++) if (*part <= 32 || *part >= 127) { rc = 4; reason = "cwd_read"; break; }
+    if (rc) break;
+    for (const char *part = resolved_entry; *part; part++) if (*part <= 32 || *part >= 127) { rc = 4; reason = "entry_mismatch"; break; }
+    if (rc) break;
+    printf("NODE %s\nENTRY %s\nCWD %s\nSANDBOX %d\n", image, resolved_entry, cwd, sandboxed);
+    print_node_flags(stdout, buffer, args, count, entry, preloader, 1);
+    reason = NULL;
+  } while (0);
+  if (rc && reason) fprintf(stderr, "%s\n", reason);
   secure_zero(buffer, capacity);
   free(buffer);
-  if (!valid) return 4;
-  sandbox_check_function check = sandbox_checker();
-  if (!check) { fputs("sandbox_check SPI unavailable\n", stderr); return 4; }
-  errno = 0;
-  int sandboxed = check(pid, NULL, 0);
-  if (errno || (sandboxed != 0 && sandboxed != 1)) { fprintf(stderr, "sandbox_check state result=%d errno=%d\n", sandboxed, errno); return 4; }
-  rc = same_birth(pid, sec, usec);
-  if (rc) return rc;
-  if (proc_pidpath(pid, image, sizeof(image)) <= 0 || strcmp(image, expected_node)) return 4;
-  for (const char *part = cwd; *part; part++) if (*part <= 32 || *part >= 127) return 4;
-  for (const char *part = resolved_entry; *part; part++) if (*part <= 32 || *part >= 127) return 4;
-  printf("NODE %s\nENTRY %s\nCWD %s\nSANDBOX %d\n", image, resolved_entry, cwd, sandboxed);
-  return same_birth(pid, sec, usec);
+  return rc ? rc : same_birth(pid, sec, usec);
 }
+
 static int write_policy(int pid, unsigned long long sec, unsigned long long usec, char **paths) {
   sandbox_check_function check = sandbox_checker();
   if (!check) { fputs("sandbox_check SPI unavailable\n", stderr); return 4; }
@@ -288,7 +303,7 @@ int main(int argc, char **argv) {
     if (sig != SIGTERM && sig != SIGKILL) return 2;
     return group_members(pid, sec, usec, sig, argc - 7, argv + 7);
   }
-  if (!strcmp(argv[1], "node-observation")) return argc == 9 ? node_observation(pid, sec, usec, argv[6], argv[7], argv[8]) : 2;
+  if (!strcmp(argv[1], "node-observation")) return (argc == 9 || argc == 11) ? node_observation(pid, sec, usec, argv[6], argv[7], argv[8], argc == 11 ? argv[9] : NULL, argc == 11 ? argv[10] : NULL) : 2;
   if (!strcmp(argv[1], "write-policy")) return argc == 9 ? write_policy(pid, sec, usec, argv + 6) : 2;
   if (!strcmp(argv[1], "listeners")) return listeners(pid, sec, usec, 0);
   if (!strcmp(argv[1], "connections")) return listeners(pid, sec, usec, 1);

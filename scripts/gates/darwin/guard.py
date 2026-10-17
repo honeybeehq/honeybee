@@ -19,6 +19,8 @@ import node_bootstrap
 import listener_static
 import git_boundary
 import focused_flow
+import node_argv
+import pty_controls
 import focused_seal
 import scope_controls
 
@@ -78,7 +80,7 @@ def write_json(path, value, root):
     if not inside(path.resolve(), root.resolve()):
         raise Refusal('write outside run root')
     if path == Path(root) / 'receipt.json' and isinstance(value, dict):
-        value = dict(value, controllerBootstrap=focused_flow.CONTROLLER_BOOTSTRAPS.get(str(root.resolve())), rootCreation=focused_seal.ROOT_CREATION.get(str(root.resolve())), exeUnlinkedLimit=focused_seal.UNLINKED_LIMIT, fdUnobservableLimit=focused_seal.FD_UNOBSERVABLE_LIMIT, fdUnobservableDisclosure=focused_seal.fd_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservableSandboxDenied', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdUnobservableWriteDeniedDisclosure=focused_seal.fd_write_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservableWriteDenied', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdUnobservablePlatformBinaryDisclosure=focused_seal.fd_platform_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservablePlatformBinary', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdDisclosureCountScope='most recent quiescence scan; each retained observation also carries its own disclosure', foreignRootUseCounts=dict(focused_seal.FOREIGN_ROOT_USE_COUNTS), unobservedOwnChildren=list(focused_seal.UNOBSERVED_OWN_CHILDREN), gateLaunchBirths=sorted(focused_seal.GATE_LAUNCH_BIRTHS), gateLaunchPids=sorted(focused_seal.GATE_LAUNCH_PIDS), quiescenceObservations=list(focused_seal.QUIESCENCE_OBSERVATIONS), gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
+        value = dict(value, ptyDisclosure=pty_controls.DISCLOSURE, ptyControls=pty_controls.REPORTS.get(str(root.resolve())), nodeDefaultArgv=node_argv.receipt_report(root) if value.get('selfTest') else None, controllerBootstrap=focused_flow.CONTROLLER_BOOTSTRAPS.get(str(root.resolve())), rootCreation=focused_seal.ROOT_CREATION.get(str(root.resolve())), exeUnlinkedLimit=focused_seal.UNLINKED_LIMIT, fdUnobservableLimit=focused_seal.FD_UNOBSERVABLE_LIMIT, fdUnobservableDisclosure=focused_seal.fd_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservableSandboxDenied', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdUnobservableWriteDeniedDisclosure=focused_seal.fd_write_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservableWriteDenied', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdUnobservablePlatformBinaryDisclosure=focused_seal.fd_platform_disclosure((focused_seal.QUIESCENCE_OBSERVATIONS[-1].get('reason') or {}).get('counts', {}).get('fdUnobservablePlatformBinary', 0) if focused_seal.QUIESCENCE_OBSERVATIONS else 0), fdDisclosureCountScope='most recent quiescence scan; each retained observation also carries its own disclosure', foreignRootUseCounts=dict(focused_seal.FOREIGN_ROOT_USE_COUNTS), unobservedOwnChildren=list(focused_seal.UNOBSERVED_OWN_CHILDREN), gateLaunchBirths=sorted(focused_seal.GATE_LAUNCH_BIRTHS), gateLaunchPids=sorted(focused_seal.GATE_LAUNCH_PIDS), quiescenceObservations=list(focused_seal.QUIESCENCE_OBSERVATIONS), gitBoundary=GIT_AUDITS.get(str(root.resolve())), entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
@@ -205,9 +207,9 @@ def seed_cache(source, expected, root, lane):
     return {'sha256': digest, 'members': len(members)}
 
 
-def profile(root, home, lane):
+def profile(root, home, lane, *, pty=True):
     quote = lambda p: json.dumps(str(p))
-    return ''.join((
+    base = ''.join((
         '(version 1)(allow default)',
         '(deny file-write*)(allow file-write* (subpath ' + quote(root) + '))',
         '(deny file-write* (subpath ' + quote(root / 'sealed-target') + '))',
@@ -225,6 +227,8 @@ def profile(root, home, lane):
         '(allow network-inbound (local unix-socket (subpath ' + quote(root / 't') + ')))',
         '(allow network-outbound (remote unix-socket (subpath ' + quote(root / 't') + ')))',
     ))
+
+    return pty_controls.production_profile(base) if pty else base
 
 
 def socket_identity(path):
@@ -735,7 +739,7 @@ def run(args):
         print('\n'.join(diagnostic.splitlines()[-60:]), flush=True)
         raise Refusal('policy preflight failed; receipts retained at ' + str(root))
     tools = compiler_tools(root, env)
-    build_policy = compiler_profile(policy, tools)
+    build_policy = compiler_profile(profile(root, real_home, lane, pty=False), tools)
     write_json(root / 'compiler-permissions.json', {'literalAncestorMetadataOnly': compiler_metadata_literals(tools['clang']), 'noUserPaths': True, 'noAdditionalDataRead': True}, root)
     (root / 'compiler.sb').write_text(build_policy)
     version_command = ['/usr/bin/sandbox-exec', '-f', str(root / 'compiler.sb'), tools['clang'], '--version']
@@ -773,6 +777,16 @@ def run(args):
             scope_controls.run(sys.modules[__name__], root, workspace, identity, node, env)
         except (ValueError, OSError, subprocess.SubprocessError) as error:
             raise Refusal('real scope control failed: ' + str(error)) from error
+        flags_test = subprocess.run(prefix + [env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/focused_node_flags_test.py')], cwd=workspace, env=env, capture_output=True, timeout=20)
+        (root / 'logs/node-default-argv-control.log').write_bytes(flags_test.stdout + flags_test.stderr)
+        if flags_test.returncode:
+            raise Refusal('real default-isolation Node argv control failed')
+    if args.self_test or args.body == 'scripts/gates/darwin/focused-manifest-body.sh':
+        try:
+            pty_controls.run(sys.modules[__name__], root, workspace, identity, env, compile_command, self_test=args.self_test, focused_precondition=args.body == 'scripts/gates/darwin/focused-manifest-body.sh', baseline_policy=profile(root, real_home, lane, pty=False))
+            pty_controls.require_precondition(root, pty_controls.os_build(env))
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            raise Refusal('real PTY precondition failed: ' + str(error)) from error
     static_rows = listener_static.scan(workspace)
     write_json(root / 'listener-static.json', {'violations': static_rows, 'scope': 'v2/** and tests/**'}, root)
     if static_rows and not args.self_test:

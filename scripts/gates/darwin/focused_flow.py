@@ -13,6 +13,7 @@ import focused_diagnostics
 import focused_native
 import focused_mediation
 import focused_sentinel
+import pty_controls
 import focused_seal
 import focused_roles
 import focused_tap
@@ -204,7 +205,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                             raise ValueError('unresolved own executable observation')
                         if executable == env['SCG_NODE_BIN']:
                             if mediation is not None:
-                                detail = subprocess.run([str(helper), 'node-observation', *row, env['SCG_NODE_BIN'], mediation.reader, str(trace.policy['preloader']) if trace is not None else '-'], capture_output=True, text=True, timeout=2)
+                                detail = subprocess.run([str(helper), 'node-observation', *row, env['SCG_NODE_BIN'], mediation.reader, str(trace.policy['preloader']) if trace is not None else '-', str(workspace / 'v2/daemon/tests/delivery-file-read.test.ts'), str(workspace / 'v2/driver-hsr/src/runner-host-main.ts')], capture_output=True, text=True, timeout=2)
                                 executable_samples[-1]['nodeObservation'] = {'exit': detail.returncode, 'stdout': detail.stdout, 'diagnostic': detail.stderr}
                                 if detail.returncode != 0:
                                     raise ValueError('own Node argv/cwd/sandbox observation unresolved: ' + detail.stderr.strip())
@@ -306,6 +307,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
 
 
 def run(api, root, workspace, env, tools, real_home):
+    pty_controls.require_precondition(root, pty_controls.os_build(env))
     manifest_path = workspace / 'scripts/gates/darwin/focused-manifest.json'
     manifest = json.loads(manifest_path.read_text())
     if manifest['version'] != 1 or tuple(item['path'] for item in manifest['files']) != focused_audit.FILES:
@@ -422,6 +424,8 @@ def run(api, root, workspace, env, tools, real_home):
             command = [active_node, '--test', '--test-concurrency=1', '--test-reporter=tap', '--test-name-pattern=' + pattern, item['path']]
             tmux_diagnostics = None
             if mode == 'outer' and item['path'] == 'v2/daemon/tests/multiline-fallback-tmux.test.ts':
+                child_env['XDG_CONFIG_HOME'] = str(Path(child_env['HOME']) / '.config')
+                tmux_config = require_tmux_config_absent(root, child_env)
                 tmux_diagnostics = root / 'logs/focused-tmux-diagnostics.jsonl'
                 descriptor = os.open(tmux_diagnostics, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
                 os.close(descriptor)
@@ -441,6 +445,7 @@ def run(api, root, workspace, env, tools, real_home):
                 verdict.update(focused_tap.adjudicate(log.read_text(), names, result['exit']))
                 verdict['processReason'] = result['reason']
                 if tmux_diagnostics is not None:
+                    verdict['tmuxConfigAbsent'] = tmux_config
                     verdict['tmuxDiagnostics'] = load_tmux_diagnostics(tmux_diagnostics, names)
                     verdict['tmuxDiagnostics']['failureEnums'] = sorted(set(re.findall(r'^# SCG_TMUX_DIAGNOSTIC_FAILURE=(append_eacces|append_enospc|append_emfile|append_other|realpath_failed|capture_failed|emit_failed|metadata_failed|hook_failed|diagnostic_failed)$', log.read_text(), re.M)))
                 if result['reason']:
@@ -539,3 +544,15 @@ def valid_tmux_row(row, names):
     if row['kind'] == 'tmux-command' and (not isinstance(row['operation'], str) or row['operation'] not in {'new-session', 'new-window', 'kill-server', 'kill-session', 'kill-pane', 'list-panes', 'list-sessions', 'capture-pane', 'display-message', 'show-options', 'set-option', 'set-options', 'send-keys', 'load-buffer', 'paste-buffer', 'delete-buffer', 'resize-pane', 'select-pane', 'has-session', 'other'}):
         return False
     return True
+
+
+def require_tmux_config_absent(root, env):
+    home = Path(env['HOME'])
+    if not home.is_absolute() or home.resolve(strict=True) != home or root.resolve() not in home.parents:
+        raise ValueError('tmux fake HOME redirected or outside root')
+    config = Path(env['XDG_CONFIG_HOME'])
+    paths = (home / '.tmux.conf', config / 'tmux/tmux.conf', home / '.config/tmux/tmux.conf')
+    for path in paths:
+        if not path.is_absolute() or home not in path.parents or path.resolve(strict=False) != path or path.exists() or path.is_symlink():
+            raise ValueError('tmux configuration present, redirected or outside fake HOME')
+    return {'ok': True, 'paths': sorted(set(str(path.relative_to(home)) for path in paths)), 'userConfigAbsent': True}
