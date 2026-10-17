@@ -11,7 +11,7 @@ await fs.mkdir(path.join(root,'verified-tarballs'));
 for(const [name,pkg] of Object.entries(lock.packages)){
  if(!name||!accepts(pkg.os,'darwin')||!accepts(pkg.cpu,'arm64'))continue;
  const url=new URL(pkg.resolved);
- if(url.protocol!=='https:'||url.hostname!=='registry.npmjs.org'||url.username||url.password||url.port||!url.pathname.endsWith('.tgz')||!pkg.integrity||pkg.link)throw Error('registry provenance refused: '+name);
+ if(url.protocol!=='https:'||url.hostname!=='registry.npmjs.org'||url.username||url.password||url.port||url.search||url.hash||!pkg.resolved.startsWith('https://registry.npmjs.org/')||/[\x00-\x20\x7f-\uffff%?#\\]/.test(pkg.resolved)||!/^\/(?:@[a-z0-9._~-]+\/)?[a-z0-9._~+-]+\/-\/[a-zA-Z0-9._~+-]+[.]tgz$/.test(url.pathname)||!pkg.integrity||pkg.link)throw Error('registry provenance refused: '+name);
  const data=await cacache.get.byDigest(path.join(root,'npm/_cacache'),pkg.integrity);
  if(!ssri.checkData(data,pkg.integrity))throw Error('lock integrity refused: '+name);
  const file=String(rows.length).padStart(4,'0')+'.tgz';

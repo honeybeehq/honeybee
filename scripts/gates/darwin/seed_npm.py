@@ -7,8 +7,10 @@ from pathlib import Path
 import subprocess
 import tarfile
 
+import seed_policy
 
-LIFECYCLE = ('preinstall', 'install', 'postinstall', 'prepare', 'prepublish', 'preprepare')
+
+LIFECYCLE = ('preinstall', 'install', 'postinstall', 'prepare', 'prepublish', 'preprepare', 'postprepare')
 ALLOWED = {'esbuild': {'postinstall': 'node install.js'}, 'node-pty': {'install': 'node scripts/prebuild.js || node-gyp rebuild', 'postinstall': 'node scripts/post-install.js'}}
 
 
@@ -30,7 +32,7 @@ def scan_tarball(data):
         package = json.load(archive.extractfile(roots[0]))
         scripts = {k: v for k, v in package.get('scripts', {}).items() if k in LIFECYCLE}
         for event, command in scripts.items():
-            if event in ('prepare', 'prepublish', 'preprepare'):
+            if event == 'prepare':
                 continue
             if ALLOWED.get(package['name'], {}).get(event) != command:
                 raise ValueError('unexpected dependency lifecycle: ' + package['name'] + ':' + event)
@@ -73,6 +75,7 @@ def run(args):
     verify_input(npm, args.npm_sha256)
     for path, expected in ((args.package, args.package_sha256), (args.lock, args.lock_sha256)):
         verify_input(path, expected)
+    seed_policy.validate_lock(json.loads(args.lock.read_text()))
     package = json.loads(args.package.read_text())
     root_scripts = {k: v for k, v in package.get('scripts', {}).items() if k in LIFECYCLE}
     if root_scripts or package.get('workspaces'):
@@ -103,8 +106,9 @@ def run(args):
             if data.startswith(b'\x1f\x8b') and hashlib.sha256(data).hexdigest() not in seen:
                 raise ValueError('unresolved extra cached tarball provenance')
     target = root / 'darwin-npm-seed.tar'
+    cache_index_entries = seed_policy.audit_index(root / 'npm/_cacache')
     pack(root, target)
-    report = {'version': 1, 'packageSha256': args.package_sha256, 'lockSha256': args.lock_sha256, 'nodeSha256': digest(node), 'npmCliSha256': digest(npm), 'nodeVersion': subprocess.check_output([str(node), '--version'], env=env, text=True).strip(), 'npmVersion': subprocess.check_output([str(node), str(npm), '--version'], env=env, text=True).strip(), 'rootLifecycle': root_scripts, 'registryPrepareOnlyAllowed': True, 'command': command, 'environmentKeys': sorted(env), 'integrity': inventory, 'tarballScan': scans, 'archive': str(target), 'archiveSha256': digest(target)}
+    report = {'version': 1, 'packageSha256': args.package_sha256, 'lockSha256': args.lock_sha256, 'nodeSha256': digest(node), 'npmCliSha256': digest(npm), 'nodeVersion': subprocess.check_output([str(node), '--version'], env=env, text=True).strip(), 'npmVersion': subprocess.check_output([str(node), str(npm), '--version'], env=env, text=True).strip(), 'rootLifecycle': root_scripts, 'registryPrepareOnlyAllowed': True, 'cacheIndexEntriesAudited': cache_index_entries, 'command': command, 'environmentKeys': sorted(env), 'integrity': inventory, 'tarballScan': scans, 'archive': str(target), 'archiveSha256': digest(target)}
     manifest = root / 'inventory-manifest.json'
     manifest.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps({'archive': str(target), 'archiveSha256': digest(target), 'inventory': str(manifest), 'inventorySha256': digest(manifest)}))

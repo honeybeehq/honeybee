@@ -49,7 +49,8 @@ def snapshot(home):
                             rows[relative].update(inaccessible(error))
                             names = []
                         if relative == 'Library/Keychains':
-                            rows[relative] = {'names': names}
+                            if not rows[relative].get('unobservable'):
+                                rows[relative] = {'names': names}
                             continue
                         for name in names:
                             if relative == '.ssh' and name not in ('config', 'authorized_keys') and not name.startswith('id_'):
