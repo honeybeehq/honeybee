@@ -82,11 +82,13 @@ export class ExecutionStarts {
   }
   check(start: ExecutionStart, operation: string): void {
     const row = this.row(start); this.validate(start.claim);
+    if (this.db.prepare("SELECT 1 FROM rpc_execution_start_ops WHERE intent_id=? AND state='unknown'").get(start.intentId)) throw new ExecutionFenceError("rpc_execution_history_unknown", "Prior preparation descendants are unknown");
     if (row.state !== "prepared") throw new ExecutionFenceError("rpc_execution_history_unknown", "Start preparation is no longer admissible");
     this.audit("rpc.execution.preparation_checked", start.beeId, { intentId: start.intentId, operation });
   }
   begin(start: ExecutionStart, operation: string): string {
     this.check(start, operation);
+    if (this.db.prepare("SELECT 1 FROM rpc_execution_start_ops WHERE intent_id=? AND state!='quiescent'").get(start.intentId)) throw new ExecutionFenceError("rpc_execution_busy", "Another preparation operation is still active");
     const lease = randomUUID();
     this.db.prepare("INSERT INTO rpc_execution_start_ops VALUES(?,?,?,'active')").run(lease, start.intentId, operation);
     return lease;

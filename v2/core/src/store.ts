@@ -4685,17 +4685,20 @@ export class CoreStore {
     this.tx(() => {
       const claim = this.executionStarts.bee(request.resource.beeId);
       if (!claim || claim.idempotencyKey !== request.idempotencyKey) throw new ExecutionFenceError("rpc_execution_history_unknown", "Spawn preparation lacks its durable origin");
+      const receipt = this.executionLedger.prepare(request);
+      if (!receipt || receipt.status !== "preparing") throw new ExecutionFenceError("rpc_execution_history_unknown", "Spawn preparation is not active");
       this.executionLedger.validateCurrent(claim);
       this.audit("rpc.execution.spawn_preparation_checked", request.resource.beeId, { idempotencyKey: request.idempotencyKey, operation });
     });
   }
 
-  admitFencedSpawn<T extends { commandId: number }>(request: ExecutionRequest, effect: () => T): T {
+  admitFencedSpawn<T extends { commandId: number | null }>(request: ExecutionRequest, effect: () => T): T {
     return this.tx(() => {
       this.checkSpawnPreparation(request, "admission");
       const previous = this.executionKey; this.executionKey = request.idempotencyKey;
       try {
         const result = effect();
+        if (result.commandId === null) throw new ExecutionFenceError("rpc_execution_fence_unsupported","Fenced spawn requires a runtime command");
         this.recordRpcResult(request.idempotencyKey, "spawn", result.commandId, result);
         this.executionLedger.admitSpawn(request, result.commandId, result);
         return result;

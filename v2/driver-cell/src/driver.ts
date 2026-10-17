@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { spawn, type ChildProcess } from "node:child_process";
 import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
@@ -197,7 +198,7 @@ export class CellDriver implements RuntimeDriver {
     hooks.check(start,"cell_spec");
     const spec = this.cfg.resolveCell(start.beeId), lease = hooks.begin(start,"cell_provision_process");
     const source = import.meta.url.endsWith(".ts"), entry = new URL(source ? "./fencedProvisionWorker.ts" : "./fenced-provision-worker.js",import.meta.url);
-    const child = spawn(childNodePath(),[...(source ? ["--experimental-strip-types"] : []), entry.pathname], { detached: true, env: nativeNodeEnv(), stdio: ["ignore","ignore","ignore","ipc"] });
+    const child = spawn(childNodePath(),[...(source ? ["--experimental-strip-types"] : []), fileURLToPath(entry)], { detached: true, env: nativeNodeEnv(), stdio: ["ignore","ignore","ignore","ipc"] });
     const pending = { start, child, lease, cancelled: false, ready: false };
     this.fencedPending.set(start.beeId,pending);
     const bindingDigest = canonicalDigest(start as unknown as JsonValue);
@@ -212,11 +213,11 @@ export class CellDriver implements RuntimeDriver {
         } else if (frame.op === "execution_ready") pending.ready = true;
       } catch { pending.cancelled = true; if (child.pid && child.exitCode === null) { try { process.kill(-child.pid,"SIGTERM"); } catch {} } }
     });
-    child.once("error",()=>{ hooks.finish(start,lease,false); });
+    child.once("error",()=>{ try { hooks.finish(start,lease,false); } catch {} });
     child.once("exit",(code) => {
       let quiescent = false;
       if (child.pid) { try { process.kill(-child.pid,0); } catch(error) { quiescent = (error as NodeJS.ErrnoException).code === "ESRCH"; } }
-      hooks.finish(start,lease,quiescent);
+      try { hooks.finish(start,lease,quiescent); } catch { return; }
       if (!quiescent) return;
       this.fencedPending.delete(start.beeId);
       if (pending.cancelled || !pending.ready || code !== 0) {

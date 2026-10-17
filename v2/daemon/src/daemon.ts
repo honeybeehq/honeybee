@@ -875,7 +875,14 @@ export class HiveDaemon {
       onWriteLaneReady: () => this.requestTick(),
       execution: store.executionRuntimeHooks(),
       executionStartFor: (beeId: string, generation: number) => store.existingExecutionStart(beeId,generation),
-      executionHostFor: (start: import("../../core/src/executionStart.ts").ExecutionStart) => store.executionStartHost(start),
+      executionHostFor: (start: ExecutionStart) => store.executionStartHost(start),
+      resolveExecutionAdapter: (beeId: string) => {
+        const bee = store.getBee(beeId), spec = bee ? this.cfg.agents[bee.agent] : null;
+        if (!bee || !spec) throw new ExecutionFenceError("rpc_execution_history_unknown","Fenced adapter cannot be resolved read-only");
+        const adapter = composeSpawn(spec,spec.adapter ?? bee.agent,bee,[],null).adapter;
+        if (!adapter) throw new ExecutionFenceError("rpc_execution_history_unknown","Fenced adapter is unavailable");
+        return adapter;
+      },
       socketDir: this.runnerSocketDir,
     };
     const hsr = new HsrDriver({ ...hsrConfig, resolve: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation) });
@@ -3435,6 +3442,7 @@ export class HiveDaemon {
     } catch (err) {
       this.log(`cell.env.restore_failed bee=${beeId} ${err instanceof Error ? err.message : String(err)}`);
     }
+    if (execution) store.executionRuntimeHooks().check(execution,"restore_kept_paths");
     try {
       const row = store.getCell(bee.cellId);
       const { restored, conflicts } = row ? restoreKeptPaths(this.cfg.cellsRoot, row.spaceDir) : { restored: [], conflicts: [] };

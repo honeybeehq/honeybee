@@ -95,6 +95,7 @@ export interface HsrDriverConfig {
   execution?: ExecutionRuntimeHooks;
   executionStartFor?(beeId: string, generation: number): ExecutionStart | null;
   executionHostFor?(start: ExecutionStart): ExecutionProcess | null;
+  resolveExecutionAdapter?(beeId: string): HarnessAdapter;
   /** Resolve the spawn spec for a bee (agent binary + adapter). */
   resolve(beeId: string, generation?: number): SpawnSpec;
   /** Directory for session logs; one `<beeId>.jsonl` per bee, verbatim native stream. */
@@ -676,7 +677,7 @@ export class HsrDriver implements RuntimeDriver {
       const currentBirth = p.executionHost ? exactProcessBirth(p.pid) : null;
       if (p.executionHost && currentBirth && currentBirth !== p.executionHost.birth) dead = true;
       try { process.kill(p.pid,0); } catch(error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") dead = true; }
-      this.cfg.execution?.hostExited(p.executionStart,dead ? p.executionHost ?? null : null);
+      try { this.cfg.execution?.hostExited(p.executionStart,dead ? p.executionHost ?? null : null); } catch {}
     }
     if (status?.spawnError && !p.spawnError) {
       p.spawnError = status.spawnError;
@@ -1103,7 +1104,7 @@ export class HsrDriver implements RuntimeDriver {
       if (execution && (!this.cfg.execution || !executionHost || executionHost.pid !== pid || exactProcessBirth(pid) !== executionHost.birth)) return false;
     } catch { return false; }
 
-    if (!verifyProcessIdentity(pid, pidStartedAt, this.adoptTolMs)) return false;
+    if (!execution && !verifyProcessIdentity(pid, pidStartedAt, this.adoptTolMs)) return false;
     // WP5: a runtime with runner-host artifacts for this exact (pid ==
     // host pid) re-adopts at FULL capability — reconnect the write socket,
     // resume the log tail, keep delivering. The degraded stop-on-mail
@@ -1116,7 +1117,7 @@ export class HsrDriver implements RuntimeDriver {
       const exactGenerationIdentity = status.beeId === beeId && status.generation === generation;
       let adapter: HarnessAdapter | null = null;
       try {
-        adapter = this.cfg.resolve(beeId).adapter;
+        adapter = execution ? this.cfg.resolveExecutionAdapter?.(beeId) ?? null : this.cfg.resolve(beeId).adapter;
       } catch {
         adapter = null; // unresolvable harness: fall through to degraded
       }
@@ -1172,8 +1173,7 @@ export class HsrDriver implements RuntimeDriver {
           // evidence/delivery lane. Pending mail rotates it through the normal
           // degraded-runtime policy; silence never changes its phase.
         } else {
-          if (execution) return false;
-    const proc: ManagedProcess = {
+          const proc: ManagedProcess = {
             ...(execution && executionHost ? { executionStart: execution, executionHost } : {}),
             beeId,
             generation,
@@ -1228,13 +1228,14 @@ export class HsrDriver implements RuntimeDriver {
             pendingWrites: [],
             socketBroken: false,
           };
-          this.procs.set(beeId, proc);
           if (execution && status.agentPid && status.agentBirth) { try { this.acceptExecutionStarted(proc,{pid:status.agentPid,birth:status.agentBirth}); } catch { return false; } }
+          this.procs.set(beeId,proc);
           this.connectSocket(proc);
           return true;
         }
       }
     }
+    if (execution) return false;
     this.procs.set(beeId, {
       beeId,
       generation,
