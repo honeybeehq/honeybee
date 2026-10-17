@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 import node_bootstrap
 
-from guard import DIRS, PROTECTED, Refusal, environment, launchagents, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
+from guard import DIRS, PROTECTED, Refusal, compiler_profile, compiler_tools, environment, launchagents, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 
 
 class GuardTests(unittest.TestCase):
@@ -105,6 +105,25 @@ class GuardTests(unittest.TestCase):
     def test_node_path_must_be_absolute(self):
         with self.assertRaises(Refusal):
             select_node('node', self.home)
+
+    def test_missing_compiler_refuses_with_metadata(self):
+        self.root.mkdir()
+        missing = SimpleNamespace(returncode=1, stdout='', stderr='missing')
+        with patch('subprocess.run', return_value=missing), self.assertRaises(Refusal):
+            compiler_tools(self.root, self.env)
+        receipt = json.loads((self.root / 'compiler-tools.json').read_text())
+        self.assertIsNone(receipt['selected'])
+        self.assertEqual(len(receipt['candidates']), 6)
+        self.assertTrue(all(row['exit'] == 1 for row in receipt['candidates']))
+
+    def test_compiler_has_exact_exec_and_read_scope(self):
+        tools = {'clang': '/Applications/Xcode.app/toolchain/bin/clang', 'ld': '/Applications/Xcode.app/toolchain/bin/ld', 'toolchain': '/Applications/Xcode.app/toolchain', 'sdk': '/Applications/Xcode.app/SDK'}
+        policy = compiler_profile(profile(self.root, self.home, self.base), tools)
+        self.assertIn('(deny process-exec)(allow process-exec (literal ' + json.dumps(tools['clang']) + ') (literal ' + json.dumps(tools['ld']) + '))', policy)
+        self.assertIn('(allow file-read* (subpath ' + json.dumps(tools['toolchain']) + ') (subpath ' + json.dumps(tools['sdk']) + '))', policy)
+        self.assertIn('(allow file-write-data (literal "/dev/null"))', policy)
+        self.assertNotIn('xcrun', policy)
+        self.assertNotIn('xcodebuild', policy)
 
     def test_node_archive_mismatch_extracts_nothing(self):
         archive = self.base / 'node.tar.gz'

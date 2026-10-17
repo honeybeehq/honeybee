@@ -60,6 +60,14 @@ and auth-death-rpc tests. Darwin shares the host network namespace: outbound
 loopback could reach real host-local services. This residual risk is explicit
 in the receipt; this gate does not claim Linux network-namespace isolation.
 
+The native scope helper uses only an absolute clang, matching absolute linker
+and explicit SDK from the fixed Xcode/CommandLineTools candidates. Metadata and
+selected paths are recorded. No cc, xcrun, xcodebuild or xcode-select discovery
+runs. The compiler has an exact executable allowlist and read access to the
+selected toolchain/SDK, with module cache inside the root. The one permitted
+device write is file-write-data on literal /dev/null, a kernel sink. Other /dev
+writes stay denied and are tested. No storage exception is granted by this rule.
+
 `self-test-run.sh <sha> --download-node` explicitly enables the Queen-approved
 per-run official Node download. `node_bootstrap.py` is the single archive pin:
 v24.18.0 darwin-arm64, from nodejs.org over HTTPS/TLS1.2 or newer. SHA256 is

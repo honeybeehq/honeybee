@@ -125,6 +125,7 @@ def profile(root, home, lane):
     return ''.join((
         '(version 1)(allow default)',
         '(deny file-write*)(allow file-write* (subpath ' + quote(root) + '))',
+        '(allow file-write-data (literal "/dev/null"))',
         '(deny file-read* (subpath ' + quote(home) + '))',
         '(deny file-read* (subpath "/Library/Keychains") (subpath "/private/var/db/Keychains"))',
         '(deny process-exec (literal "/usr/bin/security"))(deny mach-lookup)',
@@ -213,6 +214,31 @@ def receipt_hashes(root):
     return hashlib.sha256((root / 'SHA256SUMS.json').read_bytes()).hexdigest()
 
 
+def compiler_tools(root, env):
+    candidates = (
+        ('/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang', '/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk'),
+        ('/Library/Developer/CommandLineTools/usr/bin/clang', '/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk'),
+    )
+    rows = []
+    selected = None
+    for clang, sdk in candidates:
+        ld = str(Path(clang).with_name('ld'))
+        for path in (clang, ld, sdk):
+            result = subprocess.run(['/bin/ls', '-ld', path], env=env, capture_output=True, text=True)
+            rows.append({'path': path, 'exit': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr})
+        if selected is None and all(Path(p).is_file() and os.access(p, os.X_OK) for p in (clang, ld)) and Path(sdk).is_dir():
+            selected = {'clang': str(Path(clang).resolve()), 'ld': str(Path(ld).resolve()), 'sdk': str(Path(sdk).resolve()), 'toolchain': str(Path(clang).parent.parent.parent.resolve())}
+    write_json(root / 'compiler-tools.json', {'candidates': rows, 'selected': selected}, root)
+    if selected is None:
+        raise Refusal('no configured clang/linker/SDK; metadata retained at ' + str(root))
+    return selected
+
+
+def compiler_profile(base, tools):
+    q = json.dumps
+    return base + '(deny process-exec)(allow process-exec (literal ' + q(tools['clang']) + ') (literal ' + q(tools['ld']) + '))(deny file-read* (subpath "/Applications") (subpath "/Library/Developer"))(allow file-read* (subpath ' + q(tools['toolchain']) + ') (subpath ' + q(tools['sdk']) + '))'
+
+
 def scope_call(helper, command, *args):
     argv = [str(helper), command, *map(str, args)]
     value = subprocess.run(argv, capture_output=True, text=True)
@@ -275,7 +301,12 @@ def run(args):
         print('POLICY_PREFLIGHT_DIAGNOSTIC_LAST_60_LINES', flush=True)
         print('\n'.join(diagnostic.splitlines()[-60:]), flush=True)
         raise Refusal('policy preflight failed; receipts retained at ' + str(root))
-    compile_result = subprocess.run(prefix + ['/usr/bin/cc', str(workspace / 'scripts/gates/darwin/scope.c'), '-o', str(identity)], cwd=workspace, env=env, capture_output=True)
+    tools = compiler_tools(root, env)
+    build_policy = compiler_profile(policy, tools)
+    (root / 'compiler.sb').write_text(build_policy)
+    compile_command = ['/usr/bin/sandbox-exec', '-f', str(root / 'compiler.sb'), tools['clang'], '-isysroot', tools['sdk'], '--ld-path=' + tools['ld'], '-fmodules-cache-path=' + env['CLANG_MODULE_CACHE_PATH'], str(workspace / 'scripts/gates/darwin/scope.c'), '-o', str(identity)]
+    write_json(root / 'compiler-command.json', {'argv': compile_command, 'noLauncher': True}, root)
+    compile_result = subprocess.run(compile_command, cwd=workspace, env=env, capture_output=True)
     (root / 'scope-build.log').write_bytes(compile_result.stdout + compile_result.stderr)
     if compile_result.returncode:
         diagnostic = (compile_result.stdout + compile_result.stderr)[-16384:].decode('utf-8', errors='replace')

@@ -14,6 +14,17 @@ def main():
     root = Path(os.environ['GATE_ROOT'])
     validate(root, os.environ, Path(os.environ['SCG_REAL_HOME']))
     rows = []
+    with open('/dev/null', 'wb') as sink:
+        sink.write(b'gate pseudo-device probe')
+    rows.append({'row': 'literal /dev/null write-data', 'result': 'allowed kernel sink'})
+    try:
+        with open('/dev/zero', 'wb'):
+            pass
+    except OSError as error:
+        assert error.errno in (errno.EPERM, errno.EACCES), error
+        rows.append({'row': 'other /dev write', 'result': 'REFUSED', 'errno': error.errno})
+    else:
+        raise AssertionError('other /dev write unexpectedly allowed')
     inside = root / 'planted-inside'
     inside.write_text('inside')
     assert inside.read_text() == 'inside'
