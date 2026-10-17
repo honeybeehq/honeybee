@@ -221,3 +221,30 @@ The precise footprint source does NOT explain erebor's zero-size row: [bsd_vm.c:
 The helper declares the public SDK struct proc_regionwithpathinfo from sys/proc_info.h, passes sizeof(region), and reads prp_prinfo.pri_address and pri_size only after an exact-size successful return with errno zero. No local ABI replacement is used on Darwin. A successful short read, including the first, is PARTIAL; the previously approved UNAVAILABLE-FIRST remains limited to a first API return0 with nonzero errno, without reading fields. regionZeroSizeDetail records returnLength exact/unobserved, shareMode as a fixed SM_* or UNKNOWN enum, and the mapping/submap flag. Its lastBeforeEINVAL is yes/no only after that walk actually reaches EINVAL, otherwise unknown; not-applicable means no empty record was observed. These are count/enum diagnostics, not identities or raw addresses. The public SDK struct/layout and actual return length remain checked in the real helper; Linux stubs are not SDK ABI proof.
 
 The sixteenth commit closes Q2-R: unobservedOwnChildren contains only a fixed allowlisted fixture/step label and its count. No input pid, argv, path, reason or other field is copied from an unverified candidate; an unknown label collapses to unverified-child. Callers handling fixture-file PIDs no longer pass those identities into recording. Only retained own births enter leftoverChild. Receipt, exception and captured-output regressions use unverified identity markers and verify their absence. No signal consumer or acceptance rule changes.
+
+Focused real-run follow-up (Queen, 17 Oct 22:00Z): the controller records its own
+birth-fenced kernel executable path using scope, rather than inferring it from
+Python's launcher path. A sibling's temporary start_wait Python is admitted only
+with that exact path, the sibling root-launch birth, and the controller's pid and
+rechecked birth as its parent. No other Python executable or descendant is admitted.
+The observation is retained in controller-bootstrap.json and receipt.controllerBootstrap.
+
+The exact HSR re-adoption row is excluded as Darwin NOT-PROVEN:
+"HSR re-adoption on Darwin needs a ps-based zombie census the gate forbids; recovery logic is platform-neutral and proven on Linux (receipt 7668b5f6)"
+The focused manifest therefore requires 48 rows (46 outer and 2 sibling), with 21
+excluded rows. Its changed SHA requires an audit-only gatePins.manifestSha256 update
+in the candidate before a run.
+
+Only the outer multiline tmux file imports the gate-owned tmux diagnostic observer.
+It keeps the ordinary test isolation and existing Seatbelt profile. The observer
+records each tmux invocation's exit, signal, error code and bounded stderr without
+recording its environment or command payload. Before kill-server and after each row,
+it attempts bounded pane listing and capture inside the same sandbox. These extra
+read-only tmux commands can fail under that profile; their failures remain evidence,
+not permissions. The phase receipt groups records by exact test row; the raw file is
+logs/focused-tmux-diagnostics.jsonl. Each row has at most 128 records; stderr and pane
+text have at most 4096 characters, with at most four panes and 80 captured lines.
+This captures tmux invocation and startup stderr, not separately redirected stderr
+from an already detached server. It does not change daemonization or add -D/-vv.
+The existing write denial outside the run root also covers PTY device writes; no
+PTY, mach-lookup, socket, executable or library grant is added by these diagnostics.
