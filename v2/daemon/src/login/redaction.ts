@@ -10,6 +10,13 @@ export class LoginRedactor {
         try {
           variants.push(new URL(value).toString());
         } catch {}
+        for (const variant of [...variants]) {
+          let encoded = variant;
+          for (let layer = 0; layer < 3; layer++) {
+            encoded = encodeURIComponent(Buffer.from(encoded).toString("utf8"));
+            variants.push(encoded);
+          }
+        }
         for (const variant of variants) {
           this.values.add(variant);
           this.values.add(variant.replace(/%[0-9A-F]{2}/g, (part) => part.toLowerCase()));

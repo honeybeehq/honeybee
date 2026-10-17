@@ -34,7 +34,9 @@ import type {
   AccountLoginStartResult,
   LoginFlowRow,
 } from "../src/protocol.ts";
-import type { RpcClient } from "../../cli/src/client.ts";
+import { RpcClient } from "../../cli/src/client.ts";
+import { HiveDaemon } from "../src/daemon.ts";
+import { loadNodeConfig } from "../src/config.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -342,5 +344,47 @@ test("rpc.redaction: actual snapshot and watch projection never carry CLI URL cr
       await daemon?.stop().catch(() => {});
       cleanup();
     }
+  }
+});
+
+test("rpc.redaction: repeated encoded provider errors are absent from real snapshot and watch", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  const cfg = loadNodeConfig(dir);
+  let variants: string[] = [];
+  const explode = async (): Promise<never> => { throw new Error(`provider failed ${variants.join(" ")}`); };
+  const daemon = new HiveDaemon(cfg, { loginTransports: { openaiKeyCheck: explode, claudeTokenExchange: explode }, keychainReader: async () => null, keychainWriter: async () => false });
+  try {
+    await daemon.start();
+    const client = await RpcClient.connect(cfg.socketPath);
+    const watch = await RpcClient.connect(cfg.socketPath);
+    const frames: WatchFrame[] = [];
+    watch.onEvent = (frame: WatchFrame) => frames.push(frame);
+    await watch.request("watch");
+    for (const harness of ["claude", "codex", "opencode"]) {
+      const values: Record<string, string> = harness === "claude" ? { code: "short&planted" } : { apiKey: "sk-short&planted", ...(harness === "opencode" ? { provider: "openai", baseUrl: "https://proxy.example/short", organization: "org&planted", project: "project&planted" } : {}) };
+      variants = Object.values(values).filter((value) => value !== "openai").flatMap((value) => {
+        const one = encodeURIComponent(value);
+        const two = encodeURIComponent(one);
+        const three = encodeURIComponent(two);
+        return [value, one, two, three, two.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase())];
+      });
+      const added = await client.request<AccountAddResult>("account.add", { harness, label: "encoded" });
+      const started = await client.request<AccountLoginStartResult>("account.login.start", { id: added.account.id, methodId: harness === "claude" ? "claude-oauth" : harness === "codex" ? "codex-api-key" : "opencode-api-key" });
+      const result = await client.request<{ flow: LoginFlowRow }>("account.login.submit", { flowId: started.flow.id, values });
+      assert.equal(result.flow.error?.code, "provider_error");
+      assert.match(result.flow.error.message, /provider failed/);
+      await waitFor(() => frames.some((frame) => frame.type === "delta" && frame.events.some((event) => event.kind === "login_flow.put" && (event.payload as { flow?: { id?: string; phase?: string } }).flow?.id === started.flow.id && (event.payload as { flow: { phase: string } }).flow.phase === "failed")) ? true : null, "error mirrored", 5000);
+      const snapshot = await client.request<SnapshotResult>("snapshot");
+      const surfaces = JSON.stringify({ snapshot, frames, result });
+      for (const value of variants) assert.ok(!surfaces.includes(value), `${harness} leaked an encoded field`);
+    }
+    client.close();
+    watch.close();
+    await daemon.shutdown();
+    assert.doesNotMatch(dumpSqlite(join(dir, "core.sqlite3")), /planted/);
+    assert.doesNotMatch(daemonLog(dir), /planted/);
+  } finally {
+    await daemon.shutdown().catch(() => {});
+    cleanup();
   }
 });

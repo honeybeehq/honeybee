@@ -1327,7 +1327,12 @@ test("redaction: thrown input and encoded variants never reach flow, audit, mirr
   for (const harness of ["claude", "codex", "opencode"]) {
     const r = rig();
     const values: Record<string, string> = harness === "claude" ? { code: 'short-code-"&/' } : { apiKey: "sk-short-credential", ...(harness === "opencode" ? { provider: "openai", baseUrl: "https://proxy.example/short", organization: 'short-org-"&/', project: "short-project" } : {}) };
-    const variants = Object.values(values).flatMap((value) => [value, encodeURIComponent(value), JSON.stringify(value).slice(1, -1), Buffer.from(value).toString("base64")]);
+    const variants = Object.values(values).flatMap((value) => {
+      const once = encodeURIComponent(value);
+      const twice = encodeURIComponent(once);
+      const thrice = encodeURIComponent(twice);
+      return [value, once, twice, thrice, twice.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase()), JSON.stringify(value).slice(1, -1), Buffer.from(value).toString("base64")];
+    });
     const explode = async (): Promise<never> => { throw new Error(`provider failed ${variants.join(" ")} https://proxy.example/short/models`); };
     const { flows } = services(r, { transports: { openaiKeyCheck: explode, claudeTokenExchange: explode } });
     try {
