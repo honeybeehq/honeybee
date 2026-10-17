@@ -53,8 +53,10 @@ static int quiescence(int controller, const char *root) {
       struct vnode_fdinfowithpath vnode;
       errno = 0;
       if (proc_pidfdinfo(pid, fds[fd].proc_fd, PROC_PIDFDVNODEPATHINFO, &vnode, sizeof(vnode)) != (int)sizeof(vnode)) {
+        int read_error = errno;
         status = same_birth(pid, birth.pbi_start_tvsec, birth.pbi_start_tvusec);
         if (status == 3) gone = 1;
+        else if (!status && (read_error == EBADF || read_error == ENOENT)) continue;
         else failed = 1;
         break;
       }
