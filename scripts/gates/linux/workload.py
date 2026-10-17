@@ -7,6 +7,7 @@ import tarfile
 import time
 from home_guard import entry_guard
 from filesystem import assert_filesystem, filesystem_probes
+from git_boundary import run as git_boundary_run
 
 root = pathlib.Path(sys.argv[1])
 ENTRY_GUARD = entry_guard(root)
@@ -29,6 +30,9 @@ save('entry-guard-workload.json', ENTRY_GUARD)
 filesystem = dict(state=assert_filesystem(root), probes=filesystem_probes(root))
 save('filesystem-workload.json', filesystem)
 assert filesystem['probes']['asserted']
+git_boundary = git_boundary_run(root, label)
+save('git-boundary-tests.json', git_boundary)
+assert git_boundary['asserted']
 
 
 def verify():
