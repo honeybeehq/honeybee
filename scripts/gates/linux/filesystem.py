@@ -54,8 +54,9 @@ def assert_filesystem(root, init_name='init.py'):
     proc_type = next(line.split(' - ', 1)[1].split()[0] for line in pathlib.Path('/proc/self/mountinfo').read_text().splitlines() if line.split()[4] == '/proc')
     init_argv = pathlib.Path('/proc/1/cmdline').read_bytes().split(b'\0')
     pidns = os.readlink('/proc/self/ns/pid')
-    assert proc_type == 'proc' and proc['writable']
-    assert os.readlink('/proc/1/ns/pid') == pidns and os.fsencode(str(pathlib.Path(root) / init_name)) in init_argv
+    assert proc_type == 'proc' and proc['writable'], 'private procfs must be writable: ' + str(proc)
+    assert os.readlink('/proc/1/ns/pid') == pidns, 'private procfs pid 1 namespace differs'
+    assert os.fsencode(str(pathlib.Path(root) / init_name)) in init_argv, 'private procfs pid 1 argv differs: ' + repr(init_argv)
     return dict(asserted=True, uid=os.getuid(), gid=os.getgid(), mounts=mounts, writableRoot=root, privateTmp=temporary, privateProc=dict(filesystem=proc_type, writable=True, pid1Namespace=pidns, pid1Argv=[os.fsdecode(value) for value in init_argv if value], asserted=True))
 
 
