@@ -86,5 +86,8 @@ test("RPC audit attribution stops at the daemon tick boundary", {timeout: 30_000
   const health = await client.request<any>("health");
   const deploy = await client.request<any>("deployInfo");
   assert.equal(health.localSecurity.peerCredentials.state, "ready");
+  assert.equal("deliveryPrepareAuditUnknown" in health, false);
+  const doctorHealth = await client.request<any>("health", {includeDeliveryPrepareAuditUnknown: true});
+  assert.equal(doctorHealth.deliveryPrepareAuditUnknown, 0);
   assert.equal(deploy.localSecurity.peerCredentials.target, `${process.platform}-${process.arch}`);
 });

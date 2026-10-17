@@ -2258,7 +2258,7 @@ export class HiveDaemon {
       case "node.harnesses":
         return this.rpcNodeHarnesses();
       case "health":
-        return this.rpcHealth();
+        return this.rpcHealth(params);
       case "template.list":
         return this.rpcTemplateList(params);
       case "template.get":
@@ -5682,7 +5682,7 @@ export class HiveDaemon {
     });
   }
 
-  private rpcHealth(): HealthResult {
+  private rpcHealth(params: Record<string, unknown> = {}): HealthResult {
     const store = this.mustStore();
     return {
       protocol: PROTOCOL,
@@ -5697,6 +5697,7 @@ export class HiveDaemon {
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
       deliveryHoldUnknown: store.countUnknownMultilineHolds(),
+      ...(params.includeDeliveryPrepareAuditUnknown === true ? {deliveryPrepareAuditUnknown: store.countUnknownMultilinePrepareAudits()} : {}),
       paneInputUnknown: store.multilinePaneQuarantines().length,
       bees: store.countBeesByLifecycle(),
       naming: this.naming.disabledReason

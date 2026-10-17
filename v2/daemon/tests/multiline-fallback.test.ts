@@ -133,6 +133,62 @@ for (const boundary of ["prepared", "published", "in_flight"] as const) test(`re
     assert.equal(r.driver.pointers.length, 0);
   }
 });
+for (const boundary of ["prepared", "published", "in_flight"] as const) for (const evidence of ["valid", "malformed", "unreadable"] as const) test(`missing descriptor after ${boundary} with ${evidence} prepare audit stays UNKNOWN without republication`, t => {
+  const r = rig(false, true); t.after(r.close);
+  const message = r.store.send(r.bee.id, "one\ntwo").message; r.hold(message.id);
+  const fallback = r.store.prepareMultilineFallback(message.id, join(r.root, "runtime"), [join(r.root, "work")])!;
+  let publishedPath: string | undefined;
+  if (boundary !== "prepared") {
+    const published = r.files.publish(fallback.root, fallback.ownerStoreId, r.bee.id, fallback.id, `Honeybee delivery content: message=${message.id} publication=${fallback.id}\n\none\ntwo`, fallback.worktrees);
+    publishedPath = published.path;
+    if (boundary === "in_flight") {
+      r.store.transitionMultilineFallback(message.id, "preparing", "ready", {...published, pointer: `full text: ${published.path}`});
+      r.store.transitionMultilineFallback(message.id, "ready", "in_flight", {generation: 1});
+    }
+  }
+  const parent = {...r.store.multilineDelivery(message.id)!}; delete parent.fallback;
+  if (evidence === "malformed") (r.store as unknown as {db: DatabaseSync}).db.prepare("UPDATE audit SET payload = ? WHERE kind = 'mail.delivery_fallback_prepared'").run(JSON.stringify({row: {messageId: message.id, malformed: true}}));
+  r.restart(true, JSON.stringify(parent));
+  if (evidence === "unreadable") {
+    const access = r.store as unknown as {stmt: (sql: string) => unknown}, stmt = access.stmt.bind(r.store);
+    access.stmt = sql => {if (sql.startsWith("SELECT 1 FROM audit WHERE kind = 'mail.delivery_fallback_prepared'")) throw new Error("injected prepare audit read failure"); return stmt(sql);};
+  }
+  let publications = 0; const publish = r.files.publish.bind(r.files);
+  r.files.publish = (...args) => {publications++; return publish(...args);};
+  const later = r.store.send(r.bee.id, "later").message, last = r.store.send(r.bee.id, "last").message;
+  for (let i = 0; i < 8; i++) r.step();
+  assert.equal(publications, 0); assert.equal(r.driver.pointers.length, 0);
+  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "unknown");
+  assert.equal(r.store.getMessage(message.id)?.deliveredAt, null); assert.equal(r.store.countUnknownMultilineHolds(), 1);
+  assert.equal(r.store.auditRows().filter(row => row.kind === "mail.delivery_fallback_prepared").length, 1);
+  assert.equal(r.store.multilineDelivery(message.id)?.notice, "state unknown, may have been delivered");
+  assert.equal(r.driver.deliveredBodies[r.driver.deliveredIds.indexOf(later.id)]!.split("state unknown, may have been delivered").length - 1, 1);
+  assert.equal(r.driver.deliveredBodies[r.driver.deliveredIds.indexOf(last.id)], "last");
+  assert.equal(r.store.retainsMultilineRuntimeContent(r.bee.id, r.data), true);
+  if (publishedPath) assert.equal(existsSync(publishedPath), true);
+});
+test("intact fallback descriptor never consults prepare audits", t => {
+  const r = rig(); t.after(r.close);
+  const message = r.store.send(r.bee.id, "one\ntwo").message; r.hold(message.id);
+  const fallback = r.store.prepareMultilineFallback(message.id, r.data, [join(r.root, "work")])!;
+  r.restart(true);
+  const access = r.store as unknown as {stmt: (sql: string) => unknown}, stmt = access.stmt.bind(r.store);
+  access.stmt = sql => {if (sql.startsWith("SELECT 1 FROM audit WHERE kind = 'mail.delivery_fallback_prepared'")) throw new Error("prepare audit must not be read"); return stmt(sql);};
+  r.step();
+  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "delivered");
+  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.id, fallback.id); assert.equal(r.driver.pointers.length, 1);
+});
+test("unattributable malformed prepare audits count in doctor without blocking unrelated fallback", t => {
+  const r = rig(); t.after(r.close);
+  const db = (r.store as unknown as {db: DatabaseSync}).db;
+  for (const payload of ["{", "{}", JSON.stringify({row: {messageId: "bad"}})]) db.prepare("INSERT INTO audit(ts, kind, bee_id, payload) VALUES(1000, 'mail.delivery_fallback_prepared', ?, ?)").run(r.bee.id, payload);
+  r.restart(true);
+  assert.equal(r.store.countUnknownMultilinePrepareAudits(), 3);
+  const message = r.store.send(r.bee.id, "unrelated\nbody").message; r.hold(message.id); r.step();
+  assert.equal(r.store.getMessage(message.id)?.deliveryFallback?.state, "delivered");
+  assert.equal(r.driver.pointers.length, 1); assert.equal(r.store.countUnknownMultilineHolds(), 0);
+  assert.equal(r.store.countUnknownMultilinePrepareAudits(), 3);
+});
 test("file and pointer effects wait for an outer transaction to commit", t => {
   const r = rig(); t.after(r.close);
   const message = r.store.send(r.bee.id, "one\ntwo").message; r.hold(message.id);

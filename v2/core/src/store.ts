@@ -3618,6 +3618,12 @@ export class CoreStore {
     return this.listMultilineDeliveries().filter(row => row.detail === "delivery_hold_state_unknown").length;
   }
 
+  countUnknownMultilinePrepareAudits(): number {
+    return Number((this.stmt(`SELECT COUNT(*) AS count FROM audit WHERE kind = 'mail.delivery_fallback_prepared'
+      AND CASE WHEN json_valid(payload) THEN NOT COALESCE(json_type(payload, '$.row.messageId') = 'integer'
+        AND json_extract(payload, '$.row.messageId') > 0 AND json_type(payload, '$.row.beeId') = 'text', 0) ELSE 1 END`).get() as Row).count);
+  }
+
   reconcileUnknownMultilineHold(messageId: number): void {
     this.tx(() => {
       const raw = this.stmt("SELECT * FROM multiline_delivery WHERE message_id = ?").get(messageId) as Row | undefined;
@@ -3666,6 +3672,17 @@ export class CoreStore {
       const message = this.getMessage(messageId), row = this.multilineDelivery(messageId);
       if (!message || message.deliveredAt !== null || !row || !["held", "expired"].includes(row.stage)) return undefined;
       if (row.fallback) return row.fallback;
+      let priorPrepare = true;
+      try {
+        priorPrepare = !!this.stmt(`SELECT 1 FROM audit WHERE kind = 'mail.delivery_fallback_prepared'
+          AND CASE WHEN json_valid(payload) THEN json_type(payload, '$.row.messageId') = 'integer'
+            AND json_extract(payload, '$.row.messageId') = ? ELSE 0 END LIMIT 1`).get(messageId);
+      } catch {}
+      if (priorPrepare) {
+        const fallback = {...readDeliveryFallback(null)!, detail: "delivery_hold_state_unknown"};
+        this.putMultilineDelivery({...row, stage: "held", heldSince: row.heldSince ?? this.now(), detail: "delivery_hold_state_unknown", fallback}, "mail.delivery_fallback_unknown");
+        return fallback;
+      }
       const fallback: DeliveryFallback = { code: "delivery_file_fallback", state: "preparing", id: randomUUID(), ownerStoreId: this.effectCoverage().ownerStoreId,
         root, worktrees, path: null, pointer: null, digest: null, bytes: null, generation: null, detail: null, senderNoticeMessageId: null, reorderMessageIds: [...reorderMessageIds] };
       this.putMultilineDelivery({ ...row, stage: "held", heldSince: row.heldSince ?? this.now(), fallback }, "mail.delivery_fallback_prepared");
