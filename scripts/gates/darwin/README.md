@@ -45,7 +45,8 @@ Linux: linux-self-test.sh runs the pure guard tests in a private user/network na
 Darwin: self-test-run.sh <sha> runs the same guard tests plus physical rows for an allowed in-root write, refused outside-root write, isolated per-run caches, exact-birth signaling/refusal and non-loopback network refusal. No test invokes security or probes any real HOME file. Earlier-run log retention and LaunchAgents-only behavior are exercised with owned fixtures. A planted write must fail before bytes land outside the root. Any unexpected success is a failure, never an expanded allowance.
 
 No deployment or proof is authorized by this gate.
-# Per-run Node bootstrap
+
+## Per-run Node bootstrap
 
 `self-test-run.sh <sha> --download-node` explicitly enables the Queen-approved
 per-run official Node download. `node_bootstrap.py` is the single archive pin:
@@ -58,4 +59,3 @@ the gate retains the root and its receipts for collection, never sweeps it.
 Honeybee's Node runtime uses per-install binary pins, and the inspected Apiary
 bootstrap has no shared pinned archive list (orchestrator1918), so this gate pin
 does not duplicate an existing staging pin source.
-
