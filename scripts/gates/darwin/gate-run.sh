@@ -3,13 +3,14 @@ if [ "${HIVE_REAL_HOME+x}" = x ]; then SCG_ENTRY_HIVE_REAL_HOME=1; export SCG_EN
 stamped_keys=$(/usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep -E '^(HIVE_|APIARY_)' | LC_ALL=C /usr/bin/sort | /usr/bin/paste -sd, -)
 if [ -n "$stamped_keys" ]; then printf 'REFUSING: stamped controller environment: %s\n' "$stamped_keys"; exit 90; fi
 set -eu
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
 execute=0
 if [ "${1:-}" = --execute ]; then execute=1; shift; fi
 body=${1:-scripts/gates/darwin/daemon-suite-body.sh}
 case "$body" in scripts/gates/darwin/pinned-runtime-body.sh|scripts/gates/darwin/pinned-full-body.sh) echo '{"ok":false,"code":"darwin_gate_body_unsupported_until_audited","message":"Legacy service-sentinel body requires root-only conversion and Queen audit"}' >&2; exit 88;; esac
 case "$body" in scripts/gates/darwin/daemon-suite-body.sh|scripts/gates/darwin/pinned-runtime-body.sh|scripts/gates/darwin/pinned-full-body.sh|scripts/gates/darwin/self-test-body.sh) ;; *) echo "REFUSING: body must be a pinned gate body" >&2; exit 88;; esac
-[ -z "$(git --no-optional-locks status --porcelain -- scripts/gates/darwin)" ] || { echo "REFUSING: uncommitted gate source" >&2; exit 88; }
-source=${2:-$(git rev-parse HEAD)}
+[ -z "$(git -c http.extraHeader= --no-optional-locks status --porcelain -- scripts/gates/darwin)" ] || { echo "REFUSING: uncommitted gate source" >&2; exit 88; }
+source=${2:-$(git -c http.extraHeader= rev-parse HEAD)}
 case "$source" in ''|*[!0-9a-f]*) echo 'REFUSING: invalid source SHA' >&2; exit 88;; esac
 [ "${#source}" = 40 ] || { echo 'REFUSING: full source SHA required' >&2; exit 88; }
 hashes=""

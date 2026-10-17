@@ -3,6 +3,7 @@ if [ "${HIVE_REAL_HOME+x}" = x ]; then SCG_ENTRY_HIVE_REAL_HOME=1; export SCG_EN
 stamped_keys=$(/usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep -E '^(HIVE_|APIARY_)' | LC_ALL=C /usr/bin/sort | /usr/bin/paste -sd, -)
 if [ -n "$stamped_keys" ]; then printf 'REFUSING: stamped controller environment: %s\n' "$stamped_keys"; exit 90; fi
 set -eu
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
 case "${1:-}" in scripts/gates/darwin/pinned-runtime-body.sh|scripts/gates/darwin/pinned-full-body.sh) echo '{"ok":false,"code":"darwin_gate_body_unsupported_until_audited"}' >&2; exit 88;; esac
 [ "$(uname -s)" = Darwin ] || { echo "REFUSING: Darwin required"; exit 90; }
 [ "$(hostname -s)" = trmd-erebor-mini02 ] || { echo "REFUSING: pinned erebor host required"; exit 90; }
@@ -11,9 +12,9 @@ case "$PWD" in /Users/*/.cache/fj/*|/Users/*/.forage/work/*) ;; *) echo "REFUSIN
 [ -n "${SCG_SOURCE_SHA:-}" ] || { echo "REFUSING: pinned source required"; exit 88; }
 case "$SCG_SOURCE_SHA" in *[!0-9a-f]*) echo 'REFUSING: invalid source SHA'; exit 88;; esac
 [ "${#SCG_SOURCE_SHA}" = 40 ] || { echo 'REFUSING: full source SHA required'; exit 88; }
-head=$(git rev-parse HEAD)
+head=$(git -c http.extraHeader= rev-parse HEAD)
 if [ "$head" != "$SCG_SOURCE_SHA" ]; then
-  [ "$(git log -1 --format=%s)" = "forage snapshot" ] && [ "$(git rev-parse HEAD^)" = "$SCG_SOURCE_SHA" ] || { echo "REFUSING: lane source mismatch"; exit 88; }
+  [ "$(git -c http.extraHeader= log -1 --format=%s)" = "forage snapshot" ] && [ "$(git -c http.extraHeader= rev-parse HEAD^)" = "$SCG_SOURCE_SHA" ] || { echo "REFUSING: lane source mismatch"; exit 88; }
 fi
 printf '%s' "$SCG_SCRIPT_HASHES" | /usr/bin/shasum -a 256 -c - >/dev/null || { echo "REFUSING: gate hash mismatch"; exit 88; }
 body=${1:-scripts/gates/darwin/daemon-suite-body.sh}

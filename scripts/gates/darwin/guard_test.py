@@ -41,6 +41,11 @@ class GuardTests(unittest.TestCase):
         self.assertTrue(rows['allDenied'])
         self.assertEqual(len(rows['rows']), 3)
         self.assertEqual(calls.call_args_list[1].args[0][-1], 'https://192.0.2.1/x.git')
+        for call in calls.call_args_list:
+            self.assertEqual(call.args[0][:3], [controls['git'], '-c', 'http.extraHeader='])
+            self.assertEqual(call.kwargs['env']['GIT_CONFIG_NOSYSTEM'], '1')
+            self.assertEqual(call.kwargs['env']['GIT_CONFIG_GLOBAL'], '/dev/null')
+        self.assertNotIn('stderr', json.dumps(rows))
         with patch('git_boundary.subprocess.run', side_effect=[subprocess.CompletedProcess([], 128, '', 'Could not resolve host'), network, network]) as calls, patch('git_boundary.storage_probes', return_value=probes), patch('git_boundary.network_probe', return_value={'refused': True, 'errno': 1}), self.assertRaisesRegex(ValueError, 'lack operation-bound'):
             git_boundary.workload(self.base)
         self.assertEqual(calls.call_count, 3)
@@ -76,6 +81,20 @@ class GuardTests(unittest.TestCase):
         self.assertFalse(git_boundary.permission_denial(trace + real_fatal.replace('port 443', 'port 444'), 'non-loopback-fetch'))
         for failure in ('does not appear to be a git repository', 'not a git repository', 'No such file or directory', "fatal: 'target' does not exist"):
             self.assertFalse(git_boundary.permission_denial('error: unpacker error\n' + failure, 'sealed-target-push'))
+
+    def test_git_trace_fullmatch_and_evidence_never_store_unmatched_text(self):
+        fatal = "fatal: unable to access 'https://192.0.2.1/x.git/': Failed to connect to 192.0.2.1 port 443 after 1 ms: Couldn't connect to server"
+        trace = '* Immediate connect fail for 192.0.2.1: Operation not permitted'
+        for prefix in ('arbitrary ', 'Authorization: fake-secret == Info: ', 'warning: '):
+            evidence = git_boundary.classify_stderr(prefix + trace + '\n' + fatal, 'non-loopback-fetch')
+            self.assertFalse(evidence['permissionDenied'])
+            self.assertNotIn('fake-secret', json.dumps(evidence))
+            self.assertIn('stderrSha256', evidence)
+        evidence = git_boundary.classify_stderr('Authorization: fake-secret\n' + trace + '\n' + fatal, 'non-loopback-fetch')
+        self.assertTrue(evidence['permissionDenied'])
+        self.assertEqual(evidence['traceLine'], trace)
+        self.assertEqual(evidence['fatalLine'], fatal)
+        self.assertNotIn('fake-secret', json.dumps(evidence))
 
     def test_git_target_snapshot_detects_ref_or_object_changes(self):
         target = self.base / 'sealed-target'

@@ -12,6 +12,14 @@ import subprocess
 GIT_CANDIDATES = ('/Applications/Xcode.app/Contents/Developer/usr/bin/git', '/Library/Developer/CommandLineTools/usr/bin/git')
 
 
+def lab_environment(env):
+    return dict(env, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null')
+
+
+def git_command(git, *args):
+    return [git, '-c', 'http.extraHeader=', *args]
+
+
 def snapshot(target):
     rows = {}
     for path in [target, *sorted(target.rglob('*'))]:
@@ -23,6 +31,7 @@ def snapshot(target):
 
 
 def prepare(root, env):
+    env = lab_environment(env)
     metadata = []
     git = None
     for candidate in GIT_CANDIDATES:
@@ -37,35 +46,43 @@ def prepare(root, env):
     source = root / 'git-source'
     hooks = root / 'git-empty-hooks'
     hooks.mkdir()
-    subprocess.run([git, 'init', '--bare', str(target)], env=env, check=True, capture_output=True)
-    subprocess.run([git, 'init', str(source)], env=env, check=True, capture_output=True)
+    subprocess.run(git_command(git, 'init', '--bare', str(target)), env=env, check=True, capture_output=True)
+    subprocess.run(git_command(git, 'init', str(source)), env=env, check=True, capture_output=True)
     for repository in (target, source):
         for key, value in (('credential.helper', ''), ('core.hooksPath', str(hooks)), ('http.proxy', ''), ('http.https://192.0.2.1/.proxy', '')):
-            subprocess.run([git, '-C', str(repository), 'config', '--local', key, value], env=env, check=True, capture_output=True)
+            subprocess.run(git_command(git, '-C', str(repository), 'config', '--local', key, value), env=env, check=True, capture_output=True)
     author = dict(env, GIT_AUTHOR_NAME='Gate fixture', GIT_AUTHOR_EMAIL='gate@example.invalid', GIT_COMMITTER_NAME='Gate fixture', GIT_COMMITTER_EMAIL='gate@example.invalid')
-    tree = subprocess.run([git, '-C', str(source), 'mktree'], input='', env=author, check=True, capture_output=True, text=True).stdout.strip()
-    commit = subprocess.run([git, '-C', str(source), 'commit-tree', tree], input='Gate fixture\n', env=author, check=True, capture_output=True, text=True).stdout.strip()
-    subprocess.run([git, '-C', str(source), 'update-ref', 'refs/heads/fixture', commit], env=env, check=True, capture_output=True)
-    subprocess.run([git, '-C', str(source), 'push', str(target), 'refs/heads/fixture:refs/heads/seed'], env=env, check=True, capture_output=True)
+    tree = subprocess.run(git_command(git, '-C', str(source), 'mktree'), input='', env=author, check=True, capture_output=True, text=True).stdout.strip()
+    commit = subprocess.run(git_command(git, '-C', str(source), 'commit-tree', tree), input='Gate fixture\n', env=author, check=True, capture_output=True, text=True).stdout.strip()
+    subprocess.run(git_command(git, '-C', str(source), 'update-ref', 'refs/heads/fixture', commit), env=env, check=True, capture_output=True)
+    subprocess.run(git_command(git, '-C', str(source), 'push', str(target), 'refs/heads/fixture:refs/heads/seed'), env=env, check=True, capture_output=True)
     controls = {'git': git, 'target': str(target), 'source': str(source), 'before': snapshot(target), 'authorization': 'Queen 17 Oct 14:44Z, amended 14:45Z: sealed target inside root; TEST-NET network denial only'}
     (root / 'git-controls.json').write_text(json.dumps(controls, indent=2) + '\n')
     return controls
 
 
-def permission_denial(stderr, row):
+def classify_stderr(stderr, row):
+    rejected = {'permissionDenied': False, 'classification': 'unmatched_error', 'stderrSha256': hashlib.sha256(stderr.encode()).hexdigest()}
     if re.search(r'could not resolve|nodename nor servname|timed out|\b(?:401|403)\b|authentication failed|does not appear to be a git repository|not a git repository|no such file|does not exist|missing.path', stderr, re.IGNORECASE):
-        return False
+        return dict(rejected, classification='forbidden_error')
     if row == 'sealed-target-push':
         errors = '\n'.join(line for line in stderr.splitlines() if re.search(r'\b(?:fatal|error):|\[remote rejected\]', line, re.IGNORECASE) and not re.search(r'^\s*warning:', line, re.IGNORECASE))
-        return bool(re.search(r'unable to create temporary object directory|unpacker error|cannot lock ref|unable to create[^\n]*(?:Operation not permitted|Permission denied)|(?:object|ref|write|creat)[^\n]*Permission denied', errors, re.IGNORECASE))
-    fatal = [match.group(1) for line in stderr.splitlines() for match in [re.search(r'\bfatal:\s*(.*)', line, re.IGNORECASE)] if match]
+        if re.search(r'unable to create temporary object directory|unpacker error|cannot lock ref|unable to create[^\n]*(?:Operation not permitted|Permission denied)|(?:object|ref|write|creat)[^\n]*Permission denied', errors, re.IGNORECASE):
+            return {'permissionDenied': True, 'classification': 'local_object_or_ref_write_failure'}
+        return rejected
+    fatal = [line for line in stderr.splitlines() if line.startswith('fatal: ')]
     if not fatal:
-        return False
+        return rejected
     last = fatal[-1]
     if row in ('non-loopback-fetch', 'non-loopback-push'):
-        trace = any(re.search(r'(?:^\*\s*|== Info: )Immediate connect fail for 192\.0\.2\.1:\s*(?:Operation not permitted|Permission denied)\s*$', line, re.IGNORECASE) for line in stderr.splitlines())
-        return trace and bool(re.search(r"unable to access 'https://192\.0\.2\.1/x\.git/': Failed to connect to 192\.0\.2\.1 port 443\b.*Couldn't connect to server", last, re.IGNORECASE))
-    return False
+        trace = [line for line in stderr.splitlines() if re.fullmatch(r'(?:\* |== Info: |\d{2}:\d{2}:\d{2}\.\d+ +http\.c:\d+ +== Info: )Immediate connect fail for 192\.0\.2\.1: (?:Operation not permitted|Permission denied)', line)]
+        if trace and re.fullmatch(r"fatal: unable to access 'https://192\.0\.2\.1/x\.git/': Failed to connect to 192\.0\.2\.1 port 443 after \d+ ms: Couldn't connect to server", last):
+            return {'permissionDenied': True, 'classification': 'connect_permission_denied', 'traceLine': trace[-1], 'fatalLine': last}
+    return rejected
+
+
+def permission_denial(stderr, row):
+    return classify_stderr(stderr, row)['permissionDenied']
 
 
 def storage_probes(root):
@@ -101,7 +118,7 @@ def workload(root):
     git = controls['git']
     if git not in GIT_CANDIDATES or controls['target'] != str(root / 'sealed-target') or controls['source'] != str(root / 'git-source'):
         raise ValueError('invalid Git boundary controls')
-    env = dict(os.environ, GIT_ALLOW_PROTOCOL='file:https', GIT_TERMINAL_PROMPT='0')
+    env = lab_environment(dict(os.environ, GIT_ALLOW_PROTOCOL='file:https', GIT_TERMINAL_PROMPT='0'))
     rows = []
     storage = []
     network = None
@@ -111,12 +128,13 @@ def workload(root):
             raise ValueError('network fixture URL not allowlisted')
         commands = [('sealed-target-push', ['push', controls['target'], 'refs/heads/fixture:refs/heads/denied']), ('non-loopback-fetch', ['fetch', url]), ('non-loopback-push', ['push', url, 'refs/heads/fixture:refs/heads/denied'])]
         for name, args in commands:
-            argv = [git, '-C', controls['source'], *args]
+            argv = git_command(git, '-C', controls['source'], *args)
             try:
                 command_env = dict(env, GIT_CURL_VERBOSE='1') if name.startswith('non-loopback-') else env
                 result = subprocess.run(argv, env=command_env, capture_output=True, text=True, timeout=10)
-                denied = result.returncode != 0 and permission_denial(result.stderr, name)
-                rows.append({'row': name, 'argv': argv, 'exit': result.returncode, 'stderr': result.stderr[-8192:], 'permissionDenied': denied, 'realGit': True})
+                evidence = classify_stderr(result.stderr, name)
+                evidence['permissionDenied'] = result.returncode != 0 and evidence['permissionDenied']
+                rows.append({'row': name, 'argv': argv, 'exit': result.returncode, **evidence, 'realGit': True})
             except (OSError, subprocess.TimeoutExpired) as error:
                 rows.append({'row': name, 'argv': argv, 'error': str(error), 'permissionDenied': False, 'realGit': True})
             if name == 'sealed-target-push':
