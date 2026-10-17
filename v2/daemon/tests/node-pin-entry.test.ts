@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { nodePinFile, nodeRepairFile, persistNodePin, probeNativeNode, validateDaemonNode } from "../../../src/nodeRuntime.ts";
@@ -29,12 +29,13 @@ for (const source of ["flag", "env"] as const) test(`daemon entry resolves relat
     assert.equal(resolveDaemonConfig(args).dataDir, data);
     assert.deepEqual(readdirSync(root), []);
     const pin = probeNativeNode(process.execPath);
+    mkdirSync(data);
     persistNodePin(data, { ...pin, version: "0.0.0" });
     writeFileSync(join(data, "config.json"), JSON.stringify({ tickMs: 71 }));
     assert.equal(resolveDaemonConfig(args).tickMs, 71);
     assert.equal(await runDaemon(source === "flag" ? ["--data-dir", "./data"] : []), 0);
     assert.equal(JSON.parse(readFileSync(nodeRepairFile(data), "utf8")).state, "held");
-    assert.deepEqual(readdirSync(root), ["data"]);
+    assert.deepEqual(readdirSync(root).sort(), ["data", "node-runtime-held.json", "node-runtime.json"]);
     assert.equal(existsSync(join(data, "core.sqlite3")), false);
     assert.equal(existsSync(join(data, "hived.sock")), false);
   });
