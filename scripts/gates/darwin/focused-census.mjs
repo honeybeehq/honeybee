@@ -10,15 +10,26 @@ const normalize = value => typeof value === 'string' ? value.replace(/^node:/, '
 
 export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
   const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
-  // A real binder distinguishes shadowed locals and property names. No dependency
-  // resolution or candidate execution is needed to identify a local symbol.
-  const host = ts.createCompilerHost({noLib: true, noResolve: true, types: []});
-  host.getSourceFile = name => name === path ? source : undefined;
-  const checker = ts.createProgram([path], {noLib: true, noResolve: true, types: []}, host).getTypeChecker();
+  // Bind syntax only. getSymbolAtLocation can invoke contextual type inference
+  // for an untyped call's callback; that is unnecessary and unsafe here. The
+  // pinned TS binder supplies lexical locals and declaration symbols directly.
+  ts.bindSourceFile(source, {target: ts.ScriptTarget.Latest});
   const symbols = new Map();
+  const lexicalSymbol = node => {
+    if (!node || !ts.isIdentifier(node)) return null;
+    const parent = node.parent;
+    if (parent?.name === node && parent.symbol && !ts.isPropertyAccessExpression(parent) && !ts.isExportSpecifier(parent)) return parent.symbol;
+    if (ts.isPropertyAccessExpression(parent) && parent.name === node || ts.isBindingElement(parent) && parent.propertyName === node || ts.isImportSpecifier(parent) && parent.propertyName === node || ts.isPropertyAssignment(parent) && parent.name === node) return null;
+    const name = ts.escapeLeadingUnderscores(node.text);
+    for (let scope = parent; scope; scope = scope.parent) {
+      const symbol = scope.locals?.get(name);
+      if (symbol) return symbol;
+    }
+    return null;
+  };
   const key = node => {
     if (!node || !ts.isIdentifier(node)) return null;
-    const symbol = checker.getSymbolAtLocation(node);
+    const symbol = lexicalSymbol(node);
     if (!symbol) return '$global:' + node.text;
     if (!symbols.has(symbol)) symbols.set(symbol, '$local:' + symbols.size);
     return symbols.get(symbol);
@@ -185,7 +196,7 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
         for (const item of statement.exportClause.elements) {
           if (item.isTypeOnly) continue;
           const binding = item.propertyName ?? item.name;
-          const symbol = checker.getExportSpecifierLocalTargetSymbol?.(item);
+          const symbol = lexicalSymbol(binding);
           const local = symbol && symbols.get(symbol);
           const origin = available ? available[binding.text] : aliases.has(local) ? {module: aliases.get(local), factory: factories.has(local), loader: requires.has(local)} : null;
           if (origin) exports[item.name.text] = origin;
@@ -207,7 +218,21 @@ export function analyze(ts, path, text, imported = {}, compilerOptions = {}) {
   return {edges, capabilities: [...new Map(capabilities.map(row => [JSON.stringify(row), row])).values()], calls, exports, errors};
 }
 
+class CensusFailure extends Error {
+  constructor(path, phase, cause) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'CensusFailure'; this.path = path; this.phase = phase;
+  }
+}
+const inFile = (path, phase, run) => {
+  try { return run(); } catch (error) { if (error instanceof CensusFailure) throw error; throw new CensusFailure(path, phase, error); }
+};
+const failure = error => ({ok: false, error: {type: 'CensusFailure', path: error.path ?? '<audit>', phase: error.phase ?? 'validation', message: error.message ?? String(error)}, errors: ['CensusFailure: ' + (error.path ?? '<audit>') + ': ' + (error.message ?? String(error))]});
 export function validate(ts, root, audit) {
+  try { return validateFiles(ts, root, audit); } catch (error) { return failure(error); }
+}
+
+function validateFiles(ts, root, audit) {
   const errors = [], files = new Map(audit.files.map(row => [row.path, row])), groups = [], edges = [];
   const packageNames = new Set(audit.packages.map(row => row.specifier));
   const spawns = audit.spawns, references = audit.capabilityReferences, natives = audit.nativeEdges;
@@ -243,8 +268,8 @@ export function validate(ts, root, audit) {
   const entryRoles = new Set();
   for (const pin of audit.entryPins ?? []) {
     const file = files.get(pin.path);
-    const validPath = file?.siblingClosure && resolve(root, pin.path).startsWith(root + sep) && realpathSync(resolve(root, pin.path)) === resolve(root, pin.path);
-    if (Object.keys(pin).sort().join(',') !== 'context,line,path,role' || !['production-sandbox-exec', 'reader-entry'].includes(pin.role) || entryRoles.has(pin.role) || !validPath || !Number.isInteger(pin.line) || pin.line < 1 || readFileSync(resolve(root, pin.path), 'utf8').split(/\r?\n/)[pin.line - 1] !== pin.context) errors.push('entry pin missing, duplicate, or context drift: ' + pin.role);
+    const validPath = file?.siblingClosure && resolve(root, pin.path).startsWith(root + sep) && inFile(pin.path, 'entry-pin', () => realpathSync(resolve(root, pin.path))) === resolve(root, pin.path);
+    if (Object.keys(pin).sort().join(',') !== 'context,line,path,role' || !['production-sandbox-exec', 'reader-entry'].includes(pin.role) || entryRoles.has(pin.role) || !validPath || !Number.isInteger(pin.line) || pin.line < 1 || inFile(pin.path, 'entry-pin', () => readFileSync(resolve(root, pin.path), 'utf8')).split(/\r?\n/)[pin.line - 1] !== pin.context) errors.push('entry pin missing, duplicate, or context drift: ' + pin.role);
     entryRoles.add(pin.role);
   }
   for (const role of ['production-sandbox-exec', 'reader-entry']) if (!entryRoles.has(role)) errors.push('missing entry pin ' + role);
@@ -260,13 +285,13 @@ export function validate(ts, root, audit) {
   for (let pass = 0; pass <= audit.files.length; pass++) {
     let changed = false;
     for (const pin of audit.files.filter(row => row.siblingClosure)) {
-      const absolute = resolve(root, pin.path), text = readFileSync(absolute, 'utf8');
-      const source = ts.createSourceFile(pin.path, text, ts.ScriptTarget.Latest, true), imported = {};
+      const absolute = resolve(root, pin.path), text = inFile(pin.path, 'read', () => readFileSync(absolute, 'utf8'));
+      const source = inFile(pin.path, 'parse', () => ts.createSourceFile(pin.path, text, ts.ScriptTarget.Latest, true)), imported = {};
       for (const statement of source.statements) if ((ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text.startsWith('.')) {
         const target = resolveRelative(statement.moduleSpecifier.text, absolute);
         if (target && results.has(target)) imported[statement.moduleSpecifier.text] = results.get(target).exports;
       }
-      const result = analyze(ts, pin.path, text, imported, compilerOptionsFor(absolute));
+      const result = inFile(pin.path, 'syntax-binding', () => analyze(ts, pin.path, text, imported, compilerOptionsFor(absolute)));
       if (JSON.stringify(result.exports) !== JSON.stringify(results.get(pin.path)?.exports)) changed = true;
       results.set(pin.path, result);
     }
@@ -275,7 +300,7 @@ export function validate(ts, root, audit) {
   }
   for (const pin of audit.files.filter(row => row.siblingClosure)) {
     const absolute = resolve(root, pin.path);
-    if (realpathSync(absolute) !== absolute || !absolute.startsWith(root + sep)) { errors.push('redirected source ' + pin.path); continue; }
+    if (inFile(pin.path, 'canonical-path', () => realpathSync(absolute)) !== absolute || !absolute.startsWith(root + sep)) { errors.push('redirected source ' + pin.path); continue; }
     const result = results.get(pin.path);
     errors.push(...result.errors.map(error => pin.path + ': ' + error));
     for (const edge of result.edges) {
@@ -331,12 +356,16 @@ export function validate(ts, root, audit) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const root = realpathSync(process.cwd());
-  const parser = resolve(root, 'node_modules/typescript/lib/typescript.js');
-  if (realpathSync(parser) !== parser || createHash('sha256').update(readFileSync(parser)).digest('hex') !== '569177652966bd528c319171c7dd22860dbf72bde116cbc4f644f1d02bb12e39') throw new Error('TypeScript 6.0.3 parser pin mismatch');
-  const ts = createRequire(import.meta.url)(parser);
-  const audit = JSON.parse(readFileSync(resolve(root, 'scripts/gates/darwin/focused-sibling-audit.json'), 'utf8'));
-  const result = validate(ts, root, audit);
+  let result;
+  try {
+    const root = realpathSync(process.cwd());
+    const parser = resolve(root, 'node_modules/typescript/lib/typescript.js');
+    if (realpathSync(parser) !== parser || createHash('sha256').update(readFileSync(parser)).digest('hex') !== '569177652966bd528c319171c7dd22860dbf72bde116cbc4f644f1d02bb12e39') throw new CensusFailure('node_modules/typescript/lib/typescript.js', 'parser-pin', 'TypeScript 6.0.3 parser pin mismatch');
+    const ts = createRequire(import.meta.url)(parser);
+    const auditPath = 'scripts/gates/darwin/focused-sibling-audit.json';
+    const audit = inFile(auditPath, 'audit-read', () => JSON.parse(readFileSync(resolve(root, auditPath), 'utf8')));
+    result = validate(ts, root, audit);
+  } catch (error) { result = failure(error); }
   process.stdout.write(JSON.stringify(result) + '\n');
   if (!result.ok) process.exitCode = 95;
 }

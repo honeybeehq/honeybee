@@ -71,6 +71,33 @@ try {
     assert.equal(result.exports.wrapper, undefined);
     assert.deepEqual(result.calls.map(row => row.line), [2, 5, 10]);
   });
+  test('untyped calls with function-expression and object-method arguments use binding only', () => {
+    const text = ["import {spawn} from 'node:child_process';", 'untyped(function callback(value) { const result = spawn("node", []); return value(result); });', 'untyped({method(value) { return value(() => spawn("node", [])); }});', 'untyped((spawn) => spawn("unrelated"));'].join('\n');
+    // Reproduce the contextual-checker path without ever invoking a checker.
+    const bindingOnly = new Proxy(ts, {get(target, name) { if (['createProgram', 'createTypeChecker'].includes(name)) throw new Error('type checking forbidden'); return target[name]; }});
+    const result = analyze(bindingOnly, 'entry.ts', text);
+    assert.deepEqual(result.calls.map(row => row.line), [2, 3]);
+  });
+  test('a per-file exception returns one typed failure and no partial census', () => {
+    const data = audit(root, 'untyped(function (value) { return value; });');
+    const broken = new Proxy(ts, {get(target, name) { if (name === 'bindSourceFile') return () => { throw new TypeError("Cannot read properties of undefined (reading 'flags')"); }; return target[name]; }});
+    const result = validate(broken, root, data);
+    assert.equal(result.ok, false);
+    assert.equal(result.error.type, 'CensusFailure');
+    assert.equal(result.error.path, 'entry.ts');
+    assert.equal(result.error.phase, 'syntax-binding');
+    assert.equal(result.capabilityGroups, undefined);
+    assert.equal(result.edges, undefined);
+  });
+  test('real-source minimized untyped callback crash regression', () => {
+    // Reduced from main's auth-death-claude.mjs. The previous checker-backed
+    // implementation crashes on this input during contextual object checking.
+    const text = 'import {createInterface} from "node:readline"; createInterface({input:process.stdin}).on("line", function(raw) { return JSON.parse(raw); });';
+    const result = analyze(ts, 'entry.mjs', text);
+    assert.deepEqual(result.errors, []);
+    assert.deepEqual(result.capabilities, []);
+    assert.equal(result.edges[0].specifier, 'node:readline');
+  });
   test('destructuring and assignment aliases remain direct capabilities', () => {
     const result = analyze(ts, 'entry.ts', "import * as cp from 'node:child_process';\nconst {spawn: launch} = cp;\nlet again; again = launch;\nagain('node', []);");
     assert(result.calls.some(row => row.line === 4 && row.module === 'node:child_process'));
