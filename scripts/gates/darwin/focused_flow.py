@@ -501,9 +501,12 @@ def load_tmux_diagnostics(path, names):
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 8388608:
             raise ValueError('tmux diagnostic evidence unsafe or oversized')
-        with os.fdopen(fd, 'r') as stream:
+        with os.fdopen(fd, 'rb') as stream:
             fd = None
-            rows = [json.loads(line) for line in stream]
+            data = stream.read(8388609)
+        if len(data) > 8388608:
+            raise ValueError('tmux diagnostic evidence grew beyond bound')
+        rows = [json.loads(line) for line in data.splitlines()]
         if any(not isinstance(row, dict) or row.get('row') not in names or row.get('kind') not in ('tmux-command', 'pane-list', 'terminal-capture') for row in rows):
             raise ValueError('tmux diagnostic row outside selected manifest')
         return {'path': str(path), 'rows': {name: [row for row in rows if row['row'] == name] for name in names}, 'serverStderrScope': 'stderr of observed tmux invocations; daemon-only stderr is not separately redirected', 'terminalCaptureBound': 'at most four panes, last 80 lines and 4096 characters each; at most 128 records per row'}
