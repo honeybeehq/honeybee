@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 from filesystem import proc_receipt_valid
+from git_boundary import snapshot as git_boundary_snapshot, receipt_valid as git_boundary_receipt_valid
 import uuid
 import threading
 import pwd
@@ -314,6 +315,16 @@ def adjudicate(home, root, out, physical, before, after):
     valid_mask = valid_mask and filesystem.get('state', {}).get('asserted', False) and fs_probes.get('asserted', False) and fs_probes.get('privilegeChecks') is True and {item.get('operation') for item in fs_probes.get('privilegeProbes', [])} == {'remount-proc-rw','remount-root-rw','umount-tmp','unshare-mount'} and all(item.get('refused') and item.get('childExit') == 0 for item in fs_probes['privilegeProbes'])
     temporary = tmp_audit(root, out)
     valid_mask = valid_mask and temporary['asserted']
+    fixture_path = root / 'git-boundary' / physical['label'] / 'fixture.json'
+    boundary_path = out / 'git-boundary-tests.json'
+    boundary_valid = False
+    if fixture_path.exists() and boundary_path.exists():
+        fixture = read(fixture_path)
+        outside_after = git_boundary_snapshot(fixture['backingTarget'])
+        save(out / 'git-boundary-outside.json', dict(metadataAndHashesOnly=True, entries=outside_after, unchanged=outside_after == fixture['before']))
+        baseline = read(out / 'git-boundary-baseline.json')['entries']
+        boundary_valid = baseline == fixture['before'] and git_boundary_receipt_valid(read(boundary_path), fixture, outside_after)
+    valid_mask = valid_mask and boundary_valid
     coverage = [dict(pid=birth['pid'],outcome=mapping_coverage(birth,inv['hostPidMap'],raw.get('errors',[]))) for birth in raw.get('births',[])]
     save(out/'mapping-coverage.json',coverage)
     missing_mappings = [item['pid'] for item in coverage if item['outcome']=='FAIL']
@@ -349,6 +360,15 @@ def run_step(config, step):
     for directory in set(env.values()):
         if directory.startswith(str(fake)):
             pathlib.Path(directory).mkdir(parents=True, exist_ok=True)
+    boundary_setup = subprocess.run(['unshare', '-rn', 'python3', '-B', str(root / 'git_boundary.py'), str(root), label], env=env, capture_output=True)
+    if boundary_setup.returncode:
+        raise RuntimeError('git boundary controller fixture setup failed')
+    fixture = read(root / 'git-boundary' / label / 'fixture.json')
+    baseline = git_boundary_snapshot(fixture['backingTarget'])
+    assert baseline == fixture['before']
+    fixture.update(controllerUid=os.getuid(), controllerGid=os.getgid())
+    save(root / 'git-boundary' / label / 'fixture.json', fixture)
+    save(out / 'git-boundary-baseline.json', dict(entries=baseline, metadataAndHashesOnly=True))
     before = snapshot(home)
     save(out / 'before.json', before)
     save(out / 'host-tmp-before.json', tmp_snapshot())
