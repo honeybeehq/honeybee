@@ -9,15 +9,18 @@ import time
 mode = sys.argv[1]
 root = Path(os.environ['GATE_ROOT'])
 if mode == 'reparent-parent':
-    subprocess.Popen([sys.executable, '-B', __file__, 'reparent-child'])
-    deadline = time.monotonic() + 5
-    while not (root / 'reparent-parent-release').exists() and time.monotonic() < deadline:
+    child = subprocess.Popen([sys.executable, '-B', __file__, 'reparent-child'])
+    (root / 'reparent-child-pid').write_text(str(child.pid))
+    while not (root / 'reparent-parent-release').exists():
+        if (root / 'reparent-abort').exists():
+            child.wait(timeout=3)
+            sys.exit(1)
         time.sleep(0.01)
     sys.exit(0)
 if mode == 'reparent-child':
-    deadline = time.monotonic() + 5
+    (root / 'reparent-child-ready').write_text(str(os.getpid()))
     while not (root / 'reparent-listen-release').exists():
-        if time.monotonic() >= deadline:
+        if (root / 'reparent-abort').exists():
             sys.exit(1)
         time.sleep(0.01)
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM if mode in ('TCP', 'reparent-child') else socket.SOCK_DGRAM) as listener:

@@ -64,6 +64,7 @@ def validate(root, env, real_home, parent=Path('/private/var/tmp')):
 
 
 ENTRY_NOTES = []
+LEFTOVER_CHILDREN = []
 
 
 def write_json(path, value, root):
@@ -71,7 +72,7 @@ def write_json(path, value, root):
     if not inside(path.resolve(), root.resolve()):
         raise Refusal('write outside run root')
     if path == Path(root) / 'receipt.json' and isinstance(value, dict):
-        value = dict(value, entryNotes=list(ENTRY_NOTES), listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
+        value = dict(value, entryNotes=list(ENTRY_NOTES), leftoverChild=value.get('leftoverChild') or list(LEFTOVER_CHILDREN) or None, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
@@ -437,6 +438,9 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
     parent_birth = None
     retained = None
     detected = False
+    failure = None
+    check = None
+    observations_start = len(SCOPE_OBSERVATIONS)
     with (root / 'listener-fixture-reparent.log').open('wb') as output:
         parent = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'reparent-parent'], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
         os.close(read_fd)
@@ -446,19 +450,27 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
             if int(parent_birth[1]) != os.getpid():
                 raise Refusal('reparent fixture parent outside controller scope')
             os.write(release_fd, b'1')
-            deadline = time.monotonic() + 3
+            deadline = time.monotonic() + 15
             while parent.poll() is None and time.monotonic() < deadline:
                 tree = scope_call(helper, 'scan', *parent_birth)
                 children = [row for row in tree if row[1] == str(parent.pid)]
-                if children:
-                    retained = children[0]
+                ready = root / 'reparent-child-ready'
+                if ready.exists() and any(row[0] == ready.read_text().strip() for row in children):
+                    retained = next(row for row in children if row[0] == ready.read_text().strip())
+                    write_json(root / 'reparent-first-sight.json', {'birth': retained, 'parentBirth': parent_birth, 'tree': tree, 'beforeParentRelease': True}, root)
                     break
                 time.sleep(0.05)
             if retained is None:
                 raise Refusal('grandchild birth unobserved')
             (root / 'reparent-parent-release').write_text('release\n')
             parent.wait(timeout=2)
-            now = scope_call(helper, 'identity', retained[0])[0]
+            deadline = time.monotonic() + 3
+            now = retained
+            while time.monotonic() < deadline:
+                now = scope_call(helper, 'identity', retained[0])[0]
+                if now[1] != retained[1] or now[2:] != retained[2:]:
+                    break
+                time.sleep(0.05)
             if now[1] == retained[1] or now[2:] != retained[2:]:
                 raise Refusal('grandchild did not reparent with preserved birth')
             (root / 'reparent-listen-release').write_text('release\n')
@@ -472,9 +484,24 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
                     detected = True
                     break
                 time.sleep(0.05)
+        except BaseException as error:
+            failure = str(error)
+            raise
         finally:
             os.close(release_fd)
-            for birth in [row for row in (retained, parent_birth) if row is not None]:
+            cleanup_births = {tuple(row): row for row in (retained, parent_birth) if row is not None}
+            if parent_birth is not None:
+                try:
+                    for row in scope_call(helper, 'scan', *parent_birth):
+                        cleanup_births.setdefault(tuple(row), row)
+                except (Refusal, OSError, subprocess.SubprocessError) as error:
+                    signals.append({'cleanupScanError': str(error)})
+            candidate_path = root / 'reparent-child-pid'
+            candidate_pid = candidate_path.read_text().strip() if candidate_path.exists() else None
+            if candidate_pid and not any(row[0] == candidate_pid for row in cleanup_births.values()):
+                LEFTOVER_CHILDREN.append({'pid': candidate_pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': [env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'reparent-child']})
+            (root / 'reparent-abort').write_text('abort\n')
+            for birth in sorted(cleanup_births.values(), key=lambda row: row[0] == str(parent.pid)):
                 for sig in (signal.SIGTERM, signal.SIGKILL):
                     attempt = subprocess.run([str(helper), 'signal', *birth, str(int(sig))], capture_output=True, text=True)
                     signals.append({'birth': birth, 'signal': int(sig), 'exit': attempt.returncode, 'result': attempt.stdout.strip()})
@@ -484,11 +511,17 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
                     check = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True)
                     if check.returncode == 3:
                         break
-            if parent.poll() is not None:
-                parent.wait()
-    check = subprocess.run([str(helper), 'status', *retained], capture_output=True, text=True) if retained else None
-    result = {'proto': 'TCP', 'case': 'retained reparented grandchild', 'expectedClassification': 'FAIL', 'detected': detected, 'birth': retained, 'parentBirth': parent_birth, 'firstSightTree': tree, 'samples': samples, 'signals': signals, 'childExit': 'gone or zombie' if check and check.returncode == 3 else None, 'noRemoteConnect': True}
-    write_json(root / 'listener-reparent-self-test.json', result, root)
+                status = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True)
+                if status.returncode != 3:
+                    LEFTOVER_CHILDREN.append({'pid': birth[0], 'birth': birth, 'reason': 'fenced cleanup unresolved', 'statusExit': status.returncode})
+            try:
+                parent.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                if parent_birth is None:
+                    LEFTOVER_CHILDREN.append({'pid': parent.pid, 'birth': None, 'reason': 'birth unobserved, not fenced', 'argv': parent.args})
+            check = subprocess.run([str(helper), 'status', *retained], capture_output=True, text=True) if retained else None
+            result = {'proto': 'TCP', 'case': 'retained reparented grandchild', 'expectedClassification': 'FAIL', 'detected': detected, 'failure': failure, 'birth': retained, 'parentBirth': parent_birth, 'firstSightTree': tree, 'samples': samples, 'signals': signals, 'leftoverChild': list(LEFTOVER_CHILDREN), 'scopeObservations': SCOPE_OBSERVATIONS[observations_start:], 'childExit': 'gone or zombie' if check and check.returncode == 3 else None, 'noRemoteConnect': True}
+            write_json(root / 'listener-reparent-self-test.json', result, root)
     if not detected or not check or check.returncode != 3:
         raise Refusal('reparented wildcard listener detection or cleanup failed')
     return result
@@ -518,6 +551,7 @@ def run(args):
     LOCK_METADATA[str(root.resolve())] = lock_metadata
     root.mkdir(mode=0o700)
     CREATED_ROOTS.add(root.resolve())
+    (root / 'workload.log').touch()
     for value in set(env[k] for k in DIRS):
         Path(value).mkdir(parents=True, exist_ok=True)
     write_json(root / 'entry-guard.json', guard, root)
@@ -750,6 +784,8 @@ def main():
     try:
         return run(args)
     except (Refusal, OSError, subprocess.SubprocessError) as error:
+        if LEFTOVER_CHILDREN:
+            error = Refusal(str(error) + '; leftoverChild=' + json.dumps(LEFTOVER_CHILDREN, sort_keys=True))
         print('REFUSING: ' + str(error), file=sys.stderr)
         print('GATE_NONZERO_REASON=' + json.dumps('guard refusal: ' + str(error)), flush=True)
         root = Path(args.root)

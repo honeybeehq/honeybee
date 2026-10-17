@@ -102,6 +102,25 @@ class GuardTests(unittest.TestCase):
         with patch('guard.sample_listeners') as observed:
             self.assertEqual(guard.sample_retained_listeners(Path('/root/scope'), retained, exited), [])
             observed.assert_not_called()
+    def test_reparent_failure_records_and_fences_discovered_children(self):
+        parent_birth = ['12345', str(os.getpid()), '10', '20']
+        child_birth = ['12346', '12345', '10', '21']
+        process = unittest.mock.MagicMock()
+        process.pid = 12345
+        process.poll.return_value = None
+        process.args = ['fixture-parent']
+        process.wait.return_value = -15
+        replies = [[parent_birth], Refusal('forced acquisition failure'), [parent_birth, child_birth]]
+        helper_result = subprocess.CompletedProcess([], 3, 'gone', '')
+        with patch('guard.subprocess.Popen', return_value=process), patch('guard.os.write'), patch('guard.scope_call', side_effect=replies), patch('guard.subprocess.run', return_value=helper_result) as invoked, patch('guard.time.sleep'), self.assertRaisesRegex(Refusal, 'forced acquisition failure'):
+            guard.reparent_listener_self_test(self.base, self.base, [], self.base / 'scope', {'SCG_PYTHON_BIN': sys.executable})
+        result = json.loads((self.base / 'listener-reparent-self-test.json').read_text())
+        self.assertEqual(result['failure'], 'forced acquisition failure')
+        self.assertTrue((self.base / 'reparent-abort').exists())
+        signalled = [call.args[0][2:6] for call in invoked.call_args_list if call.args[0][1] == 'signal']
+        self.assertIn(child_birth, signalled)
+        self.assertIn(parent_birth, signalled)
+
     def test_gate_shell_diagnostics_never_dump_environment_values(self):
         def unsafe(text):
             if 'HIVE_/APIARY_=[' in text or re.search(r'\b(?:printenv|export\s+-p|declare\s+-x)\b', text):
