@@ -2,7 +2,6 @@
 #ifdef __APPLE__
 #include <libproc.h>
 #include <sys/proc_info.h>
-#include <sys/codesign.h>
 #include <sys/stat.h>
 #include <signal.h>
 #include <unistd.h>
@@ -41,6 +40,12 @@ static int same_birth(int pid, unsigned long long sec, unsigned long long usec) 
   if (!identity(pid, &b)) return errno == ESRCH ? 3 : 4;
   if (b.pbi_start_tvsec != sec || b.pbi_start_tvusec != usec) return 4;
   return b.pbi_status == 5 ? 3 : 0;
+}
+#define CS_OPS_STATUS 0U
+#define CS_PLATFORM_BINARY 0x04000000U
+typedef int (*csops_function)(pid_t, unsigned int, void *, size_t);
+static csops_function csops_checker(void) {
+  return (csops_function)dlsym(RTLD_DEFAULT, "csops");
 }
 static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned long long usec, char **paths, int *denied, int *allowed, int *errors, int *not_sandboxed, int *allowed_by_query, int *results);
 #include "quiescence.h"

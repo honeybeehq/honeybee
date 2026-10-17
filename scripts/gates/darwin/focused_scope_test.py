@@ -57,6 +57,7 @@ int main(void) {
         scope = Path(__file__).with_name('scope.c').read_text()
         start = scope.index('static int quiescence_sandbox_denied(', scope.index('static sandbox_check_function sandbox_checker'))
         query_function = scope[start:scope.index('static int node_observation(', start)]
+        csops_function = scope[scope.index('#define CS_OPS_STATUS'):scope.index('static int quiescence_sandbox_denied(')]
         function = Path(__file__).with_name('quiescence.h').read_text().replace('counts.skipped_uid_changed++;', 'counts.skipped_uid_changed++; observed_uid_skip++;')
         stub = r'''#include <stdio.h>
 #include <stdlib.h>
@@ -67,8 +68,9 @@ int main(void) {
 #define PROC_PIDPATHINFO_MAXSIZE 4096
 #define PROC_UID_ONLY 4
 #define PROC_PIDREGIONPATHINFO 8
-#define CS_OPS_STATUS 0
-#define CS_PLATFORM_BINARY 0x04000000
+#define RTLD_DEFAULT ((void*)0)
+#define CS_OPS_STATUS 0U
+#define CS_PLATFORM_BINARY 0x04000000U
 #define PROC_PIDVNODEPATHINFO 1
 #define PROC_PIDLISTFDS 2
 #define PROC_PIDFDVNODEPATHINFO 3
@@ -89,8 +91,9 @@ static int proc_listpids(unsigned int type,unsigned int uid,void *out,int bytes)
 struct stat { unsigned int st_dev; unsigned long long st_ino; };
 static int stat(const char *path,struct stat *out) { (void)path;out->st_dev=7;out->st_ino=43;return 0; }
 static int csops(int pid,unsigned int op,void *out,size_t size) { (void)pid;if(op!=CS_OPS_STATUS||size!=sizeof(unsigned int))return -1;if(mode==82){errno=EPERM;return -1;}*(unsigned int*)out=mode==81?0:CS_PLATFORM_BINARY;return 0; }
+static void *dlsym(void *handle,const char *name) { (void)handle;if(strcmp(name,"csops"))foreign_read=1;return mode==99?NULL:(void*)csops; }
 static int getsid(int pid) { if(pid==10)return 10;return mode==21?10:mode==26?66:mode==29?77:11; }
-static int proc_pidpath(int pid,void *out,unsigned int size) { (void)size;if(pid==12)foreign_read=1;if(mode>=80){const char *paths[]={"/System/Library/Agent","/System/Library/Agent","/System/Library/Agent","/bin/sh","/sbin/tool","/usr/bin/tool","/usr/local/tool","/Applications/Agent","/Users/other/Agent","/System/LibraryX/Agent","/usr/libexecfoo/Agent","/System/ApplicationsX/Agent","/System/Library/Agent","/System/Library/Agent","/System/Applications/Agent","/usr/libexec/Agent","/usr/sbin/Agent","/System/Library/Agent","/System/Library/Agent"};if(mode==98){errno=ENOENT;return 0;}strcpy(out,paths[mode-80]);return (int)strlen(out);}if((mode>=18&&mode<=30)||mode==50){errno=mode==27||mode==50?EPERM:ENOENT;return 0;}strcpy(out,mode>=31&&mode!=49?"/outside/node":"/fixture/node");return 14; }
+static int proc_pidpath(int pid,void *out,unsigned int size) { (void)size;if(pid==12)foreign_read=1;if(mode>=80){const char *paths[]={"/System/Library/Agent","/System/Library/Agent","/System/Library/Agent","/bin/sh","/sbin/tool","/usr/bin/tool","/usr/local/tool","/Applications/Agent","/Users/other/Agent","/System/LibraryX/Agent","/usr/libexecfoo/Agent","/System/ApplicationsX/Agent","/System/Library/Agent","/System/Library/Agent","/System/Applications/Agent","/usr/libexec/Agent","/usr/sbin/Agent","/System/Library/Agent","/System/Library/Agent","/System/Library/Agent"};if(mode==98){errno=ENOENT;return 0;}strcpy(out,paths[mode-80]);return (int)strlen(out);}if((mode>=18&&mode<=30)||mode==50){errno=mode==27||mode==50?EPERM:ENOENT;return 0;}strcpy(out,mode>=31&&mode!=49?"/outside/node":"/fixture/node");return 14; }
 static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int size) {
  (void)size;if(pid==12)foreign_read=1;
  if(flavor==PROC_PIDREGIONPATHINFO){if((mode==24||mode==25||(mode>=80&&mode!=97))&&arg==0){struct proc_regionwithpathinfo *r=out;r->prp_prinfo.pri_address=4096;r->prp_prinfo.pri_size=4096;r->prp_vip.vip_vi.vi_stat.vst_dev=7;r->prp_vip.vip_vi.vi_stat.vst_ino=mode==24||mode==93?42:43;return sizeof(*r);}errno=ENOENT;return 0;}
@@ -111,7 +114,7 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / 'quiescent.c'
-            source.write_text(stub + query_function + function + main)
+            source.write_text(stub + csops_function + query_function + function + main)
             binary = root / 'quiescent'
             result = subprocess.run(['/usr/bin/cc', '-std=c11', '-Wall', '-Wextra', '-Werror', str(source), '-o', str(binary)], capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -127,7 +130,7 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                 9: ('live vnode read error', 4), 10: ('live fd-list error', 4),
                 11: ('birth mismatch', 4), 12: ('live EBADF skips fd and continues', 0),
                 13: ('exit after matched paths before final fence', 0),
-                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('read-only alternative or data-write refusal',0 if mode%2==0 else 4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4),60:('read allowed twelve writes denied accepts',0),**{mode:('each of twelve write allows fails',4) for mode in range(61,73)},73:('unknown write-create op errors',4),**{mode:('platform binary prefix and status proof',0 if mode in (80,94,95,96) else 4) for mode in range(80,99)}}
+                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4), 18: ('pre-root unlinked unavailable region allowed', 0), 19: ('post-root unlinked fails', 4), 20: ('gate descendant birth fails', 4), 21: ('gate session or pgid fails', 4), 22: ('unlinked dirty cwd fails', 4), 23: ('unlinked dirty fd fails', 4), 24: ('region inode in manifest fails', 4), 25: ('region inode outside manifest allowed', 0), 26: ('root-owned session leader informational only', 0), 27: ('pidpath EPERM still fails', 4), 28: ('one second margin fails', 4), 29: ('sid in retained gate launch set fails', 4), 30: ('pgid in retained gate launch set fails', 4), 31: ('fd EPERM all eight denied accepts', 0), **{mode: ('read-only alternative or data-write refusal',0 if mode%2==0 else 4) for mode in range(32,40)}, 40: ('sandbox query error fails',4), 41: ('not sandboxed fails',4), 44: ('SPI unavailable fails',4), 47: ('fd EPERM gate process fails',4), 48: ('fd EPERM dirty cwd fails',4), 49: ('fd EPERM dirty exe fails',4), 50: ('exe EPERM fails before fd exception',4),60:('read allowed twelve writes denied accepts',0),**{mode:('each of twelve write allows fails',4) for mode in range(61,73)},73:('unknown write-create op errors',4),**{mode:('platform binary prefix and status proof',0 if mode in (80,94,95,96) else 4) for mode in range(80,100)}}
             for mode, (name, expected) in cases.items():
                 with self.subTest(case=name):
                     result = subprocess.run([str(binary), str(mode)], input="1\n7 42\n2\n77\n88\n", capture_output=True, text=True, timeout=2)
@@ -188,6 +191,7 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                         if mode==73:
                             self.assertEqual(reason['fdFailedQueryResults'],[0,1]*4+[-1]+[-2]*7)
                             self.assertEqual(reason['counts']['fdQueryErrors'],1)
+                        if mode==99:self.assertEqual(reason['counts']['csopsUnavailable'],1)
                         if mode==81:self.assertEqual(reason['counts']['notPlatform'],1)
                         if mode==82:self.assertEqual(reason['counts']['csopsError'],1)
                         if mode in range(83,93):self.assertEqual(reason['counts']['pathDisallowed'],1)
