@@ -127,8 +127,16 @@ def mapping_coverage(birth, mappings, errors):
     return 'FAIL'
 
 
-def probe_failed(result):
-    return result is not None and (result.get('childExit') != 0 or len(result.get('probes', [])) != 3 or any(not item.get('expectedFailure') for item in result.get('probes', [])))
+def probe_failed(result, real_home, targets):
+    if not isinstance(result, dict) or result.get('childExit') != 0 or not targets:
+        return True
+    expected = {('umount-home', str(real_home)), ('umount-proc', '/proc'), ('remount-hive-rw', str(pathlib.Path(real_home) / '.hive'))}
+    expected.update((operation + ':' + target, target) for target in targets for operation in ('umount', 'mount'))
+    probes = result.get('probes', [])
+    if not isinstance(probes, list) or any(not isinstance(item, dict) or item.get('expectedFailure') is not True or item.get('result') != -1 or item.get('errno') not in (1, 22) for item in probes):
+        return True
+    actual = [(item.get('probe'), item.get('path')) for item in probes]
+    return len(actual) != len(expected) or any(pair not in expected for pair in actual) or len(set(actual)) != len(expected)
 
 
 def closing_verdict(change, real_home, masked_eligible, clean, config_times, touched, named):

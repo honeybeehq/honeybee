@@ -397,12 +397,27 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(mapping_coverage(birth,[dict(namespacePid=4,starttime='12')],errors),'mapped')
 
     def test_probe_failure_aborts_invocation(self):
-        valid=dict(childExit=0,probes=[dict(expectedFailure=True) for unused in range(3)])
-        self.assertFalse(probe_failed(None))
-        self.assertFalse(probe_failed(valid))
-        self.assertTrue(probe_failed(dict(valid,childExit=2)))
-        self.assertTrue(probe_failed(dict(valid,probes=valid['probes'][:-1])))
-        self.assertTrue(probe_failed(dict(valid,probes=[dict(expectedFailure=False)]+valid['probes'][1:])))
+        targets = [HOME + '/' + name for name in ('.hive', '.bashrc', '.gitconfig', 'Code', 'Projects')]
+        pairs = [('umount-home', HOME), ('umount-proc', '/proc'), ('remount-hive-rw', HIVE)]
+        pairs += [(operation + ':' + target, target) for target in targets for operation in ('umount', 'mount')]
+        probes = [dict(probe=name, path=target, result=-1, errno=22 if name.startswith('umount') else 1, expectedFailure=True) for name, target in pairs]
+        valid = dict(childExit=0, probes=probes)
+        self.assertFalse(probe_failed(valid, HOME, targets))
+        self.assertFalse(probe_failed(dict(valid, probes=list(reversed(probes))), HOME, targets))
+        self.assertTrue(probe_failed(None, HOME, targets))
+        self.assertTrue(probe_failed(dict(valid, childExit=2), HOME, targets))
+        for index in range(len(probes)):
+            self.assertTrue(probe_failed(dict(valid, probes=probes[:index] + probes[index+1:]), HOME, targets))
+            changed = [dict(row) for row in probes]
+            changed[index].update(expectedFailure=False, result=0, errno=0)
+            self.assertTrue(probe_failed(dict(valid, probes=changed), HOME, targets))
+        for extra in (probes[0], dict(probes[-1], path=HOME + '/unexpected'), dict(probes[-1], probe='unexpected')):
+            self.assertTrue(probe_failed(dict(valid, probes=probes + [extra]), HOME, targets))
+        changed = [dict(row) for row in probes]
+        changed[-1]['path'] = HOME + '/unexpected'
+        self.assertTrue(probe_failed(dict(valid, probes=changed), HOME, targets))
+        changed[-1] = dict(probes[-2])
+        self.assertTrue(probe_failed(dict(valid, probes=changed), HOME, targets))
 
     def test_mapping_and_read_errors_share_exit_evidence(self):
         for before, after, start, expected in [('Z','Z','12',True),('R','Z','12',True),('S','Z','12',True),('D','Z','12',True),('Z',None,None,True),('R','S','12',False),('Z','R','12',False),('Z','Z','13',False)]:

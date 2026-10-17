@@ -531,7 +531,9 @@ def main():
         result = run_step(config, step)
         results.append(result)
         probe_path = pathlib.Path(result['physical']['receipt'])/'locked-mount-probes.json'
-        if probe_failed(read(probe_path) if probe_path.exists() else None):
+        inside_path = probe_path.parent / 'mask-inside.json'
+        targets = [item['path'] for item in read(inside_path)['maskTargets']] if inside_path.exists() else []
+        if probe_failed(read(probe_path) if probe_path.exists() else None, home, targets):
             abort_reason = 'locked mount negative probe failed; invocation aborted before any further step'
             record_attempt(root,dict(event='invocation-aborted',rulesVersion=RULE_VERSION,attemptId=result['physical']['attemptId'],reason=abort_reason,at=time.time()))
             break
