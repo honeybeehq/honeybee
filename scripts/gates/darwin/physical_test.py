@@ -39,10 +39,10 @@ def main():
     else:
         raise AssertionError('outside write unexpectedly succeeded')
     assert outside.exists() == before
-    stricter = subprocess.run(['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)', sys.executable, '-B', str(Path(__file__).with_name('socket_probe.py')), str(root)], capture_output=True, text=True)
+    stricter = subprocess.run(['/usr/bin/sandbox-exec', '-p', '(version 1)(allow default)(deny network*)', sys.executable, '-B', str(Path(__file__).with_name('socket_probe.py')), str(root / 't')], capture_output=True, text=True)
     rows.append({'row': 'nested stricter deny-network-only probe', 'exit': stricter.returncode, 'stdout': stricter.stdout[-4096:], 'stderr': stricter.stderr[-4096:], 'rootOnlyRuleRetainedUnlessStricterProven': True})
     with socket.socket(socket.AF_UNIX) as server, socket.socket(socket.AF_UNIX) as client:
-        path = str(root / 'self-test.sock')
+        path = str(root / 't/self-test.sock')
         server.bind(path)
         server.listen(1)
         client.connect(path)
@@ -50,11 +50,18 @@ def main():
         accepted.close()
         rows.append({'row': 'run-root Unix socket', 'result': 'allowed'})
     with socket.socket(socket.AF_UNIX) as client:
+        client.connect(os.environ['SCG_ALLOWED_SOCKET'])
+        rows.append({'row': 'controller listener in TMPDIR', 'result': 'allowed', 'path': os.environ['SCG_ALLOWED_SOCKET']})
+    denied_path = Path(os.environ['SCG_DENIED_SOCKET'])
+    assert denied_path.is_socket()
+    denied_inode = denied_path.lstat().st_ino
+    with socket.socket(socket.AF_UNIX) as client:
         try:
-            client.connect(str(root.parent / (root.name + '.outside.sock')))
+            client.connect(os.environ['SCG_DENIED_SOCKET'])
         except OSError as error:
             assert error.errno in (errno.EPERM, errno.EACCES), error
-            rows.append({'row': 'outside-root Unix socket', 'result': 'REFUSED', 'errno': error.errno})
+            assert denied_path.is_socket() and denied_path.lstat().st_ino == denied_inode
+            rows.append({'row': 'real controller listener outside TMPDIR', 'result': 'REFUSED', 'errno': error.errno, 'path': os.environ['SCG_DENIED_SOCKET'], 'existingSocketInode': denied_inode})
         else:
             raise AssertionError('outside Unix socket unexpectedly allowed')
     for key in ('npm_config_cache', 'PNPM_STORE_DIR', 'NODE_COMPILE_CACHE'):

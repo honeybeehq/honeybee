@@ -14,7 +14,7 @@ from unittest.mock import patch
 import node_bootstrap
 import guard
 
-from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, compiler_metadata_literals, compiler_profile, compiler_tools, environment, launchagents, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
+from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, close_socket_controls, compiler_metadata_literals, compiler_profile, compiler_tools, environment, launchagents, make_socket_controls, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 
 
 class GuardTests(unittest.TestCase):
@@ -329,8 +329,32 @@ class GuardTests(unittest.TestCase):
         self.assertIn('(allow network-bind (local ip "localhost:*"))', policy)
         self.assertIn('(allow network-inbound (local ip "localhost:*"))', policy)
         for operation, endpoint in (('bind', 'local'), ('inbound', 'local'), ('outbound', 'remote')):
-            self.assertIn('(allow network-' + operation + ' (' + endpoint + ' unix-socket (subpath ' + json.dumps(str(self.root)) + ')))', policy)
+            self.assertIn('(allow network-' + operation + ' (' + endpoint + ' unix-socket (subpath ' + json.dumps(str(self.root / 't')) + ')))', policy)
         self.assertNotIn('Preferences', policy)
+
+    def test_controller_socket_controls_are_real_and_cleaned(self):
+        (self.root / 't').mkdir(parents=True)
+        try:
+            controls = make_socket_controls(self.root)
+            self.assertEqual(Path(controls['SCG_ALLOWED_SOCKET']).parent, self.root / 't')
+            self.assertEqual(Path(controls['SCG_DENIED_SOCKET']).parent, self.root)
+            self.assertTrue(all(Path(path).is_socket() for path in controls.values()))
+        finally:
+            close_socket_controls(self.root)
+        self.assertTrue(all(not Path(path).exists() for path in controls.values()))
+        rows = json.loads((self.root / 'controller-sockets-cleanup.json').read_text())
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(row['removed'] for row in rows))
+
+    def test_controller_cleanup_refuses_replaced_socket(self):
+        (self.root / 't').mkdir(parents=True)
+        controls = make_socket_controls(self.root)
+        path = Path(controls['SCG_DENIED_SOCKET'])
+        path.unlink()
+        path.write_text('replacement must remain')
+        with self.assertRaises(Refusal):
+            close_socket_controls(self.root)
+        self.assertEqual(path.read_text(), 'replacement must remain')
 
     def test_receipt_hashes_every_regular_file(self):
         self.root.mkdir()

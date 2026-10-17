@@ -8,6 +8,7 @@ import pwd
 import re
 import shlex
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -19,6 +20,7 @@ PROVIDERS = ('.claude', '.codex', '.grok', '.kimi', '.gemini', '.cursor', '.muse
 PROTECTED = ('.hive', '.config', '.ssh', '.gnupg', 'Library', '.apiary', '.local/share/apiary', '.local/share/apiary-satellite', '.local/share/apiary/satellite-updater', *PROVIDERS)
 SCOPE_OBSERVATIONS = []
 CREATED_ROOTS = set()
+CONTROL_SOCKETS = []
 DIRS = {'HOME': 'h', 'TMPDIR': 't', 'TMP': 't', 'TEMP': 't', 'HIVE_REAL_HOME': 'h', 'XDG_CONFIG_HOME': 'config', 'XDG_DATA_HOME': 'data', 'XDG_CACHE_HOME': 'cache', 'XDG_STATE_HOME': 'state', 'XDG_RUNTIME_DIR': 'runtime', 'CLAUDE_CONFIG_DIR': 'claude', 'CODEX_HOME': 'codex', 'GROK_HOME': 'grok', 'GEMINI_CLI_HOME': 'gemini', 'OPENCODE_CONFIG_DIR': 'opencode', 'KIMI_CODE_HOME': 'kimi', 'CURSOR_CONFIG_DIR': 'cursor', 'MUSE_HOME': 'muse', 'npm_config_cache': 'cache/npm', 'npm_config_store_dir': 'cache/pnpm', 'npm_config_logs_dir': 'logs/npm', 'PNPM_HOME': 'pnpm', 'PNPM_STORE_DIR': 'cache/pnpm', 'NODE_COMPILE_CACHE': 'cache/node', 'CLANG_MODULE_CACHE_PATH': 'cache/clang'}
 
 
@@ -137,10 +139,59 @@ def profile(root, home, lane):
         '(allow network-bind (local ip "localhost:*"))',
         '(allow network-inbound (local ip "localhost:*"))',
         '(allow network-outbound (remote ip "localhost:*"))',
-        '(allow network-bind (local unix-socket (subpath ' + quote(root) + ')))',
-        '(allow network-inbound (local unix-socket (subpath ' + quote(root) + ')))',
-        '(allow network-outbound (remote unix-socket (subpath ' + quote(root) + ')))',
+        '(allow network-bind (local unix-socket (subpath ' + quote(root / 't') + ')))',
+        '(allow network-inbound (local unix-socket (subpath ' + quote(root / 't') + ')))',
+        '(allow network-outbound (remote unix-socket (subpath ' + quote(root / 't') + ')))',
     ))
+
+
+def socket_identity(path):
+    value = path.lstat()
+    if not stat.S_ISSOCK(value.st_mode):
+        raise Refusal('control socket type changed')
+    return (value.st_dev, value.st_ino, value.st_mode, value.st_uid)
+
+
+def make_socket_controls(root):
+    paths = {'SCG_ALLOWED_SOCKET': root / 't/controller-in.sock', 'SCG_DENIED_SOCKET': root / 'controller-out.sock'}
+    rows = []
+    for key, path in paths.items():
+        handle = socket.socket(socket.AF_UNIX)
+        try:
+            handle.bind(str(path))
+            handle.listen(4)
+            identity = socket_identity(path)
+        except Exception:
+            handle.close()
+            raise
+        CONTROL_SOCKETS.append((root, path, handle, identity))
+        rows.append({'key': key, 'path': str(path), 'identity': identity, 'boundBeforeWorkload': True})
+    write_json(root / 'controller-sockets.json', rows, root)
+    return {key: str(path) for key, path in paths.items()}
+
+
+def close_socket_controls(root):
+    rows = []
+    failure = None
+    for item in list(CONTROL_SOCKETS):
+        owner, path, handle, expected = item
+        if owner != root:
+            continue
+        handle.close()
+        CONTROL_SOCKETS.remove(item)
+        try:
+            actual = socket_identity(path)
+            if actual != expected:
+                raise Refusal('control socket inode changed; not removed')
+            path.unlink()
+            rows.append({'path': str(path), 'identity': actual, 'removed': True})
+        except (OSError, Refusal) as error:
+            rows.append({'path': str(path), 'removed': False, 'error': str(error)})
+            failure = str(error)
+    if rows:
+        write_json(root / 'controller-sockets-cleanup.json', rows, root)
+    if failure:
+        raise Refusal(failure)
 
 
 def source_copy(lane, source, root, env):
@@ -330,7 +381,7 @@ def run(args):
     env['SCG_SELF_TEST'] = '1' if args.self_test else '0'
     env['SCG_PYTHON_BIN'] = str(Path(sys.executable).resolve())
     env['SCG_SCOPE_HELPER'] = str(root / 'scope')
-    env['LAB_ROOT'] = str(root / 'selftests')
+    env['LAB_ROOT'] = str(root / 't/selftests')
     workspace = source_copy(lane, args.source, root, env)
     identity = root / 'scope'
     prefix = ['/usr/bin/sandbox-exec', '-p', policy]
@@ -387,6 +438,8 @@ def run(args):
     sentinel_home = root / 'sentinel-fixture' if args.self_test else real_home
     before = launchagents(sentinel_home)
     write_json(root / 'launchagents-before.json', before, root)
+    if args.self_test:
+        env.update(make_socket_controls(root))
     output = (root / 'workload.log').open('wb')
     read_fd, release_fd = os.pipe()
     command = prefix + ['/bin/bash', str(workspace / 'scripts/gates/darwin/workload.sh'), str(workspace / args.body)]
@@ -443,6 +496,7 @@ def run(args):
     else:
         proc.wait()
     output.close()
+    close_socket_controls(root)
     write_json(root / 'scope.json', {'rootBirth': birth, 'scans': scans, 'signals': signals, 'postCleanup': remaining, 'observations': SCOPE_OBSERVATIONS, 'error': scope_error}, root)
     after = launchagents(sentinel_home)
     write_json(root / 'launchagents-after.json', after, root)
@@ -452,7 +506,7 @@ def run(args):
     if before != after:
         rc = 95
     reason = scope_error or ('LaunchAgents sentinel changed' if before != after else ('workload exited ' + str(rc) + '; diagnostic: ' + str(root / 'workload.log') if rc else None))
-    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and run-root Unix sockets only', 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
+    write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'source': args.source, 'selfTest': args.self_test, 'libraryScope': 'LaunchAgents names and sha256 only', 'cacheSeed': seed, 'rootRetained': True, 'network': {'namespace': 'SHARED', 'seatbelt': 'deny network*, allow loopback IP and Unix sockets under TMPDIR only', 'unixScope': str(root / 't'), 'residualRisk': 'outbound loopback can reach host-local services; no Darwin network namespace', 'neededBy': ['v2/daemon/tests/auth-death-fixture.test.ts:44,49', 'v2/daemon/tests/claude-refresh-transport.test.ts:22', 'v2/daemon/tests/lease-enrol-rpc.test.ts:19', 'v2/daemon/tests/auth-death-rpc.test.ts:44']}, 'scopeLimitation': 'sampling may miss a process born and reparented between observations'}, root)
     if rc:
         print('GATE_NONZERO_REASON=' + json.dumps(reason), flush=True)
     digest = receipt_hashes(root)
@@ -479,6 +533,10 @@ def main():
         print('GATE_NONZERO_REASON=' + json.dumps('guard refusal: ' + str(error)), flush=True)
         root = Path(args.root)
         if root.resolve() in CREATED_ROOTS:
+            try:
+                close_socket_controls(root)
+            except (OSError, Refusal) as cleanup:
+                error = Refusal(str(error) + '; control cleanup: ' + str(cleanup))
             write_json(root / 'receipt.json', {'version': 2, 'exit': 90, 'source': args.source, 'error': str(error), 'rootRetained': True, 'complete': False}, root)
             print('GATE_RECEIPT_SHA256=' + receipt_hashes(root), flush=True)
         return 90

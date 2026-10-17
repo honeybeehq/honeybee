@@ -54,11 +54,16 @@ needs a root-only conversion and Queen audit. Only daemon-suite and self-test
 bodies are supported by this change.
 
 Network policy denies network operations by default, allowing Unix sockets only
-under the run root and IP only on loopback. Loopback is necessary for the HTTP
+under the run's TMPDIR (<root>/t) and IP only on loopback. Loopback is necessary for the HTTP
 fixtures in daemon auth-death-fixture, claude-refresh-transport, lease-enrol-rpc
 and auth-death-rpc tests. Darwin shares the host network namespace: outbound
 loopback could reach real host-local services. This residual risk is explicit
 in the receipt; this gate does not claim Linux network-namespace isolation.
+The controller creates two real listeners before the self-test: one under t
+for a successful connect, one outside t but still inside the run root for an
+EPERM/EACCES refusal. ENOENT never counts as enforcement. The controller removes
+both using recorded inode/type identities. Future suite sockets outside TMPDIR
+remain held pending audit; the scope is never widened silently.
 
 The native scope helper uses only an absolute clang, matching absolute linker
 and explicit SDK from the fixed Xcode/CommandLineTools candidates. Metadata and
