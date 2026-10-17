@@ -1,3 +1,4 @@
+import { knownAccountLease } from "../../core/src/accountLease.ts";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -334,7 +335,7 @@ test("auth death: automatic recovery preserves boot-failure count/backoff and ca
     const driver = new FakeDriver(() => r.now);
     const start = driver.start.bind(driver);
     driver.start = (beeId, generation) => {
-      if (generation > 1) r.store.stampRuntimeCredential(beeId, generation, { material: { kind: "lease", scope: "authority:share", epoch: 1, generation: r.store.getAccount(r.account.id)!.leasedFrom!.generation! }, revision: "test-revision", account: r.account.id, agent: "claude", cwd: r.dir, cellId: null, controlFence: r.store.getBee(beeId)?.authControlFence ?? 0 });
+      if (generation > 1) r.store.stampRuntimeCredential(beeId, generation, { material: { kind: "lease", scope: "authority:share", epoch: 1, generation: knownAccountLease(r.store.getAccount(r.account.id)!)!.generation! }, revision: "test-revision", account: r.account.id, agent: "claude", cwd: r.dir, cellId: null, controlFence: r.store.getBee(beeId)?.authControlFence ?? 0 });
       start(beeId, generation);
     };
     driver.authBootFailure = true;
@@ -492,7 +493,7 @@ test("auth death: stale instance verdict cannot claim current published material
   try {
     r.fail(); r.die(); r.resume.reconcile();
     const row = r.store.liveAuthInterruption(r.bee.id)!;
-    const origin = r.store.getAccount(r.account.id)!.leasedFrom!;
+    const origin = knownAccountLease(r.store.getAccount(r.account.id)!)!;
     r.store.setAccountLease(r.account.id, { ...origin, generation: 2, authorityInstanceId: randomUUID() });
     assert.equal(r.store.claimAuthDeathRecovery(row.id, { kind: "lease", scope: "authority:share", epoch: 1, generation: 2, authorityInstanceId: randomUUID() }, "new", "continue"), false);
     assert.equal(r.store.listCommands().filter(command => command.args.authDeathRecoveryId === row.id).length, 0);
@@ -510,10 +511,10 @@ test("auth death: admitted remembered legacy scope requires returning instance t
     const row = r.store.recordAuthInterruption({ beeId: bee.id, account: r.account.id, generation: 1, messageIds: [], turnProgress: "unknown", credentialRevision: "old", detail: "auth" });
     r.store.setAuthDeathRecovery(row.id, { admitted: { ...stamp, material: { ...stamp.material, generation: 1, authorityInstanceId: undefined, legacyAuthorityInstanceId: a, legacyAuthorityGenerationFloor: 6 } }, deathAt: r.now, deadline: r.now + AUTH_DEATH_WINDOW_MS, claimedAt: null, replacement: null, commandId: null });
     for (const generation of [5, 6]) {
-      r.store.setAccountLease(r.account.id, { ...r.store.getAccount(r.account.id)!.leasedFrom!, authorityInstanceId: a, generation });
+      r.store.setAccountLease(r.account.id, { ...knownAccountLease(r.store.getAccount(r.account.id)!)!, authorityInstanceId: a, generation });
       assert.equal(r.store.claimAuthDeathRecovery(row.id, { kind: "lease", scope: "authority:share", epoch: 1, generation, authorityInstanceId: a }, "new", "continue"), false);
     }
-    r.store.setAccountLease(r.account.id, { ...r.store.getAccount(r.account.id)!.leasedFrom!, authorityInstanceId: a, generation: 7 });
+    r.store.setAccountLease(r.account.id, { ...knownAccountLease(r.store.getAccount(r.account.id)!)!, authorityInstanceId: a, generation: 7 });
     assert.equal(r.store.claimAuthDeathRecovery(row.id, { kind: "lease", scope: "authority:share", epoch: 1, generation: 7, authorityInstanceId: a }, "new", "continue"), true);
   } finally { r.close(); }
 });

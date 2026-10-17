@@ -1,5 +1,6 @@
 import { canonicalDigest } from "../../../src/comb/canonical.ts";
 import { parsePhoneOrigin, type PhoneOriginRequest } from "../../core/src/phoneOrigin.ts";
+import { AccountLeaseUnknownError } from "../../core/src/accountLease.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { EffectKeyError } from "../../core/src/effectResolve.ts";
 import { PeerCredentials, type PeerConnection } from "./peerCredentials.ts";
@@ -184,6 +185,7 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string;
     const code: RpcErrorCode = err.message.includes("lifecycle") ? "lifecycle_refused" : "runtime_refused";
     return { code, message: err.message };
   }
+  if (err instanceof AccountLeaseUnknownError) return { code: "account_unavailable", message: err.message, details: { reason: "lease_unknown" } };
   if (err instanceof CoreError) return { code: "invalid_request", message: err.message };
   return { code: "invalid_request", message: err instanceof Error ? err.message : String(err) };
 }

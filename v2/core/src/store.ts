@@ -1,6 +1,6 @@
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
 import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
-import { readAccountLease } from "./accountLease.ts";
+import { readAccountLease, accountLeaseUnknown, knownAccountLease } from "./accountLease.ts";
 import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
@@ -2076,8 +2076,8 @@ export class CoreStore {
     this.db.exec(ACCOUNTS_NATIVE_INDEX_SQL);
     this.addMissingColumns("bees", BEES_ADDITIVE_COLUMNS);
     this.addMissingColumns("mailbox", MAILBOX_ADDITIVE_COLUMNS);
-    this.db.function("account_lease_readable", raw => readAccountLease(raw, "leased").leaseError ? 0 : 1);
-    this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', json_extract(leased_from, '$.endedAt')), '$.endedAt') WHERE CASE WHEN json_valid(leased_from) THEN json_type(leased_from, '$.endedAt') IS NOT NULL AND account_lease_readable(leased_from) = 1 ELSE 0 END");
+    this.db.function("account_lease_readable", raw => accountLeaseUnknown(readAccountLease(raw, "leased")) ? 0 : 1);
+    this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', CASE WHEN json_type(leased_from, '$.revokedAt') IS NOT NULL THEN json_extract(leased_from, '$.revokedAt') ELSE json_extract(leased_from, '$.endedAt') END), '$.endedAt') WHERE CASE WHEN json_valid(leased_from) THEN json_type(leased_from, '$.endedAt') IS NOT NULL AND account_lease_readable(leased_from) = 1 ELSE 0 END");
     if (stored < 42) {
       const unscoped = this.stmt("SELECT account FROM account_credential_authorities WHERE phase <> 'disabled' AND authority_instance_id IS NULL").all() as Row[];
       for (const row of unscoped) {
@@ -5637,7 +5637,7 @@ export class CoreStore {
   recordAccountLeaseExport(id: string, fileCount: number): void {
     this.tx(() => {
       const account = this.getAccount(id);
-      const origin = account?.leasedFrom;
+      const origin = knownAccountLease(account);
       if (account?.source !== "leased" || !origin) throw new CoreError("Leased account was not found.");
       this.audit("account.lease.exported", null, { account: id, harness: account.harness, authorityInstanceId: origin.authorityInstanceId, authorityNodeId: origin.authorityNodeId,
         shareId: origin.shareId, epoch: origin.epoch, generation: origin.generation, expiresAt: origin.expiresAt, fileCount });
@@ -5876,6 +5876,7 @@ export class CoreStore {
     const penalty = normalizePenalty(input.penalty ?? 0, "createAccount");
     if (input.native !== undefined && typeof input.native !== "boolean") throw new CoreError("createAccount: native must be a boolean");
     const native = input.native === true;
+    knownAccountLease(this.getAccount(id));
     return this.tx(() => {
       if (this.getAccount(id)) throw new CoreError(`account already exists: ${id}`);
       const existingNative = native ? this.nativeAccount(harness) : null;
@@ -5942,6 +5943,7 @@ export class CoreStore {
 
   private applyAccountUpdate(id: string, patch: Partial<Pick<AccountRow, "status" | "statusReason" | "refreshTokenExpiresAt" | "penalty" | "weeklyCeiling" | "lastLoginAt" | "exhaustedAt" | "homePath" | "label" | "pausedBy" | "pausedOwner" | "pausedAt" | "source" | "leasedFrom">>, reason: string | null): { account: AccountRow; applied: boolean } {
     const before = this.mustGetAccount(id);
+    knownAccountLease(before);
     const at = this.now();
     // The reason given for a status change stays on the row; an explicit statusReason wins.
     const statusReason = "statusReason" in patch ? patch.statusReason ?? null
@@ -5951,14 +5953,14 @@ export class CoreStore {
     if (changed.length === 0) return { account: before, applied: false };
     if (next.status === "paused" && next.pausedBy === "operator" && (before.status !== "paused" || before.pausedBy !== "operator")) {
       for (const bee of this.beesOnAccount(id)) this.cancelAuthDeathRecovery(bee.id);
-    } else if (next.homePath !== before.homePath || next.source !== before.source || next.leasedFrom?.revokedAt != null && before.leasedFrom?.revokedAt == null) {
+    } else if (next.homePath !== before.homePath || next.source !== before.source || knownAccountLease(next)?.revokedAt != null && knownAccountLease(before)?.revokedAt == null) {
       for (const bee of this.beesOnAccount(id)) this.invalidateAuthDeathRecovery(bee.id);
     }
     this.db
       .prepare(
         "UPDATE accounts SET status = ?, status_reason = ?, refresh_token_expires_at = ?, penalty = ?, weekly_ceiling = ?, last_login_at = ?, exhausted_at = ?, home_path = ?, label = ?, paused_by = ?, paused_owner = ?, paused_at = ?, source = ?, leased_from = ?, updated_at = ? WHERE id = ?",
       )
-      .run(next.status, next.statusReason, next.refreshTokenExpiresAt, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, next.source, next.leasedFrom === null ? null : JSON.stringify(next.leasedFrom), at, id);
+      .run(next.status, next.statusReason, next.refreshTokenExpiresAt, next.penalty, next.weeklyCeiling, next.lastLoginAt, next.exhaustedAt, next.homePath, next.label, next.pausedBy, next.pausedOwner, next.pausedAt, next.source, knownAccountLease(next) === null ? null : JSON.stringify(knownAccountLease(next)), at, id);
     const account = this.mustGetAccount(id);
     this.audit("account.put", null, { account, outcome: "updated", changed, previous: Object.fromEntries(changed.map((k) => [k, before[k]])), reason });
     return { account, applied: true };
@@ -5971,17 +5973,17 @@ export class CoreStore {
   revokeAccountLease(id: string): AccountRow {
     return this.tx(() => {
       const before = this.mustGetAccount(id);
-      if (before.source !== "leased" || before.leasedFrom === null) throw new CoreError("Only a leased account can be revoked");
-      if (before.leasedFrom.revokedAt !== null) return before;
-      const reason = `Lease revoked; request renewal from ${before.leasedFrom.authorityNodeId}.`;
-      return this.applyAccountUpdate(id, { leasedFrom: { ...before.leasedFrom, revokedAt: this.now() }, status: before.status === "paused" ? "paused" : "auth_needed", statusReason: reason }, "lease revoked").account;
+      if (before.source !== "leased" || knownAccountLease(before) === null) throw new CoreError("Only a leased account can be revoked");
+      if (knownAccountLease(before)!.revokedAt !== null) return before;
+      const reason = `Lease revoked; request renewal from ${knownAccountLease(before)!.authorityNodeId}.`;
+      return this.applyAccountUpdate(id, { leasedFrom: { ...knownAccountLease(before)!, revokedAt: this.now() }, status: before.status === "paused" ? "paused" : "auth_needed", statusReason: reason }, "lease revoked").account;
     });
   }
 
-  setAccountLease(id: string, leasedFrom: NonNullable<AccountRow["leasedFrom"]>): AccountRow {
+  setAccountLease(id: string, leasedFrom: NonNullable<ReturnType<typeof knownAccountLease>>): AccountRow {
     return this.tx(() => {
       const before = this.mustGetAccount(id);
-      if (before.source === "leased" && JSON.stringify(before.leasedFrom) === JSON.stringify(leasedFrom)) return before;
+      if (before.source === "leased" && JSON.stringify(knownAccountLease(before)) === JSON.stringify(leasedFrom)) return before;
       return this.applyAccountUpdate(id, { source: "leased", leasedFrom }, "lease installed").account;
     });
   }
@@ -6389,7 +6391,7 @@ export class CoreStore {
   releaseAuthDeathRecoveryToLegacy(accountId: string): void {
     this.tx(() => {
       const account = this.getAccount(accountId);
-      if (account?.source !== "leased" || account.leasedFrom?.generation !== undefined) return;
+      if (account?.source !== "leased" || knownAccountLease(account)?.generation !== undefined) return;
       for (const row of this.listLiveAuthInterruptions()) {
         if (row.account !== accountId || row.deathRecovery?.admitted.material.kind !== "lease" || row.deathRecovery.claimedAt !== null) continue;
         const { deathRecovery, ...legacy } = row;
@@ -6420,7 +6422,7 @@ export class CoreStore {
         const authority = this.getAccountCredentialAuthority(row.account);
         if (account.source !== "local" || replacement.scope !== account.id || authority?.phase !== "ready" || authority.generation !== replacement.generation || replacement.authorityInstanceId !== authority.authorityInstanceId || this.credentialAuthorityEpoch(row.account) !== replacement.epoch) return false;
       } else {
-        const origin = account.leasedFrom;
+        const origin = knownAccountLease(account);
         if (account.source !== "leased" || !origin || origin.materialPublished !== true || origin.revokedAt !== null || origin.expiresAt !== null && origin.expiresAt * 1000 <= this.now() || origin.generation !== replacement.generation || replacement.authorityInstanceId !== origin.authorityInstanceId || origin.epoch !== replacement.epoch || `${origin.authorityNodeId}:${origin.shareId}` !== replacement.scope) return false;
       }
       if (this.activeFlags(bee.id).some(flag => flag.flag === "spawn_failed")) return false;

@@ -1,3 +1,4 @@
+import { knownAccountLease } from "../../core/src/accountLease.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, createHash } from "node:crypto";
@@ -65,19 +66,19 @@ for (const harness of ["claude", "codex", "grok", "kimi", "opencode", "muse"]) t
     assert.equal(result.account.id, r.account.id); assert.equal(result.account.source, "leased");
     assert.deepEqual(r.store.currentRuntime(bee.id), before);
     assert.equal(r.store.getBee(bee.id)?.providerSessionId, "test-session");
-    assert.equal(result.enrolment?.liveRuntimeCoveragePending, 1); assert.equal(result.account.leasedFrom?.materialPublished, true);
+    assert.equal(result.enrolment?.liveRuntimeCoveragePending, 1); assert.equal(knownAccountLease(result.account)?.materialPublished, true);
     assert.equal(result.adopted, false); assert.equal(result.backupPath, null);
     const seq = r.store.lastAuditSeq();
     const replay = await r.accounts.installLease(input);
     assert.deepEqual(replay.enrolment, result.enrolment); assert.equal(r.store.lastAuditSeq(), seq);
     r.reopen();
     const renewed = await r.accounts.installLease({ ...r.input(2), enrol: undefined, viaNodeId: undefined, epoch: 2 });
-    assert.equal(renewed.account.id, r.account.id); assert.equal(renewed.account.leasedFrom?.viaNodeId, "via-test");
+    assert.equal(renewed.account.id, r.account.id); assert.equal(knownAccountLease(renewed.account)?.viaNodeId, "via-test");
     assert.deepEqual(renewed.enrolment, result.enrolment);
     const rerouted = await r.accounts.installLease({ ...r.input(3), enrol: undefined, viaNodeId: "another-via", epoch: 2 });
-    assert.equal(rerouted.account.leasedFrom?.viaNodeId, "another-via"); assert.deepEqual(rerouted.enrolment, result.enrolment);
+    assert.equal(knownAccountLease(rerouted.account)?.viaNodeId, "another-via"); assert.deepEqual(rerouted.enrolment, result.enrolment);
     await r.accounts.removeLease(r.account.id);
-    assert.equal(r.store.getAccount(r.account.id)?.leasedFrom?.revokedAt !== null, true);
+    assert.equal(knownAccountLease(r.store.getAccount(r.account.id))?.revokedAt !== null, true);
     assert.equal(r.store.getBee(bee.id)?.account, r.account.id); assert.deepEqual(r.store.currentRuntime(bee.id), before);
     for (const root of [r.account.homePath, r.accounts.vaultDirOf(r.account)]) {
       assert.equal(existsSync(join(root, r.primary)), false);
@@ -197,13 +198,13 @@ test("lease enrol publication fence and receipt survive failure/restart without 
     const input = r.input();
     await assert.rejects(r.accounts.installLease(input), (error: unknown) => error instanceof RpcError && error.code === "lease_unavailable");
     const partial = r.store.getAccount(r.account.id)!;
-    assert.equal(partial.source, "leased"); assert.equal(partial.leasedFrom?.materialPublished, false);
-    assert.ok(partial.leasedFrom?.enrolment);
+    assert.equal(partial.source, "leased"); assert.equal(knownAccountLease(partial)?.materialPublished, false);
+    assert.ok(knownAccountLease(partial)?.enrolment);
     codec.keychain!.publish = publish;
     r.reopen();
     const completed = await r.accounts.installLease(input);
-    assert.deepEqual(completed.enrolment, partial.leasedFrom?.enrolment);
-    assert.equal(completed.account.leasedFrom?.materialPublished, true);
+    assert.deepEqual(completed.enrolment, knownAccountLease(partial)?.enrolment);
+    assert.equal(knownAccountLease(completed.account)?.materialPublished, true);
     assert.equal(r.accounts.authDeathMaterial(completed.account), null, "legacy enrolment cannot invent a generation");
   } finally { r.close(); }
 });
@@ -277,7 +278,7 @@ test("lease enrol receipt survives authority epoch changes, stale input refuses 
   try {
     const first = await r.accounts.installLease(r.input(1));
     const next = await r.accounts.installLease({ ...r.input(1), enrol: undefined, authorityNodeId: "new-authority", epoch: 2 });
-    assert.deepEqual(next.enrolment, first.enrolment); assert.equal(next.account.leasedFrom?.authorityNodeId, "new-authority");
+    assert.deepEqual(next.enrolment, first.enrolment); assert.equal(knownAccountLease(next.account)?.authorityNodeId, "new-authority");
     await assert.rejects(r.accounts.installLease(r.input(1)), (error: unknown) => error instanceof RpcError && error.code === "account_lease_conflict");
     const before = r.store.dumpState();
     const incoming = { ...r.input(2), enrol: undefined, authorityNodeId: "new-authority", epoch: 2, files: [{ homeRelPath: r.primary, contentB64: Buffer.from(JSON.stringify({ ...documentFor("claude"), refresh_token: randomUUID() })).toString("base64"), mode: 0o600 }] };
@@ -323,16 +324,16 @@ for (const harness of ["claude", "codex", "grok"]) test(`lease instance ${harnes
     const scoped = { ...r.input(2), enrol: undefined, authorityInstanceId: a };
     const upgraded = await r.accounts.installLease(scoped);
     assert.equal(upgraded.account.id, first.account.id);
-    assert.equal(upgraded.account.leasedFrom?.generation, 2);
-    assert.equal(upgraded.account.leasedFrom?.authorityInstanceId, a);
+    assert.equal(knownAccountLease(upgraded.account)?.generation, 2);
+    assert.equal(knownAccountLease(upgraded.account)?.authorityInstanceId, a);
     const seq = r.store.lastAuditSeq();
     await r.accounts.installLease(scoped);
     assert.equal(r.store.lastAuditSeq(), seq);
     await assert.rejects(r.accounts.installLease({ ...scoped, generation: 1 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
     await assert.rejects(r.accounts.installLease({ ...scoped, generation: 1, epoch: 2 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
     const next = await r.accounts.installLease({ ...scoped, authorityInstanceId: b, generation: 1 });
-    assert.equal(next.account.leasedFrom?.authorityInstanceId, b);
-    assert.ok(next.account.leasedFrom?.retiredAuthorityInstanceIds?.includes(a));
+    assert.equal(knownAccountLease(next.account)?.authorityInstanceId, b);
+    assert.ok(knownAccountLease(next.account)?.retiredAuthorityInstanceIds?.includes(a));
     r.reopen();
     const before = r.store.dumpState();
     for (const change of [{ authorityInstanceId: a, generation: 100 }, { epoch: 0, authorityInstanceId: randomUUID(), generation: 1 }, { authorityNodeId: "foreign", authorityInstanceId: randomUUID(), generation: 1 }, { shareId: "foreign-share", authorityInstanceId: randomUUID(), generation: 1 }]) {
@@ -340,7 +341,7 @@ for (const harness of ["claude", "codex", "grok"]) test(`lease instance ${harnes
       assert.deepEqual(r.store.dumpState(), before);
     }
     const legacy = await r.accounts.installLease({ ...scoped, authorityInstanceId: undefined, generation: 3 });
-    assert.equal(legacy.account.leasedFrom?.authorityInstanceId, undefined);
+    assert.equal(knownAccountLease(legacy.account)?.authorityInstanceId, undefined);
     await assert.rejects(r.accounts.installLease({ ...scoped, authorityInstanceId: undefined, generation: 2 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
     await assert.rejects(r.accounts.installLease({ ...scoped, authorityInstanceId: a, generation: 200 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
     assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
@@ -354,9 +355,9 @@ for (const mode of ["return", "new", "advance", "generationless"]) test(`lease i
     const scoped = { ...r.input(5), authorityInstanceId: a };
     await r.accounts.installLease(scoped);
     const legacy = await r.accounts.installLease({ ...scoped, enrol: undefined, authorityInstanceId: undefined, generation: mode === "generationless" ? undefined : 6 });
-    assert.equal(legacy.account.leasedFrom?.authorityInstanceId, undefined);
-    assert.equal(legacy.account.leasedFrom?.legacyAuthorityInstanceId, a);
-    assert.equal(legacy.account.leasedFrom?.legacyAuthorityGenerationFloor, mode === "generationless" ? 5 : 6);
+    assert.equal(knownAccountLease(legacy.account)?.authorityInstanceId, undefined);
+    assert.equal(knownAccountLease(legacy.account)?.legacyAuthorityInstanceId, a);
+    assert.equal(knownAccountLease(legacy.account)?.legacyAuthorityGenerationFloor, mode === "generationless" ? 5 : 6);
     r.reopen();
     const before = r.store.dumpState();
     await assert.rejects(r.accounts.installLease({ ...scoped, enrol: undefined, generation: 5 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
@@ -367,9 +368,9 @@ for (const mode of ["return", "new", "advance", "generationless"]) test(`lease i
       await assert.rejects(r.accounts.installLease({ ...scoped, enrol: undefined, generation: 7 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
     }
     const result = await r.accounts.installLease({ ...scoped, enrol: undefined, authorityInstanceId: mode === "new" ? b : a, generation: mode === "new" ? 3 : mode === "advance" ? 8 : 7 });
-    assert.equal(result.account.leasedFrom?.authorityInstanceId, mode === "new" ? b : a);
-    assert.equal(result.account.leasedFrom?.legacyAuthorityInstanceId, undefined);
-    assert.equal(result.account.leasedFrom?.legacyAuthorityGenerationFloor, undefined);
+    assert.equal(knownAccountLease(result.account)?.authorityInstanceId, mode === "new" ? b : a);
+    assert.equal(knownAccountLease(result.account)?.legacyAuthorityInstanceId, undefined);
+    assert.equal(knownAccountLease(result.account)?.legacyAuthorityGenerationFloor, undefined);
     if (mode === "new") await assert.rejects(r.accounts.installLease({ ...scoped, enrol: undefined, generation: 100 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
     assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
   } finally { r.close(); }
@@ -382,13 +383,13 @@ test("lease instance: a generationless delivery from the same declared instance 
     const input = { ...r.input(5), authorityInstanceId: id };
     await r.accounts.installLease(input);
     const legacy = await r.accounts.installLease({ ...input, enrol: undefined, generation: undefined });
-    assert.equal(legacy.account.leasedFrom?.generation, undefined);
-    assert.equal(legacy.account.leasedFrom?.authorityInstanceId, id);
-    assert.equal(legacy.account.leasedFrom?.authorityGenerationFloor, 5);
+    assert.equal(knownAccountLease(legacy.account)?.generation, undefined);
+    assert.equal(knownAccountLease(legacy.account)?.authorityInstanceId, id);
+    assert.equal(knownAccountLease(legacy.account)?.authorityGenerationFloor, 5);
     r.reopen();
     await assert.rejects(r.accounts.installLease({ ...input, enrol: undefined, generation: 4 }), error => error instanceof RpcError && error.code === "account_lease_conflict");
     const restored = await r.accounts.installLease({ ...input, enrol: undefined, generation: 5 });
-    assert.equal(restored.account.leasedFrom?.generation, 5);
+    assert.equal(knownAccountLease(restored.account)?.generation, 5);
     assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
   } finally { r.close(); }
 });
@@ -400,11 +401,11 @@ test("lease instance retirement keeps the newest eight ids across restart", asyn
     const ids = Array.from({ length: 10 }, () => randomUUID());
     for (const authorityInstanceId of ids) await r.accounts.installLease({ ...r.input(1), enrol: undefined, authorityInstanceId });
     r.reopen();
-    const installed = r.store.listAccounts().find(account => account.leasedFrom?.authorityInstanceId === ids[9])!;
-    assert.deepEqual(installed.leasedFrom?.retiredAuthorityInstanceIds, ids.slice(1, 9));
+    const installed = r.store.listAccounts().find(account => knownAccountLease(account)?.authorityInstanceId === ids[9])!;
+    assert.deepEqual(knownAccountLease(installed)?.retiredAuthorityInstanceIds, ids.slice(1, 9));
     for (const authorityInstanceId of ids.slice(1, 9)) await assert.rejects(r.accounts.installLease({ ...r.input(1), enrol: undefined, authorityInstanceId }), error => error instanceof RpcError && error.code === "account_lease_conflict");
     const old = await r.accounts.installLease({ ...r.input(1), enrol: undefined, authorityInstanceId: ids[0] });
-    assert.equal(old.account.leasedFrom?.authorityInstanceId, ids[0]);
-    assert.equal(old.account.leasedFrom?.retiredAuthorityInstanceIds?.length, 8);
+    assert.equal(knownAccountLease(old.account)?.authorityInstanceId, ids[0]);
+    assert.equal(knownAccountLease(old.account)?.retiredAuthorityInstanceIds?.length, 8);
   } finally { r.close(); }
 });

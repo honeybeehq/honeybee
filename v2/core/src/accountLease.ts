@@ -1,11 +1,33 @@
-import type { AccountLeaseOrigin } from "./types.ts";
+import { CoreError, type AccountRow, type AccountLeaseOrigin } from "./types.ts";
 
 export const LEASE_UNKNOWN_MESSAGE = "lease record unreadable; re-lease or repair before it can take work";
-export type AccountLeaseRead = { leasedFrom: AccountLeaseOrigin | null; leaseError?: "lease_unknown" };
+export type AccountLeaseRead = Pick<AccountRow, "leasedFrom">;
+
+export function accountLeaseUnknown(account: Pick<AccountRow, "leasedFrom">): boolean {
+  return account.leasedFrom !== null && (typeof account.leasedFrom !== "object" || "kind" in account.leasedFrom);
+}
+
+export class AccountLeaseUnknownError extends CoreError {
+  readonly code = "account_unavailable";
+  readonly reason = "lease_unknown";
+  constructor() { super(LEASE_UNKNOWN_MESSAGE); }
+}
+
+export function knownAccountLease(account: Pick<AccountRow, "leasedFrom"> | null | undefined): AccountLeaseOrigin | null {
+  const origin = account?.leasedFrom ?? null;
+  if (origin && "kind" in origin) throw new AccountLeaseUnknownError();
+  return origin;
+}
+
+export function presentAccountLease(account: AccountRow): Omit<AccountRow, "leasedFrom"> & { leasedFrom: AccountLeaseOrigin | null } {
+  return accountLeaseUnknown(account)
+    ? { ...account, leasedFrom: null, status: "auth_needed", statusReason: LEASE_UNKNOWN_MESSAGE }
+    : { ...account, leasedFrom: knownAccountLease(account) };
+}
 
 export function readAccountLease(raw: unknown, source: unknown): AccountLeaseRead {
-  if (raw === null || raw === undefined) return source === "leased" ? { leasedFrom: null, leaseError: "lease_unknown" } : { leasedFrom: null };
-  const unknown: AccountLeaseRead = { leasedFrom: null, leaseError: "lease_unknown" };
+  if (raw === null || raw === undefined) return source === "leased" ? { leasedFrom: { kind: "unknown" } } : { leasedFrom: null };
+  const unknown: AccountLeaseRead = { leasedFrom: { kind: "unknown" } };
   let value: unknown;
   try { value = JSON.parse(String(raw)); } catch { return unknown; }
   if (value === null || typeof value !== "object" || Array.isArray(value)) return unknown;

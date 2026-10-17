@@ -287,7 +287,6 @@ export const RPC_ERROR_CODES = [
   "account_lease_enrol_refused",
   "account_lease_export_refused",
   "account_lease_revoked",
-  "lease_unknown",
   "native_backup_absent",
   "native_backup_invalid",
   "native_backup_restore_refused",

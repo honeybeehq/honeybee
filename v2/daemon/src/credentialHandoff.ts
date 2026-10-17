@@ -1,3 +1,4 @@
+import { knownAccountLease } from "../../core/src/accountLease.ts";
 import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, randomUUID, sign, verify } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, openSync, fsyncSync, closeSync } from "node:fs";
 import { join } from "node:path";
@@ -221,7 +222,7 @@ export class CredentialHandoffService {
       } else {
         this.accounts.assertHandoffAdoptable(account);
         if (epoch <= this.store.credentialAuthorityEpoch(account.id)) throw new RpcError("credential_handoff_stale_epoch", "Adoption requires a higher destination authority epoch.");
-        if (account.source === "leased" && (account.leasedFrom?.authorityNodeId !== from.nodeId || epoch <= account.leasedFrom.epoch)) throw new RpcError("credential_handoff_conflict", "Prepared adoption must come from the lease authority at a higher epoch.");
+        if (account.source === "leased" && (knownAccountLease(account)?.authorityNodeId !== from.nodeId || epoch <= knownAccountLease(account)!.epoch)) throw new RpcError("credential_handoff_conflict", "Prepared adoption must come from the lease authority at a higher epoch.");
         if (this.store.activeCredentialHandoff(account.id)) throw new RpcError("credential_handoff_fenced", "Another credential handoff holds this account.");
         const prepared = { ...bound, claimId: randomUUID(), targetAccount: account.id, targetKey: this.publicKey() };
         row = this.store.putCredentialHandoff({ handoffId, role: "destination", account: account.id, state: "preparing", binding: prepared,
@@ -689,7 +690,7 @@ export class CredentialHandoffService {
         if (!held || !["committed", "adopting", "prepared", "failed"].includes(held.state) || held.receipt?.kind === "stand_down" || held.receipt?.kind === "operator_takeover") throw new RpcError("credential_handoff_unavailable", "Explicit take-over requires an abandoned handoff on this account.");
         const state = this.accounts.authorityFor(account)!.status(account);
         if (held.role === "destination" && (!state || state.phase === "disabled")) this.accounts.assertNoNewNativeTakeover(account);
-        if (state?.phase === "ready" || this.store.credentialAuthorityEpoch(account.id) > held.binding.epoch || history.some(row => row.handoffId !== held.handoffId && row.binding.since > held.binding.since && !row.receipt?.kind.startsWith("operator_")) || account.leasedFrom && (account.leasedFrom.epoch > held.binding.epoch || account.leasedFrom.authorityNodeId !== held.binding.from.nodeId)) throw new RpcError("credential_handoff_decided", "This abandoned handoff has been superseded; preserve the current authority.");
+        if (state?.phase === "ready" || this.store.credentialAuthorityEpoch(account.id) > held.binding.epoch || history.some(row => row.handoffId !== held.handoffId && row.binding.since > held.binding.since && !row.receipt?.kind.startsWith("operator_")) || knownAccountLease(account) && (knownAccountLease(account)!.epoch > held.binding.epoch || knownAccountLease(account)!.authorityNodeId !== held.binding.from.nodeId)) throw new RpcError("credential_handoff_decided", "This abandoned handoff has been superseded; preserve the current authority.");
         const self = this.self(), source = same(held.binding.from, self), peer = source ? held.binding.to : held.binding.from;
         const peerAccount = source ? held.binding.targetAccount : held.binding.sourceAccount;
         if (!peerAccount) throw new RpcError("credential_handoff_unavailable", "The abandoned handoff has no durable peer preparation.");

@@ -1,3 +1,4 @@
+import { readAccountLease, presentAccountLease } from "../../core/src/accountLease.ts";
 /**
  * Read-only SQLite fallback for CLI reads when the daemon is down (spec 04
  * CLI). Contract §3.5: direct store access is read-only — this module opens
@@ -84,10 +85,10 @@ function mapBee(r: Row): BeeRow {
   };
 }
 
-function mapAccountRow(r: Row): AccountRow {
-  return {
+function mapAccountRow(r: Row): ReturnType<typeof presentAccountLease> {
+  return presentAccountLease({
     source: r.source as AccountRow["source"],
-    leasedFrom: r.leased_from == null ? null : JSON.parse(String(r.leased_from)) as AccountRow["leasedFrom"],
+    ...readAccountLease(r.leased_from, r.source),
     id: r.id as string,
     harness: r.harness as string,
     homePath: r.home_path as string,
@@ -105,7 +106,7 @@ function mapAccountRow(r: Row): AccountRow {
     native: Number((r.native as number | null | undefined) ?? 0) === 1,
     addedAt: Number(r.added_at),
     updatedAt: Number(r.updated_at),
-  };
+  });
 }
 
 function numOrNull(v: unknown): number | null {
@@ -529,7 +530,7 @@ export class ReadOnlyStore {
   }
 
   /** v7 — tolerate a pre-v7 store file (no table): empty. */
-  accounts(harness?: string): AccountRow[] {
+  accounts(harness?: string): ReturnType<typeof presentAccountLease>[] {
     if (!this.tableExists("accounts")) return [];
     return (this.db.prepare("SELECT * FROM accounts ORDER BY added_at, id").all() as Row[])
       .map(mapAccountRow)

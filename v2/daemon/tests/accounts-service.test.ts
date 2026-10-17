@@ -1,3 +1,4 @@
+import { LoginFlowService } from "../src/loginFlows.ts";
 import { DatabaseSync } from "node:sqlite";
 import { accountLine } from "../../cli/src/render.ts";
 /**
@@ -2476,7 +2477,7 @@ test("Grok central busy limits probes preserve account auth during ownership cha
   } finally { r.cleanup(); }
 });
 
-test("lease unknown stays raw across reopen, refuses readiness and admission, and names the account", () => {
+test("lease unknown stays raw across reopen, refuses readiness and admission, and names the account", async () => {
   for (const raw of ["{", "{}", '{"shareId":7}', '{"shareId":"s","authorityNodeId":"n","epoch":1,"expiresAt":null,"adoptedAt":null,"endedAt":[]}']) {
     const r = rig({ accounts: { allocationMode: "active" } });
     try {
@@ -2490,13 +2491,26 @@ test("lease unknown stays raw across reopen, refuses readiness and admission, an
         r.store = openCoreStore(join(r.dir, "core.sqlite3"), { now: r.now, ephemeral: true });
         const svc = service(r);
         const row = r.store.getAccount(account.id)!;
-        assert.equal(row.leaseError, "lease_unknown");
-        assert.equal(r.store.listAccounts()[0]!.leaseError, "lease_unknown");
-        assert.deepEqual(svc.credentialReadiness(row), { ready: false, code: "lease_unknown", message: `account ${account.id}: lease record unreadable; re-lease or repair before it can take work` });
+        assert.deepEqual(row.leasedFrom, { kind: "unknown" });
+        assert.deepEqual(r.store.listAccounts()[0]!.leasedFrom, { kind: "unknown" });
+        assert.deepEqual(svc.credentialReadiness(row), { ready: false, code: "account_unavailable", reason: "lease_unknown", message: `account ${account.id}: lease record unreadable; re-lease or repair before it can take work` });
         assert.equal(svc.readiness(row).ready, false);
         assert.equal(svc.credentialHealthOf(row), "unverified");
         assert.equal(svc.admitNewWork("claude", { operation: "spawn", requestKey: "unknown-lease", context: null }).ok, false);
         assert.equal(svc.pick("claude").ok, false);
+        const held = (error: unknown) => error instanceof Error && "code" in error && error.code === "account_unavailable" && "reason" in error && error.reason === "lease_unknown" && error.message === "lease record unreadable; re-lease or repair before it can take work";
+        const vaultBefore = readFileSync(join(r.vault, "claude", row.id, ".credentials.json"), "utf8");
+        const homeBefore = existsSync(row.homePath);
+        const login = new LoginFlowService({ store: r.store, cfg: r.cfg, accounts: svc, log: () => undefined });
+        await assert.rejects(() => login.start(row), held);
+        await login.shutdown();
+        assert.throws(() => svc.assertLocalAccount(row), held);
+        await assert.rejects(() => svc.captureAccount(row), held);
+        assert.throws(() => r.store.createAccount({ id: row.id, harness: row.harness, label: row.label, homePath: row.homePath }), held);
+        assert.throws(() => r.store.setAccountStatus(row.id, "ok", "should not repair"), held);
+        assert.equal(r.store.activeLoginFlow(row.id), null);
+        assert.equal(existsSync(row.homePath), homeBefore);
+        assert.equal(readFileSync(join(r.vault, "claude", row.id, ".credentials.json"), "utf8"), vaultBefore);
         const text = accountLine(svc.mirrorRow(row), undefined, false);
         assert.ok(text.includes(account.id));
         assert.ok(text.includes("lease record unreadable; re-lease or repair before it can take work"));

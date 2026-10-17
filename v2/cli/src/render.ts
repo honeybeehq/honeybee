@@ -292,7 +292,7 @@ export function accountLine(
   const login = a.lastLoginAt ? `  lastLogin=${new Date(a.lastLoginAt).toISOString()}` : "";
   const pausedBy = a.status === "paused" && a.pausedBy ? dim(`(${a.pausedOwner ? `${a.pausedBy}:${a.pausedOwner}` : a.pausedBy})`) : "";
   const loginExpiry = a.refreshTokenExpiresAt != null ? `  ${loginExpiryLabel(a.refreshTokenExpiresAt)}` : "";
-  const lease = a.leaseError ? `  ${LEASE_UNKNOWN_MESSAGE}` : a.source === "leased" && a.leasedFrom ? `  leased authority=${a.leasedFrom.authorityNodeId} expires=${a.leasedFrom.expiresAt === null ? "none" : new Date(a.leasedFrom.expiresAt * 1000).toISOString()}` : "";
+  const lease = a.statusReason === LEASE_UNKNOWN_MESSAGE ? `  ${LEASE_UNKNOWN_MESSAGE}` : a.source === "leased" && a.leasedFrom ? `  leased authority=${a.leasedFrom.authorityNodeId} expires=${a.leasedFrom.expiresAt === null ? "none" : new Date(a.leasedFrom.expiresAt * 1000).toISOString()}` : "";
   const why = a.status === "auth_needed" && a.statusReason ? `\n  ${dim("reason:")} ${a.statusReason}` : "";
   const native = a.nativeLogin ? `\n  ${dim("native:")} ${a.nativeLogin}` : "";
   return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}${pausedBy}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}${loginExpiry}${lease}${why}${native}`;
