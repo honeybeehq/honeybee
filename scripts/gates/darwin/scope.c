@@ -71,14 +71,16 @@ static int scan(int pid, unsigned long long sec, unsigned long long usec, int de
   if (!identity(pid, &b)) return errno == ESRCH ? 0 : 4;
   if (b.pbi_start_tvsec != sec || b.pbi_start_tvusec != usec) return 4;
   print_identity(pid, &b);
-  int bytes = proc_listchildpids(pid, NULL, 0);
-  if (bytes < 0 || bytes > 65536) return 4;
-  int capacity = bytes + 4096;
-  int *children = calloc(1, capacity);
+  errno = 0;
+  int count = proc_listchildpids(pid, NULL, 0);
+  if (errno || count < 0 || count > 16384) return 4;
+  int capacity = count + 1024;
+  int *children = calloc(capacity, sizeof(*children));
   if (!children) return 4;
-  int got = proc_listchildpids(pid, children, capacity);
-  if (got < 0 || got >= capacity) { free(children); return 4; }
-  for (int i = 0; i < got / sizeof(int); i++) {
+  errno = 0;
+  int got = proc_listchildpids(pid, children, capacity * sizeof(*children));
+  if (errno || got < 0 || got >= capacity) { free(children); return 4; }
+  for (int i = 0; i < got; i++) {
     struct proc_bsdinfo child;
     if (!children[i]) continue;
     if (!identity(children[i], &child)) {

@@ -8,6 +8,16 @@ import time
 
 mode = sys.argv[1]
 root = Path(os.environ['GATE_ROOT'])
+if mode in ('tree-parent', 'tree-child', 'tree-grandchild'):
+    (root / (mode + '-pid')).write_text(str(os.getpid()))
+    child = None
+    if mode != 'tree-grandchild':
+        child = subprocess.Popen([sys.executable, '-B', __file__, 'tree-child' if mode == 'tree-parent' else 'tree-grandchild'])
+    while not (root / 'tree-abort').exists():
+        time.sleep(0.01)
+    if child:
+        child.wait(timeout=3)
+    sys.exit(0)
 if mode == 'reparent-parent':
     child = subprocess.Popen([sys.executable, '-B', __file__, 'reparent-child'])
     (root / 'reparent-child-pid').write_text(str(child.pid))

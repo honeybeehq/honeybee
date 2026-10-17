@@ -431,6 +431,62 @@ def listener_self_tests(root, workspace, prefix, helper, env):
     return results
 
 
+def tree_scan_self_test(root, workspace, prefix, helper, env):
+    rows = []
+    births = {}
+    failure = None
+    observations_start = len(SCOPE_OBSERVATIONS)
+    with (root / 'tree-scan-fixture.log').open('wb') as output:
+        child = subprocess.Popen([*prefix, env['SCG_PYTHON_BIN'], '-B', str(workspace / 'scripts/gates/darwin/listener_fixture.py'), 'tree-parent'], cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+        try:
+            birth = scope_call(helper, 'identity', child.pid)[0]
+            if birth[1] != str(os.getpid()):
+                raise Refusal('tree fixture root not a controller child')
+            births[birth[0]] = birth
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                rows = scope_call(helper, 'scan', *birth)
+                for row in rows:
+                    births[row[0]] = row
+                paths = [root / (name + '-pid') for name in ('tree-child', 'tree-grandchild')]
+                if all(path.exists() for path in paths):
+                    direct, grandchild = [path.read_text().strip() for path in paths]
+                    if direct in births and grandchild in births and births[direct][1] == birth[0] and births[grandchild][1] == direct:
+                        break
+                time.sleep(0.05)
+            else:
+                raise Refusal('scan preflight did not enumerate known live child and grandchild')
+        except BaseException as error:
+            failure = str(error)
+            raise
+        finally:
+            (root / 'tree-abort').write_text('abort\n')
+            try:
+                child.wait(timeout=4)
+            except subprocess.TimeoutExpired:
+                for row in reversed(list(births.values())):
+                    for sig in (signal.SIGTERM, signal.SIGKILL):
+                        subprocess.run([str(helper), 'signal', *row, str(int(sig))], capture_output=True, text=True)
+                        status = subprocess.run([str(helper), 'status', *row], capture_output=True, text=True)
+                        if status.returncode == 3:
+                            break
+                for name in ('tree-parent', 'tree-child', 'tree-grandchild'):
+                    path = root / (name + '-pid')
+                    if path.exists():
+                        pid = path.read_text().strip()
+                        row = births.get(pid)
+                        status = subprocess.run([str(helper), 'status', *row], capture_output=True, text=True) if row else None
+                        if not status or status.returncode != 3:
+                            LEFTOVER_CHILDREN.append({'pid': pid, 'birth': row, 'reason': 'birth unobserved, not fenced' if row is None else 'fenced cleanup unresolved', 'fixture': name})
+                try:
+                    child.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    failure = failure or 'scan preflight root cleanup unresolved'
+            write_json(root / 'tree-scan-self-test.json', {'failure': failure, 'rows': rows, 'births': list(births.values()), 'scopeObservations': SCOPE_OBSERVATIONS[observations_start:], 'leftoverChild': list(LEFTOVER_CHILDREN), 'required': 'live direct child and grandchild with verified parentage and births'}, root)
+    if failure:
+        raise Refusal(failure)
+
+
 def reparent_listener_self_test(root, workspace, prefix, helper, env):
     read_fd, release_fd = os.pipe()
     samples = []
@@ -620,6 +676,7 @@ def run(args):
     if static_rows and not args.self_test:
         raise Refusal('static listener check found wildcard or omitted/unresolved hosts')
     if args.self_test:
+        tree_scan_self_test(root, workspace, prefix, identity, env)
         negative = listener_static.violations('server.listen(0)')
         write_json(root / 'listener-static-self-test.json', {'fixture': 'server.listen(0)', 'expectedClassification': 'FAIL', 'detected': bool(negative), 'violations': negative}, root)
         if not negative:

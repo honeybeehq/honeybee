@@ -5,6 +5,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 import sys
@@ -102,6 +103,39 @@ class GuardTests(unittest.TestCase):
         with patch('guard.sample_listeners') as observed:
             self.assertEqual(guard.sample_retained_listeners(Path('/root/scope'), retained, exited), [])
             observed.assert_not_called()
+    def test_native_scan_uses_child_counts_and_fails_on_errno(self):
+        if sys.platform == 'darwin':
+            self.skipTest('portable stub regression runs on Linux; Darwin uses the physical tree preflight')
+        compiler = shutil.which('cc')
+        self.assertIsNotNone(compiler)
+        source = (Path(__file__).parent / 'scope.c').read_text()
+        scan = source[source.index('static int scan('):source.index('int main(')]
+        harness = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+struct proc_bsdinfo { int pbi_ppid; unsigned long long pbi_start_tvsec, pbi_start_tvusec; };
+static int mode;
+static int identity(int pid, struct proc_bsdinfo *b) { b->pbi_ppid=pid-1; b->pbi_start_tvsec=1; b->pbi_start_tvusec=2; return 1; }
+static void print_identity(int pid, struct proc_bsdinfo *b) { printf("%d\n",pid); }
+static int proc_listchildpids(int pid, void *buffer, int bytes) {
+  if (mode==1 || (mode==2 && buffer)) { errno=EACCES; return 0; }
+  if (!buffer) return pid<102 ? 1 : 0;
+  if (mode==3) return bytes/sizeof(int);
+  if (pid<102) { ((int *)buffer)[0]=pid+1; return 1; }
+  return 0;
+}
+'''
+        file = self.base / 'scan-count.c'
+        file.write_text(harness + scan + '\nint main(int argc,char **argv) { mode=atoi(argv[1]); return scan(100,1,2,0); }\n')
+        executable = self.base / 'scan-count'
+        subprocess.run([compiler, str(file), '-o', str(executable)], check=True, capture_output=True)
+        good = subprocess.run([str(executable), '0'], capture_output=True, text=True)
+        self.assertEqual(good.returncode, 0)
+        self.assertEqual(good.stdout.splitlines(), ['100', '101', '102'])
+        for mode in ('1', '2', '3'):
+            self.assertEqual(subprocess.run([str(executable), mode], capture_output=True).returncode, 4)
+
     def test_reparent_failure_records_and_fences_discovered_children(self):
         parent_birth = ['12345', str(os.getpid()), '10', '20']
         child_birth = ['12346', '12345', '10', '21']
@@ -219,7 +253,7 @@ class GuardTests(unittest.TestCase):
                     value = eval(compile(expression, filename, 'eval'), {'sig': sig, 'signal': SimpleNamespace(SIGTERM=sig)})
                     self.assertEqual(value, str(int(sig)))
                 count += 1
-        self.assertEqual(count, 6)
+        self.assertEqual(count, 7)
 
     def test_profile_parentheses_balance_outside_strings(self):
         text = profile(Path('/private/var/tmp/g.test'), Path('/Users/example'), Path('/lane'))
