@@ -4,21 +4,23 @@ import json
 import os
 import pathlib
 import shutil
+import re
+import socket
+import stat
 import subprocess
 
 
 def snapshot(repo):
     rows = {}
-    for name in ('refs', 'objects'):
-        parent = pathlib.Path(repo) / name
-        for path in [parent, *sorted(parent.rglob('*'))]:
-            meta = path.lstat()
-            row = dict(inode=meta.st_ino, device=meta.st_dev, mode=meta.st_mode, size=meta.st_size, mtime_ns=meta.st_mtime_ns, uid=meta.st_uid, gid=meta.st_gid)
-            if path.is_symlink():
-                raise RuntimeError('fixture tree contains symlink')
-            if path.is_file():
-                row['sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
-            rows[str(path.relative_to(repo))] = row
+    repo = pathlib.Path(repo)
+    for path in [repo, *sorted(repo.rglob('*'))]:
+        meta = path.lstat()
+        if not (stat.S_ISDIR(meta.st_mode) or stat.S_ISREG(meta.st_mode)):
+            raise RuntimeError('fixture tree contains non-regular entry')
+        row = dict(inode=meta.st_ino, device=meta.st_dev, mode=meta.st_mode, size=meta.st_size, mtime_ns=meta.st_mtime_ns, uid=meta.st_uid, gid=meta.st_gid)
+        if stat.S_ISREG(meta.st_mode):
+            row['sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+        rows[str(path.relative_to(repo))] = row
     return rows
 
 
@@ -65,9 +67,58 @@ def prepare(root, label):
     return directory
 
 
-def evidence(result, needles):
-    lines = result.stderr.decode(errors='replace').splitlines()
-    return [line for line in lines if any(needle in line.lower() for needle in needles)]
+NETWORK_URL = 'git://192.0.2.1/git-boundary.git'
+OUTSIDE_TARGET = '/mnt/target.git'
+FORBIDDEN = re.compile(r'not (?:a )?git repository|does not appear to be a git repository|does not exist|no such file|permission denied|operation not permitted|ownership|unsafe repository|auth|could not read username|timed? out|timeout|could not resolve|access denied', re.IGNORECASE)
+LOCAL_ERROR = re.compile(r'(?:remote: )?(?:fatal|error): .*?(?:unable to create temporary object directory|unpacker error|cannot lock ref|[Rr]ead-only file system).*')
+NETWORK_FATAL = re.compile(r'fatal: unable to connect to 192\.0\.2\.1:')
+NETWORK_DETAIL = re.compile(r'192\.0\.2\.1\[0: 192\.0\.2\.1\]: errno=(?:Network is unreachable|No route to host)')
+
+
+def classify_stderr(stderr, operation, target):
+    if (operation, target) not in {('push', OUTSIDE_TARGET), ('fetch', NETWORK_URL), ('push', NETWORK_URL)}:
+        return dict(classification='invalid_route', matchedEvidence=[])
+    lines = stderr.splitlines()
+    forbidden = [line for line in lines if FORBIDDEN.search(line)]
+    if forbidden:
+        return dict(classification='forbidden_error', matchedEvidence=forbidden)
+    if target == OUTSIDE_TARGET:
+        matched = [line for line in lines if LOCAL_ERROR.fullmatch(line)]
+        return dict(classification='local_write_failure' if matched else 'unmatched_error', matchedEvidence=matched)
+    fatal = [line for line in lines if NETWORK_FATAL.fullmatch(line)]
+    detail = [line for line in lines if NETWORK_DETAIL.fullmatch(line)]
+    return dict(classification='network_unreachable' if fatal and detail else 'unmatched_error', matchedEvidence=fatal + detail)
+
+
+def storage_probes(target):
+    rows = []
+    for directory in ('objects', 'refs'):
+        for operation in ('mkdir', 'open'):
+            path = pathlib.Path(target) / directory / ('gate-write-' + operation)
+            try:
+                if operation == 'mkdir':
+                    path.mkdir()
+                else:
+                    fd = os.open(path, os.O_CREAT | os.O_WRONLY | os.O_EXCL, 0o600)
+                    os.close(fd)
+            except OSError as error:
+                number = error.errno
+            else:
+                number = 0
+            rows.append(dict(path=str(path), operation=operation, errno=number, refused=number == errno.EROFS))
+    return rows
+
+
+def network_probe():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+        client.settimeout(2)
+        try:
+            client.connect(('192.0.2.1', 9418))
+        except OSError as error:
+            number = error.errno
+        else:
+            number = 0
+    return dict(address='192.0.2.1', port=9418, errno=number, refused=number in (errno.ENETUNREACH, errno.EHOSTUNREACH))
 
 
 def run(root, label):
@@ -82,23 +133,17 @@ def run(root, label):
     checked(binary, target, ['cat-file', '-e', fixture['seed'] + '^{commit}'])
     source_ready = checked(binary, source, ['rev-parse', 'HEAD']) == fixture['attempted'] and fixture['attempted'] != fixture['seed']
     readonly = bool(os.statvfs(target).f_flag & os.ST_RDONLY)
-    refused_errno = None
-    try:
-        fd = os.open(pathlib.Path(target) / 'objects' / 'gate-write-probe', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    except OSError as error:
-        refused_errno = error.errno
-    else:
-        os.close(fd)
     push = git_call(binary, source, ['push', target, 'HEAD:refs/heads/boundary'])
-    matched = evidence(push, ('read-only file system', 'unable to create temporary object directory', 'unpacker error', 'cannot lock ref'))
+    storage = storage_probes(target)
+    classified = classify_stderr(push.stderr.decode(errors='replace'), 'push', target)
     after = snapshot(target)
-    local = dict(asserted=bare and seed_present and source_ready and readonly and refused_errno == errno.EROFS and push.returncode != 0 and bool(matched) and before == after == fixture['before'], path=target, bare=bare, seedPresent=seed_present, sourceReady=source_ready, readOnly=readonly, writeErrno=refused_errno, pushExit=push.returncode, matchedEvidence=matched, before=before, after=after, unchanged=before == after == fixture['before'], metadataAndHashesOnly=True)
+    local = dict(asserted=bare and seed_present and source_ready and readonly and push.returncode != 0 and classified['classification'] == 'local_write_failure' and all(row['refused'] for row in storage) and before == after == fixture['before'], operation='push', path=target, bare=bare, seedPresent=seed_present, sourceReady=source_ready, readOnly=readonly, pushExit=push.returncode, storageProbes=storage, before=before, after=after, unchanged=before == after == fixture['before'], metadataAndHashesOnly=True, **classified)
     network = []
-    url = 'git://192.0.2.1/git-boundary.git'
-    for operation, args in [('fetch', ['fetch', url]), ('push', ['push', url, 'HEAD:refs/heads/boundary'])]:
+    for operation, args in [('fetch', ['fetch', NETWORK_URL]), ('push', ['push', NETWORK_URL, 'HEAD:refs/heads/boundary'])]:
         result = git_call(binary, source, args)
-        matched = evidence(result, ('network is unreachable', 'no route to host'))
-        network.append(dict(operation=operation, url=url, exit=result.returncode, matchedEvidence=matched, asserted=result.returncode != 0 and bool(matched)))
+        probe = network_probe()
+        classified = classify_stderr(result.stderr.decode(errors='replace'), operation, NETWORK_URL)
+        network.append(dict(operation=operation, url=NETWORK_URL, exit=result.returncode, connectProbe=probe, asserted=result.returncode != 0 and classified['classification'] == 'network_unreachable' and probe['refused'], **classified))
     return dict(asserted=local['asserted'] and all(row['asserted'] for row in network), binary=binary, binarySha256=fixture['binarySha256'], outsidePush=local, network=network, fixtureOnlyException=['GIT_CONFIG_NOSYSTEM=1', 'GIT_CONFIG_GLOBAL=/dev/null'])
 
 
@@ -106,11 +151,26 @@ def receipt_valid(record, fixture, outside_after):
     try:
         local = record['outsidePush']
         assert record['asserted'] is True and record['binary'] == fixture['binary'] and record['binarySha256'] == fixture['binarySha256']
-        assert local['asserted'] is True and local['path'] == '/mnt/target.git' and local['bare'] is True and local['readOnly'] is True and local['seedPresent'] is True and local['sourceReady'] is True
-        assert local['writeErrno'] == errno.EROFS and local['pushExit'] != 0 and local['matchedEvidence'] and local['unchanged'] is True
+        assert local['asserted'] is True and local['operation'] == 'push' and local['path'] == OUTSIDE_TARGET and local['bare'] is True and local['readOnly'] is True and local['seedPresent'] is True and local['sourceReady'] is True
+        assert local['pushExit'] != 0 and local['unchanged'] is True
+        assert local['classification'] == 'local_write_failure' and classify_stderr('\n'.join(local['matchedEvidence']), local['operation'], local['path'])['classification'] == local['classification']
+        expected = {(str(pathlib.Path(OUTSIDE_TARGET) / directory / ('gate-write-' + operation)), operation) for directory in ('objects', 'refs') for operation in ('mkdir', 'open')}
+        probes = local['storageProbes']
+        assert len(probes) == 4 and {(row['path'], row['operation']) for row in probes} == expected
+        assert all(row['errno'] == errno.EROFS and row['refused'] is True for row in probes)
         assert fixture['before'] and local['before'] == local['after'] == fixture['before'] == outside_after
         assert len(record['network']) == 2 and {row['operation'] for row in record['network']} == {'fetch', 'push'}
-        assert all(row['asserted'] is True and row['exit'] != 0 and row['url'] == 'git://192.0.2.1/git-boundary.git' and row['matchedEvidence'] for row in record['network'])
+        for row in record['network']:
+            assert row['asserted'] is True and row['exit'] != 0 and row['url'] == NETWORK_URL
+            assert row['classification'] == 'network_unreachable' and classify_stderr('\n'.join(row['matchedEvidence']), row['operation'], row['url'])['classification'] == row['classification']
+            probe = row['connectProbe']
+            assert probe['address'] == '192.0.2.1' and probe['port'] == 9418 and probe['errno'] in (errno.ENETUNREACH, errno.EHOSTUNREACH) and probe['refused'] is True
     except (AssertionError, KeyError, TypeError):
         return False
     return True
+
+
+if __name__ == '__main__':
+    import sys
+    subprocess.run(['ip', 'link', 'set', 'lo', 'up'], check=True, capture_output=True)
+    prepare(pathlib.Path(sys.argv[1]), sys.argv[2])

@@ -322,7 +322,8 @@ def adjudicate(home, root, out, physical, before, after):
         fixture = read(fixture_path)
         outside_after = git_boundary_snapshot(fixture['backingTarget'])
         save(out / 'git-boundary-outside.json', dict(metadataAndHashesOnly=True, entries=outside_after, unchanged=outside_after == fixture['before']))
-        boundary_valid = git_boundary_receipt_valid(read(boundary_path), fixture, outside_after)
+        baseline = read(out / 'git-boundary-baseline.json')['entries']
+        boundary_valid = baseline == fixture['before'] and git_boundary_receipt_valid(read(boundary_path), fixture, outside_after)
     valid_mask = valid_mask and boundary_valid
     coverage = [dict(pid=birth['pid'],outcome=mapping_coverage(birth,inv['hostPidMap'],raw.get('errors',[]))) for birth in raw.get('births',[])]
     save(out/'mapping-coverage.json',coverage)
@@ -359,6 +360,13 @@ def run_step(config, step):
     for directory in set(env.values()):
         if directory.startswith(str(fake)):
             pathlib.Path(directory).mkdir(parents=True, exist_ok=True)
+    boundary_setup = subprocess.run(['unshare', '-rn', 'python3', '-B', str(root / 'git_boundary.py'), str(root), label], env=env, capture_output=True)
+    if boundary_setup.returncode:
+        raise RuntimeError('git boundary controller fixture setup failed')
+    fixture = read(root / 'git-boundary' / label / 'fixture.json')
+    baseline = git_boundary_snapshot(fixture['backingTarget'])
+    assert baseline == fixture['before']
+    save(out / 'git-boundary-baseline.json', dict(entries=baseline, metadataAndHashesOnly=True))
     before = snapshot(home)
     save(out / 'before.json', before)
     save(out / 'host-tmp-before.json', tmp_snapshot())
