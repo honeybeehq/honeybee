@@ -17,7 +17,7 @@ if [ "$head" != "$SCG_SOURCE_SHA" ]; then
 fi
 printf '%s' "$SCG_SCRIPT_HASHES" | /usr/bin/shasum -a 256 -c - >/dev/null || { echo "REFUSING: gate hash mismatch"; exit 88; }
 body=${1:-scripts/gates/darwin/daemon-suite-body.sh}
-case "$body" in scripts/gates/darwin/daemon-suite-body.sh|scripts/gates/darwin/pinned-runtime-body.sh|scripts/gates/darwin/pinned-full-body.sh|scripts/gates/darwin/self-test-body.sh) ;; *) echo "REFUSING: unpinned body"; exit 88;; esac
+case "$body" in scripts/gates/darwin/daemon-suite-body.sh|scripts/gates/darwin/focused-manifest-body.sh|scripts/gates/darwin/pinned-runtime-body.sh|scripts/gates/darwin/pinned-full-body.sh|scripts/gates/darwin/self-test-body.sh) ;; *) echo "REFUSING: unpinned body"; exit 88;; esac
 python=${SCG_PYTHON_BIN:-/usr/bin/python3}
 case "$python" in /usr/bin/python3|/opt/homebrew/bin/python3) ;; *) echo "REFUSING: unconfigured Python"; exit 90;; esac
 root=/private/var/tmp/g.$(uuidgen | tr -d - | cut -c1-8)

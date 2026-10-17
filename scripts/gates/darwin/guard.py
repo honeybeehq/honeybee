@@ -18,6 +18,7 @@ import time
 import node_bootstrap
 import listener_static
 import git_boundary
+import focused_flow
 
 LISTENER_LIMIT = 'Seatbelt does not mediate IP bind/inbound on macOS 26 (probe 52e76fd3: remote tailnet connect accepted); mitigated by own-pid listener sampling (FAIL + fenced kill); exposure window up to one sample interval.'
 STATIC_BIND_LIMIT = 'static bind scan covers modules importing dgram/socket; a socket passed across modules is covered only by the runtime own-pid sampler'
@@ -343,9 +344,9 @@ def absolute_compiler_jobs(text):
     return True
 
 
-def scope_call(helper, command, *args):
+def scope_call(helper, command, *args, timeout=2):
     argv = [str(helper), command, *map(str, args)]
-    value = subprocess.run(argv, capture_output=True, text=True)
+    value = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     SCOPE_OBSERVATIONS.append({'time': time.time(), 'argv': argv, 'exit': value.returncode, 'stdout': value.stdout, 'stderr': value.stderr})
     value.check_returncode()
     return [line.split() for line in value.stdout.splitlines()]
@@ -354,10 +355,10 @@ def scope_call(helper, command, *args):
 def sample_listeners(helper, birth):
     timestamp = time.time()
     command = [str(helper), 'listeners', *birth]
-    value = subprocess.run(command, capture_output=True, text=True)
+    value = subprocess.run(command, capture_output=True, text=True, timeout=2)
     observation = {'timestamp': timestamp, 'birth': birth, 'pid': int(birth[0]), 'argv': command, 'exit': value.returncode, 'stderr': value.stderr, 'listeners': []}
     if value.returncode:
-        status = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True)
+        status = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True, timeout=2)
         observation['exitEvidence'] = {'exit': status.returncode, 'result': status.stdout.strip()}
         if status.returncode != 3 or status.stdout.strip() not in ('gone', 'same-birth-zombie'):
             observation['error'] = 'listener observation unresolved'
@@ -713,6 +714,22 @@ def run(args):
     sentinel_home = root / 'sentinel-fixture' if args.self_test else real_home
     before = launchagents(sentinel_home)
     write_json(root / 'launchagents-before.json', before, root)
+    if args.body == 'scripts/gates/darwin/focused-manifest-body.sh':
+        try:
+            rc = focused_flow.run(sys.modules[__name__], root, workspace, env, tools, real_home)
+        except (ValueError, KeyError, TypeError, RuntimeError) as error:
+            raise Refusal('focused validation failed: ' + str(error)) from error
+        after = launchagents(real_home)
+        write_json(root / 'launchagents-after.json', after, root)
+        if before != after:
+            rc = 95
+        reason = 'focused rows or sentinel failed' if rc else None
+        write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'source': args.source, 'focused': True, 'limitations': focused_flow.LIMITATIONS, 'rootRetained': True, 'cacheSeed': seed, 'listenerLimit': LISTENER_LIMIT, 'siblingHarnessOutsideOuterSeatbelt': True, 'leftoverChild': list(LEFTOVER_CHILDREN)}, root)
+        if rc:
+            print('GATE_NONZERO_REASON=' + json.dumps(reason), flush=True)
+        print('GATE_RECEIPT_SHA256=' + receipt_hashes(root), flush=True)
+        os.close(fd)
+        return rc
     if args.self_test:
         env.update(make_socket_controls(root))
         try:
