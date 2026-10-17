@@ -1,3 +1,4 @@
+import ast
 import hashlib
 import io
 import json
@@ -16,6 +17,11 @@ from guard import DIRS, PROTECTED, Refusal, environment, launchagents, profile, 
 
 
 class GuardTests(unittest.TestCase):
+    def test_python39_grammar(self):
+        for path in Path(__file__).parent.glob('*.py'):
+            with self.subTest(path=path.name):
+                ast.parse(path.read_text(), feature_version=9)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(dir=os.environ['LAB_ROOT'])
         self.base = Path(self.tmp.name)
