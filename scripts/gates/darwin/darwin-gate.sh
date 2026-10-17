@@ -1,4 +1,5 @@
 #!/bin/bash
+if [ "${HIVE_REAL_HOME+x}" = x ]; then SCG_ENTRY_HIVE_REAL_HOME=1; export SCG_ENTRY_HIVE_REAL_HOME; unset HIVE_REAL_HOME; fi
 stamped_keys=$(/usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep -E '^(HIVE_|APIARY_)' | LC_ALL=C /usr/bin/sort | /usr/bin/paste -sd, -)
 if [ -n "$stamped_keys" ]; then printf 'REFUSING: stamped controller environment: %s\n' "$stamped_keys"; exit 90; fi
 set -eu
@@ -21,6 +22,7 @@ python=${SCG_PYTHON_BIN:-/usr/bin/python3}
 case "$python" in /usr/bin/python3|/opt/homebrew/bin/python3) ;; *) echo "REFUSING: unconfigured Python"; exit 90;; esac
 root=/private/var/tmp/g.$(uuidgen | tr -d - | cut -c1-8)
 set -- --root "$root" --source "$SCG_SOURCE_SHA" --node "${SCG_NODE_BIN:-}"
+[ "${SCG_ENTRY_HIVE_REAL_HOME:-0}" != 1 ] || set -- "$@" --entry-hive-real-home
 case "${SCG_DOWNLOAD_NODE:-0}" in 0) ;; 1) set -- "$@" --download-node;; *) echo 'REFUSING: invalid Node download switch'; exit 90;; esac
 [ "$body" != scripts/gates/darwin/self-test-body.sh ] || set -- "$@" --self-test
 [ -z "${SCG_CACHE_SEED:-}" ] || set -- "$@" --seed "$SCG_CACHE_SEED" --seed-sha "${SCG_CACHE_SEED_SHA256:-}"

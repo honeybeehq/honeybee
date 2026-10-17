@@ -42,6 +42,22 @@ class GuardTests(unittest.TestCase):
         passwd.assert_not_called()
         opened.assert_not_called()
 
+    def test_tool_home_entry_key_is_ignored_and_unset(self):
+        import guard
+        for extras, refusal in (({}, 'passwd identity unavailable'), ({'APIARY_AGENT_TOKEN': 'never-print'}, 'stamped controller environment: APIARY_AGENT_TOKEN'), ({'HIVE_REAL_HOMEX': 'never-print'}, 'stamped controller environment: HIVE_REAL_HOMEX')):
+            with patch.dict(os.environ, dict({'HIVE_REAL_HOME': 'never-use'}, **extras), clear=True), patch('guard.pwd.getpwuid', side_effect=KeyError()), self.assertRaisesRegex(Refusal, refusal):
+                try:
+                    run(SimpleNamespace())
+                finally:
+                    self.assertNotIn('HIVE_REAL_HOME', os.environ)
+                    self.assertEqual(guard.ENTRY_NOTES, ['HIVE_REAL_HOME present at entry (tool-injected, ignored, unset)'])
+        directory = Path(__file__).parent
+        for name in ('gate-run.sh', 'darwin-gate.sh'):
+            for key in ('APIARY_AGENT_TOKEN', 'HIVE_REAL_HOMEX'):
+                result = subprocess.run(['/bin/sh', str(directory / name)], env={'PATH': '/usr/bin:/bin', 'HIVE_REAL_HOME': 'never-use', key: 'never-print'}, cwd=self.base, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 90)
+                self.assertEqual(result.stdout.strip(), 'REFUSING: stamped controller environment: ' + key)
+
     def test_lock_refuses_symlink_wrong_mode_and_nonempty(self):
         path = self.base / 'lock'
         target = self.base / 'target'

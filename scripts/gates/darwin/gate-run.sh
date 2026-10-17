@@ -1,4 +1,5 @@
 #!/bin/sh
+if [ "${HIVE_REAL_HOME+x}" = x ]; then SCG_ENTRY_HIVE_REAL_HOME=1; export SCG_ENTRY_HIVE_REAL_HOME; unset HIVE_REAL_HOME; fi
 stamped_keys=$(/usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep -E '^(HIVE_|APIARY_)' | LC_ALL=C /usr/bin/sort | /usr/bin/paste -sd, -)
 if [ -n "$stamped_keys" ]; then printf 'REFUSING: stamped controller environment: %s\n' "$stamped_keys"; exit 90; fi
 set -eu

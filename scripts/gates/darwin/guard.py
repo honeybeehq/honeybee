@@ -63,12 +63,15 @@ def validate(root, env, real_home, parent=Path('/private/var/tmp')):
     return {'allowed': True, 'beforeFirstWrite': True, 'checkedVariables': sorted(DIRS), 'root': str(root), 'protectedRoots': [str(p) for p in protected]}
 
 
+ENTRY_NOTES = []
+
+
 def write_json(path, value, root):
     path = Path(path)
     if not inside(path.resolve(), root.resolve()):
         raise Refusal('write outside run root')
     if path == Path(root) / 'receipt.json' and isinstance(value, dict):
-        value = dict(value, listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
+        value = dict(value, entryNotes=list(ENTRY_NOTES), listenerLimit=LISTENER_LIMIT, staticBindLimit=STATIC_BIND_LIMIT, hostLock=LOCK_METADATA.get(str(Path(root).resolve())))
     path.write_text(json.dumps(value, indent=2) + '\n')
 
 
@@ -492,6 +495,9 @@ def reparent_listener_self_test(root, workspace, prefix, helper, env):
 
 
 def run(args):
+    present = 'HIVE_REAL_HOME' in os.environ
+    os.environ.pop('HIVE_REAL_HOME', None)
+    ENTRY_NOTES[:] = ['HIVE_REAL_HOME present at entry (tool-injected, ignored, unset)'] if present or getattr(args, 'entry_hive_real_home', False) else []
     stamped_keys = sorted(key for key in os.environ if key.startswith(('HIVE_', 'APIARY_')))
     if stamped_keys:
         raise Refusal('stamped controller environment: ' + ','.join(stamped_keys))
@@ -738,6 +744,7 @@ def main():
     p.add_argument('--seed-sha')
     p.add_argument('--source', required=True)
     p.add_argument('--self-test', action='store_true')
+    p.add_argument('--entry-hive-real-home', action='store_true')
     p.add_argument('body')
     args = p.parse_args()
     try:
