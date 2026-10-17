@@ -214,6 +214,10 @@ def fd_write_disclosure(count):
     return str(count) + " same-uid sandboxed processes with MAC-denied fd introspection may READ the run root; each one's own sandbox denies write and create on all probed root paths; integrity relies on that write denial plus N1 before/after hashing; read access and an fd passed in over IPC are not excluded."
 
 
+def fd_platform_disclosure(count):
+    return str(count) + " same-uid Apple platform binaries with MAC-denied fd introspection were accepted by code-signing platform status and SIP-protected executable path; their open descriptors were not observed."
+
+
 FD_UNOBSERVABLE_LIMIT = 'fdUnobservableSandboxDenied: fd-passing residual remains; sampled sandbox denial on the four probe paths does not prove that a pre-existing or passed descriptor cannot access another root path.'
 UNLINKED_LIMIT = 'exeUnlinkedPreRoot accepted by birth-time; exec-after-birth of a since-unlinked root binary by a non-gate process is not excluded.'
 
@@ -318,7 +322,7 @@ def quiescence_evidence(result):
                 raise ValueError('unexpected quiescence diagnostic value')
             if type(reason['errnoNumber']) is not int or type(reason['sameBirth']) is not int or reason['sameBirth'] not in (-1, 0, 3, 4):
                 raise ValueError('unexpected quiescence numeric value')
-            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed', 'fdUnobservableWriteDenied'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
+            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed', 'exeUnlinkedPreRoot', 'regionCompared', 'regionUnavailable', 'sessionLeaderNotUidListed', 'fdUnobservableSandboxDenied', 'fdNonGateFailed', 'fdCleanFailed', 'fdSandboxFailed', 'fdDeniedQueries', 'fdAllowedQueries', 'fdQueryErrors', 'fdNotSandboxed', 'fdUnobservableWriteDenied', 'fdUnobservablePlatformBinary', 'notPlatform', 'pathDisallowed', 'csopsError', 'inodeMatch', 'platformInodeUnobserved'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
                 raise ValueError('unexpected quiescence counts')
             slots = {'root:read', 'root:write', 'probe:read', 'probe:write', 'src:read', 'src:write', 'absent:read', 'absent:write', 'root:create', 'root:unlink', 'probe:create', 'probe:unlink', 'src:create', 'src:unlink', 'absent:create', 'absent:unlink'}
             if not isinstance(reason['fdAllowedByQuery'], dict) or set(reason['fdAllowedByQuery']) != slots or any(type(value) is not int or value < 0 for value in reason['fdAllowedByQuery'].values()):
@@ -332,6 +336,7 @@ def quiescence_evidence(result):
         except (ValueError, TypeError, KeyError):
             evidence['reason'] = {'type': 'UnobservedQuiescenceFailure'}
     counts = evidence.get('reason', {}).get('counts', {}) if isinstance(evidence.get('reason'), dict) else {}
+    evidence['fdUnobservablePlatformBinaryDisclosure'] = fd_platform_disclosure(counts.get('fdUnobservablePlatformBinary', 0))
     evidence['fdUnobservableWriteDeniedDisclosure'] = fd_write_disclosure(counts.get('fdUnobservableWriteDenied', 0))
     evidence['fdUnobservableDisclosure'] = fd_disclosure(counts.get('fdUnobservableSandboxDenied', 0))
     QUIESCENCE_OBSERVATIONS.append(evidence)

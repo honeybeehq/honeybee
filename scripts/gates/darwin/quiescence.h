@@ -1,4 +1,4 @@
-struct quiescence_counts { int scanned, skipped_gone, skipped_uid_changed, skipped_fd_closed, matched, failed, exe_unlinked_pre_root, region_compared, region_unavailable, session_leader_not_uid_listed, fd_unobservable, fd_non_gate_failed, fd_clean_failed, fd_sandbox_failed, fd_denied_queries, fd_allowed_queries, fd_query_errors, fd_not_sandboxed, fd_write_denied, fd_read_allowed[4], fd_read_denied[4], fd_allowed_by_query[16], fd_failed_results[16]; };
+struct quiescence_counts { int scanned, skipped_gone, skipped_uid_changed, skipped_fd_closed, matched, failed, exe_unlinked_pre_root, region_compared, region_unavailable, session_leader_not_uid_listed, fd_unobservable, fd_non_gate_failed, fd_clean_failed, fd_sandbox_failed, fd_denied_queries, fd_allowed_queries, fd_query_errors, fd_not_sandboxed, fd_write_denied, fd_platform, platform_not, platform_path_disallowed, platform_csops_error, platform_inode_match, platform_inode_unobserved, fd_read_allowed[4], fd_read_denied[4], fd_allowed_by_query[16], fd_failed_results[16]; };
 static const char *quiescence_errno(int value) {
   switch (value) {
     case 0: return "NONE";
@@ -14,7 +14,7 @@ static const char *quiescence_errno(int value) {
   }
 }
 static int quiescence_report(const char *call, int error, int birth, struct quiescence_counts *counts) {
-  fprintf(stderr, "{\"type\":\"%s\",\"call\":\"%s\",\"errno\":\"%s\",\"errnoNumber\":%d,\"sameBirth\":%d,\"counts\":{\"scanned\":%d,\"skippedGone\":%d,\"skippedUidChanged\":%d,\"skippedFdClosed\":%d,\"matched\":%d,\"failed\":%d,\"exeUnlinkedPreRoot\":%d,\"regionCompared\":%d,\"regionUnavailable\":%d,\"sessionLeaderNotUidListed\":%d,\"fdUnobservableSandboxDenied\":%d,\"fdNonGateFailed\":%d,\"fdCleanFailed\":%d,\"fdSandboxFailed\":%d,\"fdDeniedQueries\":%d,\"fdAllowedQueries\":%d,\"fdQueryErrors\":%d,\"fdNotSandboxed\":%d,\"fdUnobservableWriteDenied\":%d}", counts->failed ? "QuiescenceFailure" : "QuiescenceComplete", call, quiescence_errno(error), error, birth, counts->scanned, counts->skipped_gone, counts->skipped_uid_changed, counts->skipped_fd_closed, counts->matched, counts->failed, counts->exe_unlinked_pre_root, counts->region_compared, counts->region_unavailable, counts->session_leader_not_uid_listed, counts->fd_unobservable, counts->fd_non_gate_failed, counts->fd_clean_failed, counts->fd_sandbox_failed, counts->fd_denied_queries, counts->fd_allowed_queries, counts->fd_query_errors, counts->fd_not_sandboxed, counts->fd_write_denied);
+  fprintf(stderr, "{\"type\":\"%s\",\"call\":\"%s\",\"errno\":\"%s\",\"errnoNumber\":%d,\"sameBirth\":%d,\"counts\":{\"scanned\":%d,\"skippedGone\":%d,\"skippedUidChanged\":%d,\"skippedFdClosed\":%d,\"matched\":%d,\"failed\":%d,\"exeUnlinkedPreRoot\":%d,\"regionCompared\":%d,\"regionUnavailable\":%d,\"sessionLeaderNotUidListed\":%d,\"fdUnobservableSandboxDenied\":%d,\"fdNonGateFailed\":%d,\"fdCleanFailed\":%d,\"fdSandboxFailed\":%d,\"fdDeniedQueries\":%d,\"fdAllowedQueries\":%d,\"fdQueryErrors\":%d,\"fdNotSandboxed\":%d,\"fdUnobservableWriteDenied\":%d,\"fdUnobservablePlatformBinary\":%d,\"notPlatform\":%d,\"pathDisallowed\":%d,\"csopsError\":%d,\"inodeMatch\":%d,\"platformInodeUnobserved\":%d}", counts->failed ? "QuiescenceFailure" : "QuiescenceComplete", call, quiescence_errno(error), error, birth, counts->scanned, counts->skipped_gone, counts->skipped_uid_changed, counts->skipped_fd_closed, counts->matched, counts->failed, counts->exe_unlinked_pre_root, counts->region_compared, counts->region_unavailable, counts->session_leader_not_uid_listed, counts->fd_unobservable, counts->fd_non_gate_failed, counts->fd_clean_failed, counts->fd_sandbox_failed, counts->fd_denied_queries, counts->fd_allowed_queries, counts->fd_query_errors, counts->fd_not_sandboxed, counts->fd_write_denied, counts->fd_platform, counts->platform_not, counts->platform_path_disallowed, counts->platform_csops_error, counts->platform_inode_match, counts->platform_inode_unobserved);
   const char *slots[] = {"root:read", "root:write", "probe:read", "probe:write", "src:read", "src:write", "absent:read", "absent:write", "root:create", "root:unlink", "probe:create", "probe:unlink", "src:create", "src:unlink", "absent:create", "absent:unlink"};
   fputs(",\"fdAllowedByQuery\":{", stderr);
   for (int index = 0; index < 16; index++) fprintf(stderr, "%s\"%s\":%d", index ? "," : "", slots[index], counts->fd_allowed_by_query[index]);
@@ -70,6 +70,43 @@ static int unlinked_regions(int pid, struct proc_bsdinfo *birth, int inode_count
   }
   counts->region_unavailable++;
   return 1;
+}
+static int platform_fd_proof(int pid, struct proc_bsdinfo *birth, int unlinked, int inode_count, struct quiescence_counts *counts) {
+  char image[PROC_PIDPATHINFO_MAXSIZE], canonical[PATH_MAX];
+  if (unlinked || same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) { counts->platform_path_disallowed++; return 0; }
+  errno = 0;
+  int got = proc_pidpath(pid, image, sizeof(image));
+  if (got <= 0 || same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec) || !realpath(image, canonical) || strcmp(image, canonical)) { counts->platform_path_disallowed++; return 0; }
+  const char *prefixes[] = {"/System/Library/", "/System/Applications/", "/usr/libexec/", "/usr/sbin/"};
+  int allowed = 0;
+  for (int index = 0; index < 4; index++) if (!strncmp(canonical, prefixes[index], strlen(prefixes[index]))) allowed = 1;
+  if (!allowed) { counts->platform_path_disallowed++; return 0; }
+  unsigned int flags = 0;
+  if (same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) { counts->platform_csops_error++; return 0; }
+  errno = 0;
+  int status = csops(pid, CS_OPS_STATUS, &flags, sizeof(flags));
+  int error = errno;
+  if (status || error || same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) { counts->platform_csops_error++; return 0; }
+  if (!(flags & CS_PLATFORM_BINARY)) { counts->platform_not++; return 0; }
+  struct stat file;
+  if (stat(canonical, &file) || same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) { counts->platform_inode_unobserved++; return 0; }
+  unsigned long long dev = (unsigned int)file.st_dev, ino = file.st_ino;
+  for (int index = 0; index < inode_count; index++) if (root_inodes[index].dev == dev && root_inodes[index].ino == ino) { counts->platform_inode_match++; return 0; }
+  unsigned long long address = 0;
+  for (int index = 0; index < 65536; index++) {
+    struct proc_regionwithpathinfo region;
+    memset(&region, 0, sizeof(region));
+    got = proc_pidinfo(pid, PROC_PIDREGIONPATHINFO, address, &region, sizeof(region));
+    if (got != (int)sizeof(region) || same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec)) break;
+    unsigned long long region_dev = (unsigned int)region.prp_vip.vip_vi.vi_stat.vst_dev, region_ino = region.prp_vip.vip_vi.vi_stat.vst_ino;
+    for (int item = 0; item < inode_count; item++) if (region_ino && root_inodes[item].dev == region_dev && root_inodes[item].ino == region_ino) { counts->platform_inode_match++; return 0; }
+    if (region_ino && region_dev == dev && region_ino == ino) return !same_birth(pid, birth->pbi_start_tvsec, birth->pbi_start_tvusec);
+    unsigned long long next = region.prp_prinfo.pri_address + region.prp_prinfo.pri_size;
+    if (!region.prp_prinfo.pri_size || next <= address) break;
+    address = next;
+  }
+  counts->platform_inode_unobserved++;
+  return 0;
 }
 static int quiescence(int controller, const char *root, unsigned long long created, char **denial_paths) {
   struct quiescence_counts counts = {0};
@@ -188,10 +225,13 @@ static int quiescence(int controller, const char *root, unsigned long long creat
       else {
         int results[16], allowed_by_query[16] = {0};
         for (int index = 0; index < 16; index++) results[index] = -2;
+        int before_not_sandboxed = counts.fd_not_sandboxed;
         int proof = quiescence_sandbox_denied(pid, birth.pbi_start_tvsec, birth.pbi_start_tvusec, denial_paths, &counts.fd_denied_queries, &counts.fd_allowed_queries, &counts.fd_query_errors, &counts.fd_not_sandboxed, allowed_by_query, results);
+        if (!proof && counts.fd_not_sandboxed > before_not_sandboxed && platform_fd_proof(pid, &birth, unlinked, inode_count, &counts)) proof = 3;
         if (!proof) { counts.fd_sandbox_failed++; failed = 1; memcpy(counts.fd_failed_results, results, sizeof(results)); for (int index = 0; index < 16; index++) counts.fd_allowed_by_query[index] += allowed_by_query[index]; }
         else {
           if (proof == 1) counts.fd_unobservable++;
+          else if (proof == 3) counts.fd_platform++;
           else { counts.fd_write_denied++; for (int index = 0; index < 4; index++) { if (results[index * 2]) counts.fd_read_denied[index]++; else counts.fd_read_allowed[index]++; } }
           if (unlinked) counts.exe_unlinked_pre_root++;
         }

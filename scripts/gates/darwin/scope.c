@@ -2,6 +2,8 @@
 #ifdef __APPLE__
 #include <libproc.h>
 #include <sys/proc_info.h>
+#include <sys/codesign.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
