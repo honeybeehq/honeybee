@@ -18,6 +18,7 @@ python=${SCG_PYTHON_BIN:-/usr/bin/python3}
 case "$python" in /usr/bin/python3|/opt/homebrew/bin/python3) ;; *) echo "REFUSING: unconfigured Python"; exit 90;; esac
 root=/private/var/tmp/g.$(uuidgen | tr -d - | cut -c1-8)
 set -- --root "$root" --source "$SCG_SOURCE_SHA" --node "${SCG_NODE_BIN:-}"
+case "${SCG_DOWNLOAD_NODE:-0}" in 0) ;; 1) set -- "$@" --download-node;; *) echo 'REFUSING: invalid Node download switch'; exit 90;; esac
 [ "$body" != scripts/gates/darwin/self-test-body.sh ] || set -- "$@" --self-test
 [ -z "${SCG_CACHE_SEED:-}" ] || set -- "$@" --seed "$SCG_CACHE_SEED" --seed-sha "${SCG_CACHE_SEED_SHA256:-}"
 exec /usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$root/h" TMPDIR="$root/t" LANG=C PYTHONDONTWRITEBYTECODE=1 "$python" -B scripts/gates/darwin/guard.py "$@" "$body"

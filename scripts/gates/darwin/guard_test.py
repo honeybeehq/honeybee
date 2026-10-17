@@ -10,6 +10,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+import node_bootstrap
 
 from guard import DIRS, PROTECTED, Refusal, environment, launchagents, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 
@@ -70,6 +71,36 @@ class GuardTests(unittest.TestCase):
     def test_node_path_must_be_absolute(self):
         with self.assertRaises(Refusal):
             select_node('node', self.home)
+
+    def test_node_archive_mismatch_extracts_nothing(self):
+        archive = self.base / 'node.tar.gz'
+        archive.write_bytes(b'corrupt archive')
+        destination = self.base / 'node-distribution'
+        with patch('tarfile.open') as opened, self.assertRaisesRegex(ValueError, 'sha256 mismatch'):
+            node_bootstrap.extract_verified(archive, destination)
+        opened.assert_not_called()
+        self.assertFalse(destination.exists())
+
+    def test_node_archive_verified_and_confined(self):
+        archive = self.base / 'node.tar.gz'
+        with tarfile.open(archive, 'w:gz') as source:
+            member = tarfile.TarInfo(node_bootstrap.TOP + '/bin/node')
+            member.size = 4
+            member.mode = 0o755
+            source.addfile(member, io.BytesIO(b'node'))
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        node = node_bootstrap.extract_verified(archive, self.base / 'node-distribution', digest)
+        self.assertEqual(Path(node).read_bytes(), b'node')
+
+    def test_node_archive_escape_refused(self):
+        archive = self.base / 'node.tar.gz'
+        with tarfile.open(archive, 'w:gz') as source:
+            member = tarfile.TarInfo(node_bootstrap.TOP + '/../outside')
+            source.addfile(member, io.BytesIO())
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        with self.assertRaises(ValueError):
+            node_bootstrap.extract_verified(archive, self.base / 'node-distribution', digest)
+        self.assertFalse((self.base / 'node-distribution').exists())
 
     def test_every_path_rejects_missing_relative_and_escape(self):
         for key in DIRS:

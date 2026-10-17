@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import time
+import node_bootstrap
 
 PROVIDERS = ('.claude', '.codex', '.grok', '.kimi', '.gemini', '.cursor', '.muse', '.config/opencode', '.config/muse', '.local/share/opencode')
 PROTECTED = ('.hive', '.config', '.ssh', '.gnupg', 'Library', '.apiary', '.local/share/apiary', '.local/share/apiary-satellite', '.local/share/apiary/satellite-updater', *PROVIDERS)
@@ -209,7 +210,10 @@ def run(args):
     lane = Path.cwd().resolve()
     real_home = Path(pwd.getpwuid(os.getuid()).pw_dir).resolve()
     root = Path(args.root)
-    node = select_node(args.node, real_home)
+    bootstrap = getattr(args, 'download_node', False)
+    if bootstrap and args.node:
+        raise Refusal('select either pinned per-run Node or configured Node')
+    node = str(root / 'node-distribution' / node_bootstrap.TOP / 'bin/node') if bootstrap else select_node(args.node, real_home)
     env = environment(root, node)
     guard = validate(root, env, real_home)
     lock_path = Path('/private/var/tmp/hb-darwin-gate.lock')
@@ -228,6 +232,14 @@ def run(args):
     write_json(root / 'entry-guard.json', guard, root)
     write_json(root / 'environment.json', {'keys': sorted(env), 'paths': {k: env[k] for k in DIRS}, 'node': node, 'python': str(Path(sys.executable).resolve()), 'pythonVersion': sys.version, 'architecture': os.uname().machine}, root)
     print('GATE_ROOT=' + str(root), flush=True)
+    if bootstrap:
+        if os.uname().machine != 'arm64' or sys.platform != 'darwin':
+            raise Refusal('pinned Node download requires Darwin arm64')
+        try:
+            node = node_bootstrap.download(root, env)
+        except (ValueError, tarfile.TarError) as error:
+            raise Refusal(str(error)) from error
+        write_json(root / 'node-bootstrap.json', {'version': node_bootstrap.VERSION, 'url': node_bootstrap.URL, 'sha256': node_bootstrap.SHA256, 'verifiedBeforeExtraction': True, 'node': node, 'lifetime': 'run root only'}, root)
     policy = profile(root, real_home, lane)
     (root / 'workload.sb').write_text(policy)
     env['SCG_SB_PROFILE'] = policy
@@ -337,6 +349,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--root', required=True)
     p.add_argument('--node')
+    p.add_argument('--download-node', action='store_true')
     p.add_argument('--seed')
     p.add_argument('--seed-sha')
     p.add_argument('--source', required=True)
