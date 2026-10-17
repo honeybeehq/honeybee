@@ -5,6 +5,7 @@
 #include <stdatomic.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <dirent.h>
 #include <unistd.h>
 #include <errno.h>
 #include <stdio.h>
@@ -26,9 +27,12 @@ static int directory(int parent, const char *name, int create) {
   if (create && mkdirat(parent,name,0700)<0 && errno!=EEXIST) return -1;
   int fd=openat(parent,name,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
   if (fd<0) return -1;
-  struct stat st;
-  if (fstat(fd,&st)<0 || !S_ISDIR(st.st_mode) || st.st_uid!=getuid() || (st.st_mode&0777)!=0700) {
+  struct stat st,parent_st;
+  if (fstat(fd,&st)<0 || fstat(parent,&parent_st)<0 || !S_ISDIR(st.st_mode) || st.st_uid!=getuid() || (st.st_mode&0777)!=0700 || st.st_dev!=parent_st.st_dev) {
     close(fd); errno=EPERM; return -1;
+  }
+  if (create && fsync(parent)<0) {
+    int error=errno; close(fd); errno=error; return -1;
   }
   return fd;
 }
@@ -40,18 +44,25 @@ static int root_directory(const char *root) {
   for (char *part=strtok_r(copy,"/",&save); part && fd>=0; part=strtok_r(NULL,"/",&save)) {
     if (!strcmp(part,".") || !strcmp(part,"..")) { close(fd); fd=-1; errno=EINVAL; break; }
     int next=openat(fd,part,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
-    int error=errno; close(fd); fd=next; errno=error;
+    int error=next<0?errno:0;
+    if(close(fd)<0 && !error) error=errno;
+    if(error && next>=0) { close(next); next=-1; }
+    fd=next; errno=error;
   }
   free(copy); return fd;
 }
 static int bee_directory(const char *root,const char *bee,int create) {
   int base=root_directory(root);
   if (base<0) return -1;
-  int files=directory(base,"delivery-content",create), error=errno;
-  close(base); errno=error;
+  int files=directory(base,"delivery-content",create), error=files<0?errno:0;
+  if(close(base)<0 && !error) error=errno;
+  if(error && files>=0) { close(files); files=-1; }
+  errno=error;
   if (files<0) return -1;
-  int result=directory(files,bee,create); error=errno;
-  close(files); errno=error; return result;
+  int result=directory(files,bee,create); error=result<0?errno:0;
+  if(close(files)<0 && !error) error=errno;
+  if(error && result>=0) { close(result); result=-1; }
+  errno=error; return result;
 }
 static int equal_file(int dir,const char *name,const unsigned char *bytes,size_t length) {
   int fd=openat(dir,name,O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
@@ -67,7 +78,36 @@ static int equal_file(int dir,const char *name,const unsigned char *bytes,size_t
     if(n<=0 || memcmp(chunk,bytes+offset,(size_t)n)) { close(fd); errno=EEXIST; return -1; }
     offset+=(size_t)n;
   }
-  close(fd); return 0;
+  if(fsync(fd)<0) { int error=errno; close(fd); errno=error; return -1; }
+  return close(fd);
+}
+static int reconcile_stages(int dir,const char *id) {
+  int scan=openat(dir,".",O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
+  if(scan<0) return -1;
+  DIR *entries=fdopendir(scan);
+  if(!entries) { int error=errno; close(scan); errno=error; return -1; }
+  char prefix[48]; snprintf(prefix,sizeof(prefix),".%s.stage.",id);
+  int error=0;
+  for(;;) {
+    errno=0;
+    struct dirent *entry=readdir(entries);
+    if(!entry) { error=errno; break; }
+    if(strncmp(entry->d_name,prefix,strlen(prefix))) continue;
+    const char *suffix=entry->d_name+strlen(prefix);
+    size_t digits=strspn(suffix,"0123456789");
+    if(!digits || suffix[digits]!='.' || !suffix[digits+1] || strspn(suffix+digits+1,"0123456789")!=strlen(suffix+digits+1)) { error=EINVAL; break; }
+    struct stat st;
+    if(fstatat(dir,entry->d_name,&st,AT_SYMLINK_NOFOLLOW)<0) {
+      if(errno==ENOENT) continue;
+      error=errno; break;
+    }
+    if(!S_ISREG(st.st_mode) || st.st_uid!=getuid() || (st.st_mode&0777)!=0600) { error=EPERM; break; }
+    if(unlinkat(dir,entry->d_name,0)<0 && errno!=ENOENT) { error=errno; break; }
+  }
+  if(closedir(entries)<0 && !error) error=errno;
+  if(!error && fsync(dir)<0) error=errno;
+  if(error) { errno=error; return -1; }
+  return 0;
 }
 static int args(napi_env env,napi_callback_info info,napi_value *a,char *root,char *bee,char *id,size_t count) {
   size_t n=count, length;
@@ -83,7 +123,12 @@ static napi_value publish(napi_env env,napi_callback_info info) {
   int dir=bee_directory(root,bee,1);
   if(dir<0) return failure(env,"delivery_file_directory");
   char final[48],stage[100]; snprintf(final,sizeof(final),"%s.txt",id);
-  if(equal_file(dir,final,data,length)==0) { close(dir); napi_value yes; napi_get_boolean(env,true,&yes); return yes; }
+  if(equal_file(dir,final,data,length)==0) {
+    int error=reconcile_stages(dir,id)<0?errno:0;
+    if(close(dir)<0 && !error) error=errno;
+    if(error) { errno=error; return failure(env,"delivery_file_reconcile"); }
+    napi_value yes; napi_get_boolean(env,true,&yes); return yes;
+  }
   if(errno!=ENOENT) { int error=errno;close(dir);errno=error;return failure(env,"delivery_file_conflict"); }
   int fd=-1;
   for(unsigned int attempt=0;attempt<32 && fd<0;attempt++) {
@@ -100,13 +145,14 @@ static napi_value publish(napi_env env,napi_callback_info info) {
     if(n<=0) error=errno?errno:EIO; else offset+=(size_t)n;
   }
   if(!error && fsync(fd)<0) error=errno;
-  close(fd);
+  if(close(fd)<0 && !error) error=errno;
   if(!error && linkat(dir,stage,dir,final,0)<0) {
-    if(errno!=EEXIST || equal_file(dir,final,data,length)<0) error=errno;
+    int link_error=errno;
+    if((link_error!=EEXIST && link_error!=ENOENT) || equal_file(dir,final,data,length)<0) error=link_error;
   }
-  unlinkat(dir,stage,0);
-  if(!error && fsync(dir)<0) error=errno;
-  close(dir);
+  if(unlinkat(dir,stage,0)<0 && errno!=ENOENT && !error) error=errno;
+  if(!error && reconcile_stages(dir,id)<0) error=errno;
+  if(close(dir)<0 && !error) error=errno;
   if(error) { errno=error;return failure(env,"delivery_file_publish"); }
   napi_value yes; napi_get_boolean(env,true,&yes); return yes;
 }
@@ -117,9 +163,10 @@ static napi_value remove_file(napi_env env,napi_callback_info info) {
   if(dir<0 && errno!=ENOENT) return failure(env,"delivery_file_directory");
   if(dir>=0) {
     char final[48];snprintf(final,sizeof(final),"%s.txt",id);
+    if(reconcile_stages(dir,id)<0) { int error=errno;close(dir);errno=error;return failure(env,"delivery_file_remove"); }
     if(unlinkat(dir,final,0)<0 && errno!=ENOENT) { int error=errno;close(dir);errno=error;return failure(env,"delivery_file_remove"); }
     if(fsync(dir)<0) { int error=errno;close(dir);errno=error;return failure(env,"delivery_file_remove"); }
-    close(dir);
+    if(close(dir)<0) return failure(env,"delivery_file_remove");
   }
   napi_value yes;napi_get_boolean(env,true,&yes);return yes;
 }

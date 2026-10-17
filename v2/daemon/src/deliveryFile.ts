@@ -49,8 +49,8 @@ export class DeliveryFiles {
     this.native().publish(root, location.directory, id, bytes);
     return { path: location.path, digest: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length };
   }
-  remove(root: string, owner: string, bee: string, id: string): void {
-    const directory = createHash("sha256").update(JSON.stringify([owner, bee])).digest("hex");
-    this.native().remove(root, directory, id);
+  remove(root: string, owner: string, bee: string, id: string, worktrees: readonly string[]): void {
+    const location = this.location(root, owner, bee, id, worktrees);
+    this.native().remove(root, location.directory, id);
   }
 }
