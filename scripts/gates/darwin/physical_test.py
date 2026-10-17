@@ -14,6 +14,19 @@ def main():
     root = Path(os.environ['GATE_ROOT'])
     validate(root, os.environ, Path(os.environ['SCG_REAL_HOME']))
     rows = []
+    bind_diagnostics = []
+    for family, address, port in ((socket.AF_INET, '0.0.0.0', 49197), (socket.AF_INET6, '::', 0), (socket.AF_INET, '127.0.0.1', 0)):
+        row = {'family': int(family), 'address': address, 'requestedPort': port}
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as probe:
+                probe.bind((address, port))
+                row.update({'result': 'allowed', 'boundAddress': probe.getsockname()})
+        except OSError as error:
+            row.update({'result': 'REFUSED' if error.errno in (errno.EPERM, errno.EACCES) else 'INCONCLUSIVE', 'errno': error.errno, 'error': str(error)})
+        bind_diagnostics.append(row)
+        print('BIND_DIAGNOSTIC=' + json.dumps(row), flush=True)
+    write_json(root / 'bind-diagnostics.json', bind_diagnostics, root)
+    assert bind_diagnostics[-1]['result'] == 'allowed', 'positive loopback bind failed'
     with open('/dev/null', 'wb') as sink:
         sink.write(b'gate pseudo-device probe')
     rows.append({'row': 'literal /dev/null write-data', 'result': 'allowed kernel sink'})
