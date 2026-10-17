@@ -1,3 +1,4 @@
+import type { PhoneInput, PhoneOperationOrigin } from "./phoneOrigin.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
 /**
  * Closed vocabularies and row shapes for the v2 core store.
@@ -88,6 +89,7 @@ export const RUNTIME_TRANSITIONS: Readonly<Record<RuntimeState, readonly Runtime
 // ---------------------------------------------------------------------------
 
 export interface BeeRow {
+  phoneOperationOrigin?: PhoneOperationOrigin;
   id: string;
   name: string;
   agent: string;
@@ -292,6 +294,8 @@ export const MESSAGE_URGENCIES = ["now", "next", "idle"] as const;
 export type Urgency = (typeof MESSAGE_URGENCIES)[number];
 
 export interface MessageRow {
+  phoneInput?: PhoneInput;
+  renderedBody?: string;
   id: number;
   beeId: string;
   sender: string;
@@ -345,6 +349,7 @@ export type MailHistoryLifecycle =
 
 /** One accepted send reconstructed from typed mail audit events, never a raw audit row. */
 export interface MailHistoryMessage {
+  phoneOrigin?: PhoneInput["envelope"];
   /** The `mail.enqueued` audit sequence. `beforeSeq` pages against this value. */
   seq: number;
   messageId: number;
@@ -392,6 +397,7 @@ export interface MailPendingParams {
 
 /** One undelivered mailbox row with bounded UTF-8 previews. */
 export interface MailPendingMessage {
+  phoneOrigin?: PhoneInput["envelope"];
   id: number;
   beeId: string;
   origin: MailOrigin;
