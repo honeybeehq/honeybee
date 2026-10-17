@@ -1744,15 +1744,22 @@ export class CoreStore {
       let value: unknown;
       try { value = JSON.parse(String(row.payload)); } catch { value = null; }
       const bee = value !== null && typeof value === "object" && !Array.isArray(value) && "bee" in value ? value.bee : null;
-      if (bee === null || typeof bee !== "object" || Array.isArray(bee) || !("id" in bee) || typeof bee.id !== "string" || !bee.id.length || "handle" in bee && bee.handle !== null && typeof bee.handle !== "string") {
-        this.stmt("INSERT OR IGNORE INTO meta(key, value) VALUES(?, 'unknown')").run(`legacy_bee_reference_unknown:${row.seq}`);
-        continue;
+      const fields: string[] = [];
+      let id: string | null = null;
+      let handle: string | null = null;
+      if (bee === null || typeof bee !== "object" || Array.isArray(bee)) fields.push(value === null ? "payload" : "bee");
+      else {
+        if ("id" in bee && typeof bee.id === "string" && bee.id.length > 0 && Buffer.byteLength(bee.id) <= MAX_BEE_ID_BYTES) id = bee.id;
+        else fields.push("bee.id");
+        if ("handle" in bee && bee.handle !== null) {
+          if (typeof bee.handle === "string" && HANDLE_RE.test(bee.handle)) handle = bee.handle;
+          else fields.push("bee.handle");
+        }
       }
-      const id = bee.id;
-      const handle = "handle" in bee ? bee.handle as string | null : null;
-      this.stmt("INSERT OR IGNORE INTO bee_reference_claims(bee_id, handle) VALUES(?, ?)").run(id, handle);
+      if (fields.length) this.stmt("INSERT OR IGNORE INTO meta(key, value) VALUES(?, ?)").run(`legacy_bee_reference_unknown:${row.seq}`, JSON.stringify({ state: "unknown", fields }));
+      if (id) this.stmt("INSERT OR IGNORE INTO bee_reference_claims(bee_id, handle) VALUES(?, ?)").run(id, handle);
       reserveAlias(handle);
-      if (HANDLE_RE.test(id)) reserveAlias(id);
+      if (id && HANDLE_RE.test(id)) reserveAlias(id);
     }
   }
 
