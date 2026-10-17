@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
 import signal
 import stat
 import subprocess
@@ -122,7 +123,8 @@ def seed_cache(source, expected, root, lane):
 
 def profile(root, home, lane):
     quote = lambda p: json.dumps(str(p))
-    return '(version 1)(allow default)(deny file-write*)(allow file-write* (subpath ' + quote(root) + '))(deny file-read* (subpath ' + quote(home) + '))(deny file-read* (subpath "/Library/Keychains") (subpath "/private/var/db/Keychains"))(deny process-exec (literal "/usr/bin/security"))(deny mach-lookup)(deny signal)(allow signal (target same-sandbox))(deny process-info*)(allow process-info* (target same-sandbox))(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))(allow network-outbound (remote unix-socket (subpath ' + quote(root) + '))))'
+    socket_paths = '#' + json.dumps('^' + re.escape(str(root)) + '(/|$)')
+    return '(version 1)(allow default)(deny file-write*)(allow file-write* (subpath ' + quote(root) + '))(deny file-read* (subpath ' + quote(home) + '))(deny file-read* (subpath "/Library/Keychains") (subpath "/private/var/db/Keychains"))(deny process-exec (literal "/usr/bin/security"))(deny mach-lookup)(deny signal)(allow signal (target same-sandbox))(deny process-info*)(allow process-info* (target same-sandbox))(deny network-outbound)(allow network-outbound (remote ip "localhost:*"))(allow network-outbound (remote unix-socket (path-regex ' + socket_paths + '))))'
 
 
 def source_copy(lane, source, root, env):

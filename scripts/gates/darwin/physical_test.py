@@ -28,6 +28,22 @@ def main():
     else:
         raise AssertionError('outside write unexpectedly succeeded')
     assert outside.exists() == before
+    with socket.socket(socket.AF_UNIX) as server, socket.socket(socket.AF_UNIX) as client:
+        path = str(root / 'self-test.sock')
+        server.bind(path)
+        server.listen(1)
+        client.connect(path)
+        accepted, _ = server.accept()
+        accepted.close()
+        rows.append({'row': 'run-root Unix socket', 'result': 'allowed'})
+    with socket.socket(socket.AF_UNIX) as client:
+        try:
+            client.connect(str(root.parent / (root.name + '.outside.sock')))
+        except OSError as error:
+            assert error.errno in (errno.EPERM, errno.EACCES), error
+            rows.append({'row': 'outside-root Unix socket', 'result': 'REFUSED', 'errno': error.errno})
+        else:
+            raise AssertionError('outside Unix socket unexpectedly allowed')
     for key in ('npm_config_cache', 'PNPM_STORE_DIR', 'NODE_COMPILE_CACHE'):
         path = Path(os.environ[key]) / 'per-run-probe'
         path.write_text('cache')
