@@ -115,7 +115,8 @@ try:
     receipt['filesystem'] = assert_filesystem(CACHE, 'mask.py')
     receipt['namespaces']={key:os.readlink('/proc/self/ns/'+key) for key in ('user','mnt','net','pid')}
     receipt['parentNamespaces']=parent_namespaces
-    repo_targets = sorted(target for target in targets if pathlib.Path(target).parent == H and not pathlib.Path(target).name.startswith('.'))
+    receipt['maskCoverage'] = dict(boundary='whole-HOME tmpfs overlay', targetList='explicit paths plus unnamed entries from the pre-overlay metadata snapshot', completeness='target list does not claim to enumerate every host entry; the whole-HOME overlay hides late-created and renamed entries')
+    repo_targets = sorted(targets)
     locked_probes = [('umount-home', str(H), 'umount'), ('umount-proc', '/proc', 'umount'), ('remount-hive-rw', str(H / '.hive'), 'mount')]
     locked_probes += [(operation + ':' + target, target, operation) for target in repo_targets for operation in ('umount', 'mount')]
     readfd,writefd=os.pipe()
