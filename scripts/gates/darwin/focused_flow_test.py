@@ -59,15 +59,28 @@ class FlowTests(unittest.TestCase):
     def test_tmux_diagnostics_are_bounded_and_grouped_by_exact_row(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'diagnostics'
-            path.write_text(json.dumps({'row': 'selected', 'kind': 'tmux-command', 'exit': 7, 'stderr': 'pty denied'}) + '\n')
+            path.write_text(json.dumps({'row': 'selected', 'kind': 'tmux-command', 'exit': 7, 'signal': None, 'error': None, 'operation': 'new-session', 'diagnosticFailure': None, 'stderr': {'byteCount': 0, 'sha256': '0' * 64, 'classes': ['empty']}}) + '\n')
             result = focused_flow.load_tmux_diagnostics(path, ['selected'])
-            self.assertEqual(result['rows']['selected'][0]['stderr'], 'pty denied')
+            self.assertEqual(result['rows']['selected'][0]['stderr']['classes'], ['empty'])
+            clean = json.loads(path.read_text())
+            for contaminated in (dict(clean, raw='SECRET_PAYLOAD'), dict(clean, stderr=dict(clean['stderr'], text='SECRET_PAYLOAD'))):
+                path.write_text(json.dumps(contaminated) + '\n')
+                with self.assertRaisesRegex(ValueError, 'outside selected'):
+                    focused_flow.load_tmux_diagnostics(path, ['selected'])
+            path.write_text(json.dumps(clean) + '\n')
             with self.assertRaisesRegex(ValueError, 'outside selected'):
                 focused_flow.load_tmux_diagnostics(path, ['other'])
             with path.open('wb') as stream:
                 stream.truncate(8388609)
             with self.assertRaisesRegex(ValueError, 'oversized'):
                 focused_flow.load_tmux_diagnostics(path, ['selected'])
+
+    def test_tmux_observer_faults_and_redaction(self):
+        node = os.environ.get('SCG_NODE_BIN')
+        if not node:
+            self.skipTest('pinned Node not configured')
+        result = subprocess.run([node, '--test', str(Path(__file__).parent.resolve() / 'focused-tmux-observer.test.mjs')], capture_output=True, text=True, timeout=15)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_tmux_preload_preserves_status_and_captures_before_teardown(self):
         node = os.environ.get('SCG_NODE_BIN')
@@ -86,8 +99,10 @@ class FlowTests(unittest.TestCase):
             result = subprocess.run([node, '--import', str(preloader), '--test', str(script)], env={'PATH': str(root) + ':/usr/bin:/bin', 'HOME': str(root), 'TMPDIR': str(root), 'SCG_TMUX_DIAGNOSTIC_FILE': str(evidence)}, capture_output=True, text=True, timeout=15)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             data = focused_flow.load_tmux_diagnostics(evidence, ['selected'])['rows']['selected']
-            self.assertTrue(any(row.get('exit') == 7 and row.get('stderr') == 'fixture-pty-denied\n' for row in data))
-            self.assertTrue(any(row.get('output') == 'fixture-terminal\n' for row in data))
+            self.assertTrue(any(row.get('exit') == 7 and row.get('stderr', {}).get('classes') == ['other_nonempty'] for row in data))
+            self.assertTrue(any(row.get('pane', {}).get('byteCount') == len('fixture-terminal\n') for row in data))
+            self.assertNotIn('fixture-terminal', evidence.read_text())
+            self.assertNotIn('fixture-pty-denied', evidence.read_text())
             self.assertLess(next(i for i, row in enumerate(data) if row['kind'] == 'terminal-capture'), next(i for i, row in enumerate(data) if row.get('operation') == 'kill-server'))
 
     def test_flow_requires_exactly_two_unique_native_edges(self):

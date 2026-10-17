@@ -442,6 +442,7 @@ def run(api, root, workspace, env, tools, real_home):
                 verdict['processReason'] = result['reason']
                 if tmux_diagnostics is not None:
                     verdict['tmuxDiagnostics'] = load_tmux_diagnostics(tmux_diagnostics, names)
+                    verdict['tmuxDiagnostics']['failureEnums'] = sorted(set(re.findall(r'^# SCG_TMUX_DIAGNOSTIC_FAILURE=(append_eacces|append_enospc|append_emfile|append_other|realpath_failed|capture_failed|emit_failed|metadata_failed|hook_failed|diagnostic_failed)$', log.read_text(), re.M)))
                 if result['reason']:
                     verdict['ok'] = False
                 matrix_rows = [row for row in verdict['expectedRows'] if row['fullName'].startswith('Darwin OS-level file read outside cwd: ')]
@@ -507,9 +508,34 @@ def load_tmux_diagnostics(path, names):
         if len(data) > 8388608:
             raise ValueError('tmux diagnostic evidence grew beyond bound')
         rows = [json.loads(line) for line in data.splitlines()]
-        if any(not isinstance(row, dict) or row.get('row') not in names or row.get('kind') not in ('tmux-command', 'pane-list', 'terminal-capture') for row in rows):
+        if any(not valid_tmux_row(row, names) for row in rows):
             raise ValueError('tmux diagnostic row outside selected manifest')
-        return {'path': str(path), 'rows': {name: [row for row in rows if row['row'] == name] for name in names}, 'serverStderrScope': 'stderr of observed tmux invocations; daemon-only stderr is not separately redirected', 'terminalCaptureBound': 'at most four panes, last 80 lines and 4096 characters each; at most 128 records per row'}
+        return {'path': str(path), 'rows': {name: [row for row in rows if row['row'] == name] for name in names}, 'serverStderrScope': 'fixed classifications, byte counts and hashes only; daemon-only stderr is not separately redirected', 'terminalCaptureBound': 'at most four panes, last 80 lines and 32768 captured bytes per command; counts, hashes and fixed fixture-marker booleans only; at most 128 records per row'}
     finally:
         if fd is not None:
             os.close(fd)
+
+
+def valid_tmux_row(row, names):
+    failures = {None, 'append_eacces', 'append_enospc', 'append_emfile', 'append_other', 'realpath_failed', 'capture_failed', 'emit_failed', 'metadata_failed', 'hook_failed', 'diagnostic_failed'}
+    errors = {None, 'ENOENT', 'EACCES', 'EPERM', 'ENOSPC', 'EMFILE', 'ENFILE', 'EINVAL', 'EIO', 'ENOMEM', 'ETIMEDOUT', 'ENOBUFS', 'EPIPE', 'OTHER'}
+    classes = {'forkpty_failed', 'posix_openpt_failed', 'operation_not_permitted', 'permission_denied', 'not_a_terminal', 'no_server_running', 'server_exited_unexpectedly', 'error_connecting', 'socket_path', 'create_window_failed', 'other_nonempty', 'empty'}
+    kinds = {'tmux-command': {'operation'}, 'pane-list': set(), 'terminal-capture': {'pane'}}
+    base = {'row', 'kind', 'exit', 'signal', 'error', 'stderr', 'diagnosticFailure'}
+    if not isinstance(row, dict) or not isinstance(row.get('kind'), str) or row['kind'] not in kinds or set(row) != base | kinds[row['kind']] or row.get('row') not in names:
+        return False
+    if any(value is not None and not isinstance(value, str) for value in (row['diagnosticFailure'], row['error'])):
+        return False
+    if row['diagnosticFailure'] not in failures or row['error'] not in errors or any(value is not None and type(value) is not int for value in (row['exit'], row['signal'])):
+        return False
+    def hashed(value, keys):
+        return isinstance(value, dict) and set(value) == keys and type(value['byteCount']) is int and value['byteCount'] >= 0 and isinstance(value['sha256'], str) and re.fullmatch(r'[0-9a-f]{64}', value['sha256']) is not None
+    if not hashed(row['stderr'], {'byteCount', 'sha256', 'classes'}) or not isinstance(row['stderr']['classes'], list) or not row['stderr']['classes'] or any(not isinstance(value, str) or value not in classes for value in row['stderr']['classes']):
+        return False
+    if row['kind'] == 'terminal-capture':
+        pane = row['pane']
+        if not hashed(pane, {'byteCount', 'sha256', 'lineCount', 'markers'}) or type(pane['lineCount']) is not int or pane['lineCount'] < 0 or not isinstance(pane['markers'], dict) or set(pane['markers']) != {'phoneTerminalReady', 'received', 'pointer'} or any(type(value) is not bool for value in pane['markers'].values()):
+            return False
+    if row['kind'] == 'tmux-command' and (not isinstance(row['operation'], str) or row['operation'] not in {'new-session', 'new-window', 'kill-server', 'kill-session', 'kill-pane', 'list-panes', 'list-sessions', 'capture-pane', 'display-message', 'show-options', 'set-option', 'set-options', 'send-keys', 'load-buffer', 'paste-buffer', 'delete-buffer', 'resize-pane', 'select-pane', 'has-session', 'other'}):
+        return False
+    return True

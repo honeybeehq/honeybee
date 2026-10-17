@@ -237,13 +237,16 @@ in the candidate before a run.
 
 Only the outer multiline tmux file imports the gate-owned tmux diagnostic observer.
 It keeps the ordinary test isolation and existing Seatbelt profile. The observer
-records each tmux invocation's exit, signal, error code and bounded stderr without
-recording its environment or command payload. Before kill-server and after each row,
+records each tmux invocation's numeric exit/signal and fixed error-code enum.
+Stderr is reduced to fixed classifications, byte count and SHA256; no raw stderr,
+environment or command payload is retained. Before kill-server and after each row,
 it attempts bounded pane listing and capture inside the same sandbox. These extra
 read-only tmux commands can fail under that profile; their failures remain evidence,
 not permissions. The phase receipt groups records by exact test row; the raw file is
-logs/focused-tmux-diagnostics.jsonl. Each row has at most 128 records; stderr and pane
-text have at most 4096 characters, with at most four panes and 80 captured lines.
+logs/focused-tmux-diagnostics.jsonl. Each row has at most 128 records, with at most
+four panes and 80 captured lines (32768 acquisition bytes per diagnostic command).
+Pane text is never retained: only line/byte counts, SHA256 and three fixed fixture
+marker booleans are stored. Controller reads remain capped at 8 MiB.
 This captures tmux invocation and startup stderr, not separately redirected stderr
 from an already detached server. It does not change daemonization or add -D/-vv.
 The existing write denial outside the run root also covers PTY device writes; no
@@ -254,3 +257,27 @@ Queen 17 Oct 21:33Z LOW follow-up: COMPLETE now requires two adjacent end respon
 The root dev/ino inventory is sorted once after reading it; region and main-image checks use exact unsigned binary lookup. Duplicates remain harmless membership matches. Linux tests cover unsorted input, duplicate keys, distinct devices with the same inode, unsigned extremes, empty inventory, and first/middle/last/missing keys in a million-entry inventory with a bounded comparison count. This removes the inventory-times-regions linear lookup; it is not a measured busy-Mac runtime claim, and slow kernel calls or a large inventory may still hit the fail-safe two-second helper deadline.
 
 Operator note: avoid opening sandboxed applications during a gate run. If a newly started same-uid app denies fd inspection, it cannot satisfy the exception's pre-controller/non-gate birth condition (d), so the gate intentionally refuses even when that app is unrelated to the candidate. Preserve the root and receipt and coordinate any retry through the run's authorization path; do not weaken the condition or kill the unrelated app as part of gate cleanup. This follow-up is separate from #52's focused-run authorization.
+
+
+Checker B1/B2 follow-up: the fixture-marker table is fixed to phoneTerminalReady
+("phone terminal ready", v2/driver-tmux/test-agent/phone-terminal.mjs:6), received
+("received", that fixture:23), and pointer ("full text: ", #52's
+v2/daemon/tests/multiline-fallback-tmux.test.ts:58). No marker value is taken from
+pane data. The fixed stderr class set is forkpty_failed, posix_openpt_failed,
+operation_not_permitted, permission_denied, not_a_terminal, no_server_running,
+server_exited_unexpectedly, error_connecting, socket_path, create_window_failed,
+other_nonempty and empty. No error message is stored. If spawnSync returned bytes,
+hashes/counts use those bytes; if the caller requested text, hashes/counts use the
+UTF-8 encoding of the returned text, without changing the original invocation's
+encoding or return value. Capture commands request bytes.
+
+Every diagnostic append, realpath, capture and emit is isolated. A failure records
+one fixed diagnosticFailure enum per row; if append itself fails, the observer
+writes only a fixed SCG_TMUX_DIAGNOSTIC_FAILURE enum to the already-open stderr
+pipe. The controller extracts only the fixed enum set into the receipt. If that
+fallback also fails, no diagnostic evidence can be guaranteed, but the original
+command and teardown still run. The original spawnSync call is always invoked
+once and its original result is returned; original exceptions retain their normal
+behavior. Diagnostic failures never introduce an exception into the test, and
+capture can never prevent kill-server. Strict controller schemas reject raw or
+unknown fields before retaining diagnostic JSON.
