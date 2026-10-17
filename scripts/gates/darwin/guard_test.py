@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import patch
 import node_bootstrap
 
-from guard import DIRS, PROTECTED, Refusal, compiler_profile, compiler_tools, environment, launchagents, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
+from guard import DIRS, PROTECTED, Refusal, absolute_compiler_jobs, compiler_profile, compiler_tools, environment, launchagents, profile, receipt_hashes, run, seed_cache, select_node, validate, write_json
 
 
 class GuardTests(unittest.TestCase):
@@ -115,6 +115,12 @@ class GuardTests(unittest.TestCase):
         self.assertIsNone(receipt['selected'])
         self.assertEqual(len(receipt['candidates']), 6)
         self.assertTrue(all(row['exit'] == 1 for row in receipt['candidates']))
+
+    def test_compiler_dry_run_requires_absolute_jobs_and_resources(self):
+        valid = 'InstalledDir: /tools/bin\n "/tools/bin/clang" "-cc1" "-resource-dir" "/tools/lib/clang/21"\n "/tools/bin/ld" "-lto_library" "/tools/lib/libLTO.dylib"\n'
+        self.assertTrue(absolute_compiler_jobs(valid))
+        for bad in (valid.replace('InstalledDir: /tools/bin', 'InstalledDir: '), valid.replace('"/tools/bin/clang"', '""'), valid.replace('"/tools/lib/clang/21"', '"lib/clang/21"'), valid.replace('"/tools/lib/libLTO.dylib"', '"lib/libLTO.dylib"')):
+            self.assertFalse(absolute_compiler_jobs(bad))
 
     def test_compiler_has_exact_exec_and_read_scope(self):
         tools = {'clang': '/Applications/Xcode.app/toolchain/bin/clang', 'ld': '/Applications/Xcode.app/toolchain/bin/ld', 'toolchain': '/Applications/Xcode.app/toolchain', 'sdk': '/Applications/Xcode.app/SDK'}

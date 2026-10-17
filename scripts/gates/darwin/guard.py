@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import pwd
+import re
+import shlex
 import signal
 import stat
 import subprocess
@@ -239,6 +241,30 @@ def compiler_profile(base, tools):
     return base + '(deny process-exec)(allow process-exec (literal ' + q(tools['clang']) + ') (literal ' + q(tools['ld']) + '))(deny file-read* (subpath "/Applications") (subpath "/Library/Developer"))(allow file-read* (subpath ' + q(tools['toolchain']) + ') (subpath ' + q(tools['sdk']) + '))'
 
 
+def absolute_compiler_jobs(text):
+    installed = [line.split(':', 1)[1].strip() for line in text.splitlines() if line.startswith('InstalledDir:')]
+    jobs = []
+    for line in text.splitlines():
+        if '"-cc1"' in line or '"-lto_library"' in line:
+            try:
+                jobs.append(shlex.split(line))
+            except ValueError:
+                return False
+    if len(installed) != 1 or not Path(installed[0]).is_absolute():
+        return False
+    if not any('-cc1' in job for job in jobs):
+        return False
+    for job in jobs:
+        if not job or not Path(job[0]).is_absolute():
+            return False
+        for flag in ('-resource-dir', '-lto_library'):
+            if flag in job:
+                index = job.index(flag) + 1
+                if index >= len(job) or not Path(job[index]).is_absolute():
+                    return False
+    return True
+
+
 def scope_call(helper, command, *args):
     argv = [str(helper), command, *map(str, args)]
     value = subprocess.run(argv, capture_output=True, text=True)
@@ -304,12 +330,23 @@ def run(args):
     tools = compiler_tools(root, env)
     build_policy = compiler_profile(policy, tools)
     (root / 'compiler.sb').write_text(build_policy)
-    compile_command = ['/usr/bin/sandbox-exec', '-f', str(root / 'compiler.sb'), tools['clang'], '-isysroot', tools['sdk'], '--ld-path=' + tools['ld'], '-fmodules-cache-path=' + env['CLANG_MODULE_CACHE_PATH'], str(workspace / 'scripts/gates/darwin/scope.c'), '-o', str(identity)]
+    version_command = ['/usr/bin/sandbox-exec', '-f', str(root / 'compiler.sb'), tools['clang'], '--version']
+    version = subprocess.run(version_command, cwd=workspace, env=env, capture_output=True)
+    (root / 'compiler-version.log').write_bytes(version.stdout + version.stderr)
+    major = re.search(rb'clang version ([0-9]+)\.', version.stdout + version.stderr)
+    if version.returncode or major is None:
+        raise Refusal('compiler version unavailable; receipts retained at ' + str(root))
+    resource = str(Path(tools['toolchain']) / 'usr/lib/clang' / major.group(1).decode('ascii'))
+    compile_command = ['/usr/bin/sandbox-exec', '-f', str(root / 'compiler.sb'), tools['clang'], '-ccc-install-dir', str(Path(tools['clang']).parent), '-resource-dir', resource, '-isysroot', tools['sdk'], '--ld-path=' + tools['ld'], '-fmodules-cache-path=' + env['CLANG_MODULE_CACHE_PATH'], str(workspace / 'scripts/gates/darwin/scope.c'), '-o', str(identity)]
     dry_command = compile_command + ['-###']
     write_json(root / 'compiler-command.json', {'argv': compile_command, 'dryRunArgv': dry_command, 'noLauncher': True}, root)
     dry_run = subprocess.run(dry_command, cwd=workspace, env=env, capture_output=True)
     dry_log = b'CLANG_DRY_RUN\n' + dry_run.stdout + dry_run.stderr
     (root / 'compiler-dry-run.log').write_bytes(dry_log)
+    if dry_run.returncode or not absolute_compiler_jobs((dry_run.stdout + dry_run.stderr).decode('utf-8', errors='replace')):
+        print('COMPILER_DRY_RUN_REFUSED', flush=True)
+        print('\n'.join(dry_log[-16384:].decode('utf-8', errors='replace').splitlines()[-60:]), flush=True)
+        raise Refusal('compiler dry run lacks absolute jobs/resources; no build executed; receipts retained at ' + str(root))
     compile_result = subprocess.run(compile_command, cwd=workspace, env=env, capture_output=True)
     build_log = dry_log + b'CLANG_BUILD\n' + compile_result.stdout + compile_result.stderr
     (root / 'scope-build.log').write_bytes(build_log)
