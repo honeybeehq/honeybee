@@ -1,3 +1,4 @@
+#define __STDC_WANT_LIB_EXT1__ 1
 #ifdef __APPLE__
 #include <libproc.h>
 #include <sys/proc_info.h>
@@ -12,6 +13,17 @@
 #include <dlfcn.h>
 #include <limits.h>
 #include "argv_observation.h"
+
+static void secure_zero(void *pointer, size_t size) {
+#ifdef __APPLE__
+  if (memset_s(pointer, size, 0, size) != 0) {
+    fputs("secure zero failed\n", stderr);
+    exit(4);
+  }
+#else
+  explicit_bzero(pointer, size);
+#endif
+}
 
 static int identity(int pid, struct proc_bsdinfo *b) {
   errno = 0;
@@ -127,21 +139,21 @@ static int node_observation(int pid, unsigned long long sec, unsigned long long 
   errno = 0;
   int got = sysctl(mib, 3, buffer, &size, NULL, 0);
   rc = same_birth(pid, sec, usec);
-  if (got || rc || size >= capacity || !parse_argv_only(buffer, size, args, 1024, &count)) { explicit_bzero(buffer, capacity); free(buffer); return rc ? rc : 4; }
+  if (got || rc || size >= capacity || !parse_argv_only(buffer, size, args, 1024, &count)) { secure_zero(buffer, capacity); free(buffer); return rc ? rc : 4; }
   size_t entry = 1;
   while (entry < count && buffer[args[entry].start] == '-') {
     const char *flag = (char *)buffer + args[entry].start;
     if (!strcmp(flag, "--import")) { entry += 2; continue; }
     if (!strcmp(flag, "--experimental-strip-types") || !strcmp(flag, "--no-warnings") || !strcmp(flag, "--test") || !strncmp(flag, "--test-", 7)) { entry++; continue; }
-    explicit_bzero(buffer, capacity); free(buffer); return 4;
+    secure_zero(buffer, capacity); free(buffer); return 4;
   }
   struct proc_vnodepathinfo paths;
   char cwd[PATH_MAX], resolved_entry[PATH_MAX], candidate[PATH_MAX];
-  if (entry >= count || proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &paths, sizeof(paths)) != sizeof(paths) || !realpath(paths.pvi_cdir.vip_path, cwd)) { explicit_bzero(buffer, capacity); free(buffer); return 4; }
+  if (entry >= count || proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &paths, sizeof(paths)) != sizeof(paths) || !realpath(paths.pvi_cdir.vip_path, cwd)) { secure_zero(buffer, capacity); free(buffer); return 4; }
   int printed = snprintf(candidate, sizeof(candidate), "%s%s%s", buffer[args[entry].start] == '/' ? "" : cwd, buffer[args[entry].start] == '/' ? "" : "/", buffer + args[entry].start);
   int valid = printed > 0 && printed < sizeof(candidate) && realpath(candidate, resolved_entry) != NULL;
   if (valid && !strcmp(resolved_entry, reader) && !reader_argv_exact(buffer, args, count, expected_node, reader, preloader)) valid = 0;
-  explicit_bzero(buffer, capacity);
+  secure_zero(buffer, capacity);
   free(buffer);
   if (!valid) return 4;
   sandbox_check_function check = sandbox_checker();

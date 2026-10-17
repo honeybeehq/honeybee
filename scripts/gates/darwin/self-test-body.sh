@@ -16,6 +16,7 @@
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_seed_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_revision_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_roles_test.py || exit $?
+"$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_controls_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/focused_scope_test.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/git_boundary.py || exit $?
 "$SCG_PYTHON_BIN" -B scripts/gates/darwin/physical_test.py || exit $?

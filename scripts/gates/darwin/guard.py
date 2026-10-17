@@ -19,6 +19,7 @@ import node_bootstrap
 import listener_static
 import git_boundary
 import focused_flow
+import scope_controls
 
 LISTENER_LIMIT = 'Seatbelt does not mediate IP bind/inbound on macOS 26 (probe 52e76fd3: remote tailnet connect accepted); mitigated by own-pid listener sampling (FAIL + fenced kill); exposure window up to one sample interval.'
 STATIC_BIND_LIMIT = 'static bind scan covers modules importing dgram/socket; a socket passed across modules is covered only by the runtime own-pid sampler'
@@ -750,6 +751,11 @@ def run(args):
         print('\n'.join(diagnostic.splitlines()[-60:]), flush=True)
         raise Refusal('scope helper build failed; receipts retained at ' + str(root))
     tree_scan_self_test(root, workspace, prefix, identity, env)
+    if args.self_test:
+        try:
+            scope_controls.run(sys.modules[__name__], root, workspace, identity, node, env)
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            raise Refusal('real scope control failed: ' + str(error)) from error
     static_rows = listener_static.scan(workspace)
     write_json(root / 'listener-static.json', {'violations': static_rows, 'scope': 'v2/** and tests/**'}, root)
     if static_rows and not args.self_test:
