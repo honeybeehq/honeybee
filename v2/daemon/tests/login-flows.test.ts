@@ -1331,7 +1331,8 @@ test("redaction: thrown input and encoded variants never reach flow, audit, mirr
       const once = encodeURIComponent(value);
       const twice = encodeURIComponent(once);
       const thrice = encodeURIComponent(twice);
-      return [value, once, twice, thrice, twice.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase()), JSON.stringify(value).slice(1, -1), Buffer.from(value).toString("base64")];
+      const lowerFirst = once.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase());
+      return [value, once, twice, thrice, encodeURIComponent(lowerFirst), encodeURIComponent(encodeURIComponent(lowerFirst)), twice.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase()), JSON.stringify(value).slice(1, -1), Buffer.from(value).toString("base64")];
     });
     const explode = async (): Promise<never> => { throw new Error(`provider failed ${variants.join(" ")} https://proxy.example/short/models`); };
     const { flows } = services(r, { transports: { openaiKeyCheck: explode, claudeTokenExchange: explode } });
@@ -1426,7 +1427,7 @@ test("redaction: CLI-echoed callback URLs never project codes, tokens or fragmen
 test("redaction: encoded submitted values in CLI state or userCode are held before projection", async () => {
   for (const [harness, homeEnv, file] of [["grok", "GROK_HOME", "auth.json"], ["kimi", "KIMI_CODE_HOME", "credentials/kimi-code.json"], ["agy", "HOME", ".gemini/antigravity-cli/antigravity-oauth-token"]]) {
     for (const channel of harness === "agy" ? ["url"] : ["url", "userCode"]) {
-      const input = channel === "url" ? "short&planted" : "ABC";
+      const input = channel === "url" ? "short/planted" : "ABC";
       const encoded = channel === "url" ? encodeURIComponent(input) : Buffer.from(input).toString("base64");
       const r = rig({ agents: fakeCliAgent(harness!, homeEnv!, file!, { FAKE_CLI_URL: "https://auth.example/authorize?state=public", FAKE_CLI_PROMPT: harness === "agy" ? "agy" : "code", FAKE_CLI_EXPECT: input, ...(channel === "url" ? { FAKE_CLI_AFTER_INPUT_URL: `https://auth.example/authorize?state=${encoded}` } : { FAKE_CLI_AFTER_INPUT_CODE: `${encoded}-AAAA` }) }) });
       const { flows } = services(r);

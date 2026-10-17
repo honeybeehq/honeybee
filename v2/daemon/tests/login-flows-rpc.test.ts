@@ -361,12 +361,13 @@ test("rpc.redaction: repeated encoded provider errors are absent from real snaps
     watch.onEvent = (frame: WatchFrame) => frames.push(frame);
     await watch.request("watch");
     for (const harness of ["claude", "codex", "opencode"]) {
-      const values: Record<string, string> = harness === "claude" ? { code: "short&planted" } : { apiKey: "sk-short&planted", ...(harness === "opencode" ? { provider: "openai", baseUrl: "https://proxy.example/short", organization: "org&planted", project: "project&planted" } : {}) };
+      const values: Record<string, string> = harness === "claude" ? { code: "short/planted" } : { apiKey: "sk-short/planted", ...(harness === "opencode" ? { provider: "openai", baseUrl: "https://proxy.example/short", organization: "org/planted", project: "project/planted" } : {}) };
       variants = Object.values(values).filter((value) => value !== "openai").flatMap((value) => {
         const one = encodeURIComponent(value);
         const two = encodeURIComponent(one);
         const three = encodeURIComponent(two);
-        return [value, one, two, three, two.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase())];
+        const lowerFirst = one.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase());
+        return [value, one, two, three, encodeURIComponent(lowerFirst), encodeURIComponent(encodeURIComponent(lowerFirst)), two.replace(/%[0-9a-f]{2}/gi, (part) => part.toLowerCase())];
       });
       const added = await client.request<AccountAddResult>("account.add", { harness, label: "encoded" });
       const started = await client.request<AccountLoginStartResult>("account.login.start", { id: added.account.id, methodId: harness === "claude" ? "claude-oauth" : harness === "codex" ? "codex-api-key" : "opencode-api-key" });
