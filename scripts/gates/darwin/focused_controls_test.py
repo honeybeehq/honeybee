@@ -31,6 +31,9 @@ class ScopeControlTests(unittest.TestCase):
         partial = dict(reason, regionPartialDetail={'errno':'EPERM','regionsRead':199,'mainImageSeen':0,'termination':'read-error','regionKind':'unobserved','lastBeforeEINVAL':'unknown'}, platformFailures=dict(reason['platformFailures'], regionPartial=1))
         result.stderr = json.dumps(partial)
         self.assertEqual(focused_seal.quiescence_evidence(result)['reason'], partial)
+        confirmed = dict(partial, regionPartialDetail=dict(partial['regionPartialDetail'], termination='end-confirmation'))
+        result.stderr = json.dumps(confirmed)
+        self.assertEqual(focused_seal.quiescence_evidence(result)['reason'], confirmed)
         for bad in (dict(partial, regionPartialDetail=dict(partial['regionPartialDetail'], pid=123)), dict(partial, regionPartialDetail=dict(partial['regionPartialDetail'], errno='secret')), dict(partial, platformFailures=dict(partial['platformFailures'], executable=1))):
             result.stderr=json.dumps(bad)
             self.assertEqual(focused_seal.quiescence_evidence(result)['reason'], {'type':'UnobservedQuiescenceFailure'})
