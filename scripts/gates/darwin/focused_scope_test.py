@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import subprocess
 import sys
@@ -53,7 +54,7 @@ int main(void) {
 
 
     def test_same_uid_quiescence_census_count_and_fd_paths(self):
-        function = Path(__file__).with_name('quiescence.h').read_text()
+        function = Path(__file__).with_name('quiescence.h').read_text().replace('counts.skipped_uid_changed++;', 'counts.skipped_uid_changed++; observed_uid_skip++;')
         stub = r'''#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -61,6 +62,7 @@ int main(void) {
 #include <sys/types.h>
 #define PATH_MAX 4096
 #define PROC_PIDPATHINFO_MAXSIZE 4096
+#define PROC_UID_ONLY 4
 #define PROC_PIDVNODEPATHINFO 1
 #define PROC_PIDLISTFDS 2
 #define PROC_PIDFDVNODEPATHINFO 3
@@ -70,13 +72,13 @@ struct vnode_path { char vip_path[4096]; };
 struct proc_vnodepathinfo { struct vnode_path pvi_cdir; };
 struct proc_fdinfo { unsigned int proc_fdtype; int proc_fd; };
 struct vnode_fdinfowithpath { struct vnode_path pvip; };
-static int mode=0,foreign_read=0,stage=0,checks=0;
+static int mode=0,foreign_read=0,stage=0,checks=0,observed_uid_skip=0;
 static unsigned int getuid(void) { return 501; }
 static int getpid(void) { return 99; }
 static char *realpath(const char *input,char *out) { strcpy(out,input);return out; }
-static int identity(int pid,struct proc_bsdinfo *b) { b->pbi_uid=pid==12?999:501;b->pbi_status=1;b->pbi_start_tvsec=100;b->pbi_start_tvusec=1;return 1; }
+static int identity(int pid,struct proc_bsdinfo *b) { if(pid==12)foreign_read=1;if(mode==17){errno=EPERM;return 0;}b->pbi_uid=pid==12||mode==16?999:501;b->pbi_status=1;b->pbi_start_tvsec=100;b->pbi_start_tvusec=1;return 1; }
 static int same_birth(int pid,unsigned long long sec,unsigned long long usec) { (void)pid;(void)sec;(void)usec;checks++;errno=0;if((mode==3&&stage==1)||(mode==4&&stage==2)||(mode==5&&stage==3)||(mode==6&&stage==4)||(mode==7&&stage==1)||(mode==8&&stage==4)||(mode==13&&checks>=3))return 3;if(mode==11&&stage==1)return 4;return 0; }
-static int proc_listallpids(void *out,int bytes) { if(mode==1){errno=EPERM;return 0;}if(out){int p[]={10,11,12,99};if(bytes<16)return -1;memcpy(out,p,sizeof(p));}return 4; }
+static int proc_listpids(unsigned int type,unsigned int uid,void *out,int bytes) { if(type!=PROC_UID_ONLY||uid!=501){foreign_read=1;return 0;}if(mode==1){errno=EPERM;return 0;}if(out){int p[]={10,11,99};if(bytes<12)return -1;memcpy(out,p,sizeof(p));}return 12; }
 static int proc_pidpath(int pid,void *out,unsigned int size) { (void)size;if(pid==12)foreign_read=1;strcpy(out,"/fixture/node");return 14; }
 static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int size) {
  (void)arg;(void)size;if(pid==12)foreign_read=1;
@@ -89,7 +91,7 @@ static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int 
 static int proc_pidfdinfo(int pid,int fd,int flavor,void *out,int size) { (void)pid;(void)fd;(void)flavor;(void)size;stage=4;if(mode==6||(fd==3&&(mode==12||mode==14||mode==15))){errno=mode==6?ESRCH:mode==12?EBADF:mode==14?ENOENT:EPERM;return -1;}strcpy(((struct vnode_fdinfowithpath*)out)->pvip.vip_path,"/fixture/open");return sizeof(struct vnode_fdinfowithpath); }
 '''
         main = r'''
-int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(10,"/fixture");if(foreign_read)return 9;return rc; }
+int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(10,"/fixture");if(foreign_read)return 9;if(mode==16&&observed_uid_skip!=1)return 10;return rc; }
 '''
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -110,7 +112,7 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                 9: ('live vnode read error', 4), 10: ('live fd-list error', 4),
                 11: ('birth mismatch', 4), 12: ('live EBADF skips fd and continues', 0),
                 13: ('exit after matched paths before final fence', 0),
-                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4)}
+                14: ('live ENOENT skips fd and continues', 0), 15: ('live EPERM fails', 4), 16: ('uid changed after enumeration skips', 0), 17: ('same uid identity EPERM fails', 4)}
             for mode, (name, expected) in cases.items():
                 with self.subTest(case=name):
                     result = subprocess.run([str(binary), str(mode)], capture_output=True, text=True, timeout=2)
@@ -121,6 +123,17 @@ int main(int argc,char **argv) { mode=argc>1?atoi(argv[1]):0;int rc=quiescence(1
                         self.assertEqual(result.stdout, 'COMPLETE\n')
                     else:
                         self.assertNotIn('COMPLETE', result.stdout)
+                        reason = json.loads(result.stderr)
+                        self.assertEqual(reason['type'], 'QuiescenceFailure')
+                        self.assertEqual(reason['counts']['failed'], 1)
+                        self.assertNotIn('/fixture', result.stderr)
+                        self.assertNotIn('pid', reason)
+                        if mode == 17:
+                            self.assertEqual((reason['call'], reason['errno']), ('birth', 'EPERM'))
+                        if mode == 15:
+                            self.assertEqual((reason['call'], reason['errno'], reason['sameBirth']), ('fdinfo', 'EPERM', 0))
+                        if mode == 11:
+                            self.assertEqual((reason['call'], reason['sameBirth']), ('birth', 4))
 
 
 if __name__ == '__main__':

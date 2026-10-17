@@ -184,9 +184,36 @@ class BusyRoot(ValueError):
 
 def require_quiescent(root, helper):
     observed = subprocess.run([str(helper), 'quiescence', str(os.getpid()), str(root)], cwd='/', env={'PATH': '/usr/bin:/bin', 'LANG': 'C'}, capture_output=True, text=True, timeout=2)
+    quiescence_evidence(observed)
     if observed.returncode != 0:
         raise ValueError('same-uid root-use observation unresolved')
     rows = root_users(root, observed.stdout, os.getpid())
     if rows:
         raise BusyRoot(rows)
     return rows
+
+
+QUIESCENCE_OBSERVATIONS = []
+
+
+def quiescence_evidence(result):
+    import json
+    evidence = {'exit': result.returncode, 'reason': None}
+    if result.returncode:
+        try:
+            if len(result.stderr) > 4096:
+                raise ValueError('oversized quiescence diagnostic')
+            reason = json.loads(result.stderr)
+            if set(reason) != {'type', 'call', 'errno', 'errnoNumber', 'sameBirth', 'counts'} or reason['type'] != 'QuiescenceFailure':
+                raise ValueError('unexpected quiescence diagnostic schema')
+            if reason['call'] not in ('root', 'allocation', 'proc_listpids', 'pidinfo vnode', 'pidpath', 'listfds', 'fdinfo', 'birth') or reason['errno'] not in ('NONE', 'EPERM', 'EACCES', 'ESRCH', 'EBADF', 'ENOENT', 'EINVAL', 'ENOMEM', 'EINTR', 'OTHER'):
+                raise ValueError('unexpected quiescence diagnostic value')
+            if type(reason['errnoNumber']) is not int or type(reason['sameBirth']) is not int or reason['sameBirth'] not in (-1, 0, 3, 4):
+                raise ValueError('unexpected quiescence numeric value')
+            if set(reason['counts']) != {'scanned', 'skippedGone', 'skippedUidChanged', 'skippedFdClosed', 'matched', 'failed'} or any(type(value) is not int or value < 0 for value in reason['counts'].values()):
+                raise ValueError('unexpected quiescence counts')
+            evidence['reason'] = reason
+        except (ValueError, TypeError, KeyError):
+            evidence['reason'] = {'type': 'UnobservedQuiescenceFailure'}
+    QUIESCENCE_OBSERVATIONS.append(evidence)
+    return evidence

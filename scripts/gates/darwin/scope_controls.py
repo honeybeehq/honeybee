@@ -73,6 +73,7 @@ def child(api, root, helper, node, reader, cwd, env, sandboxed, profile, content
         row.update(observation(actual, node, reader, cwd, sandboxed, policy))
         if not sandboxed:
             result = subprocess.run([str(helper), 'quiescence', str(os.getpid()), str(root)], capture_output=True, text=True, timeout=2)
+            row['quiescence'] = focused_seal.quiescence_evidence(result)
             if result.returncode:
                 raise ValueError('real quiescence control unresolved')
             uses = focused_seal.root_users(root, result.stdout, os.getpid())
@@ -163,6 +164,7 @@ def run(api, root, workspace, helper, node, env):
         report['error'] = str(error)
         raise
     finally:
+        report['quiescenceObservations'] = list(focused_seal.QUIESCENCE_OBSERVATIONS)
         api.write_json(root / 'scope-control-self-tests.json', report, root)
     return report
 

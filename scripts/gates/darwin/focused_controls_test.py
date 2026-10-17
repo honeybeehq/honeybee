@@ -5,8 +5,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import scope_controls
+import focused_seal
 
 
 class ScopeControlTests(unittest.TestCase):
@@ -19,6 +21,28 @@ class ScopeControlTests(unittest.TestCase):
             for bad_output, bad_policy in ((output.replace('CWD /work', 'CWD /wrong'), policy), (output.replace('ENTRY /reader', 'ENTRY /wrong'), policy), (output.replace('SANDBOX ' + str(int(sandboxed)), 'SANDBOX ' + str(int(not sandboxed))), policy), (output, 'CELL 1\nCONTENT 0\nSEALED 0\n'), ('', policy), (output + scope_controls.ENV_CANARY, policy)):
                 with self.subTest(sandboxed=sandboxed), self.assertRaises(ValueError):
                     scope_controls.observation(bad_output, '/node', '/reader', '/work', sandboxed, bad_policy)
+
+    def test_quiescence_reason_is_bounded_and_has_no_foreign_fields(self):
+        reason = {'type': 'QuiescenceFailure', 'call': 'pidinfo vnode', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 2, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1}}
+        result = subprocess.CompletedProcess([], 4, '', json.dumps(reason))
+        evidence = focused_seal.quiescence_evidence(result)
+        self.assertEqual(evidence, {'exit': 4, 'reason': reason})
+        result.stderr = json.dumps(dict(reason, path='/foreign/private'))
+        self.assertEqual(focused_seal.quiescence_evidence(result)['reason'], {'type': 'UnobservedQuiescenceFailure'})
+        result.stderr = 'x' * 4097
+        self.assertEqual(focused_seal.quiescence_evidence(result)['reason'], {'type': 'UnobservedQuiescenceFailure'})
+
+    def test_prelaunch_failure_and_receipt_retain_reason_and_exit(self):
+        import guard
+        reason = {'type': 'QuiescenceFailure', 'call': 'fdinfo', 'errno': 'EPERM', 'errnoNumber': 1, 'sameBirth': 0, 'counts': {'scanned': 1, 'skippedGone': 0, 'skippedUidChanged': 0, 'skippedFdClosed': 0, 'matched': 0, 'failed': 1}}
+        result = subprocess.CompletedProcess([], 4, '', json.dumps(reason))
+        with tempfile.TemporaryDirectory() as temporary, patch.object(focused_seal, 'QUIESCENCE_OBSERVATIONS', []), patch.object(focused_seal.subprocess, 'run', return_value=result):
+            root = Path(temporary).resolve()
+            with self.assertRaisesRegex(ValueError, 'unresolved'):
+                focused_seal.require_quiescent(root, root / 'scope')
+            guard.write_json(root / 'receipt.json', {'exit': 90}, root)
+            receipt = json.loads((root / 'receipt.json').read_text())
+            self.assertEqual(receipt['quiescenceObservations'], [{'exit': 4, 'reason': reason}])
 
     @unittest.skipUnless(sys.platform == 'darwin', 'real controller scope controls run only on Darwin')
     def test_real_controller_controls_preceded_self_test_body(self):
