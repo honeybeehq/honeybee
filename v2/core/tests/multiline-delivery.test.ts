@@ -116,7 +116,7 @@ test("reorder notice requires an actual later delivery and a still-undelivered o
     const later = store.send(bee.id, "later").message;
     for (let index = 0; index < 3; index++) store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode");
     assert.equal(store.multilineDelivery(first.id)?.notice, null);
-    store.markDelivered(later.id, 1);
+    store.markDelivered(later.id, 1, undefined, store.multilineReorderNotice(bee.id, later.id).messageIds);
     assert.equal(store.multilineDelivery(first.id)?.notice, "delivered later messages; this one is held");
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   } finally { store.close(); h.cleanup(); }
@@ -193,7 +193,7 @@ for (const malformed of ["not-json", "{}", '{"stage":"waiting","attempts":"bad"}
     for (let index = 0; index < 3; index++) assert.deepEqual(store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode"), held);
     assert.equal(store.listMessages(sender.id).length, 0);
     assert.equal(store.auditRows().filter(row => row.kind === "mail.delivery_fallback_unknown").length, 1);
-    store.markDelivered(later.id, 1);
+    store.markDelivered(later.id, 1, undefined, store.multilineReorderNotice(bee.id, later.id).messageIds);
     assert.equal(store.getMessage(first.id)?.deliveredAt, null);
     assert.equal(store.multilineDelivery(first.id)?.notice, "state unknown, not delivered");
   } finally { store.close(); h.cleanup(); }

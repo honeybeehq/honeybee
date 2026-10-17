@@ -45,11 +45,12 @@ function rig(missingHelper = false, runtimeRoot = false) {
   const bee = store.createBee({name: "recipient", agent: "stub", substrate: "hsr", cwd}).bee;
   store.enqueueCommand("spawn", bee.id); for (let i = 0; i < 4; i++) core.step();
   const hold = (id: number) => {for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(id, 1, "multiline_type_mode");};
-  return {root, data, files: options.multilineFallback.files, get store() {return store;}, driver, bee, hold, step: () => core.step(), restart: (reopen = false, corrupt?: string, fence?: "missing" | "malformed") => {
+  return {root, data, files: options.multilineFallback.files, get store() {return store;}, driver, bee, hold, step: () => core.step(), restart: (reopen = false, corrupt?: string, fence?: "missing" | "malformed" | "malformed-flag") => {
     if (reopen) {store.close();
       if (corrupt !== undefined) {const db = new DatabaseSync(join(data, "core.sqlite3")); db.prepare("UPDATE multiline_delivery SET row_json = ?").run(corrupt);
         if (fence === "missing") db.exec("DELETE FROM multiline_fallback_fence");
         if (fence === "malformed") {db.exec("PRAGMA ignore_check_constraints = ON"); db.exec("UPDATE multiline_fallback_fence SET state = 'malformed'");}
+        if (fence === "malformed-flag") {db.exec("PRAGMA ignore_check_constraints = ON"); db.exec("UPDATE multiline_fallback_fence SET attempted = 2");}
         db.close();}
       store = openCoreStore(join(data, "core.sqlite3"), {now: () => 1000, ephemeral: true}); options.store = store;}
     core = new DaemonCore(options); core.boot();
@@ -254,11 +255,11 @@ test("deleted-bee cleanup retries converge while another archived bee still refe
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM multiline_fallback_fence WHERE message_id = ?").get(second.id)?.count, 1);
 });
 
-for (const evidence of ["unattempted", "missing", "malformed", "unreadable", "prepared-crash"] as const) test(`corrupt hold notice uses outside ${evidence} evidence exactly once and never republishes`, t => {
+for (const evidence of ["unattempted", "missing", "malformed", "malformed-flag", "unreadable", "prepared-crash"] as const) test(`corrupt hold notice uses outside ${evidence} evidence exactly once and never republishes`, t => {
   const r = rig(false, true); t.after(r.close);
   const message = r.store.send(r.bee.id, "one\ntwo").message; r.hold(message.id);
   if (evidence === "prepared-crash") r.store.prepareMultilineFallback(message.id, join(r.root, "runtime"), [join(r.root, "work")]);
-  r.restart(true, "{", evidence === "missing" || evidence === "malformed" ? evidence : undefined);
+  r.restart(true, "{", evidence === "missing" || evidence === "malformed" || evidence === "malformed-flag" ? evidence : undefined);
   if (evidence === "unreadable") {
     const access = r.store as unknown as {stmt: (sql: string) => unknown}, stmt = access.stmt.bind(r.store);
     access.stmt = sql => {if (sql.startsWith("SELECT * FROM multiline_fallback_fence")) throw new Error("injected unreadable fence"); return stmt(sql);};
@@ -274,6 +275,53 @@ for (const evidence of ["unattempted", "missing", "malformed", "unreadable", "pr
   assert.equal(r.store.countUnknownMultilineHolds(), 1);
   assert.equal(r.store.auditRows().filter(row => row.kind === "mail.delivery_fallback_unknown").length, 1);
   assert.equal(existsSync(join(r.root, "runtime", "delivery-content")), false);
+});
+
+test("nineteen mixed-evidence UNKNOWN rows are each announced once across bounded later deliveries", t => {
+  const r = rig(); t.after(r.close);
+  const messages = Array.from({length: 19}, (_, i) => {const message = r.store.send(r.bee.id, `unknown-${i}\nbody`).message; r.hold(message.id); if (i % 2) r.store.recordMultilineDriverAttempt(message.id); return message;});
+  r.restart(true, "{");
+  const later = ["first", "second", "third"].map(body => r.store.send(r.bee.id, body).message);
+  for (let i = 0; i < 8; i++) r.step();
+  const bodies = later.map(message => r.driver.deliveredBodies[r.driver.deliveredIds.indexOf(message.id)]!);
+  for (let i = 0; i < messages.length; i++) {
+    const wording = i % 2 ? "state unknown, may have been delivered" : "state unknown, not delivered";
+    const notice = `[delivery_unsupported_multiline: message ${messages[i]!.id} — ${wording}] `;
+    assert.equal(bodies.join("").split(notice).length - 1, 1);
+    assert.equal(bodies[i < 16 ? 0 : 1]!.includes(notice), true);
+    assert.equal(r.store.multilineDelivery(messages[i]!.id)?.notice, wording);
+  }
+  assert.equal(bodies[2], "third");
+  assert.equal(r.store.countUnknownMultilineHolds(), 19); assert.equal(r.driver.pointers.length, 0);
+});
+
+for (const snapshot of ["valid", "missing", "malformed"] as const) test(`deferred fallback ${snapshot} represented-id snapshot never marks the unrendered seventeenth UNKNOWN`, t => {
+  const r = rig(); t.after(r.close);
+  const messages = Array.from({length: 19}, (_, i) => {const message = r.store.send(r.bee.id, `unknown-${i}\nbody`).message; r.hold(message.id); if (i % 2) r.store.recordMultilineDriverAttempt(message.id); return message;});
+  r.restart(true, "{"); r.step();
+  const fallback = r.store.send(r.bee.id, "fallback\nbody").message; r.hold(fallback.id);
+  const first = r.store.send(r.bee.id, "first").message;
+  r.driver.uncertain = true; r.step();
+  const saved = r.store.multilineDelivery(fallback.id)!;
+  assert.deepEqual(saved.fallback?.reorderMessageIds, messages.slice(0, 16).map(message => message.id));
+  assert.equal("reorderMessageIds" in r.store.getMessage(fallback.id)!.deliveryFallback!, false);
+  r.step(); assert.notEqual(r.store.getMessage(first.id)?.deliveredAt, null);
+  if (snapshot !== "valid") {
+    const db = (r.store as unknown as {db: DatabaseSync}).db;
+    db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(JSON.stringify({...saved, fallback: {...saved.fallback, reorderMessageIds: snapshot === "missing" ? undefined : "unreadable-list"}}), fallback.id);
+    r.restart(true);
+  }
+  r.driver.proved = true; r.step();
+  assert.notEqual(r.store.getMessage(fallback.id)?.deliveredAt, null);
+  assert.equal(r.store.multilineDelivery(messages[16]!.id)?.notice, null);
+  const second = r.store.send(r.bee.id, "second").message, third = r.store.send(r.bee.id, "third").message;
+  for (let i = 0; i < 5; i++) r.step();
+  const bodies = [first, second, third].map(message => r.driver.deliveredBodies[r.driver.deliveredIds.indexOf(message.id)]!);
+  for (let i = 0; i < messages.length; i++) {
+    const wording = i % 2 ? "state unknown, may have been delivered" : "state unknown, not delivered";
+    assert.equal(bodies.join("").split(`[delivery_unsupported_multiline: message ${messages[i]!.id} — ${wording}] `).length - 1, 1);
+  }
+  assert.equal(bodies[2], "third"); assert.equal(r.driver.pointers.length, 1);
 });
 
 test("valid waiting outer row with malformed nested fallback becomes visible UNKNOWN outside FIFO", t => {

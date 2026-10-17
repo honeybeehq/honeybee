@@ -17,8 +17,14 @@ export interface DeliveryFallback {
   detail: string | null;
   senderNoticeMessageId: number | null;
   attempts?: number;
+  reorderMessageIds?: unknown;
   attemptPhase?: "injecting" | "before_enter_cleared" | "before_enter_unknown" | "enter_attempted";
   paneInput?: {code: "pane_input_unknown"; since: number; reason: string; socketPath: string; paneId: string; serverIdentity: string; generation: number; clearedAt?: number};
+}
+export function publicDeliveryFallback(fallback: DeliveryFallback): DeliveryFallback {
+  const result = {...fallback};
+  delete result.reorderMessageIds;
+  return result;
 }
 export function readDeliveryFallback(value: unknown): DeliveryFallback | undefined {
   if (value === undefined) return undefined;
@@ -104,6 +110,7 @@ CREATE TABLE IF NOT EXISTS multiline_fallback_fence (
   message_id INTEGER PRIMARY KEY,
   bee_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK(state IN ('unattempted', 'prepared')),
+  attempted INTEGER NOT NULL DEFAULT 0 CHECK(attempted IN (0, 1)),
   publication_id TEXT,
   CHECK((state = 'unattempted' AND publication_id IS NULL) OR (state = 'prepared' AND publication_id IS NOT NULL))
 ) STRICT;`;

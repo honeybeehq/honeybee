@@ -50,7 +50,7 @@ export class MultilineFallback {
     return false;
   }
 
-  deliver(message: MessageRow, text: string, generation: number, peer: boolean, questionId: string | null, source: TurnTriggerSource): { handled: boolean; accepted: boolean; generation?: number } {
+  deliver(message: MessageRow, text: string, generation: number, peer: boolean, questionId: string | null, source: TurnTriggerSource, reorderMessageIds: number[] = []): { handled: boolean; accepted: boolean; generation?: number } {
     const hold = this.store.multilineDelivery(message.id);
     if (!hold || !hold.fallback && !["held", "expired"].includes(hold.stage)) return { handled: false, accepted: false };
     if (this.store.inTransaction) return { handled: true, accepted: false };
@@ -60,9 +60,9 @@ export class MultilineFallback {
     let fallback = hold.fallback;
     if (!fallback) {
       try {
-        fallback = this.store.prepareMultilineFallback(message.id, this.options.rootForBee?.(bee) ?? this.options.root, this.options.worktrees(bee));
+        fallback = this.store.prepareMultilineFallback(message.id, this.options.rootForBee?.(bee) ?? this.options.root, this.options.worktrees(bee), reorderMessageIds);
       } catch (error) {
-        fallback = this.store.prepareMultilineFallback(message.id, this.options.root, []);
+        fallback = this.store.prepareMultilineFallback(message.id, this.options.root, [], reorderMessageIds);
         const detail = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : "delivery_file_location_invalid";
         if (fallback?.state === "preparing") this.store.transitionMultilineFallback(message.id, "preparing", "held", { detail });
         return { handled: true, accepted: false };
@@ -95,6 +95,7 @@ export class MultilineFallback {
     }
     const paneInput = pane ? {code: "pane_input_unknown" as const, ...pane, generation, since: Date.now(), reason: "single_attempt_injection_in_progress"} : undefined;
     fallback = this.store.transitionMultilineFallback(message.id, "ready", "in_flight", { generation, attempts: (fallback.attempts ?? 0) + 1, attemptPhase: "injecting", ...(paneInput ? {paneInput} : {}) })!;
+    this.store.recordMultilineDriverAttempt(message.id);
     try {
       const outcome = this.driver.deliver(message.beeId, generation, message.id, fallback.pointer!, { singleAttempt: true, ...(pane ? {expectedPane: pane} : {}) });
       if (outcome.accepted) {

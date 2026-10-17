@@ -1,4 +1,4 @@
-import { deliveryHold, type MultilineDeliveryRow } from "./multilineDelivery.ts";
+import { deliveryHold, publicDeliveryFallback, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
 /**
  * Audit replay — the audit table is a complete, ordered record of every write.
@@ -320,7 +320,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
           const hold = deliveryHold(state);
           if (hold) message.deliveryHold = hold;
           else delete message.deliveryHold;
-          if (state.fallback) message.deliveryFallback = structuredClone(state.fallback);
+          if (state.fallback) message.deliveryFallback = publicDeliveryFallback(structuredClone(state.fallback));
         }
         break;
       }

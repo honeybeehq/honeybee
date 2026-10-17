@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -80,6 +80,70 @@ for (const corruptAfterRead of [false, true]) test(`real type-mode terminal phon
   store.close(); store = openCoreStore(path, {now: () => 1000, ephemeral: true}); core = makeCore(); core.boot();
   for (let attempt = 0; attempt < 5; attempt++) core.step();
   assert.equal(rows().filter(row => row.submittedBody !== undefined).length, 2);
+});
+
+test("real ordinary paste post-Enter commit failure and corruption cannot claim not-delivered", async t => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "mfp-main-"))), data = join(root, "data"), work = join(root, "work"), socketPath = join(root, "t.sock"), receipt = join(root, "receipt.jsonl");
+  mkdirSync(data, {mode: 0o700}); mkdirSync(work, {mode: 0o700});
+  const path = join(data, "core.sqlite3");
+  const open = () => openCoreStore(path, {now: () => 1000});
+  let store = open();
+  const server = new TmuxServer({socketPath, allowKillServer: true});
+  const fixture = fileURLToPath(new URL("../../driver-tmux/test-agent/phone-terminal.mjs", import.meta.url));
+  const driver = new TmuxDriver({socketPath, eventsDir: join(root, "events"), allowKillServer: true, stopKillGraceMs: 100,
+    resolve: () => ({command: process.execPath, args: [fixture, "off"], cwd: work, env: {...process.env, PHONE_PROVIDER_RECEIPT: receipt}, deliveryMode: "paste", observation: {paneFallback: true, quiesceMs: 10, deliveryGraceMs: 1000}})});
+  t.after(() => {driver.disposeAll(); server.killServer(); store.close(); rmSync(root, {recursive: true, force: true});});
+  const makeCore = () => new DaemonCore({store, driver, now: () => 1000, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}});
+  let core = makeCore(); core.boot();
+  const rows = (): {ready?: boolean; bracketedEnabled?: boolean; submittedBody?: string}[] => {try {return readFileSync(receipt, "utf8").trim().split("\n").map(line => JSON.parse(line));} catch {return [];}};
+  const serverTry = TmuxServer.prototype.try;
+  TmuxServer.prototype.try = function(args, options) {
+    const format = args.at(-1);
+    if (this.socketPath === socketPath && args[0] === "display-message" && (format === "#{bracket_paste_flag}" || format === "#{version}|#{pane_id}|#{bracket_paste_flag}")) {
+      const flag = rows().some(row => row.bracketedEnabled) ? "1" : "0";
+      return {status: 0, stdout: format === "#{bracket_paste_flag}" ? flag : `fixture-version|${args[3]}|${flag}`, stderr: ""};
+    }
+    return serverTry.call(this, args, options);
+  };
+  t.after(() => {TmuxServer.prototype.try = serverTry;});
+  const wait = async (condition: () => boolean) => {for (let i = 0; i < 400; i++) {if (condition()) return; await new Promise(resolve => setTimeout(resolve, 15));} assert.fail("ordinary paste terminal timed out");};
+  const bee = store.createBee({name: "ordinary", agent: "stub", substrate: "tmux", cwd: work}).bee; store.enqueueCommand("spawn", bee.id);
+  await wait(() => {core.step(); return rows().some(row => row.ready) && store.currentRuntime(bee.id)?.state === "idle";});
+  const message = store.send(bee.id, "ordinary\nbody").message;
+  core.step(); assert.equal(store.multilineDelivery(message.id)?.stage, "waiting");
+  const pane = server.run(["list-panes", "-a", "-F", "#{pane_id}"]).trim().split("\n")[0]!;
+  server.run(["send-keys", "-t", pane, "C-b"]);
+  await wait(() => rows().some(row => row.bracketedEnabled));
+  const deliver = driver.deliver.bind(driver);
+  driver.deliver = (beeId, generation, id, body, options) => {
+    if (id === message.id) {
+      assert.equal(store.inTransaction, false);
+      const owned = (store as unknown as {db: DatabaseSync}).db;
+      assert.equal(owned.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get()?.busy, 0);
+      const proof = join(root, "attempt-proof.sqlite3"); copyFileSync(path, proof);
+      const db = new DatabaseSync(proof, {readOnly: true});
+      assert.equal(db.prepare("SELECT attempted FROM multiline_fallback_fence WHERE message_id = ?").get(id)?.attempted, 1); db.close();
+    }
+    return deliver(beeId, generation, id, body, options);
+  };
+  const mark = store.markDelivered.bind(store);
+  store.markDelivered = (id, generation, source, ids) => {if (id === message.id) throw new Error("ordinary completion commit lost"); return mark(id, generation, source, ids);};
+  assert.throws(() => core.step(), /ordinary completion commit lost/);
+  await wait(() => rows().some(row => row.submittedBody === "ordinary\nbody"));
+  assert.equal(store.getMessage(message.id)?.deliveredAt, null);
+  store.close();
+  const db = new DatabaseSync(path); db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run("{", message.id); db.close();
+  store = open(); core = makeCore(); core.boot();
+  const later = store.send(bee.id, "later").message;
+  await wait(() => {core.step(); return store.getMessage(later.id)?.deliveredAt !== null && rows().filter(row => row.submittedBody !== undefined).length === 2;});
+  const submitted = rows().filter(row => row.submittedBody !== undefined);
+  assert.equal(submitted[1]!.submittedBody!.includes("state unknown, may have been delivered"), true);
+  assert.equal(submitted[1]!.submittedBody!.includes("state unknown, not delivered"), false);
+  const after = store.send(bee.id, "after").message;
+  await wait(() => {core.step(); return store.getMessage(after.id)?.deliveredAt !== null && rows().filter(row => row.submittedBody !== undefined).length === 3;});
+  assert.equal(rows().filter(row => row.submittedBody !== undefined)[2]!.submittedBody, "after");
+  assert.equal(store.getMessage(message.id)?.deliveredAt, null); assert.equal(store.countUnknownMultilineHolds(), 1);
+  assert.equal(rows().filter(row => row.submittedBody === "ordinary\nbody").length, 1);
 });
 
 for (const clearWorks of [true, false, "unset_failure", "missing_identity"] as const) test(`real pointer phase ${typeof clearWorks === "string" ? clearWorks : clearWorks ? "clears and retries the same publication" : "quarantines all later mail"}`, async t => {

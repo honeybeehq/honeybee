@@ -1695,8 +1695,8 @@ export class DaemonCore {
         const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
         let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id));
         if (!msg.phoneInput && msg.sender === "automation:delivery" && msg.senderKind === "automation" && this.store.multilineSenderNotice(msg.id)) body = msg.body;
-        const reorderNotice = this.store.pendingMultilineReorderNotice(rt.beeId, msg.id);
-        if (reorderNotice) body = reorderNotice + body;
+        const reorderNotice = this.store.multilineReorderNotice(rt.beeId, msg.id);
+        if (reorderNotice.text) body = reorderNotice.text + body;
         const instruction = this.store.placementInstructionMove(rt.beeId);
         if (instruction && rt.generation !== instruction.sourceGeneration) {
           body = prefixPlacementDelivery(
@@ -1708,11 +1708,12 @@ export class DaemonCore {
             }),
           );
         }
-        const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer));
+        const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+        if (!fallback?.handled) this.store.recordMultilineDriverAttempt(msg.id);
         const outcome = fallback?.handled ? { accepted: fallback.accepted, reason: "not_ready" as const, detail: undefined }
           : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
         if (outcome.accepted) {
-          if (!fallback?.handled) this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer));
+          if (!fallback?.handled) this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
           const deliveredGeneration = fallback?.generation ?? rt.generation;
           this.interruptRequested.delete(msg.id);
           if (instruction && deliveredGeneration === rt.generation && rt.generation !== instruction.sourceGeneration) {
