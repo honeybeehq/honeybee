@@ -2,6 +2,7 @@
 #define _DARWIN_C_SOURCE
 #include <node_api.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -11,7 +12,7 @@
 #include <string.h>
 
 #define LIMIT (8u * 1024u * 1024u)
-static unsigned long sequence;
+static _Atomic unsigned long sequence;
 static napi_value failure(napi_env env, const char *code) {
   napi_throw_error(env, code, strerror(errno));
   return NULL;
@@ -86,7 +87,7 @@ static napi_value publish(napi_env env,napi_callback_info info) {
   if(errno!=ENOENT) { int error=errno;close(dir);errno=error;return failure(env,"delivery_file_conflict"); }
   int fd=-1;
   for(unsigned int attempt=0;attempt<32 && fd<0;attempt++) {
-    snprintf(stage,sizeof(stage),".%s.stage.%ld.%lu",id,(long)getpid(),sequence++);
+    snprintf(stage,sizeof(stage),".%s.stage.%ld.%lu",id,(long)getpid(),atomic_fetch_add(&sequence,1));
     fd=openat(dir,stage,O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW|O_CLOEXEC,0600);
     if(fd<0 && errno!=EEXIST) break;
   }
