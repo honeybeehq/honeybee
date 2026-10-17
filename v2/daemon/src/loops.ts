@@ -1580,115 +1580,128 @@ export class DaemonCore {
    * from delivering at the next accept point.
    */
   private deliveryLoop(work: readonly DaemonWorkRow[]): void {
-    for (const { runtime: rt, pending } of work) {
-      if (rt.state === "booting") continue;
-      if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
-      const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);
-      if (threadOperation && threadOperation.phase !== "ready") continue;
-      if (pending.length === 0) continue;
-      // `running` on nothing but a SYNTHETIC boot is provisional (v9): the
-      // driver's accept point is open and no real turn exists to disturb, so
-      // `idle` mail is eligible. Without this, idle mail sent to a stopped
-      // readyAtSpawn bee revives a runtime it can then never deliver to —
-      // hang-stop → wake → revive, churning generations (found 2026-08-19 by
-      // budget.11's race; real claude would end mis-flagged spawn_failed).
-      // Any real parsed output upgrades bootEvidence and re-engages the gate.
-      const trulyMidTurn = rt.state === "running" && rt.bootEvidence === "real";
-      const eligible = trulyMidTurn ? pending.filter((m) => m.urgency !== "idle") : pending;
-      if (eligible.length === 0) continue;
-      const move = this.store.activeMoveOf(rt.beeId);
-      if (move && move.phase !== "starting") continue;
-      // v23: a quiescing source takes no new turn; the target runtime receives
-      // the context seed before any queued user mail (FIFO among user mail
-      // is untouched — the seed is Honeybee-owned context, not a message
-      // that jumped the queue).
-      const handoff = this.store.activeHandoffOf(rt.beeId);
-      if (handoff && handoffFencesSource(handoff.phase)) continue;
-      const seedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
-      const seed = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
-      if (rt.state === "running") {
-        // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
-        // interrupt per message; an eligible `now` behind an undelivered
-        // `next` still interrupts — the accept point it creates serves the
-        // whole FIFO, which keeps delivering in enqueue order.
-        const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id));
-        if (urgent) {
-          // Give the driver the triggering mailbox id so an asynchronously
-          // confirmed delivery cannot interrupt the turn it just opened.
-          const res = this.driver.interrupt(rt.beeId, rt.generation, urgent.id);
-          // no_process / not_ready resolve on later steps (exit observation,
-          // driver-side boot skew) — retry then. interrupted / idle /
-          // unsupported are final: the accept point exists or never will.
-          if (res.interrupted || res.reason === "idle" || res.reason === "unsupported") {
-            this.interruptRequested.add(urgent.id);
-          }
-          this.log(
-            `deliver.interrupt bee=${rt.beeId} msg=${urgent.id} gen=${rt.generation} interrupted=${res.interrupted}` +
-              (res.reason ? ` reason=${res.reason}` : ""),
-          );
-          // A successful interrupt closes the current accept point
-          // asynchronously. Do not race an immediate delivery (Codex would
-          // reject turn/steer after turn/interrupt; tmux could type before
-          // the TUI settles). The observed turn_ended opens the next point.
-          if (res.interrupted) {
-            this.store.recordDeliveryInterrupt(rt.beeId, urgent.id, rt.generation);
-            continue;
+    const unsupportedAttempts = new Set<number>();
+    try {
+      for (const { runtime: rt, pending } of work) {
+        if (rt.state === "booting") continue;
+        if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
+        const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);
+        if (threadOperation && threadOperation.phase !== "ready") continue;
+        if (pending.length === 0) continue;
+        // `running` on nothing but a SYNTHETIC boot is provisional (v9): the
+        // driver's accept point is open and no real turn exists to disturb, so
+        // `idle` mail is eligible. Without this, idle mail sent to a stopped
+        // readyAtSpawn bee revives a runtime it can then never deliver to —
+        // hang-stop → wake → revive, churning generations (found 2026-08-19 by
+        // budget.11's race; real claude would end mis-flagged spawn_failed).
+        // Any real parsed output upgrades bootEvidence and re-engages the gate.
+        const trulyMidTurn = rt.state === "running" && rt.bootEvidence === "real";
+        const eligible = trulyMidTurn ? pending.filter((m) => m.urgency !== "idle") : pending;
+        if (eligible.length === 0) continue;
+        const move = this.store.activeMoveOf(rt.beeId);
+        if (move && move.phase !== "starting") continue;
+        // v23: a quiescing source takes no new turn; the target runtime receives
+        // the context seed before any queued user mail (FIFO among user mail
+        // is untouched — the seed is Honeybee-owned context, not a message
+        // that jumped the queue).
+        const handoff = this.store.activeHandoffOf(rt.beeId);
+        if (handoff && handoffFencesSource(handoff.phase)) continue;
+        const seedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
+        const seed = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
+        if (rt.state === "running") {
+          // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
+          // interrupt per message; an eligible `now` behind an undelivered
+          // `next` still interrupts — the accept point it creates serves the
+          // whole FIFO, which keeps delivering in enqueue order.
+          const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id));
+          if (urgent) {
+            // Give the driver the triggering mailbox id so an asynchronously
+            // confirmed delivery cannot interrupt the turn it just opened.
+            const res = this.driver.interrupt(rt.beeId, rt.generation, urgent.id);
+            // no_process / not_ready resolve on later steps (exit observation,
+            // driver-side boot skew) — retry then. interrupted / idle /
+            // unsupported are final: the accept point exists or never will.
+            if (res.interrupted || res.reason === "idle" || res.reason === "unsupported") {
+              this.interruptRequested.add(urgent.id);
+            }
+            this.log(
+              `deliver.interrupt bee=${rt.beeId} msg=${urgent.id} gen=${rt.generation} interrupted=${res.interrupted}` +
+                (res.reason ? ` reason=${res.reason}` : ""),
+            );
+            // A successful interrupt closes the current accept point
+            // asynchronously. Do not race an immediate delivery (Codex would
+            // reject turn/steer after turn/interrupt; tmux could type before
+            // the TUI settles). The observed turn_ended opens the next point.
+            if (res.interrupted) {
+              this.store.recordDeliveryInterrupt(rt.beeId, urgent.id, rt.generation);
+              continue;
+            }
           }
         }
-      }
-      const selected = seed ?? eligible[0];
-      if (!selected) continue;
-      const msg = this.store.getMessage(selected.id);
-      if (
-        !msg ||
-        msg.beeId !== rt.beeId ||
-        msg.deliveredAt !== null ||
-        msg.urgency !== selected.urgency ||
-        msg.enqueuedAt !== selected.enqueuedAt
-      ) {
-        throw new CoreError(`daemon projection: selected message ${selected.id} changed before delivery`);
-      }
-      // Peer-sent mail carries the sender-attribution envelope (envelope.ts);
-      // question answers and automation (by sender kind or automation sender)
-      // carry their own markers; other operator/human mail is delivered bare.
-      // The mailbox row stays the durable truth — the envelope is
-      // delivery-time rendering only.
-      const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
-      const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
-      let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id));
-      const instruction = this.store.placementInstructionMove(rt.beeId);
-      if (instruction && rt.generation !== instruction.sourceGeneration) {
-        body = prefixPlacementDelivery(
-          body,
-          placementContextText({
-            placementVersion: instruction.to.version,
-            cwd: instruction.to.cwd,
-            cellId: instruction.retainedCellId,
-          }),
-        );
-      }
-      const outcome = this.driver.deliver(rt.beeId, rt.generation, msg.id, body);
-      if (outcome.accepted) {
-        this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer));
-        this.interruptRequested.delete(msg.id);
+        const selected = seed ?? eligible[0];
+        if (!selected) continue;
+        const msg = this.store.getMessage(selected.id);
+        if (
+          !msg ||
+          msg.beeId !== rt.beeId ||
+          msg.deliveredAt !== null ||
+          msg.urgency !== selected.urgency ||
+          msg.enqueuedAt !== selected.enqueuedAt
+        ) {
+          throw new CoreError(`daemon projection: selected message ${selected.id} changed before delivery`);
+        }
+        // Peer-sent mail carries the sender-attribution envelope (envelope.ts);
+        // question answers and automation (by sender kind or automation sender)
+        // carry their own markers; other operator/human mail is delivered bare.
+        // The mailbox row stays the durable truth — the envelope is
+        // delivery-time rendering only.
+        const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
+        const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
+        let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id));
+        if (!msg.phoneInput && msg.sender === "automation:delivery" && msg.senderKind === "automation" && this.store.multilineSenderReceipt(msg.id)) body = msg.body;
+        const reorderNotice = this.store.pendingMultilineReorderNotice(rt.beeId, msg.id);
+        if (reorderNotice) body = reorderNotice + body;
+        const instruction = this.store.placementInstructionMove(rt.beeId);
         if (instruction && rt.generation !== instruction.sourceGeneration) {
-          this.store.markMoveInstructionsApplied(instruction.id);
-          if (this.store.activeMoveOf(rt.beeId)?.phase === "starting") {
-            this.store.completeBeeMove(instruction.id);
-          }
+          body = prefixPlacementDelivery(
+            body,
+            placementContextText({
+              placementVersion: instruction.to.version,
+              cwd: instruction.to.cwd,
+              cellId: instruction.retainedCellId,
+            }),
+          );
         }
-        if (seed && msg.id === seed.id) {
-          const active = this.store.activeHandoffOf(rt.beeId);
-          if (active?.phase === "starting" && active.seedMessageId === msg.id) {
-            this.store.completeBeeHandoff(active.id);
-            this.log(`handoff.complete bee=${rt.beeId} handoff=${active.id} gen=${rt.generation}`);
+        const outcome = this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
+        if (outcome.accepted) {
+          this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer));
+          this.interruptRequested.delete(msg.id);
+          if (instruction && rt.generation !== instruction.sourceGeneration) {
+            this.store.markMoveInstructionsApplied(instruction.id);
+            if (this.store.activeMoveOf(rt.beeId)?.phase === "starting") {
+              this.store.completeBeeMove(instruction.id);
+            }
           }
+          if (seed && msg.id === seed.id) {
+            const active = this.store.activeHandoffOf(rt.beeId);
+            if (active?.phase === "starting" && active.seedMessageId === msg.id) {
+              this.store.completeBeeHandoff(active.id);
+              this.log(`handoff.complete bee=${rt.beeId} handoff=${active.id} gen=${rt.generation}`);
+            }
+          }
+          this.log(`deliver bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} urgency=${msg.urgency}`);
+        } else {
+          if (body.includes("\n")) {
+            if (outcome.reason === "not_ready" && (outcome.detail === "multiline_type_mode" || outcome.detail === "multiline_bracketed_paste_disabled")) {
+              this.store.recordMultilineDeliveryRefusal(msg.id, rt.generation, outcome.detail);
+              unsupportedAttempts.add(msg.id);
+            }
+            else this.store.pauseMultilineDeliveryWait(msg.id);
+          }
+          this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}`);
         }
-        this.log(`deliver bee=${rt.beeId} msg=${msg.id} gen=${rt.generation} urgency=${msg.urgency}`);
-      } else {
-        this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}`);
       }
-    }
+    } finally { this.store.retainMultilineDeliveryWaits(unsupportedAttempts); }
   }
 
   // -------------------------------------------------------------------------

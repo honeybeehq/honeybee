@@ -1,3 +1,4 @@
+import { MultilinePasteProbe } from "./multiline-probe.ts";
 import { TurnQuiet } from "./turn-quiet.ts";
 /**
  * TmuxDriver — the tmux substrate driver (WP5, spec 05).
@@ -36,7 +37,7 @@ import { TurnQuiet } from "./turn-quiet.ts";
  *    stays fully deliverable (tmux runtimes are never "degraded").
  */
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import type {
@@ -213,6 +214,11 @@ export function sessionNameFor(beeId: string, generation: number): string {
   return `hive-v2-${safe}-g${generation}`;
 }
 
+class MultilinePasteUnavailable extends Error {
+  readonly detail: string;
+  constructor(detail: string) { super(detail); this.detail = detail; }
+}
+
 export class TmuxDriver implements RuntimeDriver {
   private readonly cfg: TmuxDriverConfig;
   private readonly server: TmuxServer;
@@ -225,6 +231,7 @@ export class TmuxDriver implements RuntimeDriver {
   private notes: DeliveryNote[] = [];
   private readonly consumed = new Map<number, number>();
   private deliverSeq = 0;
+  private readonly multilineProbe = new MultilinePasteProbe();
 
   constructor(cfg: TmuxDriverConfig) {
     this.cfg = cfg;
@@ -329,7 +336,7 @@ export class TmuxDriver implements RuntimeDriver {
     this.events.push({ beeId, generation, kind: "turn_ended" });
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string): DeliverOutcome {
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean }): DeliverOutcome {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { accepted: false, reason: "no_process" };
     if (p.stopCause != null) return { accepted: false, reason: "not_ready" };
@@ -347,8 +354,9 @@ export class TmuxDriver implements RuntimeDriver {
     const tail = echoTail(body);
     const before = tail == null ? 0 : this.countTailInPane(p, tail);
     try {
-      this.inject(p, body, p.deliveryMode);
-    } catch {
+      this.inject(p, body, p.deliveryMode, options?.multilineWaitExpired);
+    } catch (error) {
+      if (error instanceof MultilinePasteUnavailable) return { accepted: false, reason: "not_ready", detail: error.detail };
       return { accepted: false, reason: "no_process" };
     }
     let verified = tail == null ? true : this.verifyEcho(p, tail, before);
@@ -360,9 +368,10 @@ export class TmuxDriver implements RuntimeDriver {
       const retryMode: "paste" | "type" = body.includes("\n") ? "paste" : "type";
       const beforeRetry = this.countTailInPane(p, tail);
       try {
-        this.inject(p, body, retryMode);
+        this.inject(p, body, retryMode, options?.multilineWaitExpired);
         verified = this.verifyEcho(p, tail, beforeRetry);
-      } catch {
+      } catch (error) {
+        if (error instanceof MultilinePasteUnavailable) return { accepted: false, reason: "not_ready", detail: error.detail };
         verified = false;
       }
     }
@@ -401,7 +410,7 @@ export class TmuxDriver implements RuntimeDriver {
   }
 
   /** Put `body` into the pane's input line (no submit). Throws on tmux failure. */
-  private inject(p: TmuxRuntime, body: string, mode: "paste" | "type"): void {
+  private inject(p: TmuxRuntime, body: string, mode: "paste" | "type", expired = false): void {
     if (mode === "type") {
       // Let the TUI's input handler catch up before the first keystroke
       // (grok ate the first ~2 chars of an immediate burst, verified live).
@@ -415,11 +424,22 @@ export class TmuxDriver implements RuntimeDriver {
       }
       return;
     }
+    let bracketedPaste = false;
+    if (body.includes("\n") && !expired) {
+      let detail: string | null = "multiline_bracketed_paste_unknown";
+      try {
+        const socket = statSync(this.server.socketPath);
+        const identity = `${socket.dev}:${socket.ino}:${socket.birthtimeMs}`;
+        detail = this.multilineProbe.refusal(this.server, identity, p.paneId);
+      } catch {}
+      if (detail === "multiline_bracketed_paste_disabled") throw new MultilinePasteUnavailable(detail);
+      bracketedPaste = detail === null;
+    }
     const buf = `hive-v2-deliver-${this.deliverSeq++}`;
     try {
       // load-buffer avoids send-keys key interpretation of the body.
       this.server.run(["load-buffer", "-b", buf, "-"], { input: body });
-      this.server.run(["paste-buffer", "-d", "-b", buf, "-t", p.paneId]);
+      this.server.run(["paste-buffer", ...(bracketedPaste ? ["-p", "-r"] : []), "-d", "-b", buf, "-t", p.paneId]);
     } catch (err) {
       this.server.try(["delete-buffer", "-b", buf]);
       throw err;

@@ -1,3 +1,4 @@
+import { deliveryHold, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
 /**
  * Audit replay — the audit table is a complete, ordered record of every write.
@@ -41,6 +42,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   const runtimes = new Map<string, RuntimeRow>(); // key beeId#generation
   const flags = new Map<number, FlagRow>();
   const mailbox = new Map<number, MessageRow>();
+  const deliveryHolds = new Map<number, MultilineDeliveryRow>();
   const commands = new Map<number, CommandRow>();
   const templates = new Map<string, TemplateRow>();
   const tracks = new Map<string, TrackRow>();
@@ -294,6 +296,28 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         // v8 back-compat: pre-urgency audit rows replay as the migrated
         // store reads them — the column default, `next`.
         mailbox.set(message.id, { ...message, urgency: message.urgency ?? "next" });
+        break;
+      }
+      case "mail.multiline_progress":
+      case "mail.delivery_held":
+      case "mail.delivery_unsupported_multiline":
+      case "mail.delivery_hold_expired":
+      case "mail.multiline_completed":
+      case "mail.delivery_reordered": {
+        const state = structuredClone(p.row as MultilineDeliveryRow);
+        deliveryHolds.set(state.messageId, state);
+        const message = mailbox.get(state.messageId);
+        if (message) {
+          const hold = deliveryHold(state);
+          if (hold) message.deliveryHold = hold;
+          else delete message.deliveryHold;
+        }
+        break;
+      }
+      case "mail.multiline_reset": {
+        deliveryHolds.delete(p.messageId as number);
+        const message = mailbox.get(p.messageId as number);
+        if (message) delete message.deliveryHold;
         break;
       }
       case "mail.delivered": {
@@ -577,6 +601,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   }
 
   return {
+    ...(deliveryHolds.size ? { deliveryHolds: [...deliveryHolds.values()].sort((a, b) => a.messageId - b.messageId) } : {}),
     threadOperations: [...threadOperations.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     bees: [...bees.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     runtimes: [...runtimes.values()].sort((a, b) =>

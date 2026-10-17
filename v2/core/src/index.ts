@@ -86,3 +86,5 @@ export type { HumanRefIssuer, HumanRefReceipt, HumanRefRegistry } from "./humanR
 export * from "./rpcAuditContext.ts";
 
 export * from "./phoneOrigin.ts";
+
+export * from "./multilineDelivery.ts";
