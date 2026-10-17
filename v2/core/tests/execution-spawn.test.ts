@@ -57,6 +57,7 @@ test("owner release is persisted and busy before transport; only exact host and 
     hooks.dispatch(start);assert.throws(f.advance,code("rpc_execution_busy"));
     const host={pid:100,birth:"linux:123456789"},agent={pid:101,birth:"linux:123456790"};
     hooks.bindAndRelease(start,host);
+    assert.equal(f.store.currentRuntime("fenced-bee")?.pid,host.pid);
     assert.throws(f.advance,code("rpc_execution_busy"));
     assert.throws(()=>hooks.started(start,{...host,birth:"linux:123456788"},agent),code("rpc_execution_history_unknown"));
     hooks.started(start,host,agent);hooks.started(start,host,agent);

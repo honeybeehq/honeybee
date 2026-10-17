@@ -4729,7 +4729,10 @@ export class CoreStore {
       begin: (start, operation) => this.tx(() => this.executionStarts.begin(start, operation)),
       finish: (start, lease, quiescent) => this.tx(() => this.executionStarts.finish(start, lease, quiescent)),
       dispatch: start => this.tx(() => this.executionStarts.dispatch(start)),
-      bindAndRelease: (start, host) => this.tx(() => this.executionStarts.bindAndRelease(start, host)),
+      bindAndRelease: (start, host) => this.tx(() => {
+        this.executionStarts.bindAndRelease(start, host);
+        if (!this.recordRuntimeProc(start.beeId, start.runtimeGeneration, { pid: host.pid, pidStartedAt: this.now() }).applied) throw new ExecutionFenceError("rpc_execution_history_unknown", "Host release requires its current durable runtime identity");
+      }),
       started: (start, host, agent) => this.tx(() => this.executionStarts.started(start, host, agent)),
       hostExited: (start, host) => this.tx(() => this.executionStarts.hostExited(start, host)),
     };
