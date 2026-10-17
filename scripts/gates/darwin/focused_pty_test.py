@@ -35,11 +35,11 @@ class PtyTests(unittest.TestCase):
 
     def test_negative_controls_fail_independently_and_no_raw_fields(self):
         value = {key: 'NONE' for key in pty_controls.FIELDS - {'trueExit'}}
-        value.update(foreignBefore='EPERM', foreignAfter='EACCES', nonTty='EPERM', trueExit=0)
+        value.update(foreignBefore={'open': 'DENIED_EPERM', 'write': 'NOT_RUN'}, foreignAfter={'open': 'DENIED_EACCES', 'write': 'NOT_RUN'}, nonTty='EPERM', trueExit=0)
         self.assertTrue(pty_controls.adjudicate(value, True)['ok'])
         for field in ('foreignBefore', 'foreignAfter', 'nonTty'):
             with self.subTest(field=field):
-                self.assertFalse(pty_controls.adjudicate(dict(value, **{field: 'NONE'}), True)['ok'])
+                self.assertFalse(pty_controls.adjudicate(dict(value, **{field: {'open': 'OPENED', 'write': 'EPERM'} if field != 'nonTty' else 'NONE'}), True)['ok'])
         for field in pty_controls.CHAIN:
             self.assertFalse(pty_controls.adjudicate(dict(value, **{field: 'EPERM'}), True)['ok'])
         self.assertFalse(pty_controls.adjudicate(dict(value, forkExec='EPERM'), True)['ok'])
@@ -50,6 +50,29 @@ class PtyTests(unittest.TestCase):
         for bad in (dict(value, text='SECRET'), dict(value, foreignBefore='SECRET'), dict(value, trueExit='0')):
             with self.assertRaises(ValueError):
                 pty_controls.adjudicate(bad, True)
+
+    @unittest.skipUnless(sys.platform.startswith('linux'), 'C syscall mock compiles on Linux only')
+    def test_foreign_open_success_write_denied_is_forbidden(self):
+        source = (Path(__file__).parent / 'pty_control.c').read_text()
+        function = source[source.index('static const char *error_name'):source.index('static const char *zero_probe')]
+        prefix = '#define _GNU_SOURCE\n#include <errno.h>\n#include <fcntl.h>\n#include <stdio.h>\n#include <string.h>\n#include <stdlib.h>\n#include <unistd.h>\nstatic int mode;\nstatic int mock_open(const char *p,int f){(void)p;(void)f;if(mode==0){errno=EACCES;return -1;}return 12;}\nstatic ssize_t mock_write(int f,const void *p,size_t n){(void)f;if(n!=1||*(const char*)p!=0x47)return -1;if(mode==1){errno=EPERM;return -1;}return 1;}\nstatic int mock_close(int f){(void)f;return 0;}\n#define open mock_open\n#define write mock_write\n#define close mock_close\n'
+        suffix = 'int main(int argc,char **argv){(void)argc;mode=atoi(argv[1]);struct foreign_outcome r=foreign_probe("/controller-dummy");printf("%s %s",r.open,r.write);return 0;}\n'
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            code, binary = root / 'probe.c', root / 'probe'
+            code.write_text(prefix + function + suffix)
+            built = subprocess.run(['/usr/bin/cc', '-std=c11', '-Wall', '-Wextra', '-Werror', str(code), '-o', str(binary)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            for mode, expected in ((0, {'open': 'DENIED_EACCES', 'write': 'NOT_RUN'}), (1, {'open': 'OPENED', 'write': 'EPERM'}), (2, {'open': 'OPENED', 'write': 'WROTE'})):
+                actual = dict(zip(('open', 'write'), subprocess.check_output([str(binary), str(mode)], text=True, timeout=2).split()))
+                self.assertEqual(actual, expected)
+                for phase in ('foreignBefore', 'foreignAfter'):
+                    value = {key: 'NONE' for key in pty_controls.FIELDS - {'trueExit'}}
+                    value.update(foreignBefore={'open': 'DENIED_EPERM', 'write': 'NOT_RUN'}, foreignAfter={'open': 'DENIED_EACCES', 'write': 'NOT_RUN'}, nonTty='EPERM', trueExit=0)
+                    value[phase] = actual
+                    verdict = pty_controls.adjudicate(value, True)
+                    self.assertEqual(verdict['ok'], mode == 0)
+                    self.assertEqual(verdict['foreignOpenedForbidden'], mode != 0)
 
     def test_tmux_foreground_control_has_private_socket_and_fenced_cleanup(self):
         with tempfile.TemporaryDirectory() as temporary:

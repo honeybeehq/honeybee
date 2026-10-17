@@ -26,14 +26,18 @@ static const char *error_name(int value) {
     default: return "OTHER";
   }
 }
-static const char *foreign_probe(const char *path) {
+struct foreign_outcome { char open[32]; const char *write; };
+static struct foreign_outcome foreign_probe(const char *path) {
+  struct foreign_outcome result;
+  result.write = "NOT_RUN";
   int fd = open(path, O_WRONLY | O_NOCTTY | O_NONBLOCK | O_NOFOLLOW);
-  if (fd < 0) return error_name(errno);
+  if (fd < 0) { snprintf(result.open, sizeof(result.open), "DENIED_%s", error_name(errno)); return result; }
+  strcpy(result.open, "OPENED");
   const char byte = 'G';
   ssize_t written = write(fd, &byte, 1);
-  int error = written == 1 ? 0 : errno;
+  result.write = written == 1 ? "WROTE" : written < 0 ? error_name(errno) : "OTHER";
   close(fd);
-  return error_name(error);
+  return result;
 }
 static const char *zero_probe(void) {
   int fd = open("/dev/zero", O_WRONLY | O_NONBLOCK | O_NOFOLLOW);
@@ -74,7 +78,7 @@ static const char *fork_probe(int *exit_status) {
 int main(int argc, char **argv) {
   char release;
   if (argc != 2 || strncmp(argv[1], "/dev/ttys", 9) || strchr(argv[1] + 9, '/') || read(STDIN_FILENO, &release, 1) != 1 || release != '1') return 95;
-  const char *foreign_before = foreign_probe(argv[1]);
+  struct foreign_outcome foreign_before = foreign_probe(argv[1]);
   const char *zero = zero_probe();
   const char *opened = "NOT_RUN", *granted = "NOT_RUN", *unlocked = "NOT_RUN", *slave_open = "NOT_RUN", *tty = "NOT_RUN";
   int master = posix_openpt(O_RDWR | O_NOCTTY);
@@ -103,10 +107,10 @@ int main(int argc, char **argv) {
       }
     }
   }
-  const char *foreign_after = foreign_probe(argv[1]);
+  struct foreign_outcome foreign_after = foreign_probe(argv[1]);
   if (master >= 0) close(master);
   int true_exit = -1;
   const char *fork_exec = fork_probe(&true_exit);
-  printf("{\"foreignBefore\":\"%s\",\"foreignAfter\":\"%s\",\"nonTty\":\"%s\",\"posixOpenpt\":\"%s\",\"grantpt\":\"%s\",\"unlockpt\":\"%s\",\"slaveOpen\":\"%s\",\"ttyIoctl\":\"%s\",\"forkExec\":\"%s\",\"trueExit\":%d}\n", foreign_before, foreign_after, zero, opened, granted, unlocked, slave_open, tty, fork_exec, true_exit);
+  printf("{\"foreignBefore\":{\"open\":\"%s\",\"write\":\"%s\"},\"foreignAfter\":{\"open\":\"%s\",\"write\":\"%s\"},\"nonTty\":\"%s\",\"posixOpenpt\":\"%s\",\"grantpt\":\"%s\",\"unlockpt\":\"%s\",\"slaveOpen\":\"%s\",\"ttyIoctl\":\"%s\",\"forkExec\":\"%s\",\"trueExit\":%d}\n", foreign_before.open, foreign_before.write, foreign_after.open, foreign_after.write, zero, opened, granted, unlocked, slave_open, tty, fork_exec, true_exit);
   return 0;
 }

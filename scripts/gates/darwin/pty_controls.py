@@ -26,13 +26,19 @@ def candidate_profile(base, *, self_test=False):
 
 
 def adjudicate(value, candidate):
-    if not isinstance(value, dict) or set(value) != FIELDS or type(value['trueExit']) is not int or any(not isinstance(value[key], str) or value[key] not in ENUMS for key in FIELDS - {'trueExit'}):
+    if not isinstance(value, dict) or set(value) != FIELDS or type(value['trueExit']) is not int or any(not isinstance(value[key], str) or value[key] not in ENUMS for key in FIELDS - {'trueExit', 'foreignBefore', 'foreignAfter'}):
         raise ValueError('PTY control schema')
+    for key in ('foreignBefore', 'foreignAfter'):
+        row = value[key]
+        if not isinstance(row, dict) or set(row) != {'open', 'write'} or not isinstance(row['open'], str) or not isinstance(row['write'], str) or row['open'] not in {'OPENED'} | {'DENIED_' + name for name in ENUMS - {'NONE', 'NOT_RUN'}} or row['write'] not in (ENUMS - {'NONE'}) | {'WROTE'} or (row['open'] != 'OPENED' and row['write'] != 'NOT_RUN'):
+            raise ValueError('PTY foreign outcome schema')
     denied = {'EPERM', 'EACCES'}
-    negatives = all(value[key] in denied for key in ('foreignBefore', 'foreignAfter', 'nonTty'))
+    foreign_denied = all(value[key]['open'] in {'DENIED_EPERM', 'DENIED_EACCES'} for key in ('foreignBefore', 'foreignAfter'))
+    foreign_opened = any(value[key]['open'] == 'OPENED' for key in ('foreignBefore', 'foreignAfter'))
+    negatives = foreign_denied and value['nonTty'] in denied
     fork = value['forkExec'] == 'NONE' and value['trueExit'] == 0
     own = all(value[key] == 'NONE' for key in CHAIN) if candidate else any(value[key] in denied for key in CHAIN)
-    return {'ok': negatives and fork and own, 'observations': value, 'foreignBothDenied': value['foreignBefore'] in denied and value['foreignAfter'] in denied, 'nonTtyDenied': value['nonTty'] in denied, 'ownChainPassed': all(value[key] == 'NONE' for key in CHAIN)}
+    return {'ok': negatives and fork and own, 'observations': value, 'foreignBothDenied': foreign_denied, 'foreignOpenedForbidden': foreign_opened, 'nonTtyDenied': value['nonTty'] in denied, 'ownChainPassed': all(value[key] == 'NONE' for key in CHAIN)}
 
 
 def fenced_cleanup(api, helper, process, birth):
