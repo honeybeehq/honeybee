@@ -1,3 +1,5 @@
+import { PHONE_PROVENANCE_SQL } from "./schema.ts";
+import { type PhoneInput, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput } from "./phoneOrigin.ts";
 import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
@@ -2075,7 +2077,20 @@ export class CoreStore {
         if (!previous.lastLocal && previous.highWatermarkMs === 0) this.putAccountObservation(account,{lastLocal:{limits:this.getAccountLimits(account)!,source:null},provenance:null,source:null,highWatermarkMs:0});
       }
     }
+    this.db.exec(PHONE_PROVENANCE_SQL);
     this.backfillMailHistoryEnqueues();
+    const phoneCursor = Number((this.stmt("SELECT value FROM meta WHERE key = 'phone_inputs_seq'").get() as Row | undefined)?.value ?? 0);
+    let phoneSeq = phoneCursor;
+    for (;;) {
+      const rows = this.stmt("SELECT seq, payload FROM audit WHERE kind = 'mail.enqueued' AND seq > ? AND EXISTS (SELECT 1 FROM mail_history_enqueues h WHERE h.seq = audit.seq) ORDER BY seq LIMIT 250").all(phoneSeq) as Row[];
+      if (!rows.length) break;
+      for (const row of rows) {
+        phoneSeq = Number(row.seq);
+        const payload = JSON.parse(String(row.payload)) as { message?: MessageRow };
+        if (payload.message?.phoneInput) this.stmt("INSERT INTO phone_inputs(message_id, admission_id, input_json) VALUES(?, ?, ?) ON CONFLICT(message_id) DO NOTHING").run(payload.message.id, payload.message.phoneInput.envelope.admissionId, JSON.stringify(payload.message.phoneInput));
+      }
+    }
+    this.stmt("INSERT INTO meta(key,value) VALUES('phone_inputs_seq',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(String(phoneSeq));
     if (stored < 40) this.redactRpcIdempotencyEnv();
     this.db
       .prepare(
@@ -3528,20 +3543,70 @@ export class CoreStore {
    * bee has no row → BeeNotFoundError). Archived bees auto-unarchive (Q3). When no
    * live runtime exists, a `send_wake` command is enqueued in the SAME transaction.
    */
+  phoneInput(messageId: number): PhoneInput | undefined {
+    const row = this.stmt("SELECT input_json FROM phone_inputs WHERE message_id = ?").get(messageId) as Row | undefined;
+    return row ? JSON.parse(String(row.input_json)) as PhoneInput : undefined;
+  }
+
+  private withPhoneInput<T extends { messageId: number }>(message: T): T & { phoneOrigin?: PhoneInput["envelope"] } {
+    const input = this.phoneInput(message.messageId);
+    return input ? { ...message, phoneOrigin: input.envelope } : message;
+  }
+
+  private mapPhoneMessage(row: Row): MessageRow {
+    const message = mapMessage(row), input = this.phoneInput(message.id);
+    if (input && (phoneDigest(input.originalContent) !== input.envelope.contentDigest || renderPhoneInput(input.originalContent) !== message.body)) throw new CoreError("Phone input and body shadow differ");
+    return input ? { ...message, phoneInput: input, renderedBody: message.body } : message;
+  }
+
+  checkPhoneBinding(key: string, verb: string, lane: string, digest: string): void {
+    const row = this.stmt("SELECT * FROM phone_admission_bindings WHERE key = ?").get(key) as Row | undefined;
+    if (row && (row.verb !== verb || row.lane !== lane || row.request_digest !== digest)) throw new EffectKeyError("idempotency_conflict", "Key is bound to different content, target, origin or lane");
+    if (!row && lane === "envelope-v1" && (this.lookupRpcResult(key) || this.getCommandByIdempotencyKey(key))) throw new EffectKeyError("idempotency_conflict", "Historical key has no phone admission binding");
+  }
+
+  bindPhoneAdmission(key: string, verb: string, lane: string, digest: string): void {
+    this.checkPhoneBinding(key, verb, lane, digest);
+    this.stmt("INSERT INTO phone_admission_bindings(key, verb, lane, request_digest) VALUES(?, ?, ?, ?) ON CONFLICT(key) DO NOTHING").run(key, verb, lane, digest);
+  }
+
+  private makePhoneInput(raw: PhoneOriginRequest, originalContent: string, key: string, beeId: string): PhoneInput {
+    const request = parsePhoneOrigin(raw);
+    if (request.target.kind === "bee" && request.target.id !== beeId) throw new EffectKeyError("invalid_request", "Phone target differs from accepting bee");
+    const ownerStoreId = this.effectCoverage().ownerStoreId;
+    let unknown = request.ancestry === "unknown-overflow";
+    const roots: PhoneSource[] = [...request.rootSources];
+    for (const parent of [...request.parentSources, ...request.rootSources]) {
+      const row = parent.ownerStoreId === ownerStoreId ? this.stmt("SELECT input_json FROM phone_inputs WHERE admission_id = ?").get(parent.admissionId) as Row | undefined : undefined;
+      if (!row) { unknown = true; continue; }
+      const prior = JSON.parse(String(row.input_json)) as PhoneInput;
+      if (prior.envelope.contentDigest !== parent.contentDigest) throw new EffectKeyError("invalid_request", "Phone parent digest differs from durable source");
+      roots.push(...prior.envelope.rootSources);
+      if (prior.envelope.ancestry !== "complete") unknown = true;
+    }
+    const admissionId = randomUUID(), contentDigest = phoneDigest(originalContent);
+    if (!request.parentSources.length) roots.push({ ownerStoreId, admissionId, contentDigest, relation: "forward" });
+    const unique = [...new Map(roots.map(root => [JSON.stringify(root), root])).values()];
+    if (unique.length > 8) unknown = true;
+    const envelope: PhoneInput["envelope"] = { ...request, rootSources: unique.slice(0, 8), ancestry: unknown ? "unknown-overflow" : "complete", ownerStoreId, admissionId, targetBeeId: beeId, idempotencyKey: key, contentDigest };
+    return { envelope, originalContent };
+  }
+
   send(
     beeId: string,
     body: string,
-    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind } = {},
+    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; phone?: { origin: PhoneOriginRequest; key: string } } = {},
   ): SendResult {
     const urgency = opts.urgency ?? "next";
     if (opts.senderKind !== undefined && !(SENDER_KINDS as readonly string[]).includes(opts.senderKind)) throw new CoreError(`unknown sender kind: ${String(opts.senderKind)}`);
     if (!(MESSAGE_URGENCIES as readonly string[]).includes(urgency)) throw new UnknownUrgencyError(urgency);
     const origin = opts.origin ?? "mail.send";
     if (!(MAIL_ORIGINS as readonly string[]).includes(origin)) throw new CoreError(`unknown mail origin: ${origin}`);
-    if (body.includes("\0")) throw new CoreError("send: body must not contain U+0000");
+    const phoneInput = opts.phone ? this.makePhoneInput(opts.phone.origin, body, opts.phone.key, beeId) : undefined;
+    if (!phoneInput && body.includes("\0")) throw new CoreError("send: body must not contain U+0000");
     const rawSender = opts.sender ?? "operator";
     if (rawSender.includes("\0")) throw new CoreError("send: sender must not contain U+0000");
-    const normalizedBody = wellFormedUtf16(body);
+    const normalizedBody = phoneInput ? renderPhoneInput(body) : wellFormedUtf16(body);
     const sender = wellFormedUtf16(rawSender);
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
@@ -3565,7 +3630,9 @@ export class CoreStore {
         deliveredAt: null,
         deliveredGeneration: null,
         ...(opts.senderKind === undefined ? {} : { senderKind: opts.senderKind }),
+        ...(phoneInput ? { phoneInput, renderedBody: normalizedBody } : {}),
       };
+      if (phoneInput) this.stmt("INSERT INTO phone_inputs(message_id, admission_id, input_json) VALUES(?, ?, ?)").run(message.id, phoneInput.envelope.admissionId, JSON.stringify(phoneInput));
       const enqueueSeq = this.audit("mail.enqueued", beeId, { message, origin });
       this.insertMailHistoryEnqueue(enqueueSeq, message, origin);
       // Human (and bee) interaction resets the consecutive-feed counter; the
@@ -3587,7 +3654,7 @@ export class CoreStore {
     const rows = this.db
       .prepare("SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id")
       .all(beeId) as Row[];
-    return rows.map(mapMessage);
+    return rows.map(row => this.mapPhoneMessage(row));
   }
 
   private hasUndeliveredMessage(beeId: string): boolean {
@@ -3601,7 +3668,7 @@ export class CoreStore {
     const rows = this.stmt(
       "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, id",
     ).all() as Row[];
-    return rows.map(mapMessage);
+    return rows.map(row => this.mapPhoneMessage(row));
   }
 
   /**
@@ -3619,7 +3686,7 @@ export class CoreStore {
          SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL
          ORDER BY id`,
     ).all(beeId, beeId) as Row[];
-    return rows.map(mapMessage);
+    return rows.map(row => this.mapPhoneMessage(row));
   }
 
   /**
@@ -3669,7 +3736,7 @@ export class CoreStore {
        ORDER BY m.id
        LIMIT ?`,
     ).all(beeId, limit + 1) as Row[];
-    const candidates = rows.slice(0, limit).map(mailPendingMessage);
+    const candidates = rows.slice(0, limit).map(row => this.withPhoneInput(mailPendingMessage(row)));
     const messages: MailPendingMessage[] = [];
     let bodyBytes = 0;
     let jsonBytes = 0;
@@ -3689,7 +3756,7 @@ export class CoreStore {
 
   getMessage(messageId: number): MessageRow | null {
     const row = this.stmt("SELECT * FROM mailbox WHERE id = ?").get(messageId) as Row | undefined;
-    return row ? mapMessage(row) : null;
+    return row ? this.mapPhoneMessage(row) : null;
   }
 
   /**
@@ -3717,7 +3784,7 @@ export class CoreStore {
        WHERE seq <= ? AND seq < ?
        ORDER BY seq DESC LIMIT ?`,
     ).all(snapshotSeq, beforeSeq, limit + 1) as Row[];
-    const candidates = enqueueRows.slice(0, limit).map(mailHistoryEnqueue);
+    const candidates = enqueueRows.slice(0, limit).map(row => this.withPhoneInput(mailHistoryEnqueue(row)));
 
     // Exactly three indexed point reads per candidate at most. Repeated
     // expedites or historical duplicate terminal rows cannot enlarge work.
@@ -3929,6 +3996,7 @@ export class CoreStore {
         messageId,
         deliveredAt: at,
         deliveredGeneration: generation,
+        ...(message.phoneInput ? { phoneOrigin: message.phoneInput.envelope } : {}),
         ...(turnTrigger ? { turnTrigger } : {}),
         ...(questionId !== null ? { questionId } : {}),
         ...(senderKind !== undefined ? { senderKind } : {}),
@@ -3976,6 +4044,7 @@ export class CoreStore {
           deliveredAt: at,
           deliveredGeneration: generation,
           ack: true,
+          ...(this.phoneInput(messageId) ? { phoneOrigin: this.phoneInput(messageId)!.envelope } : {}),
           ...(questionId !== null ? { questionId } : {}),
           ...(senderKind !== undefined ? { senderKind } : {}),
         });
@@ -9583,7 +9652,7 @@ export class CoreStore {
         mapRuntime,
       ),
       flags: (this.stmt("SELECT * FROM flags ORDER BY id").all() as Row[]).map(mapFlag),
-      mailbox: (this.stmt("SELECT * FROM mailbox ORDER BY id").all() as Row[]).map(mapMessage),
+      mailbox: (this.stmt("SELECT * FROM mailbox ORDER BY id").all() as Row[]).map(row => this.mapPhoneMessage(row)),
       commands: (this.stmt("SELECT * FROM commands ORDER BY id").all() as Row[]).map(mapCommand),
       templates: this.listTemplates(),
       tracks: this.listTracks(),

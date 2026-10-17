@@ -1,3 +1,4 @@
+import { renderPhoneInput } from "../../core/src/phoneOrigin.ts";
 /**
  * Sender-attribution envelope for bee-sent mail (contract B4a: buz IS the
  * mailbox; this is the delivery-time rendering of the mailbox row's sender
@@ -67,12 +68,13 @@ export function isPeerSender(sender: string, beeExists: (id: string) => boolean)
 const SYSTEM_MAIL_ORIGINS: readonly MailOrigin[] = ["action.dispatch", "handoff.seed"];
 
 export function turnTriggerSource(
-  msg: Pick<MessageRow, "sender" | "senderKind">,
+  msg: Pick<MessageRow, "sender" | "senderKind" | "phoneInput">,
   origin: MailOrigin,
   isPeer: boolean,
   parentId: string | null,
 ): TurnTriggerSource {
   const sender = msg.sender;
+  if (msg.phoneInput) return { kind: "other", from: sender };
   if (SYSTEM_MAIL_ORIGINS.includes(origin) || isAutomationSender(sender)) return { kind: "other", from: sender };
   if (isPeer) return { kind: "mail", from: sender };
   if (msg.senderKind === "automation") return { kind: "other", from: sender };
@@ -101,11 +103,12 @@ const SELF_FRAMED_SENDERS: readonly string[] = [ACTION_DISPATCH_SENDER, HANDOFF_
 
 /** The exact text handed to the runtime for a message — enveloped iff peer-sent, a question answer or automation (except senders that frame their own body). */
 export function deliveryText(
-  msg: Pick<MessageRow, "id" | "sender" | "body" | "urgency" | "enqueuedAt" | "senderKind">,
+  msg: Pick<MessageRow, "id" | "sender" | "body" | "urgency" | "enqueuedAt" | "senderKind" | "phoneInput">,
   isPeer: boolean,
   interruptedTurn = false,
   questionId: string | null = null,
 ): string {
+  if (msg.phoneInput) return renderPhoneInput(msg.phoneInput.originalContent);
   const senderKind = deliveredSenderKind(msg);
   const automated = !isPeer && senderKind === "automation" && !SELF_FRAMED_SENDERS.includes(msg.sender);
   if (questionId !== null || automated) {

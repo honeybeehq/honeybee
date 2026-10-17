@@ -1,3 +1,8 @@
+import { type PhoneOriginRequest, parsePhoneOrigin } from "../../core/src/phoneOrigin.ts";
+const PHONE_CONTEXT = Symbol("phoneOrigin");
+const PHONE_LANE = Symbol("phoneLane");
+const PHONE_DIGEST = Symbol("phoneDigest");
+const PHONE_CARRIER_DIGEST = Symbol("phoneCarrierDigest");
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { effectVerb } from "../../core/src/effectResolve.ts";
 import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../../src/apiarySwap.ts";
@@ -1716,6 +1721,16 @@ export class HiveDaemon {
 
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
     if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: local coordinator installation is NOT_COVERED");
+    if (verb === "send" || verb === "spawn") {
+      if (conn.phoneOrigin) {
+        if (typeof params.idempotencyKey !== "string" || !params.idempotencyKey.length) throw new RpcError("invalid_request", "Phone admission requires idempotencyKey");
+        const origin = parsePhoneOrigin(conn.phoneOrigin);
+        if (verb === "spawn" && origin.contentKind !== "initial-prompt" || verb === "send" && origin.contentKind === "initial-prompt") throw new RpcError("invalid_request", "Phone content kind differs from operation");
+        params = { ...params, [PHONE_CONTEXT]: origin, [PHONE_LANE]: "envelope-v1", [PHONE_CARRIER_DIGEST]: conn.phoneCarrierDigest };
+      } else params = { ...params, [PHONE_LANE]: conn.phoneLane ?? "legacy" };
+      (params as Record<PropertyKey, unknown>)[PHONE_DIGEST] = this.phoneRequestBinding(params).digest;
+      this.checkPhoneRequestBinding(verb, params);
+    }
     assertLocalHandoffRpc(verb, params, conn);
     this.assertNotForeignHarnessStart(verb, params, conn);
     if (typeof params.beeId === "string" && ["stop", "revive", "archive", "bee.swapAccount", "bee.setArgs", "bee.reconfigure", "bee.move", "bee.handoff", "bee.fork", "bee.interrupt"].includes(verb)) {
@@ -2336,6 +2351,28 @@ export class HiveDaemon {
    * returns the settled outcome). A failed mutation records nothing: the
    * caller may retry with the same key. Keyless calls are untouched.
    */
+  private phoneOriginOf(params: Record<string, unknown>): PhoneOriginRequest | undefined {
+    return (params as Record<PropertyKey, unknown>)[PHONE_CONTEXT] as PhoneOriginRequest | undefined;
+  }
+
+  private phoneRequestBinding(params: Record<string, unknown>): { lane: string; digest: string } {
+    const lane = String((params as Record<PropertyKey, unknown>)[PHONE_LANE] ?? "legacy");
+    return { lane, digest: (params as Record<PropertyKey, unknown>)[PHONE_DIGEST] as string ?? canonicalDigest(JSON.parse(JSON.stringify({ params, lane, phoneOrigin: this.phoneOriginOf(params) ?? null, carrierDigest: (params as Record<PropertyKey, unknown>)[PHONE_CARRIER_DIGEST] ?? null }))) };
+  }
+
+  private checkPhoneRequestBinding(verb: string, params: Record<string, unknown>): void {
+    const key = this.idempotencyKeyOf(params);
+    if (key && (verb === "send" || verb === "spawn")) {
+      const binding = this.phoneRequestBinding(params);
+      this.mustStore().checkPhoneBinding(key, verb, binding.lane, binding.digest);
+    }
+  }
+
+  private phoneSendOptions(params: Record<string, unknown>): { phone?: { origin: PhoneOriginRequest; key: string } } {
+    const origin = this.phoneOriginOf(params);
+    return origin ? { phone: { origin, key: this.idempotencyKeyOf(params)! } } : {};
+  }
+
   private withIdempotency<T extends object>(
     verb: RpcVerb,
     params: Record<string, unknown>,
@@ -2346,6 +2383,7 @@ export class HiveDaemon {
     const store = this.mustStore();
     if (this.effectInFlight?.has(key) && verb !== "spawn") throw new RpcError("idempotency_conflict", "Key belongs to an in-flight spawn");
     return store.transact(() => {
+      this.checkPhoneRequestBinding(verb, params);
       const hit = store.lookupRpcResult(key);
       if (hit) {
         if (hit.verb !== verb) throw new RpcError("idempotency_conflict", `Key belongs to ${hit.verb}, not ${verb}`);
@@ -2360,7 +2398,14 @@ export class HiveDaemon {
         }
         return replay;
       }
-      const result = fn();
+      if (verb === "send" || verb === "spawn") {
+        const binding = this.phoneRequestBinding(params);
+        store.bindPhoneAdmission(key, verb, binding.lane, binding.digest);
+      }
+      const effect = fn();
+      const messageId = (effect as { messageId?: number }).messageId;
+      const input = typeof messageId === "number" ? store.phoneInput(messageId) : undefined;
+      const result = input ? { ...effect, phoneAdmission: { ownerStoreId: input.envelope.ownerStoreId, admissionId: input.envelope.admissionId, contentDigest: input.envelope.contentDigest, lane: input.envelope.lane } } : effect;
       const commandId = (result as { commandId?: unknown }).commandId;
       store.recordRpcResult(key, verb, typeof commandId === "number" ? commandId : null, this.beeEnvRedacted(result));
       return this.revealedOrRedacted(params, result);
@@ -2379,7 +2424,7 @@ export class HiveDaemon {
     const key = this.idempotencyKeyOf(params);
     if (key === null) return this.rpcSpawnWithAccount(params);
     this.mustStore().transact(() => this.mustStore().lookupRpcResult(key));
-    const fingerprint = canonicalDigest(JSON.parse(JSON.stringify(params)));
+    const fingerprint = this.phoneRequestBinding(params).digest;
     const registry = this.effectInFlight ??= new Map();
     const existing = registry.get(key);
     if (existing) {
@@ -2899,8 +2944,8 @@ export class HiveDaemon {
       parentId: parent.parentId,
       parentExternal: parent.parentExternal,
     });
-    const prompt = typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : null;
-    const sent = prompt == null ? null : store.send(id, prompt, { sender: "operator", origin: "spawn.prompt" });
+    const prompt = this.phoneOriginOf(params) ? (typeof params.prompt === "string" ? params.prompt : "") : typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : null;
+    const sent = prompt == null ? null : store.send(id, prompt, { sender: this.phoneOriginOf(params) ? `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone` : "operator", origin: "spawn.prompt", ...this.phoneSendOptions(params) });
     this.log(`spawn.mailbox_only bee=${id}`);
     return { beeId: id, agent: INBOX_AGENT, handle: bee.handle, commandId: null, messageId: sent?.message.id ?? null, account: null };
   }
@@ -3034,12 +3079,8 @@ export class HiveDaemon {
     if (key != null) {
       const original = store.getCommandByIdempotencyKey(key);
       if (original) {
-        const prompt = typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : null;
-        const messageId = prompt == null
-          ? null
-          : store.listMessages(original.beeId).find((message) =>
-              message.sender === "operator" && message.body === prompt
-            )?.id ?? null;
+        this.checkPhoneRequestBinding("spawn", params);
+        const messageId = store.listMessages(original.beeId).find(message => store.mailOrigin(message.id) === "spawn.prompt")?.id ?? null;
         return {
           beeId: original.beeId,
           handle: store.getBee(original.beeId)?.handle ?? null,
@@ -3119,11 +3160,11 @@ export class HiveDaemon {
     }
     const cmd = store.enqueueCommand("spawn", id, {}, key == null ? {} : { idempotencyKey: key });
     const prompt = params.prompt === undefined || params.prompt === null
-      ? null
+      ? (this.phoneOriginOf(params) ? "" : null)
       : this.param(params, "prompt");
-    const sent = prompt == null || prompt.length === 0
+    const sent = prompt == null || (prompt.length === 0 && !this.phoneOriginOf(params))
       ? null
-      : store.send(id, prompt, { sender: "operator", origin: "spawn.prompt" });
+      : store.send(id, prompt, { sender: this.phoneOriginOf(params) ? `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone` : "operator", origin: "spawn.prompt", ...this.phoneSendOptions(params) });
     if (account) this.log(`spawn.account bee=${id} account=${account.id}${accountReason ? ` reason=${JSON.stringify(accountReason)}` : ""}`);
     return {
       beeId: id,
@@ -5357,7 +5398,8 @@ export class HiveDaemon {
         throw new RpcError("invalid_request", "send: senderKind is only for operator and human senders; an agent's mail is always mail");
       }
     }
-    const res = store.send(beeId, body, { sender, urgency, ...(senderKind ? { senderKind } : {}) });
+    if (this.phoneOriginOf(params)) { sender = `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone`; senderKind = undefined; }
+    const res = store.send(beeId, body, { sender, urgency, ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
     this.forwardIfMailboxOnly(beeId, res.message);
     const held = this.authResume?.waitingForMaterial(beeId);
     return { messageId: res.message.id, commandId: res.wakeCommand?.id ?? null, unarchived: res.unarchived,

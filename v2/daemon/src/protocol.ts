@@ -645,7 +645,9 @@ export type RpcVerb = (typeof RPC_VERBS)[number];
 
 /** Service assertion, accepted only on a registered direct-local RPC connection. */
 export interface RpcRequestContext {
-  sessionPrincipal: { beeId: string };
+  sessionPrincipal?: { beeId: string };
+  phoneOrigin?: import("../../core/src/phoneOrigin.ts").PhoneOriginRequest;
+  phoneLane?: "envelope-v1" | "interim-v1";
 }
 
 export interface RpcRequest {
