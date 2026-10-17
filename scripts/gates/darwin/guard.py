@@ -165,6 +165,13 @@ def select_node(configured, real_home):
             raise Refusal('Node path must be explicit and outside real HOME')
         if p.is_file() and os.access(p, os.X_OK):
             return str(p.resolve())
+    rows = []
+    for candidate in candidates + ['/usr/bin/python3', '/opt/homebrew/bin/python3']:
+        result = subprocess.run(['/bin/ls', '-ld', candidate], capture_output=True, text=True)
+        rows.append({'path': candidate, 'exit': result.returncode, 'stdout': result.stdout, 'stderr': result.stderr})
+    receipt = json.dumps({'state': 'refused', 'reason': 'no configured Node executable', 'candidateMetadata': rows}, sort_keys=True)
+    print(receipt, file=sys.stderr)
+    print('REFUSAL_SHA256=' + hashlib.sha256(receipt.encode()).hexdigest(), file=sys.stderr)
     raise Refusal('no configured Node executable')
 
 
