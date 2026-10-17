@@ -239,7 +239,7 @@ function credentialValue(value: string): boolean {
       return true;
     }
   }
-  if (/\b(?:Bearer\s+|(?:sk|xai|ghp|github_pat)[-_][a-z0-9]|eyJ[a-z0-9_-]+\.eyJ|-----BEGIN .*PRIVATE KEY)/i.test(decoded)) return true;
+  if (/^(?:Bearer\s+|(?:sk|xai|ghp|github_pat)[-_][a-z0-9_-]{20,}|eyJ[a-z0-9_-]+\.eyJ|-----BEGIN .*PRIVATE KEY)/i.test(decoded)) return true;
   if (/^https?:/i.test(decoded)) {
     try {
       const nested = new URL(decoded);
@@ -269,7 +269,7 @@ export function safeAuthorizationUrl(candidate: string, policy: LoginAuthorizati
   url.hash = "";
   for (const name of [...url.searchParams.keys()]) {
     const claudeFlag = policy !== "cli" && policy.claudeCodeFlag === true && name === "code" && url.searchParams.getAll(name).length === 1 && url.searchParams.get(name) === "true";
-    if (!claudeFlag && (credentialParameter(name) || policy !== "cli" && !policy.parameters.includes(name))) url.searchParams.delete(name);
+    if (!claudeFlag && (policy === "cli" ? credentialParameter(name) : !policy.parameters.includes(name))) url.searchParams.delete(name);
   }
   if (credentialValue(url.pathname) || [...url.searchParams.values()].some(credentialValue)) return null;
   return url.toString();

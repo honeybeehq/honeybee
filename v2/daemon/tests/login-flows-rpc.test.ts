@@ -211,7 +211,7 @@ test("rpc.login.2: browser-style landing over RPC with a real daemon: restart ma
     const started = await client.request<AccountLoginStartResult>("account.login.start", { id: added.account.id });
     assert.equal(started.flow.methodId, "codex-browser");
     const waiting = await waitPhase(client, started.flow.id, ["waiting_browser"], "waiting_browser");
-    assert.equal(waiting.authorizationUrl, "https://auth.openai.com/oauth/authorize?x=1");
+    assert.equal(waiting.authorizationUrl, "https://auth.openai.com/oauth/authorize");
     // `values` are checked for shape before anything else — a secret in the
     // wrong phase is refused without being recorded anywhere.
     await rejects(() => client.request("account.login.submit", { flowId: started.flow.id, values: { code: SENTINEL } }), "login_flow_refused");
@@ -308,8 +308,10 @@ test("rpc.login.3: a completed login survives a restart as succeeded; account.re
 });
 
 test("rpc.redaction: actual snapshot and watch projection never carry CLI URL credentials", async () => {
-  for (const unsafe of [false, true]) {
-    const url = unsafe ? "https://u:planted-pass@auth.openai.com/oauth/authorize?client_id=app" : "https://auth.openai.com/oauth/authorize?client_id=app&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=public&scope=openid&code_verifier=planted-verifier&token=planted-token#planted-fragment";
+  for (const mode of ["stripped", "unsafe", "real"] as const) {
+    const unsafe = mode === "unsafe";
+    const real = "https://auth.openai.com/oauth/authorize?response_type=code&client_id=app&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&scope=openid%20profile%20email%20offline_access%20api.connectors.read%20api.connectors.invoke&code_challenge=x-sk-public-random-0123456789abcdef&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true&state=x-sk-public-random-0123456789abcdef&originator=codex_cli_rs&allowed_workspace_id=workspace-a%2Cworkspace-b";
+    const url = mode === "real" ? real : unsafe ? "https://u:planted-pass@auth.openai.com/oauth/authorize?client_id=app" : "https://auth.openai.com/oauth/authorize?client_id=app&redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback&state=public&scope=openid&code_verifier=planted-verifier&token=planted-token#planted-fragment";
     const { dir, cleanup } = makeDaemonDir({ accounts: { loginWorkerBackend: "pipe" }, agents: { codex: { command: process.execPath, args: [], adapter: "codex", login: { command: process.execPath, args: [FAKE_CLI] }, env: { FAKE_LOGIN_HOME_ENV: "CODEX_HOME", FAKE_LOGIN_FILE: "auth.json", FAKE_CLI_URL: url, FAKE_CLI_HANG: "1" } } } });
     let daemon: DaemonHandle | null = null;
     try {
@@ -326,13 +328,18 @@ test("rpc.redaction: actual snapshot and watch projection never carry CLI URL cr
       else {
         const clean = new URL(flow.authorizationUrl!);
         assert.equal(clean.searchParams.get("client_id"), "app");
-        assert.equal(clean.searchParams.get("state"), "public");
-        assert.equal(clean.searchParams.get("scope"), "openid");
+        assert.equal(clean.searchParams.get("state"), mode === "real" ? "x-sk-public-random-0123456789abcdef" : "public");
+        assert.equal(clean.searchParams.get("scope"), mode === "real" ? "openid profile email offline_access api.connectors.read api.connectors.invoke" : "openid");
+        if (mode === "real") assert.equal(flow.authorizationUrl, real);
         assert.equal(clean.searchParams.get("redirect_uri"), "http://localhost:1455/auth/callback");
       }
       await waitFor(() => frames.some((frame) => frame.type === "delta" && frame.events.some((event) => event.kind === "login_flow.put" && (event.payload as { flow?: { phase?: string } }).flow?.phase === flow.phase)) ? true : null, "mirror delta", 5000);
       const snapshot = await client.request<SnapshotResult>("snapshot");
       assert.equal(snapshot.loginFlows[0]?.phase, flow.phase);
+      if (mode === "real") {
+        assert.equal(snapshot.loginFlows[0]?.authorizationUrl, real);
+        assert.ok(frames.some((frame) => frame.type === "delta" && frame.events.some((event) => event.kind === "login_flow.put" && (event.payload as { flow?: { authorizationUrl?: string } }).flow?.authorizationUrl === real)));
+      }
       assert.doesNotMatch(JSON.stringify({ snapshot, frames, flow }), /planted-/);
       client.close();
       watch.close();

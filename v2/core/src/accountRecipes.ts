@@ -155,6 +155,7 @@ export type LoginMethodRun =
 export type LoginRecipeMethod = LoginMethodDescriptor & {
   run: LoginMethodRun;
   harnessFree?: true;
+  authorizationUrl?: LoginAuthorizationPolicy;
 };
 
 export interface LoginCliCue {
@@ -463,6 +464,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
       methods: [
         {
           id: "codex-browser",
+          authorizationUrl: { hosts: ["auth.openai.com"], paths: ["/oauth/authorize"], parameters: ["response_type", "client_id", "redirect_uri", "scope", "code_challenge", "code_challenge_method", "id_token_add_organizations", "codex_cli_simplified_flow", "state", "originator", "allowed_workspace_id"] },
           kind: "browser",
           label: "Sign in with ChatGPT",
           description: "Approve access in your browser; Codex finishes the sign-in on this computer.",
@@ -481,6 +483,7 @@ export const ACCOUNT_RECIPES: Readonly<Record<string, IdentityRecipe>> = {
         },
         {
           id: "codex-device",
+          authorizationUrl: { hosts: ["auth.openai.com"], paths: ["/codex/device"], parameters: [] },
           kind: "device_code",
           label: "Sign in with a device code",
           description: "Open the sign-in page anywhere and enter the code shown here.",

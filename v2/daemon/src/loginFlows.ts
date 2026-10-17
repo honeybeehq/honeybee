@@ -559,7 +559,9 @@ export class LoginFlowService {
     const safePatch = { ...patch };
     if (safePatch.error) safePatch.error = { ...safePatch.error, message: redactor.redact(safePatch.error.message).slice(0, 200) };
     if (safePatch.detail) safePatch.detail = redactor.redact(safePatch.detail);
-    return this.store.updateLoginFlow(flowId, safePatch, reason).flow;
+    const updated = this.store.updateLoginFlow(flowId, safePatch, reason).flow;
+    if (isTerminal(updated.phase)) this.redactors.delete(flowId);
+    return updated;
   }
 
   private fail(flowId: string, error: LoginFlowError, retryable: boolean): LoginFlowRow {
