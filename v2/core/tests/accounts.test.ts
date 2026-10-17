@@ -1062,7 +1062,7 @@ test("lease migration preserves canonical revocation and reopens without rewriti
   for (const revokedAt of [123, null]) {
     const h = harness();
     const initial = h.open();
-    initial.createAccount({ id: "claude-precedence", harness: "claude", homePath: "/fixture", label: "precedence" });
+    initial.createAccount({ id: "claude-precedence", harness: "claude", homePath: join(dirname(h.path), "account-home"), label: "precedence" });
     initial.close();
     const seed = new DatabaseSync(h.path);
     seed.prepare("UPDATE accounts SET source='leased', leased_from=?").run(JSON.stringify({ shareId: "s", authorityNodeId: "n", epoch: 1, expiresAt: null, adoptedAt: null, revokedAt, endedAt: revokedAt === null ? 456 : null }));
