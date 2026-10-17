@@ -38,6 +38,17 @@ test("real owner phone admission: trust, atomic replay, lane pinning, initial pr
     assert.equal(message.renderedBody, message.body);
     assert.equal(deliveryText(message, true), message.body);
     await client.request("mail.ack", { beeId: bee.beeId, all: true });
+    const interimArgs = { beeId: bee.beeId, sender: "remote:fixture-node/phone-0123456789abcdef", body: renderPhoneInput("interim original"), idempotencyKey: "interim-send" };
+    const interim = await client.request<{ messageId: number }>("send", interimArgs, 2000, { phoneLane: "interim-v1" });
+    assert.equal((await client.request<{ messageId: number }>("send", interimArgs, 2000, { phoneLane: "interim-v1" })).messageId, interim.messageId);
+    await assert.rejects(client.request("send", { ...interimArgs, body: renderPhoneInput("interim changed") }, 2000, { phoneLane: "interim-v1" }), { code: "idempotency_conflict" });
+    await assert.rejects(client.request("send", interimArgs), { code: "idempotency_conflict" });
+    const legacyArgs = { name: "legacy-original", agent: "inbox", parentId: "external-fixture-parent", parentExternal: true, prompt: "legacy initial", idempotencyKey: "legacy-spawn" };
+    const legacy = await client.request<{ beeId: string; messageId: number }>("spawn", legacyArgs);
+    const legacyReplay = { ...legacyArgs, name: "ignored-legacy-name", parentExternal: false, prompt: undefined };
+    assert.equal((await client.request<{ beeId: string }>("spawn", legacyReplay)).beeId, legacy.beeId);
+    await assert.rejects(client.request("spawn", legacyArgs, 2000, { phoneLane: "interim-v1" }), { code: "idempotency_conflict" });
+
     const spawnArgs = { name: "phone-prompt", agent: "inbox", prompt: args.body, idempotencyKey: "phone-spawn" };
     const spawnContext = { phoneOrigin: { ...origin, contentKind: "initial-prompt" as const } };
     const spawned = await client.request<{ beeId: string }>("spawn", spawnArgs, 2000, spawnContext);
@@ -76,6 +87,8 @@ test("real owner phone admission: trust, atomic replay, lane pinning, initial pr
     const key2 = readFileSync(join(dir, "rpc-private", "registration.key"));
     const token2 = createHmac("sha256", key2).update(localTrustMessage(challenge2)).digest("hex"); key2.fill(0);
     await client.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge2.challengeId, token: token2 });
+    assert.equal((await client.request<{ beeId: string }>("spawn", legacyReplay)).beeId, legacy.beeId);
+    await assert.rejects(client.request("spawn", legacyArgs, 2000, { phoneLane: "interim-v1" }), { code: "idempotency_conflict" });
     for (const operation of operations) {
       const replay = await client.request<{ beeId: string; messageId: null; phoneAdmission: { admissionId: string } }>("spawn", operation.args, 2000, spawnContext);
       assert.equal(replay.beeId, operation.beeId); assert.equal(replay.messageId, null);
