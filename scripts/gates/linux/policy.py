@@ -9,6 +9,8 @@ def within(target, root):
 
 
 def pid_transition(before, observation):
+    if observation.get('state') == 'pid_unobserved':
+        return 'unproven'
     after = observation.get('procStat') or {}
     same = before.get('starttime') is not None and before.get('starttime') == after.get('starttime')
     reused = before.get('state') == 'Z' and after.get('state') not in (None, 'Z')
@@ -23,18 +25,22 @@ def pid_transition(before, observation):
 
 def pid_observation(tree_listed, proc_stat, proc_exists=None):
     stat_enoent = (proc_stat or {}).get('errno') == errno.ENOENT
-    gone = stat_enoent or not tree_listed and proc_exists is False
-    return dict(treeListed=tree_listed, procStat=proc_stat, statEnoent=stat_enoent, procExistsObserved=proc_exists, state='pid_gone' if gone else 'pid_present' if tree_listed else 'pid_outside_scope')
+    gone = stat_enoent or proc_exists is False
+    observed = bool((proc_stat or {}).get('state') and (proc_stat or {}).get('starttime'))
+    state = 'pid_gone' if gone else 'pid_unobserved' if not observed else 'pid_present' if tree_listed else 'pid_outside_scope'
+    return dict(treeListed=tree_listed, procStat=proc_stat, statEnoent=stat_enoent, procExistsObserved=proc_exists, state=state)
 
 
 def error_verdict(error, birth, masked, real_hive):
     observation = error.get('nextSample') or {}
     after = observation.get('procStat') or {}
     before = error.get('atErrorStat') or {}
-    if error.get('threadScoped') and not before.get('starttime'):
+    if not before.get('starttime'):
         before = birth.get('procStat') or {}
     transition = pid_transition(before, observation)
     scoped = birth.get('cgroupSightingTime') is not None or birth.get('ownTreeAtFirstSight', False)
+    if birth.get('procStat', {}).get('starttime') and after.get('starttime') and birth['procStat']['starttime'] != after['starttime']:
+        return 'FAIL'
     if error.get('threadScoped'):
         membership = birth.get('taskMembership', {})
         if birth.get('tid') != error.get('tid') or birth.get('tgid') != error.get('tgid') or membership.get('tid') != error.get('tid') or membership.get('ownerPid') != error.get('tgid'):

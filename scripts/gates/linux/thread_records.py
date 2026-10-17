@@ -1,10 +1,12 @@
 from policy import pid_observation
+from stat_observation import resolve_stat_observation
 
 
 class ThreadRecords:
     def __init__(self):
         self.births = {}
         self.current = {}
+        self.observation_retries = []
 
     def observe(self, tgid, tid, proc_stat, sample, at, namespace=None):
         key = (tgid, tid)
@@ -14,7 +16,8 @@ class ThreadRecords:
         birth_start = self.births[key]['procStat'].get('starttime')
         observation['identityChanged'] = bool(birth_start and proc_stat.get('starttime') and birth_start != proc_stat['starttime'])
         self.current[key] = observation
-        self.record_next(key, observation)
+        if observation['state'] != 'pid_unobserved':
+            self.record_next(key, observation)
         return self.births[key]
 
     def record_next(self, key, observation):
@@ -27,6 +30,11 @@ class ThreadRecords:
         observation = self.current.get(key)
         if observation is None or observation['sample'] != sample:
             observation = dict(time=at, sample=sample, tgid=tgid, tid=tid, **pid_observation(False, read_stat(tgid, tid)))
+        had_attempts = 'statObservationAttempts' in observation
+        observation = resolve_stat_observation(observation, lambda: read_stat(tgid, tid))
+        self.current[key] = observation
+        if not had_attempts and 'statObservationAttempts' in observation:
+            self.observation_retries.append(dict(observation))
         self.record_next(key, observation)
         return dict(observation)
 

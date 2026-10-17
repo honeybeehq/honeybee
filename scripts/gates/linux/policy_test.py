@@ -16,6 +16,8 @@ from birth_identity import birth_identity, parent_chain
 from test_capabilities import assert_capabilities, capability_receipt_valid, SETPRIV_ARGS, CAPABILITY_SETS
 from policy import RULE_VERSION
 from filesystem import assert_filesystem, filesystem_probes, proc_receipt_valid
+from stat_observation import parse_stat, resolve_stat_observation, STAT_RETRY_LIMIT, STAT_RETRY_DELAY
+from error_summary import error_summary, error_summary_valid, error_summary_totals
 
 HOME = '/home/lab'
 HIVE = HOME + '/.hive'
@@ -23,6 +25,96 @@ META = dict(inode=1, size=100, mtime_ns=10000000000, mode=33152, uid=1000, gid=1
 
 
 class PolicyTests(unittest.TestCase):
+    def test_budget11_empty_next_stat_retries_to_z_for_both_reported_pids(self):
+        for pid in (120215,130601):
+            birth=dict(pid=pid,ownTreeAtFirstSight=True,parentChain=[pid,36,1],procStat=dict(state='Z',starttime='77'))
+            initial=dict(sample=2,time=2,**pid_observation(True,{}))
+            self.assertEqual(initial['state'],'pid_unobserved')
+            values=iter([{},dict(state='Z',starttime='77')]);waits=[]
+            observation=resolve_stat_observation(initial,lambda:next(values),wait=waits.append,clock=lambda:3)
+            error=dict(pid=pid,slot='ns/mnt',errno=errno.ENOENT,atErrorStat=dict(state='Z',starttime='77'),nextSample=observation)
+            self.assertEqual(waits,[STAT_RETRY_DELAY]*2)
+            self.assertEqual(len(observation['statObservationAttempts']),3)
+            self.assertFalse(observation['statRetryExhausted'])
+            self.assertEqual(error_verdict(error,birth,True,HIVE),'scope_proven_exiting')
+            birth['nextBirthSample']=observation
+            self.assertEqual(mapping_coverage(birth,[],[]),'mapping unavailable: exited before host capture')
+
+    def test_empty_or_failed_next_stat_has_a_fixed_retry_budget_and_unresolved_fail(self):
+        for value in ({},dict(errno=errno.EACCES),dict(errno=errno.EIO)):
+            birth=dict(pid=120215,ownTreeAtFirstSight=True,procStat=dict(state='Z',starttime='77'))
+            initial=dict(sample=2,**pid_observation(True,value));calls=[]
+            def read():
+                calls.append(1);return value
+            observation=resolve_stat_observation(initial,read,wait=lambda _:None,clock=lambda:3)
+            self.assertEqual(len(calls),STAT_RETRY_LIMIT)
+            self.assertEqual(len(observation['statObservationAttempts']),STAT_RETRY_LIMIT+1)
+            self.assertTrue(observation['statRetryExhausted'])
+            self.assertEqual(observation['state'],'pid_unobserved')
+            self.assertEqual(resolve_stat_observation(observation,lambda:self.fail('exhausted observation retried')),observation)
+            error=dict(slot='fd/9',fd='9',errno=errno.ENOENT,atErrorStat=birth['procStat'],nextSample=observation)
+            self.assertEqual(error_verdict(error,birth,True,HIVE),'FAIL')
+            birth['nextBirthSample']=observation
+            self.assertEqual(mapping_coverage(birth,[],[]),'FAIL')
+
+    def test_recovered_alive_non_z_without_mapping_still_fails(self):
+        birth=dict(pid=130601,ownTreeAtFirstSight=True,procStat=dict(state='R',starttime='77'))
+        observation=resolve_stat_observation(dict(sample=2,**pid_observation(True,{})),lambda:dict(state='S',starttime='77'),wait=lambda _:None)
+        self.assertEqual(observation['state'],'pid_present')
+        birth['nextBirthSample']=observation
+        self.assertEqual(mapping_coverage(birth,[],[]),'FAIL')
+        self.assertEqual(error_verdict(dict(slot='ns/mnt',errno=errno.ENOENT,atErrorStat=birth['procStat'],nextSample=observation),birth,True,HIVE),'FAIL')
+
+    def test_stat_recovery_accepts_explicit_enoent_but_not_a_changed_identity(self):
+        initial=dict(sample=2,**pid_observation(True,{}))
+        gone=resolve_stat_observation(initial,lambda:dict(errno=errno.ENOENT),wait=lambda _:None)
+        self.assertEqual(gone['state'],'pid_gone')
+        birth=dict(pid=120215,ownTreeAtFirstSight=True,procStat=dict(state='Z',starttime='77'))
+        changed=resolve_stat_observation(initial,lambda:dict(state='Z',starttime='78'),wait=lambda _:None)
+        self.assertEqual(error_verdict(dict(slot='cwd',errno=errno.ENOENT,atErrorStat={},nextSample=changed),birth,True,HIVE),'FAIL')
+        self.assertEqual(parse_stat(''),{})
+        self.assertEqual(parse_stat('120215 (node) '),{})
+
+    def test_thread_empty_next_stat_is_recovered_before_birth_observation_is_frozen(self):
+        records,birth,error=self.thread_case()
+        records.observe(8927,8991,{},2,11)
+        self.assertNotIn('nextBirthSample',birth)
+        error['nextSample']=records.next_observation(8927,8991,2,11,lambda *_:dict(state='Z',starttime='77'))
+        self.assertEqual(error_verdict(error,birth,True,HIVE),'scope_proven_exiting')
+        self.assertEqual(birth['nextBirthSample']['procStat']['state'],'Z')
+        self.assertEqual(len(records.observation_retries),1)
+        records.next_observation(8927,8991,2,11,lambda *_:self.fail('cached recovery re-read'))
+        self.assertEqual(len(records.observation_retries),1)
+
+    def test_error_receipt_separates_primary_diagnostics_and_retry_failures(self):
+        errors=[dict(slot=slot,verdict=verdict,errno=number) for slot,verdict,number in [('cwd','scope_proven_exiting',errno.ENOENT),('birthIdentity','scope_proven_exiting',errno.ENOENT),('fd/1','prior_target_outside_hive',errno.ENOENT),('fd/2','masked_unknown_prior_WARN',errno.ENOENT),('stat_unobserved','FAIL',None),('atErrorStat','scope_proven_exiting',errno.ENOENT)]]
+        reads=[dict(procStat=dict(state='Z')),dict(procStat=dict(errno=errno.ENOENT)),dict(threadScoped=True,procStat={})]
+        retries=[dict(statObservationAttempts=[dict(procStat={}),dict(procStat={}),dict(procStat=dict(state='Z'))],statRetryExhausted=False)]
+        summary=error_summary(errors,reads,retries)
+        self.assertEqual(summary['rawErrorRecords'],6)
+        self.assertEqual(summary['primary']['total'],5)
+        self.assertEqual(summary['primary']['exits'],2)
+        self.assertEqual(summary['primary']['liveFdChurn'],2)
+        self.assertEqual(summary['primary']['fail'],1)
+        self.assertEqual(summary['primary']['syntheticIdentityReports'],1)
+        self.assertEqual(summary['diagnostic']['errorRecords'],1)
+        self.assertEqual(summary['diagnostic']['atErrorStatReads'],3)
+        self.assertEqual(summary['diagnostic']['atErrorStatReadFailures'],2)
+        self.assertEqual(summary['diagnostic']['observationRetryReads'],2)
+        self.assertEqual(summary['diagnostic']['observationRetryReadFailures'],1)
+        self.assertEqual(summary['additionalDiagnosticFailuresNotSeparateErrorRecords'],2)
+        self.assertTrue(error_summary_valid(summary,errors,reads,retries))
+        for missing in ('rawErrorRecords','primary','diagnostic','additionalDiagnosticFailuresNotSeparateErrorRecords','version'):
+            changed=dict(summary);del changed[missing]
+            self.assertFalse(error_summary_valid(changed,errors,reads,retries))
+        self.assertFalse(error_summary_valid(dict(summary,rawErrorRecords=5),errors,reads,retries))
+        self.assertFalse(error_summary_valid(summary,errors,None,retries))
+        total=error_summary_totals([summary,summary,None])
+        self.assertEqual(total['rawErrorRecords'],12)
+        self.assertEqual(total['primary']['total'],10)
+        self.assertEqual(total['diagnostic']['errorRecords'],2)
+        self.assertEqual(total['missingSummaries'],1)
+
     def test_workload_cannot_write_outside_run_root_and_devices_work(self):
         root = pathlib.Path(__file__).parent
         record = dict(state=assert_filesystem(root), probes=filesystem_probes(root))
@@ -289,10 +381,10 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(mapping_coverage(birth,[],[]),'mapping unavailable: exited before host capture')
         for number in (errno.EACCES,errno.EIO):
             current=pid_observation(True,dict(errno=number))
-            self.assertEqual(current['state'],'pid_present')
+            self.assertEqual(current['state'],'pid_unobserved')
             self.assertEqual(error_verdict(dict(error,nextSample=current),birth,True,HIVE),'FAIL')
         self.assertEqual(pid_observation(False,None,False)['state'],'pid_gone')
-        self.assertEqual(pid_observation(False,None,True)['state'],'pid_outside_scope')
+        self.assertEqual(pid_observation(False,None,True)['state'],'pid_unobserved')
 
     def test_raw_r16_sleeping_runner_exit(self):
         birth=dict(pid=8292,ownTreeAtFirstSight=True,procStat=dict(state='R',starttime='303018549'))

@@ -3,6 +3,8 @@ from policy import error_verdict, RULE_VERSION, within,update_fd_prior,pid_obser
 from home_guard import entry_guard
 from thread_records import ThreadRecords
 from birth_identity import birth_identity, parent_chain
+from stat_observation import parse_stat, resolve_stat_observation
+from error_summary import error_summary
 ROOT = pathlib.Path(sys.argv[1])
 LABEL = sys.argv[2]
 CMD = sys.argv[3:]
@@ -21,6 +23,8 @@ LAB = {k: os.readlink('/proc/self/ns/' + k) for k in ('user', 'mnt', 'net','pid'
 ANCHOR = os.getpid()
 births = {}
 errors = []
+diagnostic_reads = []
+observation_retries = []
 forbidden = []
 peers = []
 previous = {}
@@ -54,31 +58,43 @@ for path in EXCLUSIONS:
 def stat_fields(pid):
     try:
         raw = pathlib.Path(f'/proc/{pid}/stat').read_text()
-        fields = raw[raw.rfind(')') + 2:].split()
-        return dict(state=fields[0], ppid=int(fields[1]), starttime=fields[19])
+        return parse_stat(raw)
     except OSError as exc:
         return dict(error=type(exc).__name__, errno=exc.errno)
 
 def thread_stat(tgid, tid):
     try:
         raw = pathlib.Path(f'/proc/{tgid}/task/{tid}/stat').read_text()
-        fields = raw[raw.rfind(')') + 2:].split()
-        return dict(state=fields[0], ppid=int(fields[1]), starttime=fields[19])
+        return parse_stat(raw)
     except OSError as exc:
         return dict(error=type(exc).__name__, errno=exc.errno)
 
 def thread_error(tgid, tid, slot, number, message):
-    errors.append(dict(pid=tid, tid=tid, tgid=tgid, threadScoped=True, fd=None, slot=slot, time=time.time(), sample=samples, errno=number, message=message, previousTarget=None, atErrorStat=thread_stat(tgid, tid)))
+    current = thread_stat(tgid, tid)
+    diagnostic_reads.append(dict(pid=tid, tid=tid, tgid=tgid, threadScoped=True, time=time.time(), sample=samples, procStat=current))
+    errors.append(dict(pid=tid, tid=tid, tgid=tgid, threadScoped=True, fd=None, slot=slot, time=time.time(), sample=samples, errno=number, message=message, previousTarget=None, atErrorStat=current))
 
 def checked_stat(pid, slot):
     value = stat_fields(pid)
-    if 'error' in value:
-        errors.append(dict(pid=pid, fd=None, slot=slot, time=time.time(), sample=samples, errno=value['errno'], error=value['error'], message='stat metadata read failed', atErrorStat=value))
+    if slot == 'atErrorStat':
+        diagnostic_reads.append(dict(pid=pid, time=time.time(), sample=samples, procStat=value))
+    if not value.get('state'):
+        errors.append(dict(pid=pid, fd=None, slot=slot, time=time.time(), sample=samples, errno=value.get('errno'), error=value.get('error', 'UnobservedStat'), message='stat metadata read failed or was empty', atErrorStat=value))
     return value
 
 def err(pid, slot, e):
     fd = slot[3:] if slot.startswith('fd/') else None
     errors.append(dict(pid=pid, fd=fd, slot=slot, time=time.time(), sample=samples, errno=e.errno, error=type(e).__name__, message=str(e), previousTarget=previous.get(pid, {}).get(fd), atErrorStat=checked_stat(pid, 'atErrorStat')))
+
+def observe_process(pid, tree_listed, current, sample_index):
+    present = os.path.exists(f'/proc/{pid}') if not (current or {}).get('state') or not tree_listed else None
+    if current is None and present:
+        current = checked_stat(pid, 'nextSampleStat')
+    observation = dict(pid=pid, time=time.time(), sample=sample_index, **pid_observation(tree_listed, current, present))
+    observation = resolve_stat_observation(observation, lambda: stat_fields(pid), lambda: os.path.exists(f'/proc/{pid}'))
+    if 'statObservationAttempts' in observation:
+        observation_retries.append(dict(observation))
+    return observation
 
 def capture(pid):
     b = dict(pid=pid, time=time.time(), firstSample=samples, cgroupSightingTime=None, procStat=checked_stat(pid, 'firstSightStat'), observedParentEdge=parent_edges.get(pid))
@@ -227,6 +243,14 @@ def do_sample():
                 peers.append(dict(time=time.time(), line=line))
     except OSError as e:
         err(ANCHOR, 'ss', e)
+    next_process_observations = {}
+    def next_process_observation(pid):
+        if pid not in next_process_observations:
+            row = next((item for item in rows if item['pid'] == pid), None)
+            next_process_observations[pid] = observe_process(pid, pid in pids, row.get('procStat') if row else None, samples)
+            if row is not None and 'statObservationAttempts' in next_process_observations[pid]:
+                row['statRecovery'] = next_process_observations[pid]
+        return dict(next_process_observations[pid])
     for e in list(errors):
         if e['sample'] >= samples or 'nextSample' in e:
             continue
@@ -235,30 +259,16 @@ def do_sample():
             e['nextSample'] = threads.next_observation(e['tgid'], e['tid'], samples, time.time(), thread_stat)
             continue
         row = next((r for r in rows if r['pid'] == pid), None)
-        obs = dict(time=time.time(), sample=samples, **pid_observation(pid in pids, row.get('procStat') if row else None))
-        if obs['state'] == 'pid_gone':
-            pass
-        elif pid not in pids:
-            obs['state'] = 'pid_gone' if not os.path.exists(f'/proc/{pid}') else 'pid_outside_scope'
-            if obs['state'] == 'pid_outside_scope':
-                obs['procStat'] = checked_stat(pid, 'nextSampleStat')
-                obs['statEnoent'] = obs['procStat'].get('errno') == errno.ENOENT
-                if obs['statEnoent']:
-                    obs['state'] = 'pid_gone'
-        elif row is None:
-            obs['state'] = 'pid_unreadable'
-        elif e.get('fd') is not None and (not row.get('fdReadError')):
+        obs = next_process_observation(pid)
+        if obs['state'] not in ('pid_gone', 'pid_unobserved') and row is not None and e.get('fd') is not None and (not row.get('fdReadError')):
             target = dict(row['fds']).get(e['fd'])
             obs.update(target=target, state='fd_absent' if target is None else 'fd_changed' if e.get('previousTarget') is not None and target != e['previousTarget'] else 'fd_present')
-        else:
-            obs['state'] = 'pid_present'
         e['nextSample'] = obs
     for row in rows:
         previous[row['pid']]=update_fd_prior(previous.get(row['pid'],{}),dict(row['fds']),not row.get('fdReadError'))
     for pid,birth in births.items():
         if birth['firstSample']<samples and 'nextBirthSample' not in birth:
-            row=next((item for item in rows if item['pid']==pid),None)
-            birth['nextBirthSample']=dict(time=time.time(),sample=samples,**pid_observation(pid in pids,row['procStat'] if row else None,os.path.exists(f'/proc/{pid}') if row is None else None))
+            birth['nextBirthSample'] = next_process_observation(pid)
     for key,birth in threads.births.items():
         if birth['firstSample'] < samples and 'nextBirthSample' not in birth:
             threads.next_observation(*key, samples, time.time(), thread_stat)
@@ -316,9 +326,8 @@ for error in errors:
         error['nextSample'] = threads.next_observation(error['tgid'], error['tid'], samples+1, time.time(), thread_stat)
         final_observations.append(dict(pid=error['pid'],tid=error['tid'],tgid=error['tgid'],errorTime=error['time'],observation=error['nextSample']))
         continue
-    current=stat_fields(error['pid'])
-    gone=current.get('errno')==errno.ENOENT and not os.path.exists(f"/proc/{error['pid']}")
-    observation=dict(time=time.time(),sample=samples+1,procStat=current,state='pid_gone' if gone else 'pid_present',observationOnly=True)
+    observation = observe_process(error['pid'], False, stat_fields(error['pid']), samples+1)
+    observation['observationOnly'] = True
     error['nextSample']=observation
     final_observations.append(dict(pid=error['pid'],errorTime=error['time'],observation=observation))
 (OUT/'final-observations.json').write_text(json.dumps(final_observations,indent=2))
@@ -327,10 +336,15 @@ fdlog.close()
 cglog.close()
 lsoflog.close()
 lsoferr.close()
+for observation in observation_retries + threads.observation_retries:
+    if observation.get('statRetryExhausted'):
+        failure = dict(pid=observation.get('tid', observation.get('pid')), slot='stat_unobserved', sample=observation['sample'], time=observation['time'], errno=None, message='bounded stat observation remained unresolved', nextSample=observation, atErrorStat=observation.get('procStat') or {})
+        if 'tid' in observation:
+            failure.update(tid=observation['tid'], tgid=observation['tgid'], threadScoped=True)
+        errors.append(failure)
 for e in errors:
     e['scopeProof'] = threads.births.get((e['tgid'],e['tid']),{}) if e.get('threadScoped') else births.get(e['pid'], {})
-    if e.get('threadScoped'):
-        e['exitIdentitySource'] = 'atErrorStat' if e.get('atErrorStat',{}).get('starttime') else 'thread birth'
+    e['exitIdentitySource'] = 'atErrorStat' if e.get('atErrorStat',{}).get('starttime') else 'thread birth' if e.get('threadScoped') else 'process birth'
     e['verdict'] = error_verdict(e, e['scopeProof'], MASK['maskAsserted'], str(REAL_HIVE.parent))
 counts = {k: sum((e['verdict'] == k for e in errors)) for k in ('scope_proven_exiting', 'prior_target_outside_hive', 'masked_unknown_prior_WARN', 'FAIL')}
 byerrno = collections.defaultdict(collections.Counter)
@@ -339,6 +353,10 @@ for e in errors:
 test_input=json.loads((OUT/'test-input.json').read_text()) if (OUT/'test-input.json').exists() else {}
 test_input['testFailure']=bool(re.search(r'^# fail [1-9]\d*$',(OUT/'stdout.log').read_text(),re.M))
 result = dict(ruleVersion=RULE_VERSION, label=LABEL, command=CMD, exit=rc, testEvidence=test_input,cleanup=cleanup,monitorSha256=HASH, ownPids=sorted(births), errors=errors, errorCounts=counts, errnoCounts={k: dict(v) for k, v in byerrno.items()}, forbidden=forbidden, peers=peers, fullyClean=not (counts['FAIL'] or forbidden or peers), births=list(births.values()),threadBirths=list(threads.births.values()),samplingLimitation='A failed children-file read can leave that sample tree walk incomplete; processes born and gone between samples may be unseen.')
+result['errorSummary'] = error_summary(errors, diagnostic_reads, observation_retries + threads.observation_retries)
+(OUT / 'stat-observation-retries.json').write_text(json.dumps(observation_retries + threads.observation_retries, indent=2))
+(OUT / 'diagnostic-stat-reads.json').write_text(json.dumps(diagnostic_reads, indent=2))
+(OUT / 'errors.json').write_text(json.dumps(errors, indent=2))
 (OUT / 'result.json').write_text(json.dumps(result, indent=2))
-print(json.dumps(dict(label=LABEL, exit=rc, ownPids=len(births), errorCounts=counts, forbidden=len(forbidden), peers=len(peers), fullyClean=result['fullyClean'])), flush=True)
+print(json.dumps(dict(label=LABEL, exit=rc, ownPids=len(births), errorSummary=result['errorSummary'], forbidden=len(forbidden), peers=len(peers), fullyClean=result['fullyClean'])), flush=True)
 sys.exit(rc)
