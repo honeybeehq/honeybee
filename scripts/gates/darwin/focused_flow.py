@@ -12,6 +12,7 @@ import focused_diagnostics
 import focused_native
 import focused_sentinel
 import focused_tap
+import focused_trace
 
 
 def workload_profile(base, tools):
@@ -51,7 +52,7 @@ def artifacts(workspace, root):
     return {kind: focused_native.artifact_state(workspace, root, kind) for kind in ('delivery-file', 'peercred')}
 
 
-def supervise(api, root, workspace, env, argv, tag, timeout=600):
+def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None):
     helper = root / 'scope'
     read_fd, release_fd = os.pipe()
     tracked = {}
@@ -59,14 +60,23 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600):
     samples = []
     signals = []
     reason = None
+    executable_samples = []
+    if trace is not None:
+        env = trace.environment(env)
+        argv = trace.command(argv)
     log = root / 'logs' / (tag + '.tap')
     with log.open('xb') as output:
         try:
-            proc = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *argv], pass_fds=(read_fd,), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
+            proc = subprocess.Popen([sys.executable, '-B', str(workspace / 'scripts/gates/darwin/start_wait.py'), str(read_fd), *argv], pass_fds=(read_fd,) + ((trace.write_fd,) if trace is not None else ()), cwd=workspace, env=env, stdout=output, stderr=subprocess.STDOUT)
         except OSError:
             os.close(read_fd)
             os.close(release_fd)
+            if trace is not None:
+                trace.finish()
             raise
+        if trace is not None:
+            trace.root_pid = proc.pid
+            trace.parent_close()
         os.close(read_fd)
         started = time.monotonic()
         try:
@@ -79,12 +89,29 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600):
             os.close(release_fd)
             release_fd = None
             while proc.poll() is None:
+                if trace is not None:
+                    trace.drain()
                 for row in api.scope_call(helper, 'scan', *birth):
                     tracked.setdefault((row[0], row[2], row[3]), row)
                 for sample in api.sample_retained_listeners(helper, tracked, exited):
                     samples.append(sample)
                     if sample.get('error') or any(not listener['loopback'] for listener in sample['listeners']):
                         raise ValueError('focused listener observation failed or non-loopback listener')
+                if trace is not None:
+                    for key, row in tracked.items():
+                        if key in exited:
+                            continue
+                        observed = subprocess.run([str(helper), 'executable', *row], capture_output=True, text=True, timeout=2)
+                        executable = observed.stdout.strip()
+                        executable_samples.append({'birth': row, 'timestamp': time.time(), 'exit': observed.returncode, 'executable': executable})
+                        if observed.returncode == 3:
+                            continue
+                        if observed.returncode != 0:
+                            raise ValueError('unresolved own executable observation')
+                        if executable == env.get('SCG_NODE_BIN', trace.policy['node']):
+                            trace.node_pids.add(int(row[0]))
+                        elif executable != '/usr/bin/sandbox-exec' and not (int(row[0]) == proc.pid and executable == str(Path(sys.executable).resolve())):
+                            raise ValueError('own executable outside sibling allowlist')
                 if time.monotonic() - started > timeout:
                     raise ValueError('focused hard timeout')
                 time.sleep(0.05)
@@ -93,20 +120,32 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600):
         finally:
             if release_fd is not None:
                 os.close(release_fd)
+            cleanup_deadline = time.monotonic() + 10
+
+            def bounded_helper(argv):
+                try:
+                    return subprocess.run(argv, capture_output=True, text=True, timeout=max(0.01, min(2, cleanup_deadline - time.monotonic())))
+                except (OSError, subprocess.SubprocessError):
+                    return subprocess.CompletedProcess(argv, 4, 'helper-unresolved-refused', '')
+
             for row in tracked.values():
-                status = subprocess.run([str(helper), 'status', *row], capture_output=True, text=True)
+                if time.monotonic() >= cleanup_deadline:
+                    reason = reason or 'focused fenced cleanup deadline'
+                    api.LEFTOVER_CHILDREN.append({'pid': row[0], 'birth': row, 'reason': 'cleanup deadline; no unfenced signal'})
+                    continue
+                status = bounded_helper([str(helper), 'status', *row])
                 if status.returncode == 3:
                     continue
                 reason = reason or 'focused process remained after root exit'
                 for sig in (signal.SIGTERM, signal.SIGKILL):
-                    result = subprocess.run([str(helper), 'signal', *row, str(int(sig))], capture_output=True, text=True)
+                    result = bounded_helper([str(helper), 'signal', *row, str(int(sig))])
                     signals.append({'birth': row, 'signal': int(sig), 'exit': result.returncode})
                     if result.returncode == 3:
                         break
                     if result.returncode != 0:
                         break
                     time.sleep(0.25)
-                check = subprocess.run([str(helper), 'status', *row], capture_output=True, text=True)
+                check = bounded_helper([str(helper), 'status', *row])
                 if check.returncode != 3:
                     api.LEFTOVER_CHILDREN.append({'pid': row[0], 'birth': row, 'reason': 'focused fenced cleanup unresolved'})
             try:
@@ -116,6 +155,14 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600):
                 if not tracked:
                     api.LEFTOVER_CHILDREN.append({'pid': proc.pid, 'birth': None, 'reason': 'birth unobserved, not fenced'})
     result = {'argv': argv, 'environmentKeys': sorted(env), 'cwd': str(workspace), 'timeoutSeconds': timeout, 'exit': proc.returncode, 'reason': reason, 'retainedBirths': list(tracked.values()), 'listenerSamples': samples, 'signals': signals, 'log': str(log.relative_to(root))}
+    if trace is not None:
+        try:
+            result['executionTrace'] = trace.finish()
+        except (ValueError, OSError) as error:
+            result['executionTrace'] = {'ok': False, 'error': str(error)}
+        result['executableSamples'] = executable_samples
+        if not result['executionTrace']['ok']:
+            result['reason'] = result['reason'] or 'execution trace or Node hello coverage failed'
     api.write_json(root / (tag + '-process.json'), result, root)
     return result, log
 
@@ -144,6 +191,12 @@ def run(api, root, workspace, env, tools, real_home):
     packages, package_log = supervise(api, root, workspace, env, prefix + [env['SCG_NODE_BIN'], str(workspace / 'scripts/gates/darwin/focused-packages.mjs')], 'focused-packages')
     if packages['exit'] != 0 or packages['reason'] or sorted(json.loads(package_log.read_text()), key=lambda row: row['specifier']) != sorted(audit['packages'], key=lambda row: row['specifier']):
         raise api.Refusal('resolved bare packages differ from reviewed audit')
+    focused_audit.validate(workspace, 'scripts/gates/darwin/focused-sibling-audit.json')
+    census_process, census_log = supervise(api, root, workspace, env, prefix + [env['SCG_NODE_BIN'], str(workspace / 'scripts/gates/darwin/focused-census.mjs')], 'focused-census')
+    census = json.loads(census_log.read_text())
+    api.write_json(root / 'focused-census.json', census, root)
+    if census_process['exit'] != 0 or census_process['reason'] or not census['ok']:
+        raise api.Refusal('TypeScript AST module/capability census failed')
     dependencies = dependency_state(workspace)
     api.write_json(root / 'focused-dependencies.json', dependencies, root)
     for kind in ('delivery-file', 'peercred'):
@@ -159,6 +212,12 @@ def run(api, root, workspace, env, tools, real_home):
         if probe['exit'] != 0 or probe['reason']:
             raise api.Refusal('non-optional confined native probe failed: ' + kind)
     before_artifact = artifacts(workspace, root)
+    resolved_edges = []
+    for edge in audit['nativeEdges']:
+        kind = 'peercred' if '/peercred/' in edge['artifact'] else 'delivery-file'
+        state = before_artifact[kind]['files'][edge['artifact']]
+        resolved_edges.append(dict(edge, sha256=state['sha256'], inode=state['ino'], mtimeNs=state['mtimeNs']))
+    api.write_json(root / 'focused-native-edges.json', resolved_edges, root)
     outcomes = []
     for mode in ('outer', 'sibling'):
         for number, item in enumerate(manifest['files']):

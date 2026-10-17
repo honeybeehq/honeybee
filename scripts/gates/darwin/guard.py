@@ -344,9 +344,9 @@ def absolute_compiler_jobs(text):
     return True
 
 
-def scope_call(helper, command, *args):
+def scope_call(helper, command, *args, timeout=2):
     argv = [str(helper), command, *map(str, args)]
-    value = subprocess.run(argv, capture_output=True, text=True)
+    value = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     SCOPE_OBSERVATIONS.append({'time': time.time(), 'argv': argv, 'exit': value.returncode, 'stdout': value.stdout, 'stderr': value.stderr})
     value.check_returncode()
     return [line.split() for line in value.stdout.splitlines()]
@@ -355,10 +355,10 @@ def scope_call(helper, command, *args):
 def sample_listeners(helper, birth):
     timestamp = time.time()
     command = [str(helper), 'listeners', *birth]
-    value = subprocess.run(command, capture_output=True, text=True)
+    value = subprocess.run(command, capture_output=True, text=True, timeout=2)
     observation = {'timestamp': timestamp, 'birth': birth, 'pid': int(birth[0]), 'argv': command, 'exit': value.returncode, 'stderr': value.stderr, 'listeners': []}
     if value.returncode:
-        status = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True)
+        status = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True, timeout=2)
         observation['exitEvidence'] = {'exit': status.returncode, 'result': status.stdout.strip()}
         if status.returncode != 3 or status.stdout.strip() not in ('gone', 'same-birth-zombie'):
             observation['error'] = 'listener observation unresolved'

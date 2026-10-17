@@ -55,8 +55,8 @@ class FlowTests(unittest.TestCase):
 
     def test_manifest_partition_is_exact(self):
         data = json.loads((Path(__file__).parent / 'focused-manifest.json').read_text())
-        self.assertEqual(sum(len(row['outer']) for row in data['files']), 46)
-        self.assertEqual(sum(len(row['sibling']) for row in data['files']), 3)
+        self.assertEqual(sum(len(row['outer']) for row in data['files']), 47)
+        self.assertEqual(sum(len(row['sibling']) for row in data['files']), 2)
         self.assertEqual(sum(len(row['excluded']) for row in data['files']), 20)
         for row in data['files']:
             names = row['outer'] + row['sibling'] + row['excluded']

@@ -8,7 +8,6 @@ FILES = ('v2/daemon/tests/delivery-file.test.ts', 'v2/daemon/tests/delivery-file
 EXECUTABLES = {'node', 'production-sandbox-exec', 'production-wrapWithSandbox', 'delivery-file-reader', 'build-refused-prebuilt-only'}
 PACKAGES = {'ajv/dist/2020.js', 'jsonc-parser', 'smol-toml'}
 SHA = re.compile(r'[0-9a-f]{64}')
-SPAWN = re.compile(r'\b(?:spawn|spawnSync|exec|execSync|execFile|execFileSync|fork|wrapWithSandbox)\s*\(')
 
 
 def exact_keys(value, keys):
@@ -31,7 +30,7 @@ def pinned_path(workspace, relative):
 def validate(workspace, audit_path):
     audit_file = pinned_path(workspace, audit_path)
     data = json.loads(audit_file.read_text())
-    exact_keys(data, ('version', 'files', 'spawns', 'packages'))
+    exact_keys(data, ('version', 'files', 'spawns', 'packages', 'capabilityReferences', 'nativeEdges'))
     if data['version'] != 1 or not isinstance(data['files'], list) or not isinstance(data['spawns'], list):
         raise ValueError('unsupported audit schema')
     files = {}
@@ -67,10 +66,12 @@ def validate(workspace, audit_path):
     for row in data['spawns']:
         if not isinstance(row, dict):
             raise ValueError('invalid spawn audit record')
-        keys = ('path', 'line', 'context', 'executable', 'receiver')
+        keys = ('path', 'line', 'context', 'executable', 'receiver', 'manualReview')
         exact_keys(row, (*keys, 'prebuiltGuard') if row.get('executable') == 'build-refused-prebuilt-only' else keys)
         if row['executable'] not in EXECUTABLES or not isinstance(row['receiver'], str) or not row['receiver'].strip():
             raise ValueError('unapproved sibling executable or missing receiver audit')
+        if type(row['manualReview']) is not bool:
+            raise ValueError('spawn manualReview boolean required')
         if row['path'] not in closure or type(row['line']) is not int or row['line'] < 1:
             raise ValueError('invalid spawn citation')
         lines = files[row['path']].splitlines()
@@ -87,25 +88,37 @@ def validate(workspace, audit_path):
         if site in sites:
             raise ValueError('duplicate spawn citation')
         sites.add(site)
-    for path, text in files.items():
-        if path not in closure:
-            continue
-        for number, line in enumerate(text.splitlines(), 1):
-            if SPAWN.search(line) and (path, number) not in sites:
-                raise ValueError('uncited spawn call')
-        imports = re.findall(r'(?:from\s*|import\s*\(|require\s*\()\s*[\'\"]([^\'\"]+)[\'\"]', text)
-        for relative in imports:
-            if relative.startswith('node:'):
-                continue
-            if not relative.startswith('.'):
-                if relative not in packages:
-                    raise ValueError('bare package import lacks audited package pin')
-                continue
-            target = ((workspace / path).parent / relative).resolve()
-            if workspace.resolve() not in target.parents:
-                raise ValueError('relative import outside workspace')
-            candidates = [target, target.with_suffix('.ts'), target.with_suffix('.mjs'), target.with_suffix('.js'), target / 'index.ts']
-            found = [candidate for candidate in candidates if candidate.is_file()]
-            if not found or not any(str(candidate.relative_to(workspace)) in closure for candidate in found):
-                raise ValueError('relative import missing from audited closure')
-    return {'schemaVersion': 1, 'auditSha256': hashlib.sha256(audit_file.read_bytes()).hexdigest(), 'files': data['files'], 'spawns': data['spawns'], 'packages': data['packages']}
+    reference_sites = set()
+    for row in data['capabilityReferences']:
+        keys = ('kind', 'path', 'line', 'context', 'module', 'manualReview')
+        exact_keys(row, (*keys, 'callee', 'executable', 'runtime', 'reachabilityProof') if row.get('kind') == 'unreachable-callsite' else keys)
+        if row['kind'] not in ('import', 'binding', 'reference', 'unreachable-callsite') or row['manualReview'] is not True or not isinstance(row['module'], str) or not row['module']:
+            raise ValueError('invalid capability citation')
+        citation(row, files, closure)
+        site = (row['path'], row['line'], row['module'], row['kind'])
+        if site in reference_sites:
+            raise ValueError('duplicate capability citation')
+        reference_sites.add(site)
+        if row['kind'] == 'unreachable-callsite':
+            if row['runtime'] != 'forbidden' or not all(isinstance(row[key], str) and row[key] for key in ('callee', 'executable')) or not isinstance(row['reachabilityProof'], list) or not row['reachabilityProof']:
+                raise ValueError('unreachable callsite requires forbidden runtime and proof')
+            for proof in row['reachabilityProof']:
+                if not isinstance(proof, str) or not re.fullmatch(r'[^:]+:[1-9][0-9]*', proof):
+                    raise ValueError('invalid reachability proof citation')
+                name, number = proof.rsplit(':', 1)
+                if name not in files or int(number) > len(files[name].splitlines()):
+                    raise ValueError('reachability proof outside pinned files')
+    for row in data['nativeEdges']:
+        exact_keys(row, ('kind', 'path', 'line', 'context', 'artifact', 'sha256Source'))
+        citation(row, files, closure)
+        if row['kind'] != 'native-artifact' or row['sha256Source'] != 'controller-manifest' or row['artifact'] not in ('src/dist/v2/delivery-file/darwin-arm64/delivery-file.node', 'src/dist/v2/peercred/darwin-arm64/peercred.node'):
+            raise ValueError('unapproved native artifact edge')
+    return {'schemaVersion': 1, 'auditSha256': hashlib.sha256(audit_file.read_bytes()).hexdigest(), 'files': data['files'], 'spawns': data['spawns'], 'packages': data['packages'], 'capabilityReferences': data['capabilityReferences'], 'nativeEdges': data['nativeEdges']}
+
+
+def citation(row, files, closure):
+    if row['path'] not in closure or type(row['line']) is not int or row['line'] < 1:
+        raise ValueError('invalid capability source citation')
+    lines = files[row['path']].splitlines()
+    if row['line'] > len(lines) or row['context'] != lines[row['line'] - 1]:
+        raise ValueError('capability context drift')

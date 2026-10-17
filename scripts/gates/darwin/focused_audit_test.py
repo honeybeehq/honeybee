@@ -19,9 +19,9 @@ class AuditTests(unittest.TestCase):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text((guard + '\n' + call + '\n') if name == focused_audit.FILES[1] else '')
                 files.append({'path': name, 'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'siblingClosure': name == focused_audit.FILES[1]})
-            row = {'path': focused_audit.FILES[1], 'line': 2, 'context': call, 'executable': 'build-refused-prebuilt-only', 'receiver': 'before-hook build path is dominated by prebuilt refusal', 'prebuiltGuard': {'path': focused_audit.FILES[1], 'line': 1, 'context': guard}}
+            row = {'path': focused_audit.FILES[1], 'line': 2, 'context': call, 'executable': 'build-refused-prebuilt-only', 'receiver': 'before-hook build path is dominated by prebuilt refusal', 'manualReview': True, 'prebuiltGuard': {'path': focused_audit.FILES[1], 'line': 1, 'context': guard}}
             audit = workspace / 'audit.json'
-            data = {'version': 1, 'files': files, 'spawns': [row], 'packages': []}
+            data = {'version': 1, 'files': files, 'spawns': [row], 'packages': [], 'nativeEdges': [], 'capabilityReferences': []}
             audit.write_text(json.dumps(data))
             focused_audit.validate(workspace, 'audit.json')
             row['prebuiltGuard']['context'] = 'wrong guard'
@@ -38,9 +38,9 @@ class AuditTests(unittest.TestCase):
                 full.parent.mkdir(parents=True, exist_ok=True)
                 full.write_text('spawn(process.execPath, []);\n')
                 files.append({'path': path, 'sha256': hashlib.sha256(full.read_bytes()).hexdigest(), 'siblingClosure': True})
-            spawns = [{'path': path, 'line': 1, 'context': 'spawn(process.execPath, []);', 'executable': 'node', 'receiver': 'node:child_process spawn; process.execPath is pinned Node'} for path in focused_audit.FILES]
+            spawns = [{'path': path, 'line': 1, 'context': 'spawn(process.execPath, []);', 'executable': 'node', 'receiver': 'node:child_process spawn; process.execPath is pinned Node', 'manualReview': True} for path in focused_audit.FILES]
             audit = workspace / 'audit.json'
-            data = {'version': 1, 'files': files, 'spawns': spawns, 'packages': []}
+            data = {'version': 1, 'files': files, 'spawns': spawns, 'packages': [], 'nativeEdges': [], 'capabilityReferences': []}
             audit.write_text(json.dumps(data))
             self.assertEqual(len(focused_audit.validate(workspace, 'audit.json')['files']), 3)
             for executable in ('git', 'security', 'tmux', '/bin/sh'):
@@ -49,10 +49,6 @@ class AuditTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'unapproved'):
                     focused_audit.validate(workspace, 'audit.json')
             data['spawns'][0]['executable'] = 'node'
-            data['spawns'].pop()
-            audit.write_text(json.dumps(data))
-            with self.assertRaisesRegex(ValueError, 'uncited'):
-                focused_audit.validate(workspace, 'audit.json')
             (workspace / files[0]['path']).write_text('changed')
             with self.assertRaisesRegex(ValueError, 'hash drift'):
                 focused_audit.validate(workspace, 'audit.json')

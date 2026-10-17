@@ -109,6 +109,16 @@ int main(int argc, char **argv) {
   if (argc < 6) return 2;
   unsigned long long sec = strtoull(argv[4], NULL, 10), usec = strtoull(argv[5], NULL, 10);
   if (!strcmp(argv[1], "listeners")) return listeners(pid, sec, usec);
+  if (!strcmp(argv[1], "executable")) {
+    int rc = same_birth(pid, sec, usec);
+    if (rc) return rc;
+    char path[PROC_PIDPATHINFO_MAXSIZE];
+    if (proc_pidpath(pid, path, sizeof(path)) <= 0) { rc = same_birth(pid, sec, usec); return rc ? rc : 4; }
+    rc = same_birth(pid, sec, usec);
+    if (rc) return rc;
+    puts(path);
+    return 0;
+  }
   if (!strcmp(argv[1], "scan")) return scan(pid, sec, usec, 0);
   if (!strcmp(argv[1], "status")) {
     if (!identity(pid, &b)) { int error = errno; puts(error == ESRCH ? "gone" : "unobserved-refused"); return error == ESRCH ? 3 : 4; }
