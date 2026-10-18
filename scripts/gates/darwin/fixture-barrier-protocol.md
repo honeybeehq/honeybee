@@ -27,3 +27,63 @@ The controller's per-connection deadline is 15 seconds, including authentication
 The own-process socket sampler recognizes only this exact controller endpoint as `gate-barrier`. Other Unix observation behavior and all IP connection checks are unchanged. The XNU public `proc_info.h` at tag `xnu-12377.1.9`, lines 414–424, defines `unsi_caddr` as the connected Unix address; lines 493–498 define `SOCKINFO_UN`.
 
 The barrier proves a template-exact profile existed on disk before recipient launch. It does not atomically bind the bytes consumed by sandbox_init: the accepted consumed-profile attribution, swap-and-restore, queried-write-path-only and plain sampling limitations remain. The test also awaits its owned recipient/host exit before deleting its fixture; a fire-and-forget dispose is insufficient. A missing file at initial approval still fails.
+
+## Reader idle lifetime observation (Darwin focused gate owner: f585)
+
+The Darwin focused gate owns and removes this fixture-only synchronization. It is
+limited to the exact `cell-sandbox` and `satellite-default` plain sibling rows.
+There is no fallback, CI auto-enable, product-driver instrumentation or instrumented
+mode endpoint. The reader entry, production argv and production-rendered SBPL remain
+unchanged. The test calls the helper only when `SCG_FIXTURE_OBSERVATION_SOCKET` is
+present, after every read/digest/header/write-denial assertion and diagnostic. Without
+that variable the call-site branch performs no await, dynamic import, socket or timer.
+The fixture reader itself receives no new data and performs no additional I/O.
+
+The controller creates private `o-p0.sock` / `o-p1.sock` sockets alongside, separately
+from, the pre-exec profile barrier. The pre-exec names and single-connection contract
+remain unchanged. Before launching HSR, the test temporarily removes the new variable
+from `process.env` during synchronous `driver.start`, restoring it in `finally`.
+This excludes it both from the resolver's reader env spread and from the host's
+`nativeNodeEnv()` snapshot. No async work occurs inside this temporary removal.
+
+One connection per row is authenticated by uid, exact birth and the retained internal
+plain test-runner role before any request read. The bounded request is UTF-8 JSON
+with exactly these keys and no duplicates, followed by one newline (4096 bytes max):
+
+`{"version":1,"operation":"reader-observed","rowId":"<exact reviewed row>","fixtureRoot":"<canonical fixture>"}\n`
+
+No profile bytes, process identity, argv or payload travel through this channel.
+The controller binds the locator to this row's approved profile, exact reader birth,
+host/internal-runner/root chain, prior validated argv/cwd/sandbox observation and
+successful live write-policy probes on the approved paths. Missing proof leaves the
+non-blocking request pending while the sampler continues. A fresh exact-birth live
+check immediately precedes each ACK send attempt. The canonical ACK bytes are exactly:
+
+`{"version":1,"observed":true}\n`
+
+The controller sends only those bytes, shuts down its write half and requires the
+client to close after accepting the exact ACK and EOF. A send/shutdown/peer EOF error,
+malformed request, second connection, stale or wrong-row evidence, gone reader or
+15-second controller deadline fails the row. The client has one 30-second deadline
+for connect, ACK and EOF; failure enters the existing awaited teardown and fenced
+cleanup. The HSR driver has no idle expiry/restart timer: its stop grace timer is
+armed only by explicit stop. The runner's fixture-lease timer continues checking the
+still-live test owner; it is not an idle timer. The test does not call dispose until
+its hold finishes or fails. Existing teardown still awaits owned-child exit before
+removing the fixture root.
+
+`readerLifetimeBarrier` records only enablement, verdict, connection/authentication
+counts or booleans, observation/live-at-ACK booleans, failure enum and disclosure. With
+no connection it is inert; all existing required reader-role and mediation checks
+still apply, so absence of a client cannot substitute for observation. The exact
+second endpoint is sampled as `gate-observation-barrier`, separately from the unchanged
+pre-exec endpoint. Production SBPL bytes and the renderer are untouched; equality
+and the real unchanged-profile Darwin run remain required evidence.
+
+Receipt disclosure:
+
+"plain run: production argv exact; reader lifetime extended by the Darwin focused gate fixture until the controller acknowledges a complete live reader observation; this proves an extended idle lifetime, not observation during the actual read/write or unextended timing; removal owner: Darwin focused gate (f585)."
+
+This does not make exec/connect sampling event-complete, identify the exact profile
+consumed by sandbox_init, exclude swap-and-restore, or provide general OS network
+isolation. Normal unextended reader timing is not proven by the synchronized row.
