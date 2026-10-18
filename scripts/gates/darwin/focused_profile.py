@@ -30,7 +30,7 @@ def profile_state(path, expected):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(fd)
-        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or stat.S_IMODE(before.st_mode) != 0o600:
+        if before.st_uid != os.getuid() or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or stat.S_IMODE(before.st_mode) != 0o600:
             raise ValueError('recipient profile must be a private singly linked regular file')
         content = b''
         while True:
