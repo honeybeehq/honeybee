@@ -418,7 +418,7 @@
     },
     {
       "path": "v2/daemon/tests/delivery-file-read-barrier.ts",
-      "sha256": "8e06e0e51a3f2b83e3f6727378cec1a8e2944619c68bdfa2b216bcc07332240f",
+      "sha256": "ff497108342df38fbdfa8a32a5c7533485e5fb8d5341f1a5e6f35564c8d3c3f9",
       "siblingClosure": true
     },
     {
@@ -428,7 +428,7 @@
     },
     {
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "sha256": "f09b394bebcdac55bd58d0544998a78824efa09110e547c8934ee4082d19cec0",
+      "sha256": "c9d13902756184e223228fff8ff6d728411687689bb9814fda4094ebc33b69b3",
       "siblingClosure": true
     },
     {
@@ -1007,6 +1007,30 @@
       "manualReview": true
     },
     {
+      "kind": "binding",
+      "path": "v2/daemon/tests/delivery-file-read-barrier.ts",
+      "line": 43,
+      "module": "node:net",
+      "context": "  const {createConnection} = await import(\"node:net\");",
+      "manualReview": true
+    },
+    {
+      "kind": "import",
+      "path": "v2/daemon/tests/delivery-file-read-barrier.ts",
+      "line": 43,
+      "module": "node:net",
+      "context": "  const {createConnection} = await import(\"node:net\");",
+      "manualReview": true
+    },
+    {
+      "kind": "reference",
+      "path": "v2/daemon/tests/delivery-file-read-barrier.ts",
+      "line": 49,
+      "module": "node:net",
+      "context": "    const socket = createConnection(endpoint);",
+      "manualReview": true
+    },
+    {
       "kind": "import",
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
       "line": 6,
@@ -1025,7 +1049,7 @@
     {
       "kind": "reference",
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "line": 93,
+      "line": 98,
       "context": "    syncBuiltinESMExports();",
       "module": "node:module",
       "manualReview": true
@@ -1033,7 +1057,7 @@
     {
       "kind": "reference",
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "line": 97,
+      "line": 102,
       "context": "    syncBuiltinESMExports();",
       "module": "node:module",
       "manualReview": true
@@ -1041,7 +1065,7 @@
     {
       "kind": "reference",
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "line": 198,
+      "line": 203,
       "context": "  const child = spawn(process.execPath, [\"--input-type=module\", \"-e\", code], {cwd: root, env: process.env, stdio: [\"ignore\", \"pipe\", \"pipe\"]});",
       "module": "node:child_process",
       "manualReview": true
@@ -1448,7 +1472,7 @@
     {
       "role": "test-runner",
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "sha256": "f09b394bebcdac55bd58d0544998a78824efa09110e547c8934ee4082d19cec0"
+      "sha256": "c9d13902756184e223228fff8ff6d728411687689bb9814fda4094ebc33b69b3"
     },
     {
       "role": "runner-host-main",

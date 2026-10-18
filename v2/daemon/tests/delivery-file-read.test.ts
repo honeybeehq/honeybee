@@ -17,7 +17,7 @@ import { defaultDataDir } from "../src/config.ts";
 import { deliveryContentRoot } from "../src/multilineFallback.ts";
 import { ensureDeliveryFileArtifact } from "./delivery-file-build.ts";
 import { DELIVERY_READ_SOCKET_NAME, deliveryReadFixtureBase, outsideLinuxPrivateMounts } from "./delivery-file-read-root.ts";
-import { disposeAndAwaitOwnedChild, waitForGateProfile } from "./delivery-file-read-barrier.ts";
+import { disposeAndAwaitOwnedChild, waitForGateProfile, waitForGateReaderObservation, withoutGateReaderObservationDuringLaunch } from "./delivery-file-read-barrier.ts";
 
 before(ensureDeliveryFileArtifact);
 for (const substrate of ["hsr", "cell-sandbox", "satellite-default"] as const) test(`${process.platform === "darwin" ? "Darwin " : ""}OS-level file read outside cwd: ${substrate}; tool-policy read UNVERIFIED (OS-level only)`, {skip: process.platform !== "linux" && process.platform !== "darwin"}, async t => {
@@ -58,7 +58,8 @@ for (const substrate of ["hsr", "cell-sandbox", "satellite-default"] as const) t
     const child = (driver as unknown as {procs: Map<string, {child: ChildProcess | null}>}).procs.get("bee")?.child;
     await disposeAndAwaitOwnedChild(child, () => driver.disposeAll(), () => rmSync(root, {recursive: true, force: true}));
   });
-  driver.start("bee", 1);
+  if (process.env.SCG_FIXTURE_OBSERVATION_SOCKET === undefined) driver.start("bee", 1);
+  else withoutGateReaderObservationDuringLaunch(() => driver.start("bee", 1));
   let accepted = false, ended = false;
   const observed: unknown[] = [];
   for (let attempt = 0; attempt < 500; attempt++) {
@@ -83,6 +84,10 @@ for (const substrate of ["hsr", "cell-sandbox", "satellite-default"] as const) t
   t.diagnostic(`SCG_READ_RESULT=${JSON.stringify({substrate, expectedDigest: row.digest, observedDigest: reply.sha256, expectedHeaderSha256: createHash("sha256").update(content.split("\n")[0]!).digest("hex"), observedHeaderSha256: createHash("sha256").update(reply.header).digest("hex"), readClass: "read", writeDenied: reply.writeDenied})}`);
   t.diagnostic(substrate === "hsr" ? "write denied: NOT APPLICABLE (unsandboxed by design)" : `write denied: ${substrate}; errno=${reply.writeDeniedErrno}; scratchPaths:[] fixture narrowing; all other SBPL rules byte-for-byte production`);
   for (const harness of ["Claude", "Codex", "Grok", "Kimi", "Muse", "Agy"]) t.diagnostic(`${harness}: tool-policy read UNVERIFIED (OS-level only)`);
+  if (process.env.SCG_FIXTURE_OBSERVATION_SOCKET !== undefined) {
+    await waitForGateReaderObservation(t.name, root);
+    t.diagnostic("plain run: production argv exact; reader lifetime extended by the Darwin focused gate fixture until the controller acknowledges a complete live reader observation; this proves an extended idle lifetime, not observation during the actual read/write or unextended timing; removal owner: Darwin focused gate (f585).");
+  }
 });
 
 test("default Darwin dataDir and delivery-content for a /Users home are outside default scratch paths and TMPDIR", t => {
