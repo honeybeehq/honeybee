@@ -175,7 +175,13 @@ class FlowTests(unittest.TestCase):
             workspace.mkdir()
             parent = ['11', '1', '100', '200']
             child = ['12', '11', '101', '201']
-            api = SimpleNamespace(Refusal=Refusal, LEFTOVER_CHILDREN=[], scope_call=Mock(side_effect=[[parent], [parent, child]]), sample_retained_listeners=Mock(return_value=[{'listeners': [{'loopback': False}]}]), write_json=lambda path, value, unused: path.write_text(json.dumps(value)))
+            import guard
+            partial = subprocess.CompletedProcess([], 4, '3 TCP 0.0.0.0 1234\n', '')
+            gone = subprocess.CompletedProcess([], 3, 'gone', '')
+            with patch('guard.subprocess.run', side_effect=[partial, gone]):
+                sample = guard.sample_listeners(root / 'scope', parent)
+            self.assertNotIn('error', sample)
+            api = SimpleNamespace(Refusal=Refusal, LEFTOVER_CHILDREN=[], scope_call=Mock(side_effect=[[parent], [parent, child]]), sample_retained_listeners=Mock(return_value=[sample]), write_json=lambda path, value, unused: path.write_text(json.dumps(value)))
             process = Mock(returncode=-15)
             process.pid = 11
             process.poll.return_value = None
