@@ -47,6 +47,47 @@ class MediationTests(unittest.TestCase):
             self.assertTrue(result['ok'])
             self.assertEqual(result['observedRecipientBirths'], [birth])
 
+    def test_repeated_plain_observation_cleanup_race_requires_death(self):
+        for outcome in ('gone', 'alive', 'instrumented', 'first', 'changed', 'links', 'permission'):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as temporary:
+                mediation, fixture, profile, rendered = self.make(Path(temporary).resolve())
+                self.addCleanup(mediation.close)
+                birth = ['11', '10', '100', '1']
+                observation = {'sandboxed': True, 'entry': mediation.reader, 'cwd': str(fixture / 'work')}
+                queried = subprocess.CompletedProcess([], 0, 'CELL 0\nCONTENT 1\nSEALED 1\n', '')
+                with patch('focused_mediation.subprocess.run', side_effect=[rendered, queried]):
+                    mediation.observe_reader('/scope', birth, observation, instrumented=False)
+                if outcome == 'first':
+                    mediation.observed.clear()
+                if outcome == 'changed':
+                    profile.write_text('changed bytes')
+                elif outcome == 'links':
+                    os.link(profile, profile.parent / 'extra')
+                elif outcome != 'permission':
+                    profile.unlink()
+                if outcome in ('instrumented', 'first', 'changed', 'links'):
+                    with self.assertRaises((FileNotFoundError, ValueError)):
+                        mediation.observe_reader('/scope', birth, observation, instrumented=outcome == 'instrumented')
+                    continue
+                if outcome == 'permission':
+                    with patch('focused_mediation.focused_profile.profile_state', side_effect=PermissionError('denied')):
+                        with self.assertRaises(PermissionError):
+                            mediation.observe_reader('/scope', birth, observation, instrumented=False)
+                    continue
+                mediation.observe_reader('/scope', birth, observation, instrumented=False)
+                self.assertEqual(mediation.race_counts(), {'pending': 1, 'confirmed': 0, 'total': 1})
+                status = subprocess.CompletedProcess([], 3 if outcome == 'gone' else 0, '', '')
+                with patch('focused_mediation.subprocess.run', return_value=status):
+                    if outcome == 'alive':
+                        with self.assertRaisesRegex(ValueError, 'remains alive'):
+                            mediation.finish(False)
+                        self.assertEqual(mediation.race_counts()['pending'], 1)
+                    else:
+                        result = mediation.finish(False)
+                        self.assertTrue(result['ok'])
+                        self.assertEqual(result['profiles'][0]['after']['reason'], 'unobservable_missing')
+                        self.assertEqual(result['cleanupRaceCounts'], {'pending': 0, 'confirmed': 1, 'total': 1})
+
     def test_request_response_approves_only_reviewed_policy_before_launch(self):
         with tempfile.TemporaryDirectory() as temporary:
             mediation, fixture, profile, rendered = self.make(Path(temporary).resolve())

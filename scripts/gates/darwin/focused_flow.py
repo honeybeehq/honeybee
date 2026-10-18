@@ -216,7 +216,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                                 role = mediation.roles.observe(row, observation['entry'])
                                 executable_samples[-1]['roleObservation'] = observation
                                 if role == 'reader':
-                                    mediation.observe_reader(helper, row, observation)
+                                    mediation.observe_reader(helper, row, observation, instrumented=trace is not None)
                             if trace is not None:
                                 trace.node_pids.add(int(row[0]))
                                 trace.node_observations.append(executable_samples[-1])
@@ -299,7 +299,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
             result['nodeEntryRoles'] = mediation.roles.finish()
             result['recipientMediation'] = mediation.finish(trace is not None)
         except (ValueError, OSError, subprocess.SubprocessError) as error:
-            result['recipientMediation'] = {'ok': False, 'error': str(error), 'requests': mediation.requests, 'profileApprovals': [record['state'] for record in mediation.records.values()]}
+            result['recipientMediation'] = {'ok': False, 'cleanupRaceCounts': mediation.race_counts(), 'error': str(error), 'requests': mediation.requests, 'profileApprovals': [record['state'] for record in mediation.records.values()]}
             mediation.close()
             result['reason'] = result['reason'] or 'recipient profile or signal mediation failed'
     api.write_json(root / (tag + '-process.json'), result, root)
