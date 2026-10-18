@@ -125,6 +125,34 @@ def copy_dependencies(source, target, expected=None):
         os.close(descriptor)
 
 
+def private_control_directory(sealed):
+    parent = directory_descriptor(sealed)
+    descriptor = None
+    try:
+        created = False
+        try:
+            os.mkdir('control', 0o700, dir_fd=parent)
+            created = True
+        except FileExistsError:
+            pass
+        descriptor = os.open('control', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+        before = os.fstat(descriptor)
+        if before.st_uid != os.getuid() or not stat.S_ISDIR(before.st_mode) or not created and stat.S_IMODE(before.st_mode) != 0o700:
+            raise ValueError('sealed control directory owner or mode')
+        if created:
+            os.fchmod(descriptor, 0o700)
+        after = os.fstat(descriptor)
+        named = os.stat('control', dir_fd=parent, follow_symlinks=False)
+        identity = lambda value: (value.st_dev, value.st_ino, value.st_uid, value.st_mode)
+        if after.st_uid != os.getuid() or stat.S_IMODE(after.st_mode) != 0o700 or (before.st_dev, before.st_ino) != (after.st_dev, after.st_ino) or identity(after) != identity(named):
+            raise ValueError('sealed control directory drift or unsafe mode')
+        return sealed / 'control'
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(parent)
+
+
 def prepare(root, workspace, node, audit, controls, native, dependencies):
     sealed = root / 'sealed-target'
     existed = sealed.exists() or sealed.is_symlink()
@@ -134,6 +162,7 @@ def prepare(root, workspace, node, audit, controls, native, dependencies):
     info = sealed.lstat()
     if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o700 or info.st_uid != os.getuid() or sealed.resolve(strict=True) != sealed:
         raise ValueError('sealed directory is redirected or unsafe')
+    control = private_control_directory(sealed)
     destination = sealed / 'src'
     destination.mkdir()
     for row in audit['files']:
@@ -159,7 +188,7 @@ def prepare(root, workspace, node, audit, controls, native, dependencies):
             else:
                 copy_file(source, target, expected)
     for name in ('scope', 'workload.sb', 'compiler.sb'):
-        copy_file(root / name, sealed / 'control' / name, controls[str(root / name)][-1])
+        copy_file(root / name, control / name, controls[str(root / name)][-1])
     copy_dependencies(workspace / 'node_modules', destination / 'node_modules', dependencies)
     copied_node = sealed / 'node/bin/node'
     copy_file(Path(node), copied_node, controls[str(Path(node))][-1])

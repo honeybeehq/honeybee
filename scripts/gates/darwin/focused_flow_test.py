@@ -219,6 +219,59 @@ class FlowTests(unittest.TestCase):
             self.assertNotIn('executionTrace', result)
             self.assertIsNone(result['reason'])
 
+    def test_complete_role_birth_survives_both_gone_sampling_orderings(self):
+        for case in ('executable-gone', 'observation-gone', 'never-observed', 'wrong-prior-birth', 'birth-mismatch', 'other-error', 'shortfall'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                (root / 'logs').mkdir()
+                workspace = root / 'src'
+                workspace.mkdir()
+                births = [['11', '1', '100', '1'], ['12', '11', '101', '1'], ['13', '12', '102', '1'], ['14', '13', '103', '1']]
+                entries = [str(workspace / 'test.ts'), str(workspace / 'host.ts'), str(workspace / 'reader.mjs')]
+                mediation = SimpleNamespace(helper=root / 'scope', entries=dict(zip(entries, ('test-runner', 'runner-host-main', 'reader'))), reader=entries[2], parent_close=Mock(), check_deaths=Mock(), finish=Mock(return_value={'ok': True}), close=Mock(), observe_reader=Mock(), requests=[], records={})
+                api = SimpleNamespace(Refusal=Refusal, LEFTOVER_CHILDREN=[], scope_call=Mock(side_effect=[[births[0]], births[:-1] if case == 'shortfall' else births, births[:-1] if case == 'shortfall' else births]), sample_retained_listeners=Mock(return_value=[]), write_json=lambda path, value, unused: path.write_text(json.dumps(value)))
+                process = Mock(returncode=0, pid=11)
+                process.poll.side_effect = [None, None, 0]
+                visits = {}
+                def helper(argv, **unused):
+                    operation, pid = argv[1], argv[2]
+                    if operation == 'status':
+                        return subprocess.CompletedProcess(argv, 3, '', '')
+                    if operation == 'connections':
+                        return subprocess.CompletedProcess(argv, 0, '', '')
+                    if operation == 'executable':
+                        visits[pid] = visits.get(pid, 0) + 1
+                        if pid == '12' and visits[pid] == 2 and case == 'executable-gone':
+                            return subprocess.CompletedProcess(argv, 3, '', '')
+                        return subprocess.CompletedProcess(argv, 0, '/pinned/node', '')
+                    if operation == 'node-observation':
+                        late = pid == '12' and visits[pid] == 2
+                        if pid == '12' and case == 'never-observed':
+                            return subprocess.CompletedProcess(argv, 3, '', '')
+                        if late and case in ('observation-gone', 'wrong-prior-birth', 'birth-mismatch', 'other-error', 'shortfall'):
+                            if case == 'wrong-prior-birth':
+                                old = mediation.roles.identities[12]
+                                mediation.roles.identities[12] = (('12', '11', '999', '1'), old[1], old[2])
+                            return subprocess.CompletedProcess(argv, 4 if case in ('birth-mismatch', 'other-error') else 3, '', '')
+                        entry = entries[0] if pid in ('11', '12') else entries[1] if pid == '13' else entries[2]
+                        return subprocess.CompletedProcess(argv, 0, 'NODE /pinned/node\nENTRY ' + entry + '\nCWD ' + str(workspace) + '\nSANDBOX ' + ('1' if pid == '14' else '0') + '\n', '')
+                    raise AssertionError(operation)
+                with patch('focused_flow.subprocess.Popen', return_value=process), patch('focused_flow.subprocess.run', side_effect=helper), patch('focused_flow.time.sleep'), patch('focused_flow.os.write', return_value=1), patch('focused_flow.focused_seal.require_quiescent', return_value=[]):
+                    result, _ = focused_flow.supervise(api, root, workspace, {'SCG_NODE_BIN': '/pinned/node'}, ['/pinned/node'], case, sibling=True, mediation=mediation)
+                if case in ('executable-gone', 'observation-gone'):
+                    self.assertIsNone(result['reason'])
+                    self.assertTrue(result['nodeEntryRoles']['ok'])
+                    if case == 'observation-gone':
+                        sample = next(row for row in result['executableSamples'] if row.get('observationStatus'))
+                        self.assertEqual(sample['observationStatus'], 'verified-gone-after-complete-observation')
+                        self.assertNotIn('roleObservation', sample)
+                elif case == 'shortfall':
+                    self.assertIn('recipient profile or signal mediation failed', result['reason'])
+                    self.assertIn('missing or duplicate Node entry role observation', result['recipientMediation']['error'])
+                else:
+                    self.assertIn('own Node argv/cwd/sandbox observation unresolved', result['reason'])
+                self.assertFalse(any(row.get('observationStatus') for row in result['executableSamples']) and case not in ('observation-gone', 'shortfall'))
+
     def test_post_run_unknown_root_user_is_recorded_without_unfenced_signal(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()

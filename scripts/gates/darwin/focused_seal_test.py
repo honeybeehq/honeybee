@@ -3,6 +3,7 @@ from contextlib import redirect_stdout, redirect_stderr
 import io
 import json
 import os
+import stat
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -12,6 +13,20 @@ from focused_seal import copy_dependencies, copy_file, digest, prepare, root_use
 
 
 class SealTests(unittest.TestCase):
+    def test_existing_control_directory_wrong_mode_or_owner_is_refused(self):
+        for case in ('mode', 'owner'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
+                sealed = Path(temporary).resolve()
+                control = sealed / 'control'
+                control.mkdir(mode=0o700)
+                if case == 'mode':
+                    control.chmod(0o755)
+                    with self.assertRaisesRegex(ValueError, 'owner or mode'):
+                        focused_seal.private_control_directory(sealed)
+                else:
+                    with patch('focused_seal.os.getuid', return_value=os.getuid() + 1), self.assertRaisesRegex(ValueError, 'owner or mode'):
+                        focused_seal.private_control_directory(sealed)
+
     def test_copy_has_new_inode_and_rejects_redirected_source(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
@@ -54,7 +69,7 @@ class SealTests(unittest.TestCase):
 
     def test_sealed_controls_and_node_use_pre_outer_memory_pins(self):
         for mismatch in (False, True):
-            with self.subTest(mismatch=mismatch), tempfile.TemporaryDirectory() as temporary:
+            with self.subTest(mismatch=mismatch), tempfile.TemporaryDirectory(prefix='g.') as temporary:
                 root = Path(temporary).resolve()
                 workspace = root / 'src'
                 gate = workspace / 'scripts/gates/darwin'
@@ -86,7 +101,16 @@ class SealTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, 'reviewed pin'):
                         prepare(root, workspace, str(node), {'files': []}, controls, native, {})
                 else:
-                    sealed, copied, copied_node = prepare(root, workspace, str(node), {'files': []}, controls, native, {})
+                    previous_umask = os.umask(0o022)
+                    try:
+                        sealed, copied, copied_node = prepare(root, workspace, str(node), {'files': []}, controls, native, {})
+                    finally:
+                        os.umask(previous_umask)
+                    from focused_barrier import Barrier
+                    barrier = Barrier(sealed / 'control', 'b-p0.sock', None)
+                    barrier.close()
+                    self.assertEqual(stat.S_IMODE((sealed / 'control').stat().st_mode), 0o700)
+                    self.assertEqual((sealed / 'control').stat().st_uid, os.getuid())
                     self.assertEqual((sealed / 'quiescence-probe').stat().st_ino, probe_ino)
                     self.assertFalse((copied / 'quiescence-probe').exists())
                     self.assertEqual(digest(sealed / 'control/scope'), controls[str(root / 'scope')][-1])

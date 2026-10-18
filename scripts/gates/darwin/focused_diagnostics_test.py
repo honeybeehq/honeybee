@@ -1,11 +1,63 @@
 import json
+import copy
 import unittest
 
-from focused_diagnostics import TABLE, check, compare_pair, read_result
+from focused_diagnostics import TABLE, ROW_NAMES, SIBLING_SUBSTRATES, aggregate_mode, check, check_phase, compare_pair, read_result
 from focused_tap import adjudicate
 
 
 class DiagnosticTests(unittest.TestCase):
+    def phase(self, kind, digest='a'):
+        row = self.rows((kind,), digest)[0]
+        text = 'TAP version 13\nok 1 - ' + row['fullName'] + '\n' + '\n'.join('  # ' + value for value in row['diagnostics']) + '\n1..1\n'
+        phase = adjudicate(text, [row['fullName']], 0)
+        phase['diagnostics'] = check_phase(phase['expectedRows'], [row['fullName']], True)
+        phase['ok'] = phase['ok'] and phase['diagnostics']['ok']
+        return phase
+
+    def test_separate_real_tap_phases_aggregate_and_pair_by_substrate(self):
+        phases = [self.phase(kind) for kind in SIBLING_SUBSTRATES]
+        self.assertTrue(all(phase['ok'] for phase in phases))
+        left = aggregate_mode(phases)
+        right = aggregate_mode([self.phase(kind, 'c') for kind in reversed(SIBLING_SUBSTRATES)])
+        self.assertTrue(left['ok'])
+        self.assertTrue(right['ok'])
+        result = compare_pair(left, right)
+        self.assertTrue(result['ok'])
+        self.assertEqual({row['substrate'] for row in result['rows']}, set(SIBLING_SUBSTRATES))
+        self.assertNotEqual(result['rows'][0]['instrumented']['observedDigest'], result['rows'][0]['production']['observedDigest'])
+
+    def test_phase_missing_duplicate_wrong_extra_and_wrong_full_name_fail(self):
+        selected = [ROW_NAMES['cell-sandbox']]
+        one = self.rows(('cell-sandbox',))
+        wrong_name = copy.deepcopy(one)
+        wrong_name[0]['fullName'] += ' moved'
+        for rows in ([], one + one, self.rows(('satellite-default',)), one + self.rows(('hsr',)), wrong_name):
+            with self.subTest(rows=rows):
+                self.assertFalse(check_phase(rows, selected, True)['ok'])
+        for names in ([], selected + selected, list(ROW_NAMES.values()), ['wrong']):
+            self.assertFalse(check_phase(one, names, True)['ok'])
+
+    def test_aggregate_missing_duplicate_wrong_extra_or_only_one_phase_fail(self):
+        cell, satellite, wrong = (self.phase(kind) for kind in ('cell-sandbox', 'satellite-default', 'hsr'))
+        missing_rows = copy.deepcopy(satellite)
+        missing_rows['diagnostics']['rows'] = []
+        bad_name = copy.deepcopy(satellite)
+        bad_name['diagnostics']['rows'][0]['fullName'] += ' moved'
+        for phases in ([], [cell], [cell, cell], [cell, wrong], [cell, satellite, satellite], [cell, missing_rows], [cell, bad_name]):
+            self.assertFalse(aggregate_mode(phases)['ok'])
+        good = aggregate_mode([cell, satellite])
+        duplicate = copy.deepcopy(good)
+        duplicate['diagnostics']['rows'].append(duplicate['diagnostics']['rows'][0])
+        self.assertFalse(compare_pair(good, duplicate)['ok'])
+
+    def test_pair_outcomes_must_match_for_each_substrate(self):
+        good = aggregate_mode([self.phase(kind) for kind in SIBLING_SUBSTRATES])
+        for field, value in (('readClass', 'unobserved'), ('writeDenied', False)):
+            bad = copy.deepcopy(good)
+            bad['diagnostics']['rows'][0]['readResult']['values'][field] = value
+            self.assertFalse(compare_pair(good, bad)['ok'])
+
     def rows(self, kinds=('hsr', 'cell-sandbox', 'satellite-default'), digest='a'):
         rows = []
         for kind in kinds:
