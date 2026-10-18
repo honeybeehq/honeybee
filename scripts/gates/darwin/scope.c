@@ -3,6 +3,8 @@
 #include <libproc.h>
 #include <sys/proc_info.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <signal.h>
 #include <unistd.h>
 #include <errno.h>
@@ -42,6 +44,18 @@ static int same_birth(int pid, unsigned long long sec, unsigned long long usec) 
   if (b.pbi_start_tvsec != sec || b.pbi_start_tvusec != usec) return 4;
   return b.pbi_status == 5 ? 3 : 0;
 }
+static int socket_peer(int fd) {
+  uid_t uid, after_uid; gid_t gid; pid_t pid, after_pid;
+  socklen_t size = sizeof(pid);
+  if (getpeereid(fd, &uid, &gid) || uid != getuid() || getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &size) || size != sizeof(pid) || pid <= 1) return 4;
+  struct proc_bsdinfo b;
+  if (!identity(pid, &b) || b.pbi_uid != getuid() || same_birth(pid, b.pbi_start_tvsec, b.pbi_start_tvusec)) return 4;
+  size = sizeof(after_pid);
+  if (getpeereid(fd, &after_uid, &gid) || after_uid != uid || getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &after_pid, &size) || size != sizeof(after_pid) || after_pid != pid || same_birth(pid, b.pbi_start_tvsec, b.pbi_start_tvusec)) return 4;
+  printf("%u ", (unsigned int)uid);
+  print_identity(pid, &b);
+  return 0;
+}
 #define CS_OPS_STATUS 0U
 #define CS_PLATFORM_BINARY 0x04000000U
 typedef int (*csops_function)(pid_t, unsigned int, void *, size_t);
@@ -50,7 +64,7 @@ static csops_function csops_checker(void) {
 }
 static int quiescence_sandbox_denied(int pid, unsigned long long sec, unsigned long long usec, char **paths, int *denied, int *allowed, int *errors, int *not_sandboxed, int *allowed_by_query, int *results);
 #include "quiescence.h"
-static int listeners(int pid, unsigned long long sec, unsigned long long usec, int connected) {
+static int listeners(int pid, unsigned long long sec, unsigned long long usec, int connected, const char *barrier) {
   int rc = same_birth(pid, sec, usec);
   if (rc) return rc;
   errno = 0;
@@ -75,6 +89,11 @@ static int listeners(int pid, unsigned long long sec, unsigned long long usec, i
     rc = same_birth(pid, sec, usec);
     if (rc) { free(fds); return rc; }
     struct socket_info *s = &info.psi;
+    if (connected && barrier && s->soi_family == AF_UNIX && s->soi_kind == SOCKINFO_UN) {
+      const char *remote = s->soi_proto.pri_un.unsi_caddr.ua_sun.sun_path;
+      size_t bound = sizeof(s->soi_proto.pri_un.unsi_caddr.ua_sun.sun_path);
+      if (strnlen(remote, bound) < bound && !strcmp(remote, barrier)) printf("%d UNIX gate-barrier 0\n", fds[i].proc_fd);
+    }
     if (s->soi_family != AF_INET && s->soi_family != AF_INET6) continue;
     const struct in_sockinfo *in = NULL;
     const char *proto = NULL;
@@ -279,6 +298,10 @@ static int scan(int pid, unsigned long long sec, unsigned long long usec, int de
   return 0;
 }
 int main(int argc, char **argv) {
+  if (argc == 3 && !strcmp(argv[1], "peer-fd")) {
+    char *end; long fd = strtol(argv[2], &end, 10);
+    return !*end && fd >= 3 && fd <= INT_MAX ? socket_peer((int)fd) : 2;
+  }
   if (argc < 3) return 2;
   int pid = atoi(argv[2]);
   if (pid <= 1) return 2;
@@ -305,8 +328,8 @@ int main(int argc, char **argv) {
   }
   if (!strcmp(argv[1], "node-observation")) return (argc == 9 || argc == 11) ? node_observation(pid, sec, usec, argv[6], argv[7], argv[8], argc == 11 ? argv[9] : NULL, argc == 11 ? argv[10] : NULL) : 2;
   if (!strcmp(argv[1], "write-policy")) return argc == 9 ? write_policy(pid, sec, usec, argv + 6) : 2;
-  if (!strcmp(argv[1], "listeners")) return listeners(pid, sec, usec, 0);
-  if (!strcmp(argv[1], "connections")) return listeners(pid, sec, usec, 1);
+  if (!strcmp(argv[1], "listeners")) return listeners(pid, sec, usec, 0, NULL);
+  if (!strcmp(argv[1], "connections")) return listeners(pid, sec, usec, 1, argc == 7 ? argv[6] : NULL);
   if (!strcmp(argv[1], "executable")) {
     int rc = same_birth(pid, sec, usec);
     if (rc) return rc;
