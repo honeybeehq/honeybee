@@ -214,6 +214,10 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                             if mediation is not None:
                                 detail = subprocess.run([str(helper), 'node-observation', *row, env['SCG_NODE_BIN'], mediation.reader, str(trace.policy['preloader']) if trace is not None else '-', str(workspace / 'v2/daemon/tests/delivery-file-read.test.ts'), str(workspace / 'v2/driver-hsr/src/runner-host-main.ts')], capture_output=True, text=True, timeout=2)
                                 executable_samples[-1]['nodeObservation'] = {'exit': detail.returncode, 'stdout': detail.stdout, 'diagnostic': detail.stderr}
+                                previous = mediation.roles.identities.get(int(row[0]))
+                                if detail.returncode == 3 and previous is not None and previous[0] == tuple(row):
+                                    executable_samples[-1]['observationStatus'] = 'verified-gone-after-complete-observation'
+                                    continue
                                 if detail.returncode != 0:
                                     raise ValueError('own Node argv/cwd/sandbox observation unresolved: ' + detail.stderr.strip())
                                 observation = focused_mediation.focused_profile.parse_node_observation(detail.stdout, env['SCG_NODE_BIN'])
