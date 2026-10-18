@@ -298,6 +298,29 @@ class FlowTests(unittest.TestCase):
             self.assertNotIn(str(root / 'node'), json.dumps(result))
             self.assertFalse(any(call.args[0][1] == 'signal' and call.args[0][2] == '22' for call in invoked.call_args_list))
 
+    def test_no_reader_barrier_client_preserves_plain_supervision_and_verdict(self):
+        from focused_reader_barrier import ReaderBarrier, ENV
+        from focused_diagnostics import ROW_NAMES
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary).resolve();(root/'logs').mkdir();(root/'control').mkdir(mode=0o700);workspace=root/'src';workspace.mkdir()
+            barrier=ReaderBarrier(root/'control','o-p0.sock',SimpleNamespace(row_id=ROW_NAMES['cell-sandbox']))
+            birth=['11','1','100','200']
+            api=SimpleNamespace(Refusal=Refusal,LEFTOVER_CHILDREN=[],scope_call=Mock(side_effect=[[birth],[birth]]),sample_retained_listeners=Mock(return_value=[]),write_json=lambda path,value,unused:path.write_text(json.dumps(value)))
+            process=Mock(returncode=0);process.pid=11;process.poll.side_effect=[None,0]
+            def helper(argv,**unused):return subprocess.CompletedProcess(argv,0 if argv[1] in ('connections','executable') else 3,'/fixture/node' if argv[1]=='executable' else '','')
+            with patch('focused_flow.subprocess.Popen',return_value=process) as popen,patch('focused_flow.subprocess.run',side_effect=helper) as invoked,patch('focused_flow.os.write',return_value=1),patch('focused_flow.focused_seal.require_quiescent',return_value=[]),patch('focused_flow.time.sleep'):
+                result,_=focused_flow.supervise(api,root,workspace,{'SCG_NODE_BIN':'/fixture/node'},['/fixture/node','test'],'inert-reader-barrier',sibling=True,reader_barrier=barrier)
+            self.assertIsNone(result['reason']);self.assertTrue(result['readerLifetimeBarrier']['ok']);self.assertFalse(result['readerLifetimeBarrier']['enabled'])
+            self.assertIn(ENV,popen.call_args.kwargs['env'])
+            connections=[call.args[0] for call in invoked.call_args_list if call.args[0][1]=='connections']
+            self.assertEqual(len(connections),1);self.assertEqual(connections[0][-1],birth[-1])
+            process.poll.side_effect=[None,0];api.scope_call=Mock(side_effect=[[birth],[birth]])
+            required_barrier=ReaderBarrier(root/'control','o-p1.sock',SimpleNamespace(row_id=ROW_NAMES['satellite-default']))
+            with patch('focused_flow.subprocess.Popen',return_value=process),patch('focused_flow.subprocess.run',side_effect=helper),patch('focused_flow.os.write',return_value=1),patch('focused_flow.focused_seal.require_quiescent',return_value=[]),patch('focused_flow.time.sleep'):
+                required,_=focused_flow.supervise(api,root,workspace,{'SCG_NODE_BIN':'/fixture/node'},['/fixture/node','test'],'required-reader-barrier',sibling=True,reader_barrier=required_barrier,reader_barrier_required=True)
+            self.assertEqual(required['reason'],'reader-observation-required')
+
+
     def test_connection_parser_keeps_remote_address_and_fails_unobserved(self):
         birth = ['11', '1', '100', '200']
         with patch('focused_flow.subprocess.run', return_value=subprocess.CompletedProcess([], 0, '4 TCP 192.0.2.1 443\n5 UDP ::1 1234\n', '')):

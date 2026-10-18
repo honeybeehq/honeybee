@@ -51,12 +51,13 @@ def authenticate(helper, connection, retained, roles):
 
 
 class Barrier:
+    NAMES = ('b-p0.sock', 'b-p1.sock')
     def __init__(self, directory, name, mediation, clock=time.monotonic):
         self.directory = Path(directory)
         info = self.directory.lstat()
         if self.directory.resolve(strict=True) != self.directory or not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode) != 0o700 or info.st_uid != os.getuid():
             raise ValueError('barrier_directory')
-        if name not in ('b-p0.sock', 'b-p1.sock'):
+        if name not in self.NAMES:
             raise ValueError('barrier_name')
         self.path = self.directory / name
         if len(os.fsencode(self.path)) > 103:

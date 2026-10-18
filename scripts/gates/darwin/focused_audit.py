@@ -40,7 +40,10 @@ def validate_gate_pins(workspace, pins):
 def validate(workspace, audit_path):
     audit_file = pinned_path(workspace, audit_path)
     data = json.loads(audit_file.read_text())
-    exact_keys(data, ('version', 'files', 'spawns', 'packages', 'capabilityReferences', 'nativeEdges', 'entryPins', 'gatePins', 'nodeEntries'))
+    keys = ('version', 'files', 'spawns', 'packages', 'capabilityReferences', 'nativeEdges', 'entryPins', 'gatePins', 'nodeEntries')
+    exact_keys(data, (*keys, 'readerLifetimeBarrierRequired') if isinstance(data, dict) and 'readerLifetimeBarrierRequired' in data else keys)
+    if 'readerLifetimeBarrierRequired' in data and type(data['readerLifetimeBarrierRequired']) is not bool:
+        raise ValueError('reader lifetime barrier requirement must be boolean')
     if data['version'] != 1 or not isinstance(data['files'], list) or not isinstance(data['spawns'], list):
         raise ValueError('unsupported audit schema')
     files = {}
@@ -151,7 +154,7 @@ def validate(workspace, audit_path):
         citation(row, files, closure)
         if row['kind'] != 'native-artifact' or row['sha256Source'] != 'controller-manifest' or row['artifact'] not in NATIVE_ARTIFACTS:
             raise ValueError('unapproved native artifact edge')
-    return {**data, 'schemaVersion': 1, 'auditSha256': hashlib.sha256(audit_file.read_bytes()).hexdigest()}
+    return {**data, 'readerLifetimeBarrierRequired': data.get('readerLifetimeBarrierRequired', False), 'schemaVersion': 1, 'auditSha256': hashlib.sha256(audit_file.read_bytes()).hexdigest()}
 
 
 def citation(row, files, closure):
