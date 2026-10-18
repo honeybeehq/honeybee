@@ -122,11 +122,11 @@ def validate_native_edges(edges):
 def connection_observation(helper, birth, barrier=None):
     observed = subprocess.run([str(helper), 'connections', *birth] + ([str(barrier)] if barrier is not None else []), capture_output=True, text=True, timeout=2)
     row = {'birth': birth, 'timestamp': time.time(), 'exit': observed.returncode, 'connections': []}
-    if observed.returncode == 3:
-        return row
-    if observed.returncode != 0:
+    if observed.returncode not in (0, 3):
         raise ValueError('unobserved own connected sockets')
-    for line in observed.stdout.splitlines():
+    for line in observed.stdout.splitlines(keepends=True):
+        if not line.endswith('\n'):
+            raise ValueError('malformed own connected socket observation')
         parts = line.split()
         if len(parts) == 4 and parts[0].isdigit() and parts[1:] == ['UNIX', 'gate-barrier', '0'] and barrier is not None:
             row['connections'].append({'fd': int(parts[0]), 'protocol': 'UNIX', 'classification': 'gate-barrier', 'loopback': True})

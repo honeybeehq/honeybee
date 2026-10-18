@@ -309,6 +309,27 @@ class FlowTests(unittest.TestCase):
             with patch('focused_flow.subprocess.run', return_value=result), self.assertRaises(ValueError):
                 focused_flow.connection_observation('/scope', birth)
 
+    def test_partial_connection_before_verified_gone_is_retained_and_rejected(self):
+        birth = ['11','1','100','200']
+        for code in (0,3):
+            with patch('focused_flow.subprocess.run', return_value=subprocess.CompletedProcess([], code, '4 TCP 192.0.2.1 443\n', '')):
+                row = focused_flow.connection_observation('/scope', birth)
+            self.assertFalse(row['connections'][0]['loopback'])
+        for code, stdout in ((3,'truncated'),(3,'4 TCP 192.0.2.1 443'),(3,'4 TCP invalid 443\n'),(4,'4 TCP 192.0.2.1 443\n')):
+            with patch('focused_flow.subprocess.run', return_value=subprocess.CompletedProcess([], code, stdout, '')), self.assertRaises(ValueError):
+                focused_flow.connection_observation('/scope', birth)
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary).resolve();(root/'logs').mkdir();workspace=root/'src';workspace.mkdir()
+            api=SimpleNamespace(Refusal=Refusal,LEFTOVER_CHILDREN=[],scope_call=Mock(side_effect=[[birth],[birth]]),sample_retained_listeners=Mock(return_value=[]),write_json=lambda path,value,unused:path.write_text(json.dumps(value)))
+            process=Mock(returncode=-15);process.pid=11;process.poll.return_value=None
+            def helper(argv, **unused):
+                if argv[1]=='connections':return subprocess.CompletedProcess(argv,3,'4 TCP 192.0.2.1 443\n','')
+                return subprocess.CompletedProcess(argv,3,'gone','')
+            with patch('focused_flow.subprocess.Popen',return_value=process),patch('focused_flow.subprocess.run',side_effect=helper),patch('focused_flow.os.write',return_value=1),patch('focused_flow.time.sleep'),patch('focused_flow.focused_seal.require_quiescent',return_value=[]):
+                result,_=focused_flow.supervise(api,root,workspace,{'SCG_NODE_BIN':'/fixture/node'},['/fixture/node','test'],'partial-connection',sibling=True)
+            self.assertEqual(result['reason'],'non-loopback own connection')
+            self.assertFalse(result['connectionSamples'][0]['connections'][0]['loopback'])
+
     def test_manifest_partition_is_exact(self):
         data = json.loads((Path(__file__).parent / 'focused-manifest.json').read_text())
         self.assertEqual(sum(len(row['outer']) for row in data['files']), 46)
