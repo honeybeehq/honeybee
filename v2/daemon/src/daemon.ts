@@ -175,6 +175,7 @@ import {
   isAncestor,
   currentBranch,
   sandboxWritableDirectory,
+  sandboxEnabled,
   DEFAULT_SANDBOX_TMPFS_BYTES,
   runCellExec,
   sanitizeComponent,
@@ -182,6 +183,8 @@ import {
   type ReserveRequest,
   type SandboxWritableDirectory,
 } from "../../driver-cell/src/index.ts";
+import { deliveryContentRoot } from "./multilineFallback.ts";
+import { DeliveryFiles } from "./deliveryFile.ts";
 import {
   relocateClaudeSession,
   TranscriptConflictError,
@@ -692,6 +695,7 @@ const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>([
 
 export class HiveDaemon {
   readonly cfg: ResolvedNodeConfig;
+  private readonly deliveryFiles = new DeliveryFiles();
   private store: CoreStore | null = null;
   private threadOperations: ThreadOperations | null = null;
   /** The substrate router DaemonCore drives; `.hsr` / `.cell` / `.tmux` are the substrate drivers. */
@@ -944,9 +948,9 @@ export class HiveDaemon {
       now: () => Date.now(),
       log: (op) => this.log(op),
       cellInUse: (beeId, runtime, cellState) =>
-        cellState === "retained"
+        store.retainsMultilineRuntimeContent(beeId, canonicalPath(this.cfg.dataDir)) || (cellState === "retained"
           ? cell.hasProcess(beeId, runtime?.generation ?? 0)
-          : (runtime != null && runtime.state !== "stopped") || (this.driver?.hasProcess(beeId, runtime?.generation ?? 0) ?? false),
+          : (runtime != null && runtime.state !== "stopped") || (this.driver?.hasProcess(beeId, runtime?.generation ?? 0) ?? false)),
       opInFlight: (cellId) => {
         this.releaseAbsentCellOps(cellId);
         return this.cellHasInFlightOp(cellId);
@@ -967,6 +971,18 @@ export class HiveDaemon {
     this.core = new DaemonCore({
       store,
       driver,
+      multilineFallback: {
+        files: this.deliveryFiles,
+        root: canonicalPath(this.cfg.dataDir),
+        rootForBee: bee => {
+          const wrapper = cell.cellOf(bee.id)?.paths.wrapperDir;
+          return deliveryContentRoot(canonicalPath(this.cfg.dataDir), bee.substrate, bee.substrate === "cell" && sandboxEnabled(this.cfg.nodeKind, this.resolveCellSpec(bee.id).sandbox), wrapper ? canonicalPath(wrapper) : null);
+        },
+        worktrees: bee => {
+          const space = cell.cellOf(bee.id)?.paths.spaceDir;
+          return [canonicalPath(bee.cwd), ...(space ? [canonicalPath(space)] : [])];
+        },
+      },
       policy: {
         bootHangTimeoutSteps: this.cfg.bootHangTimeoutMs,
         commandsPerStep: this.cfg.commandsPerTick,
@@ -2245,7 +2261,7 @@ export class HiveDaemon {
       case "node.harnesses":
         return this.rpcNodeHarnesses();
       case "health":
-        return this.rpcHealth();
+        return this.rpcHealth(params);
       case "template.list":
         return this.rpcTemplateList(params);
       case "template.get":
@@ -5669,7 +5685,7 @@ export class HiveDaemon {
     });
   }
 
-  private rpcHealth(): HealthResult {
+  private rpcHealth(params: Record<string, unknown> = {}): HealthResult {
     const store = this.mustStore();
     return {
       protocol: PROTOCOL,
@@ -5683,6 +5699,10 @@ export class HiveDaemon {
       localSecurity: this.rpc?.localSecurity,
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
+      deliveryHoldUnknown: store.countUnknownMultilineHolds(),
+      ...(params.includeDeliveryPrepareAuditUnknown === true ? {deliveryFileHelper: this.deliveryFiles.status()} : {}),
+      ...(params.includeDeliveryPrepareAuditUnknown === true ? {deliveryPrepareAuditUnknown: store.countUnknownMultilinePrepareAudits()} : {}),
+      paneInputUnknown: store.multilinePaneQuarantines().length,
       bees: store.countBeesByLifecycle(),
       naming: this.naming.disabledReason
         ? { state: "disabled", reason: this.naming.disabledReason }
