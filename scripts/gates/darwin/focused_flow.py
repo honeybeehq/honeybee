@@ -472,7 +472,7 @@ def run(api, root, workspace, env, tools, real_home):
                     verdict['ok'] = False
                 matrix_rows = [row for row in verdict['expectedRows'] if row['fullName'].startswith('Darwin OS-level file read outside cwd: ')]
                 if matrix_rows:
-                    verdict['diagnostics'] = focused_diagnostics.check(matrix_rows, ('cell-sandbox', 'satellite-default') if sibling else ('hsr',))
+                    verdict['diagnostics'] = focused_diagnostics.check_phase(matrix_rows, names, sibling)
                     verdict['ok'] = verdict['ok'] and verdict['diagnostics']['ok']
             except (ValueError, OSError, subprocess.SubprocessError, api.Refusal) as error:
                 verdict.update({'ok': False, 'error': str(error)})
@@ -510,9 +510,7 @@ def run(api, root, workspace, env, tools, real_home):
     pairs = {}
     for mode in ('sibling-instrumented', 'sibling-production'):
         rows = [row for row in outcomes if row['mode'] == mode]
-        diagnostics = [item for row in rows for item in row.get('diagnostics', {}).get('rows', [])]
-        names = [row['fullName'] for row in diagnostics]
-        pairs[mode] = {'ok': len(rows) == 2 and len(names) == len(set(names)) == 2 and all(row['ok'] for row in rows), 'diagnostics': {'rows': diagnostics}, 'harnessArgv': [row.get('harnessArgv') for row in rows]}
+        pairs[mode] = focused_diagnostics.aggregate_mode(rows)
     pair = focused_diagnostics.compare_pair(pairs['sibling-instrumented'], pairs['sibling-production'])
     api.write_json(root / 'focused-pair.json', pair, root)
     ok = bool(outcomes) and all(row['ok'] for row in outcomes) and passed == expected and pair['ok']
