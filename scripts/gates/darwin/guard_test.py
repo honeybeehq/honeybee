@@ -383,6 +383,31 @@ static int proc_listchildpids(int pid, void *buffer, int bytes) {
         self.assertEqual([row['loopback'] for row in result['listeners']], [True, True, False, False])
         self.assertTrue(all(row['birth'] == birth and row['pid'] == 100 for row in result['listeners']))
 
+    def test_listener_closed_fd_count_requires_successful_complete_native_scan(self):
+        for diagnostic in ('closed socket fds skipped=1\n', 'closed socket fds skipped=2\n'):
+            with patch('guard.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout='4 TCP 127.0.0.1 1234\n', stderr=diagnostic)):
+                result = guard.sample_listeners(Path('/scope'), ['100','99','10','20'])
+            self.assertNotIn('error', result)
+            self.assertEqual(result['closedFdRaceCount'], int(diagnostic.split('=')[1]))
+            self.assertEqual(len(result['listeners']), 1)
+        for diagnostic in ('closed socket fds skipped=0\n', 'other', 'closed socket fds skipped=10000000\n'):
+            with patch('guard.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout='', stderr=diagnostic)):
+                self.assertIn('error', guard.sample_listeners(Path('/scope'), ['100','99','10','20']))
+        with patch('guard.subprocess.run', side_effect=[SimpleNamespace(returncode=4, stdout='', stderr='socket read fd=3 errno=9\n'), SimpleNamespace(returncode=0, stdout='same-birth-alive', stderr='')]):
+            self.assertIn('error', guard.sample_listeners(Path('/scope'), ['100','99','10','20']))
+
+    def test_partial_listener_stdout_survives_later_gone_or_zombie(self):
+        for code in (3, 4):
+            for status in ('gone', 'same-birth-zombie'):
+                with self.subTest(code=code, status=status), patch('guard.subprocess.run', side_effect=[SimpleNamespace(returncode=code, stdout='3 TCP 0.0.0.0 1234\n', stderr=''), SimpleNamespace(returncode=3, stdout=status, stderr='')]):
+                    result = guard.sample_listeners(Path('/scope'), ['100','99','10','20'])
+                self.assertNotIn('error', result)
+                self.assertEqual(len(result['listeners']), 1)
+                self.assertFalse(result['listeners'][0]['loopback'])
+        for stdout in ('3 TCP 0.0.0.0 1234', 'broken\n', '3 TCP 127.0.0.1 nope\n', '3 TCP invalid 1234\n', '3 TCP 0.0.0.0 1234\ntruncated'):
+            with self.subTest(stdout=stdout), patch('guard.subprocess.run', return_value=SimpleNamespace(returncode=3, stdout=stdout, stderr='')):
+                self.assertIn('error', guard.sample_listeners(Path('/scope'), ['100','99','10','20']))
+
     def test_listener_sampler_unresolved_is_failure(self):
         bad = SimpleNamespace(returncode=4, stdout='', stderr='denied')
         for status_code in (0, 4):
