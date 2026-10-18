@@ -87,3 +87,18 @@ Receipt disclosure:
 This does not make exec/connect sampling event-complete, identify the exact profile
 consumed by sandbox_init, exclude swap-and-restore, or provide general OS network
 isolation. Normal unextended reader timing is not proven by the synchronized row.
+
+The optional top-level, reviewed audit boolean `readerLifetimeBarrierRequired` defaults
+to false when absent; every other type is refused. The audit file's digest binds this
+choice to the candidate, independently of whether its fixture connects. When true,
+each plain production row requires enabled, authenticated, approved, complete reader
+observation and live-at-ACK evidence (all true), one connection and no failure.
+Otherwise it fails `reader-observation-required` even if the sampler roles alone pass.
+Instrumented rows remain unchanged. The paired candidate sets this flag to true.
+
+Optional no-client operation adds controller listen/verify/accept-poll work, so it does
+not promise identical timing. It adds no deliberate wait or native sampling queries.
+Before the endpoint is accepted, the native connection query for the pre-exec socket
+simply does not print this distinct observation socket. Its exact classification is
+collected after accept; this pre-accept classification gap does not prove absence of
+connections. Neither exception is widened to other paths.

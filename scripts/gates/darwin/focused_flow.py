@@ -145,7 +145,7 @@ def connection_observation(helper, birth, barrier=None, reader_barrier=None):
     return row
 
 
-def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sibling=False, mediation=None, barrier=None, reader_barrier=None):
+def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sibling=False, mediation=None, barrier=None, reader_barrier=None, reader_barrier_required=False):
     helper = mediation.helper if mediation is not None else root / 'scope'
     read_fd, release_fd = os.pipe()
     tracked = {}
@@ -336,6 +336,10 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
             result['reason'] = result['reason'] or 'reader lifetime observation barrier failed'
         finally:
             reader_barrier.close()
+    try:
+        focused_reader_barrier.require_evidence(reader_barrier_required, result.get('readerLifetimeBarrier'))
+    except ValueError:
+        result['reason'] = result['reason'] or 'reader-observation-required'
     if mediation is not None:
         try:
             result['nodeEntryRoles'] = mediation.roles.finish()
@@ -481,7 +485,7 @@ def run(api, root, workspace, env, tools, real_home):
                 trace = focused_trace.Trace(root, active_workspace, active_node, audit, active_artifacts, mediation=mediation) if mode == 'sibling-instrumented' else None
                 barrier = focused_barrier.Barrier(sealed_context[0] / 'control', 'b-p' + str(number) + '.sock', mediation) if mode == 'sibling-production' else None
                 reader_barrier = focused_reader_barrier.ReaderBarrier(sealed_context[0] / 'control', 'o-p' + str(number) + '.sock', mediation) if mode == 'sibling-production' else None
-                result, log = supervise(api, root, active_workspace, child_env, command if sibling else prefix + command, 'focused-' + mode + '-' + str(number), trace=trace, sibling=sibling, mediation=mediation, barrier=barrier, reader_barrier=reader_barrier)
+                result, log = supervise(api, root, active_workspace, child_env, command if sibling else prefix + command, 'focused-' + mode + '-' + str(number), trace=trace, sibling=sibling, mediation=mediation, barrier=barrier, reader_barrier=reader_barrier, reader_barrier_required=mode == 'sibling-production' and audit['readerLifetimeBarrierRequired'])
                 verdict['harnessArgv'] = result['argv']
                 verdict['isolationNoneInstrumentedOnly'] = mode == 'sibling-instrumented'
                 if mode == 'sibling-instrumented':

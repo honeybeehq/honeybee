@@ -314,6 +314,12 @@ class FlowTests(unittest.TestCase):
             self.assertIn(ENV,popen.call_args.kwargs['env'])
             connections=[call.args[0] for call in invoked.call_args_list if call.args[0][1]=='connections']
             self.assertEqual(len(connections),1);self.assertEqual(connections[0][-1],birth[-1])
+            process.poll.side_effect=[None,0];api.scope_call=Mock(side_effect=[[birth],[birth]])
+            required_barrier=ReaderBarrier(root/'control','o-p1.sock',SimpleNamespace(row_id=ROW_NAMES['satellite-default']))
+            with patch('focused_flow.subprocess.Popen',return_value=process),patch('focused_flow.subprocess.run',side_effect=helper),patch('focused_flow.os.write',return_value=1),patch('focused_flow.focused_seal.require_quiescent',return_value=[]),patch('focused_flow.time.sleep'):
+                required,_=focused_flow.supervise(api,root,workspace,{'SCG_NODE_BIN':'/fixture/node'},['/fixture/node','test'],'required-reader-barrier',sibling=True,reader_barrier=required_barrier,reader_barrier_required=True)
+            self.assertEqual(required['reason'],'reader-observation-required')
+
 
     def test_connection_parser_keeps_remote_address_and_fails_unobserved(self):
         birth = ['11', '1', '100', '200']

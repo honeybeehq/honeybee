@@ -17,6 +17,10 @@ function audit(root, content, extra = {}) {
 }
 const root = mkdtempSync(join(tmpdir(), 'census-unit-'));
 try {
+  test('reader lifetime requirement permits only omitted or boolean reviewed values', () => {
+    for (const value of [false, true]) assert.equal(validate(ts, root, audit(root, '', {readerLifetimeBarrierRequired: value})).errors.some(error => error.includes('requirement must be boolean')), false);
+    for (const value of [null, 0, 1, 'true', [], {}]) assert.equal(validate(ts, root, audit(root, '', {readerLifetimeBarrierRequired: value})).errors.some(error => error.includes('requirement must be boolean')), true);
+  });
   test('all static, side-effect and export edges', () => {
     for (const text of ["import './missing.ts';", "import 'unknown-package';", "export * from './missing.ts';", "export {x} from './missing.ts';", "import x = require('./missing.ts');"]) assert.equal(validate(ts, root, audit(root, text)).ok, false);
   });

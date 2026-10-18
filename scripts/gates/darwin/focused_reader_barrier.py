@@ -13,6 +13,16 @@ ACK = b'{"version":1,"observed":true}\n'
 DISCLOSURE = 'plain run: production argv exact; reader lifetime extended by the Darwin focused gate fixture until the controller acknowledges a complete live reader observation; this proves an extended idle lifetime, not observation during the actual read/write or unextended timing; removal owner: Darwin focused gate (f585).'
 
 
+def require_evidence(required, evidence):
+    if type(required) is not bool:
+        raise ValueError('reader-observation-required')
+    if not required:
+        return
+    fields = ('enabled', 'ok', 'authenticated', 'approved', 'readerObservationComplete', 'readerStillLiveAtAck')
+    if not isinstance(evidence, dict) or any(evidence.get(key) is not True for key in fields) or type(evidence.get('connections')) is not int or evidence.get('connections') != 1 or evidence.get('failure') is not None:
+        raise ValueError('reader-observation-required')
+
+
 def request(data, row_id):
     if len(data) > 4096 or not data.endswith(b'\n') or data.count(b'\n') != 1:
         raise ValueError('protocol')
@@ -167,7 +177,7 @@ class ReaderBarrier(focused_barrier.Barrier):
             raise ValueError('reader-observation-' + self.failure) from None
 
     def evidence(self):
-        return {'enabled': self.connections != 0, 'ok': self.failure is None and (self.connections == 0 or self.approved), 'connections': self.connections, 'authenticated': self.authenticated, 'readerObservationComplete': self.reader_complete, 'readerStillLiveAtAck': self.reader_live, 'failure': self.failure, 'disclosure': DISCLOSURE if self.connections else None}
+        return {'enabled': self.connections != 0, 'ok': self.failure is None and (self.connections == 0 or self.approved), 'connections': self.connections, 'authenticated': self.authenticated, 'approved': self.approved, 'readerObservationComplete': self.reader_complete, 'readerStillLiveAtAck': self.reader_live, 'failure': self.failure, 'disclosure': DISCLOSURE if self.connections else None}
 
     def finish(self, retained):
         self.drain(retained)

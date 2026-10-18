@@ -51,6 +51,22 @@ class ReaderBarrierTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'barrier_name'):Barrier(root/'control','o-p1.sock',mediation)
             self.assertNotIn(module.ENV, module.focused_barrier.environment({}))
 
+    def test_pinned_required_mode_rejects_each_missing_proof_independent_of_client_choice(self):
+        fields=('enabled','ok','authenticated','approved','readerObservationComplete','readerStillLiveAtAck')
+        complete={key:True for key in fields};complete.update(connections=1,failure=None)
+        module.require_evidence(True,complete)
+        module.require_evidence(False,None)
+        for key in fields:
+            for value in (False,None,1):
+                with self.subTest(key=key,value=value),self.assertRaisesRegex(ValueError,'reader-observation-required'):
+                    module.require_evidence(True,dict(complete,**{key:value}))
+        for value in (None,{},dict(complete,connections=0),dict(complete,connections=True),dict(complete,failure='timeout')):
+            with self.assertRaises(ValueError):module.require_evidence(True,value)
+        with tempfile.TemporaryDirectory() as temporary:
+            barrier,_,_,retained,_=self.setup_barrier(Path(temporary).resolve())
+            optional=barrier.finish(retained)
+            with self.assertRaisesRegex(ValueError,'reader-observation-required'):module.require_evidence(True,optional)
+
     def test_complete_own_row_ack_and_peer_eof(self):
         with tempfile.TemporaryDirectory() as temporary:
             barrier,_,_,retained,message=self.setup_barrier(Path(temporary).resolve());client=self.connect(barrier,message)
