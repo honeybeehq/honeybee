@@ -336,6 +336,7 @@ export function validate(ts, root, audit) {
 
 function validateFiles(ts, root, audit) {
   const errors = [], files = new Map(audit.files.map(row => [row.path, row])), groups = [], edges = [];
+  if (Object.hasOwn(audit, 'readerLifetimeBarrierRequired') && typeof audit.readerLifetimeBarrierRequired !== 'boolean') errors.push('reader lifetime barrier requirement must be boolean');
   const packageNames = new Set(audit.packages.map(row => row.specifier));
   const spawns = audit.spawns, references = audit.capabilityReferences, natives = audit.nativeEdges;
   const used = new Set();

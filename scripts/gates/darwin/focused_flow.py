@@ -9,6 +9,7 @@ import sys
 import time
 
 import focused_barrier
+import focused_reader_barrier
 import focused_audit
 import focused_diagnostics
 import focused_native
@@ -119,7 +120,7 @@ def validate_native_edges(edges):
         raise ValueError('flow nativeEdges must name exactly the two distinct approved artifacts')
 
 
-def connection_observation(helper, birth, barrier=None):
+def connection_observation(helper, birth, barrier=None, reader_barrier=None):
     observed = subprocess.run([str(helper), 'connections', *birth] + ([str(barrier)] if barrier is not None else []), capture_output=True, text=True, timeout=2)
     row = {'birth': birth, 'timestamp': time.time(), 'exit': observed.returncode, 'connections': []}
     if observed.returncode not in (0, 3):
@@ -135,10 +136,16 @@ def connection_observation(helper, birth, barrier=None):
             raise ValueError('malformed own connected socket observation')
         address = ipaddress.ip_address(parts[2])
         row['connections'].append({'fd': int(parts[0]), 'protocol': parts[1], 'remoteAddress': str(address), 'remotePort': int(parts[3]), 'loopback': address.is_loopback})
+    if reader_barrier is not None:
+        extra = connection_observation(helper, birth, reader_barrier)
+        for connection in extra['connections']:
+            if connection.get('classification') == 'gate-barrier':
+                connection['classification'] = 'gate-observation-barrier'
+            row['connections'].append(connection)
     return row
 
 
-def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sibling=False, mediation=None, barrier=None):
+def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sibling=False, mediation=None, barrier=None, reader_barrier=None, reader_barrier_required=False):
     helper = mediation.helper if mediation is not None else root / 'scope'
     read_fd, release_fd = os.pipe()
     tracked = {}
@@ -149,6 +156,8 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
     executable_samples = []
     connection_samples = []
     env = focused_barrier.environment(env, barrier)
+    if reader_barrier is not None:
+        env = reader_barrier.environment(env)
     if trace is not None:
         env = trace.environment(env)
         argv = trace.command(argv)
@@ -166,6 +175,8 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                 mediation.close()
             if barrier is not None:
                 barrier.close()
+            if reader_barrier is not None:
+                reader_barrier.close()
             raise
         if mediation is not None:
             mediation.roles = focused_roles.Roles(proc.pid, mediation.entries, trace is not None)
@@ -199,7 +210,7 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                     for key, row in tracked.items():
                         if key in exited:
                             continue
-                        connected = connection_observation(helper, row, barrier.path if barrier is not None else None)
+                        connected = connection_observation(helper, row, barrier.path if barrier is not None else None, reader_barrier.path if reader_barrier is not None and reader_barrier.connections else None)
                         connection_samples.append(connected)
                         if any(not item['loopback'] for item in connected['connections']):
                             raise ValueError('non-loopback own connection')
@@ -235,6 +246,8 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
                             require_bootstrap(api, root, helper, executable, row, birth)
                 if barrier is not None:
                     barrier.drain(tracked)
+                if reader_barrier is not None:
+                    reader_barrier.drain(tracked)
                 if mediation is not None and trace is not None:
                     for event in trace.records:
                         if event.get('kind') == 'hello' and event.get('role') == 'reader' and event.get('entry') == mediation.reader:
@@ -315,6 +328,18 @@ def supervise(api, root, workspace, env, argv, tag, timeout=600, trace=None, sib
             result['reason'] = result['reason'] or 'fixture barrier failed'
         finally:
             barrier.close()
+    if reader_barrier is not None:
+        try:
+            result['readerLifetimeBarrier'] = reader_barrier.finish(tracked)
+        except (ValueError, OSError, subprocess.SubprocessError):
+            result['readerLifetimeBarrier'] = reader_barrier.evidence()
+            result['reason'] = result['reason'] or 'reader lifetime observation barrier failed'
+        finally:
+            reader_barrier.close()
+    try:
+        focused_reader_barrier.require_evidence(reader_barrier_required, result.get('readerLifetimeBarrier'))
+    except ValueError:
+        result['reason'] = result['reason'] or 'reader-observation-required'
     if mediation is not None:
         try:
             result['nodeEntryRoles'] = mediation.roles.finish()
@@ -459,7 +484,8 @@ def run(api, root, workspace, env, tools, real_home):
                 mediation = focused_mediation.Mediation(root, active_workspace, active_node, child_env['TMPDIR'], names[0], manifest['recipientPolicy'], active_workspace / 'scripts/gates/darwin/focused-render-profile.mjs', dict(child_env, NODE_DISABLE_COMPILE_CACHE='1'), ['/usr/bin/sandbox-exec', '-f', str(sealed_context[0] / 'control/workload.sb')], helper=sealed_context[0] / 'control/scope', entries={str(active_workspace / row['path']): row['role'] for row in audit['nodeEntries']}) if sibling else None
                 trace = focused_trace.Trace(root, active_workspace, active_node, audit, active_artifacts, mediation=mediation) if mode == 'sibling-instrumented' else None
                 barrier = focused_barrier.Barrier(sealed_context[0] / 'control', 'b-p' + str(number) + '.sock', mediation) if mode == 'sibling-production' else None
-                result, log = supervise(api, root, active_workspace, child_env, command if sibling else prefix + command, 'focused-' + mode + '-' + str(number), trace=trace, sibling=sibling, mediation=mediation, barrier=barrier)
+                reader_barrier = focused_reader_barrier.ReaderBarrier(sealed_context[0] / 'control', 'o-p' + str(number) + '.sock', mediation) if mode == 'sibling-production' else None
+                result, log = supervise(api, root, active_workspace, child_env, command if sibling else prefix + command, 'focused-' + mode + '-' + str(number), trace=trace, sibling=sibling, mediation=mediation, barrier=barrier, reader_barrier=reader_barrier, reader_barrier_required=mode == 'sibling-production' and audit['readerLifetimeBarrierRequired'])
                 verdict['harnessArgv'] = result['argv']
                 verdict['isolationNoneInstrumentedOnly'] = mode == 'sibling-instrumented'
                 if mode == 'sibling-instrumented':
@@ -468,6 +494,8 @@ def run(api, root, workspace, env, tools, real_home):
                 verdict['processReason'] = result['reason']
                 if 'fixtureBarrier' in result:
                     verdict['fixtureBarrier'] = result['fixtureBarrier']
+                if 'readerLifetimeBarrier' in result:
+                    verdict['readerLifetimeBarrier'] = result['readerLifetimeBarrier']
                 if tmux_diagnostics is not None:
                     verdict['tmuxConfigAbsent'] = tmux_config
                     verdict['tmuxDiagnostics'] = load_tmux_diagnostics(tmux_diagnostics, names)
