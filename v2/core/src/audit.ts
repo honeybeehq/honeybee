@@ -1,4 +1,4 @@
-import { deliveryHold, type MultilineDeliveryRow } from "./multilineDelivery.ts";
+import { deliveryHold, publicDeliveryFallback, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
 /**
  * Audit replay — the audit table is a complete, ordered record of every write.
@@ -303,6 +303,15 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "mail.delivery_unsupported_multiline":
       case "mail.delivery_hold_expired":
       case "mail.multiline_completed":
+      case "mail.delivery_fallback_prepared":
+      case "mail.delivery_fallback_ready":
+      case "mail.delivery_fallback_in_flight":
+      case "mail.delivery_fallback_quarantine_cleared":
+      case "mail.delivery_fallback_unknown":
+      case "mail.delivery_fallback_held":
+      case "mail.delivery_fallback_delivered":
+      case "mail.delivery_fallback_removed":
+      case "mail.delivery_fallback_cleanup_held":
       case "mail.delivery_reordered": {
         const state = structuredClone(p.row as MultilineDeliveryRow);
         deliveryHolds.set(state.messageId, state);
@@ -311,6 +320,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
           const hold = deliveryHold(state);
           if (hold) message.deliveryHold = hold;
           else delete message.deliveryHold;
+          if (state.fallback) message.deliveryFallback = publicDeliveryFallback(structuredClone(state.fallback));
         }
         break;
       }

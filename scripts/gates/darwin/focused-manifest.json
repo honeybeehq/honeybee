@@ -84,7 +84,9 @@
     },
     {
       "path": "v2/daemon/tests/multiline-fallback-tmux.test.ts",
-      "outer": [
+      "outer": [],
+      "sibling": [],
+      "excluded": [
         "real type-mode terminal phone pointer reads original frame and never repeats after store reopen",
         "real type-mode terminal phone pointer post-Enter file-read commit-throw corruption warns may-have-delivered once",
         "real ordinary paste post-Enter commit failure and corruption cannot claim not-delivered",
@@ -94,8 +96,16 @@
         "real pointer phase missing_identity",
         "real pointer phase legacy_query"
       ],
-      "sibling": [],
-      "excluded": []
+      "excludedDisclosures": {
+        "real type-mode terminal phone pointer reads original frame and never repeats after store reopen": "tmux driver dispose/harvest uses a ps-based zombie census the Darwin gate forbids; tmux delivery is proven on Linux; PTY admission is proven by the permanent precondition.",
+        "real type-mode terminal phone pointer post-Enter file-read commit-throw corruption warns may-have-delivered once": "tmux driver dispose/harvest uses a ps-based zombie census the Darwin gate forbids; tmux delivery is proven on Linux; PTY admission is proven by the permanent precondition.",
+        "real ordinary paste post-Enter commit failure and corruption cannot claim not-delivered": "tmux driver dispose/harvest uses a ps-based zombie census the Darwin gate forbids; tmux delivery is proven on Linux; PTY admission is proven by the permanent precondition.",
+        "real pointer phase clears and retries the same publication": "tmux driver dispose/harvest uses a ps-based zombie census the Darwin gate forbids; tmux delivery is proven on Linux; PTY admission is proven by the permanent precondition.",
+        "real pointer phase quarantines all later mail": "tmux driver dispose/harvest uses a ps-based zombie census the Darwin gate forbids; tmux delivery is proven on Linux; PTY admission is proven by the permanent precondition.",
+        "real pointer phase unset_failure": "tmux driver dispose/harvest uses a ps-based zombie census the Darwin gate forbids; tmux delivery is proven on Linux; PTY admission is proven by the permanent precondition.",
+        "real pointer phase missing_identity": "tmux driver dispose/harvest uses a ps-based zombie census the Darwin gate forbids; tmux delivery is proven on Linux; PTY admission is proven by the permanent precondition.",
+        "real pointer phase legacy_query": "tmux driver dispose/harvest uses a ps-based zombie census the Darwin gate forbids; tmux delivery is proven on Linux; PTY admission is proven by the permanent precondition."
+      }
     }
   ],
   "recipientPolicy": {

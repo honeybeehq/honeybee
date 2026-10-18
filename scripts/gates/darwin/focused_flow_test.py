@@ -175,7 +175,13 @@ class FlowTests(unittest.TestCase):
             workspace.mkdir()
             parent = ['11', '1', '100', '200']
             child = ['12', '11', '101', '201']
-            api = SimpleNamespace(Refusal=Refusal, LEFTOVER_CHILDREN=[], scope_call=Mock(side_effect=[[parent], [parent, child]]), sample_retained_listeners=Mock(return_value=[{'listeners': [{'loopback': False}]}]), write_json=lambda path, value, unused: path.write_text(json.dumps(value)))
+            import guard
+            partial = subprocess.CompletedProcess([], 4, '3 TCP 0.0.0.0 1234\n', '')
+            gone = subprocess.CompletedProcess([], 3, 'gone', '')
+            with patch('guard.subprocess.run', side_effect=[partial, gone]):
+                sample = guard.sample_listeners(root / 'scope', parent)
+            self.assertNotIn('error', sample)
+            api = SimpleNamespace(Refusal=Refusal, LEFTOVER_CHILDREN=[], scope_call=Mock(side_effect=[[parent], [parent, child]]), sample_retained_listeners=Mock(return_value=[sample]), write_json=lambda path, value, unused: path.write_text(json.dumps(value)))
             process = Mock(returncode=-15)
             process.pid = 11
             process.poll.return_value = None
@@ -219,6 +225,59 @@ class FlowTests(unittest.TestCase):
             self.assertNotIn('executionTrace', result)
             self.assertIsNone(result['reason'])
 
+    def test_complete_role_birth_survives_both_gone_sampling_orderings(self):
+        for case in ('executable-gone', 'observation-gone', 'never-observed', 'wrong-prior-birth', 'birth-mismatch', 'other-error', 'shortfall'):
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                (root / 'logs').mkdir()
+                workspace = root / 'src'
+                workspace.mkdir()
+                births = [['11', '1', '100', '1'], ['12', '11', '101', '1'], ['13', '12', '102', '1'], ['14', '13', '103', '1']]
+                entries = [str(workspace / 'test.ts'), str(workspace / 'host.ts'), str(workspace / 'reader.mjs')]
+                mediation = SimpleNamespace(helper=root / 'scope', entries=dict(zip(entries, ('test-runner', 'runner-host-main', 'reader'))), reader=entries[2], parent_close=Mock(), check_deaths=Mock(), finish=Mock(return_value={'ok': True}), close=Mock(), observe_reader=Mock(), requests=[], records={})
+                api = SimpleNamespace(Refusal=Refusal, LEFTOVER_CHILDREN=[], scope_call=Mock(side_effect=[[births[0]], births[:-1] if case == 'shortfall' else births, births[:-1] if case == 'shortfall' else births]), sample_retained_listeners=Mock(return_value=[]), write_json=lambda path, value, unused: path.write_text(json.dumps(value)))
+                process = Mock(returncode=0, pid=11)
+                process.poll.side_effect = [None, None, 0]
+                visits = {}
+                def helper(argv, **unused):
+                    operation, pid = argv[1], argv[2]
+                    if operation == 'status':
+                        return subprocess.CompletedProcess(argv, 3, '', '')
+                    if operation == 'connections':
+                        return subprocess.CompletedProcess(argv, 0, '', '')
+                    if operation == 'executable':
+                        visits[pid] = visits.get(pid, 0) + 1
+                        if pid == '12' and visits[pid] == 2 and case == 'executable-gone':
+                            return subprocess.CompletedProcess(argv, 3, '', '')
+                        return subprocess.CompletedProcess(argv, 0, '/pinned/node', '')
+                    if operation == 'node-observation':
+                        late = pid == '12' and visits[pid] == 2
+                        if pid == '12' and case == 'never-observed':
+                            return subprocess.CompletedProcess(argv, 3, '', '')
+                        if late and case in ('observation-gone', 'wrong-prior-birth', 'birth-mismatch', 'other-error', 'shortfall'):
+                            if case == 'wrong-prior-birth':
+                                old = mediation.roles.identities[12]
+                                mediation.roles.identities[12] = (('12', '11', '999', '1'), old[1], old[2])
+                            return subprocess.CompletedProcess(argv, 4 if case in ('birth-mismatch', 'other-error') else 3, '', '')
+                        entry = entries[0] if pid in ('11', '12') else entries[1] if pid == '13' else entries[2]
+                        return subprocess.CompletedProcess(argv, 0, 'NODE /pinned/node\nENTRY ' + entry + '\nCWD ' + str(workspace) + '\nSANDBOX ' + ('1' if pid == '14' else '0') + '\n', '')
+                    raise AssertionError(operation)
+                with patch('focused_flow.subprocess.Popen', return_value=process), patch('focused_flow.subprocess.run', side_effect=helper), patch('focused_flow.time.sleep'), patch('focused_flow.os.write', return_value=1), patch('focused_flow.focused_seal.require_quiescent', return_value=[]):
+                    result, _ = focused_flow.supervise(api, root, workspace, {'SCG_NODE_BIN': '/pinned/node'}, ['/pinned/node'], case, sibling=True, mediation=mediation)
+                if case in ('executable-gone', 'observation-gone'):
+                    self.assertIsNone(result['reason'])
+                    self.assertTrue(result['nodeEntryRoles']['ok'])
+                    if case == 'observation-gone':
+                        sample = next(row for row in result['executableSamples'] if row.get('observationStatus'))
+                        self.assertEqual(sample['observationStatus'], 'verified-gone-after-complete-observation')
+                        self.assertNotIn('roleObservation', sample)
+                elif case == 'shortfall':
+                    self.assertIn('recipient profile or signal mediation failed', result['reason'])
+                    self.assertIn('missing or duplicate Node entry role observation', result['recipientMediation']['error'])
+                else:
+                    self.assertIn('own Node argv/cwd/sandbox observation unresolved', result['reason'])
+                self.assertFalse(any(row.get('observationStatus') for row in result['executableSamples']) and case not in ('observation-gone', 'shortfall'))
+
     def test_post_run_unknown_root_user_is_recorded_without_unfenced_signal(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
@@ -239,6 +298,29 @@ class FlowTests(unittest.TestCase):
             self.assertNotIn(str(root / 'node'), json.dumps(result))
             self.assertFalse(any(call.args[0][1] == 'signal' and call.args[0][2] == '22' for call in invoked.call_args_list))
 
+    def test_no_reader_barrier_client_preserves_plain_supervision_and_verdict(self):
+        from focused_reader_barrier import ReaderBarrier, ENV
+        from focused_diagnostics import ROW_NAMES
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary).resolve();(root/'logs').mkdir();(root/'control').mkdir(mode=0o700);workspace=root/'src';workspace.mkdir()
+            barrier=ReaderBarrier(root/'control','o-p0.sock',SimpleNamespace(row_id=ROW_NAMES['cell-sandbox']))
+            birth=['11','1','100','200']
+            api=SimpleNamespace(Refusal=Refusal,LEFTOVER_CHILDREN=[],scope_call=Mock(side_effect=[[birth],[birth]]),sample_retained_listeners=Mock(return_value=[]),write_json=lambda path,value,unused:path.write_text(json.dumps(value)))
+            process=Mock(returncode=0);process.pid=11;process.poll.side_effect=[None,0]
+            def helper(argv,**unused):return subprocess.CompletedProcess(argv,0 if argv[1] in ('connections','executable') else 3,'/fixture/node' if argv[1]=='executable' else '','')
+            with patch('focused_flow.subprocess.Popen',return_value=process) as popen,patch('focused_flow.subprocess.run',side_effect=helper) as invoked,patch('focused_flow.os.write',return_value=1),patch('focused_flow.focused_seal.require_quiescent',return_value=[]),patch('focused_flow.time.sleep'):
+                result,_=focused_flow.supervise(api,root,workspace,{'SCG_NODE_BIN':'/fixture/node'},['/fixture/node','test'],'inert-reader-barrier',sibling=True,reader_barrier=barrier)
+            self.assertIsNone(result['reason']);self.assertTrue(result['readerLifetimeBarrier']['ok']);self.assertFalse(result['readerLifetimeBarrier']['enabled'])
+            self.assertIn(ENV,popen.call_args.kwargs['env'])
+            connections=[call.args[0] for call in invoked.call_args_list if call.args[0][1]=='connections']
+            self.assertEqual(len(connections),1);self.assertEqual(connections[0][-1],birth[-1])
+            process.poll.side_effect=[None,0];api.scope_call=Mock(side_effect=[[birth],[birth]])
+            required_barrier=ReaderBarrier(root/'control','o-p1.sock',SimpleNamespace(row_id=ROW_NAMES['satellite-default']))
+            with patch('focused_flow.subprocess.Popen',return_value=process),patch('focused_flow.subprocess.run',side_effect=helper),patch('focused_flow.os.write',return_value=1),patch('focused_flow.focused_seal.require_quiescent',return_value=[]),patch('focused_flow.time.sleep'):
+                required,_=focused_flow.supervise(api,root,workspace,{'SCG_NODE_BIN':'/fixture/node'},['/fixture/node','test'],'required-reader-barrier',sibling=True,reader_barrier=required_barrier,reader_barrier_required=True)
+            self.assertEqual(required['reason'],'reader-observation-required')
+
+
     def test_connection_parser_keeps_remote_address_and_fails_unobserved(self):
         birth = ['11', '1', '100', '200']
         with patch('focused_flow.subprocess.run', return_value=subprocess.CompletedProcess([], 0, '4 TCP 192.0.2.1 443\n5 UDP ::1 1234\n', '')):
@@ -249,6 +331,27 @@ class FlowTests(unittest.TestCase):
         for result in (subprocess.CompletedProcess([], 4, '', ''), subprocess.CompletedProcess([], 0, 'truncated', '')):
             with patch('focused_flow.subprocess.run', return_value=result), self.assertRaises(ValueError):
                 focused_flow.connection_observation('/scope', birth)
+
+    def test_partial_connection_before_verified_gone_is_retained_and_rejected(self):
+        birth = ['11','1','100','200']
+        for code in (0,3):
+            with patch('focused_flow.subprocess.run', return_value=subprocess.CompletedProcess([], code, '4 TCP 192.0.2.1 443\n', '')):
+                row = focused_flow.connection_observation('/scope', birth)
+            self.assertFalse(row['connections'][0]['loopback'])
+        for code, stdout in ((3,'truncated'),(3,'4 TCP 192.0.2.1 443'),(3,'4 TCP invalid 443\n'),(4,'4 TCP 192.0.2.1 443\n')):
+            with patch('focused_flow.subprocess.run', return_value=subprocess.CompletedProcess([], code, stdout, '')), self.assertRaises(ValueError):
+                focused_flow.connection_observation('/scope', birth)
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary).resolve();(root/'logs').mkdir();workspace=root/'src';workspace.mkdir()
+            api=SimpleNamespace(Refusal=Refusal,LEFTOVER_CHILDREN=[],scope_call=Mock(side_effect=[[birth],[birth]]),sample_retained_listeners=Mock(return_value=[]),write_json=lambda path,value,unused:path.write_text(json.dumps(value)))
+            process=Mock(returncode=-15);process.pid=11;process.poll.return_value=None
+            def helper(argv, **unused):
+                if argv[1]=='connections':return subprocess.CompletedProcess(argv,3,'4 TCP 192.0.2.1 443\n','')
+                return subprocess.CompletedProcess(argv,3,'gone','')
+            with patch('focused_flow.subprocess.Popen',return_value=process),patch('focused_flow.subprocess.run',side_effect=helper),patch('focused_flow.os.write',return_value=1),patch('focused_flow.time.sleep'),patch('focused_flow.focused_seal.require_quiescent',return_value=[]):
+                result,_=focused_flow.supervise(api,root,workspace,{'SCG_NODE_BIN':'/fixture/node'},['/fixture/node','test'],'partial-connection',sibling=True)
+            self.assertEqual(result['reason'],'non-loopback own connection')
+            self.assertFalse(result['connectionSamples'][0]['connections'][0]['loopback'])
 
     def test_manifest_partition_is_exact(self):
         data = json.loads((Path(__file__).parent / 'focused-manifest.json').read_text())

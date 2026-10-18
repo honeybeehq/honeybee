@@ -430,20 +430,34 @@ def sample_listeners(helper, birth):
     command = [str(helper), 'listeners', *birth]
     value = subprocess.run(command, capture_output=True, text=True, timeout=2)
     observation = {'timestamp': timestamp, 'birth': birth, 'pid': int(birth[0]), 'argv': command, 'exit': value.returncode, 'stderr': value.stderr, 'listeners': []}
+    for line in value.stdout.splitlines(keepends=True):
+        if not line.endswith('\n'):
+            observation['error'] = 'malformed native listener record'
+            return observation
+        parts = line.split()
+        if len(parts) != 4 or parts[1] not in ('TCP', 'UDP') or not parts[0].isdigit() or not parts[3].isdigit() or not 0 < int(parts[3]) <= 65535:
+            observation['error'] = 'malformed native listener record'
+            return observation
+        fd, proto, address, port = parts
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            observation['error'] = 'malformed native listener record'
+            return observation
+        loopback = (ip.version == 4 and ip in ipaddress.ip_network('127.0.0.0/8')) or (ip.version == 6 and ip == ipaddress.ip_address('::1'))
+        observation['listeners'].append({'pid': int(birth[0]), 'birth': birth, 'proto': proto, 'localAddress': address, 'port': int(port), 'fd': int(fd), 'timestamp': timestamp, 'loopback': loopback})
     if value.returncode:
         status = subprocess.run([str(helper), 'status', *birth], capture_output=True, text=True, timeout=2)
         observation['exitEvidence'] = {'exit': status.returncode, 'result': status.stdout.strip()}
         if status.returncode != 3 or status.stdout.strip() not in ('gone', 'same-birth-zombie'):
             observation['error'] = 'listener observation unresolved'
         return observation
-    for line in value.stdout.splitlines():
-        parts = line.split()
-        if len(parts) != 4 or parts[1] not in ('TCP', 'UDP'):
-            raise Refusal('malformed native listener record')
-        fd, proto, address, port = parts
-        ip = ipaddress.ip_address(address)
-        loopback = (ip.version == 4 and ip in ipaddress.ip_network('127.0.0.0/8')) or (ip.version == 6 and ip == ipaddress.ip_address('::1'))
-        observation['listeners'].append({'pid': int(birth[0]), 'birth': birth, 'proto': proto, 'localAddress': address, 'port': int(port), 'fd': int(fd), 'timestamp': timestamp, 'loopback': loopback})
+    if value.stderr:
+        closed = re.fullmatch(r'closed socket fds skipped=([1-9][0-9]*)\n', value.stderr)
+        if closed is None or int(closed.group(1)) > 1048576:
+            observation['error'] = 'listener observation diagnostic unresolved'
+            return observation
+        observation['closedFdRaceCount'] = int(closed.group(1))
     return observation
 
 

@@ -588,5 +588,5 @@ export const MIRROR_PHONE_ORIGIN_KEYS = ["format", "channel", "issuerNodeId", "a
 export const MIRROR_PHONE_OPTIONAL_ORIGIN_KEYS = ["omittedSourcesDigest"] as const;
 export const MIRROR_PHONE_SOURCE_KEYS = ["ownerStoreId", "admissionId", "contentDigest", "relation"] as const;
 
-export const MIRROR_MULTILINE_OPTIONAL_MESSAGE_KEYS = ["deliveryHold"] as const;
-export const MIRROR_MULTILINE_OPTIONAL_HISTORY_KEYS = ["deliveryHold"] as const;
+export const MIRROR_MULTILINE_OPTIONAL_MESSAGE_KEYS = ["deliveryHold", "deliveryFallback"] as const;
+export const MIRROR_MULTILINE_OPTIONAL_HISTORY_KEYS = ["deliveryHold", "deliveryFallback"] as const;

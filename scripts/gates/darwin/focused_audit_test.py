@@ -82,6 +82,15 @@ class AuditTests(unittest.TestCase):
             self.assertEqual(len(validated['files']), 5)
             for key in ('version', 'files', 'spawns', 'packages', 'capabilityReferences', 'nativeEdges', 'entryPins', 'gatePins', 'nodeEntries'):
                 self.assertEqual(validated[key], data[key])
+            self.assertIs(validated['readerLifetimeBarrierRequired'], False)
+            for required in (False, True):
+                audit.write_text(json.dumps(dict(data, readerLifetimeBarrierRequired=required)))
+                self.assertIs(focused_audit.validate(workspace, 'audit.json')['readerLifetimeBarrierRequired'], required)
+            for required in (None, 0, 1, 'true', [], {}):
+                audit.write_text(json.dumps(dict(data, readerLifetimeBarrierRequired=required)))
+                with self.assertRaisesRegex(ValueError, 'must be boolean'):
+                    focused_audit.validate(workspace, 'audit.json')
+            audit.write_text(json.dumps(data))
             focused_flow.validate_native_edges(validated['nativeEdges'])
             focused_audit.validate_gate_pins(workspace, validated['gatePins'])
             entries = {str(workspace / row['path']): row['role'] for row in validated['nodeEntries']}

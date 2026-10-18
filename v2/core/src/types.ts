@@ -1,4 +1,4 @@
-import type { DeliveryHold, MultilineDeliveryRow } from "./multilineDelivery.ts";
+import type { DeliveryFallback, DeliveryHold, MultilineDeliveryRow } from "./multilineDelivery.ts";
 import type { PhoneInput, PhoneOperationOrigin } from "./phoneOrigin.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
 /**
@@ -295,6 +295,7 @@ export const MESSAGE_URGENCIES = ["now", "next", "idle"] as const;
 export type Urgency = (typeof MESSAGE_URGENCIES)[number];
 
 export interface MessageRow {
+  deliveryFallback?: DeliveryFallback;
   deliveryHold?: DeliveryHold;
   phoneInput?: PhoneInput;
   renderedBody?: string;
@@ -351,6 +352,7 @@ export type MailHistoryLifecycle =
 
 /** One accepted send reconstructed from typed mail audit events, never a raw audit row. */
 export interface MailHistoryMessage {
+  deliveryFallback?: DeliveryFallback;
   deliveryHold?: DeliveryHold;
   phoneOrigin?: PhoneInput["envelope"];
   /** The `mail.enqueued` audit sequence. `beforeSeq` pages against this value. */
@@ -400,6 +402,7 @@ export interface MailPendingParams {
 
 /** One undelivered mailbox row with bounded UTF-8 previews. */
 export interface MailPendingMessage {
+  deliveryFallback?: DeliveryFallback;
   deliveryHold?: DeliveryHold;
   phoneOrigin?: PhoneInput["envelope"];
   id: number;

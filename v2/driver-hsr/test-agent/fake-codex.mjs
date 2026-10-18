@@ -70,6 +70,11 @@ rl.on("line", (raw) => {
       else setTimeout(() => emit({ id: msg.id, result: {} }), Number(process.env.FAKE_CODEX_RECONNECT_DELAY_MS ?? "0"));
       return;
     case "turn/start": {
+      if (process.env.FAKE_DELIVERY_REFUSE_ONCE === "1") {
+        delete process.env.FAKE_DELIVERY_REFUSE_ONCE;
+        emit({jsonrpc: "2.0", id: msg.id, error: {code: -32600, message: "fixture refused before acceptance"}});
+        return;
+      }
       const turnId = randomUUID();
       currentTurnId = turnId;
       const text = msg.params?.input?.[0]?.text ?? "";

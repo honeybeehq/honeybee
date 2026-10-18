@@ -8,6 +8,90 @@ import unittest
 
 @unittest.skipUnless(sys.platform.startswith('linux'), 'group C stub compiles on Linux only')
 class ScopeTests(unittest.TestCase):
+    def test_socket_fd_close_races_preserve_birth_and_remaining_listener_checks(self):
+        source = Path(__file__).with_name('scope.c').read_text()
+        function = source[source.index('static int listeners('):source.index('static int group_members(')]
+        stub = r"""#define _POSIX_C_SOURCE 200809L
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <arpa/inet.h>
+#define PROC_PIDLISTFDS 1
+#define PROC_PIDFDSOCKETINFO 2
+#define PROX_FDTYPE_SOCKET 3
+#define SOCKINFO_UN 7
+#define SOCKINFO_TCP 4
+#define SOCKINFO_IN 5
+#define TSI_S_LISTEN 6
+#define INI_IPV4 1
+struct proc_fdinfo { int proc_fdtype,proc_fd; };
+struct addr { struct { struct in_addr i46a_addr4; } ina_46; struct in6_addr ina_6; };
+struct in_sockinfo { int insi_fport,insi_lport,insi_vflag; struct addr insi_faddr,insi_laddr; };
+struct tcp_info { int tcpsi_state; struct in_sockinfo tcpsi_ini; };
+struct unix_info { struct { struct { char sun_path[104]; } ua_sun; } unsi_caddr; };
+struct socket_info { int soi_family,soi_protocol,soi_kind; union { struct unix_info pri_un; struct tcp_info pri_tcp; struct in_sockinfo pri_in; } soi_proto; };
+struct socket_fdinfo { struct socket_info psi; };
+static int mode,stage,observed_second;
+static int same_birth(int pid,unsigned long long sec,unsigned long long usec) {
+ (void)pid;(void)sec;(void)usec;
+ errno=0;
+ if(stage==1&&mode==4)return 4;
+ if(stage==1&&mode==5)return 3;
+ return 0;
+}
+static int proc_pidinfo(int pid,int flavor,unsigned long long arg,void *out,int capacity) {
+ (void)pid;(void)flavor;(void)arg;(void)capacity;
+ if(!out)return 2*sizeof(struct proc_fdinfo);
+ struct proc_fdinfo *fds=out;fds[0].proc_fdtype=fds[1].proc_fdtype=PROX_FDTYPE_SOCKET;fds[0].proc_fd=3;fds[1].proc_fd=4;
+ return 2*sizeof(*fds);
+}
+static int proc_pidfdinfo(int pid,int fd,int flavor,void *out,int size) {
+ (void)pid;(void)flavor;(void)size;
+ if(fd==3){stage=1;errno=mode==2?ENOENT:mode==3?EPERM:EBADF;return -1;}
+ observed_second++;
+ struct socket_info *s=&((struct socket_fdinfo*)out)->psi;
+ s->soi_family=AF_INET;s->soi_protocol=IPPROTO_TCP;s->soi_kind=SOCKINFO_TCP;
+ s->soi_proto.pri_tcp.tcpsi_state=TSI_S_LISTEN;
+ s->soi_proto.pri_tcp.tcpsi_ini.insi_vflag=INI_IPV4;
+ s->soi_proto.pri_tcp.tcpsi_ini.insi_lport=htons(1234);
+ s->soi_proto.pri_tcp.tcpsi_ini.insi_fport=htons(1234);
+ inet_pton(AF_INET,mode==6?"0.0.0.0":"127.0.0.1",&s->soi_proto.pri_tcp.tcpsi_ini.insi_laddr.ina_46.i46a_addr4);
+ inet_pton(AF_INET,"127.0.0.1",&s->soi_proto.pri_tcp.tcpsi_ini.insi_faddr.ina_46.i46a_addr4);
+ return sizeof(struct socket_fdinfo);
+}
+"""
+        main = r"""
+int main(int argc,char **argv) {
+ if(argc!=3)return 9;
+ mode=atoi(argv[1]);int connected=atoi(argv[2]);
+ int rc=listeners(11,101,2,connected,NULL);
+ if((mode==1||mode==2||mode==6)&&(!observed_second||rc))return 8;
+ return rc;
+}
+"""
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            file = root / 'listeners.c'
+            file.write_text(stub + function + main)
+            binary = root / 'listeners'
+            built = subprocess.run(['/usr/bin/cc', '-std=c11', '-Wall', '-Wextra', '-Werror', str(file), '-o', str(binary)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            for connected in (0, 1):
+                for mode, expected in ((1,0),(2,0),(3,4),(4,4),(5,3),(6,0)):
+                    with self.subTest(connected=connected, mode=mode):
+                        result = subprocess.run([str(binary), str(mode), str(connected)], capture_output=True, text=True, timeout=2)
+                        self.assertEqual(result.returncode, expected, result.stderr)
+                        if mode in (1,2,6):
+                            self.assertEqual(result.stderr, 'closed socket fds skipped=1\n')
+                        if mode == 6 and not connected:
+                            import guard
+                            from types import SimpleNamespace
+                            from unittest.mock import patch
+                            with patch('guard.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout=result.stdout, stderr=result.stderr)):
+                                observation = guard.sample_listeners(Path('/scope'), ['11','10','101','2'])
+                            self.assertTrue(any(not row['loopback'] for row in observation['listeners']))
+
     def test_group_byte_counts_and_exact_member_births_before_signal(self):
         source = Path(__file__).with_name('scope.c').read_text()
         function = source[source.index('static int group_members('):source.index('typedef int (*sandbox_check_function)')]

@@ -72,6 +72,11 @@ createInterface({ input: process.stdin }).on("line", (line) => {
       write({ id: msg.id, result: { session: { sessionId, status: "idle", providerId: "echo", modelId: null } } });
       return;
     case "turn/start": {
+      if (process.env.FAKE_DELIVERY_REFUSE_ONCE === "1") {
+        delete process.env.FAKE_DELIVERY_REFUSE_ONCE;
+        write({id: msg.id, error: {code: -32600, message: "fixture refused before acceptance"}});
+        return;
+      }
       const turnId = msg.params.commandId;
       write({ id: msg.id, result: { commandId: turnId, disposition: "started", status: "accepted", turnId } });
       setTimeout(() => runTurn(turnId), 10);

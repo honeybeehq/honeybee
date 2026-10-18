@@ -101,6 +101,13 @@ export const AUTOMATION_INTERRUPT_NOTICE =
 
 const SELF_FRAMED_SENDERS: readonly string[] = [ACTION_DISPATCH_SENDER, HANDOFF_SEED_SENDER];
 
+export function deliveryPointer(msg: MessageRow, path: string, peer: boolean, questionId: string | null): string {
+  if (msg.phoneInput) return `Paired-phone message — human approval not verified; full text: ${path}`;
+  const empty = deliveryText({ ...msg, body: "" }, peer, false, questionId);
+  const label = empty.includes("\n") ? empty.slice(0, empty.indexOf("\n")) : "";
+  return `${label ? label + "; " : ""}full text: ${path}`;
+}
+
 /** The exact text handed to the runtime for a message — enveloped iff peer-sent, a question answer or automation (except senders that frame their own body). */
 export function deliveryText(
   msg: Pick<MessageRow, "id" | "sender" | "body" | "urgency" | "enqueuedAt" | "senderKind" | "phoneInput">,
