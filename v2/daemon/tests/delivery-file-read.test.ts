@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os, { tmpdir } from "node:os";
 import { syncBuiltinESMExports } from "node:module";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openCoreStore } from "../../core/src/store.ts";
@@ -17,6 +17,7 @@ import { defaultDataDir } from "../src/config.ts";
 import { deliveryContentRoot } from "../src/multilineFallback.ts";
 import { ensureDeliveryFileArtifact } from "./delivery-file-build.ts";
 import { DELIVERY_READ_SOCKET_NAME, deliveryReadFixtureBase, outsideLinuxPrivateMounts } from "./delivery-file-read-root.ts";
+import { disposeAndAwaitOwnedChild, waitForGateProfile } from "./delivery-file-read-barrier.ts";
 
 before(ensureDeliveryFileArtifact);
 for (const substrate of ["hsr", "cell-sandbox", "satellite-default"] as const) test(`${process.platform === "darwin" ? "Darwin " : ""}OS-level file read outside cwd: ${substrate}; tool-policy read UNVERIFIED (OS-level only)`, {skip: process.platform !== "linux" && process.platform !== "darwin"}, async t => {
@@ -50,9 +51,13 @@ for (const substrate of ["hsr", "cell-sandbox", "satellite-default"] as const) t
     const productionProfile = seatbeltProfile({...policy, scratchPaths: scratches});
     assert.equal(command.profile, productionProfile.split("\n").filter(line => !scratchEntries.has(line)).join("\n"));
     writeFileSync(profilePath, command.profile, {mode: 0o600});
+    await waitForGateProfile(t.name, root);
   }
   const driver = new HsrDriver({sessionLogDir: join(root, "logs"), stopKillGraceMs: 100, socketDir: join(root, "s"), resolve: () => ({...command, cwd: work, env: {...process.env, FILE_READ_ROOT: data, ...(sandboxed ? {FILE_EXPECT_READONLY: "1"} : {})}, adapter: stubAdapter})});
-  t.after(() => {driver.disposeAll(); rmSync(root, {recursive: true, force: true});});
+  t.after(async () => {
+    const child = (driver as unknown as {procs: Map<string, {child: ChildProcess | null}>}).procs.get("bee")?.child;
+    await disposeAndAwaitOwnedChild(child, () => driver.disposeAll(), () => rmSync(root, {recursive: true, force: true}));
+  });
   driver.start("bee", 1);
   let accepted = false, ended = false;
   const observed: unknown[] = [];
