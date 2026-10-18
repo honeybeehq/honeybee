@@ -1,4 +1,5 @@
-import { appendFileSync } from "node:fs";
+import { appendFileSync, readFileSync, realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
 
 process.stdin.setRawMode(true);
 process.stdin.setEncoding("utf8");
@@ -19,9 +20,16 @@ process.stdin.on("data", chunk => {
     }
     const char = Array.from(pending)[0]; pending = pending.slice(char.length);
     if ((char === "\r" || char === "\n") && !pasting) {
+      if (process.env.PHONE_FALLBACK_ROOT && body.includes("full text: ")) {
+        const path = realpathSync(body.slice(body.indexOf("full text: ") + "full text: ".length));
+        if (!path.startsWith(realpathSync(process.env.PHONE_FALLBACK_ROOT) + "/delivery-content/")) throw new Error("Fallback escaped fixture root");
+        const bytes = readFileSync(path);
+        record({ fallbackRead: {sha256: createHash("sha256").update(bytes).digest("hex"), header: bytes.toString("utf8").split("\n")[0]} });
+      }
       record({ submittedBody: body }); body = "";
       process.stdout.write("\r\nreceived\r\n");
     } else if (char === "\u0015" && !pasting) {
+      if (process.env.PHONE_IGNORE_CLEAR === "1") continue;
       body = ""; process.stdout.write("\r\x1b[2K");
     } else {
       body += char; process.stdout.write(char === "\n" ? "\r\n" : char);

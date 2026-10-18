@@ -108,12 +108,12 @@
     },
     {
       "file": "v2/daemon/src/daemon.ts",
-      "line": 1041,
+      "line": 1057,
       "sha256": "cfa43f2f68fe967a84720684c5f4fe73d48134ce4a50ae906173c14ddee41dcc",
       "receiverDeclaration": {
         "file": "v2/daemon/src/daemon.ts",
-        "startLine": 701,
-        "endLine": 701,
+        "startLine": 705,
+        "endLine": 705,
         "sha256": "f94e1df94d05ee439fc50dd374c585a7909408b98791596318c95d0cc23a83bf"
       },
       "fingerprintSha256": "de77a7fbf3c083c3c3d2545b05b7d9efc838659e54343be91b03a8e91c680aae",
@@ -573,6 +573,32 @@
       },
       "fingerprintSha256": "bc469cf4026e8e1c4e816f09d79d8197f00cf74c42e280cdc17069ceb711c3e5",
       "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration tests/hsr-remote-transport.test.ts:48-74"
+    },
+    {
+      "file": "v2/daemon/tests/multiline-fallback-cleanup.test.ts",
+      "line": 38,
+      "sha256": "c2cabbdd23f8454f402a27828260e78032ba54281f1057c8a89616fdb730b786",
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/multiline-fallback-cleanup.test.ts",
+        "startLine": 35,
+        "endLine": 37,
+        "sha256": "e097d1a9baa8093d05a4471aee16431ee1aae76d0d726c4e595bf77a01242ac3"
+      },
+      "fingerprintSha256": "c69dd4fdd6f869091babf7192c9f5e6960721073f2987aa4badd875c98276d44",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/multiline-fallback-cleanup.test.ts:35-37"
+    },
+    {
+      "file": "v2/daemon/tests/multiline-fallback-cleanup.test.ts",
+      "line": 49,
+      "sha256": "70fd1a63c85284999c084fe659ccd345a66e1fac7b48f74304a2d1d7f6086371",
+      "receiverDeclaration": {
+        "file": "v2/daemon/tests/multiline-fallback-cleanup.test.ts",
+        "startLine": 47,
+        "endLine": 48,
+        "sha256": "7bc124c6995a6dc030662198228650d8b3847c63382e9f5d1118360639f668c6"
+      },
+      "fingerprintSha256": "699582161fdf9dac400638ef2cfad0260443436f2ee87ef4b2a54ab17c7c9776",
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/multiline-fallback-cleanup.test.ts:47-48"
     }
   ]
 }

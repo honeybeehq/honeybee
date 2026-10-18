@@ -9,7 +9,7 @@ import { TmuxServer } from "../src/tmux.ts";
 
 const fixture = fileURLToPath(new URL("../test-agent/phone-terminal.mjs", import.meta.url));
 const corpus = JSON.parse(readFileSync(new URL("../../core/tests/fixtures/phone-origin-vectors.json", import.meta.url), "utf8")) as { vectors: { id: string; expectedFrame: string }[] };
-for (const probeFixture of ["native", "supported", "unknown"] as const) for (const bracketed of [true, false]) test(`private tmux multiline transport (${probeFixture} probe): bracketed ${bracketed ? "ON" : "OFF"}; main fallback bytes and corrected raw paste`, async t => {
+for (const probeFixture of ["native", "supported", "unknown"] as const) for (const bracketed of [true, false]) test(`private tmux multiline transport (${probeFixture} probe): bracketed ${bracketed ? "ON" : "OFF"}; only proven ON pastes inline`, async t => {
   const dir = mkdtempSync(join(tmpdir(), "pht-"));
   const socketPath = join(dir, "t.sock"), receiptFile = join(dir, "received.jsonl");
   const body = corpus.vectors.find(v => v.id === "nested-encoded-frame")!.expectedFrame;
@@ -68,33 +68,22 @@ for (const probeFixture of ["native", "supported", "unknown"] as const) for (con
       const transport = Buffer.from(rows().map(row => row.transportHex ?? "").join(""), "hex");
       return { received, transport };
     };
-    const paste = (bracketedArgs: boolean) => {
-      server.run(["load-buffer", "-b", "main-comparison", "-"], { input: body });
-      server.run(["paste-buffer", ...(bracketedArgs ? ["-p", "-r"] : []), "-d", "-b", "main-comparison", "-t", pane]);
-      server.run(["send-keys", "-t", pane, "Enter"]);
-    };
-    writeFileSync(receiptFile, "");
-    paste(false);
-    const main = await capture(body.split("\n").length);
-    assert.deepEqual(Buffer.from(main.received.map(row => row.submittedBody!).join("\n")), Buffer.from(body));
     writeFileSync(receiptFile, "");
     driver.observe();
     const result = driver.deliver("phone-terminal", 1, 1, body);
-    if (formatSupported && !bracketed) {
-      assert.deepEqual(result, { accepted: false, reason: "not_ready", detail: "multiline_bracketed_paste_disabled" });
+    if (!formatSupported || !bracketed) {
+      const detail = probeFixture === "unknown" ? "multiline_bracketed_paste_unknown" : formatSupported ? "multiline_bracketed_paste_disabled" : "multiline_bracketed_paste_version_unsupported";
+      assert.deepEqual(result, { accepted: false, reason: "not_ready", detail });
       assert.equal(rows().length, 0);
-      assert.equal(driver.deliver("phone-terminal", 1, 1, body, { multilineWaitExpired: true }).accepted, true);
-    } else assert.equal(result.accepted, true);
-    const inline = formatSupported && bracketed;
-    const actual = await capture(inline ? 1 : body.split("\n").length);
-    assert.deepEqual(Buffer.from(actual.received.map(row => row.submittedBody!).join("\n")), Buffer.from(body));
-    if (!inline) assert.deepEqual(actual.transport, main.transport, "unsupported or expired delivery preserves main transport bytes exactly");
-    writeFileSync(receiptFile, "");
-    paste(true);
-    const corrected = await capture(bracketed ? 1 : body.split("\n").length);
-    assert.deepEqual(Buffer.from(corrected.received.map(row => row.submittedBody!).join("\n")), Buffer.from(body));
-    assert.ok(corrected.transport.includes(Buffer.from(body)), "literal LF bytes survive -r transport");
-    assert.equal(corrected.transport.includes(Buffer.from("\x1b[200~")), bracketed);
+      assert.deepEqual(driver.deliver("phone-terminal", 1, 1, body, { multilineWaitExpired: true }), result);
+      assert.equal(rows().length, 0);
+    } else {
+      assert.equal(result.accepted, true);
+      const actual = await capture(1);
+      assert.deepEqual(Buffer.from(actual.received[0]!.submittedBody!), Buffer.from(body));
+      assert.ok(actual.transport.includes(Buffer.from(body)));
+      assert.equal(actual.transport.includes(Buffer.from("\x1b[200~")), true);
+    }
 
   } finally {
     if (process.env.PHONE_EVIDENCE_DIR) {

@@ -1,4 +1,4 @@
-import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, advanceMultilineUnsupported, deliveryHold, readMultilineDelivery, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
+import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
 import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
@@ -27,7 +27,7 @@ import type { CredentialHandoffIdentity } from "./types.ts";
 import { DatabaseSync } from "node:sqlite";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { humanRefAuthorityId, signHumanRefReceipt, verifyHumanRefReceipt, type HumanRefIssuer, type HumanRefReceipt, type HumanRefRegistry } from "./humanRefs.ts";
-import { TextDecoder } from "node:util";
+import { TextDecoder, isDeepStrictEqual } from "node:util";
 import {
   BeeNotFoundError,
   CommandProtocolError,
@@ -3579,6 +3579,153 @@ export class CoreStore {
     return (this.stmt("SELECT * FROM multiline_delivery ORDER BY message_id").all() as Row[]).map(row => readMultilineDelivery(String(row.row_json), Number(row.message_id), String(row.bee_id), row.held_at == null ? null : Number(row.held_at), row.held_since == null ? null : Number(row.held_since)));
   }
 
+  heldMultilineMail(): Map<string, (DaemonPendingMessageMeta & { fallback?: DeliveryFallback })[]> {
+    const result = new Map<string, (DaemonPendingMessageMeta & { fallback?: DeliveryFallback })[]>();
+    const rows = this.stmt(`SELECT message.id, message.urgency, message.enqueued_at, held.*
+      FROM multiline_delivery AS held JOIN mailbox AS message ON message.id = held.message_id AND message.bee_id = held.bee_id
+      WHERE held.held_since IS NOT NULL AND message.delivered_at IS NULL
+        AND CASE WHEN json_valid(held.row_json) THEN COALESCE(json_extract(held.row_json, '$.fallback.state'), '') NOT IN ('held', 'delivered', 'removed') ELSE 1 END
+      ORDER BY message.id`).all() as Row[];
+    for (const row of rows) {
+      const beeId = String(row.bee_id), hold = readMultilineDelivery(String(row.row_json), Number(row.message_id), beeId, row.held_at == null ? null : Number(row.held_at), Number(row.held_since));
+      const pending = result.get(beeId) ?? [];
+      pending.push({ ...mapDaemonPendingMessage(row.id, row.urgency, row.enqueued_at), ...(hold.fallback ? { fallback: hold.fallback } : {}) });
+      result.set(beeId, pending);
+    }
+    return result;
+  }
+
+  deletedMultilineFiles(): MultilineDeliveryRow[] {
+    return (this.stmt(`SELECT held.* FROM multiline_delivery AS held LEFT JOIN bees AS bee ON bee.id = held.bee_id
+      WHERE (bee.id IS NULL OR bee.lifecycle = 'deleted')
+        AND CASE WHEN json_valid(held.row_json) THEN json_type(held.row_json, '$.fallback') IS NOT NULL AND COALESCE(json_extract(held.row_json, '$.fallback.state'), '') != 'removed' ELSE 0 END
+      ORDER BY held.message_id`).all() as Row[])
+      .map(row => readMultilineDelivery(String(row.row_json), Number(row.message_id), String(row.bee_id), row.held_at == null ? null : Number(row.held_at), row.held_since == null ? null : Number(row.held_since)));
+  }
+
+  retainsMultilineRuntimeContent(beeId: string, primaryRoot: string): boolean {
+    return (this.stmt("SELECT * FROM multiline_delivery WHERE bee_id = ?").all(beeId) as Row[]).some(row => {
+      const hold = readMultilineDelivery(String(row.row_json), Number(row.message_id), beeId, row.held_at == null ? null : Number(row.held_at), row.held_since == null ? null : Number(row.held_since));
+      return hold.detail === "delivery_hold_state_unknown" || hold.fallback !== undefined && hold.fallback.state !== "removed" && hold.fallback.root !== primaryRoot;
+    });
+  }
+
+  unknownMultilineNotice(): string {
+    return "state unknown, may have been delivered";
+  }
+
+  countUnknownMultilineHolds(): number {
+    return Number((this.stmt(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get() as Row).count);
+  }
+
+  recoverInFlightMultilineFallbacks(): void {
+    this.tx(() => {
+      const rows = this.stmt(`SELECT message_id FROM multiline_delivery WHERE CASE WHEN json_valid(row_json)
+        THEN json_extract(row_json, '$.fallback.state') = 'in_flight' ELSE 0 END`).all() as Row[];
+      for (const row of rows) this.transitionMultilineFallback(Number(row.message_id), "in_flight", "unknown", {detail: "delivery_pointer_daemon_restarted"});
+    });
+  }
+
+  countUnknownMultilinePrepareAudits(): number {
+    return Number((this.stmt(`SELECT COUNT(*) AS count FROM audit WHERE kind = 'mail.delivery_fallback_prepared'
+      AND CASE WHEN json_valid(payload) THEN NOT COALESCE(json_type(payload, '$.row.messageId') = 'integer'
+        AND json_extract(payload, '$.row.messageId') > 0 AND json_type(payload, '$.row.beeId') = 'text', 0) ELSE 1 END`).get() as Row).count);
+  }
+
+  reconcileUnknownMultilineHold(messageId: number): void {
+    this.tx(() => {
+      const raw = this.stmt("SELECT * FROM multiline_delivery WHERE message_id = ?").get(messageId) as Row | undefined;
+      if (!raw) return;
+      const row = readMultilineDelivery(String(raw.row_json), Number(raw.message_id), String(raw.bee_id), raw.held_at == null ? null : Number(raw.held_at), raw.held_since == null ? null : Number(raw.held_since));
+      if (row.detail !== "delivery_hold_state_unknown") return;
+      const held: MultilineDeliveryRow = {...row, stage: "held", heldSince: row.heldSince ?? this.now()};
+      try {if (isDeepStrictEqual(JSON.parse(String(raw.row_json)), held)) return;} catch {}
+      this.putMultilineDelivery(held, "mail.delivery_fallback_unknown");
+    });
+  }
+
+  multilinePaneQuarantines(): MultilineDeliveryRow[] {
+    return (this.stmt(`SELECT * FROM multiline_delivery WHERE CASE WHEN json_valid(row_json)
+      THEN json_type(row_json, '$.fallback.paneInput') = 'object' AND json_type(row_json, '$.fallback.paneInput.clearedAt') IS NULL ELSE 0 END`).all() as Row[])
+      .map(row => readMultilineDelivery(String(row.row_json), Number(row.message_id), String(row.bee_id), row.held_at == null ? null : Number(row.held_at), row.held_since == null ? null : Number(row.held_since)))
+      .filter(row => row.fallback?.paneInput && row.fallback.paneInput.clearedAt === undefined);
+  }
+
+  clearAcceptedMultilinePaneQuarantine(messageId: number): void {
+    this.tx(() => {
+      const row = this.multilineDelivery(messageId), pane = row?.fallback?.paneInput;
+      if (!row?.fallback || row.fallback.state !== "delivered" || !pane || pane.clearedAt !== undefined) return;
+      this.putMultilineDelivery({...row, fallback: {...row.fallback, paneInput: {...pane, clearedAt: this.now(), reason: "accepted_pointer_marker_cleared"}}}, "mail.delivery_fallback_quarantine_cleared");
+    });
+  }
+
+  clearMultilinePaneQuarantine(messageId: number, generation: number): void {
+    this.tx(() => {
+      const row = this.multilineDelivery(messageId), pane = row?.fallback?.paneInput;
+      if (!row?.fallback || !pane || pane.clearedAt !== undefined || pane.generation === generation) return;
+      this.putMultilineDelivery({...row, fallback: {...row.fallback, paneInput: {...pane, clearedAt: this.now(), reason: "runtime_generation_replaced"}}}, "mail.delivery_fallback_quarantine_cleared");
+    });
+  }
+
+  recordMultilineCleanupFailure(messageId: number, detail: string): void {
+    this.tx(() => {
+      const row = this.multilineDelivery(messageId);
+      if (!row?.fallback || row.fallback.detail === detail) return;
+      this.putMultilineDelivery({ ...row, fallback: { ...row.fallback, detail } }, "mail.delivery_fallback_cleanup_held");
+    });
+  }
+
+  prepareMultilineFallback(messageId: number, root: string, worktrees: string[], reorderMessageIds: number[] = []): DeliveryFallback | undefined {
+    return this.tx(() => {
+      const message = this.getMessage(messageId), row = this.multilineDelivery(messageId);
+      if (!message || message.deliveredAt !== null || !row || !["held", "expired"].includes(row.stage)) return undefined;
+      if (row.fallback) return row.fallback;
+      let priorPrepare = true;
+      try {
+        priorPrepare = !!this.stmt(`SELECT 1 FROM audit WHERE bee_id = ? AND kind = 'mail.delivery_fallback_prepared'
+          AND CASE WHEN json_valid(payload) THEN json_type(payload, '$.row.messageId') = 'integer'
+            AND json_extract(payload, '$.row.messageId') = ? ELSE 0 END LIMIT 1`).get(message.beeId, messageId);
+      } catch {}
+      if (priorPrepare) {
+        const fallback = {...readDeliveryFallback(null)!, detail: "delivery_hold_state_unknown"};
+        this.putMultilineDelivery({...row, stage: "held", heldSince: row.heldSince ?? this.now(), detail: "delivery_hold_state_unknown", fallback}, "mail.delivery_fallback_unknown");
+        return fallback;
+      }
+      const fallback: DeliveryFallback = { code: "delivery_file_fallback", state: "preparing", id: randomUUID(), ownerStoreId: this.effectCoverage().ownerStoreId,
+        root, worktrees, path: null, pointer: null, digest: null, bytes: null, generation: null, detail: null, senderNoticeMessageId: null, reorderMessageIds: [...reorderMessageIds] };
+      this.putMultilineDelivery({ ...row, stage: "held", heldSince: row.heldSince ?? this.now(), fallback }, "mail.delivery_fallback_prepared");
+      return fallback;
+    });
+  }
+
+  fenceMultilineFallbackPublication(messageId: number, publicationId: string): void {
+    this.tx(() => {
+      const row = this.multilineDelivery(messageId);
+      if (!row?.fallback || row.fallback.id !== publicationId || !["preparing", "ready"].includes(row.fallback.state)) throw Object.assign(new CoreError("Fallback publication fence differs"), {code: "delivery_fallback_fence_unknown"});
+    });
+  }
+
+  transitionMultilineFallback(messageId: number, expected: DeliveryFallback["state"], state: DeliveryFallback["state"], values: Partial<Pick<DeliveryFallback, "path" | "pointer" | "digest" | "bytes" | "generation" | "detail" | "attempts" | "attemptPhase" | "paneInput">> = {}): DeliveryFallback | undefined {
+    const allowed: Record<DeliveryFallback["state"], readonly DeliveryFallback["state"][]> = {
+      preparing: ["ready", "held", "removed"], ready: ["in_flight", "held", "removed"], in_flight: ["ready", "unknown", "delivered", "removed"],
+      unknown: ["ready", "delivered", "removed"], held: ["removed"], delivered: ["removed"], removed: [],
+    };
+    if (!allowed[expected].includes(state)) throw new CoreError(`Invalid delivery fallback transition ${expected} -> ${state}`);
+    return this.tx(() => {
+      const row = this.multilineDelivery(messageId);
+      if (!row?.fallback || row.fallback.state !== expected) return row?.fallback;
+      let fallback: DeliveryFallback = { ...row.fallback, ...values, state };
+      if (state === "removed" && fallback.paneInput && fallback.paneInput.clearedAt === undefined) fallback = {...fallback, paneInput: {...fallback.paneInput, clearedAt: this.now(), reason: "bee_deleted"}};
+      const message = this.getMessage(messageId);
+      if ((state === "held" || state === "unknown") && fallback.senderNoticeMessageId === null && message && message.sender !== "operator" && this.getBee(message.sender)) {
+        const notice = this.send(message.sender, `[Honeybee automated delivery receipt, not typed by a person] delivery_file_fallback: message ${messageId} to ${JSON.stringify(row.beeId)} ${state === "unknown" ? this.unknownMultilineNotice() : "is held"}; full text: ${fallback.path ?? "unavailable"}; ${fallback.detail ?? "delivery outcome unknown"}`, { sender: "automation:delivery", senderKind: "automation", origin: "mail.send" });
+        fallback = { ...fallback, senderNoticeMessageId: notice.message.id };
+      }
+      this.putMultilineDelivery({ ...row, fallback }, `mail.delivery_fallback_${state}`);
+      return fallback;
+    });
+  }
+
   private putMultilineDelivery(row: MultilineDeliveryRow, kind: string): void {
     this.stmt(`INSERT INTO multiline_delivery(message_id, bee_id, held_at, held_since, sender_notice_message_id, row_json) VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(message_id) DO UPDATE SET held_at=excluded.held_at, held_since=excluded.held_since, sender_notice_message_id=excluded.sender_notice_message_id, row_json=excluded.row_json`)
@@ -3609,6 +3756,7 @@ export class CoreStore {
       const runtime = this.currentRuntime(message.beeId);
       if (!runtime || runtime.generation !== generation || !LIVE_STATES.includes(runtime.state)) return undefined;
       const previous = this.multilineDelivery(messageId);
+      if (previous?.detail === "delivery_hold_state_unknown") {this.reconcileUnknownMultilineHold(messageId); return this.multilineDelivery(messageId); }
       const typeAfterWait = previous !== undefined && previous.stage !== "waiting" && previous.heldSince === null && detail === "multiline_type_mode";
       if (previous && previous.stage !== "waiting" && !typeAfterWait) return previous;
       const at = this.now();
@@ -3621,7 +3769,7 @@ export class CoreStore {
       if (typeHeld) {
         receipt = { code: "delivery_unsupported_multiline", messageId, beeId: message.beeId, sender: message.sender, heldSince: at, delivered: false, reason: "multiline_type_mode", channel: "mail.history+audit", senderNoticeMessageId: null };
         if (message.sender !== "operator" && this.getBee(message.sender)) {
-          const notice = this.send(message.sender, `[Honeybee automated delivery receipt, not typed by a person] delivery_unsupported_multiline: message ${messageId} to ${JSON.stringify(message.beeId)} is held, not delivered; resend as a single line. heldSince=${at}`, { sender: "automation:delivery", senderKind: "automation", origin: "mail.send" });
+          const notice = this.send(message.sender, `[Honeybee automated delivery receipt, not typed by a person] delivery_unsupported_multiline: message ${messageId} to ${JSON.stringify(message.beeId)} is held pending file fallback, not delivered. heldSince=${at}`, { sender: "automation:delivery", senderKind: "automation", origin: "mail.send" });
           receipt = { ...receipt, channel: "mail", senderNoticeMessageId: notice.message.id };
         }
       }
@@ -3652,19 +3800,36 @@ export class CoreStore {
     return state.receipt?.senderNoticeMessageId === messageId ? state.receipt : null;
   }
 
-  pendingMultilineReorderNotice(beeId: string, selectedMessageId: number): string | null {
+  multilineSenderNotice(messageId: number): boolean {
+    return this.multilineSenderReceipt(messageId) !== null || !!this.stmt(`SELECT 1 FROM multiline_delivery WHERE CASE WHEN json_valid(row_json)
+      THEN json_extract(row_json, '$.fallback.senderNoticeMessageId') = ? ELSE 0 END LIMIT 1`).get(messageId);
+  }
+
+  private pendingMultilineReorders(beeId: string, selectedMessageId: number): MultilineDeliveryRow[] {
     const rows = this.stmt("SELECT * FROM multiline_delivery WHERE bee_id = ? AND held_since IS NOT NULL AND message_id < ? ORDER BY message_id").all(beeId, selectedMessageId) as Row[];
     const pending = rows.map(row => readMultilineDelivery(String(row.row_json), Number(row.message_id), String(row.bee_id), row.held_at == null ? null : Number(row.held_at), Number(row.held_since)))
       .filter(row => row.notice === null && this.getMessage(row.messageId)?.deliveredAt === null);
-    return pending.length ? `[delivery_unsupported_multiline: message ${pending.slice(0, 16).map(row => row.messageId).join(",") + (pending.length > 16 ? ` (+${pending.length - 16} more)` : "")} — delivered later messages; this one is held] ` : null;
+    return [...pending.filter(row => row.detail === "delivery_hold_state_unknown" || row.fallback?.state === "unknown").slice(0, 16), ...pending.filter(row => row.detail !== "delivery_hold_state_unknown" && row.fallback?.state !== "unknown").slice(0, 16)];
   }
 
-  private recordMultilineReorder(beeId: string, deliveredId: number): void {
-    const held = this.stmt("SELECT held.* FROM multiline_delivery AS held JOIN mailbox AS message ON message.id = held.message_id WHERE held.bee_id = ? AND held.held_since IS NOT NULL AND held.message_id < ? AND message.delivered_at IS NULL ORDER BY held.message_id").all(beeId, deliveredId) as Row[];
-    for (const raw of held) {
-      const row = readMultilineDelivery(String(raw.row_json), Number(raw.message_id), String(raw.bee_id), raw.held_at == null ? null : Number(raw.held_at), raw.held_since == null ? null : Number(raw.held_since));
-      if (row.notice !== null) continue;
-      this.putMultilineDelivery({ ...row, notice: "delivered later messages; this one is held" }, "mail.delivery_reordered");
+  multilineReorderNotice(beeId: string, selectedMessageId: number): {text: string | null; messageIds: number[]} {
+    const pending = this.pendingMultilineReorders(beeId, selectedMessageId);
+    const unknown = pending.filter(row => row.detail === "delivery_hold_state_unknown" || row.fallback?.state === "unknown"), ordinary = pending.filter(row => row.detail !== "delivery_hold_state_unknown" && row.fallback?.state !== "unknown");
+    const notices = unknown.map(row => `[delivery_unsupported_multiline: message ${row.messageId} — ${this.unknownMultilineNotice()}] `);
+    if (ordinary.length) notices.push(`[delivery_unsupported_multiline: message ${ordinary.map(row => row.messageId).join(",")} — delivered later messages; this one is held] `);
+    return {text: notices.length ? notices.join("") : null, messageIds: pending.map(row => row.messageId)};
+  }
+
+  pendingMultilineReorderNotice(beeId: string, selectedMessageId: number): string | null {
+    return this.multilineReorderNotice(beeId, selectedMessageId).text;
+  }
+
+  private recordMultilineReorder(beeId: string, deliveredId: number, represented: unknown): void {
+    if (!Array.isArray(represented) || represented.length > 32 || !represented.every(id => Number.isSafeInteger(id) && id > 0 && id < deliveredId) || new Set(represented).size !== represented.length) return;
+    for (const id of represented) {
+      const row = this.multilineDelivery(id);
+      if (!row || row.beeId !== beeId || row.heldSince === null || row.notice !== null || this.getMessage(id)?.deliveredAt !== null) continue;
+      this.putMultilineDelivery({ ...row, notice: row.detail === "delivery_hold_state_unknown" || row.fallback?.state === "unknown" ? this.unknownMultilineNotice() : "delivered later messages; this one is held" }, "mail.delivery_reordered");
     }
   }
 
@@ -3676,14 +3841,14 @@ export class CoreStore {
   private withPhoneInput<T extends object>(message: T, messageId: number): T & { phoneOrigin?: PhoneInput["envelope"] } {
     const input = this.phoneInput(messageId);
     const hold = this.multilineDelivery(messageId);
-    return { ...message, ...(input ? { phoneOrigin: input.envelope } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}) };
+    return { ...message, ...(input ? { phoneOrigin: input.envelope } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}), ...(hold?.fallback ? { deliveryFallback: publicDeliveryFallback(hold.fallback) } : {}) };
   }
 
   private mapPhoneMessage(row: Row): MessageRow {
     const message = mapMessage(row), input = this.phoneInput(message.id);
     if (input && (phoneDigest(input.originalContent) !== input.envelope.contentDigest || renderPhoneInput(input.originalContent) !== message.body)) throw new CoreError("Phone input and body shadow differ");
     const hold = this.multilineDelivery(message.id);
-    return { ...message, ...(input ? { phoneInput: input, renderedBody: message.body } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}) };
+    return { ...message, ...(input ? { phoneInput: input, renderedBody: message.body } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}), ...(hold?.fallback ? { deliveryFallback: publicDeliveryFallback(hold.fallback) } : {}) };
   }
 
   checkPhoneBinding(key: string, verb: string, lane: string, digest: string): void {
@@ -4107,7 +4272,23 @@ export class CoreStore {
    * B4 — delivery marks delivered_generation; never twice, and only to the bee's
    * CURRENT generation (a stale consumer's mark is a recorded no-op, mirroring B6).
    */
-  markDelivered(messageId: number, generation: number, source?: TurnTriggerSource): { applied: boolean } {
+  markDelivered(messageId: number, generation: number, source?: TurnTriggerSource, reorderMessageIds?: number[]): { applied: boolean } {
+    return this.commitMessageDelivery(messageId, generation, source, false, reorderMessageIds);
+  }
+
+  completeMultilineFallback(messageId: number, generation: number, source: TurnTriggerSource, paneInputCleared = true): { applied: boolean } {
+    return this.tx(() => {
+      const row = this.multilineDelivery(messageId);
+      if (!row?.fallback || row.fallback.generation !== generation || !["in_flight", "unknown"].includes(row.fallback.state)) return { applied: false };
+      const message = this.getMessage(messageId);
+      if (!message || message.deliveredAt !== null) return { applied: false };
+      const result = this.commitMessageDelivery(messageId, generation, source, true, row.fallback.reorderMessageIds);
+      if (result.applied) this.transitionMultilineFallback(messageId, row.fallback.state, "delivered", {attempts: row.fallback.attempts ?? 1, attemptPhase: "enter_attempted", ...(row.fallback.paneInput ? {paneInput: {...row.fallback.paneInput, ...(paneInputCleared ? {clearedAt: this.now(), reason: "pointer_accepted"} : {reason: "pointer_accepted_marker_clear_pending"})}} : {})});
+      return result;
+    });
+  }
+
+  private commitMessageDelivery(messageId: number, generation: number, source: TurnTriggerSource | undefined, recoveredFallback: boolean, reorderMessageIds?: unknown): { applied: boolean } {
     return this.tx(() => {
       const message = this.getMessage(messageId);
       if (!message) throw new CoreError(`message not found: ${messageId}`);
@@ -4120,7 +4301,8 @@ export class CoreStore {
         return { applied: false };
       }
       const current = this.currentRuntime(message.beeId);
-      if (!current || current.generation !== generation || !LIVE_STATES.includes(current.state)) {
+      const currentMatches = current && current.generation === generation && LIVE_STATES.includes(current.state);
+      if (!currentMatches && !recoveredFallback) {
         this.audit("mail.deliver_noop", message.beeId, {
           messageId,
           reason:
@@ -4130,18 +4312,20 @@ export class CoreStore {
         });
         return { applied: false };
       }
+      if (!currentMatches && !this.stmt("SELECT 1 FROM runtimes WHERE bee_id = ? AND generation = ?").get(message.beeId, generation)) return { applied: false };
       this.resetMultilineDeliveryProgress(messageId, message.beeId);
       const at = this.now();
       this.db
         .prepare("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?")
         .run(at, generation, messageId);
-      const turnTrigger = source ? this.applyDeliveryTurnTrigger(message.beeId, current, messageId, source, at) : null;
+      const turnTrigger = source && currentMatches ? this.applyDeliveryTurnTrigger(message.beeId, current!, messageId, source, at) : null;
       const questionId = this.answeredQuestionId(messageId);
       const senderKind = deliveredSenderKind(message);
       this.audit("mail.delivered", message.beeId, {
         messageId,
         deliveredAt: at,
         deliveredGeneration: generation,
+        ...(recoveredFallback ? { fallbackReceipt: true } : {}),
         ...(message.phoneInput ? { phoneOrigin: message.phoneInput.envelope } : {}),
         ...(turnTrigger ? { turnTrigger } : {}),
         ...(questionId !== null ? { questionId } : {}),
@@ -4149,7 +4333,7 @@ export class CoreStore {
       });
       // v24: an action instruction reached its runtime — delivery evidence only, never completion.
       this.applyActionDelivered(messageId, generation, at);
-      this.recordMultilineReorder(message.beeId, messageId);
+      this.recordMultilineReorder(message.beeId, messageId, reorderMessageIds);
       return { applied: true };
     });
   }
