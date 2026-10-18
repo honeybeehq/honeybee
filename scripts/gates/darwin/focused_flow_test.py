@@ -48,13 +48,13 @@ class FlowTests(unittest.TestCase):
             with patch('focused_flow.subprocess.run', return_value=subprocess.CompletedProcess([], 0, '/framework/Python.app/Python\n', '')), self.assertRaisesRegex(ValueError, 'birth changed'):
                 focused_flow.observe_controller(api, root, root / 'scope')
 
-    def test_excluded_readoption_name_and_disclosure_are_exact(self):
+    def test_native_zombie_check_restores_readoption_row(self):
         data = json.loads((Path(__file__).parent / 'focused-manifest.json').read_text())
         name = 'SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and later mail flows'
         item = data['files'][1]
-        self.assertNotIn(name, item['outer'] + item['sibling'])
-        self.assertEqual(item['excluded'], [name])
-        self.assertEqual(item['excludedDisclosures'][name], 'HSR re-adoption on Darwin needs a ps-based zombie census the gate forbids; recovery logic is platform-neutral and proven on Linux (receipt 7668b5f6)')
+        self.assertIn(name, item['outer'])
+        self.assertNotIn(name, item['excluded'])
+        self.assertNotIn(name, item.get('excludedDisclosures', {}))
 
     def test_tmux_diagnostics_are_bounded_and_grouped_by_exact_row(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -355,9 +355,9 @@ class FlowTests(unittest.TestCase):
 
     def test_manifest_partition_is_exact(self):
         data = json.loads((Path(__file__).parent / 'focused-manifest.json').read_text())
-        self.assertEqual(sum(len(row['outer']) for row in data['files']), 46)
+        self.assertEqual(sum(len(row['outer']) for row in data['files']), 47)
         self.assertEqual(sum(len(row['sibling']) for row in data['files']), 2)
-        self.assertEqual(sum(len(row['excluded']) for row in data['files']), 21)
+        self.assertEqual(sum(len(row['excluded']) for row in data['files']), 20)
         for row in data['files']:
             names = row['outer'] + row['sibling'] + row['excluded']
             self.assertEqual(len(names), len(set(names)))

@@ -24,7 +24,7 @@ import {
   type SandboxWritableDirectory,
 } from "../src/sandbox.ts";
 import { commitInCell, makeRig, type CellTestRig } from "./helpers.ts";
-import { pidAlive } from "../../driver-hsr/tests/helpers.ts";
+import { fixtureRuntimeIdentity, persistFixtureProcess, pidAlive } from "../../driver-hsr/tests/helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const AGENT_PATH = join(here, "..", "..", "driver-hsr", "test-agent", "agent.mjs");
@@ -67,6 +67,7 @@ function makeDriver(
       sandbox: opts.sandbox ?? null,
     }),
     hsr: {
+      runtimeIdentity: fixtureRuntimeIdentity(rig.root),
       sessionLogDir: join(rig.root, "logs"),
       stopKillGraceMs: 400,
       ...(opts.hostCommand ? { hostCommand: opts.hostCommand } : {}),
@@ -338,6 +339,10 @@ test("cell-driver.reserved-only: a cell reserved (seed ledger) but never started
     driver.start("bee-1", 1);
     await drainUntil(driver, (e) => e.some((x) => x.kind === "booted"));
     assert.throws(() => driver.removeCell("bee-1"), (err: Error) => err instanceof CellRuntimeLiveError);
+    const originalSnapshot = driver.snapshotLive.bind(driver);
+    driver.snapshotLive = () => [];
+    assert.throws(() => driver.removeCell("bee-1"), (err: Error) => err instanceof CellRuntimeLiveError);
+    driver.snapshotLive = originalSnapshot;
     const sessions = driver.observeSessions();
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0]?.beeId, "bee-1");
@@ -473,6 +478,7 @@ test("cell-driver.restart: a successor daemon re-adopts a live cell runtime from
     await drainUntil(first, (e) => e.some((x) => x.kind === "turn_ended"));
     const checkpoint = checkpointOf(first, "bee-1");
     const proc = first.procOf("bee-1", 1)!;
+    persistFixtureProcess(rig.root, "bee-1", 1, proc);
     assert.ok(proc.pid > 0);
 
     // The crash gap: the runner persists a completion the dying daemon never

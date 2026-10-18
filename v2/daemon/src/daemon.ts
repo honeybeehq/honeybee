@@ -1,3 +1,5 @@
+import {IdentityRecovery} from "./identityRecovery.ts";
+import {inspectProcess, sameProcess} from "../../harness/src/processIdentity.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
 import { type PhoneOriginRequest, parsePhoneOrigin } from "../../core/src/phoneOrigin.ts";
@@ -706,6 +708,9 @@ export class HiveDaemon {
   private tickTimer: NodeJS.Timeout | null = null;
   /** Event-loop delay histogram: stalls anywhere (tick, RPC handler, fs) starve the accept loop. */
   private loopDelay: IntervalHistogram | null = null;
+  private readonly identityRecovery = new IdentityRecovery();
+  private identityWarningAt = 0;
+  private identityRecoveryTimer: NodeJS.Timeout | null = null;
   private loopDelayTimer: NodeJS.Timeout | null = null;
   private readonly startedAt = Date.now();
   readonly instanceId = randomUUID();
@@ -885,6 +890,7 @@ export class HiveDaemon {
       stopKillGraceMs: this.cfg.stopKillGraceMs,
       adoptToleranceMs: this.cfg.adoptToleranceMs,
       onWriteLaneReady: () => this.requestTick(),
+      runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
       execution: store.executionRuntimeHooks(),
       executionStartFor: (beeId: string, generation: number) => store.existingExecutionStart(beeId,generation),
       executionHostFor: (start: ExecutionStart) => store.executionStartHost(start),
@@ -926,6 +932,8 @@ export class HiveDaemon {
     });
     mkdirSync(join(this.cfg.dataDir, "tmux-events"), { recursive: true });
     const tmux = new TmuxDriver({
+      runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
+      doctor: counts => this.log(`doctor.runtime_identity non_destructive_legacy=${counts.nonDestructiveLegacy}`),
       socketPath: join(this.cfg.dataDir, "tmux.sock"),
       eventsDir: join(this.cfg.dataDir, "tmux-events"),
       sessionLogDir: this.cfg.sessionLogDir,
@@ -1001,6 +1009,7 @@ export class HiveDaemon {
       sourceProcessAbsent: (beeId, generation) => this.sourceProcessAbsent(beeId, generation),
       relocateSession: (move, bee) => this.relocateMoveSession(move, bee),
       validatePlacement: (move, bee) => this.validateMoveDestination(move, bee),
+      onIdentityUnresolved: (beeId, generation) => this.retainProcessIdentity(beeId, generation),
       blockedRuntimeStartBeeIds: () => this.prepareRuntimeStartCommands(),
       assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
       readHandoffTranscript: (bee, segments) => this.readHandoffTranscript(bee, segments),
@@ -1022,8 +1031,11 @@ export class HiveDaemon {
     // at spawn, so DaemonCore.boot()'s snapshotLive() sees them and
     // reconcileAtBoot keeps their rows live instead of stopping them.
     this.backfillCellRegistry(store);
-    this.adoptSurvivors(store, driver);
-    this.lastBoot = this.core.boot();
+    const unresolved = this.adoptSurvivors(store, driver);
+    for (const row of unresolved) this.identityRecovery.retain({...row, since: store.runtimeIdentityUnresolvedSince(row.beeId, row.generation)});
+    this.lastBoot = this.core.boot(unresolved);
+    this.identityRecoveryTimer = setInterval(() => this.retryProcessIdentities(), 1000);
+    this.identityRecoveryTimer.unref();
     this.sweepBeeTmpAtBoot(store);
     this.reconcileCellOpsAtBoot();
     // v31: wrappers parked by an earlier pass are already evicted; finish deleting them.
@@ -1088,6 +1100,7 @@ export class HiveDaemon {
     this.log(`daemon.stopping pid=${process.pid}`);
     try {
       if (this.tickTimer) clearTimeout(this.tickTimer);
+      if (this.identityRecoveryTimer) clearInterval(this.identityRecoveryTimer);
       if (this.loopDelayTimer) clearInterval(this.loopDelayTimer);
       this.loopDelay?.disable();
       this.tickTimer = null;
@@ -1659,7 +1672,42 @@ export class HiveDaemon {
     return tmuxSpawnSpec({ ...spec, command }, { agent: bee.agent, cwd: bee.cwd, args: beeArgs, env });
   }
 
-  private adoptSurvivors(store: CoreStore, driver: SubstrateRouter): void {
+  private retainProcessIdentity(beeId: string, generation: number): void {
+    if (!this.identityRecovery.has(beeId, generation)) this.identityRecovery.retain({beeId, generation, since: this.mustStore().runtimeIdentityUnresolvedSince(beeId, generation)});
+    this.core?.retainProcessIdentity(beeId, generation);
+  }
+
+  private retryProcessIdentities(): void {
+    if (this.stopping || !this.driver || !this.core) return;
+    const store = this.mustStore();
+    this.identityRecovery.retry(Date.now(), row => {
+      let rt = store.currentRuntime(row.beeId);
+      if (!rt || rt.generation !== row.generation || rt.state === "stopped") { this.core!.resolveProcessIdentity(row.beeId, row.generation); return true; }
+      const captured = this.driver!.procOf(row.beeId, row.generation);
+      if (captured && (rt.pid == null || rt.pidStartedAt == null || captured.processIdentity && store.runtimeProcessIdentity(row.beeId, row.generation).kind !== "bound")) {
+        store.recordRuntimeProc(row.beeId, row.generation, captured);
+        rt = store.currentRuntime(row.beeId)!;
+        if (rt.pid == null || rt.pidStartedAt == null) return false;
+        if (rt.state === "stopped") { this.core!.resolveProcessIdentity(row.beeId, row.generation); return true; }
+      }
+      if (rt.pid == null || rt.pidStartedAt == null) return false;
+      const value = inspectProcess(rt.pid), binding = store.runtimeProcessIdentity(row.beeId, row.generation);
+      if (binding.kind === "bound" && (value.kind === "gone" || sameProcess(binding.identity, value) && value.state === "zombie")) {
+        store.updateRuntimeState(row.beeId, row.generation, "stopped", {exitCause: "machine_restart"});
+        this.core!.resolveProcessIdentity(row.beeId, row.generation); return true;
+      }
+      this.driver!.retryProcessIdentity(row.beeId, row.generation);
+      if (!this.driver!.hasProcess(row.beeId, row.generation)) this.driver!.adopt(row.beeId, row.generation, rt.pid, rt.pidStartedAt, rt.state, store.runtimeObservationCursor(row.beeId, row.generation));
+      const fresh = store.runtimeProcessIdentity(row.beeId, row.generation);
+      if (fresh.kind === "bound" && sameProcess(fresh.identity, inspectProcess(rt.pid)) && this.driver!.hasProcess(row.beeId, row.generation)) { this.core!.resolveProcessIdentity(row.beeId, row.generation); return true; }
+      return false;
+    });
+    const counts = this.identityRecovery.counts(Date.now());
+    if (counts.overdue && Date.now() - this.identityWarningAt >= 60000) { this.identityWarningAt = Date.now(); this.log(`doctor.process_identity_unresolved count=${counts.overdue}`); }
+  }
+
+  private adoptSurvivors(store: CoreStore, driver: SubstrateRouter): Array<{beeId: string; generation: number}> {
+    const unresolved: Array<{beeId: string; generation: number}> = [];
     for (const bee of store.listBees()) {
       const rt = store.currentRuntime(bee.id);
       if (!rt || rt.pid == null || rt.pidStartedAt == null) continue;
@@ -1679,9 +1727,16 @@ export class HiveDaemon {
       );
       // A degraded adoption keeps the exact pid but has no evidence lane: the
       // bee can never leave its adopted phase on its own. Say so at boot.
+      const binding = store.runtimeProcessIdentity(bee.id, rt.generation);
+      const observed = inspectProcess(rt.pid);
+      const exactLive = binding.kind === "bound" && sameProcess(binding.identity, observed) && observed.state === "live";
+      const exactExited = binding.kind === "bound" && (observed.kind === "gone" || sameProcess(binding.identity, observed) && observed.state === "zombie");
+      if (!exactLive && !exactExited || !adopted && !exactExited) unresolved.push({beeId: bee.id, generation: rt.generation});
       const degraded = adopted && driver.isDegraded(bee.id, rt.generation);
       this.log(`boot.adopt bee=${bee.id} gen=${rt.generation} pid=${rt.pid} ok=${adopted}${degraded ? " degraded=true" : ""}`);
     }
+    if (unresolved.length) this.log(`doctor.runtime_identity unresolved=${unresolved.length}`);
+    return unresolved;
   }
 
   // -------------------------------------------------------------------------
@@ -3650,9 +3705,8 @@ export class HiveDaemon {
     const rt = this.mustStore().currentRuntime(beeId);
     if (!rt || rt.generation !== generation) return true;
     if (rt.pid != null) {
-      if (rt.pidStartedAt != null && verifyProcessIdentity(rt.pid, rt.pidStartedAt, this.cfg.adoptToleranceMs)) {
-        return false;
-      }
+      const binding = this.mustStore().runtimeProcessIdentity(beeId, generation);
+      if (binding.kind === "bound" && verifyProcessIdentity(rt.pid, binding.identity)) return false;
       if (pidAlive(rt.pid)) {
         this.log(`move.source_pid_unverified bee=${beeId} gen=${generation} pid=${rt.pid}`);
         return false;
@@ -4397,9 +4451,6 @@ export class HiveDaemon {
 
   private cellOpProcessPresent(op: CellOpRow): boolean {
     if (op.pid == null) return false;
-    if (op.pidStartedAt != null && verifyProcessIdentity(op.pid, op.pidStartedAt, this.cfg.adoptToleranceMs)) {
-      return true;
-    }
     if (pidAlive(op.pid)) {
       this.log(`cell_op.pid_unverified op=${op.id} pid=${op.pid}`);
       return true;
@@ -5518,17 +5569,30 @@ export class HiveDaemon {
     params: Record<string, unknown>,
   ): MutationResult {
     const store = this.mustStore();
-    const key = this.idempotencyKeyOf(params);
+    const rt = store.currentRuntime(beeId);
+    if (rt && rt.state !== "stopped" && rt.pid !== null && (verb === "stop" || verb === "archive")) {
+      const binding = store.runtimeProcessIdentity(beeId, rt.generation), value = inspectProcess(rt.pid);
+      if (binding.kind !== "bound" || value.kind === "unavailable" || value.kind === "present" && !sameProcess(binding.identity, value)) this.retainProcessIdentity(beeId, rt.generation);
+    }
+    const unresolved = !!rt && this.identityRecovery.has(beeId, rt.generation) && (verb === "stop" || verb === "archive");
+    const key = this.idempotencyKeyOf(params) ?? (unresolved ? `identity-pending:${verb}:${beeId}:${rt!.generation}` : null);
     const cmd = store.enqueueCommand(verb, beeId, args, key == null ? {} : { idempotencyKey: key });
+    if (unresolved) return {commandId: cmd.id, status: cmd.status, ...(cmd.deduped ? {deduped: true} : {}), pending: {code: "process_identity_unresolved", message: "stop pending process identity proof"}};
     // Core-level dedup (the UNIQUE key column) can answer even before the
     // rpc_idempotency record exists — surface it the same way.
     if (cmd.deduped) return { commandId: cmd.id, status: cmd.status, deduped: true };
     return { commandId: cmd.id };
   }
 
+  private identityDiagnostic(beeId: string, generation: number | null) {
+    const diagnostic = this.identityRecovery.diagnostic(beeId, generation, Date.now());
+    return diagnostic ? {identityDiagnostic: diagnostic} : {};
+  }
+
   private viewOf(store: CoreStore, beeId: string): ViewResult {
     const bee = store.getBee(beeId);
     return {
+      ...this.identityDiagnostic(beeId, store.currentRuntime(beeId)?.generation ?? null),
       view: store.view(beeId),
       bee,
       runtime: bee ? store.currentRuntime(beeId) : null,
@@ -5546,7 +5610,7 @@ export class HiveDaemon {
     const store = this.mustStore();
     const lifecycle = typeof params.lifecycle === "string" ? params.lifecycle : null;
     const views = store.listBeeViewRows(lifecycle);
-    return { views };
+    return {views: views.map(row => ({...row, ...this.identityDiagnostic(row.view.beeId, row.view.generation)}))};
   }
 
   /**
@@ -5688,6 +5752,7 @@ export class HiveDaemon {
   private rpcHealth(params: Record<string, unknown> = {}): HealthResult {
     const store = this.mustStore();
     return {
+      ...(this.identityRecovery.counts(Date.now()).overdue ? {identityDiagnostic: {warning: "process_identity_unresolved" as const, count: this.identityRecovery.counts(Date.now()).overdue}} : {}),
       protocol: PROTOCOL,
       pid: process.pid,
       startedAt: this.startedAt,
@@ -5718,7 +5783,7 @@ export class HiveDaemon {
     this.publishedSeq = seq;
     return {
       seq,
-      views: store.listBeeViewRows().map((row) => ({ ...row, bee: mirrorBeeRow(row.bee) })),
+      views: store.listBeeViewRows().map((row) => ({ ...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
       templates: store.listTemplates(),
       tracks: store.listTracks(),
       questions: store.listQuestions(),

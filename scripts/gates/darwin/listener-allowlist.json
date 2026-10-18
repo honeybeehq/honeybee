@@ -112,12 +112,12 @@
       "sha256": "cfa43f2f68fe967a84720684c5f4fe73d48134ce4a50ae906173c14ddee41dcc",
       "receiverDeclaration": {
         "file": "v2/daemon/src/daemon.ts",
-        "startLine": 705,
-        "endLine": 705,
+        "startLine": 707,
+        "endLine": 707,
         "sha256": "f94e1df94d05ee439fc50dd374c585a7909408b98791596318c95d0cc23a83bf"
       },
       "fingerprintSha256": "de77a7fbf3c083c3c3d2545b05b7d9efc838659e54343be91b03a8e91c680aae",
-      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/src/daemon.ts:701-701"
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/src/daemon.ts:707-707"
     },
     {
       "file": "v2/daemon/src/rpc.ts",
@@ -203,12 +203,12 @@
       "sha256": "347a046ba815ced97770fba09d840afb8a98933310f49b67820129c58ddfa455",
       "receiverDeclaration": {
         "file": "v2/daemon/tests/effect-resolve.test.ts",
-        "startLine": 35,
-        "endLine": 35,
+        "startLine": 36,
+        "endLine": 36,
         "sha256": "4a1b7ae9fb6576ed2647909ed3015f09391e4f860e7a855393003a537f3c9412"
       },
       "fingerprintSha256": "b58d46455e11c0101c8e4c825923345d3289850f9814c0099d4849655a33a6b3",
-      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/effect-resolve.test.ts:35-35"
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/effect-resolve.test.ts:36-36"
     },
     {
       "file": "v2/daemon/tests/execution-fence.test.ts",
@@ -216,12 +216,12 @@
       "sha256": "595b79bcb2a9a507e590bec6a913818b1338a5eba1f1a08b2896fddedd046f7b",
       "receiverDeclaration": {
         "file": "v2/daemon/tests/execution-fence.test.ts",
-        "startLine": 36,
-        "endLine": 36,
+        "startLine": 37,
+        "endLine": 37,
         "sha256": "800704cb316e7c081cf41ccef5c235ceb9cde72c92e7a2ad5e70b54a5c508efe"
       },
       "fingerprintSha256": "b4c1a5c550fee60a394994ea683e1e322d8f2bcf2c664f2cfe6172996c6bc850",
-      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/execution-fence.test.ts:36-36"
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/execution-fence.test.ts:37-37"
     },
     {
       "file": "v2/daemon/tests/limits-observation-rpc.test.ts",
@@ -372,12 +372,12 @@
       "sha256": "569f8d7e47d83129a799c4d2d9ef6fc59471c0211fb589858fd5973e72e8c960",
       "receiverDeclaration": {
         "file": "v2/driver-hsr/tests/driver.test.ts",
-        "startLine": 593,
-        "endLine": 594,
+        "startLine": 595,
+        "endLine": 596,
         "sha256": "43c971e137dea4d55e85d3a561f0f694087fb3a95cbd51d58f7d6b846905e54c"
       },
       "fingerprintSha256": "a0b157b4ea5d1d815e09426ccbbb087118d94ac31050eabedd9ef1cffd396b40",
-      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/driver-hsr/tests/driver.test.ts:593-594"
+      "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/driver-hsr/tests/driver.test.ts:595-596"
     },
     {
       "file": "tests/apiary-swap.lab.ts",
@@ -599,6 +599,19 @@
       },
       "fingerprintSha256": "699582161fdf9dac400638ef2cfad0260443436f2ee87ef4b2a54ab17c7c9776",
       "reason": "Unix socket listener with audited path or RpcServer wrapper; receiver declaration v2/daemon/tests/multiline-fallback-cleanup.test.ts:47-48"
+    },
+    {
+      "file": "v2/driver-tmux/tests/process-proof.test.ts",
+      "line": 39,
+      "sha256": "979f4c967b0c3ed11e2639713bfb9a835ba11f90066b32ef2bb9395dfdb51578",
+      "receiverDeclaration": {
+        "file": "v2/driver-tmux/tests/process-proof.test.ts",
+        "startLine": 37,
+        "endLine": 38,
+        "sha256": "cadc0f98d63672ef0e32517470814e12a02cb2fda5f8edc36d4391f545e5c4af"
+      },
+      "fingerprintSha256": "b658a7a9e583a8471d2fae47c5183b7c4815e324652de14ecf876633fe149db8",
+      "reason": "Unix socket listener in an owned mkdtemp root testing socket owner/mode/symlink/dev-ino proof; receiver declaration v2/driver-tmux/tests/process-proof.test.ts:37-38"
     }
   ]
 }

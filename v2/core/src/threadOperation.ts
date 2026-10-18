@@ -26,7 +26,7 @@ export interface ThreadOperationRow extends ThreadOperationView {
   source: { path: string; bytes: number; dev: number; ino: number; modelProvider: string };
   historyPath: string;
   sessionPath: string;
-  worker: { pid: number; startedAt: number } | null;
+  worker: { pid: number; startedAt: number; processIdentity?: import("./runtimeProcessIdentity.ts").RuntimeProcessIdentity } | null;
 }
 export function threadOperationView(row: ThreadOperationRow): ThreadOperationView {
   const { idempotencyKey: _key, requestHash: _hash, instruction: _instruction, source: _source,

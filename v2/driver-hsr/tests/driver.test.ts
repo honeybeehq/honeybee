@@ -1,3 +1,4 @@
+import {inspectProcess} from "../../harness/src/processIdentity.ts";
 /**
  * Driver integration tests (spec 03 test tier 2): real OS child processes via
  * the stub agent executable. Covers spawn, deliver (booting refusal Q2, accept,
@@ -555,7 +556,8 @@ test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs
     return {
       beeId,
       generation: 1,
-      pid: process.pid, // alive: the poll must not fold an exit
+      processIdentity: (() => { const value = inspectProcess(process.pid); assert.equal(value.kind, "present"); if (value.kind !== "present") throw new Error("Fixture birth unavailable"); return {pid: process.pid, birth: value.birth, bootId: value.bootId}; })(),
+      pid: process.pid,
       pidStartedAt: 0,
       child: null,
       adapter: claudeAdapter,
@@ -615,6 +617,41 @@ test("readyAtSpawn status poll (deterministic, no spawn): synthetic booted pairs
   } finally {
     driver.disposeAll();
   }
+});
+
+test("runner status cannot turn an unavailable identity into an exit", t => {
+  const dir = mkdtempSync(join(tmpdir(), "hive-drv-status-identity-"));
+  t.after(() => rmSync(dir, {recursive: true, force: true}));
+  const unavailable: string[] = [];
+  const driver = new HsrDriver({
+    sessionLogDir: join(dir, "logs"),
+    runtimeIdentity: {read: () => ({kind: "unavailable"}), bindLegacy: () => false, unavailable: (beeId, generation) => unavailable.push(`${beeId}:${generation}`)},
+    resolve: () => {throw new Error("no spawn");},
+  });
+  const statusPath = join(dir, "status.json");
+  writeFileSync(statusPath, JSON.stringify({hostPid: process.pid, beeId: "held", generation: 1, exited: true, code: 0}));
+  const value = inspectProcess(process.pid);
+  assert.equal(value.kind, "present");
+  if (value.kind !== "present") throw new Error("Fixture observation unavailable");
+  const base = {beeId: "held", generation: 1, pid: process.pid, child: null, statusPath, agentPid: null, socket: null, socketBroken: false, adapter: null, exited: false};
+  const pump = (driver as unknown as {pumpHost(p: unknown): void}).pumpHost.bind(driver);
+  for (const processIdentity of [null, {pid: process.pid, birth: value.birth, bootId: value.bootId + "-mismatch"}]) {
+    const retained = {...base, processIdentity};
+    pump(retained);
+    assert.equal(retained.exited, false);
+    assert.deepEqual(driver.observe(), []);
+    if (processIdentity === null) {
+      const procs = (driver as unknown as {procs: Map<string, unknown>}).procs;
+      procs.set("held", {...retained, pidStartedAt: 1000, initialObservationCursor: 0});
+      assert.deepEqual(driver.procOf("held", 1), {pid: process.pid, pidStartedAt: 1000, observationCursor: 0});
+      procs.delete("held");
+    }
+  }
+  assert.deepEqual(unavailable, ["held:1", "held:1"]);
+  const retained = {...base, processIdentity: {pid: process.pid, birth: value.birth, bootId: value.bootId}};
+  pump(retained);
+  assert.equal(retained.exited, false);
+  assert.equal(unavailable.length, 2);
 });
 
 test("readyAtSpawn refuses delivery until the runner socket connects, then opens one real turn before the OS-status poll", async (t) => {

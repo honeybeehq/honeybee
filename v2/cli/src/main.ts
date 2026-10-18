@@ -2460,8 +2460,8 @@ async function cmdMutation(
     const beeId = resolveBeeIn(list.views, needle);
     // revive may replace the per-bee args as it runs (`--arg` or `-- …`).
     const reviveArgs = verb === "revive" ? (parsed.rest ?? (parsed.args.length > 0 ? parsed.args : undefined)) : undefined;
-    const result = await c.request<{ commandId: number }>(verb, { beeId, ...(reviveArgs !== undefined ? { args: reviveArgs } : {}) });
-    emit(ctx, [confirm("ok", verb, `${beeId} enqueued (command ${result.commandId})`)], { beeId, ...result }, false);
+    const result = await c.request<import("../../daemon/src/protocol.ts").MutationResult>(verb, { beeId, ...(reviveArgs !== undefined ? { args: reviveArgs } : {}) });
+    emit(ctx, [confirm(result.pending ? "warn" : "ok", verb, result.pending ? `${beeId}: ${result.pending.message} (command ${result.commandId})` : `${beeId} enqueued (command ${result.commandId})`)], { beeId, ...result }, false);
     return 0;
   });
 }
@@ -4976,10 +4976,11 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         const health = await withClient(ctx, client => client.request<HealthResult>("health", {includeDeliveryPrepareAuditUnknown: true}));
         const security = health.localSecurity;
         const degraded = security?.peerCredentials.state === "peer_credentials_unavailable";
+        if (health.identityDiagnostic?.warning) ctx.io.err(`warning: process_identity_unresolved count=${health.identityDiagnostic.count}`);
         const helper = health.deliveryFileHelper, helperUnavailable = helper?.state === "delivery_file_helper_unavailable";
         const paneInputUnknown = health.paneInputUnknown ?? 0, deliveryHoldUnknown = health.deliveryHoldUnknown ?? 0, deliveryPrepareAuditUnknown = health.deliveryPrepareAuditUnknown ?? 0;
-        emit(ctx, [confirm(degraded ? "warn" : "ok", "local RPC peer credentials:", security ? `${security.peerCredentials.state} (${security.peerCredentials.target}; ${security.peerCredentials.artifactPath})` : "not reported by this daemon"), confirm(helperUnavailable ? "warn" : "ok", "delivery file native helper:", helper ? `${helper.state} (${helper.target}; ${helper.artifactPath})` : "not reported by this daemon"), confirm(paneInputUnknown ? "warn" : "ok", "pane_input_unknown:", String(paneInputUnknown)), confirm(deliveryHoldUnknown ? "warn" : "ok", "delivery_hold_state_unknown:", String(deliveryHoldUnknown)), confirm(deliveryPrepareAuditUnknown ? "warn" : "ok", "delivery_prepare_audit_unknown:", String(deliveryPrepareAuditUnknown))], {localSecurity: security ?? null, deliveryFileHelper: helper ?? null, paneInputUnknown, deliveryHoldUnknown, deliveryPrepareAuditUnknown}, false);
-        return degraded || helperUnavailable || paneInputUnknown || deliveryHoldUnknown || deliveryPrepareAuditUnknown ? 1 : 0;
+        emit(ctx, [confirm(degraded ? "warn" : "ok", "local RPC peer credentials:", security ? `${security.peerCredentials.state} (${security.peerCredentials.target}; ${security.peerCredentials.artifactPath})` : "not reported by this daemon"), confirm(helperUnavailable ? "warn" : "ok", "delivery file native helper:", helper ? `${helper.state} (${helper.target}; ${helper.artifactPath})` : "not reported by this daemon"), confirm(paneInputUnknown ? "warn" : "ok", "pane_input_unknown:", String(paneInputUnknown)), confirm(deliveryHoldUnknown ? "warn" : "ok", "delivery_hold_state_unknown:", String(deliveryHoldUnknown)), confirm(deliveryPrepareAuditUnknown ? "warn" : "ok", "delivery_prepare_audit_unknown:", String(deliveryPrepareAuditUnknown))], {localSecurity: security ?? null, deliveryFileHelper: helper ?? null, paneInputUnknown, deliveryHoldUnknown, deliveryPrepareAuditUnknown, ...(health.identityDiagnostic ? {identityDiagnostic: health.identityDiagnostic} : {})}, false);
+        return degraded || helperUnavailable || paneInputUnknown || deliveryHoldUnknown || deliveryPrepareAuditUnknown || health.identityDiagnostic?.warning ? 1 : 0;
       }
       case "deploy-info":
         return await cmdDeployInfo(ctx);

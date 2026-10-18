@@ -16,6 +16,7 @@ const outDir = join(root, "dist", "v2");
 const runnerHostOutput = join(outDir, "runner-host.js");
 const runnerHostInputs = [
   "src/comb/canonical.ts",
+  "v2/core/src/processIdentity.ts",
   "v2/driver-hsr/src/gated-runner-host.ts",
   "v2/harness/src/processIdentity.ts",
   "v2/harness/src/statePath.ts",

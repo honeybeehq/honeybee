@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -20,7 +21,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { makeOrigin } from "../../driver-cell/tests/helpers.ts";
-import { pidAlive, processStartTimeMs, verifyProcessIdentity } from "../../driver-hsr/src/psutil.ts";
+import { pidAlive, processStartTimeMs, verifyProcessIdentity, inspectProcess, type ProcessIdentity } from "../../driver-hsr/src/psutil.ts";
 import { makeDaemonDir, waitFor } from "./helpers.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -62,6 +63,13 @@ interface RunnerStatusRecord {
 interface RunnerIdentity {
   pid: number;
   startedAt: number;
+  processIdentity: ProcessIdentity;
+}
+function capturedBirth(pid: number): ProcessIdentity {
+  const value = inspectProcess(pid);
+  assert.equal(value.kind, "present");
+  if (value.kind !== "present") throw new Error("Birth unavailable");
+  return {pid, birth: value.birth, bootId: value.bootId};
 }
 
 function captureProcess(child: ChildProcess): CapturedProcess {
@@ -139,6 +147,7 @@ function stageRuntime(dir: string, releaseBHost: "poison" | "missing"): StagedRu
     writeFileSync(join(release, "package.json"), `${JSON.stringify({ type: "module" })}\n`);
     copyFileSync(BUILT_CLI, join(release, "v2", EMBEDDED_ENTRY));
     copyFileSync(BUILT_PROVISION_WORKER, join(release, "v2", "provision-worker.js"));
+    cpSync(join(ROOT, "dist", "v2", "peercred"), join(release, "v2", "peercred"), { recursive: true });
   }
   copyFileSync(BUILT_RUNNER_HOST, join(releaseA, "v2", "runner-host.js"));
   if (releaseBHost === "poison") {
@@ -266,7 +275,7 @@ function runnerIdentities(dir: string, expectedHostEntry: string): RunnerIdentit
     if (startedAt == null) {
       throw new Error(`could not read process birth for live fixture runner host ${status.hostPid}`);
     }
-    return [{ pid: status.hostPid, startedAt }];
+    return [{ pid: status.hostPid, startedAt, processIdentity: capturedBirth(status.hostPid) }];
   });
 }
 
@@ -279,7 +288,7 @@ function captureRunnerIdentity(status: RunnerStatusRecord, expectedHostEntry: st
   }
   const startedAt = processStartTimeMs(status.hostPid);
   if (startedAt == null) throw new Error(`could not read process birth for runner host ${status.hostPid}`);
-  return { pid: status.hostPid, startedAt };
+  return { pid: status.hostPid, startedAt, processIdentity: capturedBirth(status.hostPid) };
 }
 
 function requireRunnerIdentity(identity: RunnerIdentity | null, message: string): RunnerIdentity {
@@ -297,7 +306,7 @@ function uniqueIdentities(identities: RunnerIdentity[]): RunnerIdentity[] {
 }
 
 function liveOwnedRunnerIdentities(identities: RunnerIdentity[]): RunnerIdentity[] {
-  return identities.filter((identity) => verifyProcessIdentity(identity.pid, identity.startedAt));
+  return identities.filter((identity) => verifyProcessIdentity(identity.pid, identity.processIdentity));
 }
 
 async function reapOwnedRunnerHosts(dir: string, expectedHostEntry: string, known: RunnerIdentity[]): Promise<void> {
@@ -306,7 +315,7 @@ async function reapOwnedRunnerHosts(dir: string, expectedHostEntry: string, know
     // Detached runner hosts are process-group leaders. Re-verify the durable
     // pid/start-time pair immediately before signaling so a recycled pid can
     // never become a cleanup target.
-    if (!verifyProcessIdentity(identity.pid, identity.startedAt)) continue;
+    if (!verifyProcessIdentity(identity.pid, identity.processIdentity)) continue;
     try {
       process.kill(-identity.pid, "SIGKILL");
     } catch (error) {
@@ -601,7 +610,7 @@ test("a staged Cell spawn uses the bundled sibling host through ready, turn, and
     );
     assert.equal(stopped.code, 0, `${stopped.stderr}${stopped.stdout}`);
     await waitFor(
-      () => !verifyProcessIdentity(cellHostIdentity.pid, cellHostIdentity.startedAt),
+      () => !verifyProcessIdentity(cellHostIdentity.pid, cellHostIdentity.processIdentity),
       "built Cell runner host stopped",
       15_000,
       20,

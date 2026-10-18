@@ -51,6 +51,7 @@ import {
 // ---------------------------------------------------------------------------
 
 export function runtimeLabel(v: ViewResult): string {
+  if (v.identityDiagnostic) return "identity unresolved";
   if (v.bee && isInboxAgent(v.bee.agent)) return INBOX_AGENT;
   return v.view.runtimeState === "stopped"
     ? `stopped(${v.view.exitCause})`

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { CellDriver } from "../src/driver.ts";
 import { codexAdapter } from "../../adapters/src/index.ts";
 import { makeRig } from "./helpers.ts";
+import { fixtureRuntimeIdentity, persistFixtureProcess } from "../../driver-hsr/tests/helpers.ts";
 import { waitFor } from "../../daemon/tests/helpers.ts";
 
 test("detached Cell owner reconnects and re-adopts without reprovisioning or changing generation", { timeout: 90_000 }, async t => {
@@ -12,7 +13,7 @@ test("detached Cell owner reconnects and re-adopts without reprovisioning or cha
     cellsRoot: rig.cellsRoot, nodeKind: "workstation", disableCow: true,
     resolveHarness: () => ({ adapter: codexAdapter({ cwd: rig.root }), command: process.execPath, args: [new URL("../../driver-hsr/test-agent/fake-codex.mjs", import.meta.url).pathname], env: { ...process.env, CODEX_HOME: join(rig.root, "native") } }),
     resolveCell: beeId => ({ provision: { beeId, originRepo: rig.origin.repo, sha: rig.origin.sha, wrapper: beeId, repoName: "fixture", cellId: "c0ffee" }, sandbox: false }),
-    hsr: { sessionLogDir: join(rig.root, "logs"), stopKillGraceMs: 400 },
+    hsr: { runtimeIdentity: fixtureRuntimeIdentity(rig.root), sessionLogDir: join(rig.root, "logs"), stopKillGraceMs: 400 },
   });
   const driver = make();
   let adopted: CellDriver | null = null;
@@ -20,6 +21,7 @@ test("detached Cell owner reconnects and re-adopts without reprovisioning or cha
   driver.start("bee-reconnect", 1);
   await waitFor(() => driver.observe().some(e => e.kind === "turn_ended"), "cell native idle", 60_000);
   const identity = driver.procOf("bee-reconnect", 1)!;
+  persistFixtureProcess(rig.root, "bee-reconnect", 1, identity);
   const cell = driver.cellOf("bee-reconnect")!;
   assert.equal(driver.reconnectToolsSupport("bee-reconnect", 1).supported, true);
   const receipt = await driver.reconnectTools("bee-reconnect", 1, 5, async (apply, home) => {

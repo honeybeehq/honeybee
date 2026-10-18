@@ -838,7 +838,7 @@ def run(args):
         if before != after:
             rc = 95
         reason = 'focused rows or sentinel failed' if rc else None
-        write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'source': args.source, 'focused': True, 'limitations': focused_flow.LIMITATIONS, 'rootRetained': True, 'cacheSeed': seed, 'listenerLimit': LISTENER_LIMIT, 'siblingHarnessOutsideOuterSeatbelt': True, 'leftoverChild': list(LEFTOVER_CHILDREN)}, root)
+        write_json(root / 'receipt.json', {'version': 2, 'exit': rc, 'reason': reason, 'source': args.source, 'focused': True, 'limitations': focused_flow.LIMITATIONS + (['tmux rows passed under the gate observer'] if rc == 0 else []), 'rootRetained': True, 'cacheSeed': seed, 'listenerLimit': LISTENER_LIMIT, 'siblingHarnessOutsideOuterSeatbelt': True, 'leftoverChild': list(LEFTOVER_CHILDREN)}, root)
         if rc:
             print('GATE_NONZERO_REASON=' + json.dumps(reason), flush=True)
         print('GATE_RECEIPT_SHA256=' + receipt_hashes(root), flush=True)

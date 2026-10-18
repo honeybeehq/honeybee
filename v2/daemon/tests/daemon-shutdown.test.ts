@@ -5,19 +5,20 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import { openCoreStore } from "../../core/src/index.ts";
-import { processStartTimeMs, verifyProcessIdentity } from "../../driver-hsr/src/psutil.ts";
+import { inspectProcess, verifyProcessIdentity, type ProcessIdentity } from "../../driver-hsr/src/psutil.ts";
 import { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, waitFor } from "./helpers.ts";
 import type { SpawnResult, ViewResult } from "../src/protocol.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/shutdown-daemon.mjs", import.meta.url));
-type Identity = { pid: number; birth: number };
+type Identity = ProcessIdentity;
 function identity(pid: number): Identity {
-  const birth = processStartTimeMs(pid);
-  assert.notEqual(birth, null);
-  return { pid, birth: birth! };
+  const value = inspectProcess(pid);
+  assert.equal(value.kind, "present");
+  if (value.kind !== "present") throw new Error("Birth unavailable");
+  return {pid, birth: value.birth, bootId: value.bootId};
 }
-function alive(p: Identity): boolean { return verifyProcessIdentity(p.pid, p.birth, 1000); }
+function alive(p: Identity): boolean { return verifyProcessIdentity(p.pid, p); }
 
 for (const mode of ["natural", "retention", "backstop"] as const) test(`daemon shutdown ${mode}: exits promptly and preserves detached bees`, { timeout: 90_000 }, async () => {
   const rig = makeDaemonDir({ cells: { retention: { enabled: mode === "retention" } } });

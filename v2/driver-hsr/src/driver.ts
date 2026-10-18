@@ -1,3 +1,5 @@
+import type {RuntimeIdentityHooks} from "../../core/src/runtimeProcessIdentity.ts";
+import {authenticatedProcessPeer} from "../../harness/src/processIdentity.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import type { ExecutionStart, ExecutionRuntimeHooks, ExecutionProcess } from "../../core/src/executionStart.ts";
 import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
@@ -66,7 +68,7 @@ import type {
 } from "../../harness/src/driver.ts";
 import type { HarnessAdapter } from "../../adapters/src/index.ts";
 import { executableNotFoundDetail, type SpawnCommandResolution } from "../../core/src/executables.ts";
-import { pidAlive, verifyProcessIdentity } from "./psutil.ts";
+import { inspectProcess, sameProcess, processDisposition, legacyProcessCandidate, ProcessIdentityUnavailableError, verifyProcessIdentity, type ProcessIdentity } from "./psutil.ts";
 
 // Pin the module's physical deployment before an immutable runtime's
 // `current` symlink can move. Node normally realpaths imported modules, but
@@ -93,6 +95,7 @@ export interface SpawnSpec {
 }
 
 export interface HsrDriverConfig {
+  runtimeIdentity?: RuntimeIdentityHooks;
   execution?: ExecutionRuntimeHooks;
   executionStartFor?(beeId: string, generation: number): ExecutionStart | null;
   executionHostFor?(start: ExecutionStart): ExecutionProcess | null;
@@ -201,6 +204,8 @@ export interface ObservationCursorEvidence {
 }
 
 interface ManagedProcess {
+  processIdentity?: ProcessIdentity;
+  legacyBirthPending?: boolean;
   executionStart?: ExecutionStart;
   executionHost?: ExecutionProcess;
   executionAccepted?: boolean;
@@ -657,9 +662,25 @@ export class HsrDriver implements RuntimeDriver {
   }
 
   private connectSocket(p: ManagedProcess): void {
-    if (p.exited || p.socket || p.socketRetry || !p.socketPath) return;
+    if (this.detached || p.exited || p.socket || p.socketRetry || !p.socketPath) return;
     const attempt = connect(p.socketPath);
+    attempt.setTimeout(2000, () => attempt.destroy());
     attempt.on("connect", () => {
+      attempt.setTimeout(0);
+      if (this.detached || p.exited) { attempt.destroy(); return; }
+      this.captureProcessIdentity(p);
+      if (p.legacyBirthPending) {
+        const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
+        const value = legacyProcessCandidate(p.pid, p.pidStartedAt);
+        const fd = (attempt as unknown as {_handle?: {fd?: number}})._handle?.fd;
+        const identity = value ? {pid: value.pid, birth: value.birth, bootId: value.bootId} : null;
+        if (!identity || !status || status.beeId !== p.beeId || status.generation !== p.generation || status.hostPid !== p.pid || status.exited || fd === undefined || !authenticatedProcessPeer(fd, identity) || !this.cfg.runtimeIdentity?.bindLegacy(p.beeId, p.generation, p.pidStartedAt, identity, "authenticated-host-generation")) {
+          attempt.destroy(); return;
+        }
+        p.processIdentity = identity;
+        p.legacyBirthPending = false;
+      }
+      if (!p.processIdentity || !verifyProcessIdentity(p.pid, p.processIdentity)) { attempt.destroy(); return; }
       p.socket = attempt;
       for (const line of p.pendingWrites.splice(0)) {
         attempt.write(`${JSON.stringify({ op: "write", line })}\n`);
@@ -669,7 +690,7 @@ export class HsrDriver implements RuntimeDriver {
     attempt.on("error", () => undefined);
     attempt.on("close", () => {
       if (p.socket === attempt) p.socket = null;
-      if (p.exited) return;
+      if (this.detached || p.exited) return;
       p.socketRetry = setTimeout(() => {
         p.socketRetry = null;
         this.connectSocket(p);
@@ -853,6 +874,9 @@ export class HsrDriver implements RuntimeDriver {
     }
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { hadProcess: false };
+    this.captureProcessIdentity(p);
+    if (processDisposition(p.processIdentity ?? null, inspectProcess(p.pid)) === "exited") { this.finishHost(p); return {hadProcess: false}; }
+    if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) throw new ProcessIdentityUnavailableError();
     if (p.stopCause == null) p.stopCause = cause;
     // Exact identity (spec points 4–5): we signal only the pid we spawned and
     // still hold the un-exited handle for — parenthood guarantees the pid has
@@ -938,6 +962,9 @@ export class HsrDriver implements RuntimeDriver {
   /** One observation pass over a host-style runtime: status facts, log tail,
    * and (for adopted hosts with no exit callback) pid-liveness. */
   private pumpHost(p: ManagedProcess): void {
+    this.captureProcessIdentity(p);
+    const disposition = processDisposition(p.processIdentity ?? null, inspectProcess(p.pid));
+    if (disposition === "unavailable") this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation);
     // Read the status file only while it can still teach us something: the
     // agent pid / spawnError before the OS confirms the spawn, and the
     // socketError witness until the write lane is proven (connected). After
@@ -1000,7 +1027,7 @@ export class HsrDriver implements RuntimeDriver {
             }
           }
         }
-        if (status.exited) {
+        if (status.exited && disposition === "exited") {
           this.finishHost(p);
           return;
         }
@@ -1009,7 +1036,7 @@ export class HsrDriver implements RuntimeDriver {
     this.pumpHostTail(p);
     // An adopted host has no ChildProcess exit callback; recover its death by
     // polling the exact identity, then fold the recorded exit facts.
-    if (p.child == null && !pidAlive(p.pid)) this.finishHost(p);
+    if (p.child == null && disposition === "exited") this.finishHost(p);
   }
 
   /** Read new output-only journal bytes and normalize complete agent lines. */
@@ -1082,6 +1109,14 @@ export class HsrDriver implements RuntimeDriver {
     p.stdoutRest = Buffer.from(data.subarray(lineStart));
   }
 
+  retryProcessIdentity(beeId: string, generation: number): void {
+    const p = this.procs.get(beeId);
+    if (!p || p.generation !== generation || p.processIdentity || p.child) return;
+    if (p.hostStyle) { this.connectSocket(p); return; }
+    this.procs.delete(beeId);
+    this.adopt(beeId, generation, p.pid, p.pidStartedAt, p.phase);
+  }
+
   hasProcess(beeId: string, generation: number): boolean {
     const pending = this.pendingStarts.get(beeId);
     if (pending && pending.generation === generation) return true; // spawn in flight
@@ -1089,9 +1124,13 @@ export class HsrDriver implements RuntimeDriver {
     return p !== undefined && p.generation === generation && !p.exited;
   }
 
+  hasRetainedProcess(beeId: string): boolean {
+    return this.pendingStarts.has(beeId) || this.procs.get(beeId)?.exited === false;
+  }
+
   snapshotLive(): LiveProcess[] {
     return [...this.procs.values()]
-      .filter((p) => !p.exited && p.pid > 0)
+      .filter((p) => !p.exited && p.pid > 0 && processDisposition(p.processIdentity ?? null, inspectProcess(p.pid)) === "live")
       .map((p) => ({
         beeId: p.beeId,
         generation: p.generation,
@@ -1128,7 +1167,13 @@ export class HsrDriver implements RuntimeDriver {
       if (execution && (!this.cfg.execution || !executionHost || executionHost.pid !== pid || exactProcessBirth(pid) !== executionHost.birth)) return false;
     } catch { return false; }
 
-    if (!execution && !verifyProcessIdentity(pid, pidStartedAt, this.adoptTolMs)) return false;
+    const storedIdentity = this.cfg.runtimeIdentity?.read(beeId, generation) ?? {kind: "legacy" as const};
+    if (storedIdentity.kind === "unavailable") return false;
+    if (storedIdentity.kind === "bound" && storedIdentity.pidStartedAt !== pidStartedAt) return false;
+    const value = inspectProcess(pid);
+    let processIdentity: ProcessIdentity | undefined = storedIdentity.kind === "bound" ? storedIdentity.identity : undefined;
+    if (executionHost && value.kind === "present" && value.state === "live" && value.birth === executionHost.birth && value.pid === executionHost.pid) processIdentity = {pid, birth: value.birth, bootId: value.bootId};
+    if (processIdentity ? !verifyProcessIdentity(pid, processIdentity) : !legacyProcessCandidate(pid, pidStartedAt, value)) return false;
     // WP5: a runtime with runner-host artifacts for this exact (pid ==
     // host pid) re-adopts at FULL capability — reconnect the write socket,
     // resume the log tail, keep delivering. The degraded stop-on-mail
@@ -1199,6 +1244,8 @@ export class HsrDriver implements RuntimeDriver {
         } else {
           const proc: ManagedProcess = {
             ...(execution && executionHost ? { executionStart: execution, executionHost } : {}),
+            processIdentity,
+            legacyBirthPending: !processIdentity,
             beeId,
             generation,
             pid,
@@ -1261,6 +1308,7 @@ export class HsrDriver implements RuntimeDriver {
     }
     if (execution) return false;
     this.procs.set(beeId, {
+      processIdentity,
       beeId,
       generation,
       pid,
@@ -1316,7 +1364,9 @@ export class HsrDriver implements RuntimeDriver {
   private pollDegraded(): void {
     for (const p of [...this.procs.values()]) {
       if (!p.degraded || p.exited) continue;
-      if (!pidAlive(p.pid)) this.onExit(p, null, null);
+      const disposition = processDisposition(p.processIdentity ?? null, inspectProcess(p.pid));
+      if (disposition === "exited") this.onExit(p, null, null);
+      else if (disposition === "unavailable") this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation);
     }
   }
 
@@ -1324,13 +1374,21 @@ export class HsrDriver implements RuntimeDriver {
    * Process identity captured at spawn, for core's createBee/reviveBee `proc`
    * (the WP2 amendment). Available immediately after start() returns.
    */
+  private captureProcessIdentity(p: ManagedProcess): void {
+    if (p.processIdentity || !p.child || p.child.exitCode !== null || p.child.signalCode !== null) return;
+    const value = inspectProcess(p.pid);
+    if (value.kind === "present" && value.state === "live") p.processIdentity = {pid: p.pid, birth: value.birth, bootId: value.bootId};
+  }
+
   procOf(
     beeId: string,
     generation: number,
-  ): { pid: number; pidStartedAt: number; observationCursor: number } | null {
+  ): { pid: number; pidStartedAt: number; observationCursor: number; processIdentity?: ProcessIdentity } | null {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.pid <= 0) return null;
+    this.captureProcessIdentity(p);
     return {
+      ...(p.processIdentity ? {processIdentity: p.processIdentity} : {}),
       pid: p.pid,
       pidStartedAt: p.pidStartedAt,
       observationCursor: p.initialObservationCursor,
@@ -1499,12 +1557,14 @@ export class HsrDriver implements RuntimeDriver {
 
   private signalGroup(p: ManagedProcess, signal: "SIGTERM" | "SIGKILL"): void {
     if (p.pid <= 0) return;
+    this.captureProcessIdentity(p);
+    if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) return;
     if (p.degraded) {
       // Adopted pid: parenthood does not protect it from recycling, so the
       // exact identity (pid + start-time) is re-verified immediately before
       // every signal. A failed check means the process is gone; the poll in
       // observe() owns the exit bookkeeping.
-      if (!verifyProcessIdentity(p.pid, p.pidStartedAt, this.adoptTolMs)) return;
+      if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) return;
       try {
         process.kill(-p.pid, signal);
       } catch {

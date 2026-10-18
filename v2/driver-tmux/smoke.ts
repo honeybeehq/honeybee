@@ -395,7 +395,7 @@ async function runPhase(ctx: PhaseCtx): Promise<void> {
   try {
     driver.start(ctx.beeId, 1);
     const live = driver.snapshotLive().find((p) => p.beeId === ctx.beeId);
-    const identityOk = live != null && verifyProcessIdentity(live.pid, live.pidStartedAt, 5_000);
+    const identityOk = live != null && verifyProcessIdentity(live.pid, driver.procOf(ctx.beeId, 1)?.processIdentity ?? null);
     check(phase, "spawn + exact pid identity", identityOk, live ? `pid ${live.pid}` : "no live process");
     if (!identityOk) {
       skipRest("no verified runtime", "TUI ready in pane", "first deliver accepted", ...LATER);

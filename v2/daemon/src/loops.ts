@@ -1,3 +1,4 @@
+import {ProcessIdentityUnavailableError} from "../../driver-hsr/src/psutil.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 /**
@@ -182,7 +183,7 @@ interface ExtendedDriver {
   procOf?(
     beeId: string,
     generation: number,
-  ): { pid: number; pidStartedAt: number; observationCursor?: number } | null;
+  ): { pid: number; pidStartedAt: number; observationCursor?: number; processIdentity?: import("../../core/src/runtimeProcessIdentity.ts").RuntimeProcessIdentity } | null;
   /** Whether (bee, generation) is a re-adopted degraded process (no event stream). */
   isDegraded?(beeId: string, generation: number): boolean;
   /** Drain harness session ids learned from booted signals (HsrDriver.observeSessions). */
@@ -246,6 +247,7 @@ export interface DaemonCoreOptions {
    * unrelated bees continue through the executor.
    */
   blockedRuntimeStartBeeIds?: () => ReadonlySet<string>;
+  onIdentityUnresolved?: (beeId: string, generation: number) => void;
   /** Throws at the start boundary to use the normal bounded command retry path. */
   assertRuntimeStartReady?: (command: CommandRow) => void;
   /**
@@ -315,6 +317,7 @@ export class DaemonCore {
   private readonly relocateSession: ((move: BeeMoveRow, bee: BeeRow) => "copied" | "present" | "none") | null;
   private readonly validatePlacement: ((move: BeeMoveRow, bee: BeeRow) => void) | null;
   private readonly blockedRuntimeStartBeeIds: () => ReadonlySet<string>;
+  private readonly onIdentityUnresolved: (beeId: string, generation: number) => void;
   private readonly assertRuntimeStartReady: (command: CommandRow) => void;
   private readonly readHandoffTranscript: ((bee: BeeRow, segments: TranscriptSegmentRow[]) => { turns: HandoffContextTurn[]; truncated: boolean }) | null;
   private readonly summarizeHandoff: ((input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>) | null;
@@ -326,6 +329,9 @@ export class DaemonCore {
   /** In-memory dedup so a breach is reported once per daemon lifetime; the recorder dedups durably. */
   private readonly reportedI1 = new Set<number>();
   /** Committed ticks since the last dedup sweep (or clear). */
+  private readonly unresolvedIdentity = new Map<string, number>();
+  retainProcessIdentity(beeId: string, generation: number): void { this.unresolvedIdentity.set(beeId, generation); }
+  resolveProcessIdentity(beeId: string, generation: number): void { if (this.unresolvedIdentity.get(beeId) === generation) this.unresolvedIdentity.delete(beeId); }
   private sweepTicks = 0;
   /** Combined dedup-set size recorded by the last sweep — growth trigger baseline. */
   private sizeAtLastSweep = 0;
@@ -349,6 +355,7 @@ export class DaemonCore {
     this.relocateSession = opts.relocateSession ?? null;
     this.validatePlacement = opts.validatePlacement ?? null;
     this.blockedRuntimeStartBeeIds = opts.blockedRuntimeStartBeeIds ?? (() => new Set());
+    this.onIdentityUnresolved = opts.onIdentityUnresolved ?? (() => undefined);
     this.assertRuntimeStartReady = opts.assertRuntimeStartReady ?? (() => undefined);
     this.readHandoffTranscript = opts.readHandoffTranscript ?? null;
     this.summarizeHandoff = opts.summarizeHandoff ?? null;
@@ -364,11 +371,12 @@ export class DaemonCore {
   }
 
   /** Boot: reconcile, reap orphans, sweep the mailbox for needed wakes (spec 04 behavior 2). */
-  boot(): BootReport {
+  boot(unresolved: ReadonlyArray<{beeId: string; generation: number}> = []): BootReport {
+    for (const row of unresolved) this.unresolvedIdentity.set(row.beeId, row.generation);
     this.store.recoverInFlightMultilineFallbacks();
     const live = this.driver.snapshotLive();
     const rec = this.store.reconcileAtBoot(
-      live.map((p) => ({ pid: p.pid, startedAt: p.pidStartedAt })),
+      live.map((p) => ({ pid: p.pid, startedAt: p.pidStartedAt })), unresolved,
     );
     let orphansReaped = 0;
     for (const p of live) {
@@ -619,6 +627,7 @@ export class DaemonCore {
       this.reviveAfterStopIfRequested(obs.beeId, obs.generation);
       this.releaseBeeTmp(obs.beeId);
     } else if (obs.kind === "booted") {
+      this.recordProcAtSpawn(obs.beeId, obs.generation);
       this.store.updateRuntimeState(obs.beeId, obs.generation, "running", {
         pid: obs.pid,
         pidStartedAt: obs.pidStartedAt,
@@ -861,7 +870,7 @@ export class DaemonCore {
   private bootHangPolicy(work: readonly DaemonWorkRow[]): void {
     const now = this.now();
     for (const { runtime: rt } of work) {
-      if (rt.state !== "booting") continue;
+      if (rt.state !== "booting" || this.unresolvedIdentity.get(rt.beeId) === rt.generation) continue;
       if (now - rt.startedAt <= this.policy.bootHangTimeoutSteps) continue;
       if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
       if (this.store.hasBootHangStopCommand(rt.beeId, rt.generation)) continue;
@@ -916,6 +925,7 @@ export class DaemonCore {
     for (let i = 0; i < this.policy.commandsPerStep; i++) {
       const cmd = this.store.claimNextCommand({
         blockedRuntimeStartBeeIds: this.blockedRuntimeStartBeeIds(),
+        blockedIdentityBeeIds: new Set(this.unresolvedIdentity.keys()),
       });
       if (!cmd) return;
       const crash = this.faults?.executorCrash() ?? "none";
@@ -927,6 +937,11 @@ export class DaemonCore {
       try {
         settled = this.execute(cmd);
       } catch (err) {
+        if (err instanceof ProcessIdentityUnavailableError) {
+          const runtime = this.store.currentRuntime(cmd.beeId);
+          if (runtime) { this.retainProcessIdentity(cmd.beeId, runtime.generation); this.onIdentityUnresolved(cmd.beeId, runtime.generation); }
+          this.store.holdIdentityCommand(cmd.id); return;
+        }
         if (err instanceof ExecutionFenceError) { this.store.holdExecutionCommand(cmd.id,err.code); return; }
         if (!(err instanceof CoreError)) throw err;
         // A contract rejection means the intent is moot (bee deleted, state moved
@@ -1120,6 +1135,7 @@ export class DaemonCore {
   }
 
   private sourceGone(beeId: string, generation: number): boolean {
+    if (this.unresolvedIdentity.get(beeId) === generation) return false;
     return this.sourceProcessAbsent(beeId, generation);
   }
 

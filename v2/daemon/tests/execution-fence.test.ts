@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
 import { executionRequestDigest, type ExecutionClaim, type ExecutionReceipt } from "../../core/src/executionFence.ts";
 import { HiveDaemon } from "../src/daemon.ts";
+import { IdentityRecovery } from "../src/identityRecovery.ts";
 import { RpcServer, toRpcError, type RpcDispatch } from "../src/rpc.ts";
 import { RpcClient } from "../../cli/src/client.ts";
 import { PROTOCOL, RpcError } from "../src/protocol.ts";
@@ -31,7 +32,7 @@ async function rawRequest(path: string, verb: string): Promise<{ error: { code: 
 async function fixture(t: TestContext, enabled = true) {
   const root = mkdtempSync(join(tmpdir(), "exec-rpc-")), keyFile = join(root, "private", "key"), store = openCoreStore(join(root, "core.sqlite3"), { ephemeral: true });
   const owner = Object.create(HiveDaemon.prototype) as Record<string, unknown>;
-  Object.assign(owner, { cfg: { dataDir: root, logPath: join(root, "log"), agents: { stub: { adapter: "stub" } } }, store, stopping: false, opLog: [], deps: {}, refusedClaims: new Map(), requestTick() {} });
+  Object.assign(owner, { cfg: { dataDir: root, logPath: join(root, "log"), agents: { stub: { adapter: "stub" } } }, store, stopping: false, opLog: [], deps: {}, refusedClaims: new Map(), identityRecovery: new IdentityRecovery(), requestTick() {} });
   const calls: string[] = [];
   const server = new RpcServer({ socketPath: join(root, "s"), dataDir: root, localTrust: { requireObservationCaller: enabled, registrationKeyFile: keyFile }, log() {}, dispatch: (verb, params, conn) => { calls.push(verb); return (owner.dispatch as RpcDispatch).call(owner, verb, params, conn); } });
   await server.listen();
