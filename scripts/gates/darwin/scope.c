@@ -76,14 +76,19 @@ static int listeners(int pid, unsigned long long sec, unsigned long long usec, i
   errno = 0;
   int got = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, fds, capacity);
   if (errno || got < 0 || got >= capacity || got % sizeof(*fds)) { free(fds); return 4; }
-  for (int i = 0; i < got / sizeof(*fds); i++) {
+  unsigned int closed_fds = 0;
+  for (int i = 0; i < got / (int)sizeof(*fds); i++) {
     if (fds[i].proc_fdtype != PROX_FDTYPE_SOCKET) continue;
     rc = same_birth(pid, sec, usec);
     if (rc) { free(fds); return rc; }
     struct socket_fdinfo info;
     errno = 0;
     if (proc_pidfdinfo(pid, fds[i].proc_fd, PROC_PIDFDSOCKETINFO, &info, sizeof(info)) != sizeof(info)) {
-      fprintf(stderr, "socket read fd=%d errno=%d\n", fds[i].proc_fd, errno);
+      int saved_errno = errno;
+      rc = same_birth(pid, sec, usec);
+      if (rc) { free(fds); return rc; }
+      if (saved_errno == EBADF || saved_errno == ENOENT) { closed_fds++; continue; }
+      fprintf(stderr, "socket read fd=%d errno=%d\n", fds[i].proc_fd, saved_errno);
       free(fds); return 4;
     }
     rc = same_birth(pid, sec, usec);
@@ -110,7 +115,9 @@ static int listeners(int pid, unsigned long long sec, unsigned long long usec, i
     printf("%d %s %s %u\n", fds[i].proc_fd, proto, address, ntohs((unsigned short)(connected ? in->insi_fport : in->insi_lport)));
   }
   free(fds);
-  return same_birth(pid, sec, usec);
+  rc = same_birth(pid, sec, usec);
+  if (!rc && closed_fds) fprintf(stderr, "closed socket fds skipped=%u\n", closed_fds);
+  return rc;
 }
 static int group_members(int pid, unsigned long long sec, unsigned long long usec, int sig, int allowed_count, char **allowed) {
   int rc = same_birth(pid, sec, usec);

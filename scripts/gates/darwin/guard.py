@@ -436,6 +436,12 @@ def sample_listeners(helper, birth):
         if status.returncode != 3 or status.stdout.strip() not in ('gone', 'same-birth-zombie'):
             observation['error'] = 'listener observation unresolved'
         return observation
+    if value.stderr:
+        closed = re.fullmatch(r'closed socket fds skipped=([1-9][0-9]*)\n', value.stderr)
+        if closed is None or int(closed.group(1)) > 1048576:
+            observation['error'] = 'listener observation diagnostic unresolved'
+            return observation
+        observation['closedFdRaceCount'] = int(closed.group(1))
     for line in value.stdout.splitlines():
         parts = line.split()
         if len(parts) != 4 or parts[1] not in ('TCP', 'UDP'):

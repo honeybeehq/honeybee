@@ -383,6 +383,19 @@ static int proc_listchildpids(int pid, void *buffer, int bytes) {
         self.assertEqual([row['loopback'] for row in result['listeners']], [True, True, False, False])
         self.assertTrue(all(row['birth'] == birth and row['pid'] == 100 for row in result['listeners']))
 
+    def test_listener_closed_fd_count_requires_successful_complete_native_scan(self):
+        for diagnostic in ('closed socket fds skipped=1\n', 'closed socket fds skipped=2\n'):
+            with patch('guard.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout='4 TCP 127.0.0.1 1234\n', stderr=diagnostic)):
+                result = guard.sample_listeners(Path('/scope'), ['100','99','10','20'])
+            self.assertNotIn('error', result)
+            self.assertEqual(result['closedFdRaceCount'], int(diagnostic.split('=')[1]))
+            self.assertEqual(len(result['listeners']), 1)
+        for diagnostic in ('closed socket fds skipped=0\n', 'other', 'closed socket fds skipped=10000000\n'):
+            with patch('guard.subprocess.run', return_value=SimpleNamespace(returncode=0, stdout='', stderr=diagnostic)):
+                self.assertIn('error', guard.sample_listeners(Path('/scope'), ['100','99','10','20']))
+        with patch('guard.subprocess.run', side_effect=[SimpleNamespace(returncode=4, stdout='', stderr='socket read fd=3 errno=9\n'), SimpleNamespace(returncode=0, stdout='same-birth-alive', stderr='')]):
+            self.assertIn('error', guard.sample_listeners(Path('/scope'), ['100','99','10','20']))
+
     def test_listener_sampler_unresolved_is_failure(self):
         bad = SimpleNamespace(returncode=4, stdout='', stderr='denied')
         for status_code in (0, 4):
