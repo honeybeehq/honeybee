@@ -166,5 +166,48 @@ test("recovery persists an owned late capture through the store and never replac
     owner.retryProcessIdentities();
     assert.equal(resolved, 1); assert.equal(owner.identityRecovery.has(bee.id, generation), true);
     assert.equal(store.runtimeProcessIdentity(bee.id, generation).kind, "unavailable");
+    (store as unknown as {db: DatabaseSync}).db.prepare("UPDATE runtimes SET process_identity=NULL WHERE bee_id=?").run(bee.id);
+    let writes = 0; const record = store.recordRuntimeProc.bind(store);
+    store.recordRuntimeProc = (...args) => {writes++; return record(...args);};
+    owner.identityRecovery = new IdentityRecovery(); owner.identityRecovery.retain({beeId: bee.id, generation, since: Date.now()});
+    owner.retryProcessIdentities();
+    assert.equal(writes, 0);
+    assert.equal(store.runtimeProcessIdentity(bee.id, generation).kind, "legacy");
+    assert.equal(owner.identityRecovery.has(bee.id, generation), true);
   } finally {store.close(); h.cleanup(); rig.cleanup();}
+});
+
+test("health omits zero cleanup counts and distinguishes retained from informational", () => {
+  const h = harness(), store = h.open(), rig = makeDaemonDir();
+  try {
+    const {bee} = makeBee(store);
+    const daemon = new HiveDaemon(loadNodeConfig(rig.dir));
+    const internal = daemon as unknown as {store: CoreStore; rpcHealth(): import("../src/protocol.ts").HealthResult};
+    internal.store = store;
+    const locator = {beeId: bee.id, generation: 1, reason: "ownership-unverified" as const, paneId: "%1", sessionId: "$1", windowId: "@1", socket: {dev: 1, ino: 2, parentDev: 1, parentIno: 3}};
+    assert.equal(Object.hasOwn(internal.rpcHealth(), "tmuxCleanupRetained"), false);
+    assert.equal(Object.hasOwn(internal.rpcHealth(), "tmuxCleanupInformational"), false);
+    store.tmuxCleanupHooks().update(locator, "retained");
+    assert.equal(internal.rpcHealth().tmuxCleanupRetained, 1);
+    assert.equal(Object.hasOwn(internal.rpcHealth(), "tmuxCleanupInformational"), false);
+    store.tmuxCleanupHooks().update(locator, "socket-gone-unverifiable");
+    assert.equal(internal.rpcHealth().tmuxCleanupInformational, 1);
+    assert.equal(Object.hasOwn(internal.rpcHealth(), "tmuxCleanupRetained"), false);
+    store.tmuxCleanupHooks().update(locator, "resolved");
+    assert.equal(Object.hasOwn(internal.rpcHealth(), "tmuxCleanupInformational"), false);
+  } finally {store.close(); h.cleanup(); rig.cleanup();}
+});
+
+for (const preserve of [true, false]) test(`shutdown preserves default ordering and confines early disposal (preserve=${preserve})`, async () => {
+  const rig = makeDaemonDir();
+  try {
+    const daemon = new HiveDaemon(loadNodeConfig(rig.dir));
+    const calls: string[] = [];
+    const owner = daemon as unknown as {store: unknown; telemetry: unknown; driver: unknown};
+    owner.store = {close: () => calls.push("store-close")};
+    owner.telemetry = {close: () => calls.push("telemetry-close")};
+    owner.driver = {disposeAll: () => calls.push("dispose"), detachAll: () => calls.push("detach")};
+    await daemon.shutdown({preserveRuntimes: preserve});
+    assert.deepEqual(calls, preserve ? ["store-close", "telemetry-close", "detach"] : ["dispose", "store-close", "telemetry-close"]);
+  } finally {rig.cleanup();}
 });

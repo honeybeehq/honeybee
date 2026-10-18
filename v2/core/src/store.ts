@@ -1,6 +1,7 @@
 import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
 import {installRuntimeProcessIdentity, processIdentityValue, readRuntimeProcessIdentity, type RuntimeIdentityHooks, type RuntimeProcessIdentity} from "./runtimeProcessIdentity.ts";
+import {cleanupLocator, readTmuxCleanup, type TmuxCleanupHooks, type TmuxCleanupLocator, type TmuxCleanupState} from "./runtimeCleanup.ts";
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
 import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
 import { readAccountLease, accountLeaseUnknown, knownAccountLease } from "./accountLease.ts";
@@ -3155,6 +3156,8 @@ export class CoreStore {
         throw new CoreError("runtime observation cursor must be a non-negative safe integer");
       }
       const rawIdentity = this.db.prepare("SELECT process_identity FROM runtimes WHERE bee_id=? AND generation=?").get(beeId, generation)!.process_identity;
+      const existingLegacy = rawIdentity === null && current.pid !== null;
+      if (existingLegacy && (proc.processIdentity !== undefined || proc.pid !== current.pid || proc.pidStartedAt !== current.pidStartedAt)) throw new CoreError("Legacy process identity requires authenticated one-time binding");
       this.db
         .prepare("UPDATE runtimes SET pid = ?, pid_started_at = ? WHERE bee_id = ? AND generation = ?")
         .run(proc.pid, proc.pidStartedAt, beeId, generation);
@@ -3163,7 +3166,7 @@ export class CoreStore {
         const prior = this.runtimeProcessIdentity(beeId, generation);
         if (!identity || identity.pid !== proc.pid || prior.kind === "unavailable" && rawIdentity !== '{"kind":"pending-new-start"}' || prior.kind === "bound" && (prior.identity.pid !== identity.pid || prior.identity.birth !== identity.birth || prior.identity.bootId !== identity.bootId)) throw new CoreError("Runtime process identity cannot be replaced");
         this.db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=? AND generation=?").run(JSON.stringify(identity), beeId, generation);
-      } else if (rawIdentity === null) {
+      } else if (rawIdentity === null && !existingLegacy) {
         this.db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=? AND generation=?").run('{"kind":"pending-new-start"}', beeId, generation);
       }
       if (proc.observationCursor !== undefined) {
@@ -5149,6 +5152,30 @@ export class CoreStore {
   }
 
   runtimeProcessIdentity(beeId: string, generation: number) { return readRuntimeProcessIdentity(this.db, beeId, generation); }
+
+  tmuxCleanupCounts(): {retained: number; informational: number} {
+    const rows = readTmuxCleanup(this.db);
+    return {retained: rows.malformed + rows.entries.filter(row => row.state === "retained").length, informational: rows.entries.filter(row => row.state === "socket-gone-unverifiable").length};
+  }
+
+  tmuxCleanupHooks(): TmuxCleanupHooks {
+    return {
+      entries: () => readTmuxCleanup(this.db).entries,
+      update: (raw: TmuxCleanupLocator, state: TmuxCleanupState | "resolved") => this.tx(() => {
+        const locator = cleanupLocator(raw);
+        if (!locator) throw new CoreError("Invalid retained cleanup locator");
+        const previous = readTmuxCleanup(this.db).entries.find(row => row.beeId === locator.beeId && row.generation === locator.generation);
+        if (state === "resolved") {
+          if (previous) this.audit("runtime.tmux_cleanup_resolved", locator.beeId, {generation: locator.generation, reason: locator.reason, count: 1});
+          return;
+        }
+        if (state !== "retained" && state !== "socket-gone-unverifiable") throw new CoreError("Invalid retained cleanup state");
+        if (state === "socket-gone-unverifiable" && !previous) throw new CoreError("Cleanup state has no retained report");
+        if (previous?.state === state && JSON.stringify({...previous, state: undefined}) === JSON.stringify(locator)) return;
+        this.audit(state === "retained" ? "runtime.tmux_cleanup_retained" : "runtime.tmux_cleanup_unverifiable", locator.beeId, {generation: locator.generation, reason: state === "retained" ? locator.reason : state, ...(state === "retained" ? {} : {retainedReason: locator.reason}), count: 1, locator});
+      }),
+    };
+  }
 
   runtimeIdentityHooks(): RuntimeIdentityHooks {
     return {

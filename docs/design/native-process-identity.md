@@ -27,3 +27,17 @@ After ten minutes health/doctor names `process_identity_unresolved` and reports 
 The fleet target is `4c3fd63c446f055fccb097b264707fa251dc4d95`. The public target is `55fa1e4748208bbca05ae328512a237739c4f774`. Downgrade to 55fa1e47 refuses schema 44 (it speaks 31) on any schema-44 store, including one migrated without this PR; downgrade across schema bumps was never supported; it closes when the next public release ships.
 
 The v1 `src/hsr/processIdentity.ts` census remains a separate follow-up. This change removes the two v2 psutil subprocess routes.
+
+## Retained tmux cleanup
+
+Fresh tmux runtimes retry an unavailable initial capture only through their retained owned socket fingerprint and exact pane, session, window and PID proof, followed by a fresh native birth check. A matching execution-host PID and start token cannot replace a conflicting bound token or bypass the authenticated legacy compare-and-set.
+
+Exit cleanup never kills a session by name. On the verified owned socket, one synchronous tmux `if-shell -F` command checks the original pane, session and window IDs, recorded PID, dead-pane flag and single-member counts before its `kill-pane` branch. A replacement pane or extra member is retained. Filesystem/socket verification and the subsequent tmux command are separate operations; same-uid replacement within that window is not excluded.
+
+Retained cleanup is diagnostic audit evidence, never adoption or signal authority. Matching generation/reason events are deduplicated. `runtime.tmux_cleanup_retained` makes health expose the optional `tmuxCleanupRetained` count and doctor warn. The bounded observation pass resolves a report only after a successful, owned-socket membership query proves the recorded pane absent, or exact verified removal succeeds, and emits `runtime.tmux_cleanup_resolved`.
+
+A missing socket under the same verified parent moves the report to `socket-gone-unverifiable`. It is not resolved: health exposes optional `tmuxCleanupInformational`, doctor prints informational text and does not fail on that alone. Reappearance under the same parent device/inode is re-evaluated through owned-socket proof. Unknown initial locators remain unresolved and confer no authority. Both optional counts are omitted at zero. Malformed diagnostic content remains a warning rather than silently resolving.
+
+Non-preserving shutdown disposes runtimes before closing the Store so retained tmux cleanup is durable. The default preserving shutdown keeps its existing order: close Store, close telemetry, then detach without disposal or tmux commands. The daemon entry point selects non-preserving shutdown only for its explicit test-runtime reaping switch; deployed default shutdown preserves runtimes.
+
+Tmux disposal signals only the exact bound birth, then waits at most two seconds per retained runtime for native exit and the original pane's dead state. Removal uses the same single-server-command conditional as exit cleanup: original owned socket, exact session/window/pane/PID, dead pane, sole pane and sole window. An extra or replacement member, unavailable proof, or an expired deadline retains the diagnostic instead of killing the session. The regression records the private server's kernel birth and confirms native exit after sole-pane disposal; an extra live member remains running and counted.

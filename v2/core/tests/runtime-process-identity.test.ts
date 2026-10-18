@@ -59,3 +59,16 @@ test("new PID records without exact evidence cannot enter legacy discovery", () 
     assert.equal(store.runtimeProcessIdentity(bee.id, generation).kind, "bound");
   } finally {store.close(); h.cleanup();}
 });
+
+test("legacy rows cannot acquire exact authority through recordRuntimeProc", () => {
+  const h = harness(), store = h.open();
+  try {
+    const {bee} = makeBee(store);
+    store.recordRuntimeProc(bee.id, 1, {pid: identity.pid, pidStartedAt: 1234000});
+    (store as unknown as {db: DatabaseSync}).db.prepare("UPDATE runtimes SET process_identity=NULL WHERE bee_id=?").run(bee.id);
+    assert.throws(() => store.recordRuntimeProc(bee.id, 1, {pid: identity.pid, pidStartedAt: 1234000, processIdentity: identity}), /authenticated one-time binding/);
+    store.recordRuntimeProc(bee.id, 1, {pid: identity.pid, pidStartedAt: 1234000});
+    assert.equal(store.runtimeProcessIdentity(bee.id, 1).kind, "legacy");
+    assert.equal(store.runtimeIdentityHooks().bindLegacy(bee.id, 1, 1234000, identity, "authenticated-host-generation"), true);
+  } finally {store.close(); h.cleanup();}
+});

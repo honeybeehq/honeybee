@@ -11,6 +11,7 @@ export interface RuntimeIdentityHooks {
 }
 export function installRuntimeProcessIdentity(db: DatabaseSync): void {
   if (!db.prepare("PRAGMA table_info(runtimes)").all().some(row => row.name === "process_identity")) db.exec("ALTER TABLE runtimes ADD COLUMN process_identity TEXT");
+  db.exec("CREATE INDEX IF NOT EXISTS audit_tmux_cleanup ON audit(seq) WHERE kind IN ('runtime.tmux_cleanup_retained','runtime.tmux_cleanup_unverifiable','runtime.tmux_cleanup_resolved')");
   db.prepare("INSERT INTO meta(key,value) VALUES('runtime_process_identity_schema','1') ON CONFLICT(key) DO NOTHING").run();
 }
 export function readRuntimeProcessIdentity(db: DatabaseSync, beeId: string, generation: number): RuntimeIdentityRead {

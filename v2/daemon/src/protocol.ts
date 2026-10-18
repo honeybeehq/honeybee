@@ -1686,6 +1686,8 @@ export interface HarnessFact {
 }
 
 export interface HealthResult {
+  tmuxCleanupRetained?: number;
+  tmuxCleanupInformational?: number;
   paneInputUnknown?: number;
   deliveryHoldUnknown?: number;
   deliveryPrepareAuditUnknown?: number;

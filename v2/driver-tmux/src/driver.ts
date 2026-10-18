@@ -1,5 +1,6 @@
 import type {RuntimeIdentityHooks} from "../../core/src/runtimeProcessIdentity.ts";
-import {ownedSocketProof, sameSocketProof, legacyPaneProof} from "./processProof.ts";
+import type {TmuxCleanupHooks, TmuxCleanupEntry, TmuxCleanupLocator} from "../../core/src/runtimeCleanup.ts";
+import {ownedSocketProof, sameSocketProof, legacyPaneProof, freshPaneProof, paneScopeProof, socketObservation, type PaneScope, type SocketProof} from "./processProof.ts";
 import { MultilinePasteProbe } from "./multiline-probe.ts";
 import { TurnQuiet } from "./turn-quiet.ts";
 /**
@@ -94,6 +95,7 @@ export interface TmuxSpawnSpec {
 }
 
 export interface TmuxDriverConfig {
+  cleanup?: TmuxCleanupHooks;
   runtimeIdentity?: RuntimeIdentityHooks;
   doctor?: (counts: {nonDestructiveLegacy: number}) => void;
   /** The private per-daemon-instance socket (never the ambient server). */
@@ -133,6 +135,8 @@ interface PendingConfirm {
 
 interface TmuxRuntime {
   processIdentity: ProcessIdentity | null;
+  spawnSocketProof: SocketProof | null;
+  paneScope: PaneScope | null;
   beeId: string;
   generation: number;
   sessionName: string;
@@ -237,10 +241,14 @@ export class TmuxDriver implements RuntimeDriver {
   private readonly consumed = new Map<number, number>();
   private readonly pointerReceipts = new Map<number, { beeId: string; generation: number; digest: string }>();
   private deliverSeq = 0;
+  private cleanupCursor = 0;
+  private lastCleanupScan = -Infinity;
+  private readonly retainedCleanup = new Map<string, TmuxCleanupEntry>();
   private readonly multilineProbe = new MultilinePasteProbe();
 
   constructor(cfg: TmuxDriverConfig) {
     this.cfg = cfg;
+    for (const entry of cfg.cleanup?.entries() ?? []) this.retainedCleanup.set(`${entry.beeId}:${entry.generation}`, entry);
     this.server = new TmuxServer({
       socketPath: cfg.socketPath,
       allowKillServer: cfg.allowKillServer ?? false,
@@ -575,6 +583,7 @@ export class TmuxDriver implements RuntimeDriver {
   }
 
   observe(): DriverObservation[] {
+    this.observeRetainedCleanup();
     for (const p of [...this.procs.values()]) this.harvest(p);
     const out = this.events;
     this.events = [];
@@ -595,7 +604,18 @@ export class TmuxDriver implements RuntimeDriver {
 
   retryProcessIdentity(beeId: string, generation: number): void {
     const p = this.procs.get(beeId);
-    if (!p || p.generation !== generation || p.processIdentity || !p.adopted) return;
+    if (!p || p.generation !== generation || p.processIdentity || p.exited) return;
+    if (!p.adopted) {
+      if (!p.paneScope || !sameSocketProof(p.spawnSocketProof, ownedSocketProof(this.cfg.socketPath))) return;
+      try {
+        const identity = this.captureProcessIdentity(p.pid);
+        if (!identity) return;
+        const panes = this.server.run(["list-panes", "-s", "-t", exactSession(p.sessionName), "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}\t#{pane_dead}\t#{session_id}\t#{window_id}"]);
+        if (!freshPaneProof(panes, p.sessionName, p.paneId, p.pid, p.paneScope) || !sameSocketProof(p.spawnSocketProof, ownedSocketProof(this.cfg.socketPath)) || !verifyProcessIdentity(p.pid, identity)) return;
+        p.processIdentity = identity;
+      } catch {}
+      return;
+    }
     this.procs.delete(beeId);
     this.adopt(beeId, generation, p.pid, p.pidStartedAt);
   }
@@ -773,7 +793,19 @@ export class TmuxDriver implements RuntimeDriver {
         if (p.stopCause == null) p.stopCause = "stopped_by_system";
         this.signal(p, "SIGKILL");
       }
-      if (verifyProcessIdentity(p.pid, p.processIdentity)) this.tryKillSession(p.sessionName);
+      const deadline = process.hrtime.bigint() + 2_000_000_000n;
+      while (true) {
+        if (!p.paneScope || !sameSocketProof(p.spawnSocketProof, ownedSocketProof(this.cfg.socketPath))) break;
+        const panes = this.server.try(["list-panes", "-s", "-t", exactSession(p.sessionName), "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}\t#{pane_dead}\t#{session_id}\t#{window_id}"]);
+        const rows = panes.stdout.trim().split("\n");
+        const fields = rows[0]?.split("\t");
+        if (panes.status !== 0 || rows.length !== 1 || !fields || !["0", "1"].includes(fields[4] ?? "") || !freshPaneProof(fields.map((value, index) => index === 4 ? "0" : value).join("\t"), p.sessionName, p.paneId, p.pid, p.paneScope)) break;
+        if (processDisposition(p.processIdentity, inspectProcess(p.pid)) === "exited" && fields[4] === "1") break;
+        if (process.hrtime.bigint() >= deadline) break;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+      }
+      if (processDisposition(p.processIdentity, inspectProcess(p.pid)) === "exited") this.cleanupExitedPane(p);
+      else this.reportCleanup({beeId: p.beeId, generation: p.generation, reason: "ownership-unverified", paneId: p.paneId, sessionId: p.paneScope?.sessionId ?? null, windowId: p.paneScope?.windowId ?? null, socket: p.spawnSocketProof}, "retained");
     }
     this.events = [];
     this.notes = [];
@@ -806,10 +838,20 @@ export class TmuxDriver implements RuntimeDriver {
         throw new Error(`tmux driver: unknown transcript parser '${String(obs.transcript.parser)}'`);
       }
     }
+    const spawnSocketProof = ownedSocketProof(this.cfg.socketPath);
+    let paneScope: PaneScope | null = null;
+    if (spawnSocketProof) {
+      try {
+        paneScope = paneScopeProof(this.server.run(["display-message", "-p", "-t", init.paneId, "#{session_name}\t#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_pid}"]), init.sessionName, init.paneId, init.pid);
+        if (!sameSocketProof(spawnSocketProof, ownedSocketProof(this.cfg.socketPath))) paneScope = null;
+      } catch {}
+    }
     return {
       beeId: init.beeId,
       generation: init.generation,
       processIdentity: init.processIdentity === undefined ? this.captureProcessIdentity(init.pid) : init.processIdentity,
+      spawnSocketProof,
+      paneScope,
       sessionName: init.sessionName,
       paneId: init.paneId,
       deliveryMode: init.spec.deliveryMode ?? "paste",
@@ -980,16 +1022,64 @@ export class TmuxDriver implements RuntimeDriver {
     }
   }
 
+  private reportCleanup(locator: TmuxCleanupLocator, state: TmuxCleanupEntry["state"] | "resolved"): void {
+    const key = `${locator.beeId}:${locator.generation}`;
+    const report: TmuxCleanupLocator = {beeId: locator.beeId, generation: locator.generation, reason: locator.reason, paneId: locator.paneId, sessionId: locator.sessionId, windowId: locator.windowId, socket: locator.socket};
+    this.cfg.cleanup?.update(report, state);
+    if (state === "resolved") this.retainedCleanup.delete(key);
+    else this.retainedCleanup.set(key, {...locator, state});
+  }
+
+  private cleanupExitedPane(p: TmuxRuntime): void {
+    const locator: TmuxCleanupLocator = {beeId: p.beeId, generation: p.generation, reason: "ownership-unverified", paneId: p.paneId, sessionId: p.paneScope?.sessionId ?? null, windowId: p.paneScope?.windowId ?? null, socket: p.spawnSocketProof};
+    if (p.paneScope && sameSocketProof(p.spawnSocketProof, ownedSocketProof(this.cfg.socketPath))) {
+      const scope = p.paneScope;
+      const condition = `#{&&:#{==:#{session_id},${scope.sessionId}},#{&&:#{==:#{window_id},${scope.windowId}},#{&&:#{==:#{pane_id},${p.paneId}},#{&&:#{==:#{pane_pid},${p.pid}},#{&&:#{==:#{pane_dead},1},#{&&:#{==:#{window_panes},1},#{==:#{session_windows},1}}}}}}}`;
+      const result = this.server.try(["if-shell", "-F", "-t", p.paneId, condition, `kill-pane -t ${p.paneId} ; display-message -p SCG_CLEANUP_REMOVED`, "display-message -p SCG_CLEANUP_RETAINED"]);
+      if (result.status === 0 && result.stdout.trim() === "SCG_CLEANUP_REMOVED") {
+        if (this.retainedCleanup.has(`${p.beeId}:${p.generation}`)) this.reportCleanup(locator, "resolved");
+        return;
+      }
+    }
+    this.reportCleanup(locator, "retained");
+  }
+
+  private observeRetainedCleanup(): void {
+    if (this.now() - this.lastCleanupScan < 1000) return;
+    this.lastCleanupScan = this.now();
+    const entries = [...this.retainedCleanup.values()];
+    const start = entries.length ? this.cleanupCursor % entries.length : 0;
+    for (let i = 0; i < Math.min(16, entries.length); i++) {
+      const entry = entries[(start + i) % entries.length]!;
+      if (!entry.socket) continue;
+      const socket = socketObservation(this.cfg.socketPath, entry.socket);
+      if (socket.kind === "gone") {
+        if (entry.state !== "socket-gone-unverifiable") this.reportCleanup(entry, "socket-gone-unverifiable");
+        continue;
+      }
+      if (socket.kind !== "present") continue;
+      if (entry.state === "retained" && !sameSocketProof(entry.socket, socket.proof)) continue;
+      const current = {...entry, socket: socket.proof};
+      if (entry.state === "socket-gone-unverifiable") this.reportCleanup(current, "retained");
+      const result = this.server.try(["list-panes", "-a", "-F", "#{session_name}\t#{session_id}\t#{window_id}\t#{pane_id}"]);
+      if (result.status !== 0 || !sameSocketProof(socket.proof, ownedSocketProof(this.cfg.socketPath))) continue;
+      const rows = result.stdout.trim() ? result.stdout.trim().split("\n").map(line => line.split("\t")) : [];
+      if (rows.some(row => row.length !== 4 || !row[0] || !/^\$[0-9]+$/.test(row[1]!) || !/^@[0-9]+$/.test(row[2]!) || !/^%[0-9]+$/.test(row[3]!))) continue;
+      if (!rows.some(row => row[0] === sessionNameFor(entry.beeId, entry.generation) && (!entry.sessionId || !entry.windowId || row[1] === entry.sessionId && row[2] === entry.windowId && row[3] === entry.paneId))) this.reportCleanup(current, "resolved");
+    }
+    this.cleanupCursor = start + Math.min(16, entries.length);
+  }
+
   private onExit(p: TmuxRuntime): void {
     if (p.exited) return;
+    const cause = p.stopCause ?? p.deadCause ?? this.deadPaneCause(p);
+    this.cleanupExitedPane(p);
     p.exited = true;
     if (p.killTimer) {
       clearTimeout(p.killTimer);
       p.killTimer = null;
     }
     this.procs.delete(p.beeId);
-    const cause = p.stopCause ?? p.deadCause ?? this.deadPaneCause(p);
-    this.tryKillSession(p.sessionName);
     this.events.push({ beeId: p.beeId, generation: p.generation, kind: "exited", exitCause: cause });
     const pending = this.pendingStarts.get(p.beeId);
     if (pending) {

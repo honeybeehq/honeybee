@@ -1172,7 +1172,6 @@ export class HsrDriver implements RuntimeDriver {
     if (storedIdentity.kind === "bound" && storedIdentity.pidStartedAt !== pidStartedAt) return false;
     const value = inspectProcess(pid);
     let processIdentity: ProcessIdentity | undefined = storedIdentity.kind === "bound" ? storedIdentity.identity : undefined;
-    if (executionHost && value.kind === "present" && value.state === "live" && value.birth === executionHost.birth && value.pid === executionHost.pid) processIdentity = {pid, birth: value.birth, bootId: value.bootId};
     if (processIdentity ? !verifyProcessIdentity(pid, processIdentity) : !legacyProcessCandidate(pid, pidStartedAt, value)) return false;
     // WP5: a runtime with runner-host artifacts for this exact (pid ==
     // host pid) re-adopts at FULL capability — reconnect the write socket,

@@ -932,6 +932,7 @@ export class HiveDaemon {
     });
     mkdirSync(join(this.cfg.dataDir, "tmux-events"), { recursive: true });
     const tmux = new TmuxDriver({
+      cleanup: store.tmuxCleanupHooks(),
       runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
       doctor: counts => this.log(`doctor.runtime_identity non_destructive_legacy=${counts.nonDestructiveLegacy}`),
       socketPath: join(this.cfg.dataDir, "tmux.sock"),
@@ -1113,13 +1114,16 @@ export class HiveDaemon {
       await this.rpc?.close();
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       this.core?.detachReconnectOwner();
-      this.store?.close();
-      this.telemetry?.close();
       if (options.preserveRuntimes === false) {
         // Test/ephemeral ownership only. Production never selects this path:
         // deploys must preserve runtimes for successor-daemon re-adoption.
-        this.driver?.disposeAll();
+        try { this.driver?.disposeAll(); } finally {
+          this.store?.close();
+          this.telemetry?.close();
+        }
       } else {
+        this.store?.close();
+        this.telemetry?.close();
         // Children are NOT killed: detached runtimes survive daemon restarts by
         // design and the next boot re-adopts them (contract §3.2). Their pipe
         // handles must not pin our event loop, though — detach them so the
@@ -1684,7 +1688,7 @@ export class HiveDaemon {
       let rt = store.currentRuntime(row.beeId);
       if (!rt || rt.generation !== row.generation || rt.state === "stopped") { this.core!.resolveProcessIdentity(row.beeId, row.generation); return true; }
       const captured = this.driver!.procOf(row.beeId, row.generation);
-      if (captured && (rt.pid == null || rt.pidStartedAt == null || captured.processIdentity && store.runtimeProcessIdentity(row.beeId, row.generation).kind !== "bound")) {
+      if (captured && (rt.pid == null || rt.pidStartedAt == null || captured.processIdentity && store.runtimeProcessIdentity(row.beeId, row.generation).kind === "unavailable")) {
         store.recordRuntimeProc(row.beeId, row.generation, captured);
         rt = store.currentRuntime(row.beeId)!;
         if (rt.pid == null || rt.pidStartedAt == null) return false;
@@ -5751,8 +5755,11 @@ export class HiveDaemon {
 
   private rpcHealth(params: Record<string, unknown> = {}): HealthResult {
     const store = this.mustStore();
+    const cleanup = store.tmuxCleanupCounts();
     return {
       ...(this.identityRecovery.counts(Date.now()).overdue ? {identityDiagnostic: {warning: "process_identity_unresolved" as const, count: this.identityRecovery.counts(Date.now()).overdue}} : {}),
+      ...(cleanup.retained ? {tmuxCleanupRetained: cleanup.retained} : {}),
+      ...(cleanup.informational ? {tmuxCleanupInformational: cleanup.informational} : {}),
       protocol: PROTOCOL,
       pid: process.pid,
       startedAt: this.startedAt,

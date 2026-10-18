@@ -64,7 +64,7 @@ export interface TmuxRig {
   cleanup: () => void;
 }
 
-export function makeRig(options: {runtimeIdentity?: import("../../core/src/runtimeProcessIdentity.ts").RuntimeIdentityHooks} = {}): TmuxRig {
+export function makeRig(options: {cleanup?: import("../../core/src/runtimeCleanup.ts").TmuxCleanupHooks; runtimeIdentity?: import("../../core/src/runtimeProcessIdentity.ts").RuntimeIdentityHooks} = {}): TmuxRig {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "hbtmx-")));
   const socketPath = join(dir, "tmux.sock");
   const styles = new Map<
@@ -91,6 +91,7 @@ export function makeRig(options: {runtimeIdentity?: import("../../core/src/runti
   const bindings = new Map<string, RuntimeIdentityRead>();
   const makeDriver = (): TmuxDriver =>
     new TmuxDriver({
+      cleanup: options.cleanup,
       runtimeIdentity: options.runtimeIdentity ?? {read: (beeId, generation) => bindings.get(`${beeId}:${generation}`) ?? {kind: "legacy"}, bindLegacy: () => false},
       socketPath,
       eventsDir: join(dir, "events"),
