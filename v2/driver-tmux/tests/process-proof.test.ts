@@ -173,3 +173,46 @@ for (const extraMember of [false, true]) test(`disposeAll cleans only the verifi
     }
   } finally {rig.cleanup(); store.close(); h.cleanup();}
 });
+
+for (const failure of ["duplicate", "post-create", "malformed-locator"] as const) test(`failed start retains without killing a session (${failure})`, async () => {
+  const {TmuxServer, shQuote} = await import("../src/tmux.ts");
+  const {sessionNameFor} = await import("../src/driver.ts");
+  const h = harness(), store = h.open(), rig = makeRig({cleanup: store.tmuxCleanupHooks()}), server = new TmuxServer({socketPath: rig.socketPath});
+  try {
+    const {bee} = makeBee(store), name = sessionNameFor(bee.id, 1);
+    rig.configure(bee.id, "transcript");
+    let pane: string | null = null;
+    if (failure === "duplicate") pane = server.run(["new-session", "-d", "-P", "-F", "#{pane_id}", "-s", name, `${shQuote(process.execPath)} -e ${shQuote("setInterval(()=>{},1000)")}`]);
+    else {
+      const inner = (rig.driver as unknown as {server: InstanceType<typeof TmuxServer>}).server;
+      const run = inner.run.bind(inner);
+      inner.run = (args, options) => { if (failure === "post-create" && args[0] === "set-option") throw new Error("forced post-create failure"); const result = run(args, options); return failure === "malformed-locator" && args[0] === "new-session" ? "malformed" : result; };
+    }
+    rig.driver.start(bee.id, 1);
+    assert.equal(server.run(["display-message", "-p", "-t", pane ?? `=${name}:`, "#{pane_dead}"]), "0");
+    assert.deepEqual(store.tmuxCleanupCounts(), {retained: failure === "duplicate" ? 0 : 1, informational: 0});
+    assert.equal(rig.driver.observe().some(row => row.kind === "exited"), true);
+    assert.deepEqual(store.tmuxCleanupCounts(), {retained: failure === "duplicate" ? 0 : 1, informational: 0});
+  } finally {rig.cleanup(); store.close(); h.cleanup();}
+});
+
+for (const stalled of ["list-panes", "if-shell"]) test(`disposal budgets a stalled ${stalled} command and retains cleanup`, {timeout: 10000}, async () => {
+  const {mkdirSync, writeFileSync} = await import("node:fs");
+  const {execFileSync} = await import("node:child_process");
+  const {shQuote} = await import("../src/tmux.ts");
+  const h = harness(), store = h.open(), rig = makeRig({cleanup: store.tmuxCleanupHooks()});
+  const previous = process.env.PATH;
+  try {
+    const {bee} = makeBee(store);
+    rig.configure(bee.id, "transcript"); rig.driver.start(bee.id, 1);
+    await drainUntil(rig.driver, rows => rows.some(row => row.kind === "booted"));
+    const real = execFileSync("which", ["tmux"], {encoding: "utf8"}).trim();
+    const bin = join(rig.dir, "bin"); mkdirSync(bin);
+    writeFileSync(join(bin, "tmux"), `#!/bin/sh\ncase "$*" in *${stalled}*) exec ${shQuote(process.execPath)} -e 'process.on("SIGTERM",()=>{});setInterval(()=>{},1000)' ;; *) exec ${shQuote(real)} "$@" ;; esac\n`, {mode: 0o700});
+    process.env.PATH = bin + ":" + previous;
+    const start = performance.now();
+    rig.driver.disposeAll();
+    assert.ok(performance.now() - start < 2750, "disposal exceeded its two-second command budget and scheduling margin");
+    assert.deepEqual(store.tmuxCleanupCounts(), {retained: 1, informational: 0});
+  } finally {if (previous === undefined) delete process.env.PATH; else process.env.PATH = previous; rig.cleanup(); store.close(); h.cleanup();}
+});

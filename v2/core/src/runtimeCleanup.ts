@@ -4,7 +4,7 @@ export interface TmuxCleanupLocator {
   beeId: string;
   generation: number;
   reason: "ownership-unverified";
-  paneId: string;
+  paneId: string | null;
   sessionId: string | null;
   windowId: string | null;
   socket: {dev: number; ino: number; parentDev: number; parentIno: number} | null;
@@ -19,10 +19,10 @@ export const TMUX_CLEANUP_KINDS = "'runtime.tmux_cleanup_retained','runtime.tmux
 export function cleanupLocator(value: unknown): TmuxCleanupLocator | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const v = value as Record<string, unknown>;
-  if (Object.keys(v).sort().join(",") !== "beeId,generation,paneId,reason,sessionId,socket,windowId" || typeof v.beeId !== "string" || !v.beeId || !Number.isSafeInteger(v.generation) || Number(v.generation) < 1 || v.reason !== "ownership-unverified" || typeof v.paneId !== "string" || !/^%[0-9]+$/.test(v.paneId) || (v.sessionId !== null && (typeof v.sessionId !== "string" || !/^\$[0-9]+$/.test(v.sessionId))) || (v.windowId !== null && (typeof v.windowId !== "string" || !/^@[0-9]+$/.test(v.windowId))) || (v.socket !== null && (typeof v.socket !== "object" || Array.isArray(v.socket)))) return null;
+  if (Object.keys(v).sort().join(",") !== "beeId,generation,paneId,reason,sessionId,socket,windowId" || typeof v.beeId !== "string" || !v.beeId || !Number.isSafeInteger(v.generation) || Number(v.generation) < 1 || v.reason !== "ownership-unverified" || (v.paneId !== null && (typeof v.paneId !== "string" || !/^%[0-9]+$/.test(v.paneId))) || (v.sessionId !== null && (typeof v.sessionId !== "string" || !/^\$[0-9]+$/.test(v.sessionId))) || (v.windowId !== null && (typeof v.windowId !== "string" || !/^@[0-9]+$/.test(v.windowId))) || (v.socket !== null && (typeof v.socket !== "object" || Array.isArray(v.socket)))) return null;
   const socket = v.socket as Record<string, unknown>;
   if (socket !== null && (Object.keys(socket).sort().join(",") !== "dev,ino,parentDev,parentIno" || !Object.values(socket).every(Number.isSafeInteger) || Number(socket.ino) < 0 || Number(socket.parentIno) < 0)) return null;
-  return {beeId: v.beeId, generation: Number(v.generation), reason: v.reason, paneId: v.paneId, sessionId: v.sessionId as string | null, windowId: v.windowId as string | null, socket: socket === null ? null : {dev: Number(socket.dev), ino: Number(socket.ino), parentDev: Number(socket.parentDev), parentIno: Number(socket.parentIno)}};
+  return {beeId: v.beeId, generation: Number(v.generation), reason: v.reason, paneId: v.paneId as string | null, sessionId: v.sessionId as string | null, windowId: v.windowId as string | null, socket: socket === null ? null : {dev: Number(socket.dev), ino: Number(socket.ino), parentDev: Number(socket.parentDev), parentIno: Number(socket.parentIno)}};
 }
 export function readTmuxCleanup(db: DatabaseSync): {entries: TmuxCleanupEntry[]; malformed: number} {
   const pending = new Map<string, TmuxCleanupEntry>();
