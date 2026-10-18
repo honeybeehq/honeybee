@@ -27,6 +27,8 @@ class Mediation:
         self.observed = {}
         self.recipient_births = {}
         self.requests = []
+        self.cleanup_races = set()
+        self.cleanup_races_confirmed = set()
         self.launch_births = {}
         self.buffer = b''
         self.read_fd, self.request_fd = os.pipe()
@@ -74,7 +76,10 @@ class Mediation:
         self.records[key] = {'layout': layout, 'state': state, 'expected': expected, 'content': str(contents[0]), 'livePolicies': []}
         return state
 
-    def observe_reader(self, helper, birth, observation):
+    def race_counts(self):
+        return {'pending': len(self.cleanup_races - self.cleanup_races_confirmed), 'confirmed': len(self.cleanup_races_confirmed), 'total': len(self.cleanup_races)}
+
+    def observe_reader(self, helper, birth, observation, instrumented=True):
         if not observation['sandboxed'] or observation['entry'] != self.reader:
             raise ValueError('reader is not the pinned sandboxed recipient')
         profile = Path(observation['cwd']) / 'sandbox.sb'
@@ -83,7 +88,14 @@ class Mediation:
         record = self.records[str(profile)]
         if observation['cwd'] != record['layout']['cwd']:
             raise ValueError('reader cwd differs from reviewed policy template')
-        state = focused_profile.profile_state(profile, record['expected'])
+        identity = tuple(birth)
+        try:
+            state = focused_profile.profile_state(profile, record['expected'])
+        except FileNotFoundError:
+            if instrumented or self.observed.get(identity) != str(profile) or not record['livePolicies']:
+                raise
+            self.cleanup_races.add(identity)
+            return record['livePolicies'][-1]['policy']
         if state != record['state']:
             raise ValueError('profile changed at live reader observation')
         sealed = self.workspace.parent
@@ -227,9 +239,12 @@ class Mediation:
                 except FileNotFoundError:
                     if instrumented:
                         raise ValueError('instrumented profile missing before true post-exit snapshot')
-                    after = {'unobservable': True, 'reason': 'reviewed test cleanup removed profile before death sample'}
+                    after = {'unobservable': True, 'reason': 'unobservable_missing'}
                 if not after.get('unobservable') and after != record['state']:
                     raise ValueError('post-exit recipient profile changed')
+                if tuple(birth) in self.cleanup_races:
+                    after = {'unobservable': True, 'reason': 'unobservable_missing'}
+                    self.cleanup_races_confirmed.add(tuple(birth))
                 record['postExit'] = after
 
 
@@ -246,13 +261,13 @@ class Mediation:
                 try:
                     final = focused_profile.profile_state(record['state']['path'], record['expected'])
                 except FileNotFoundError:
-                    final = {'unobservable': True, 'reason': 'reviewed test cleanup removed profile'}
+                    final = {'unobservable': True, 'reason': 'unobservable_missing'}
                 after = record.get('postExit')
                 if instrumented and (after is None or after.get('unobservable')):
                     raise ValueError('instrumented true post-exit snapshot missing')
                 if not final.get('unobservable') and final != record['state']:
                     raise ValueError('recipient profile changed after approval')
                 rows.append({'before': record['state'], 'after': after, 'finalObservation': final, 'declaration': record['layout'], 'liveWritePolicies': record['livePolicies']})
-            return {'ok': True, 'profiles': rows, 'requests': self.requests, 'observedRecipientBirths': [list(row) for row in self.observed], 'rendererEnvironmentKeys': sorted(self.renderer_env), 'acceptedLimit': 'Plain observation proves pinned reader identity/cwd, sandbox enabled, and live write policy matches the template at cellDir, delivery-content and sealed-root probe paths; it does not recover the exact profile consumed by sandbox_init. swap-and-restore between approval hash and sandbox-exec read is not detectable; accepted for reviewed pinned harness code (Queen 17:39Z and 17:44Z)', 'productionReadScope': 'read-open; reader FILE_READ_ROOT is an argv/env fixture constraint, not an SBPL read grant'}
+            return {'ok': True, 'cleanupRaceCounts': self.race_counts(), 'profiles': rows, 'requests': self.requests, 'observedRecipientBirths': [list(row) for row in self.observed], 'rendererEnvironmentKeys': sorted(self.renderer_env), 'acceptedLimit': 'Plain observation proves pinned reader identity/cwd, sandbox enabled, and live write policy matches the template at cellDir, delivery-content and sealed-root probe paths; it does not recover the exact profile consumed by sandbox_init. swap-and-restore between approval hash and sandbox-exec read is not detectable; accepted for reviewed pinned harness code (Queen 17:39Z and 17:44Z)', 'productionReadScope': 'read-open; reader FILE_READ_ROOT is an argv/env fixture constraint, not an SBPL read grant'}
         finally:
             self.close()
