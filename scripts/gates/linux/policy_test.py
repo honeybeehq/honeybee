@@ -32,15 +32,18 @@ class PolicyTests(unittest.TestCase):
                 with self.subTest(output=output, code=code):
                     self.assertIs(workload_test_evidence(code, output)['testFailure'], True)
 
-    def test_positive_reporter_failure_is_not_erased_by_zero_exit(self):
+    def test_tap_failure_stays_additive_but_spec_and_dot_are_diagnostic_only(self):
         output = '\x1b[31m✖ fixture failed\x1b[0m\n✖ failing tests:\n...X.X...\n# fail 2\n'
         evidence = workload_test_evidence(0, output)
         self.assertIs(evidence['testFailure'], True)
         self.assertEqual(evidence['reporterDiagnostics'], dict(tapFailureSummary=True, specFailureLines=1, dotFailureMarkers=2))
         self.assertEqual(workload_test_evidence(0, '✔ fixture passed\nℹ fail 0\n....\n')['reporterDiagnostics'], dict(tapFailureSummary=False, specFailureLines=0, dotFailureMarkers=0))
         self.assertIs(workload_test_evidence(0, '✔ fixture passed\nℹ fail 0\n....\n')['testFailure'], False)
-        for output in ('# fail 1\n', '✖ fixture failed\n', '...X...\n'):
-            self.assertIs(workload_test_evidence(0, output)['testFailure'], True)
+        self.assertIs(workload_test_evidence(0, '# fail 1\n')['testFailure'], True)
+        for output in ('✖ fixture failed\n', '...X...\n'):
+            evidence = workload_test_evidence(0, output)
+            self.assertIs(evidence['testFailure'], False)
+            self.assertTrue(any(evidence['reporterDiagnostics'].values()))
 
     def test_invalid_workload_result_cannot_supply_failure_evidence(self):
         for code, output in ((None, ''), (False, ''), ('1', ''), (1, None)):

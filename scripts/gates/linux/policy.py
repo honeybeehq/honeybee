@@ -2,7 +2,7 @@ import errno
 import pathlib
 import re
 
-RULE_VERSION = 29
+RULE_VERSION = 30
 
 
 def workload_test_evidence(exit_code, output):
@@ -14,7 +14,7 @@ def workload_test_evidence(exit_code, output):
         specFailureLines=sum(bool(re.match(r'^\s*✖\s+', line)) and line.strip() != '✖ failing tests:' for line in lines),
         dotFailureMarkers=sum(line.count('X') for line in lines if re.fullmatch(r'[.X*]+', line.strip())),
     )
-    return dict(testFailure=exit_code != 0 or any(diagnostics.values()), reporterDiagnostics=diagnostics)
+    return dict(testFailure=exit_code != 0 or diagnostics['tapFailureSummary'], reporterDiagnostics=diagnostics)
 
 
 def within(target, root):
