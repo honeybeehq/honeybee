@@ -113,9 +113,13 @@ def preexec_verdict(change, real_home, named=(), touched=()):
 
 
 def flake_verdict(rows, count):
+    def tap_failure(item):
+        evidence = item.get('testEvidence')
+        diagnostics = evidence.get('reporterDiagnostics') if isinstance(evidence, dict) else None
+        return isinstance(diagnostics, dict) and diagnostics.get('tapFailureSummary') is True
     versions = ('candidate', 'base')
     by_version = {version: [row for row in rows if row['physical']['version'] == version] for version in versions}
-    valid = all(len(items) == count and all(item.get('guardAccepted') and item.get('testExit') is not None and item.get('testEvidence', {}).get('exists') and item.get('testEvidence', {}).get('testFailure') for item in items if item.get('testExit') not in (None, 0)) and all(item.get('guardAccepted') and item.get('testEvidence', {}).get('exists') and item.get('testExit') is not None for item in items) for items in by_version.values())
+    valid = all(len(items) == count and all(item.get('guardAccepted') and item.get('testExit') is not None and item.get('testEvidence', {}).get('exists') and item.get('testEvidence', {}).get('testFailure') and tap_failure(item) for item in items if item.get('testExit') not in (None, 0)) and all(item.get('guardAccepted') and item.get('testEvidence', {}).get('exists') and item.get('testExit') is not None for item in items) for items in by_version.values())
     failures = {version: sum(item.get('testExit') not in (None, 0) for item in items) for version, items in by_version.items()}
     return dict(failures=failures, classification='flake evidence' if valid and all(failures.values()) else 'no flake attribution', attempts=[item['physical']['attemptId'] for item in rows])
 
