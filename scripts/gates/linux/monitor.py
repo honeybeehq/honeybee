@@ -1,5 +1,5 @@
 import os, sys, json, time, pathlib, subprocess, threading, errno, re, hashlib, shutil, collections,signal
-from policy import error_verdict, RULE_VERSION, within,update_fd_prior,pid_observation
+from policy import error_verdict, RULE_VERSION, within,update_fd_prior,pid_observation,workload_test_evidence
 from home_guard import entry_guard
 from thread_records import ThreadRecords
 from birth_identity import birth_identity, parent_chain, scope_parent
@@ -352,7 +352,7 @@ byerrno = collections.defaultdict(collections.Counter)
 for e in errors:
     byerrno[str(e.get('errno'))][e['verdict']] += 1
 test_input=json.loads((OUT/'test-input.json').read_text()) if (OUT/'test-input.json').exists() else {}
-test_input['testFailure']=bool(re.search(r'^# fail [1-9]\d*$',(OUT/'stdout.log').read_text(),re.M))
+test_input.update(workload_test_evidence(rc, (OUT/'stdout.log').read_text()))
 result = dict(ruleVersion=RULE_VERSION, label=LABEL, command=CMD, exit=rc, testEvidence=test_input,cleanup=cleanup,monitorSha256=HASH, ownPids=sorted(births), errors=errors, errorCounts=counts, errnoCounts={k: dict(v) for k, v in byerrno.items()}, forbidden=forbidden, peers=peers, fullyClean=not (counts['FAIL'] or forbidden or peers), births=list(births.values()),threadBirths=list(threads.births.values()),samplingLimitation='A failed children-file read can leave that sample tree walk incomplete; processes born and gone between samples may be unseen.')
 result['errorSummary'] = error_summary(errors, diagnostic_reads, observation_retries + threads.observation_retries)
 (OUT / 'stat-observation-retries.json').write_text(json.dumps(observation_retries + threads.observation_retries, indent=2))

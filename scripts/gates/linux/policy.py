@@ -1,7 +1,20 @@
 import errno
 import pathlib
+import re
 
 RULE_VERSION = 29
+
+
+def workload_test_evidence(exit_code, output):
+    if type(exit_code) is not int or not isinstance(output, str):
+        raise ValueError('invalid workload test result')
+    lines = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', output).splitlines()
+    diagnostics = dict(
+        tapFailureSummary=any(re.fullmatch(r'\s*# fail [1-9]\d*\s*', line) for line in lines),
+        specFailureLines=sum(bool(re.match(r'^\s*✖\s+', line)) and line.strip() != '✖ failing tests:' for line in lines),
+        dotFailureMarkers=sum(line.count('X') for line in lines if re.fullmatch(r'[.X*]+', line.strip())),
+    )
+    return dict(testFailure=exit_code != 0 or any(diagnostics.values()), reporterDiagnostics=diagnostics)
 
 
 def within(target, root):
