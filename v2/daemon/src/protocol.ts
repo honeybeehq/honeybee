@@ -1549,10 +1549,12 @@ export interface SendRpcResult extends DedupMarkers {
 }
 
 export interface MutationResult extends DedupMarkers {
+  pending?: {code: "process_identity_unresolved"; message: "stop pending process identity proof"};
   commandId: number;
 }
 
 export interface ViewResult {
+  identityDiagnostic?: {message: "identity unresolved"; warning: boolean};
   view: BeeView;
   bee: BeeRow | null;
   runtime: RuntimeRow | null;
@@ -1684,10 +1686,13 @@ export interface HarnessFact {
 }
 
 export interface HealthResult {
+  tmuxCleanupRetained?: number;
+  tmuxCleanupInformational?: number;
   paneInputUnknown?: number;
   deliveryHoldUnknown?: number;
   deliveryPrepareAuditUnknown?: number;
   deliveryFileHelper?: {state: "ready" | "delivery_file_helper_unavailable"; target: string; artifactPath: string};
+  identityDiagnostic?: {warning: "process_identity_unresolved" | null; count: number};
   localSecurity?: {peerCredentials: import("./peerCredentials.ts").PeerCredentialStatus; localTrust: "off" | "ready" | "registration_key_unavailable"};
   protocol: string;
   pid: number;

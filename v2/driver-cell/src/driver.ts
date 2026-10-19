@@ -346,10 +346,12 @@ export class CellDriver implements RuntimeDriver {
     return this.inner.isDegraded(beeId, generation);
   }
 
+  retryProcessIdentity(beeId: string, generation: number): void { this.inner.retryProcessIdentity(beeId, generation); }
+
   procOf(
     beeId: string,
     generation: number,
-  ): { pid: number; pidStartedAt: number; observationCursor: number } | null {
+  ): { pid: number; pidStartedAt: number; observationCursor: number; processIdentity?: import("../../core/src/runtimeProcessIdentity.ts").RuntimeProcessIdentity } | null {
     return this.inner.procOf(beeId, generation);
   }
 
@@ -492,7 +494,7 @@ export class CellDriver implements RuntimeDriver {
   }
 
   removeCell(beeId: string, opts: DirtyReportOptions & { force?: boolean } = {}): DeleteResult {
-    if (this.pending.has(beeId) || this.snapshotLive().some((p) => p.beeId === beeId)) {
+    if (this.pending.has(beeId) || this.inner.hasRetainedProcess(beeId)) {
       throw new CellRuntimeLiveError(beeId);
     }
     const cell = this.cellOf(beeId);

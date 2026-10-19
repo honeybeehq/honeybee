@@ -17,7 +17,7 @@ import { dirname, join } from "node:path";
 import { HsrDriver, type SpawnSpec } from "../src/index.ts";
 import { codexAdapter, stubAdapter, type HarnessAdapter } from "../../adapters/src/index.ts";
 import type { DriverObservation } from "../../harness/src/driver.ts";
-import { AGENT_PATH, drainUntil as drainDriverUntil, ofKind, pidAlive, sleep } from "./helpers.ts";
+import { fixtureRuntimeIdentity, persistFixtureProcess, AGENT_PATH, drainUntil as drainDriverUntil, ofKind, pidAlive, sleep } from "./helpers.ts";
 
 const FAKE_CODEX_PATH = join(dirname(AGENT_PATH), "fake-codex.mjs");
 const RUNNER_HOST_SOURCE_PATH = join(dirname(AGENT_PATH), "..", "src", "runner-host-main.ts");
@@ -182,6 +182,7 @@ function drainUntil(
 
 function makeDriver(dir: string, adapter: HarnessAdapter = stubAdapter): HsrDriver {
   return new HsrDriver({
+    runtimeIdentity: fixtureRuntimeIdentity(dir),
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: 400,
     resolve(): SpawnSpec {
@@ -329,6 +330,7 @@ test("host delivery refuses before encoding and distinguishes write throws from 
 
 function makeCodexDriver(dir: string): HsrDriver {
   return new HsrDriver({
+    runtimeIdentity: fixtureRuntimeIdentity(dir),
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: 400,
     resolve(): SpawnSpec {
@@ -448,6 +450,7 @@ test("daemon restart: the runtime survives and the successor daemon delivers at 
     await drainUntil(first, (e) => ofKind(e, "turn_ended").length > 0);
     const checkpoint = checkpointOf(first, "bee-r");
     const proc = first.procOf("bee-r", 1)!;
+    persistFixtureProcess(dir, "bee-r", 1, proc);
     assert.ok(proc.pid > 0);
 
     // "Daemon restart": the first driver releases its handles WITHOUT
@@ -506,6 +509,7 @@ test("adoption replays a runner-persisted completion missed by the dead daemon",
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
     const checkpoint = checkpointOf(first, "bee-gap");
     const proc = first.procOf("bee-gap", 1)!;
+    persistFixtureProcess(dir, "bee-gap", 1, proc);
 
     await deliverUntilAccepted(first, "bee-gap", 1, 55, "@slow:80 persisted before crash");
     const journal = first.observationLogPath("bee-gap", 1);
@@ -539,6 +543,7 @@ test("recovery replay after the completion fold is idempotent", async () => {
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
     const checkpointBeforeTurn = checkpointOf(first, "bee-dupe");
     const proc = first.procOf("bee-dupe", 1)!;
+    persistFixtureProcess(dir, "bee-dupe", 1, proc);
     await deliverUntilAccepted(first, "bee-dupe", 1, 56, "folded but not checkpointed");
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
     const checkpointAfterFold = checkpointOf(first, "bee-dupe");
@@ -576,6 +581,7 @@ test("recovery preserves journal order when completion is followed by a newer tu
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
     const checkpoint = checkpointOf(first, "bee-newer");
     const proc = first.procOf("bee-newer", 1)!;
+    persistFixtureProcess(dir, "bee-newer", 1, proc);
 
     await deliverUntilAccepted(first, "bee-newer", 1, 61, "first");
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
@@ -618,6 +624,7 @@ test("missing or generation-corrupt recovery evidence fails closed without manuf
       await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
       const checkpoint = checkpointOf(first, beeId);
       const proc = first.procOf(beeId, 1)!;
+    persistFixtureProcess(dir, beeId, 1, proc);
       first.detachAll();
 
       if (corruption === "missing-journal") {
@@ -657,6 +664,7 @@ test("a genuinely long-running silent turn stays running across adoption", async
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
     checkpointOf(first, "bee-silent");
     const proc = first.procOf("bee-silent", 1)!;
+    persistFixtureProcess(dir, "bee-silent", 1, proc);
     await deliverUntilAccepted(first, "bee-silent", 1, 81, "@hang");
     await drainUntil(first, (events) => ofKind(events, "turn_started").length > 0);
     await waitForJournal(
@@ -693,6 +701,7 @@ test("Codex thread/status idle plus turn/completed maps through adoption to one 
     await drainUntil(first, (events) => ofKind(events, "turn_ended").length > 0);
     const checkpoint = checkpointOf(first, "bee-codex");
     const proc = first.procOf("bee-codex", 1)!;
+    persistFixtureProcess(dir, "bee-codex", 1, proc);
     await deliverUntilAccepted(first, "bee-codex", 1, 91, "persist codex completion");
     const journal = await waitForJournal(
       first.observationLogPath("bee-codex", 1),
@@ -735,6 +744,7 @@ test("Codex adoption restores the durable thread and active turn, then confirms 
     first.observe();
     const runningCursor = checkpointOf(first, "bee-codex-adopt");
     const proc = first.procOf("bee-codex-adopt", 1)!;
+    persistFixtureProcess(dir, "bee-codex-adopt", 1, proc);
     first.detachAll();
 
     second = makeCodexDriver(dir);
@@ -782,6 +792,7 @@ test("adoption with dead host artifacts falls back to refusing, never a phantom 
     driver.start("bee-x", 1);
     await drainUntil(driver, (e) => ofKind(e, "booted").length > 0);
     const proc = driver.procOf("bee-x", 1)!;
+    persistFixtureProcess(dir, "bee-x", 1, proc);
     driver.stop("bee-x", 1, "stopped_by_user");
     await drainUntil(driver, (e) => ofKind(e, "exited").length > 0);
     await sleep(30);
@@ -820,6 +831,7 @@ test("quiet final assistant evidence survives a restart before turn completion",
     }
     assert.ok(cursor > messageEnd, `committed cursor ${cursor} must be beyond final assistant row ${messageEnd}`);
     const proc = first.procOf("bee-quiet", 1)!;
+    persistFixtureProcess(dir, "bee-quiet", 1, proc);
     first.detachAll();
     second = makeCodexDriver(dir);
     assert.equal(second.adopt("bee-quiet", 1, proc.pid, proc.pidStartedAt, "running", cursor, sessionId), true);

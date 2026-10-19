@@ -1,3 +1,4 @@
+import {inspectProcess} from "../../harness/src/processIdentity.ts";
 /** Native Codex compaction owner. No ordinary user turn is used to request compaction. */
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -11,7 +12,7 @@ export interface ThreadCompactorInput {
   row: ThreadOperationRow;
   spec: SpawnSpec;
   signal: AbortSignal;
-  recordWorker: (identity: { pid: number; startedAt: number }) => void;
+  recordWorker: (identity: { pid: number; startedAt: number; processIdentity: import("../../core/src/runtimeProcessIdentity.ts").RuntimeProcessIdentity }) => void;
   timeoutMs?: number;
 }
 
@@ -80,7 +81,9 @@ export async function compactThread({ row, spec, signal, recordWorker, timeoutMs
   const timer = setTimeout(() => fail(new ThreadExecutionError("compaction_failed", "Native compaction timed out")), timeoutMs);
   try {
     if (child.pid == null) throw new ThreadExecutionError("compaction_failed", "Native compactor did not spawn");
-    recordWorker({ pid: child.pid, startedAt });
+    const identity = inspectProcess(child.pid);
+    if (identity.kind !== "present" || identity.state !== "live") throw new ThreadExecutionError("worker_unreachable", "Compactor exact birth unavailable");
+    recordWorker({pid: child.pid, startedAt, processIdentity: {pid: child.pid, birth: identity.birth, bootId: identity.bootId}});
     await request("initialize", { clientInfo: { name: "honeybee-thread-compactor", version: "1" }, capabilities: { experimentalApi: true } });
     write({ jsonrpc: "2.0", method: "initialized" });
     const resumed = await request("thread/resume", {

@@ -192,7 +192,7 @@ import {DaemonCore} from ${JSON.stringify(modulePath("../src/loops.ts"))};
 import {DeliveryFiles} from ${JSON.stringify(modulePath("../src/deliveryFile.ts"))};
 import {HsrDriver} from ${JSON.stringify(modulePath("../../driver-hsr/src/driver.ts"))};
 import {codexAdapter} from ${JSON.stringify(modulePath("../../adapters/src/index.ts"))};
-const store=openCoreStore(${JSON.stringify(db)}),driver=new HsrDriver({sessionLogDir:${JSON.stringify(logs)},socketDir:${JSON.stringify(socketDir)},resolve:()=>({command:process.execPath,args:[${JSON.stringify(fixture)}],cwd:${JSON.stringify(work)},env:process.env,adapter:codexAdapter({cwd:${JSON.stringify(work)}})})});
+const store=openCoreStore(${JSON.stringify(db)}),driver=new HsrDriver({runtimeIdentity:store.runtimeIdentityHooks(),sessionLogDir:${JSON.stringify(logs)},socketDir:${JSON.stringify(socketDir)},resolve:()=>({command:process.execPath,args:[${JSON.stringify(fixture)}],cwd:${JSON.stringify(work)},env:process.env,adapter:codexAdapter({cwd:${JSON.stringify(work)}})})});
 const core=new DaemonCore({store,driver,now:Date.now,log:()=>{},policy:{commandsPerStep:8,idleWindowSteps:null,bootHangTimeoutSteps:100000}});core.boot();
 const bee=store.createBee({name:"crash",agent:"stub",substrate:"hsr",cwd:${JSON.stringify(work)}}).bee;store.enqueueCommand("spawn",bee.id);
 for(let i=0;store.currentRuntime(bee.id)?.state!=="idle";i++){if(i>500)throw Error("boot timeout");core.step();await new Promise(r=>setTimeout(r,10));}
@@ -212,9 +212,9 @@ process.stdout.write(JSON.stringify({beeId:bee.id,messageId:message.id,proc:driv
   });
   const exited = new Promise(resolve => child.once("exit", (_code, signal) => resolve(signal)));
   child.kill("SIGKILL"); assert.equal(await exited, "SIGKILL");
-  driver = new HsrDriver({sessionLogDir: logs, socketDir, stopKillGraceMs: 100, resolve: () => ({command: process.execPath, args: [fixture], cwd: work, env: process.env as Record<string, string>, adapter: codexAdapter({cwd: work})})});
-  assert.equal(driver.adopt(saved.beeId, 1, saved.proc.pid, saved.proc.pidStartedAt, "idle", saved.proc.observationCursor), true);
   store = openCoreStore(db);
+  driver = new HsrDriver({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: logs, socketDir, stopKillGraceMs: 100, resolve: () => ({command: process.execPath, args: [fixture], cwd: work, env: process.env as Record<string, string>, adapter: codexAdapter({cwd: work})})});
+  assert.equal(driver.adopt(saved.beeId, 1, saved.proc.pid, saved.proc.pidStartedAt, "idle", saved.proc.observationCursor), true);
   const core = new DaemonCore({store, driver, now: Date.now, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}});
   assert.equal(core.boot().adopted, 1);
   assert.equal(store.getMessage(saved.messageId)?.deliveryFallback?.state, "unknown");

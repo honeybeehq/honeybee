@@ -60,7 +60,7 @@ export class ThreadOperations {
     let row = initial;
     // An interrupted owner cannot race a new compaction of the same session.
     if (row.worker && pidAlive(row.worker.pid)) {
-      if (!verifyProcessIdentity(row.worker.pid, row.worker.startedAt)) throw new ThreadExecutionError("worker_unreachable", "Cannot verify the interrupted compactor's process identity");
+      if (!verifyProcessIdentity(row.worker.pid, row.worker.processIdentity ?? null)) throw new ThreadExecutionError("worker_unreachable", "Cannot verify the interrupted compactor's process identity");
       process.kill(row.worker.pid, "SIGKILL");
       for (let i = 0; i < 100 && pidAlive(row.worker.pid); i++) await new Promise(resolve => setTimeout(resolve, 20));
       if (pidAlive(row.worker.pid)) throw new ThreadExecutionError("worker_unreachable", "Interrupted compactor has not exited");

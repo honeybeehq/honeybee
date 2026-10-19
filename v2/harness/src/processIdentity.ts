@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { closeSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {processIdentityValue} from "../../core/src/processIdentity.ts";
 
 export function validatePeerArtifact(directory: string, target: string): string {
   if (!["linux-x64", "linux-arm64", "darwin-arm64"].includes(target)) throw new Error("Unsupported peer credential target");
@@ -20,18 +21,60 @@ export function validatePeerArtifact(directory: string, target: string): string 
   return binary;
 }
 
-let reader: ((pid: number) => string | null) | null = null;
+export interface ProcessIdentity { pid: number; birth: string; bootId: string }
+export type ProcessInspection =
+  | {kind: "present"; pid: number; birth: string; bootId: string; uid: number; ppid: number; pgid: number; state: "live" | "zombie"; startedAtMs: number; waitStatus: number | null}
+  | {kind: "gone"}
+  | {kind: "unavailable"; reason: "artifact_unavailable" | "native_observation_failed" | "permission_denied" | "invalid_result"};
+let inspectionBridge: {processBirth(pid: number): unknown; inspectProcess(pid: number): unknown; inspect(fd: number): unknown; pin(fd: number): number; alive(fd: number): boolean} | null = null;
+function processBridge() {
+  if (!inspectionBridge) {
+    const target = process.platform + "-" + process.arch;
+    const root = fileURLToPath(new URL(fileURLToPath(import.meta.url).endsWith(".ts") ? "../../../dist/v2/peercred/" : "./peercred/", import.meta.url));
+    const bridge = createRequire(import.meta.url)(validatePeerArtifact(join(root, target), target));
+    if (typeof bridge.processBirth !== "function" || typeof bridge.inspectProcess !== "function" || typeof bridge.inspect !== "function" || typeof bridge.pin !== "function" || typeof bridge.alive !== "function") throw new Error("Process inspection bridge unavailable");
+    inspectionBridge = bridge;
+  }
+  return inspectionBridge!;
+}
+export function decodeProcessInspection(value: unknown, pid: number): ProcessInspection {
+  const unavailable = {kind: "unavailable", reason: "invalid_result"} as const;
+  if (!value || typeof value !== "object") return unavailable;
+  const v = value as Record<string, unknown>;
+  if (v.kind === "gone" && Object.keys(v).length === 1) return {kind: "gone"};
+  if (v.kind === "unavailable" && Object.keys(v).sort().join(",") === "kind,reason" && v.reason === "native_observation_failed") return {kind: "unavailable", reason: "native_observation_failed"};
+  if (v.kind === "unavailable" && Object.keys(v).sort().join(",") === "kind,reason" && v.reason === "permission_denied") return {kind: "unavailable", reason: "permission_denied"};
+  if (Object.keys(v).sort().join(",") !== "birth,bootId,kind,pgid,pid,ppid,startedAtMs,state,uid,waitStatus") return unavailable;
+  if (v.kind !== "present" || v.pid !== pid || !Number.isSafeInteger(pid) || pid <= 0 || typeof v.birth !== "string" || !/^(?:linux:[0-9]+|darwin:[0-9]+:[0-9]+)$/.test(v.birth)) return unavailable;
+  if (typeof v.bootId !== "string" || (v.birth.startsWith("linux:") ? !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(v.bootId) : v.bootId !== "")) return unavailable;
+  if (!processIdentityValue({pid, birth: v.birth, bootId: v.bootId})) return unavailable;
+  if (![v.uid, v.ppid, v.pgid].every(n => typeof n === "number" && Number.isSafeInteger(n) && n >= 0) || typeof v.startedAtMs !== "number" || !Number.isFinite(v.startedAtMs) || v.startedAtMs <= 0 || v.state !== "live" && v.state !== "zombie") return unavailable;
+  if (typeof v.waitStatus !== "number" || !Number.isSafeInteger(v.waitStatus) || v.waitStatus < -1) return unavailable;
+  return {kind: "present", pid, birth: v.birth, bootId: v.bootId, uid: Number(v.uid), ppid: Number(v.ppid), pgid: Number(v.pgid), state: v.state, startedAtMs: v.startedAtMs, waitStatus: v.waitStatus < 0 ? null : v.waitStatus};
+}
+export function inspectProcess(pid: number): ProcessInspection {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return {kind: "unavailable", reason: "invalid_result"};
+  try { return decodeProcessInspection(processBridge().inspectProcess(pid), pid); }
+  catch { return {kind: "unavailable", reason: "artifact_unavailable"}; }
+}
+export function sameProcess(identity: ProcessIdentity, value: ProcessInspection): value is Extract<ProcessInspection, {kind: "present"}> {
+  return value.kind === "present" && value.pid === identity.pid && value.birth === identity.birth && value.bootId === identity.bootId;
+}
+export function authenticatedProcessPeer(fd: number, identity: ProcessIdentity): boolean {
+  let pin = -1;
+  try {
+    const bridge = processBridge();
+    const peer = bridge.inspect(fd) as {uid?: unknown; pid?: unknown; birth?: unknown} | null;
+    if (!peer || peer.uid !== process.getuid?.() || peer.pid !== identity.pid || peer.birth !== identity.birth) return false;
+    pin = bridge.pin(fd);
+    const fresh = bridge.inspect(fd) as typeof peer;
+    return (pin < 0 || bridge.alive(pin)) && !!fresh && fresh.uid === peer.uid && fresh.pid === peer.pid && fresh.birth === peer.birth && sameProcess(identity, inspectProcess(identity.pid));
+  } catch { return false; } finally { if (pin >= 0) { try {closeSync(pin);} catch {} } }
+}
 export function exactProcessBirth(pid: number): string | null {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
   try {
-    if (!reader) {
-      const target = process.platform + "-" + process.arch;
-      const root = fileURLToPath(new URL(fileURLToPath(import.meta.url).endsWith(".ts") ? "../../../dist/v2/peercred/" : "./peercred/", import.meta.url));
-      const path = validatePeerArtifact(join(root, target), target);
-      const bridge = createRequire(import.meta.url)(path) as { processBirth?: (pid: number) => unknown };
-      if (typeof bridge.processBirth !== "function") return null;
-      reader = pid => { const value = bridge.processBirth!(pid); return typeof value === "string" && /^(?:linux:[0-9]+|darwin:[0-9]+:[0-9]+)$/.test(value) ? value : null; };
-    }
-    return reader(pid);
+    const value = processBridge().processBirth(pid);
+    return typeof value === "string" && /^(?:linux:[0-9]+|darwin:[0-9]+:[0-9]+)$/.test(value) ? value : null;
   } catch { return null; }
 }

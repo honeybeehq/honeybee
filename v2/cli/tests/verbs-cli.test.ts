@@ -915,6 +915,7 @@ const tmuxAvailable = spawnSync("tmux", ["-V"], { stdio: "ignore" }).status === 
 test("verbs.xa: v1 shape is <agent> (not a bee name); refuses pane-less substrates; tmux spawn + --print", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
+  const spawned: string[] = [];
   try {
     daemon = await startDaemon(dir);
     const usage = capture();
@@ -946,6 +947,7 @@ test("verbs.xa: v1 shape is <agent> (not a bee name); refuses pane-less substrat
       0,
     );
     const attach = JSON.parse(printed.out[0] ?? "{}") as { beeId: string; session: string; socket: string; command: string };
+    spawned.push(attach.beeId);
     assert.ok(attach.beeId.length > 0);
     assert.equal(attach.socket, join(dir, "tmux.sock"));
     assert.equal(attach.session, `hive-v2-${attach.beeId}-g1`);
@@ -966,12 +968,24 @@ test("verbs.xa: v1 shape is <agent> (not a bee name); refuses pane-less substrat
       ),
       0,
     );
+    spawned.push((JSON.parse(selected.out[0] ?? "{}") as {beeId: string}).beeId);
     const selectedView = capture();
     assert.equal(await runV2Cli(["view", "auto-screen", "--data-dir", dir, "--json"], selectedView.io), 0);
     assert.equal((JSON.parse(selectedView.out[0] ?? "{}") as { bee?: { agent: string } }).bee?.agent, "stub");
   } finally {
-    await daemon?.stop().catch(() => {});
-    cleanup();
+    try {
+      for (const beeId of spawned) {
+        assert.equal(await runV2Cli(["stop", beeId, "--data-dir", dir], capture().io), 0);
+        await waitFor(async () => {
+          const result = capture();
+          await runV2Cli(["view", beeId, "--data-dir", dir, "--json"], result.io);
+          return (JSON.parse(result.out[0] ?? "{}") as {view?: {runtimeState: string}}).view?.runtimeState === "stopped";
+        }, "tmux fixture stopped", 10000);
+      }
+    } finally {
+      await daemon?.stop().catch(() => {});
+      cleanup();
+    }
   }
 });
 

@@ -63,7 +63,7 @@ export class TmuxServer {
   }
 
   /** Run a tmux command against the private socket, without throwing. */
-  try(args: string[], opts: { input?: string } = {}): TmuxResult {
+  try(args: string[], opts: { input?: string; timeoutMs?: number } = {}): TmuxResult {
     if (args[0] === "kill-server") {
       // Guard runs BEFORE anything else — no options escape it (the v1
       // tmux-killserver-guard lesson).
@@ -76,7 +76,7 @@ export class TmuxServer {
   }
 
   /** Run a tmux command; non-zero exit throws. Returns trimmed stdout. */
-  run(args: string[], opts: { input?: string } = {}): string {
+  run(args: string[], opts: { input?: string; timeoutMs?: number } = {}): string {
     const res = this.try(args, opts);
     if (res.status !== 0) throw new TmuxError(args, res.status, res.stderr);
     return res.stdout.replace(/\n$/, "");
@@ -96,7 +96,8 @@ export class TmuxServer {
     this.raw(["kill-server"]);
   }
 
-  private raw(args: string[], opts: { input?: string } = {}): TmuxResult {
+  private raw(args: string[], opts: { input?: string; timeoutMs?: number } = {}): TmuxResult {
+    if (opts.timeoutMs !== undefined && (!Number.isSafeInteger(opts.timeoutMs) || opts.timeoutMs < 1 || opts.timeoutMs > 30_000)) throw new Error("Invalid tmux command timeout");
     const env: Record<string, string> = { ...(process.env as Record<string, string>) };
     delete env.TMUX; // never let "we are inside tmux" leak into the private server
     delete env.TMUX_PANE;
@@ -106,7 +107,8 @@ export class TmuxServer {
       encoding: "utf8",
       env,
       input: opts.input,
-      timeout: 30_000,
+      timeout: opts.timeoutMs ?? 30_000,
+      killSignal: opts.timeoutMs === undefined ? "SIGTERM" : "SIGKILL",
       maxBuffer: 20 * 1024 * 1024,
     });
     if (res.error) throw res.error;

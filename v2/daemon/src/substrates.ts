@@ -160,10 +160,12 @@ export class SubstrateRouter implements RuntimeDriver {
     return this.driverFor(beeId, generation).isDegraded(beeId, generation);
   }
 
+  retryProcessIdentity(beeId: string, generation: number): void { this.driverFor(beeId, generation).retryProcessIdentity(beeId, generation); }
+
   procOf(
     beeId: string,
     generation: number,
-  ): { pid: number; pidStartedAt: number; observationCursor?: number } | null {
+  ): { pid: number; pidStartedAt: number; observationCursor?: number; processIdentity?: import("../../core/src/runtimeProcessIdentity.ts").RuntimeProcessIdentity } | null {
     return this.driverFor(beeId, generation).procOf(beeId, generation);
   }
 

@@ -253,7 +253,7 @@
     },
     {
       "path": "v2/core/src/store.ts",
-      "sha256": "e8e3929a2347eb2a7569a8d753618e074ec8067a632849f91c47cd7eae885644",
+      "sha256": "3cc1f8ec14c02438f99b4942297dd608ffefc1c798cb87d61ae59b9921049e6f",
       "siblingClosure": true
     },
     {
@@ -263,7 +263,7 @@
     },
     {
       "path": "v2/core/src/threadOperation.ts",
-      "sha256": "e4419d849d60d74e7dd5fee12d17b4e254d3c190287063a4cbebe35f41b3d49a",
+      "sha256": "c63c088bc0f067f2693b7ca600317fd755d3fcc8ec2e17ba62852ddb3f9d2933",
       "siblingClosure": true
     },
     {
@@ -383,7 +383,7 @@
     },
     {
       "path": "v2/daemon/src/loops.ts",
-      "sha256": "6adbce389ec3ad80a924e1bae6065c898764a1636bb74583c7af8bb911fc54ae",
+      "sha256": "48ac4e132047c0ebc69cee06685dd80d1158a1366be40322080e91d1f975b2d5",
       "siblingClosure": true
     },
     {
@@ -403,7 +403,7 @@
     },
     {
       "path": "v2/daemon/src/protocol.ts",
-      "sha256": "a1d8c3d9da3255309f38e7275274730faeb13d1e11ffa432f0b9a9843a058029",
+      "sha256": "d2ed8fe077ede9ad1179960ce6970974d2f270692074968b87ec91c6f6131b10",
       "siblingClosure": true
     },
     {
@@ -428,7 +428,7 @@
     },
     {
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "sha256": "c9d13902756184e223228fff8ff6d728411687689bb9814fda4094ebc33b69b3",
+      "sha256": "db22f150304a3b24dd629dc4f1e86995554ea669a6ac39521c9d14d8ece25c70",
       "siblingClosure": true
     },
     {
@@ -458,7 +458,7 @@
     },
     {
       "path": "v2/driver-cell/src/driver.ts",
-      "sha256": "bd7902076bde55a8354d7fd12234013dcf246c2a4b6864ccfb24aa241466afd4",
+      "sha256": "462e4c5a93bbab3d6d24f0af0d2537f8db1a6919947585a77ed57a0ae24c8e05",
       "siblingClosure": true
     },
     {
@@ -543,7 +543,7 @@
     },
     {
       "path": "v2/driver-hsr/src/driver.ts",
-      "sha256": "ca77b090e97605908f0396a2055e5341580e643b1a014130d2bc09a581683d8e",
+      "sha256": "0d12306038d849af72569b91dbd4bf3976c100b2c8026c08e88026518d511b83",
       "siblingClosure": true
     },
     {
@@ -558,7 +558,7 @@
     },
     {
       "path": "v2/driver-hsr/src/psutil.ts",
-      "sha256": "8b217ada5fc4e49a16dab99428f98cfe05dd5f5fc08784482725eb5511dcfb8a",
+      "sha256": "ccfddc7f3c7ce3a34ce2553e86fac6a348323fe2a570110ffed2719554c203bf",
       "siblingClosure": true
     },
     {
@@ -633,19 +633,34 @@
     },
     {
       "path": "v2/harness/src/processIdentity.ts",
-      "sha256": "ce60bac8b97265a840e7d4e2810e9bf8a335263dcc6652cfc200dc7882c4de9c",
+      "sha256": "e6b8737a717b21c1d4540acf8914187e80fb1f273a0ecaf9acfa2f0f270f4785",
       "siblingClosure": true
     },
     {
       "path": "v2/harness/src/statePath.ts",
       "sha256": "df552b5372a82fe36d01676ba554fb0efecf423852d776a929860eb7daab8d59",
       "siblingClosure": true
+    },
+    {
+      "path": "v2/core/src/runtimeProcessIdentity.ts",
+      "sha256": "8061e0d12e71e2d3ec2b7070cc917fd54aa71ec79293c4de6e159af1e0a6088d",
+      "siblingClosure": true
+    },
+    {
+      "path": "v2/core/src/runtimeCleanup.ts",
+      "sha256": "8343bfdb80cb9f38c171209b9ff64d25b51d355b693d44cf94d33e2fe1339f0d",
+      "siblingClosure": true
+    },
+    {
+      "path": "v2/core/src/processIdentity.ts",
+      "sha256": "6e0f9ecf9be188d9c81cee671c36b1a5dc1281345a73e59f148df0abb0f9cb6b",
+      "siblingClosure": true
     }
   ],
   "spawns": [
     {
       "path": "v2/driver-hsr/src/driver.ts",
-      "line": 537,
+      "line": 542,
       "context": "    const child = spawn(launch.command, launch.args, {",
       "executable": "node",
       "receiver": "HsrDriver.start ChildProcess; these three rows construct HsrDriver without hostCommand, so its source HostLaunch is the pinned Node executable and runner-host-main.ts, not a provider CLI.",
@@ -711,8 +726,8 @@
     {
       "kind": "native-artifact",
       "path": "v2/harness/src/processIdentity.ts",
-      "line": 31,
-      "context": "      const bridge = createRequire(import.meta.url)(path) as { processBirth?: (pid: number) => unknown };",
+      "line": 34,
+      "context": "    const bridge = createRequire(import.meta.url)(validatePeerArtifact(join(root, target), target));",
       "artifact": "src/dist/v2/peercred/darwin-arm64/peercred.node",
       "sha256Source": "controller-manifest"
     }
@@ -1105,7 +1120,7 @@
     {
       "kind": "reference",
       "path": "v2/driver-cell/src/driver.ts",
-      "line": 693,
+      "line": 695,
       "context": "      worker = new Worker(workerUrl, {",
       "module": "node:worker_threads",
       "manualReview": true
@@ -1241,7 +1256,7 @@
     {
       "kind": "import",
       "path": "v2/driver-hsr/src/driver.ts",
-      "line": 51,
+      "line": 53,
       "context": "import { spawn, type ChildProcess } from \"node:child_process\";",
       "module": "node:child_process",
       "manualReview": true
@@ -1249,7 +1264,7 @@
     {
       "kind": "import",
       "path": "v2/driver-hsr/src/driver.ts",
-      "line": 55,
+      "line": 57,
       "context": "import { connect, type Socket } from \"node:net\";",
       "module": "node:net",
       "manualReview": true
@@ -1257,7 +1272,7 @@
     {
       "kind": "reference",
       "path": "v2/driver-hsr/src/driver.ts",
-      "line": 661,
+      "line": 666,
       "context": "    const attempt = connect(p.socketPath);",
       "module": "node:net",
       "manualReview": true
@@ -1296,116 +1311,6 @@
     },
     {
       "kind": "import",
-      "path": "v2/driver-hsr/src/psutil.ts",
-      "line": 11,
-      "context": "import { execFile, spawnSync } from \"node:child_process\";",
-      "module": "node:child_process",
-      "manualReview": true
-    },
-    {
-      "kind": "unreachable-callsite",
-      "path": "v2/driver-hsr/src/psutil.ts",
-      "line": 74,
-      "context": "  execFile(\"/bin/ps\", [\"-o\", \"pid=,stat=\", \"-p\", pids.join(\",\")], { encoding: \"utf8\", timeout: 2_000 }, (_error, stdout) => {",
-      "module": "node:child_process",
-      "manualReview": true,
-      "callee": "execFile",
-      "executable": "/bin/ps",
-      "runtime": "forbidden",
-      "reachabilityProof": [
-        "v2/daemon/tests/delivery-file-read.test.ts:56",
-        "v2/daemon/tests/delivery-file-read.test.ts:59",
-        "v2/daemon/tests/delivery-file-read.test.ts:61",
-        "v2/driver-hsr/src/driver.ts:537",
-        "v2/driver-hsr/src/driver.ts:538",
-        "v2/driver-hsr/src/driver.ts:539",
-        "v2/driver-hsr/src/driver.ts:540",
-        "v2/driver-hsr/src/driver.ts:541",
-        "v2/driver-hsr/src/driver.ts:542",
-        "v2/driver-hsr/src/driver.ts:543",
-        "v2/driver-hsr/src/driver.ts:544",
-        "v2/driver-hsr/src/driver.ts:545",
-        "v2/driver-hsr/src/driver.ts:546",
-        "v2/driver-hsr/src/driver.ts:547",
-        "v2/driver-hsr/src/driver.ts:548",
-        "v2/driver-hsr/src/driver.ts:549",
-        "v2/driver-hsr/src/driver.ts:550",
-        "v2/driver-hsr/src/driver.ts:551",
-        "v2/driver-hsr/src/driver.ts:552",
-        "v2/driver-hsr/src/driver.ts:553",
-        "v2/driver-hsr/src/driver.ts:554",
-        "v2/driver-hsr/src/driver.ts:555",
-        "v2/driver-hsr/src/driver.ts:1012",
-        "v2/driver-hsr/src/driver.ts:1318",
-        "v2/driver-hsr/src/driver.ts:1442",
-        "v2/driver-hsr/src/driver.ts:1443",
-        "v2/driver-hsr/src/driver.ts:1444",
-        "v2/driver-hsr/src/driver.ts:1445",
-        "v2/driver-hsr/src/driver.ts:1446",
-        "v2/driver-hsr/src/driver.ts:1447",
-        "v2/driver-hsr/src/driver.ts:1448",
-        "v2/driver-hsr/src/driver.ts:1449",
-        "v2/driver-hsr/src/driver.ts:1503",
-        "v2/driver-hsr/src/driver.ts:1504",
-        "v2/driver-hsr/src/driver.ts:1505",
-        "v2/driver-hsr/src/driver.ts:1506",
-        "v2/driver-hsr/src/driver.ts:1507",
-        "v2/driver-hsr/src/driver.ts:1131"
-      ]
-    },
-    {
-      "kind": "unreachable-callsite",
-      "path": "v2/driver-hsr/src/psutil.ts",
-      "line": 108,
-      "context": "  const res = spawnSync(\"ps\", [\"-o\", \"etime=\", \"-p\", String(pid)], { encoding: \"utf8\" });",
-      "module": "node:child_process",
-      "manualReview": true,
-      "callee": "spawnSync",
-      "executable": "ps",
-      "runtime": "forbidden",
-      "reachabilityProof": [
-        "v2/daemon/tests/delivery-file-read.test.ts:56",
-        "v2/daemon/tests/delivery-file-read.test.ts:59",
-        "v2/daemon/tests/delivery-file-read.test.ts:61",
-        "v2/driver-hsr/src/driver.ts:537",
-        "v2/driver-hsr/src/driver.ts:538",
-        "v2/driver-hsr/src/driver.ts:539",
-        "v2/driver-hsr/src/driver.ts:540",
-        "v2/driver-hsr/src/driver.ts:541",
-        "v2/driver-hsr/src/driver.ts:542",
-        "v2/driver-hsr/src/driver.ts:543",
-        "v2/driver-hsr/src/driver.ts:544",
-        "v2/driver-hsr/src/driver.ts:545",
-        "v2/driver-hsr/src/driver.ts:546",
-        "v2/driver-hsr/src/driver.ts:547",
-        "v2/driver-hsr/src/driver.ts:548",
-        "v2/driver-hsr/src/driver.ts:549",
-        "v2/driver-hsr/src/driver.ts:550",
-        "v2/driver-hsr/src/driver.ts:551",
-        "v2/driver-hsr/src/driver.ts:552",
-        "v2/driver-hsr/src/driver.ts:553",
-        "v2/driver-hsr/src/driver.ts:554",
-        "v2/driver-hsr/src/driver.ts:555",
-        "v2/driver-hsr/src/driver.ts:1012",
-        "v2/driver-hsr/src/driver.ts:1318",
-        "v2/driver-hsr/src/driver.ts:1442",
-        "v2/driver-hsr/src/driver.ts:1443",
-        "v2/driver-hsr/src/driver.ts:1444",
-        "v2/driver-hsr/src/driver.ts:1445",
-        "v2/driver-hsr/src/driver.ts:1446",
-        "v2/driver-hsr/src/driver.ts:1447",
-        "v2/driver-hsr/src/driver.ts:1448",
-        "v2/driver-hsr/src/driver.ts:1449",
-        "v2/driver-hsr/src/driver.ts:1503",
-        "v2/driver-hsr/src/driver.ts:1504",
-        "v2/driver-hsr/src/driver.ts:1505",
-        "v2/driver-hsr/src/driver.ts:1506",
-        "v2/driver-hsr/src/driver.ts:1507",
-        "v2/driver-hsr/src/driver.ts:1131"
-      ]
-    },
-    {
-      "kind": "import",
       "path": "v2/driver-hsr/src/runner-host.ts",
       "line": 5,
       "context": "import { spawn, type ChildProcess } from \"node:child_process\";",
@@ -1439,8 +1344,8 @@
     {
       "kind": "reference",
       "path": "v2/harness/src/processIdentity.ts",
-      "line": 31,
-      "context": "      const bridge = createRequire(import.meta.url)(path) as { processBirth?: (pid: number) => unknown };",
+      "line": 34,
+      "context": "    const bridge = createRequire(import.meta.url)(validatePeerArtifact(join(root, target), target));",
       "module": "node:module",
       "manualReview": true
     }
@@ -1460,7 +1365,7 @@
     }
   ],
   "gatePins": {
-    "manifestSha256": "33d176a52696accc25f533992f9caf626e0e9d632118ede187956b51626e9b35",
+    "manifestSha256": "4a9195ffc75740774bf62979c39fb8457f2b066955897663a217f9878642450c",
     "preloaderSha256": "c6b2b0269f0ac4f34b19aae571b3c683b8ce30dd3c61c85ae1165e1e9ab76e5f"
   },
   "nodeEntries": [
@@ -1472,7 +1377,7 @@
     {
       "role": "test-runner",
       "path": "v2/daemon/tests/delivery-file-read.test.ts",
-      "sha256": "c9d13902756184e223228fff8ff6d728411687689bb9814fda4094ebc33b69b3"
+      "sha256": "db22f150304a3b24dd629dc4f1e86995554ea669a6ac39521c9d14d8ece25c70"
     },
     {
       "role": "runner-host-main",

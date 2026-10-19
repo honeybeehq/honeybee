@@ -35,7 +35,7 @@ class PtyTests(unittest.TestCase):
         self.assertEqual(len(compiler), 1)
         self.assertEqual(ast.unparse(compiler[0]), 'compiler_profile(profile(root, real_home, lane, pty=False), tools)')
         manifest = json.loads((Path(__file__).parent / 'focused-manifest.json').read_text())
-        self.assertEqual(sum(len(row['outer']) for row in manifest['files']), 46)
+        self.assertEqual(sum(len(row['outer']) for row in manifest['files']), 47)
         self.assertEqual(sum(len(row['sibling']) for row in manifest['files']), 2)
         self.assertEqual(len(manifest['files'][2]['outer']), 8)
         self.assertIn('pty_controls.require_precondition(root, pty_controls.os_build(env))', (Path(__file__).parent / 'focused_flow.py').read_text())

@@ -320,7 +320,7 @@ try {
 
   driver.start(BEE, 1);
   const live = driver.snapshotLive().find((p) => p.beeId === BEE);
-  const identityOk = live != null && verifyProcessIdentity(live.pid, live.pidStartedAt, 5_000);
+  const identityOk = live != null && verifyProcessIdentity(live.pid, driver.procOf(BEE, 1)?.processIdentity ?? null);
   let cwdDetail = "";
   let cwdOk = true;
   if (live != null && platform() === "darwin") {

@@ -1,3 +1,6 @@
+import type {RuntimeIdentityHooks} from "../../core/src/runtimeProcessIdentity.ts";
+import type {TmuxCleanupHooks, TmuxCleanupEntry, TmuxCleanupLocator} from "../../core/src/runtimeCleanup.ts";
+import {ownedSocketProof, sameSocketProof, legacyPaneProof, freshPaneProof, paneScopeProof, socketObservation, type PaneScope, type SocketProof} from "./processProof.ts";
 import { MultilinePasteProbe } from "./multiline-probe.ts";
 import { TurnQuiet } from "./turn-quiet.ts";
 /**
@@ -48,7 +51,7 @@ import type {
   RuntimeDriver,
   StopCause,
 } from "../../harness/src/driver.ts";
-import { pidAlive, verifyProcessIdentity, zombieWaitStatus } from "../../driver-hsr/src/psutil.ts";
+import {inspectProcess, processDisposition, legacyProcessCandidate, ProcessIdentityUnavailableError, verifyProcessIdentity, zombieWaitStatus, type ProcessIdentity} from "../../driver-hsr/src/psutil.ts";
 import { exactPaneTarget, exactSession, shQuote, TmuxServer } from "./tmux.ts";
 import { JsonlTail } from "./tail.ts";
 import { parseEventsFileLine } from "./events-file.ts";
@@ -92,6 +95,9 @@ export interface TmuxSpawnSpec {
 }
 
 export interface TmuxDriverConfig {
+  cleanup?: TmuxCleanupHooks;
+  runtimeIdentity?: RuntimeIdentityHooks;
+  doctor?: (counts: {nonDestructiveLegacy: number}) => void;
   /** The private per-daemon-instance socket (never the ambient server). */
   socketPath: string;
   /** Driver-owned dir for per-bee hook/notify events files. */
@@ -128,6 +134,9 @@ interface PendingConfirm {
 }
 
 interface TmuxRuntime {
+  processIdentity: ProcessIdentity | null;
+  spawnSocketProof: SocketProof | null;
+  paneScope: PaneScope | null;
   beeId: string;
   generation: number;
   sessionName: string;
@@ -232,10 +241,14 @@ export class TmuxDriver implements RuntimeDriver {
   private readonly consumed = new Map<number, number>();
   private readonly pointerReceipts = new Map<number, { beeId: string; generation: number; digest: string }>();
   private deliverSeq = 0;
+  private cleanupCursor = 0;
+  private lastCleanupScan = -Infinity;
+  private readonly retainedCleanup = new Map<string, TmuxCleanupEntry>();
   private readonly multilineProbe = new MultilinePasteProbe();
 
   constructor(cfg: TmuxDriverConfig) {
     this.cfg = cfg;
+    for (const entry of cfg.cleanup?.entries() ?? []) this.retainedCleanup.set(`${entry.beeId}:${entry.generation}`, entry);
     this.server = new TmuxServer({
       socketPath: cfg.socketPath,
       allowKillServer: cfg.allowKillServer ?? false,
@@ -279,9 +292,15 @@ export class TmuxDriver implements RuntimeDriver {
     let paneId: string;
     let pid: number;
     const spawnedAt = this.now();
+    let created = false;
+    let createdPane: string | null = null;
+    let createdScope: PaneScope | null = null;
+    let createdSocket: SocketProof | null = null;
     try {
-      this.server.run([
+      const creation = this.server.run([
         "new-session",
+        "-P",
+        "-F", "#{pane_id}\t#{session_id}\t#{window_id}",
         "-d",
         "-s",
         sessionName,
@@ -294,6 +313,12 @@ export class TmuxDriver implements RuntimeDriver {
         ...envFlags,
         shellCommand,
       ]);
+      created = true;
+      createdSocket = ownedSocketProof(this.cfg.socketPath);
+      const parts = creation.split("\t");
+      if (parts.length !== 3 || !/^%[0-9]+$/.test(parts[0]!) || !/^\$[0-9]+$/.test(parts[1]!) || !/^@[0-9]+$/.test(parts[2]!)) throw new Error("Invalid created pane locator");
+      createdPane = parts[0]!;
+      createdScope = {sessionId: parts[1]!, windowId: parts[2]!};
       // remain-on-exit keeps a dead pane around so #{pane_dead_status}
       // yields the CLI's exit code (clean vs crashed) — our only substitute
       // for a parent's child-exit fact.
@@ -314,7 +339,7 @@ export class TmuxDriver implements RuntimeDriver {
     } catch {
       // A failed spawn is a crash fact, not a driver throw — it flows
       // through the daemon's spawn-retry path exactly like HSR.
-      this.tryKillSession(sessionName);
+      if (created) this.reportCleanup({beeId, generation, reason: "ownership-unverified", paneId: createdPane, sessionId: createdScope?.sessionId ?? null, windowId: createdScope?.windowId ?? null, socket: createdSocket}, "retained");
       this.events.push({ beeId, generation, kind: "exited", exitCause: "crashed" });
       return;
     }
@@ -385,7 +410,7 @@ export class TmuxDriver implements RuntimeDriver {
   deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { accepted: false, reason: "no_process", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };
-    if (p.stopCause != null) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };
+    if (p.stopCause != null || !verifyProcessIdentity(p.pid, p.processIdentity)) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };
     if (options?.singleAttempt) {
       const identity = this.deliveryPane(beeId, generation), expected = options.expectedPane;
       if (!identity || expected && (expected.socketPath !== identity.socketPath || expected.paneId !== identity.paneId || expected.serverIdentity !== identity.serverIdentity)) return {accepted: false, reason: "not_ready", detail: "delivery_not_attempted"};
@@ -537,6 +562,8 @@ export class TmuxDriver implements RuntimeDriver {
     }
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { hadProcess: false };
+    if (processDisposition(p.processIdentity, inspectProcess(p.pid)) === "exited") { this.onExit(p); return {hadProcess: false}; }
+    if (!verifyProcessIdentity(p.pid, p.processIdentity)) throw new ProcessIdentityUnavailableError();
     if (p.stopCause == null) p.stopCause = cause;
     this.signal(p, "SIGTERM");
     if (p.killTimer == null) {
@@ -559,7 +586,7 @@ export class TmuxDriver implements RuntimeDriver {
   interrupt(beeId: string, generation: number, _deliveryMessageId?: number): InterruptOutcome {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { interrupted: false, reason: "no_process" };
-    if (p.stopCause != null) return { interrupted: false, reason: "not_ready" };
+    if (p.stopCause != null || !verifyProcessIdentity(p.pid, p.processIdentity)) return { interrupted: false, reason: "not_ready" };
     if (p.phase === "idle") return { interrupted: false, reason: "idle" };
     const res = this.server.try(["send-keys", "-t", p.paneId, "C-c"]);
     if (res.status !== 0) return { interrupted: false, reason: "no_process" };
@@ -568,6 +595,7 @@ export class TmuxDriver implements RuntimeDriver {
   }
 
   observe(): DriverObservation[] {
+    this.observeRetainedCleanup();
     for (const p of [...this.procs.values()]) this.harvest(p);
     const out = this.events;
     this.events = [];
@@ -586,6 +614,24 @@ export class TmuxDriver implements RuntimeDriver {
     return lines.join("; ");
   }
 
+  retryProcessIdentity(beeId: string, generation: number): void {
+    const p = this.procs.get(beeId);
+    if (!p || p.generation !== generation || p.processIdentity || p.exited) return;
+    if (!p.adopted) {
+      if (!p.paneScope || !sameSocketProof(p.spawnSocketProof, ownedSocketProof(this.cfg.socketPath))) return;
+      try {
+        const identity = this.captureProcessIdentity(p.pid);
+        if (!identity) return;
+        const panes = this.server.run(["list-panes", "-s", "-t", exactSession(p.sessionName), "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}\t#{pane_dead}\t#{session_id}\t#{window_id}"]);
+        if (!freshPaneProof(panes, p.sessionName, p.paneId, p.pid, p.paneScope) || !sameSocketProof(p.spawnSocketProof, ownedSocketProof(this.cfg.socketPath)) || !verifyProcessIdentity(p.pid, identity)) return;
+        p.processIdentity = identity;
+      } catch {}
+      return;
+    }
+    this.procs.delete(beeId);
+    this.adopt(beeId, generation, p.pid, p.pidStartedAt);
+  }
+
   hasProcess(beeId: string, generation: number): boolean {
     const pending = this.pendingStarts.get(beeId);
     if (pending && pending.generation === generation) return true;
@@ -595,7 +641,7 @@ export class TmuxDriver implements RuntimeDriver {
 
   snapshotLive(): LiveProcess[] {
     return [...this.procs.values()]
-      .filter((p) => !p.exited && p.pid > 0)
+      .filter((p) => !p.exited && p.pid > 0 && processDisposition(p.processIdentity ?? null, inspectProcess(p.pid)) === "live")
       .map((p) => ({ beeId: p.beeId, generation: p.generation, pid: p.pid, pidStartedAt: p.pidStartedAt }));
   }
 
@@ -621,8 +667,15 @@ export class TmuxDriver implements RuntimeDriver {
   ): boolean {
     if (pid <= 0) return false;
     if (this.procs.has(beeId) || this.pendingStarts.has(beeId)) return false;
-    if (!verifyProcessIdentity(pid, pidStartedAt, this.adoptTolMs)) return false;
+    const binding = this.cfg.runtimeIdentity?.read(beeId, generation) ?? {kind: "legacy" as const};
+    if (binding.kind === "unavailable") { this.cfg.doctor?.({nonDestructiveLegacy: 1}); return false; }
+    if (binding.kind === "bound" && binding.pidStartedAt !== pidStartedAt) return false;
+    let processIdentity: ProcessIdentity | null = binding.kind === "bound" ? binding.identity : null;
+    if (processIdentity && !verifyProcessIdentity(pid, processIdentity)) return false;
     const sessionName = sessionNameFor(beeId, generation);
+    const refuseLegacy = () => { if (!processIdentity) this.cfg.doctor?.({nonDestructiveLegacy: 1}); return false; };
+    const socketBefore = processIdentity ? null : ownedSocketProof(this.cfg.socketPath);
+    if (!processIdentity && !socketBefore) return refuseLegacy();
     let paneId: string;
     try {
       const info = this.server.run([
@@ -633,11 +686,22 @@ export class TmuxDriver implements RuntimeDriver {
         "#{pane_id} #{pane_pid}",
       ]);
       const [rawPane, rawPid] = info.split(" ");
-      if (Number(rawPid ?? "-1") !== pid) return false; // name is not identity; the pid is
+      if (Number(rawPid ?? "-1") !== pid) return refuseLegacy();
       paneId = rawPane ?? "";
-      if (paneId.length === 0) return false;
+      if (paneId.length === 0) return refuseLegacy();
     } catch {
-      return false;
+      return refuseLegacy();
+    }
+    if (!processIdentity) {
+      const before = socketBefore;
+      let proof: ReturnType<typeof legacyPaneProof> = null;
+      try { proof = legacyPaneProof(this.server.run(["list-panes", "-s", "-t", exactSession(sessionName), "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}"]), sessionName, pid); } catch {}
+      const candidate = legacyProcessCandidate(pid, pidStartedAt);
+      if (proof && proof.paneId === paneId && candidate && sameSocketProof(before, ownedSocketProof(this.cfg.socketPath))) {
+        const identity = {pid, birth: candidate.birth, bootId: candidate.bootId};
+        if (this.cfg.runtimeIdentity?.bindLegacy(beeId, generation, pidStartedAt, identity, "owned-tmux-pane")) processIdentity = identity;
+      }
+      if (!processIdentity) this.cfg.doctor?.({nonDestructiveLegacy: 1});
     }
     let spec: TmuxSpawnSpec;
     try {
@@ -655,6 +719,7 @@ export class TmuxDriver implements RuntimeDriver {
       spawnedAt: pidStartedAt,
       adopted: true,
       spec,
+      processIdentity,
     });
     // Safe claim: "running" — the event stream between daemons is gone. The
     // observers re-establish truth: fresh activity confirms running, and
@@ -691,10 +756,15 @@ export class TmuxDriver implements RuntimeDriver {
     return out;
   }
 
-  procOf(beeId: string, generation: number): { pid: number; pidStartedAt: number } | null {
+  private captureProcessIdentity(pid: number): ProcessIdentity | null {
+    const value = inspectProcess(pid);
+    return value.kind === "present" && value.state === "live" ? {pid, birth: value.birth, bootId: value.bootId} : null;
+  }
+
+  procOf(beeId: string, generation: number): { pid: number; pidStartedAt: number; processIdentity?: ProcessIdentity } | null {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.pid <= 0) return null;
-    return { pid: p.pid, pidStartedAt: p.pidStartedAt };
+    return {pid: p.pid, pidStartedAt: p.pidStartedAt, ...(p.processIdentity ? {processIdentity: p.processIdentity} : {})};
   }
 
   eventsFilePath(beeId: string): string {
@@ -730,12 +800,28 @@ export class TmuxDriver implements RuntimeDriver {
   disposeAll(): void {
     this.pendingStarts.clear();
     for (const p of this.procs.values()) {
+      const deadline = process.hrtime.bigint() + 2_000_000_000n;
       if (p.killTimer) clearTimeout(p.killTimer);
       if (!p.exited) {
         if (p.stopCause == null) p.stopCause = "stopped_by_system";
         this.signal(p, "SIGKILL");
       }
-      this.tryKillSession(p.sessionName);
+      let scanFailed = false;
+      while (true) {
+        if (!p.paneScope || !sameSocketProof(p.spawnSocketProof, ownedSocketProof(this.cfg.socketPath))) break;
+        const remaining = this.cleanupBudget(deadline);
+        if (remaining === null) {scanFailed = true; break;}
+        let panes: ReturnType<TmuxServer["try"]>;
+        try { panes = this.server.try(["list-panes", "-s", "-t", exactSession(p.sessionName), "-F", "#{session_name}\t#{window_index}\t#{pane_id}\t#{pane_pid}\t#{pane_dead}\t#{session_id}\t#{window_id}"], {timeoutMs: remaining}); } catch { scanFailed = true; break; }
+        const rows = panes.stdout.trim().split("\n");
+        const fields = rows[0]?.split("\t");
+        if (panes.status !== 0 || rows.length !== 1 || !fields || !["0", "1"].includes(fields[4] ?? "") || !freshPaneProof(fields.map((value, index) => index === 4 ? "0" : value).join("\t"), p.sessionName, p.paneId, p.pid, p.paneScope)) break;
+        if (processDisposition(p.processIdentity, inspectProcess(p.pid)) === "exited" && fields[4] === "1") break;
+        if (process.hrtime.bigint() >= deadline) break;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(5, this.cleanupBudget(deadline) ?? 0));
+      }
+      if (!scanFailed && this.cleanupBudget(deadline) !== null && processDisposition(p.processIdentity, inspectProcess(p.pid)) === "exited") this.cleanupExitedPane(p, deadline);
+      else this.reportCleanup({beeId: p.beeId, generation: p.generation, reason: "ownership-unverified", paneId: p.paneId, sessionId: p.paneScope?.sessionId ?? null, windowId: p.paneScope?.windowId ?? null, socket: p.spawnSocketProof}, "retained");
     }
     this.events = [];
     this.notes = [];
@@ -755,6 +841,7 @@ export class TmuxDriver implements RuntimeDriver {
     spawnedAt: number;
     adopted: boolean;
     spec: TmuxSpawnSpec;
+    processIdentity?: ProcessIdentity | null;
   }): TmuxRuntime {
     const obs = init.spec.observation;
     let parser: TranscriptParser | null = null;
@@ -767,9 +854,20 @@ export class TmuxDriver implements RuntimeDriver {
         throw new Error(`tmux driver: unknown transcript parser '${String(obs.transcript.parser)}'`);
       }
     }
+    const spawnSocketProof = ownedSocketProof(this.cfg.socketPath);
+    let paneScope: PaneScope | null = null;
+    if (spawnSocketProof) {
+      try {
+        paneScope = paneScopeProof(this.server.run(["display-message", "-p", "-t", init.paneId, "#{session_name}\t#{session_id}\t#{window_id}\t#{pane_id}\t#{pane_pid}"]), init.sessionName, init.paneId, init.pid);
+        if (!sameSocketProof(spawnSocketProof, ownedSocketProof(this.cfg.socketPath))) paneScope = null;
+      } catch {}
+    }
     return {
       beeId: init.beeId,
       generation: init.generation,
+      processIdentity: init.processIdentity === undefined ? this.captureProcessIdentity(init.pid) : init.processIdentity,
+      spawnSocketProof,
+      paneScope,
       sessionName: init.sessionName,
       paneId: init.paneId,
       deliveryMode: init.spec.deliveryMode ?? "paste",
@@ -803,9 +901,11 @@ export class TmuxDriver implements RuntimeDriver {
   private harvest(p: TmuxRuntime): void {
     if (p.exited) return;
     const now = this.now();
-    if (!pidAlive(p.pid)) {
+    const disposition = processDisposition(p.processIdentity, inspectProcess(p.pid));
+    if (disposition === "unavailable") { this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation); return; }
+    if (disposition === "exited") {
       if (p.stopCause == null && this.deadPaneVerdict(p) === "pending") {
-        const status = zombieWaitStatus(p.pid);
+        const status = zombieWaitStatus(p.pid, p.processIdentity);
         if (status !== null) {
           p.deadCause = status === 0 ? "clean" : "crashed";
         } else {
@@ -938,16 +1038,72 @@ export class TmuxDriver implements RuntimeDriver {
     }
   }
 
+  private reportCleanup(locator: TmuxCleanupLocator, state: TmuxCleanupEntry["state"] | "resolved"): void {
+    const key = `${locator.beeId}:${locator.generation}`;
+    const report: TmuxCleanupLocator = {beeId: locator.beeId, generation: locator.generation, reason: locator.reason, paneId: locator.paneId, sessionId: locator.sessionId, windowId: locator.windowId, socket: locator.socket};
+    this.cfg.cleanup?.update(report, state);
+    if (state === "resolved") this.retainedCleanup.delete(key);
+    else this.retainedCleanup.set(key, {...locator, state});
+  }
+
+  private cleanupBudget(deadline: bigint): number | null {
+    const remaining = deadline - process.hrtime.bigint();
+    return remaining <= 0n ? null : Math.min(30_000, Math.max(1, Number((remaining + 999_999n) / 1_000_000n)));
+  }
+
+  private cleanupExitedPane(p: TmuxRuntime, deadline?: bigint): void {
+    const locator: TmuxCleanupLocator = {beeId: p.beeId, generation: p.generation, reason: "ownership-unverified", paneId: p.paneId, sessionId: p.paneScope?.sessionId ?? null, windowId: p.paneScope?.windowId ?? null, socket: p.spawnSocketProof};
+    if (p.paneScope && sameSocketProof(p.spawnSocketProof, ownedSocketProof(this.cfg.socketPath))) {
+      const scope = p.paneScope;
+      const condition = `#{&&:#{==:#{session_id},${scope.sessionId}},#{&&:#{==:#{window_id},${scope.windowId}},#{&&:#{==:#{pane_id},${p.paneId}},#{&&:#{==:#{pane_pid},${p.pid}},#{&&:#{==:#{pane_dead},1},#{&&:#{==:#{window_panes},1},#{==:#{session_windows},1}}}}}}}`;
+      const remaining = deadline === undefined ? 30_000 : this.cleanupBudget(deadline);
+      let result: ReturnType<TmuxServer["try"]> | null = null;
+      try { if (remaining !== null) result = this.server.try(["if-shell", "-F", "-t", p.paneId, condition, `kill-pane -t ${p.paneId} ; display-message -p SCG_CLEANUP_REMOVED`, "display-message -p SCG_CLEANUP_RETAINED"], {timeoutMs: remaining}); } catch {}
+      if (result?.status === 0 && result.stdout.trim() === "SCG_CLEANUP_REMOVED") {
+        if (this.retainedCleanup.has(`${p.beeId}:${p.generation}`)) this.reportCleanup(locator, "resolved");
+        return;
+      }
+    }
+    this.reportCleanup(locator, "retained");
+  }
+
+  private observeRetainedCleanup(): void {
+    if (this.now() - this.lastCleanupScan < 1000) return;
+    this.lastCleanupScan = this.now();
+    const entries = [...this.retainedCleanup.values()];
+    const start = entries.length ? this.cleanupCursor % entries.length : 0;
+    for (let i = 0; i < Math.min(16, entries.length); i++) {
+      const entry = entries[(start + i) % entries.length]!;
+      if (!entry.socket) continue;
+      const socket = socketObservation(this.cfg.socketPath, entry.socket);
+      if (socket.kind === "gone") {
+        if (entry.state !== "socket-gone-unverifiable") this.reportCleanup(entry, "socket-gone-unverifiable");
+        continue;
+      }
+      if (socket.kind !== "present") continue;
+      if (entry.state === "retained" && !sameSocketProof(entry.socket, socket.proof)) continue;
+      const current = {...entry, socket: socket.proof};
+      if (entry.state === "socket-gone-unverifiable") this.reportCleanup(current, "retained");
+      if (entry.paneId === null) continue;
+      const result = this.server.try(["list-panes", "-a", "-F", "#{session_name}\t#{session_id}\t#{window_id}\t#{pane_id}"]);
+      if (result.status !== 0 || !sameSocketProof(socket.proof, ownedSocketProof(this.cfg.socketPath))) continue;
+      const rows = result.stdout.trim() ? result.stdout.trim().split("\n").map(line => line.split("\t")) : [];
+      if (rows.some(row => row.length !== 4 || !row[0] || !/^\$[0-9]+$/.test(row[1]!) || !/^@[0-9]+$/.test(row[2]!) || !/^%[0-9]+$/.test(row[3]!))) continue;
+      if (!rows.some(row => row[0] === sessionNameFor(entry.beeId, entry.generation) && (!entry.sessionId || !entry.windowId || row[1] === entry.sessionId && row[2] === entry.windowId && row[3] === entry.paneId))) this.reportCleanup(current, "resolved");
+    }
+    this.cleanupCursor = start + Math.min(16, entries.length);
+  }
+
   private onExit(p: TmuxRuntime): void {
     if (p.exited) return;
+    const cause = p.stopCause ?? p.deadCause ?? this.deadPaneCause(p);
+    this.cleanupExitedPane(p);
     p.exited = true;
     if (p.killTimer) {
       clearTimeout(p.killTimer);
       p.killTimer = null;
     }
     this.procs.delete(p.beeId);
-    const cause = p.stopCause ?? p.deadCause ?? this.deadPaneCause(p);
-    this.tryKillSession(p.sessionName);
     this.events.push({ beeId: p.beeId, generation: p.generation, kind: "exited", exitCause: cause });
     const pending = this.pendingStarts.get(p.beeId);
     if (pending) {
@@ -983,7 +1139,7 @@ export class TmuxDriver implements RuntimeDriver {
     // No parenthood in tmux: the pid is only "ours" while its OS start time
     // still matches the recorded spawn stamp. Verify before EVERY signal —
     // a recycled pid is never signaled (exact identity; names never are).
-    if (!verifyProcessIdentity(p.pid, p.pidStartedAt, this.adoptTolMs)) return;
+    if (!verifyProcessIdentity(p.pid, p.processIdentity)) return;
     try {
       process.kill(-p.pid, sig);
     } catch {
@@ -995,7 +1151,5 @@ export class TmuxDriver implements RuntimeDriver {
     }
   }
 
-  private tryKillSession(sessionName: string): void {
-    this.server.try(["kill-session", "-t", exactSession(sessionName)]);
-  }
+
 }

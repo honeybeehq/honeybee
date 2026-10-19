@@ -28,10 +28,11 @@ export interface TestRig {
   cleanup: () => void;
 }
 
-export function makeRig(opts: { stopKillGraceMs?: number } = {}): TestRig {
+export function makeRig(opts: { stopKillGraceMs?: number; runtimeIdentity?: import("../../core/src/runtimeProcessIdentity.ts").RuntimeIdentityHooks } = {}): TestRig {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-driver-"));
   const agentEnv = new Map<string, Record<string, string>>();
   const driver = new HsrDriver({
+    runtimeIdentity: opts.runtimeIdentity,
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: opts.stopKillGraceMs ?? 400,
     resolve(beeId: string): SpawnSpec {
@@ -103,4 +104,13 @@ export function pidAlive(pid: number): boolean {
   } catch (err) {
     return (err as NodeJS.ErrnoException).code === "EPERM";
   }
+}
+
+const fixtureBindings = new Map<string, import("../../core/src/runtimeProcessIdentity.ts").RuntimeIdentityRead>();
+export function fixtureRuntimeIdentity(root: string): import("../../core/src/runtimeProcessIdentity.ts").RuntimeIdentityHooks {
+  return {read: (beeId, generation) => fixtureBindings.get(`${root}:${beeId}:${generation}`) ?? {kind: "legacy"}, bindLegacy: () => false};
+}
+export function persistFixtureProcess(root: string, beeId: string, generation: number, proc: NonNullable<ReturnType<HsrDriver["procOf"]>>): void {
+  if (!proc.processIdentity) throw new Error("fixture process lacks exact identity");
+  fixtureBindings.set(`${root}:${beeId}:${generation}`, {kind: "bound", identity: proc.processIdentity, pidStartedAt: proc.pidStartedAt});
 }

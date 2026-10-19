@@ -1,5 +1,7 @@
 import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
+import {installRuntimeProcessIdentity, processIdentityValue, readRuntimeProcessIdentity, type RuntimeIdentityHooks, type RuntimeProcessIdentity} from "./runtimeProcessIdentity.ts";
+import {cleanupLocator, readTmuxCleanup, type TmuxCleanupHooks, type TmuxCleanupLocator, type TmuxCleanupState} from "./runtimeCleanup.ts";
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
 import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
 import { readAccountLease, accountLeaseUnknown, knownAccountLease } from "./accountLease.ts";
@@ -2104,6 +2106,7 @@ export class CoreStore {
     if (!(this.db.prepare("PRAGMA table_info(multiline_delivery)").all() as Row[]).some(column => column.name === "sender_notice_message_id")) this.db.exec("ALTER TABLE multiline_delivery ADD COLUMN sender_notice_message_id INTEGER");
     this.db.exec("CREATE INDEX IF NOT EXISTS multiline_delivery_hold ON multiline_delivery(bee_id, held_since); CREATE UNIQUE INDEX IF NOT EXISTS multiline_delivery_notice ON multiline_delivery(sender_notice_message_id); CREATE INDEX IF NOT EXISTS multiline_delivery_blocked ON multiline_delivery(message_id) WHERE held_since IS NOT NULL");
     if (stored < 40) this.redactRpcIdempotencyEnv();
+    installRuntimeProcessIdentity(this.db);
     this.db
       .prepare(
         "INSERT INTO meta(key, value) VALUES('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -2822,10 +2825,10 @@ export class CoreStore {
   ): RuntimeRow {
     this.db
       .prepare(
-        `INSERT INTO runtimes(bee_id, generation, state, exit_cause, pid, pid_started_at, started_at, updated_at)
-         VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runtimes(bee_id, generation, state, exit_cause, pid, pid_started_at, started_at, updated_at, process_identity)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(beeId, generation, initial, initial === "stopped" ? "clean" : null, proc?.pid ?? null, proc?.pidStartedAt ?? null, at, at);
+      .run(beeId, generation, initial, initial === "stopped" ? "clean" : null, proc?.pid ?? null, proc?.pidStartedAt ?? null, at, at, proc ? '{"kind":"pending-new-start"}' : null);
     const runtime = this.currentRuntime(beeId);
     if (!runtime || runtime.generation !== generation) throw new CoreError("runtime insert lost");
     this.audit("runtime.created", beeId, { runtime });
@@ -2914,6 +2917,7 @@ export class CoreStore {
            WHERE bee_id = ? AND generation = ?`,
         )
         .run(state, opts.exitCause ?? null, pid, pidStartedAt, bootEvidence, at, beeId, generation);
+      if (opts.pid !== undefined) this.db.prepare("UPDATE runtimes SET process_identity=COALESCE(process_identity,?) WHERE bee_id=? AND generation=?").run('{"kind":"pending-new-start"}', beeId, generation);
       if (state === "stopped") this.pauseMultilineDeliveryBee(beeId);
       const turnTrigger = current.state === "idle" && state === "running"
         ? this.applyTurnStartTrigger(beeId, current, opts.turnOpener, at)
@@ -3131,7 +3135,7 @@ export class CoreStore {
   recordRuntimeProc(
     beeId: string,
     generation: number,
-    proc: { pid: number; pidStartedAt: number; observationCursor?: number },
+    proc: { pid: number; pidStartedAt: number; observationCursor?: number; processIdentity?: RuntimeProcessIdentity },
   ): { applied: boolean } {
     return this.tx(() => {
       this.mustGetBee(beeId);
@@ -3151,9 +3155,20 @@ export class CoreStore {
       ) {
         throw new CoreError("runtime observation cursor must be a non-negative safe integer");
       }
+      const rawIdentity = this.db.prepare("SELECT process_identity FROM runtimes WHERE bee_id=? AND generation=?").get(beeId, generation)!.process_identity;
+      const existingLegacy = rawIdentity === null && current.pid !== null;
+      if (existingLegacy && (proc.processIdentity !== undefined || proc.pid !== current.pid || proc.pidStartedAt !== current.pidStartedAt)) throw new CoreError("Legacy process identity requires authenticated one-time binding");
       this.db
         .prepare("UPDATE runtimes SET pid = ?, pid_started_at = ? WHERE bee_id = ? AND generation = ?")
         .run(proc.pid, proc.pidStartedAt, beeId, generation);
+      if (proc.processIdentity !== undefined) {
+        const identity = processIdentityValue(proc.processIdentity);
+        const prior = this.runtimeProcessIdentity(beeId, generation);
+        if (!identity || identity.pid !== proc.pid || prior.kind === "unavailable" && rawIdentity !== '{"kind":"pending-new-start"}' || prior.kind === "bound" && (prior.identity.pid !== identity.pid || prior.identity.birth !== identity.birth || prior.identity.bootId !== identity.bootId)) throw new CoreError("Runtime process identity cannot be replaced");
+        this.db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=? AND generation=?").run(JSON.stringify(identity), beeId, generation);
+      } else if (rawIdentity === null && !existingLegacy) {
+        this.db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=? AND generation=?").run('{"kind":"pending-new-start"}', beeId, generation);
+      }
       if (proc.observationCursor !== undefined) {
         this.db
           .prepare(
@@ -4698,9 +4713,10 @@ export class CoreStore {
    * or blocking unrelated commands. This check shares the writer with turn
    * admission; arguments are changed only after the command is claimed.
    */
-  claimNextCommand(options: { blockedRuntimeStartBeeIds?: ReadonlySet<string> } = {}): CommandRow | null {
+  claimNextCommand(options: { blockedRuntimeStartBeeIds?: ReadonlySet<string>; blockedIdentityBeeIds?: ReadonlySet<string> } = {}): CommandRow | null {
     return this.tx(() => {
       const blockedRuntimeStartBeeIds = [...(options.blockedRuntimeStartBeeIds ?? [])];
+      const blockedIdentityBeeIds = [...(options.blockedIdentityBeeIds ?? [])];
       const blockedRuntimeStartClause = blockedRuntimeStartBeeIds.length > 0
         ? `AND NOT (
              bee_id IN (SELECT value FROM json_each(?))
@@ -4718,6 +4734,7 @@ export class CoreStore {
           .prepare(
             `SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?
              ${blockedRuntimeStartClause}
+             AND NOT (bee_id IN (SELECT value FROM json_each(?)) AND verb IN ('stop','archive','delete','spawn','send_wake','revive','reconnect_tools'))
              AND NOT (verb = 'reconnect_tools' AND EXISTS (
                SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id
                AND r.generation = commands.target_generation AND r.state IN ('booting','running')
@@ -4778,7 +4795,7 @@ export class CoreStore {
              )
              ORDER BY id LIMIT 1`,
           )
-          .get(this.now(), ...(blockedRuntimeStartBeeIds.length > 0 ? [JSON.stringify(blockedRuntimeStartBeeIds)] : [])) as Row | undefined;
+          .get(this.now(), ...(blockedRuntimeStartBeeIds.length > 0 ? [JSON.stringify(blockedRuntimeStartBeeIds)] : []), JSON.stringify(blockedIdentityBeeIds)) as Row | undefined;
         if (!row) return null;
         const command = mapCommand(row);
         if (!this.executionLedger.commandAllowed(command.id)) continue;
@@ -4888,6 +4905,15 @@ export class CoreStore {
         this.audit("command.claimed", command.beeId, { commandId: command.id });
         return { ...command, status: "running" };
       }
+    });
+  }
+
+  holdIdentityCommand(id: number): void {
+    this.tx(() => {
+      const command = this.getCommand(id);
+      if (!command || command.status !== "running") return;
+      this.db.prepare("UPDATE commands SET status='queued',next_attempt_at=? WHERE id=? AND status='running'").run(this.now() + 1000, id);
+      this.audit("command.identity_pending", command.beeId, {commandId: id, message: "stop pending process identity proof"});
     });
   }
 
@@ -5117,6 +5143,56 @@ export class CoreStore {
     return this.tx(() => this.executionStarts.prepare(beeId, generation));
   }
 
+  runtimeIdentityUnresolvedSince(beeId: string, generation: number): number {
+    return this.tx(() => {
+      const row = this.db.prepare("SELECT ts,payload FROM audit WHERE bee_id=? AND kind='runtime.identity_unresolved' ORDER BY seq DESC LIMIT 1").get(beeId);
+      if (row) { try { const value = JSON.parse(String(row.payload)); if (value.generation === generation && Number.isFinite(Number(row.ts))) return Number(row.ts); } catch {} }
+      const now = this.now(); this.audit("runtime.identity_unresolved", beeId, {generation, count: 1}, now); return now;
+    });
+  }
+
+  runtimeProcessIdentity(beeId: string, generation: number) { return readRuntimeProcessIdentity(this.db, beeId, generation); }
+
+  tmuxCleanupCounts(): {retained: number; informational: number} {
+    const rows = readTmuxCleanup(this.db);
+    return {retained: rows.malformed + rows.entries.filter(row => row.state === "retained").length, informational: rows.entries.filter(row => row.state === "socket-gone-unverifiable").length};
+  }
+
+  tmuxCleanupHooks(): TmuxCleanupHooks {
+    return {
+      entries: () => readTmuxCleanup(this.db).entries,
+      update: (raw: TmuxCleanupLocator, state: TmuxCleanupState | "resolved") => this.tx(() => {
+        const locator = cleanupLocator(raw);
+        if (!locator) throw new CoreError("Invalid retained cleanup locator");
+        const previous = readTmuxCleanup(this.db).entries.find(row => row.beeId === locator.beeId && row.generation === locator.generation);
+        if (state === "resolved") {
+          if (previous) this.audit("runtime.tmux_cleanup_resolved", locator.beeId, {generation: locator.generation, reason: locator.reason, count: 1});
+          return;
+        }
+        if (state !== "retained" && state !== "socket-gone-unverifiable") throw new CoreError("Invalid retained cleanup state");
+        if (state === "socket-gone-unverifiable" && !previous) throw new CoreError("Cleanup state has no retained report");
+        if (previous?.state === state && JSON.stringify({...previous, state: undefined}) === JSON.stringify(locator)) return;
+        this.audit(state === "retained" ? "runtime.tmux_cleanup_retained" : "runtime.tmux_cleanup_unverifiable", locator.beeId, {generation: locator.generation, reason: state === "retained" ? locator.reason : state, ...(state === "retained" ? {} : {retainedReason: locator.reason}), count: 1, locator});
+      }),
+    };
+  }
+
+  runtimeIdentityHooks(): RuntimeIdentityHooks {
+    return {
+      read: (beeId, generation) => this.runtimeProcessIdentity(beeId, generation),
+      bindLegacy: (beeId, generation, stamp, identity, proof) => this.tx(() => {
+        if (!processIdentityValue(identity) || !["authenticated-host-generation", "owned-tmux-pane"].includes(proof)) return false;
+        const current = this.currentRuntime(beeId);
+        if (!current || current.generation !== generation || current.state === "stopped" || current.pid !== identity.pid || current.pidStartedAt !== stamp) return false;
+        if (this.runtimeProcessIdentity(beeId, generation).kind !== "legacy") return false;
+        const changed = this.db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=? AND generation=? AND pid=? AND pid_started_at=? AND process_identity IS NULL").run(JSON.stringify(identity), beeId, generation, identity.pid, stamp);
+        if (Number(changed.changes) !== 1) return false;
+        this.audit("legacy_birth_bound", null, {count: 1});
+        return true;
+      }),
+    };
+  }
+
   executionOrigin(beeId: string) { return this.executionStarts.bee(beeId); }
   existingExecutionStart(beeId: string, generation: number) { return this.executionStarts.existing(beeId,generation); }
   executionStartHost(start: ExecutionStart) { return this.executionStarts.host(start); }
@@ -5263,9 +5339,10 @@ export class CoreStore {
    * (pid, pid_started_at) is not in livePids becomes stopped(machine_restart).
    * A reboot produces ZERO failed states. Surviving runtimes are re-adopted.
    */
-  reconcileAtBoot(livePids: LivePid[]): ReconcileResult {
+  reconcileAtBoot(livePids: LivePid[], unresolved: ReadonlyArray<{beeId: string; generation: number}> = []): ReconcileResult {
     return this.tx(() => {
       const live = new Set(livePids.map((p) => `${p.pid}:${p.startedAt}`));
+      const unresolvedKeys = new Set(unresolved.map(value => `${value.beeId}:${value.generation}`));
       const rows = this.db
         .prepare("SELECT * FROM runtimes WHERE state != 'stopped' ORDER BY bee_id, generation")
         .all() as Row[];
@@ -5279,6 +5356,7 @@ export class CoreStore {
           adopted.push({ beeId: rt.beeId, generation: rt.generation, pid: rt.pid as number });
           continue;
         }
+        if (unresolvedKeys.has(`${rt.beeId}:${rt.generation}`)) continue;
         const at = this.now();
         this.db
           .prepare(

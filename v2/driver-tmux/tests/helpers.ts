@@ -1,9 +1,10 @@
+import type {RuntimeIdentityRead} from "../../core/src/runtimeProcessIdentity.ts";
 /**
  * tmux-driver test helpers. Every rig runs its OWN tmux server on a private
  * socket inside a fresh mkdtemp dir — the ambient tmux server (live bees!)
  * is never touched; teardown kills only the pinned private server.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,8 +64,8 @@ export interface TmuxRig {
   cleanup: () => void;
 }
 
-export function makeRig(): TmuxRig {
-  const dir = mkdtempSync(join(tmpdir(), "hbtmx-"));
+export function makeRig(options: {cleanup?: import("../../core/src/runtimeCleanup.ts").TmuxCleanupHooks; runtimeIdentity?: import("../../core/src/runtimeProcessIdentity.ts").RuntimeIdentityHooks} = {}): TmuxRig {
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "hbtmx-")));
   const socketPath = join(dir, "tmux.sock");
   const styles = new Map<
     string,
@@ -87,8 +88,11 @@ export function makeRig(): TmuxRig {
       observation: observationFor(cfg.style, transcriptDirOf(beeId)),
     };
   };
+  const bindings = new Map<string, RuntimeIdentityRead>();
   const makeDriver = (): TmuxDriver =>
     new TmuxDriver({
+      cleanup: options.cleanup,
+      runtimeIdentity: options.runtimeIdentity ?? {read: (beeId, generation) => bindings.get(`${beeId}:${generation}`) ?? {kind: "legacy"}, bindLegacy: () => false},
       socketPath,
       eventsDir: join(dir, "events"),
       resolve,
@@ -103,7 +107,13 @@ export function makeRig(): TmuxRig {
     configure: (beeId, style, env = {}, deliveryMode) =>
       styles.set(beeId, { style, env, ...(deliveryMode ? { deliveryMode } : {}) }),
     transcriptDirOf,
-    makeSiblingDriver: makeDriver,
+    makeSiblingDriver: () => {
+      for (const row of driver.snapshotLive()) {
+        const proc = driver.procOf(row.beeId, row.generation);
+        if (proc?.processIdentity) bindings.set(`${row.beeId}:${row.generation}`, {kind: "bound", identity: proc.processIdentity, pidStartedAt: proc.pidStartedAt});
+      }
+      return makeDriver();
+    },
     cleanup: () => {
       driver.disposeAll();
       try {
