@@ -15,6 +15,7 @@ from thread_records import ThreadRecords
 from birth_identity import birth_identity, parent_chain, scope_parent
 from test_capabilities import assert_capabilities, capability_receipt_valid, SETPRIV_ARGS, CAPABILITY_SETS
 from policy import RULE_VERSION
+from policy import workload_test_evidence
 from filesystem import assert_filesystem, filesystem_probes, proc_receipt_valid
 from stat_observation import parse_stat, resolve_stat_observation, STAT_RETRY_LIMIT, STAT_RETRY_DELAY
 from error_summary import error_summary, error_summary_valid, error_summary_totals
@@ -25,6 +26,52 @@ META = dict(inode=1, size=100, mtime_ns=10000000000, mode=33152, uid=1000, gid=1
 
 
 class PolicyTests(unittest.TestCase):
+    def test_nonzero_workload_exit_is_failure_for_every_reporter_and_no_output(self):
+        for output in ('', '................X...', '✖ fixture failed\nℹ fail 1\n', '# fail 1\n', '# fail 0\nℹ pass 16\n', 'runner stopped before its plan'):
+            for code in (1, 2, -15):
+                with self.subTest(output=output, code=code):
+                    self.assertIs(workload_test_evidence(code, output)['testFailure'], True)
+
+    def test_tap_failure_stays_additive_but_spec_and_dot_are_diagnostic_only(self):
+        output = '\x1b[31m✖ fixture failed\x1b[0m\n✖ failing tests:\n...X.X...\n# fail 2\n'
+        evidence = workload_test_evidence(0, output)
+        self.assertIs(evidence['testFailure'], True)
+        self.assertEqual(evidence['reporterDiagnostics'], dict(tapFailureSummary=True, specFailureLines=1, dotFailureMarkers=2))
+        self.assertEqual(workload_test_evidence(0, '✔ fixture passed\nℹ fail 0\n....\n')['reporterDiagnostics'], dict(tapFailureSummary=False, specFailureLines=0, dotFailureMarkers=0))
+        self.assertIs(workload_test_evidence(0, '✔ fixture passed\nℹ fail 0\n....\n')['testFailure'], False)
+        self.assertIs(workload_test_evidence(0, '# fail 1\n')['testFailure'], True)
+        for output in ('✖ fixture failed\n', '...X...\n'):
+            evidence = workload_test_evidence(0, output)
+            self.assertIs(evidence['testFailure'], False)
+            self.assertTrue(any(evidence['reporterDiagnostics'].values()))
+
+    def test_invalid_workload_result_cannot_supply_failure_evidence(self):
+        for code, output in ((None, ''), (False, ''), ('1', ''), (1, None)):
+            with self.assertRaises(ValueError):
+                workload_test_evidence(code, output)
+
+    def test_non_tap_failures_keep_existing_flake_proof_requirements(self):
+        for output in ('..X..', '✖ fixture failed\nℹ fail 1\n', ''):
+            rows = [dict(physical=dict(version=version, attemptId=version+str(n)), guardAccepted=True, testEvidence=dict(exists=True, **workload_test_evidence(1 if n == 0 else 0, output)), testExit=1 if n == 0 else 0) for version in ('candidate', 'base') for n in range(3)]
+            self.assertEqual(flake_verdict(rows, 3)['classification'], 'no flake attribution')
+            for updates in (dict(guardAccepted=False), dict(testExit=None), dict(testEvidence=dict(exists=False, testFailure=True))):
+                broken = [dict(row) for row in rows]
+                broken[0].update(updates)
+                self.assertEqual(flake_verdict(broken, 3)['classification'], 'no flake attribution')
+
+    def test_nonzero_crash_on_both_versions_is_not_flake_evidence(self):
+        for code in (1, -9, -15):
+            rows = [dict(physical=dict(version=version, attemptId=version), guardAccepted=True, testEvidence=dict(exists=True, **workload_test_evidence(code, '')), testExit=code) for version in ('candidate', 'base')]
+            self.assertEqual(flake_verdict(rows, 1)['classification'], 'no flake attribution')
+
+    def test_historical_or_malformed_reporter_diagnostics_cannot_attribute_flake(self):
+        for diagnostics in (None, {}, {'tapFailureSummary': False}, {'tapFailureSummary': 'true'}):
+            rows = [dict(physical=dict(version=version, attemptId=version), guardAccepted=True, testEvidence=dict(exists=True, testFailure=True), testExit=1) for version in ('candidate', 'base')]
+            if diagnostics is not None:
+                for row in rows:
+                    row['testEvidence']['reporterDiagnostics'] = diagnostics
+            self.assertEqual(flake_verdict(rows, 1)['classification'], 'no flake attribution')
+
     def test_dead_first_stat_uses_recorded_tree_edge_without_rewriting_birth(self):
         parents = {19943:19519, 19519:19513, 19513:49, 49:34, 34:33, 33:7, 7:5, 5:1}
         records = {pid:dict(pid=pid, procStat=dict(state='R', ppid=parent, starttime=str(pid))) for pid,parent in parents.items()}
@@ -361,7 +408,7 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(preexec_verdict(dict(path=HIVE + '/v2/hived.log', before=META, after=dict(META, size=99)), HOME)[0], 'FAIL')
 
     def test_flake_requires_complete_guarded_candidate_and_base(self):
-        rows = [dict(physical=dict(version=version, attemptId=version+str(n)), guardAccepted=True,testEvidence=dict(exists=True,testFailure=True), testExit=1 if n==0 else 0) for version in ('candidate', 'base') for n in range(3)]
+        rows = [dict(physical=dict(version=version, attemptId=version+str(n)), guardAccepted=True,testEvidence=dict(exists=True,testFailure=True,reporterDiagnostics=dict(tapFailureSummary=True)), testExit=1 if n==0 else 0) for version in ('candidate', 'base') for n in range(3)]
         self.assertEqual(flake_verdict(rows, 3)['classification'], 'flake evidence')
         for updates in (dict(guardAccepted=False), dict(testExit=None),dict(testEvidence=dict(exists=False,testFailure=True)),dict(testEvidence=dict(exists=True,testFailure=False))):
             broken = [dict(row) for row in rows]

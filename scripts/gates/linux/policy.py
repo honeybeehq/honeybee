@@ -1,7 +1,20 @@
 import errno
 import pathlib
+import re
 
-RULE_VERSION = 29
+RULE_VERSION = 30
+
+
+def workload_test_evidence(exit_code, output):
+    if type(exit_code) is not int or not isinstance(output, str):
+        raise ValueError('invalid workload test result')
+    lines = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', output).splitlines()
+    diagnostics = dict(
+        tapFailureSummary=any(re.fullmatch(r'\s*# fail [1-9]\d*\s*', line) for line in lines),
+        specFailureLines=sum(bool(re.match(r'^\s*✖\s+', line)) and line.strip() != '✖ failing tests:' for line in lines),
+        dotFailureMarkers=sum(line.count('X') for line in lines if re.fullmatch(r'[.X*]+', line.strip())),
+    )
+    return dict(testFailure=exit_code != 0 or diagnostics['tapFailureSummary'], reporterDiagnostics=diagnostics)
 
 
 def within(target, root):
@@ -100,9 +113,13 @@ def preexec_verdict(change, real_home, named=(), touched=()):
 
 
 def flake_verdict(rows, count):
+    def tap_failure(item):
+        evidence = item.get('testEvidence')
+        diagnostics = evidence.get('reporterDiagnostics') if isinstance(evidence, dict) else None
+        return isinstance(diagnostics, dict) and diagnostics.get('tapFailureSummary') is True
     versions = ('candidate', 'base')
     by_version = {version: [row for row in rows if row['physical']['version'] == version] for version in versions}
-    valid = all(len(items) == count and all(item.get('guardAccepted') and item.get('testExit') is not None and item.get('testEvidence', {}).get('exists') and item.get('testEvidence', {}).get('testFailure') for item in items if item.get('testExit') not in (None, 0)) and all(item.get('guardAccepted') and item.get('testEvidence', {}).get('exists') and item.get('testExit') is not None for item in items) for items in by_version.values())
+    valid = all(len(items) == count and all(item.get('guardAccepted') and item.get('testExit') is not None and item.get('testEvidence', {}).get('exists') and item.get('testEvidence', {}).get('testFailure') and tap_failure(item) for item in items if item.get('testExit') not in (None, 0)) and all(item.get('guardAccepted') and item.get('testEvidence', {}).get('exists') and item.get('testExit') is not None for item in items) for items in by_version.values())
     failures = {version: sum(item.get('testExit') not in (None, 0) for item in items) for version, items in by_version.items()}
     return dict(failures=failures, classification='flake evidence' if valid and all(failures.values()) else 'no flake attribution', attempts=[item['physical']['attemptId'] for item in rows])
 

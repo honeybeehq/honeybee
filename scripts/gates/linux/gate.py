@@ -431,7 +431,7 @@ def run_step(config, step):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Guarded Linux gate, rules v29. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,npm-test,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. N>=3; daemon-shutdown N>=10. Preparation, offline npm ci and peercred prebuild are automatic. Receipts: REAL_HOME/.cache/hbl/<run>. Approved satellites only. Start with env -i PATH=... HOME=<fake under ~/.cache> TMPDIR=<fake> LANG=C.UTF-8 run.sh --real-home REAL_HOME --candidate SHA --base SHA --steps LIST --npm-cache FILE --npm-cache-sha256 SHA256. No other HIVE_*/APIARY_* variables are accepted.')
+    parser = argparse.ArgumentParser(description=f'Guarded Linux gate, rules v{RULE_VERSION}. One physical attempt per planned step; no retries.', epilog='Steps: check,v2:check,npm-test,v2:test,v2:daemon,v2:driver,v2:driver2,v2:harness,build,gate-tests,test:<repo-relative.test.ts>,flake:<repo-relative.test.ts>:N. N>=3; daemon-shutdown N>=10. Preparation, offline npm ci and peercred prebuild are automatic. Receipts: REAL_HOME/.cache/hbl/<run>. Approved satellites only. Start with env -i PATH=... HOME=<fake under ~/.cache> TMPDIR=<fake> LANG=C.UTF-8 run.sh --real-home REAL_HOME --candidate SHA --base SHA --steps LIST --npm-cache FILE --npm-cache-sha256 SHA256. No other HIVE_*/APIARY_* variables are accepted.')
     parser.add_argument('--real-home', required=True)
     parser.add_argument('--candidate', required=True)
     parser.add_argument('--base', required=True)
