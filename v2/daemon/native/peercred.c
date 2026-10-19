@@ -90,7 +90,7 @@ static int process_read(pid_t pid,process_info *out) {
   memset(out,0,sizeof(*out)); out->pid=pid; out->wait_status=-1;
 #ifdef __APPLE__
   struct proc_bsdinfo b; errno=0;
-  int n=proc_pidinfo(pid,PROC_PIDTBSDINFO,0,&b,sizeof(b));
+  int n=proc_pidinfo(pid,PROC_PIDTBSDINFO,1,&b,sizeof(b));
   if(n!=(int)sizeof(b)) return n==0&&errno==ESRCH?1:errno==EPERM||errno==EACCES?3:2;
   if(b.pbi_pid!=(uint32_t)pid||b.pbi_start_tvusec>=1000000) return 2;
   out->uid=b.pbi_uid; out->ppid=b.pbi_ppid; out->pgid=b.pbi_pgid; out->zombie=b.pbi_status==SZOMB;

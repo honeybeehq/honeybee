@@ -5,6 +5,18 @@ import {harness, makeBee} from "./helpers.ts";
 import {installRuntimeProcessIdentity, processIdentityValue} from "../src/runtimeProcessIdentity.ts";
 
 const identity = {pid: 123, birth: "darwin:1234:42", bootId: ""};
+test("lifecycle exit retains the exact identity and refuses replacement after reopen", () => {
+  const h = harness(); let store = h.open();
+  try {
+    const {bee} = makeBee(store), generation = store.currentRuntime(bee.id)!.generation;
+    store.recordRuntimeProc(bee.id, generation, {pid: identity.pid, pidStartedAt: 1234000, processIdentity: identity});
+    store.updateRuntimeState(bee.id, generation, "stopped", {exitCause: "clean"});
+    store.close(); store = h.open();
+    assert.deepEqual(store.runtimeProcessIdentity(bee.id, generation), {kind: "bound", identity, pidStartedAt: 1234000});
+    assert.equal(store.recordRuntimeProc(bee.id, generation, {pid: identity.pid, pidStartedAt: 1235000, processIdentity: {...identity, birth: "darwin:1235:42"}}).applied, false);
+    assert.deepEqual(store.runtimeProcessIdentity(bee.id, generation), {kind: "bound", identity, pidStartedAt: 1234000});
+  } finally {store.close(); h.cleanup();}
+});
 test("runtime identity migration is additive, once-only and ignores malformed content", () => {
   const h = harness(); let store = h.open();
   try {
