@@ -2298,15 +2298,17 @@ export class AccountsService {
    * including the singleton case. Provider I/O happens before the store
    * transaction; selection then uses the resulting immutable rows.
    */
-  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}): Promise<void> {
-    if (this.cfg.accounts.allocationMode === "shadow") {
+  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}, quotaRecovery = false): Promise<void> {
+    if (this.cfg.accounts.allocationMode === "shadow" && !quotaRecovery) {
       this.scheduleFreshLimits(harness, opts);
       return;
     }
     const now = this.now();
     const stale = this.candidateIdsFor(harness, opts).filter((id) => {
       const row = this.store.getAccountLimits(id);
-      return !row || !row.readable || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs;
+      const account = this.store.getAccount(id);
+      return !row || !row.readable || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs
+        || quotaRecovery && account?.exhaustedAt != null && !this.restoredQuotaHeadroom(account, opts.model);
     });
     if (stale.length > 0) await Promise.all(stale.map(async (id) => {
       const joined = this.admissionRefreshes.get(id);
