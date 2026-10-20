@@ -21,7 +21,7 @@ registerHooks({ load(url, context, next) {
     if (!source.includes('    case "initialize":')) throw new Error("Codex fixture probe patch no longer matches");
     if (process.env.C_CODEX_UNKNOWN_USAGE_FILE) {
       const before = String(result.source);
-      result.source = before.replace('if (quotaMode) {', 'if (quotaMode && !process.env.C_CODEX_UNKNOWN_USAGE_FILE) {');
+      result.source = before.replace('if (quotaMode && quotaMode !== "text_fallback") {', 'if (quotaMode && quotaMode !== "text_fallback" && !process.env.C_CODEX_UNKNOWN_USAGE_FILE) {');
       if (result.source === before) throw new Error("Codex native unknown-reset patch no longer matches");
     }
   }
