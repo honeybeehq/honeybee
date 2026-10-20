@@ -131,7 +131,7 @@ function errorSignals(message: string, codexErrorInfo?: unknown): AdapterSignal[
   // Keep a recognizable cause in detail for the daemon's exhaustion policy.
   const quota = codexQuotaBoundary({ method: "error", params: { error: { message, codexErrorInfo } } });
   if (quota) {
-    return [{ kind: "flag", flag: "resource_blocked", action: "set", detail: `codex usage limit exceeded: ${message}`.slice(0, 500), quota }];
+    return [{ kind: "flag", flag: "resource_blocked", action: "set", detail: (quota.providerCategory === "text_fallback" ? message : `codex usage limit exceeded: ${message}`).slice(0, 500), quota }];
   }
   if (isAuthNeededMessage(message)) {
     return [{ kind: "flag", flag: "auth_needed", action: "set", detail: message.slice(0, 500) }];
