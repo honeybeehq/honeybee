@@ -1,0 +1,30 @@
+{
+  "retainedPrivately": true,
+  "failures": [
+    {
+      "stage": "core fixture",
+      "issue": "Strictly increasing harness clock was compared after another clock read; corrected to compare against ask time.",
+      "resolved": true
+    },
+    {
+      "stage": "integration typecheck",
+      "issue": "Added the missing read-only row fields and represented the typed audit payload as a record-compatible object alias.",
+      "resolved": true
+    },
+    {
+      "stage": "proof typecheck",
+      "issue": "Nullable view fixture and private-constructor type needed explicit narrowing and ReturnType.",
+      "resolved": true
+    },
+    {
+      "stage": "rollback scaffold",
+      "issue": "Inherited entry resolver missed leading dot-slash and selected working-tree sources. Corrected resolver and now assert committed Git sources loaded plus old core has no dismissal method. Package imports remain explicit external file URLs.",
+      "resolved": true
+    },
+    {
+      "stage": "whitespace check",
+      "issue": "Removed one trailing blank line from extracted census helper.",
+      "resolved": true
+    }
+  ]
+}
