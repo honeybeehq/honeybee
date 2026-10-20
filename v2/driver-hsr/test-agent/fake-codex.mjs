@@ -14,7 +14,9 @@
  *                          (argv = the process's own args, so a test can see which
  *                          `-c key=value` overrides reached the app-server child)
  */
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { dirname, join, relative, isAbsolute } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 
@@ -30,9 +32,40 @@ function log(method, params) {
   );
 }
 
+const strictHome = process.env.FAKE_CODEX_STRICT_HOME === "1";
+let rollout = null;
+function indexRollout(id, path) {
+  const db = new DatabaseSync(join(process.env.CODEX_HOME, "state_5.sqlite"));
+  try {
+    db.exec("CREATE TABLE IF NOT EXISTS threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL)");
+    db.prepare("INSERT OR REPLACE INTO threads VALUES (?, ?)").run(id, path);
+  } finally { db.close(); }
+}
+function findRollout(id, path) {
+  if (!path && existsSync(join(process.env.CODEX_HOME, "state_5.sqlite"))) {
+    const db = new DatabaseSync(join(process.env.CODEX_HOME, "state_5.sqlite"), { readOnly: true });
+    try { path = db.prepare("SELECT rollout_path FROM threads WHERE id = ?").get(id)?.rollout_path; }
+    finally { db.close(); }
+  }
+  if (!path || !existsSync(path)) throw new Error("rollout unavailable in CODEX_HOME");
+  const rel = relative(realpathSync(process.env.CODEX_HOME), realpathSync(path));
+  if (!rel || rel === ".." || rel.startsWith("../") || isAbsolute(rel)) throw new Error("rollout outside CODEX_HOME");
+  const meta = JSON.parse(readFileSync(path, "utf8").split("\n")[0]);
+  if (meta.type !== "session_meta" || meta.payload.id !== id) throw new Error("rollout identity mismatch");
+  return path;
+}
+
 let threadId = null;
 let turnTimer = null;
 let currentTurnId = null;
+let lateEffect = null;
+process.on("SIGTERM", () => {
+  if (lateEffect && rollout) {
+    appendFileSync(rollout, JSON.stringify({ type: "fixture_late_effect", nonce: lateEffect }) + "\n");
+    if (process.env.FAKE_CODEX_LATE_EFFECT_LOG) appendFileSync(process.env.FAKE_CODEX_LATE_EFFECT_LOG, JSON.stringify({ threadId, nonce: lateEffect }) + "\n");
+  }
+  process.exit(0);
+});
 const rl = createInterface({ input: process.stdin });
 rl.on("line", (raw) => {
   const line = String(raw).trim();
@@ -53,10 +86,20 @@ rl.on("line", (raw) => {
       return;
     case "thread/start":
       threadId = randomUUID();
+      if (strictHome) {
+        rollout = join(process.env.CODEX_HOME, "sessions", `rollout-${threadId}.jsonl`);
+        mkdirSync(dirname(rollout), { recursive: true });
+        writeFileSync(rollout, JSON.stringify({ type: "session_meta", payload: { id: threadId, model_provider: "openai" } }) + "\n");
+        indexRollout(threadId, rollout);
+      }
       emit({ jsonrpc: "2.0", id: msg.id, result: { thread: { id: threadId, cwd: msg.params?.cwd ?? null } } });
       return;
     case "thread/resume":
       threadId = String(msg.params?.threadId ?? "");
+      if (strictHome) {
+        try { rollout = findRollout(threadId, msg.params?.path); indexRollout(threadId, rollout); }
+        catch (error) { emit({ id: msg.id, error: { code: -32600, message: error.message } }); return; }
+      }
       emit({ jsonrpc: "2.0", id: msg.id, result: { thread: { id: threadId, cwd: msg.params?.cwd ?? null } } });
       return;
     case "thread/fork":
@@ -78,6 +121,26 @@ rl.on("line", (raw) => {
       const turnId = randomUUID();
       currentTurnId = turnId;
       const text = msg.params?.input?.[0]?.text ?? "";
+      let reply = "echo";
+      if (strictHome && rollout) {
+        const late = /@lateEffect:([a-zA-Z0-9-]+)/.exec(String(text));
+        if (late) lateEffect = late[1];
+        const remember = /@remember:([a-zA-Z0-9-]+)/.exec(String(text));
+        if (remember) appendFileSync(rollout, JSON.stringify({ type: "fixture_nonce", nonce: remember[1] }) + "\n");
+        if (String(text).includes("@checkLate")) {
+          const rows = readFileSync(rollout, "utf8").trim().split("\n").map(row => JSON.parse(row));
+          reply = `late:${rows.filter(row => row.type === "fixture_late_effect").map(row => row.nonce).join(",")}`;
+          log("fixture/lateRecall", { reply });
+        }
+        if (String(text).includes("@recall")) {
+          const rows = readFileSync(rollout, "utf8").trim().split("\n").map(row => JSON.parse(row));
+          reply = `recall:${rows.findLast(row => row.type === "fixture_nonce")?.nonce ?? "MISSING"}`;
+          emit({ method: "item/started", params: { threadId, turnId, item: { id: `effect-${turnId}`, type: "commandExecution", command: "fixture-record-recall", status: "inProgress" } } });
+          if (process.env.FAKE_CODEX_EFFECT_LOG) appendFileSync(process.env.FAKE_CODEX_EFFECT_LOG, JSON.stringify({ threadId, reply, home: process.env.CODEX_HOME }) + "\n");
+          appendFileSync(rollout, JSON.stringify({ type: "fixture_effect", reply }) + "\n");
+          emit({ method: "item/completed", params: { threadId, turnId, item: { id: `effect-${turnId}`, type: "commandExecution", command: "fixture-record-recall", status: "completed", exitCode: 0, aggregatedOutput: reply } } });
+        }
+      }
       const slow = /@slow:(\d+)/.exec(String(text));
       emit({ jsonrpc: "2.0", id: msg.id, result: { turn: { id: turnId } } });
       emit({ jsonrpc: "2.0", method: "turn/started", params: { threadId, turn: { id: turnId } } });
@@ -96,7 +159,7 @@ rl.on("line", (raw) => {
       turnTimer = setTimeout(() => {
         turnTimer = null;
         currentTurnId = null;
-        emit({ jsonrpc: "2.0", method: "item/agentMessage/delta", params: { threadId, delta: "echo" } });
+        emit({ jsonrpc: "2.0", method: "item/agentMessage/delta", params: { threadId, delta: reply } });
         // Mirrors the real structured stream seen in the CO.751a incident.
         // Lifecycle still derives from turn/completed; the status notification
         // is deliberately non-authoritative in the Codex adapter.

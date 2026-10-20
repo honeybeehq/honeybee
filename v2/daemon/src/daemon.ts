@@ -20,6 +20,7 @@ import { readBuildIdentity } from "../../../src/release/buildIdentity.ts";
 import { installedV2Identity } from "../../../src/cliRoute.ts";
 import { SCHEMA_VERSION } from "../../core/src/schema.ts";
 import { ThreadOperations } from "./threadOperations.ts";
+import { carryCodexHistory, codexSwapHistoryPath, validateCodexSwapPath } from "./codexSwapHistory.ts";
 import { codexHistoryPath, pinThreadHistory, readThreadHistory } from "./threadHistory.ts";
 import { threadOperationView, type ThreadOperationRow } from "../../core/src/threadOperation.ts";
 /**
@@ -1524,7 +1525,7 @@ export class HiveDaemon {
       : null;
     const composed = composeSpawn(spec, adapterName, bee, grokMcpServers, placementInstruction);
     const operation = store.threadOperationForSuccessor(beeId);
-    const adapter = operation && bee.providerSessionId === operation.successorProviderSessionId && adapterName === "codex"
+    let adapter = operation && bee.providerSessionId === operation.successorProviderSessionId && adapterName === "codex"
       ? codexAdapter({ cwd: bee.cwd, model: composed.model, modelProvider: operation.source.modelProvider, resumeThreadId: bee.providerSessionId ?? undefined, resumePath: operation.sessionPath })
       : composed.adapter;
     let args = composed.args;
@@ -1533,6 +1534,14 @@ export class HiveDaemon {
     // from the account row. The tracked pre-claim readiness gate has already
     // activated the home and reconciled its native MCP config.
     const env = { ...this.runtimeEnvOf(bee, spec, "resolve"), ...this.beeTmpEnv(bee, spec) };
+    if (adapterName === "codex" && bee.providerSessionId && env.CODEX_HOME) {
+      const path = codexSwapHistoryPath(env.CODEX_HOME, bee.id, bee.providerSessionId);
+      if (existsSync(path)) {
+        validateCodexSwapPath(env.CODEX_HOME, path);
+        const boundary = pinThreadHistory(path, bee.providerSessionId);
+        adapter = codexAdapter({ cwd: bee.cwd, model: composed.model, modelProvider: boundary.modelProvider, resumeThreadId: bee.providerSessionId, resumePath: path });
+      }
+    }
     // Absence is authoritative too: a root must not inherit a configured parent.
     if (!bee.parentId) delete env.HIVE_PARENT;
     if (adapterName === "claude") {
@@ -6521,7 +6530,8 @@ export class HiveDaemon {
     if (breach) throw new RpcError("account_unavailable", describeWeeklyCeilingBreach(target.id, breach));
     // Before any state moves: the destination home must hold the conversation
     // the next generation resumes, or the swap is refused (typed) up front.
-    const transcript = bee.agent === "claude" ? this.carryClaudeTranscript(bee, from, target) : "none";
+    const transcript = bee.agent === "claude" ? this.carryClaudeTranscript(bee, from, target)
+      : bee.agent === "codex" ? this.carryCodexTranscript(bee, target) : "none";
     const rt = store.currentRuntime(bee.id);
     const live = rt != null && rt.state !== "stopped";
     let rekeyed = false;
@@ -6550,6 +6560,28 @@ export class HiveDaemon {
     this.log(`bee.swapAccount bee=${bee.id} from=${from ?? "-"} to=${target.id} by=${by} action=${action} rekeyed=${rekeyed} transcript=${transcript}${commandId != null ? ` stop=${commandId}` : ""}`);
     return { beeId: bee.id, from, to: target.id, action, commandId, rekeyed, transcript,
       ...(allocation ? { allocation } : {}), ...(claim ? { allocationClaimId: claim.id } : {}) };
+  }
+
+  private carryCodexTranscript(bee: BeeRow, target: AccountRow): SwapAccountResult["transcript"] {
+    const sessionId = bee.providerSessionId ?? bee.forkSeed;
+    if (!sessionId) return "none";
+    if (!bee.providerSessionId) throw new RpcError("transcript_unavailable", `bee ${bee.name}: Codex fork must start before its account can be swapped`);
+    try {
+      const spec = this.resolveSpawnSpec(bee.id);
+      const home = spec.env?.CODEX_HOME ?? join(homedir(), ".codex");
+      const carried = codexSwapHistoryPath(home, bee.id, sessionId);
+      const operation = this.mustStore().threadOperationForSuccessor(bee.id);
+      const path = existsSync(carried) ? carried
+        : operation?.successorProviderSessionId === sessionId ? operation.sessionPath
+        : codexHistoryPath(home, sessionId);
+      const source = pinThreadHistory(path, sessionId);
+      const destination = codexSwapHistoryPath(target.homePath, bee.id, sessionId);
+      const result = carryCodexHistory(source, target.homePath, destination, sessionId);
+      this.log(`bee.swapAccount.transcript bee=${bee.id} seed=${sessionId} from=${source.path} to=${destination} bytes=${source.bytes} method=hardlink`);
+      return result;
+    } catch (error) {
+      throw new RpcError("transcript_unavailable", `bee ${bee.name}: Codex conversation ${sessionId} cannot be carried to ${target.id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**
