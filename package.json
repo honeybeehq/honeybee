@@ -3,6 +3,14 @@
   "version": "0.0.1",
   "description": "On-demand tmux cockpit for interactive AI bees; CLI: hive.",
   "type": "module",
+  "packageManager": "npm@11.16.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": ">=11 <12",
+      "onFail": "error"
+    }
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

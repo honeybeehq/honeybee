@@ -19,7 +19,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -126,17 +126,15 @@ console.log(`deploy-settle: local build ${stamp.hash.slice(0, 12)} stamped`);
 // invoking checkout. That makes a successful deploy depend on a disposable
 // worktree remaining forever. Pack the already-certified bytes and install
 // the archive: npm must materialize an independent global tree.
+const { parseNpmPackResult } = await import("../dist/npmPack.js");
 const packRoot = mkdtempSync(join(tmpdir(), "honeybee-deploy-pack-"));
 try {
-  const packed = JSON.parse(execFileSync(
+  const packed = parseNpmPackResult(execFileSync(
     "npm",
     ["pack", "--json", "--pack-destination", packRoot],
     { cwd: repoRoot, encoding: "utf8" },
-  ));
-  const filename = packed?.[0]?.filename;
-  if (typeof filename !== "string" || filename.length === 0 || basename(filename) !== filename) {
-    throw new Error(`deploy-settle: npm pack returned an invalid filename (${String(filename)})`);
-  }
+  ), "honeybee");
+  const { filename } = packed;
   run("npm", ["i", "-g", join(packRoot, filename)]);
 } finally {
   rmSync(packRoot, { recursive: true, force: true });

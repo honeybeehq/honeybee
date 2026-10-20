@@ -1,3 +1,4 @@
+import { parseNpmPackResult } from "../src/npmPack.js";
 // Deploy settling (scripts/deploy-settle.mjs): the daemon must never restart
 // over a half-copied or mid-rebuild global module tree. The settle barrier
 // proves content equality between the local build and the installed tree —
@@ -193,16 +194,12 @@ test("deploy installs an immutable package archive, never a worktree symlink", a
 });
 
 test("the deploy archive allowlist excludes workstation state and retains runtime assets", () => {
-  const packed = JSON.parse(execFileSync(
+  const packed = parseNpmPackResult(execFileSync(
     "npm",
     ["pack", "--dry-run", "--json"],
     { cwd: process.cwd(), encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
-  )) as Array<{ files?: Array<{ path?: string }> }>;
-  const paths = new Set(
-    (packed[0]?.files ?? [])
-      .map((entry) => entry.path)
-      .filter((path): path is string => typeof path === "string"),
-  );
+  ), "honeybee");
+  const paths = new Set(packed.files.map((entry) => entry.path));
 
   for (const required of [
     "package.json",
