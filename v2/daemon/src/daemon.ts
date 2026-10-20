@@ -6895,6 +6895,10 @@ export class HiveDaemon {
     if (pending) {
       if (pending.trigger !== "proactive") return pending.state === "waiting" || pending.continuationKind !== null;
       if (pending.state !== "waiting") return false;
+      if (this.accounts.proactiveOwnerWaitExpired(pending.createdAt)) {
+        store.cancelQuotaRecovery(pending.id, "owner_unavailable");
+        return true;
+      }
       if (!this.accounts.proactiveAdmissionEnabled()) {
         store.cancelQuotaRecovery(pending.id, "proactive_admission_disabled");
         return true;
@@ -6929,6 +6933,11 @@ export class HiveDaemon {
     let row = store.getQuotaRecovery(id);
     if (!row || row.state !== "waiting" || !store.quotaRecoveryValid(row)) return;
     let bee = store.getBee(row.beeId)!;
+    if (row.trigger === "proactive" && accounts.proactiveOwnerWaitExpired(row.createdAt)) {
+      store.cancelQuotaRecovery(id, "owner_unavailable");
+      this.requestTick();
+      return;
+    }
     if (row.trigger === "proactive" && !accounts.proactiveAdmissionEnabled()) {
       store.cancelQuotaRecovery(id, "proactive_admission_disabled");
       this.requestTick();
