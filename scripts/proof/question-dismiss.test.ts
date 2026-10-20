@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { runV2Cli } from "../../v2/cli/src/main.ts";
 import { RpcClient } from "../../v2/cli/src/client.ts";
-import { RpcError, type QuestionAskResult, type QuestionDismissResult, type SnapshotResult, type MailboxResult, type SpawnResult, type WatchFrame, type ViewResult } from "../../v2/daemon/src/protocol.ts";
+import { RpcError, type QuestionAskResult, type QuestionWithdrawResult, type QuestionDismissResult, type SnapshotResult, type MailboxResult, type SpawnResult, type WatchFrame, type ViewResult } from "../../v2/daemon/src/protocol.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../../v2/daemon/src/localRpcTrust.ts";
 import { openCoreStore, replayAudit } from "../../v2/core/src/index.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../v2/daemon/tests/helpers.ts";
@@ -47,6 +47,13 @@ test("real disposable Honeybee: dismissal races, dedicated notice, independent r
     const legacy = (await old.request<SnapshotResult>("snapshot")).questions.find(row => row.id === q.id)!;
     assert.equal(legacy.status, "withdrawn"); assert.equal(legacy.withdrawalReason, "Dismissed without an answer"); assert.equal(legacy.withdrawnAt, result.question.dismissedAt);
     assert.equal(Object.hasOwn(legacy, "dismissedAt"), false);
+    await assert.rejects(old.request("question.answer", {questionId: q.id, answer: "late", idempotencyKey: "old-late"}), (error: unknown) => error instanceof RpcError && error.code === "question_withdrawn" && error.details?.withdrawalReason === "Dismissed without an answer");
+    const modernTerminal = await service.request<QuestionWithdrawResult>("question.withdraw", {questionId: q.id, reason: "No change.", idempotencyKey: "modern-terminal"}, 10000, {sessionPrincipal: {beeId}});
+    assert.deepEqual(modernTerminal, {question: result.question, alreadyTerminal: "dismissed"});
+    const oldTerminal = await old.request<QuestionWithdrawResult>("question.withdraw", {questionId: q.id, reason: "No change.", idempotencyKey: "old-terminal"}, 10000, {sessionPrincipal: {beeId}});
+    assert.deepEqual(oldTerminal, {question: legacy});
+    assert.deepEqual(await old.request("question.withdraw", {questionId: q.id, reason: "Retry.", idempotencyKey: "old-terminal"}, 10000, {sessionPrincipal: {beeId}}), {...oldTerminal, deduped: true});
+
     assert.equal((await modern.request<SnapshotResult>("snapshot")).questions.find(row => row.id === q.id)!.status, "dismissed");
     const cliOutput: string[] = [];
     assert.equal(await runV2Cli(["question", "list", "--bee", beeId, "--json", "--data-dir", fixture.dir, "--socket", daemon.socketPath], {out: value => cliOutput.push(value), err: value => cliOutput.push(value)}), 0);
@@ -56,7 +63,7 @@ test("real disposable Honeybee: dismissal races, dedicated notice, independent r
       const question = await ask(`Race ${index}?`);
       const mailBefore = (await service.request<MailboxResult>("mailbox", {beeId})).messages.length;
       const requests = order.map(verb => verb === "answer" ? service.request("question.answer", {questionId: question.id, answer: "yes", idempotencyKey: `answer-${index}`}) : verb === "withdraw" ? withdrawn(question.id, `withdraw-${index}`) : dismiss(question.id, `dismiss-${index}`));
-      const outcomes = await Promise.allSettled(requests); assert.equal(outcomes.filter(outcome => outcome.status === "fulfilled").length, 1);
+      const outcomes = await Promise.allSettled(requests); assert.equal(outcomes.filter(outcome => outcome.status === "fulfilled").length, order[0] === "dismiss" && order.some(verb => verb === "withdraw") ? 2 : 1);
       const row = (await service.request<SnapshotResult>("snapshot")).questions.find(item => item.id === question.id)!;
       const expected = order[0] === "answer" ? "answered" : order[0] === "withdraw" ? "withdrawn" : "dismissed"; assert.equal(row.status, expected);
       const messages = (await service.request<MailboxResult>("mailbox", {beeId})).messages;
@@ -64,7 +71,8 @@ test("real disposable Honeybee: dismissal races, dedicated notice, independent r
       const newMailCount = messages.length - mailBefore; assert.equal(newMailCount, expected === "withdrawn" ? 0 : 1);
       assert.equal(answerMail.length, expected === "answered" ? 1 : 0); assert.equal(dismissalMail.length, expected === "dismissed" ? 1 : 0);
       assert.ok(dismissalMail.every(message => message.body === body && message.senderKind === "automation"));
-      races.push({questionId: row.id, order, status: row.status, newMailCount, answerMail: answerMail.length, dismissalMail: dismissalMail.length, refusals: outcomes.flatMap(outcome => outcome.status === "rejected" ? [{code: outcome.reason.code, message: outcome.reason.message}] : [])});
+      const terminalNoOps = outcomes.filter(outcome => outcome.status === "fulfilled" && outcome.value !== null && typeof outcome.value === "object" && "alreadyTerminal" in outcome.value && outcome.value.alreadyTerminal === "dismissed").length;
+      races.push({questionId: row.id, order, terminalNoOps, status: row.status, newMailCount, answerMail: answerMail.length, dismissalMail: dismissalMail.length, refusals: outcomes.flatMap(outcome => outcome.status === "rejected" ? [{code: outcome.reason.code, message: outcome.reason.message}] : [])});
     }
     service.close(); service = await connect(); assert.deepEqual(await dismiss(q.id, "shared-key"), {...result, deduped: true});
     const live = await service.request<SpawnResult>("spawn", {name: "dismiss-delivery", agent: "stub", cwd: fixture.dir});
@@ -81,11 +89,13 @@ test("real disposable Honeybee: dismissal races, dedicated notice, independent r
       await waitFor(async () => {const value = await service.request<ViewResult>("view", {beeId: live.beeId}); assert.ok(value.bee); return transition === "stop" ? value.view.runtimeState === "stopped" : value.bee.lifecycle === "archived";}, `stub ${transition}`);
       const asked = (await service.request<QuestionAskResult>("question.ask", {beeId: live.beeId, text: `${transition} notice?`})).question;
       const dismissed = await dismiss(asked.id, `lifecycle-${transition}`);
+      assert.equal(dismissed.unarchived, transition === "archive");
+      assert.ok(dismissed.commandId === null || typeof dismissed.commandId === "number");
       await waitFor(async () => (await service.request<MailboxResult>("mailbox", {beeId: live.beeId})).messages.find(message => message.id === dismissed.question.dismissalMessageId)?.deliveredAt != null, `notice after ${transition}`);
       const current = await service.request<ViewResult>("view", {beeId: live.beeId});
       assert.ok(current.bee);
       assert.equal(current.bee.lifecycle, "active"); assert.equal(current.bee.lastHumanOutputAt, null);
-      lifecycleReceipts.push({from: transition, questionId: asked.id, messageId: dismissed.question.dismissalMessageId, lifecycle: current.bee.lifecycle, generation: current.runtime?.generation});
+      lifecycleReceipts.push({from: transition, questionId: asked.id, messageId: dismissed.question.dismissalMessageId, unarchived: dismissed.unarchived, commandId: dismissed.commandId, lifecycle: current.bee.lifecycle, generation: current.runtime?.generation});
     }
     await waitFor(async () => (await service.request<MailboxResult>("mailbox", {beeId: live.beeId})).messages.find(message => message.id === delivered.question.dismissalMessageId)?.deliveredAt != null, "notice committed delivery");
     clients.splice(0).forEach(client => client.close()); await daemon.stop(); assert.equal(daemon.proc.exitCode, 0, daemon.output()); assert.equal(daemon.proc.signalCode, null);

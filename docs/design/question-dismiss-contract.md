@@ -16,8 +16,8 @@ Clients refuse with `question_dismiss_unsupported` when it is absent, with messa
 
 `question.dismiss {questionId, idempotencyKey}` requires both nonempty strings and
 rejects every extra param, including actor, workspace, reason and answer fields.
-It returns `{question: QuestionRow}` plus optional `deduped: true` on same-key
-replay. The owner assigns the time, actor and original notice binding.
+It returns `{question: QuestionRow, unarchived: boolean, commandId: number | null}`
+plus optional `deduped: true` on same-key replay. The owner assigns the time, actor and original notice binding.
 
 The canonical status vocabulary is `open | answered | withdrawn | dismissed`.
 Dismissed rows have `dismissedAt` (epoch milliseconds), `dismissedBy: "rpc"`, and
@@ -40,7 +40,7 @@ operator identity. Generic RPC peer/admission checks run before daemon dispatch 
 therefore before receipt lookup. Unauthorized calls cannot replay a receipt or
 poison its key. Same-key reuse for another question is `idempotency_conflict`.
 A new valid key for an already-dismissed row returns the first row/time/notice and
-emits no event/mail. Receipt eviction cannot mint another notice. Successful
+emits no event/mail. The result and receipt retain the first send's `unarchived` flag and wake `commandId` (nullable), including replay and new keys while a receipt remains. Receipt eviction cannot mint another notice. Successful
 replay does not bypass Apiary's current operator admission at its own cache layers.
 
 | Code | Meaning |
@@ -50,11 +50,22 @@ replay does not bypass Apiary's current operator admission at its own cache laye
 | `question_not_found` | Question absent. |
 | `question_already_answered` | Answer committed before dismissal. |
 | `question_withdrawn` | Withdrawal committed first; existing message and `details.withdrawalReason` carry its reason. |
-| `question_dismissed` | Answer or withdrawal loses to dismissal; `This question was dismissed without an answer.` |
+| `question_dismissed` | Answer loses to dismissal for a modern reader; `This question was dismissed without an answer.` |
 | `idempotency_conflict` | Dismissal key already belongs to another question. |
 
 There is no new Honeybee `dismiss_not_authorized` operator gate in this version.
 Existing RPC peer/credential refusal codes apply exactly as for question.answer.
+
+An owner-authorized withdrawal on an already-dismissed question is a terminal
+no-op success for every reader. Storage stays dismissed, with no new audit event,
+mail, wake or lifecycle effect. The existing (bee, key) withdrawal receipt records
+`{question, alreadyTerminal: "dismissed"}`; cross-question key conflict and owner
+checks still run. Modern readers get that canonical outcome. Legacy egress removes
+the marker and returns the rewritten withdrawn row. Existing v45 row-only
+withdrawal receipts remain readable. Answer-on-dismissed remains a refusal:
+modern `question_dismissed`, legacy `question_withdrawn` with
+`details.withdrawalReason: "Dismissed without an answer"` and the same neutral
+reason in its message. Sync and async RPC errors share that immutable projection.
 
 ## Event and notice
 
@@ -133,18 +144,21 @@ storage guard changes to exactly SCHEMA_VERSION === 46 in the same change, with
 no supported-version range. The status CHECK requires a create-new/copy/drop-old/
 rename-new rebuild in the open transaction. Foreign keys are disabled before
 BEGIN and restored after commit or rollback. Original dependent indexes, views
-and triggers are restored, and foreign_key_check must be clean before commit.
+and triggers are restored. Before commit, foreign_key_check is scoped to questions
+and its transitive FK-dependent tables; unrelated pre-existing orphans do not
+block the upgrade. Violations in the affected scope abort and roll back.
 A schema without a status CHECK takes the additive nullable-column path.
 
 The portable proof checks in the complete schema45 DDL and disposable seed rows
 produced by the unmodified pinned baseline CoreStore. Fixture hashes are pinned;
 no test-time Git source lookup or archive-layout skip is used. A deliberate FK
-violation proves failed-upgrade rollback restores the old schema, objects and
-stamp. Successful migration/reopen preserves one notice/receipt, dependent rows,
+violation in a direct or transitive dependent proves failed-upgrade rollback
+restores the old schema, objects and stamp; an unrelated orphan remains intact
+and does not block successful upgrade. Successful migration/reopen preserves one notice/receipt, dependent rows,
 exact object SQL and canonical replay, with no temporary table references.
 
-A schema45 binary refuses a migrated46 store with typed schema_newer; this is
-not a rollback-free schema change. The paired real Apiary coordinator lab owns
+A schema45 binary refuses a migrated46 store with typed schema_newer. Migration
+is one-way: a rollback45 attempt means that refusal, never a restored45 runtime. The paired real Apiary coordinator lab owns
 45→46, the actual45 rollback outcome and forward46 again, including health/state
 and the satellite updater's existing refusal. It never invents a Honeybee data
 restore. Any typed refusal is reported as observed, not called a successful45
@@ -168,3 +182,9 @@ v2:check then build third, focused cases and applicable suites. Queen reviews th
 wire/projector/schema delta before PR. Needle merges only pinned green CI.
 **DEPLOY HOLD remains; this contract does not authorize a deployment or Apiary
 operator-policy enforcement flip.**
+
+
+Carried LOW documentation item: the existing mirror.ts event doc comment omits
+question.dismissed. No code comments are authored under this task's standing rule;
+the event and projector contract above is authoritative. Real45-binary refusal
+remains a required paired coordinator lab result, not inferred evidence.

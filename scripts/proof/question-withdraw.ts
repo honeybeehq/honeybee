@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { RpcClient } from "../../v2/cli/src/client.ts";
 import { RpcError, type QuestionAskResult, type QuestionWithdrawResult, type QuestionAnswerResult, type SnapshotResult, type MailboxResult, type SpawnResult, type WatchFrame } from "../../v2/daemon/src/protocol.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../../v2/daemon/src/localRpcTrust.ts";
-import { openCoreStore, replayAudit } from "../../v2/core/src/index.ts";
+import { openCoreStore, replayAudit, SCHEMA_VERSION } from "../../v2/core/src/index.ts";
 
 const evidence = resolve(process.argv[2] ?? ".proof/T15h-honeybee-withdraw");
 mkdirSync(evidence, { recursive: true });
@@ -80,7 +80,7 @@ try {
   await stop(); config(true); service = await start();
   assert.ok(service.capabilities.includes("question.withdraw.v1"));
   const swapBefore = await service.request<{ schemaVersion: number; storageSupported: boolean }>("update.apiarySwap.status");
-  assert.equal(swapBefore.schemaVersion, 44);
+  assert.equal(swapBefore.schemaVersion, SCHEMA_VERSION);
   assert.equal(swapBefore.storageSupported, true);
   receipts.push({ apiarySwapBefore: swapBefore });
   const { beeId } = await service.request<SpawnResult>("spawn", { name: "asker", agent: "inbox", cwd: root });
@@ -150,7 +150,7 @@ try {
   receipts.push({ races: raceRows });
   await new Promise(r => setTimeout(r, 100));
   const swapAfter = await service.request<{ schemaVersion: number; storageSupported: boolean }>("update.apiarySwap.status");
-  assert.equal(swapAfter.schemaVersion, 44);
+  assert.equal(swapAfter.schemaVersion, SCHEMA_VERSION);
   assert.equal(swapAfter.storageSupported, true);
   receipts.push({ apiarySwapAfter: swapAfter });
   const snapshot = await service.request<SnapshotResult>("snapshot");

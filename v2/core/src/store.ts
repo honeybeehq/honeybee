@@ -435,6 +435,12 @@ export interface AnswerResult {
   send: SendResult;
 }
 
+export interface DismissResult {
+  question: QuestionRow;
+  commandId: number | null;
+  unarchived: boolean;
+}
+
 /** v7 — `createAccount` input. */
 export interface CreateAccountInput {
   id: string;
@@ -1678,7 +1684,7 @@ export class CoreStore {
           "INSERT INTO meta(key, value) VALUES('opened_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         ).run(String(this.now()));
         this.bootRequeueRunningCommands();
-        if (rebuildQuestions && this.db.prepare("PRAGMA foreign_key_check").all().length) throw new CoreError("Question schema migration violates foreign keys");
+        if (rebuildQuestions) this.assertQuestionMigrationForeignKeys();
       }); } finally { if (rebuildQuestions) this.db.exec("PRAGMA foreign_keys = ON"); }
     } catch (err) {
       this.stmts.clear();
@@ -1690,6 +1696,18 @@ export class CoreStore {
       if (err instanceof CoreError) throw err;
       throw new SecondWriterError(path, err);
     }
+  }
+
+  private assertQuestionMigrationForeignKeys(): void {
+    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(row => String(row.name));
+    const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"';
+    const references = new Map(tables.map(table => [table, this.db.prepare(`PRAGMA foreign_key_list(${quote(table)})`).all().map(row => String(row.table).toLowerCase())]));
+    const affected = new Set(["questions"]);
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const [table, parents] of references) if (!affected.has(table.toLowerCase()) && parents.some(parent => affected.has(parent))) { affected.add(table.toLowerCase()); changed = true; }
+    }
+    for (const table of tables) if (affected.has(table.toLowerCase()) && this.db.prepare(`PRAGMA foreign_key_check(${quote(table)})`).all().length) throw new CoreError(`Question schema migration violates foreign keys in ${table}`);
   }
 
   close(): void {
@@ -6116,8 +6134,7 @@ export class CoreStore {
     const text = normalizeWithdrawalReason(reason);
     return this.tx(() => {
       const question = this.requireQuestionOwner(questionId, callerBeeId);
-      if (question.status === "withdrawn") return question;
-      if (question.status === "dismissed") throw new QuestionDismissedError();
+      if (question.status === "withdrawn" || question.status === "dismissed") return question;
       if (question.status === "answered") throw new QuestionAlreadyAnsweredError(`question ${questionId} is already answered`);
       const withdrawnAt = this.now();
       const won = this.db.prepare("UPDATE questions SET status = 'withdrawn', withdrawal_reason = ?, withdrawn_at = ? WHERE id = ? AND status = 'open'").run(text, withdrawnAt, questionId);
@@ -6127,7 +6144,7 @@ export class CoreStore {
     });
   }
 
-  withdrawQuestionWithKey(questionId: string, callerBeeId: string, reason: string, key: string): { question: QuestionRow; deduped?: true } {
+  withdrawQuestionWithKey(questionId: string, callerBeeId: string, reason: string, key: string): { question: QuestionRow; alreadyTerminal?: "dismissed"; deduped?: true } {
     requireNonEmpty(key, "withdrawQuestion: idempotencyKey");
     const text = normalizeWithdrawalReason(reason);
     return this.tx(() => {
@@ -6135,17 +6152,19 @@ export class CoreStore {
       const hit = this.stmt("SELECT question_id, result FROM question_withdraw_receipts WHERE bee_id = ? AND key = ?").get(callerBeeId, key) as Row | undefined;
       if (hit) {
         if (hit.question_id !== questionId) throw new IdempotencyConflictError("Withdrawal key belongs to another question");
-        return { question: JSON.parse(String(hit.result)) as QuestionRow, deduped: true };
+        const recorded = JSON.parse(String(hit.result)) as QuestionRow | { question: QuestionRow; alreadyTerminal?: "dismissed" };
+        return "question" in recorded ? { ...recorded, deduped: true } : { question: recorded, deduped: true };
       }
       const question = this.withdrawQuestion(questionId, callerBeeId, text);
-      this.stmt("INSERT INTO question_withdraw_receipts(bee_id,key,question_id,result,created_at) VALUES(?,?,?,?,?)").run(callerBeeId, key, questionId, JSON.stringify(question), this.now());
+      const result = { question, ...(question.status === "dismissed" ? { alreadyTerminal: "dismissed" as const } : {}) };
+      this.stmt("INSERT INTO question_withdraw_receipts(bee_id,key,question_id,result,created_at) VALUES(?,?,?,?,?)").run(callerBeeId, key, questionId, JSON.stringify(result), this.now());
       const count = Number((this.stmt("SELECT count(*) AS n FROM question_withdraw_receipts").get() as Row).n);
       if (count > this.maxRpcIdempotencyRows) this.stmt("DELETE FROM question_withdraw_receipts WHERE rowid IN (SELECT rowid FROM question_withdraw_receipts ORDER BY created_at, rowid LIMIT ?)").run(count - this.maxRpcIdempotencyRows);
-      return { question };
+      return result;
     });
   }
 
-  dismissQuestionWithKey(questionId: string, key: string): { question: QuestionRow; deduped?: true } {
+  dismissQuestionWithKey(questionId: string, key: string): DismissResult & { deduped?: true } {
     requireNonEmpty(key, "dismissQuestion: idempotencyKey");
     return this.tx(() => {
       const question = this.getQuestion(questionId);
@@ -6153,24 +6172,28 @@ export class CoreStore {
       const hit = this.stmt("SELECT question_id, result FROM question_dismiss_receipts WHERE key = ?").get(key) as Row | undefined;
       if (hit) {
         if (hit.question_id !== questionId) throw new IdempotencyConflictError("Dismissal key belongs to another question");
-        return { question: JSON.parse(String(hit.result)) as QuestionRow, deduped: true };
+        return { ...JSON.parse(String(hit.result)) as DismissResult, deduped: true };
       }
       if (question.status === "answered") throw new QuestionAlreadyAnsweredError(`question ${questionId} is already answered`);
       if (question.status === "withdrawn") throw new QuestionWithdrawnError(question.withdrawalReason!);
+      let commandId: number | null = null, unarchived = false;
       if (question.status === "open") {
         const dismissedAt = this.now();
         const won = this.stmt("UPDATE questions SET status = 'dismissed', dismissed_at = ?, dismissed_by = 'rpc' WHERE id = ? AND status = 'open'").run(dismissedAt, questionId);
         if (won.changes !== 1) throw new QuestionNotOpenError(`question ${questionId} is no longer open`);
         const send = this.send(question.beeId, "Your question was dismissed without an answer.", { sender: "rpc", senderKind: "automation", urgency: "next" });
+        commandId = send.wakeCommand?.id ?? null; unarchived = send.unarchived;
         this.stmt("UPDATE questions SET dismissal_message_id = ? WHERE id = ?").run(send.message.id, questionId);
         const event: QuestionDismissedEvent = { questionId, dismissedAt, dismissedBy: "rpc", dismissalMessageId: send.message.id };
         this.audit("question.dismissed", question.beeId, event);
       }
       const updated = this.getQuestion(questionId)!;
-      this.stmt("INSERT INTO question_dismiss_receipts(key,bee_id,question_id,result,created_at) VALUES(?,?,?,?,?)").run(key, question.beeId, questionId, JSON.stringify(updated), this.now());
+      const first = question.status === "dismissed" ? this.stmt("SELECT result FROM question_dismiss_receipts WHERE question_id = ? ORDER BY created_at,rowid LIMIT 1").get(questionId) as Row | undefined : undefined;
+      const result = first ? JSON.parse(String(first.result)) as DismissResult : { question: updated, commandId, unarchived };
+      this.stmt("INSERT INTO question_dismiss_receipts(key,bee_id,question_id,result,created_at) VALUES(?,?,?,?,?)").run(key, question.beeId, questionId, JSON.stringify(result), this.now());
       const count = Number((this.stmt("SELECT count(*) AS n FROM question_dismiss_receipts").get() as Row).n);
       if (count > this.maxRpcIdempotencyRows) this.stmt("DELETE FROM question_dismiss_receipts WHERE rowid IN (SELECT rowid FROM question_dismiss_receipts ORDER BY created_at, rowid LIMIT ?)").run(count - this.maxRpcIdempotencyRows);
-      return { question: updated };
+      return result;
     });
   }
 

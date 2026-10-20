@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { QUESTION_DISMISSAL_RESULTS, QUESTION_DISMISSAL_AUDITS, projectQuestionDismissalResult, projectQuestionDismissalDelta } from "../src/questionDismissalProjection.ts";
+import { QUESTION_DISMISSAL_RESULTS, QUESTION_DISMISSAL_AUDITS, projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "../src/questionDismissalProjection.ts";
 import { protocolTypeCensus } from "./protocolTypeCensus.ts";
 import { deliveryText, deliveryPointer, QUESTION_DISMISSED_MARKER } from "../src/envelope.ts";
 
@@ -86,4 +86,41 @@ test("absence of the owner mutation capability refuses before the client sends a
     await assert.rejects(client.request("question.dismiss", {questionId: "q", idempotencyKey: "k"}), (error: unknown) => error !== null && typeof error === "object" && "code" in error && error.code === "question_dismiss_unsupported");
     assert.equal(dispatched, 0);
   } finally {client?.close(); await server.close(); rmSync(root, {recursive: true, force: true});}
+});
+
+
+test("legacy errors project dismissal refusals immutably and withdrawal no-op markers remain canonical only", () => {
+  const error = Object.freeze({code: "question_dismissed" as const, message: "This question was dismissed without an answer."});
+  assert.equal(projectQuestionDismissalError(error, ["question.dismissed.v1"]), error);
+  assert.deepEqual(projectQuestionDismissalError(error, []), {code: "question_withdrawn", message: "This question was withdrawn: Dismissed without an answer", details: {withdrawalReason: "Dismissed without an answer"}});
+  const other = Object.freeze({code: "question_not_owner" as const, message: "Not the asking bee."});
+  assert.equal(projectQuestionDismissalError(other, []), other);
+  const value = Object.freeze({question: Object.freeze({status: "dismissed", dismissedAt: 12}), alreadyTerminal: "dismissed"});
+  assert.equal(projectQuestionDismissalResult("question.withdraw", value, ["question.dismissed.v1"]), value);
+  assert.deepEqual(projectQuestionDismissalResult("question.withdraw", value, []), {question: {status: "withdrawn", withdrawalReason: "Dismissed without an answer", withdrawnAt: 12}});
+});
+
+
+test("sync and async dismissal errors stay compatible on simultaneous legacy and modern connections", async () => {
+  const {RpcServer} = await import("../src/rpc.ts"), {RpcClient} = await import("../../cli/src/client.ts");
+  const {QuestionDismissedError} = await import("../../core/src/index.ts");
+  const {mkdtempSync, rmSync} = await import("node:fs"), {tmpdir} = await import("node:os"), {join} = await import("node:path");
+  const root = mkdtempSync(join(tmpdir(), "dismiss-errors-"));
+  const server = new RpcServer({socketPath: join(root, "rpc.sock"), log: () => {}, dispatch: (_verb, params) => {
+    if (params.async) return Promise.reject(new QuestionDismissedError());
+    throw new QuestionDismissedError();
+  }});
+  const clients: Awaited<ReturnType<typeof RpcClient.connect>>[] = [];
+  try {
+    await server.listen();
+    for (const capabilities of [[], ["question.dismissed.v1"]]) {
+      const client = await RpcClient.connect(join(root, "rpc.sock"), 3000, undefined, {capabilities}); clients.push(client);
+      for (const async of [false, true]) await assert.rejects(client.request("question.answer", {async}), (error: unknown) => {
+        assert.ok(error !== null && typeof error === "object" && "code" in error);
+        assert.equal(error.code, capabilities.length ? "question_dismissed" : "question_withdrawn");
+        if (!capabilities.length) assert.deepEqual("details" in error ? error.details : null, {withdrawalReason: "Dismissed without an answer"});
+        return true;
+      });
+    }
+  } finally {for (const client of clients) client.close(); await server.close(); rmSync(root, {recursive: true, force: true});}
 });

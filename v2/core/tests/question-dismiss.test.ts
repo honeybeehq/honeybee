@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { QuestionDismissedError, QuestionAlreadyAnsweredError, QuestionWithdrawnError, IdempotencyConflictError, QuestionNotFoundError, replayAudit } from "../src/index.ts";
+import { QuestionDismissedError, QuestionAlreadyAnsweredError, QuestionWithdrawnError, IdempotencyConflictError, QuestionNotFoundError, QuestionNotOwnerError, replayAudit } from "../src/index.ts";
 import { harness, makeBee } from "./helpers.ts";
 
 const notice = "Your question was dismissed without an answer.";
@@ -11,7 +11,7 @@ test("dismiss commits one terminal row, automation notice and event; receipts/re
   try {
     const { bee } = makeBee(store);
     const question = store.askQuestion(bee.id, { text: "Decide?", options: ["yes", "no"] });
-    const dismissed = store.dismissQuestionWithKey(question.id, "dismiss-key").question;
+    const first = store.dismissQuestionWithKey(question.id, "dismiss-key"), dismissed = first.question;
     assert.equal(dismissed.status, "dismissed"); assert.equal(dismissed.dismissedBy, "rpc");
     assert.ok(dismissed.dismissedAt! > question.askedAt);
     for (const key of ["answer", "answeredAt", "answeredBy", "deliveryMessageId", "withdrawalReason", "withdrawnAt"] as const) assert.equal(dismissed[key], null);
@@ -21,13 +21,13 @@ test("dismiss commits one terminal row, automation notice and event; receipts/re
     const event = store.auditRows().find(row => row.kind === "question.dismissed")!;
     assert.deepEqual(event.payload, { questionId: question.id, dismissedAt: dismissed.dismissedAt, dismissedBy: "rpc", dismissalMessageId: message.id });
     const seq = store.auditRows().at(-1)!.seq; h.now();
-    assert.deepEqual(store.dismissQuestionWithKey(question.id, "dismiss-key"), { question: dismissed, deduped: true });
-    assert.deepEqual(store.dismissQuestionWithKey(question.id, "another-key"), { question: dismissed });
+    assert.deepEqual(store.dismissQuestionWithKey(question.id, "dismiss-key"), { ...first, deduped: true });
+    assert.deepEqual(store.dismissQuestionWithKey(question.id, "another-key"), first);
     assert.equal(store.auditRows().at(-1)!.seq, seq); assert.equal(store.listMessages(bee.id).length, 1);
     assert.deepEqual(store.listQuestions({ open: true }), []);
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close(); store = h.open();
-    assert.deepEqual(store.dismissQuestionWithKey(question.id, "dismiss-key"), { question: dismissed, deduped: true });
+    assert.deepEqual(store.dismissQuestionWithKey(question.id, "dismiss-key"), { ...first, deduped: true });
     assert.deepEqual(store.getQuestion(question.id), dismissed);
     assert.equal(store.auditRows().filter(row => row.kind === "question.dismissed").length, 1);
   } finally { store.close(); h.cleanup(); }
@@ -57,6 +57,10 @@ for (const first of ["answer", "withdraw", "dismiss"] as const) test(`terminal r
     operations[first]();
     for (const loser of Object.keys(operations) as (keyof typeof operations)[]) {
       if (loser === first) continue;
+      if (first === "dismiss" && loser === "withdraw") {
+        assert.deepEqual(store.withdrawQuestionWithKey(q.id, bee.id, "Ignored terminal reason.", "withdraw"), {question: store.getQuestion(q.id), alreadyTerminal: "dismissed"});
+        continue;
+      }
       assert.throws(operations[loser], first === "answer" ? QuestionAlreadyAnsweredError : first === "withdraw" ? QuestionWithdrawnError : QuestionDismissedError);
     }
     const state = store.getQuestion(q.id)!;
@@ -100,5 +104,40 @@ test("schema46 migration without a status CHECK gains dismissal columns additive
     assert.equal(after.prepare("SELECT rootpage FROM sqlite_master WHERE name='questions'").get()!.rootpage, rootPage);
     assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "46"); after.close();
     store = h.open(); assert.equal(store.getQuestion(q.id)!.status, "dismissed");
+  } finally {store.close(); h.cleanup();}
+});
+
+
+test("dismiss result durably reports first notice unarchive and wake effects on same and new keys", () => {
+  const h = harness(); let store = h.open();
+  try {
+    const {bee} = makeBee(store); const question = store.askQuestion(bee.id, {text: "Archive notice?"});
+    store.updateRuntimeState(bee.id, 1, "stopped", {exitCause: "stopped_by_user"});
+    store.archiveBee(bee.id);
+    const first = store.dismissQuestionWithKey(question.id, "first");
+    assert.equal(first.unarchived, true); assert.equal(typeof first.commandId, "number");
+    assert.equal(store.getBee(bee.id)!.lifecycle, "active");
+    const before = store.dumpState();
+    assert.deepEqual(store.dismissQuestionWithKey(question.id, "first"), {...first, deduped: true});
+    assert.deepEqual(store.dismissQuestionWithKey(question.id, "next"), first);
+    assert.deepEqual(store.dumpState(), before);
+    store.close();
+    const db = new DatabaseSync(h.path);
+    assert.deepEqual(JSON.parse(String(db.prepare("SELECT result FROM question_dismiss_receipts WHERE key='first'").get()!.result)), first);
+    db.close(); store = h.open();
+    assert.deepEqual(store.dismissQuestionWithKey(question.id, "next"), {...first, deduped: true});
+    const {bee: other} = makeBee(store, "other-owner");
+    store.archiveBee(bee.id);
+    const seq = store.lastAuditSeq(), mail = store.listMessages(bee.id).length, commands = store.listCommands().length;
+    assert.throws(() => store.withdrawQuestionWithKey(question.id, other.id, "Denied.", "terminal"), QuestionNotOwnerError);
+    const noOp = store.withdrawQuestionWithKey(question.id, bee.id, "No change.", "terminal");
+    assert.equal(noOp.alreadyTerminal, "dismissed"); assert.deepEqual(noOp.question, first.question);
+    assert.deepEqual(store.withdrawQuestionWithKey(question.id, bee.id, "Changed reason.", "terminal"), {...noOp, deduped: true});
+    assert.equal(store.lastAuditSeq(), seq); assert.equal(store.listMessages(bee.id).length, mail); assert.equal(store.listCommands().length, commands);
+    assert.deepEqual(store.getQuestion(question.id), first.question);
+    assert.equal(store.getBee(bee.id)!.lifecycle, "archived");
+    store.close(); const receiptDb = new DatabaseSync(h.path);
+    assert.deepEqual(JSON.parse(String(receiptDb.prepare("SELECT result FROM question_withdraw_receipts WHERE key='terminal'").get()!.result)), noOp);
+    receiptDb.close(); store = h.open();
   } finally {store.close(); h.cleanup();}
 });

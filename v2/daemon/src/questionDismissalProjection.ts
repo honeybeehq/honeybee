@@ -1,4 +1,4 @@
-import type { RpcVerb } from "./protocol.ts";
+import type { RpcErrorShape, RpcVerb } from "./protocol.ts";
 import { rewritePath } from "./answerTriggerProjection.ts";
 
 export const QUESTION_DISMISSED_CAPABILITY = "question.dismissed.v1";
@@ -43,7 +43,16 @@ function project(value: unknown, coverage: { values: readonly string[]; audits: 
   let result = value;
   for (const path of coverage.values) result = rewritePath(result, path.split("."), legacyQuestion);
   for (const path of coverage.audits) result = rewritePath(result, path.split("."), legacyAudit);
+  if (coverage === QUESTION_DISMISSAL_RESULTS.QuestionWithdrawResult && record(result) && result.alreadyTerminal === "dismissed") {
+    const { alreadyTerminal, ...legacy } = result;
+    return legacy;
+  }
   return result;
+}
+
+export function projectQuestionDismissalError(error: RpcErrorShape, capabilities: readonly string[]): RpcErrorShape {
+  if (capabilities.includes(QUESTION_DISMISSED_CAPABILITY) || error.code !== "question_dismissed") return error;
+  return { code: "question_withdrawn", message: "This question was withdrawn: Dismissed without an answer", details: { withdrawalReason: "Dismissed without an answer" } };
 }
 
 export function projectQuestionDismissalResult(verb: RpcVerb, value: unknown, capabilities: readonly string[]): unknown {

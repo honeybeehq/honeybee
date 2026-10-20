@@ -493,3 +493,19 @@ test("mirror limits invalidates a discarded remote observation with no local bas
     store.close();
   } finally { h.cleanup(); }
 });
+
+
+test("mirror dismissal formats freeze a real terminal row for both reader capabilities", () => {
+  const h = harness(); const store = h.open();
+  try {
+    const {bee} = makeBee(store);
+    const question = store.askQuestion(bee.id, {id: "dismissed-question", text: "Dismiss this frozen question?"});
+    const result = store.dismissQuestionWithKey(question.id, "frozen-dismissal");
+    assert.equal(result.question.status, "dismissed");
+    for (const [name, capabilities] of [["mirror-dismissed-row-v1.json", ["question.dismissed.v1"]], ["mirror-dismissed-row-legacy.json", []]] as const) {
+      const projected = projectQuestionDismissalResult("question.dismiss", result, capabilities);
+      const frozen = JSON.stringify(projected, null, 2).replaceAll(bee.id, "BEE_ID") + "\n";
+      assert.equal(frozen, readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8"));
+    }
+  } finally {store.close(); h.cleanup();}
+});

@@ -1371,6 +1371,8 @@ export interface QuestionDismissParams {
 
 export interface QuestionDismissResult extends DedupMarkers {
   question: MirrorQuestionRow;
+  commandId: number | null;
+  unarchived: boolean;
 }
 
 /** Requires question.withdraw.v1 and an authenticated session principal; see docs/design/question-withdraw-contract.md. */
@@ -1381,6 +1383,7 @@ export interface QuestionWithdrawParams {
 }
 
 export interface QuestionWithdrawResult extends DedupMarkers {
+  alreadyTerminal?: "dismissed";
   question: MirrorQuestionRow;
 }
 

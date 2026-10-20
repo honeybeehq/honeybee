@@ -1,4 +1,4 @@
-import { projectQuestionDismissalResult, projectQuestionDismissalDelta } from "./questionDismissalProjection.ts";
+import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
 import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
 import { canonicalDigest } from "../../../src/comb/canonical.ts";
 import { parsePhoneOrigin, type PhoneOriginRequest } from "../../core/src/phoneOrigin.ts";
@@ -459,7 +459,7 @@ export class RpcServer {
           },
           (err) => {
             span.end("error");
-            conn.send({ id, ok: false, error: toRpcError(err) });
+            conn.send({ id, ok: false, error: projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities) });
           },
         );
         return;
@@ -469,7 +469,7 @@ export class RpcServer {
     } catch (err) {
       if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
       span.end("error");
-      conn.send({ id, ok: false, error: toRpcError(err) });
+      conn.send({ id, ok: false, error: projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities) });
     }
   }
 }
