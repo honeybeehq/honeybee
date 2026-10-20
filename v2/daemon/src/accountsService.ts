@@ -2266,6 +2266,10 @@ export class AccountsService {
     return `${harness}:provider-accounts`;
   }
 
+  proactiveAdmissionEnabled(): boolean {
+    return this.cfg.accounts.proactiveAdmission;
+  }
+
   allocationMode(): "shadow" | "active" {
     return this.cfg.accounts.allocationMode;
   }
@@ -2475,7 +2479,7 @@ export class AccountsService {
 
   restoredQuotaHeadroom(account: AccountRow, model?: string): boolean {
     const row = this.store.getAccountLimits(account.id);
-    const boundaryAt = Math.max(account.exhaustedAt ?? 0, ...this.store.listQuotaRecoveries().filter(recovery => recovery.sourceAccount === account.id && recovery.admission).map(recovery => recovery.createdAt));
+    const boundaryAt = Math.max(account.exhaustedAt ?? 0, this.store.proactiveRecoveryBoundary(account.id));
     const values = row?.readable ? [row.fiveHourPct, row.weeklyPct, ...(isFableModel(model) ? [row.fableWeeklyPct] : [])].filter((value): value is number => value !== null) : [];
     return boundaryAt > 0 && row?.readable === true && row.fetchedAt > boundaryAt
       && this.now() - row.fetchedAt <= this.cfg.accounts.allocationQuotaFreshMs
@@ -2513,18 +2517,17 @@ export class AccountsService {
     return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, requestUnits, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
   }
 
-  proactiveTargets(harness: string, sourceAccount: string, model?: string, beeId?: string): Set<string> {
+  proactiveTargets(harness: string, sourceAccount: string, model?: string): Set<string> {
     const accounts = this.store.listAccounts({ harness });
     const now = this.now();
     const activity = this.localActivities(accounts.map(account => account.id), now);
-    const recoveries = this.store.listQuotaRecoveries();
     return new Set(accounts.filter(account => {
-      const local = this.openingActivity(activity.get(account.id)!, account.id === sourceAccount ? beeId : undefined);
+      if (account.id === sourceAccount) return false;
+      const local = activity.get(account.id)!;
       const candidate = this.admissionCandidate(account, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now, local);
-      if (candidate.eligibility.state !== "eligible" || completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs }).status !== "eligible"
-        || account.id === sourceAccount && !this.restoredQuotaHeadroom(account, model)) return false;
+      if (candidate.eligibility.state !== "eligible" || completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs }).status !== "eligible") return false;
       const fetchedAt = this.store.getAccountLimits(account.id)?.fetchedAt ?? 0;
-      return !recoveries.some(row => row.admission && row.sourceAccount === account.id && fetchedAt <= row.createdAt);
+      return fetchedAt > this.store.proactiveRecoveryBoundary(account.id);
     }).map(account => account.id));
   }
 

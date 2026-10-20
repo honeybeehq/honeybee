@@ -218,7 +218,7 @@ export const DAEMON_CAPABILITIES = [
    * `account.credentialsRestored` and `account.interruptions`.
    */
   "account.auth_resume.v1",
-  "account.quota_recovery.v1",
+  "account.quota_recovery.v2",
   "account.pause.owner.v1",
   /**
    * 2026-10 (no schema change): a centrally managed Claude account logs in

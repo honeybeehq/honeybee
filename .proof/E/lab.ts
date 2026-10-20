@@ -8,12 +8,14 @@ const proof = resolve(".proof/E");
 const repo = resolve(".");
 const selected = new Set(process.argv.slice(2));
 const results: any[] = selected.size && existsSync(join(proof, "summary.json")) ? JSON.parse(readFileSync(join(proof, "summary.json"), "utf8")).filter((row: any) => !selected.has(row.name)) : [];
-for (const harness of ["claude", "codex"]) for (const scenario of ["human", "worker", "action", "projected", "headroom", "healthy", "subside", "restart", "stale", "running", "both", "source-reset", "optout", "active"]) {
+for (const harness of ["claude", "codex"]) for (const scenario of ["human", "worker", "action", "projected", "headroom", "healthy", "subside", "restart", "stale", "running", "both", "source-reset", "optout", "active", "default-off", "handoff", "provider-wait", "provider-unreadable"]) {
   const name = `${harness}-${scenario}`;
   if (selected.size && !selected.has(name)) continue;
   const usage = new Map([[`${harness}-a`, 5], [`${harness}-b`, 5]]);
   const reset = Math.ceil((Date.now() + (scenario === "source-reset" ? 5000 : 3_600_000)) / 1000) * 1000;
+  let readable = true;
   const server = createServer((req, res) => {
+    if (!readable) { res.statusCode = 503; res.end("fixture unavailable"); return; }
     const id = new URL(req.url!, "http://127.0.0.1").searchParams.get("id") ?? `${harness}-${req.headers.authorization?.endsWith("b") ? "b" : "a"}`;
     const pct = scenario === "source-reset" && id.endsWith("-a") && Date.now() >= reset ? 5 : usage.get(id) ?? 5;
     const observedReset = Date.now() >= reset ? reset + 3_600_000 : reset;
@@ -30,7 +32,7 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
     case "initialize":`);
   writeFileSync(fakeCodex, source);
   chmodSync(fakeCodex, 0o700);
-  const { dir } = makeDaemonDir({ accounts: { allocationMode: scenario === "active" ? "active" : "shadow", allocationNodeId: "lab", allocationOwner: { node: "lab", epoch: "lab-e" }, allocationQuotaFreshMs: scenario === "stale" ? 500 : 120_000 }, agents: {
+  const { dir } = makeDaemonDir({ accounts: { ...(scenario === "default-off" ? {} : { proactiveAdmission: true }), allocationMode: scenario === "active" || scenario === "provider-wait" ? "active" : "shadow", allocationNodeId: "lab", allocationOwner: { node: "lab", epoch: "lab-e" }, allocationQuotaFreshMs: scenario === "stale" ? 500 : 120_000 }, agents: {
     [harness]: { command: harness === "codex" ? fakeCodex : process.execPath, args: harness === "codex" ? [] : [join(repo, "v2/driver-hsr/test-agent/fake-claude.mjs")], adapter: harness, ...(harness === "codex" ? { env: { FAKE_CODEX_STRICT_HOME: "1" } } : {}) },
   } });
   writeFileSync(join(proof, `${name}.root.log`), dir);
@@ -70,13 +72,34 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
       await delivered(running.messageId);
       await waitFor(async () => (await request("view", { beeId })).view.runtimeState === "running", `${name} running`);
     }
+    if (scenario === "provider-wait" || scenario === "provider-unreadable") {
+      if (scenario === "provider-unreadable") {
+        await request("account.pause", { id: `${harness}-b` });
+        readable = false;
+        await request("account.limits");
+      }
+      const limit = await send("@quota:weekly fixture provider limit");
+      await delivered(limit.messageId);
+      const waiting = await waitFor(async () => (await request("snapshot")).quotaRecoveries.find((r: any) => r.beeId === beeId && r.trigger === "provider_limit" && r.state === "waiting"), `${name} provider waiting`);
+      const operator = await send("operator mail must reach a waiting provider-limit bee");
+      assert.equal((await delivered(operator.messageId)).deliveredGeneration, 1);
+      await idle();
+      await waitFor(async () => (await request("snapshot")).quotaRecoveries.find((r: any) => r.id === waiting.id && r.state === "cancelled" && r.reason === "turn_succeeded"), `${name} success cancels wait`);
+    } else {
     usage.set(`${harness}-a`, scenario === "healthy" ? 5 : scenario === "projected" || scenario === "both" ? 87 : 91);
     if (scenario === "both" || scenario === "source-reset") usage.set(`${harness}-b`, scenario === "both" ? 87 : 91);
+    if (scenario === "handoff") usage.set(`${harness}-b`, 91);
     if (scenario === "headroom") usage.set(`${harness}-b`, 85);
     if (scenario === "subside" || scenario === "restart") usage.set(`${harness}-b`, 91);
     await request("account.limits");
     if (scenario === "stale") await new Promise(done => setTimeout(done, 800));
-    if (scenario === "running") {
+    if (scenario === "handoff") {
+      const view = await request("view", { beeId });
+      const handoff = await request("bee.handoff", { beeId, expected: { generation: view.runtime.generation, agent: harness }, target: { agent: harness, account: `${harness}-b` }, idempotencyKey: name, instruction: "handoff seed must be delivered within reserve" });
+      await waitFor(async () => (await request("bee.handoff.get", { handoffId: handoff.id })).phase === "complete", `${name} complete`, 30000);
+      assert.equal((await request("snapshot")).quotaRecoveries.filter((r: any) => r.beeId === beeId).length, 0);
+      assert.equal((await request("view", { beeId })).bee.account, `${harness}-b`);
+    } else if (scenario === "running") {
       const before = await request("view", { beeId });
       assert.equal(before.view.generation, 1);
       await idle();
@@ -144,12 +167,12 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
         assert.equal(new Set(notices.map((r: any) => r.payload.notice.recoveryId)).size, 1);
       } else {
         const mail = await delivered(sent.messageId);
-        if (scenario === "source-reset") assert.ok(mail.deliveredGeneration === 1 || mail.deliveredGeneration === 2);
-        else assert.equal(mail.deliveredGeneration, scenario === "stale" || scenario === "optout" || scenario === "healthy" ? 1 : 2);
+        if (scenario === "source-reset") assert.equal(mail.deliveredGeneration, 1);
+        else assert.equal(mail.deliveredGeneration, scenario === "stale" || scenario === "optout" || scenario === "healthy" || scenario === "default-off" ? 1 : 2);
         await idle();
         const snapshot = await request("snapshot");
         const recoveries = snapshot.quotaRecoveries.filter((r: any) => r.beeId === beeId);
-        if (scenario === "stale" || scenario === "optout" || scenario === "healthy") assert.equal(recoveries.length, 0);
+        if (scenario === "stale" || scenario === "optout" || scenario === "healthy" || scenario === "default-off") assert.equal(recoveries.length, 0);
         else {
           assert.equal(recoveries.length, 1);
           assert.equal(recoveries[0].trigger, "proactive");
@@ -169,8 +192,9 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
         }
       }
     }
+    }
     const audit = await request("audit.tail", { beeId, limit: 1000 });
-    assert.equal(audit.rows.filter((r: any) => r.kind === "quota.observed").length, 0);
+    if (scenario !== "provider-wait" && scenario !== "provider-unreadable") assert.equal(audit.rows.filter((r: any) => r.kind === "quota.observed").length, 0);
     const journal = join(dir, "session-logs", `${beeId}.jsonl`);
     if (existsSync(journal)) writeFileSync(join(proof, `${name}.journal.jsonl`), readFileSync(journal));
     results.push({ name, passed: true });

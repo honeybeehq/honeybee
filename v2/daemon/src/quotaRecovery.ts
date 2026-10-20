@@ -31,7 +31,13 @@ export class QuotaRecovery {
       }
       if (row.state === "rotating") {
         const runtime = this.store.currentRuntime(row.beeId);
-        if (runtime && runtime.generation > row.sourceGeneration && runtime.state === "stopped" && !this.store.activeFlags(row.beeId).some(flag => flag.flag === "spawn_failed")) this.store.enqueueBootRetry(row.beeId);
+        if (runtime && runtime.generation > row.sourceGeneration && runtime.state === "stopped") {
+          if (this.store.activeFlags(row.beeId).some(flag => flag.flag === "spawn_failed")) {
+            this.store.cancelQuotaRecovery(row.id, "successor_spawn_failed");
+            continue;
+          }
+          this.store.enqueueBootRetry(row.beeId);
+        }
         this.store.resumeQuotaRecovery(row.id);
       }
       else if (this.recover) {

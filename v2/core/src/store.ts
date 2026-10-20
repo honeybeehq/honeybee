@@ -2211,7 +2211,7 @@ export class CoreStore {
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
       const runtime = this.currentRuntime(beeId);
-      if (!runtime || runtime.generation !== generation || runtime.state !== "idle" && !(runtime.state === "running" && runtime.bootEvidence === "synthetic")) return null;
+      if (bee.lifecycle !== "active" || bee.activeMoveId || bee.activeHandoffId || !runtime || runtime.generation !== generation || runtime.state !== "idle" && !(runtime.state === "running" && runtime.bootEvidence === "synthetic")) return null;
       const recoveries = this.listQuotaRecoveries(beeId);
       const existing = recoveries.find(row => (row.state === "waiting" || row.state === "rotating") && this.quotaRecoveryValid(row));
       if (existing) return existing;
@@ -2234,6 +2234,11 @@ export class CoreStore {
       ? this.stmt("SELECT payload FROM quota_recoveries ORDER BY id").all()
       : this.stmt("SELECT payload FROM quota_recoveries WHERE bee_id = ? ORDER BY id").all(beeId) as Row[])
       .map(row => ({ trigger: "provider_limit", ...JSON.parse(String(row.payload)) }) as QuotaRecoveryRow);
+  }
+
+  proactiveRecoveryBoundary(accountId: string): number {
+    const row = this.stmt("SELECT MAX(json_extract(payload, '$.createdAt')) AS boundary FROM quota_recoveries WHERE json_extract(payload, '$.sourceAccount') = ? AND json_type(payload, '$.admission') = 'object'").get(accountId) as Row;
+    return Number(row.boundary ?? 0);
   }
 
   hasDeliveredMail(beeId: string, generation: number): boolean {

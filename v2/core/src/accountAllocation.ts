@@ -144,8 +144,10 @@ export function completionHeadroom(candidate: AccountAdmissionCandidate, policy:
   });
   const maxProjectedPercent = Math.max(...projected);
   const protectedNow = activityPresent(candidate) && windows.some(window => window.usedPercent >= policy.completionReservePercent);
+  const protectedResets = windows.filter((window, index) => projected[index]! >= policy.completionReservePercent
+    || activityPresent(candidate) && window.usedPercent >= policy.completionReservePercent).map(window => window.resetsAt);
   return { status: protectedNow || maxProjectedPercent >= policy.completionReservePercent ? "protected" : "eligible", maxProjectedPercent,
-    retryAt: Math.min(...windows.map(window => window.resetsAt)) };
+    retryAt: protectedResets.length ? Math.max(...protectedResets) : Math.min(...windows.map(window => window.resetsAt)) };
 }
 
 /**

@@ -132,6 +132,7 @@ export interface AccountsConfig {
   exhaustionCoolOffMs?: number;
   /** Automatic-account admission rollout. `shadow` records decisions but preserves legacy placement. Default shadow. */
   allocationMode?: "shadow" | "active";
+  proactiveAdmission?: boolean;
   /** Stable Apiary node identity for this daemon's allocation RPCs. */
   allocationNodeId?: string;
   /** Fenced allocator identity every node trusts. Required in active mode. */
@@ -886,6 +887,9 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
   if (backend !== "auto" && backend !== "pipe") {
     throw new ConfigError("config: accounts.loginWorkerBackend must be 'auto' or 'pipe' when given");
   }
+  if (a.proactiveAdmission !== undefined && typeof a.proactiveAdmission !== "boolean") {
+    throw new ConfigError("config: accounts.proactiveAdmission must be a boolean");
+  }
   const allocationMode = a.allocationMode === undefined ? DEFAULTS.allocationMode : a.allocationMode;
   if (allocationMode !== "shadow" && allocationMode !== "active") {
     throw new ConfigError("config: accounts.allocationMode must be 'shadow' or 'active'");
@@ -942,6 +946,7 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
     loginTimeoutMs: num(a, "loginTimeoutMs", DEFAULTS.loginTimeoutMs),
     exhaustionCoolOffMs: num(a, "exhaustionCoolOffMs", DEFAULTS.exhaustionCoolOffMs),
     allocationMode,
+    proactiveAdmission: typeof a.proactiveAdmission === "boolean" ? a.proactiveAdmission : allocationMode === "active",
     allocationNodeId: allocationNodeId as string | null,
     allocationOwner: allocationOwner as { node: string; epoch: string } | null,
     allocationQuotaFreshMs,
