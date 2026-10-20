@@ -1,0 +1,10 @@
+BEFORE H1b-1 on H1a: real owned runner and zero writes
+{"case":"authenticated-reconnect-after-never-written-refusal","beforeAttempts":100,"beforeWrites":0,"connected":true,"socketBroken":true,"result":{"accepted":false,"reason":"not_ready"},"writes":0,"pendingAcknowledgements":0,"pid":1191369}
+AFTER: wrong-peer rejected, owning runner authenticated, one write
+{"case":"authenticated-reconnect-after-never-written-refusal","beforeAttempts":100,"beforeWrites":0,"connected":true,"wrongPeerRefused":true,"socketBroken":false,"result":{"accepted":true},"writes":1,"pendingAcknowledgements":0,"pid":1196315}
+CROSS-TARGET STARTUP
+{"case":"cross-target-daemon-rejected-before-store","exit":1,"storeCreated":false,"diagnostic":"daemon: build target h1-wrong-target differs from runtime target linux-x64; install an artifact built for this node"}
+NORMAL-TARGET OWNED DAEMON
+{"case":"live-owned-daemon-doctor-single-flight","results":[{"ok":true,"results":["ok"],"durationMs":0.9264460000000554},{"ok":true,"results":["ok"],"durationMs":0.9264460000000554}],"pid":1194673}
+{"case":"doctor-cooldown","refused":true}
+{"case":"doctor-remote-relay","refused":true}
