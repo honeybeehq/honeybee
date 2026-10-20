@@ -1,0 +1,34 @@
+✔ policy: bees.tmpRoot wins, absent defaults by nodeKind, null turns it off (2.816875ms)
+✔ config: bees.tmpRoot is additive and validated (9.188215ms)
+✔ names: safe ids map to themselves; unsafe ids and the daemon name hash into one segment (1.169121ms)
+✔ dirs: ensure creates, remove deletes, sweep keeps daemon and kept bees (3.36005ms)
+✔ satellite daemon: per-bee TMPDIR, shared compile cache, removed on archive after stop (1191.407272ms)
+✔ bees.tmpRoot turns it on for a node whose nodeKind is unset, and null turns a satellite off (1907.451369ms)
+✔ workstation daemon: TMPDIR and compile cache are inherited unchanged (1459.711843ms)
+✔ a restart that turns the policy on keeps reaching the surviving runner: same generation, mail delivered (1483.392935ms)
+✔ boot sweep removes only this store's archived bees' dirs (1819.750543ms)
+✔ satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writable inside the sandbox (1311.450599ms)
+✔ symlinks: a planted link at any owned level is replaced by a real dir, never granted or followed (10.766857ms)
+✖ Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets no write access through it on the next generation (1992.392307ms)
+✔ an invalid bees setting boots with the policy off and logs why; a template TMPDIR override is logged once (2371.328423ms)
+✔ config: bees.sandboxTmpBytes is additive, nullable and falls back to the default when invalid (7.674485ms)
+✔ sandboxed bee past its tmpfs cap: ENOSPC inside, a typed resource_blocked outside, the cap logged per bee (6187.761642ms)
+✔ a bad bees.sandboxTmpBytes boots, logs why and spawns with the 1 GiB default (8398.104371ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 15
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28433.454287
+
+✖ failing tests:
+
+test at v2/daemon/tests/bee-tmp.test.ts:429:1
+✖ Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets no write access through it on the next generation (1992.392307ms)
+  Error: cleanup outside lab root refused
+      at fs.rmSync (file://<CELL>/.proof/E/trash-cleanup.mjs:10:139)
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/bee-tmp.test.ts:495:35)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)

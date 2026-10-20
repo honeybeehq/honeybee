@@ -1,0 +1,21 @@
+✖ cell-pressure.1: below the floor, clean archived then idle Cells go oldest first until the target; held, dirty, unlanded, live and fresh Cells stay; an unreachable floor is reported once (61226.1635ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 61577.246175
+
+✖ failing tests:
+
+test at v2/daemon/tests/cell-pressure.test.ts:64:1
+✖ cell-pressure.1: below the floor, clean archived then idle Cells go oldest first until the target; held, dirty, unlanded, live and fresh Cells stay; an unreachable floor is reported once (61226.1635ms)
+  Error: waitFor timeout: idle-old idle
+      at waitFor (file://<CELL>/v2/daemon/tests/helpers.ts:35:38)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async spawnIdle (file://<CELL>/v2/daemon/tests/cell-pressure.test.ts:36:16)
+      at async TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/cell-pressure.test.ts:94:21)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3)

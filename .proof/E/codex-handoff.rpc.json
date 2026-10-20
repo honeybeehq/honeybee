@@ -12,7 +12,7 @@
         "leasedFrom": null,
         "id": "codex-a",
         "harness": "codex",
-        "homePath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-a",
+        "homePath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-a",
         "label": "a",
         "status": "ok",
         "statusReason": null,
@@ -24,8 +24,8 @@
         "pausedBy": null,
         "pausedOwner": null,
         "pausedAt": null,
-        "addedAt": 1792484930373,
-        "updatedAt": 1792484930373,
+        "addedAt": 1792489282464,
+        "updatedAt": 1792489282464,
         "credentialHealth": "unverified",
         "loginDueAt": null,
         "nativeLogin": null
@@ -33,7 +33,7 @@
       "credentialHealth": "unverified",
       "imported": {
         "source": "vault",
-        "from": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/vault/codex/codex-a",
+        "from": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/vault/codex/codex-a",
         "files": [
           "auth.json"
         ]
@@ -54,7 +54,7 @@
         "leasedFrom": null,
         "id": "codex-b",
         "harness": "codex",
-        "homePath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-b",
+        "homePath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-b",
         "label": "b",
         "status": "ok",
         "statusReason": null,
@@ -66,8 +66,8 @@
         "pausedBy": null,
         "pausedOwner": null,
         "pausedAt": null,
-        "addedAt": 1792484930389,
-        "updatedAt": 1792484930389,
+        "addedAt": 1792489282480,
+        "updatedAt": 1792489282480,
         "credentialHealth": "unverified",
         "loginDueAt": null,
         "nativeLogin": null
@@ -75,7 +75,7 @@
       "credentialHealth": "unverified",
       "imported": {
         "source": "vault",
-        "from": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/vault/codex/codex-b",
+        "from": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/vault/codex/codex-b",
         "files": [
           "auth.json"
         ]
@@ -90,16 +90,16 @@
       "limits": [
         {
           "account": "codex-a",
-          "fetchedAt": 1792484930513,
+          "fetchedAt": 1792489282619,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792488530000,
+          "fiveHourResetsAt": 1792492882000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792574930000,
+          "weeklyResetsAt": 1792579282000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -109,16 +109,16 @@
         },
         {
           "account": "codex-b",
-          "fetchedAt": 1792484930641,
+          "fetchedAt": 1792489282740,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792488530000,
+          "fiveHourResetsAt": 1792492882000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792574930000,
+          "weeklyResetsAt": 1792579282000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -134,11 +134,11 @@
     "params": {
       "name": "codex-handoff",
       "agent": "codex",
-      "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L",
+      "cwd": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH",
       "account": "codex-a"
     },
     "result": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "agent": "codex",
       "handle": "CO.0000",
       "humanRef": null,
@@ -151,7 +151,7 @@
   {
     "method": "send",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "body": "warm conversation"
     },
     "result": {
@@ -163,18 +163,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -184,18 +184,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -205,18 +205,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -226,18 +226,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -247,18 +247,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -268,18 +268,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -289,18 +289,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -310,18 +310,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -331,18 +331,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -352,18 +352,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -373,18 +373,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -394,18 +394,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -415,18 +415,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -436,18 +436,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -457,18 +457,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -478,18 +478,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
+          "enqueuedAt": 1792489282772,
           "deliveredAt": null,
           "deliveredGeneration": null
         }
@@ -499,19 +499,19 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "sender": "operator",
           "body": "warm conversation",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792484930672,
-          "deliveredAt": 1792484931154,
+          "enqueuedAt": 1792489282772,
+          "deliveredAt": 1792489283256,
           "deliveredGeneration": 1
         }
       ]
@@ -520,11 +520,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "view": {
-        "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+        "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -532,27 +532,27 @@
         "exitCause": null,
         "working": false,
         "waitingForYou": true,
-        "lastOutputAt": 1792484931148,
+        "lastOutputAt": 1792489283249,
         "reachable": true,
         "blocked": false,
         "flags": []
       },
       "bee": {
-        "id": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+        "id": "8666b7ea-6462-490b-95b2-2cf58cd72564",
         "name": "codex-handoff",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L",
+        "cwd": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792484930655,
+        "createdAt": 1792489282755,
         "archivedAt": null,
-        "lastOutputAt": 1792484931148,
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
+        "lastOutputAt": 1792489283249,
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -574,22 +574,22 @@
           "from": "operator",
           "messageId": 1,
           "generation": 1,
-          "startedAt": 1792484931121,
-          "humanAt": 1792484931121,
-          "endedAt": 1792484931148
+          "startedAt": 1792489283222,
+          "humanAt": 1792489283222,
+          "endedAt": 1792489283249
         },
-        "lastHumanOutputAt": 1792484931148
+        "lastHumanOutputAt": 1792489283249
       },
       "runtime": {
-        "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+        "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
         "generation": 1,
         "state": "idle",
         "exitCause": null,
-        "pid": 698969,
-        "pidStartedAt": 1792484930863,
+        "pid": 752271,
+        "pidStartedAt": 1792489282966,
         "bootEvidence": "real",
-        "startedAt": 1792484930655,
-        "updatedAt": 1792484931148
+        "startedAt": 1792489282755,
+        "updatedAt": 1792489283249
       },
       "move": null,
       "cell": null,
@@ -603,16 +603,16 @@
       "limits": [
         {
           "account": "codex-a",
-          "fetchedAt": 1792484931283,
+          "fetchedAt": 1792489283379,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792488530000,
+          "fiveHourResetsAt": 1792492882000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792574930000,
+          "weeklyResetsAt": 1792579282000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -622,16 +622,16 @@
         },
         {
           "account": "codex-b",
-          "fetchedAt": 1792484931405,
+          "fetchedAt": 1792489283500,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792488530000,
+          "fiveHourResetsAt": 1792492882000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792574930000,
+          "weeklyResetsAt": 1792579282000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -645,11 +645,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "view": {
-        "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+        "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -657,27 +657,27 @@
         "exitCause": null,
         "working": false,
         "waitingForYou": true,
-        "lastOutputAt": 1792484931148,
+        "lastOutputAt": 1792489283249,
         "reachable": true,
         "blocked": false,
         "flags": []
       },
       "bee": {
-        "id": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+        "id": "8666b7ea-6462-490b-95b2-2cf58cd72564",
         "name": "codex-handoff",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L",
+        "cwd": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792484930655,
+        "createdAt": 1792489282755,
         "archivedAt": null,
-        "lastOutputAt": 1792484931148,
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
+        "lastOutputAt": 1792489283249,
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -699,22 +699,22 @@
           "from": "operator",
           "messageId": 1,
           "generation": 1,
-          "startedAt": 1792484931121,
-          "humanAt": 1792484931121,
-          "endedAt": 1792484931148
+          "startedAt": 1792489283222,
+          "humanAt": 1792489283222,
+          "endedAt": 1792489283249
         },
-        "lastHumanOutputAt": 1792484931148
+        "lastHumanOutputAt": 1792489283249
       },
       "runtime": {
-        "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+        "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
         "generation": 1,
         "state": "idle",
         "exitCause": null,
-        "pid": 698969,
-        "pidStartedAt": 1792484930863,
+        "pid": 752271,
+        "pidStartedAt": 1792489282966,
         "bootEvidence": "real",
-        "startedAt": 1792484930655,
-        "updatedAt": 1792484931148
+        "startedAt": 1792489282755,
+        "updatedAt": 1792489283249
       },
       "move": null,
       "cell": null,
@@ -724,7 +724,7 @@
   {
     "method": "bee.handoff",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "expected": {
         "generation": 1,
         "agent": "codex"
@@ -737,8 +737,8 @@
       "instruction": "handoff seed must be delivered within reserve"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "stopping",
       "sourceGeneration": 1,
       "targetGeneration": null,
@@ -746,8 +746,8 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
@@ -760,18 +760,18 @@
       "seedMessageId": null,
       "context": null,
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931415
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283510
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "stopping",
       "sourceGeneration": 1,
       "targetGeneration": null,
@@ -779,8 +779,8 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
@@ -793,18 +793,18 @@
       "seedMessageId": null,
       "context": null,
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931415
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283510
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "stopping",
       "sourceGeneration": 1,
       "targetGeneration": null,
@@ -812,8 +812,8 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
@@ -826,18 +826,18 @@
       "seedMessageId": null,
       "context": null,
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931415
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283510
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "stopping",
       "sourceGeneration": 1,
       "targetGeneration": null,
@@ -845,8 +845,8 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
@@ -859,18 +859,51 @@
       "seedMessageId": null,
       "context": null,
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931415
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283510
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
+      "phase": "stopping",
+      "sourceGeneration": 1,
+      "targetGeneration": null,
+      "from": {
+        "agent": "codex",
+        "args": null,
+        "account": "codex-a",
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
+      },
+      "to": {
+        "agent": "codex",
+        "args": null,
+        "account": "codex-b",
+        "segmentId": null
+      },
+      "instruction": "handoff seed must be delivered within reserve",
+      "stopAt": "idle",
+      "seedMessageId": null,
+      "context": null,
+      "failure": null,
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283510
+    }
+  },
+  {
+    "method": "bee.handoff.get",
+    "params": {
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
+    },
+    "result": {
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -878,14 +911,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -893,12 +926,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -907,11 +940,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -926,18 +959,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -945,14 +978,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -960,12 +993,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -974,11 +1007,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -993,18 +1026,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1012,14 +1045,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1027,12 +1060,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1041,11 +1074,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1060,18 +1093,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1079,14 +1112,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1094,12 +1127,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1108,11 +1141,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1127,18 +1160,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1146,14 +1179,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1161,12 +1194,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1175,11 +1208,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1194,18 +1227,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1213,14 +1246,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1228,12 +1261,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1242,11 +1275,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1261,18 +1294,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1280,14 +1313,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1295,12 +1328,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1309,11 +1342,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1328,18 +1361,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1347,14 +1380,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1362,12 +1395,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1376,11 +1409,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1395,18 +1428,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1414,14 +1447,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1429,12 +1462,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1443,11 +1476,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1462,18 +1495,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1481,14 +1514,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1496,12 +1529,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1510,11 +1543,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1529,18 +1562,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1548,14 +1581,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1563,12 +1596,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1577,11 +1610,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1596,18 +1629,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1615,14 +1648,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1630,12 +1663,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1644,11 +1677,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1663,18 +1696,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1682,14 +1715,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1697,12 +1730,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1711,11 +1744,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1730,18 +1763,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1749,14 +1782,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1764,12 +1797,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1778,11 +1811,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1797,18 +1830,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1816,14 +1849,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1831,12 +1864,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1845,11 +1878,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1864,18 +1897,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1883,14 +1916,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1898,12 +1931,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1912,11 +1945,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1931,18 +1964,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -1950,14 +1983,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -1965,12 +1998,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -1979,11 +2012,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -1998,18 +2031,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "starting",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -2017,14 +2050,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -2032,12 +2065,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -2046,11 +2079,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -2065,152 +2098,18 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489283583
     }
   },
   {
     "method": "bee.handoff.get",
     "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+      "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
     },
     "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-      "phase": "starting",
-      "sourceGeneration": 1,
-      "targetGeneration": 2,
-      "from": {
-        "agent": "codex",
-        "args": null,
-        "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
-      },
-      "to": {
-        "agent": "codex",
-        "args": null,
-        "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
-      },
-      "instruction": "handoff seed must be delivered within reserve",
-      "stopAt": "idle",
-      "seedMessageId": 2,
-      "context": {
-        "version": 1,
-        "summarizer": "extractive",
-        "generatedAt": 1792484931480,
-        "task": "warm conversation",
-        "instruction": "handoff seed must be delivered within reserve",
-        "constraints": [
-          "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
-        ],
-        "decisions": [],
-        "completedWork": [],
-        "outstandingWork": [],
-        "recentTurns": [],
-        "transcript": {
-          "segments": [
-            {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
-              "ordinal": 0,
-              "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
-              "fromGeneration": 1,
-              "toGeneration": null
-            }
-          ],
-          "truncated": false
-        },
-        "mailbox": {
-          "summarizedMessageIds": [
-            1
-          ],
-          "queuedMessageIds": []
-        }
-      },
-      "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
-    }
-  },
-  {
-    "method": "bee.handoff.get",
-    "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
-    },
-    "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-      "phase": "starting",
-      "sourceGeneration": 1,
-      "targetGeneration": 2,
-      "from": {
-        "agent": "codex",
-        "args": null,
-        "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
-      },
-      "to": {
-        "agent": "codex",
-        "args": null,
-        "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
-      },
-      "instruction": "handoff seed must be delivered within reserve",
-      "stopAt": "idle",
-      "seedMessageId": 2,
-      "context": {
-        "version": 1,
-        "summarizer": "extractive",
-        "generatedAt": 1792484931480,
-        "task": "warm conversation",
-        "instruction": "handoff seed must be delivered within reserve",
-        "constraints": [
-          "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
-        ],
-        "decisions": [],
-        "completedWork": [],
-        "outstandingWork": [],
-        "recentTurns": [],
-        "transcript": {
-          "segments": [
-            {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
-              "ordinal": 0,
-              "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
-              "fromGeneration": 1,
-              "toGeneration": null
-            }
-          ],
-          "truncated": false
-        },
-        "mailbox": {
-          "summarizedMessageIds": [
-            1
-          ],
-          "queuedMessageIds": []
-        }
-      },
-      "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484931488
-    }
-  },
-  {
-    "method": "bee.handoff.get",
-    "params": {
-      "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
-    },
-    "result": {
-      "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "phase": "complete",
       "sourceGeneration": 1,
       "targetGeneration": 2,
@@ -2218,14 +2117,14 @@
         "agent": "codex",
         "args": null,
         "account": "codex-a",
-        "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+        "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
       },
       "to": {
         "agent": "codex",
         "args": null,
         "account": "codex-b",
-        "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+        "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
       },
       "instruction": "handoff seed must be delivered within reserve",
       "stopAt": "idle",
@@ -2233,12 +2132,12 @@
       "context": {
         "version": 1,
         "summarizer": "extractive",
-        "generatedAt": 1792484931480,
+        "generatedAt": 1792489283576,
         "task": "warm conversation",
         "instruction": "handoff seed must be delivered within reserve",
         "constraints": [
           "Operator instruction: handoff seed must be delivered within reserve",
-          "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+          "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
         ],
         "decisions": [],
         "completedWork": [],
@@ -2247,11 +2146,11 @@
         "transcript": {
           "segments": [
             {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "fromGeneration": 1,
               "toGeneration": null
             }
@@ -2266,33 +2165,33 @@
         }
       },
       "failure": null,
-      "createdAt": 1792484931415,
-      "updatedAt": 1792484932036
+      "createdAt": 1792489283510,
+      "updatedAt": 1792489284086
     }
   },
   {
     "method": "snapshot",
     "params": {},
     "result": {
-      "seq": 66,
+      "seq": 64,
       "views": [
         {
           "bee": {
-            "id": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "id": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "name": "codex-handoff",
             "agent": "codex",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L",
+            "cwd": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.s1.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.s1.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792484930655,
+            "createdAt": 1792489282755,
             "archivedAt": null,
-            "lastOutputAt": 1792484932026,
-            "providerSessionId": "64745fe0-14b1-4667-976d-f69b8990cea2",
+            "lastOutputAt": 1792489284027,
+            "providerSessionId": "698aca37-5781-4226-9d57-e2ab51c9b505",
             "env": {
-              "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-b"
+              "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-b"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -2314,33 +2213,33 @@
               "from": "hive:handoff",
               "messageId": 2,
               "generation": 2,
-              "startedAt": 1792484931976,
+              "startedAt": 1792489284074,
               "humanAt": null,
-              "endedAt": 1792484932026
+              "endedAt": null
             },
-            "lastHumanOutputAt": 1792484931148
+            "lastHumanOutputAt": 1792489283249
           },
           "runtime": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "generation": 2,
-            "state": "idle",
+            "state": "running",
             "exitCause": null,
-            "pid": 699015,
-            "pidStartedAt": 1792484931718,
+            "pid": 752332,
+            "pidStartedAt": 1792489283808,
             "bootEvidence": "real",
-            "startedAt": 1792484931518,
-            "updatedAt": 1792484932026
+            "startedAt": 1792489283613,
+            "updatedAt": 1792489284074
           },
           "view": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "exists": true,
             "lifecycle": "active",
             "generation": 2,
-            "runtimeState": "idle",
+            "runtimeState": "running",
             "exitCause": null,
-            "working": false,
-            "waitingForYou": true,
-            "lastOutputAt": 1792484932026,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": 1792489284027,
             "reachable": true,
             "blocked": false,
             "flags": []
@@ -2348,8 +2247,8 @@
           "move": null,
           "cell": null,
           "handoff": {
-            "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "phase": "complete",
             "sourceGeneration": 1,
             "targetGeneration": 2,
@@ -2357,14 +2256,14 @@
               "agent": "codex",
               "args": null,
               "account": "codex-a",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-              "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+              "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
             },
             "to": {
               "agent": "codex",
               "args": null,
               "account": "codex-b",
-              "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+              "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
             },
             "instruction": "handoff seed must be delivered within reserve",
             "stopAt": "idle",
@@ -2372,12 +2271,12 @@
             "context": {
               "version": 1,
               "summarizer": "extractive",
-              "generatedAt": 1792484931480,
+              "generatedAt": 1792489283576,
               "task": "warm conversation",
               "instruction": "handoff seed must be delivered within reserve",
               "constraints": [
                 "Operator instruction: handoff seed must be delivered within reserve",
-                "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+                "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
               ],
               "decisions": [],
               "completedWork": [],
@@ -2386,11 +2285,11 @@
               "transcript": {
                 "segments": [
                   {
-                    "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+                    "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
                     "ordinal": 0,
                     "harness": "codex",
-                    "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-                    "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+                    "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+                    "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
                     "fromGeneration": 1,
                     "toGeneration": null
                   }
@@ -2405,8 +2304,8 @@
               }
             },
             "failure": null,
-            "createdAt": 1792484931415,
-            "updatedAt": 1792484932036
+            "createdAt": 1792489283510,
+            "updatedAt": 1792489284086
           }
         }
       ],
@@ -2420,7 +2319,7 @@
           "leasedFrom": null,
           "id": "codex-a",
           "harness": "codex",
-          "homePath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-a",
+          "homePath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -2432,8 +2331,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792484930373,
-          "updatedAt": 1792484930512,
+          "addedAt": 1792489282464,
+          "updatedAt": 1792489282618,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -2443,7 +2342,7 @@
           "leasedFrom": null,
           "id": "codex-b",
           "harness": "codex",
-          "homePath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-b",
+          "homePath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -2455,8 +2354,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792484930389,
-          "updatedAt": 1792484930643,
+          "addedAt": 1792489282480,
+          "updatedAt": 1792489282741,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -2465,16 +2364,16 @@
       "accountLimits": [
         {
           "account": "codex-a",
-          "fetchedAt": 1792484931283,
+          "fetchedAt": 1792489283379,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792488530000,
+          "fiveHourResetsAt": 1792492882000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792574930000,
+          "weeklyResetsAt": 1792579282000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -2484,16 +2383,16 @@
         },
         {
           "account": "codex-b",
-          "fetchedAt": 1792484931405,
+          "fetchedAt": 1792489283500,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792488530000,
+          "fiveHourResetsAt": 1792492882000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792574930000,
+          "weeklyResetsAt": 1792579282000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -2511,8 +2410,8 @@
       "beeMoves": [],
       "beeHandoffs": [
         {
-          "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "phase": "complete",
           "sourceGeneration": 1,
           "targetGeneration": 2,
@@ -2520,14 +2419,14 @@
             "agent": "codex",
             "args": null,
             "account": "codex-a",
-            "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-            "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+            "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+            "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
           },
           "to": {
             "agent": "codex",
             "args": null,
             "account": "codex-b",
-            "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+            "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
           },
           "instruction": "handoff seed must be delivered within reserve",
           "stopAt": "idle",
@@ -2535,12 +2434,12 @@
           "context": {
             "version": 1,
             "summarizer": "extractive",
-            "generatedAt": 1792484931480,
+            "generatedAt": 1792489283576,
             "task": "warm conversation",
             "instruction": "handoff seed must be delivered within reserve",
             "constraints": [
               "Operator instruction: handoff seed must be delivered within reserve",
-              "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+              "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
             ],
             "decisions": [],
             "completedWork": [],
@@ -2549,11 +2448,11 @@
             "transcript": {
               "segments": [
                 {
-                  "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+                  "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
                   "ordinal": 0,
                   "harness": "codex",
-                  "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-                  "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+                  "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+                  "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
                   "fromGeneration": 1,
                   "toGeneration": null
                 }
@@ -2568,35 +2467,35 @@
             }
           },
           "failure": null,
-          "createdAt": 1792484931415,
-          "updatedAt": 1792484932036
+          "createdAt": 1792489283510,
+          "updatedAt": 1792489284086
         }
       ],
       "transcriptSegments": [
         {
-          "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "ordinal": 0,
           "harness": "codex",
-          "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
+          "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
           "fromGeneration": 1,
           "toGeneration": 1,
-          "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+          "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
           "handoffId": null,
-          "createdAt": 1792484930655,
-          "closedAt": 1792484931483
+          "createdAt": 1792489282755,
+          "closedAt": 1792489283578
         },
         {
-          "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "ordinal": 1,
           "harness": "codex",
-          "providerSessionId": "64745fe0-14b1-4667-976d-f69b8990cea2",
+          "providerSessionId": "698aca37-5781-4226-9d57-e2ab51c9b505",
           "fromGeneration": 2,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.s1.jsonl",
-          "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-          "createdAt": 1792484931483,
+          "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.s1.jsonl",
+          "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+          "createdAt": 1792489283578,
           "closedAt": null
         }
       ],
@@ -2608,39 +2507,39 @@
   {
     "method": "view",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101"
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564"
     },
     "result": {
       "view": {
-        "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+        "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
         "exists": true,
         "lifecycle": "active",
         "generation": 2,
-        "runtimeState": "idle",
+        "runtimeState": "running",
         "exitCause": null,
-        "working": false,
-        "waitingForYou": true,
-        "lastOutputAt": 1792484932026,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": 1792489284027,
         "reachable": true,
         "blocked": false,
         "flags": []
       },
       "bee": {
-        "id": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+        "id": "8666b7ea-6462-490b-95b2-2cf58cd72564",
         "name": "codex-handoff",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L",
+        "cwd": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.s1.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.s1.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792484930655,
+        "createdAt": 1792489282755,
         "archivedAt": null,
-        "lastOutputAt": 1792484932026,
-        "providerSessionId": "64745fe0-14b1-4667-976d-f69b8990cea2",
+        "lastOutputAt": 1792489284027,
+        "providerSessionId": "698aca37-5781-4226-9d57-e2ab51c9b505",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-b"
+          "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-b"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -2662,28 +2561,28 @@
           "from": "hive:handoff",
           "messageId": 2,
           "generation": 2,
-          "startedAt": 1792484931976,
+          "startedAt": 1792489284074,
           "humanAt": null,
-          "endedAt": 1792484932026
+          "endedAt": null
         },
-        "lastHumanOutputAt": 1792484931148
+        "lastHumanOutputAt": 1792489283249
       },
       "runtime": {
-        "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+        "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
         "generation": 2,
-        "state": "idle",
+        "state": "running",
         "exitCause": null,
-        "pid": 699015,
-        "pidStartedAt": 1792484931718,
+        "pid": 752332,
+        "pidStartedAt": 1792489283808,
         "bootEvidence": "real",
-        "startedAt": 1792484931518,
-        "updatedAt": 1792484932026
+        "startedAt": 1792489283613,
+        "updatedAt": 1792489284074
       },
       "move": null,
       "cell": null,
       "handoff": {
-        "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-        "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+        "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+        "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
         "phase": "complete",
         "sourceGeneration": 1,
         "targetGeneration": 2,
@@ -2691,14 +2590,14 @@
           "agent": "codex",
           "args": null,
           "account": "codex-a",
-          "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-          "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+          "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+          "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
         },
         "to": {
           "agent": "codex",
           "args": null,
           "account": "codex-b",
-          "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+          "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
         },
         "instruction": "handoff seed must be delivered within reserve",
         "stopAt": "idle",
@@ -2706,12 +2605,12 @@
         "context": {
           "version": 1,
           "summarizer": "extractive",
-          "generatedAt": 1792484931480,
+          "generatedAt": 1792489283576,
           "task": "warm conversation",
           "instruction": "handoff seed must be delivered within reserve",
           "constraints": [
             "Operator instruction: handoff seed must be delivered within reserve",
-            "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+            "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
           ],
           "decisions": [],
           "completedWork": [],
@@ -2720,11 +2619,11 @@
           "transcript": {
             "segments": [
               {
-                "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+                "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
                 "ordinal": 0,
                 "harness": "codex",
-                "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-                "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+                "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+                "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
                 "fromGeneration": 1,
                 "toGeneration": null
               }
@@ -2739,41 +2638,41 @@
           }
         },
         "failure": null,
-        "createdAt": 1792484931415,
-        "updatedAt": 1792484932036
+        "createdAt": 1792489283510,
+        "updatedAt": 1792489284086
       }
     }
   },
   {
     "method": "audit.tail",
     "params": {
-      "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+      "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
       "limit": 1000
     },
     "result": {
       "rows": [
         {
           "seq": 10,
-          "ts": 1792484930656,
+          "ts": 1792489282756,
           "kind": "bee.created",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "bee": {
-              "id": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "id": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "name": "codex-handoff",
               "agent": "codex",
               "substrate": "hsr",
-              "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L",
+              "cwd": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH",
               "title": null,
               "tags": [],
-              "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "sessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "lifecycle": "active",
-              "createdAt": 1792484930655,
+              "createdAt": 1792489282755,
               "archivedAt": null,
               "lastOutputAt": null,
               "providerSessionId": null,
               "env": {
-                "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-a"
+                "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-a"
               },
               "importedFrom": null,
               "spawnFailures": 0,
@@ -2797,81 +2696,81 @@
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 695516,
+              "pid": 747625,
               "verb": "spawn"
             }
           }
         },
         {
           "seq": 11,
-          "ts": 1792484930657,
+          "ts": 1792489282757,
           "kind": "transcript_segment.put",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "segment": {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "ordinal": 0,
               "harness": "codex",
               "providerSessionId": null,
               "fromGeneration": 1,
               "toGeneration": null,
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "handoffId": null,
-              "createdAt": 1792484930655,
+              "createdAt": 1792489282755,
               "closedAt": null
             },
             "rpcCaller": {
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 695516,
+              "pid": 747625,
               "verb": "spawn"
             }
           }
         },
         {
           "seq": 12,
-          "ts": 1792484930658,
+          "ts": 1792489282758,
           "kind": "runtime.created",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 1,
               "state": "booting",
               "exitCause": null,
               "pid": null,
               "pidStartedAt": null,
               "bootEvidence": null,
-              "startedAt": 1792484930655,
-              "updatedAt": 1792484930655
+              "startedAt": 1792489282755,
+              "updatedAt": 1792489282755
             },
             "rpcCaller": {
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 695516,
+              "pid": 747625,
               "verb": "spawn"
             }
           }
         },
         {
           "seq": 13,
-          "ts": 1792484930660,
+          "ts": 1792489282760,
           "kind": "command.enqueued",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "command": {
               "id": 1,
               "verb": "spawn",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "args": {},
               "targetGeneration": 1,
               "status": "queued",
               "attempts": 0,
-              "nextAttemptAt": 1792484930660,
-              "enqueuedAt": 1792484930660,
+              "nextAttemptAt": 1792489282760,
+              "enqueuedAt": 1792489282760,
               "finishedAt": null,
               "failureCause": null,
               "idempotencyKey": null
@@ -2880,25 +2779,25 @@
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 695516,
+              "pid": 747625,
               "verb": "spawn"
             }
           }
         },
         {
           "seq": 14,
-          "ts": 1792484930672,
+          "ts": 1792489282772,
           "kind": "mail.enqueued",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "message": {
               "id": 1,
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "sender": "operator",
               "body": "warm conversation",
               "priority": 0,
               "urgency": "next",
-              "enqueuedAt": 1792484930672,
+              "enqueuedAt": 1792489282772,
               "deliveredAt": null,
               "deliveredGeneration": null
             },
@@ -2907,286 +2806,286 @@
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 695516,
+              "pid": 747625,
               "verb": "send"
             }
           }
         },
         {
           "seq": 15,
-          "ts": 1792484930677,
+          "ts": 1792489282777,
           "kind": "command.claimed",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "commandId": 1
           }
         },
         {
           "seq": 16,
-          "ts": 1792484930871,
+          "ts": 1792489282975,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 1,
               "state": "booting",
               "exitCause": null,
-              "pid": 698969,
-              "pidStartedAt": 1792484930863,
+              "pid": 752271,
+              "pidStartedAt": 1792489282966,
               "bootEvidence": null,
-              "startedAt": 1792484930655,
-              "updatedAt": 1792484930655
+              "startedAt": 1792489282755,
+              "updatedAt": 1792489282755
             }
           }
         },
         {
           "seq": 17,
-          "ts": 1792484930871,
+          "ts": 1792489282975,
           "kind": "command.completed",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "commandId": 1,
-            "finishedAt": 1792484930871
+            "finishedAt": 1792489282975
           }
         },
         {
           "seq": 18,
-          "ts": 1792484931081,
+          "ts": 1792489283180,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 1,
               "state": "booting",
               "exitCause": null,
-              "pid": 698969,
-              "pidStartedAt": 1792484930863,
+              "pid": 752271,
+              "pidStartedAt": 1792489282966,
               "bootEvidence": "real",
-              "startedAt": 1792484930655,
-              "updatedAt": 1792484930655
+              "startedAt": 1792489282755,
+              "updatedAt": 1792489282755
             }
           }
         },
         {
           "seq": 19,
-          "ts": 1792484931083,
+          "ts": 1792489283181,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 1,
               "state": "booting",
               "exitCause": null,
-              "pid": 698969,
-              "pidStartedAt": 1792484930863,
+              "pid": 752271,
+              "pidStartedAt": 1792489282966,
               "bootEvidence": "real",
-              "startedAt": 1792484930655,
-              "updatedAt": 1792484930655
+              "startedAt": 1792489282755,
+              "updatedAt": 1792489282755
             }
           }
         },
         {
           "seq": 20,
-          "ts": 1792484931084,
+          "ts": 1792489283182,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 1,
               "state": "running",
               "exitCause": null,
-              "pid": 698969,
-              "pidStartedAt": 1792484930863,
+              "pid": 752271,
+              "pidStartedAt": 1792489282966,
               "bootEvidence": "real",
-              "startedAt": 1792484930655,
-              "updatedAt": 1792484931084
+              "startedAt": 1792489282755,
+              "updatedAt": 1792489283182
             }
           }
         },
         {
           "seq": 21,
-          "ts": 1792484931085,
+          "ts": 1792489283183,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 1,
               "state": "idle",
               "exitCause": null,
-              "pid": 698969,
-              "pidStartedAt": 1792484930863,
+              "pid": 752271,
+              "pidStartedAt": 1792489282966,
               "bootEvidence": "real",
-              "startedAt": 1792484930655,
-              "updatedAt": 1792484931084
+              "startedAt": 1792489282755,
+              "updatedAt": 1792489283183
             }
           }
         },
         {
           "seq": 22,
-          "ts": 1792484931085,
+          "ts": 1792489283184,
           "kind": "output.recorded",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-            "at": 1792484931084,
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
+            "at": 1792489283183,
             "lastHumanOutputAt": null
           }
         },
         {
           "seq": 23,
-          "ts": 1792484931086,
+          "ts": 1792489283185,
           "kind": "bee.provider_session",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-            "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
+            "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
             "previous": null
           }
         },
         {
           "seq": 24,
-          "ts": 1792484931086,
+          "ts": 1792489283185,
           "kind": "transcript_segment.put",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "segment": {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
               "fromGeneration": 1,
               "toGeneration": null,
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "handoffId": null,
-              "createdAt": 1792484930655,
+              "createdAt": 1792489282755,
               "closedAt": null
             }
           }
         },
         {
           "seq": 25,
-          "ts": 1792484931087,
+          "ts": 1792489283186,
           "kind": "flag.clear_noop",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "flag": "spawn_failed"
           }
         },
         {
           "seq": 26,
-          "ts": 1792484931122,
+          "ts": 1792489283222,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 1,
               "state": "running",
               "exitCause": null,
-              "pid": 698969,
-              "pidStartedAt": 1792484930863,
+              "pid": 752271,
+              "pidStartedAt": 1792489282966,
               "bootEvidence": "real",
-              "startedAt": 1792484930655,
-              "updatedAt": 1792484931121
+              "startedAt": 1792489282755,
+              "updatedAt": 1792489283222
             },
             "turnTrigger": {
               "kind": "human",
               "from": "operator",
               "messageId": 1,
               "generation": 1,
-              "startedAt": 1792484931121,
-              "humanAt": 1792484931121,
+              "startedAt": 1792489283222,
+              "humanAt": 1792489283222,
               "endedAt": null
             }
           }
         },
         {
           "seq": 27,
-          "ts": 1792484931148,
+          "ts": 1792489283249,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 1,
               "state": "idle",
               "exitCause": null,
-              "pid": 698969,
-              "pidStartedAt": 1792484930863,
+              "pid": 752271,
+              "pidStartedAt": 1792489282966,
               "bootEvidence": "real",
-              "startedAt": 1792484930655,
-              "updatedAt": 1792484931148
+              "startedAt": 1792489282755,
+              "updatedAt": 1792489283249
             },
             "turnTrigger": {
               "kind": "human",
               "from": "operator",
               "messageId": 1,
               "generation": 1,
-              "startedAt": 1792484931121,
-              "humanAt": 1792484931121,
-              "endedAt": 1792484931148
+              "startedAt": 1792489283222,
+              "humanAt": 1792489283222,
+              "endedAt": 1792489283249
             }
           }
         },
         {
           "seq": 28,
-          "ts": 1792484931148,
+          "ts": 1792489283250,
           "kind": "output.recorded",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-            "at": 1792484931148,
-            "lastHumanOutputAt": 1792484931148
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
+            "at": 1792489283249,
+            "lastHumanOutputAt": 1792489283249
           }
         },
         {
           "seq": 29,
-          "ts": 1792484931149,
+          "ts": 1792489283250,
           "kind": "flag.clear_noop",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "flag": "auth_needed"
           }
         },
         {
           "seq": 30,
-          "ts": 1792484931149,
+          "ts": 1792489283251,
           "kind": "flag.clear_noop",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "flag": "resource_blocked"
           }
         },
         {
           "seq": 31,
-          "ts": 1792484931154,
+          "ts": 1792489283256,
           "kind": "mail.delivered",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "messageId": 1,
-            "deliveredAt": 1792484931154,
+            "deliveredAt": 1792489283256,
             "deliveredGeneration": 1
           }
         },
         {
           "seq": 34,
-          "ts": 1792484931416,
+          "ts": 1792489283511,
           "kind": "command.enqueued",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "command": {
               "id": 2,
               "verb": "stop",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "args": {
                 "cause": "stopped_by_system",
                 "reason": "bee.handoff",
@@ -3195,30 +3094,30 @@
               "targetGeneration": 1,
               "status": "queued",
               "attempts": 0,
-              "nextAttemptAt": 1792484931416,
-              "enqueuedAt": 1792484931416,
+              "nextAttemptAt": 1792489283511,
+              "enqueuedAt": 1792489283511,
               "finishedAt": null,
               "failureCause": null,
-              "idempotencyKey": "handoff:8546f8c2-9180-4fb0-b0ef-cdf7dfddb366:stop:g1"
+              "idempotencyKey": "handoff:03d25198-871e-4a76-bc0f-f46bd165d93f:stop:g1"
             },
             "rpcCaller": {
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 695516,
+              "pid": 747625,
               "verb": "bee.handoff"
             }
           }
         },
         {
           "seq": 35,
-          "ts": 1792484931417,
+          "ts": 1792489283512,
           "kind": "bee.handoff_admitted",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "handoff": {
-              "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "phase": "stopping",
               "sourceGeneration": 1,
               "targetGeneration": null,
@@ -3226,8 +3125,8 @@
                 "agent": "codex",
                 "args": null,
                 "account": "codex-a",
-                "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-                "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+                "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+                "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
               },
               "to": {
                 "agent": "codex",
@@ -3240,78 +3139,78 @@
               "seedMessageId": null,
               "context": null,
               "failure": null,
-              "createdAt": 1792484931415,
-              "updatedAt": 1792484931415,
+              "createdAt": 1792489283510,
+              "updatedAt": 1792489283510,
               "idempotencyKey": "codex-handoff",
-              "requestHash": "7d2a3082348a387cae22f1b8c073d8a42e20ee2f762397d415d4b802c8d7d4aa",
-              "stopCommandKey": "handoff:8546f8c2-9180-4fb0-b0ef-cdf7dfddb366:stop:g1",
-              "reviveCommandKey": "handoff:8546f8c2-9180-4fb0-b0ef-cdf7dfddb366:revive",
+              "requestHash": "0174ce5c057011d475c2a1fdf7dfa77a6982de6789a9c71ae4c69fd8356ba87b",
+              "stopCommandKey": "handoff:03d25198-871e-4a76-bc0f-f46bd165d93f:stop:g1",
+              "reviveCommandKey": "handoff:03d25198-871e-4a76-bc0f-f46bd165d93f:revive",
               "sourceWasLive": true,
               "targetEnv": {
-                "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-b"
+                "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-b"
               },
-              "targetSessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.s1.jsonl"
+              "targetSessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.s1.jsonl"
             },
             "rpcCaller": {
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 695516,
+              "pid": 747625,
               "verb": "bee.handoff"
             }
           }
         },
         {
           "seq": 36,
-          "ts": 1792484931420,
+          "ts": 1792489283517,
           "kind": "command.claimed",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "commandId": 2
           }
         },
         {
           "seq": 37,
-          "ts": 1792484931424,
+          "ts": 1792489283521,
           "kind": "command.completed",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "commandId": 2,
-            "finishedAt": 1792484931424
+            "finishedAt": 1792489283521
           }
         },
         {
           "seq": 38,
-          "ts": 1792484931471,
+          "ts": 1792489283568,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 1,
               "state": "stopped",
               "exitCause": "stopped_by_system",
-              "pid": 698969,
-              "pidStartedAt": 1792484930863,
+              "pid": 752271,
+              "pidStartedAt": 1792489282966,
               "bootEvidence": "real",
-              "startedAt": 1792484930655,
-              "updatedAt": 1792484931471
+              "startedAt": 1792489282755,
+              "updatedAt": 1792489283567
             }
           }
         },
         {
           "seq": 39,
-          "ts": 1792484931476,
+          "ts": 1792489283572,
           "kind": "bee.handoff_phase",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "phase": "summarizing",
             "previous": "stopping",
             "handoff": {
-              "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "phase": "summarizing",
               "sourceGeneration": 1,
               "targetGeneration": null,
@@ -3319,8 +3218,8 @@
                 "agent": "codex",
                 "args": null,
                 "account": "codex-a",
-                "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-                "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+                "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+                "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
               },
               "to": {
                 "agent": "codex",
@@ -3333,70 +3232,70 @@
               "seedMessageId": null,
               "context": null,
               "failure": null,
-              "createdAt": 1792484931415,
-              "updatedAt": 1792484931475,
+              "createdAt": 1792489283510,
+              "updatedAt": 1792489283571,
               "idempotencyKey": "codex-handoff",
-              "requestHash": "7d2a3082348a387cae22f1b8c073d8a42e20ee2f762397d415d4b802c8d7d4aa",
-              "stopCommandKey": "handoff:8546f8c2-9180-4fb0-b0ef-cdf7dfddb366:stop:g1",
-              "reviveCommandKey": "handoff:8546f8c2-9180-4fb0-b0ef-cdf7dfddb366:revive",
+              "requestHash": "0174ce5c057011d475c2a1fdf7dfa77a6982de6789a9c71ae4c69fd8356ba87b",
+              "stopCommandKey": "handoff:03d25198-871e-4a76-bc0f-f46bd165d93f:stop:g1",
+              "reviveCommandKey": "handoff:03d25198-871e-4a76-bc0f-f46bd165d93f:revive",
               "sourceWasLive": true,
               "targetEnv": {
-                "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-b"
+                "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-b"
               },
-              "targetSessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.s1.jsonl"
+              "targetSessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.s1.jsonl"
             }
           }
         },
         {
           "seq": 40,
-          "ts": 1792484931483,
+          "ts": 1792489283578,
           "kind": "transcript_segment.put",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "segment": {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
+              "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
               "fromGeneration": 1,
               "toGeneration": 1,
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "handoffId": null,
-              "createdAt": 1792484930655,
-              "closedAt": 1792484931483
+              "createdAt": 1792489282755,
+              "closedAt": 1792489283578
             }
           }
         },
         {
           "seq": 41,
-          "ts": 1792484931484,
+          "ts": 1792489283579,
           "kind": "transcript_segment.put",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "segment": {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "ordinal": 1,
               "harness": "codex",
               "providerSessionId": null,
               "fromGeneration": 2,
               "toGeneration": null,
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.s1.jsonl",
-              "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-              "createdAt": 1792484931483,
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.s1.jsonl",
+              "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+              "createdAt": 1792489283578,
               "closedAt": null
             }
           }
         },
         {
           "seq": 42,
-          "ts": 1792484931484,
+          "ts": 1792489283579,
           "kind": "bee.handoff_switched",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-            "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
+            "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f",
             "agent": "codex",
             "previousAgent": "codex",
             "args": null,
@@ -3404,33 +3303,33 @@
             "account": "codex-b",
             "previousAccount": "codex-a",
             "env": {
-              "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-b"
+              "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-b"
             },
             "previousEnv": {
-              "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-a"
+              "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-a"
             },
-            "previousProviderSessionId": "15518e09-bb39-412c-801b-21585df017a3",
+            "previousProviderSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
             "previousForkSeed": null,
-            "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.s1.jsonl",
-            "previousSessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.s1.jsonl",
+            "previousSessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
             "previousSpawnFailures": 0,
-            "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+            "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
           }
         },
         {
           "seq": 43,
-          "ts": 1792484931485,
+          "ts": 1792489283580,
           "kind": "mail.enqueued",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "message": {
               "id": 2,
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "sender": "hive:handoff",
-              "body": "[Hive handoff context. This bee continues earlier work under a fresh provider thread; the summary below is workspace context, not a user task.]\n\nYou are continuing bee \"codex-handoff\" (previously run by codex, now codex).\n\n## Operator instruction\nhandoff seed must be delivered within reserve\n\n## Task\nwarm conversation\n\n## Constraints\n- Operator instruction: handoff seed must be delivered within reserve\n- Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L\n\n## Transcript references\n- segment 0 (codex, thread 15518e09-bb39-412c-801b-21585df017a3, generations 1–open): /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+              "body": "[Hive handoff context. This bee continues earlier work under a fresh provider thread; the summary below is workspace context, not a user task.]\n\nYou are continuing bee \"codex-handoff\" (previously run by codex, now codex).\n\n## Operator instruction\nhandoff seed must be delivered within reserve\n\n## Task\nwarm conversation\n\n## Constraints\n- Operator instruction: handoff seed must be delivered within reserve\n- Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH\n\n## Transcript references\n- segment 0 (codex, thread 83a40822-f729-45ee-a235-a25861f6cbee, generations 1–open): /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
               "priority": 0,
               "urgency": "next",
-              "enqueuedAt": 1792484931485,
+              "enqueuedAt": 1792489283580,
               "deliveredAt": null,
               "deliveredGeneration": null
             },
@@ -3439,32 +3338,32 @@
         },
         {
           "seq": 44,
-          "ts": 1792484931487,
+          "ts": 1792489283581,
           "kind": "wake.fenced",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "targetGeneration": 1,
-            "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366"
+            "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f"
           }
         },
         {
           "seq": 45,
-          "ts": 1792484931487,
+          "ts": 1792489283582,
           "kind": "bee.handoff_context",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "context": {
               "version": 1,
               "summarizer": "extractive",
-              "generatedAt": 1792484931480,
+              "generatedAt": 1792489283576,
               "task": "warm conversation",
               "instruction": "handoff seed must be delivered within reserve",
               "constraints": [
                 "Operator instruction: handoff seed must be delivered within reserve",
-                "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+                "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
               ],
               "decisions": [],
               "completedWork": [],
@@ -3473,11 +3372,11 @@
               "transcript": {
                 "segments": [
                   {
-                    "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+                    "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
                     "ordinal": 0,
                     "harness": "codex",
-                    "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-                    "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+                    "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+                    "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
                     "fromGeneration": 1,
                     "toGeneration": null
                   }
@@ -3492,47 +3391,47 @@
               }
             },
             "seedMessageId": 2,
-            "targetSegmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1",
+            "targetSegmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1",
             "targetGeneration": 2
           }
         },
         {
           "seq": 46,
-          "ts": 1792484931487,
+          "ts": 1792489283582,
           "kind": "command.enqueued",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "command": {
               "id": 3,
               "verb": "revive",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "args": {
                 "reason": "bee.handoff"
               },
               "targetGeneration": 1,
               "status": "queued",
               "attempts": 0,
-              "nextAttemptAt": 1792484931487,
-              "enqueuedAt": 1792484931487,
+              "nextAttemptAt": 1792489283582,
+              "enqueuedAt": 1792489283582,
               "finishedAt": null,
               "failureCause": null,
-              "idempotencyKey": "handoff:8546f8c2-9180-4fb0-b0ef-cdf7dfddb366:revive"
+              "idempotencyKey": "handoff:03d25198-871e-4a76-bc0f-f46bd165d93f:revive"
             }
           }
         },
         {
           "seq": 47,
-          "ts": 1792484931488,
+          "ts": 1792489283583,
           "kind": "bee.handoff_phase",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "phase": "starting",
             "previous": "summarizing",
             "handoff": {
-              "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "phase": "starting",
               "sourceGeneration": 1,
               "targetGeneration": 2,
@@ -3540,14 +3439,14 @@
                 "agent": "codex",
                 "args": null,
                 "account": "codex-a",
-                "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-                "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+                "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+                "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
               },
               "to": {
                 "agent": "codex",
                 "args": null,
                 "account": "codex-b",
-                "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+                "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
               },
               "instruction": "handoff seed must be delivered within reserve",
               "stopAt": "idle",
@@ -3555,12 +3454,12 @@
               "context": {
                 "version": 1,
                 "summarizer": "extractive",
-                "generatedAt": 1792484931480,
+                "generatedAt": 1792489283576,
                 "task": "warm conversation",
                 "instruction": "handoff seed must be delivered within reserve",
                 "constraints": [
                   "Operator instruction: handoff seed must be delivered within reserve",
-                  "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+                  "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
                 ],
                 "decisions": [],
                 "completedWork": [],
@@ -3569,11 +3468,11 @@
                 "transcript": {
                   "segments": [
                     {
-                      "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+                      "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
                       "ordinal": 0,
                       "harness": "codex",
-                      "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-                      "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+                      "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+                      "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
                       "fromGeneration": 1,
                       "toGeneration": null
                     }
@@ -3588,229 +3487,229 @@
                 }
               },
               "failure": null,
-              "createdAt": 1792484931415,
-              "updatedAt": 1792484931488,
+              "createdAt": 1792489283510,
+              "updatedAt": 1792489283583,
               "idempotencyKey": "codex-handoff",
-              "requestHash": "7d2a3082348a387cae22f1b8c073d8a42e20ee2f762397d415d4b802c8d7d4aa",
-              "stopCommandKey": "handoff:8546f8c2-9180-4fb0-b0ef-cdf7dfddb366:stop:g1",
-              "reviveCommandKey": "handoff:8546f8c2-9180-4fb0-b0ef-cdf7dfddb366:revive",
+              "requestHash": "0174ce5c057011d475c2a1fdf7dfa77a6982de6789a9c71ae4c69fd8356ba87b",
+              "stopCommandKey": "handoff:03d25198-871e-4a76-bc0f-f46bd165d93f:stop:g1",
+              "reviveCommandKey": "handoff:03d25198-871e-4a76-bc0f-f46bd165d93f:revive",
               "sourceWasLive": true,
               "targetEnv": {
-                "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-b"
+                "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-b"
               },
-              "targetSessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.s1.jsonl"
+              "targetSessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.s1.jsonl"
             }
           }
         },
         {
           "seq": 48,
-          "ts": 1792484931517,
+          "ts": 1792489283612,
           "kind": "command.claimed",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "commandId": 3
           }
         },
         {
           "seq": 49,
-          "ts": 1792484931518,
+          "ts": 1792489283613,
           "kind": "runtime.created",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 2,
               "state": "booting",
               "exitCause": null,
               "pid": null,
               "pidStartedAt": null,
               "bootEvidence": null,
-              "startedAt": 1792484931518,
-              "updatedAt": 1792484931518
+              "startedAt": 1792489283613,
+              "updatedAt": 1792489283613
             }
           }
         },
         {
           "seq": 50,
-          "ts": 1792484931726,
+          "ts": 1792489283815,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 2,
               "state": "booting",
               "exitCause": null,
-              "pid": 699015,
-              "pidStartedAt": 1792484931718,
+              "pid": 752332,
+              "pidStartedAt": 1792489283808,
               "bootEvidence": null,
-              "startedAt": 1792484931518,
-              "updatedAt": 1792484931518
+              "startedAt": 1792489283613,
+              "updatedAt": 1792489283613
             }
           }
         },
         {
           "seq": 51,
-          "ts": 1792484931726,
+          "ts": 1792489283816,
           "kind": "command.completed",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "commandId": 3,
-            "finishedAt": 1792484931726
+            "finishedAt": 1792489283816
           }
         },
         {
           "seq": 52,
-          "ts": 1792484931948,
+          "ts": 1792489284025,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 2,
               "state": "booting",
               "exitCause": null,
-              "pid": 699015,
-              "pidStartedAt": 1792484931718,
+              "pid": 752332,
+              "pidStartedAt": 1792489283808,
               "bootEvidence": "real",
-              "startedAt": 1792484931518,
-              "updatedAt": 1792484931518
+              "startedAt": 1792489283613,
+              "updatedAt": 1792489283613
             }
           }
         },
         {
           "seq": 53,
-          "ts": 1792484931949,
+          "ts": 1792489284026,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 2,
               "state": "booting",
               "exitCause": null,
-              "pid": 699015,
-              "pidStartedAt": 1792484931718,
+              "pid": 752332,
+              "pidStartedAt": 1792489283808,
               "bootEvidence": "real",
-              "startedAt": 1792484931518,
-              "updatedAt": 1792484931518
+              "startedAt": 1792489283613,
+              "updatedAt": 1792489283613
             }
           }
         },
         {
           "seq": 54,
-          "ts": 1792484931949,
+          "ts": 1792489284027,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 2,
               "state": "running",
               "exitCause": null,
-              "pid": 699015,
-              "pidStartedAt": 1792484931718,
+              "pid": 752332,
+              "pidStartedAt": 1792489283808,
               "bootEvidence": "real",
-              "startedAt": 1792484931518,
-              "updatedAt": 1792484931949
+              "startedAt": 1792489283613,
+              "updatedAt": 1792489284026
             }
           }
         },
         {
           "seq": 55,
-          "ts": 1792484931950,
+          "ts": 1792489284027,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 2,
               "state": "idle",
               "exitCause": null,
-              "pid": 699015,
-              "pidStartedAt": 1792484931718,
+              "pid": 752332,
+              "pidStartedAt": 1792489283808,
               "bootEvidence": "real",
-              "startedAt": 1792484931518,
-              "updatedAt": 1792484931950
+              "startedAt": 1792489283613,
+              "updatedAt": 1792489284027
             }
           }
         },
         {
           "seq": 56,
-          "ts": 1792484931950,
+          "ts": 1792489284028,
           "kind": "output.recorded",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-            "at": 1792484931950,
-            "lastHumanOutputAt": 1792484931148
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
+            "at": 1792489284027,
+            "lastHumanOutputAt": 1792489283249
           }
         },
         {
           "seq": 57,
-          "ts": 1792484931951,
+          "ts": 1792489284028,
           "kind": "bee.provider_session",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-            "providerSessionId": "64745fe0-14b1-4667-976d-f69b8990cea2",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
+            "providerSessionId": "698aca37-5781-4226-9d57-e2ab51c9b505",
             "previous": null
           }
         },
         {
           "seq": 58,
-          "ts": 1792484931951,
+          "ts": 1792489284028,
           "kind": "transcript_segment.put",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "segment": {
-              "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "ordinal": 1,
               "harness": "codex",
-              "providerSessionId": "64745fe0-14b1-4667-976d-f69b8990cea2",
+              "providerSessionId": "698aca37-5781-4226-9d57-e2ab51c9b505",
               "fromGeneration": 2,
               "toGeneration": null,
-              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.s1.jsonl",
-              "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-              "createdAt": 1792484931483,
+              "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.s1.jsonl",
+              "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+              "createdAt": 1792489283578,
               "closedAt": null
             }
           }
         },
         {
           "seq": 59,
-          "ts": 1792484931951,
+          "ts": 1792489284029,
           "kind": "flag.clear_noop",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "flag": "spawn_failed"
           }
         },
         {
           "seq": 60,
-          "ts": 1792484931977,
+          "ts": 1792489284075,
           "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "generation": 2,
               "state": "running",
               "exitCause": null,
-              "pid": 699015,
-              "pidStartedAt": 1792484931718,
+              "pid": 752332,
+              "pidStartedAt": 1792489283808,
               "bootEvidence": "real",
-              "startedAt": 1792484931518,
-              "updatedAt": 1792484931976
+              "startedAt": 1792489283613,
+              "updatedAt": 1792489284074
             },
             "turnTrigger": {
               "kind": "other",
               "from": "hive:handoff",
               "messageId": 2,
               "generation": 2,
-              "startedAt": 1792484931976,
+              "startedAt": 1792489284074,
               "humanAt": null,
               "endedAt": null
             }
@@ -3818,88 +3717,49 @@
         },
         {
           "seq": 61,
-          "ts": 1792484932027,
-          "kind": "runtime.updated",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-          "payload": {
-            "runtime": {
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-              "generation": 2,
-              "state": "idle",
-              "exitCause": null,
-              "pid": 699015,
-              "pidStartedAt": 1792484931718,
-              "bootEvidence": "real",
-              "startedAt": 1792484931518,
-              "updatedAt": 1792484932026
-            },
-            "turnTrigger": {
-              "kind": "other",
-              "from": "hive:handoff",
-              "messageId": 2,
-              "generation": 2,
-              "startedAt": 1792484931976,
-              "humanAt": null,
-              "endedAt": 1792484932026
-            }
-          }
-        },
-        {
-          "seq": 62,
-          "ts": 1792484932028,
-          "kind": "output.recorded",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-          "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
-            "at": 1792484932026,
-            "lastHumanOutputAt": 1792484931148
-          }
-        },
-        {
-          "seq": 63,
-          "ts": 1792484932029,
+          "ts": 1792489284080,
           "kind": "flag.clear_noop",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "flag": "auth_needed"
           }
         },
         {
-          "seq": 64,
-          "ts": 1792484932030,
+          "seq": 62,
+          "ts": 1792489284081,
           "kind": "flag.clear_noop",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "flag": "resource_blocked"
           }
         },
         {
-          "seq": 65,
-          "ts": 1792484932035,
+          "seq": 63,
+          "ts": 1792489284085,
           "kind": "mail.delivered",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
             "messageId": 2,
-            "deliveredAt": 1792484932035,
+            "deliveredAt": 1792489284085,
             "deliveredGeneration": 2,
             "senderKind": "automation"
           }
         },
         {
-          "seq": 66,
-          "ts": 1792484932037,
+          "seq": 64,
+          "ts": 1792489284086,
           "kind": "bee.handoff_phase",
-          "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+          "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
           "payload": {
-            "handoffId": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-            "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+            "handoffId": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+            "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
             "phase": "complete",
             "previous": "starting",
             "handoff": {
-              "id": "8546f8c2-9180-4fb0-b0ef-cdf7dfddb366",
-              "beeId": "2ea9e095-c5c7-4ad7-9942-df51e324c101",
+              "id": "03d25198-871e-4a76-bc0f-f46bd165d93f",
+              "beeId": "8666b7ea-6462-490b-95b2-2cf58cd72564",
               "phase": "complete",
               "sourceGeneration": 1,
               "targetGeneration": 2,
@@ -3907,14 +3767,14 @@
                 "agent": "codex",
                 "args": null,
                 "account": "codex-a",
-                "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-                "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0"
+                "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+                "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0"
               },
               "to": {
                 "agent": "codex",
                 "args": null,
                 "account": "codex-b",
-                "segmentId": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:1"
+                "segmentId": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:1"
               },
               "instruction": "handoff seed must be delivered within reserve",
               "stopAt": "idle",
@@ -3922,12 +3782,12 @@
               "context": {
                 "version": 1,
                 "summarizer": "extractive",
-                "generatedAt": 1792484931480,
+                "generatedAt": 1792489283576,
                 "task": "warm conversation",
                 "instruction": "handoff seed must be delivered within reserve",
                 "constraints": [
                   "Operator instruction: handoff seed must be delivered within reserve",
-                  "Working directory: /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"
+                  "Working directory: /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH"
                 ],
                 "decisions": [],
                 "completedWork": [],
@@ -3936,11 +3796,11 @@
                 "transcript": {
                   "segments": [
                     {
-                      "id": "seg:2ea9e095-c5c7-4ad7-9942-df51e324c101:0",
+                      "id": "seg:8666b7ea-6462-490b-95b2-2cf58cd72564:0",
                       "ordinal": 0,
                       "harness": "codex",
-                      "providerSessionId": "15518e09-bb39-412c-801b-21585df017a3",
-                      "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.jsonl",
+                      "providerSessionId": "83a40822-f729-45ee-a235-a25861f6cbee",
+                      "path": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.jsonl",
                       "fromGeneration": 1,
                       "toGeneration": null
                     }
@@ -3955,17 +3815,17 @@
                 }
               },
               "failure": null,
-              "createdAt": 1792484931415,
-              "updatedAt": 1792484932036,
+              "createdAt": 1792489283510,
+              "updatedAt": 1792489284086,
               "idempotencyKey": "codex-handoff",
-              "requestHash": "7d2a3082348a387cae22f1b8c073d8a42e20ee2f762397d415d4b802c8d7d4aa",
-              "stopCommandKey": "handoff:8546f8c2-9180-4fb0-b0ef-cdf7dfddb366:stop:g1",
-              "reviveCommandKey": "handoff:8546f8c2-9180-4fb0-b0ef-cdf7dfddb366:revive",
+              "requestHash": "0174ce5c057011d475c2a1fdf7dfa77a6982de6789a9c71ae4c69fd8356ba87b",
+              "stopCommandKey": "handoff:03d25198-871e-4a76-bc0f-f46bd165d93f:stop:g1",
+              "reviveCommandKey": "handoff:03d25198-871e-4a76-bc0f-f46bd165d93f:revive",
               "sourceWasLive": true,
               "targetEnv": {
-                "CODEX_HOME": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/homes/codex-b"
+                "CODEX_HOME": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/homes/codex-b"
               },
-              "targetSessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L/session-logs/2ea9e095-c5c7-4ad7-9942-df51e324c101.s1.jsonl"
+              "targetSessionLogPath": "/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-PNAyfH/session-logs/8666b7ea-6462-490b-95b2-2cf58cd72564.s1.jsonl"
             }
           }
         }

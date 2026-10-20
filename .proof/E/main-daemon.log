@@ -1,0 +1,1151 @@
+✔ select.1: candidate rules — none registered / all paused / none credentialed are typed refusals; a lone candidate short-circuits without a limits read (42.103481ms)
+✔ select.2: the operator's case over ROWS — 30% weekly with 3h to reset beats 25% with 6 days; stale rows are used and logged as stale (25.286949ms)
+✔ allocation.1: active owner admissions are durable, proportional, and fail closed without complete fleet activity (40.92895ms)
+✔ allocation.2: all protected accounts return a typed wait; there is no singleton or least-bad fallback (24.729655ms)
+✔ allocation.3: authoritative local activity charges long sessions and lets idle history age out (29.429441ms)
+✔ allocation.4: only fresh provider evidence after exhaustion reopens headroom (22.680389ms)
+✔ allocation.5: a remotely observed claim replaces its owner hold without a gap or double count (24.94101ms)
+✔ allocation.6: node activity reports authoritative pending work, freshness, and observed claims (25.417593ms)
+✔ select.3: auth_needed accounts are skipped while a healthy one exists (named in the reason) and refused (typed) otherwise; paused never (25.572947ms)
+✔ select.4: live-bee commitments steer around a busy account; the winner's in-flight load and penalty are named (26.366259ms)
+✔ select.5: near-ties rotate through the per-harness cursor ROW (a same-instant burst spreads); a Fable model reaches the scoring (29.107442ms)
+✔ select.6: rr cycles in registration order, skips auth failures, and does not disturb auto's near-tie cursor (31.344393ms)
+✔ select.7: pick debits expire; measured velocity from consecutive refreshes ages and projects the hot account out; exhaustion evidence is a down-tier class until the cool-off (32.983347ms)
+✔ select.8: exhaustion evidence down-tiers an account for the cool-off, then it competes again (23.629745ms)
+✔ select.9: an account at or past its weekly ceiling leaves auto, rr and admission until its window resets (27.209761ms)
+✔ limits.0:the real Codex app-server transport returns typed success and authentication failures (162.290021ms)
+✔ reset limits: passes one key through consume, accepts only closed outcomes, refreshes, and preserves count-only credits (55.987735ms)
+✔ reset transport: sends the supplied key, refreshes after redemption, and rejects unknown outcomes (433.921252ms)
+✔ limits.1: fetch writes the table (claude via the home token + injected usage transport, codex via the injected app-server transport); failures = unreadable rows; auth failure → auth_needed, recovery → ok (36.407939ms)
+✔ limits.agy: an imported HOME-scoped token clears auth_needed while provider limits remain unsupported (22.70336ms)
+✔ limits.muse: the XDG-pair home and auth.json expiry decide credential state; provider limits stay unsupported and expiry drives auth_needed (23.565364ms)
+✔ limits.muse.observed: usage a Muse runtime observed becomes the readable limits row, dated by observedAtMs; the probe keeps it, a credential loss replaces it (25.620738ms)
+✔ muse.darwin: one Keychain login per macOS user — a Muse account is held, captured and leased there but never ready, selected or activated into a home (26.020829ms)
+✔ muse.expiry: an OAuth login whose access token passed expires_at is expired where nothing can refresh it (darwin), and the limits probe then marks it auth_needed (22.085953ms)
+✔ muse.keychain: an auth.json that only points at the OS keychain is a present login that is never captured, imported or leased (22.66241ms)
+✔ muse.native: This Mac — on darwin the machine's own Muse login is the one runnable Muse account; it runs with no home env and is never activated, copied, leased or written (29.221215ms)
+✔ muse.native.stranded: a native account whose daemon now resolves another muse home stays native and fails closed, never an ordinary account (26.190034ms)
+✔ accounts.foreign-home: capture, config import, backup restore and adoption are refused for a home outside homesDir; homes inside it are unaffected (25.910136ms)
+✔ accounts.foreign-home.activation: the vault is never copied into an empty home outside homesDir; auto selection skips it and homes inside it still activate (24.53482ms)
+✔ accounts.foreign-home.gateways: gateway MCP config is never seeded into a populated home outside homesDir; a populated home inside it still converges (21.380365ms)
+✔ muse.native.env: a native bee's own env cannot redirect where Muse finds its login or config; other accounts keep theirs (22.670819ms)
+✔ limits.1a: Codex probes are per-home single-flight; transient failure keeps the last good row while auth failure invalidates it (27.578652ms)
+✔ limits.1aa: concurrent active admissions join one fresh quota probe per account (38.567646ms)
+✔ limits.1b: expired Claude chains refresh once, persist home + keychain + vault, and a rejected refresh is typed auth_failed (46.994252ms)
+✔ hive2.1: two sessions sharing one account that both failed auth do NOT strand refresh — the daemon takes it over and recovers (29.597946ms)
+✔ hive2.2: a single HEALTHY session still owns refresh even when an unhealthy sibling is present (no regression on rotating tokens) (23.574414ms)
+✔ hive2.3: rejected refresh requests login; temporary/timeout refresh keeps last-good and never requests login (25.809204ms)
+✔ hive2.4: daemon-restart recovery re-attempts every auth_needed Claude account and leaves other harnesses alone (37.605311ms)
+✔ hive2.5: reauthentication landing DURING recovery is used without a network refresh (check newer credentials first) (21.2023ms)
+✔ hive2.6: claudeCredentialFresh preserves a still-valid on-disk token against a delayed error (23.719567ms)
+✔ limits.1c: Grok, Kimi, Cursor, MiniMax, and z.ai use their real provider windows; rotating OAuth chains persist (36.80782ms)
+✔ limits.1d: the daemon never races a live Grok runtime's rotating refresh token (21.688692ms)
+✔ limits.2: freshness policy schedules stale candidates off the caller path, deduplicates the lane, and skips fresh/lone candidates (54.361001ms)
+✔ limits.3: the periodic in-daemon sweep runs every limitsRefreshMs, never overlaps itself, and is bounded by the fetch timeout (82.868227ms)
+✔ activation.1: an EMPTY home is activated from the vault (+ home defaults, mirrors); a POPULATED home is untouched byte for byte; the vault is never written by a spawn; claude keychain seeded via the injected writer (67.763161ms)
+✔ activation.2: a populated account waits for the common gateway seeder, preserves operator config, and stores only forwarded names (47.469236ms)
+✔ capture.1: explicit recovery captures an unchanged valid Claude credential from the external store (dotted account id) (25.689981ms)
+✔ capture.2: explicit recovery refuses an invalid current credential without touching the vault or login state (20.417808ms)
+✔ import.1: the old registry → rows (dry-run plans, real applies, re-run skips); the operator's ids/penalty/pause/addedAt come across; env-only bees backfill by home path (27.182211ms)
+﹣ import.2 (READ-ONLY): a dry-run of the importer against the REAL ~/.hive plans the operator's accounts without writing anything (0.145124ms) # no ~/.hive/vault/accounts.json on this machine
+✔ health.1: credentialHealthOf — absent without a primary credential; a file alone is unverified; login or a readable limits probe verify (21.637622ms)
+✔ import.v18.1: importExisting copies the vendor home's credential (+ config) into the vault — the home env var when set, else the recipe default under $HOME; nothing anywhere is a typed refusal listing every path checked (25.928537ms)
+✔ import.v18.2: relocated vendor files — Claude's ~/.claude.json + Keychain item (external), opencode's XDG data store — land under the recipe's vault layout (30.269783ms)
+✔ status.v18: honestStatus never returns ok without a credential (auth_needed instead); paused / auth_needed pass through; a recipe-less harness is always credentialed (21.147059ms)
+✔ verify.v18: the real limits probe settles an import — readable → verified (and the row is re-published for the mirror), auth failure → auth_needed; no probe → unverified; nothing → absent; a Codex probe activates the EMPTY home from the vault first (48.235565ms)
+✔ import.v18.3: the old-registry importer creates a credential-less record as auth_needed, never as a usable-looking ok row (21.075336ms)
+Grok busy probes: enrolling/disabling/refreshing operation_in_progress=provider_error; account auth remains ok
+✔ Grok central busy limits probes preserve account auth during ownership changes (23.995235ms)
+✔ lease unknown stays raw across reopen, refuses readiness and admission, and names the account (164.199402ms)
+✔ lease unknown background refresh cannot activate a home or probe credentials (127.646981ms)
+✔ actions.loop.ship: Commit → Land → Archive accepted mid-turn; instruction at the next accept point; explicit report → capture receipt → archive command (76.051553ms)
+✔ actions.loop.holds: a conflict holds Archive (retry after the fix lands); a question holds Land + Archive until answered; a failed commit holds everything (83.37075ms)
+✔ actions.loop.preconditions: Land revalidates the Cell HEAD against the intended commit and the bee's placement before any effect (46.958382ms)
+✔ actions.loop.restart: progress survives daemon restarts at every stage; a lost capture receipt is reconciled through the probe, never repeated blindly (80.196386ms)
+✔ actions.loop.controls: pause stops releases without interrupting work; cancel withdraws undelivered instructions; concurrent appends order; invalid reorder refuses; stale reports never advance (77.320527ms)
+✔ actions.loop.external: an external kind waits for its executor (no fake progress); a claim + report settles it; an unavailable internal executor waits too (51.247948ms)
+✔ actions.loop.nudge: one idle reminder per silent commit attempt after 30 min — not before, reset by progress, never mid-turn, never again after restart, again for a retry (69.611031ms)
+✔ actions.loop.nudge-scope: no reminder for other kinds, after complete or cancel, or while waiting on a question; an answered question restarts the clock (58.808341ms)
+✔ actions.loop.nudge-archived: the scheduler never reminds (and so never unarchives) an archived bee (30.52562ms)
+✔ auth resume: a bee mid-turn is not disturbed; the owed continuation survives a restart and is sent once when the turn ends (30.968802ms)
+✔ auth resume: a turn that succeeds before the continuation is sent supersedes it (21.063386ms)
+✔ auth resume: archive and a user stop cancel the continuation; a system stop does not (28.171347ms)
+✔ auth resume: a restore clears flags by where the failure came from, not only by current binding (29.674137ms)
+✔ auth resume: a probe tick touches only bees with an open flag or interruption; 300 bees with neither write nothing (212.780408ms)
+✔ autoTitleDecision: thin first opener defers; second message generates (1.218013ms)
+✔ autoTitleDecision: substantial first message generates before the first turn finishes (0.426902ms)
+✔ autoTitleDecision: existing title and archived skip; failures retry with bounded backoff (0.252717ms)
+✔ dispatcher: first task titles without output, persisted deferral=false (1.841719ms)
+✔ dispatcher: first task titles without output, persisted deferral=true (0.258817ms)
+✔ dispatcher: thin opener does not burn an attempt; second message titles (0.579246ms)
+✔ dispatcher: watchdog recovery ignores the stale generator completion (0.665708ms)
+✔ dispatcher: disabled naming skips everything (0.177624ms)
+✔ dispatcher: initial Linear reference survives clamping and later turns (1.500421ms)
+✔ dispatcher: archived and already-titled bees never touch the mailbox (0.512603ms)
+✔ node state roots refuse missing or relative paths before filesystem effects (3.232957ms)
+✔ config.1: absent file resolves to pure defaults (the file may be absent) (0.538544ms)
+✔ config.2: file values override defaults; unknown keys are ignored (0.676359ms)
+✔ config.3: I1 deadline covers bounded boot recovery; the legacy turn timeout is ignored (0.455412ms)
+✔ config.4: an above-floor deadline override is honored (0.435022ms)
+✔ config.5: malformed json and wrongly-typed values fail loudly (1.044248ms)
+✔ config.6: HIVE_V2_DATA_DIR overrides the default data dir (test isolation hook) (0.153204ms)
+✔ config.7: nodeKind (WP5) defaults to workstation and validates the closed list (0.715559ms)
+✔ config.8: cells (WP5) — root default, sandbox override tri-state, warm map validation (1.250064ms)
+✔ config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 1h stale, 15 min sweep, 5h cool-off, no tmux socket) and validate; agents.<a>.login parses (3.38632ms)
+✔ config.naming: absent file defaults to a warm Codex GPT-6 Luna app-server at effort none (0.430491ms)
+✔ config.naming: file values override; patchNamingConfig merges and preserves unknown keys (1.063028ms)
+✔ config.naming: OpenAI key is required for API mode, persisted privately, and redacted publicly (0.915095ms)
+✔ config.naming: a hem apiKeyRef replaces the plaintext key and is reported publicly (1.709246ms)
+✔ config.naming: an invalid naming block disables naming with a reason instead of failing config load (1.982833ms)
+✔ config.warmPool: off on workstations, one member on satellites; file values parse; env HIVE_CELL_WARMPOOL_FREE overrides (1.47751ms)
+✔ config.warmPool: invalid values fail loudly (0.648188ms)
+✔ config.9: cells.retention (v31) — defaults on, day/hour units, null disables an axis, invalid values fall back without refusing boot (6.260158ms)
+✔ config.9b: satellites default to a 3-day archive floor, half the Cells volume as byte budget, the pressure floor and the upstream mirror; workstations only by opt-in (1.671105ms)
+✔ envelope.1: bee-sent mail wraps in the v1 envelope — marker, one parseable meta line, blank line, body verbatim (0.286587ms)
+✔ envelope.2: only POSITIVELY-identified peers envelope — unverified sender labels stay bare (0.240027ms)
+✔ envelope.3: tier mapping matches the Q2 amendment (0.114413ms)
+✔ envelope.remote: a relayed agent on another authority is a peer; malformed claims are not (0.180315ms)
+✔ envelope.5: the interrupt notice sits between the blank line and the body, for peer mail only (0.216035ms)
+✔ envelope.answer: a question answer carries the answer marker and its questionId, for people and peers alike (0.263577ms)
+✔ envelope.automation: an automated send carries the automation marker and its senderKind; human and unmarked sends stay bare (0.284167ms)
+✔ envelope.automation-senders: Honeybee's own and known automation senders get the automation marker without a senderKind; self-framed senders stay bare (0.279058ms)
+✔ envelope.automation-interrupt: an interrupting automated message carries the automation notice; human mail and human answers never claim no person is waiting (0.214856ms)
+✔ handoff.loop.cross-family: idle codex source → claude target; seed delivered first, queued mail follows in order (50.254031ms)
+✔ handoff.loop.working: stopAt=idle waits for the running turn; the source takes no new turn; stopAt=now stops mid-turn (56.428437ms)
+✔ handoff.loop.stopped: a stopped source admits, the stop moots, the switch and target boot proceed (36.09422ms)
+✔ handoff.loop.restart: a daemon crash at every phase resumes from durable state; replaying the key returns the same receipt (53.682712ms)
+✔ handoff.loop.target-boot-failure: the target exhausting its spawn budget fails the handoff at stage start; revive retries with the seed still first (54.537956ms)
+✔ handoff.loop.context-failure: a transcript read failure fails the handoff before the switch and revives the source on its old harness (32.434702ms)
+✔ handoff.loop.async-summarizer: the switch waits for the summarizer; its result is the seed; a rejection fails at stage context (62.815159ms)
+✔ handoff.loop.supersede: an operator stop during stopping cancels the handoff; the bee keeps its harness and thread (29.077122ms)
+✔ flows.recipes: every registered harness advertises at least one method with safe descriptors; defaults resolve locally and remotely; codex browser is loopback-only (1.543002ms)
+✔ flows.claude-oauth: PKCE authorize URL; wrong code re-asks typed; code#state exchanges → validated → .credentials.json (0600) in home + vault, keychain seeded, account ok; no secret leaks (42.390599ms)
+✔ flows.claude-oauth: a transport failure is a typed provider_error (retryable), not a stuck flow (23.989956ms)
+✔ flows.codex-api-key: invalid key re-asks; unreachable provider re-asks (network_error); valid key lands auth.json + mirror + vault; sentinel absent everywhere but the credential files (31.301221ms)
+✔ flows.opencode: provider selection + key (+ base URL / organization / project) → auth store + opencode.json; unknown provider and bad URL are typed invalid_input; format-only providers succeed with an honest detail (51.434062ms)
+✔ flows.cli-device: fake `codex login --device-auth` → url + user code → waiting_device; credential landing (mtime) is the success signal; worker gone afterwards (413.971774ms)
+✔ flows.cli-prompt: url → prompt (waiting_input) → wrong code re-asks with invalid_input → right code lands the credential; prompt text/typed values never reach the row (318.490759ms)
+✔ flows.agy-cli: the captured OAuth cues request a code and token landing under the account HOME completes the flow (143.364213ms)
+✔ flows.muse-device: `muse login` output → url + user code → waiting_device under the isolated XDG pair; the auth.json landing completes the flow (544.317417ms)
+✔ flows.muse-oauth: Honeybee runs Meta's device flow itself — URL + code, interval and slow_down honoured, Linux auth.json (0600) in home + vault, no muse run, no token in any log or row (268.772633ms)
+✔ flows.muse-oauth.darwin: the only and default Muse login on a Mac; the login stays in the vault, never in a home; muse is never run (92.369492ms)
+✔ flows.muse-oauth: a grant without expires_in or refresh_token, with any token_type and extra fields, is a usable login with no expires_at; transient errors back off and keep polling (337.355476ms)
+✔ flows.muse-oauth.dark: Meta unreachable for the whole code lifetime keeps the flow waiting with growing backoff until the code expires (560.694736ms)
+✔ museDeviceToken: lenient about expires_in, token_type, extra fields and error casing; 5xx/408/429 are transient, other errors hard (52.343557ms)
+✔ flows.muse-oauth: denial and expiry fail at once, repeated hard errors fail after three polls, an unavailable sign-in fails typed; all retryable with nothing written; cancel stops polling; retry asks for a fresh code (614.953286ms)
+✔ flows.muse-device: a denied login fails typed and retryable; cancelling a waiting login stops the worker without a credential (371.542894ms)
+✔ flows.muse-api-key: the key reaches `muse auth set` only on stdin, lands in the account's auth.json + vault, and never leaks; a failing `auth set` fails typed (194.776994ms)
+✔ flows.agy-cli: a captured auth failure exits zero but still fails the flow (176.497652ms)
+✔ flows.cli-exit: a CLI that exits without a credential fails typed (process_exited, retryable); retry starts revision 2 with a new worker that succeeds (446.723304ms)
+✔ flows.expiry+cancel: expiry kills the worker and marks expired; cancel kills and marks cancelled; cancel on a terminal flow is a no-op; a landed credential is never un-done by a late cancel (225.365856ms)
+✔ flows.select-method: switching methods on a live flow stops the worker, bumps the revision and starts the new method; unknown methods refuse typed (155.652793ms)
+✔ flows.refusals: no recipe / non-remote method / pty_unavailable are typed failures on the flow row (never a terminal, never tmux); a removed account stops its worker (137.384672ms)
+✔ flows.boot: a live flow from a previous daemon is marked interrupted (retryable); legacy hive-login-* tmux seats are killed only for accounts this store owns; shutdown kills every worker (222.081337ms)
+✔ flows.pkce: the authorization URL carries a challenge and an independent state — never the verifier (41.854344ms)
+✔ flows.worker-env: a login worker gets an allowlisted environment — the daemon's provider keys never reach a vendor CLI (0.832462ms)
+✔ flows.races: a superseded worker's late exit never fails its successor; cancel during a method switch wins (899.003127ms)
+✔ flows.split-code: Claude's pasted code#state splits, a bare code uses the flow state, garbage is rejected (0.712679ms)
+✔ flows.foreign-home: no login starts, retries or captures into an account whose home is outside homesDir; nothing is written to that home or the vault (74.663657ms)
+✔ redaction: OpenCode false fields remain private and unsafe base URLs refuse before checking (49.283754ms)
+✔ redaction: thrown input and encoded variants never reach flow, audit, mirror or logs (128.208766ms)
+✔ redaction: every CLI recipe strips credential queries and fragments before persistence (795.555307ms)
+✔ redaction: userinfo and nested credentials refuse; Claude flag is restricted to its built policy (1.88769ms)
+✔ redaction: unsafe CLI URLs fail typed without reaching persisted or mirrored fields (3117.994479ms)
+✔ redaction: CLI-echoed callback URLs never project codes, tokens or fragments (1885.740256ms)
+✔ redaction: encoded submitted values in CLI state or userCode are held before projection (980.70141ms)
+✔ redaction: verified Codex and Grok authorize parameters survive byte-for-byte (281.596355ms)
+✔ redaction: Kimi opaque complete URI strips user_code but keeps separate code (140.598857ms)
+✔ redaction: terminal patches release submitted-value redactors immediately (124.822793ms)
+✔ redaction: Muse refuses a null authorization URL as a typed terminal failure (21.290262ms)
+✔ strict-drop-log: Codex policies log all future names once per flow, never values or URL (258.69314ms)
+✔ strict-drop-log: unsafe and submitted-secret parameter names become marker plus count (45.286286ms)
+✔ strict-drop-log: Muse strict drops are logged; general CLI behavior is unchanged (21.5306ms)
+✔ strict-drop-log: dedupe entries release on terminal, deletion, account abandonment and shutdown (79.110305ms)
+✔ worker.parser: Codex browser login ignores its callback listener in every chunk layout (0.916504ms)
+✔ worker.clean: ANSI/OSC sequences are stripped and \r redraws resolve to the last overwrite (0.248717ms)
+✔ worker.parser: a URL split across chunks is reported once, whole, and only once; a reissued URL is a change (0.583056ms)
+✔ worker.parser: a URL with no trailing newline is reported once the output settles (0.167514ms)
+✔ worker.parser: device codes, repeated prompt lines, prompts that scroll away, and failure cues (0.283788ms)
+✔ worker.parser: a failure cue fires again after the prompt is answered; a code inside a URL is never a device code; split escape sequences do not leave residue (0.247977ms)
+✔ worker.parser: buffers are bounded and a masked secret never survives in the tail (1.592622ms)
+✔ worker.node-pty: the prebuilt spawn-helper's execute bit is repaired when npm stripped it (posix_spawnp failed otherwise) (0.773421ms)
+node-pty not installed — real PTY path not exercised here
+✔ worker.node-pty: a REAL pseudo-terminal drives the fake CLI end to end (ANSI redraw + URL + prompt + hidden input + credential + exit) (6.189867ms)
+✔ worker.node-pty: the optional backend loads when installed, and its absence is a typed null (never tmux) (0.339609ms)
+✔ worker.pipe: fake CLI → url (split, ANSI) → prompt → wrong input re-prompts → right input writes the credential → exit; events are typed only (283.403004ms)
+✔ worker.pipe: kill() terminates a hanging CLI (whole group) and reports a signalled exit (83.607736ms)
+✔ worker.pipe: a missing CLI is a typed spawn_error, not a hang (24.56685ms)
+✔ account readiness blocks only affected starts; unrelated stop and mail progress; a same-bee stop cancels the deferred start (37.9893ms)
+✔ account readiness failure uses the existing bounded command retry before launch (22.67528ms)
+✔ readiness sees an automatic revive enqueued inside the current core step (26.807769ms)
+✔ model change waits when idle becomes working before command execution (29.524873ms)
+✔ model change admitted during a turn waits for the turn to end, and a newer change replaces it (29.559964ms)
+✔ a runtime ended by stopped_by_user while a model change waits is not restarted, even after boot (31.184378ms)
+✔ a runtime ended by crashed while a model change waits is not restarted, even after boot (31.552758ms)
+✔ bee tmp is released on archive only once no live runtime holds it, and on delete (36.858051ms)
+✔ deferred model change does not block other commands and a stale generation does not restart again (30.666595ms)
+✔ model change recovers after executor crash before_effect (42.684226ms)
+✔ model change recovers after executor crash after_effect (33.712567ms)
+✔ model change resumes after daemon restart between settled stop and observed exit (35.34899ms)
+✔ model change defers across real HSR input admission before the turn observation is folded (499.737826ms)
+✔ unit.0: a tick uses bounded batch reads, independent of bee count, re-read only after a write (75.344164ms)
+✔ unit.0a: the empty proof skips full snapshots and returns fresh containers without skipping flag expiry (22.375492ms)
+✔ unit.0a-disabled: an I1-disabled empty proof carries null instead of an unused array (18.481866ms)
+✔ unit.0b: a revive command refreshes an initially empty snapshot in the same tick (22.419072ms)
+✔ unit.0c: an outer rollback and reused audit sequence cannot preserve an uncommitted snapshot (20.753378ms)
+✔ unit.0d: I1 sees stopped-runtime and absent-runtime mail (34.914008ms)
+✔ unit.0e: task supply refreshes the snapshot before I1 in the same tick (24.57925ms)
+✔ unit.0e.1: limit-tripped task supply stalls after its mail drains on a later tick (26.958315ms)
+✔ unit.0f: fresh final I1 re-ranks the queue after delivery (25.554406ms)
+✔ unit.0g: linear I1 metadata matches the full-snapshot oracle exactly (27.970441ms)
+✔ unit.0i: same-tick I1 reuse cannot cross an outer rollback and reused audit sequence (21.94383ms)
+✔ unit.1: scale-to-zero — idle past the window stops with stopped_by_system; send revives (Q4 + Q3) (29.878043ms)
+✔ unit.2: scale-to-zero never stops an idle bee with undelivered mail (27.035057ms)
+✔ unit.0h: delivery hydrates bodies only for the selected target (41.72108ms)
+✔ unit.time-boundaries: archived boot hang, idle stop, and I1 remain strict (68.242754ms)
+✔ unit.3: flag policy — adapter evidence sets flags and contrary evidence clears them (spec 03) (24.454307ms)
+✔ unit.4: pid-at-spawn recording — procOf lands on the booting runtime row (WP2 amendment) (21.603681ms)
+✔ unit.5: degraded-runtime policy — mail for a re-adopted runtime rotates the generation (31.164287ms)
+✔ unit.6: I1 telemetry — a message undelivered past the deadline is recorded exactly once (24.972951ms)
+✔ unit.7: I1 telemetry — the clock is suspended while a closed-list flag is active (26.459611ms)
+✔ unit.8: continuity (spec 07 §F) — a booted session id is recorded on the bee for the CURRENT generation only; stale/no-bee evidence is skipped (29.843942ms)
+✔ budget.5: immediate-exit runtime → bounded revives with backoff, spawn_failed at the budget, no further wakes (52.342716ms)
+✔ budget.5auth: pre-init agy auth exits consume the budget and suppress churn (55.245054ms)
+✔ budget.5a: prompt-less spawn boot failures still retry to the visible bounded terminal (38.134004ms)
+✔ budget.5b: a driver that THROWS from start (cell provisioning failed) is a spawn failure on the B5 table — retried with backoff, spawn_failed at the budget, never a wedged command or a loop error (46.103399ms)
+✔ budget.6: an explicit operator revive retries regardless of spawn_failed and clears it on success; the mail then flows (59.119538ms)
+✔ budget.7: a runtime that reached running/idle and then crashed is not a spawn failure — revive is immediate and uncounted (38.893744ms)
+✔ budget.7b: repeated boot hangs exhaust one budget and issue one stop per generation (37.431656ms)
+✔ budget.8 (soak regression): readyAtSpawn instant death — the synthetic booted must NOT reset the budget; exactly maxAttempts generations, backoff, spawn_failed, wakes suppressed (57.643218ms)
+✔ budget.9 (I1): a message that never reaches a real runtime violates while the loop retries, and the spawn_failed flag is the legal terminal that suspends the clock (44.405233ms)
+✔ budget.9b (I1, idle urgency): pre-fix the churn re-based the idle clock forever — post-fix the bee lands flagged (the 'or the bee is flagged' arm) (43.205451ms)
+✔ budget.10: real evidence (the late init a readyAtSpawn harness emits) resets the counter — a generation that spoke and then crashed is a normal post-running crash (116.033697ms)
+✔ budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine, emits zero output and dies after observed readiness — bounded generations; fixed harness + operator revive recovers (1084.570387ms)
+✔ unit.9 (spec 08 swap): a `stop {thenRevive}` command revives the NEXT generation once the runtime is observed stopped — durable, once, and never while a wake is already pending; the account policy hook sees every applied evidence (41.978878ms)
+✔ D05 boot command probes avoid full history and keep strict thenRevive and future-wake behavior (28.471635ms)
+✔ D05 pending-stop probe treats a future retry as pending and remains a repeated-step no-op (21.501548ms)
+✔ unit.10 (spec 08): the onFlagEvidence hook fires after each applied evidence and a throwing hook never stalls the loop (24.398066ms)
+✔ sandbox tmp evidence owns only its own resource_blocked row and never reaches account policy (26.766569ms)
+✔ runtime policy: a running turn is never stopped because time elapsed (24.630672ms)
+✔ recovered completion checkpoints last, preserves output, and unlocks idle mail (27.175541ms)
+✔ recovery applies completion followed by a newer turn start in journal order (24.630521ms)
+✔ stale-generation recovery observations and cursors cannot touch the current runtime (24.167549ms)
+✔ urgency.d1: `idle` is not delivered while the runtime is running — it lands at turn end (27.196821ms)
+✔ urgency.d2: `now` mid-turn interrupts exactly once, then delivers at the resulting accept point (26.442941ms)
+✔ urgency.d3: `now` to an idle runtime is a plain delivery — no interrupt (23.368648ms)
+✔ urgency.d3a: a confirmed Codex `now` delivery never interrupts the turn it just started (23.556233ms)
+✔ urgency.d3b: a pending Codex `now` delivery never interrupts the turn it just started (23.44776ms)
+✔ urgency.d3c: a distinct later `now` message still interrupts an async-confirmed turn (23.238104ms)
+✔ urgency.d3d: the substrate router forwards the urgent delivery identity (0.3824ms)
+✔ urgency.d4: ordering — urgency governs WHEN a message is eligible; among eligible, enqueue order wins (28.985509ms)
+✔ urgency.d5: `idle` to a stopped bee still revives (revive-on-message unchanged) and delivers once idle (29.098151ms)
+✔ urgency.d6: I1 telemetry — an `idle` message's deadline clock starts at eligibility (turn end), not enqueue (26.773879ms)
+✔ envelope.d1: bee-sent mail is delivered ENVELOPED; operator mail is delivered bare (25.065454ms)
+✔ envelope.d2: a peer `now` that interrupted the turn is delivered with the interrupt notice (26.038739ms)
+✔ envelope.d3: the interrupt notice survives a daemon restart between interrupt and delivery (26.483191ms)
+✔ envelope.d4: operator `now` mail that interrupted the turn is delivered bare (25.412253ms)
+✔ envelope.d5: an operator interrupt delivers nothing and a later peer `now` to the idle bee carries no notice (25.67488ms)
+✔ envelope.d6: an operator interrupt after the delivery interrupt withdraws the notice (25.453954ms)
+✔ envelope.d7: a notice recorded for an earlier generation is not shown to a later one (22.587997ms)
+✔ urgency.d6: idle mail DELIVERS to a synthetic-running fresh revive — no generation churn (2026-08-19 budget.11 discovery) (29.532523ms)
+✔ obs.synthetic-turn_ended: a readyAtSpawn boot-to-ready edge idles the store without an output fact; evidence stays synthetic (2026-09-02 swap-revive stall) (31.65351ms)
+✔ obs.synthetic-turn_ended with mail waiting: the boot-to-ready edge is skipped (mail_pending) — no one-step idle under a turn about to start (29.77821ms)
+✔ unit.flag-expiry: a provider-declared reset lifts resource_blocked at the instant — never before, never by silence (27.028257ms)
+✔ move.claude: no-mail dest idle marks native overlay applied and completes (33.165461ms)
+✔ move.codex: no-mail dest idle completes without a mailbox prefix (31.147617ms)
+✔ move.claude: pending mail keeps overlay pending until prefixed dest deliver (34.847276ms)
+✔ move.stub: dest idle without mail does not auto-complete (32.145204ms)
+✔ move.codex: dest leaving booting (handshake ack) completes no-mail without idle (29.733798ms)
+✔ move.codex: dest crash while starting retries and then completes (33.480159ms)
+✔ move.crash: executor crash after durable admission resumes to complete (34.311122ms)
+✔ z01.a: an outer rollback never loses dedup state and a committed clear follows (30.270652ms)
+✔ z01.b: a live-runtime hive with zero pending still clears (mail-only probe) (25.476854ms)
+✔ z01.c: with I1 disabled an interrupted-then-canceled id is cleared without hydration (25.982079ms)
+✔ z01.d: stopped-target pending mail is retained until the bee is deleted (21.849157ms)
+✔ z01.e: a permanent >1024 backlog sweeps on growth or cadence only, retaining stopped and absent pending (955.247703ms)
+✔ z01.f: the I1-disabled sweep probes tracked ids in bounded chunks, never all pending (141.131181ms)
+✔ z01.g: an outer rollback never lets the sweep forget, and the terminal id prunes once committed (323.945062ms)
+✔ z01.h: retained now-mail stays deduped across revive and cadence sweeps (143.758212ms)
+✔ z01.i: a reentrant onI1Violation step cannot make the outer sweep erase live dedup ids (591.13782ms)
+✔ z01.j: huge pending metadata with a tiny tracked set probes O(tracked), never O(pending) (3594.836548ms)
+✔ stripSessionEnvelopes drops hive/apiary envelopes and keeps the operator task (0.220806ms)
+✔ isThinOpener: greetings and empty envelopes are thin; real tasks are not (0.145704ms)
+✔ normalizeGeneratedTitle strips dressing and rejects empty output (0.324929ms)
+✔ buildTitlePrompt fences user messages as data (0.172514ms)
+✔ Linear references accept issue links and bare IDs in task order (0.183325ms)
+✔ Linear references ignore session instructions, other URLs, and bee handles (0.164125ms)
+✔ normalization prefixes once and keeps the entire title within 72 characters (0.460563ms)
+✔ only the initial task supplies the issue prefix (0.148924ms)
+✔ relocate: copies jsonl and sibling, then is present on retry (2.730213ms)
+✔ relocate: crash after jsonl publication without marker recovers (1.035808ms)
+✔ relocate: unrelated dest jsonl without marker is refused (0.7662ms)
+✔ relocate: unrelated dest sibling with no jsonl is refused (0.891864ms)
+✔ relocate: exclusive publish hardlink without marker recovers (1.082769ms)
+✔ relocate: findClaudeTranscript does not scan other project keys (0.686868ms)
+✔ service.1: launchd plist snapshot (0.300618ms)
+✔ service.2: systemd owns only the daemon process so detached bee runtimes survive restart (0.271027ms)
+✔ service.3: launchd manager — install writes the plist; start/stop/status drive launchctl (0.985246ms)
+✔ service.4: launchd start falls back to kickstart when already bootstrapped (0.341869ms)
+✔ service.4b: launchd stop waits through the asynchronous bootout window (0.410591ms)
+✔ service.5: systemd manager — install writes unit + daemon-reload; start/stop/status; uninstall removes (0.906234ms)
+✔ service.6: one factory per platform; anything else refuses (0.241366ms)
+✔ service.7: a failing systemctl surfaces as a typed ServiceError, never silence (0.416011ms)
+✔ service renderers exclude Electron and Node option environment injection (0.267237ms)
+✔ telemetry.1: violation rows persist, dedup by message id across reopen, and count (14.968653ms)
+✔ telemetry.2: the log line matches the harness ledger shape (0.179974ms)
+ℹ tests 293
+ℹ suites 0
+ℹ pass 292
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 29280.569406
+✔ account config import: Claude copies config-only files, merges missing safe values, preserves destination auth and conflicts (20.539052ms)
+✔ account config import: auth-only mixed JSON is skipped and malformed reasons are static (2.408715ms)
+✔ account config import: JSONC comments survive safe extraction and unusable MCP servers do not make a config ready (7.034639ms)
+✔ account config import: Grok and Kimi TOML import safe settings without provider auth (16.622256ms)
+✔ account config import: environment homes win and source symlink escapes are reported without copying (3.831574ms)
+✔ account config import: raw aliases cannot smuggle mixed config, env files, private keys, or destination links (5.843676ms)
+✔ account config import: traversal depth and destination config reads are bounded (7.157333ms)
+✔ account config import: unresolved Kimi default_model is skipped (1.12533ms)
+✔ account config import: unknown harness and equal source/destination are typed refusals (1.12992ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 341.72886
+✔ rpc account config: fixed preview/import contract, typed refusals, serialized imports, and durable exact retry (1197.506297ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1363.396173
+✔ lease.claude.1: ships .credentials.json with DEEP, EXACT refresh blanking; access token, near-miss keys, and expiry preserved; log secret-free (34.297901ms)
+✔ lease.claude.2: an expired chain is refreshed through the daemon's own refresher first; the NEW refresh token also never ships (27.026856ms)
+✔ lease.claude.4: the 15-minute ship floor — a dying-but-not-expired token is refreshed, never re-shipped; a refresh that stays under the floor refuses (32.254146ms)
+✔ lease.claude.3: typed refusals — no credential; near-expiry chain a live runtime still owns; failed refresh (26.537673ms)
+✔ lease.claude.5: an idle running Claude loses the refresh at the deferral deadline — retried mints from T-15m ship a later expiry with over 5 minutes to spare (28.000562ms)
+✔ lease.claude.6: past the deadline the daemon still yields to a Claude that is refreshing or has refreshed (30.622383ms)
+✔ lease.claude.7: the daemon does not rotate under a running Claude when it cannot publish to the Keychain that Claude reads (23.610984ms)
+✔ lease.claude.8: a rotated chain the Keychain refused is re-published until running Claudes can read it (37.646461ms)
+✔ lease.claude.9: with no Claude running the daemon still rotates only from a readable Keychain (20.252804ms)
+✔ lease.codex.1: ships access+id token with refresh_token blanked (field KEPT); blanking is DEEP (stray refresh keys outside tokens too); a subscription lease's OPENAI_API_KEY is blanked (21.733235ms)
+✔ lease.codex.3: a shipped file always carries refresh_token — present as "" even when the source file lacks the field (codex serde hard-fails without it) (19.790202ms)
+✔ lease.codex.2: a near-expiry token triggers the central rotation and harvests home → vault; a rotation that stays stale is a typed TTL refusal (27.039857ms)
+✔ lease.grok.1: every issuer::client entry's refresh_token blanked; cached keys preserved; expiresAt = the soonest entry expiry; kindNote carries the XAI_API_KEY scrub rule (21.22772ms)
+✔ lease.kimi.1: API-key lease ships (refresh blanked); an OAuth-only account is a durable lease_unsupported refusal (20.738037ms)
+✔ lease.opencode.1: single coding-plan provider filtered out of the multi-provider auth.json; other providers DROPPED, not blanked; none → lease_unsupported (21.271971ms)
+✔ lease.muse.1: a held login requires authority minting and leases only the key, never the bootstrap or profile (54.670899ms)
+✔ lease.muse.2: a static API key has a bounded four-hour delivery lease (19.501054ms)
+✔ lease.muse.3: Keychain, bootstrap, missing and invalid documents have typed refusals (22.587837ms)
+✔ lease.muse.4: a delivered working key imports without any bootstrap on the recipient (20.82635ms)
+✔ lease.muse.5: a Mac holds and mints centrally in its vault; it never publishes a runtime home (29.294307ms)
+✔ lease.flight.1: concurrent mints for one account JOIN a single mint (the rotation runs once) (20.282875ms)
+✔ lease.flight.2: refused while the account's refresher is mid-rotation (40.647462ms)
+✔ lease.strategy.1: harnesses without a lease strategy are a durable typed refusal (20.294185ms)
+✔ rpc.lease.1: account.lease verb — result shape, typed errors, capability tag, and no secret bytes in daemon output or the audit stream (634.75546ms)
+✔ central.claude: idle local runtime does not block rotation; leases and runtime copies never carry refresh tokens (69.171548ms)
+✔ central.foreign-home: a central authority never enrolls or publishes into a home outside homesDir (31.484776ms)
+✔ central.claude: enrollment refuses idle runtimes, and existing accounts retain their behavior (22.952147ms)
+✔ central.claude: an expired candidate is refused before any state change; native copies stay intact (#12) (25.187517ms)
+✔ central.claude: a provider rejection during enrollment aborts with native copies intact and no access-only publication (#12) (28.753212ms)
+✔ central.claude: a lost provider response during enrollment is retried after backoff; a consumed token ends in login_required (#12) (51.631847ms)
+✔ central.claude: an enrollment interrupted mid-rotation is uncertain on resume and resolves on the next refresh (#12) (55.571443ms)
+✔ central.claude: disabling an interrupted enrollment never republishes its unconfirmed refresh token (49.90528ms)
+✔ central.claude: multiple accounts enroll and rotate independently (70.216206ms)
+✔ central.claude: force refresh is coalesced with lease requests and keyed retries survive service restart (59.476987ms)
+✔ central.claude: force refresh re-evaluates after an unrelated ensure rejects (37.22107ms)
+✔ central.claude: saved rotation survives publication failure; an unknown outcome is retried after backoff and recovers (54.421951ms)
+✔ central.claude: uncertain disable remains fenced across failed publication and restart (36.593363ms)
+✔ central.claude: a refused refresh token ends in login_required — auth_needed with the reason, a typed lease refusal, no last-good limits (49.239923ms)
+✔ central.claude: a refresh the provider did not process stays ready, backs off and recovers; last-good limits stay (163.260486ms)
+✔ central.claude: a refresh interrupted by a daemon death resolves on the next tick instead of freezing (115.76739ms)
+✔ central.claude: an uncertain row from before schema v35 has no retry metadata and is still retried by the tick alone (155.830225ms)
+✔ central.claude: a retry that succeeds but cannot publish still ends the doubt once the saved result settles (37.644511ms)
+✔ central.claude: unreadable Keychain blocks enrollment before the validating rotation and preserves the native copy (31.188818ms)
+✔ central.claude: lost authority has a supported disable and login recovery path (29.855451ms)
+✔ central.claude: a foreign native rotation is preserved and blocks provider refresh (31.034194ms)
+✔ central.claude: a foreign login that lands during enrollment is detected before the validating rotation (28.747322ms)
+✔ central.claude: a pending native Keychain seed prevents enrollment (25.040693ms)
+✔ central.claude: a validated rotation is saved before publication; a retry publishes without rotating again (#12) (32.620296ms)
+✔ central.claude: disable restores a validated enrollment result over its older adopted copies (32.823551ms)
+✔ central.claude relogin: login_required logs in place — generation +1, ready, ok, login recorded, copies access-only, running runtime untouched (45.39359ms)
+✔ central.claude relogin: another Anthropic account or an unknown one is refused with nothing changed; replaceAccount allows it (36.769167ms)
+✔ central.claude relogin: an authority with no recorded identity uses the home's Claude Code account record (33.085509ms)
+✔ central.claude relogin: a sign-in cancelled while it waited behind a refresh changes nothing (30.735506ms)
+✔ central.claude relogin: an organization that cannot be named is unverified, not a wildcard (69.792095ms)
+✔ central.claude relogin: a login whose expiry the provider did not give clears the previous login's expiry (39.674896ms)
+✔ central.claude early refresh: a failure before the provider is retried with backoff, not on every tick (58.08884ms)
+✔ central.claude relogin: a login saved before publication failed settles on the next tick-driven ensure without a new provider call (40.61395ms)
+✔ central.claude lease minTtlMs: below the requested margin the chain is refreshed first; a just-issued token or an unprocessed refresh still ships (36.720806ms)
+✔ central.claude early refresh: due once no more than the ahead window remains, never within the minimum interval of an issue, quiet after a failure (35.235776ms)
+✔ account mirror: loginDueAt is three days before the provider login ends (18.600499ms)
+✔ peer lease adoption preserves native material and refuses working or operator-paused accounts (44.295609ms)
+✔ peer lease publication uses Claude locks and keeps starts blocked until Keychain publication succeeds (32.350719ms)
+✔ revoked leases retain all account rows and bee bindings, audit once and accept a newer authority epoch (40.279351ms)
+✔ native backups exclude access-only leases, enforce permissions and retain only the latest genuine chain (60.829684ms)
+✔ explicit lease adoption replaces a stopped working native login with a genuine restorable backup, but never a running bee or central authority (44.67726ms)
+✔ explicit adoption checks stopped bees again after awaiting the per-home Keychain read (21.938669ms)
+✔ versioned lease publication: generation is not eligible until home, mirrors and Keychain finish, durable completion marker survives service recreation (37.550159ms)
+✔ auth death eligibility stays harness-keyed; native, Muse, legacy and unpublished leases are excluded (23.511411ms)
+✔ legacy lease renewal after auth death preserves ordinary AuthResume and releases only unclaimed versioned candidates (153.631066ms)
+✔ central lease mint compatibility: Codex and Claude ship valid matching material during refreshing or uncertainty without a generation label (125.681275ms)
+✔ authority instance: actual enable, refresh, restart, disable/remove/re-add/enable scopes minted leases (45.827931ms)
+ℹ tests 71
+ℹ suites 0
+ℹ pass 71
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3996.522648
+✔ batch activity: 0 accounts/0 bees, round 0 (51.39273ms)
+✔ batch activity: 0 accounts/0 bees, round 1 (20.180802ms)
+✔ batch activity: 0 accounts/12 bees, round 0 (41.243677ms)
+✔ batch activity: 0 accounts/12 bees, round 1 (32.870422ms)
+✔ batch activity: 0 accounts/120 bees, round 0 (133.704142ms)
+✔ batch activity: 0 accounts/120 bees, round 1 (122.167912ms)
+✔ batch activity: 0 accounts/1200 bees, round 0 (1036.446348ms)
+✔ batch activity: 0 accounts/1200 bees, round 1 (971.601226ms)
+✔ batch activity: 1 accounts/0 bees, round 0 (21.050235ms)
+✔ batch activity: 1 accounts/0 bees, round 1 (20.158661ms)
+✔ batch activity: 1 accounts/12 bees, round 0 (32.354489ms)
+✔ batch activity: 1 accounts/12 bees, round 1 (31.978909ms)
+✔ batch activity: 1 accounts/120 bees, round 0 (123.016983ms)
+✔ batch activity: 1 accounts/120 bees, round 1 (119.585192ms)
+✔ batch activity: 1 accounts/1200 bees, round 0 (1061.974662ms)
+✔ batch activity: 1 accounts/1200 bees, round 1 (1084.033865ms)
+✔ batch activity: 4 accounts/0 bees, round 0 (22.155005ms)
+✔ batch activity: 4 accounts/0 bees, round 1 (20.49677ms)
+✔ batch activity: 4 accounts/12 bees, round 0 (32.992566ms)
+✔ batch activity: 4 accounts/12 bees, round 1 (32.897684ms)
+✔ batch activity: 4 accounts/120 bees, round 0 (119.800468ms)
+✔ batch activity: 4 accounts/120 bees, round 1 (121.047501ms)
+✔ batch activity: 4 accounts/1200 bees, round 0 (1035.682746ms)
+✔ batch activity: 4 accounts/1200 bees, round 1 (1012.469722ms)
+✔ batch activity: 8 accounts/0 bees, round 0 (20.83797ms)
+✔ batch activity: 8 accounts/0 bees, round 1 (20.785089ms)
+✔ batch activity: 8 accounts/12 bees, round 0 (32.362439ms)
+✔ batch activity: 8 accounts/12 bees, round 1 (32.78455ms)
+✔ batch activity: 8 accounts/120 bees, round 0 (120.990499ms)
+✔ batch activity: 8 accounts/120 bees, round 1 (122.5179ms)
+✔ batch activity: 8 accounts/1200 bees, round 0 (1024.755421ms)
+✔ batch activity: 8 accounts/1200 bees, round 1 (1024.219095ms)
+✔ batch reports stay fresh across account reassignment and claim expiry (22.537485ms)
+ℹ tests 33
+ℹ suites 0
+ℹ pass 33
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9991.487997
+✔ active pending reads: 0 bees, round 0 (34.083395ms)
+✔ active pending reads: 0 bees, round 1 (20.169973ms)
+✔ active pending reads: 0 bees, round 2 (19.822352ms)
+✔ active pending reads: 1 bees, round 0 (23.716847ms)
+✔ active pending reads: 1 bees, round 1 (21.690673ms)
+✔ active pending reads: 1 bees, round 2 (21.264791ms)
+✔ active pending reads: 120 bees, round 0 (146.964997ms)
+✔ active pending reads: 120 bees, round 1 (131.08588ms)
+✔ active pending reads: 120 bees, round 2 (124.099303ms)
+✔ active pending reads: 2000 bees, round 0 (1792.362002ms)
+✔ active pending reads: 2000 bees, round 1 (1789.759522ms)
+✔ active pending reads: 2000 bees, round 2 (1709.961619ms)
+✔ inactive pending work remains fresh, active age and transfer claims retain generation ownership (33.657254ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6103.795113
+✔ admission batch: active/0/0/all (35.442652ms)
+✔ admission batch: active/0/12/all (39.821839ms)
+✔ admission batch: active/0/120/all (137.651777ms)
+✔ admission batch: active/0/1200/all (1033.892772ms)
+✖ admission batch: active/1/0/all (27.029656ms)
+✖ admission batch: active/1/12/all (34.089525ms)
+✖ admission batch: active/1/120/all (132.701383ms)
+✖ admission batch: active/1/1200/all (1104.544499ms)
+✖ admission batch: active/4/0/all (37.159888ms)
+✖ admission batch: active/4/12/all (36.281234ms)
+✖ admission batch: active/4/120/all (166.770438ms)
+✖ admission batch: active/4/1200/all (1141.440719ms)
+✖ admission batch: active/8/0/all (26.593384ms)
+✖ admission batch: active/8/12/all (38.973927ms)
+✖ admission batch: active/8/120/all (134.941693ms)
+✖ admission batch: active/8/1200/all (1155.440465ms)
+✔ admission batch: active/4/12/none (35.497443ms)
+✖ admission batch: active/4/12/only (35.785581ms)
+✖ admission batch: active/4/12/swap (35.219506ms)
+✖ admission batch: active/4/12/stale (36.724376ms)
+✔ admission batch: shadow/0/0/all (20.145311ms)
+✔ admission batch: shadow/0/12/all (31.25019ms)
+✔ admission batch: shadow/0/120/all (120.154786ms)
+✔ admission batch: shadow/0/1200/all (965.37427ms)
+✖ admission batch: shadow/1/0/all (21.60218ms)
+✖ admission batch: shadow/1/12/all (32.734259ms)
+✖ admission batch: shadow/1/120/all (123.050805ms)
+✖ admission batch: shadow/1/1200/all (1108.127513ms)
+✖ admission batch: shadow/4/0/all (182.957262ms)
+✖ admission batch: shadow/4/12/all (38.452952ms)
+✖ admission batch: shadow/4/120/all (136.074733ms)
+✖ admission batch: shadow/4/1200/all (1100.719863ms)
+✖ admission batch: shadow/8/0/all (28.127415ms)
+✖ admission batch: shadow/8/12/all (39.733737ms)
+✖ admission batch: shadow/8/120/all (132.820495ms)
+✖ admission batch: shadow/8/1200/all (1083.432729ms)
+✔ admission batch: shadow/4/12/none (39.633654ms)
+✖ admission batch: shadow/4/12/only (33.937931ms)
+✖ admission batch: shadow/4/12/swap (35.917504ms)
+✖ admission batch: shadow/4/12/stale (37.347843ms)
+✔ admission refreshes local activity and holds each call, rolls back, and reopens (42.001378ms)
+ℹ tests 41
+ℹ suites 0
+ℹ pass 11
+ℹ fail 30
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11159.208109
+
+✖ failing tests:
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/1/0/all (27.029656ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/1/12/all (34.089525ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/1/120/all (132.701383ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/1/1200/all (1104.544499ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/4/0/all (37.159888ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/4/12/all (36.281234ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/4/120/all (166.770438ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/4/1200/all (1141.440719ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/8/0/all (26.593384ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/8/12/all (38.973927ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/8/120/all (134.941693ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/8/1200/all (1155.440465ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/4/12/only (35.785581ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/4/12/swap (35.219506ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: active/4/12/stale (36.724376ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/1/0/all (21.60218ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/1/12/all (32.734259ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/1/120/all (123.050805ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/1/1200/all (1108.127513ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/4/0/all (182.957262ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/4/12/all (38.452952ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/4/120/all (136.074733ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/4/1200/all (1100.719863ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/8/0/all (28.127415ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/8/12/all (39.733737ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/8/120/all (132.820495ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/8/1200/all (1083.432729ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/4/12/only (33.937931ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 1
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/4/12/swap (35.917504ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-admission-batch.test.ts:73:3
+✖ admission batch: shadow/4/12/stale (37.347843ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-admission-batch.test.ts:122:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
