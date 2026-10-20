@@ -2783,6 +2783,7 @@ export class HiveDaemon {
       units: row.units,
       model: model ?? null,
       sourceAccount: row.sourceAccount,
+      ...(params.allowSourceAccount === true && params.sourceQuotaRecovery !== undefined ? { sourceQuotaRecovery: this.sourceQuotaRecoveryParam(params) } : {}),
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
       authority: authority!,
@@ -2878,7 +2879,9 @@ export class HiveDaemon {
     return { version: 1, id: claim.id, scope: claim.scope, account: claim.account,
       operation: claim.operation as AccountAdmissionClaim["operation"], units: 1,
       model: claim.model as string | null,
-      sourceAccount: claim.sourceAccount as string | null, createdAt: claim.createdAt as number,
+      sourceAccount: claim.sourceAccount as string | null,
+      ...(claim.sourceQuotaRecovery !== undefined ? { sourceQuotaRecovery: this.sourceQuotaRecoveryParam({ sourceQuotaRecovery: claim.sourceQuotaRecovery }) } : {}),
+      createdAt: claim.createdAt as number,
       expiresAt: claim.expiresAt as number, authority, target, allocation: claim.allocation as AccountAllocationReceipt };
   }
 
@@ -2890,6 +2893,7 @@ export class HiveDaemon {
     generation: number,
     sourceAccount: string | null,
     model?: string,
+    allowSourceAccount = false,
   ): AccountRow {
     const configured = this.configuredAllocationIdentity();
     if (claim.operation !== operation || claim.scope !== this.mustAccounts().allocationScope(harness)
@@ -2897,7 +2901,7 @@ export class HiveDaemon {
       || claim.authority.node !== configured.owner.node || claim.authority.epoch !== configured.owner.epoch
       || claim.target.node !== configured.node
       || claim.sourceAccount !== sourceAccount || claim.model !== (model ?? null)
-      || (operation === "swap" && claim.account === sourceAccount) || claim.expiresAt <= Date.now()) {
+      || (operation === "swap" && claim.account === sourceAccount && !allowSourceAccount) || claim.expiresAt <= Date.now()) {
       throw new RpcError("account_claim_refused", `allocation claim ${claim.id} is expired or does not match this ${operation}`);
     }
     const account = this.resolveAccountSelector(claim.account, harness);
@@ -6520,6 +6524,14 @@ export class HiveDaemon {
       const target = this.accountFromClaim(
         claim, "swap", bee.agent, bee.id, runtime?.generation ?? 0, bee.account,
         this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
+        recoveryId !== undefined && (() => {
+          const recovery = store.getQuotaRecovery(recoveryId)!;
+          return recovery.quota !== null && (!("trigger" in recovery) || recovery.trigger === "provider_limit")
+            && recovery.sourceAccount === bee.account && recovery.sourceGeneration === (runtime?.generation ?? 0)
+            && claim.sourceQuotaRecovery?.observedAt === recovery.createdAt
+            && claim.sourceQuotaRecovery.window === recovery.quota.window
+            && claim.sourceQuotaRecovery.resetsAt === recovery.quota.resetsAt;
+        })(),
       );
       return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim, recoveryId);
     }

@@ -350,6 +350,7 @@ export interface AccountAdmissionClaim {
   /** Effective provider model used for model-scoped grants/windows. */
   model: string | null;
   sourceAccount: string | null;
+  sourceQuotaRecovery?: SourceQuotaRecovery;
   createdAt: number;
   expiresAt: number;
   authority: AccountAllocationAuthority;

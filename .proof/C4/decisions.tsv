@@ -1,0 +1,3 @@
+ts	phase	decision	why	evidence	result
+2026-10-20T09:08:00Z	claim	Carry owner-approved source recovery witness in portable claim and compare to valid waiting recovery	Source exception must retain owner epoch and target fences and reject ordinary or proactive swaps	v2/daemon/src/daemon.ts	implementation pending lab
+2026-10-20T09:08:00Z	reservations	Keep existing coordinator pre-commit release and outstanding-claim reuse	G verified all eleven refused claims released in about 5ms; no leak exists	G message10829	no cleanup change needed
