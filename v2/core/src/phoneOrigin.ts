@@ -6,6 +6,7 @@ import { EffectKeyError } from "./effectResolve.ts";
 export const PHONE_PROVENANCE_CAPABILITY = "mail.phone_provenance.v1";
 export const PHONE_LABEL = "Paired-phone message — human approval not verified";
 export const PHONE_FORMAT = "honeybee.phone-origin/1";
+type PhoneFormatEquality<Runtime extends PhoneOriginRequest["format"] = typeof PHONE_FORMAT, Contract extends typeof PHONE_FORMAT = PhoneOriginRequest["format"]> = [Runtime, Contract];
 export const PHONE_MAX_CONTENT_BYTES = 1024 * 1024;
 function invalid(message: string): never { throw new EffectKeyError("invalid_request", message); }
 function object(value: unknown): Record<string, unknown> {
