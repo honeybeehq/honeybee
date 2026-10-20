@@ -2569,7 +2569,7 @@ export class AccountsService {
       const fetchedAt = this.store.getAccountLimits(account.id)?.fetchedAt ?? 0;
       return fetchedAt > this.store.proactiveRecoveryBoundary(account.id);
     }).map(account => account.id));
-    return { accountIds, uncertain };
+    return { accountIds, uncertain: accountIds.size === 0 && uncertain };
   }
 
   private admissionCandidate(
