@@ -1,10 +1,11 @@
 import { runGatedRunnerHost } from "./gated-runner-host.ts";
+import { DeliveryReceipts, DELIVERY_STATUS_CAPABILITY, type TaggedDelivery } from "./delivery-receipts.ts";
 import { stateFile, runnerStateFiles } from "../../harness/src/statePath.ts";
 import type { ExecutionStart, ExecutionProcess } from "../../core/src/executionStart.ts";
 import { nativeNodeEnv } from "../../../src/runtimeEnvironment.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server, type Socket } from "node:net";
 import { dirname } from "node:path";
 
@@ -32,14 +33,6 @@ import { dirname } from "node:path";
  *    mistake a daemon→agent command from the bidirectional transcript for
  *    runner evidence.
  *  - agent stderr  → the `<beeId>.stderr.log` sidecar.
- *  - unix socket   → write-only lane INTO agent stdin: `{op:"write", line}`
- *    per newline-framed JSON. deliver/interrupt/respond all ride it. A
- *    restarted daemon reconnects; the socket never carries state.
- *  - status file   → the host's only outbound facts, written atomically:
- *    agentPid once the OS confirms the spawn, spawnError if it never runs,
- *    exit {code, signal} when the agent dies. The driver polls it; no
- *    response protocol on the socket keeps deliver() fire-and-forget exactly
- *    as the in-process stdin.write was.
  *
  * Lifecycle: the host exits when the agent exits (after writing the exit
  * status) — host liveness IS runtime liveness, so the daemon's pid-identity
@@ -69,6 +62,7 @@ export interface RunnerHostConfig {
 }
 
 export interface RunnerStatus {
+  capabilities?: string[];
   hostBirth?: string;
   agentBirth?: string;
   executionIntentId?: string;
@@ -190,12 +184,14 @@ export function runRunnerHost(configPath: string): void {
   // Exact generation journal exists before the status becomes adoptable.
   writeFileSync(cfg.observationLogPath, "", { flag: "a" });
   const status: RunnerStatus = {
+    capabilities: [DELIVERY_STATUS_CAPABILITY],
     hostPid: process.pid,
     beeId: cfg.beeId,
     generation: cfg.generation,
     at: Date.now(),
   };
   writeStatus(cfg.statusPath, status);
+  const deliveries = new DeliveryReceipts(cfg.beeId, cfg.generation);
 
   // The host must outlive the daemon AND the agent's graceful stop signals:
   // TERM/INT to the shared pgroup are for the AGENT; the host's own exit is
@@ -259,6 +255,7 @@ export function runRunnerHost(configPath: string): void {
     for (const rawLine of lines) {
       const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
       if (line.trim().length === 0) continue;
+      deliveries.observe(line);
       try {
         // Recovery evidence first. If the daemon dies immediately after this
         // synchronous append, its successor can replay the line from the core
@@ -293,14 +290,21 @@ export function runRunnerHost(configPath: string): void {
     socket.setEncoding("utf8");
     socket.on("data", (chunk: string) => {
       buffered += chunk;
+      if (buffered.length > 16_777_216) { socket.destroy(); return; }
       const frames = buffered.split("\n");
       buffered = frames.pop() ?? "";
       for (const frame of frames) {
         if (frame.trim().length === 0) continue;
         try {
-          const parsed = JSON.parse(frame) as { op?: string; line?: string };
+          const parsed = JSON.parse(frame) as { op?: string; line?: string; delivery?: TaggedDelivery };
+          if (parsed.op === "delivery_status" && parsed.delivery) {
+            const receipt = deliveries.status(parsed.delivery);
+            if (Number.isSafeInteger(receipt.id) && typeof receipt.digest === "string" && /^[a-f0-9]{64}$/.test(receipt.digest)) {
+              socket.write(`${JSON.stringify(receipt)}\n`);
+            }
+          }
           if (parsed.op === "write" && typeof parsed.line === "string") {
-            writeAgentLine(parsed.line);
+            if (!parsed.delivery || deliveries.begin(parsed.delivery, parsed.line)) writeAgentLine(parsed.line);
           }
         } catch {
           // Malformed frame: drop it; the daemon's delivery loop re-sends.
@@ -317,7 +321,7 @@ export function runRunnerHost(configPath: string): void {
     status.at = Date.now();
     writeStatus(cfg.statusPath, status);
   });
-  server.listen(cfg.socketPath);
+  server.listen(cfg.socketPath, () => chmodSync(cfg.socketPath, 0o600));
 
   /**
    * One outbound line: session log FIRST (the host is the log's single

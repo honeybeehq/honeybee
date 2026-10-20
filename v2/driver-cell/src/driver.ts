@@ -25,6 +25,7 @@ import { platform } from "node:os";
 import { Worker } from "node:worker_threads";
 import type {
   DeliverOutcome,
+  DeliveryConfirmationPlan,
   DriverObservation,
   InterruptOutcome,
   LiveProcess,
@@ -264,7 +265,15 @@ export class CellDriver implements RuntimeDriver {
     return this.inner.deliveryReadiness(beeId, generation, messageId);
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean }): DeliverOutcome {
+  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string) {
+    return this.inner.planDeliveryConfirmation(beeId, generation, messageId, body);
+  }
+
+  reconcileDeliveryConfirmation(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan) {
+    return this.inner.reconcileDeliveryConfirmation(beeId, generation, messageId, plan);
+  }
+
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
     return this.inner.deliver(beeId, generation, messageId, body, options);
   }
 

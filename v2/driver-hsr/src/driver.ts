@@ -2,6 +2,7 @@ import { quotaSourceId } from "../../adapters/src/quota.ts";
 import type { QuotaBoundary } from "../../core/src/quota.ts";
 import type {RuntimeIdentityHooks} from "../../core/src/runtimeProcessIdentity.ts";
 import {authenticatedProcessPeer} from "../../harness/src/processIdentity.ts";
+import { DELIVERY_STATUS_CAPABILITY, type DeliveryStatus, type TaggedDelivery } from "./delivery-receipts.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import type { ExecutionStart, ExecutionRuntimeHooks, ExecutionProcess } from "../../core/src/executionStart.ts";
 import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
@@ -62,6 +63,8 @@ import { fileURLToPath } from "node:url";
 import { readRunnerStatus, type RunnerHostConfig } from "./runner-host.ts";
 import type {
   DeliverOutcome,
+  DeliveryConfirmationPlan,
+  DeliveryConfirmationResult,
   DriverObservation,
   InterruptOutcome,
   LiveProcess,
@@ -209,6 +212,7 @@ export interface ObservationCursorEvidence {
 }
 
 interface ManagedProcess {
+  deliveryProtocol?: { authenticated: boolean; supported: boolean; pending: Set<number>; replies: Map<number, DeliveryStatus> };
   processIdentity?: ProcessIdentity;
   legacyBirthPending?: boolean;
   executionStart?: ExecutionStart;
@@ -692,14 +696,40 @@ export class HsrDriver implements RuntimeDriver {
         p.socketBroken = false;
       }
       p.socket = attempt;
+      const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
+      const fd = (attempt as unknown as { _handle?: { fd?: number } })._handle?.fd;
+      const supported = status?.beeId === p.beeId && status.generation === p.generation && status.hostPid === p.pid
+        && status.capabilities?.includes(DELIVERY_STATUS_CAPABILITY) === true;
+      p.deliveryProtocol = { authenticated: fd !== undefined && authenticatedProcessPeer(fd, p.processIdentity), supported, pending: new Set(), replies: new Map() };
       for (const line of p.pendingWrites.splice(0)) {
         attempt.write(`${JSON.stringify({ op: "write", line })}\n`);
       }
       this.cfg.onWriteLaneReady?.();
     });
     attempt.on("error", () => undefined);
+    let replyBuffer = "";
+    attempt.setEncoding("utf8");
+    attempt.on("data", (chunk: string) => {
+      if (p.socket !== attempt || !p.deliveryProtocol?.authenticated || !p.deliveryProtocol.supported) return;
+      replyBuffer += chunk;
+      if (replyBuffer.length > 65_536) { attempt.destroy(); return; }
+      const frames = replyBuffer.split("\n");
+      replyBuffer = frames.pop() ?? "";
+      for (const frame of frames) {
+        let value: unknown;
+        try { value = JSON.parse(frame); } catch { attempt.destroy(); return; }
+        if (!value || typeof value !== "object" || Object.keys(value).sort().join(",") !== "digest,id,state") { attempt.destroy(); return; }
+        const receipt = value as DeliveryStatus;
+        if (!Number.isSafeInteger(receipt.id) || typeof receipt.digest !== "string" || !/^[a-f0-9]{64}$/.test(receipt.digest)
+          || !["not_written", "written", "accepted", "refused", "unknown"].includes(receipt.state)) { attempt.destroy(); return; }
+        if (p.deliveryProtocol.pending.delete(receipt.id)) {
+          p.deliveryProtocol.replies.set(receipt.id, receipt);
+          this.cfg.onWriteLaneReady?.();
+        }
+      }
+    });
     attempt.on("close", () => {
-      if (p.socket === attempt) p.socket = null;
+      if (p.socket === attempt) { p.socket = null; p.deliveryProtocol = undefined; }
       if (this.detached || p.exited) return;
       p.socketRetry = setTimeout(() => {
         p.socketRetry = null;
@@ -745,10 +775,53 @@ export class HsrDriver implements RuntimeDriver {
       p.sessionId, p.turnId, this.reconnecting.has(`${beeId}:${generation}`),
       p.pendingDeliveries.has(messageId), p.confirmedDeliveries.has(messageId),
       p.socketBroken, p.socket?.destroyed, p.socket?.writable,
-      p.child?.stdin?.destroyed, p.child?.stdin?.writable]);
+      p.child?.stdin?.destroyed, p.child?.stdin?.writable,
+      p.deliveryProtocol?.replies.get(messageId)?.state === "written" ? null : p.deliveryProtocol?.replies.get(messageId)]);
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean }): DeliverOutcome {
+  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | null {
+    const p = this.procs.get(beeId);
+    if (!p || p.generation !== generation || p.exited || !p.adapter?.confirmsDelivery || !p.hostStyle
+      || !p.processIdentity || p.phase === "booting" || p.stopCause || p.phase === "running" && !p.adapter.acceptsMidTurn) return null;
+    const wireLine = p.adapter.encodeMessage(body, { sessionId: p.sessionId, messageId, turnActive: p.phase === "running", turnId: p.turnId });
+    if (wireLine == null) return null;
+    return { wireLine, digest: createHash("sha256").update(wireLine).digest("hex"), host: p.processIdentity,
+      supported: p.deliveryProtocol?.authenticated === true && p.deliveryProtocol.supported,
+      legacyFirstWriteSafe: p.child !== null && p.deliveryProtocol?.authenticated === true && !p.deliveryProtocol.supported };
+  }
+
+  reconcileDeliveryConfirmation(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult {
+    const p = this.procs.get(beeId);
+    if (!p || p.generation !== generation || !p.processIdentity || p.processIdentity.pid !== plan.host.pid
+      || p.processIdentity.birth !== plan.host.birth || p.processIdentity.bootId !== plan.host.bootId) return "unknown";
+    if (p.confirmedDeliveries.delete(messageId)) {
+      p.pendingDeliveries.delete(messageId);
+      this.consumed.set(messageId, generation);
+      return "accepted";
+    }
+    if (!p.deliveryProtocol?.authenticated || !p.deliveryProtocol.supported) return "old_host";
+    const reply = p.deliveryProtocol.replies.get(messageId);
+    if (reply) {
+      p.deliveryProtocol.replies.delete(messageId);
+      if (reply.digest !== plan.digest) return "unknown";
+      if (reply.state === "written") return "pending_ack";
+      if (reply.state === "accepted") {
+        p.pendingDeliveries.delete(messageId);
+        this.consumed.set(messageId, generation);
+      }
+      return reply.state;
+    }
+    if (!p.socket || p.socket.destroyed || !p.socket.writable) return "pending_ack";
+    if (!p.deliveryProtocol.pending.has(messageId)) {
+      p.deliveryProtocol.pending.add(messageId);
+      const delivery: TaggedDelivery = { id: messageId, digest: plan.digest, beeId, generation };
+      try { p.socket.write(`${JSON.stringify({ op: "delivery_status", delivery })}\n`); }
+      catch { p.socket.destroy(); }
+    }
+    return "pending_ack";
+  }
+
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
     const refused = (reason: "no_process" | "not_ready"): DeliverOutcome => ({ accepted: false, reason, ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) });
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) {
@@ -775,7 +848,7 @@ export class HsrDriver implements RuntimeDriver {
         this.consumed.set(messageId, generation);
         return { accepted: true };
       }
-      if (p.pendingDeliveries.has(messageId)) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? {pendingConfirmation: true} : {}) };
+      if (p.pendingDeliveries.has(messageId) && !options?.confirmation) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? {pendingConfirmation: true} : {}) };
     }
     if (p.hostStyle && (p.socketBroken || !p.socket || p.socket.destroyed || !p.socket.writable)) {
       // pendingWrites dies with this daemon. Refuse until the runner's socket
@@ -786,7 +859,7 @@ export class HsrDriver implements RuntimeDriver {
       // stdin gone means the process is dying; its exit observation follows.
       return refused("no_process");
     }
-    const encoded = p.adapter.encodeMessage(body, {
+    const encoded = options?.confirmation?.wireLine ?? p.adapter.encodeMessage(body, {
       sessionId: p.sessionId,
       messageId,
       turnActive: p.phase === "running",
@@ -796,7 +869,12 @@ export class HsrDriver implements RuntimeDriver {
     // Host-style reaches here only with a connected write lane. Node's
     // socket.write(false) means accepted with backpressure, not rejected; the
     // write remains one delivery and must never trigger a duplicate retry.
-    if (!this.writeLine(p, encoded)) return { accepted: false, reason: "not_ready" };
+    if (options?.confirmation && (options.confirmation.host.pid !== p.pid || options.confirmation.host.birth !== p.processIdentity?.birth
+      || options.confirmation.host.bootId !== p.processIdentity?.bootId || createHash("sha256").update(encoded).digest("hex") !== options.confirmation.digest)) return refused("not_ready");
+    if (options?.confirmation && !p.deliveryProtocol?.authenticated) return refused("not_ready");
+    const delivery = options?.confirmation && p.deliveryProtocol?.authenticated && p.deliveryProtocol.supported
+      ? { id: messageId, digest: options.confirmation.digest, beeId, generation } : undefined;
+    if (!this.writeLine(p, encoded, delivery)) return { accepted: false, reason: "not_ready" };
     if (options?.singleAttempt) this.pointerAttempts.set(messageId, { beeId, generation, digest: createHash("sha256").update(body).digest("hex") });
     p.turn.messageIds.push(messageId);
     if (p.adapter.confirmsDelivery) p.pendingDeliveries.add(messageId);
@@ -1326,6 +1404,8 @@ export class HsrDriver implements RuntimeDriver {
       }
     }
     if (execution) return false;
+    const receiptHost = status?.hostPid === pid && status.beeId === beeId && status.generation === generation
+      && !status.exited && status.capabilities?.includes(DELIVERY_STATUS_CAPABILITY) === true;
     this.procs.set(beeId, {
       processIdentity,
       beeId,
@@ -1356,12 +1436,12 @@ export class HsrDriver implements RuntimeDriver {
       // store's persisted boot_evidence for the row (from before the daemon
       // restart) governs its exit accounting; this field is driver-local.
       realEvidence: false,
-      hostStyle: false,
+      hostStyle: receiptHost,
       agentPid: null,
       socket: null,
       socketRetry: null,
-      socketPath: null,
-      statusPath: null,
+      socketPath: receiptHost ? paths.socket : null,
+      statusPath: receiptHost ? paths.status : null,
       observationPath: null,
       logOffset: 0,
       initialObservationCursor: 0,
@@ -1371,6 +1451,7 @@ export class HsrDriver implements RuntimeDriver {
       pendingWrites: [],
       socketBroken: false,
     });
+    if (receiptHost) this.connectSocket(this.procs.get(beeId)!);
     return true;
   }
 
@@ -1534,7 +1615,7 @@ export class HsrDriver implements RuntimeDriver {
   // internals
   // -------------------------------------------------------------------------
 
-  private writeLine(p: ManagedProcess, line: string): boolean {
+  private writeLine(p: ManagedProcess, line: string, delivery?: TaggedDelivery): boolean {
     if (process.env.HIVE_SPAWN_TRACE) {
       appendFileSync(process.env.HIVE_SPAWN_TRACE, JSON.stringify({ write: line.slice(0, 160), at: Date.now(), stack: new Error().stack?.split("\n").slice(2, 6).join(" | ") }) + "\n");
     }
@@ -1551,7 +1632,7 @@ export class HsrDriver implements RuntimeDriver {
         if (p.socket && !p.socket.destroyed && p.socket.writable) {
           // Ignore the boolean result: false reports backpressure after Node
           // accepted the bytes into its write buffer, not a rejected write.
-          p.socket.write(`${JSON.stringify({ op: "write", line })}\n`);
+          p.socket.write(`${JSON.stringify({ op: "write", line, ...(delivery ? { delivery } : {}) })}\n`);
           return true;
         } else {
           p.pendingWrites.push(line);

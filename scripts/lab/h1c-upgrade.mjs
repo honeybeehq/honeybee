@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,readFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {openCoreStore} from '../../v2/core/src/index.ts';
+import {DaemonCore} from '../../v2/daemon/src/loops.ts';
+import {HsrDriver} from '../../v2/driver-hsr/src/index.ts';
+import {codexAdapter} from '../../v2/adapters/src/index.ts';
+import {fixtureRuntimeIdentity,persistFixtureProcess,sleep,pidAlive} from '../../v2/driver-hsr/tests/helpers.ts';
+assert(process.env.TMPDIR?.startsWith('/var/tmp/'),'set an owned TMPDIR');
+const root=mkdtempSync(join(process.env.TMPDIR,'h1c-upgrade-'));const path=join(root,'core.sqlite');const writes=join(root,'writes.jsonl');
+const fake=new URL('./h1c-fake-codex.mjs',import.meta.url).pathname;const old=new URL('./h1c-old-host.mjs',import.meta.url).pathname;const host=new URL('../../v2/driver-hsr/src/runner-host-main.ts',import.meta.url).pathname;
+let clock=Date.now();let store=openCoreStore(path,{now:()=>clock});
+const config={sessionLogDir:join(root,'logs'),runtimeIdentity:fixtureRuntimeIdentity(root),hostCommand:path=>({command:process.execPath,args:['--import',old,host,path]}),resolve:()=>({adapter:codexAdapter({cwd:root}),command:process.execPath,args:[fake],cwd:root,env:{...process.env,H1C_WRITES:writes,H1C_ACK:'never'}})};
+let driver=new HsrDriver(config);let core;let pid;let queries=0;
+const makeCore=()=>new DaemonCore({store,driver,now:()=>clock,random:()=>0.5,policy:{bootHangTimeoutSteps:500000,commandsPerStep:8,i1DeadlineSteps:540000},log:()=>{}});
+const tick=async()=>{clock+=200;core.step();await sleep(5);};
+const until=async predicate=>{for(let i=0;i<1000&&!predicate();i++)await tick();assert(predicate());};
+try{
+ core=makeCore();core.boot();store.createBee({id:'bee',name:'old-host',agent:'codex',substrate:'hsr',cwd:root});store.enqueueCommand('spawn','bee');
+ await until(()=>store.currentRuntime('bee')?.state==='idle'&&driver.procs.get('bee')?.deliveryProtocol?.authenticated);pid=driver.procs.get('bee').pid;
+ const message=store.send('bee','owned pre-upgrade request').message;
+ assert.equal(driver.deliver('bee',1,message.id,message.body).accepted,false);
+ for(let i=0;i<100;i++){clock+=200;core.observe();await sleep(5);}
+ const p=driver.procs.get('bee');assert.equal(p.phase,'idle');assert.equal(store.getDeliveryConfirmationIntent(message.id),null);
+ persistFixtureProcess(root,'bee',1,driver.procOf('bee',1));driver.detachAll();store.close();store=openCoreStore(path,{now:()=>clock});driver=new HsrDriver(config);
+ assert(driver.adopt('bee',1,p.pid,p.pidStartedAt,'idle',store.runtimeObservationCursor('bee',1),store.getBee('bee').providerSessionId));core=makeCore();core.boot();
+ await until(()=>driver.procs.get('bee')?.deliveryProtocol?.authenticated);
+ const socket=driver.procs.get('bee').socket;const socketWrite=socket.write.bind(socket);socket.write=(frame,...rest)=>{if(JSON.parse(String(frame)).op==='delivery_status')queries++;return socketWrite(frame,...rest);};
+ await until(()=>store.getMessage(message.id)?.deliveryConfirmation?.state==='held');
+ for(let i=0;i<100;i++)await tick();assert.equal(store.getMessage(message.id).deliveryConfirmation.reason,'old_host');assert.equal(queries,0);
+ assert.equal(readFileSync(writes,'utf8').trim().split('\n').length,1);
+ const receipt=store.resolveDeliveryConfirmation({action:'resend_anyway',beeId:'bee',messageId:message.id,generation:1,idempotencyKey:'owned-escape'});
+ await until(()=>store.getMessage(receipt.replacementMessageId)?.deliveryConfirmation?.state==='held');
+ const rows=readFileSync(writes,'utf8').trim().split('\n').map(JSON.parse);assert.equal(rows.length,2);assert.notEqual(rows[0].id,rows[1].id);assert.equal(queries,0);
+ console.log(JSON.stringify({case:'old-host-upgrade-and-explicit-escape',originalStdinWrites:1,replacementStdinWrites:1,unknownFrames:queries,oldMessageHeld:true,replacementMessageId:receipt.replacementMessageId,root}));
+}finally{driver.disposeAll();for(let i=0;i<500&&pid&&pidAlive(pid);i++)await sleep(10);store.close();if(pid)assert.equal(pidAlive(pid),false);}

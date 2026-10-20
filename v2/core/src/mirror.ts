@@ -602,3 +602,5 @@ export const MIRROR_MULTILINE_OPTIONAL_MESSAGE_KEYS = ["deliveryHold", "delivery
 export const MIRROR_MULTILINE_OPTIONAL_HISTORY_KEYS = ["deliveryHold", "deliveryFallback"] as const;
 
 export const MIRROR_BEE_VIEW_OPTIONAL_KEYS = ["deliveryConfirmations"] as const;
+export const MIRROR_CONFIRMATION_OPTIONAL_MESSAGE_KEYS = ["deliveryConfirmation"] as const;
+export const MIRROR_CONFIRMATION_OPTIONAL_HISTORY_KEYS = ["deliveryConfirmation"] as const;

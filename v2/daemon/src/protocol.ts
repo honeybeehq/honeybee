@@ -89,6 +89,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "mail.delivery.confirmation.v1",
   "rpc.local_trust.v1",
   "rpc-effect-resolve.v1",
   "question.withdraw.v1",
@@ -306,6 +307,7 @@ export const RPC_ERROR_CODES = [
   "capability_missing",
   "reconnect_unsupported", "reconnect_not_ready", "reconnect_not_found",
   "doctor_cooldown",
+  "delivery_not_held",
   "thread_unsupported", "thread_remote_unsupported", "thread_history_unavailable", "thread_operation_not_found", "thread_not_ready", "thread_busy",
   "bee_not_found",
   "node_stopped",
@@ -469,6 +471,8 @@ export const RPC_VERBS = [
   "spawn",
   "send",
   "mail.cancel",
+  "mail.delivery.resend_anyway",
+  "mail.delivery.drop",
   "mail.expedite",
   "mail.ack",
   "stop",

@@ -81,7 +81,7 @@ import {
   NOOP_PERFORMANCE,
   type PerformanceRecorder,
 } from "./performance.ts";
-import { SANDBOX_TMP_FULL, type DriverObservation, type RuntimeDriver, type StopCause } from "../../harness/src/driver.ts";
+import { SANDBOX_TMP_FULL, type DeliveryConfirmationPlan, type DriverObservation, type RuntimeDriver, type StopCause } from "../../harness/src/driver.ts";
 
 /** Where the (injected) executor-crash fault hits, if it does. */
 export type ExecutorCrashPoint = "none" | "before_effect" | "after_effect";
@@ -434,6 +434,7 @@ export class DaemonCore {
 
   private stepPhases(): void {
     this.performance.measureSync("core.step.observe", () => this.observe());
+    this.reconcileDeliveryConfirmations();
     this.performance.measureSync("core.step.flags", () => this.expireFlags());
     let seq = this.store.lastAuditSeq();
     let snapshot = this.performance.measureSync("core.step.snapshot", () =>
@@ -571,6 +572,7 @@ export class DaemonCore {
       return;
     }
     this.deliveryRetries.delete(obs.beeId);
+    for (const [id, poll] of this.confirmationPolls) if (poll.beeId === obs.beeId) this.confirmationPolls.delete(id);
     // v9 synthetic-boot budget: a non-synthetic booted/turn observation was
     // parsed by the adapter from REAL process output — the boot evidence that
     // resets the bee's spawn-failure budget and clears spawn_failed. Driver-
@@ -932,6 +934,7 @@ export class DaemonCore {
     for (const { runtime: rt, pending } of work) {
       if (!this.ext.isDegraded(rt.beeId, rt.generation)) continue;
       if (pending.length === 0) continue;
+      if (this.store.listDeliveryConfirmationIntents(rt.beeId).length > 0) continue;
       if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "degraded_runtime" });
       this.log(`policy.degraded_stop bee=${rt.beeId} gen=${rt.generation}`);
@@ -1607,6 +1610,58 @@ export class DaemonCore {
 
   private readonly interruptRequested = new Set<number>();
   private readonly deliveryRetries = new Map<string, { key: string; attempts: number; nextAt: number }>();
+  private readonly confirmationReady = new Set<number>();
+  private readonly confirmationPolls = new Map<number, { beeId: string; key: string; attempts: number; nextAt: number }>();
+
+  private reconcileDeliveryConfirmations(): void {
+    if (this.store.inTransaction) return;
+    const intents = this.store.listDeliveryConfirmationIntents();
+    const ids = new Set(intents.map(row => row.messageId));
+    for (const id of this.confirmationPolls.keys()) if (!ids.has(id)) this.confirmationPolls.delete(id);
+    for (const id of this.confirmationReady) if (!ids.has(id)) this.confirmationReady.delete(id);
+    for (const intent of intents) {
+      const runtime = this.store.currentRuntime(intent.beeId);
+      if (!runtime || runtime.generation !== intent.generation || runtime.state === "stopped") {
+        this.store.holdDeliveryConfirmation(intent.messageId, "generation_changed");
+        this.confirmationReady.delete(intent.messageId);
+        continue;
+      }
+      const key = this.driver.deliveryReadiness?.(intent.beeId, intent.generation, intent.messageId) ?? "";
+      const poll = this.confirmationPolls.get(intent.messageId);
+      if (poll?.key === key && this.now() < poll.nextAt) continue;
+      const result = this.driver.reconcileDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId, intent) ?? "unknown";
+      const attempts = poll?.key === key ? poll.attempts + 1 : 1;
+      this.confirmationPolls.set(intent.messageId, { beeId: intent.beeId, key, attempts,
+        nextAt: this.now() + Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25) });
+      if (result === "accepted") {
+        const message = this.store.getMessage(intent.messageId);
+        if (!message) continue;
+        const peer = isPeerSender(message.sender, id => this.store.getBee(id) != null);
+        const reorder = this.store.multilineReorderNotice(intent.beeId, intent.messageId);
+        if (this.store.markDelivered(intent.messageId, intent.generation, this.turnTriggerSourceOf(message, peer), reorder.messageIds).applied) {
+          this.interruptRequested.delete(intent.messageId);
+          const instruction = this.store.placementInstructionMove(intent.beeId);
+          if (instruction && runtime.generation !== instruction.sourceGeneration) {
+            this.store.markMoveInstructionsApplied(instruction.id);
+            if (this.store.activeMoveOf(intent.beeId)?.phase === "starting") this.store.completeBeeMove(instruction.id);
+          }
+          const handoff = this.store.activeHandoffOf(intent.beeId);
+          if (handoff?.phase === "starting" && handoff.seedMessageId === intent.messageId) this.store.completeBeeHandoff(handoff.id);
+          this.log(`deliver.confirmed bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation}`);
+        }
+        this.confirmationReady.delete(intent.messageId);
+        this.confirmationPolls.delete(intent.messageId);
+        this.deliveryRetries.delete(intent.beeId);
+      } else if (result === "not_written") {
+        this.confirmationReady.add(intent.messageId);
+      } else if (result !== "pending_ack") {
+        this.confirmationReady.delete(intent.messageId);
+        this.store.holdDeliveryConfirmation(intent.messageId, result);
+      } else if (this.now() - intent.since >= 30_000) {
+        this.store.holdDeliveryConfirmation(intent.messageId, "unknown");
+      }
+    }
+  }
 
   /**
    * Eligibility/ordering rule (Q2 amendment): urgency governs WHEN a message
@@ -1693,7 +1748,7 @@ export class DaemonCore {
           // interrupt per message; an eligible `now` behind an undelivered
           // `next` still interrupts — the accept point it creates serves the
           // whole FIFO, which keeps delivering in enqueue order.
-          const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id));
+          const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
           if (urgent) {
             // Give the driver the triggering mailbox id so an asynchronously
             // confirmed delivery cannot interrupt the turn it just opened.
@@ -1758,8 +1813,27 @@ export class DaemonCore {
         const retry = this.deliveryRetries.get(rt.beeId);
         if (retry && retry.key === retryKey && this.now() < retry.nextAt) continue;
         const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+        let confirmation: DeliveryConfirmationPlan | undefined;
+        if (!fallback?.handled) {
+          const existing = this.store.getDeliveryConfirmationIntent(msg.id);
+          if (existing) {
+            if (existing.generation !== rt.generation || !this.confirmationReady.delete(msg.id)) continue;
+            confirmation = existing;
+          } else {
+            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
+            if (plan) {
+              if (this.store.inTransaction) continue;
+              confirmation = this.store.prepareDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id,
+                generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host });
+              if (!plan.supported && !plan.legacyFirstWriteSafe && !this.store.isExplicitDeliveryResend(msg.id)) {
+                this.store.holdDeliveryConfirmation(msg.id, "old_host");
+                continue;
+              }
+            }
+          }
+        }
         const outcome = fallback?.handled ? { accepted: fallback.accepted, reason: "not_ready" as const, detail: undefined }
-          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
+          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { confirmation, multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
         if (outcome.accepted) {
           this.deliveryRetries.delete(rt.beeId);
           if (!fallback?.handled) this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);

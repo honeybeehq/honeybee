@@ -4119,6 +4119,10 @@ export class CoreStore {
     return row ? JSON.parse(String(row.row_json)) as DeliveryConfirmationIntent : null;
   }
 
+  isExplicitDeliveryResend(messageId: number): boolean {
+    return Boolean(this.stmt("SELECT 1 FROM delivery_confirmation_decisions WHERE action = 'resend_anyway' AND json_extract(row_json, '$.receipt.replacementMessageId') = ? LIMIT 1").get(messageId));
+  }
+
   listDeliveryConfirmationIntents(beeId?: string): DeliveryConfirmationIntent[] {
     return (this.stmt("SELECT row_json FROM delivery_confirmation_intents WHERE (? IS NULL OR bee_id = ?) ORDER BY message_id").all(beeId ?? null, beeId ?? null) as Row[]).map(row => JSON.parse(String(row.row_json)) as DeliveryConfirmationIntent);
   }

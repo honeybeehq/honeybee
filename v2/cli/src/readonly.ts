@@ -9,6 +9,7 @@ import { readAccountLease, presentAccountLease } from "../../core/src/accountLea
 import { DatabaseSync } from "node:sqlite";
 import {
   deriveBeeView,
+  readDeliveryConfirmations,
   automaticQuotaRecovery,
   type QuotaRecoveryRow,
   type AccountLimitsRow,
@@ -376,7 +377,7 @@ export class ReadOnlyStore {
         bee,
         runtime,
         bee ? facts.filter(row => row.flag !== null).map(row => row.flag as Flag) : [],
-        { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries) },
+        { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries), deliveryConfirmations: readDeliveryConfirmations(this.db, beeId, runtime?.generation ?? null) },
       ),
       bee,
       runtime,
@@ -393,8 +394,13 @@ export class ReadOnlyStore {
   }
 
   mailbox(beeId: string): MessageRow[] {
+    const confirmations = new Map(readDeliveryConfirmations(this.db, beeId, this.currentRuntime(beeId)?.generation ?? null).map(row => [row.messageId, row]));
     return (this.db.prepare("SELECT * FROM mailbox WHERE bee_id = ? ORDER BY id").all(beeId) as Row[]).map(
-      mapMessage,
+      row => {
+        const message = mapMessage(row);
+        const deliveryConfirmation = confirmations.get(message.id);
+        return deliveryConfirmation ? { ...message, deliveryConfirmation } : message;
+      },
     );
   }
 

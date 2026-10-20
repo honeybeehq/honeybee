@@ -35,6 +35,7 @@ import {
   CellNotFoundError,
   ContinuationUnsupportedError,
   CoreError,
+  DeliveryNotHeldError,
   HandoffInProgressError,
   HandoffNotFoundError,
   IdempotencyConflictError,
@@ -157,6 +158,7 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string;
   if (err instanceof LeaseRefusal) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof CredentialAuthorityError) return { code: "account_unavailable", message: err.message, details: credentialErrorDetails(err) };
   if (err instanceof BeeNotFoundError) return { code: "bee_not_found", message: err.message };
+  if (err instanceof DeliveryNotHeldError) return { code: "delivery_not_held", message: err.message };
   if (err instanceof TemplateNotFoundError) return { code: "template_not_found", message: err.message };
   if (err instanceof TrackNotFoundError) return { code: "track_not_found", message: err.message };
   if (err instanceof QuestionNotOwnerError) return { code: "question_not_owner", message: err.message };
