@@ -1,0 +1,133 @@
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve, basename } from "node:path";
+import { createServer } from "node:http";
+import assert from "node:assert/strict";
+import { makeDaemonDir, startDaemon, waitFor } from "../../v2/daemon/tests/helpers.ts";
+
+const proof = resolve(".proof/E");
+const repo = resolve(".");
+const results: unknown[] = [];
+for (const harness of ["claude", "codex"]) for (const scenario of ["human", "worker", "action", "projected", "stale", "running", "both", "optout", "active"]) {
+  const name = `${harness}-${scenario}`;
+  const usage = new Map([[`${harness}-a`, 5], [`${harness}-b`, 5]]);
+  const reset = Date.now() + 3_600_000;
+  const server = createServer((req, res) => {
+    const id = new URL(req.url!, "http://127.0.0.1").searchParams.get("id") ?? `${harness}-${req.headers.authorization?.endsWith("b") ? "b" : "a"}`;
+    const pct = usage.get(id) ?? 5;
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ five_hour: { utilization: pct, resets_at: new Date(reset).toISOString() }, seven_day: { utilization: 5, resets_at: new Date(reset + 86_400_000).toISOString() }, rateLimits: { primary: { usedPercent: pct, windowDurationMins: 300, resetsAt: Math.floor(reset / 1000) }, secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: Math.floor((reset + 86_400_000) / 1000) } } }));
+  });
+  await new Promise<void>(done => server.listen(0, "127.0.0.1", done));
+  const url = `http://127.0.0.1:${(server.address() as any).port}`;
+  const fakeCodex = join(process.env.TMPDIR!, `codex-${name}.mjs`);
+  let source = readFileSync(join(repo, "v2/driver-hsr/test-agent/fake-codex.mjs"), "utf8");
+  source = source.replace('case "initialize":', `case "account/rateLimits/read":
+      void fetch(${JSON.stringify(url)} + '/?id=' + encodeURIComponent(process.env.CODEX_HOME.split('/').at(-1))).then(r => r.json()).then(result => emit({id: msg.id, result}));
+      return;
+    case "initialize":`);
+  writeFileSync(fakeCodex, source);
+  chmodSync(fakeCodex, 0o700);
+  const { dir } = makeDaemonDir({ accounts: { allocationMode: scenario === "active" ? "active" : "shadow", allocationNodeId: "lab", allocationOwner: { node: "lab", epoch: "lab-e" }, allocationQuotaFreshMs: scenario === "stale" ? 500 : 120_000 }, agents: {
+    [harness]: { command: harness === "codex" ? fakeCodex : process.execPath, args: harness === "codex" ? [] : [join(repo, "v2/driver-hsr/test-agent/fake-claude.mjs")], adapter: harness },
+  } });
+  writeFileSync(join(proof, `${name}.root.log`), dir);
+  for (const label of ["a", "b"]) {
+    const vault = join(dir, "vault", harness, `${harness}-${label}`);
+    mkdirSync(vault, { recursive: true });
+    writeFileSync(join(vault, harness === "claude" ? ".credentials.json" : "auth.json"), JSON.stringify(harness === "claude" ? { claudeAiOauth: { accessToken: `fixture-${label}`, expiresAt: 4102444800000 } } : { tokens: { access_token: `fixture-${label}` } }));
+  }
+  const daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_USAGE_URL: url } });
+  const client = await daemon.client();
+  const rpc: unknown[] = [];
+  const request = async (method: string, params: any = {}) => { const result = await client.request<any>(method, params); rpc.push({ method, params, result }); return result; };
+  try {
+    for (const label of ["a", "b"]) await request("account.add", { harness, label, importExisting: true });
+    await request("account.limits");
+    const bee = await request("spawn", { name, agent: harness, cwd: dir, account: `${harness}-a`, ...(scenario === "optout" ? { tags: ["autoswap=false"] } : {}) });
+    const beeId = bee.beeId;
+    const worker = scenario === "worker" ? await request("spawn", { name: name + "-sender", agent: "stub", cwd: dir, account: null }) : null;
+    const send = (body: string, peer = false) => request("send", { beeId, body, ...(peer ? { sender: worker.beeId } : {}) });
+    const delivered = async (id: number) => waitFor(async () => (await request("mailbox", { beeId })).messages.find((m: any) => m.id === id && m.deliveredAt !== null), `${name} delivery`, 20000);
+    const idle = async () => waitFor(async () => (await request("view", { beeId })).view.runtimeState === "idle", `${name} idle`, 15000);
+    const warm = await send("warm conversation");
+    await delivered(warm.messageId);
+    await idle();
+    let running: any;
+    if (scenario === "running") {
+      running = await send("@slow:1500 accepted work");
+      await delivered(running.messageId);
+      await waitFor(async () => (await request("view", { beeId })).view.runtimeState === "running", `${name} running`);
+    }
+    usage.set(`${harness}-a`, scenario === "projected" ? 85 : 91);
+    if (scenario === "both") usage.set(`${harness}-b`, 91);
+    await request("account.limits");
+    if (scenario === "stale") await new Promise(done => setTimeout(done, 800));
+    if (scenario === "running") {
+      const before = await request("view", { beeId });
+      assert.equal(before.view.generation, 1);
+      await idle();
+      assert.equal((await request("view", { beeId })).view.generation, 1);
+    } else {
+      let sent: any;
+      let action: any;
+      if (scenario === "action") {
+        action = await request("action.enqueue", { beeId, idempotencyKey: name, items: [{ kind: "commit" }] });
+        sent = await waitFor(async () => {
+          const mail = (await request("mailbox", { beeId })).messages.find((m: any) => m.id !== warm.messageId);
+          return mail ? { messageId: mail.id } : null;
+        }, `${name} dispatch`);
+      } else sent = await send(`next ${scenario} continues conversation`, scenario === "worker");
+      if (scenario === "both" || scenario === "active") {
+        await waitFor(async () => (await request("snapshot")).quotaRecoveries.some((r: any) => r.beeId === beeId && r.reason === (scenario === "active" ? "allocation_owner_required" : "account_wait")), `${name} waiting`);
+        const first = await request("snapshot");
+        for (let i = 0; i < (scenario === "both" ? 34 : 20); i++) { await new Promise(done => setTimeout(done, scenario === "both" ? 1000 : 25)); await request("snapshot"); }
+        const last = await request("snapshot");
+        assert.equal(last.accountAdmissions.length, first.accountAdmissions.length);
+        const rows = last.quotaRecoveries.filter((r: any) => r.beeId === beeId);
+        assert.equal(rows.length, 1);
+        assert.equal(rows[0].state, "waiting");
+        assert.ok(rows[0].retryAt > Date.now());
+        assert.equal((await request("view", { beeId })).view.generation, 1);
+        const tail = await request("audit.tail", { beeId, limit: 1000 });
+        const notices = tail.rows.filter((r: any) => r.kind === "quota.recovery" && r.payload.notice);
+        assert.equal(new Set(notices.map((r: any) => r.payload.notice.recoveryId)).size, 1);
+      } else {
+        const mail = await delivered(sent.messageId);
+        assert.equal(mail.deliveredGeneration, scenario === "stale" || scenario === "optout" ? 1 : 2);
+        await idle();
+        const snapshot = await request("snapshot");
+        const recoveries = snapshot.quotaRecoveries.filter((r: any) => r.beeId === beeId);
+        if (scenario === "stale" || scenario === "optout") assert.equal(recoveries.length, 0);
+        else {
+          assert.equal(recoveries.length, 1);
+          assert.equal(recoveries[0].trigger, "proactive");
+          assert.equal(recoveries[0].quota, null);
+          assert.equal(recoveries[0].interrupted, false);
+          assert.equal(recoveries[0].continuationKind, "none");
+          assert.deepEqual(recoveries[0].continuationMessageIds, []);
+          assert.equal((await request("view", { beeId })).bee.account, `${harness}-b`);
+          if (action) assert.equal((await request("action.get", { actionId: action.actions[0].id })).action.status, "running");
+          const again = await send("conversation still continues");
+          assert.equal((await delivered(again.messageId)).deliveredGeneration, 2);
+          await idle();
+        }
+      }
+    }
+    const audit = await request("audit.tail", { beeId, limit: 1000 });
+    assert.equal(audit.rows.filter((r: any) => r.kind === "quota.observed").length, 0);
+    const journal = join(dir, "session-logs", `${beeId}.jsonl`);
+    if (existsSync(journal)) writeFileSync(join(proof, `${name}.journal.jsonl`), readFileSync(journal));
+    results.push({ name, passed: true });
+    console.log(JSON.stringify(results.at(-1)));
+  } catch (error) {
+    console.error(name, error);
+    throw error;
+  } finally {
+    writeFileSync(join(proof, `${name}.rpc.json`), JSON.stringify(rpc, null, 2));
+    client.close();
+    await daemon.stop().catch(error => console.error("cleanup", String(error)));
+    writeFileSync(join(proof, `${name}.daemon.log`), daemon.output() + (existsSync(join(dir, "hived.log")) ? readFileSync(join(dir, "hived.log"), "utf8") : ""));
+    await new Promise<void>(done => server.close(() => done()));
+    writeFileSync(join(proof, "summary.json"), JSON.stringify(results, null, 2));
+  }
+}

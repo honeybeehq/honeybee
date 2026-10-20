@@ -59,6 +59,7 @@ import {
   resolveVendorHome,
   rotateNearTie,
   selectAccountAdmission,
+  completionHeadroom,
   selectLeastLoadedAccount,
   windowRolledOver,
   isFableModel,
@@ -2468,8 +2469,9 @@ export class AccountsService {
 
   restoredQuotaHeadroom(account: AccountRow, model?: string): boolean {
     const row = this.store.getAccountLimits(account.id);
+    const boundaryAt = Math.max(account.exhaustedAt ?? 0, ...this.store.listQuotaRecoveries().filter(recovery => recovery.sourceAccount === account.id && recovery.admission).map(recovery => recovery.createdAt));
     const values = row?.readable ? [row.fiveHourPct, row.weeklyPct, ...(isFableModel(model) ? [row.fableWeeklyPct] : [])].filter((value): value is number => value !== null) : [];
-    return account.exhaustedAt !== null && row?.readable === true && row.fetchedAt > account.exhaustedAt
+    return boundaryAt > 0 && row?.readable === true && row.fetchedAt > boundaryAt
       && this.now() - row.fetchedAt <= this.cfg.accounts.allocationQuotaFreshMs
       && values.length > 0 && values.every(value => value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
   }
@@ -2487,6 +2489,23 @@ export class AccountsService {
     const values = [row.fiveHourPct, row.weeklyPct, ...(isFableModel(model) ? [row.fableWeeklyPct] : [])];
     if (source.window === "other" && values.some(value => value === null)) return false;
     return values.some(value => value !== null) && values.every(value => value === null || value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
+  }
+
+  turnHeadroom(accountId: string, model?: string) {
+    const account = this.store.getAccount(accountId);
+    if (!account) return { status: "uncertain" as const, retryAt: null };
+    const now = this.now();
+    const local = this.localActivities([accountId], now).get(accountId)!;
+    const candidate = this.admissionCandidate(account, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now, local);
+    return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
+  }
+
+  proactiveTargets(harness: string, sourceAccount: string, model?: string): Set<string> {
+    return new Set(this.store.listAccounts({ harness }).filter(account => {
+      if (this.turnHeadroom(account.id, model).status !== "eligible" || account.id === sourceAccount && !this.restoredQuotaHeadroom(account, model)) return false;
+      const fetchedAt = this.store.getAccountLimits(account.id)?.fetchedAt ?? 0;
+      return !this.store.listQuotaRecoveries().some(row => row.admission && row.sourceAccount === account.id && fetchedAt <= row.createdAt);
+    }).map(account => account.id));
   }
 
   private admissionCandidate(

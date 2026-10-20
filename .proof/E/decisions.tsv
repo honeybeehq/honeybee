@@ -1,0 +1,7 @@
+ts	phase	decision	why	evidence	result
+2026-10-20T07:04:41Z	design	Use the existing recovery coordinator at the shared delivery boundary	All mailbox origins share one gate and no new provider event is fabricated	v2/daemon/src/loops.ts	open
+2026-10-20T07:04:41Z	contract	Add explicit proactive trigger and nullable provider quota	Orchestrator approved the distinction and active local lower bound trigger	contracts/quota-events.md:v10	agreed
+2026-10-20T07:04:41Z	lab	Move fixture roots to var tmp	Cell path exceeds Unix socket path length	.proof/E/lab.log	rerunning
+2026-10-20T07:11:20Z	rebase	Rebase E onto C c77413a6 and retain B continuation gating	Latest B already fixes synthetic readiness; provider continuations must pass the new gate	v2/daemon/src/daemon.ts	integrated
+2026-10-20T07:11:20Z	lab	Fourteen real-daemon cases passed on the updated C base	Fresh switches, stale and opt-out behavior, running reserve, waiting and owner trigger all exercised for both harnesses	.proof/E/summary.json	passed
+2026-10-20T07:11:20Z	verification	Extend lab with projected reserve, action dispatch and a full retry interval	A projected threshold and repeated recovery attempts need direct proof	.proof/E/lab.ts	running

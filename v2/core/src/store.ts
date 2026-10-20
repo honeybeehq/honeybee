@@ -2182,12 +2182,12 @@ export class CoreStore {
       if (previous && previous.state !== "waiting" && previous.state !== "rotating") return;
       const hints = { ...previous?.resetHints };
       if (event.quota.resetsAt !== null) hints[event.quota.window] = event.quota.resetsAt;
-      const quota = { ...event.quota, window: event.quota.window === "other" && previous ? previous.quota.window : event.quota.window, resetsAt: event.quota.resetsAt ?? previous?.quota.resetsAt ?? null };
+      const quota = { ...event.quota, window: event.quota.window === "other" && previous?.quota ? previous.quota.window : event.quota.window, resetsAt: event.quota.resetsAt ?? previous?.quota?.resetsAt ?? null };
       this.putQuotaRecovery(previous ? {
         ...previous, eventIds: [...previous.eventIds, event.eventId], quota, resetHints: hints,
         progress: leastCertainProgress(previous.progress, event.turn.progress),
       } : {
-        id, beeId: bee.id, sourceGeneration: event.generation, sourceAccount: bee.account,
+        id, trigger: "provider_limit", beeId: bee.id, sourceGeneration: event.generation, sourceAccount: bee.account,
         sourceWindowUsedPercent: null, sourceWindowObservedAt: null,
         observationCursor: /^quota:.*:[0-9]+$/.test(event.eventId) ? Number(event.eventId.slice(event.eventId.lastIndexOf(":") + 1)) : null, sourceId: event.sourceId ?? null, accountLabel: null,
         eventIds: [event.eventId], messageIds, progress: event.turn.progress,
@@ -2204,14 +2204,35 @@ export class CoreStore {
 
   getQuotaRecovery(id: string): QuotaRecoveryRow | null {
     const row = this.stmt("SELECT payload FROM quota_recoveries WHERE id = ?").get(id) as Row | undefined;
-    return row ? JSON.parse(String(row.payload)) as QuotaRecoveryRow : null;
+    return row ? { trigger: "provider_limit", ...JSON.parse(String(row.payload)) } as QuotaRecoveryRow : null;
+  }
+
+  requireCompletionHeadroom(beeId: string, generation: number, admission: { fetchedAt: number; maxProjectedPercent: number }, retryAt: number | null): QuotaRecoveryRow | null {
+    return this.tx(() => {
+      const bee = this.mustGetBee(beeId);
+      const runtime = this.currentRuntime(beeId);
+      if (!runtime || runtime.generation !== generation || runtime.state !== "idle" && !(runtime.state === "running" && runtime.bootEvidence === "synthetic")) return null;
+      const existing = this.listQuotaRecoveries(beeId).find(row => (row.state === "waiting" || row.state === "rotating") && this.quotaRecoveryValid(row));
+      if (existing) return existing;
+      const id = `admission:${beeId}:${generation}`;
+      const previous = this.getQuotaRecovery(id);
+      if (previous) return previous.state === "waiting" ? previous : null;
+      return this.putQuotaRecovery({
+        id, trigger: "proactive", beeId, sourceGeneration: generation, sourceAccount: bee.account, observationCursor: null, sourceId: null, accountLabel: null,
+        eventIds: [], messageIds: [], progress: "none", interrupted: false,
+        controlFence: bee.authControlFence ?? 0, placement: { agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId ?? null },
+        quota: null, admission, resetHints: retryAt === null ? {} : { other: retryAt }, state: "waiting", attempt: 0, targetAccount: null,
+        successorGeneration: null, claimId: null, reservationId: null, commandId: null,
+        continuationKind: null, continuationMessageIds: [], retryAt, reason: "completion_reserve", createdAt: this.now(), updatedAt: this.now(),
+      });
+    });
   }
 
   listQuotaRecoveries(beeId?: string): QuotaRecoveryRow[] {
     return (beeId === undefined
       ? this.stmt("SELECT payload FROM quota_recoveries ORDER BY id").all()
       : this.stmt("SELECT payload FROM quota_recoveries WHERE bee_id = ? ORDER BY id").all(beeId) as Row[])
-      .map(row => JSON.parse(String(row.payload)) as QuotaRecoveryRow);
+      .map(row => ({ trigger: "provider_limit", ...JSON.parse(String(row.payload)) }) as QuotaRecoveryRow);
   }
 
   private putQuotaRecovery(row: QuotaRecoveryRow): QuotaRecoveryRow {
@@ -2221,8 +2242,8 @@ export class CoreStore {
     this.stmt("INSERT INTO quota_recoveries(id, bee_id, state, payload) VALUES(?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, payload = excluded.payload")
       .run(updated.id, updated.beeId, updated.state, JSON.stringify(updated));
     this.audit("quota.recovery", updated.beeId, { recovery: updated, ...(notify ? { notice: {
-      kind: "quota_recovery", recoveryId: updated.id, state: updated.state,
-      sourceId: updated.sourceId, accountLabel: updated.accountLabel, window: updated.quota.window, retryAt: updated.retryAt,
+      kind: "quota_recovery", recoveryId: updated.id, trigger: updated.trigger, state: updated.state,
+      sourceId: updated.sourceId, accountLabel: updated.accountLabel, window: updated.quota?.window ?? "other", retryAt: updated.retryAt,
     } } : {}) });
     return updated;
   }
@@ -2230,7 +2251,7 @@ export class CoreStore {
   observeQuotaRecoveryLimits(id: string, includeFable = false): void {
     this.tx(() => {
       const row = this.getQuotaRecovery(id);
-      if (!row || row.state !== "waiting" || row.sourceWindowObservedAt != null && (row.sourceWindowUsedPercent ?? 0) >= 90 || !row.sourceAccount) return;
+      if (!row || !row.quota || row.state !== "waiting" || row.sourceWindowObservedAt != null && (row.sourceWindowUsedPercent ?? 0) >= 90 || !row.sourceAccount) return;
       const limits = this.getAccountLimits(row.sourceAccount);
       if (!limits?.readable || limits.fetchedAt <= row.createdAt || limits.fetchedAt > this.now()) return;
       const values = [limits.fiveHourPct, limits.weeklyPct, ...(includeFable ? [limits.fableWeeklyPct] : [])].filter((value): value is number => value !== null);
@@ -2299,7 +2320,7 @@ export class CoreStore {
   quotaTurnSucceeded(beeId: string, generation: number): void {
     this.tx(() => {
       for (const row of this.listQuotaRecoveries(beeId)) {
-        if (row.state === "waiting" && row.sourceGeneration === generation) this.cancelQuotaRecovery(row.id, "turn_succeeded");
+        if (row.trigger !== "proactive" && row.state === "waiting" && row.sourceGeneration === generation) this.cancelQuotaRecovery(row.id, "turn_succeeded");
       }
     });
   }

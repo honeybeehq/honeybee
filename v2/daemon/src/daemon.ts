@@ -1010,6 +1010,7 @@ export class HiveDaemon {
       ...(this.beeTmp ? { removeBeeTmp: (beeId: string) => this.removeBeeTmp(beeId) } : {}),
       removeThreadArtifacts: operationId => this.removeThreadArtifacts(operationId),
       onFlagEvidence: (ev) => this.applyAccountPolicy(ev),
+      beforeTurn: (beeId, generation) => this.admitProviderTurn(beeId, generation),
       onUsageEvidence: (ev) => this.applyUsageObservation(ev),
       performance: this.performance,
       sourceProcessAbsent: (beeId, generation) => this.sourceProcessAbsent(beeId, generation),
@@ -6499,6 +6500,8 @@ export class HiveDaemon {
     if (recoveryId) {
       const recovery = store.getQuotaRecovery(recoveryId);
       if (!recovery || recovery.beeId !== bee.id || recovery.state !== "waiting" || !store.quotaRecoveryValid(recovery)) throw new RpcError("invalid_request", "quota recovery is no longer claimable");
+      const current = store.currentRuntime(bee.id);
+      if (recovery.trigger === "proactive" && current?.state === "running" && current.bootEvidence === "real") throw new RpcError("account_wait", "The accepted provider turn still owns its completion reserve", { retryAt: null });
       if (autoswapDisabled(bee)) throw new RpcError("account_unavailable", "Automatic quota recovery is disabled");
     }
     if (selector !== "auto") {
@@ -6528,7 +6531,7 @@ export class HiveDaemon {
       allowSourceAccount: !!recoveryId,
       sourceQuotaRecovery: recoveryId ? (() => {
         const recovery = store.getQuotaRecovery(recoveryId)!;
-        return { observedAt: recovery.createdAt, window: recovery.quota.window, resetsAt: recovery.quota.resetsAt, usedPercentAtObservation: recovery.sourceWindowUsedPercent, usedPercentObservedAt: recovery.sourceWindowObservedAt };
+        return { observedAt: recovery.createdAt, window: recovery.quota?.window ?? "other", resetsAt: recovery.quota?.resetsAt ?? recovery.resetHints.other ?? null, usedPercentAtObservation: recovery.sourceWindowUsedPercent, usedPercentObservedAt: recovery.sourceWindowObservedAt };
       })() : undefined,
       excludeRecentlyExhausted: !!recoveryId,
       onlyAccountIds,
@@ -6821,6 +6824,25 @@ export class HiveDaemon {
     return times.length ? Math.min(...times) : null;
   }
 
+  private admitProviderTurn(beeId: string, generation: number): boolean {
+    const store = this.mustStore();
+    const bee = store.getBee(beeId);
+    if (!bee?.account || !this.accounts || autoswapDisabled(bee) || bee.agent !== "claude" && bee.agent !== "codex") return true;
+    const recoveries = store.listQuotaRecoveries(beeId);
+    const pending = recoveries.find(row => (row.state === "waiting" || row.state === "rotating") && store.quotaRecoveryValid(row));
+    if (pending) return pending.state === "rotating" && pending.continuationKind !== null && pending.trigger !== "proactive";
+    const accepted = recoveries.some(row => row.state === "resumed" && row.successorGeneration === generation);
+    if (accepted && !store.listMessages(beeId).some(message => message.deliveredGeneration === generation)) return true;
+    const headroom = this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee));
+    if (headroom.status !== "protected") return true;
+    const fetchedAt = store.getAccountLimits(bee.account)!.fetchedAt;
+    const recovery = store.requireCompletionHeadroom(beeId, generation, { fetchedAt, maxProjectedPercent: headroom.maxProjectedPercent! }, headroom.retryAt);
+    if (!recovery) return true;
+    if (this.accounts.allocationMode() === "active") store.waitQuotaRecovery(recovery.id, headroom.retryAt, "allocation_owner_required");
+    this.quotaRecovery?.reconcile();
+    return false;
+  }
+
   private async recoverQuota(id: string): Promise<void> {
     const store = this.mustStore();
     const accounts = this.mustAccounts();
@@ -6848,7 +6870,12 @@ export class HiveDaemon {
       if (!row || row.state !== "waiting" || !store.quotaRecoveryValid(row)) return;
       bee = store.getBee(row.beeId)!;
       if (autoswapDisabled(bee) || accounts.allocationMode() === "active") return;
-      const result = this.rpcSwapAccount({ beeId: bee.id, account: "auto", quotaRecoveryId: id, idempotencyKey: `quota:${id}:${row.attempt}` });
+      const targets = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee)) : undefined;
+      if (targets?.size === 0) {
+        store.waitQuotaRecovery(id, this.quotaRetryAt(bee.id, row.retryAt), "account_wait");
+        return;
+      }
+      const result = this.rpcSwapAccount({ beeId: bee.id, account: "auto", quotaRecoveryId: id, ...(targets ? { onlyAccountIds: [...targets] } : {}), idempotencyKey: `quota:${id}:${row.attempt}` });
       this.log(`quota.rotate recovery=${id} to=${result.to}`);
       this.requestTick();
     } catch (error) {
