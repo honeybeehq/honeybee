@@ -1,4 +1,4 @@
-import { claudeQuotaBoundary, quotaSourceId } from "../../core/src/quota.ts";
+import { claudeQuotaBoundary, quotaSourceId } from "../../adapters/src/quota.ts";
 import { projectorCheckpoint } from "./transcript-projection.ts";
 import type {
   TranscriptIsoTs,
@@ -33,10 +33,6 @@ type JsonObject = Record<string, unknown>;
  *    close, with turn-scoped usage (`claude -p` runs only). `is_error: true`
  *    rows also project an `interrupt` carrying the CLI's `errors`/`result`
  *    text, so a halted turn (failed resume, auth, provider wall) is visible.
- *  - system init carries the session id; every other system subtype plus
- *    rate_limit_event / tool_progress is protocol noise, projected to []
- *    exactly like codex deltas (noise is not "unknown" — unknown is reserved
- *    for genuinely unrecognized record types).
  *
  * Stateless per line (claude lines are complete messages); the projector
  * interface stays stateful-shaped for uniformity with codex/grok.
