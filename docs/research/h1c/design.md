@@ -16,21 +16,21 @@ Reply is exactly `{id,digest,state}`, where state is `not_written|written|accept
 
 The host records the mailbox ID, digest, application request ID, and written state BEFORE stdin. Matching JSON-RPC result/error updates accepted/refused BEFORE the observation-journal append. Duplicate tagged writes never write stdin again. Host receipts use at most4096 entries and24h monotonic age. Eviction advances a conservative retired-through mailbox-ID watermark. Forgotten IDs, and absent lower IDs, are unknown, never not-written. Out-of-order urgency can therefore conservatively hold an older item. A host death loses receipts; a different process identity never proves the original delivery absent.
 
-Frames are bounded to16Mi decoded characters; malformed or oversized frames close the lane. This is an explicit wire limit, not an ENOSPC simulation. The runner socket is created with umask077 and mode0600. Same-UID remains the host/admin trust boundary.
+Frames are bounded to16MiB UTF-8 bytes. Driver preflight creates a visible message_too_large hold before writing. The host splits complete frames before bounding the remainder and tracks bytes incrementally. Private intent/audit payloads have the same16MiB ceiling with32KiB decision reserve. The socket lives in a0700 directory and has mode0600; umask077 is scoped to synchronous bind and restored before agent execution.
 
 ## Durable intent, upgrade and recovery
 
 Schema47 adds delivery-confirmation intents and durable operator decision receipts. A known intent stores exact wire bytes, digest, host identity, attempted generation and since, and commits before the effect. Unknown pre-upgrade attempts have correlated null wireLine/digest/host; no bytes or identity are fabricated. A failed intent transaction authorizes no write. A failed settlement transaction leaves the intent recoverable. Turn end, idle, or silence never marks a pending ACK delivered.
 
-The schema47 migration records a once-only legacy mailbox-ID watermark and per-bee maximum-generation cohort. Both are captured only after SQLite's EXCLUSIVE writer lock is acquired, so a new opener cannot snapshot while the old daemon still writes. The upgrade-lock lab proves this handover fence. Only pre-watermark pending mail on an adopted confirmation-requiring host in that original generation cohort is potentially ambiguous without an intent; it becomes visibly held with unknown private binding. Mail accepted after this boundary has no prior in-flight write when its intent is absent, so a fresh durable intent permits one safe legacy write on an authenticated old host. Its positive normal ACK can settle it. The known legacy write remains awaiting_confirmation/pending_ack until ACK or the normal30s timeout, without a transient held state or operator resend opportunity. Post-upgrade generations and IDs already released by positive not-written proof are excluded from later boot holds. A lost ACK stays held without probing the old host. This prevents a deploy from deafening surviving Codex/Muse bees.
+The schema47 migration records a once-only legacy mailbox-ID watermark and per-bee maximum-generation cohort. Both are captured only after SQLite's EXCLUSIVE writer lock is acquired, so a new opener cannot snapshot while the old daemon still writes. The upgrade-lock lab proves this handover fence. A frozen once-only set of possible eligible heads bounds ambiguity within the original generation cohort (normally one ID; at most seven eligibility variants). Only those pre-watermark heads on an adopted confirmation-requiring host are potentially ambiguous without an intent; it becomes visibly held with unknown private binding. Mail accepted after this boundary has no prior in-flight write when its intent is absent, so a fresh durable intent permits one safe legacy write on an authenticated old host. Its positive normal ACK can settle it. The known legacy write remains awaiting_confirmation/pending_ack until ACK or the normal30s timeout, without a transient held state or operator resend opportunity. Post-upgrade generations and IDs already released by positive not-written proof are excluded from later boot holds. A lost ACK stays held without probing the old host. This prevents a deploy from deafening surviving Codex/Muse bees.
 
-Known intents reconcile by the same host and generation. Accepted proof atomically settles delivery. A positive not-written proof permits an audited re-plan to current turn context, resetting the row to awaiting_confirmation before any new write; stale operator actions then fail the held-state check. If that runtime is degraded, the proven-unwritten binding is released and normal stop/revive recovery can deliver automatically. Unknown/null bindings never re-arm, query or write. They do consume positive-only ACK evidence from the same identified live bee/generation, including adopt-time journal replay and an ACK arriving after adoption; that proof atomically settles the original. Refused or absent evidence stays visibly held. A pending ACK past30s becomes held/unknown and remains visibly undelivered. A late positive ACK may still settle it. Application refusal is surfaced as held/refused; it is not silently retried with a second stdin write.
+Known intents reconcile by the same host and generation. Accepted proof atomically settles delivery. A positive not-written proof permits an audited re-plan to current turn context, resetting the row to awaiting_confirmation before any new write; stale operator actions then fail the held-state check. If that runtime is degraded, the proven-unwritten binding is released and normal stop/revive recovery can deliver automatically. Unknown/null bindings never re-arm, query or write. They do consume positive-only ACK evidence from the same identified live bee/generation, including adopt-time journal replay and an ACK arriving after adoption; that proof atomically settles the original. Refused or absent evidence stays visibly held. A pending ACK past30s becomes held/unknown and remains visibly undelivered. A late positive ACK may still settle it. A clean application refusal permits one durable, audited re-plan to current turn context. A second refusal becomes held/refused; the persisted counter survives restart. A proven-unwritten retry whose lane remains unavailable for30s becomes held/lane_unavailable and loses write authorization. Recovery requires a real plan and fresh host proof before an audited re-plan and write. Age uses intent.since, so a conservative brief early hold is possible.
 
 Held head mail holds later mail in FIFO until reconciliation or an explicit operator decision. waitingForYou derives from held facts; no condition flag or competing lifecycle truth is added. Degraded-stop suppression is scoped to intents in the current generation.
 
 ## Frozen Apiary RPC contract
 
-Ordinary Honeybee mutate RPCs:
+Registered-local-service Honeybee mutate RPCs (trust registration required even when general enforcement is disabled):
 ```ts
 "mail.delivery.resend_anyway" | "mail.delivery.drop"
 {beeId:string,messageId:number,generation:number,idempotencyKey:string}
@@ -48,9 +48,9 @@ Result:
  deduped?:true;
 }
 ```
-Only a currently held, owned, undelivered message is actionable. Errors: `stale_generation`, `delivery_not_held`, `idempotency_conflict`, `bee_not_found`, `invalid_request`, plus existing local-peer failures. Recognized idempotent replays return the original receipt, including after restart; alias keys for an already-completed same action return that same effect.
+Only a currently held, owned, undelivered message is actionable. Errors: `stale_generation`, `delivery_not_held`, `idempotency_conflict`, `bee_not_found`, `invalid_request`, plus caller_not_trusted for absent/disabled trust, remote ingress or unregistered local peers. Recognized idempotent replays return the original receipt, including after restart; alias keys for an already-completed same action return that same effect.
 
-Resend creates a NEW mailbox ID at the ORIGINAL FIFO position, rather than cancelling the original through failure hooks or appending at the tail. It carries action-dispatch/attempt, handoff-seed, question-answer/dismiss, continuation and other owner links to the replacement. It preserves body/sender/urgency/origin/untrusted phone provenance. Quota/auth recovery reuses this replacement rather than cloning it again. The audit links original and replacement; late ACKs for the original request ID cannot confirm the new ID. Drop cancels the held row with its ordinary owner semantics. Both are audited.
+Resend creates a NEW mailbox ID at the ORIGINAL FIFO position, rather than cancelling the original through failure hooks or appending at the tail. It carries action-dispatch/attempt, handoff-seed, question-answer/dismiss, continuation and other owner links to the replacement. It preserves body/sender/urgency/origin/untrusted phone provenance. Quota/auth recovery reuses only an undelivered replacement. A delivered replacement is replayed normally for the successor generation. The audit links original and replacement; late ACKs for the original request ID cannot confirm the new ID. Drop cancels the held row with its ordinary owner semantics. Both are audited.
 
 Additive public MessageRow/history/pending fields:
 ```ts
@@ -60,7 +60,7 @@ deliveryConfirmation?: {
  generation:number;
  since:number;
  state:"awaiting_confirmation"|"held";
- reason:"pending_ack"|"old_host"|"receipt_expired"|"unknown"|"generation_changed"|"refused";
+ reason:"pending_ack"|"old_host"|"receipt_expired"|"unknown"|"generation_changed"|"refused"|"host_auth_failed"|"message_too_large"|"lane_unavailable";
  delivered:false;
 };
 queueOrder?:number;
@@ -72,7 +72,7 @@ Snapshot/view/mail projections contain no private wire/digest/host. Internal aud
 
 ## Human authority
 
-Queen's final ruling8324 selected Honeybee's existing verified same-UID admin boundary, with NO new Honeybee operator validator or role boolean. A same-UID process can invoke these RPCs directly, like existing send/kill authority, until T13/host isolation tightens it. Apiary H1d separately exposes ONLY desktop main-frame actions through apiaryd, gated fail-closed by T29g. No MCP/phone/gateway action is added here, and no CLI mutation verb is added.
+Queen's #92 ruling supersedes8324: same UID is insufficient because Cells share the daemon UID. Both actions require trust.enabled, direct local_unix ingress and trust.require registration, exactly the registered-service boundary used by question.withdraw. Missing registration or disabled trust fails closed. H1d must use apiaryd's trust-registered connection and gate desktop main-frame actions with T29g. No MCP, phone, gateway or CLI action is added.
 
 Apiary references supplied by Needle (not inspected in this Cell): main20095d53 `services/apiaryd/src/nodes/operatorEntry.ts`, `domains/hive/answerAudit.ts`, desktop main IPC. Honeybee's existing question.dismiss validates params/idempotency, not an operator-entry marker. The Honeybee proof claims the RPC/backend, not the separate Apiary UI.
 
@@ -89,7 +89,15 @@ No new unit tests/comments per the explicit Project brief. Existing schema fixtu
 
 ## Verification and rollout limits
 
-Both independent Opus source reviews at93ba3554 report no Medium-or-higher findings; reviewers did not rerun the labs. The urgency.d3c existing fixture expectation changes deliberately: positive ACK settles delivery in the same step a later now-mail interrupts, while interrupt count stays one. Acknowledged truth is no longer delayed behind FIFO retry scheduling.
+Both independent Opus source reviews throughfedf2eb3 report no Medium-or-higher findings; reviewers did not rerun the labs. The urgency.d3c existing fixture expectation changes deliberately: positive ACK settles delivery in the same step a later now-mail interrupts, while interrupt count stays one. Acknowledged truth is no longer delayed behind FIFO retry scheduling.
 
 Before any separately authorized production rollout, the operator should read the pre-upgrade undelivered count: ambiguous old-cohort rows will be visibly held, potentially requiring operator action. No production count or actual stuck-state diagnosis is claimed here. Production has not run intermediate H1c builds, so their cohort initialization timing applies only to labs/dev. No deploy or restart is authorized by this document. The missing repository verification skill remains a setup gap. No UI preview is claimed for this backend change; H1d owns the separate Apiary surface.
 
+
+## Queen review corrections
+
+See queen-review.md for all twelve findings and source references. Settlement captures reorder, placement, handoff and multiline IDs with the intent. Confirming multiline pointer attempts and intents commit atomically; a transient not_ready leaves the pointer ready, without an intent or hold. Pre-existing uncertain pointers without an intent are held, never blindly resent. Terminal owner cancellation records public prior uncertainty; ordinary cancellation still refuses pending intent. question.withdraw only accepts an open question, so it cannot withdraw an answered held-mail link.
+
+Clients advertise mail.delivery.confirmation.v1. Legacy result paths strip new confirmation/queue fields, map replaced history to canceled, and preserve IDs/sequences. A watch containing hidden confirmation-only audits emits gap, requiring a snapshot; older consumers may therefore resnapshot frequently. H1d must advertise the capability. The backend does not claim to have inspected every production client.
+
+Native peer credentials were already required for process identity on main8d71abd2. Faulted-artifact base/fixed labs both refuse claude and codex with zero writes. Non-confirming conditional socket-peer behavior matches main; confirming receipt queries remain authenticated. A real Cell lab verifies that the authenticated PID is the runner host, not the wrapped agent.
