@@ -1,6 +1,6 @@
 E2: automatic quota recovery does not request human attention
 
-Base 975ab53eb7b1842113d6874dfd777a47e910d9f7 on review/sar-E-proactive-switch. The E2 branch is review/sar-E2-recovery-not-needs-you.
+Base 568ecbccb73332ed73832ac354ba8fb7eed90719 on review/sar-E-proactive-switch. The E2 branch is review/sar-E2-recovery-not-needs-you.
 
 The core pure view now accepts automatic recovery as an input and suppresses waitingForYou while it is pending. blocked and resource_blocked remain unchanged. The store and CLI stale fallback both use matching quota recovery state and control/placement/generation fences, excluding rows invalidated by a user stop. autoswap=false in tags or args does not suppress attention. Cancellation removes the automatic recovery input. List projection batches live recovery rows rather than fetching each bee's history. The read-only path reuses its existing table-presence query and combines flags/recovery facts into one plan, preserving the existing seven-plan bound.
 
@@ -23,3 +23,5 @@ Final expanded suites additionally run account-admission-store.test.ts and accou
 Remaining audit LOWs: active initial-versus-owner labels distinguish undefined/null reasonDetail, and legacy null-reason waits fail toward attention until their next typed update. The compact notice omits reason/detail by design; readers use payload.recovery as contractv23 states.
 
 Queen #81 condition: a stopped successor with spawn_failed raises waitingForYou even while its automatic recovery is rotating. The owed recovery and resource flags stay intact. Reconciliation settles any consumed-but-unproven continuation into one pending conservative continue using the existing continuation-history path; spawn_failed suppresses automatic wake, and repeated polls do not grow mail. Run failed-successor.ts for a real Claude source-to-successor swap whose successor repeatedly exits before output, and failed-successor-seam.ts for 100 polls plus core/list/stale parity even with the read cursor past all output.
+
+Main3c562377 rebase: one declaration conflict preserves both C3 AccountQuotaProbeCadence and E2 QuotaRecoveryReasonDetail. No E2 semantic changes. Range patch-id changes due to surrounding C3 declaration context; range-diff confirms all other product commits unchanged. Broad inherited E daemon-suite limitation is recorded in .proof/E/verification.log.

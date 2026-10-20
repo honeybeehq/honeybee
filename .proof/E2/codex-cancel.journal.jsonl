@@ -1,18 +1,18 @@
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
 {"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
 {"jsonrpc":"2.0","method":"initialized"}
-{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-eYqIYZ","approvalPolicy":"never","sandbox":"danger-full-access"}}
-{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"734b0f2b-4c77-4e9a-a3e8-3141d2ac5b69","cwd":"/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-eYqIYZ"}}}
-{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"734b0f2b-4c77-4e9a-a3e8-3141d2ac5b69","input":[{"type":"text","text":"warm output for the unread cursor","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"bbf6053b-a626-48c4-92b2-e36b61e71cd3"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"734b0f2b-4c77-4e9a-a3e8-3141d2ac5b69","turn":{"id":"bbf6053b-a626-48c4-92b2-e36b61e71cd3"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"734b0f2b-4c77-4e9a-a3e8-3141d2ac5b69","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"734b0f2b-4c77-4e9a-a3e8-3141d2ac5b69","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"734b0f2b-4c77-4e9a-a3e8-3141d2ac5b69","turn":{"id":"bbf6053b-a626-48c4-92b2-e36b61e71cd3","status":"completed","error":null}}}
-{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"734b0f2b-4c77-4e9a-a3e8-3141d2ac5b69","input":[{"type":"text","text":"@quota:weekly fixture automatic wait","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"4929e2c2-bd39-4d01-8f8e-0819e4e2d377"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"734b0f2b-4c77-4e9a-a3e8-3141d2ac5b69","turn":{"id":"4929e2c2-bd39-4d01-8f8e-0819e4e2d377"}}}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e2-rebase-lab-vGFPkP/hb-v2-daemon-UAPRmh","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"84a2b1ff-c692-4a8e-91d8-627ac9dedac2","cwd":"/var/tmp/sar-e2-rebase-lab-vGFPkP/hb-v2-daemon-UAPRmh"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"84a2b1ff-c692-4a8e-91d8-627ac9dedac2","input":[{"type":"text","text":"warm output for the unread cursor","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"f7ea4bdc-3147-486b-83cb-45547f5b9ffa"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"84a2b1ff-c692-4a8e-91d8-627ac9dedac2","turn":{"id":"f7ea4bdc-3147-486b-83cb-45547f5b9ffa"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"84a2b1ff-c692-4a8e-91d8-627ac9dedac2","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"84a2b1ff-c692-4a8e-91d8-627ac9dedac2","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"84a2b1ff-c692-4a8e-91d8-627ac9dedac2","turn":{"id":"f7ea4bdc-3147-486b-83cb-45547f5b9ffa","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"84a2b1ff-c692-4a8e-91d8-627ac9dedac2","input":[{"type":"text","text":"@quota:weekly fixture automatic wait","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"abc89a1c-a5f9-4f02-ae95-498716f94445"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"84a2b1ff-c692-4a8e-91d8-627ac9dedac2","turn":{"id":"abc89a1c-a5f9-4f02-ae95-498716f94445"}}}
 {"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":null,"secondary":null,"rateLimitReachedType":null}}}
-{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":{"usedPercent":40,"windowDurationMins":300,"resetsAt":1792487527},"secondary":{"usedPercent":100,"windowDurationMins":10080,"resetsAt":1792491127},"rateLimitReachedType":"rate_limit_reached"}}}
-{"method":"error","params":{"threadId":"734b0f2b-4c77-4e9a-a3e8-3141d2ac5b69","turnId":"4929e2c2-bd39-4d01-8f8e-0819e4e2d377","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"},"willRetry":false}}
-{"method":"turn/completed","params":{"threadId":"734b0f2b-4c77-4e9a-a3e8-3141d2ac5b69","turn":{"id":"4929e2c2-bd39-4d01-8f8e-0819e4e2d377","status":"failed","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"}}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":{"usedPercent":40,"windowDurationMins":300,"resetsAt":1792490227},"secondary":{"usedPercent":100,"windowDurationMins":10080,"resetsAt":1792493827},"rateLimitReachedType":"rate_limit_reached"}}}
+{"method":"error","params":{"threadId":"84a2b1ff-c692-4a8e-91d8-627ac9dedac2","turnId":"abc89a1c-a5f9-4f02-ae95-498716f94445","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"},"willRetry":false}}
+{"method":"turn/completed","params":{"threadId":"84a2b1ff-c692-4a8e-91d8-627ac9dedac2","turn":{"id":"abc89a1c-a5f9-4f02-ae95-498716f94445","status":"failed","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"}}}}

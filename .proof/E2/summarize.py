@@ -11,7 +11,7 @@ assert (root / 'gates.exit').read_text().strip() == '0'
 suites = (root / 'suites.log').read_text()
 assert 'ℹ fail 0' in suites and 'ℹ pass 160' in suites
 lines = ['E2 automatic quota recovery attention: 9/9 real-daemon cases passed;14/14 seam phases passed.',
-    f'Implementation {code}', 'Base 975ab53eb7b1842113d6874dfd777a47e910d9f7',
+    f'Implementation {code}', 'Base 568ecbccb73332ed73832ac354ba8fb7eed90719',
     'Branch review/sar-E2-recovery-not-needs-you', 'check,v2:check,build: PASS (gates.exit0).',
     'Existing suites:160 passed,1 existing real-HOME import skipped,0 failed. No new unit tests or production comments.',
     'Capacity(account_wait, including null retryAt), completion_reserve, rotating and allocation_owner_required are automatic.',
