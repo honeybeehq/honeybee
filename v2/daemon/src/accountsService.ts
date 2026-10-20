@@ -2529,7 +2529,7 @@ export class AccountsService {
     return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, requestUnits, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
   }
 
-  proactiveTargets(harness: string, sourceAccount: string, model?: string, openingBeeId?: string): { accountIds: Set<string>; uncertain: boolean } {
+  proactiveTargets(harness: string, sourceAccount: string, model?: string, openingBeeId?: string, openingClaimId?: string): { accountIds: Set<string>; uncertain: boolean } {
     const accounts = this.store.listAccounts({ harness });
     const now = this.now();
     const activity = this.localActivities(accounts.map(account => account.id), now);
@@ -2547,6 +2547,8 @@ export class AccountsService {
       if (account.id === sourceAccount) return false;
       const local = activity.get(account.id)!;
       const candidate = this.admissionCandidate(account, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now, local);
+      const ownClaim = openingClaimId ? this.store.getAccountAdmission(openingClaimId) : null;
+      if (ownClaim?.account === account.id && ownClaim.releasedAt === null && ownClaim.confirmedAt === null) candidate.reservations = Math.max(0, candidate.reservations - ownClaim.units);
       const targetPlan = this.store.getAccountLimits(account.id)?.plan?.toLowerCase();
       if (!sourcePlan || !targetPlan || sourcePlan !== targetPlan && (this.cfg.accounts.allocationPlanCapacityUnits[sourcePlan] === undefined || this.cfg.accounts.allocationPlanCapacityUnits[targetPlan] === undefined)) return false;
       const limits = this.store.getAccountLimits(account.id);

@@ -6555,7 +6555,7 @@ export class HiveDaemon {
         })(),
       );
       if (recoveryId && store.getQuotaRecovery(recoveryId)?.trigger === "proactive" && bee.account) {
-        const comparison = this.mustAccounts().proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), bee.id);
+        const comparison = this.mustAccounts().proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), bee.id, claim.id);
         if (comparison.uncertain || !comparison.accountIds.has(target.id)) {
           this.refusedClaims.set(claim.id, claim);
           throw new RpcError("account_claim_refused", "Proactive claim no longer has materially better remaining allowance", { claimId: claim.id, account: target.id });
