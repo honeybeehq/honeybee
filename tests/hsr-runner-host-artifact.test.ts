@@ -1,3 +1,4 @@
+import { parseNpmPackResult } from "../src/npmPack.js";
 import assert from "node:assert/strict";
 import { execFile, spawn as spawnChild, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -298,12 +299,12 @@ test("a packed and extracted compiled tree with no node_modules, git, or esbuild
     const extractedRoot = join(root, "extracted");
     await mkdir(packRoot);
     await mkdir(extractedRoot);
-    const packed = JSON.parse((await execFileAsync(
+    const packed = parseNpmPackResult((await execFileAsync(
       "npm",
       ["pack", "--json", "--pack-destination", packRoot],
       { cwd: packSource },
-    )).stdout) as Array<{ filename?: unknown }>;
-    const filename = packed[0]?.filename;
+    )).stdout, "honeybee-installed-fixture");
+    const { filename } = packed;
     assert.equal(typeof filename, "string");
     await execFileAsync("tar", ["-xzf", join(packRoot, filename as string), "-C", extractedRoot]);
     const installed = join(extractedRoot, "package");

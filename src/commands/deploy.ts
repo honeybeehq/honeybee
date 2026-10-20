@@ -1,3 +1,4 @@
+import { parseNpmPackResult } from "../npmPack.js";
 import { serviceDirectory } from "../servicePaths.js";
 import { randomUUID } from "node:crypto";
 import { probeNativeNode, resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile, nodeRepairFile, type NodePin } from "../nodeRuntime.js";
@@ -9,7 +10,7 @@ import { probeNativeNode, resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { basename, delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import {
   assertDeployRestartAdmission,
@@ -169,10 +170,7 @@ export async function buildDeployArtifact(
   const packDest = join(workDir, "pack");
   await mkdir(packDest, { recursive: true });
   const { stdout } = await execFileAsync("npm", ["pack", "--json", "--pack-destination", packDest], { cwd: checkout });
-  const filename = (JSON.parse(stdout) as Array<{ filename?: string }>)?.[0]?.filename;
-  if (typeof filename !== "string" || filename.length === 0 || basename(filename) !== filename) {
-    throw new Error(`deploy: npm pack returned an invalid filename (${String(filename)})`);
-  }
+  const { filename } = parseNpmPackResult(stdout, "honeybee");
   const stage = join(workDir, "stage");
   await mkdir(stage, { recursive: true });
   await runStep("tar", ["-xzf", join(packDest, filename), "-C", stage, "--strip-components", "1"], workDir, log);
