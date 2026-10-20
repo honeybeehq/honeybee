@@ -1,8 +1,8 @@
 {
-  "sourceCommit": "419a5a1c0495ae4abb113492e13e88f5f491e8f6",
-  "baseCommit": "5856406ef71c0b57ff5089c049b82b7c0ffc3285",
+  "sourceCommit": "6790f0d8ec206d96b9817cf145e9a8948eb69c53",
+  "baseCommit": "806cdf18cb7b8d759d3c7a794d9718942fdca3aa",
   "branch": "review/sar-B-quota-continuation",
-  "sourceV2Tree": "dc15110821dba4d54d38224a69f011264b5edb66",
+  "sourceV2Tree": "8003e053aa70027293828939af3cc48a7ca79300",
   "checks": [
     {
       "command": "npm run check",
@@ -38,8 +38,8 @@
       "command": "node --test v2/driver-tmux/tests/checkpoint-digest.test.ts",
       "receipt": "checkpoint-digest.log",
       "passed": true,
-      "note": "Plain gate rerun after rebase onto A5856406e, which owns projectionVersion7/stateVersion5 snapshot refresh. No duplicate fixture change remains in B.",
-      "testedV2Tree": "c913ed15bfcaebba54c538bcdb67355765c7129f"
+      "note": "Plain gate rerun after rebase onto A806cdf18, which owns projectionVersion7/stateVersion5 snapshot. No duplicate fixture change in B.",
+      "testedV2Tree": "8003e053aa70027293828939af3cc48a7ca79300"
     }
   ],
   "labCommand": "env -i HOME=\"$PWD/.agent-home\" PATH=/usr/local/bin:/usr/bin:/bin TMPDIR=\"$lab_root\" NODE_OPTIONS=\"--import=$PWD/.proof/B/trash-cleanup.mjs\" node .proof/B/lab.ts",
@@ -57,6 +57,7 @@
     "scope": "read-only code and audit-trail review; no reviewer execution",
     "verdict": "No open High code finding; final evidence receipts requested and included."
   },
-  "deliveryProductionCommit": "c3d1ed7610903eecfd72f7eca205fabbe7bfc697",
-  "productionEquivalence": "Production paths core/src, daemon/src, driver-hsr/src and adapters/src are byte-identical to executed/reviewed sourceCommit 419a5a1c; final rebase only changes inherited checkpoint fixture and proof metadata."
+  "deliveryProductionCommit": "721f36a22f610fcceb0dcc46b1b105cee944622b",
+  "productionEquivalence": "Rebase onto A806cdf18/main7d92 had no manual conflicts. All four pre-refresh B patch IDs are identical; see rebase.patchids.before.tsv, rebase.patchids.after.tsv and rebase.range-diff.txt. Every listed gate and the14-case lab was rerun against sourceCommit after rebase.",
+  "mainBaseCommit": "7d92e55668d15c761df65fe5d4ecdb50fe35336b"
 }

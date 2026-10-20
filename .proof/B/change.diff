@@ -333,7 +333,7 @@ index a7e79c87..9d00326b 100644
        taskSupply: (this.stmt("SELECT * FROM task_supply ORDER BY bee_id").all() as Row[]).map(mapTaskSupply),
        loginFlows: this.listLoginFlows(),
 diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
-index 0bc02491..06c36daa 100644
+index 5c896d47..b4ed9c11 100644
 --- a/v2/core/src/types.ts
 +++ b/v2/core/src/types.ts
 @@ -338,7 +338,7 @@ export const MAIL_CANCELLATION_REASONS = ["requested", "bee_deleted"] as const;
@@ -623,10 +623,10 @@ index a1bfb95e..bdf931d3 100644
      assert.ok(cols.includes("urgency"));
      assert.ok(cols.includes("priority"));
 diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
-index 162cd747..f0025364 100644
+index 7885a030..182199b9 100644
 --- a/v2/daemon/src/daemon.ts
 +++ b/v2/daemon/src/daemon.ts
-@@ -221,6 +221,7 @@ import {
+@@ -222,6 +222,7 @@ import {
  } from "../../adapters/src/index.ts";
  import { liveGateways, type LiveGateway } from "./gateways.ts";
  import { DaemonCore, type BootReport, type I1ViolationEvent } from "./loops.ts";
@@ -634,7 +634,7 @@ index 162cd747..f0025364 100644
  import { AuthResume, type CredentialValidatedReceipt } from "./authResume.ts";
  import {
    ConfigError,
-@@ -724,6 +725,7 @@ export class HiveDaemon {
+@@ -725,6 +726,7 @@ export class HiveDaemon {
    private readonly opLog: string[] = [];
    private accounts: AccountsService | null = null;
    private loginFlows: LoginFlowService | null = null;
@@ -642,7 +642,7 @@ index 162cd747..f0025364 100644
    private authResume: AuthResume | null = null;
    /** v31 — Cell disk retention pass + `cell.gc` / `cell.evict`. */
    private retention: CellRetentionService | null = null;
-@@ -857,6 +859,7 @@ export class HiveDaemon {
+@@ -858,6 +860,7 @@ export class HiveDaemon {
        onCredentialValidated: (accountId, by) => this.credentialValidatedQuietly(accountId, by),
      });
      const accounts = this.accounts;
@@ -650,7 +650,7 @@ index 162cd747..f0025364 100644
      this.authResume = new AuthResume({
        store,
        log: (op) => this.log(op),
-@@ -1374,6 +1377,7 @@ export class HiveDaemon {
+@@ -1375,6 +1378,7 @@ export class HiveDaemon {
        this.threadOperations?.tick();
        this.performance.measureSync("daemon.tick.core", () => {
          core.step();
@@ -658,7 +658,7 @@ index 162cd747..f0025364 100644
          this.authResume?.reconcile();
        });
        tStep = Date.now();
-@@ -2411,7 +2415,7 @@ export class HiveDaemon {
+@@ -2420,7 +2424,7 @@ export class HiveDaemon {
  
    private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
      const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
@@ -667,7 +667,7 @@ index 162cd747..f0025364 100644
      if (verb === "update.apiarySwap.status") {
        let installedIdentity: ComponentIdentity | null = null;
        try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
-@@ -5797,6 +5801,7 @@ export class HiveDaemon {
+@@ -5806,6 +5810,7 @@ export class HiveDaemon {
        accounts: store.listAccounts().map((account) => this.mirrorAccount(account)),
        accountLimits: store.listAccountLimits(),
        accountAdmissions: store.listAccountAdmissions(),
@@ -675,7 +675,7 @@ index 162cd747..f0025364 100644
        tasks: store.listTasks(),
        taskSupply: store.listTaskSupply(),
        loginFlows: store.listLoginFlows(),
-@@ -6464,6 +6469,8 @@ export class HiveDaemon {
+@@ -6473,6 +6478,8 @@ export class HiveDaemon {
      const bee = store.getBee(beeId) as BeeRow;
      const selector = this.param(params, "account");
      const onlyAccountIds = this.admissionAccountIdsParam(params, "onlyAccountIds");
@@ -684,7 +684,7 @@ index 162cd747..f0025364 100644
      if (selector !== "auto") {
        const target = this.resolveAccountSelector(selector, bee.agent);
        if (onlyAccountIds && !onlyAccountIds.has(target.id)) {
-@@ -6481,7 +6488,7 @@ export class HiveDaemon {
+@@ -6490,7 +6497,7 @@ export class HiveDaemon {
          claim, "swap", bee.agent, bee.id, runtime?.generation ?? 0, bee.account,
          this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
        );
@@ -693,7 +693,7 @@ index 162cd747..f0025364 100644
      }
      if (this.mustAccounts().allocationMode() === "active") this.ownerClaimRequired(bee.agent, "swap");
      const admission = this.mustAccounts().admitNewWork(bee.agent, {
-@@ -6496,7 +6503,7 @@ export class HiveDaemon {
+@@ -6505,7 +6512,7 @@ export class HiveDaemon {
        reconcileAfterGeneration: runtime?.generation ?? 0,
      });
      if (!admission.ok) throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
@@ -702,7 +702,7 @@ index 162cd747..f0025364 100644
    }
  
    private performSwap(
-@@ -6506,6 +6513,7 @@ export class HiveDaemon {
+@@ -6515,6 +6522,7 @@ export class HiveDaemon {
      allocation?: AccountAllocationReceipt,
      reservationId?: string,
      claim?: AccountAdmissionClaim,
@@ -710,7 +710,7 @@ index 162cd747..f0025364 100644
    ): SwapAccountResult {
      const store = this.mustStore();
      const accounts = this.mustAccounts();
-@@ -6527,6 +6535,9 @@ export class HiveDaemon {
+@@ -6537,6 +6545,9 @@ export class HiveDaemon {
      let rekeyed = false;
      let commandId: number | null = null;
      store.transact(() => {
@@ -720,7 +720,7 @@ index 162cd747..f0025364 100644
        store.setBeeAccount(bee.id, target.id);
        const key = homeEnvFor(bee.agent);
        const env = { ...bee.env };
-@@ -6542,6 +6553,10 @@ export class HiveDaemon {
+@@ -6552,6 +6563,10 @@ export class HiveDaemon {
        if (live && rt) {
          commandId = store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: `swap_account:${by}`, thenRevive: true }).id;
        }
@@ -731,7 +731,7 @@ index 162cd747..f0025364 100644
        if (claim) {
          this.consumeAccountClaim(claim, bee.id);
        } else if (reservationId) store.bindAccountAdmission(reservationId, bee.id);
-@@ -6648,6 +6663,7 @@ export class HiveDaemon {
+@@ -6680,6 +6695,7 @@ export class HiveDaemon {
          this.authResume?.interrupted(ev);
          if (account.harness === "claude" && !authorityInDoubt) accounts.scheduleClaudeRecovery(account.id);
        } else {
@@ -739,7 +739,7 @@ index 162cd747..f0025364 100644
          this.authResume?.turnSucceeded(bee.id);
          if (account.status === "auth_needed" && !authorityInDoubt) {
            store.setAccountStatus(account.id, "ok", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`);
-@@ -6682,15 +6698,22 @@ export class HiveDaemon {
+@@ -6714,15 +6730,22 @@ export class HiveDaemon {
        this.log(`account.rotate bee=${bee.id} account=${account.id} waiting=allocation_owner_required`);
        return;
      }

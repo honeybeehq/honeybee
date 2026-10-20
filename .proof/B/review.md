@@ -11,3 +11,5 @@ Attention
 - Earlier disk-full and weekly-ceiling timing failures are retained. Final exact-source gate receipts are in checks.json and the associated logs.
 
 Integration update: A now owns the checkpoint digest refresh at 5856406e. B was rebased onto that pin with no duplicate fixture diff. The plain digest gate passed again; production source remains byte-identical to the independently approved 419a5a1c. checks.json distinguishes the executed source pin from the checkpoint test tree.
+
+Rebase update: A806cdf18 now builds on main7d92e556. B rebased without manual conflicts, and all four B patch IDs were preserved before the proof-only receipt refresh. Every listed gate and the14-case lab was rerun against checkout6790f0d8; checks.json records the exact source/tree. Upstream main changes are preserved.
