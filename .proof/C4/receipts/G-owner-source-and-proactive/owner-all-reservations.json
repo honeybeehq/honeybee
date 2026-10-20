@@ -1,0 +1,297 @@
+[
+  {
+    "id": "58e981d3-02d3-44d5-b660-4a9d4a9bdfd4",
+    "requestKey": "account-admission:spawn:waggle-ad2977ae-29b6-4580-83bb-44db3ac425cf:account-acquire",
+    "scope": "claude:provider-accounts",
+    "account": "claude-a",
+    "sourceAccount": null,
+    "operation": "spawn",
+    "units": 1,
+    "beeId": null,
+    "reconcileAfterGeneration": 0,
+    "receipt": {
+      "allocation": {
+        "version": 1,
+        "mode": "active",
+        "scope": "claude:provider-accounts",
+        "revision": "3ab51bf979dfa23fa6f1ce3936633a1234234d6e22e3aa0b22eb92ae54833162",
+        "observedAt": 1792488017221,
+        "operation": "spawn",
+        "outcome": "selected",
+        "account": "claude-a",
+        "reason": "weighted_fair",
+        "retryAt": null,
+        "candidates": [
+          {
+            "accountId": "claude-a",
+            "status": "eligible",
+            "rate": 0.00566742313121672,
+            "fairFinish": 176.4470336601307,
+            "maxProjectedPercent": 9,
+            "retryAt": 1792505945144
+          },
+          {
+            "accountId": "claude-b",
+            "status": "eligible",
+            "rate": 0.00566742313121672,
+            "fairFinish": 176.4470336601307,
+            "maxProjectedPercent": 9,
+            "retryAt": 1792505945144
+          }
+        ]
+      },
+      "authority": {
+        "version": 1,
+        "owner": {
+          "node": "node-fixture",
+          "epoch": "g-lab-v1"
+        },
+        "target": {
+          "node": "4d7aa5f7-7fba-4ef7-a3d2-0b4ee8176123",
+          "workId": "allocation-963f1a50b40a8fcd239c4eabd32fef87",
+          "expectedGeneration": 0
+        },
+        "model": "claude-opus-5-5"
+      }
+    },
+    "createdAt": 1792488017247,
+    "expiresAt": 1792488917221,
+    "confirmedAt": 1792488017332,
+    "releasedAt": null
+  },
+  {
+    "id": "de3abbf1-b539-4e4a-9609-5d9af8a05d26",
+    "requestKey": "account-admission:swap:quota-recovery:9bf0b07dc613f38415cb6a3caa7d56b8a9eb3c3301db12f9d54af91b4f900e4b:0:account-acquire",
+    "scope": "claude:provider-accounts",
+    "account": "claude-b",
+    "sourceAccount": "claude-a",
+    "operation": "swap",
+    "units": 1,
+    "beeId": null,
+    "reconcileAfterGeneration": 1,
+    "receipt": {
+      "allocation": {
+        "version": 1,
+        "mode": "active",
+        "scope": "claude:provider-accounts",
+        "revision": "6be4a59d5e9cbe808e02cc94ce4ad6346ea29e7f7aafb3ccb79063807eb11525",
+        "observedAt": 1792488030546,
+        "operation": "swap",
+        "outcome": "selected",
+        "account": "claude-b",
+        "reason": "weighted_fair",
+        "retryAt": null,
+        "candidates": [
+          {
+            "accountId": "claude-b",
+            "status": "eligible",
+            "rate": 0.005666715452889149,
+            "fairFinish": 176.46906895424837,
+            "maxProjectedPercent": 9,
+            "retryAt": 1792506025897
+          }
+        ]
+      },
+      "authority": {
+        "version": 1,
+        "owner": {
+          "node": "node-fixture",
+          "epoch": "g-lab-v1"
+        },
+        "target": {
+          "node": "4d7aa5f7-7fba-4ef7-a3d2-0b4ee8176123",
+          "workId": "allocation-963f1a50b40a8fcd239c4eabd32fef87",
+          "expectedGeneration": 1
+        },
+        "model": "claude-opus-5-5"
+      },
+      "sourceQuotaRecovery": {
+        "observedAt": 1792488030502,
+        "window": "weekly",
+        "resetsAt": 1793028030290,
+        "usedPercentAtObservation": null,
+        "usedPercentObservedAt": null
+      }
+    },
+    "createdAt": 1792488030548,
+    "expiresAt": 1792488930546,
+    "confirmedAt": 1792488030562,
+    "releasedAt": null
+  },
+  {
+    "id": "c347f146-acd3-4b68-bdf5-b3e0a0c49f4e",
+    "requestKey": "account-admission:swap:quota-recovery:5d5207bfcbf837023d90ef0bdfac942f2b5cfcfbf7a15424707c237d8671a07c:0:account-acquire",
+    "scope": "claude:provider-accounts",
+    "account": "claude-a",
+    "sourceAccount": "claude-b",
+    "operation": "swap",
+    "units": 1,
+    "beeId": null,
+    "reconcileAfterGeneration": 2,
+    "receipt": {
+      "allocation": {
+        "version": 1,
+        "mode": "active",
+        "scope": "claude:provider-accounts",
+        "revision": "6942a36807739d2ea3dde6016eb10d0b1f73491328d82021ac81dfe9d0d31d6b",
+        "observedAt": 1792488129932,
+        "operation": "swap",
+        "outcome": "selected",
+        "account": "claude-a",
+        "reason": "weighted_fair",
+        "retryAt": null,
+        "candidates": [
+          {
+            "accountId": "claude-a",
+            "status": "eligible",
+            "rate": 0.005666693216173772,
+            "fairFinish": 352.939522875817,
+            "maxProjectedPercent": 13,
+            "retryAt": 1792506127402
+          }
+        ]
+      },
+      "authority": {
+        "version": 1,
+        "owner": {
+          "node": "node-fixture",
+          "epoch": "g-lab-v1"
+        },
+        "target": {
+          "node": "4d7aa5f7-7fba-4ef7-a3d2-0b4ee8176123",
+          "workId": "allocation-963f1a50b40a8fcd239c4eabd32fef87",
+          "expectedGeneration": 2
+        },
+        "model": "claude-opus-5-5"
+      },
+      "sourceQuotaRecovery": {
+        "observedAt": 1792488129900,
+        "window": "weekly",
+        "resetsAt": 1793028129000,
+        "usedPercentAtObservation": null,
+        "usedPercentObservedAt": null
+      }
+    },
+    "createdAt": 1792488129933,
+    "expiresAt": 1792489029932,
+    "confirmedAt": 1792488129944,
+    "releasedAt": null
+  },
+  {
+    "id": "c0c14efa-3acc-44f3-bd4d-39d5c2085789",
+    "requestKey": "account-admission:swap:quota-recovery:ce66506baa7b04cf488a1b7955dcd6de1e8ac6cce6d11d0bb4a74df3c1cfae6c:0:account-acquire",
+    "scope": "claude:provider-accounts",
+    "account": "claude-b",
+    "sourceAccount": "claude-a",
+    "operation": "swap",
+    "units": 1,
+    "beeId": null,
+    "reconcileAfterGeneration": 3,
+    "receipt": {
+      "allocation": {
+        "version": 1,
+        "mode": "active",
+        "scope": "claude:provider-accounts",
+        "revision": "99f0e84c8888d974b4032af0e07d436f0b981fb91556febd4c64d29552b3871e",
+        "observedAt": 1792488170930,
+        "operation": "swap",
+        "outcome": "selected",
+        "account": "claude-b",
+        "reason": "weighted_fair",
+        "retryAt": null,
+        "candidates": [
+          {
+            "accountId": "claude-b",
+            "status": "eligible",
+            "rate": 0.005666690771090188,
+            "fairFinish": 352.9396751633987,
+            "maxProjectedPercent": 13,
+            "retryAt": 1792506168633
+          }
+        ]
+      },
+      "authority": {
+        "version": 1,
+        "owner": {
+          "node": "node-fixture",
+          "epoch": "g-lab-v1"
+        },
+        "target": {
+          "node": "4d7aa5f7-7fba-4ef7-a3d2-0b4ee8176123",
+          "workId": "allocation-963f1a50b40a8fcd239c4eabd32fef87",
+          "expectedGeneration": 3
+        },
+        "model": "claude-opus-5-5"
+      }
+    },
+    "createdAt": 1792488170931,
+    "expiresAt": 1792489070930,
+    "confirmedAt": 1792488170940,
+    "releasedAt": null
+  },
+  {
+    "id": "3e6ff869-cb2f-4d2e-b51b-7aea62256bbe",
+    "requestKey": "account-admission:swap:quota-recovery:1fb107f5917d9fe0f84e11c91c22cd386d1996ff9c759cf7205416fd8fdb98d5:0:account-acquire",
+    "scope": "claude:provider-accounts",
+    "account": "claude-b",
+    "sourceAccount": "claude-b",
+    "operation": "swap",
+    "units": 1,
+    "beeId": null,
+    "reconcileAfterGeneration": 4,
+    "receipt": {
+      "allocation": {
+        "version": 1,
+        "mode": "active",
+        "scope": "claude:provider-accounts",
+        "revision": "dbc8cf4b257fca576ebfbd73c101a39e285434e2d8b78a215772b5970c11234f",
+        "observedAt": 1792488573484,
+        "operation": "swap",
+        "outcome": "selected",
+        "account": "claude-b",
+        "reason": "weighted_fair",
+        "retryAt": null,
+        "candidates": [
+          {
+            "accountId": "claude-a",
+            "status": "protected",
+            "reason": "completion_reserve",
+            "maxProjectedPercent": 103
+          },
+          {
+            "accountId": "claude-b",
+            "status": "eligible",
+            "rate": 0.0056698172371100666,
+            "fairFinish": 294.4047473321947,
+            "maxProjectedPercent": 9,
+            "retryAt": 1792506273420
+          }
+        ]
+      },
+      "authority": {
+        "version": 1,
+        "owner": {
+          "node": "node-fixture",
+          "epoch": "g-lab-v1"
+        },
+        "target": {
+          "node": "4d7aa5f7-7fba-4ef7-a3d2-0b4ee8176123",
+          "workId": "allocation-963f1a50b40a8fcd239c4eabd32fef87",
+          "expectedGeneration": 4
+        },
+        "model": "claude-opus-5-5"
+      },
+      "sourceQuotaRecovery": {
+        "observedAt": 1792488275773,
+        "window": "five_hour",
+        "resetsAt": 1792488573468,
+        "usedPercentAtObservation": 100,
+        "usedPercentObservedAt": 1792488275784
+      }
+    },
+    "createdAt": 1792488573486,
+    "expiresAt": 1792489473484,
+    "confirmedAt": 1792488573508,
+    "releasedAt": null
+  }
+]

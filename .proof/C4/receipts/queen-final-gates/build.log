@@ -1,0 +1,13 @@
+
+> honeybee@0.0.1 build
+> tsc -p tsconfig.json && node scripts/build-runner-host-artifact.mjs && node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs && node scripts/build-cli-entry.mjs
+
+runner-host artifact 627f7e4c81d71227c0cf3ad993dabc06bd6e6cfc144691a26a4ccde367dbe95d (1630216 bytes) staged under /home/trmd/.hive/v2/cells/sar-c-recovery-coordinator-eff0fd7850b7/github-com-honeybeehq-honeybee-a9015b303498-space-eff0fd7850b7/dist/hsr/artifacts
+peer credential bridge linux-x64 (145 C lines)
+{"passed":true,"target":"linux-x64","node":"v24.18.0","uid":1001,"pid":2504911,"processBirth":"linux:309139461","pidfd":true}
+v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, and dist/v2/runner-host.js (16135 bytes)
+dependency-light cli entry staged at dist/cli.js
+
+> honeybee@0.0.1 postbuild
+> chmod +x dist/cli.js dist/cli-x.js
+
