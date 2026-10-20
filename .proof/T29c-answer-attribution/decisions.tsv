@@ -1,0 +1,7 @@
+decision	why	evidence	result
+Emit rpc for new answers	RpcConn has no authenticated producer/operator discriminator	docs/design/question-answer-attribution.md; v2/daemon/src/daemon.ts	Caller labels ignored; role gate deferred
+Use answer turn kind with human bookkeeping	Queen ruling preserved behavior without asserting human authority	Project findings/T29c-honeybee-answer-gate.md v2; regression-before.log; focused-verified.log	63 focused checks pass; envelope unchanged
+Preserve answer priority in extractive handoff	Fresh rpc attribution must not change prompt selection	v2/core/tests/handoff.test.ts handoff.answer-attribution	Positive question binding replaces reliance on sender label
+Coordinate paired Apiary consumers	Old closed validator rejects answer; card says by rpc	Apiary T29f 4aa99e5a40a119314741169a75f978712d3d2f41; T29e 145201a6	Every-node Apiary release prerequisite documented before Honeybee deployment
+Use committed masked gate fixture exception	Gate-local helper clearing and sealed fixture push conflict with literal author git restrictions	Orchestrator Queen relay message 21044	Only #52 gate internals excepted; author git remains exact allowlisted
+Preserve failed verification evidence	Two new fixtures initially lacked valid fallback descriptor and expected unnormalized handoff whitespace	focused.log; focused-corrected-fixtures.log; focused-final.log; focused-verified.log	Corrected fixtures, retained failures, 63 pass

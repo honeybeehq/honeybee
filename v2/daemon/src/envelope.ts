@@ -52,14 +52,6 @@ export function urgencyToTier(urgency: Urgency): "interrupt" | "next-tool" | "qu
   }
 }
 
-/**
- * True when the sender is a peer agent. POSITIVE identification only: a
- * pretty handle (HANDLE_RE), a v2 UUID, or an id the store knows as a bee.
- * UUID shape remains durable provenance after a sender bee is removed because
- * the send RPC admits only existing bee UUIDs. Anything else — "operator",
- * "human:<name>", answeredBy names like "tormod" — is a person and is
- * delivered bare (the v6.rpc.6 answer flow relies on this).
- */
 export function isPeerSender(sender: string, beeExists: (id: string) => boolean): boolean {
   if (sender === "operator" || sender.startsWith("human:")) return false;
   return REMOTE_SENDER_RE.test(sender) || HANDLE_RE.test(sender) || BEE_UUID_RE.test(sender) || beeExists(sender);

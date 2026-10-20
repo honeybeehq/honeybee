@@ -1,0 +1,48 @@
+v2/cli/src/readonly.ts:83:    lastTurnTrigger: r.last_turn_trigger == null ? null : JSON.parse(String(r.last_turn_trigger)) as BeeRow["lastTurnTrigger"],
+v2/core/src/mirror.ts:223: *   mail.delivered  → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)
+v2/core/src/mirror.ts:224: *   runtime.updated → may carry { turnTrigger: TurnTrigger }             (bee row: lastTurnTrigger)
+v2/core/src/mirror.ts:326:  "lastTurnTrigger",
+v2/core/src/audit.ts:35:  TurnTrigger,
+v2/core/src/audit.ts:106:          lastTurnTrigger: bee.lastTurnTrigger ?? null,
+v2/core/src/audit.ts:280:        if (p.turnTrigger !== undefined) mustBee(rt.beeId).lastTurnTrigger = { ...(p.turnTrigger as TurnTrigger) };
+v2/core/src/audit.ts:338:        if (p.turnTrigger !== undefined) mustBee(message.beeId).lastTurnTrigger = { ...(p.turnTrigger as TurnTrigger) };
+v2/core/src/types.ts:194:  lastTurnTrigger: TurnTrigger | null;
+v2/core/src/types.ts:198:export const TURN_TRIGGER_KINDS = ["human", "mail", "other"] as const;
+v2/core/src/types.ts:199:export type TurnTriggerKind = (typeof TURN_TRIGGER_KINDS)[number];
+v2/core/src/types.ts:201:export interface TurnTriggerSource {
+v2/core/src/types.ts:202:  kind: TurnTriggerKind;
+v2/core/src/types.ts:206:export interface TurnTrigger extends TurnTriggerSource {
+v2/core/src/types.ts:210:  humanAt: number | null;
+v2/daemon/src/envelope.ts:23:  type TurnTriggerSource,
+v2/daemon/src/envelope.ts:75:): TurnTriggerSource {
+v2/daemon/src/multilineFallback.ts:1:import type { BeeRow, CoreStore, DeliveryFallback, MessageRow, TurnTriggerSource } from "../../core/src/index.ts";
+v2/daemon/src/multilineFallback.ts:41:  reconcile(message: MessageRow, source: TurnTriggerSource): boolean {
+v2/daemon/src/multilineFallback.ts:58:  deliver(message: MessageRow, text: string, generation: number, peer: boolean, questionId: string | null, source: TurnTriggerSource, reorderMessageIds: number[] = []): { handled: boolean; accepted: boolean; generation?: number } {
+v2/daemon/src/multilineFallback.ts:120:  private complete(message: MessageRow, fallback: DeliveryFallback, source: TurnTriggerSource): boolean {
+v2/daemon/src/loops.ts:74:  type TurnTriggerSource,
+v2/daemon/src/loops.ts:655:  private turnTriggerSourceOf(msg: MessageRow, peer: boolean): TurnTriggerSource {
+v2/daemon/src/loops.ts:659:  private turnOpenerOf(obs: DriverObservation): { turnOpener?: TurnTriggerSource & { messageId: number } } {
+v2/core/src/store.ts:121:  type TurnTrigger,
+v2/core/src/store.ts:122:  type TurnTriggerSource,
+v2/core/src/store.ts:722:    lastTurnTrigger: r.last_turn_trigger == null ? null : (JSON.parse(r.last_turn_trigger as string) as TurnTrigger),
+v2/core/src/store.ts:2864:      turnOpener?: TurnTriggerSource & { messageId: number };
+v2/core/src/store.ts:4290:  markDelivered(messageId: number, generation: number, source?: TurnTriggerSource, reorderMessageIds?: number[]): { applied: boolean } {
+v2/core/src/store.ts:4294:  completeMultilineFallback(messageId: number, generation: number, source: TurnTriggerSource, paneInputCleared = true): { applied: boolean } {
+v2/core/src/store.ts:4306:  private commitMessageDelivery(messageId: number, generation: number, source: TurnTriggerSource | undefined, recoveredFallback: boolean, reorderMessageIds?: unknown): { applied: boolean } {
+v2/core/src/store.ts:4336:      const turnTrigger = source && currentMatches ? this.applyDeliveryTurnTrigger(message.beeId, current!, messageId, source, at) : null;
+v2/core/src/store.ts:4417:         WHEN json_extract(last_turn_trigger, '$.humanAt') IS NOT NULL AND json_extract(last_turn_trigger, '$.generation') = ?
+v2/core/src/store.ts:4436:  private writeTurnTrigger(beeId: string, trigger: TurnTrigger): TurnTrigger {
+v2/core/src/store.ts:4441:  private openTurnTrigger(beeId: string, generation: number, source: TurnTriggerSource, messageId: number | null, at: number): TurnTrigger {
+v2/core/src/store.ts:4442:    return this.writeTurnTrigger(beeId, { ...source, messageId, generation, startedAt: at, humanAt: source.kind === "human" ? at : null, endedAt: null });
+v2/core/src/store.ts:4445:  private openTurnOf(beeId: string, generation: number): TurnTrigger | null {
+v2/core/src/store.ts:4446:    const existing = this.mustGetBee(beeId).lastTurnTrigger;
+v2/core/src/store.ts:4450:  private applyDeliveryTurnTrigger(beeId: string, runtime: RuntimeRow, messageId: number, source: TurnTriggerSource, at: number): TurnTrigger | null {
+v2/core/src/store.ts:4451:    const last = this.mustGetBee(beeId).lastTurnTrigger;
+v2/core/src/store.ts:4454:    if (!sameGeneration || last.endedAt !== null) return this.openTurnTrigger(beeId, runtime.generation, source, messageId, at);
+v2/core/src/store.ts:4455:    if (source.kind !== "human" || last.humanAt !== null) return null;
+v2/core/src/store.ts:4456:    return this.writeTurnTrigger(beeId, { ...last, humanAt: at });
+v2/core/src/store.ts:4459:  private applyTurnStartTrigger(beeId: string, runtime: RuntimeRow, opener: (TurnTriggerSource & { messageId: number }) | undefined, at: number): TurnTrigger | null {
+v2/core/src/store.ts:4462:    if (opener === undefined) return this.openTurnTrigger(beeId, runtime.generation, { kind: "other", from: null }, null, at);
+v2/core/src/store.ts:4463:    return this.openTurnTrigger(beeId, runtime.generation, { kind: opener.kind, from: opener.from }, opener.messageId, at);
+v2/core/src/store.ts:4466:  private applyTurnEndTrigger(beeId: string, generation: number, at: number, endedQuiet?: boolean): TurnTrigger | null {
+v2/core/src/store.ts:4468:    return open === null ? null : this.writeTurnTrigger(beeId, { ...open, endedAt: at, ...(endedQuiet !== undefined ? { endedQuiet } : {}) });

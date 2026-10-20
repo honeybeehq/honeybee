@@ -1,0 +1,36 @@
+v2/daemon/tests/turn-trigger.test.ts:140:    const answer = rig.store.answerQuestion(question.id, "rebase", { answeredBy: "tormod" }).send.message;
+v2/cli/src/main.ts:1977:      ...(parsed.flags.has("--by") ? { answeredBy: parsed.flags.get("--by") as string } : {}),
+v2/daemon/src/protocol.ts:1339: * `question.answer {questionId, answer, answeredBy?}` — marks answered AND
+v2/daemon/tests/envelope.test.ts:28:test("envelope.2: only POSITIVELY-identified peers envelope — operator, humans, and answeredBy names stay bare", () => {
+v2/daemon/tests/envelope.test.ts:34:  assert.equal(isPeerSender("tormod", none), false, "answeredBy names are people (v6.rpc.6)");
+v2/cli/src/render.ts:502:  const ans = q.status === "answered" ? `  answered by ${q.answeredBy}: ${q.answer}` : q.status === "withdrawn" ? `  reason: ${q.withdrawalReason}` : "";
+v2/cli/src/readonly.ts:163:    answeredBy: (r.answered_by as string | null) ?? null,
+v2/daemon/src/envelope.ts:60: * "human:<name>", answeredBy names like "tormod" — is a person and is
+v2/core/tests/mirror.test.ts:151:    store.answerQuestion(question.id, "yes", { answeredBy: "operator" });
+v2/core/tests/mirror.test.ts:330:      "answeredBy": "operator",
+v2/core/tests/mirror.test.ts:432:    assert.deepEqual(keysOf(v6[1]!.payload), ["answer", "answeredAt", "answeredBy", "beeId", "deliveryMessageId", "questionId"]);
+v2/core/tests/turn-trigger.test.ts:243:    const answer = store.answerQuestion(question.id, "rebase", { answeredBy: "tormod" }).send.message;
+v2/daemon/tests/preflip-verbs.test.ts:484:    const answered = await client.request<QuestionAnswerResult>("question.answer", { questionId: asked.question.id, answer: "rebase", answeredBy: "tormod", idempotencyKey: "ans-1" });
+v2/daemon/tests/preflip-verbs.test.ts:487:    assert.equal(answered.question.answeredBy, "tormod");
+v2/daemon/tests/preflip-verbs.test.ts:509:    const replay = await client.request<QuestionAnswerResult>("question.answer", { questionId: asked.question.id, answer: "rebase", answeredBy: "tormod", idempotencyKey: "ans-1" });
+v2/daemon/src/daemon.ts:5294:    const answeredBy = typeof params.answeredBy === "string" && params.answeredBy.length > 0 ? params.answeredBy : "operator";
+v2/daemon/src/daemon.ts:5295:    const res = store.answerQuestion(questionId, answer, { answeredBy });
+v2/core/tests/question-withdraw.test.ts:71:    CREATE TABLE questions(id TEXT PRIMARY KEY, bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE, generation INTEGER, text TEXT NOT NULL, options TEXT, status TEXT NOT NULL CHECK(status IN ('open','answered')), answer TEXT, asked_at INTEGER NOT NULL, answered_at INTEGER, answered_by TEXT, delivery_message_id INTEGER, CHECK((status='answered')=(answered_at IS NOT NULL))) STRICT;
+v2/core/tests/question-withdraw.test.ts:72:    INSERT INTO questions SELECT id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id FROM questions_new;
+v2/core/tests/preflip-verbs.test.ts:205:    const a = store.answerQuestion(q.id, "rebase", { answeredBy: "tormod" });
+v2/core/tests/preflip-verbs.test.ts:208:    assert.equal(a.question.answeredBy, "tormod");
+v2/core/tests/preflip-verbs.test.ts:227:    assert.equal(b.question.answeredBy, "operator");
+v2/core/src/audit.ts:432:        question.answeredBy = p.answeredBy as string;
+v2/core/src/mirror.ts:165: *   question.answered  → { questionId, beeId, answer, answeredAt, answeredBy, deliveryMessageId }
+v2/core/src/mirror.ts:377:  "answeredBy",
+v2/core/src/schema.ts:175:  answered_by         TEXT,
+v2/core/src/schema.ts:181:  CHECK (status <> 'withdrawn' OR (answer IS NULL AND answered_at IS NULL AND answered_by IS NULL AND delivery_message_id IS NULL)),
+v2/core/src/types.ts:861:  answeredBy: string | null;
+v2/core/src/store.ts:1125:    answeredBy: (r.answered_by as string | null) ?? null,
+v2/core/src/store.ts:1804:      const columns = "id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id";
+v2/core/src/store.ts:5878:          `INSERT INTO questions(id, bee_id, generation, text, options, status, answer, asked_at, answered_at, answered_by, delivery_message_id)
+v2/core/src/store.ts:5894:  answerQuestion(questionId: string, answer: string, opts: { answeredBy?: string } = {}): AnswerResult {
+v2/core/src/store.ts:5903:      const answeredBy = opts.answeredBy ?? "operator";
+v2/core/src/store.ts:5906:      const won = this.db.prepare("UPDATE questions SET status = 'answered', answer = ?, answered_at = ?, answered_by = ? WHERE id = ? AND status = 'open'").run(text, at, answeredBy, questionId);
+v2/core/src/store.ts:5908:      const send = this.send(question.beeId, body, { sender: answeredBy, urgency: "next" });
+v2/core/src/store.ts:5916:        answeredBy,

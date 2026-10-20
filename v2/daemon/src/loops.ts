@@ -653,6 +653,7 @@ export class DaemonCore {
   }
 
   private turnTriggerSourceOf(msg: MessageRow, peer: boolean): TurnTriggerSource {
+    if (this.store.answeredQuestionId(msg.id) !== null) return { kind: "answer", from: msg.sender };
     return turnTriggerSource(msg, this.store.mailOrigin(msg.id), peer, this.store.getBee(msg.beeId)?.parentId ?? null);
   }
 

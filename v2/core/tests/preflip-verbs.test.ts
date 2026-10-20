@@ -224,7 +224,8 @@ test("v6.questions: ask → open row (generation stamped); answer → answered +
     store.updateRuntimeState(bee.id, 1, "stopped", { exitCause: "clean" });
     const b = store.answerQuestion(q2.id, "yes");
     assert.ok(b.send.wakeCommand, "revive-on-answer: a send_wake is enqueued");
-    assert.equal(b.question.answeredBy, "operator");
+    assert.equal(b.question.answeredBy, "rpc");
+    assert.equal(b.send.message.sender, "rpc");
 
     // audit shapes + replay
     const asked = store.auditRows().filter((r) => r.kind === "question.asked");

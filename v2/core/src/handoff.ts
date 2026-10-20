@@ -146,10 +146,11 @@ export interface ExtractiveHandoffInput {
 export function buildExtractiveHandoffContext(input: ExtractiveHandoffInput): HandoffContext {
   const delivered = input.messages.filter((m) => m.deliveredAt != null);
   const queued = input.messages.filter((m) => m.deliveredAt == null);
-  const firstOperator = delivered.find((m) => m.sender === "operator" || m.sender.startsWith("human:"))
+  const answerIds = new Set(input.questions.flatMap((q) => q.deliveryMessageId === null ? [] : [q.deliveryMessageId]));
+  const firstPrompt = delivered.find((m) => answerIds.has(m.id) || m.sender === "operator" || m.sender.startsWith("human:"))
     ?? delivered[0];
   const firstUserTurn = input.turns.find((t) => t.role === "user");
-  const task = firstOperator?.body ?? firstUserTurn?.text ?? input.bee.title ?? null;
+  const task = firstPrompt?.body ?? firstUserTurn?.text ?? input.bee.title ?? null;
 
   const constraints: string[] = [];
   if (input.instruction) constraints.push(`Operator instruction: ${input.instruction}`);

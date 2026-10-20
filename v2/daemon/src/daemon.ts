@@ -5291,8 +5291,7 @@ export class HiveDaemon {
     const questionId = this.param(params, "questionId");
     const answer = this.param(params, "answer");
     if (!store.getQuestion(questionId)) throw new RpcError("question_not_found", `question not found: ${questionId}`);
-    const answeredBy = typeof params.answeredBy === "string" && params.answeredBy.length > 0 ? params.answeredBy : "operator";
-    const res = store.answerQuestion(questionId, answer, { answeredBy });
+    const res = store.answerQuestion(questionId, answer, { answeredBy: "rpc" });
     this.log(`question.answer question=${questionId} bee=${res.question.beeId} msg=${res.send.message.id}${res.send.wakeCommand ? ` wake=${res.send.wakeCommand.id}` : ""}`);
     return {
       question: res.question,

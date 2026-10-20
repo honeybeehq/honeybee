@@ -1974,7 +1974,6 @@ async function cmdAnswer(ctx: CliContext, parsed: Parsed): Promise<number> {
     const r = await c.request<QuestionAnswerResult>("question.answer", {
       questionId,
       answer,
-      ...(parsed.flags.has("--by") ? { answeredBy: parsed.flags.get("--by") as string } : {}),
       idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
     });
     emit(
@@ -1983,7 +1982,7 @@ async function cmdAnswer(ctx: CliContext, parsed: Parsed): Promise<number> {
         confirm(
           "ok",
           "answered",
-          `question ${questionId} → delivered to ${r.question.beeId} as message ${r.messageId}${r.commandId != null ? ` (wake command ${r.commandId})` : ""}`,
+          `question ${questionId} → delivered to ${r.question.beeId} as message ${r.messageId}${r.commandId != null ? ` (wake command ${r.commandId})` : ""}${parsed.flags.has("--by") ? ` (display label: ${JSON.stringify(parsed.flags.get("--by"))})` : ""}`,
           r.deduped,
         ),
       ],

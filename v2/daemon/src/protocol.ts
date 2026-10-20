@@ -1335,13 +1335,6 @@ export interface QuestionAskResult extends DedupMarkers {
   question: MirrorQuestionRow;
 }
 
-/**
- * `question.answer {questionId, answer, answeredBy?}` — marks answered AND
- * delivers the answer to the bee as an ordinary mailbox message prefixed
- * `[answer to question <id>]` (send()'s wake/unarchive rules apply). A
- * answered question is `invalid_request`; a withdrawn question is `question_withdrawn`
- * with its withdrawalReason in details and a clear message. Audit `question.answered`.
- */
 export interface QuestionAnswerResult extends DedupMarkers {
   question: MirrorQuestionRow;
   messageId: number;
