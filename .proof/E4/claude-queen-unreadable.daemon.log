@@ -1,0 +1,38 @@
+hived v2 listening on /var/tmp/sar-e4-third-frozen-D3hLkW/hb-v2-daemon-vHGuiz/hived.sock (store /var/tmp/sar-e4-third-frozen-D3hLkW/hb-v2-daemon-vHGuiz/core.sqlite3)
+{"ts":1792503394922,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792503394949,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1792503394956,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792503394969,"op":"rpc.listen socket=/var/tmp/sar-e4-third-frozen-D3hLkW/hb-v2-daemon-vHGuiz/hived.sock"}
+{"ts":1792503394970,"op":"daemon.started pid=936762 store=/var/tmp/sar-e4-third-frozen-D3hLkW/hb-v2-daemon-vHGuiz/core.sqlite3"}
+{"ts":1792503394992,"op":"account.add id=claude-a harness=claude home=/var/tmp/sar-e4-third-frozen-D3hLkW/hb-v2-daemon-vHGuiz/homes/claude-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e4-third-frozen-D3hLkW/hb-v2-daemon-vHGuiz/vault/claude/claude-a files=.credentials.json verification=limits"}
+{"ts":1792503395036,"op":"account.add id=claude-b harness=claude home=/var/tmp/sar-e4-third-frozen-D3hLkW/hb-v2-daemon-vHGuiz/homes/claude-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e4-third-frozen-D3hLkW/hb-v2-daemon-vHGuiz/vault/claude/claude-b files=.credentials.json verification=limits"}
+{"ts":1792503395053,"op":"account.credential_health account=claude-a unverified→verified by=limits_probe"}
+{"ts":1792503395053,"op":"account.limits account=claude-a readable=true weekly=5 5h=90"}
+{"ts":1792503395059,"op":"account.limits account=claude-a readable=true weekly=5 5h=90"}
+{"ts":1792503395063,"op":"account.credential_health account=claude-b unverified→verified by=limits_probe"}
+{"ts":1792503395063,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792503395065,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792503395072,"op":"spawn.account bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 account=claude-a reason=\"explicit\""}
+{"ts":1792503395080,"op":"account.activate account=claude-a home=/var/tmp/sar-e4-third-frozen-D3hLkW/hb-v2-daemon-vHGuiz/homes/claude-a copied=.credentials.json"}
+{"ts":1792503395081,"op":"account.activate.gateways account=claude-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792503395282,"op":"cmd.spawn id=1 bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 start gen=1"}
+{"ts":1792503395288,"op":"account.limits account=claude-a readable=true weekly=5 5h=90"}
+{"ts":1792503395292,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792503395372,"op":"obs.booted bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 gen=1 pid=936876 synthetic"}
+{"ts":1792503395373,"op":"obs.turn_ended bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 gen=1 synthetic"}
+{"ts":1792503397601,"op":"account.limits account=claude-a readable=true weekly=5 5h=90"}
+{"ts":1792503397627,"op":"quota.probe account=claude-a at=1792503397623 next_at=1792503427623 delay_ms=30000 reason=initial"}
+{"ts":1792503397628,"op":"quota.probe account=claude-b at=1792503397623 next_at=1792503427623 delay_ms=30000 reason=initial"}
+{"ts":1792503397637,"op":"account.limits account=claude-a readable=true weekly=5 5h=90"}
+{"ts":1792503398140,"op":"account.limits.transient_failure account=claude-b reason=provider_error kept_fetched_at=1792503395291 error=\"/: HTTP 503 — {\\\"error\\\":\\\"fixture unavailable\\\"}\""}
+{"ts":1792503398140,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792503398162,"op":"deliver bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 msg=1 gen=1 urgency=next"}
+{"ts":1792503398192,"op":"obs.turn_started bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 gen=1 synthetic"}
+{"ts":1792503398193,"op":"spawn.evidence bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 gen=1 kind=booted"}
+{"ts":1792503398193,"op":"obs.skip bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 gen=1 kind=booted reason=already_running"}
+{"ts":1792503398194,"op":"obs.turn_ended bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 gen=1"}
+{"ts":1792503398196,"op":"session.recorded bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 gen=1 id=84fcece5-1c58-40e4-8c41-e58dfa53150e"}
+{"ts":1792503398201,"op":"obs.checkpoint bee=0ff5d092-7a45-4e09-a8bc-9d2219628549 gen=1 cursor=550"}
+{"ts":1792503398210,"op":"daemon.stopping pid=936762"}
+{"ts":1792503398230,"op":"daemon.stopped"}
+{"ts":1792503398230,"op":"daemon.stop_complete pid=936762"}

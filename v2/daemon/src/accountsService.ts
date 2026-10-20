@@ -60,6 +60,7 @@ import {
   rotateNearTie,
   selectAccountAdmission,
   completionHeadroom,
+  relativeCompletionHeadroom,
   selectLeastLoadedAccount,
   windowRolledOver,
   isFableModel,
@@ -261,6 +262,7 @@ export function describeWeeklyCeilingBreach(accountId: string, breach: WeeklyCei
 }
 
 export interface PickOptions {
+  proactiveRefresh?: boolean;
   quotaResetAt?: number;
   minimumObservedAt?: number;
   /** Accounts already tried / the current one (rotation). */
@@ -2325,18 +2327,23 @@ export class AccountsService {
    * including the singleton case. Provider I/O happens before the store
    * transaction; selection then uses the resulting immutable rows.
    */
-  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}, quotaRecovery = false): Promise<void> {
+  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}, quotaRecovery = false): Promise<boolean> {
     if (this.cfg.accounts.allocationMode === "shadow" && !quotaRecovery) {
       this.scheduleFreshLimits(harness, opts);
-      return;
+      return true;
     }
     const now = this.now();
+    let skippedProactiveProbe = false;
     const stale = this.candidateIdsFor(harness, opts).filter((id) => {
       const row = this.store.getAccountLimits(id);
       const account = this.store.getAccount(id);
       const previous = quotaRecovery ? this.store.getAccountQuotaProbeCadence(id) : null;
       const crossedReset = opts.quotaResetAt !== undefined && opts.quotaResetAt <= now && opts.quotaResetAt > (previous?.lastProbeAt ?? 0) || row && [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now && reset > (previous?.lastProbeAt ?? 0));
-      if (previous && now < previous.nextProbeAt && !crossedReset && previous.evidence === this.quotaProbeEvidence(id)) return false;
+      if (opts.proactiveRefresh && this.admissionRefreshes.has(id)) return true;
+      if (previous && now < previous.nextProbeAt && !crossedReset && previous.evidence === this.quotaProbeEvidence(id)) {
+        if (!opts.proactiveRefresh || previous.lastProbeAt > (opts.minimumObservedAt ?? now)) return false;
+        if (now - previous.lastProbeAt < 30_000) { skippedProactiveProbe = true; return false; }
+      }
       return !row || !row.readable || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs
         || opts.minimumObservedAt !== undefined && row.fetchedAt <= opts.minimumObservedAt
         || [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now)
@@ -2371,6 +2378,7 @@ export class AccountsService {
         if (this.admissionRefreshes.get(id) === pending) this.admissionRefreshes.delete(id);
       }
     }));
+    return !skippedProactiveProbe;
   }
 
   private quotaProbeEvidence(accountId: string): string {
@@ -2528,18 +2536,41 @@ export class AccountsService {
     return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, requestUnits, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
   }
 
-  proactiveTargets(harness: string, sourceAccount: string, model?: string): Set<string> {
+  proactiveTargets(harness: string, sourceAccount: string, model?: string, openingBeeId?: string, openingClaimId?: string): { accountIds: Set<string>; uncertain: boolean } {
     const accounts = this.store.listAccounts({ harness });
     const now = this.now();
     const activity = this.localActivities(accounts.map(account => account.id), now);
-    return new Set(accounts.filter(account => {
+    const source = accounts.find(account => account.id === sourceAccount);
+    if (!source) return { accountIds: new Set(), uncertain: true };
+    const failed = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "cancelled" && ["relative_refresh_unavailable", "relative_swap_refused"].includes(row.reason ?? "")).sort((a, b) => b.updatedAt - a.updatedAt)[0] : undefined;
+    const failedRefreshGrace = failed && now - failed.updatedAt < (failed.reason === "relative_refresh_unavailable" ? 15 * 60_000 : 30_000)
+      && !accounts.some(account => account.id !== sourceAccount && this.store.getAccountLimits(account.id)?.readable && (this.store.getAccountLimits(account.id)?.fetchedAt ?? 0) > failed.updatedAt);
+    if (failed?.reason === "relative_swap_refused" && failedRefreshGrace) return { accountIds: new Set(), uncertain: false };
+    const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3) : [];
+    if (history[0] && now - history[0].updatedAt < this.cfg.accounts.proactiveDwellMs) return { accountIds: new Set(), uncertain: false };
+    const sourcePlan = this.store.getAccountLimits(sourceAccount)?.plan?.toLowerCase();
+    const policy = { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs };
+    const sourceCandidate = this.admissionCandidate(source, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now,
+      this.openingActivity(activity.get(sourceAccount)!, openingBeeId));
+    let uncertain = completionHeadroom(sourceCandidate, policy).status === "uncertain";
+    const accountIds = new Set(accounts.filter(account => {
       if (account.id === sourceAccount) return false;
       const local = activity.get(account.id)!;
       const candidate = this.admissionCandidate(account, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now, local);
-      if (candidate.eligibility.state !== "eligible" || completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs }).status !== "eligible") return false;
+      const ownClaim = openingClaimId ? this.store.getAccountAdmission(openingClaimId) : null;
+      if (ownClaim?.account === account.id && ownClaim.releasedAt === null && ownClaim.confirmedAt === null) candidate.reservations = Math.max(0, candidate.reservations - ownClaim.units);
+      const targetPlan = this.store.getAccountLimits(account.id)?.plan?.toLowerCase();
+      if (!sourcePlan || !targetPlan || sourcePlan !== targetPlan && (this.cfg.accounts.allocationPlanCapacityUnits[sourcePlan] === undefined || this.cfg.accounts.allocationPlanCapacityUnits[targetPlan] === undefined)) return false;
+      const limits = this.store.getAccountLimits(account.id);
+      const stale = !limits || now - limits.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs
+        || limits.fetchedAt > now + 60_000
+        || [limits.fiveHourResetsAt, limits.weeklyResetsAt, ...(isFableModel(model) ? [limits.fableResetsAt] : [])].some(reset => reset != null && reset <= now);
+      if (candidate.eligibility.state === "eligible" && stale && completionHeadroom(candidate, policy).status === "uncertain") uncertain = true;
+      if (!relativeCompletionHeadroom(sourceCandidate, candidate, policy, history.some(row => row.sourceAccount === account.id) ? 2 : 1)) return false;
       const fetchedAt = this.store.getAccountLimits(account.id)?.fetchedAt ?? 0;
       return fetchedAt > this.store.proactiveRecoveryBoundary(account.id);
     }).map(account => account.id));
+    return { accountIds, uncertain: accountIds.size === 0 && uncertain && !failedRefreshGrace };
   }
 
   private admissionCandidate(

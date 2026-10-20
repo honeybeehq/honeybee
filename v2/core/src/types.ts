@@ -1958,7 +1958,7 @@ export interface QuotaRecoveryRow {
   controlFence: number;
   placement: { agent: string; cwd: string; cellId: string | null };
   quota: import("./quota.ts").QuotaBoundary | null;
-  admission?: { fetchedAt: number; maxProjectedPercent: number };
+  admission?: { fetchedAt: number; maxProjectedPercent: number; candidateAccountIds?: string[] | null };
   resetHints: Partial<Record<import("./quota.ts").QuotaBoundary["window"], number>>;
   state: "waiting" | "rotating" | "resumed" | "cancelled";
   attempt: number;
