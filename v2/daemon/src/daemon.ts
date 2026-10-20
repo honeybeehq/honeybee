@@ -221,6 +221,7 @@ import {
 } from "../../adapters/src/index.ts";
 import { liveGateways, type LiveGateway } from "./gateways.ts";
 import { DaemonCore, type BootReport, type I1ViolationEvent } from "./loops.ts";
+import { QuotaRecovery } from "./quotaRecovery.ts";
 import { AuthResume, type CredentialValidatedReceipt } from "./authResume.ts";
 import {
   ConfigError,
@@ -724,6 +725,7 @@ export class HiveDaemon {
   private readonly opLog: string[] = [];
   private accounts: AccountsService | null = null;
   private loginFlows: LoginFlowService | null = null;
+  private quotaRecovery: QuotaRecovery | null = null;
   private authResume: AuthResume | null = null;
   /** v31 — Cell disk retention pass + `cell.gc` / `cell.evict`. */
   private retention: CellRetentionService | null = null;
@@ -857,6 +859,7 @@ export class HiveDaemon {
       onCredentialValidated: (accountId, by) => this.credentialValidatedQuietly(accountId, by),
     });
     const accounts = this.accounts;
+    this.quotaRecovery = new QuotaRecovery(store);
     this.authResume = new AuthResume({
       store,
       log: (op) => this.log(op),
@@ -1374,6 +1377,7 @@ export class HiveDaemon {
       this.threadOperations?.tick();
       this.performance.measureSync("daemon.tick.core", () => {
         core.step();
+        this.quotaRecovery?.reconcile();
         this.authResume?.reconcile();
       });
       tStep = Date.now();
@@ -2411,7 +2415,7 @@ export class HiveDaemon {
 
   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
-    const storageSupported = SCHEMA_VERSION === 44 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+    const storageSupported = SCHEMA_VERSION === 45 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
     if (verb === "update.apiarySwap.status") {
       let installedIdentity: ComponentIdentity | null = null;
       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
@@ -5797,6 +5801,7 @@ export class HiveDaemon {
       accounts: store.listAccounts().map((account) => this.mirrorAccount(account)),
       accountLimits: store.listAccountLimits(),
       accountAdmissions: store.listAccountAdmissions(),
+      quotaRecoveries: store.listQuotaRecoveries(),
       tasks: store.listTasks(),
       taskSupply: store.listTaskSupply(),
       loginFlows: store.listLoginFlows(),
@@ -6464,6 +6469,8 @@ export class HiveDaemon {
     const bee = store.getBee(beeId) as BeeRow;
     const selector = this.param(params, "account");
     const onlyAccountIds = this.admissionAccountIdsParam(params, "onlyAccountIds");
+    const recoveryId = typeof params.quotaRecoveryId === "string" ? params.quotaRecoveryId : undefined;
+    if (recoveryId && store.getQuotaRecovery(recoveryId)?.beeId !== bee.id) throw new RpcError("invalid_request", "quota recovery belongs to another bee");
     if (selector !== "auto") {
       const target = this.resolveAccountSelector(selector, bee.agent);
       if (onlyAccountIds && !onlyAccountIds.has(target.id)) {
@@ -6481,7 +6488,7 @@ export class HiveDaemon {
         claim, "swap", bee.agent, bee.id, runtime?.generation ?? 0, bee.account,
         this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
       );
-      return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim);
+      return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim, recoveryId);
     }
     if (this.mustAccounts().allocationMode() === "active") this.ownerClaimRequired(bee.agent, "swap");
     const admission = this.mustAccounts().admitNewWork(bee.agent, {
@@ -6496,7 +6503,7 @@ export class HiveDaemon {
       reconcileAfterGeneration: runtime?.generation ?? 0,
     });
     if (!admission.ok) throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
-    return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id);
+    return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId);
   }
 
   private performSwap(
@@ -6506,6 +6513,7 @@ export class HiveDaemon {
     allocation?: AccountAllocationReceipt,
     reservationId?: string,
     claim?: AccountAdmissionClaim,
+    quotaRecoveryId?: string,
   ): SwapAccountResult {
     const store = this.mustStore();
     const accounts = this.mustAccounts();
@@ -6527,6 +6535,9 @@ export class HiveDaemon {
     let rekeyed = false;
     let commandId: number | null = null;
     store.transact(() => {
+      if (quotaRecoveryId) {
+        if (!store.claimQuotaRecovery(quotaRecoveryId, { targetAccount: target.id, claimId: claim?.id, reservationId })) throw new RpcError("invalid_request", "quota recovery is no longer claimable");
+      } else store.cancelQuotaRecoveries(bee.id, "manual_swap");
       store.setBeeAccount(bee.id, target.id);
       const key = homeEnvFor(bee.agent);
       const env = { ...bee.env };
@@ -6541,6 +6552,10 @@ export class HiveDaemon {
       if (bee.agent === "claude" && from !== target.id) rekeyed = store.rekeyBeeSession(bee.id).applied;
       if (live && rt) {
         commandId = store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: `swap_account:${by}`, thenRevive: true }).id;
+      }
+      if (quotaRecoveryId) {
+        if (!live) commandId = store.enqueueCommand("revive", bee.id, { reason: "quota_recovery" }).id;
+        store.bindQuotaRecovery(quotaRecoveryId, commandId);
       }
       if (claim) {
         this.consumeAccountClaim(claim, bee.id);
@@ -6682,13 +6697,18 @@ export class HiveDaemon {
       this.log(`account.rotate bee=${bee.id} account=${account.id} waiting=allocation_owner_required`);
       return;
     }
-    const pick = accounts.pick(bee.agent, { excludeAccountIds: new Set([account.id]), excludeRecentlyExhausted: true, model: this.modelOfBee(bee) });
+    const pick = accounts.admitNewWork(bee.agent, {
+      operation: "swap", requestKey: `quota:${bee.id}:${generation}`, beeId: bee.id,
+      sourceAccount: account.id, reconcileAfterGeneration: generation,
+      excludeAccountIds: new Set([account.id]), excludeRecentlyExhausted: true, model: this.modelOfBee(bee),
+    });
     if (!pick.ok) {
       this.log(`account.rotate bee=${bee.id} account=${account.id} skipped=no_candidate (${pick.message})`);
       return;
     }
     try {
-      const res = this.performSwap(bee, pick.account, "rotation");
+      const recovery = store.listQuotaRecoveries(bee.id).find(row => row.sourceGeneration === generation && row.state === "waiting");
+      const res = this.performSwap(bee, pick.account, "rotation", pick.receipt, pick.reservation?.id, undefined, recovery?.id);
       this.log(`account.rotate bee=${bee.id} from=${account.id} to=${pick.account.id} action=${res.action} reason=${JSON.stringify(pick.reason)}`);
     } catch (err) {
       this.log(`account.rotate bee=${bee.id} from=${account.id} to=${pick.account.id} failed=${err instanceof Error ? err.message : String(err)}`);
