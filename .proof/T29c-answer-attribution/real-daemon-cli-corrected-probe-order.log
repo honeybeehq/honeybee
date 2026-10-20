@@ -1,0 +1,38 @@
+{"host":"trmd-metal-1","data":"/home/trmd/.cache/T29c/tmp/hb-v2-daemon-HviC9g","socket":"/home/trmd/.cache/T29c/tmp/hb-v2-daemon-HviC9g/hived.sock","shutdown":{"code":0,"signal":null},"reconnectDeduped":true,"subscriberFormats":{"legacy":{"kind":"human","from":"rpc","messageId":1,"generation":1,"startedAt":1792470344691,"humanAt":1792470344691,"endedAt":1792470344734,"endedQuiet":false},"modern":{"kind":"answer","from":"rpc","messageId":1,"generation":1,"startedAt":1792470344691,"humanAt":1792470344691,"endedAt":1792470344734,"endedQuiet":false}},"questions":[{"id":"c81c8c63-f847-45e7-8dd8-d1d5fc74902d","status":"answered","answeredBy":"rpc","deliveryMessageId":1},{"id":"553346e8-2fbe-4c9a-9580-a3488bfd2db7","status":"answered","answeredBy":"rpc","deliveryMessageId":2}],"answerEventCount":2,"answerMailCount":2,"trigger":{"kind":"answer","from":"rpc","messageId":1,"generation":1,"startedAt":1792470344691,"humanAt":1792470344691,"endedAt":1792470344734,"endedQuiet":false},"replayEqual":true,"cliDisplay":["✓  answered question 553346e8-2fbe-4c9a-9580-a3488bfd2db7 → delivered to ab5e8e6a-8565-4bd7-8d61-308d2302c30f as message 2 (display label: \"local-only\")"]}
+✔ real disposable daemon: RPC attribution, CLI label, reconnect and one effect per receipt (1315.781735ms)
+✔ set-model --apply uses atomic admission and waits out an active turn (1703.46209ms)
+✔ cli.1: help prints and exits 0; unknown command exits 1 (2.062603ms)
+✔ cli.2: reads fall back to the read-only store when the daemon is down — labeled stale (25.608813ms)
+✔ cli.children: stale reads exclude external lineage that collides with a local bee id (14.552152ms)
+✔ cli.3: mutations NEVER fall back — daemon down means a loud, typed failure (12.808377ms)
+✔ cli.3b: a misspelled flag is a LOUD error (never a silent no-op), and spawn takes the agent positionally (3.953228ms)
+✔ cli.send-sender-wire: the real CLI request carries the authority-bound ambient bee id (3.217865ms)
+✔ cli.4: against a live daemon — spawn, list (not stale), send --wait blocks on the delivery mark (1155.953808ms)
+✔ cli.4n: health and daemon status report naming ok, off, or disabled with the reason (1924.999537ms)
+✔ cli.4b: --idempotency-key passes through on spawn and send — replays dedup to the original (868.706111ms)
+✔ cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -- <args…>` / --clear, `bee args`, `revive --arg`, view/list carry args; stale read shows them too (1704.469451ms)
+✔ cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto` (landed / refused as results), `cell remove` (refused-dirty exit 2, --force) (1730.806747ms)
+✔ cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --parent (+ ambient HIVE_BEE_ID), ask/answer/question list, seal create/list/get; stale fallbacks for the reads (1957.595599ms)
+✔ cli.daemon: usage lists restart as a stop+start alias (1.287591ms)
+✔ cli.5: daemon status when nothing runs and no service is installed (1.232729ms)
+✔ cli.6: service glue — label never the live daemon's, exec args env override wins (1107.307749ms)
+✔ cli.7: cutover verbs — `freeze` writes/refuses locally; `import --from-frozen` reports (dry-run, marker refusal, real import, idempotent) over RPC (1699.18709ms)
+✔ cli.urgency: send --urgency passes through to the row; the mailbox read surfaces it; an unknown value is a typed error (1314.378221ms)
+✔ cli.version: --version answers (Apiary's Doctor gates local runs on it) (0.612689ms)
+✔ cli.task: add/ls/done/supply round-trip through the daemon; unknown command is gone (879.732798ms)
+✔ cli.answer-display-label: --by stays local and question rows use plain answered wording (3.302062ms)
+✔ v6.rpc.1: rename / tag / children round-trips, idempotent replays, typed refusals; snapshot + watch carry the new rows/kinds (1402.352736ms)
+✔ v6.rpc.2: bee.interrupt — idle no-op; mid-turn (hung) interrupt → turn_ended, runtime live, next message delivers to the same generation; replay dedups (1308.047055ms)
+✔ v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (--resume <src> --fork-session), records the fork's own id (seed consumed), parentId/forkedFrom set, HIVE_* env stamps; revive resumes the fork's own id; copy has no prompt; replay dedups (2327.350253ms)
+✔ v6.rpc.4: bee.fork (codex) — the fork's handshake sends thread/fork {threadId: source}; the NEW thread id is recorded; delivery targets the new thread (1563.366203ms)
+✔ daemon restart: adopted Codex keeps its thread id and confirms queued mail (1801.09409ms)
+✔ v6.rpc.5: parenting policy over RPC — archive parent leaves children; delete parent orphans (bee.orphaned in the watch stream, children alive, parentId null); fork of a cell bee refused (1891.291399ms)
+✔ v6.rpc.6: questions + seals — ask → open row → answer → delivered as mailbox message → answered; list filters; seals CRUD; typed not-found; idempotent replays; snapshot carries them (1605.449881ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16617.140304

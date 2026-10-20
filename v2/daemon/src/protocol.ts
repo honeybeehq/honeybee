@@ -94,6 +94,7 @@ export const DAEMON_CAPABILITIES = [
   "question.withdraw.v1",
   "bee.human_ref.v1",
   "bee.turn_trigger.v1",
+  "turn-trigger.answer.v1",
   "bee.turn_quiet.v1",
   "mail.answer_marker.v1",
   "mail.automation_marker.v1",
@@ -252,6 +253,12 @@ export const DAEMON_CAPABILITIES = [
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
 /** Initial hello exchanged by client and server; clientLane only downgrades client ingress. */
+export interface ClientHelloFrame {
+  protocol: string;
+  capabilities?: readonly string[];
+  clientLane?: "node_relay" | "remote";
+}
+
 export interface HelloFrame {
   clientLane?: "node_relay" | "remote";
   identity?: BuildIdentity;

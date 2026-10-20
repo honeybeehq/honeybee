@@ -515,14 +515,6 @@ test("v6.rpc.6: questions + seals — ask → open row → answer → delivered 
     assert.deepEqual((await client.request<QuestionListResult>("question.list", { open: true })).questions, []);
     assert.equal((await client.request<QuestionListResult>("question.list", { open: false })).questions[0]?.status, "answered");
 
-    for (const claimed of [undefined, "operator", beeId, 42, { role: "operator" }]) {
-      const question = await client.request<QuestionAskResult>("question.ask", { beeId, text: "attribution probe" });
-      const fresh = await client.request<QuestionAnswerResult>("question.answer", { questionId: question.question.id, answer: "yes", answeredBy: claimed });
-      assert.equal(fresh.question.answeredBy, "rpc");
-      const mailbox = await client.request<MailboxResult>("mailbox", { beeId });
-      assert.equal(mailbox.messages.find((m) => m.id === fresh.messageId)!.sender, "rpc");
-    }
-
     // answering while the bee is stopped enqueues the wake (revive-on-answer)
     const q2 = await client.request<QuestionAskResult>("question.ask", { beeId, text: "ready?" });
     await client.request("stop", { beeId });
@@ -547,7 +539,16 @@ test("v6.rpc.6: questions + seals — ask → open row → answer → delivered 
     await assert.rejects(client.request("seal.create", { beeId, title: "" }), (e: unknown) => e instanceof RpcError && e.code === "invalid_request");
     const snap = await client.request<SnapshotResult>("snapshot");
     assert.equal(snap.seals.length, 2);
-    assert.equal(snap.questions.length, 7);
+    assert.equal(snap.questions.length, 2);
+    for (const claimed of [undefined, "operator", beeId, 42, { role: "operator" }]) {
+      const question = await client.request<QuestionAskResult>("question.ask", { beeId, text: "attribution probe" });
+      const fresh = await client.request<QuestionAnswerResult>("question.answer", { questionId: question.question.id, answer: "yes", answeredBy: claimed });
+      assert.equal(fresh.question.answeredBy, "rpc");
+      const mailbox = await client.request<MailboxResult>("mailbox", { beeId });
+      assert.equal(mailbox.messages.find((m) => m.id === fresh.messageId)!.sender, "rpc");
+      await waitDelivered(client, beeId, fresh.messageId, "attribution probe delivered");
+    }
+
     client.close();
   } finally {
     await daemon?.stop();

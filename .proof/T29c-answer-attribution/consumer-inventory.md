@@ -142,3 +142,33 @@ Result: no Apiary permission, matching, Inbox, filter, audit, phone command or W
 
 Apiary additional trigger consumers (5fe353f2): packages/core/src/hive.ts:97–115 closed union/validator MUST add answer; services/apiaryd/src/domains/hive/fold.ts:682,689,839 otherwise resync; hiveMirrorSession.ts:64–68 otherwise drops unknown. tables.ts:287–288,369–370 stores JSON verbatim; fleetReadDiff.ts:43 includes trigger/timestamps. hiveAttentionOutputAt packages/core/src/hive.ts:117–119 uses lastHumanOutputAt when trigger exists with no kind test, preserving parity. No authority consumer found. Paired standalone DTO/validator review is being coordinated with its owner before owner pin exposure.
 
+
+
+## Superseding compatibility implementation
+
+Queen approval21089 supersedes the unconditional answer-emission/every-node
+ordering above. Canonical store/audit/replay remains answer. Each subscriber
+advertises turn-trigger.answer.v1 once in its client hello; missing/unknown
+advertisement receives a cloned human projection. Capabilities are format-only,
+not RpcCaller/identity/authority/command-admission facts. Request params cannot
+opt in. All schema paths are enumerated by executable compiler census in
+v2/daemon/tests/answer-trigger-census.test.ts, with inferred dispatch and actual
+audit payload types. It caught the initially missed ChildrenResult path.
+Coverage lives in answerTriggerProjection.ts and drives the projector itself.
+Negative injected new-result/new-dispatch/new-audit checks fail as required.
+Canonical object identity and shared-event immutability are tested.
+
+Old Apiary node replication drops unrecognised triggers rather than resyncing
+(hiveMirrorSession.ts:68); old Studio may degrade to no trigger, accepted by
+Queen. Only opted-in direct subscribers need the new validator. No every-node
+rollout ordering remains; DEPLOY HOLD remains. Apiary T29f vendor work is parked
+until this owner change merges, then normal merged-SHA repin and hello advert.
+T29e card copy remains separate.
+
+Local checks: root check, v2:check, build (third), final daemon typecheck pass;
+63 focused core/envelope checks,5 negotiation/census checks,29 real daemon/RPC/CLI
+checks pass. The local metal1 real lab confirms code0/no-signal shutdown,
+canonical rpc row/event/mail, reconnect dedup, same humanAt timestamps with
+legacy human vs opted-in answer, and audit replay equality. Initial queued
+probe fixture failure is retained and corrected by ordering/draining probes.
+Masked final gate remains pending on the proven Quiet/662 lane.

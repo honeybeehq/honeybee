@@ -1,3 +1,4 @@
+import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
 import { canonicalDigest } from "../../../src/comb/canonical.ts";
 import { parsePhoneOrigin, type PhoneOriginRequest } from "../../core/src/phoneOrigin.ts";
 import { AccountLeaseUnknownError } from "../../core/src/accountLease.ts";
@@ -133,6 +134,7 @@ interface Connection extends RpcConn {
   socket: Socket;
   buffer: string;
   helloDone: boolean;
+  clientCapabilities: readonly string[];
   relayLane: "node_relay" | "remote" | null;
   caller?: HelloCaller;
   watchCursor: number | null;
@@ -274,7 +276,7 @@ export class RpcServer {
       }
       const last = events[events.length - 1] as AuditRow;
       const frame: WatchFrame = { type: "delta", baseSeq: conn.watchCursor, seq: last.seq, events };
-      conn.send(frame);
+      conn.send(projectAnswerTriggerDelta(frame, conn.clientCapabilities));
       conn.watchCursor = last.seq;
     }
   }
@@ -291,6 +293,7 @@ export class RpcServer {
       get localPeer() { return conn.peerConnection?.state === "verified" ? conn.peerConnection.peer : undefined; },
       buffer: "",
       helloDone: false,
+      clientCapabilities: Object.freeze([]),
       relayLane: null,
       get ingress() { return localUnix ? conn.relayLane ?? "local_unix" : "remote"; },
       watchCursor: null,
@@ -357,6 +360,12 @@ export class RpcServer {
         conn.socket.end();
         return;
       }
+      if (frame.capabilities !== undefined && (!Array.isArray(frame.capabilities) || frame.capabilities.length > 64 || frame.capabilities.some((tag) => typeof tag !== "string" || tag.length === 0 || tag.length > 128))) {
+        conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "hello capabilities must be at most 64 nonempty strings of at most 128 characters." } });
+        conn.socket.end();
+        return;
+      }
+      conn.clientCapabilities = Object.freeze(Array.isArray(frame.capabilities) ? [...new Set(frame.capabilities as string[])] : []);
       const caller = helloCaller(frame.caller);
       if (caller === "invalid") {
         conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "caller must be {dataDir?: string, liveTarget?: boolean, expectedInstanceId?: string | null, allowForeignDaemon?: boolean}." } });
@@ -445,7 +454,7 @@ export class RpcServer {
         result.then(
           (value) => {
             span.end();
-            conn.send({ id, ok: true, result: value });
+            conn.send({ id, ok: true, result: projectAnswerTriggerResult(verb, value, conn.clientCapabilities) });
           },
           (err) => {
             span.end("error");
@@ -455,7 +464,7 @@ export class RpcServer {
         return;
       }
       span.end();
-      conn.send({ id, ok: true, result });
+      conn.send({ id, ok: true, result: projectAnswerTriggerResult(verb, result, conn.clientCapabilities) });
     } catch (err) {
       if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
       span.end("error");

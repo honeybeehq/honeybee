@@ -1,0 +1,14 @@
+{"answerTriggerTypeCensus":{"results":{"WatchFrame":{"triggers":[],"audits":["events[]"]},"RenameResult":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"TagResult":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"ForkResult":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"ChildrenResult":{"triggers":["children[].bee.lastTurnTrigger"],"audits":[]},"SetArgsResult":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"ReconfigureResult":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"ViewResult":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"ListResult":{"triggers":["views[].bee.lastTurnTrigger"],"audits":[]},"AuditTailResult":{"triggers":[],"audits":["rows[]"]},"SnapshotResult":{"triggers":["views[].bee.lastTurnTrigger"],"audits":[]}},"audits":{"bee.created":["bee.lastTurnTrigger"],"runtime.updated":["turnTrigger"],"mail.delivered":["turnTrigger"]},"dispatch":{"bee.setArgs":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"bee.reconfigure":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"bee.rename":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"bee.tag":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"bee.fork":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"bee.children":{"triggers":["children[].bee.lastTurnTrigger"],"audits":[]},"view":{"triggers":["bee.lastTurnTrigger"],"audits":[]},"list":{"triggers":["views[].bee.lastTurnTrigger"],"audits":[]},"audit.tail":{"triggers":[],"audits":["rows[]"]},"snapshot":{"triggers":["views[].bee.lastTurnTrigger"],"audits":[]},"watch":{"triggers":["views[].bee.lastTurnTrigger"],"audits":[]}}}}
+✔ answer trigger egress coverage enumerates all protocol, dispatch and inferred audit payload types (1874.279503ms)
+✔ answer trigger census fails for a new result, dispatch path or audit carrying a trigger (4138.340129ms)
+✔ answer trigger negotiation: simultaneous legacy and capable sockets get independent formats (60.208428ms)
+✔ answer wire replay is legacy-compatible while durable audit replay stays canonical (17.733753ms)
+✔ answer egress projection preserves canonical objects and arbitrary outputs at every covered path (0.463635ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6421.934585

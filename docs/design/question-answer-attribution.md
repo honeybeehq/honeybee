@@ -19,11 +19,30 @@ extractive handoff prompt selection retain their previous bookkeeping behavior.
 The answer envelope and body format are unchanged. Neither `answer` nor these
 timestamps constitute proof of human approval, permission or identity.
 
-Apiary must merge and release T29f (`4aa99e5a40a119314741169a75f978712d3d2f41`)
-on **every node before any Honeybee emitting `answer` is deployed**. Older
-Apiary closed validators reject the new kind and repeatedly resynchronize.
-T29e separately removes person-like answer attribution from the DecisionCard.
-The deployment hold remains in force.
+Answer trigger emission is negotiated once per RPC connection by the client hello:
+`{ protocol: "v2/1", capabilities: ["turn-trigger.answer.v1"] }`. The owner hello
+advertises the same capability. Missing or unknown tags retain legacy format.
+Capabilities accept at most 64 nonempty strings of at most 128 characters.
+They select output format only and never enter RpcCaller, authority, admission,
+or identity decisions. Request parameters cannot opt in or renegotiate.
+
+Canonical store rows, audit events and replay retain `answer`. An opted-in
+connection receives it unchanged; legacy connections receive an immutable
+copy with only `answer` changed to `human`. The projector covers snapshot,
+watch initial state/deltas, view/list/children, mutation bee replies and audit
+reads. Sequence numbers, gaps, all trigger fields and output timestamps are
+preserved. Shared event batches and canonical objects are never mutated.
+An executable TypeScript census checks every exported protocol type, inferred
+trigger-bearing dispatch return and audit call payload against the projector
+routes; adding an uncovered result, path or audit fails the check.
+
+Only readers that advertise the capability need the paired Apiary validator.
+An older Mac Apiary with no advertisement keeps the legacy format. Apiary's
+node-to-node replication already drops an unrecognized trigger at
+hiveMirrorSession.ts:68, so old Studio pulling from newer satellite apiaryd
+may degrade to no trigger, which is acceptable. There is no every-node
+upgrade ordering requirement. T29e separately removes person-like answer
+attribution from the DecisionCard. The deployment hold remains in force.
 
 Operator authorization is deferred. Same-uid local agents can still answer;
 I-17 remains an accepted MEDIUM incident. Apiary currently records authenticated
