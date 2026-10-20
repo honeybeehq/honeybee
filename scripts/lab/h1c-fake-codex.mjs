@@ -7,9 +7,9 @@ createInterface({input:process.stdin}).on('line',line=>{
  if(request.method==='initialize')emit({id:request.id,result:{userAgent:'owned-h1c-fixture'}});
  if(request.method==='thread/start')emit({id:request.id,result:{thread:{id:'h1c-thread'}}});
  if(request.method==='turn/start'||request.method==='turn/steer'){
-  const refused=request.method==='turn/steer'&&process.env.H1C_REFUSE_STEER==='yes';
+  const refused=process.env.H1C_REFUSE_ALL==='yes'||request.method==='turn/steer'&&process.env.H1C_REFUSE_STEER==='yes';
   appendFileSync(process.env.H1C_WRITES,JSON.stringify({id:request.id,method:request.method,...(refused?{refused:true}:{})})+'\n');
-  if(refused){emit({id:request.id,error:{code:-32000,message:'owned turn ended before steer'}});emit({method:'turn/completed',params:{threadId:'h1c-thread',turn:{id:turnId,status:'completed',error:null}}});turnId=null;return;}
+  if(refused){emit({id:request.id,error:{code:-32000,message:'owned request refused'}});if(turnId)emit({method:'turn/completed',params:{threadId:'h1c-thread',turn:{id:turnId,status:'completed',error:null}}});turnId=null;return;}
   turnId??='h1c-turn-'+request.id;
   if(process.env.H1C_ACK!=='never'&&!(process.env.H1C_SKIP_ACK_IDS??'').split(',').includes(String(request.id))){
    const reply={id:request.id,result:{turn:{id:turnId}}};

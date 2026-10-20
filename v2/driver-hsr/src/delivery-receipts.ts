@@ -63,7 +63,7 @@ export class DeliveryReceipts {
     this.prune();
     const receipt = this.receipts.get(value.id);
     const state = !this.matches(value) ? "unknown"
-      : receipt ? receipt.digest === value.digest ? receipt.state : "unknown"
+      : receipt ? receipt.digest === value.digest ? receipt.state : receipt.state === "refused" ? "not_written" : "unknown"
       : value.id <= this.retiredThrough ? "unknown" : "not_written";
     return { id: value.id, digest: value.digest, state };
   }

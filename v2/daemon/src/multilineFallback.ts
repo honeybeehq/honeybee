@@ -42,13 +42,20 @@ export class MultilineFallback {
     if (this.store.inTransaction || message.deliveredAt !== null) return false;
     const fallback = this.store.multilineDelivery(message.id)?.fallback;
     if (!fallback || !["in_flight", "unknown"].includes(fallback.state)) return false;
+    const runtime = this.store.currentRuntime(message.beeId);
+    if (runtime && fallback.pointer && this.driver.planDeliveryConfirmation?.(message.beeId, runtime.generation, message.id, fallback.pointer) != null) {
+      if (!this.store.getDeliveryConfirmationIntent(message.id)) {
+        this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: message.beeId, messageId: message.id, generation: runtime.generation });
+        if (fallback.state === "in_flight") this.store.transitionMultilineFallback(message.id, "in_flight", "unknown", { detail: "delivery_pointer_outcome_unknown" });
+      }
+      return false;
+    }
     const receipt = this.receipt(message.beeId, fallback, message.id);
     if (receipt === "accepted") return this.complete(message, fallback, source);
     if (receipt === "not_attempted") {
       this.store.transitionMultilineFallback(message.id, fallback.state, "ready", {detail: "delivery_not_attempted", attemptPhase: "before_enter_cleared"});
       return false;
     }
-    const runtime = this.store.currentRuntime(message.beeId);
     if (fallback.state === "in_flight" && (!runtime || runtime.generation !== fallback.generation || !["booting", "running", "idle"].includes(runtime.state))) {
       this.store.transitionMultilineFallback(message.id, "in_flight", "unknown", { detail: "delivery_pointer_outcome_unknown" });
     }
@@ -75,7 +82,15 @@ export class MultilineFallback {
     }
     if (!fallback) return { handled: true, accepted: false };
     if (fallback.state === "in_flight" || fallback.state === "unknown") {
-      if (fallback.pointer && this.driver.planDeliveryConfirmation?.(message.beeId, generation, message.id, fallback.pointer) != null) return { handled: false, accepted: false, confirmationBody: fallback.pointer };
+      if (fallback.pointer && this.driver.planDeliveryConfirmation?.(message.beeId, generation, message.id, fallback.pointer) != null) {
+        const intent = this.store.getDeliveryConfirmationIntent(message.id);
+        if (!intent || fallback.generation !== generation || intent.generation !== generation) {
+          if (!intent) this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: message.beeId, messageId: message.id, generation });
+          if (fallback.state === "in_flight") this.store.transitionMultilineFallback(message.id, "in_flight", "unknown", { detail: "delivery_pointer_outcome_unknown" });
+          return { handled: true, accepted: false };
+        }
+        return { handled: false, accepted: false, confirmationBody: fallback.pointer };
+      }
       return { handled: true, accepted: this.reconcile(message, source), ...(fallback.generation === null ? {} : { generation: fallback.generation }) };
     }
     if (fallback.state !== "preparing" && fallback.state !== "ready") return { handled: true, accepted: false };

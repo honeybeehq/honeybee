@@ -697,7 +697,8 @@ export class HsrDriver implements RuntimeDriver {
       }
       if (!p.processIdentity || !verifyProcessIdentity(p.pid, p.processIdentity)) { this.rejectHostPeer(p, attempt); return; }
       const fd = (attempt as unknown as { _handle?: { fd?: number } })._handle?.fd;
-      if (fd === undefined || !authenticatedProcessPeer(fd, p.processIdentity)) { this.rejectHostPeer(p, attempt); return; }
+      const authenticated = fd !== undefined && authenticatedProcessPeer(fd, p.processIdentity);
+      if ((p.socketBroken || p.adapter?.confirmsDelivery) && !authenticated) { this.rejectHostPeer(p, attempt); return; }
       p.authFailureSince = undefined;
       p.authFailures = 0;
       if (p.socketBroken) {
@@ -708,7 +709,7 @@ export class HsrDriver implements RuntimeDriver {
       const supported = status?.beeId === p.beeId && status.generation === p.generation && status.hostPid === p.pid
         && status.capabilities?.includes(DELIVERY_STATUS_CAPABILITY) === true;
       const exactStatus = status?.beeId === p.beeId && status.generation === p.generation && status.hostPid === p.pid;
-      p.deliveryProtocol = { authenticated: true, supported,
+      p.deliveryProtocol = { authenticated, supported,
         legacy: exactStatus && !supported, pending: new Set(), replies: new Map() };
       for (const line of p.pendingWrites.splice(0)) {
         attempt.write(`${JSON.stringify({ op: "write", line })}\n`);
@@ -795,14 +796,19 @@ export class HsrDriver implements RuntimeDriver {
       p.deliveryProtocol?.replies.get(messageId)?.state === "written" ? null : p.deliveryProtocol?.replies.get(messageId)]);
   }
 
-  deliveryIssue(beeId: string, generation: number, messageId: number, body: string): "host_auth_failed" | "message_too_large" | null {
+  deliveryIssue(beeId: string, generation: number, messageId: number, body?: string): "host_auth_failed" | "message_too_large" | null {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return null;
     if (p.authFailureSince !== undefined && this.now() - p.authFailureSince >= 30_000) return "host_auth_failed";
+    if (body === undefined) return null;
     const line = p.adapter?.encodeMessage(body, { sessionId: p.sessionId, messageId, turnActive: p.phase === "running", turnId: p.turnId });
     if (line == null) return null;
-    const delivery = p.adapter?.confirmsDelivery ? { id: messageId, digest: createHash("sha256").update(line).digest("hex"), beeId, generation } : undefined;
-    return Buffer.byteLength(line) > DELIVERY_CONFIRMATION_MAX_WIRE_BYTES || Buffer.byteLength(JSON.stringify({ op: "write", line, ...(delivery ? { delivery } : {}) }) + "\n") > DELIVERY_FRAME_MAX_BYTES ? "message_too_large" : null;
+    return this.deliveryFrameOversized(p, messageId, line) ? "message_too_large" : null;
+  }
+
+  private deliveryFrameOversized(p: ManagedProcess, messageId: number, line: string): boolean {
+    const delivery = p.adapter?.confirmsDelivery ? { id: messageId, digest: createHash("sha256").update(line).digest("hex"), beeId: p.beeId, generation: p.generation } : undefined;
+    return Buffer.byteLength(line) > DELIVERY_CONFIRMATION_MAX_WIRE_BYTES || Buffer.byteLength(JSON.stringify({ op: "write", line, ...(delivery ? { delivery } : {}) }) + "\n") > DELIVERY_FRAME_MAX_BYTES;
   }
 
   deliveryLaneReady(beeId: string, generation: number): boolean {
@@ -861,7 +867,6 @@ export class HsrDriver implements RuntimeDriver {
       p.deliveryProtocol.replies.delete(messageId);
       if (reply.digest !== plan.digest) return "unknown";
       if (reply.state === "written") return "pending_ack";
-      if (reply.state === "refused") return "not_written";
       if (reply.state === "accepted") {
         p.pendingDeliveries.delete(messageId);
         this.consumed.set(messageId, generation);
@@ -923,7 +928,7 @@ export class HsrDriver implements RuntimeDriver {
       turnId: p.turnId,
     });
     if (encoded == null) return refused("not_ready");
-    if (this.deliveryIssue(beeId, generation, messageId, body) === "message_too_large") return { accepted: false, reason: "not_ready", detail: "message_too_large" };
+    if (this.deliveryFrameOversized(p, messageId, encoded)) return { accepted: false, reason: "not_ready", detail: "message_too_large" };
     // Host-style reaches here only with a connected write lane. Node's
     // socket.write(false) means accepted with backpressure, not rejected; the
     // write remains one delivery and must never trigger a duplicate retry.

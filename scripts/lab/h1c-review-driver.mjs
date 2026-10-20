@@ -4,6 +4,7 @@ import {join,dirname} from 'node:path';
 import {openCoreStore,replayAudit} from '../../v2/core/src/index.ts';
 import {DaemonCore} from '../../v2/daemon/src/loops.ts';
 import {DeliveryFiles} from '../../v2/daemon/src/deliveryFile.ts';
+import {MultilineFallback} from '../../v2/daemon/src/multilineFallback.ts';
 import {HsrDriver} from '../../v2/driver-hsr/src/index.ts';
 import {codexAdapter} from '../../v2/adapters/src/index.ts';
 import {fixtureRuntimeIdentity,sleep,pidAlive} from '../../v2/driver-hsr/tests/helpers.ts';
@@ -11,12 +12,12 @@ assert(process.env.TMPDIR?.startsWith('/var/tmp/'));
 const root=mkdtempSync(join(process.env.TMPDIR,'h1c-review-'));
 const fake=new URL('./h1c-fake-codex.mjs',import.meta.url).pathname;
 const maskFake=new URL('./h1c-child-umask.mjs',import.meta.url).pathname;
-for(const mode of ['child-umask','steer-refused','oversize-confirming','oversize-nonconfirming','multiline-intent','captured-settlement'].filter(mode=>process.argv.length===2||process.argv.slice(2).includes(mode))){
+for(const mode of ['child-umask','steer-refused','deterministic-refusal','oversize-confirming','oversize-nonconfirming','multiline-intent','captured-settlement','unknown-pointer-same-generation','unknown-pointer-old-generation'].filter(mode=>process.argv.length===2||process.argv.slice(2).includes(mode))){
  const dir=join(root,mode);let clock=Date.now();const writes=dir+'.writes';
  const work=join(root,'work-'+mode);mkdirSync(work,{mode:0o700});
  const store=openCoreStore(dir+'.sqlite',{now:()=>clock});
  const adapter=codexAdapter({cwd:work});if(mode==='oversize-nonconfirming')adapter.confirmsDelivery=false;
- const driver=new HsrDriver({now:()=>clock,random:()=>0.5,sessionLogDir:dir,runnersDir:join(dir,'runners'),runtimeIdentity:fixtureRuntimeIdentity(dir),resolve:()=>({adapter,command:process.execPath,args:[mode==='child-umask'?maskFake:fake],cwd:work,env:{...process.env,H1C_WRITES:writes,...(mode==='child-umask'?{H1C_MASK_PROBE:root}:{}),...(mode==='steer-refused'?{H1C_REFUSE_STEER:'yes',H1C_TURN_MS:'1000'}:{})}})});
+ const driver=new HsrDriver({now:()=>clock,random:()=>0.5,sessionLogDir:dir,runnersDir:join(dir,'runners'),runtimeIdentity:fixtureRuntimeIdentity(dir),resolve:()=>({adapter,command:process.execPath,args:[mode==='child-umask'?maskFake:fake],cwd:work,env:{...process.env,H1C_WRITES:writes,...(mode==='child-umask'?{H1C_MASK_PROBE:root}:{}),...(mode==='steer-refused'?{H1C_REFUSE_STEER:'yes',H1C_TURN_MS:'1000'}:{}),...(mode==='deterministic-refusal'?{H1C_REFUSE_ALL:'yes'}:{}),...(mode.startsWith('unknown-pointer')?{H1C_ACK:'never'}:{})}})});
  const deliveryRoot=join(root,'delivery-'+mode);mkdirSync(deliveryRoot,{mode:0o700});
  const core=new DaemonCore({store,driver,now:()=>clock,random:()=>0.5,policy:{bootHangTimeoutSteps:500_000,commandsPerStep:8,i1DeadlineSteps:540_000},multilineFallback:{root:deliveryRoot,worktrees:()=>[work],files:new DeliveryFiles(undefined,root)},log:()=>{}});let pid;
  const tick=async()=>{clock+=100;core.step();await sleep(5);};
@@ -35,6 +36,28 @@ for(const mode of ['child-umask','steer-refused','oversize-confirming','oversize
    for(let i=0;i<500&&!driver.procs.get('bee').turnId;i++){clock+=100;core.observe();await sleep(2);}assert(driver.procs.get('bee').turnId);
   }
   const message=store.send('bee',mode.startsWith('oversize')?'x'.repeat(16_777_216):'owned clean refusal').message;
+  if(mode.startsWith('unknown-pointer')){
+   for(let i=0;i<3;i++)store.recordMultilineDeliveryRefusal(message.id,1,'multiline_type_mode');
+   const plan=driver.planDeliveryConfirmation.bind(driver);driver.planDeliveryConfirmation=()=>null;
+   const oldFallback=new MultilineFallback(store,driver,{root:deliveryRoot,worktrees:()=>[work],files:new DeliveryFiles(undefined,root)});
+   try{oldFallback.deliver(message,message.body,1,false,null,{kind:'human'});}finally{driver.planDeliveryConfirmation=plan;}
+   assert.equal(store.getDeliveryConfirmationIntent(message.id),null);assert.equal(store.multilineDelivery(message.id).fallback.state,'in_flight');
+   for(let i=0;i<500&&!existsSync(writes);i++)await sleep(5);assert(existsSync(writes));
+   if(mode==='unknown-pointer-old-generation'){
+    driver.disposeAll();for(let i=0;i<500&&pidAlive(pid);i++)await sleep(5);assert.equal(pidAlive(pid),false);
+    store.updateRuntimeState('bee',1,'stopped',{exitCause:'crashed'});store.reviveBee('bee');store.enqueueCommand('spawn','bee');
+    await until(()=>store.currentRuntime('bee')?.generation===2&&driver.deliveryLaneReady('bee',2));pid=driver.procs.get('bee').pid;
+   }
+   await until(()=>store.getMessage(message.id)?.deliveryConfirmation?.state==='held');for(let i=0;i<50;i++)await tick();
+   assert.equal(store.getDeliveryConfirmationIntent(message.id).wireLine,null);assert.equal(store.getMessage(message.id).deliveredAt,null);assert.equal(readFileSync(writes,'utf8').trim().split('\n').length,1);
+   console.log(JSON.stringify({case:mode,originalPointerWrites:1,newPointerWrites:0,heldReason:store.getMessage(message.id).deliveryConfirmation.reason,originalGeneration:1,currentGeneration:store.currentRuntime('bee').generation}));continue;
+  }
+  if(mode==='deterministic-refusal'){
+   await until(()=>store.getMessage(message.id)?.deliveryConfirmation?.reason==='refused');
+   for(let i=0;i<200;i++)await tick();
+   assert.equal(readFileSync(writes,'utf8').trim().split('\n').length,2);assert.equal(store.getDeliveryConfirmationIntent(message.id).refusalRetries,1);assert.equal(store.view('bee').waitingForYou,true);
+   console.log(JSON.stringify({case:mode,stdinWrites:2,automaticRetries:1,heldReason:'refused',visible:true}));continue;
+  }
   if(mode==='multiline-intent'){
    for(let i=0;i<3;i++)store.recordMultilineDeliveryRefusal(message.id,1,'multiline_type_mode');
    const deliver=driver.deliver.bind(driver);driver.deliver=(...args)=>{assert(args[4]?.confirmation);assert(store.getDeliveryConfirmationIntent(message.id));throw Error('owned interruption before pointer write');};

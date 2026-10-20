@@ -1,5 +1,5 @@
 import { runGatedRunnerHost } from "./gated-runner-host.ts";
-import { DeliveryReceipts, DELIVERY_STATUS_CAPABILITY, type TaggedDelivery } from "./delivery-receipts.ts";
+import { DeliveryReceipts, DELIVERY_FRAME_MAX_BYTES, DELIVERY_STATUS_CAPABILITY, type TaggedDelivery } from "./delivery-receipts.ts";
 import { stateFile, runnerStateFiles } from "../../harness/src/statePath.ts";
 import type { ExecutionStart, ExecutionProcess } from "../../core/src/executionStart.ts";
 import { nativeNodeEnv } from "../../../src/runtimeEnvironment.ts";
@@ -174,6 +174,7 @@ export function runRunnerHost(configPath: string): void {
   stateFile(configPath, "runner configPath");
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
   runnerStateFiles(cfg);
+  mkdirSync(dirname(cfg.socketPath), { recursive: true, mode: 0o700 });
   bindToTestFixtureLease(process.env.HIVE_TEST_FIXTURE_LEASE);
   if (Object.hasOwn(cfg,"executionStart") || Object.hasOwn(cfg,"executionOwner")) {
     if (!cfg.executionStart || !cfg.executionOwner) throw new Error("Missing fenced host origin");
@@ -290,10 +291,10 @@ export function runRunnerHost(configPath: string): void {
     socket.setEncoding("utf8");
     socket.on("data", (chunk: string) => {
       buffered += chunk;
-      if (buffered.length > 16_777_216) { socket.destroy(); return; }
       const frames = buffered.split("\n");
       buffered = frames.pop() ?? "";
       for (const frame of frames) {
+        if (Buffer.byteLength(frame + "\n") > DELIVERY_FRAME_MAX_BYTES) { socket.destroy(); return; }
         if (frame.trim().length === 0) continue;
         try {
           const parsed = JSON.parse(frame) as { op?: string; line?: string; delivery?: TaggedDelivery };
@@ -310,6 +311,7 @@ export function runRunnerHost(configPath: string): void {
           // Malformed frame: drop it; the daemon's delivery loop re-sends.
         }
       }
+      if (Buffer.byteLength(buffered) > DELIVERY_FRAME_MAX_BYTES) socket.destroy();
     });
     socket.on("error", () => undefined);
   });
@@ -321,7 +323,6 @@ export function runRunnerHost(configPath: string): void {
     status.at = Date.now();
     writeStatus(cfg.statusPath, status);
   });
-  mkdirSync(dirname(cfg.socketPath), { recursive: true, mode: 0o700 });
   const previousMask = process.umask(0o077);
   try {
     server.listen(cfg.socketPath, () => chmodSync(cfg.socketPath, 0o600));

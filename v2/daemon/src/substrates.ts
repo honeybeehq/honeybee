@@ -104,7 +104,7 @@ export class SubstrateRouter implements RuntimeDriver {
     return driver.deliveryReadiness?.(beeId, generation, messageId) ?? "";
   }
 
-  deliveryIssue(beeId: string, generation: number, messageId: number, body: string) {
+  deliveryIssue(beeId: string, generation: number, messageId: number, body?: string) {
     const driver: RuntimeDriver = this.driverFor(beeId, generation);
     return driver.deliveryIssue?.(beeId, generation, messageId, body) ?? null;
   }

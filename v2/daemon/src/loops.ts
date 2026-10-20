@@ -1684,6 +1684,10 @@ export class DaemonCore {
           this.store.replanDeliveryConfirmationIntent(intent, intent.digest);
           this.confirmationReady.add(intent.messageId);
         }
+      } else if (result === "refused") {
+        if (intent.wireLine === null) continue;
+        if (this.store.retryRefusedDeliveryConfirmation(intent.messageId, intent.generation, intent.digest)) this.confirmationReady.add(intent.messageId);
+        else this.confirmationReady.delete(intent.messageId);
       } else if (result !== "pending_ack") {
         this.confirmationReady.delete(intent.messageId);
         this.store.holdDeliveryConfirmation(intent.messageId, result);
@@ -1748,7 +1752,8 @@ export class DaemonCore {
           : ordinaryPending;
         const pending = quotaGate.messageIds.length > 0 ? allPending.filter(message => quotaGate.messageIds.includes(message.id)) : allPending;
         const authHead = pending[0];
-        if (authHead && this.driver.deliveryIssue?.(rt.beeId, rt.generation, authHead.id, "") === "host_auth_failed" && !this.store.inTransaction && !this.store.getDeliveryConfirmationIntent(authHead.id)) {
+        const authFallback = authHead ? this.store.multilineDelivery(authHead.id)?.fallback : null;
+        if (authHead && !authFallback && this.driver.deliveryIssue?.(rt.beeId, rt.generation, authHead.id) === "host_auth_failed" && !this.store.inTransaction && !this.store.getDeliveryConfirmationIntent(authHead.id)) {
           this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: authHead.id, generation: rt.generation }, "host_auth_failed");
           this.log(`deliver.held bee=${rt.beeId} msg=${authHead.id} reason=host_auth_failed`);
         }
@@ -1854,9 +1859,17 @@ export class DaemonCore {
           this.deliveryRetries.set(rt.beeId, { key: retryKey, attempts, nextAt: this.now() + delay });
           this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=not_ready detail=confirmation_plan_not_ready`);
         };
+        const fallbackHold = this.store.multilineDelivery(msg.id);
+        const usesFallback = fallbackHold && (fallbackHold.fallback || ["held", "expired"].includes(fallbackHold.stage));
+        const initialIssue = usesFallback ? null : this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body);
+        if (initialIssue && !this.store.inTransaction) {
+          this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, initialIssue);
+          this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=${initialIssue}`);
+          continue;
+        }
         const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
         if (fallback?.confirmationBody) body = fallback.confirmationBody;
-        const issue = this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body);
+        const issue = fallback?.confirmationBody ? this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body) : null;
         if (issue && !this.store.inTransaction) {
           this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, issue);
           this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=${issue}`);
