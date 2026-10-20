@@ -1,3 +1,4 @@
+import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess} from "../../harness/src/processIdentity.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
@@ -667,8 +668,7 @@ export function activationFailureName(error: unknown): string {
 
 /** Rate-limit cause classifier for resource_blocked evidence (spec 08 rotation trigger). */
 export function isRateLimitCause(detail: string): boolean {
-  const m = detail.toLowerCase();
-  return m.includes("rate limit") || m.includes("rate-limit") || m.includes("rate_limit") || m.includes("429") || (m.includes("quota") && (m.includes("exceeded") || m.includes("exhausted"))) || m.includes("usage limit");
+  return isQuotaTextFallback(detail);
 }
 
 /** Per-bee rotation opt-out: tag or arg `autoswap=false` (also `--autoswap=false`). */
@@ -6693,7 +6693,7 @@ export class HiveDaemon {
       if (account.exhaustedAt != null) store.recordAccountExhaustion(account.id, null);
       return;
     }
-    if (ev.quota === undefined && ((account.harness === "claude" || account.harness === "codex") || !isRateLimitCause(ev.detail))) return;
+    if (ev.quota === undefined && !isRateLimitCause(ev.detail)) return;
     // Exhaustion evidence on the account (rotation cool-off). Debounced: a
     // provider re-reports the wall on every call; one stamp a minute is plenty.
     const now = Date.now();

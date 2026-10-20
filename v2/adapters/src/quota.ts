@@ -1,3 +1,4 @@
+import { isAuthNeededMessage } from "./types.ts";
 import type { QuotaBoundary } from "../../core/src/quota.ts";
 import { createHash } from "node:crypto";
 
@@ -16,10 +17,22 @@ function windowKind(value: unknown): QuotaBoundary["window"] {
   return value === "five_hour" || value === "weekly" ? value : "other";
 }
 
+export function isQuotaTextFallback(detail: string): boolean {
+  const m = detail.toLowerCase();
+  return m.includes("rate limit") || m.includes("rate-limit") || m.includes("rate_limit") || m.includes("429") || (m.includes("quota") && (m.includes("exceeded") || m.includes("exhausted"))) || m.includes("usage limit");
+}
+
+function textFallback(harness: "claude" | "codex", text: unknown): QuotaBoundary | undefined {
+  return typeof text === "string" && !isAuthNeededMessage(text) && isQuotaTextFallback(text)
+    ? { harness, window: "other", resetsAt: null, providerCategory: "text_fallback" }
+    : undefined;
+}
+
 export function claudeQuotaBoundary(row: Record<string, unknown>): QuotaBoundary | undefined {
   if (row.type === "rate_limit_event") {
     const info = object(row.rate_limit_info);
-    if (!info || (info.status !== "rejected" && info.status !== "blocked")) return undefined;
+    if (!info || typeof info.status !== "string" || !info.status || info.status.startsWith("allowed")) return undefined;
+    if (info.status !== "rejected" && info.status !== "blocked") return textFallback("claude", `claude rate limit ${info.status}`);
     return { harness: "claude", window: windowKind(info.rateLimitType), resetsAt: reset(info.resetsAt), providerCategory: "rate_limit_event" };
   }
   const message = object(row.message);
@@ -31,7 +44,7 @@ export function claudeQuotaBoundary(row: Record<string, unknown>): QuotaBoundary
   const text = errored ? row.result : typeof content === "string" ? content : block?.type === "text" ? block.text : undefined;
   if (typeof text !== "string") return undefined;
   const match = /^You've hit your (?:(weekly|5-hour|five-hour) )?limit · resets ([^\r\n]+)$/.exec(text);
-  if (!match) return undefined;
+  if (!match) return row.api_error_status === 401 ? undefined : textFallback("claude", text);
   const absolute = /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(match[2]!) ? Date.parse(match[2]!) : NaN;
   return { harness: "claude", window: match[1] === "weekly" ? "weekly" : "five_hour", resetsAt: Number.isFinite(absolute) ? absolute : null, providerCategory: synthetic ? "synthetic_limit" : "errored_result_limit" };
 }
@@ -51,8 +64,9 @@ export function codexQuotaBoundary(row: Record<string, unknown>): QuotaBoundary 
     const minutes = target?.windowDurationMins;
     return { harness: "codex", window: minutes === 300 ? "five_hour" : minutes === 10080 ? "weekly" : windowKind(reached), resetsAt: reset(target?.resetsAt), providerCategory: "rateLimitReachedType" };
   }
+  if (row.method !== "error" && row.method !== "turn/completed") return undefined;
   const error = row.method === "error" ? object(params.error) : row.method === "turn/completed" ? object(object(params.turn)?.error) : undefined;
-  if (error?.codexErrorInfo !== "usageLimitExceeded") return undefined;
+  if (error?.codexErrorInfo !== "usageLimitExceeded") return textFallback("codex", error?.message ?? (row.method === "error" ? params.message : undefined));
   return { harness: "codex", window: "other", resetsAt: null, providerCategory: "usageLimitExceeded" };
 }
 
