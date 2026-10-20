@@ -2536,7 +2536,7 @@ export class AccountsService {
     const source = accounts.find(account => account.id === sourceAccount);
     if (!source) return new Set();
     const previous = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed" && row.targetAccount === sourceAccount).sort((a, b) => b.updatedAt - a.updatedAt)[0] : undefined;
-    if (previous && now - previous.updatedAt < DEFAULT_ACCOUNT_ADMISSION_POLICY.quotaFreshMs) return new Set();
+    if (previous && now - previous.updatedAt < Math.max(30_000, this.cfg.accounts.allocationQuotaFreshMs)) return new Set();
     const sourcePlan = this.store.getAccountLimits(sourceAccount)?.plan?.toLowerCase();
     const policy = { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs };
     const sourceCandidate = this.admissionCandidate(source, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now,
