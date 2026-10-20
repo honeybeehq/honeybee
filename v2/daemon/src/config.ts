@@ -134,6 +134,8 @@ export interface AccountsConfig {
   allocationMode?: "shadow" | "active";
   proactiveAdmission?: boolean;
   proactiveDwellMs?: number;
+  proactiveOwnerWaitMs?: number;
+  proactiveOwnerCooldownMs?: number;
   /** Stable Apiary node identity for this daemon's allocation RPCs. */
   allocationNodeId?: string;
   /** Fenced allocator identity every node trusts. Required in active mode. */
@@ -928,6 +930,9 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
     }
     allocationPlanCapacityUnits[plan.toLowerCase()] = units;
   }
+  for (const key of ["proactiveOwnerWaitMs", "proactiveOwnerCooldownMs"]) {
+    if (a[key] !== undefined && (typeof a[key] !== "number" || !Number.isFinite(a[key]) || a[key] < 1000)) throw new ConfigError(`config: accounts.${key} must be at least 1000`);
+  }
   if (a.proactiveDwellMs !== undefined && (typeof a.proactiveDwellMs !== "number" || !Number.isFinite(a.proactiveDwellMs) || a.proactiveDwellMs < 30_000)) throw new ConfigError("config: accounts.proactiveDwellMs must be at least 30000");
   const allocationQuotaFreshMs = num(a, "allocationQuotaFreshMs", DEFAULTS.allocationQuotaFreshMs);
   const allocationActivityFreshMs = num(a, "allocationActivityFreshMs", DEFAULTS.allocationActivityFreshMs);
@@ -950,6 +955,8 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
     allocationMode,
     proactiveAdmission: typeof a.proactiveAdmission === "boolean" ? a.proactiveAdmission : true,
     proactiveDwellMs: num(a, "proactiveDwellMs", 30 * 60_000),
+    proactiveOwnerWaitMs: num(a, "proactiveOwnerWaitMs", 90_000),
+    proactiveOwnerCooldownMs: num(a, "proactiveOwnerCooldownMs", 15 * 60_000),
     allocationNodeId: allocationNodeId as string | null,
     allocationOwner: allocationOwner as { node: string; epoch: string } | null,
     allocationQuotaFreshMs,

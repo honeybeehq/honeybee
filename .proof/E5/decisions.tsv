@@ -1,0 +1,6 @@
+ts	phase	decision	why	evidence	result
+2026-10-20T19:52:00Z	scope	Expire only unclaimed active proactive waiting rows after 90s and cool down for 15m	Missing owner must not silence accepted mail	v2/daemon/src/daemon.ts	verification pending
+2026-10-20T19:53:00Z	verification	Four daemon cases pass; retain original source mail and swap only when owner acts	Prove bounded fallback without weakening owner execution	.proof/E5/lab.log	passed
+2026-10-20T19:53:00Z	fixture	Allow normal runtime revival on helper daemon restart while asserting same account and one recovery row	The first attempt wrongly asserted helper shutdown preserves generation1	.proof/E5/lab.ts	fixture assertion corrected; product unchanged
+2026-10-20T19:53:00Z	review	Carry time-based expiry and periodic absent-owner hold as explicit LOWs	Expiry bounds proactive waiting rather than proving owner death	.proof/E5/README.md	accepted scope of8275
+2026-10-20T19:55:00Z	authorization	Orchestrator8275 authorizes configurable60–120s example and cooldown; selected90s and15m defaults	Routine implementation choice within the explicit proactive-only fallback request, not a separate human numeric ruling	Hive message8275; .proof/E5/README.md	implemented and independently cleared

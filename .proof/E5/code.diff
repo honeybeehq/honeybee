@@ -1,0 +1,40 @@
+diff --git a/v2/daemon/src/accountsService.ts b/v2/daemon/src/accountsService.ts
+index defeef97..97c4cf9f 100644
+--- a/v2/daemon/src/accountsService.ts
++++ b/v2/daemon/src/accountsService.ts
+@@ -2285,0 +2286,4 @@ export class AccountsService {
++  proactiveOwnerWaitExpired(createdAt: number): boolean {
++    return this.cfg.accounts.allocationMode === "active" && this.now() - createdAt >= this.cfg.accounts.proactiveOwnerWaitMs;
++  }
++
+@@ -2544,0 +2549 @@ export class AccountsService {
++    if (openingBeeId && this.store.listQuotaRecoveries(openingBeeId).some(row => row.trigger === "proactive" && row.state === "cancelled" && row.reason === "owner_unavailable" && now - row.updatedAt < this.cfg.accounts.proactiveOwnerCooldownMs)) return { accountIds: new Set(), uncertain: false };
+diff --git a/v2/daemon/src/config.ts b/v2/daemon/src/config.ts
+index 7276e43c..38721f0f 100644
+--- a/v2/daemon/src/config.ts
++++ b/v2/daemon/src/config.ts
+@@ -136,0 +137,2 @@ export interface AccountsConfig {
++  proactiveOwnerWaitMs?: number;
++  proactiveOwnerCooldownMs?: number;
+@@ -930,0 +933,3 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
++  for (const key of ["proactiveOwnerWaitMs", "proactiveOwnerCooldownMs"]) {
++    if (a[key] !== undefined && (typeof a[key] !== "number" || !Number.isFinite(a[key]) || a[key] < 1000)) throw new ConfigError(`config: accounts.${key} must be at least 1000`);
++  }
+@@ -952,0 +958,2 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
++    proactiveOwnerWaitMs: num(a, "proactiveOwnerWaitMs", 90_000),
++    proactiveOwnerCooldownMs: num(a, "proactiveOwnerCooldownMs", 15 * 60_000),
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 5cbcaa55..13560e37 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -6897,0 +6898,4 @@ export class HiveDaemon {
++      if (this.accounts.proactiveOwnerWaitExpired(pending.createdAt)) {
++        store.cancelQuotaRecovery(pending.id, "owner_unavailable");
++        return true;
++      }
+@@ -6931,0 +6936,5 @@ export class HiveDaemon {
++    if (row.trigger === "proactive" && accounts.proactiveOwnerWaitExpired(row.createdAt)) {
++      store.cancelQuotaRecovery(id, "owner_unavailable");
++      this.requestTick();
++      return;
++    }

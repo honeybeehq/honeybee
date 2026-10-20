@@ -2283,6 +2283,10 @@ export class AccountsService {
     return this.cfg.accounts.proactiveAdmission;
   }
 
+  proactiveOwnerWaitExpired(createdAt: number): boolean {
+    return this.cfg.accounts.allocationMode === "active" && this.now() - createdAt >= this.cfg.accounts.proactiveOwnerWaitMs;
+  }
+
   allocationMode(): "shadow" | "active" {
     return this.cfg.accounts.allocationMode;
   }
@@ -2542,6 +2546,7 @@ export class AccountsService {
     const activity = this.localActivities(accounts.map(account => account.id), now);
     const source = accounts.find(account => account.id === sourceAccount);
     if (!source) return { accountIds: new Set(), uncertain: true };
+    if (openingBeeId && this.store.listQuotaRecoveries(openingBeeId).some(row => row.trigger === "proactive" && row.state === "cancelled" && row.reason === "owner_unavailable" && now - row.updatedAt < this.cfg.accounts.proactiveOwnerCooldownMs)) return { accountIds: new Set(), uncertain: false };
     const failed = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "cancelled" && ["relative_refresh_unavailable", "relative_swap_refused"].includes(row.reason ?? "")).sort((a, b) => b.updatedAt - a.updatedAt)[0] : undefined;
     const failedRefreshGrace = failed && now - failed.updatedAt < (failed.reason === "relative_refresh_unavailable" ? 15 * 60_000 : 30_000)
       && !accounts.some(account => account.id !== sourceAccount && this.store.getAccountLimits(account.id)?.readable && (this.store.getAccountLimits(account.id)?.fetchedAt ?? 0) > failed.updatedAt);
