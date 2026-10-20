@@ -202,14 +202,15 @@ test("pending indexes migrate on reopen: covering install, old-index drop idempo
   // carries mailbox_undelivered; opening through the current build must drop
   // it AFTER the covering replacement exists, and reinstall the runtime index.
   raw("DROP INDEX IF EXISTS runtimes_daemon_live");
+  raw("DROP INDEX IF EXISTS mailbox_fifo_pending");
   raw("CREATE INDEX IF NOT EXISTS mailbox_undelivered ON mailbox(bee_id, id) WHERE delivered_at IS NULL");
   assert.equal(oldIndexPresent(), true);
 
   // BEFORE snapshots read UNDER old+covering (raw connection — the public
   // open would drop the old index first). The per-bee plan is asserted to
   // actually use the old index here, so the baseline genuinely exercises it.
-  const FIFO_SQL = "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id";
-  const GLOBAL_SQL = "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, id";
+  const FIFO_SQL = "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY COALESCE(queue_order,id), id";
+  const GLOBAL_SQL = "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, COALESCE(queue_order,id), id";
   const rawReads = (path: string) => {
     const db = new DatabaseSync(path, { readOnly: true });
     try {
@@ -238,7 +239,7 @@ test("pending indexes migrate on reopen: covering install, old-index drop idempo
   // AFTER snapshots on new-only, full-row deepEqual against the old+covering
   // baseline — the old-vs-new proof the drop must pass.
   const after = rawReads(h.path);
-  assert.match(after.fifoPlan, /USING INDEX mailbox_pending_metadata/, "the after reads ride the covering index");
+  assert.match(after.fifoPlan, /USING INDEX mailbox_fifo_pending/, "the after reads ride the covering index");
   assert.deepEqual(after.fifoA, before.fifoA, "full per-bee rows identical old+covering vs new-only");
   assert.deepEqual(after.fifoB, before.fifoB, "full per-bee rows identical old+covering vs new-only");
   assert.deepEqual(after.global, before.global, "full global rows identical old+covering vs new-only");
@@ -294,18 +295,18 @@ test("pending indexes migrate on reopen: covering install, old-index drop idempo
       check,
       "SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1",
     ).join("\n");
-    assert.match(mailboxPlan, /USING COVERING INDEX mailbox_pending_metadata/);
+    assert.match(mailboxPlan, /USING COVERING INDEX mailbox_(?:pending_metadata|fifo_pending)/);
     const fifoPlan = planDetails(
       check,
-      "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id",
+      "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY COALESCE(queue_order,id), id",
     ).join("\n");
-    assert.match(fifoPlan, /SEARCH mailbox USING INDEX mailbox_pending_metadata \(bee_id=\?\)/);
+    assert.match(fifoPlan, /SEARCH mailbox USING INDEX mailbox_fifo_pending \(bee_id=\?\)/);
     assert.doesNotMatch(fifoPlan, /USE TEMP B-TREE/);
     const globalPlan = planDetails(
       check,
-      "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, id",
+      "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, COALESCE(queue_order,id), id",
     ).join("\n");
-    assert.match(globalPlan, /SCAN mailbox USING INDEX mailbox_pending_metadata/);
+    assert.match(globalPlan, /SCAN mailbox USING INDEX mailbox_fifo_pending/);
     assert.doesNotMatch(globalPlan, /USE TEMP B-TREE/);
 
     assert.equal(schemaVersionOf(), schemaVersionBefore, "index migration does not change the schema format");

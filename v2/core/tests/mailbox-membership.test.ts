@@ -273,7 +273,7 @@ test("production aggregate uses both partial indexes and validates SQLite scalar
       .map((row) => sqliteTextField(row, "detail"))
       .join("\n");
     assert.match(plan, /SEARCH mailbox USING COVERING INDEX mailbox_(?:pending_metadata|fifo_pending) \(bee_id=\?\)/);
-    assert.match(plan, /SEARCH mailbox USING (?:COVERING )?INDEX mailbox_delivered_by_bee \(bee_id=\?\)/);
+    assert.match(plan, /SEARCH mailbox USING (?:COVERING )?INDEX mailbox_(?:delivered_by_bee|fifo_delivered) \(bee_id=\?\)/);
     assert.doesNotMatch(plan, /USE TEMP B-TREE/);
     assert.doesNotMatch(plan, /SCAN mailbox(?:\s|$)/, "neither arm may scan the whole mailbox");
   } finally {

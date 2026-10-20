@@ -431,7 +431,7 @@ test("tasks.supply: boolean probes use the existing partial indexes", () => {
       ).join("\n");
       // Either pending partial index answers this boolean probe with an O(1)
       // bee_id seek; the planner may pick the covering metadata index.
-      assert.match(mailPlan, /USING (?:COVERING )?INDEX (?:mailbox_undelivered|mailbox_pending_metadata) \(bee_id=\?\)/);
+      assert.match(mailPlan, /USING (?:COVERING )?INDEX (?:mailbox_undelivered|mailbox_pending_metadata|mailbox_fifo_pending) \(bee_id=\?\)/);
     } finally {
       check.close();
     }
