@@ -1,0 +1,14 @@
+E4 relative proactive switching
+Implementation b4a0b53a9102ceefaed41e1d279109d964ecc411
+Base 76d1560a9fabe3c449f4d0ce108d91fe8b80afa2
+Branch review/sar-E4-relative-proactive
+16/16 shadow daemon cases PASS; 4/4 active daemon cases PASS; 2/2 concurrent five-bee cases PASS; 6/6 policy controls PASS.
+171 existing allocation/admission/account/config tests PASS,1 existing real-HOME import skipped;15 daemon accounts-RPC tests PASS. Total186passed1skip0failed.
+check,v2:check,build PASS; gates.exit0.
+Source90%with20capacityunits versus target80%with1unit stays; source90%withsame-plan target5%switches. Both99%stay (no proactive obligation); actual exhaustion belongs to provider_limit recovery as human7794 authorized.
+Shadow defaultON is intentional and authorized by Needle for Tormod7796. Active defaultON; explicitfalseoptsout. No outstanding default judgement.
+Near-equal accounts stay across five real turns and30logicalminutes; near reset/stale stay. Dwell reversal stays for five real turns, reverse2xmargin policy control passes.
+Five-bee concurrent fixtures: exactly4move,1stays,0remainingreservations. Relative target comparison and swap reservation share one synchronous transaction. Active owner selection unchanged.
+Contract snapshotv26:quota-contract.md. Existing schema/capability/provider evidence unchanged; proactive quota:null, no invented continuation.
+Carried LOWs: protected opening scans; short-window velocity noise; shadow local activity lower bound; atomic relative refusal may hold until next30sreconcile.
+No package or lock changes. No deployment; DEPLOY HOLD remains. Missing repository verification skill remains a known setup issue and did not run.

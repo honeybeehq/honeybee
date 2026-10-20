@@ -1,0 +1,15 @@
+E4 relative proactive admission
+
+Base: main76d1560a. Branch: review/sar-E4-relative-proactive. No deployment; DEPLOY HOLD.
+
+90% prompts comparison rather than imposing a cap. For each protected source window compare the same target window's absolute allowance after the existing velocity/completion/start/reservation projection. capacityUnits is the existing configured plan-size proxy, not a provider-reported token balance. Different plans require both configured values; identical known plans can use equal units. Missing identity or stale observations never trigger a move.
+
+A move requires more remaining allowance by a strict margin: max(10% of larger capacity, one projected start cost). It also needs a higher remaining-allowance rate over time to reset, with the existing6h floor. A source reset inside1h stays. Targets still pass the existing90% completion reserve/readiness/lease policy. After a completed recovery, max(30s,configured quota freshness) dwell applies; reverse moves need twice the margin. The relative check, reservation and shadow swap share one synchronous transaction, so later members of a herd see earlier holds. Active owner selection remains unchanged.
+
+Human7794 explicitly permits opening at90%+ when no account has materially more remaining usage: actual exhaustion is handled by provider_limit recovery. Thus both99% stays and emits no proactive obligation. This deliberately replaces the former both-protected hold. Human7796 via Needle explicitly defaults the flag ON in BOTH active and shadow mode after Queen PASS; false still opts out. This supersedes the previous shadow-default-off decision and is not an unresolved choice.
+
+Run lab.ts (16shadow real-daemon rows),active.ts(4owner-trigger rows),herd.ts(2five-bee rows),policy.ts(6pure comparison controls) with env-i, fakeHOME and private0700/var/tmp TMPDIR plus Cell caches. Each daemon uses fake accounts/harnesses and a loopback usage server, never a real provider. No helper cleanup is invoked. The30-minute stability control is logical time with fresh input per minute, not30minutes of wall time. Dwell reversal is also exercised in real daemons over five turns. The herd budget is exactly4moves and1source-retained bee at the fixture's source90/target70/burn/start costs.
+
+Run check,v2:check,build and existing allocation/admission/accounts/config suites. The imported real-HOME case remains skipped. Repository verification skill is missing (known setup issue); it did not run. honeybee-core-work, astack-principles and show-me-your-work govern this work.
+
+Carried LOWs: relative comparisons may scan all accounts/associated local bees at protected turn openings; no latency improvement is claimed. Velocity confidence remains the existing estimator and may react to short sample intervals. Shadow activity is a local lower bound; active owner retains complete fresh fleet admission. An atomic relative refusal can hold queued mail for at most the next30s reconciliation before cancellation. No new provider event, schema, capability or notice trigger is introduced; proactive quota remains null and no continuation is invented.

@@ -1,0 +1,4070 @@
+[
+  {
+    "method": "account.add",
+    "params": {
+      "harness": "codex",
+      "label": "a",
+      "importExisting": true
+    },
+    "result": {
+      "account": {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "codex-a",
+        "harness": "codex",
+        "homePath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-a",
+        "label": "a",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792499878646,
+        "updatedAt": 1792499878646,
+        "credentialHealth": "unverified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      },
+      "credentialHealth": "unverified",
+      "imported": {
+        "source": "vault",
+        "from": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/vault/codex/codex-a",
+        "files": [
+          "auth.json"
+        ]
+      },
+      "verification": "limits"
+    }
+  },
+  {
+    "method": "account.add",
+    "params": {
+      "harness": "codex",
+      "label": "b",
+      "importExisting": true
+    },
+    "result": {
+      "account": {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "codex-b",
+        "harness": "codex",
+        "homePath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-b",
+        "label": "b",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792499878655,
+        "updatedAt": 1792499878655,
+        "credentialHealth": "unverified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      },
+      "credentialHealth": "unverified",
+      "imported": {
+        "source": "vault",
+        "from": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/vault/codex/codex-b",
+        "files": [
+          "auth.json"
+        ]
+      },
+      "verification": "limits"
+    }
+  },
+  {
+    "method": "account.limits",
+    "params": {},
+    "result": {
+      "limits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792499878812,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792510679000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792597079000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792499878962,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 70,
+          "fiveHourResetsAt": 1792510679000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792597079000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "spawn",
+    "params": {
+      "name": "codex-herd",
+      "agent": "codex",
+      "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+      "account": "codex-a"
+    },
+    "result": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+      "agent": "codex",
+      "handle": "CO.0000",
+      "humanRef": null,
+      "issuingNamespace": null,
+      "commandId": 1,
+      "messageId": null,
+      "account": "codex-a"
+    }
+  },
+  {
+    "method": "spawn",
+    "params": {
+      "name": "codex-herd-1",
+      "agent": "codex",
+      "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+      "account": "codex-a"
+    },
+    "result": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+      "agent": "codex",
+      "handle": "CO.0001",
+      "humanRef": null,
+      "issuingNamespace": null,
+      "commandId": 2,
+      "messageId": null,
+      "account": "codex-a"
+    }
+  },
+  {
+    "method": "spawn",
+    "params": {
+      "name": "codex-herd-2",
+      "agent": "codex",
+      "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+      "account": "codex-a"
+    },
+    "result": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+      "agent": "codex",
+      "handle": "CO.0002",
+      "humanRef": null,
+      "issuingNamespace": null,
+      "commandId": 3,
+      "messageId": null,
+      "account": "codex-a"
+    }
+  },
+  {
+    "method": "spawn",
+    "params": {
+      "name": "codex-herd-3",
+      "agent": "codex",
+      "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+      "account": "codex-a"
+    },
+    "result": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+      "agent": "codex",
+      "handle": "CO.0003",
+      "humanRef": null,
+      "issuingNamespace": null,
+      "commandId": 4,
+      "messageId": null,
+      "account": "codex-a"
+    }
+  },
+  {
+    "method": "spawn",
+    "params": {
+      "name": "codex-herd-4",
+      "agent": "codex",
+      "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+      "account": "codex-a"
+    },
+    "result": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+      "agent": "codex",
+      "handle": "CO.0004",
+      "humanRef": null,
+      "issuingNamespace": null,
+      "commandId": 5,
+      "messageId": null,
+      "account": "codex-a"
+    }
+  },
+  {
+    "method": "send",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+      "body": "@slow:5000 concurrent relative opening"
+    },
+    "result": {
+      "messageId": 1,
+      "commandId": null,
+      "unarchived": false
+    }
+  },
+  {
+    "method": "send",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+      "body": "@slow:5000 concurrent relative opening"
+    },
+    "result": {
+      "messageId": 2,
+      "commandId": null,
+      "unarchived": false
+    }
+  },
+  {
+    "method": "send",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+      "body": "@slow:5000 concurrent relative opening"
+    },
+    "result": {
+      "messageId": 3,
+      "commandId": null,
+      "unarchived": false
+    }
+  },
+  {
+    "method": "send",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+      "body": "@slow:5000 concurrent relative opening"
+    },
+    "result": {
+      "messageId": 4,
+      "commandId": null,
+      "unarchived": false
+    }
+  },
+  {
+    "method": "send",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+      "body": "@slow:5000 concurrent relative opening"
+    },
+    "result": {
+      "messageId": 5,
+      "commandId": null,
+      "unarchived": false
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": 1792499882071,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": 1792499882071,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": 1792499882071,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": 1792499882071,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": 1792499882130,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": 1792499882071,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": 1792499882130,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": 1792499882071,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": 1792499882130,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": 1792499882185,
+          "deliveredGeneration": 3
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": 1792499882071,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": 1792499882130,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": 1792499882185,
+          "deliveredGeneration": 3
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": 1792499882071,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": 1792499882130,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": 1792499882185,
+          "deliveredGeneration": 3
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": 1792499882071,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": 1792499882130,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499878991,
+          "deliveredAt": 1792499881732,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 2,
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": 1792499882185,
+          "deliveredGeneration": 3
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 3,
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879003,
+          "deliveredAt": 1792499882238,
+          "deliveredGeneration": 3
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 4,
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879004,
+          "deliveredAt": 1792499882071,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 5,
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sender": "operator",
+          "body": "@slow:5000 concurrent relative opening",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792499879005,
+          "deliveredAt": 1792499882130,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19"
+    },
+    "result": {
+      "view": {
+        "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 1,
+        "runtimeState": "running",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": 1792499880229,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "id": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+        "name": "codex-herd",
+        "agent": "codex",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/91e7f24d-997d-4976-a9b2-d7d0d1f2fd19.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792499878973,
+        "archivedAt": null,
+        "lastOutputAt": 1792499880229,
+        "providerSessionId": "fd0cd77e-ad72-4f39-93e4-33a59799b0b5",
+        "env": {
+          "CODEX_HOME": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-a"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "codex-a",
+        "handle": "CO.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 1,
+          "startedAt": 1792499881482,
+          "humanAt": 1792499881482,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+        "generation": 1,
+        "state": "running",
+        "exitCause": null,
+        "pid": 892660,
+        "pidStartedAt": 1792499879225,
+        "bootEvidence": "real",
+        "startedAt": 1792499878973,
+        "updatedAt": 1792499881482
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675"
+    },
+    "result": {
+      "view": {
+        "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 3,
+        "runtimeState": "running",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": 1792499882127,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+        "name": "codex-herd-1",
+        "agent": "codex",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/e7a8101d-4b12-4c9f-81d6-5837af2be675.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792499878979,
+        "archivedAt": null,
+        "lastOutputAt": 1792499882127,
+        "providerSessionId": "437861ca-6582-425a-9a9f-7ba8a998b692",
+        "env": {
+          "CODEX_HOME": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "codex-b",
+        "handle": "CO.0001",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 2,
+          "generation": 3,
+          "startedAt": 1792499882180,
+          "humanAt": 1792499882180,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+        "generation": 3,
+        "state": "running",
+        "exitCause": null,
+        "pid": 892879,
+        "pidStartedAt": 1792499881714,
+        "bootEvidence": "real",
+        "startedAt": 1792499881505,
+        "updatedAt": 1792499882180
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7"
+    },
+    "result": {
+      "view": {
+        "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 3,
+        "runtimeState": "running",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": 1792499882182,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+        "name": "codex-herd-2",
+        "agent": "codex",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792499878982,
+        "archivedAt": null,
+        "lastOutputAt": 1792499882182,
+        "providerSessionId": "16a7c0e0-ef3c-4e8d-bc10-a689293df429",
+        "env": {
+          "CODEX_HOME": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "codex-b",
+        "handle": "CO.0002",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 3,
+          "generation": 3,
+          "startedAt": 1792499882236,
+          "humanAt": 1792499882236,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+        "generation": 3,
+        "state": "running",
+        "exitCause": null,
+        "pid": 892901,
+        "pidStartedAt": 1792499881999,
+        "bootEvidence": "real",
+        "startedAt": 1792499881749,
+        "updatedAt": 1792499882236
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d"
+    },
+    "result": {
+      "view": {
+        "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 2,
+        "runtimeState": "running",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": 1792499881743,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+        "name": "codex-herd-3",
+        "agent": "codex",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/b07d65b8-c4ef-44e2-94b0-56b573eaa11d.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792499878984,
+        "archivedAt": null,
+        "lastOutputAt": 1792499881743,
+        "providerSessionId": "4d68cf1e-7eb7-4770-ba17-aaa6e7940a73",
+        "env": {
+          "CODEX_HOME": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "codex-b",
+        "handle": "CO.0003",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 4,
+          "generation": 2,
+          "startedAt": 1792499882066,
+          "humanAt": 1792499882066,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+        "generation": 2,
+        "state": "running",
+        "exitCause": null,
+        "pid": 892827,
+        "pidStartedAt": 1792499881070,
+        "bootEvidence": "real",
+        "startedAt": 1792499880772,
+        "updatedAt": 1792499882066
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42"
+    },
+    "result": {
+      "view": {
+        "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 2,
+        "runtimeState": "running",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": 1792499882068,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+        "name": "codex-herd-4",
+        "agent": "codex",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/8dfc92f5-ef57-49ff-a1c6-af81016aee42.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792499878987,
+        "archivedAt": null,
+        "lastOutputAt": 1792499882068,
+        "providerSessionId": "6b0b9853-e893-410d-b7c8-70034ab4c15f",
+        "env": {
+          "CODEX_HOME": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "codex-b",
+        "handle": "CO.0004",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 5,
+          "generation": 2,
+          "startedAt": 1792499882098,
+          "humanAt": 1792499882098,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+        "generation": 2,
+        "state": "running",
+        "exitCause": null,
+        "pid": 892851,
+        "pidStartedAt": 1792499881458,
+        "bootEvidence": "real",
+        "startedAt": 1792499881195,
+        "updatedAt": 1792499882098
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 213,
+      "views": [
+        {
+          "bee": {
+            "authControlFence": 2,
+            "id": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+            "name": "codex-herd-2",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792499878982,
+            "archivedAt": null,
+            "lastOutputAt": 1792499882182,
+            "providerSessionId": "16a7c0e0-ef3c-4e8d-bc10-a689293df429",
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-b"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-b",
+            "handle": "CO.0002",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 3,
+              "generation": 3,
+              "startedAt": 1792499882236,
+              "humanAt": 1792499882236,
+              "endedAt": null
+            },
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+            "generation": 3,
+            "state": "running",
+            "exitCause": null,
+            "pid": 892901,
+            "pidStartedAt": 1792499881999,
+            "bootEvidence": "real",
+            "startedAt": 1792499881749,
+            "updatedAt": 1792499882236
+          },
+          "view": {
+            "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 3,
+            "runtimeState": "running",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": 1792499882182,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        },
+        {
+          "bee": {
+            "authControlFence": 2,
+            "id": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+            "name": "codex-herd-4",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/8dfc92f5-ef57-49ff-a1c6-af81016aee42.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792499878987,
+            "archivedAt": null,
+            "lastOutputAt": 1792499882068,
+            "providerSessionId": "6b0b9853-e893-410d-b7c8-70034ab4c15f",
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-b"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-b",
+            "handle": "CO.0004",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 5,
+              "generation": 2,
+              "startedAt": 1792499882098,
+              "humanAt": 1792499882098,
+              "endedAt": null
+            },
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+            "generation": 2,
+            "state": "running",
+            "exitCause": null,
+            "pid": 892851,
+            "pidStartedAt": 1792499881458,
+            "bootEvidence": "real",
+            "startedAt": 1792499881195,
+            "updatedAt": 1792499882098
+          },
+          "view": {
+            "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 2,
+            "runtimeState": "running",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": 1792499882068,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        },
+        {
+          "bee": {
+            "id": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+            "name": "codex-herd",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/91e7f24d-997d-4976-a9b2-d7d0d1f2fd19.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792499878973,
+            "archivedAt": null,
+            "lastOutputAt": 1792499880229,
+            "providerSessionId": "fd0cd77e-ad72-4f39-93e4-33a59799b0b5",
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 1,
+              "generation": 1,
+              "startedAt": 1792499881482,
+              "humanAt": 1792499881482,
+              "endedAt": null
+            },
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+            "generation": 1,
+            "state": "running",
+            "exitCause": null,
+            "pid": 892660,
+            "pidStartedAt": 1792499879225,
+            "bootEvidence": "real",
+            "startedAt": 1792499878973,
+            "updatedAt": 1792499881482
+          },
+          "view": {
+            "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "running",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": 1792499880229,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        },
+        {
+          "bee": {
+            "authControlFence": 2,
+            "id": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+            "name": "codex-herd-3",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/b07d65b8-c4ef-44e2-94b0-56b573eaa11d.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792499878984,
+            "archivedAt": null,
+            "lastOutputAt": 1792499881743,
+            "providerSessionId": "4d68cf1e-7eb7-4770-ba17-aaa6e7940a73",
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-b"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-b",
+            "handle": "CO.0003",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 4,
+              "generation": 2,
+              "startedAt": 1792499882066,
+              "humanAt": 1792499882066,
+              "endedAt": null
+            },
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+            "generation": 2,
+            "state": "running",
+            "exitCause": null,
+            "pid": 892827,
+            "pidStartedAt": 1792499881070,
+            "bootEvidence": "real",
+            "startedAt": 1792499880772,
+            "updatedAt": 1792499882066
+          },
+          "view": {
+            "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 2,
+            "runtimeState": "running",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": 1792499881743,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        },
+        {
+          "bee": {
+            "authControlFence": 2,
+            "id": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+            "name": "codex-herd-1",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/e7a8101d-4b12-4c9f-81d6-5837af2be675.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792499878979,
+            "archivedAt": null,
+            "lastOutputAt": 1792499882127,
+            "providerSessionId": "437861ca-6582-425a-9a9f-7ba8a998b692",
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-b"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-b",
+            "handle": "CO.0001",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 2,
+              "generation": 3,
+              "startedAt": 1792499882180,
+              "humanAt": 1792499882180,
+              "endedAt": null
+            },
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+            "generation": 3,
+            "state": "running",
+            "exitCause": null,
+            "pid": 892879,
+            "pidStartedAt": 1792499881714,
+            "bootEvidence": "real",
+            "startedAt": 1792499881505,
+            "updatedAt": 1792499882180
+          },
+          "view": {
+            "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 3,
+            "runtimeState": "running",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": 1792499882127,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792499878646,
+          "updatedAt": 1792499878811,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792499878655,
+          "updatedAt": 1792499878963,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792499881145,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792510679000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792597079000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792499882075,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 70,
+          "fiveHourResetsAt": 1792510679000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792597079000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [
+        {
+          "trigger": "proactive",
+          "id": "admission:68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7:2:0",
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "sourceGeneration": 2,
+          "sourceAccount": "codex-a",
+          "observationCursor": null,
+          "sourceId": null,
+          "accountLabel": "b",
+          "eventIds": [],
+          "messageIds": [],
+          "progress": "none",
+          "interrupted": false,
+          "controlFence": 2,
+          "placement": {
+            "agent": "codex",
+            "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+            "cellId": null
+          },
+          "quota": null,
+          "admission": {
+            "fetchedAt": 1792499881145,
+            "maxProjectedPercent": 98
+          },
+          "resetHints": {
+            "other": 1792510679000
+          },
+          "state": "resumed",
+          "attempt": 1,
+          "targetAccount": "codex-b",
+          "successorGeneration": 3,
+          "claimId": null,
+          "reservationId": null,
+          "commandId": 13,
+          "continuationKind": "none",
+          "continuationMessageIds": [],
+          "continuationHistory": [],
+          "retryAt": null,
+          "reason": null,
+          "createdAt": 1792499881166,
+          "updatedAt": 1792499882186
+        },
+        {
+          "trigger": "proactive",
+          "id": "admission:8dfc92f5-ef57-49ff-a1c6-af81016aee42:1:0",
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "sourceGeneration": 1,
+          "sourceAccount": "codex-a",
+          "observationCursor": null,
+          "sourceId": null,
+          "accountLabel": "b",
+          "eventIds": [],
+          "messageIds": [],
+          "progress": "none",
+          "interrupted": false,
+          "controlFence": 2,
+          "placement": {
+            "agent": "codex",
+            "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+            "cellId": null
+          },
+          "quota": null,
+          "admission": {
+            "fetchedAt": 1792499878812,
+            "maxProjectedPercent": 106
+          },
+          "resetHints": {
+            "other": 1792510679000
+          },
+          "state": "resumed",
+          "attempt": 1,
+          "targetAccount": "codex-b",
+          "successorGeneration": 2,
+          "claimId": null,
+          "reservationId": null,
+          "commandId": 10,
+          "continuationKind": "none",
+          "continuationMessageIds": [],
+          "continuationHistory": [],
+          "retryAt": null,
+          "reason": null,
+          "createdAt": 1792499881093,
+          "updatedAt": 1792499882072
+        },
+        {
+          "trigger": "proactive",
+          "id": "admission:91e7f24d-997d-4976-a9b2-d7d0d1f2fd19:1:0",
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "sourceGeneration": 1,
+          "sourceAccount": "codex-a",
+          "observationCursor": null,
+          "sourceId": null,
+          "accountLabel": null,
+          "eventIds": [],
+          "messageIds": [],
+          "progress": "none",
+          "interrupted": false,
+          "controlFence": 0,
+          "placement": {
+            "agent": "codex",
+            "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+            "cellId": null
+          },
+          "quota": null,
+          "admission": {
+            "fetchedAt": 1792499878812,
+            "maxProjectedPercent": 110
+          },
+          "resetHints": {
+            "other": 1792510679000
+          },
+          "state": "cancelled",
+          "attempt": 0,
+          "targetAccount": null,
+          "successorGeneration": null,
+          "claimId": null,
+          "reservationId": null,
+          "commandId": null,
+          "continuationKind": null,
+          "continuationMessageIds": [],
+          "continuationHistory": [],
+          "retryAt": null,
+          "reason": "completion_headroom_restored",
+          "createdAt": 1792499880239,
+          "updatedAt": 1792499881471
+        },
+        {
+          "trigger": "proactive",
+          "id": "admission:b07d65b8-c4ef-44e2-94b0-56b573eaa11d:1:0",
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "sourceGeneration": 1,
+          "sourceAccount": "codex-a",
+          "observationCursor": null,
+          "sourceId": null,
+          "accountLabel": "b",
+          "eventIds": [],
+          "messageIds": [],
+          "progress": "none",
+          "interrupted": false,
+          "controlFence": 2,
+          "placement": {
+            "agent": "codex",
+            "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+            "cellId": null
+          },
+          "quota": null,
+          "admission": {
+            "fetchedAt": 1792499878812,
+            "maxProjectedPercent": 110
+          },
+          "resetHints": {
+            "other": 1792510679000
+          },
+          "state": "resumed",
+          "attempt": 1,
+          "targetAccount": "codex-b",
+          "successorGeneration": 2,
+          "claimId": null,
+          "reservationId": null,
+          "commandId": 8,
+          "continuationKind": "none",
+          "continuationMessageIds": [],
+          "continuationHistory": [],
+          "retryAt": null,
+          "reason": null,
+          "createdAt": 1792499880246,
+          "updatedAt": 1792499881747
+        },
+        {
+          "trigger": "proactive",
+          "id": "admission:e7a8101d-4b12-4c9f-81d6-5837af2be675:2:0",
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "sourceGeneration": 2,
+          "sourceAccount": "codex-a",
+          "observationCursor": null,
+          "sourceId": null,
+          "accountLabel": "b",
+          "eventIds": [],
+          "messageIds": [],
+          "progress": "none",
+          "interrupted": false,
+          "controlFence": 2,
+          "placement": {
+            "agent": "codex",
+            "cwd": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ",
+            "cellId": null
+          },
+          "quota": null,
+          "admission": {
+            "fetchedAt": 1792499878812,
+            "maxProjectedPercent": 106
+          },
+          "resetHints": {
+            "other": 1792510679000
+          },
+          "state": "resumed",
+          "attempt": 1,
+          "targetAccount": "codex-b",
+          "successorGeneration": 3,
+          "claimId": null,
+          "reservationId": null,
+          "commandId": 11,
+          "continuationKind": "none",
+          "continuationMessageIds": [],
+          "continuationHistory": [],
+          "retryAt": null,
+          "reason": null,
+          "createdAt": 1792499881098,
+          "updatedAt": 1792499882132
+        }
+      ],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7:0",
+          "beeId": "68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": "16a7c0e0-ef3c-4e8d-bc10-a689293df429",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/68bd3970-7cf1-4c4e-bf35-8843d9b0c5b7.jsonl",
+          "handoffId": null,
+          "createdAt": 1792499878982,
+          "closedAt": null
+        },
+        {
+          "id": "seg:8dfc92f5-ef57-49ff-a1c6-af81016aee42:0",
+          "beeId": "8dfc92f5-ef57-49ff-a1c6-af81016aee42",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": "6b0b9853-e893-410d-b7c8-70034ab4c15f",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/8dfc92f5-ef57-49ff-a1c6-af81016aee42.jsonl",
+          "handoffId": null,
+          "createdAt": 1792499878987,
+          "closedAt": null
+        },
+        {
+          "id": "seg:91e7f24d-997d-4976-a9b2-d7d0d1f2fd19:0",
+          "beeId": "91e7f24d-997d-4976-a9b2-d7d0d1f2fd19",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": "fd0cd77e-ad72-4f39-93e4-33a59799b0b5",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/91e7f24d-997d-4976-a9b2-d7d0d1f2fd19.jsonl",
+          "handoffId": null,
+          "createdAt": 1792499878973,
+          "closedAt": null
+        },
+        {
+          "id": "seg:b07d65b8-c4ef-44e2-94b0-56b573eaa11d:0",
+          "beeId": "b07d65b8-c4ef-44e2-94b0-56b573eaa11d",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": "4d68cf1e-7eb7-4770-ba17-aaa6e7940a73",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/b07d65b8-c4ef-44e2-94b0-56b573eaa11d.jsonl",
+          "handoffId": null,
+          "createdAt": 1792499878984,
+          "closedAt": null
+        },
+        {
+          "id": "seg:e7a8101d-4b12-4c9f-81d6-5837af2be675:0",
+          "beeId": "e7a8101d-4b12-4c9f-81d6-5837af2be675",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": "437861ca-6582-425a-9a9f-7ba8a998b692",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-e4-herd-exact-xgOJFF/hb-v2-daemon-Yo1wPZ/session-logs/e7a8101d-4b12-4c9f-81d6-5837af2be675.jsonl",
+          "handoffId": null,
+          "createdAt": 1792499878979,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  }
+]
