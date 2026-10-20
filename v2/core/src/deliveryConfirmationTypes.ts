@@ -1,4 +1,4 @@
-export const DELIVERY_CONFIRMATION_REASONS = ["pending_ack", "old_host", "receipt_expired", "unknown", "generation_changed", "refused", "host_auth_failed", "message_too_large"] as const;
+export const DELIVERY_CONFIRMATION_REASONS = ["pending_ack", "old_host", "receipt_expired", "unknown", "generation_changed", "refused", "host_auth_failed", "message_too_large", "lane_unavailable"] as const;
 export type DeliveryConfirmationReason = (typeof DELIVERY_CONFIRMATION_REASONS)[number];
 export interface DeliveryConfirmation {
   code: "delivery_confirmation_pending";

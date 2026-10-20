@@ -12,7 +12,7 @@ assert(process.env.TMPDIR?.startsWith('/var/tmp/'));
 const root=mkdtempSync(join(process.env.TMPDIR,'h1c-review-'));
 const fake=new URL('./h1c-fake-codex.mjs',import.meta.url).pathname;
 const maskFake=new URL('./h1c-child-umask.mjs',import.meta.url).pathname;
-for(const mode of ['child-umask','steer-refused','deterministic-refusal','oversize-confirming','oversize-nonconfirming','multiline-intent','multiline-plan-not-ready','captured-settlement','unknown-pointer-same-generation','unknown-pointer-old-generation'].filter(mode=>process.argv.length===2||process.argv.slice(2).includes(mode))){
+for(const mode of ['child-umask','steer-refused','deterministic-refusal','oversize-confirming','oversize-nonconfirming','multiline-intent','multiline-plan-not-ready','confirmation-ready-lane-timeout','captured-settlement','unknown-pointer-same-generation','unknown-pointer-old-generation'].filter(mode=>process.argv.length===2||process.argv.slice(2).includes(mode))){
  const dir=join(root,mode);let clock=Date.now();const writes=dir+'.writes';
  const work=join(root,'work-'+mode);mkdirSync(work,{mode:0o700});
  const store=openCoreStore(dir+'.sqlite',{now:()=>clock});
@@ -36,6 +36,15 @@ for(const mode of ['child-umask','steer-refused','deterministic-refusal','oversi
    for(let i=0;i<500&&!driver.procs.get('bee').turnId;i++){clock+=100;core.observe();await sleep(2);}assert(driver.procs.get('bee').turnId);
   }
   const message=store.send('bee',mode.startsWith('oversize')?'x'.repeat(16_777_216):'owned clean refusal').message;
+  if(mode==='confirmation-ready-lane-timeout'){
+   const deliver=driver.deliver.bind(driver);driver.deliver=()=>{throw Error('owned pause before effect');};assert.throws(()=>core.step(),/owned pause before effect/);driver.deliver=deliver;
+   const reconcile=driver.reconcileDeliveryConfirmation.bind(driver);driver.reconcileDeliveryConfirmation=(...args)=>{const result=reconcile(...args);if(result==='not_written')driver.procs.get('bee').socketBroken=true;return result;};
+   await until(()=>core.confirmationReady.has(message.id));clock+=31_000;await tick();
+   assert.equal(store.getMessage(message.id).deliveryConfirmation.reason,'lane_unavailable');assert.equal(store.view('bee').waitingForYou,true);assert.equal(existsSync(writes),false);
+   for(let i=0;i<10;i++)await tick();assert.equal(store.getMessage(message.id).deliveryConfirmation.reason,'lane_unavailable');
+   driver.reconcileDeliveryConfirmation=reconcile;driver.procs.get('bee').socketBroken=false;await until(()=>store.getMessage(message.id)?.deliveredAt!==null);
+   assert.equal(readFileSync(writes,'utf8').trim().split('\n').length,1);console.log(JSON.stringify({case:mode,heldReason:'lane_unavailable',visibleAfter30s:true,writesWhileHeld:0,deliveredAfterLaneRecovery:true,stdinWrites:1,operatorActions:0}));continue;
+  }
   if(mode==='multiline-plan-not-ready'){
    for(let i=0;i<3;i++)store.recordMultilineDeliveryRefusal(message.id,1,'multiline_type_mode');
    driver.procs.get('bee').socketBroken=true;core.step();

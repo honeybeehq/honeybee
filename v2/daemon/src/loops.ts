@@ -1641,7 +1641,18 @@ export class DaemonCore {
         this.deliveryRetries.delete(intent.beeId);
         continue;
       }
-      if (this.confirmationReady.has(intent.messageId)) continue;
+      if (this.confirmationReady.has(intent.messageId)) {
+        if (this.now() - intent.since >= 30_000) {
+          this.store.holdDeliveryConfirmation(intent.messageId, "lane_unavailable");
+          this.confirmationReady.delete(intent.messageId);
+          this.confirmationPolls.delete(intent.messageId);
+        }
+        continue;
+      }
+      if (intent.state === "held" && intent.reason === "lane_unavailable") {
+        const plan = this.driver.planDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId, "");
+        if (!plan || plan === "not_ready") continue;
+      }
       const key = this.driver.deliveryReadiness?.(intent.beeId, intent.generation, intent.messageId) ?? "";
       const poll = this.confirmationPolls.get(intent.messageId);
       if (poll?.key === key && this.now() < poll.nextAt) continue;
