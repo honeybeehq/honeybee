@@ -359,6 +359,7 @@ export type NewWorkAdmission =
   | { ok: false; code: "account_wait" | "account_unavailable" | AccountRefusalCode; message: string; receipt: AccountAllocationReceipt };
 
 export interface NewWorkAdmissionOptions extends PickOptions {
+  allowSourceAccount?: boolean;
   operation: AccountAdmissionOperation;
   requestKey: string;
   context?: AccountAllocationContext | null;
@@ -2401,6 +2402,14 @@ export class AccountsService {
     return activities;
   }
 
+  restoredQuotaHeadroom(account: AccountRow, model?: string): boolean {
+    const row = this.store.getAccountLimits(account.id);
+    const values = row?.readable ? [row.fiveHourPct, row.weeklyPct, ...(isFableModel(model) ? [row.fableWeeklyPct] : [])].filter((value): value is number => value !== null) : [];
+    return account.exhaustedAt !== null && row?.readable === true && row.fetchedAt > account.exhaustedAt
+      && this.now() - row.fetchedAt <= this.cfg.accounts.allocationQuotaFreshMs
+      && values.length > 0 && values.every(value => value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
+  }
+
   private admissionCandidate(
     account: AccountRow,
     options: NewWorkAdmissionOptions,
@@ -2490,9 +2499,10 @@ export class AccountsService {
     const context = options.context ?? null;
     const contextFresh = this.contextIsFresh(context, scope, now);
     const excluded = new Set(options.excludeAccountIds ?? []);
-    if (options.operation === "swap" && options.sourceAccount) excluded.add(options.sourceAccount);
+    if (options.operation === "swap" && options.sourceAccount && !options.allowSourceAccount) excluded.add(options.sourceAccount);
     const accounts = this.store.listAccounts({ harness }).filter((account) =>
-      !excluded.has(account.id) && (!options.onlyAccountIds || options.onlyAccountIds.has(account.id)));
+      !excluded.has(account.id) && (!options.onlyAccountIds || options.onlyAccountIds.has(account.id))
+      && (account.id !== options.sourceAccount || !options.allowSourceAccount || this.restoredQuotaHeadroom(account, options.model)));
     const activityByAccount = this.localActivities(accounts.map((account) => account.id), now);
     const candidates = accounts.map((account) => this.admissionCandidate(account, options, context, contextFresh, now, activityByAccount.get(account.id)!));
     const decision = selectAccountAdmission(candidates, {
@@ -2511,7 +2521,11 @@ export class AccountsService {
         ? inheritedReadiness!.ready
           ? { ok: true, account: inherited, reason: "automatic inheritance", limitsAgeMs: null, stale: false, candidates: 1 }
           : { ok: false, code: inheritedReadiness!.code === "account_paused" ? "all_paused" : inheritedReadiness!.code === "account_credential_missing" ? "no_credentials" : "auth_needed", message: inheritedReadiness!.message }
-        : this.pick(harness, options);
+        : this.pick(harness, { ...options, excludeAccountIds: new Set([...excluded, ...this.store.listAccounts({ harness }).filter(account => {
+            if (!options.allowSourceAccount) return false;
+            if (account.exhaustedAt !== null && !this.restoredQuotaHeadroom(account, options.model)) return true;
+            return false;
+          }).map(account => account.id)]) });
       if (!legacy.ok) {
         const receipt: AccountAllocationReceipt = {
           version: 1, mode: "shadow", scope, revision: contextFresh ? context!.revision : null,
@@ -2625,6 +2639,7 @@ export class AccountsService {
         opts.excludeRecentlyExhausted &&
         account.exhaustedAt != null &&
         now - account.exhaustedAt < this.cfg.accounts.exhaustionCoolOffMs
+        && !this.restoredQuotaHeadroom(account, opts.model)
       ) continue;
       candidates.push(account);
     }

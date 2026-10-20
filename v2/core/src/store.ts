@@ -2214,13 +2214,15 @@ export class CoreStore {
   }
 
   private putQuotaRecovery(row: QuotaRecoveryRow): QuotaRecoveryRow {
+    const previous = this.getQuotaRecovery(row.id);
     const updated = { ...row, updatedAt: this.now() };
+    const notify = !previous || previous.state !== updated.state || previous.retryAt !== updated.retryAt || previous.reason !== updated.reason;
     this.stmt("INSERT INTO quota_recoveries(id, bee_id, state, payload) VALUES(?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, payload = excluded.payload")
       .run(updated.id, updated.beeId, updated.state, JSON.stringify(updated));
-    this.audit("quota.recovery", updated.beeId, { recovery: updated, notice: {
+    this.audit("quota.recovery", updated.beeId, { recovery: updated, ...(notify ? { notice: {
       kind: "quota_recovery", recoveryId: updated.id, state: updated.state,
       sourceId: updated.sourceId, accountLabel: updated.accountLabel, window: updated.quota.window, retryAt: updated.retryAt,
-    } });
+    } } : {}) });
     return updated;
   }
 
