@@ -128,7 +128,8 @@ test("withdrawal replays existing v45 row-only receipts after the result gains t
   try {
     const {bee} = store.createBee({name: "old-receipt", agent: "inbox", substrate: "hsr", cwd: "/fixture"}); const question = store.askQuestion(bee.id, {text: "Old receipt?"});
     const first = store.withdrawQuestionWithKey(question.id, bee.id, "Old reason.", "legacy-row"); store.close();
-    const db = new DatabaseSync(f.path); db.prepare("UPDATE question_withdraw_receipts SET result=? WHERE key='legacy-row'").run(JSON.stringify(first.question)); db.close();
+    const {dismissedAt, dismissedBy, dismissalMessageId, ...legacyQuestion} = first.question;
+    const db = new DatabaseSync(f.path); db.prepare("UPDATE question_withdraw_receipts SET result=? WHERE key='legacy-row'").run(JSON.stringify(legacyQuestion)); db.close();
     store = f.open();
     assert.deepEqual(store.withdrawQuestionWithKey(question.id, bee.id, "Ignored reason.", "legacy-row"), {...first, deduped: true});
   } finally {store.close(); f.cleanup();}

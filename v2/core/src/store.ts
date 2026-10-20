@@ -6153,7 +6153,9 @@ export class CoreStore {
       if (hit) {
         if (hit.question_id !== questionId) throw new IdempotencyConflictError("Withdrawal key belongs to another question");
         const recorded = JSON.parse(String(hit.result)) as QuestionRow | { question: QuestionRow; alreadyTerminal?: "dismissed" };
-        return "question" in recorded ? { ...recorded, deduped: true } : { question: recorded, deduped: true };
+        const result = "question" in recorded ? recorded : {question: recorded};
+        const question = {...result.question, dismissedAt: result.question.dismissedAt ?? null, dismissedBy: result.question.dismissedBy ?? null, dismissalMessageId: result.question.dismissalMessageId ?? null};
+        return {...result, question, deduped: true};
       }
       const question = this.withdrawQuestion(questionId, callerBeeId, text);
       const result = { question, ...(question.status === "dismissed" ? { alreadyTerminal: "dismissed" as const } : {}) };
