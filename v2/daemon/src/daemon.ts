@@ -6833,7 +6833,7 @@ export class HiveDaemon {
     if (pending) return pending.state === "rotating" && pending.continuationKind !== null && pending.trigger !== "proactive";
     const accepted = recoveries.some(row => row.state === "resumed" && row.successorGeneration === generation);
     if (accepted && !store.listMessages(beeId).some(message => message.deliveredGeneration === generation)) return true;
-    const headroom = this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee));
+    const headroom = this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), true);
     if (headroom.status !== "protected") return true;
     const fetchedAt = store.getAccountLimits(bee.account)!.fetchedAt;
     const recovery = store.requireCompletionHeadroom(beeId, generation, { fetchedAt, maxProjectedPercent: headroom.maxProjectedPercent! }, headroom.retryAt);

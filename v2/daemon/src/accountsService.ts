@@ -2491,13 +2491,13 @@ export class AccountsService {
     return values.some(value => value !== null) && values.every(value => value === null || value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
   }
 
-  turnHeadroom(accountId: string, model?: string) {
+  turnHeadroom(accountId: string, model?: string, queuedTurn = false) {
     const account = this.store.getAccount(accountId);
     if (!account) return { status: "uncertain" as const, retryAt: null };
     const now = this.now();
     const local = this.localActivities([accountId], now).get(accountId)!;
     const candidate = this.admissionCandidate(account, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now, local);
-    return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
+    return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, requestUnits: queuedTurn ? 0 : 1, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
   }
 
   proactiveTargets(harness: string, sourceAccount: string, model?: string): Set<string> {

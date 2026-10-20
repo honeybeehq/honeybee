@@ -8,7 +8,7 @@ const proof = resolve(".proof/E");
 const repo = resolve(".");
 const selected = new Set(process.argv.slice(2));
 const results: any[] = selected.size && existsSync(join(proof, "summary.json")) ? JSON.parse(readFileSync(join(proof, "summary.json"), "utf8")).filter((row: any) => !selected.has(row.name)) : [];
-for (const harness of ["claude", "codex"]) for (const scenario of ["human", "worker", "action", "projected", "stale", "running", "both", "source-reset", "optout", "active"]) {
+for (const harness of ["claude", "codex"]) for (const scenario of ["human", "worker", "action", "projected", "headroom", "stale", "running", "both", "source-reset", "optout", "active"]) {
   const name = `${harness}-${scenario}`;
   if (selected.size && !selected.has(name)) continue;
   const usage = new Map([[`${harness}-a`, 5], [`${harness}-b`, 5]]);
@@ -61,8 +61,9 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
       await delivered(running.messageId);
       await waitFor(async () => (await request("view", { beeId })).view.runtimeState === "running", `${name} running`);
     }
-    usage.set(`${harness}-a`, scenario === "projected" ? 85 : 91);
-    if (scenario === "both" || scenario === "source-reset") usage.set(`${harness}-b`, 91);
+    usage.set(`${harness}-a`, scenario === "projected" || scenario === "both" ? 87 : 91);
+    if (scenario === "both" || scenario === "source-reset") usage.set(`${harness}-b`, scenario === "both" ? 87 : 91);
+    if (scenario === "headroom") usage.set(`${harness}-b`, 85);
     await request("account.limits");
     if (scenario === "stale") await new Promise(done => setTimeout(done, 800));
     if (scenario === "running") {
