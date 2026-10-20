@@ -1930,6 +1930,7 @@ export interface QuotaRecoveryRow {
   beeId: string;
   sourceGeneration: number;
   observationCursor: number | null;
+  sourceId: string | null;
   accountLabel: string | null;
   sourceAccount: string | null;
   eventIds: string[];

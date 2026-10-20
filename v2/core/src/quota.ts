@@ -7,6 +7,7 @@ export type QuotaBoundary = {
 
 export type QuotaObservedEvent = {
   eventId: string;
+  sourceId?: string;
   beeId: string;
   generation: number;
   quota: QuotaBoundary;

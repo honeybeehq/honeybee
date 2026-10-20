@@ -1,29 +1,31 @@
 {
-  "id": "quota:c2ab3e72-b51f-4e74-93df-a6094bce4cc2:1:1",
-  "beeId": "c2ab3e72-b51f-4e74-93df-a6094bce4cc2",
+  "id": "quota:83cb0402-bf96-4b4b-93d4-e253e67fa5bb:1:1",
+  "beeId": "83cb0402-bf96-4b4b-93d4-e253e67fa5bb",
   "sourceGeneration": 1,
   "sourceAccount": "claude-a",
   "observationCursor": 716,
+  "sourceId": "ad6e1f35-7f12-4c14-a3fe-3a6216a04d66",
   "accountLabel": "b",
   "eventIds": [
-    "quota:c2ab3e72-b51f-4e74-93df-a6094bce4cc2:1:716"
+    "quota:83cb0402-bf96-4b4b-93d4-e253e67fa5bb:1:716",
+    "quota:83cb0402-bf96-4b4b-93d4-e253e67fa5bb:1:912"
   ],
   "messageIds": [
     1
   ],
   "progress": "some",
   "interrupted": true,
-  "controlFence": 0,
+  "controlFence": 3,
   "placement": {
     "agent": "claude",
-    "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-inU2MX",
+    "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-3DTw0T",
     "cellId": null
   },
   "quota": {
     "harness": "claude",
     "window": "weekly",
     "resetsAt": 1893456000000,
-    "providerCategory": "synthetic_limit"
+    "providerCategory": "errored_result_limit"
   },
   "resetHints": {
     "weekly": 1893456000000
@@ -39,6 +41,6 @@
   "continuationMessageIds": [],
   "retryAt": null,
   "reason": null,
-  "createdAt": 1792478856291,
-  "updatedAt": 1792478856297
+  "createdAt": 1792479846807,
+  "updatedAt": 1792479846815
 }

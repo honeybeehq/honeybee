@@ -58,7 +58,7 @@ test("withdrawal is owner-only, quiet across retries, replayable and durable; bo
   } finally { store.close(); f.cleanup(); }
 });
 
-test("schema 44 opens legacy questions additively without a version bump or extra-table refusal", () => {
+test("schema 44 legacy questions migrate additively without extra-table refusal", () => {
   const f = fixture();
   let store = f.open();
   const bee = store.createBee({ name: "legacy", agent: "stub", substrate: "hsr", cwd: f.dir }).bee;

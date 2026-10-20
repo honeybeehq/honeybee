@@ -6,7 +6,7 @@
     "continuationIds": [
       2
     ],
-    "obligation": "quota:bc2ce11b-e6dc-4529-b69d-9a26026bb2b7:1:1"
+    "obligation": "quota:8726a11d-22ca-44fc-9f8f-09881c7d540f:1:1"
   },
   {
     "name": "replay",
@@ -15,14 +15,14 @@
     "continuationIds": [
       2
     ],
-    "obligation": "quota:13d813f0-e3fe-42eb-8926-4a6339135fff:1:1"
+    "obligation": "quota:d6b69c49-5d0f-4de0-ba81-3460745d2540:1:1"
   },
   {
     "name": "between",
     "passed": true,
     "kind": "none",
     "continuationIds": [],
-    "obligation": "quota:7a18ac3a-5278-4e0a-9174-d848b696a208:1:native"
+    "obligation": "quota:7d3097b2-5f50-4f96-b243-4e7a2fe87eed:1:native"
   },
   {
     "name": "restart",
@@ -31,13 +31,72 @@
     "continuationIds": [
       2
     ],
-    "obligation": "quota:c2ab3e72-b51f-4e74-93df-a6094bce4cc2:1:1"
+    "obligation": "quota:83cb0402-bf96-4b4b-93d4-e253e67fa5bb:1:1"
   },
   {
     "name": "stop",
     "passed": true,
     "kind": null,
     "continuationIds": [],
-    "obligation": "quota:3fce96f2-1b91-4f50-974f-314416ea9ec6:1:1"
+    "obligation": "quota:f0085107-1437-43ac-b0b4-6e5ce40c0867:1:1"
+  },
+  {
+    "name": "boot-retry",
+    "passed": true,
+    "kind": "continue",
+    "continuationIds": [
+      2
+    ],
+    "obligation": "quota:7669cbe7-0cda-494a-b874-cfb9db9285fa:1:1"
+  },
+  {
+    "name": "queued",
+    "passed": true,
+    "kind": "continue",
+    "continuationIds": [
+      3
+    ],
+    "obligation": "quota:5ca098dd-3e63-468f-afc9-be69b60f61d6:1:1"
+  },
+  {
+    "name": "queued-early",
+    "passed": true,
+    "kind": "continue",
+    "continuationIds": [
+      3
+    ],
+    "obligation": "quota:95abe5e5-0383-48da-8aa8-9b2619103323:1:1"
+  },
+  {
+    "name": "manual-swap",
+    "passed": true,
+    "kind": null,
+    "continuationIds": [],
+    "obligation": "quota:492cf1d8-479a-423e-838c-5737bae49e08:1:1"
+  },
+  {
+    "name": "archive",
+    "passed": true,
+    "kind": null,
+    "continuationIds": [],
+    "obligation": "quota:8b5c3c9d-1591-4b2b-b60d-54be6846fb93:1:1"
+  },
+  {
+    "name": "postenqueue-stop",
+    "passed": true,
+    "kind": "continue",
+    "continuationIds": [
+      2
+    ],
+    "obligation": "quota:b5b9a495-bf2f-4a0f-a9b1-298044d9f732:1:1"
+  },
+  {
+    "name": "synthetic-retry",
+    "passed": true,
+    "kind": "continue",
+    "continuationIds": [
+      2
+    ],
+    "obligation": "quota:4d38f484-42a1-4f86-87b1-ef0f04f11a2f:1:1"
   }
 ]

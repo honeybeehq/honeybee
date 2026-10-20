@@ -100,7 +100,7 @@ async function seed(root: string) {
   const store = openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true });
   try { return store.acquireApiarySwap(acquire(root)); } finally { store.close(); }
 }
-test("apiary schema: current 44 remains unchanged and newer storage refuses", async () => {
+test("apiary schema: current version remains unchanged and newer storage refuses", async () => {
   await world(async root => {
     await seed(root);
     const db = new DatabaseSync(join(root, "v2", "core.sqlite3"));

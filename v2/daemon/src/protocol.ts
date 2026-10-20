@@ -1196,6 +1196,14 @@ export interface AccountAdmissionReleaseResult {
  * carry). A seed with no transcript anywhere refuses the swap
  * (`transcript_unavailable`) and leaves the bee untouched.
  */
+export interface SwapAccountParams {
+  beeId: string;
+  account: string;
+  onlyAccountIds?: string[];
+  allocationClaim?: AccountAdmissionClaim;
+  quotaRecoveryId?: string;
+}
+
 export interface SwapAccountResult extends DedupMarkers {
   beeId: string;
   from: string | null;
