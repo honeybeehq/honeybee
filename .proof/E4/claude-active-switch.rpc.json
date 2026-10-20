@@ -12,7 +12,7 @@
         "leasedFrom": null,
         "id": "claude-a",
         "harness": "claude",
-        "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a",
+        "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a",
         "label": "a",
         "status": "ok",
         "statusReason": null,
@@ -24,8 +24,8 @@
         "pausedBy": null,
         "pausedOwner": null,
         "pausedAt": null,
-        "addedAt": 1792499813406,
-        "updatedAt": 1792499813406,
+        "addedAt": 1792501108621,
+        "updatedAt": 1792501108621,
         "credentialHealth": "unverified",
         "loginDueAt": null,
         "nativeLogin": null
@@ -33,7 +33,7 @@
       "credentialHealth": "unverified",
       "imported": {
         "source": "vault",
-        "from": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/vault/claude/claude-a",
+        "from": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/vault/claude/claude-a",
         "files": [
           ".credentials.json"
         ]
@@ -54,7 +54,7 @@
         "leasedFrom": null,
         "id": "claude-b",
         "harness": "claude",
-        "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-b",
+        "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-b",
         "label": "b",
         "status": "ok",
         "statusReason": null,
@@ -66,8 +66,8 @@
         "pausedBy": null,
         "pausedOwner": null,
         "pausedAt": null,
-        "addedAt": 1792499813455,
-        "updatedAt": 1792499813455,
+        "addedAt": 1792501108656,
+        "updatedAt": 1792501108656,
         "credentialHealth": "unverified",
         "loginDueAt": null,
         "nativeLogin": null
@@ -75,7 +75,7 @@
       "credentialHealth": "unverified",
       "imported": {
         "source": "vault",
-        "from": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/vault/claude/claude-b",
+        "from": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/vault/claude/claude-b",
         "files": [
           ".credentials.json"
         ]
@@ -90,16 +90,16 @@
       "limits": [
         {
           "account": "claude-a",
-          "fetchedAt": 1792499813480,
+          "fetchedAt": 1792501108679,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 90,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -109,16 +109,16 @@
         },
         {
           "account": "claude-b",
-          "fetchedAt": 1792499813488,
+          "fetchedAt": 1792501108685,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -134,11 +134,11 @@
     "params": {
       "name": "claude-active-switch",
       "agent": "claude",
-      "cwd": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3",
+      "cwd": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp",
       "account": "claude-a"
     },
     "result": {
-      "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+      "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
       "agent": "claude",
       "handle": "CL.0000",
       "humanRef": null,
@@ -151,7 +151,7 @@
   {
     "method": "send",
     "params": {
-      "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+      "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
       "body": "active relative trigger"
     },
     "result": {
@@ -168,16 +168,16 @@
       "views": [
         {
           "bee": {
-            "id": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "id": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "name": "claude-active-switch",
             "agent": "claude",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3",
+            "cwd": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792499813495,
+            "createdAt": 1792501108694,
             "archivedAt": null,
             "lastOutputAt": null,
             "providerSessionId": null,
@@ -187,7 +187,7 @@
               "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
               "ANTHROPIC_AUTH_TOKEN": "<redacted>",
               "ANTHROPIC_API_KEY": "<redacted>",
-              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a"
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -208,18 +208,18 @@
             "lastHumanOutputAt": null
           },
           "runtime": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "generation": 1,
             "state": "booting",
             "exitCause": null,
             "pid": null,
             "pidStartedAt": null,
             "bootEvidence": null,
-            "startedAt": 1792499813495,
-            "updatedAt": 1792499813495
+            "startedAt": 1792501108694,
+            "updatedAt": 1792501108694
           },
           "view": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -247,7 +247,7 @@
           "leasedFrom": null,
           "id": "claude-a",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -259,8 +259,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813406,
-          "updatedAt": 1792499813474,
+          "addedAt": 1792501108621,
+          "updatedAt": 1792501108674,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -270,7 +270,7 @@
           "leasedFrom": null,
           "id": "claude-b",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-b",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -282,8 +282,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813455,
-          "updatedAt": 1792499813485,
+          "addedAt": 1792501108656,
+          "updatedAt": 1792501108684,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -292,16 +292,16 @@
       "accountLimits": [
         {
           "account": "claude-a",
-          "fetchedAt": 1792499813480,
+          "fetchedAt": 1792501108679,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 90,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -311,16 +311,16 @@
         },
         {
           "account": "claude-b",
-          "fetchedAt": 1792499813488,
+          "fetchedAt": 1792501108685,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -339,16 +339,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:d27ccbf7-1a3a-4243-adfa-545c5927515c:0",
-          "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+          "id": "seg:e852dbd3-af86-4395-bce4-5b1eb2099084:0",
+          "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
           "ordinal": 0,
           "harness": "claude",
           "providerSessionId": null,
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+          "path": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
           "handoffId": null,
-          "createdAt": 1792499813495,
+          "createdAt": 1792501108694,
           "closedAt": null
         }
       ],
@@ -365,16 +365,16 @@
       "views": [
         {
           "bee": {
-            "id": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "id": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "name": "claude-active-switch",
             "agent": "claude",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3",
+            "cwd": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792499813495,
+            "createdAt": 1792501108694,
             "archivedAt": null,
             "lastOutputAt": null,
             "providerSessionId": null,
@@ -384,7 +384,7 @@
               "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
               "ANTHROPIC_AUTH_TOKEN": "<redacted>",
               "ANTHROPIC_API_KEY": "<redacted>",
-              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a"
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -405,18 +405,18 @@
             "lastHumanOutputAt": null
           },
           "runtime": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "generation": 1,
             "state": "booting",
             "exitCause": null,
-            "pid": 889326,
-            "pidStartedAt": 1792499813737,
+            "pid": 904097,
+            "pidStartedAt": 1792501108923,
             "bootEvidence": null,
-            "startedAt": 1792499813495,
-            "updatedAt": 1792499813495
+            "startedAt": 1792501108694,
+            "updatedAt": 1792501108694
           },
           "view": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -444,7 +444,7 @@
           "leasedFrom": null,
           "id": "claude-a",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -456,8 +456,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813406,
-          "updatedAt": 1792499813474,
+          "addedAt": 1792501108621,
+          "updatedAt": 1792501108674,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -467,7 +467,7 @@
           "leasedFrom": null,
           "id": "claude-b",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-b",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -479,8 +479,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813455,
-          "updatedAt": 1792499813485,
+          "addedAt": 1792501108656,
+          "updatedAt": 1792501108684,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -489,16 +489,16 @@
       "accountLimits": [
         {
           "account": "claude-a",
-          "fetchedAt": 1792499813480,
+          "fetchedAt": 1792501108679,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 90,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -508,16 +508,16 @@
         },
         {
           "account": "claude-b",
-          "fetchedAt": 1792499813488,
+          "fetchedAt": 1792501108685,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -536,16 +536,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:d27ccbf7-1a3a-4243-adfa-545c5927515c:0",
-          "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+          "id": "seg:e852dbd3-af86-4395-bce4-5b1eb2099084:0",
+          "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
           "ordinal": 0,
           "harness": "claude",
           "providerSessionId": null,
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+          "path": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
           "handoffId": null,
-          "createdAt": 1792499813495,
+          "createdAt": 1792501108694,
           "closedAt": null
         }
       ],
@@ -562,16 +562,16 @@
       "views": [
         {
           "bee": {
-            "id": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "id": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "name": "claude-active-switch",
             "agent": "claude",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3",
+            "cwd": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792499813495,
+            "createdAt": 1792501108694,
             "archivedAt": null,
             "lastOutputAt": null,
             "providerSessionId": null,
@@ -581,7 +581,7 @@
               "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
               "ANTHROPIC_AUTH_TOKEN": "<redacted>",
               "ANTHROPIC_API_KEY": "<redacted>",
-              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a"
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -602,18 +602,18 @@
             "lastHumanOutputAt": null
           },
           "runtime": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "generation": 1,
             "state": "booting",
             "exitCause": null,
-            "pid": 889326,
-            "pidStartedAt": 1792499813737,
+            "pid": 904097,
+            "pidStartedAt": 1792501108923,
             "bootEvidence": null,
-            "startedAt": 1792499813495,
-            "updatedAt": 1792499813495
+            "startedAt": 1792501108694,
+            "updatedAt": 1792501108694
           },
           "view": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -641,7 +641,7 @@
           "leasedFrom": null,
           "id": "claude-a",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -653,8 +653,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813406,
-          "updatedAt": 1792499813474,
+          "addedAt": 1792501108621,
+          "updatedAt": 1792501108674,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -664,7 +664,7 @@
           "leasedFrom": null,
           "id": "claude-b",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-b",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -676,8 +676,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813455,
-          "updatedAt": 1792499813485,
+          "addedAt": 1792501108656,
+          "updatedAt": 1792501108684,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -686,16 +686,16 @@
       "accountLimits": [
         {
           "account": "claude-a",
-          "fetchedAt": 1792499813480,
+          "fetchedAt": 1792501108679,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 90,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -705,16 +705,16 @@
         },
         {
           "account": "claude-b",
-          "fetchedAt": 1792499813488,
+          "fetchedAt": 1792501108685,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -733,16 +733,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:d27ccbf7-1a3a-4243-adfa-545c5927515c:0",
-          "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+          "id": "seg:e852dbd3-af86-4395-bce4-5b1eb2099084:0",
+          "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
           "ordinal": 0,
           "harness": "claude",
           "providerSessionId": null,
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+          "path": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
           "handoffId": null,
-          "createdAt": 1792499813495,
+          "createdAt": 1792501108694,
           "closedAt": null
         }
       ],
@@ -759,16 +759,16 @@
       "views": [
         {
           "bee": {
-            "id": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "id": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "name": "claude-active-switch",
             "agent": "claude",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3",
+            "cwd": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792499813495,
+            "createdAt": 1792501108694,
             "archivedAt": null,
             "lastOutputAt": null,
             "providerSessionId": null,
@@ -778,7 +778,7 @@
               "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
               "ANTHROPIC_AUTH_TOKEN": "<redacted>",
               "ANTHROPIC_API_KEY": "<redacted>",
-              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a"
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -799,18 +799,18 @@
             "lastHumanOutputAt": null
           },
           "runtime": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "generation": 1,
             "state": "booting",
             "exitCause": null,
-            "pid": 889326,
-            "pidStartedAt": 1792499813737,
+            "pid": 904097,
+            "pidStartedAt": 1792501108923,
             "bootEvidence": null,
-            "startedAt": 1792499813495,
-            "updatedAt": 1792499813495
+            "startedAt": 1792501108694,
+            "updatedAt": 1792501108694
           },
           "view": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -838,7 +838,7 @@
           "leasedFrom": null,
           "id": "claude-a",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -850,8 +850,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813406,
-          "updatedAt": 1792499813474,
+          "addedAt": 1792501108621,
+          "updatedAt": 1792501108674,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -861,7 +861,7 @@
           "leasedFrom": null,
           "id": "claude-b",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-b",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -873,8 +873,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813455,
-          "updatedAt": 1792499813485,
+          "addedAt": 1792501108656,
+          "updatedAt": 1792501108684,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -883,16 +883,16 @@
       "accountLimits": [
         {
           "account": "claude-a",
-          "fetchedAt": 1792499813480,
+          "fetchedAt": 1792501108679,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 90,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -902,16 +902,16 @@
         },
         {
           "account": "claude-b",
-          "fetchedAt": 1792499813488,
+          "fetchedAt": 1792501108685,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -930,16 +930,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:d27ccbf7-1a3a-4243-adfa-545c5927515c:0",
-          "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+          "id": "seg:e852dbd3-af86-4395-bce4-5b1eb2099084:0",
+          "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
           "ordinal": 0,
           "harness": "claude",
           "providerSessionId": null,
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+          "path": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
           "handoffId": null,
-          "createdAt": 1792499813495,
+          "createdAt": 1792501108694,
           "closedAt": null
         }
       ],
@@ -956,16 +956,16 @@
       "views": [
         {
           "bee": {
-            "id": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "id": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "name": "claude-active-switch",
             "agent": "claude",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3",
+            "cwd": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792499813495,
+            "createdAt": 1792501108694,
             "archivedAt": null,
             "lastOutputAt": null,
             "providerSessionId": null,
@@ -975,7 +975,7 @@
               "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
               "ANTHROPIC_AUTH_TOKEN": "<redacted>",
               "ANTHROPIC_API_KEY": "<redacted>",
-              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a"
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -996,18 +996,18 @@
             "lastHumanOutputAt": null
           },
           "runtime": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "generation": 1,
             "state": "booting",
             "exitCause": null,
-            "pid": 889326,
-            "pidStartedAt": 1792499813737,
+            "pid": 904097,
+            "pidStartedAt": 1792501108923,
             "bootEvidence": null,
-            "startedAt": 1792499813495,
-            "updatedAt": 1792499813495
+            "startedAt": 1792501108694,
+            "updatedAt": 1792501108694
           },
           "view": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -1035,7 +1035,7 @@
           "leasedFrom": null,
           "id": "claude-a",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -1047,8 +1047,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813406,
-          "updatedAt": 1792499813474,
+          "addedAt": 1792501108621,
+          "updatedAt": 1792501108674,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1058,7 +1058,7 @@
           "leasedFrom": null,
           "id": "claude-b",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-b",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -1070,8 +1070,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813455,
-          "updatedAt": 1792499813485,
+          "addedAt": 1792501108656,
+          "updatedAt": 1792501108684,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1080,16 +1080,16 @@
       "accountLimits": [
         {
           "account": "claude-a",
-          "fetchedAt": 1792499813480,
+          "fetchedAt": 1792501108679,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 90,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1099,16 +1099,16 @@
         },
         {
           "account": "claude-b",
-          "fetchedAt": 1792499813488,
+          "fetchedAt": 1792501108685,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1127,16 +1127,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:d27ccbf7-1a3a-4243-adfa-545c5927515c:0",
-          "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+          "id": "seg:e852dbd3-af86-4395-bce4-5b1eb2099084:0",
+          "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
           "ordinal": 0,
           "harness": "claude",
           "providerSessionId": null,
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+          "path": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
           "handoffId": null,
-          "createdAt": 1792499813495,
+          "createdAt": 1792501108694,
           "closedAt": null
         }
       ],
@@ -1153,16 +1153,16 @@
       "views": [
         {
           "bee": {
-            "id": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "id": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "name": "claude-active-switch",
             "agent": "claude",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3",
+            "cwd": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792499813495,
+            "createdAt": 1792501108694,
             "archivedAt": null,
             "lastOutputAt": null,
             "providerSessionId": null,
@@ -1172,7 +1172,7 @@
               "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
               "ANTHROPIC_AUTH_TOKEN": "<redacted>",
               "ANTHROPIC_API_KEY": "<redacted>",
-              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a"
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -1193,18 +1193,18 @@
             "lastHumanOutputAt": null
           },
           "runtime": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "generation": 1,
             "state": "booting",
             "exitCause": null,
-            "pid": 889326,
-            "pidStartedAt": 1792499813737,
+            "pid": 904097,
+            "pidStartedAt": 1792501108923,
             "bootEvidence": null,
-            "startedAt": 1792499813495,
-            "updatedAt": 1792499813495
+            "startedAt": 1792501108694,
+            "updatedAt": 1792501108694
           },
           "view": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -1232,7 +1232,7 @@
           "leasedFrom": null,
           "id": "claude-a",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -1244,8 +1244,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813406,
-          "updatedAt": 1792499813474,
+          "addedAt": 1792501108621,
+          "updatedAt": 1792501108674,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1255,7 +1255,7 @@
           "leasedFrom": null,
           "id": "claude-b",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-b",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -1267,8 +1267,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813455,
-          "updatedAt": 1792499813485,
+          "addedAt": 1792501108656,
+          "updatedAt": 1792501108684,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1277,16 +1277,16 @@
       "accountLimits": [
         {
           "account": "claude-a",
-          "fetchedAt": 1792499813480,
+          "fetchedAt": 1792501108679,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 90,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1296,16 +1296,16 @@
         },
         {
           "account": "claude-b",
-          "fetchedAt": 1792499813488,
+          "fetchedAt": 1792501108685,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1324,16 +1324,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:d27ccbf7-1a3a-4243-adfa-545c5927515c:0",
-          "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+          "id": "seg:e852dbd3-af86-4395-bce4-5b1eb2099084:0",
+          "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
           "ordinal": 0,
           "harness": "claude",
           "providerSessionId": null,
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+          "path": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
           "handoffId": null,
-          "createdAt": 1792499813495,
+          "createdAt": 1792501108694,
           "closedAt": null
         }
       ],
@@ -1350,16 +1350,16 @@
       "views": [
         {
           "bee": {
-            "id": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "id": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "name": "claude-active-switch",
             "agent": "claude",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3",
+            "cwd": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792499813495,
+            "createdAt": 1792501108694,
             "archivedAt": null,
             "lastOutputAt": null,
             "providerSessionId": null,
@@ -1369,7 +1369,7 @@
               "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
               "ANTHROPIC_AUTH_TOKEN": "<redacted>",
               "ANTHROPIC_API_KEY": "<redacted>",
-              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a"
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -1390,18 +1390,18 @@
             "lastHumanOutputAt": null
           },
           "runtime": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "generation": 1,
             "state": "booting",
             "exitCause": null,
-            "pid": 889326,
-            "pidStartedAt": 1792499813737,
+            "pid": 904097,
+            "pidStartedAt": 1792501108923,
             "bootEvidence": null,
-            "startedAt": 1792499813495,
-            "updatedAt": 1792499813495
+            "startedAt": 1792501108694,
+            "updatedAt": 1792501108694
           },
           "view": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -1429,7 +1429,7 @@
           "leasedFrom": null,
           "id": "claude-a",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -1441,8 +1441,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813406,
-          "updatedAt": 1792499813474,
+          "addedAt": 1792501108621,
+          "updatedAt": 1792501108674,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1452,7 +1452,7 @@
           "leasedFrom": null,
           "id": "claude-b",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-b",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -1464,8 +1464,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813455,
-          "updatedAt": 1792499813485,
+          "addedAt": 1792501108656,
+          "updatedAt": 1792501108684,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1474,16 +1474,16 @@
       "accountLimits": [
         {
           "account": "claude-a",
-          "fetchedAt": 1792499813480,
+          "fetchedAt": 1792501108679,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 90,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1493,16 +1493,16 @@
         },
         {
           "account": "claude-b",
-          "fetchedAt": 1792499813488,
+          "fetchedAt": 1792501108685,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1521,16 +1521,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:d27ccbf7-1a3a-4243-adfa-545c5927515c:0",
-          "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+          "id": "seg:e852dbd3-af86-4395-bce4-5b1eb2099084:0",
+          "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
           "ordinal": 0,
           "harness": "claude",
           "providerSessionId": null,
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+          "path": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
           "handoffId": null,
-          "createdAt": 1792499813495,
+          "createdAt": 1792501108694,
           "closedAt": null
         }
       ],
@@ -1543,20 +1543,20 @@
     "method": "snapshot",
     "params": {},
     "result": {
-      "seq": 22,
+      "seq": 23,
       "views": [
         {
           "bee": {
-            "id": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "id": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "name": "claude-active-switch",
             "agent": "claude",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3",
+            "cwd": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792499813495,
+            "createdAt": 1792501108694,
             "archivedAt": null,
             "lastOutputAt": null,
             "providerSessionId": null,
@@ -1566,7 +1566,7 @@
               "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
               "ANTHROPIC_AUTH_TOKEN": "<redacted>",
               "ANTHROPIC_API_KEY": "<redacted>",
-              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a"
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -1587,18 +1587,18 @@
             "lastHumanOutputAt": null
           },
           "runtime": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "generation": 1,
             "state": "running",
             "exitCause": null,
-            "pid": 889326,
-            "pidStartedAt": 1792499813737,
+            "pid": 904097,
+            "pidStartedAt": 1792501108923,
             "bootEvidence": "synthetic",
-            "startedAt": 1792499813495,
-            "updatedAt": 1792499813835
+            "startedAt": 1792501108694,
+            "updatedAt": 1792501109014
           },
           "view": {
-            "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+            "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -1626,7 +1626,7 @@
           "leasedFrom": null,
           "id": "claude-a",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-a",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -1638,8 +1638,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813406,
-          "updatedAt": 1792499813474,
+          "addedAt": 1792501108621,
+          "updatedAt": 1792501108674,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1649,7 +1649,7 @@
           "leasedFrom": null,
           "id": "claude-b",
           "harness": "claude",
-          "homePath": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/homes/claude-b",
+          "homePath": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/homes/claude-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -1661,8 +1661,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792499813455,
-          "updatedAt": 1792499813485,
+          "addedAt": 1792501108656,
+          "updatedAt": 1792501108684,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1671,16 +1671,16 @@
       "accountLimits": [
         {
           "account": "claude-a",
-          "fetchedAt": 1792499813480,
+          "fetchedAt": 1792501108679,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 90,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1690,16 +1690,16 @@
         },
         {
           "account": "claude-b",
-          "fetchedAt": 1792499813488,
+          "fetchedAt": 1792501108685,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": "small",
           "fiveHourPct": 5,
-          "fiveHourResetsAt": 1792510613000,
+          "fiveHourResetsAt": 1792511909000,
           "fiveHourMinutes": 300,
           "weeklyPct": 5,
-          "weeklyResetsAt": 1792597013000,
+          "weeklyResetsAt": 1792598309000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1712,8 +1712,8 @@
       "quotaRecoveries": [
         {
           "trigger": "proactive",
-          "id": "admission:d27ccbf7-1a3a-4243-adfa-545c5927515c:1:0",
-          "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+          "id": "admission:e852dbd3-af86-4395-bce4-5b1eb2099084:1:0",
+          "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
           "sourceGeneration": 1,
           "sourceAccount": "claude-a",
           "observationCursor": null,
@@ -1726,16 +1726,19 @@
           "controlFence": 0,
           "placement": {
             "agent": "claude",
-            "cwd": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3",
+            "cwd": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp",
             "cellId": null
           },
           "quota": null,
           "admission": {
-            "fetchedAt": 1792499813480,
-            "maxProjectedPercent": 94
+            "fetchedAt": 1792501108679,
+            "maxProjectedPercent": 94,
+            "candidateAccountIds": [
+              "claude-b"
+            ]
           },
           "resetHints": {
-            "other": 1792510613000
+            "other": 1792511909000
           },
           "state": "waiting",
           "attempt": 0,
@@ -1747,10 +1750,10 @@
           "continuationKind": null,
           "continuationMessageIds": [],
           "continuationHistory": [],
-          "retryAt": 1792510613000,
+          "retryAt": 1792511909000,
           "reason": "allocation_owner_required",
-          "createdAt": 1792499813842,
-          "updatedAt": 1792499813843,
+          "createdAt": 1792501109021,
+          "updatedAt": 1792501109021,
           "reasonDetail": null
         }
       ],
@@ -1762,16 +1765,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:d27ccbf7-1a3a-4243-adfa-545c5927515c:0",
-          "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+          "id": "seg:e852dbd3-af86-4395-bce4-5b1eb2099084:0",
+          "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
           "ordinal": 0,
           "harness": "claude",
           "providerSessionId": null,
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e4-final-O9Uewp/hb-v2-daemon-mu3pX3/session-logs/d27ccbf7-1a3a-4243-adfa-545c5927515c.jsonl",
+          "path": "/var/tmp/sar-e4-queen-final-I1ECyV/hb-v2-daemon-G9lCTp/session-logs/e852dbd3-af86-4395-bce4-5b1eb2099084.jsonl",
           "handoffId": null,
-          "createdAt": 1792499813495,
+          "createdAt": 1792501108694,
           "closedAt": null
         }
       ],
@@ -1783,18 +1786,18 @@
   {
     "method": "mailbox",
     "params": {
-      "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c"
+      "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084"
     },
     "result": {
       "messages": [
         {
           "id": 1,
-          "beeId": "d27ccbf7-1a3a-4243-adfa-545c5927515c",
+          "beeId": "e852dbd3-af86-4395-bce4-5b1eb2099084",
           "sender": "operator",
           "body": "active relative trigger",
           "priority": 0,
           "urgency": "next",
-          "enqueuedAt": 1792499813499,
+          "enqueuedAt": 1792501108699,
           "deliveredAt": null,
           "deliveredGeneration": null
         }

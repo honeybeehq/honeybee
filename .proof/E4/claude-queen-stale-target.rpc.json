@@ -1,0 +1,2719 @@
+[
+  {
+    "method": "account.add",
+    "params": {
+      "harness": "claude",
+      "label": "a",
+      "importExisting": true
+    },
+    "result": {
+      "account": {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "claude-a",
+        "harness": "claude",
+        "homePath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-a",
+        "label": "a",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792501169808,
+        "updatedAt": 1792501169808,
+        "credentialHealth": "unverified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      },
+      "credentialHealth": "unverified",
+      "imported": {
+        "source": "vault",
+        "from": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/vault/claude/claude-a",
+        "files": [
+          ".credentials.json"
+        ]
+      },
+      "verification": "limits"
+    }
+  },
+  {
+    "method": "account.add",
+    "params": {
+      "harness": "claude",
+      "label": "b",
+      "importExisting": true
+    },
+    "result": {
+      "account": {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "claude-b",
+        "harness": "claude",
+        "homePath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-b",
+        "label": "b",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792501169844,
+        "updatedAt": 1792501169844,
+        "credentialHealth": "unverified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      },
+      "credentialHealth": "unverified",
+      "imported": {
+        "source": "vault",
+        "from": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/vault/claude/claude-b",
+        "files": [
+          ".credentials.json"
+        ]
+      },
+      "verification": "limits"
+    }
+  },
+  {
+    "method": "account.limits",
+    "params": {},
+    "result": {
+      "limits": [
+        {
+          "account": "claude-a",
+          "fetchedAt": 1792501169872,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792511970000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792598370000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "claude-b",
+          "fetchedAt": 1792501169880,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792511970000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792598370000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "spawn",
+    "params": {
+      "name": "claude-queen-stale-target",
+      "agent": "claude",
+      "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+      "account": "claude-a"
+    },
+    "result": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+      "agent": "claude",
+      "handle": "CL.0000",
+      "humanRef": null,
+      "issuingNamespace": null,
+      "commandId": 1,
+      "messageId": null,
+      "account": "claude-a"
+    }
+  },
+  {
+    "method": "account.limits",
+    "params": {},
+    "result": {
+      "limits": [
+        {
+          "account": "claude-a",
+          "fetchedAt": 1792501170117,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792511970000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792598370000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "claude-b",
+          "fetchedAt": 1792501170122,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792511970000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792598370000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "account.limits",
+    "params": {
+      "id": "claude-a"
+    },
+    "result": {
+      "limits": [
+        {
+          "account": "claude-a",
+          "fetchedAt": 1792501172435,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792511970000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792598370000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "send",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+      "body": "Queen relative regression original mail"
+    },
+    "result": {
+      "messageId": 1,
+      "commandId": null,
+      "unarchived": false
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sender": "operator",
+          "body": "Queen relative regression original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792501172439,
+          "deliveredAt": 1792501173365,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "view": {
+        "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 2,
+        "runtimeState": "running",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": null,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "name": "claude-queen-stale-target",
+        "agent": "claude",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/session-logs/be577c1c-3367-4f8d-9328-69602d22f747.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792501169888,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {
+          "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+          "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+          "ANTHROPIC_API_KEY": "<redacted>",
+          "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "claude-b",
+        "handle": "CL.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 2,
+          "startedAt": 1792501173365,
+          "humanAt": 1792501173365,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "generation": 2,
+        "state": "running",
+        "exitCause": null,
+        "pid": 905487,
+        "pidStartedAt": 1792501173256,
+        "bootEvidence": "synthetic",
+        "startedAt": 1792501173068,
+        "updatedAt": 1792501173350
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "view": {
+        "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 2,
+        "runtimeState": "running",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": null,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "name": "claude-queen-stale-target",
+        "agent": "claude",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/session-logs/be577c1c-3367-4f8d-9328-69602d22f747.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792501169888,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {
+          "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+          "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+          "ANTHROPIC_API_KEY": "<redacted>",
+          "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "claude-b",
+        "handle": "CL.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 2,
+          "startedAt": 1792501173365,
+          "humanAt": 1792501173365,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "generation": 2,
+        "state": "running",
+        "exitCause": null,
+        "pid": 905487,
+        "pidStartedAt": 1792501173256,
+        "bootEvidence": "synthetic",
+        "startedAt": 1792501173068,
+        "updatedAt": 1792501173350
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "view": {
+        "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 2,
+        "runtimeState": "running",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": null,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "name": "claude-queen-stale-target",
+        "agent": "claude",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/session-logs/be577c1c-3367-4f8d-9328-69602d22f747.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792501169888,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {
+          "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+          "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+          "ANTHROPIC_API_KEY": "<redacted>",
+          "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "claude-b",
+        "handle": "CL.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 2,
+          "startedAt": 1792501173365,
+          "humanAt": 1792501173365,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "generation": 2,
+        "state": "running",
+        "exitCause": null,
+        "pid": 905487,
+        "pidStartedAt": 1792501173256,
+        "bootEvidence": "synthetic",
+        "startedAt": 1792501173068,
+        "updatedAt": 1792501173350
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "view": {
+        "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 2,
+        "runtimeState": "idle",
+        "exitCause": null,
+        "working": false,
+        "waitingForYou": true,
+        "lastOutputAt": 1792501173419,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "name": "claude-queen-stale-target",
+        "agent": "claude",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/session-logs/be577c1c-3367-4f8d-9328-69602d22f747.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792501169888,
+        "archivedAt": null,
+        "lastOutputAt": 1792501173419,
+        "providerSessionId": "fca68f81-031e-456b-aeb1-e9703954e6b8",
+        "env": {
+          "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+          "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+          "ANTHROPIC_API_KEY": "<redacted>",
+          "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "claude-b",
+        "handle": "CL.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 2,
+          "startedAt": 1792501173365,
+          "humanAt": 1792501173365,
+          "endedAt": 1792501173419,
+          "endedQuiet": false
+        },
+        "lastHumanOutputAt": 1792501173419
+      },
+      "runtime": {
+        "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "generation": 2,
+        "state": "idle",
+        "exitCause": null,
+        "pid": 905487,
+        "pidStartedAt": 1792501173256,
+        "bootEvidence": "real",
+        "startedAt": 1792501173068,
+        "updatedAt": 1792501173419
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747"
+    },
+    "result": {
+      "view": {
+        "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 2,
+        "runtimeState": "idle",
+        "exitCause": null,
+        "working": false,
+        "waitingForYou": true,
+        "lastOutputAt": 1792501173419,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "name": "claude-queen-stale-target",
+        "agent": "claude",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/session-logs/be577c1c-3367-4f8d-9328-69602d22f747.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792501169888,
+        "archivedAt": null,
+        "lastOutputAt": 1792501173419,
+        "providerSessionId": "fca68f81-031e-456b-aeb1-e9703954e6b8",
+        "env": {
+          "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+          "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+          "ANTHROPIC_API_KEY": "<redacted>",
+          "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "claude-b",
+        "handle": "CL.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 2,
+          "startedAt": 1792501173365,
+          "humanAt": 1792501173365,
+          "endedAt": 1792501173419,
+          "endedQuiet": false
+        },
+        "lastHumanOutputAt": 1792501173419
+      },
+      "runtime": {
+        "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+        "generation": 2,
+        "state": "idle",
+        "exitCause": null,
+        "pid": 905487,
+        "pidStartedAt": 1792501173256,
+        "bootEvidence": "real",
+        "startedAt": 1792501173068,
+        "updatedAt": 1792501173419
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 56,
+      "views": [
+        {
+          "bee": {
+            "authControlFence": 2,
+            "id": "be577c1c-3367-4f8d-9328-69602d22f747",
+            "name": "claude-queen-stale-target",
+            "agent": "claude",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/session-logs/be577c1c-3367-4f8d-9328-69602d22f747.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792501169888,
+            "archivedAt": null,
+            "lastOutputAt": 1792501173419,
+            "providerSessionId": "fca68f81-031e-456b-aeb1-e9703954e6b8",
+            "env": {
+              "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+              "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+              "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+              "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+              "ANTHROPIC_API_KEY": "<redacted>",
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-b"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "claude-b",
+            "handle": "CL.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 1,
+              "generation": 2,
+              "startedAt": 1792501173365,
+              "humanAt": 1792501173365,
+              "endedAt": 1792501173419,
+              "endedQuiet": false
+            },
+            "lastHumanOutputAt": 1792501173419
+          },
+          "runtime": {
+            "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+            "generation": 2,
+            "state": "idle",
+            "exitCause": null,
+            "pid": 905487,
+            "pidStartedAt": 1792501173256,
+            "bootEvidence": "real",
+            "startedAt": 1792501173068,
+            "updatedAt": 1792501173419
+          },
+          "view": {
+            "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 2,
+            "runtimeState": "idle",
+            "exitCause": null,
+            "working": false,
+            "waitingForYou": true,
+            "lastOutputAt": 1792501173419,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "claude-a",
+          "harness": "claude",
+          "homePath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792501169808,
+          "updatedAt": 1792501169868,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "claude-b",
+          "harness": "claude",
+          "homePath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792501169844,
+          "updatedAt": 1792501169877,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "claude-a",
+          "fetchedAt": 1792501172481,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792511970000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792598370000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "claude-b",
+          "fetchedAt": 1792501172983,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792511970000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792598370000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [
+        {
+          "trigger": "proactive",
+          "id": "admission:be577c1c-3367-4f8d-9328-69602d22f747:1:0",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "sourceGeneration": 1,
+          "sourceAccount": "claude-a",
+          "observationCursor": null,
+          "sourceId": null,
+          "accountLabel": "b",
+          "eventIds": [],
+          "messageIds": [],
+          "progress": "none",
+          "interrupted": false,
+          "controlFence": 2,
+          "placement": {
+            "agent": "claude",
+            "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+            "cellId": null
+          },
+          "quota": null,
+          "admission": {
+            "fetchedAt": 1792501172435,
+            "maxProjectedPercent": 94,
+            "candidateAccountIds": [
+              "claude-b"
+            ]
+          },
+          "resetHints": {
+            "other": 1792511970000
+          },
+          "state": "resumed",
+          "attempt": 1,
+          "targetAccount": "claude-b",
+          "successorGeneration": 2,
+          "claimId": null,
+          "reservationId": null,
+          "commandId": 2,
+          "continuationKind": "none",
+          "continuationMessageIds": [],
+          "continuationHistory": [],
+          "retryAt": null,
+          "reason": null,
+          "createdAt": 1792501172463,
+          "updatedAt": 1792501173353
+        }
+      ],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:be577c1c-3367-4f8d-9328-69602d22f747:0",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "ordinal": 0,
+          "harness": "claude",
+          "providerSessionId": "fca68f81-031e-456b-aeb1-e9703954e6b8",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/session-logs/be577c1c-3367-4f8d-9328-69602d22f747.jsonl",
+          "handoffId": null,
+          "createdAt": 1792501169888,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "audit.tail",
+    "params": {
+      "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+      "limit": 1000
+    },
+    "result": {
+      "rows": [
+        {
+          "seq": 10,
+          "ts": 1792501169889,
+          "kind": "bee.created",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "bee": {
+              "id": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "name": "claude-queen-stale-target",
+              "agent": "claude",
+              "substrate": "hsr",
+              "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+              "title": null,
+              "tags": [],
+              "sessionLogPath": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/session-logs/be577c1c-3367-4f8d-9328-69602d22f747.jsonl",
+              "lifecycle": "active",
+              "createdAt": 1792501169888,
+              "archivedAt": null,
+              "lastOutputAt": null,
+              "providerSessionId": null,
+              "env": {
+                "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+                "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+                "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+                "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+                "ANTHROPIC_API_KEY": "<redacted>",
+                "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-a"
+              },
+              "importedFrom": null,
+              "spawnFailures": 0,
+              "args": null,
+              "parentId": null,
+              "parentExternal": false,
+              "forkedFrom": null,
+              "forkSeed": null,
+              "account": "claude-a",
+              "handle": "CL.0000",
+              "human_ref": null,
+              "issuing_namespace": null,
+              "placementVersion": 0,
+              "activeMoveId": null,
+              "cellId": null,
+              "activeHandoffId": null,
+              "lastTurnTrigger": null,
+              "lastHumanOutputAt": null
+            },
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 905388,
+              "verb": "spawn"
+            }
+          }
+        },
+        {
+          "seq": 11,
+          "ts": 1792501169889,
+          "kind": "transcript_segment.put",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "segment": {
+              "id": "seg:be577c1c-3367-4f8d-9328-69602d22f747:0",
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "ordinal": 0,
+              "harness": "claude",
+              "providerSessionId": null,
+              "fromGeneration": 1,
+              "toGeneration": null,
+              "path": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/session-logs/be577c1c-3367-4f8d-9328-69602d22f747.jsonl",
+              "handoffId": null,
+              "createdAt": 1792501169888,
+              "closedAt": null
+            },
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 905388,
+              "verb": "spawn"
+            }
+          }
+        },
+        {
+          "seq": 12,
+          "ts": 1792501169890,
+          "kind": "runtime.created",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 1,
+              "state": "booting",
+              "exitCause": null,
+              "pid": null,
+              "pidStartedAt": null,
+              "bootEvidence": null,
+              "startedAt": 1792501169888,
+              "updatedAt": 1792501169888
+            },
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 905388,
+              "verb": "spawn"
+            }
+          }
+        },
+        {
+          "seq": 13,
+          "ts": 1792501169891,
+          "kind": "command.enqueued",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "command": {
+              "id": 1,
+              "verb": "spawn",
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "args": {},
+              "targetGeneration": 1,
+              "status": "queued",
+              "attempts": 0,
+              "nextAttemptAt": 1792501169891,
+              "enqueuedAt": 1792501169891,
+              "finishedAt": null,
+              "failureCause": null,
+              "idempotencyKey": null
+            },
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 905388,
+              "verb": "spawn"
+            }
+          }
+        },
+        {
+          "seq": 14,
+          "ts": 1792501169907,
+          "kind": "command.claimed",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "commandId": 1
+          }
+        },
+        {
+          "seq": 15,
+          "ts": 1792501170113,
+          "kind": "runtime.updated",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 1,
+              "state": "booting",
+              "exitCause": null,
+              "pid": 905423,
+              "pidStartedAt": 1792501170109,
+              "bootEvidence": null,
+              "startedAt": 1792501169888,
+              "updatedAt": 1792501169888
+            }
+          }
+        },
+        {
+          "seq": 16,
+          "ts": 1792501170114,
+          "kind": "command.completed",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "commandId": 1,
+            "finishedAt": 1792501170114
+          }
+        },
+        {
+          "seq": 19,
+          "ts": 1792501170200,
+          "kind": "runtime.updated",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 1,
+              "state": "booting",
+              "exitCause": null,
+              "pid": 905423,
+              "pidStartedAt": 1792501170109,
+              "bootEvidence": null,
+              "startedAt": 1792501169888,
+              "updatedAt": 1792501169888
+            }
+          }
+        },
+        {
+          "seq": 20,
+          "ts": 1792501170201,
+          "kind": "runtime.updated",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 1,
+              "state": "running",
+              "exitCause": null,
+              "pid": 905423,
+              "pidStartedAt": 1792501170109,
+              "bootEvidence": "synthetic",
+              "startedAt": 1792501169888,
+              "updatedAt": 1792501170201
+            }
+          }
+        },
+        {
+          "seq": 21,
+          "ts": 1792501170202,
+          "kind": "runtime.updated",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 1,
+              "state": "idle",
+              "exitCause": null,
+              "pid": 905423,
+              "pidStartedAt": 1792501170109,
+              "bootEvidence": "synthetic",
+              "startedAt": 1792501169888,
+              "updatedAt": 1792501170202
+            }
+          }
+        },
+        {
+          "seq": 23,
+          "ts": 1792501172439,
+          "kind": "mail.enqueued",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "message": {
+              "id": 1,
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "sender": "operator",
+              "body": "Queen relative regression original mail",
+              "priority": 0,
+              "urgency": "next",
+              "enqueuedAt": 1792501172439,
+              "deliveredAt": null,
+              "deliveredGeneration": null
+            },
+            "origin": "mail.send",
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 905388,
+              "verb": "send"
+            }
+          }
+        },
+        {
+          "seq": 24,
+          "ts": 1792501172464,
+          "kind": "quota.recovery",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "recovery": {
+              "id": "admission:be577c1c-3367-4f8d-9328-69602d22f747:1:0",
+              "trigger": "proactive",
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "sourceGeneration": 1,
+              "sourceAccount": "claude-a",
+              "observationCursor": null,
+              "sourceId": null,
+              "accountLabel": null,
+              "eventIds": [],
+              "messageIds": [],
+              "progress": "none",
+              "interrupted": false,
+              "controlFence": 0,
+              "placement": {
+                "agent": "claude",
+                "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+                "cellId": null
+              },
+              "quota": null,
+              "admission": {
+                "fetchedAt": 1792501172435,
+                "maxProjectedPercent": 94,
+                "candidateAccountIds": null
+              },
+              "resetHints": {
+                "other": 1792511970000
+              },
+              "state": "waiting",
+              "attempt": 0,
+              "targetAccount": null,
+              "successorGeneration": null,
+              "claimId": null,
+              "reservationId": null,
+              "commandId": null,
+              "continuationKind": null,
+              "continuationMessageIds": [],
+              "continuationHistory": [],
+              "retryAt": 1792511970000,
+              "reason": "completion_reserve",
+              "createdAt": 1792501172463,
+              "updatedAt": 1792501172464
+            },
+            "notice": {
+              "kind": "quota_recovery",
+              "recoveryId": "admission:be577c1c-3367-4f8d-9328-69602d22f747:1:0",
+              "trigger": "proactive",
+              "state": "waiting",
+              "sourceId": null,
+              "accountLabel": null,
+              "window": "other",
+              "retryAt": 1792511970000
+            }
+          }
+        },
+        {
+          "seq": 29,
+          "ts": 1792501172990,
+          "kind": "quota.recovery",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "recovery": {
+              "trigger": "proactive",
+              "id": "admission:be577c1c-3367-4f8d-9328-69602d22f747:1:0",
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "sourceGeneration": 1,
+              "sourceAccount": "claude-a",
+              "observationCursor": null,
+              "sourceId": null,
+              "accountLabel": null,
+              "eventIds": [],
+              "messageIds": [],
+              "progress": "none",
+              "interrupted": false,
+              "controlFence": 0,
+              "placement": {
+                "agent": "claude",
+                "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+                "cellId": null
+              },
+              "quota": null,
+              "admission": {
+                "fetchedAt": 1792501172435,
+                "maxProjectedPercent": 94,
+                "candidateAccountIds": [
+                  "claude-b"
+                ]
+              },
+              "resetHints": {
+                "other": 1792511970000
+              },
+              "state": "waiting",
+              "attempt": 0,
+              "targetAccount": null,
+              "successorGeneration": null,
+              "claimId": null,
+              "reservationId": null,
+              "commandId": null,
+              "continuationKind": null,
+              "continuationMessageIds": [],
+              "continuationHistory": [],
+              "retryAt": 1792511970000,
+              "reason": "completion_reserve",
+              "createdAt": 1792501172463,
+              "updatedAt": 1792501172990
+            }
+          }
+        },
+        {
+          "seq": 30,
+          "ts": 1792501173003,
+          "kind": "quota.recovery",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "recovery": {
+              "trigger": "proactive",
+              "id": "admission:be577c1c-3367-4f8d-9328-69602d22f747:1:0",
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "sourceGeneration": 1,
+              "sourceAccount": "claude-a",
+              "observationCursor": null,
+              "sourceId": null,
+              "accountLabel": "b",
+              "eventIds": [],
+              "messageIds": [],
+              "progress": "none",
+              "interrupted": false,
+              "controlFence": 0,
+              "placement": {
+                "agent": "claude",
+                "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+                "cellId": null
+              },
+              "quota": null,
+              "admission": {
+                "fetchedAt": 1792501172435,
+                "maxProjectedPercent": 94,
+                "candidateAccountIds": [
+                  "claude-b"
+                ]
+              },
+              "resetHints": {
+                "other": 1792511970000
+              },
+              "state": "rotating",
+              "attempt": 1,
+              "targetAccount": "claude-b",
+              "successorGeneration": null,
+              "claimId": null,
+              "reservationId": null,
+              "commandId": null,
+              "continuationKind": null,
+              "continuationMessageIds": [],
+              "continuationHistory": [],
+              "retryAt": null,
+              "reason": null,
+              "createdAt": 1792501172463,
+              "updatedAt": 1792501173003
+            },
+            "notice": {
+              "kind": "quota_recovery",
+              "recoveryId": "admission:be577c1c-3367-4f8d-9328-69602d22f747:1:0",
+              "trigger": "proactive",
+              "state": "rotating",
+              "sourceId": null,
+              "accountLabel": "b",
+              "window": "other",
+              "retryAt": null
+            }
+          }
+        },
+        {
+          "seq": 31,
+          "ts": 1792501173004,
+          "kind": "bee.auth_control",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "controlFence": 1
+          }
+        },
+        {
+          "seq": 32,
+          "ts": 1792501173005,
+          "kind": "bee.account_set",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+            "account": "claude-b",
+            "previous": "claude-a"
+          }
+        },
+        {
+          "seq": 33,
+          "ts": 1792501173006,
+          "kind": "bee.auth_control",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "controlFence": 2
+          }
+        },
+        {
+          "seq": 34,
+          "ts": 1792501173006,
+          "kind": "bee.env_set",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+            "env": {
+              "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+              "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+              "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+              "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+              "ANTHROPIC_API_KEY": "<redacted>",
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-b"
+            },
+            "previous": {
+              "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+              "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+              "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+              "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+              "ANTHROPIC_API_KEY": "<redacted>",
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/homes/claude-a"
+            }
+          }
+        },
+        {
+          "seq": 35,
+          "ts": 1792501173007,
+          "kind": "command.enqueued",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "command": {
+              "id": 2,
+              "verb": "stop",
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "args": {
+                "cause": "stopped_by_system",
+                "reason": "swap_account:operator",
+                "thenRevive": true
+              },
+              "targetGeneration": 1,
+              "status": "queued",
+              "attempts": 0,
+              "nextAttemptAt": 1792501173007,
+              "enqueuedAt": 1792501173007,
+              "finishedAt": null,
+              "failureCause": null,
+              "idempotencyKey": null
+            }
+          }
+        },
+        {
+          "seq": 36,
+          "ts": 1792501173008,
+          "kind": "quota.recovery",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "recovery": {
+              "trigger": "proactive",
+              "id": "admission:be577c1c-3367-4f8d-9328-69602d22f747:1:0",
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "sourceGeneration": 1,
+              "sourceAccount": "claude-a",
+              "observationCursor": null,
+              "sourceId": null,
+              "accountLabel": "b",
+              "eventIds": [],
+              "messageIds": [],
+              "progress": "none",
+              "interrupted": false,
+              "controlFence": 2,
+              "placement": {
+                "agent": "claude",
+                "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+                "cellId": null
+              },
+              "quota": null,
+              "admission": {
+                "fetchedAt": 1792501172435,
+                "maxProjectedPercent": 94,
+                "candidateAccountIds": [
+                  "claude-b"
+                ]
+              },
+              "resetHints": {
+                "other": 1792511970000
+              },
+              "state": "rotating",
+              "attempt": 1,
+              "targetAccount": "claude-b",
+              "successorGeneration": 2,
+              "claimId": null,
+              "reservationId": null,
+              "commandId": 2,
+              "continuationKind": null,
+              "continuationMessageIds": [],
+              "continuationHistory": [],
+              "retryAt": null,
+              "reason": null,
+              "createdAt": 1792501172463,
+              "updatedAt": 1792501173008
+            }
+          }
+        },
+        {
+          "seq": 37,
+          "ts": 1792501173011,
+          "kind": "command.claimed",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "commandId": 2
+          }
+        },
+        {
+          "seq": 38,
+          "ts": 1792501173015,
+          "kind": "command.completed",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "commandId": 2,
+            "finishedAt": 1792501173015
+          }
+        },
+        {
+          "seq": 39,
+          "ts": 1792501173059,
+          "kind": "runtime.updated",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 1,
+              "state": "stopped",
+              "exitCause": "stopped_by_system",
+              "pid": 905423,
+              "pidStartedAt": 1792501170109,
+              "bootEvidence": "synthetic",
+              "startedAt": 1792501169888,
+              "updatedAt": 1792501173059
+            }
+          }
+        },
+        {
+          "seq": 40,
+          "ts": 1792501173060,
+          "kind": "command.enqueued",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "command": {
+              "id": 3,
+              "verb": "send_wake",
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "args": {},
+              "targetGeneration": 1,
+              "status": "queued",
+              "attempts": 0,
+              "nextAttemptAt": 1792501173060,
+              "enqueuedAt": 1792501173060,
+              "finishedAt": null,
+              "failureCause": null,
+              "idempotencyKey": null
+            }
+          }
+        },
+        {
+          "seq": 41,
+          "ts": 1792501173067,
+          "kind": "command.claimed",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "commandId": 3
+          }
+        },
+        {
+          "seq": 42,
+          "ts": 1792501173068,
+          "kind": "runtime.created",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 2,
+              "state": "booting",
+              "exitCause": null,
+              "pid": null,
+              "pidStartedAt": null,
+              "bootEvidence": null,
+              "startedAt": 1792501173068,
+              "updatedAt": 1792501173068
+            }
+          }
+        },
+        {
+          "seq": 43,
+          "ts": 1792501173262,
+          "kind": "runtime.updated",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 2,
+              "state": "booting",
+              "exitCause": null,
+              "pid": 905487,
+              "pidStartedAt": 1792501173256,
+              "bootEvidence": null,
+              "startedAt": 1792501173068,
+              "updatedAt": 1792501173068
+            }
+          }
+        },
+        {
+          "seq": 44,
+          "ts": 1792501173263,
+          "kind": "command.completed",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "commandId": 3,
+            "finishedAt": 1792501173263
+          }
+        },
+        {
+          "seq": 45,
+          "ts": 1792501173350,
+          "kind": "runtime.updated",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 2,
+              "state": "booting",
+              "exitCause": null,
+              "pid": 905487,
+              "pidStartedAt": 1792501173256,
+              "bootEvidence": null,
+              "startedAt": 1792501173068,
+              "updatedAt": 1792501173068
+            }
+          }
+        },
+        {
+          "seq": 46,
+          "ts": 1792501173350,
+          "kind": "runtime.updated",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 2,
+              "state": "running",
+              "exitCause": null,
+              "pid": 905487,
+              "pidStartedAt": 1792501173256,
+              "bootEvidence": "synthetic",
+              "startedAt": 1792501173068,
+              "updatedAt": 1792501173350
+            }
+          }
+        },
+        {
+          "seq": 47,
+          "ts": 1792501173353,
+          "kind": "quota.recovery",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "recovery": {
+              "trigger": "proactive",
+              "id": "admission:be577c1c-3367-4f8d-9328-69602d22f747:1:0",
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "sourceGeneration": 1,
+              "sourceAccount": "claude-a",
+              "observationCursor": null,
+              "sourceId": null,
+              "accountLabel": "b",
+              "eventIds": [],
+              "messageIds": [],
+              "progress": "none",
+              "interrupted": false,
+              "controlFence": 2,
+              "placement": {
+                "agent": "claude",
+                "cwd": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh",
+                "cellId": null
+              },
+              "quota": null,
+              "admission": {
+                "fetchedAt": 1792501172435,
+                "maxProjectedPercent": 94,
+                "candidateAccountIds": [
+                  "claude-b"
+                ]
+              },
+              "resetHints": {
+                "other": 1792511970000
+              },
+              "state": "resumed",
+              "attempt": 1,
+              "targetAccount": "claude-b",
+              "successorGeneration": 2,
+              "claimId": null,
+              "reservationId": null,
+              "commandId": 2,
+              "continuationKind": "none",
+              "continuationMessageIds": [],
+              "continuationHistory": [],
+              "retryAt": null,
+              "reason": null,
+              "createdAt": 1792501172463,
+              "updatedAt": 1792501173353
+            },
+            "notice": {
+              "kind": "quota_recovery",
+              "recoveryId": "admission:be577c1c-3367-4f8d-9328-69602d22f747:1:0",
+              "trigger": "proactive",
+              "state": "resumed",
+              "sourceId": null,
+              "accountLabel": "b",
+              "window": "other",
+              "retryAt": null
+            }
+          }
+        },
+        {
+          "seq": 48,
+          "ts": 1792501173365,
+          "kind": "mail.delivered",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "messageId": 1,
+            "deliveredAt": 1792501173365,
+            "deliveredGeneration": 2,
+            "turnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 1,
+              "generation": 2,
+              "startedAt": 1792501173365,
+              "humanAt": 1792501173365,
+              "endedAt": null
+            }
+          }
+        },
+        {
+          "seq": 49,
+          "ts": 1792501173418,
+          "kind": "runtime.updated",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 2,
+              "state": "running",
+              "exitCause": null,
+              "pid": 905487,
+              "pidStartedAt": 1792501173256,
+              "bootEvidence": "real",
+              "startedAt": 1792501173068,
+              "updatedAt": 1792501173350
+            }
+          }
+        },
+        {
+          "seq": 50,
+          "ts": 1792501173419,
+          "kind": "runtime.updated",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "runtime": {
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "generation": 2,
+              "state": "idle",
+              "exitCause": null,
+              "pid": 905487,
+              "pidStartedAt": 1792501173256,
+              "bootEvidence": "real",
+              "startedAt": 1792501173068,
+              "updatedAt": 1792501173419
+            },
+            "turnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 1,
+              "generation": 2,
+              "startedAt": 1792501173365,
+              "humanAt": 1792501173365,
+              "endedAt": 1792501173419,
+              "endedQuiet": false
+            }
+          }
+        },
+        {
+          "seq": 51,
+          "ts": 1792501173419,
+          "kind": "output.recorded",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+            "at": 1792501173419,
+            "lastHumanOutputAt": 1792501173419
+          }
+        },
+        {
+          "seq": 52,
+          "ts": 1792501173421,
+          "kind": "bee.provider_session",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+            "providerSessionId": "fca68f81-031e-456b-aeb1-e9703954e6b8",
+            "previous": null
+          }
+        },
+        {
+          "seq": 53,
+          "ts": 1792501173421,
+          "kind": "transcript_segment.put",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "segment": {
+              "id": "seg:be577c1c-3367-4f8d-9328-69602d22f747:0",
+              "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+              "ordinal": 0,
+              "harness": "claude",
+              "providerSessionId": "fca68f81-031e-456b-aeb1-e9703954e6b8",
+              "fromGeneration": 1,
+              "toGeneration": null,
+              "path": "/var/tmp/sar-e4-queen-assertions-m5U3MA/hb-v2-daemon-IBBJDh/session-logs/be577c1c-3367-4f8d-9328-69602d22f747.jsonl",
+              "handoffId": null,
+              "createdAt": 1792501169888,
+              "closedAt": null
+            }
+          }
+        },
+        {
+          "seq": 54,
+          "ts": 1792501173422,
+          "kind": "flag.clear_noop",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+            "flag": "spawn_failed"
+          }
+        },
+        {
+          "seq": 55,
+          "ts": 1792501173424,
+          "kind": "flag.clear_noop",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+            "flag": "auth_needed"
+          }
+        },
+        {
+          "seq": 56,
+          "ts": 1792501173425,
+          "kind": "flag.clear_noop",
+          "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+          "payload": {
+            "beeId": "be577c1c-3367-4f8d-9328-69602d22f747",
+            "flag": "resource_blocked"
+          }
+        }
+      ]
+    }
+  }
+]

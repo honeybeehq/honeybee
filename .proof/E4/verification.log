@@ -1,14 +1,17 @@
-E4 relative proactive switching
-Implementation b4a0b53a9102ceefaed41e1d279109d964ecc411
+E4 Queen revision: relative proactive switching
+Implementation b58d8c821e7178829dd1b3fe72f928e233cc20c9
 Base 76d1560a9fabe3c449f4d0ce108d91fe8b80afa2
 Branch review/sar-E4-relative-proactive
-16/16 shadow daemon cases PASS; 4/4 active daemon cases PASS; 2/2 concurrent five-bee cases PASS; 6/6 policy controls PASS.
-171 existing allocation/admission/account/config tests PASS,1 existing real-HOME import skipped;15 daemon accounts-RPC tests PASS. Total186passed1skip0failed.
-check,v2:check,build PASS; gates.exit0.
-Source90%with20capacityunits versus target80%with1unit stays; source90%withsame-plan target5%switches. Both99%stay (no proactive obligation); actual exhaustion belongs to provider_limit recovery as human7794 authorized.
-Shadow defaultON is intentional and authorized by Needle for Tormod7796. Active defaultON; explicitfalseoptsout. No outstanding default judgement.
-Near-equal accounts stay across five real turns and30logicalminutes; near reset/stale stay. Dwell reversal stays for five real turns, reverse2xmargin policy control passes.
-Five-bee concurrent fixtures: exactly4move,1stays,0remainingreservations. Relative target comparison and swap reservation share one synchronous transaction. Active owner selection unchanged.
-Contract snapshotv26:quota-contract.md. Existing schema/capability/provider evidence unchanged; proactive quota:null, no invented continuation.
-Carried LOWs: protected opening scans; short-window velocity noise; shadow local activity lower bound; atomic relative refusal may hold until next30sreconcile.
-No package or lock changes. No deployment; DEPLOY HOLD remains. Missing repository verification skill remains a known setup issue and did not run.
+34/34 real-daemon cases PASS:16shadow+4active+2five-bee+12Queenregressions.6/6policy controls PASS.
+Queen B1: sourcefresh/targetstale timestamp gap>2000ms(configuredfreshness2000ms), initialcandidateAccountIdsnull then backgroundrefresh andswitch. No source restored reason inferred from targetstaleness.
+Unreadabletarget: one refresh then cancel and originalmaildelivered onsource under10s; no indefinitelyhiddenhold.30sgrace prevents immediatelyrecreatingrow; laterNEWmail can retry.
+Queen M1:20x90%source,1x50%badtarget,20x10%goodtarget. Durableallowlistonlygoodtarget;badclaimrefused+fenced/released,goodclaimappliesandoriginalmailgen2. C2e separatelyprovesrealownerrestriction+confirmationreplay.
+Queen M2:5h90%source/week5%,target5h10%/week85%stays. Tightestall-windowabsolute+ratecomparison.
+Queen M3:20x99.9%sourcecanmoveto1x5%targetusing smaller-plan margin andadditionalcompletioncost.
+Queen L1L2:separateproactiveDwellMs30mindefault/30sminimum;anyhistoricalsource2xreverse;source5hnearresetdoesnotvetoanother99%long-livedweeklywindow.
+Queen L3L4:newshadowcomparisontransactionendsbeforeperformSwaptranscriptIO;pending/activeworkcounts—notreservationrows—boundlocalsingle-nodeherding. Exactly4move1stay. ExistingexternalRPCidempotencytransactionpredatesE4.
+check,v2:check,build PASS;gates.exit0.186existingallocation/admission/account/config/accounts-RPCtestsPASS1existingrealHOMEimportskip. Scoped suites,notfulldaemonsuite.
+Human7794approvedrelative90%+continuation;both99%stay;actualexhaustionusesprovider_limit. DefaultONBOTHmodesonceE4landswithQueenPASS;falseoptsout. Verbatimrulinghuman-ruling.md.
+Contractv28snapshotquota-contract-queen.md;C2econsumerdependencyproof-d2d0d694521b9f971d9c6f82e574d4a3. Owner stable committed confirmation replay unchanged.
+LOWs:protectedopeningscans;shortsamplevelocitynoise;shadowlocalactivitylowerbound/cross-nodeherdingnotguaranteed;oneprobetransienthold;newmailafter30sgracemaycreateadditionalunprunedepisodes.
+No package/lock/schema/capability changes. No deployment;DEPLOYHOLD. Missing repository verification skill isknownsetupissue,didnotrun.
