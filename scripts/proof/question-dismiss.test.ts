@@ -71,17 +71,19 @@ test("real disposable Honeybee: dismissal races, dedicated notice, independent r
     await waitFor(async () => (await service.request<ViewResult>("view", {beeId: live.beeId})).view.runtimeState === "idle", "stub idle");
     const liveQuestion = (await service.request<QuestionAskResult>("question.ask", {beeId: live.beeId, text: "Deliver notice?"})).question;
     const delivered = await dismiss(liveQuestion.id, "live-dismiss");
-    const view = await waitFor(async () => { const value = await service.request<ViewResult>("view", {beeId: live.beeId}); return value.bee.sessionLogPath && existsSync(value.bee.sessionLogPath) && readFileSync(value.bee.sessionLogPath, "utf8").includes("[Hive notice that your question was dismissed]") ? value : false; }, "dedicated envelope echoed by real stub");
+    const view = await waitFor(async () => { const value = await service.request<ViewResult>("view", {beeId: live.beeId}); assert.ok(value.bee); return value.bee.sessionLogPath && existsSync(value.bee.sessionLogPath) && readFileSync(value.bee.sessionLogPath, "utf8").includes("[Hive notice that your question was dismissed]") ? value : false; }, "dedicated envelope echoed by real stub");
+    assert.ok(view.bee);
     const transcript = readFileSync(view.bee.sessionLogPath!, "utf8"); assert.ok(transcript.includes(body));
     assert.equal(view.bee.lastHumanOutputAt, null);
     const lifecycleReceipts: unknown[] = [];
     for (const transition of ["stop", "archive"] as const) {
       await service.request(transition, {beeId: live.beeId});
-      await waitFor(async () => {const value = await service.request<ViewResult>("view", {beeId: live.beeId}); return transition === "stop" ? value.view.runtimeState === "stopped" : value.bee.lifecycle === "archived";}, `stub ${transition}`);
+      await waitFor(async () => {const value = await service.request<ViewResult>("view", {beeId: live.beeId}); assert.ok(value.bee); return transition === "stop" ? value.view.runtimeState === "stopped" : value.bee.lifecycle === "archived";}, `stub ${transition}`);
       const asked = (await service.request<QuestionAskResult>("question.ask", {beeId: live.beeId, text: `${transition} notice?`})).question;
       const dismissed = await dismiss(asked.id, `lifecycle-${transition}`);
       await waitFor(async () => (await service.request<MailboxResult>("mailbox", {beeId: live.beeId})).messages.find(message => message.id === dismissed.question.dismissalMessageId)?.deliveredAt != null, `notice after ${transition}`);
       const current = await service.request<ViewResult>("view", {beeId: live.beeId});
+      assert.ok(current.bee);
       assert.equal(current.bee.lifecycle, "active"); assert.equal(current.bee.lastHumanOutputAt, null);
       lifecycleReceipts.push({from: transition, questionId: asked.id, messageId: dismissed.question.dismissalMessageId, lifecycle: current.bee.lifecycle, generation: current.runtime?.generation});
     }

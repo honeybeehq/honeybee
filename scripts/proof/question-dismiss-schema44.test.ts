@@ -10,7 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { build } from "esbuild";
 import { openCoreStore, SCHEMA_VERSION, replayAudit, type CoreStore } from "../../v2/core/src/index.ts";
 
-const baseline = "6586f6414efcbb3c8c535a28430dfcbe74c3f360";
+const baseline = "9ecbb37f7cb448503cdcfaf8747538a3580f982f";
 
 test("schema44: rebuild checked status, rollback writer, receipt and notice survive re-upgrade", async () => {
   const root = mkdtempSync(join(tmpdir(), "dismiss-rollback-")); const path = join(root, "core.sqlite3"), artifact = join(root, "baseline.mjs");

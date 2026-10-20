@@ -124,11 +124,11 @@ renders dismissed. No unmerged vendor/runtime pin ships.
 ## Schema and verification
 
 The stamp stays **44**, preserving apiary-swap's exact version requirement. Existing
-6586 questions have a status CHECK, so the migration transaction rebuilds that
+9ecbb37f questions have a status CHECK, so the migration transaction rebuilds that
 table and restores indices while preserving open/answered/withdrawn rows. A schema
 without a status CHECK adds the nullable fields without a rebuild. Dedicated
-receipt storage is CREATE TABLE IF NOT EXISTS. The rollback lab proves old6586
-writer → new writer → old6586 writer → new writer, with the dismissed row, receipt,
+receipt storage is CREATE TABLE IF NOT EXISTS. The rollback lab proves old9ecbb37f
+writer → new writer → old9ecbb37f writer → new writer, with the dismissed row, receipt,
 one notice, integrity and foreign keys preserved. Older writers refuse terminal
 mutation; no answer/reopen appears. This is not a claim that every older binary
 can replay the new canonical event.
