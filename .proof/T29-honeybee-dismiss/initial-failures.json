@@ -2,7 +2,13 @@
   "historicalCandidate": "e5c98e8ca99b88bb4274dd3190f9b71df95d3fbd",
   "historicalMaskedReceipt": "ef156ca7cb9a0d09f8482cf9ec90833ef791ab589341493cf6d59d2530bbe7e1",
   "historicalGate": "FAILED, superseded by v46; no successful re-gate claimed",
+  "QueenSourceReview": "a7 source ISSUES22918, superseded by4e9 fixes; fixed-head review and masked re-gate PENDING",
+  "supersededPartialRun": "4e9 local run interrupted130 after a stronger true-v45 missing-null-columns regression went red; no completed24 result claimed for it",
   "resolvedInSource": [
+    "True45 receipt lacks3 new nullable fields: red regression fixed by canonical replay normalization.",
+    "Legacy sync/async errors now project dismissal as withdrawn; owner withdraw-on-dismissed records terminal no-op with no event/mail/wake.",
+    "Scoped transitive question FK validation excludes unrelated orphans.",
+    "Durable first-effect notice wake/unarchive metadata, both real terminal-row frozen formats and v45 row-only receipt replay covered.",
     "Source-only gate could not load baseline with Git: replaced with pinned complete SQL/data fixture.",
     "Raw canonical mirror differed from legacy frozen shape: old document unchanged through actual projector; modern document added, raw-egress census strengthened."
   ],

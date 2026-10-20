@@ -1,14 +1,18 @@
-npm notice run honeybee@0.0.1 build
-npm notice run tsc -p tsconfig.json && node scripts/build-runner-host-artifact.mjs && node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs && node scripts/build-cli-entry.mjs
+
+> honeybee@0.0.1 build
+> tsc -p tsconfig.json && node scripts/build-runner-host-artifact.mjs && node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs && node scripts/build-cli-entry.mjs
+
 runner-host artifact 627f7e4c81d71227c0cf3ad993dabc06bd6e6cfc144691a26a4ccde367dbe95d (1630216 bytes) staged under <CELL>/dist/hsr/artifacts
 peer credential bridge linux-x64 (145 C lines)
-{"passed":true,"target":"linux-x64","node":"v24.18.0","uid":1001,"pid":846474,"processBirth":"linux:2039648813","pidfd":true}
+{"passed":true,"target":"linux-x64","node":"v24.18.0","uid":1001,"pid":1223216,"processBirth":"linux:2039898381","pidfd":true}
 v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, and dist/v2/runner-host.js (16135 bytes)
 dependency-light cli entry staged at dist/cli.js
-npm notice run honeybee@0.0.1 postbuild
-npm notice run chmod +x dist/cli.js dist/cli-x.js
+
+> honeybee@0.0.1 postbuild
+> chmod +x dist/cli.js dist/cli-x.js
+
 npm notice
-npm notice New minor version of npm available! 12.0.1 -> 12.2.0
+npm notice New major version of npm available! 11.16.0 -> 12.2.0
 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
 npm notice To update run: npm install -g npm@12.2.0
 npm notice

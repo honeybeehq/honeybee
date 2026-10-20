@@ -1,55 +1,56 @@
 {
-  "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+  "sourceRevision": "6ad331f704107ef727e11e975a90071d42b0eef3",
   "base": "e26ad0241105b3d374bfe73649af60a90736aa9b",
   "runs": [
     {
       "host": "<LAB_HOST>",
-      "data": "<TASK_CACHE>/46/h16/t/hb-v2-daemon-8utSbW",
-      "socket": "<TASK_CACHE>/46/h16/t/hb-v2-daemon-8utSbW/hived.sock",
+      "data": "<TASK_CACHE>/46fix2/h16/t/hb-v2-daemon-QnXeo9",
+      "socket": "<TASK_CACHE>/46fix2/h16/t/hb-v2-daemon-QnXeo9/hived.sock",
       "shutdown": {
         "code": 0,
         "signal": null
       },
       "first": {
-        "id": "dadaf48c-b16e-4a10-9805-39ed2cd2014a",
-        "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+        "id": "32de4e89-ebd2-45e9-bc73-c4a2301d1ccf",
+        "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
         "generation": 1,
         "text": "Dismiss once?",
         "options": null,
         "status": "dismissed",
         "withdrawalReason": null,
         "withdrawnAt": null,
-        "dismissedAt": 1792487015723,
+        "dismissedAt": 1792489511427,
         "dismissedBy": "rpc",
         "dismissalMessageId": 1,
         "answer": null,
-        "askedAt": 1792487015722,
+        "askedAt": 1792489511426,
         "answeredAt": null,
         "answeredBy": null,
         "deliveryMessageId": null
       },
       "legacy": {
-        "id": "dadaf48c-b16e-4a10-9805-39ed2cd2014a",
-        "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+        "id": "32de4e89-ebd2-45e9-bc73-c4a2301d1ccf",
+        "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
         "generation": 1,
         "text": "Dismiss once?",
         "options": null,
         "status": "withdrawn",
         "withdrawalReason": "Dismissed without an answer",
-        "withdrawnAt": 1792487015723,
+        "withdrawnAt": 1792489511427,
         "answer": null,
-        "askedAt": 1792487015722,
+        "askedAt": 1792489511426,
         "answeredAt": null,
         "answeredBy": null,
         "deliveryMessageId": null
       },
       "races": [
         {
-          "questionId": "8b4d866c-b8b4-4c19-af0c-d68fc9f1eaab",
+          "questionId": "bb7e8a2d-4858-4a4c-a4ec-72a678cf49ee",
           "order": [
             "answer",
             "dismiss"
           ],
+          "terminalNoOps": 0,
           "status": "answered",
           "newMailCount": 1,
           "answerMail": 1,
@@ -57,16 +58,17 @@
           "refusals": [
             {
               "code": "question_already_answered",
-              "message": "question 8b4d866c-b8b4-4c19-af0c-d68fc9f1eaab is already answered"
+              "message": "question bb7e8a2d-4858-4a4c-a4ec-72a678cf49ee is already answered"
             }
           ]
         },
         {
-          "questionId": "033db90e-171d-476e-babd-cec50bd56902",
+          "questionId": "968d36aa-8a13-4de6-9187-c277b79a9c1b",
           "order": [
             "dismiss",
             "answer"
           ],
+          "terminalNoOps": 0,
           "status": "dismissed",
           "newMailCount": 1,
           "answerMail": 0,
@@ -79,11 +81,12 @@
           ]
         },
         {
-          "questionId": "321a04a3-bd5b-457a-8546-a1035b428afe",
+          "questionId": "b221a6ed-761e-4fe8-946f-2354abc48b94",
           "order": [
             "withdraw",
             "dismiss"
           ],
+          "terminalNoOps": 0,
           "status": "withdrawn",
           "newMailCount": 0,
           "answerMail": 0,
@@ -96,29 +99,26 @@
           ]
         },
         {
-          "questionId": "ecda3f8c-3f19-4c89-b81c-c7045274f633",
+          "questionId": "43171fec-f75a-4ccc-936a-04d34e3d6d63",
           "order": [
             "dismiss",
             "withdraw"
           ],
+          "terminalNoOps": 1,
           "status": "dismissed",
           "newMailCount": 1,
           "answerMail": 0,
           "dismissalMail": 1,
-          "refusals": [
-            {
-              "code": "question_dismissed",
-              "message": "This question was dismissed without an answer."
-            }
-          ]
+          "refusals": []
         },
         {
-          "questionId": "1b71f8b7-4acd-4e99-a046-cc7fb1554836",
+          "questionId": "319a0d24-5d84-4d4d-a951-d8119a3f7b3d",
           "order": [
             "answer",
             "withdraw",
             "dismiss"
           ],
+          "terminalNoOps": 0,
           "status": "answered",
           "newMailCount": 1,
           "answerMail": 1,
@@ -126,21 +126,22 @@
           "refusals": [
             {
               "code": "question_already_answered",
-              "message": "question 1b71f8b7-4acd-4e99-a046-cc7fb1554836 is already answered"
+              "message": "question 319a0d24-5d84-4d4d-a951-d8119a3f7b3d is already answered"
             },
             {
               "code": "question_already_answered",
-              "message": "question 1b71f8b7-4acd-4e99-a046-cc7fb1554836 is already answered"
+              "message": "question 319a0d24-5d84-4d4d-a951-d8119a3f7b3d is already answered"
             }
           ]
         },
         {
-          "questionId": "83e57bc1-3170-4ed4-a7eb-74ca385da89f",
+          "questionId": "f3d71ad0-d7e8-4f98-8a14-f9424d36e12c",
           "order": [
             "answer",
             "dismiss",
             "withdraw"
           ],
+          "terminalNoOps": 0,
           "status": "answered",
           "newMailCount": 1,
           "answerMail": 1,
@@ -148,43 +149,22 @@
           "refusals": [
             {
               "code": "question_already_answered",
-              "message": "question 83e57bc1-3170-4ed4-a7eb-74ca385da89f is already answered"
+              "message": "question f3d71ad0-d7e8-4f98-8a14-f9424d36e12c is already answered"
             },
             {
               "code": "question_already_answered",
-              "message": "question 83e57bc1-3170-4ed4-a7eb-74ca385da89f is already answered"
+              "message": "question f3d71ad0-d7e8-4f98-8a14-f9424d36e12c is already answered"
             }
           ]
         },
         {
-          "questionId": "5cc48f47-e0a7-4ae7-bbe8-d87f0f2cd3f8",
+          "questionId": "d19b26f8-3f59-4074-be40-133dc8be28ab",
           "order": [
             "withdraw",
             "answer",
             "dismiss"
           ],
-          "status": "withdrawn",
-          "newMailCount": 0,
-          "answerMail": 0,
-          "dismissalMail": 0,
-          "refusals": [
-            {
-              "code": "question_withdrawn",
-              "message": "This question was withdrawn: Superseded."
-            },
-            {
-              "code": "question_withdrawn",
-              "message": "This question was withdrawn: Superseded."
-            }
-          ]
-        },
-        {
-          "questionId": "6aae8caa-33e9-4fb7-aff7-4da406d3dd76",
-          "order": [
-            "withdraw",
-            "dismiss",
-            "answer"
-          ],
+          "terminalNoOps": 0,
           "status": "withdrawn",
           "newMailCount": 0,
           "answerMail": 0,
@@ -201,21 +181,41 @@
           ]
         },
         {
-          "questionId": "6f3f8ae8-6146-4657-bbc1-bb8c1167181e",
+          "questionId": "56fa475b-b3f5-4ac7-9cf3-c65f59af70b8",
+          "order": [
+            "withdraw",
+            "dismiss",
+            "answer"
+          ],
+          "terminalNoOps": 0,
+          "status": "withdrawn",
+          "newMailCount": 0,
+          "answerMail": 0,
+          "dismissalMail": 0,
+          "refusals": [
+            {
+              "code": "question_withdrawn",
+              "message": "This question was withdrawn: Superseded."
+            },
+            {
+              "code": "question_withdrawn",
+              "message": "This question was withdrawn: Superseded."
+            }
+          ]
+        },
+        {
+          "questionId": "98694396-09d1-4c56-bdf2-627890f0251a",
           "order": [
             "dismiss",
             "answer",
             "withdraw"
           ],
+          "terminalNoOps": 1,
           "status": "dismissed",
           "newMailCount": 1,
           "answerMail": 0,
           "dismissalMail": 1,
           "refusals": [
-            {
-              "code": "question_dismissed",
-              "message": "This question was dismissed without an answer."
-            },
             {
               "code": "question_dismissed",
               "message": "This question was dismissed without an answer."
@@ -223,21 +223,18 @@
           ]
         },
         {
-          "questionId": "42315701-693f-46c2-a2af-5954067f7739",
+          "questionId": "ff4a0c1c-0fd5-4c84-8e83-f96cc366a5a1",
           "order": [
             "dismiss",
             "withdraw",
             "answer"
           ],
+          "terminalNoOps": 1,
           "status": "dismissed",
           "newMailCount": 1,
           "answerMail": 0,
           "dismissalMail": 1,
           "refusals": [
-            {
-              "code": "question_dismissed",
-              "message": "This question was dismissed without an answer."
-            },
             {
               "code": "question_dismissed",
               "message": "This question was dismissed without an answer."
@@ -248,38 +245,38 @@
       "terminalProofs": [
         {
           "question": {
-            "id": "dadaf48c-b16e-4a10-9805-39ed2cd2014a",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "32de4e89-ebd2-45e9-bc73-c4a2301d1ccf",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Dismiss once?",
             "options": null,
             "status": "dismissed",
             "withdrawalReason": null,
             "withdrawnAt": null,
-            "dismissedAt": 1792487015723,
+            "dismissedAt": 1792489511427,
             "dismissedBy": "rpc",
             "dismissalMessageId": 1,
             "answer": null,
-            "askedAt": 1792487015722,
+            "askedAt": 1792489511426,
             "answeredAt": null,
             "answeredBy": null,
             "deliveryMessageId": null
           },
           "event": {
             "seq": 8,
-            "ts": 1792487015723,
+            "ts": 1792489511428,
             "kind": "question.dismissed",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "dadaf48c-b16e-4a10-9805-39ed2cd2014a",
-              "dismissedAt": 1792487015723,
+              "questionId": "32de4e89-ebd2-45e9-bc73-c4a2301d1ccf",
+              "dismissedAt": 1792489511427,
               "dismissedBy": "rpc",
               "dismissalMessageId": 1,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.dismiss"
               }
             }
@@ -287,12 +284,12 @@
           "answerMail": [],
           "notice": {
             "id": 1,
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "sender": "rpc",
             "body": "Your question was dismissed without an answer.",
             "priority": 0,
             "urgency": "next",
-            "enqueuedAt": 1792487015723,
+            "enqueuedAt": 1792489511427,
             "deliveredAt": null,
             "deliveredGeneration": null,
             "senderKind": "automation"
@@ -300,38 +297,38 @@
         },
         {
           "question": {
-            "id": "3456e7a7-b35b-458d-9c7a-7875e02e9757",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "d569f975-6045-4755-96a1-4fe487e1c93c",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "No failed-key poison?",
             "options": null,
             "status": "dismissed",
             "withdrawalReason": null,
             "withdrawnAt": null,
-            "dismissedAt": 1792487015728,
+            "dismissedAt": 1792489511431,
             "dismissedBy": "rpc",
             "dismissalMessageId": 2,
             "answer": null,
-            "askedAt": 1792487015728,
+            "askedAt": 1792489511431,
             "answeredAt": null,
             "answeredBy": null,
             "deliveryMessageId": null
           },
           "event": {
             "seq": 11,
-            "ts": 1792487015728,
+            "ts": 1792489511431,
             "kind": "question.dismissed",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "3456e7a7-b35b-458d-9c7a-7875e02e9757",
-              "dismissedAt": 1792487015728,
+              "questionId": "d569f975-6045-4755-96a1-4fe487e1c93c",
+              "dismissedAt": 1792489511431,
               "dismissedBy": "rpc",
               "dismissalMessageId": 2,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.dismiss"
               }
             }
@@ -339,12 +336,12 @@
           "answerMail": [],
           "notice": {
             "id": 2,
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "sender": "rpc",
             "body": "Your question was dismissed without an answer.",
             "priority": 0,
             "urgency": "next",
-            "enqueuedAt": 1792487015728,
+            "enqueuedAt": 1792489511431,
             "deliveredAt": null,
             "deliveredGeneration": null,
             "senderKind": "automation"
@@ -352,8 +349,8 @@
         },
         {
           "question": {
-            "id": "8b4d866c-b8b4-4c19-af0c-d68fc9f1eaab",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "bb7e8a2d-4858-4a4c-a4ec-72a678cf49ee",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Race 0?",
             "options": null,
@@ -364,28 +361,28 @@
             "dismissedBy": null,
             "dismissalMessageId": null,
             "answer": "yes",
-            "askedAt": 1792487015753,
-            "answeredAt": 1792487015755,
+            "askedAt": 1792489511453,
+            "answeredAt": 1792489511454,
             "answeredBy": "rpc",
             "deliveryMessageId": 3
           },
           "event": {
             "seq": 14,
-            "ts": 1792487015755,
+            "ts": 1792489511454,
             "kind": "question.answered",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "8b4d866c-b8b4-4c19-af0c-d68fc9f1eaab",
-              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "questionId": "bb7e8a2d-4858-4a4c-a4ec-72a678cf49ee",
+              "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
               "answer": "yes",
-              "answeredAt": 1792487015755,
+              "answeredAt": 1792489511454,
               "answeredBy": "rpc",
               "deliveryMessageId": 3,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.answer"
               }
             }
@@ -393,12 +390,12 @@
           "answerMail": [
             {
               "id": 3,
-              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
               "sender": "rpc",
-              "body": "[answer to question 8b4d866c-b8b4-4c19-af0c-d68fc9f1eaab] yes\n\n(question was: Race 0?)",
+              "body": "[answer to question bb7e8a2d-4858-4a4c-a4ec-72a678cf49ee] yes\n\n(question was: Race 0?)",
               "priority": 0,
               "urgency": "next",
-              "enqueuedAt": 1792487015755,
+              "enqueuedAt": 1792489511454,
               "deliveredAt": null,
               "deliveredGeneration": null
             }
@@ -407,38 +404,38 @@
         },
         {
           "question": {
-            "id": "033db90e-171d-476e-babd-cec50bd56902",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "968d36aa-8a13-4de6-9187-c277b79a9c1b",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Race 1?",
             "options": null,
             "status": "dismissed",
             "withdrawalReason": null,
             "withdrawnAt": null,
-            "dismissedAt": 1792487015758,
+            "dismissedAt": 1792489511455,
             "dismissedBy": "rpc",
             "dismissalMessageId": 4,
             "answer": null,
-            "askedAt": 1792487015757,
+            "askedAt": 1792489511455,
             "answeredAt": null,
             "answeredBy": null,
             "deliveryMessageId": null
           },
           "event": {
             "seq": 17,
-            "ts": 1792487015759,
+            "ts": 1792489511456,
             "kind": "question.dismissed",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "033db90e-171d-476e-babd-cec50bd56902",
-              "dismissedAt": 1792487015758,
+              "questionId": "968d36aa-8a13-4de6-9187-c277b79a9c1b",
+              "dismissedAt": 1792489511455,
               "dismissedBy": "rpc",
               "dismissalMessageId": 4,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.dismiss"
               }
             }
@@ -446,12 +443,12 @@
           "answerMail": [],
           "notice": {
             "id": 4,
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "sender": "rpc",
             "body": "Your question was dismissed without an answer.",
             "priority": 0,
             "urgency": "next",
-            "enqueuedAt": 1792487015758,
+            "enqueuedAt": 1792489511456,
             "deliveredAt": null,
             "deliveredGeneration": null,
             "senderKind": "automation"
@@ -459,37 +456,37 @@
         },
         {
           "question": {
-            "id": "321a04a3-bd5b-457a-8546-a1035b428afe",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "b221a6ed-761e-4fe8-946f-2354abc48b94",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Race 2?",
             "options": null,
             "status": "withdrawn",
             "withdrawalReason": "Superseded.",
-            "withdrawnAt": 1792487015763,
+            "withdrawnAt": 1792489511457,
             "dismissedAt": null,
             "dismissedBy": null,
             "dismissalMessageId": null,
             "answer": null,
-            "askedAt": 1792487015761,
+            "askedAt": 1792489511457,
             "answeredAt": null,
             "answeredBy": null,
             "deliveryMessageId": null
           },
           "event": {
             "seq": 19,
-            "ts": 1792487015763,
+            "ts": 1792489511457,
             "kind": "question.withdrawn",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "321a04a3-bd5b-457a-8546-a1035b428afe",
+              "questionId": "b221a6ed-761e-4fe8-946f-2354abc48b94",
               "withdrawalReason": "Superseded.",
-              "withdrawnAt": 1792487015763,
+              "withdrawnAt": 1792489511457,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.withdraw"
               }
             }
@@ -499,38 +496,38 @@
         },
         {
           "question": {
-            "id": "ecda3f8c-3f19-4c89-b81c-c7045274f633",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "43171fec-f75a-4ccc-936a-04d34e3d6d63",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Race 3?",
             "options": null,
             "status": "dismissed",
             "withdrawalReason": null,
             "withdrawnAt": null,
-            "dismissedAt": 1792487015766,
+            "dismissedAt": 1792489511459,
             "dismissedBy": "rpc",
             "dismissalMessageId": 5,
             "answer": null,
-            "askedAt": 1792487015765,
+            "askedAt": 1792489511458,
             "answeredAt": null,
             "answeredBy": null,
             "deliveryMessageId": null
           },
           "event": {
             "seq": 22,
-            "ts": 1792487015766,
+            "ts": 1792489511459,
             "kind": "question.dismissed",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "ecda3f8c-3f19-4c89-b81c-c7045274f633",
-              "dismissedAt": 1792487015766,
+              "questionId": "43171fec-f75a-4ccc-936a-04d34e3d6d63",
+              "dismissedAt": 1792489511459,
               "dismissedBy": "rpc",
               "dismissalMessageId": 5,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.dismiss"
               }
             }
@@ -538,12 +535,12 @@
           "answerMail": [],
           "notice": {
             "id": 5,
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "sender": "rpc",
             "body": "Your question was dismissed without an answer.",
             "priority": 0,
             "urgency": "next",
-            "enqueuedAt": 1792487015766,
+            "enqueuedAt": 1792489511459,
             "deliveredAt": null,
             "deliveredGeneration": null,
             "senderKind": "automation"
@@ -551,8 +548,8 @@
         },
         {
           "question": {
-            "id": "1b71f8b7-4acd-4e99-a046-cc7fb1554836",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "319a0d24-5d84-4d4d-a951-d8119a3f7b3d",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Race 4?",
             "options": null,
@@ -563,28 +560,28 @@
             "dismissedBy": null,
             "dismissalMessageId": null,
             "answer": "yes",
-            "askedAt": 1792487015768,
-            "answeredAt": 1792487015768,
+            "askedAt": 1792489511460,
+            "answeredAt": 1792489511460,
             "answeredBy": "rpc",
             "deliveryMessageId": 6
           },
           "event": {
             "seq": 25,
-            "ts": 1792487015769,
+            "ts": 1792489511460,
             "kind": "question.answered",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "1b71f8b7-4acd-4e99-a046-cc7fb1554836",
-              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "questionId": "319a0d24-5d84-4d4d-a951-d8119a3f7b3d",
+              "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
               "answer": "yes",
-              "answeredAt": 1792487015768,
+              "answeredAt": 1792489511460,
               "answeredBy": "rpc",
               "deliveryMessageId": 6,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.answer"
               }
             }
@@ -592,12 +589,12 @@
           "answerMail": [
             {
               "id": 6,
-              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
               "sender": "rpc",
-              "body": "[answer to question 1b71f8b7-4acd-4e99-a046-cc7fb1554836] yes\n\n(question was: Race 4?)",
+              "body": "[answer to question 319a0d24-5d84-4d4d-a951-d8119a3f7b3d] yes\n\n(question was: Race 4?)",
               "priority": 0,
               "urgency": "next",
-              "enqueuedAt": 1792487015769,
+              "enqueuedAt": 1792489511460,
               "deliveredAt": null,
               "deliveredGeneration": null
             }
@@ -606,8 +603,8 @@
         },
         {
           "question": {
-            "id": "83e57bc1-3170-4ed4-a7eb-74ca385da89f",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "f3d71ad0-d7e8-4f98-8a14-f9424d36e12c",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Race 5?",
             "options": null,
@@ -618,28 +615,28 @@
             "dismissedBy": null,
             "dismissalMessageId": null,
             "answer": "yes",
-            "askedAt": 1792487015771,
-            "answeredAt": 1792487015772,
+            "askedAt": 1792489511462,
+            "answeredAt": 1792489511463,
             "answeredBy": "rpc",
             "deliveryMessageId": 7
           },
           "event": {
             "seq": 28,
-            "ts": 1792487015773,
+            "ts": 1792489511463,
             "kind": "question.answered",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "83e57bc1-3170-4ed4-a7eb-74ca385da89f",
-              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "questionId": "f3d71ad0-d7e8-4f98-8a14-f9424d36e12c",
+              "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
               "answer": "yes",
-              "answeredAt": 1792487015772,
+              "answeredAt": 1792489511463,
               "answeredBy": "rpc",
               "deliveryMessageId": 7,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.answer"
               }
             }
@@ -647,12 +644,12 @@
           "answerMail": [
             {
               "id": 7,
-              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
               "sender": "rpc",
-              "body": "[answer to question 83e57bc1-3170-4ed4-a7eb-74ca385da89f] yes\n\n(question was: Race 5?)",
+              "body": "[answer to question f3d71ad0-d7e8-4f98-8a14-f9424d36e12c] yes\n\n(question was: Race 5?)",
               "priority": 0,
               "urgency": "next",
-              "enqueuedAt": 1792487015772,
+              "enqueuedAt": 1792489511463,
               "deliveredAt": null,
               "deliveredGeneration": null
             }
@@ -661,37 +658,37 @@
         },
         {
           "question": {
-            "id": "5cc48f47-e0a7-4ae7-bbe8-d87f0f2cd3f8",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "d19b26f8-3f59-4074-be40-133dc8be28ab",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Race 6?",
             "options": null,
             "status": "withdrawn",
             "withdrawalReason": "Superseded.",
-            "withdrawnAt": 1792487015776,
+            "withdrawnAt": 1792489511466,
             "dismissedAt": null,
             "dismissedBy": null,
             "dismissalMessageId": null,
             "answer": null,
-            "askedAt": 1792487015775,
+            "askedAt": 1792489511464,
             "answeredAt": null,
             "answeredBy": null,
             "deliveryMessageId": null
           },
           "event": {
             "seq": 30,
-            "ts": 1792487015776,
+            "ts": 1792489511466,
             "kind": "question.withdrawn",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "5cc48f47-e0a7-4ae7-bbe8-d87f0f2cd3f8",
+              "questionId": "d19b26f8-3f59-4074-be40-133dc8be28ab",
               "withdrawalReason": "Superseded.",
-              "withdrawnAt": 1792487015776,
+              "withdrawnAt": 1792489511466,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.withdraw"
               }
             }
@@ -701,37 +698,37 @@
         },
         {
           "question": {
-            "id": "6aae8caa-33e9-4fb7-aff7-4da406d3dd76",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "56fa475b-b3f5-4ac7-9cf3-c65f59af70b8",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Race 7?",
             "options": null,
             "status": "withdrawn",
             "withdrawalReason": "Superseded.",
-            "withdrawnAt": 1792487015778,
+            "withdrawnAt": 1792489511467,
             "dismissedAt": null,
             "dismissedBy": null,
             "dismissalMessageId": null,
             "answer": null,
-            "askedAt": 1792487015778,
+            "askedAt": 1792489511467,
             "answeredAt": null,
             "answeredBy": null,
             "deliveryMessageId": null
           },
           "event": {
             "seq": 32,
-            "ts": 1792487015778,
+            "ts": 1792489511468,
             "kind": "question.withdrawn",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "6aae8caa-33e9-4fb7-aff7-4da406d3dd76",
+              "questionId": "56fa475b-b3f5-4ac7-9cf3-c65f59af70b8",
               "withdrawalReason": "Superseded.",
-              "withdrawnAt": 1792487015778,
+              "withdrawnAt": 1792489511467,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.withdraw"
               }
             }
@@ -741,38 +738,38 @@
         },
         {
           "question": {
-            "id": "6f3f8ae8-6146-4657-bbc1-bb8c1167181e",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "98694396-09d1-4c56-bdf2-627890f0251a",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Race 8?",
             "options": null,
             "status": "dismissed",
             "withdrawalReason": null,
             "withdrawnAt": null,
-            "dismissedAt": 1792487015780,
+            "dismissedAt": 1792489511469,
             "dismissedBy": "rpc",
             "dismissalMessageId": 8,
             "answer": null,
-            "askedAt": 1792487015779,
+            "askedAt": 1792489511469,
             "answeredAt": null,
             "answeredBy": null,
             "deliveryMessageId": null
           },
           "event": {
             "seq": 35,
-            "ts": 1792487015781,
+            "ts": 1792489511470,
             "kind": "question.dismissed",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "6f3f8ae8-6146-4657-bbc1-bb8c1167181e",
-              "dismissedAt": 1792487015780,
+              "questionId": "98694396-09d1-4c56-bdf2-627890f0251a",
+              "dismissedAt": 1792489511469,
               "dismissedBy": "rpc",
               "dismissalMessageId": 8,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.dismiss"
               }
             }
@@ -780,12 +777,12 @@
           "answerMail": [],
           "notice": {
             "id": 8,
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "sender": "rpc",
             "body": "Your question was dismissed without an answer.",
             "priority": 0,
             "urgency": "next",
-            "enqueuedAt": 1792487015780,
+            "enqueuedAt": 1792489511469,
             "deliveredAt": null,
             "deliveredGeneration": null,
             "senderKind": "automation"
@@ -793,38 +790,38 @@
         },
         {
           "question": {
-            "id": "42315701-693f-46c2-a2af-5954067f7739",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "id": "ff4a0c1c-0fd5-4c84-8e83-f96cc366a5a1",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "generation": 1,
             "text": "Race 9?",
             "options": null,
             "status": "dismissed",
             "withdrawalReason": null,
             "withdrawnAt": null,
-            "dismissedAt": 1792487015783,
+            "dismissedAt": 1792489511471,
             "dismissedBy": "rpc",
             "dismissalMessageId": 9,
             "answer": null,
-            "askedAt": 1792487015782,
+            "askedAt": 1792489511471,
             "answeredAt": null,
             "answeredBy": null,
             "deliveryMessageId": null
           },
           "event": {
             "seq": 38,
-            "ts": 1792487015783,
+            "ts": 1792489511471,
             "kind": "question.dismissed",
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "payload": {
-              "questionId": "42315701-693f-46c2-a2af-5954067f7739",
-              "dismissedAt": 1792487015783,
+              "questionId": "ff4a0c1c-0fd5-4c84-8e83-f96cc366a5a1",
+              "dismissedAt": 1792489511471,
               "dismissedBy": "rpc",
               "dismissalMessageId": 9,
               "rpcCaller": {
                 "transport": "local_unix",
                 "ingress": "local_unix",
                 "uid": 1001,
-                "pid": 850463,
+                "pid": 1235819,
                 "verb": "question.dismiss"
               }
             }
@@ -832,12 +829,12 @@
           "answerMail": [],
           "notice": {
             "id": 9,
-            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "beeId": "cace75b0-c9df-4ba2-ad9a-91174e2dfc5d",
             "sender": "rpc",
             "body": "Your question was dismissed without an answer.",
             "priority": 0,
             "urgency": "next",
-            "enqueuedAt": 1792487015783,
+            "enqueuedAt": 1792489511471,
             "deliveredAt": null,
             "deliveredGeneration": null,
             "senderKind": "automation"
@@ -850,15 +847,19 @@
       "lifecycleReceipts": [
         {
           "from": "stop",
-          "questionId": "d0c4fc29-87a1-48b7-a5dc-c4a02763ffb9",
+          "questionId": "d73ff161-2788-4676-8705-c0d6b143ce5b",
           "messageId": 11,
+          "unarchived": false,
+          "commandId": 3,
           "lifecycle": "active",
           "generation": 2
         },
         {
           "from": "archive",
-          "questionId": "e4ab1380-10d4-4305-a385-eefd73fd09a9",
+          "questionId": "3877455e-8e58-4a7c-a1fc-176fc1938589",
           "messageId": 12,
+          "unarchived": true,
+          "commandId": null,
           "lifecycle": "active",
           "generation": 2
         }
@@ -869,26 +870,26 @@
     {
       "host": "<LAB_HOST>",
       "artifact": "dist/cli.js",
-      "data": "<TASK_CACHE>/46/h16/t/hb-v2-daemon-epmY2o",
-      "socket": "<TASK_CACHE>/46/h16/t/hb-v2-daemon-epmY2o/built.sock",
+      "data": "<TASK_CACHE>/46fix2/h16/t/hb-v2-daemon-IokDHc",
+      "socket": "<TASK_CACHE>/46fix2/h16/t/hb-v2-daemon-IokDHc/built.sock",
       "shutdown": {
         "code": 0,
         "signal": null
       },
       "question": {
-        "id": "3c4869c5-335c-47a2-b9f6-a38ca11a8155",
-        "beeId": "7881ad9b-e3cf-4f4a-8fba-d5df6c2b3fa5",
+        "id": "c811cb38-f12b-4adb-ad16-cd0b0142fea6",
+        "beeId": "290d9ba9-2689-45ae-aee5-62b8199aa3d9",
         "generation": 1,
         "text": "Built artifact?",
         "options": null,
         "status": "dismissed",
         "withdrawalReason": null,
         "withdrawnAt": null,
-        "dismissedAt": 1792487017642,
+        "dismissedAt": 1792489513381,
         "dismissedBy": "rpc",
         "dismissalMessageId": 1,
         "answer": null,
-        "askedAt": 1792487017636,
+        "askedAt": 1792489513376,
         "answeredAt": null,
         "answeredBy": null,
         "deliveryMessageId": null
@@ -910,11 +911,20 @@
       "statusColumn": "CHECK rebuilt",
       "integrity": "ok",
       "foreignKeys": [],
+      "unrelatedForeignKeyOrphans": [
+        {
+          "table": "unrelated_fixture_child",
+          "rowid": 1,
+          "parent": "unrelated_fixture_parent",
+          "fkid": 0
+        }
+      ],
+      "unrelatedOrphanDidNotBlock": true,
       "dependentForeignKeys": [
         {
           "id": 0,
           "seq": 0,
-          "table": "questions",
+          "table": "QUESTIONS",
           "from": "question_id",
           "to": "id",
           "on_update": "NO ACTION",
@@ -932,6 +942,10 @@
         "status": "dismissed"
       },
       "dependentObjects": [
+        {
+          "type": "table",
+          "name": "dismiss_fixture_deep"
+        },
         {
           "type": "index",
           "name": "dismiss_fixture_index"
@@ -980,7 +994,7 @@
         "status": "dismissed",
         "withdrawalReason": null,
         "withdrawnAt": null,
-        "dismissedAt": 1792487017959,
+        "dismissedAt": 1792489513711,
         "dismissedBy": "rpc",
         "dismissalMessageId": 1,
         "answer": null,
