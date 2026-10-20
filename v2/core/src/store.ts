@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { DELIVERY_CONFIRMATION_SQL, DELIVERY_CONFIRMATION_REASONS, publicDeliveryConfirmation, type DeliveryConfirmation, type DeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
+import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
+import { DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { DeliveryNotHeldError } from "./types.ts";
 import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
@@ -4140,7 +4141,7 @@ export class CoreStore {
       this.mustGetBee(input.beeId);
       const previous = this.getDeliveryConfirmationIntent(input.messageId);
       if (previous) {
-        if (previous.beeId !== input.beeId || previous.generation !== input.generation || previous.wireLine !== input.wireLine || previous.digest !== input.digest || previous.host.pid !== input.host.pid || previous.host.birth !== input.host.birth || previous.host.bootId !== input.host.bootId) throw new IdempotencyConflictError("delivery attempt already bound to different bytes or host");
+        if (previous.beeId !== input.beeId || previous.generation !== input.generation || previous.wireLine !== input.wireLine || previous.digest !== input.digest || previous.host === null || previous.host.pid !== input.host.pid || previous.host.birth !== input.host.birth || previous.host.bootId !== input.host.bootId) throw new IdempotencyConflictError("delivery attempt already bound to different bytes or host");
         return previous;
       }
       const message = this.getMessage(input.messageId);
@@ -4148,6 +4149,26 @@ export class CoreStore {
       const runtime = this.currentRuntime(input.beeId);
       if (!runtime || runtime.generation !== input.generation || !LIVE_STATES.includes(runtime.state)) throw new StaleGenerationError("delivery generation is not current and live");
       const intent: DeliveryConfirmationIntent = { ...input, host: { ...input.host }, since: this.now(), state: "awaiting_confirmation", reason: "pending_ack" };
+      this.stmt("INSERT INTO delivery_confirmation_intents(message_id, bee_id, row_json) VALUES(?, ?, ?)").run(input.messageId, input.beeId, JSON.stringify(intent));
+      this.audit("mail.confirmation_prepared", input.beeId, { row: intent });
+      return intent;
+    });
+  }
+
+  prepareUnknownDeliveryConfirmationIntent(input: PrepareUnknownDeliveryConfirmationIntent): DeliveryConfirmationIntent {
+    if (!Number.isSafeInteger(input.messageId) || input.messageId <= 0 || !Number.isSafeInteger(input.generation) || input.generation <= 0) throw new CoreError("invalid_request: invalid unknown delivery confirmation intent");
+    return this.tx(() => {
+      this.mustGetBee(input.beeId);
+      const previous = this.getDeliveryConfirmationIntent(input.messageId);
+      if (previous) {
+        if (previous.beeId !== input.beeId || previous.generation !== input.generation) throw new IdempotencyConflictError("delivery attempt already bound to another bee or generation");
+        return previous;
+      }
+      const message = this.getMessage(input.messageId);
+      if (!message || message.beeId !== input.beeId || message.deliveredAt !== null) throw new CoreError("invalid_request: delivery message unavailable");
+      const runtime = this.currentRuntime(input.beeId);
+      if (!runtime || runtime.generation !== input.generation || !LIVE_STATES.includes(runtime.state)) throw new StaleGenerationError("delivery generation is not current and live");
+      const intent: DeliveryConfirmationIntent = { beeId: input.beeId, messageId: input.messageId, generation: input.generation, wireLine: null, digest: null, host: null, since: this.now(), state: "held", reason: "unknown" };
       this.stmt("INSERT INTO delivery_confirmation_intents(message_id, bee_id, row_json) VALUES(?, ?, ?)").run(input.messageId, input.beeId, JSON.stringify(intent));
       this.audit("mail.confirmation_prepared", input.beeId, { row: intent });
       return intent;
