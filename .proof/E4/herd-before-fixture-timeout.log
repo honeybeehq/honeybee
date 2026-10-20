@@ -1,0 +1,11 @@
+{"name":"claude-herd","passed":true,"bees":5,"moved":4,"sourceRetained":1,"reservations":0}
+file://<CELL>/v2/daemon/tests/helpers.ts:35
+    if (Date.now() > deadline) throw new Error(`waitFor timeout: ${what}`);
+                                     ^
+
+Error: waitFor timeout: codex-herd all delivered
+    at waitFor (file://<CELL>/v2/daemon/tests/helpers.ts:35:38)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file://<CELL>/.proof/E4/herd.ts:70:5
+
+Node.js v24.18.0

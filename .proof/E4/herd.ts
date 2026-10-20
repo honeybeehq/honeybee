@@ -30,6 +30,7 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["herd"]) {
       void fetch(${JSON.stringify(url)} + '/?id=' + encodeURIComponent(process.env.CODEX_HOME.split('/').at(-1))).then(r => r.json()).then(result => emit({id: msg.id, result}));
       return;
     case "initialize":`);
+  source = source.replace('const db = new DatabaseSync(join(process.env.CODEX_HOME, "state_5.sqlite"));', 'const db = new DatabaseSync(join(process.env.CODEX_HOME, "state_5.sqlite")); db.exec("PRAGMA busy_timeout=5000");');
   writeFileSync(fakeCodex, source);
   chmodSync(fakeCodex, 0o700);
   const { dir } = makeDaemonDir({ accounts: { allocationPlanCapacityUnits: { large: 20, small: 1 }, allocationMode: "shadow", allocationNodeId: "lab", allocationOwner: { node: "lab", epoch: "lab-e" }, allocationQuotaFreshMs: scenario === "stale" ? 500 : 120_000 }, agents: {

@@ -1,182 +1,144 @@
 diff --git a/v2/core/src/accountAllocation.ts b/v2/core/src/accountAllocation.ts
-index ce4ff18e..6a856944 100644
+index 6a856944..60f6c5f2 100644
 --- a/v2/core/src/accountAllocation.ts
 +++ b/v2/core/src/accountAllocation.ts
-@@ -142,15 +142,16 @@ export function relativeCompletionHeadroom(source: AccountAdmissionCandidate, ta
--  const protectedWindows = applicableWindows(source, policy.model).filter(window => projectedWindowPercent(source, window, policy) >= policy.completionReservePercent);
--  if (!protectedWindows.length) return false;
--  return protectedWindows.every(window => {
--    const other = applicableWindows(target, policy.model).find(value => value.kind === window.kind);
--    const sourceHours = (window.resetsAt - policy.now) / 3_600_000;
--    if (!other || sourceHours <= policy.projectionHorizonHours) return false;
--    const targetHours = (other.resetsAt - policy.now) / 3_600_000;
--    const remaining = Math.max(0, 100 - projectedWindowPercent(source, window, policy)) * source.capacityUnits / 100;
--    const alternative = Math.max(0, 100 - projectedWindowPercent(target, other, policy)) * target.capacityUnits / 100;
--    const horizon = Math.min(policy.projectionHorizonHours, sourceHours, targetHours);
--    const margin = marginMultiplier * Math.max((100 - policy.completionReservePercent) * Math.max(source.capacityUnits, target.capacityUnits) / 100,
--      horizon * Math.max(window.admissionCostPercent * source.capacityUnits, other.admissionCostPercent * target.capacityUnits) / 100);
--    return alternative > remaining + margin
--      && alternative / Math.max(policy.nearResetFloorHours, targetHours) > (remaining + margin) / Math.max(policy.nearResetFloorHours, sourceHours);
--  });
-+  const sourceWindows = applicableWindows(source, policy.model).filter(window => (window.resetsAt - policy.now) / 3_600_000 > policy.projectionHorizonHours);
-+  if (!sourceWindows.some(window => projectedWindowPercent(source, window, policy) >= policy.completionReservePercent)) return false;
-+  const targetWindows = applicableWindows(target, policy.model);
-+  if (sourceWindows.some(window => !targetWindows.some(other => other.kind === window.kind))) return false;
-+  const score = (candidate: AccountAdmissionCandidate, windows: AccountAdmissionWindow[]) => {
-+    const remaining = windows.map(window => Math.max(0, 100 - projectedWindowPercent(candidate, window, policy)) * candidate.capacityUnits / 100);
-+    const hours = windows.map(window => Math.max(policy.nearResetFloorHours, (window.resetsAt - policy.now) / 3_600_000));
-+    const rates = remaining.map((value, index) => value / hours[index]!);
-+    return { remaining: Math.min(...remaining), rate: Math.min(...rates), hours: hours[rates.indexOf(Math.min(...rates))]!,
-+      cost: Math.max(...windows.map(window => window.admissionCostPercent * Math.min(policy.projectionHorizonHours, (window.resetsAt - policy.now) / 3_600_000) * candidate.capacityUnits / 100)) };
-+  };
-+  const current = score(source, sourceWindows);
-+  const alternative = score(target, targetWindows);
-+  const margin = marginMultiplier * Math.max((100 - policy.completionReservePercent) * Math.min(source.capacityUnits, target.capacityUnits) / 100, current.cost, alternative.cost);
-+  return alternative.remaining > current.remaining + margin
-+    && alternative.rate > current.rate + margin / Math.max(current.hours, alternative.hours);
-diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
-index f7eaa8a4..90b52b24 100644
---- a/v2/core/src/store.ts
-+++ b/v2/core/src/store.ts
-@@ -2248 +2248 @@ export class CoreStore {
--  requireCompletionHeadroom(beeId: string, generation: number, admission: { fetchedAt: number; maxProjectedPercent: number }, retryAt: number | null): QuotaRecoveryRow | null {
-+  requireCompletionHeadroom(beeId: string, generation: number, admission: NonNullable<QuotaRecoveryRow["admission"]>, retryAt: number | null): QuotaRecoveryRow | null {
-@@ -2285,0 +2286,10 @@ export class CoreStore {
-+  setProactiveCandidates(id: string, candidateAccountIds: string[] | null): void {
-+    this.tx(() => {
-+      const row = this.getQuotaRecovery(id);
-+      if (!row?.admission || row.trigger !== "proactive" || row.state !== "waiting") return;
-+      const ids = candidateAccountIds === null ? null : [...new Set(candidateAccountIds)].sort();
-+      if (JSON.stringify(row.admission.candidateAccountIds) === JSON.stringify(ids)) return;
-+      this.putQuotaRecovery({ ...row, admission: { ...row.admission, candidateAccountIds: ids } });
-+    });
-+  }
-+
-diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
-index 8c3d9134..b68c43b9 100644
---- a/v2/core/src/types.ts
-+++ b/v2/core/src/types.ts
-@@ -1961 +1961 @@ export interface QuotaRecoveryRow {
--  admission?: { fetchedAt: number; maxProjectedPercent: number };
-+  admission?: { fetchedAt: number; maxProjectedPercent: number; candidateAccountIds?: string[] | null };
+@@ -155 +155 @@ export function relativeCompletionHeadroom(source: AccountAdmissionCandidate, ta
+-  const margin = marginMultiplier * Math.max((100 - policy.completionReservePercent) * Math.min(source.capacityUnits, target.capacityUnits) / 100, current.cost, alternative.cost);
++  const margin = marginMultiplier * Math.max((100 - policy.completionReservePercent) * Math.min(source.capacityUnits, target.capacityUnits) / 100, Math.max(current.cost / source.capacityUnits, alternative.cost / target.capacityUnits) * Math.min(source.capacityUnits, target.capacityUnits));
 diff --git a/v2/daemon/src/accountsService.ts b/v2/daemon/src/accountsService.ts
-index e3775078..a7a9f0a4 100644
+index a7a9f0a4..3881500a 100644
 --- a/v2/daemon/src/accountsService.ts
 +++ b/v2/daemon/src/accountsService.ts
-@@ -2532 +2532 @@ export class AccountsService {
--  proactiveTargets(harness: string, sourceAccount: string, model?: string, openingBeeId?: string): Set<string> {
-+  proactiveTargets(harness: string, sourceAccount: string, model?: string, openingBeeId?: string, openingClaimId?: string): { accountIds: Set<string>; uncertain: boolean } {
-@@ -2537,3 +2537,4 @@ export class AccountsService {
--    if (!source) return new Set();
--    const previous = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed" && row.targetAccount === sourceAccount).sort((a, b) => b.updatedAt - a.updatedAt)[0] : undefined;
--    if (previous && now - previous.updatedAt < Math.max(30_000, this.cfg.accounts.allocationQuotaFreshMs)) return new Set();
-+    if (!source) return { accountIds: new Set(), uncertain: true };
-+    if (openingBeeId && this.store.listQuotaRecoveries(openingBeeId).some(row => row.state === "cancelled" && row.reason === "relative_refresh_unavailable" && now - row.updatedAt < 30_000)) return { accountIds: new Set(), uncertain: false };
-+    const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt) : [];
-+    if (history[0] && now - history[0].updatedAt < this.cfg.accounts.proactiveDwellMs) return { accountIds: new Set(), uncertain: false };
-@@ -2544 +2545,2 @@ export class AccountsService {
--    return new Set(accounts.filter(account => {
-+    let uncertain = completionHeadroom(sourceCandidate, policy).status === "uncertain";
-+    const accountIds = new Set(accounts.filter(account => {
-@@ -2547,0 +2550,2 @@ export class AccountsService {
-+      const ownClaim = openingClaimId ? this.store.getAccountAdmission(openingClaimId) : null;
-+      if (ownClaim?.account === account.id && ownClaim.releasedAt === null && ownClaim.confirmedAt === null) candidate.reservations = Math.max(0, candidate.reservations - ownClaim.units);
-@@ -2550 +2554,6 @@ export class AccountsService {
--      if (!relativeCompletionHeadroom(sourceCandidate, candidate, policy, previous?.sourceAccount === account.id ? 2 : 1)) return false;
-+      const limits = this.store.getAccountLimits(account.id);
-+      const stale = !limits || now - limits.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs
-+        || limits.fetchedAt > now + 60_000
-+        || [limits.fiveHourResetsAt, limits.weeklyResetsAt, ...(isFableModel(model) ? [limits.fableResetsAt] : [])].some(reset => reset != null && reset <= now);
-+      if (candidate.eligibility.state === "eligible" && stale && completionHeadroom(candidate, policy).status === "uncertain") uncertain = true;
-+      if (!relativeCompletionHeadroom(sourceCandidate, candidate, policy, history.some(row => row.sourceAccount === account.id) ? 2 : 1)) return false;
-@@ -2553,0 +2563 @@ export class AccountsService {
-+    return { accountIds, uncertain };
-diff --git a/v2/daemon/src/config.ts b/v2/daemon/src/config.ts
-index a572bc30..7276e43c 100644
---- a/v2/daemon/src/config.ts
-+++ b/v2/daemon/src/config.ts
-@@ -135,0 +136 @@ export interface AccountsConfig {
-+  proactiveDwellMs?: number;
-@@ -929,0 +931 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
-+  if (a.proactiveDwellMs !== undefined && (typeof a.proactiveDwellMs !== "number" || !Number.isFinite(a.proactiveDwellMs) || a.proactiveDwellMs < 30_000)) throw new ConfigError("config: accounts.proactiveDwellMs must be at least 30000");
-@@ -949,0 +952 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
-+    proactiveDwellMs: num(a, "proactiveDwellMs", 30 * 60_000),
+@@ -264,0 +265 @@ export interface PickOptions {
++  proactiveRefresh?: boolean;
+@@ -2329 +2330 @@ export class AccountsService {
+-  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}, quotaRecovery = false): Promise<void> {
++  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}, quotaRecovery = false): Promise<boolean> {
+@@ -2332 +2333 @@ export class AccountsService {
+-      return;
++      return true;
+@@ -2334,0 +2336 @@ export class AccountsService {
++    let skippedProactiveProbe = false;
+@@ -2340 +2342,5 @@ export class AccountsService {
+-      if (previous && now < previous.nextProbeAt && !crossedReset && previous.evidence === this.quotaProbeEvidence(id)) return false;
++      if (opts.proactiveRefresh && this.admissionRefreshes.has(id)) return true;
++      if (previous && now < previous.nextProbeAt && !crossedReset && previous.evidence === this.quotaProbeEvidence(id)) {
++        if (!opts.proactiveRefresh || previous.lastProbeAt > (opts.minimumObservedAt ?? now)) return false;
++        if (now - previous.lastProbeAt < 30_000) { skippedProactiveProbe = true; return false; }
++      }
+@@ -2374,0 +2381 @@ export class AccountsService {
++    return !skippedProactiveProbe;
+@@ -2538,2 +2545,4 @@ export class AccountsService {
+-    if (openingBeeId && this.store.listQuotaRecoveries(openingBeeId).some(row => row.state === "cancelled" && row.reason === "relative_refresh_unavailable" && now - row.updatedAt < 30_000)) return { accountIds: new Set(), uncertain: false };
+-    const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt) : [];
++    const failed = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "cancelled" && ["relative_refresh_unavailable", "relative_swap_refused"].includes(row.reason ?? "")).sort((a, b) => b.updatedAt - a.updatedAt)[0] : undefined;
++    if (failed && now - failed.updatedAt < (failed.reason === "relative_refresh_unavailable" ? 15 * 60_000 : 30_000)
++      && !accounts.some(account => account.id !== sourceAccount && this.store.getAccountLimits(account.id)?.readable && (this.store.getAccountLimits(account.id)?.fetchedAt ?? 0) > failed.updatedAt)) return { accountIds: new Set(), uncertain: false };
++    const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3) : [];
 diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
-index fc762042..0aa25269 100644
+index 0aa25269..5cbcaa55 100644
 --- a/v2/daemon/src/daemon.ts
 +++ b/v2/daemon/src/daemon.ts
-@@ -6556,0 +6557,7 @@ export class HiveDaemon {
-+      if (recoveryId && store.getQuotaRecovery(recoveryId)?.trigger === "proactive" && bee.account) {
-+        const comparison = this.mustAccounts().proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), bee.id, claim.id);
-+        if (comparison.uncertain || !comparison.accountIds.has(target.id)) {
-+          this.refusedClaims.set(claim.id, claim);
-+          throw new RpcError("account_claim_refused", "Proactive claim no longer has materially better remaining allowance", { claimId: claim.id, account: target.id });
-+        }
-+      }
-@@ -6560 +6567 @@ export class HiveDaemon {
--    return store.transact(() => {
-+    const admission = store.transact(() => {
-@@ -6563 +6570 @@ export class HiveDaemon {
--        relativeTargets = this.mustAccounts().proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), bee.id);
-+        relativeTargets = this.mustAccounts().proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), bee.id).accountIds;
-@@ -6585 +6592 @@ export class HiveDaemon {
+@@ -6513 +6513,2 @@ export class HiveDaemon {
+-    return this.withIdempotency("bee.swapAccount", params, () => this.rpcSwapAccount(params));
++    if (key != null && store.lookupRpcResult(key)) return this.withIdempotency("bee.swapAccount", params, () => this.rpcSwapAccount(params));
++    return this.rpcSwapAccount(params, effect => this.withIdempotency("bee.swapAccount", params, effect));
+@@ -6516 +6517 @@ export class HiveDaemon {
+-  private rpcSwapAccount(params: Record<string, unknown>): SwapAccountResult {
++  private rpcSwapAccount(params: Record<string, unknown>, commit?: (effect: () => SwapAccountResult) => SwapAccountResult): SwapAccountResult {
+@@ -6535 +6536 @@ export class HiveDaemon {
+-      return this.performSwap(bee, target, "operator");
++      return this.performSwap(bee, target, "operator", undefined, undefined, undefined, undefined, commit);
+@@ -6564 +6565 @@ export class HiveDaemon {
+-      return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim, recoveryId);
++      return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim, recoveryId, commit);
+@@ -6595 +6596 @@ export class HiveDaemon {
 -      return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId);
-+      return admission;
-@@ -6586,0 +6594,6 @@ export class HiveDaemon {
-+    try {
-+      return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId);
-+    } catch (error) {
-+      if (admission.reservation) store.releaseAccountAdmission(admission.reservation.id);
-+      throw error;
++      return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId, commit);
+@@ -6609,0 +6611 @@ export class HiveDaemon {
++    commit?: (effect: () => SwapAccountResult) => SwapAccountResult,
+@@ -6617 +6619,4 @@ export class HiveDaemon {
+-    if (from === target.id && !quotaRecoveryId) return { beeId: bee.id, from, to: target.id, action: "noop", commandId: null, rekeyed: false, transcript: "none" };
++    if (from === target.id && !quotaRecoveryId) {
++      const noop: SwapAccountResult = { beeId: bee.id, from, to: target.id, action: "noop", commandId: null, rekeyed: false, transcript: "none" };
++      return commit ? commit(() => noop) : noop;
 +    }
-@@ -6883,3 +6896,5 @@ export class HiveDaemon {
--      if (this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), beeId, 2).status !== "eligible"
--        && this.accounts.proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), beeId).size > 0) return false;
--      store.cancelQuotaRecovery(pending.id, "completion_headroom_restored");
-+      const comparison = this.accounts.proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), beeId);
-+      if (comparison.uncertain) return false;
-+      const restored = this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), beeId, 2).status === "eligible";
-+      if (!restored && comparison.accountIds.size > 0) return false;
-+      store.cancelQuotaRecovery(pending.id, restored ? "completion_headroom_restored" : "relative_headroom_unavailable");
-@@ -6892 +6907,3 @@ export class HiveDaemon {
--    if (headroom.status !== "protected" || this.accounts.proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), beeId).size === 0) return true;
-+    if (headroom.status !== "protected") return true;
-+    const comparison = this.accounts.proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), beeId);
-+    if (!comparison.uncertain && comparison.accountIds.size === 0) return true;
-@@ -6894 +6911 @@ export class HiveDaemon {
--    const recovery = store.requireCompletionHeadroom(beeId, generation, { fetchedAt, maxProjectedPercent: headroom.maxProjectedPercent! }, headroom.retryAt);
-+    const recovery = store.requireCompletionHeadroom(beeId, generation, { fetchedAt, maxProjectedPercent: headroom.maxProjectedPercent!, candidateAccountIds: comparison.uncertain ? null : [...comparison.accountIds].sort() }, headroom.retryAt);
-@@ -6920,3 +6937,14 @@ export class HiveDaemon {
--        await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
--        if (!this.stopping) store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
--      } catch (error) { this.log(`quota.probe recovery=${id} failed=${error instanceof Error ? error.message : String(error)}`); }
-+        await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: row.trigger === "proactive" ? undefined : bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
-+        if (!this.stopping) {
-+          store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
-+          if (row.trigger === "proactive" && bee.account) {
-+            const comparison = accounts.proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), bee.id);
-+            store.setProactiveCandidates(id, comparison.uncertain ? null : [...comparison.accountIds]);
-+            if (comparison.uncertain || comparison.accountIds.size === 0) store.cancelQuotaRecovery(id, comparison.uncertain ? "relative_refresh_unavailable" : "relative_headroom_unavailable");
-+            this.requestTick();
-+          }
+@@ -6631,31 +6636,34 @@ export class HiveDaemon {
+-    store.transact(() => {
+-      if (quotaRecoveryId) {
+-        if (!store.claimQuotaRecovery(quotaRecoveryId, { targetAccount: target.id, claimId: claim?.id, reservationId })) throw new RpcError("invalid_request", "quota recovery is no longer claimable");
+-      } else store.cancelQuotaRecoveries(bee.id, "manual_swap");
+-      store.setBeeAccount(bee.id, target.id);
+-      const key = homeEnvFor(bee.agent);
+-      const env = { ...bee.env };
+-      if (key) delete env[key];
+-      store.setBeeEnv(bee.id, { ...env, ...accounts.homeEnvOf(target) });
+-      if (target.status === "ok" && store.activeFlags(bee.id).some((f) => f.flag === "auth_needed")) {
+-        store.clearFlag(bee.id, "auth_needed", `account swapped to ${target.id}`);
+-      }
+-      this.authResume?.beeSwapped(bee.id, target);
+-      // Claude cross-account moves mint a fresh session id (the old
+-      // copyThread rule): the resume runs as `--resume <seed> --fork-session`.
+-      if (bee.agent === "claude" && from !== target.id) rekeyed = store.rekeyBeeSession(bee.id).applied;
+-      if (live && rt) {
+-        commandId = store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: `swap_account:${by}`, thenRevive: true }).id;
+-      }
+-      if (quotaRecoveryId) {
+-        if (!live) commandId = store.enqueueCommand("revive", bee.id, { reason: "quota_recovery" }).id;
+-        store.bindQuotaRecovery(quotaRecoveryId, commandId);
+-      }
+-      if (claim) {
+-        this.consumeAccountClaim(claim, bee.id);
+-      } else if (reservationId) store.bindAccountAdmission(reservationId, bee.id);
+-    });
+-    const action: SwapAccountResult["action"] = live ? "stop_then_revive" : "rebind_only";
+-    this.log(`bee.swapAccount bee=${bee.id} from=${from ?? "-"} to=${target.id} by=${by} action=${action} rekeyed=${rekeyed} transcript=${transcript}${commandId != null ? ` stop=${commandId}` : ""}`);
+-    return { beeId: bee.id, from, to: target.id, action, commandId, rekeyed, transcript,
+-      ...(allocation ? { allocation } : {}), ...(claim ? { allocationClaimId: claim.id } : {}) };
++    const apply = () => {
++      store.transact(() => {
++        if (quotaRecoveryId) {
++          if (!store.claimQuotaRecovery(quotaRecoveryId, { targetAccount: target.id, claimId: claim?.id, reservationId })) throw new RpcError("invalid_request", "quota recovery is no longer claimable");
++        } else store.cancelQuotaRecoveries(bee.id, "manual_swap");
++        store.setBeeAccount(bee.id, target.id);
++        const key = homeEnvFor(bee.agent);
++        const env = { ...bee.env };
++        if (key) delete env[key];
++        store.setBeeEnv(bee.id, { ...env, ...accounts.homeEnvOf(target) });
++        if (target.status === "ok" && store.activeFlags(bee.id).some((f) => f.flag === "auth_needed")) {
++          store.clearFlag(bee.id, "auth_needed", `account swapped to ${target.id}`);
 +        }
-+      } catch (error) {
-+        this.log(`quota.probe recovery=${id} failed=${error instanceof Error ? error.message : String(error)}`);
-+        if (row.trigger === "proactive") { store.cancelQuotaRecovery(id, "relative_refresh_unavailable"); this.requestTick(); }
-+      }
-@@ -6939 +6967,8 @@ export class HiveDaemon {
--      const targets = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee), bee.id) : undefined;
-+      const comparison = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee), bee.id) : undefined;
-+      if (comparison) store.setProactiveCandidates(id, comparison.uncertain ? null : [...comparison.accountIds]);
-+      if (comparison?.uncertain) {
-+        store.cancelQuotaRecovery(id, "relative_refresh_unavailable");
-+        this.requestTick();
-+        return;
-+      }
-+      const targets = comparison?.accountIds;
-@@ -6955,0 +6991,5 @@ export class HiveDaemon {
-+      if (row.trigger === "proactive") {
-+        store.cancelQuotaRecovery(id, "relative_refresh_unavailable");
-+        this.requestTick();
-+        return;
-+      }
++        this.authResume?.beeSwapped(bee.id, target);
++        // Claude cross-account moves mint a fresh session id (the old
++        // copyThread rule): the resume runs as `--resume <seed> --fork-session`.
++        if (bee.agent === "claude" && from !== target.id) rekeyed = store.rekeyBeeSession(bee.id).applied;
++        if (live && rt) {
++          commandId = store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: `swap_account:${by}`, thenRevive: true }).id;
++        }
++        if (quotaRecoveryId) {
++          if (!live) commandId = store.enqueueCommand("revive", bee.id, { reason: "quota_recovery" }).id;
++          store.bindQuotaRecovery(quotaRecoveryId, commandId);
++        }
++        if (claim) {
++          this.consumeAccountClaim(claim, bee.id);
++        } else if (reservationId) store.bindAccountAdmission(reservationId, bee.id);
++      });
++      const action: SwapAccountResult["action"] = live ? "stop_then_revive" : "rebind_only";
++      this.log(`bee.swapAccount bee=${bee.id} from=${from ?? "-"} to=${target.id} by=${by} action=${action} rekeyed=${rekeyed} transcript=${transcript}${commandId != null ? ` stop=${commandId}` : ""}`);
++      return { beeId: bee.id, from, to: target.id, action, commandId, rekeyed, transcript,
++        ...(allocation ? { allocation } : {}), ...(claim ? { allocationClaimId: claim.id } : {}) };
++    };
++    return commit ? commit(apply) : apply();
+@@ -6937 +6945 @@ export class HiveDaemon {
+-        await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: row.trigger === "proactive" ? undefined : bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
++        const refreshed = await accounts.ensureFreshAdmissionLimits(bee.agent, { proactiveRefresh: row.trigger === "proactive", onlyAccountIds: row.trigger === "proactive" ? undefined : bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
+@@ -6942,0 +6951 @@ export class HiveDaemon {
++            if (comparison.uncertain && !refreshed) return;
+@@ -6954 +6963 @@ export class HiveDaemon {
+-      await accounts.ensureFreshAdmissionLimits(bee.agent, { model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
++      const refreshed = await accounts.ensureFreshAdmissionLimits(bee.agent, { proactiveRefresh: row.trigger === "proactive", model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
+@@ -6969,0 +6979 @@ export class HiveDaemon {
++        if (!refreshed) return;
+@@ -6992 +7002 @@ export class HiveDaemon {
+-        store.cancelQuotaRecovery(id, "relative_refresh_unavailable");
++        store.cancelQuotaRecovery(id, error instanceof RpcError ? "relative_swap_refused" : "relative_refresh_unavailable");

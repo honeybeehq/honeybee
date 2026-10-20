@@ -10,9 +10,9 @@
         "reason": null
       }
     ],
-    "sourceAt": 1792501172435,
-    "targetAt": 1792501170122,
-    "elapsedMs": 1007
+    "sourceAt": 1792502341887,
+    "targetAt": 1792502339576,
+    "elapsedMs": 968
   },
   {
     "name": "claude-queen-unreadable",
@@ -25,9 +25,9 @@
         "reason": "relative_refresh_unavailable"
       }
     ],
-    "sourceAt": 1792501176645,
-    "targetAt": 1792501174336,
-    "elapsedMs": 621
+    "sourceAt": 1792502345999,
+    "targetAt": 1792502343690,
+    "elapsedMs": 634
   },
   {
     "name": "claude-queen-cross",
@@ -35,7 +35,7 @@
     "deliveredGeneration": 1,
     "account": "claude-a",
     "recoveries": [],
-    "elapsedMs": 379
+    "elapsedMs": 430
   },
   {
     "name": "claude-queen-mixed",
@@ -48,20 +48,7 @@
         "reason": null
       }
     ],
-    "elapsedMs": 780
-  },
-  {
-    "name": "claude-queen-active-three",
-    "passed": true,
-    "deliveredGeneration": 2,
-    "account": "claude-c",
-    "recoveries": [
-      {
-        "state": "resumed",
-        "reason": null
-      }
-    ],
-    "elapsedMs": 841
+    "elapsedMs": 736
   },
   {
     "name": "claude-queen-near-window",
@@ -74,7 +61,22 @@
         "reason": null
       }
     ],
-    "elapsedMs": 767
+    "elapsedMs": 721
+  },
+  {
+    "name": "claude-queen-backed-off",
+    "passed": true,
+    "deliveredGeneration": 2,
+    "account": "claude-b",
+    "recoveries": [
+      {
+        "state": "resumed",
+        "reason": null
+      }
+    ],
+    "sourceAt": 1792502355714,
+    "targetAt": 1792502353404,
+    "elapsedMs": 975
   },
   {
     "name": "codex-queen-stale-target",
@@ -87,9 +89,9 @@
         "reason": null
       }
     ],
-    "sourceAt": 1792501186373,
-    "targetAt": 1792501183954,
-    "elapsedMs": 1266
+    "sourceAt": 1792502360386,
+    "targetAt": 1792502357960,
+    "elapsedMs": 1257
   },
   {
     "name": "codex-queen-unreadable",
@@ -102,9 +104,9 @@
         "reason": "relative_refresh_unavailable"
       }
     ],
-    "sourceAt": 1792501191410,
-    "targetAt": 1792501188977,
-    "elapsedMs": 770
+    "sourceAt": 1792502365392,
+    "targetAt": 1792502362965,
+    "elapsedMs": 760
   },
   {
     "name": "codex-queen-cross",
@@ -112,7 +114,7 @@
     "deliveredGeneration": 1,
     "account": "codex-a",
     "recoveries": [],
-    "elapsedMs": 539
+    "elapsedMs": 499
   },
   {
     "name": "codex-queen-mixed",
@@ -125,20 +127,7 @@
         "reason": null
       }
     ],
-    "elapsedMs": 1175
-  },
-  {
-    "name": "codex-queen-active-three",
-    "passed": true,
-    "deliveredGeneration": 2,
-    "account": "codex-c",
-    "recoveries": [
-      {
-        "state": "resumed",
-        "reason": null
-      }
-    ],
-    "elapsedMs": 1078
+    "elapsedMs": 1174
   },
   {
     "name": "codex-queen-near-window",
@@ -151,6 +140,47 @@
         "reason": null
       }
     ],
-    "elapsedMs": 1132
+    "elapsedMs": 1140
+  },
+  {
+    "name": "codex-queen-backed-off",
+    "passed": true,
+    "deliveredGeneration": 2,
+    "account": "codex-b",
+    "recoveries": [
+      {
+        "state": "resumed",
+        "reason": null
+      }
+    ],
+    "sourceAt": 1792502377911,
+    "targetAt": 1792502375483,
+    "elapsedMs": 1239
+  },
+  {
+    "name": "claude-queen-active-three",
+    "passed": true,
+    "deliveredGeneration": 2,
+    "account": "claude-c",
+    "recoveries": [
+      {
+        "state": "resumed",
+        "reason": null
+      }
+    ],
+    "elapsedMs": 474
+  },
+  {
+    "name": "codex-queen-active-three",
+    "passed": true,
+    "deliveredGeneration": 2,
+    "account": "codex-c",
+    "recoveries": [
+      {
+        "state": "resumed",
+        "reason": null
+      }
+    ],
+    "elapsedMs": 629
   }
 ]
