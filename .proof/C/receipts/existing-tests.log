@@ -1,0 +1,237 @@
+✔ rpc.accounts.1: CRUD verbs, typed errors, idempotent add, spawn binding (explicit / paused / mismatch / auto / unbound), snapshot + watch carry accounts (1842.133298ms)
+✔ rpc.accounts.fuzzy: one selector works across account verbs, spawn agent shorthand, explicit override, and swap (1039.900933ms)
+✔ rpc account.resetLimits: duplicate keys return one effect; uncertain and wrong-harness failures stay typed (806.364632ms)
+✔ rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → rebind → revive with resume under a NEW session id in the new home; cross-harness refused; stopped bee rebound only (1489.747405ms)
+✔ rpc allocation owner: acquire is authoritative, claim swap is atomic, and all-protected returns account_wait (2016.37375ms)
+✔ rpc allocation owner serializes concurrent node admissions and a remote node consumes one claim once (1841.869878ms)
+✔ rpc allocation owner claim gates active automatic spawn while shadow acquisition remains observational (1355.983365ms)
+✔ rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the replacement generation presents as working (1578.722963ms)
+✖ rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delayed) — swap to the untried account and continue automatically; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status (1960.747457ms)
+✖ rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit work, idle bees move off with a note, and stopped bees move off when they wake (2011.02081ms)
+✔ rpc.accounts.f2: add refuses pre-existing credentials by default; importExisting adopts as unverified; health is validation evidence, never file-existence; a fresh add is auth_needed, never ok (605.135334ms)
+✔ rpc.accounts.v18: importExisting imports the MACHINE's vendor home (the field finding); nothing importable is `no_credentials_to_import` naming the paths; snapshot + watch deltas carry credentialHealth; login success flips status (629.874446ms)
+✔ rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries until successful recovery (1128.467879ms)
+✔ rpc central credentials: per-account opt-in/status/lease/disable, idempotent enable, in-place login, native capture fenced, expired and refused candidates rejected (764.695822ms)
+retained @ account and @ label: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid charset/overflow typed invalid_request
+✔ lease account ids share core validation: retained @ ids renew, revoke and reinstall without suffix rewriting (593.399995ms)
+✔ account readiness blocks only affected starts; unrelated stop and mail progress; a same-bee stop cancels the deferred start (55.662492ms)
+✔ account readiness failure uses the existing bounded command retry before launch (24.380526ms)
+✔ readiness sees an automatic revive enqueued inside the current core step (27.489428ms)
+✔ model change waits when idle becomes working before command execution (30.968698ms)
+✔ model change admitted during a turn waits for the turn to end, and a newer change replaces it (31.184823ms)
+✔ a runtime ended by stopped_by_user while a model change waits is not restarted, even after boot (31.79315ms)
+✔ a runtime ended by crashed while a model change waits is not restarted, even after boot (31.506992ms)
+✔ bee tmp is released on archive only once no live runtime holds it, and on delete (39.908251ms)
+✔ deferred model change does not block other commands and a stale generation does not restart again (30.609169ms)
+✔ model change recovers after executor crash before_effect (33.883554ms)
+✔ model change recovers after executor crash after_effect (31.963473ms)
+✔ model change resumes after daemon restart between settled stop and observed exit (31.558694ms)
+✔ model change defers across real HSR input admission before the turn observation is folded (385.840094ms)
+✔ unit.0: a tick uses bounded batch reads, independent of bee count, re-read only after a write (69.986685ms)
+✔ unit.0a: the empty proof skips full snapshots and returns fresh containers without skipping flag expiry (30.200438ms)
+✔ unit.0a-disabled: an I1-disabled empty proof carries null instead of an unused array (20.621988ms)
+✔ unit.0b: a revive command refreshes an initially empty snapshot in the same tick (24.074058ms)
+✔ unit.0c: an outer rollback and reused audit sequence cannot preserve an uncommitted snapshot (21.517571ms)
+✔ unit.0d: I1 sees stopped-runtime and absent-runtime mail (35.723052ms)
+✔ unit.0e: task supply refreshes the snapshot before I1 in the same tick (25.020402ms)
+✔ unit.0e.1: limit-tripped task supply stalls after its mail drains on a later tick (28.765291ms)
+✔ unit.0f: fresh final I1 re-ranks the queue after delivery (26.306916ms)
+✔ unit.0g: linear I1 metadata matches the full-snapshot oracle exactly (27.565638ms)
+✔ unit.0i: same-tick I1 reuse cannot cross an outer rollback and reused audit sequence (21.219343ms)
+✔ unit.1: scale-to-zero — idle past the window stops with stopped_by_system; send revives (Q4 + Q3) (30.227769ms)
+✔ unit.2: scale-to-zero never stops an idle bee with undelivered mail (27.190688ms)
+✔ unit.0h: delivery hydrates bodies only for the selected target (31.182084ms)
+✔ unit.time-boundaries: archived boot hang, idle stop, and I1 remain strict (74.452992ms)
+✔ unit.3: flag policy — adapter evidence sets flags and contrary evidence clears them (spec 03) (25.430723ms)
+✔ unit.4: pid-at-spawn recording — procOf lands on the booting runtime row (WP2 amendment) (21.492811ms)
+✔ unit.5: degraded-runtime policy — mail for a re-adopted runtime rotates the generation (29.618683ms)
+✔ unit.6: I1 telemetry — a message undelivered past the deadline is recorded exactly once (23.80648ms)
+✔ unit.7: I1 telemetry — the clock is suspended while a closed-list flag is active (25.191137ms)
+✔ unit.8: continuity (spec 07 §F) — a booted session id is recorded on the bee for the CURRENT generation only; stale/no-bee evidence is skipped (29.393037ms)
+✔ budget.5: immediate-exit runtime → bounded revives with backoff, spawn_failed at the budget, no further wakes (54.200014ms)
+✔ budget.5auth: pre-init agy auth exits consume the budget and suppress churn (60.843807ms)
+✔ budget.5a: prompt-less spawn boot failures still retry to the visible bounded terminal (41.77548ms)
+✔ budget.5b: a driver that THROWS from start (cell provisioning failed) is a spawn failure on the B5 table — retried with backoff, spawn_failed at the budget, never a wedged command or a loop error (52.105799ms)
+✔ budget.6: an explicit operator revive retries regardless of spawn_failed and clears it on success; the mail then flows (59.81115ms)
+✔ budget.7: a runtime that reached running/idle and then crashed is not a spawn failure — revive is immediate and uncounted (39.737227ms)
+✔ budget.7b: repeated boot hangs exhaust one budget and issue one stop per generation (40.169298ms)
+✔ budget.8 (soak regression): readyAtSpawn instant death — the synthetic booted must NOT reset the budget; exactly maxAttempts generations, backoff, spawn_failed, wakes suppressed (58.146087ms)
+✔ budget.9 (I1): a message that never reaches a real runtime violates while the loop retries, and the spawn_failed flag is the legal terminal that suspends the clock (44.665456ms)
+✔ budget.9b (I1, idle urgency): pre-fix the churn re-based the idle clock forever — post-fix the bee lands flagged (the 'or the bee is flagged' arm) (48.879675ms)
+✔ budget.10: real evidence (the late init a readyAtSpawn harness emits) resets the counter — a generation that spoke and then crashed is a normal post-running crash (112.207586ms)
+✔ budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine, emits zero output and dies after observed readiness — bounded generations; fixed harness + operator revive recovers (1069.325281ms)
+✔ unit.9 (spec 08 swap): a `stop {thenRevive}` command revives the NEXT generation once the runtime is observed stopped — durable, once, and never while a wake is already pending; the account policy hook sees every applied evidence (57.868709ms)
+✔ D05 boot command probes avoid full history and keep strict thenRevive and future-wake behavior (29.51339ms)
+✔ D05 pending-stop probe treats a future retry as pending and remains a repeated-step no-op (23.289127ms)
+✔ unit.10 (spec 08): the onFlagEvidence hook fires after each applied evidence and a throwing hook never stalls the loop (23.951535ms)
+✔ sandbox tmp evidence owns only its own resource_blocked row and never reaches account policy (27.184199ms)
+✔ runtime policy: a running turn is never stopped because time elapsed (25.902546ms)
+✔ recovered completion checkpoints last, preserves output, and unlocks idle mail (26.093641ms)
+✔ recovery applies completion followed by a newer turn start in journal order (23.892133ms)
+✔ stale-generation recovery observations and cursors cannot touch the current runtime (23.703288ms)
+✔ urgency.d1: `idle` is not delivered while the runtime is running — it lands at turn end (28.790531ms)
+✔ urgency.d2: `now` mid-turn interrupts exactly once, then delivers at the resulting accept point (28.892694ms)
+✔ urgency.d3: `now` to an idle runtime is a plain delivery — no interrupt (26.871591ms)
+✔ urgency.d3a: a confirmed Codex `now` delivery never interrupts the turn it just started (26.465391ms)
+✔ urgency.d3b: a pending Codex `now` delivery never interrupts the turn it just started (26.506362ms)
+✔ urgency.d3c: a distinct later `now` message still interrupts an async-confirmed turn (24.790926ms)
+✔ urgency.d3d: the substrate router forwards the urgent delivery identity (0.416341ms)
+✔ urgency.d4: ordering — urgency governs WHEN a message is eligible; among eligible, enqueue order wins (28.958675ms)
+✔ urgency.d5: `idle` to a stopped bee still revives (revive-on-message unchanged) and delivers once idle (28.01485ms)
+✔ urgency.d6: I1 telemetry — an `idle` message's deadline clock starts at eligibility (turn end), not enqueue (26.330576ms)
+✔ envelope.d1: bee-sent mail is delivered ENVELOPED; operator mail is delivered bare (27.804375ms)
+✔ envelope.d2: a peer `now` that interrupted the turn is delivered with the interrupt notice (25.921287ms)
+✔ envelope.d3: the interrupt notice survives a daemon restart between interrupt and delivery (28.869173ms)
+✔ envelope.d4: operator `now` mail that interrupted the turn is delivered bare (25.750872ms)
+✔ envelope.d5: an operator interrupt delivers nothing and a later peer `now` to the idle bee carries no notice (25.789793ms)
+✔ envelope.d6: an operator interrupt after the delivery interrupt withdraws the notice (25.739001ms)
+✔ envelope.d7: a notice recorded for an earlier generation is not shown to a later one (22.60916ms)
+✔ urgency.d6: idle mail DELIVERS to a synthetic-running fresh revive — no generation churn (2026-08-19 budget.11 discovery) (29.495739ms)
+✔ obs.synthetic-turn_ended: a readyAtSpawn boot-to-ready edge idles the store without an output fact; evidence stays synthetic (2026-09-02 swap-revive stall) (32.23501ms)
+✔ obs.synthetic-turn_ended with mail waiting: the boot-to-ready edge is skipped (mail_pending) — no one-step idle under a turn about to start (29.573572ms)
+✔ unit.flag-expiry: a provider-declared reset lifts resource_blocked at the instant — never before, never by silence (27.090557ms)
+✔ move.claude: no-mail dest idle marks native overlay applied and completes (34.51379ms)
+✔ move.codex: no-mail dest idle completes without a mailbox prefix (30.775492ms)
+✔ move.claude: pending mail keeps overlay pending until prefixed dest deliver (32.699502ms)
+✔ move.stub: dest idle without mail does not auto-complete (32.112119ms)
+✔ move.codex: dest leaving booting (handshake ack) completes no-mail without idle (29.746615ms)
+✔ move.codex: dest crash while starting retries and then completes (35.347502ms)
+✔ move.crash: executor crash after durable admission resumes to complete (34.793497ms)
+✔ z01.a: an outer rollback never loses dedup state and a committed clear follows (31.41747ms)
+✔ z01.b: a live-runtime hive with zero pending still clears (mail-only probe) (26.616104ms)
+✔ z01.c: with I1 disabled an interrupted-then-canceled id is cleared without hydration (25.333021ms)
+✔ z01.d: stopped-target pending mail is retained until the bee is deleted (25.074794ms)
+✔ z01.e: a permanent >1024 backlog sweeps on growth or cadence only, retaining stopped and absent pending (919.623886ms)
+✔ z01.f: the I1-disabled sweep probes tracked ids in bounded chunks, never all pending (139.392516ms)
+✔ z01.g: an outer rollback never lets the sweep forget, and the terminal id prunes once committed (337.988224ms)
+✔ z01.h: retained now-mail stays deduped across revive and cadence sweeps (138.892403ms)
+✔ z01.i: a reentrant onI1Violation step cannot make the outer sweep erase live dedup ids (602.157786ms)
+✔ z01.j: huge pending metadata with a tiny tracked set probes O(tracked), never O(pending) (4151.131555ms)
+✔ runner host logs an item/completed image generation as a file reference (200.262384ms)
+✔ runner host logs every thread/fork image generation as a file reference (124.011034ms)
+✔ runner host keeps an inbound line without image substrings byte-identical (135.516134ms)
+✔ runner host keeps a malformed image generation line byte-identical (121.064278ms)
+✔ runner host keeps image generation bytes verbatim in the observation journal (123.493071ms)
+✔ mail delivery stays unconsumed until the runner socket connects, then sends once (172.247383ms)
+✔ host delivery refuses before encoding and distinguishes write throws from backpressure (2.69383ms)
+✔ a source checkout defaults to the sibling TypeScript runner-host entry (224.099285ms)
+✔ an explicit hostCommand remains a complete caller-owned override (285.64278ms)
+✔ daemon restart: the runtime survives and the successor daemon delivers at full capability (313.478026ms)
+✔ adoption replays a runner-persisted completion missed by the dead daemon (315.602061ms)
+✔ recovery replay after the completion fold is idempotent (298.907976ms)
+✔ recovery preserves journal order when completion is followed by a newer turn start (238.418438ms)
+✔ missing or generation-corrupt recovery evidence fails closed without manufacturing idle (535.424645ms)
+✔ a genuinely long-running silent turn stays running across adoption (500.970976ms)
+✔ Codex thread/status idle plus turn/completed maps through adoption to one turn end (339.660628ms)
+✔ Codex adoption restores the durable thread and active turn, then confirms steer and idle delivery (775.660711ms)
+✔ adoption with dead host artifacts falls back to refusing, never a phantom runtime (232.066133ms)
+✔ quiet final assistant evidence survives a restart before turn completion (1733.690427ms)
+✔ runner host preserves explicit harness Node options (131.231753ms)
+ℹ tests 128
+ℹ suites 0
+ℹ pass 126
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20220.788116
+
+✖ failing tests:
+
+test at v2/daemon/tests/accounts-rpc.test.ts:798:1
+✖ rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delayed) — swap to the untried account and continue automatically; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status (1960.747457ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /account\.rotate bee=\S+ account=claude-b skipped=no_candidate/. Input:
+  
+  'hived v2 listening on /var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/hived.sock (store /var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/core.sqlite3)\n' +
+    '{"ts":1792479545008,"op":"tmp.policy beeTmpRoot=off"}\n' +
+    '{"ts":1792479545035,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}\n' +
+    '{"ts":1792479545042,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}\n' +
+    '{"ts":1792479545059,"op":"rpc.listen socket=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/hived.sock"}\n' +
+    '{"ts":1792479545060,"op":"daemon.started pid=591293 store=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/core.sqlite3"}\n' +
+    '{"ts":1792479545079,"op":"account.add id=claude-a harness=claude home=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/vault/claude/claude-a files=.credentials.json verification=limits"}\n' +
+    '{"ts":1792479545107,"op":"account.limits account=claude-a readable=false error=\\"fetch failed\\""}\n' +
+    '{"ts":1792479545116,"op":"account.add id=claude-b harness=claude home=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/vault/claude/claude-b files=.credentials.json verification=limits"}\n' +
+    '{"ts":1792479545118,"op":"account.limits account=claude-b readable=false error=\\"fetch failed\\""}\n' +
+    '{"ts":1792479545125,"op":"spawn.account bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 account=claude-a reason=\\"explicit\\""}\n' +
+    '{"ts":1792479545136,"op":"account.activate account=claude-a home=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-a copied=.credentials.json"}\n' +
+    '{"ts":1792479545136,"op":"account.activate.gateways account=claude-a skipped=\\"gateway discovery is disabled; existing MCP seed state left untouched\\""}\n' +
+    '{"ts":1792479545335,"op":"cmd.spawn id=1 bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 start gen=1"}\n' +
+    '{"ts":1792479545425,"op":"obs.booted bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 pid=591317 synthetic"}\n' +
+    '{"ts":1792479545426,"op":"obs.skip bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 kind=turn_ended reason=mail_pending"}\n' +
+    '{"ts":1792479545430,"op":"deliver.refused bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 msg=1 reason=not_ready"}\n' +
+    '{"ts":1792479545436,"op":"deliver bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 msg=1 gen=1 urgency=next"}\n' +
+    '{"ts":1792479545456,"op":"obs.skip bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 kind=turn_started reason=already_running"}\n' +
+    '{"ts":1792479545483,"op":"spawn.evidence bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 kind=booted"}\n' +
+    '{"ts":1792479545483,"op":"obs.skip bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 kind=booted reason=already_running"}\n' +
+    '{"ts":1792479545483,"op":"obs.turn_ended bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1"}\n' +
+    '{"ts":1792479545486,"op":"session.recorded bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 id=24a41bd8-adc5-4232-b3d7-b117bc9d2213"}\n' +
+    '{"ts":1792479545486,"op":"obs.checkpoint bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cursor=483"}\n' +
+    '{"ts":1792479545510,"op":"deliver bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 msg=2 gen=1 urgency=next"}\n' +
+    '{"ts":1792479545538,"op":"obs.turn_started bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 synthetic"}\n' +
+    '{"ts":1792479545542,"op":"obs.checkpoint bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cursor=669"}\n' +
+    '{"ts":1792479545740,"op":"obs.turn_ended bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1"}\n' +
+    '{"ts":1792479545744,"op":"flag.set bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 flag=resource_blocked gen=1 resetsAt=2026-10-20T07:59:05.511Z"}\n' +
+    '{"ts":1792479545751,"op":"flag.set bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 flag=resource_blocked gen=1 resetsAt=2026-10-20T07:59:05.511Z"}\n' +
+    '{"ts":1792479545752,"op":"obs.checkpoint bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cursor=1203"}\n' +
+    '{"ts":1792479545758,"op":"account.limits account=claude-a readable=false error=\\"fetch failed\\""}\n' +
+    '{"ts":1792479545760,"op":"account.limits account=claude-b readable=false error=\\"fetch failed\\""}\n' +
+    '{"ts":1792479545766,"op":"account auto → claude-b — only claude account with credentials"}\n' +
+    '{"ts":1792479545767,"op":"account.admission.shadow operation=swap selected=claude-b policy=wait:no_eligible_account"}\n' +
+    '{"ts":1792479545769,"op":"bee.swapAccount.transcript bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 seed=24a41bd8-adc5-4232-b3d7-b117bc9d2213 from=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-a/projects/-var-tmp-hb-quota-C-oy568k7K-tmp-hb-v2-daemon-V5OR7z/24a41bd8-adc5-4232-b3d7-b117bc9d2213.jsonl to=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-b/projects/-var-tmp-hb-quota-C-oy568k7K-tmp-hb-v2-daemon-V5OR7z/24a41bd8-adc5-4232-b3d7-b117bc9d2213.jsonl"}\n' +
+    '{"ts":1792479545773,"op":"bee.swapAccount bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 from=claude-a to=claude-b by=operator action=stop_then_revive rekeyed=true transcript=copied stop=2"}\n' +
+    '{"ts":1792479545773,"op":"quota.rotate recovery=quota:f3f83837-3bc0-486a-9e54-ccbe54e361b6:1:2 to=claude-b"}\n' +
+    '{"ts":1792479545780,"op":"cmd.stop id=2 bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cause=stopped_by_system hadProcess=true"}\n' +
+    '{"ts":1792479545804,"op":"obs.exited bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cause=stopped_by_system"}\n' +
+    '{"ts":1792479545805,"op":"revive.after_stop bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cmd=3"}\n' +
+    '{"ts":1792479545813,"op":"account.activate account=claude-b home=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-b copied=.credentials.json"}\n' +
+    '{"ts":1792479545813,"op":"account.activate.gateways account=claude-b skipped=\\"gateway discovery is disabled; existing MCP seed state left untouched\\""}\n' +
+    '{"ts":1792479546006,"op":"cmd.revive id=3 bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 revive gen=2"}\n' +
+    '{"ts":1792479546096,"op":"obs.booted bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 pid=591340 synthetic"}\n' +
+    '{"ts":1792479546097,"op":"obs.turn_ended bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 synthetic"}\n' +
+    '{"ts":1792479546106,"op":"deliver bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 msg=3 gen=2 urgency=next"}\n' +
+    '{"ts":1792479546129,"op":"obs.turn_started bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 synthetic"}\n' +
+    '{"ts":1792479546154,"op":"spawn.evidence bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 kind=booted"}\n' +
+    '{"ts":1792479546154,"op":"obs.skip bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 kind=booted reason=already_running"}\n' +
+    '{"ts":1792479546155,"op":"obs.turn_ended bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2"}\n' +
+    '{"ts":1792479546156,"op":"flag.clear bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 flag=resource_blocked gen=2"}\n' +
+    '{"ts":1792479546157,"op":"session.recorded bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 id=9c5aff5f-3fdc-4ea3-8a5b-367af07ad440"}\n' +
+    '{"ts":1792479546157,"op":"obs.checkpoint bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 cursor=1287"}\n' +
+    '{"ts":1792479546182,"op":"deliver bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 msg=4 gen=2 urgency=next"}\n' +
+    '{"ts":1792479546206,"op":"obs.turn_started bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 synthetic"}\n' +
+    '{"ts":1792479546207,"op":"obs.turn_ended bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2"}\n' +
+    '{"ts":1792479546208,"op":"flag.set bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 flag=resource_blocked gen=2 resetsAt=2026-10-20T07:59:06.000Z"}\n' +
+    '{"ts":1792479546212,"op":"flag.set bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 flag=resource_blocked gen=2"}\n' +
+    '{"ts":1792479546212,"op":"obs.checkpoint bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 cursor=1638"}\n' +
+    '{"ts":1792479546219,"op":"account.limits account=claude-a readable=false error=\\"fetch failed\\""}\n' +
+    '{"ts":1792479546221,"op":"account.limits account=claude-b readable=false error=\\"fetch failed\\""}\n' +
+    '{"ts":1792479546226,"op":"quota.wait recovery=quota:f3f83837-3bc0-486a-9e54-ccbe54e361b6:2:4 reason=No untried claude account remains"}\n'
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-c-lab-driver-a4abb037a555/github-com-honeybeehq-honeybee-a9015b303498-space-a4abb037a555/v2/daemon/tests/accounts-rpc.test.ts:859:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'hived v2 listening on /var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/hived.sock (store /var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/core.sqlite3)\n{"ts":1792479545008,"op":"tmp.policy beeTmpRoot=off"}\n{"ts":1792479545035,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}\n{"ts":1792479545042,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}\n{"ts":1792479545059,"op":"rpc.listen socket=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/hived.sock"}\n{"ts":1792479545060,"op":"daemon.started pid=591293 store=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/core.sqlite3"}\n{"ts":1792479545079,"op":"account.add id=claude-a harness=claude home=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/vault/claude/claude-a files=.credentials.json verification=limits"}\n{"ts":1792479545107,"op":"account.limits account=claude-a readable=false error=\\"fetch failed\\""}\n{"ts":1792479545116,"op":"account.add id=claude-b harness=claude home=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/vault/claude/claude-b files=.credentials.json verification=limits"}\n{"ts":1792479545118,"op":"account.limits account=claude-b readable=false error=\\"fetch failed\\""}\n{"ts":1792479545125,"op":"spawn.account bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 account=claude-a reason=\\"explicit\\""}\n{"ts":1792479545136,"op":"account.activate account=claude-a home=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-a copied=.credentials.json"}\n{"ts":1792479545136,"op":"account.activate.gateways account=claude-a skipped=\\"gateway discovery is disabled; existing MCP seed state left untouched\\""}\n{"ts":1792479545335,"op":"cmd.spawn id=1 bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 start gen=1"}\n{"ts":1792479545425,"op":"obs.booted bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 pid=591317 synthetic"}\n{"ts":1792479545426,"op":"obs.skip bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 kind=turn_ended reason=mail_pending"}\n{"ts":1792479545430,"op":"deliver.refused bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 msg=1 reason=not_ready"}\n{"ts":1792479545436,"op":"deliver bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 msg=1 gen=1 urgency=next"}\n{"ts":1792479545456,"op":"obs.skip bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 kind=turn_started reason=already_running"}\n{"ts":1792479545483,"op":"spawn.evidence bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 kind=booted"}\n{"ts":1792479545483,"op":"obs.skip bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 kind=booted reason=already_running"}\n{"ts":1792479545483,"op":"obs.turn_ended bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1"}\n{"ts":1792479545486,"op":"session.recorded bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 id=24a41bd8-adc5-4232-b3d7-b117bc9d2213"}\n{"ts":1792479545486,"op":"obs.checkpoint bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cursor=483"}\n{"ts":1792479545510,"op":"deliver bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 msg=2 gen=1 urgency=next"}\n{"ts":1792479545538,"op":"obs.turn_started bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 synthetic"}\n{"ts":1792479545542,"op":"obs.checkpoint bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cursor=669"}\n{"ts":1792479545740,"op":"obs.turn_ended bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1"}\n{"ts":1792479545744,"op":"flag.set bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 flag=resource_blocked gen=1 resetsAt=2026-10-20T07:59:05.511Z"}\n{"ts":1792479545751,"op":"flag.set bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 flag=resource_blocked gen=1 resetsAt=2026-10-20T07:59:05.511Z"}\n{"ts":1792479545752,"op":"obs.checkpoint bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cursor=1203"}\n{"ts":1792479545758,"op":"account.limits account=claude-a readable=false error=\\"fetch failed\\""}\n{"ts":1792479545760,"op":"account.limits account=claude-b readable=false error=\\"fetch failed\\""}\n{"ts":1792479545766,"op":"account auto → claude-b — only claude account with credentials"}\n{"ts":1792479545767,"op":"account.admission.shadow operation=swap selected=claude-b policy=wait:no_eligible_account"}\n{"ts":1792479545769,"op":"bee.swapAccount.transcript bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 seed=24a41bd8-adc5-4232-b3d7-b117bc9d2213 from=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-a/projects/-var-tmp-hb-quota-C-oy568k7K-tmp-hb-v2-daemon-V5OR7z/24a41bd8-adc5-4232-b3d7-b117bc9d2213.jsonl to=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-b/projects/-var-tmp-hb-quota-C-oy568k7K-tmp-hb-v2-daemon-V5OR7z/24a41bd8-adc5-4232-b3d7-b117bc9d2213.jsonl"}\n{"ts":1792479545773,"op":"bee.swapAccount bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 from=claude-a to=claude-b by=operator action=stop_then_revive rekeyed=true transcript=copied stop=2"}\n{"ts":1792479545773,"op":"quota.rotate recovery=quota:f3f83837-3bc0-486a-9e54-ccbe54e361b6:1:2 to=claude-b"}\n{"ts":1792479545780,"op":"cmd.stop id=2 bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cause=stopped_by_system hadProcess=true"}\n{"ts":1792479545804,"op":"obs.exited bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cause=stopped_by_system"}\n{"ts":1792479545805,"op":"revive.after_stop bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=1 cmd=3"}\n{"ts":1792479545813,"op":"account.activate account=claude-b home=/var/tmp/hb-quota-C.oy568k7K/tmp/hb-v2-daemon-V5OR7z/homes/claude-b copied=.credentials.json"}\n{"ts":1792479545813,"op":"account.activate.gateways account=claude-b skipped=\\"gateway discovery is disabled; existing MCP seed state left untouched\\""}\n{"ts":1792479546006,"op":"cmd.revive id=3 bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 revive gen=2"}\n{"ts":1792479546096,"op":"obs.booted bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 pid=591340 synthetic"}\n{"ts":1792479546097,"op":"obs.turn_ended bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 synthetic"}\n{"ts":1792479546106,"op":"deliver bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 msg=3 gen=2 urgency=next"}\n{"ts":1792479546129,"op":"obs.turn_started bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 synthetic"}\n{"ts":1792479546154,"op":"spawn.evidence bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 kind=booted"}\n{"ts":1792479546154,"op":"obs.skip bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 kind=booted reason=already_running"}\n{"ts":1792479546155,"op":"obs.turn_ended bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2"}\n{"ts":1792479546156,"op":"flag.clear bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 flag=resource_blocked gen=2"}\n{"ts":1792479546157,"op":"session.recorded bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 id=9c5aff5f-3fdc-4ea3-8a5b-367af07ad440"}\n{"ts":1792479546157,"op":"obs.checkpoint bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 cursor=1287"}\n{"ts":1792479546182,"op":"deliver bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 msg=4 gen=2 urgency=next"}\n{"ts":1792479546206,"op":"obs.turn_started bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 synthetic"}\n{"ts":1792479546207,"op":"obs.turn_ended bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2"}\n{"ts":1792479546208,"op":"flag.set bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 flag=resource_blocked gen=2 resetsAt=2026-10-20T07:59:06.000Z"}\n{"ts":1792479546212,"op":"flag.set bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 flag=resource_blocked gen=2"}\n{"ts":1792479546212,"op":"obs.checkpoint bee=f3f83837-3bc0-486a-9e54-ccbe54e361b6 gen=2 cursor=1638"}\n{"ts":1792479546219,"op":"account.limits account=claude-a readable=false error=\\"fetch failed\\""}\n{"ts":1792479546221,"op":"account.limits account=claude-b readable=false error=\\"fetch failed\\""}\n{"ts":1792479546226,"op":"quota.wait recovery=quota:f3f83837-3bc0-486a-9e54-ccbe54e361b6:2:4 reason=No untried claude account remains"}\n',
+    expected: /account\.rotate bee=\S+ account=claude-b skipped=no_candidate/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/accounts-rpc.test.ts:893:1
+✖ rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit work, idle bees move off with a note, and stopped bees move off when they wake (2011.02081ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 2
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-c-lab-driver-a4abb037a555/github-com-honeybeehq-honeybee-a9015b303498-space-a4abb037a555/v2/daemon/tests/accounts-rpc.test.ts:975:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
