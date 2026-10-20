@@ -35,6 +35,7 @@ export interface PrepareUnknownDeliveryConfirmationIntent {
   generation: number;
 }
 export type KnownDeliveryConfirmationIntent = PrepareDeliveryConfirmationIntent & {
+  refusalRetries?: number;
   since: number;
   state: DeliveryConfirmation["state"];
   reason: DeliveryConfirmationReason;
