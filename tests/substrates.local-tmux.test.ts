@@ -540,7 +540,7 @@ test("local launcher scrubs inherited no-color env for interactive agents", { ti
   }
   const writeEnv = [
     "-e",
-    `require("node:fs").writeFileSync(${JSON.stringify(out)}, JSON.stringify({
+    `process.stdin.resume(); require("node:fs").writeFileSync(${JSON.stringify(out)}, JSON.stringify({
       NO_COLOR: process.env.NO_COLOR ?? null,
       FORCE_COLOR: process.env.FORCE_COLOR ?? null,
       TERM: process.env.TERM ?? null,
