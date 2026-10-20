@@ -1,4 +1,4 @@
-import { codexQuotaBoundary, quotaSourceId } from "../../core/src/quota.ts";
+import { codexQuotaBoundary, quotaSourceId } from "../../adapters/src/quota.ts";
 import {
   projectorCheckpoint, checkpointRecord, checkpointEntries, checkpointJson,
   checkpointNullable, checkpointString, checkpointStrings, checkpointBoolean,

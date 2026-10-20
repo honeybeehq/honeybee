@@ -152,13 +152,18 @@ rl.on("line", (raw) => {
     recordTranscript({ type: "init", resumed: resumed ?? null, forked });
   }
   recordTranscript({ type: "user", text });
-  const quotaMode = /@quota:(weekly|five_hour|result_five_hour|delayed|once|quote)/.exec(text)?.[1];
-  const onceMarker = process.env.FAKE_QUOTA_ONCE_PATH;
+  const quotaMode = /@quota:(weekly_event|weekly_local|backpressure|unknown_status|weekly|five_hour|result_five_hour|delayed|once|quote)/.exec(text)?.[1];
+  if (quotaMode === "backpressure" || quotaMode === "unknown_status" || quotaMode === "weekly_event") {
+    if (quotaMode !== "backpressure") emit({ type: "rate_limit_event", rate_limit_info: { status: quotaMode === "weekly_event" ? "rejected" : "temporarily_unavailable", rateLimitType: "seven_day", resetsAt: Math.floor(Date.parse(process.env.FAKE_QUOTA_RESETS_AT ?? new Date(Date.now() + 3600000).toISOString()) / 1000) }, session_id: sessionId });
+    emit({ type: "result", is_error: true, result: quotaMode === "weekly_event" ? `You've hit your weekly limit · resets ${process.env.FAKE_QUOTA_RESETS_AT ?? new Date(Date.now() + 3600000).toISOString()}` : "529 overloaded", session_id: sessionId });
+    return;
+  }
+  const onceMarker = process.env.FAKE_QUOTA_ONCE_PATH ?? join(process.cwd(), ".fake-claude-quota-once");
   const quotaFails = quotaMode && quotaMode !== "quote" && !(quotaMode === "once" && onceMarker && existsSync(onceMarker));
   if (quotaFails) {
     if (quotaMode === "once" && onceMarker) writeFileSync(onceMarker, "failed");
     const window = quotaMode === "five_hour" || quotaMode === "result_five_hour" ? "" : "weekly ";
-    const resets = process.env.FAKE_QUOTA_RESETS_AT ?? new Date(Date.now() + 3600000).toISOString();
+    const resets = quotaMode === "weekly_local" ? "2pm (Europe/Oslo)" : process.env.FAKE_QUOTA_RESETS_AT ?? new Date(Date.now() + 3600000).toISOString();
     const result = `You've hit your ${window}limit · resets ${resets}`;
     if (quotaMode === "delayed") emit({ type: "assistant", message: { role: "assistant", model: "fake", content: [{ type: "text", text: "visible progress before quota" }] }, session_id: sessionId });
     turnTimer = setTimeout(() => {

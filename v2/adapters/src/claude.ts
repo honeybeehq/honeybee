@@ -1,4 +1,4 @@
-import { claudeQuotaBoundary } from "../../core/src/quota.ts";
+import { claudeQuotaBoundary } from "./quota.ts";
 /**
  * Claude harness adapter (WP3) — normalizes the `claude -p --input-format
  * stream-json --output-format stream-json --verbose` NDJSON envelope.

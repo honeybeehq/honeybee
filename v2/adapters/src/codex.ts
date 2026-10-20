@@ -1,4 +1,4 @@
-import { codexQuotaBoundary } from "../../core/src/quota.ts";
+import { codexQuotaBoundary } from "./quota.ts";
 /**
  * Codex harness adapter (WP3) — normalizes the `codex app-server` JSON-RPC 2.0
  * stdio stream.
@@ -46,7 +46,6 @@ import {
   bootedToIdle,
   isAuthNeededMessage,
   isResourceBlockedMessage,
-  isoFromEpochSeconds,
   parseJsonLine,
   successfulTurnClears,
   type AdapterSignal,
@@ -54,7 +53,7 @@ import {
   type HarnessAdapter,
   type InterruptContext,
 } from "./types.ts";
-import { asObject, epochMsFromSeconds } from "./types.ts";
+import { asObject } from "./types.ts";
 
 const INITIALIZE_ID = 1;
 const THREAD_START_ID = 2;
@@ -113,12 +112,8 @@ export function codexRateLimitSignals(rateLimits: unknown): AdapterSignal[] {
   const quota = codexQuotaBoundary({ method: "account/rateLimits/updated", params: { rateLimits: snapshot } });
   const reached = snapshot.rateLimitReachedType;
   if (reached === null || reached === undefined) return [];
-  const reset =
-    isoFromEpochSeconds(asObject(snapshot.primary)?.resetsAt) ??
-    isoFromEpochSeconds(asObject(snapshot.secondary)?.resetsAt);
-  const resetsAt =
-    epochMsFromSeconds(asObject(snapshot.primary)?.resetsAt) ??
-    epochMsFromSeconds(asObject(snapshot.secondary)?.resetsAt);
+  const resetsAt = quota?.resetsAt ?? undefined;
+  const reset = resetsAt !== undefined ? new Date(resetsAt).toISOString() : undefined;
   return [{
     kind: "flag",
     flag: "resource_blocked",
