@@ -1,3 +1,5 @@
+import type { PhoneSource, PhoneOriginRequest, PhoneInput, PhoneOperationOrigin } from "./phoneOriginTypes.ts";
+export type { PhoneSource, PhoneOriginRequest, PhoneInput, PhoneOperationOrigin } from "./phoneOriginTypes.ts";
 import { createHash } from "node:crypto";
 import { EffectKeyError } from "./effectResolve.ts";
 
@@ -5,40 +7,6 @@ export const PHONE_PROVENANCE_CAPABILITY = "mail.phone_provenance.v1";
 export const PHONE_LABEL = "Paired-phone message — human approval not verified";
 export const PHONE_FORMAT = "honeybee.phone-origin/1";
 export const PHONE_MAX_CONTENT_BYTES = 1024 * 1024;
-export interface PhoneSource {
-  ownerStoreId: string;
-  admissionId: string;
-  contentDigest: string;
-  relation: "forward" | "summary" | "bio-briefing";
-}
-export interface PhoneOriginRequest {
-  format: typeof PHONE_FORMAT;
-  channel: "phone";
-  issuerNodeId: string;
-  assigner: string;
-  credentialRef: string;
-  target: { kind: "bee" | "crew"; id: string };
-  contentKind: "message" | "initial-prompt" | "crew-bio";
-  assurance: "credential-possession-only";
-  humanApproval: "not-verified";
-  lane: "envelope-v1";
-  parentSources: PhoneSource[];
-  rootSources: PhoneSource[];
-  ancestry: "complete" | "unknown-overflow";
-}
-export interface PhoneInput {
-  envelope: PhoneOriginRequest & {
-    ancestryDepth: number;
-    omittedSourcesDigest?: string;
-    ownerStoreId: string;
-    admissionId: string;
-    targetBeeId: string;
-    idempotencyKey: string;
-    contentDigest: string;
-  };
-  originalContent: string;
-}
-export type PhoneOperationOrigin = Omit<PhoneInput["envelope"], "contentDigest"> & { contentDigest: null };
 function invalid(message: string): never { throw new EffectKeyError("invalid_request", message); }
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) invalid("Phone origin requires an object");
