@@ -92,6 +92,8 @@ export const DAEMON_CAPABILITIES = [
   "rpc.local_trust.v1",
   "rpc-effect-resolve.v1",
   "question.withdraw.v1",
+  "question.dismiss.v1",
+  "question.dismissed.v1",
   "bee.human_ref.v1",
   "bee.turn_trigger.v1",
   "turn-trigger.answer.v1",
@@ -329,6 +331,8 @@ export const RPC_ERROR_CODES = [
   "question_already_answered",
   "question_withdrawn",
   "question_withdraw_unsupported",
+  "question_dismissed",
+  "question_dismiss_unsupported",
   "seal_not_found",
   /** v7 (spec 08, additive): account verbs. */
   "account_not_found",
@@ -531,6 +535,7 @@ export const RPC_VERBS = [
   "question.ask",
   "question.answer",
   "question.withdraw",
+  "question.dismiss",
   "question.list",
   "seal.create",
   "seal.list",
@@ -1357,6 +1362,15 @@ export interface QuestionAnswerResult extends DedupMarkers {
   /** The send_wake enqueued for the delivery, when one was needed. */
   commandId: number | null;
   unarchived: boolean;
+}
+
+export interface QuestionDismissParams {
+  questionId: string;
+  idempotencyKey: string;
+}
+
+export interface QuestionDismissResult extends DedupMarkers {
+  question: MirrorQuestionRow;
 }
 
 /** Requires question.withdraw.v1 and an authenticated session principal; see docs/design/question-withdraw-contract.md. */

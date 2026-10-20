@@ -1,3 +1,4 @@
+import { projectQuestionDismissalResult, projectQuestionDismissalDelta } from "./questionDismissalProjection.ts";
 import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
 import { canonicalDigest } from "../../../src/comb/canonical.ts";
 import { parsePhoneOrigin, type PhoneOriginRequest } from "../../core/src/phoneOrigin.ts";
@@ -47,6 +48,7 @@ import {
   QuestionNotOwnerError,
   QuestionAlreadyAnsweredError,
   QuestionWithdrawnError,
+  QuestionDismissedError,
   SealNotFoundError,
   TaskNotFoundError,
   TemplateEnvWipeError,
@@ -158,6 +160,7 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string;
   if (err instanceof TemplateNotFoundError) return { code: "template_not_found", message: err.message };
   if (err instanceof TrackNotFoundError) return { code: "track_not_found", message: err.message };
   if (err instanceof QuestionNotOwnerError) return { code: "question_not_owner", message: err.message };
+  if (err instanceof QuestionDismissedError) return { code: "question_dismissed", message: err.message };
   if (err instanceof QuestionAlreadyAnsweredError) return { code: "question_already_answered", message: err.message };
   if (err instanceof QuestionWithdrawnError) return { code: "question_withdrawn", message: err.message, details: { withdrawalReason: err.withdrawalReason } };
   if (err instanceof QuestionNotFoundError) return { code: "question_not_found", message: err.message };
@@ -276,7 +279,7 @@ export class RpcServer {
       }
       const last = events[events.length - 1] as AuditRow;
       const frame: WatchFrame = { type: "delta", baseSeq: conn.watchCursor, seq: last.seq, events };
-      conn.send(projectAnswerTriggerDelta(frame, conn.clientCapabilities));
+      conn.send(projectQuestionDismissalDelta(projectAnswerTriggerDelta(frame, conn.clientCapabilities), conn.clientCapabilities));
       conn.watchCursor = last.seq;
     }
   }
@@ -452,7 +455,7 @@ export class RpcServer {
         result.then(
           (value) => {
             span.end();
-            conn.send({ id, ok: true, result: projectAnswerTriggerResult(verb, value, conn.clientCapabilities) });
+            conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, value, conn.clientCapabilities), conn.clientCapabilities) });
           },
           (err) => {
             span.end("error");
@@ -462,7 +465,7 @@ export class RpcServer {
         return;
       }
       span.end();
-      conn.send({ id, ok: true, result: projectAnswerTriggerResult(verb, result, conn.clientCapabilities) });
+      conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, result, conn.clientCapabilities), conn.clientCapabilities) });
     } catch (err) {
       if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
       span.end("error");

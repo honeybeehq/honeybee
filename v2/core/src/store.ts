@@ -12,6 +12,7 @@ import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionR
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
 import { currentRpcCaller } from "./rpcAuditContext.ts";
+import type { QuestionDismissedEvent } from "./mirror.ts";
 import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
 import { isAccountId } from "./accountRecipes.ts";
 import { parseUpdateReservation, type UpdateReservation } from "../../../src/updateReservation.ts";
@@ -171,6 +172,7 @@ import {
   QuestionNotOwnerError,
   QuestionAlreadyAnsweredError,
   QuestionWithdrawnError,
+  QuestionDismissedError,
   SchemaVersionError,
   SealNotFoundError,
   TaskNotFoundError,
@@ -1122,6 +1124,9 @@ function mapQuestion(r: Row): QuestionRow {
     status: (r.status ?? (r.answered_at == null ? "open" : "answered")) as QuestionRow["status"],
     withdrawalReason: (r.withdrawal_reason as string | null) ?? null,
     withdrawnAt: r.withdrawn_at == null ? null : Number(r.withdrawn_at),
+    dismissedAt: r.dismissed_at == null ? null : Number(r.dismissed_at),
+    dismissedBy: r.dismissed_by == null ? null : r.dismissed_by as "rpc",
+    dismissalMessageId: r.dismissal_message_id == null ? null : Number(r.dismissal_message_id),
     answer: (r.answer as string | null) ?? null,
     askedAt: Number(r.asked_at),
     answeredAt: r.answered_at == null ? null : Number(r.answered_at),
@@ -1801,14 +1806,22 @@ export class CoreStore {
       );
     }
     const ddl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
-    if (!ddl.includes("'withdrawn'")) {
-      this.db.exec("ALTER TABLE questions RENAME TO questions_v44");
-      this.db.exec(QUESTIONS_TABLE_SQL);
-      const columns = "id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id";
-      this.db.exec(`INSERT INTO questions(${columns}) SELECT ${columns} FROM questions_v44`);
-      this.db.exec("DROP TABLE questions_v44");
-      this.db.exec(QUESTIONS_TABLE_SQL);
+    if (!ddl.includes("'dismissed'")) {
+      if (/CHECK\s*\(\s*status\s+IN/i.test(ddl)) {
+        this.db.exec("ALTER TABLE questions RENAME TO questions_v44");
+        this.db.exec(QUESTIONS_TABLE_SQL);
+        const columns = "id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id" + (ddl.includes("'withdrawn'") ? ",withdrawal_reason,withdrawn_at" : "");
+        this.db.exec(`INSERT INTO questions(${columns}) SELECT ${columns} FROM questions_v44`);
+        this.db.exec("DROP TABLE questions_v44");
+        this.db.exec(QUESTIONS_TABLE_SQL);
+      } else {
+        const columns = new Set((this.stmt("SELECT name FROM pragma_table_info('questions')").all() as Row[]).map(column => String(column.name)));
+        for (const [name, type] of [["withdrawal_reason", "TEXT"], ["withdrawn_at", "INTEGER"], ["dismissed_at", "INTEGER"], ["dismissed_by", "TEXT"], ["dismissal_message_id", "INTEGER"]] as const) {
+          if (!columns.has(name)) this.db.exec(`ALTER TABLE questions ADD COLUMN ${name} ${type}`);
+        }
+      }
     }
+    this.db.exec("CREATE INDEX IF NOT EXISTS questions_dismissal_message ON questions(dismissal_message_id) WHERE dismissal_message_id IS NOT NULL");
     const needsHumanRefMigration = stored < 30;
     if (needsHumanRefMigration && !this.stmt("SELECT 1 FROM meta WHERE key = 'human_ref_installation_id'").get()) {
       this.stmt("INSERT INTO meta(key, value) VALUES('human_ref_installation_id', ?)").run(randomUUID());
@@ -6066,6 +6079,7 @@ export class CoreStore {
       const question = this.getQuestion(questionId);
       if (!question) throw new QuestionNotFoundError(questionId);
       if (question.status === "withdrawn") throw new QuestionWithdrawnError(question.withdrawalReason!);
+      if (question.status === "dismissed") throw new QuestionDismissedError();
       if (question.status !== "open") {
         throw new QuestionNotOpenError(`question ${questionId} is already ${question.status} (answered at ${question.answeredAt})`);
       }
@@ -6096,6 +6110,7 @@ export class CoreStore {
     return this.tx(() => {
       const question = this.requireQuestionOwner(questionId, callerBeeId);
       if (question.status === "withdrawn") return question;
+      if (question.status === "dismissed") throw new QuestionDismissedError();
       if (question.status === "answered") throw new QuestionAlreadyAnsweredError(`question ${questionId} is already answered`);
       const withdrawnAt = this.now();
       const won = this.db.prepare("UPDATE questions SET status = 'withdrawn', withdrawal_reason = ?, withdrawn_at = ? WHERE id = ? AND status = 'open'").run(text, withdrawnAt, questionId);
@@ -6121,6 +6136,40 @@ export class CoreStore {
       if (count > this.maxRpcIdempotencyRows) this.stmt("DELETE FROM question_withdraw_receipts WHERE rowid IN (SELECT rowid FROM question_withdraw_receipts ORDER BY created_at, rowid LIMIT ?)").run(count - this.maxRpcIdempotencyRows);
       return { question };
     });
+  }
+
+  dismissQuestionWithKey(questionId: string, key: string): { question: QuestionRow; deduped?: true } {
+    requireNonEmpty(key, "dismissQuestion: idempotencyKey");
+    return this.tx(() => {
+      const question = this.getQuestion(questionId);
+      if (!question) throw new QuestionNotFoundError(questionId);
+      const hit = this.stmt("SELECT question_id, result FROM question_dismiss_receipts WHERE key = ?").get(key) as Row | undefined;
+      if (hit) {
+        if (hit.question_id !== questionId) throw new IdempotencyConflictError("Dismissal key belongs to another question");
+        return { question: JSON.parse(String(hit.result)) as QuestionRow, deduped: true };
+      }
+      if (question.status === "answered") throw new QuestionAlreadyAnsweredError(`question ${questionId} is already answered`);
+      if (question.status === "withdrawn") throw new QuestionWithdrawnError(question.withdrawalReason!);
+      if (question.status === "open") {
+        const dismissedAt = this.now();
+        const won = this.stmt("UPDATE questions SET status = 'dismissed', dismissed_at = ?, dismissed_by = 'rpc' WHERE id = ? AND status = 'open'").run(dismissedAt, questionId);
+        if (won.changes !== 1) throw new QuestionNotOpenError(`question ${questionId} is no longer open`);
+        const send = this.send(question.beeId, "Your question was dismissed without an answer.", { sender: "rpc", senderKind: "automation", urgency: "next" });
+        this.stmt("UPDATE questions SET dismissal_message_id = ? WHERE id = ?").run(send.message.id, questionId);
+        const event: QuestionDismissedEvent = { questionId, dismissedAt, dismissedBy: "rpc", dismissalMessageId: send.message.id };
+        this.audit("question.dismissed", question.beeId, event);
+      }
+      const updated = this.getQuestion(questionId)!;
+      this.stmt("INSERT INTO question_dismiss_receipts(key,bee_id,question_id,result,created_at) VALUES(?,?,?,?,?)").run(key, question.beeId, questionId, JSON.stringify(updated), this.now());
+      const count = Number((this.stmt("SELECT count(*) AS n FROM question_dismiss_receipts").get() as Row).n);
+      if (count > this.maxRpcIdempotencyRows) this.stmt("DELETE FROM question_dismiss_receipts WHERE rowid IN (SELECT rowid FROM question_dismiss_receipts ORDER BY created_at, rowid LIMIT ?)").run(count - this.maxRpcIdempotencyRows);
+      return { question: updated };
+    });
+  }
+
+  dismissedQuestionId(messageId: number): string | null {
+    const row = this.stmt("SELECT id FROM questions WHERE dismissal_message_id = ?").get(messageId) as Row | undefined;
+    return row === undefined ? null : String(row.id);
   }
 
   private requireQuestionOwner(questionId: string, callerBeeId: string): QuestionRow {

@@ -351,6 +351,7 @@ import {
   type QuestionAnswerResult,
   type QuestionAskResult,
   type QuestionWithdrawResult,
+  type QuestionDismissResult,
   type QuestionListResult,
   type RenameResult,
   type RpcVerb,
@@ -2230,6 +2231,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcQuestionAsk(params));
       case "question.answer":
         return this.withIdempotency(verb, params, () => this.rpcQuestionAnswer(params));
+      case "question.dismiss":
+        return this.rpcQuestionDismiss(params);
       case "question.withdraw":
         return this.rpcQuestionWithdraw(params, conn);
       case "question.list":
@@ -5312,6 +5315,14 @@ export class HiveDaemon {
       commandId: res.send.wakeCommand?.id ?? null,
       unarchived: res.send.unarchived,
     };
+  }
+
+  private rpcQuestionDismiss(params: Record<string, unknown>): QuestionDismissResult {
+    for (const key of Object.keys(params)) if (!["questionId", "idempotencyKey"].includes(key)) throw new RpcError("invalid_request", `question.dismiss does not accept ${key}`);
+    const questionId = this.param(params, "questionId");
+    const key = this.idempotencyKeyOf(params);
+    if (!key) throw new RpcError("invalid_request", "question.dismiss requires idempotencyKey");
+    return this.mustStore().dismissQuestionWithKey(questionId, key);
   }
 
   private rpcQuestionWithdraw(params: Record<string, unknown>, conn: RpcConn): QuestionWithdrawResult {

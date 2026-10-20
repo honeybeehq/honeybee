@@ -84,7 +84,7 @@ export class MultilineFallback {
         this.store.fenceMultilineFallbackPublication(message.id, fallback.id);
         const content = `Honeybee delivery content: message=${message.id} publication=${fallback.id}\n\n${text}`;
         const published = this.files.publish(fallback.root, fallback.ownerStoreId, message.beeId, fallback.id, content, fallback.worktrees);
-        const pointer = deliveryPointer(message, published.path, peer, questionId);
+        const pointer = deliveryPointer(message, published.path, peer, questionId, this.store.dismissedQuestionId(message.id));
         fallback = this.store.transitionMultilineFallback(message.id, "preparing", "ready", { ...published, pointer })!;
       }
     } catch (error) {

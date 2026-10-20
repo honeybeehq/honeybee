@@ -840,7 +840,7 @@ export interface NamingUsageSummary {
 // v6 — questions (a bee asks the operator) and seals (a bee's structured record)
 // ---------------------------------------------------------------------------
 
-export const QUESTION_STATUSES = ["open", "answered", "withdrawn"] as const;
+export const QUESTION_STATUSES = ["open", "answered", "withdrawn", "dismissed"] as const;
 export type QuestionStatus = (typeof QUESTION_STATUSES)[number];
 
 export interface QuestionRow {
@@ -854,6 +854,9 @@ export interface QuestionRow {
   status: QuestionStatus;
   withdrawalReason: string | null;
   withdrawnAt: number | null;
+  dismissedAt: number | null;
+  dismissedBy: "rpc" | null;
+  dismissalMessageId: number | null;
   answer: string | null;
   askedAt: number;
   answeredAt: number | null;
@@ -1680,6 +1683,9 @@ export class QuestionNotFoundError extends CoreError {
 
 /** Answering a question that is no longer open (already answered). */
 export class QuestionNotOpenError extends CoreError {}
+export class QuestionDismissedError extends CoreError {
+  constructor() { super("This question was dismissed without an answer."); }
+}
 export class QuestionNotOwnerError extends CoreError {}
 export class QuestionAlreadyAnsweredError extends CoreError {}
 export class QuestionWithdrawnError extends CoreError {
