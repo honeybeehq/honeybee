@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { join, resolve } from "node:path";
@@ -13,17 +13,17 @@ const proof = join(root, "results");
 const clock = join(root, "offset");
 writeFileSync(clock, "0");
 const logicalNow = () => Date.now() + Number(readFileSync(clock, "utf8"));
-const jump = (at: number) => writeFileSync(clock, String(at - Date.now()));
+const jump = (at: number) => { writeFileSync(`${clock}.next`, String(at - Date.now())); renameSync(`${clock}.next`, clock); };
 const resetAt = Date.now() + 4_000_000;
 const requests: Array<{ account: string; wallAt: number; logicalAt: number; used: number }> = [];
 const events: unknown[] = [];
-let targetHeadroom = false;
+let targetResetChanged = false;
 const server = createServer((request, response) => {
   const account = request.headers.authorization === "Bearer fixture-a" ? "claude-a" : "claude-b";
   const logicalAt = logicalNow();
   const count = requests.filter(row => row.account === account).length;
-  const used = logicalAt >= resetAt && account === "claude-a" ? 5 : targetHeadroom && account === "claude-b" ? 89 : 98 + count / 100;
-  const nextReset = logicalAt >= resetAt && account === "claude-a" ? resetAt + 604_800_000 : resetAt + (count % 2);
+  const used = logicalAt >= resetAt && account === "claude-a" ? 5 : 98 + count / 100;
+  const nextReset = logicalAt >= resetAt && account === "claude-a" ? resetAt + 604_800_000 : resetAt + (count % 2) + (targetResetChanged && account === "claude-b" ? 60_000 : 0);
   response.writeHead(200, { "content-type": "application/json" });
   if (request.url?.includes("profile")) response.end(JSON.stringify({ account: { uuid: "fixture" }, organization: { uuid: "fixture-org", organization_type: "claude_max" } }));
   else {
@@ -111,9 +111,9 @@ try {
   current = await cadence();
   assert.equal(current.delayMs, 900000);
   events.push({ phase: "restart_preserved", cadence: current });
-  targetHeadroom = true;
+  targetResetChanged = true;
   await client.request("account.limits", { id: "claude-b" });
-  await waitFor(async () => (await cadence("claude-b"))?.delayMs === 30000 ? true : null, "fresh capacity evidence resets target cadence");
+  await waitFor(async () => (await cadence("claude-b"))?.delayMs === 30000 ? true : null, "fresh reset evidence resets target cadence");
   events.push({ phase: "fresh_evidence", cadence: await cadence("claude-b") });
   assert.ok(current.nextProbeAt > resetAt);
   const beforeReset = sourceRequests().length;
