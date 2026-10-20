@@ -1,5 +1,5 @@
-1:  c1b2e7bb = 1:  390d37d0 Keep automatic quota recovery out of needs-you views
-2:  d2bb75e7 ! 2:  e4ec9cab Distinguish automatic quota waits from typed operator refusals
+1:  c1b2e7bb = 1:  469df9ec Keep automatic quota recovery out of needs-you views
+2:  d2bb75e7 ! 2:  a56d3f00 Distinguish automatic quota waits from typed operator refusals
     @@ v2/core/src/store.ts: export class CoreStore {
       
      
@@ -25,9 +25,9 @@
      +      store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" && row.reasonDetail !== undefined || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required", row.reasonDetail ?? null);
             try {
     -         await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt }, true);
-    +         await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? undefined }, true);
+    +         await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
               if (!this.stopping) store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
      @@ v2/daemon/src/daemon.ts: export class HiveDaemon {
             }
-3:  ee264ccd = 3:  8bf6e406 Keep local recovery failure codes within the RPC vocabulary
-4:  368e045e = 4:  43069449 Raise attention when a quota successor exhausts its boot budget
+3:  ee264ccd = 3:  dfde5c29 Keep local recovery failure codes within the RPC vocabulary
+4:  368e045e = 4:  238494e6 Raise attention when a quota successor exhausts its boot budget

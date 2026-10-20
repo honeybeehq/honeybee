@@ -251,7 +251,7 @@ index 0992928a..55228b65 100644
      return this.cfg.accounts.proactiveAdmission;
    }
 diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
-index 84d1bfca..8a6e9161 100644
+index 36f9e056..c4987cfb 100644
 --- a/v2/daemon/src/daemon.ts
 +++ b/v2/daemon/src/daemon.ts
 @@ -1,5 +1,6 @@
@@ -300,7 +300,7 @@ index 84d1bfca..8a6e9161 100644
 -      store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required");
 +      store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" && row.reasonDetail !== undefined || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required", row.reasonDetail ?? null);
        try {
-         await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? undefined }, true);
+         await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
          if (!this.stopping) store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
 @@ -6896,7 +6895,8 @@ export class HiveDaemon {
        }

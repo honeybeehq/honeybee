@@ -1,6 +1,6 @@
 E2: automatic quota recovery does not request human attention
 
-Base 568ecbccb73332ed73832ac354ba8fb7eed90719 on review/sar-E-proactive-switch. The E2 branch is review/sar-E2-recovery-not-needs-you.
+Base 2f8e930a35dd695433a634488c975e93f8c63c12 on review/sar-E-proactive-switch. The E2 branch is review/sar-E2-recovery-not-needs-you.
 
 The core pure view now accepts automatic recovery as an input and suppresses waitingForYou while it is pending. blocked and resource_blocked remain unchanged. The store and CLI stale fallback both use matching quota recovery state and control/placement/generation fences, excluding rows invalidated by a user stop. autoswap=false in tags or args does not suppress attention. Cancellation removes the automatic recovery input. List projection batches live recovery rows rather than fetching each bee's history. The read-only path reuses its existing table-presence query and combines flags/recovery facts into one plan, preserving the existing seven-plan bound.
 
