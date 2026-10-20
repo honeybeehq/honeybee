@@ -31,6 +31,18 @@ const check = (expected: boolean, phase: string) => {
   console.log(JSON.stringify({ phase, waitingForYou: expected, flags: ["resource_blocked"], coreListAndReadonlyAgree: true }));
 };
 check(false, "waiting");
+for (const detail of ["credential_login_required", "lease_needs_operator", "paused", "unavailable", "operation_in_progress"] as const) {
+  store.waitQuotaRecovery(row.id, null, "account_unavailable", detail);
+  check(detail !== "operation_in_progress", detail);
+}
+store.waitQuotaRecovery(row.id, null, "account_unavailable", "future_unknown" as any);
+check(true, "unknown-detail");
+store.waitQuotaRecovery(row.id, null, "future_unknown");
+check(true, "unknown-reason");
+store.waitQuotaRecovery(row.id, null, "allocation_owner_required");
+check(false, "owner-required");
+store.waitQuotaRecovery(row.id, null, "account_wait");
+check(false, "capacity-without-retry");
 assert.ok(store.claimQuotaRecovery(row.id, { targetAccount: "claude-a" }));
 check(false, "rotating");
 (store as any).db.prepare("UPDATE bees SET auth_control_fence = 1 WHERE id = ?").run(bee.id);

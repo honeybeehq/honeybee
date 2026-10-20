@@ -1,4 +1,4 @@
-import type { QuotaRecoveryRow } from "./types.ts";
+import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
 import { automaticQuotaRecovery, quotaRecoveryMatches, type QuotaObservedEvent } from "./quota.ts";
 import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
@@ -2196,7 +2196,7 @@ export class CoreStore {
         placement: { agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId ?? null },
         quota, resetHints: hints, state: "waiting", attempt: 0, targetAccount: null,
         successorGeneration: null, claimId: null, reservationId: null, commandId: null,
-        continuationKind: null, continuationMessageIds: [], continuationHistory: [], retryAt: null, reason: null,
+        continuationKind: null, continuationMessageIds: [], continuationHistory: [], retryAt: null, reason: "account_wait",
         createdAt: this.now(), updatedAt: this.now(),
       });
     });
@@ -2248,7 +2248,7 @@ export class CoreStore {
   private putQuotaRecovery(row: QuotaRecoveryRow): QuotaRecoveryRow {
     const previous = this.getQuotaRecovery(row.id);
     const updated = { ...row, updatedAt: this.now() };
-    const notify = !previous || previous.state !== updated.state || previous.retryAt !== updated.retryAt || previous.reason !== updated.reason;
+    const notify = !previous || previous.state !== updated.state || previous.retryAt !== updated.retryAt || previous.reason !== updated.reason || previous.reasonDetail !== updated.reasonDetail;
     this.stmt("INSERT INTO quota_recoveries(id, bee_id, state, payload) VALUES(?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, payload = excluded.payload")
       .run(updated.id, updated.beeId, updated.state, JSON.stringify(updated));
     this.audit("quota.recovery", updated.beeId, { recovery: updated, ...(notify ? { notice: {
@@ -2271,11 +2271,11 @@ export class CoreStore {
     });
   }
 
-  waitQuotaRecovery(id: string, retryAt: number | null, reason: string): void {
+  waitQuotaRecovery(id: string, retryAt: number | null, reason: string, reasonDetail: QuotaRecoveryReasonDetail | null = null): void {
     this.tx(() => {
       const row = this.getQuotaRecovery(id);
-      if (!row || row.state !== "waiting" || row.retryAt === retryAt && row.reason === reason) return;
-      this.putQuotaRecovery({ ...row, retryAt, reason });
+      if (!row || row.state !== "waiting" || row.retryAt === retryAt && row.reason === reason && (row.reasonDetail ?? null) === reasonDetail) return;
+      this.putQuotaRecovery({ ...row, retryAt, reason, reasonDetail });
     });
   }
 

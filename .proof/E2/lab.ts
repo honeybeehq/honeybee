@@ -6,7 +6,7 @@ import { makeDaemonDir, startDaemon, waitFor } from "../../v2/daemon/tests/helpe
 
 const proof = resolve(".proof/E2");
 const repo = resolve(".");
-for (const harness of ["claude", "codex"]) for (const ending of ["cancel", "optout"]) {
+for (const harness of ["claude", "codex"]) for (const ending of ["cancel", "optout", "owner", "credential"]) {
   const name = `${harness}-${ending}`;
   const reset = Date.now() + 86400000;
   const server = createServer((_req, res) => {
@@ -20,7 +20,7 @@ for (const harness of ["claude", "codex"]) for (const ending of ["cancel", "opto
     void fetch(${JSON.stringify(url)}).then(r => r.json()).then(result => emit({id: msg.id, result})); return;
     case "initialize":`));
   chmodSync(fakeCodex, 0o700);
-  const { dir } = makeDaemonDir({ accounts: { allocationMode: "shadow", proactiveAdmission: false }, agents: {
+  const { dir } = makeDaemonDir({ accounts: { allocationMode: (ending === "owner" || ending === "credential") ? "active" : "shadow", allocationNodeId: "lab", allocationOwner: { node: "lab", epoch: "e2" }, proactiveAdmission: false }, agents: {
     [harness]: { command: harness === "codex" ? fakeCodex : process.execPath, args: harness === "codex" ? [] : [join(repo, "v2/driver-hsr/test-agent/fake-claude.mjs")], adapter: harness, ...(harness === "codex" ? { env: { FAKE_CODEX_STRICT_HOME: "1" } } : {}) },
   } });
   for (const label of ["a", "b"]) {
@@ -42,29 +42,32 @@ for (const harness of ["claude", "codex"]) for (const ending of ["cancel", "opto
     await request("send", { beeId, body: "@quota:weekly fixture automatic wait" });
     const waiting = await waitFor(async () => {
       const snapshot = await request("snapshot");
-      const recovery = snapshot.quotaRecoveries.find((row: any) => row.beeId === beeId && row.state === "waiting" && ["account_wait", "account_unavailable"].includes(row.reason));
+      const recovery = snapshot.quotaRecoveries.find((row: any) => row.beeId === beeId && row.state === "waiting" && ["account_wait", "account_unavailable", "allocation_owner_required"].includes(row.reason));
       const current = await request("view", { beeId });
       return recovery && current.view.runtimeState === "idle" && current.view.flags.includes("resource_blocked") ? { recovery, current } : null;
     }, "all exhausted automatic wait", 20000);
+    if (ending === "owner" || ending === "credential") assert.equal(waiting.recovery.reason, "allocation_owner_required");
+    else assert.equal(waiting.recovery.reason, "account_wait");
     assert.equal(waiting.current.view.waitingForYou, false);
     assert.equal(waiting.current.view.blocked, true);
     const listed = await request("list");
     const listRow = listed.views.find((row: any) => row.bee.id === beeId);
     assert.equal(listRow.view.waitingForYou, false);
     assert.ok(listRow.view.flags.includes("resource_blocked"));
-    if (ending === "optout") await request("bee.tag", { beeId, add: ["autoswap=false"] });
+    if (ending === "credential") await request("quota.recovery.wait", { quotaRecoveryId: waiting.recovery.id, reason: "account_unavailable", reasonDetail: "credential_login_required", retryAt: null });
+    else if (ending !== "cancel") await request("bee.tag", { beeId, add: ["autoswap=false"] });
     else await request("stop", { beeId });
     const attention = await waitFor(async () => {
       const current = await request("view", { beeId });
       const snapshot = await request("snapshot");
       const recovery = snapshot.quotaRecoveries.find((row: any) => row.id === waiting.recovery.id);
-      return current.view.waitingForYou && (ending === "optout" || recovery?.state === "cancelled") ? { current, recovery } : null;
+      return current.view.waitingForYou && (ending !== "cancel" || recovery?.state === "cancelled") ? { current, recovery } : null;
     }, "manual attention restored");
     assert.equal(attention.current.view.blocked, true);
     assert.ok(attention.current.view.flags.includes("resource_blocked"));
     const listedAfter = await request("list");
     assert.equal(listedAfter.views.find((row: any) => row.bee.id === beeId).view.waitingForYou, true);
-    console.log(JSON.stringify({ name, passed: true, before: { waitingForYou: false, blocked: true, recovery: waiting.recovery.state }, after: { waitingForYou: true, blocked: true, recovery: attention.recovery.state }, flags: attention.current.view.flags }));
+    console.log(JSON.stringify({ name, passed: true, before: { waitingForYou: false, blocked: true, recovery: waiting.recovery.state, reason: waiting.recovery.reason }, after: { waitingForYou: true, blocked: true, recovery: attention.recovery.state, reason: attention.recovery.reason, reasonDetail: attention.recovery.reasonDetail }, flags: attention.current.view.flags }));
     await request("audit.tail", { beeId, limit: 1000 });
   } finally {
     writeFileSync(join(proof, `${name}.rpc.json`), JSON.stringify(rpc, null, 2));

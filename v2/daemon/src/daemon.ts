@@ -1,5 +1,6 @@
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
-import { isFableModel } from "../../core/src/index.ts";
+import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
+export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess} from "../../harness/src/processIdentity.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
@@ -133,6 +134,7 @@ import {
 import {
   AccountsService,
   ResetLimitsRefusal,
+  LeaseRefusal,
   type AccountsServiceOptions,
   type AccountAdmissionClaim,
   type AccountReadiness,
@@ -673,11 +675,6 @@ export function isRateLimitCause(detail: string): boolean {
   return isQuotaTextFallback(detail);
 }
 
-/** Per-bee rotation opt-out: tag or arg `autoswap=false` (also `--autoswap=false`). */
-export function autoswapDisabled(bee: { tags: string[]; args: string[] | null }): boolean {
-  const spelled = (v: string) => /^-{0,2}autoswap=false$/i.test(v.trim());
-  return bee.tags.some(spelled) || (bee.args ?? []).some(spelled);
-}
 
 function isAccountConfigImportResult(value: unknown): value is AccountConfigImportResult {
   if (value === null || typeof value !== "object") return false;
@@ -1924,7 +1921,9 @@ export class HiveDaemon {
         if (retryAt !== null && (typeof retryAt !== "number" || !Number.isFinite(retryAt) || retryAt <= Date.now())) throw new RpcError("invalid_request", "retryAt must be null or a future epoch timestamp");
         const reason = this.param(params, "reason");
         if (!["allocation_owner_required", "account_wait", "account_unavailable", "autoswap_disabled"].includes(reason)) throw new RpcError("invalid_request", "invalid quota wait reason");
-        this.mustStore().waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retryAt as number | null), reason);
+        const detail = params.reasonDetail;
+        if (detail !== undefined && detail !== null && !["operation_in_progress", "unavailable", "credential_login_required", "lease_needs_operator", "paused"].includes(String(detail))) throw new RpcError("invalid_request", "invalid quota wait reasonDetail");
+        this.mustStore().waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retryAt as number | null), reason, reason === "account_unavailable" ? (detail ?? "unavailable") as import("../../core/src/types.ts").QuotaRecoveryReasonDetail : null);
         return { recovery: this.mustStore().getQuotaRecovery(id) };
       }
       case "bee.swapAccount":
@@ -6873,7 +6872,7 @@ export class HiveDaemon {
       return;
     }
     if (accounts.allocationMode() === "active") {
-      store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required");
+      store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" && row.reasonDetail !== undefined || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required", row.reasonDetail ?? null);
       try {
         await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
         if (!this.stopping) store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
@@ -6896,7 +6895,8 @@ export class HiveDaemon {
       }
       const targets = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee)) : undefined;
       if (targets?.size === 0) {
-        store.waitQuotaRecovery(id, this.quotaRetryAt(bee.id, row.retryAt), "account_wait");
+        const detail = accounts.recoveryWaitDetail(bee.agent);
+        store.waitQuotaRecovery(id, this.quotaRetryAt(bee.id, row.retryAt), detail === null ? "account_wait" : "account_unavailable", detail);
         return;
       }
       const result = this.rpcSwapAccount({ beeId: bee.id, account: "auto", quotaRecoveryId: id, ...(targets ? { onlyAccountIds: [...targets] } : {}), idempotencyKey: `quota:${id}:${row.attempt}` });
@@ -6908,7 +6908,11 @@ export class HiveDaemon {
       const data = error instanceof RpcError ? error.details : undefined;
       const allocation = data?.allocation as { retryAt?: number | null } | undefined;
       const retry = typeof data?.retryAt === "number" ? data.retryAt : allocation?.retryAt ?? null;
-      store.waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retry), error instanceof RpcError && error.code === "account_wait" ? "account_wait" : "account_unavailable");
+      const code = error instanceof RpcError || error instanceof LeaseRefusal ? error.code : null;
+      const detail = code === "credential_login_required" || code === "account_auth_needed" || code === "account_credential_missing" || code === "account_credential_invalid" || code === "account_credential_expired"
+        ? "credential_login_required" : code === "account_paused" ? "paused" : code === "account_lease_revoked" || code === "lease_unavailable" || code === "lease_unsupported"
+          ? "lease_needs_operator" : code === "operation_in_progress" ? "operation_in_progress" : code === "account_wait" ? null : code === "account_unavailable" ? accounts.recoveryWaitDetail(bee.agent) : "unavailable";
+      store.waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retry), detail === null ? "account_wait" : "account_unavailable", detail);
       this.log(`account.rotate bee=${row.beeId} account=${row.sourceAccount} skipped=${error instanceof RpcError && ["account_wait", "account_unavailable", "account_auth_needed"].includes(error.code) ? "no_candidate" : "swap_refused"} recovery=${id} (${error instanceof Error ? error.message : String(error)})`);
     }
   }

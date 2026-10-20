@@ -1932,6 +1932,7 @@ export interface AccountQuotaProbeCadence {
   delayMs: number;
   evidence: string;
 }
+export type QuotaRecoveryReasonDetail = "operation_in_progress" | "unavailable" | "credential_login_required" | "lease_needs_operator" | "paused";
 
 export interface QuotaRecoveryRow {
   sourceWindowUsedPercent?: number | null;
@@ -1965,6 +1966,7 @@ export interface QuotaRecoveryRow {
   continuationHistory: Array<{ generation: number; messageIds: number[]; kind: "replay" | "continue" }>;
   retryAt: number | null;
   reason: string | null;
+  reasonDetail?: QuotaRecoveryReasonDetail | null;
   createdAt: number;
   updatedAt: number;
 }

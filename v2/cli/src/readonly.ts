@@ -364,9 +364,9 @@ export class ReadOnlyStore {
     const bee = this.getBee(beeId);
     const runtime = bee ? this.currentRuntime(beeId) : null;
     const facts = this.tableExists("quota_recoveries")
-      ? this.stmt("SELECT flag, NULL AS recovery FROM (SELECT flag FROM flags WHERE bee_id = ? AND cleared_at IS NULL ORDER BY id) UNION ALL SELECT NULL AS flag, payload AS recovery FROM quota_recoveries AS recovery WHERE recovery.bee_id = ? AND recovery.state IN ('waiting','rotating') AND NOT EXISTS (SELECT 1 FROM runtimes WHERE bee_id = recovery.bee_id AND generation >= json_extract(recovery.payload, '$.sourceGeneration') AND exit_cause = 'stopped_by_user')").all(beeId, beeId) as Row[]
+      ? this.stmt("SELECT flag, NULL AS recovery, id AS order_id, 0 AS source_order FROM flags WHERE bee_id = ? AND cleared_at IS NULL UNION ALL SELECT NULL AS flag, payload AS recovery, 0 AS order_id, 1 AS source_order FROM quota_recoveries AS recovery WHERE recovery.bee_id = ? AND recovery.state IN ('waiting','rotating') AND NOT EXISTS (SELECT 1 FROM runtimes WHERE bee_id = recovery.bee_id AND generation >= json_extract(recovery.payload, '$.sourceGeneration') AND exit_cause = 'stopped_by_user') ORDER BY source_order, order_id").all(beeId, beeId) as Row[]
       : this.activeFlags(beeId).map(flag => ({ flag, recovery: null }));
-    const recoveries = facts.filter(row => row.recovery !== null).map(row => JSON.parse(String(row.recovery)) as QuotaRecoveryRow);
+    const recoveries = facts.filter(row => row.recovery !== null).map(row => ({ trigger: "provider_limit", ...JSON.parse(String(row.recovery)) }) as QuotaRecoveryRow);
     return {
       view: deriveBeeView(
         beeId,

@@ -25,6 +25,13 @@ export function quotaRecoveryMatches(row: QuotaRecoveryRow, bee: BeeRow | null, 
 }
 
 export function automaticQuotaRecovery(bee: BeeRow | null, runtime: RuntimeRow | null, recoveries: readonly QuotaRecoveryRow[]): boolean {
-  if (!bee || [...bee.tags, ...(bee.args ?? [])].some(value => /^-{0,2}autoswap=false$/i.test(value.trim()))) return false;
-  return recoveries.some(row => (row.state === "waiting" || row.state === "rotating") && quotaRecoveryMatches(row, bee, runtime));
+  if (!bee || autoswapDisabled(bee)) return false;
+  return recoveries.some(row => quotaRecoveryMatches(row, bee, runtime) && (row.state === "rotating" || row.state === "waiting"
+    && (row.reason === "account_wait" || row.reason === "completion_reserve" || row.reason === "allocation_owner_required"
+      || row.reason === "account_unavailable" && row.reasonDetail === "operation_in_progress")));
+}
+
+export function autoswapDisabled(bee: { tags: string[]; args: string[] | null }): boolean {
+  const spelled = (value: string) => /^-{0,2}autoswap=false$/i.test(value.trim());
+  return bee.tags.some(spelled) || (bee.args ?? []).some(spelled);
 }
