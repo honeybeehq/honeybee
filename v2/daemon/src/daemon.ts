@@ -6911,7 +6911,7 @@ export class HiveDaemon {
       const code = error instanceof RpcError || error instanceof LeaseRefusal ? error.code : null;
       const detail = code === "credential_login_required" || code === "account_auth_needed" || code === "account_credential_missing" || code === "account_credential_invalid" || code === "account_credential_expired"
         ? "credential_login_required" : code === "account_paused" ? "paused" : code === "account_lease_revoked" || code === "lease_unavailable" || code === "lease_unsupported"
-          ? "lease_needs_operator" : code === "operation_in_progress" ? "operation_in_progress" : code === "account_wait" ? null : code === "account_unavailable" ? accounts.recoveryWaitDetail(bee.agent) : "unavailable";
+          ? "lease_needs_operator" : code === "account_wait" ? null : code === "account_unavailable" ? accounts.recoveryWaitDetail(bee.agent) : "unavailable";
       store.waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retry), detail === null ? "account_wait" : "account_unavailable", detail);
       this.log(`account.rotate bee=${row.beeId} account=${row.sourceAccount} skipped=${error instanceof RpcError && ["account_wait", "account_unavailable", "account_auth_needed"].includes(error.code) ? "no_candidate" : "swap_refused"} recovery=${id} (${error instanceof Error ? error.message : String(error)})`);
     }
