@@ -262,6 +262,7 @@ export function describeWeeklyCeilingBreach(accountId: string, breach: WeeklyCei
 }
 
 export interface PickOptions {
+  proactiveRefresh?: boolean;
   quotaResetAt?: number;
   minimumObservedAt?: number;
   /** Accounts already tried / the current one (rotation). */
@@ -2326,18 +2327,23 @@ export class AccountsService {
    * including the singleton case. Provider I/O happens before the store
    * transaction; selection then uses the resulting immutable rows.
    */
-  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}, quotaRecovery = false): Promise<void> {
+  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}, quotaRecovery = false): Promise<boolean> {
     if (this.cfg.accounts.allocationMode === "shadow" && !quotaRecovery) {
       this.scheduleFreshLimits(harness, opts);
-      return;
+      return true;
     }
     const now = this.now();
+    let skippedProactiveProbe = false;
     const stale = this.candidateIdsFor(harness, opts).filter((id) => {
       const row = this.store.getAccountLimits(id);
       const account = this.store.getAccount(id);
       const previous = quotaRecovery ? this.store.getAccountQuotaProbeCadence(id) : null;
       const crossedReset = opts.quotaResetAt !== undefined && opts.quotaResetAt <= now && opts.quotaResetAt > (previous?.lastProbeAt ?? 0) || row && [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now && reset > (previous?.lastProbeAt ?? 0));
-      if (previous && now < previous.nextProbeAt && !crossedReset && previous.evidence === this.quotaProbeEvidence(id)) return false;
+      if (opts.proactiveRefresh && this.admissionRefreshes.has(id)) return true;
+      if (previous && now < previous.nextProbeAt && !crossedReset && previous.evidence === this.quotaProbeEvidence(id)) {
+        if (!opts.proactiveRefresh || previous.lastProbeAt > (opts.minimumObservedAt ?? now)) return false;
+        if (now - previous.lastProbeAt < 30_000) { skippedProactiveProbe = true; return false; }
+      }
       return !row || !row.readable || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs
         || opts.minimumObservedAt !== undefined && row.fetchedAt <= opts.minimumObservedAt
         || [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now)
@@ -2372,6 +2378,7 @@ export class AccountsService {
         if (this.admissionRefreshes.get(id) === pending) this.admissionRefreshes.delete(id);
       }
     }));
+    return !skippedProactiveProbe;
   }
 
   private quotaProbeEvidence(accountId: string): string {
@@ -2535,8 +2542,10 @@ export class AccountsService {
     const activity = this.localActivities(accounts.map(account => account.id), now);
     const source = accounts.find(account => account.id === sourceAccount);
     if (!source) return { accountIds: new Set(), uncertain: true };
-    if (openingBeeId && this.store.listQuotaRecoveries(openingBeeId).some(row => row.state === "cancelled" && row.reason === "relative_refresh_unavailable" && now - row.updatedAt < 30_000)) return { accountIds: new Set(), uncertain: false };
-    const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt) : [];
+    const failed = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).findLast(row => row.state === "cancelled" && ["relative_refresh_unavailable", "relative_swap_refused"].includes(row.reason ?? "")) : undefined;
+    if (failed && now - failed.updatedAt < (failed.reason === "relative_refresh_unavailable" ? 15 * 60_000 : 30_000)
+      && !accounts.some(account => account.id !== sourceAccount && this.store.getAccountLimits(account.id)?.readable && (this.store.getAccountLimits(account.id)?.fetchedAt ?? 0) > failed.updatedAt)) return { accountIds: new Set(), uncertain: false };
+    const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3) : [];
     if (history[0] && now - history[0].updatedAt < this.cfg.accounts.proactiveDwellMs) return { accountIds: new Set(), uncertain: false };
     const sourcePlan = this.store.getAccountLimits(sourceAccount)?.plan?.toLowerCase();
     const policy = { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs };

@@ -6510,10 +6510,11 @@ export class HiveDaemon {
         model: this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
       });
     }
-    return this.withIdempotency("bee.swapAccount", params, () => this.rpcSwapAccount(params));
+    if (key != null && store.lookupRpcResult(key)) return this.withIdempotency("bee.swapAccount", params, () => this.rpcSwapAccount(params));
+    return this.rpcSwapAccount(params, effect => this.withIdempotency("bee.swapAccount", params, effect));
   }
 
-  private rpcSwapAccount(params: Record<string, unknown>): SwapAccountResult {
+  private rpcSwapAccount(params: Record<string, unknown>, commit?: (effect: () => SwapAccountResult) => SwapAccountResult): SwapAccountResult {
     const store = this.mustStore();
     const beeId = this.requireBee(params);
     const bee = store.getBee(beeId) as BeeRow;
@@ -6532,7 +6533,7 @@ export class HiveDaemon {
       if (onlyAccountIds && !onlyAccountIds.has(target.id)) {
         throw new RpcError("account_unavailable", `account ${target.id} is outside the allowed account ids for this swap`, { account: target.id });
       }
-      return this.performSwap(bee, target, "operator");
+      return this.performSwap(bee, target, "operator", undefined, undefined, undefined, undefined, commit);
     }
     const runtime = store.currentRuntime(bee.id);
     const claim = this.allocationClaimParam(params);
@@ -6561,7 +6562,7 @@ export class HiveDaemon {
           throw new RpcError("account_claim_refused", "Proactive claim no longer has materially better remaining allowance", { claimId: claim.id, account: target.id });
         }
       }
-      return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim, recoveryId);
+      return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim, recoveryId, commit);
     }
     if (this.mustAccounts().allocationMode() === "active") this.ownerClaimRequired(bee.agent, "swap");
     const admission = store.transact(() => {
@@ -6592,7 +6593,7 @@ export class HiveDaemon {
       return admission;
     });
     try {
-      return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId);
+      return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId, commit);
     } catch (error) {
       if (admission.reservation) store.releaseAccountAdmission(admission.reservation.id);
       throw error;
@@ -6607,6 +6608,7 @@ export class HiveDaemon {
     reservationId?: string,
     claim?: AccountAdmissionClaim,
     quotaRecoveryId?: string,
+    commit?: (effect: () => SwapAccountResult) => SwapAccountResult,
   ): SwapAccountResult {
     const store = this.mustStore();
     const accounts = this.mustAccounts();
@@ -6614,7 +6616,10 @@ export class HiveDaemon {
       throw new RpcError("harness_mismatch", `account ${target.id} is a ${target.harness} account; bee ${bee.name} runs ${bee.agent}`);
     }
     const from = bee.account;
-    if (from === target.id && !quotaRecoveryId) return { beeId: bee.id, from, to: target.id, action: "noop", commandId: null, rekeyed: false, transcript: "none" };
+    if (from === target.id && !quotaRecoveryId) {
+      const noop: SwapAccountResult = { beeId: bee.id, from, to: target.id, action: "noop", commandId: null, rekeyed: false, transcript: "none" };
+      return commit ? commit(() => noop) : noop;
+    }
     // The destination is validated in full before the running source is touched.
     const readiness = accounts.readiness(target);
     if (!readiness.ready) throw new RpcError(readiness.code, readiness.message, { account: target.id });
@@ -6628,37 +6633,40 @@ export class HiveDaemon {
     const live = rt != null && rt.state !== "stopped";
     let rekeyed = false;
     let commandId: number | null = null;
-    store.transact(() => {
-      if (quotaRecoveryId) {
-        if (!store.claimQuotaRecovery(quotaRecoveryId, { targetAccount: target.id, claimId: claim?.id, reservationId })) throw new RpcError("invalid_request", "quota recovery is no longer claimable");
-      } else store.cancelQuotaRecoveries(bee.id, "manual_swap");
-      store.setBeeAccount(bee.id, target.id);
-      const key = homeEnvFor(bee.agent);
-      const env = { ...bee.env };
-      if (key) delete env[key];
-      store.setBeeEnv(bee.id, { ...env, ...accounts.homeEnvOf(target) });
-      if (target.status === "ok" && store.activeFlags(bee.id).some((f) => f.flag === "auth_needed")) {
-        store.clearFlag(bee.id, "auth_needed", `account swapped to ${target.id}`);
-      }
-      this.authResume?.beeSwapped(bee.id, target);
-      // Claude cross-account moves mint a fresh session id (the old
-      // copyThread rule): the resume runs as `--resume <seed> --fork-session`.
-      if (bee.agent === "claude" && from !== target.id) rekeyed = store.rekeyBeeSession(bee.id).applied;
-      if (live && rt) {
-        commandId = store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: `swap_account:${by}`, thenRevive: true }).id;
-      }
-      if (quotaRecoveryId) {
-        if (!live) commandId = store.enqueueCommand("revive", bee.id, { reason: "quota_recovery" }).id;
-        store.bindQuotaRecovery(quotaRecoveryId, commandId);
-      }
-      if (claim) {
-        this.consumeAccountClaim(claim, bee.id);
-      } else if (reservationId) store.bindAccountAdmission(reservationId, bee.id);
-    });
-    const action: SwapAccountResult["action"] = live ? "stop_then_revive" : "rebind_only";
-    this.log(`bee.swapAccount bee=${bee.id} from=${from ?? "-"} to=${target.id} by=${by} action=${action} rekeyed=${rekeyed} transcript=${transcript}${commandId != null ? ` stop=${commandId}` : ""}`);
-    return { beeId: bee.id, from, to: target.id, action, commandId, rekeyed, transcript,
-      ...(allocation ? { allocation } : {}), ...(claim ? { allocationClaimId: claim.id } : {}) };
+    const apply = () => {
+      store.transact(() => {
+        if (quotaRecoveryId) {
+          if (!store.claimQuotaRecovery(quotaRecoveryId, { targetAccount: target.id, claimId: claim?.id, reservationId })) throw new RpcError("invalid_request", "quota recovery is no longer claimable");
+        } else store.cancelQuotaRecoveries(bee.id, "manual_swap");
+        store.setBeeAccount(bee.id, target.id);
+        const key = homeEnvFor(bee.agent);
+        const env = { ...bee.env };
+        if (key) delete env[key];
+        store.setBeeEnv(bee.id, { ...env, ...accounts.homeEnvOf(target) });
+        if (target.status === "ok" && store.activeFlags(bee.id).some((f) => f.flag === "auth_needed")) {
+          store.clearFlag(bee.id, "auth_needed", `account swapped to ${target.id}`);
+        }
+        this.authResume?.beeSwapped(bee.id, target);
+        // Claude cross-account moves mint a fresh session id (the old
+        // copyThread rule): the resume runs as `--resume <seed> --fork-session`.
+        if (bee.agent === "claude" && from !== target.id) rekeyed = store.rekeyBeeSession(bee.id).applied;
+        if (live && rt) {
+          commandId = store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: `swap_account:${by}`, thenRevive: true }).id;
+        }
+        if (quotaRecoveryId) {
+          if (!live) commandId = store.enqueueCommand("revive", bee.id, { reason: "quota_recovery" }).id;
+          store.bindQuotaRecovery(quotaRecoveryId, commandId);
+        }
+        if (claim) {
+          this.consumeAccountClaim(claim, bee.id);
+        } else if (reservationId) store.bindAccountAdmission(reservationId, bee.id);
+      });
+      const action: SwapAccountResult["action"] = live ? "stop_then_revive" : "rebind_only";
+      this.log(`bee.swapAccount bee=${bee.id} from=${from ?? "-"} to=${target.id} by=${by} action=${action} rekeyed=${rekeyed} transcript=${transcript}${commandId != null ? ` stop=${commandId}` : ""}`);
+      return { beeId: bee.id, from, to: target.id, action, commandId, rekeyed, transcript,
+        ...(allocation ? { allocation } : {}), ...(claim ? { allocationClaimId: claim.id } : {}) };
+    };
+    return commit ? commit(apply) : apply();
   }
 
   private carryCodexTranscript(bee: BeeRow, target: AccountRow): SwapAccountResult["transcript"] {
@@ -6934,12 +6942,13 @@ export class HiveDaemon {
     if (accounts.allocationMode() === "active") {
       store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" && row.reasonDetail !== undefined || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required", row.reasonDetail ?? null);
       try {
-        await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: row.trigger === "proactive" ? undefined : bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
+        const refreshed = await accounts.ensureFreshAdmissionLimits(bee.agent, { proactiveRefresh: row.trigger === "proactive", onlyAccountIds: row.trigger === "proactive" ? undefined : bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
         if (!this.stopping) {
           store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
           if (row.trigger === "proactive" && bee.account) {
             const comparison = accounts.proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), bee.id);
             store.setProactiveCandidates(id, comparison.uncertain ? null : [...comparison.accountIds]);
+            if (comparison.uncertain && !refreshed) return;
             if (comparison.uncertain || comparison.accountIds.size === 0) store.cancelQuotaRecovery(id, comparison.uncertain ? "relative_refresh_unavailable" : "relative_headroom_unavailable");
             this.requestTick();
           }
@@ -6951,7 +6960,7 @@ export class HiveDaemon {
       return;
     }
     try {
-      await accounts.ensureFreshAdmissionLimits(bee.agent, { model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
+      const refreshed = await accounts.ensureFreshAdmissionLimits(bee.agent, { proactiveRefresh: row.trigger === "proactive", model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
       if (this.stopping) return;
       store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
       row = store.getQuotaRecovery(id);
@@ -6967,6 +6976,7 @@ export class HiveDaemon {
       const comparison = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee), bee.id) : undefined;
       if (comparison) store.setProactiveCandidates(id, comparison.uncertain ? null : [...comparison.accountIds]);
       if (comparison?.uncertain) {
+        if (!refreshed) return;
         store.cancelQuotaRecovery(id, "relative_refresh_unavailable");
         this.requestTick();
         return;
@@ -6989,7 +6999,7 @@ export class HiveDaemon {
       row = store.getQuotaRecovery(id);
       if (!row || row.state !== "waiting") return;
       if (row.trigger === "proactive") {
-        store.cancelQuotaRecovery(id, "relative_refresh_unavailable");
+        store.cancelQuotaRecovery(id, error instanceof RpcError ? "relative_swap_refused" : "relative_refresh_unavailable");
         this.requestTick();
         return;
       }

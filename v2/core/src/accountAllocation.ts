@@ -152,7 +152,7 @@ export function relativeCompletionHeadroom(source: AccountAdmissionCandidate, ta
   };
   const current = score(source, sourceWindows);
   const alternative = score(target, targetWindows);
-  const margin = marginMultiplier * Math.max((100 - policy.completionReservePercent) * Math.min(source.capacityUnits, target.capacityUnits) / 100, current.cost, alternative.cost);
+  const margin = marginMultiplier * Math.max((100 - policy.completionReservePercent) * Math.min(source.capacityUnits, target.capacityUnits) / 100, Math.max(current.cost / source.capacityUnits, alternative.cost / target.capacityUnits) * Math.min(source.capacityUnits, target.capacityUnits));
   return alternative.remaining > current.remaining + margin
     && alternative.rate > current.rate + margin / Math.max(current.hours, alternative.hours);
 }
