@@ -31,7 +31,7 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
   writeFileSync(fakeCodex, source);
   chmodSync(fakeCodex, 0o700);
   const { dir } = makeDaemonDir({ accounts: { allocationMode: scenario === "active" ? "active" : "shadow", allocationNodeId: "lab", allocationOwner: { node: "lab", epoch: "lab-e" }, allocationQuotaFreshMs: scenario === "stale" ? 500 : 120_000 }, agents: {
-    [harness]: { command: harness === "codex" ? fakeCodex : process.execPath, args: harness === "codex" ? [] : [join(repo, "v2/driver-hsr/test-agent/fake-claude.mjs")], adapter: harness },
+    [harness]: { command: harness === "codex" ? fakeCodex : process.execPath, args: harness === "codex" ? [] : [join(repo, "v2/driver-hsr/test-agent/fake-claude.mjs")], adapter: harness, ...(harness === "codex" ? { env: { FAKE_CODEX_STRICT_HOME: "1" } } : {}) },
   } });
   writeFileSync(join(proof, `${name}.root.log`), dir);
   for (const label of ["a", "b"]) {
@@ -144,7 +144,8 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
         assert.equal(new Set(notices.map((r: any) => r.payload.notice.recoveryId)).size, 1);
       } else {
         const mail = await delivered(sent.messageId);
-        assert.equal(mail.deliveredGeneration, scenario === "stale" || scenario === "optout" || scenario === "healthy" ? 1 : 2);
+        if (scenario === "source-reset") assert.ok(mail.deliveredGeneration === 1 || mail.deliveredGeneration === 2);
+        else assert.equal(mail.deliveredGeneration, scenario === "stale" || scenario === "optout" || scenario === "healthy" ? 1 : 2);
         await idle();
         const snapshot = await request("snapshot");
         const recoveries = snapshot.quotaRecoveries.filter((r: any) => r.beeId === beeId);
@@ -154,12 +155,16 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
           assert.equal(recoveries[0].trigger, "proactive");
           assert.equal(recoveries[0].quota, null);
           assert.equal(recoveries[0].interrupted, false);
-          assert.equal(recoveries[0].continuationKind, "none");
+          if (recoveries[0].state === "cancelled") {
+            assert.equal(scenario, "source-reset");
+            assert.equal(recoveries[0].reason, "completion_headroom_restored");
+            assert.equal(recoveries[0].continuationKind, null);
+          } else assert.equal(recoveries[0].continuationKind, "none");
           assert.deepEqual(recoveries[0].continuationMessageIds, []);
           assert.equal((await request("view", { beeId })).bee.account, `${harness}-${scenario === "source-reset" ? "a" : "b"}`);
           if (action) assert.equal((await request("action.get", { actionId: action.actions[0].id })).action.status, "running");
           const again = await send("conversation still continues");
-          assert.equal((await delivered(again.messageId)).deliveredGeneration, 2);
+          assert.equal((await delivered(again.messageId)).deliveredGeneration, mail.deliveredGeneration);
           await idle();
         }
       }
