@@ -52,5 +52,26 @@ reconciler.reconcile();
 assert.equal(store.getQuotaRecovery(recovery.id)?.reason, "successor_spawn_failed");
 assert.equal(store.quotaDeliveryGate(bee.id).held, false);
 console.log(JSON.stringify({ case: "successor-spawn-failed", state: store.getQuotaRecovery(recovery.id)?.state, deliveryHeld: false }));
+const provider = store.createBee({ name: "provider-failed", agent: "claude", substrate: "hsr", cwd: root, account: "claude-a" }).bee;
+store.updateRuntimeState(provider.id, 1, "running", { pid: 3, pidStartedAt: 3 });
+const original = store.send(provider.id, "owed human request").message;
+store.markDelivered(original.id, 1);
+store.recordQuotaEvidence({ eventId: "fixture-provider-limit", beeId: provider.id, generation: 1,
+  quota: { harness: "claude", window: "weekly", resetsAt: Date.now() + 86400000, providerCategory: "rate_limit_event" },
+  turn: { messageIds: [original.id], progress: "none" } });
+const providerRecovery = store.listQuotaRecoveries(provider.id)[0]!;
+assert.ok(store.claimQuotaRecovery(providerRecovery.id, { targetAccount: "claude-a" }));
+store.bindQuotaRecovery(providerRecovery.id, null);
+store.updateRuntimeState(provider.id, 1, "stopped", { exitCause: "stopped_by_system" });
+store.reviveBee(provider.id, { proc: { pid: 4, pidStartedAt: 4 } });
+store.updateRuntimeState(provider.id, 2, "running", { synthetic: true });
+const resumed = store.resumeQuotaRecovery(providerRecovery.id)!;
+assert.equal(resumed.continuationKind, "replay");
+store.updateRuntimeState(provider.id, 2, "stopped", { exitCause: "crashed" });
+store.setFlag(provider.id, "spawn_failed", "fixture provider successor exhausted budget");
+reconciler.reconcile();
+assert.equal(store.getQuotaRecovery(providerRecovery.id)?.state, "rotating");
+assert.ok(store.undeliveredMessages(provider.id).some(message => resumed.continuationMessageIds.includes(message.id) && message.body === original.body));
+console.log(JSON.stringify({ case: "provider-spawn-failed", state: "rotating", replayStillPending: true, automaticRetry: false }));
 console.log(JSON.stringify({ case: "indexed-proactive-boundary", plan: db.prepare("EXPLAIN QUERY PLAN SELECT MAX(json_extract(payload, '$.createdAt')) FROM quota_recoveries WHERE json_extract(payload, '$.sourceAccount') = ? AND json_type(payload, '$.admission') = 'object'").all("claude-a") }));
 store.close();
