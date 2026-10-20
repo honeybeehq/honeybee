@@ -12,7 +12,7 @@ assert(process.env.TMPDIR?.startsWith('/var/tmp/'));
 const root=mkdtempSync(join(process.env.TMPDIR,'h1c-review-'));
 const fake=new URL('./h1c-fake-codex.mjs',import.meta.url).pathname;
 const maskFake=new URL('./h1c-child-umask.mjs',import.meta.url).pathname;
-for(const mode of ['child-umask','steer-refused','deterministic-refusal','oversize-confirming','oversize-nonconfirming','multiline-intent','captured-settlement','unknown-pointer-same-generation','unknown-pointer-old-generation'].filter(mode=>process.argv.length===2||process.argv.slice(2).includes(mode))){
+for(const mode of ['child-umask','steer-refused','deterministic-refusal','oversize-confirming','oversize-nonconfirming','multiline-intent','multiline-plan-not-ready','captured-settlement','unknown-pointer-same-generation','unknown-pointer-old-generation'].filter(mode=>process.argv.length===2||process.argv.slice(2).includes(mode))){
  const dir=join(root,mode);let clock=Date.now();const writes=dir+'.writes';
  const work=join(root,'work-'+mode);mkdirSync(work,{mode:0o700});
  const store=openCoreStore(dir+'.sqlite',{now:()=>clock});
@@ -36,6 +36,16 @@ for(const mode of ['child-umask','steer-refused','deterministic-refusal','oversi
    for(let i=0;i<500&&!driver.procs.get('bee').turnId;i++){clock+=100;core.observe();await sleep(2);}assert(driver.procs.get('bee').turnId);
   }
   const message=store.send('bee',mode.startsWith('oversize')?'x'.repeat(16_777_216):'owned clean refusal').message;
+  if(mode==='multiline-plan-not-ready'){
+   for(let i=0;i<3;i++)store.recordMultilineDeliveryRefusal(message.id,1,'multiline_type_mode');
+   driver.procs.get('bee').socketBroken=true;core.step();
+   assert.equal(store.multilineDelivery(message.id).fallback.state,'ready');assert.equal(store.getDeliveryConfirmationIntent(message.id),null);assert.equal(existsSync(writes),false);
+   driver.procs.get('bee').socketBroken=false;
+   assert.throws(()=>store.transact(()=>{core.step();assert.equal(store.getDeliveryConfirmationIntent(message.id),null);throw Error('owned outer rollback');}),/owned outer rollback/);
+   assert.equal(store.multilineDelivery(message.id).fallback.state,'ready');await until(()=>store.getMessage(message.id)?.deliveredAt!==null);
+   assert.equal(readFileSync(writes,'utf8').trim().split('\n').length,1);assert.equal(store.getDeliveryConfirmationIntent(message.id),null);
+   console.log(JSON.stringify({case:mode,notReadyLeavesReady:true,outerTransactionNoEffect:true,stdinWrites:1,operatorActions:0}));continue;
+  }
   if(mode.startsWith('unknown-pointer')){
    for(let i=0;i<3;i++)store.recordMultilineDeliveryRefusal(message.id,1,'multiline_type_mode');
    const plan=driver.planDeliveryConfirmation.bind(driver);driver.planDeliveryConfirmation=()=>null;

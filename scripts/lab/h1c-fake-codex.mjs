@@ -4,6 +4,7 @@ const emit=value=>process.stdout.write(JSON.stringify(value)+'\n');
 let turnId=null;
 createInterface({input:process.stdin}).on('line',line=>{
  const request=JSON.parse(line);
+ if(request.type==='user')appendFileSync(process.env.H1C_WRITES,JSON.stringify({method:'claude/user'})+'\n');
  if(request.method==='initialize')emit({id:request.id,result:{userAgent:'owned-h1c-fixture'}});
  if(request.method==='thread/start')emit({id:request.id,result:{thread:{id:'h1c-thread'}}});
  if(request.method==='turn/start'||request.method==='turn/steer'){

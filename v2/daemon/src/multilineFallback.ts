@@ -110,7 +110,6 @@ export class MultilineFallback {
     }
     if (!fallback.path) return { handled: true, accepted: false };
     if (fallback.pointer && this.driver.planDeliveryConfirmation?.(message.beeId, generation, message.id, fallback.pointer) != null) {
-      this.store.transitionMultilineFallback(message.id, "ready", "in_flight", { generation, attempts: (fallback.attempts ?? 0) + 1, attemptPhase: "injecting" });
       return { handled: false, accepted: false, confirmationBody: fallback.pointer };
     }
     const pane = this.driver.deliveryPane?.(message.beeId, generation);

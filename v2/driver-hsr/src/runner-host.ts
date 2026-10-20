@@ -288,11 +288,19 @@ export function runRunnerHost(configPath: string): void {
   rmSync(cfg.socketPath, { force: true });
   const server: Server = createServer((socket: Socket) => {
     let buffered = "";
+    let bufferedBytes = 0;
     socket.setEncoding("utf8");
     socket.on("data", (chunk: string) => {
-      buffered += chunk;
-      const frames = buffered.split("\n");
-      buffered = frames.pop() ?? "";
+      const parts = chunk.split("\n");
+      if (parts.length === 1) {
+        buffered += chunk;
+        bufferedBytes += Buffer.byteLength(chunk);
+        if (bufferedBytes > DELIVERY_FRAME_MAX_BYTES) socket.destroy();
+        return;
+      }
+      const frames = [buffered + parts[0], ...parts.slice(1, -1)];
+      buffered = parts[parts.length - 1]!;
+      bufferedBytes = Buffer.byteLength(buffered);
       for (const frame of frames) {
         if (Buffer.byteLength(frame + "\n") > DELIVERY_FRAME_MAX_BYTES) { socket.destroy(); return; }
         if (frame.trim().length === 0) continue;
@@ -311,7 +319,7 @@ export function runRunnerHost(configPath: string): void {
           // Malformed frame: drop it; the daemon's delivery loop re-sends.
         }
       }
-      if (Buffer.byteLength(buffered) > DELIVERY_FRAME_MAX_BYTES) socket.destroy();
+      if (bufferedBytes > DELIVERY_FRAME_MAX_BYTES) socket.destroy();
     });
     socket.on("error", () => undefined);
   });

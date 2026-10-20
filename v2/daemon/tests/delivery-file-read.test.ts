@@ -113,16 +113,17 @@ test("default Darwin dataDir and delivery-content for a /Users home are outside 
   }
 });
 
-for (const loseAttempt of [false, true]) test(`real HSR asynchronous confirmation ${loseAttempt ? "with lost outbound-attempt state stays UNKNOWN" : "settles from exact passive proof"}`, async t => {
+for (const loseAttempt of [false, true]) test(`real HSR asynchronous confirmation ${loseAttempt ? "with lost outbound-attempt state settles from durable intent" : "settles from durable confirmation"}`, async t => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hc-"))), data = join(root, "data"), work = join(root, "work");
   for (const path of [data, work, join(root, "s")]) mkdirSync(path, {mode: 0o700});
   const fixture = fileURLToPath(new URL("../../driver-hsr/test-agent/fake-codex.mjs", import.meta.url)), rpcLog = join(root, "rpc.jsonl");
   const driver = new HsrDriver({sessionLogDir: join(root, "logs"), socketDir: join(root, "s"), stopKillGraceMs: 100, resolve: () => ({command: process.execPath, args: [fixture], cwd: work, env: {...process.env, FAKE_CODEX_RPC_LOG: rpcLog}, adapter: codexAdapter({cwd: work})})});
-  const store = openCoreStore(join(data, "core.sqlite3"), {now: () => 1000, ephemeral: true});
+  let now = 1000;
+  const store = openCoreStore(join(data, "core.sqlite3"), {now: () => now, ephemeral: true});
   t.after(() => {driver.disposeAll(); store.close(); rmSync(root, {recursive: true, force: true});});
-  const core = new DaemonCore({store, driver, now: () => 1000, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}}); core.boot();
+  const core = new DaemonCore({store, driver, now: () => now, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}}); core.boot();
   const bee = store.createBee({name: "confirm", agent: "stub", substrate: "hsr", cwd: work}).bee; store.enqueueCommand("spawn", bee.id);
-  const wait = async (condition: () => boolean) => {for (let i = 0; i < 500; i++) {if (condition()) return; await new Promise(resolve => setTimeout(resolve, 10));} assert.fail("HSR confirm timed out");};
+  const wait = async (condition: () => boolean) => {for (let i = 0; i < 500; i++) {now += 20; if (condition()) return; await new Promise(resolve => setTimeout(resolve, 10));} assert.fail("HSR confirm timed out");};
   await wait(() => {core.step(); return store.currentRuntime(bee.id)?.state === "idle";});
   const message = store.send(bee.id, "one\ntwo").message;
   for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
@@ -131,26 +132,26 @@ for (const loseAttempt of [false, true]) test(`real HSR asynchronous confirmatio
   assert.equal(initial.state, "in_flight"); assert.equal(initial.attempts, 1);
   assert.equal(store.countUnknownMultilineHolds(), 0);
   assert.equal(store.auditRows().some(row => row.kind === "mail.delivery_fallback_unknown"), false);
+  const durableIntent = store.getDeliveryConfirmationIntent(message.id)!; assert.ok(durableIntent.wireLine);
   if (loseAttempt) {
     (driver as unknown as {pointerAttempts: Map<number, unknown>}).pointerAttempts.clear();
     core.boot();
-    assert.equal(store.getMessage(message.id)?.deliveryFallback?.state, "unknown");
+    assert.ok(store.getDeliveryConfirmationIntent(message.id) || store.getMessage(message.id)?.deliveredAt !== null);
   }
   await wait(() => {core.step(); return readFileSync(driver.sessionLogPath(bee.id), "utf8").includes("turn/completed");});
-  if (!loseAttempt) await wait(() => {core.step(); return store.getMessage(message.id)?.deliveryFallback?.state === "delivered";});
-  else for (let i = 0; i < 4; i++) {await new Promise(resolve => setTimeout(resolve, 10)); core.step();}
-  assert.equal(store.getMessage(message.id)?.deliveryFallback?.state, loseAttempt ? "unknown" : "delivered");
-  assert.equal(driver.deliveryReceipt(bee.id, 1, message.id, initial.pointer!), loseAttempt ? "unknown" : "accepted");
+  await wait(() => {core.step(); return store.getMessage(message.id)?.deliveryFallback?.state === "delivered";});
+  assert.equal(store.getMessage(message.id)?.deliveryFallback?.state, "delivered");
+  assert.equal(driver.deliveryReceipt(bee.id, 1, message.id, initial.pointer!), "unknown");
   assert.equal(driver.deliveryReceipt(bee.id, 2, message.id, initial.pointer!), "unknown");
   assert.equal(driver.deliveryReceipt(bee.id, 1, message.id, initial.pointer! + " altered"), "unknown");
   assert.equal(store.getMessage(message.id)?.deliveryFallback?.attempts, 1);
   if (loseAttempt) {
     const later = store.send(bee.id, "later after daemon restart").message;
     await wait(() => {core.step(); return store.getMessage(later.id)?.deliveredAt !== null;});
-    assert.equal(store.getMessage(message.id)?.deliveryFallback?.state, "unknown");
-    assert.equal(store.countUnknownMultilineHolds(), 1);
+    assert.equal(store.getMessage(message.id)?.deliveryFallback?.state, "delivered");
+    assert.equal(store.countUnknownMultilineHolds(), 0);
     assert.equal(store.currentRuntime(bee.id)?.generation, 1);
-    assert.equal(store.multilineDelivery(message.id)?.notice, "state unknown, may have been delivered");
+    assert.equal(store.multilineDelivery(message.id)?.notice, null);
   }
   assert.equal(readFileSync(rpcLog, "utf8").trim().split("\n").filter(line => JSON.parse(line).method === "turn/start").length, loseAttempt ? 2 : 1);
 });
@@ -161,11 +162,12 @@ for (const harness of ["codex", "muse"] as const) for (const refuse of [false, t
   const fixture = fileURLToPath(new URL(`../../driver-hsr/test-agent/fake-${harness}.mjs`, import.meta.url));
   const driver = new HsrDriver({sessionLogDir: join(root, "logs"), socketDir: join(root, "s"), stopKillGraceMs: 100, resolve: () => ({command: process.execPath, args: [fixture, ...(harness === "muse" ? ["serve"] : [])], cwd: work,
     env: {...process.env, ...(refuse ? {FAKE_DELIVERY_REFUSE_ONCE: "1"} : {}), ...(harness === "muse" ? {FAKE_MUSE_NATIVE: "1", MUSE_NO_AUTO_UPDATE: "1"} : {})}, adapter: harness === "codex" ? codexAdapter({cwd: work}) : museAdapter({cwd: work})})});
-  const store = openCoreStore(join(data, "core.sqlite3"), {now: () => 1000, ephemeral: true});
+  let now = 1000;
+  const store = openCoreStore(join(data, "core.sqlite3"), {now: () => now, ephemeral: true});
   t.after(() => {driver.disposeAll(); store.close(); rmSync(root, {recursive: true, force: true});});
-  const core = new DaemonCore({store, driver, now: () => 1000, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}}); core.boot();
+  const core = new DaemonCore({store, driver, now: () => now, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}}); core.boot();
   const bee = store.createBee({name: "confirm", agent: "stub", substrate: "hsr", cwd: work}).bee; store.enqueueCommand("spawn", bee.id);
-  const wait = async (condition: () => boolean) => {for (let i = 0; i < 500; i++) {if (condition()) return; await new Promise(resolve => setTimeout(resolve, 10));} assert.fail("real adapter confirmation timed out");};
+  const wait = async (condition: () => boolean) => {for (let i = 0; i < 500; i++) {now += 20; if (condition()) return; await new Promise(resolve => setTimeout(resolve, 10));} assert.fail("real adapter confirmation timed out");};
   await wait(() => {core.step(); return store.currentRuntime(bee.id)?.state === "idle";});
   const message = store.send(bee.id, "one\ntwo").message;
   for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");

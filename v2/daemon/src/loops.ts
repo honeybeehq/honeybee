@@ -1641,6 +1641,7 @@ export class DaemonCore {
         this.deliveryRetries.delete(intent.beeId);
         continue;
       }
+      if (this.confirmationReady.has(intent.messageId)) continue;
       const key = this.driver.deliveryReadiness?.(intent.beeId, intent.generation, intent.messageId) ?? "";
       const poll = this.confirmationPolls.get(intent.messageId);
       if (poll?.key === key && this.now() < poll.nextAt) continue;
@@ -1673,6 +1674,8 @@ export class DaemonCore {
         this.confirmationReady.delete(intent.messageId);
         this.confirmationPolls.delete(intent.messageId);
         this.deliveryRetries.delete(intent.beeId);
+      } else if (intent.state === "held" && intent.reason === "message_too_large") {
+        continue;
       } else if (result === "not_written") {
         if (intent.wireLine === null) continue;
         if (this.ext.isDegraded?.(intent.beeId, intent.generation)) {
@@ -1691,7 +1694,7 @@ export class DaemonCore {
       } else if (result !== "pending_ack") {
         this.confirmationReady.delete(intent.messageId);
         this.store.holdDeliveryConfirmation(intent.messageId, result);
-      } else if (this.now() - intent.since >= 30_000) {
+      } else if (intent.state === "awaiting_confirmation" && this.now() - intent.since >= 30_000) {
         this.store.holdDeliveryConfirmation(intent.messageId, "unknown");
       }
     }
@@ -1860,33 +1863,45 @@ export class DaemonCore {
           this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=not_ready detail=confirmation_plan_not_ready`);
         };
         const fallbackHold = this.store.multilineDelivery(msg.id);
+        const holdIssue = (issue: "host_auth_failed" | "message_too_large"): void => {
+          const prior = this.store.getDeliveryConfirmationIntent(msg.id);
+          if (prior?.wireLine != null) this.store.holdDeliveryConfirmation(msg.id, issue);
+          else this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, issue);
+          this.confirmationReady.delete(msg.id);
+          this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=${issue}`);
+        };
         const usesFallback = fallbackHold && (fallbackHold.fallback || ["held", "expired"].includes(fallbackHold.stage));
         const initialIssue = usesFallback ? null : this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body);
         if (initialIssue && !this.store.inTransaction) {
-          this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, initialIssue);
-          this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=${initialIssue}`);
+          holdIssue(initialIssue);
           continue;
         }
         const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
         if (fallback?.confirmationBody) body = fallback.confirmationBody;
         const issue = fallback?.confirmationBody ? this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body) : null;
         if (issue && !this.store.inTransaction) {
-          this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, issue);
-          this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=${issue}`);
+          holdIssue(issue);
           continue;
         }
         let confirmation: DeliveryConfirmationPlan | undefined;
         const settlement = { reorderMessageIds: reorderNotice.messageIds, placementMoveId: instruction?.id ?? null,
           handoffId: handoff?.id ?? null, ...(fallback?.confirmationBody ? { multilineFallbackId: this.store.multilineDelivery(msg.id)?.fallback?.id } : {}) };
+        const recordPointerAttempt = (): void => {
+          let pointer = fallback?.confirmationBody ? this.store.multilineDelivery(msg.id)?.fallback : null;
+          if (pointer?.state === "in_flight" || pointer?.state === "unknown") pointer = this.store.transitionMultilineFallback(msg.id, pointer.state, "ready", { detail: "delivery_not_attempted", attemptPhase: "before_enter_cleared" });
+          if (pointer?.state === "ready") this.store.transitionMultilineFallback(msg.id, "ready", "in_flight", { generation: rt.generation, attempts: (pointer.attempts ?? 0) + 1, attemptPhase: "injecting" });
+        };
         if (!fallback?.handled) {
           const existing = this.store.getDeliveryConfirmationIntent(msg.id);
           if (existing) {
-            if (existing.generation !== rt.generation || existing.wireLine === null || existing.state !== "awaiting_confirmation" || !this.confirmationReady.delete(msg.id)) continue;
+            if (existing.generation !== rt.generation || existing.wireLine === null || existing.state !== "awaiting_confirmation" || !this.confirmationReady.has(msg.id)) continue;
             const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
             if (!plan || plan === "not_ready") { refusePlan(); continue; }
+            if (this.store.inTransaction) continue;
             const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
-            if (!deliveryConfirmationIntentFits(input)) { this.store.holdDeliveryConfirmation(msg.id, "message_too_large"); continue; }
-            confirmation = this.store.replanDeliveryConfirmationIntent(input, existing.digest);
+            if (!deliveryConfirmationIntentFits(input)) { holdIssue("message_too_large"); continue; }
+            confirmation = this.store.transact(() => { const row = this.store.replanDeliveryConfirmationIntent(input, existing.digest); recordPointerAttempt(); return row; });
+            this.confirmationReady.delete(msg.id);
           } else {
             const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
             if (plan === "not_ready") { refusePlan(); continue; }
@@ -1897,7 +1912,7 @@ export class DaemonCore {
                 this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, "message_too_large");
                 continue;
               }
-              confirmation = this.store.prepareDeliveryConfirmationIntent(input);
+              confirmation = this.store.transact(() => { const row = this.store.prepareDeliveryConfirmationIntent(input); recordPointerAttempt(); return row; });
               if (!plan.supported && !plan.legacyFirstWriteSafe) {
                 this.store.holdDeliveryConfirmation(msg.id, "old_host");
                 continue;
