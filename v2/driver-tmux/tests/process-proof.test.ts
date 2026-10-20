@@ -134,7 +134,7 @@ for (const witness of [false, true]) test(`single exact dead pane cleanup remove
   const {sessionNameFor} = await import("../src/driver.ts");
   const h = harness(), store = h.open(), rig = makeRig({cleanup: store.tmuxCleanupHooks()}), server = new TmuxServer({socketPath: rig.socketPath});
   const diagnostic: {cleanupResult: "removed" | "retained" | "proof-missing" | "command-error" | null; paneDead: boolean | null; paneScopePresent: boolean | null; spawnSocketProofPresent: boolean | null; currentSocketOwned: boolean | null; socketProofMatches: boolean | null; hasSessionStatus: number | null} = {cleanupResult: null, paneDead: null, paneScopePresent: null, spawnSocketProofPresent: null, currentSocketOwned: null, socketProofMatches: null, hasSessionStatus: null};
-  const observed = rig.driver as unknown as {cleanupExitedPane: (pane: {paneId: string; paneScope: unknown; spawnSocketProof: Parameters<typeof sameSocketProof>[0]}) => void; server: InstanceType<typeof TmuxServer>};
+  const observed = rig.driver as unknown as {cleanupExitedPane: (pane: {paneId: string; paneScope: unknown; spawnSocketProof: Parameters<typeof sameSocketProof>[0]}, deadline?: bigint) => void; server: InstanceType<typeof TmuxServer>};
   const cleanup = observed.cleanupExitedPane.bind(rig.driver);
   const command = observed.server.try.bind(observed.server);
   observed.server.try = (...args) => {
@@ -145,7 +145,8 @@ for (const witness of [false, true]) test(`single exact dead pane cleanup remove
       return result;
     } catch (error) { diagnostic.cleanupResult = "command-error"; throw error; }
   };
-  observed.cleanupExitedPane = pane => {
+  observed.cleanupExitedPane = (...args) => {
+    const [pane] = args;
     const proof = ownedSocketProof(rig.socketPath);
     diagnostic.paneScopePresent = pane.paneScope != null;
     diagnostic.spawnSocketProofPresent = pane.spawnSocketProof != null;
@@ -157,7 +158,7 @@ for (const witness of [false, true]) test(`single exact dead pane cleanup remove
       const value = result.stdout.trim();
       diagnostic.paneDead = result.status === 0 && (value === "0" || value === "1") ? value === "1" : null;
     } catch { diagnostic.paneDead = null; }
-    cleanup(pane);
+    cleanup(...args);
   };
   const query = server.try.bind(server);
   server.try = (...args) => {
