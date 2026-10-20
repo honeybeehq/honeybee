@@ -1,3 +1,4 @@
+import type { QuotaBoundary } from "../../core/src/quota.ts";
 /**
  * Pane-ready transcript projection (G3).
  *
@@ -46,6 +47,7 @@ export type TranscriptProjectedImage = {
 type Base = { ts: TranscriptIsoTs; threadId?: string };
 
 export type TranscriptProjectedEvent =
+  | (Base & { kind: "quota"; quota: QuotaBoundary; sourceId: string; raw: unknown; operational: true })
   | (Base & { kind: "turn_start"; turnId?: string })
   | (Base & { kind: "turn_end"; turnId?: string; durationMs?: number; finishReason?: string; interrupted?: boolean })
   | (Base & { kind: "interrupt"; reason?: string })
@@ -111,7 +113,7 @@ export type TranscriptProjectorFactory = () => TranscriptProjector;
 
 // checkpoint-digest:start
 /** Bump for event semantic changes; stored projections must then be rebuilt. */
-export const TRANSCRIPT_PROJECTION_VERSION = 6;
+export const TRANSCRIPT_PROJECTION_VERSION = 7;
 /** Bump for checkpoint schema changes. Restore deliberately does not migrate. */
 export const TRANSCRIPT_PROJECTOR_STATE_VERSION = 5;
 export const TRANSCRIPT_CHECKPOINT_MAX_BYTES = 4 * 1024 * 1024;

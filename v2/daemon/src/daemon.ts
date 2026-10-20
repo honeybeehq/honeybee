@@ -6693,7 +6693,7 @@ export class HiveDaemon {
       if (account.exhaustedAt != null) store.recordAccountExhaustion(account.id, null);
       return;
     }
-    if (!isRateLimitCause(ev.detail)) return;
+    if (ev.quota === undefined && ((account.harness === "claude" || account.harness === "codex") || !isRateLimitCause(ev.detail))) return;
     // Exhaustion evidence on the account (rotation cool-off). Debounced: a
     // provider re-reports the wall on every call; one stamp a minute is plenty.
     const now = Date.now();

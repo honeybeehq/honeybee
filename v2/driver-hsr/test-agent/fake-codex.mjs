@@ -144,12 +144,21 @@ rl.on("line", (raw) => {
       const slow = /@slow:(\d+)/.exec(String(text));
       emit({ jsonrpc: "2.0", id: msg.id, result: { turn: { id: turnId } } });
       emit({ jsonrpc: "2.0", method: "turn/started", params: { threadId, turn: { id: turnId } } });
-      if (String(text).includes("@usageLimit")) {
+      const quotaMode = /@quota:(native|delayed|once)/.exec(String(text))?.[1];
+      const marker = process.env.FAKE_QUOTA_ONCE_PATH;
+      if (String(text).includes("@usageLimit") || (quotaMode && !(quotaMode === "once" && marker && existsSync(marker)))) {
+        if (quotaMode === "once" && marker) writeFileSync(marker, "failed");
+        if (quotaMode === "delayed") emit({ method: "item/completed", params: { threadId, item: { id: randomUUID(), type: "agentMessage", text: "visible progress before quota" } } });
         const error = { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded" };
         emit({ method: "account/rateLimits/updated", params: { rateLimits: { limitId: "premium", primary: null, secondary: null, rateLimitReachedType: null } } });
+        if (quotaMode) emit({ method: "account/rateLimits/updated", params: { rateLimits: { limitId: "premium", primary: { usedPercent: 100, windowDurationMins: 300, resetsAt: Number(process.env.FAKE_QUOTA_RESETS_AT_SECONDS ?? Math.floor(Date.now() / 1000) + 3600) }, secondary: null, rateLimitReachedType: "primary" } } });
+        const fail = () => {
         emit({ method: "error", params: { threadId, turnId, error, willRetry: false } });
         emit({ method: "turn/completed", params: { threadId, turn: { id: turnId, status: "failed", error } } });
         currentTurnId = null;
+        };
+        if (quotaMode === "delayed") turnTimer = setTimeout(fail, 200);
+        else fail();
         return;
       }
       if (String(text).includes("@quiet")) {

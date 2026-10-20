@@ -1,3 +1,4 @@
+import type { QuotaObservedEvent } from "./quota.ts";
 import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
 import {installRuntimeProcessIdentity, processIdentityValue, readRuntimeProcessIdentity, type RuntimeIdentityHooks, type RuntimeProcessIdentity} from "./runtimeProcessIdentity.ts";
@@ -2161,6 +2162,15 @@ export class CoreStore {
     }
     receipt.wallMs = Math.round(performance.now() - started);
     this.rpcIdempotencyRedaction = receipt;
+  }
+
+  recordQuotaEvidence(event: QuotaObservedEvent): void {
+    this.tx(() => {
+      const runtime = this.currentRuntime(event.beeId);
+      if (!runtime || runtime.generation !== event.generation) return;
+      const seen = this.stmt("SELECT 1 FROM audit WHERE kind = 'quota.observed' AND bee_id = ? AND json_extract(payload, '$.eventId') = ? LIMIT 1").get(event.beeId, event.eventId);
+      if (!seen) this.audit("quota.observed", event.beeId, event);
+    });
   }
 
   recordLocalRpcEvent(kind: "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload: Record<string, unknown>): void {
