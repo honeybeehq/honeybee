@@ -6591,7 +6591,12 @@ export class HiveDaemon {
       if (!admission.ok) throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
       return admission;
     });
-    return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId);
+    try {
+      return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId);
+    } catch (error) {
+      if (admission.reservation) store.releaseAccountAdmission(admission.reservation.id);
+      throw error;
+    }
   }
 
   private performSwap(
@@ -6887,9 +6892,9 @@ export class HiveDaemon {
         return true;
       }
       const limits = store.getAccountLimits(bee.account);
+      if (!limits || limits.fetchedAt <= pending.admission!.fetchedAt) return false;
       const comparison = this.accounts.proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), beeId);
       if (comparison.uncertain) return false;
-      if (!limits || limits.fetchedAt <= pending.admission!.fetchedAt) return false;
       const restored = this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), beeId, 2).status === "eligible";
       if (!restored && comparison.accountIds.size > 0) return false;
       store.cancelQuotaRecovery(pending.id, restored ? "completion_headroom_restored" : "relative_headroom_unavailable");
@@ -6935,11 +6940,14 @@ export class HiveDaemon {
           if (row.trigger === "proactive" && bee.account) {
             const comparison = accounts.proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), bee.id);
             store.setProactiveCandidates(id, comparison.uncertain ? null : [...comparison.accountIds]);
-            if (!comparison.uncertain && comparison.accountIds.size === 0) store.cancelQuotaRecovery(id, "relative_headroom_unavailable");
+            if (comparison.uncertain || comparison.accountIds.size === 0) store.cancelQuotaRecovery(id, comparison.uncertain ? "relative_refresh_unavailable" : "relative_headroom_unavailable");
             this.requestTick();
           }
         }
-      } catch (error) { this.log(`quota.probe recovery=${id} failed=${error instanceof Error ? error.message : String(error)}`); }
+      } catch (error) {
+        this.log(`quota.probe recovery=${id} failed=${error instanceof Error ? error.message : String(error)}`);
+        if (row.trigger === "proactive") { store.cancelQuotaRecovery(id, "relative_refresh_unavailable"); this.requestTick(); }
+      }
       return;
     }
     try {
@@ -6958,7 +6966,11 @@ export class HiveDaemon {
       }
       const comparison = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee), bee.id) : undefined;
       if (comparison) store.setProactiveCandidates(id, comparison.uncertain ? null : [...comparison.accountIds]);
-      if (comparison?.uncertain) return;
+      if (comparison?.uncertain) {
+        store.cancelQuotaRecovery(id, "relative_refresh_unavailable");
+        this.requestTick();
+        return;
+      }
       const targets = comparison?.accountIds;
       if (targets?.size === 0 && row.trigger === "proactive") {
         store.cancelQuotaRecovery(id, "relative_headroom_unavailable");
@@ -6976,6 +6988,11 @@ export class HiveDaemon {
     } catch (error) {
       row = store.getQuotaRecovery(id);
       if (!row || row.state !== "waiting") return;
+      if (row.trigger === "proactive") {
+        store.cancelQuotaRecovery(id, "relative_refresh_unavailable");
+        this.requestTick();
+        return;
+      }
       const data = error instanceof RpcError ? error.details : undefined;
       const allocation = data?.allocation as { retryAt?: number | null } | undefined;
       const retry = typeof data?.retryAt === "number" ? data.retryAt : allocation?.retryAt ?? null;

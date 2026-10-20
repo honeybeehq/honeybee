@@ -2535,6 +2535,7 @@ export class AccountsService {
     const activity = this.localActivities(accounts.map(account => account.id), now);
     const source = accounts.find(account => account.id === sourceAccount);
     if (!source) return { accountIds: new Set(), uncertain: true };
+    if (openingBeeId && this.store.listQuotaRecoveries(openingBeeId).some(row => row.state === "cancelled" && row.reason === "relative_refresh_unavailable" && now - row.updatedAt < 30_000)) return { accountIds: new Set(), uncertain: false };
     const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt) : [];
     if (history[0] && now - history[0].updatedAt < this.cfg.accounts.proactiveDwellMs) return { accountIds: new Set(), uncertain: false };
     const sourcePlan = this.store.getAccountLimits(sourceAccount)?.plan?.toLowerCase();
@@ -2546,9 +2547,13 @@ export class AccountsService {
       if (account.id === sourceAccount) return false;
       const local = activity.get(account.id)!;
       const candidate = this.admissionCandidate(account, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now, local);
-      if (candidate.eligibility.state === "eligible" && completionHeadroom(candidate, policy).status === "uncertain") uncertain = true;
       const targetPlan = this.store.getAccountLimits(account.id)?.plan?.toLowerCase();
       if (!sourcePlan || !targetPlan || sourcePlan !== targetPlan && (this.cfg.accounts.allocationPlanCapacityUnits[sourcePlan] === undefined || this.cfg.accounts.allocationPlanCapacityUnits[targetPlan] === undefined)) return false;
+      const limits = this.store.getAccountLimits(account.id);
+      const stale = !limits || now - limits.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs
+        || limits.fetchedAt > now + 60_000
+        || [limits.fiveHourResetsAt, limits.weeklyResetsAt, ...(isFableModel(model) ? [limits.fableResetsAt] : [])].some(reset => reset != null && reset <= now);
+      if (candidate.eligibility.state === "eligible" && stale && completionHeadroom(candidate, policy).status === "uncertain") uncertain = true;
       if (!relativeCompletionHeadroom(sourceCandidate, candidate, policy, history.some(row => row.sourceAccount === account.id) ? 2 : 1)) return false;
       const fetchedAt = this.store.getAccountLimits(account.id)?.fetchedAt ?? 0;
       return fetchedAt > this.store.proactiveRecoveryBoundary(account.id);
