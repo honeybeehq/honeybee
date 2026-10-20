@@ -2245,7 +2245,7 @@ export class CoreStore {
     return row ? { trigger: "provider_limit", ...JSON.parse(String(row.payload)) } as QuotaRecoveryRow : null;
   }
 
-  requireCompletionHeadroom(beeId: string, generation: number, admission: { fetchedAt: number; maxProjectedPercent: number }, retryAt: number | null): QuotaRecoveryRow | null {
+  requireCompletionHeadroom(beeId: string, generation: number, admission: NonNullable<QuotaRecoveryRow["admission"]>, retryAt: number | null): QuotaRecoveryRow | null {
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
       const runtime = this.currentRuntime(beeId);
@@ -2281,6 +2281,16 @@ export class CoreStore {
 
   hasDeliveredMail(beeId: string, generation: number): boolean {
     return !!this.stmt("SELECT 1 FROM mailbox WHERE bee_id = ? AND delivered_generation = ? LIMIT 1").get(beeId, generation);
+  }
+
+  setProactiveCandidates(id: string, candidateAccountIds: string[] | null): void {
+    this.tx(() => {
+      const row = this.getQuotaRecovery(id);
+      if (!row?.admission || row.trigger !== "proactive" || row.state !== "waiting") return;
+      const ids = candidateAccountIds === null ? null : [...new Set(candidateAccountIds)].sort();
+      if (JSON.stringify(row.admission.candidateAccountIds) === JSON.stringify(ids)) return;
+      this.putQuotaRecovery({ ...row, admission: { ...row.admission, candidateAccountIds: ids } });
+    });
   }
 
   private putQuotaRecovery(row: QuotaRecoveryRow): QuotaRecoveryRow {

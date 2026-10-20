@@ -2529,28 +2529,31 @@ export class AccountsService {
     return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, requestUnits, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
   }
 
-  proactiveTargets(harness: string, sourceAccount: string, model?: string, openingBeeId?: string): Set<string> {
+  proactiveTargets(harness: string, sourceAccount: string, model?: string, openingBeeId?: string): { accountIds: Set<string>; uncertain: boolean } {
     const accounts = this.store.listAccounts({ harness });
     const now = this.now();
     const activity = this.localActivities(accounts.map(account => account.id), now);
     const source = accounts.find(account => account.id === sourceAccount);
-    if (!source) return new Set();
-    const previous = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed" && row.targetAccount === sourceAccount).sort((a, b) => b.updatedAt - a.updatedAt)[0] : undefined;
-    if (previous && now - previous.updatedAt < Math.max(30_000, this.cfg.accounts.allocationQuotaFreshMs)) return new Set();
+    if (!source) return { accountIds: new Set(), uncertain: true };
+    const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt) : [];
+    if (history[0] && now - history[0].updatedAt < this.cfg.accounts.proactiveDwellMs) return { accountIds: new Set(), uncertain: false };
     const sourcePlan = this.store.getAccountLimits(sourceAccount)?.plan?.toLowerCase();
     const policy = { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs };
     const sourceCandidate = this.admissionCandidate(source, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now,
       this.openingActivity(activity.get(sourceAccount)!, openingBeeId));
-    return new Set(accounts.filter(account => {
+    let uncertain = completionHeadroom(sourceCandidate, policy).status === "uncertain";
+    const accountIds = new Set(accounts.filter(account => {
       if (account.id === sourceAccount) return false;
       const local = activity.get(account.id)!;
       const candidate = this.admissionCandidate(account, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now, local);
+      if (candidate.eligibility.state === "eligible" && completionHeadroom(candidate, policy).status === "uncertain") uncertain = true;
       const targetPlan = this.store.getAccountLimits(account.id)?.plan?.toLowerCase();
       if (!sourcePlan || !targetPlan || sourcePlan !== targetPlan && (this.cfg.accounts.allocationPlanCapacityUnits[sourcePlan] === undefined || this.cfg.accounts.allocationPlanCapacityUnits[targetPlan] === undefined)) return false;
-      if (!relativeCompletionHeadroom(sourceCandidate, candidate, policy, previous?.sourceAccount === account.id ? 2 : 1)) return false;
+      if (!relativeCompletionHeadroom(sourceCandidate, candidate, policy, history.some(row => row.sourceAccount === account.id) ? 2 : 1)) return false;
       const fetchedAt = this.store.getAccountLimits(account.id)?.fetchedAt ?? 0;
       return fetchedAt > this.store.proactiveRecoveryBoundary(account.id);
     }).map(account => account.id));
+    return { accountIds, uncertain };
   }
 
   private admissionCandidate(

@@ -139,21 +139,22 @@ function projectedWindowPercent(candidate: AccountAdmissionCandidate, window: Ac
 export function relativeCompletionHeadroom(source: AccountAdmissionCandidate, target: AccountAdmissionCandidate, policy: AccountAdmissionPolicy, marginMultiplier = 1): boolean {
   if (target.accountId === source.accountId || target.eligibility.state !== "eligible"
     || completionHeadroom(source, policy).status !== "protected" || completionHeadroom(target, policy).status !== "eligible") return false;
-  const protectedWindows = applicableWindows(source, policy.model).filter(window => projectedWindowPercent(source, window, policy) >= policy.completionReservePercent);
-  if (!protectedWindows.length) return false;
-  return protectedWindows.every(window => {
-    const other = applicableWindows(target, policy.model).find(value => value.kind === window.kind);
-    const sourceHours = (window.resetsAt - policy.now) / 3_600_000;
-    if (!other || sourceHours <= policy.projectionHorizonHours) return false;
-    const targetHours = (other.resetsAt - policy.now) / 3_600_000;
-    const remaining = Math.max(0, 100 - projectedWindowPercent(source, window, policy)) * source.capacityUnits / 100;
-    const alternative = Math.max(0, 100 - projectedWindowPercent(target, other, policy)) * target.capacityUnits / 100;
-    const horizon = Math.min(policy.projectionHorizonHours, sourceHours, targetHours);
-    const margin = marginMultiplier * Math.max((100 - policy.completionReservePercent) * Math.max(source.capacityUnits, target.capacityUnits) / 100,
-      horizon * Math.max(window.admissionCostPercent * source.capacityUnits, other.admissionCostPercent * target.capacityUnits) / 100);
-    return alternative > remaining + margin
-      && alternative / Math.max(policy.nearResetFloorHours, targetHours) > (remaining + margin) / Math.max(policy.nearResetFloorHours, sourceHours);
-  });
+  const sourceWindows = applicableWindows(source, policy.model).filter(window => (window.resetsAt - policy.now) / 3_600_000 > policy.projectionHorizonHours);
+  if (!sourceWindows.some(window => projectedWindowPercent(source, window, policy) >= policy.completionReservePercent)) return false;
+  const targetWindows = applicableWindows(target, policy.model);
+  if (sourceWindows.some(window => !targetWindows.some(other => other.kind === window.kind))) return false;
+  const score = (candidate: AccountAdmissionCandidate, windows: AccountAdmissionWindow[]) => {
+    const remaining = windows.map(window => Math.max(0, 100 - projectedWindowPercent(candidate, window, policy)) * candidate.capacityUnits / 100);
+    const hours = windows.map(window => Math.max(policy.nearResetFloorHours, (window.resetsAt - policy.now) / 3_600_000));
+    const rates = remaining.map((value, index) => value / hours[index]!);
+    return { remaining: Math.min(...remaining), rate: Math.min(...rates), hours: hours[rates.indexOf(Math.min(...rates))]!,
+      cost: Math.max(...windows.map(window => window.admissionCostPercent * Math.min(policy.projectionHorizonHours, (window.resetsAt - policy.now) / 3_600_000) * candidate.capacityUnits / 100)) };
+  };
+  const current = score(source, sourceWindows);
+  const alternative = score(target, targetWindows);
+  const margin = marginMultiplier * Math.max((100 - policy.completionReservePercent) * Math.min(source.capacityUnits, target.capacityUnits) / 100, current.cost, alternative.cost);
+  return alternative.remaining > current.remaining + margin
+    && alternative.rate > current.rate + margin / Math.max(current.hours, alternative.hours);
 }
 
 export function completionHeadroom(candidate: AccountAdmissionCandidate, policy: AccountAdmissionPolicy): { status: "uncertain" | "protected" | "eligible"; maxProjectedPercent?: number; retryAt: number | null } {
