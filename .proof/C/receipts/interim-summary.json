@@ -1,0 +1,88 @@
+[
+  {
+    "name": "claude-once",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.8Em6utrt/tmp/hb-v2-daemon-CvEcYT",
+    "resetAt": 1792482970838,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:cd5a3b71-bb27-4bfe-998a-bc101c80e167:1:2",
+    "state": "resumed",
+    "kind": "replay",
+    "targetAccount": "claude-b",
+    "continuationMessageIds": [
+      3
+    ]
+  },
+  {
+    "name": "codex-once",
+    "harness": "codex",
+    "dir": "/var/tmp/hb-quota-C.8Em6utrt/tmp/hb-v2-daemon-6tiElM",
+    "resetAt": 1792482973040,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:cf0e59ba-de76-4064-9d0b-37dd76306ee3:1:2",
+    "state": "resumed",
+    "kind": "continue",
+    "targetAccount": "codex-b",
+    "continuationMessageIds": [
+      3
+    ]
+  },
+  {
+    "name": "source-reset",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.8Em6utrt/tmp/hb-v2-daemon-lkgAxs",
+    "resetAt": 1792479386793,
+    "passed": false,
+    "originalMessageId": 2,
+    "recoveryId": "quota:a1898e15-434e-4dd8-9b8e-b91ab97bcdf2:1:2",
+    "error": "AssertionError [ERR_ASSERTION]: known reset must be scheduled; unknown reset must remain unknown\n\ntrue !== false\n\n    at file:///home/trmd/.hive/v2/cells/sar-c-lab-driver-a4abb037a555/github-com-honeybeehq-honeybee-a9015b303498-space-a4abb037a555/.proof/C/lab.ts:98:16\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+  },
+  {
+    "name": "unknown-reset",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.8Em6utrt/tmp/hb-v2-daemon-vNPYHL",
+    "resetAt": null,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:524d0488-8dcf-47eb-9a95-e57037d220c5:1:2",
+    "state": "waiting",
+    "reason": "account_unavailable",
+    "retryAt": null
+  },
+  {
+    "name": "autoswap-false",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.8Em6utrt/tmp/hb-v2-daemon-MfvoPH",
+    "resetAt": 1792482978680,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:6dd1657c-5bbf-494b-97cb-5052d15646ab:1:2",
+    "state": "waiting",
+    "reason": "autoswap_disabled",
+    "retryAt": null
+  },
+  {
+    "name": "active-owner",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.8Em6utrt/tmp/hb-v2-daemon-G0htCD",
+    "resetAt": 1792482981348,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:f47307d7-c77e-47a7-bead-956a41c4b515:1:2",
+    "state": "waiting",
+    "reason": "allocation_owner_required",
+    "retryAt": 1792482981348
+  },
+  {
+    "name": "restart-waiting",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.8Em6utrt/tmp/hb-v2-daemon-3w0A50",
+    "resetAt": 1792479395994,
+    "passed": false,
+    "originalMessageId": 2,
+    "recoveryId": "quota:d90db562-d30e-499f-ab46-192ebaa1ab88:1:2",
+    "error": "AssertionError [ERR_ASSERTION]: known reset must be scheduled; unknown reset must remain unknown\n\ntrue !== false\n\n    at file:///home/trmd/.hive/v2/cells/sar-c-lab-driver-a4abb037a555/github-com-honeybeehq-honeybee-a9015b303498-space-a4abb037a555/.proof/C/lab.ts:98:16\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+  }
+]
