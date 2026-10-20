@@ -1,9 +1,9 @@
 {
   "base": "9ecbb37f7cb448503cdcfaf8747538a3580f982f",
-  "codeParentBeforeEvidence": "7a826661fb294ba63f37ff6ccf19aa9776f3329e",
+  "previousReviewedCandidate": "b0d4139302d90d45342fa46bd83a8163cfa99d5d",
   "sourceDigestsSha256": {
-    "docs/design/question-dismiss-contract.md": "df171da24d66ab5d551c831629efd1d46b092b9b08cebcde8fcf6012136e5b8e",
-    "scripts/proof/question-dismiss-schema44.test.ts": "20ce8425f6be0def042e2b65177330b0e3273568102b5c61c2f43c45dfd089b2",
+    "docs/design/question-dismiss-contract.md": "d069f09538cb4b9784fa89e4b17b35cefbf1b728725c01c8c1d7a4ae1ce28ac8",
+    "scripts/proof/question-dismiss-schema44.test.ts": "a99182a332a0d9220d5a4c94ac5eff673f618702d55e231c81ab7dbb281c8e41",
     "scripts/proof/question-dismiss.test.ts": "78d629a914459cceaa31574e7875e49822df14885440243744bf52001741e4cb",
     "v2/cli/src/client.ts": "d22c61b1723cd7658278deba625050e2295014837ac8adb1e99d375b6b300924",
     "v2/cli/src/main.ts": "da43348d9a1bf8e679bcda011a3821ec38b7fb35ae5a5ed0d3702c4209a9a09a",
@@ -12,7 +12,7 @@
     "v2/core/src/audit.ts": "ccf723675587bf0c863bb27b5d00aa274e5b85072963a5fd34c5eb3460a5cbd0",
     "v2/core/src/mirror.ts": "1d23522de5e4c80f79e35d21eeaa853832e2e409df9013bd0679c96f5c474c8d",
     "v2/core/src/schema.ts": "67d007e765cac4c27fdac7e6c1735fc9050b0828d33ab662dfb8ddb93c525d7d",
-    "v2/core/src/store.ts": "33df3b8ffb538c8ef20c33909bbda58cc4e387cf8d32ca9f176701ada8fbda3b",
+    "v2/core/src/store.ts": "79bdb4156f13a129ec2fd1c35907fc0a5bd0329bda4b87320c5f34c08ae78f42",
     "v2/core/src/types.ts": "add2344b70a8a3e6c72a733af6c463d3039a9015c59a297cb8979ece9ace1f95",
     "v2/core/tests/actions.test.ts": "346cb27779b95b5bde3907fc4fbc379b14ec5745402d83ba906c2184a8c3d5cf",
     "v2/core/tests/question-dismiss.test.ts": "abb334b19bdcea5d8ba9c0630fcb39f0ff62f6c4f349e1a1d7fca55acc51271e",
@@ -54,7 +54,7 @@
   },
   "answerEnvelopeCases": 8,
   "schemaVersion": 44,
-  "schemaMigration": "Existing status CHECK rebuilt; no-CHECK additive branch covered by core fixture.",
+  "schemaMigration": "Existing status CHECK rebuilt via create-new/copy/drop-old/rename-new inside one transaction; foreign keys disabled outside BEGIN and restored after commit/rollback; dependent FK rows, index, views and triggers preserved, foreign_key_check clean before commit. Deliberate violation rolls migration back. No-CHECK additive branch covered by core fixture.",
   "maskedGate": "PENDING after Queen review; no result claimed.",
   "sameUidLimit": "Owner uses ordinary question.answer RPC policy; no operator/marker verifier. Apiary owns policy(a) enforcement.",
   "notCovered": [

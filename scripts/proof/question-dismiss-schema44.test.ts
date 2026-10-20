@@ -29,6 +29,19 @@ test("schema44: rebuild checked status, rollback writer, receipt and notice surv
     assert.equal(SCHEMA_VERSION, 44); assert.equal(older.SCHEMA_VERSION, 44);
     let old = older.openCoreStore(path); assert.equal("dismissQuestionWithKey" in old, false, "Baseline must predate dismissal"); const {bee} = old.createBee({name: "rollback", agent: "inbox", substrate: "hsr", cwd: root});
     const question = old.askQuestion(bee.id, {text: "Dismiss before rollback?"}), pending = old.askQuestion(bee.id, {text: "Old writer still works?"}); old.close();
+    const fixture = new DatabaseSync(path);
+    fixture.exec("PRAGMA foreign_keys = ON; CREATE TABLE dismiss_fixture_links(question_id TEXT NOT NULL REFERENCES questions(id) ON DELETE CASCADE); CREATE TABLE dismiss_fixture_log(question_id TEXT,status TEXT); CREATE INDEX dismiss_fixture_index ON questions(text); CREATE VIEW dismiss_fixture_view AS SELECT id,status FROM questions; CREATE VIEW dismiss_fixture_nested AS SELECT * FROM dismiss_fixture_view; CREATE TRIGGER dismiss_fixture_update AFTER UPDATE OF status ON questions BEGIN INSERT INTO dismiss_fixture_log VALUES(NEW.id,NEW.status); END; CREATE TRIGGER dismiss_fixture_link AFTER INSERT ON dismiss_fixture_links BEGIN INSERT INTO dismiss_fixture_log SELECT id,status FROM questions WHERE id=NEW.question_id; END");
+    fixture.prepare("INSERT INTO dismiss_fixture_links VALUES(?)").run(question.id);
+    const objectsBefore = fixture.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'dismiss_fixture_%' ORDER BY name").all();
+    const tableBefore = fixture.prepare("SELECT sql FROM sqlite_master WHERE name='questions'").get()!.sql;
+    fixture.exec("PRAGMA foreign_keys = OFF; INSERT INTO dismiss_fixture_links VALUES('missing-migration-fixture')"); fixture.close();
+    assert.throws(() => openCoreStore(path, {ephemeral: true}), /Question schema migration violates foreign keys/);
+    const failedMigration = new DatabaseSync(path);
+    assert.equal(failedMigration.prepare("SELECT sql FROM sqlite_master WHERE name='questions'").get()!.sql, tableBefore);
+    assert.deepEqual(failedMigration.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'dismiss_fixture_%' ORDER BY name").all(), objectsBefore);
+    assert.equal(failedMigration.prepare("PRAGMA foreign_key_check").all().length, 1);
+    assert.deepEqual(failedMigration.prepare("SELECT name FROM sqlite_master WHERE sql LIKE '%questions_v44%' OR sql LIKE '%questions_new%'").all(), []);
+    failedMigration.exec("PRAGMA foreign_keys = OFF; DELETE FROM dismiss_fixture_links WHERE question_id='missing-migration-fixture'"); failedMigration.close();
     let current = openCoreStore(path, {ephemeral: true}); const receipt = current.dismissQuestionWithKey(question.id, "rollback-key"); current.close();
     old = older.openCoreStore(path); assert.equal(old.getQuestion(question.id)!.status, "dismissed");
     assert.throws(() => old.answerQuestion(question.id, "No reopen"), /already dismissed/);
@@ -38,7 +51,16 @@ test("schema44: rebuild checked status, rollback writer, receipt and notice surv
     const integrity = String(db.prepare("PRAGMA integrity_check").get()!.integrity_check), foreignKeys = db.prepare("PRAGMA foreign_key_check").all();
     const receipts = Number(db.prepare("SELECT count(*) AS n FROM question_dismiss_receipts").get()!.n);
     const notice = db.prepare("SELECT body,sender,sender_kind FROM mailbox WHERE id=?").get(receipt.question.dismissalMessageId!)!;
-    const ddl = String(db.prepare("SELECT sql FROM sqlite_master WHERE name='questions'").get()!.sql); db.close();
+    const ddl = String(db.prepare("SELECT sql FROM sqlite_master WHERE name='questions'").get()!.sql);
+    const danglingObjects = db.prepare("SELECT name FROM sqlite_master WHERE sql LIKE '%questions_v44%' OR sql LIKE '%questions_new%'").all();
+    const objectsAfter = db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name LIKE 'dismiss_fixture_%' ORDER BY name").all();
+    const dependentRows = db.prepare("SELECT * FROM dismiss_fixture_links").all(), dependentView = db.prepare("SELECT * FROM dismiss_fixture_nested WHERE id=?").get(question.id);
+    const dependentForeignKeys = db.prepare("PRAGMA foreign_key_list(dismiss_fixture_links)").all();
+    assert.deepEqual(objectsAfter, objectsBefore); assert.deepEqual(danglingObjects, []); assert.equal(dependentRows.length, 1); assert.equal(dependentRows[0]!.question_id, question.id); assert.equal(dependentView!.status, "dismissed"); assert.equal(dependentForeignKeys[0]!.table, "questions");
+    db.prepare("INSERT INTO dismiss_fixture_links VALUES(?)").run(pending.id);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM dismiss_fixture_log WHERE status='dismissed'").get()!.n, 1);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM dismiss_fixture_log WHERE status='answered'").get()!.n, 2);
+    db.close();
     assert.equal(stamp, "44"); assert.equal(integrity, "ok"); assert.deepEqual(foreignKeys, []); assert.equal(receipts, 1); assert.ok(ddl.includes("'dismissed'"));
     assert.equal(notice.body, "Your question was dismissed without an answer."); assert.equal(notice.sender, "rpc"); assert.equal(notice.sender_kind, "automation");
     current = openCoreStore(path, {ephemeral: true});
@@ -48,7 +70,7 @@ test("schema44: rebuild checked status, rollback writer, receipt and notice surv
       assert.equal(current.getQuestion(pending.id)!.status, "answered"); assert.equal(current.getQuestion(created.id)!.dismissedAt, null);
       assert.deepEqual(replayAudit(current.auditRows()), current.dumpState());
       assert.equal(current.listMessages(bee.id).filter(message => message.id === receipt.question.dismissalMessageId).length, 1);
-      console.log(JSON.stringify({host: hostname(), baseline, schemaVersion: stamp, baselineLoads, baselinePredatesDismissal: true, statusColumn: "CHECK rebuilt", integrity, foreignKeys, receipts, notice, question: receipt.question, rollbackOpenedAndWrote: true, replayEqual: true}));
+      console.log(JSON.stringify({host: hostname(), baseline, schemaVersion: stamp, baselineLoads, baselinePredatesDismissal: true, statusColumn: "CHECK rebuilt", integrity, foreignKeys, dependentForeignKeys, dependentRows, dependentView, dependentObjects: objectsAfter.map(object => ({type: object.type, name: object.name})), dependentObjectSqlUnchanged: true, migrationForeignKeyRollback: true, danglingObjects, dependentTriggersExecuted: true, receipts, notice, question: receipt.question, rollbackOpenedAndWrote: true, replayEqual: true}));
     } finally {current.close();}
   } finally {rmSync(root, {recursive: true, force: true});}
 });
