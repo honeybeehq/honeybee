@@ -1,5 +1,5 @@
-import type { DeliveryFallback, DeliveryHold, MultilineDeliveryRow } from "./multilineDelivery.ts";
-import type { PhoneInput, PhoneOperationOrigin } from "./phoneOrigin.ts";
+import type { DeliveryFallback, DeliveryHold, MultilineDeliveryRow } from "./multilineDeliveryTypes.ts";
+import type { PhoneInput, PhoneOperationOrigin } from "./phoneOriginTypes.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
 /**
  * Closed vocabularies and row shapes for the v2 core store.
