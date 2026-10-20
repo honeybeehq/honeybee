@@ -14,3 +14,5 @@ Attention:
 - Low residual risks: a partial final journal line can make JSON parsing fail spuriously; a duplicate turn appearing after the immediate successful-turn count could escape that count. Durable recovery/mail IDs and audit rows are checked separately.
 
 No blocking findings were reported for the concurrency addition. DEPLOY HOLD was preserved.
+
+The reviewer also inspected native Codex proof commits 44ab84ce, 6f384594, and 8173bfcb. The initial condition drift and import-before-shebang startup failures were corrected at 8173bfcb; no blocking script findings remained. The corresponding startup receipts are invalid behavior evidence for any Codex scenario at those two intermediate heads. The real e8e50a53 run on 8173bfcb captured the 100% baseline and later 5% source usage but timed out waiting for continuation. It is recorded as failed and was sent to the implementation owner, whose newer cooldown fix was not rerun by this worker.
