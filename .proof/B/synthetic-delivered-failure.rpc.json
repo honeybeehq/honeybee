@@ -5,16 +5,16 @@
     "unarchived": false
   },
   "recovery": {
-    "id": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
-    "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+    "id": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
+    "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
     "sourceGeneration": 1,
     "sourceAccount": "claude-a",
     "observationCursor": 716,
-    "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+    "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
     "accountLabel": "b",
     "eventIds": [
-      "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:716",
-      "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:912"
+      "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:716",
+      "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:912"
     ],
     "messageIds": [
       1
@@ -24,7 +24,7 @@
     "controlFence": 3,
     "placement": {
       "agent": "claude",
-      "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5",
+      "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU",
       "cellId": null
     },
     "quota": {
@@ -58,42 +58,42 @@
     ],
     "retryAt": null,
     "reason": null,
-    "createdAt": 1792480166043,
-    "updatedAt": 1792480166814
+    "createdAt": 1792480331839,
+    "updatedAt": 1792480332574
   },
   "mail": {
     "messages": [
       {
         "id": 1,
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "sender": "operator",
         "body": "@quota:delayed preserve work",
         "priority": 0,
         "urgency": "next",
-        "enqueuedAt": 1792480165461,
-        "deliveredAt": 1792480165802,
+        "enqueuedAt": 1792480331224,
+        "deliveredAt": 1792480331529,
         "deliveredGeneration": 1
       },
       {
         "id": 2,
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "sender": "hive:quota-resume",
         "body": "Continue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.",
         "priority": 0,
         "urgency": "next",
-        "enqueuedAt": 1792480166366,
-        "deliveredAt": 1792480166371,
+        "enqueuedAt": 1792480332109,
+        "deliveredAt": 1792480332114,
         "deliveredGeneration": 2
       },
       {
         "id": 3,
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "sender": "hive:quota-resume",
         "body": "Continue the interrupted turn from where you stopped. The previous runtime failed before confirming its boot; check existing work before repeating any operation. Preserve the current action attempt.",
         "priority": 0,
         "urgency": "next",
-        "enqueuedAt": 1792480166437,
-        "deliveredAt": 1792480166747,
+        "enqueuedAt": 1792480332205,
+        "deliveredAt": 1792480332505,
         "deliveredGeneration": 3
       }
     ]
@@ -102,21 +102,21 @@
     "rows": [
       {
         "seq": 6,
-        "ts": 1792480165455,
+        "ts": 1792480331218,
         "kind": "bee.created",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "bee": {
-            "id": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "name": "lab-synthetic-delivered-failure",
             "agent": "claude",
             "substrate": "hsr",
-            "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5",
+            "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5/session-logs/cc9d2304-1fdf-4212-8c08-6e1986d986a5.jsonl",
+            "sessionLogPath": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU/session-logs/e4748124-5a27-412d-ba17-5e71ba2eb9c9.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792480165455,
+            "createdAt": 1792480331218,
             "archivedAt": null,
             "lastOutputAt": null,
             "providerSessionId": null,
@@ -126,7 +126,7 @@
               "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
               "ANTHROPIC_AUTH_TOKEN": "<redacted>",
               "ANTHROPIC_API_KEY": "<redacted>",
-              "CLAUDE_CONFIG_DIR": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5/homes/claude-a"
+              "CLAUDE_CONFIG_DIR": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU/homes/claude-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -150,81 +150,81 @@
             "transport": "local_unix",
             "ingress": "local_unix",
             "uid": 1000,
-            "pid": 951383,
+            "pid": 954408,
             "verb": "spawn"
           }
         }
       },
       {
         "seq": 7,
-        "ts": 1792480165456,
+        "ts": 1792480331219,
         "kind": "transcript_segment.put",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "segment": {
-            "id": "seg:cc9d2304-1fdf-4212-8c08-6e1986d986a5:0",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "seg:e4748124-5a27-412d-ba17-5e71ba2eb9c9:0",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "ordinal": 0,
             "harness": "claude",
             "providerSessionId": null,
             "fromGeneration": 1,
             "toGeneration": null,
-            "path": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5/session-logs/cc9d2304-1fdf-4212-8c08-6e1986d986a5.jsonl",
+            "path": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU/session-logs/e4748124-5a27-412d-ba17-5e71ba2eb9c9.jsonl",
             "handoffId": null,
-            "createdAt": 1792480165455,
+            "createdAt": 1792480331218,
             "closedAt": null
           },
           "rpcCaller": {
             "transport": "local_unix",
             "ingress": "local_unix",
             "uid": 1000,
-            "pid": 951383,
+            "pid": 954408,
             "verb": "spawn"
           }
         }
       },
       {
         "seq": 8,
-        "ts": 1792480165456,
+        "ts": 1792480331219,
         "kind": "runtime.created",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 1,
             "state": "booting",
             "exitCause": null,
             "pid": null,
             "pidStartedAt": null,
             "bootEvidence": null,
-            "startedAt": 1792480165455,
-            "updatedAt": 1792480165455
+            "startedAt": 1792480331218,
+            "updatedAt": 1792480331218
           },
           "rpcCaller": {
             "transport": "local_unix",
             "ingress": "local_unix",
             "uid": 1000,
-            "pid": 951383,
+            "pid": 954408,
             "verb": "spawn"
           }
         }
       },
       {
         "seq": 9,
-        "ts": 1792480165457,
+        "ts": 1792480331219,
         "kind": "command.enqueued",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "command": {
             "id": 1,
             "verb": "spawn",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "args": {},
             "targetGeneration": 1,
             "status": "queued",
             "attempts": 0,
-            "nextAttemptAt": 1792480165456,
-            "enqueuedAt": 1792480165456,
+            "nextAttemptAt": 1792480331219,
+            "enqueuedAt": 1792480331219,
             "finishedAt": null,
             "failureCause": null,
             "idempotencyKey": null
@@ -233,25 +233,25 @@
             "transport": "local_unix",
             "ingress": "local_unix",
             "uid": 1000,
-            "pid": 951383,
+            "pid": 954408,
             "verb": "spawn"
           }
         }
       },
       {
         "seq": 10,
-        "ts": 1792480165461,
+        "ts": 1792480331224,
         "kind": "mail.enqueued",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "message": {
             "id": 1,
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "sender": "operator",
             "body": "@quota:delayed preserve work",
             "priority": 0,
             "urgency": "next",
-            "enqueuedAt": 1792480165461,
+            "enqueuedAt": 1792480331224,
             "deliveredAt": null,
             "deliveredGeneration": null
           },
@@ -260,216 +260,216 @@
             "transport": "local_unix",
             "ingress": "local_unix",
             "uid": 1000,
-            "pid": 951383,
+            "pid": 954408,
             "verb": "send"
           }
         }
       },
       {
         "seq": 11,
-        "ts": 1792480165464,
+        "ts": 1792480331225,
         "kind": "command.claimed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "commandId": 1
         }
       },
       {
         "seq": 12,
-        "ts": 1792480165640,
+        "ts": 1792480331433,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 1,
             "state": "booting",
             "exitCause": null,
-            "pid": 952540,
-            "pidStartedAt": 1792480165637,
+            "pid": 955665,
+            "pidStartedAt": 1792480331430,
             "bootEvidence": null,
-            "startedAt": 1792480165455,
-            "updatedAt": 1792480165455
+            "startedAt": 1792480331218,
+            "updatedAt": 1792480331218
           }
         }
       },
       {
         "seq": 13,
-        "ts": 1792480165641,
+        "ts": 1792480331434,
         "kind": "command.completed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "commandId": 1,
-          "finishedAt": 1792480165641
+          "finishedAt": 1792480331434
         }
       },
       {
         "seq": 14,
-        "ts": 1792480165795,
+        "ts": 1792480331523,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 1,
             "state": "booting",
             "exitCause": null,
-            "pid": 952540,
-            "pidStartedAt": 1792480165637,
+            "pid": 955665,
+            "pidStartedAt": 1792480331430,
             "bootEvidence": null,
-            "startedAt": 1792480165455,
-            "updatedAt": 1792480165455
+            "startedAt": 1792480331218,
+            "updatedAt": 1792480331218
           }
         }
       },
       {
         "seq": 15,
-        "ts": 1792480165796,
+        "ts": 1792480331524,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 1,
             "state": "running",
             "exitCause": null,
-            "pid": 952540,
-            "pidStartedAt": 1792480165637,
+            "pid": 955665,
+            "pidStartedAt": 1792480331430,
             "bootEvidence": "synthetic",
-            "startedAt": 1792480165455,
-            "updatedAt": 1792480165796
+            "startedAt": 1792480331218,
+            "updatedAt": 1792480331524
           }
         }
       },
       {
         "seq": 16,
-        "ts": 1792480165802,
+        "ts": 1792480331529,
         "kind": "mail.delivered",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "messageId": 1,
-          "deliveredAt": 1792480165802,
+          "deliveredAt": 1792480331529,
           "deliveredGeneration": 1,
           "turnTrigger": {
             "kind": "human",
             "from": "operator",
             "messageId": 1,
             "generation": 1,
-            "startedAt": 1792480165802,
-            "humanAt": 1792480165802,
+            "startedAt": 1792480331529,
+            "humanAt": 1792480331529,
             "endedAt": null
           }
         }
       },
       {
         "seq": 17,
-        "ts": 1792480165846,
+        "ts": 1792480331640,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 1,
             "state": "running",
             "exitCause": null,
-            "pid": 952540,
-            "pidStartedAt": 1792480165637,
+            "pid": 955665,
+            "pidStartedAt": 1792480331430,
             "bootEvidence": "real",
-            "startedAt": 1792480165455,
-            "updatedAt": 1792480165796
+            "startedAt": 1792480331218,
+            "updatedAt": 1792480331524
           }
         }
       },
       {
         "seq": 18,
-        "ts": 1792480165847,
+        "ts": 1792480331641,
         "kind": "bee.provider_session",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
-          "providerSessionId": "196ab20d-47aa-4fe6-90ac-5df0ec054b5a",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
+          "providerSessionId": "444dc99f-13bf-4f2c-9972-c2db8c33e85a",
           "previous": null
         }
       },
       {
         "seq": 19,
-        "ts": 1792480165847,
+        "ts": 1792480331641,
         "kind": "transcript_segment.put",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "segment": {
-            "id": "seg:cc9d2304-1fdf-4212-8c08-6e1986d986a5:0",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "seg:e4748124-5a27-412d-ba17-5e71ba2eb9c9:0",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "ordinal": 0,
             "harness": "claude",
-            "providerSessionId": "196ab20d-47aa-4fe6-90ac-5df0ec054b5a",
+            "providerSessionId": "444dc99f-13bf-4f2c-9972-c2db8c33e85a",
             "fromGeneration": 1,
             "toGeneration": null,
-            "path": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5/session-logs/cc9d2304-1fdf-4212-8c08-6e1986d986a5.jsonl",
+            "path": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU/session-logs/e4748124-5a27-412d-ba17-5e71ba2eb9c9.jsonl",
             "handoffId": null,
-            "createdAt": 1792480165455,
+            "createdAt": 1792480331218,
             "closedAt": null
           }
         }
       },
       {
         "seq": 20,
-        "ts": 1792480165847,
+        "ts": 1792480331642,
         "kind": "flag.clear_noop",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
           "flag": "spawn_failed"
         }
       },
       {
         "seq": 21,
-        "ts": 1792480166042,
+        "ts": 1792480331838,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 1,
             "state": "idle",
             "exitCause": null,
-            "pid": 952540,
-            "pidStartedAt": 1792480165637,
+            "pid": 955665,
+            "pidStartedAt": 1792480331430,
             "bootEvidence": "real",
-            "startedAt": 1792480165455,
-            "updatedAt": 1792480166042
+            "startedAt": 1792480331218,
+            "updatedAt": 1792480331838
           },
           "turnTrigger": {
             "kind": "human",
             "from": "operator",
             "messageId": 1,
             "generation": 1,
-            "startedAt": 1792480165802,
-            "humanAt": 1792480165802,
-            "endedAt": 1792480166042
+            "startedAt": 1792480331529,
+            "humanAt": 1792480331529,
+            "endedAt": 1792480331838
           }
         }
       },
       {
         "seq": 22,
-        "ts": 1792480166042,
+        "ts": 1792480331839,
         "kind": "output.recorded",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
-          "at": 1792480166042,
-          "lastHumanOutputAt": 1792480166042
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
+          "at": 1792480331838,
+          "lastHumanOutputAt": 1792480331838
         }
       },
       {
         "seq": 23,
-        "ts": 1792480166043,
+        "ts": 1792480331839,
         "kind": "quota.observed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "eventId": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:716",
-          "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+          "eventId": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:716",
+          "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
           "generation": 1,
           "quota": {
             "harness": "claude",
@@ -487,20 +487,20 @@
       },
       {
         "seq": 24,
-        "ts": 1792480166043,
+        "ts": 1792480331839,
         "kind": "quota.recovery",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "recovery": {
-            "id": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "sourceGeneration": 1,
             "sourceAccount": "claude-a",
             "observationCursor": 716,
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": null,
             "eventIds": [
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:716"
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:716"
             ],
             "messageIds": [
               1
@@ -510,7 +510,7 @@
             "controlFence": 0,
             "placement": {
               "agent": "claude",
-              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5",
+              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU",
               "cellId": null
             },
             "quota": {
@@ -534,14 +534,14 @@
             "continuationHistory": [],
             "retryAt": null,
             "reason": null,
-            "createdAt": 1792480166043,
-            "updatedAt": 1792480166043
+            "createdAt": 1792480331839,
+            "updatedAt": 1792480331839
           },
           "notice": {
             "kind": "quota_recovery",
-            "recoveryId": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
+            "recoveryId": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
             "state": "waiting",
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": null,
             "window": "weekly",
             "retryAt": null
@@ -550,16 +550,16 @@
       },
       {
         "seq": 25,
-        "ts": 1792480166043,
+        "ts": 1792480331840,
         "kind": "flag.set",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "flag": {
             "id": 1,
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "flag": "resource_blocked",
             "detail": "claude quota exhausted: synthetic provider limit",
-            "setAt": 1792480166043,
+            "setAt": 1792480331840,
             "clearedAt": null,
             "resetsAt": 1893456000000
           }
@@ -567,20 +567,20 @@
       },
       {
         "seq": 27,
-        "ts": 1792480166048,
+        "ts": 1792480331844,
         "kind": "quota.recovery",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "recovery": {
-            "id": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "sourceGeneration": 1,
             "sourceAccount": "claude-a",
             "observationCursor": 716,
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "eventIds": [
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:716"
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:716"
             ],
             "messageIds": [
               1
@@ -590,7 +590,7 @@
             "controlFence": 0,
             "placement": {
               "agent": "claude",
-              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5",
+              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU",
               "cellId": null
             },
             "quota": {
@@ -614,14 +614,14 @@
             "continuationHistory": [],
             "retryAt": null,
             "reason": null,
-            "createdAt": 1792480166043,
-            "updatedAt": 1792480166048
+            "createdAt": 1792480331839,
+            "updatedAt": 1792480331844
           },
           "notice": {
             "kind": "quota_recovery",
-            "recoveryId": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
+            "recoveryId": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
             "state": "rotating",
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "window": "weekly",
             "retryAt": null
@@ -630,47 +630,47 @@
       },
       {
         "seq": 28,
-        "ts": 1792480166048,
+        "ts": 1792480331845,
         "kind": "bee.auth_control",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "controlFence": 1
         }
       },
       {
         "seq": 29,
-        "ts": 1792480166048,
+        "ts": 1792480331845,
         "kind": "bee.account_set",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
           "account": "claude-b",
           "previous": "claude-a"
         }
       },
       {
         "seq": 30,
-        "ts": 1792480166048,
+        "ts": 1792480331845,
         "kind": "bee.auth_control",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "controlFence": 2
         }
       },
       {
         "seq": 31,
-        "ts": 1792480166048,
+        "ts": 1792480331845,
         "kind": "bee.env_set",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
           "env": {
             "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
             "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
             "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
             "ANTHROPIC_AUTH_TOKEN": "<redacted>",
             "ANTHROPIC_API_KEY": "<redacted>",
-            "CLAUDE_CONFIG_DIR": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5/homes/claude-b"
+            "CLAUDE_CONFIG_DIR": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU/homes/claude-b"
           },
           "previous": {
             "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
@@ -678,40 +678,40 @@
             "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
             "ANTHROPIC_AUTH_TOKEN": "<redacted>",
             "ANTHROPIC_API_KEY": "<redacted>",
-            "CLAUDE_CONFIG_DIR": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5/homes/claude-a"
+            "CLAUDE_CONFIG_DIR": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU/homes/claude-a"
           }
         }
       },
       {
         "seq": 32,
-        "ts": 1792480166049,
+        "ts": 1792480331846,
         "kind": "bee.auth_control",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "controlFence": 3
         }
       },
       {
         "seq": 33,
-        "ts": 1792480166049,
+        "ts": 1792480331846,
         "kind": "bee.session_rekeyed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
-          "forkSeed": "196ab20d-47aa-4fe6-90ac-5df0ec054b5a",
-          "previousProviderSessionId": "196ab20d-47aa-4fe6-90ac-5df0ec054b5a"
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
+          "forkSeed": "444dc99f-13bf-4f2c-9972-c2db8c33e85a",
+          "previousProviderSessionId": "444dc99f-13bf-4f2c-9972-c2db8c33e85a"
         }
       },
       {
         "seq": 34,
-        "ts": 1792480166049,
+        "ts": 1792480331846,
         "kind": "command.enqueued",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "command": {
             "id": 2,
             "verb": "stop",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "args": {
               "cause": "stopped_by_system",
               "reason": "swap_account:rotation",
@@ -720,8 +720,8 @@
             "targetGeneration": 1,
             "status": "queued",
             "attempts": 0,
-            "nextAttemptAt": 1792480166049,
-            "enqueuedAt": 1792480166049,
+            "nextAttemptAt": 1792480331846,
+            "enqueuedAt": 1792480331846,
             "finishedAt": null,
             "failureCause": null,
             "idempotencyKey": null
@@ -730,20 +730,20 @@
       },
       {
         "seq": 35,
-        "ts": 1792480166049,
+        "ts": 1792480331846,
         "kind": "quota.recovery",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "recovery": {
-            "id": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "sourceGeneration": 1,
             "sourceAccount": "claude-a",
             "observationCursor": 716,
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "eventIds": [
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:716"
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:716"
             ],
             "messageIds": [
               1
@@ -753,7 +753,7 @@
             "controlFence": 3,
             "placement": {
               "agent": "claude",
-              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5",
+              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU",
               "cellId": null
             },
             "quota": {
@@ -777,14 +777,14 @@
             "continuationHistory": [],
             "retryAt": null,
             "reason": null,
-            "createdAt": 1792480166043,
-            "updatedAt": 1792480166049
+            "createdAt": 1792480331839,
+            "updatedAt": 1792480331846
           },
           "notice": {
             "kind": "quota_recovery",
-            "recoveryId": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
+            "recoveryId": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
             "state": "rotating",
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "window": "weekly",
             "retryAt": null
@@ -793,13 +793,13 @@
       },
       {
         "seq": 36,
-        "ts": 1792480166049,
+        "ts": 1792480331846,
         "kind": "quota.observed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "eventId": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:912",
-          "sourceId": "9da6106b3d3f2d2f1aab07f6b3eb698264a86ee7a2942df61f421c8a8a01146b",
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+          "eventId": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:912",
+          "sourceId": "a1c19e6a2012778b9eff984909808ede328154267d3a536512cff006800c42dd",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
           "generation": 1,
           "quota": {
             "harness": "claude",
@@ -817,21 +817,21 @@
       },
       {
         "seq": 37,
-        "ts": 1792480166049,
+        "ts": 1792480331846,
         "kind": "quota.recovery",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "recovery": {
-            "id": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "sourceGeneration": 1,
             "sourceAccount": "claude-a",
             "observationCursor": 716,
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "eventIds": [
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:716",
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:912"
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:716",
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:912"
             ],
             "messageIds": [
               1
@@ -841,7 +841,7 @@
             "controlFence": 3,
             "placement": {
               "agent": "claude",
-              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5",
+              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU",
               "cellId": null
             },
             "quota": {
@@ -865,14 +865,14 @@
             "continuationHistory": [],
             "retryAt": null,
             "reason": null,
-            "createdAt": 1792480166043,
-            "updatedAt": 1792480166049
+            "createdAt": 1792480331839,
+            "updatedAt": 1792480331846
           },
           "notice": {
             "kind": "quota_recovery",
-            "recoveryId": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
+            "recoveryId": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
             "state": "rotating",
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "window": "weekly",
             "retryAt": null
@@ -881,60 +881,60 @@
       },
       {
         "seq": 38,
-        "ts": 1792480166050,
+        "ts": 1792480331847,
         "kind": "command.claimed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "commandId": 2
         }
       },
       {
         "seq": 39,
-        "ts": 1792480166051,
+        "ts": 1792480331848,
         "kind": "command.completed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "commandId": 2,
-          "finishedAt": 1792480166051
+          "finishedAt": 1792480331848
         }
       },
       {
         "seq": 40,
-        "ts": 1792480166073,
+        "ts": 1792480331870,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 1,
             "state": "stopped",
             "exitCause": "stopped_by_system",
-            "pid": 952540,
-            "pidStartedAt": 1792480165637,
+            "pid": 955665,
+            "pidStartedAt": 1792480331430,
             "bootEvidence": "real",
-            "startedAt": 1792480165455,
-            "updatedAt": 1792480166073
+            "startedAt": 1792480331218,
+            "updatedAt": 1792480331870
           }
         }
       },
       {
         "seq": 41,
-        "ts": 1792480166074,
+        "ts": 1792480331871,
         "kind": "command.enqueued",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "command": {
             "id": 3,
             "verb": "revive",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "args": {
               "reason": "after_stop"
             },
             "targetGeneration": 1,
             "status": "queued",
             "attempts": 0,
-            "nextAttemptAt": 1792480166074,
-            "enqueuedAt": 1792480166074,
+            "nextAttemptAt": 1792480331871,
+            "enqueuedAt": 1792480331871,
             "finishedAt": null,
             "failureCause": null,
             "idempotencyKey": null
@@ -943,132 +943,132 @@
       },
       {
         "seq": 42,
-        "ts": 1792480166079,
+        "ts": 1792480331876,
         "kind": "command.claimed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "commandId": 3
         }
       },
       {
         "seq": 43,
-        "ts": 1792480166079,
+        "ts": 1792480331876,
         "kind": "runtime.created",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 2,
             "state": "booting",
             "exitCause": null,
             "pid": null,
             "pidStartedAt": null,
             "bootEvidence": null,
-            "startedAt": 1792480166079,
-            "updatedAt": 1792480166079
+            "startedAt": 1792480331876,
+            "updatedAt": 1792480331876
           }
         }
       },
       {
         "seq": 44,
-        "ts": 1792480166276,
+        "ts": 1792480332019,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 2,
             "state": "booting",
             "exitCause": null,
-            "pid": 952561,
-            "pidStartedAt": 1792480166274,
+            "pid": 955686,
+            "pidStartedAt": 1792480332017,
             "bootEvidence": null,
-            "startedAt": 1792480166079,
-            "updatedAt": 1792480166079
+            "startedAt": 1792480331876,
+            "updatedAt": 1792480331876
           }
         }
       },
       {
         "seq": 45,
-        "ts": 1792480166276,
+        "ts": 1792480332019,
         "kind": "command.completed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "commandId": 3,
-          "finishedAt": 1792480166276
+          "finishedAt": 1792480332019
         }
       },
       {
         "seq": 46,
-        "ts": 1792480166364,
+        "ts": 1792480332106,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 2,
             "state": "booting",
             "exitCause": null,
-            "pid": 952561,
-            "pidStartedAt": 1792480166274,
+            "pid": 955686,
+            "pidStartedAt": 1792480332017,
             "bootEvidence": null,
-            "startedAt": 1792480166079,
-            "updatedAt": 1792480166079
+            "startedAt": 1792480331876,
+            "updatedAt": 1792480331876
           }
         }
       },
       {
         "seq": 47,
-        "ts": 1792480166364,
+        "ts": 1792480332107,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 2,
             "state": "running",
             "exitCause": null,
-            "pid": 952561,
-            "pidStartedAt": 1792480166274,
+            "pid": 955686,
+            "pidStartedAt": 1792480332017,
             "bootEvidence": "synthetic",
-            "startedAt": 1792480166079,
-            "updatedAt": 1792480166364
+            "startedAt": 1792480331876,
+            "updatedAt": 1792480332106
           }
         }
       },
       {
         "seq": 48,
-        "ts": 1792480166365,
+        "ts": 1792480332107,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 2,
             "state": "idle",
             "exitCause": null,
-            "pid": 952561,
-            "pidStartedAt": 1792480166274,
+            "pid": 955686,
+            "pidStartedAt": 1792480332017,
             "bootEvidence": "synthetic",
-            "startedAt": 1792480166079,
-            "updatedAt": 1792480166365
+            "startedAt": 1792480331876,
+            "updatedAt": 1792480332107
           }
         }
       },
       {
         "seq": 49,
-        "ts": 1792480166366,
+        "ts": 1792480332109,
         "kind": "mail.enqueued",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "message": {
             "id": 2,
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "sender": "hive:quota-resume",
             "body": "Continue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.",
             "priority": 0,
             "urgency": "next",
-            "enqueuedAt": 1792480166366,
+            "enqueuedAt": 1792480332109,
             "deliveredAt": null,
             "deliveredGeneration": null
           },
@@ -1077,21 +1077,21 @@
       },
       {
         "seq": 50,
-        "ts": 1792480166367,
+        "ts": 1792480332110,
         "kind": "quota.recovery",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "recovery": {
-            "id": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "sourceGeneration": 1,
             "sourceAccount": "claude-a",
             "observationCursor": 716,
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "eventIds": [
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:716",
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:912"
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:716",
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:912"
             ],
             "messageIds": [
               1
@@ -1101,7 +1101,7 @@
             "controlFence": 3,
             "placement": {
               "agent": "claude",
-              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5",
+              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU",
               "cellId": null
             },
             "quota": {
@@ -1127,14 +1127,14 @@
             "continuationHistory": [],
             "retryAt": null,
             "reason": null,
-            "createdAt": 1792480166043,
-            "updatedAt": 1792480166367
+            "createdAt": 1792480331839,
+            "updatedAt": 1792480332109
           },
           "notice": {
             "kind": "quota_recovery",
-            "recoveryId": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
+            "recoveryId": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
             "state": "rotating",
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "window": "weekly",
             "retryAt": null
@@ -1143,19 +1143,19 @@
       },
       {
         "seq": 51,
-        "ts": 1792480166371,
+        "ts": 1792480332114,
         "kind": "mail.delivered",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "messageId": 2,
-          "deliveredAt": 1792480166371,
+          "deliveredAt": 1792480332114,
           "deliveredGeneration": 2,
           "turnTrigger": {
             "kind": "other",
             "from": "hive:quota-resume",
             "messageId": 2,
             "generation": 2,
-            "startedAt": 1792480166371,
+            "startedAt": 1792480332114,
             "humanAt": null,
             "endedAt": null
           },
@@ -1164,49 +1164,49 @@
       },
       {
         "seq": 52,
-        "ts": 1792480166392,
+        "ts": 1792480332136,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 2,
             "state": "running",
             "exitCause": null,
-            "pid": 952561,
-            "pidStartedAt": 1792480166274,
+            "pid": 955686,
+            "pidStartedAt": 1792480332017,
             "bootEvidence": "synthetic",
-            "startedAt": 1792480166079,
-            "updatedAt": 1792480166392
+            "startedAt": 1792480331876,
+            "updatedAt": 1792480332136
           }
         }
       },
       {
         "seq": 53,
-        "ts": 1792480166435,
+        "ts": 1792480332202,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 2,
             "state": "stopped",
             "exitCause": "crashed",
-            "pid": 952561,
-            "pidStartedAt": 1792480166274,
+            "pid": 955686,
+            "pidStartedAt": 1792480332017,
             "bootEvidence": "synthetic",
-            "startedAt": 1792480166079,
-            "updatedAt": 1792480166435
+            "startedAt": 1792480331876,
+            "updatedAt": 1792480332202
           }
         }
       },
       {
         "seq": 54,
-        "ts": 1792480166435,
+        "ts": 1792480332203,
         "kind": "bee.spawn_failures",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
           "spawnFailures": 1,
           "reason": "boot_exit",
           "generation": 2,
@@ -1216,20 +1216,20 @@
       },
       {
         "seq": 55,
-        "ts": 1792480166436,
+        "ts": 1792480332203,
         "kind": "command.enqueued",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "command": {
             "id": 4,
             "verb": "send_wake",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "args": {},
             "targetGeneration": 2,
             "status": "queued",
             "attempts": 0,
-            "nextAttemptAt": 1792480166485,
-            "enqueuedAt": 1792480166436,
+            "nextAttemptAt": 1792480332252,
+            "enqueuedAt": 1792480332203,
             "finishedAt": null,
             "failureCause": null,
             "idempotencyKey": null
@@ -1238,18 +1238,18 @@
       },
       {
         "seq": 56,
-        "ts": 1792480166437,
+        "ts": 1792480332205,
         "kind": "mail.enqueued",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "message": {
             "id": 3,
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "sender": "hive:quota-resume",
             "body": "Continue the interrupted turn from where you stopped. The previous runtime failed before confirming its boot; check existing work before repeating any operation. Preserve the current action attempt.",
             "priority": 0,
             "urgency": "next",
-            "enqueuedAt": 1792480166437,
+            "enqueuedAt": 1792480332205,
             "deliveredAt": null,
             "deliveredGeneration": null
           },
@@ -1258,21 +1258,21 @@
       },
       {
         "seq": 57,
-        "ts": 1792480166437,
+        "ts": 1792480332205,
         "kind": "quota.recovery",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "recovery": {
-            "id": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "sourceGeneration": 1,
             "sourceAccount": "claude-a",
             "observationCursor": 716,
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "eventIds": [
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:716",
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:912"
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:716",
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:912"
             ],
             "messageIds": [
               1
@@ -1282,7 +1282,7 @@
             "controlFence": 3,
             "placement": {
               "agent": "claude",
-              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5",
+              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU",
               "cellId": null
             },
             "quota": {
@@ -1316,14 +1316,14 @@
             ],
             "retryAt": null,
             "reason": null,
-            "createdAt": 1792480166043,
-            "updatedAt": 1792480166437
+            "createdAt": 1792480331839,
+            "updatedAt": 1792480332205
           },
           "notice": {
             "kind": "quota_recovery",
-            "recoveryId": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
+            "recoveryId": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
             "state": "rotating",
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "window": "weekly",
             "retryAt": null
@@ -1332,114 +1332,114 @@
       },
       {
         "seq": 58,
-        "ts": 1792480166503,
+        "ts": 1792480332272,
         "kind": "command.claimed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "commandId": 4
         }
       },
       {
         "seq": 59,
-        "ts": 1792480166504,
+        "ts": 1792480332272,
         "kind": "runtime.created",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 3,
             "state": "booting",
             "exitCause": null,
             "pid": null,
             "pidStartedAt": null,
             "bootEvidence": null,
-            "startedAt": 1792480166504,
-            "updatedAt": 1792480166504
+            "startedAt": 1792480332272,
+            "updatedAt": 1792480332272
           }
         }
       },
       {
         "seq": 60,
-        "ts": 1792480166655,
+        "ts": 1792480332411,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 3,
             "state": "booting",
             "exitCause": null,
-            "pid": 952583,
-            "pidStartedAt": 1792480166654,
+            "pid": 955707,
+            "pidStartedAt": 1792480332409,
             "bootEvidence": null,
-            "startedAt": 1792480166504,
-            "updatedAt": 1792480166504
+            "startedAt": 1792480332272,
+            "updatedAt": 1792480332272
           }
         }
       },
       {
         "seq": 61,
-        "ts": 1792480166656,
+        "ts": 1792480332411,
         "kind": "command.completed",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "commandId": 4,
-          "finishedAt": 1792480166656
+          "finishedAt": 1792480332411
         }
       },
       {
         "seq": 62,
-        "ts": 1792480166743,
+        "ts": 1792480332500,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 3,
             "state": "booting",
             "exitCause": null,
-            "pid": 952583,
-            "pidStartedAt": 1792480166654,
+            "pid": 955707,
+            "pidStartedAt": 1792480332409,
             "bootEvidence": null,
-            "startedAt": 1792480166504,
-            "updatedAt": 1792480166504
+            "startedAt": 1792480332272,
+            "updatedAt": 1792480332272
           }
         }
       },
       {
         "seq": 63,
-        "ts": 1792480166743,
+        "ts": 1792480332501,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 3,
             "state": "running",
             "exitCause": null,
-            "pid": 952583,
-            "pidStartedAt": 1792480166654,
+            "pid": 955707,
+            "pidStartedAt": 1792480332409,
             "bootEvidence": "synthetic",
-            "startedAt": 1792480166504,
-            "updatedAt": 1792480166743
+            "startedAt": 1792480332272,
+            "updatedAt": 1792480332500
           }
         }
       },
       {
         "seq": 64,
-        "ts": 1792480166747,
+        "ts": 1792480332505,
         "kind": "mail.delivered",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "messageId": 3,
-          "deliveredAt": 1792480166747,
+          "deliveredAt": 1792480332505,
           "deliveredGeneration": 3,
           "turnTrigger": {
             "kind": "other",
             "from": "hive:quota-resume",
             "messageId": 3,
             "generation": 3,
-            "startedAt": 1792480166747,
+            "startedAt": 1792480332505,
             "humanAt": null,
             "endedAt": null
           },
@@ -1448,157 +1448,157 @@
       },
       {
         "seq": 65,
-        "ts": 1792480166812,
+        "ts": 1792480332571,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 3,
             "state": "running",
             "exitCause": null,
-            "pid": 952583,
-            "pidStartedAt": 1792480166654,
+            "pid": 955707,
+            "pidStartedAt": 1792480332409,
             "bootEvidence": "real",
-            "startedAt": 1792480166504,
-            "updatedAt": 1792480166743
+            "startedAt": 1792480332272,
+            "updatedAt": 1792480332500
           }
         }
       },
       {
         "seq": 66,
-        "ts": 1792480166812,
+        "ts": 1792480332571,
         "kind": "bee.spawn_failures",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
           "spawnFailures": 0,
           "reason": "runtime produced real output (generation 3)"
         }
       },
       {
         "seq": 67,
-        "ts": 1792480166812,
+        "ts": 1792480332571,
         "kind": "runtime.updated",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "runtime": {
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "generation": 3,
             "state": "idle",
             "exitCause": null,
-            "pid": 952583,
-            "pidStartedAt": 1792480166654,
+            "pid": 955707,
+            "pidStartedAt": 1792480332409,
             "bootEvidence": "real",
-            "startedAt": 1792480166504,
-            "updatedAt": 1792480166812
+            "startedAt": 1792480332272,
+            "updatedAt": 1792480332571
           },
           "turnTrigger": {
             "kind": "other",
             "from": "hive:quota-resume",
             "messageId": 3,
             "generation": 3,
-            "startedAt": 1792480166747,
+            "startedAt": 1792480332505,
             "humanAt": null,
-            "endedAt": 1792480166812,
+            "endedAt": 1792480332571,
             "endedQuiet": false
           }
         }
       },
       {
         "seq": 68,
-        "ts": 1792480166812,
+        "ts": 1792480332572,
         "kind": "output.recorded",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
-          "at": 1792480166812,
-          "lastHumanOutputAt": 1792480166042
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
+          "at": 1792480332571,
+          "lastHumanOutputAt": 1792480331838
         }
       },
       {
         "seq": 69,
-        "ts": 1792480166812,
+        "ts": 1792480332572,
         "kind": "bee.provider_session",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
-          "providerSessionId": "603e12da-53f4-4aba-8b6b-225e59336a4e",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
+          "providerSessionId": "453d9139-d563-47ad-8383-3f0813b80174",
           "previous": null,
-          "forkSeedConsumed": "196ab20d-47aa-4fe6-90ac-5df0ec054b5a"
+          "forkSeedConsumed": "444dc99f-13bf-4f2c-9972-c2db8c33e85a"
         }
       },
       {
         "seq": 70,
-        "ts": 1792480166812,
+        "ts": 1792480332572,
         "kind": "transcript_segment.put",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "segment": {
-            "id": "seg:cc9d2304-1fdf-4212-8c08-6e1986d986a5:0",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "seg:e4748124-5a27-412d-ba17-5e71ba2eb9c9:0",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "ordinal": 0,
             "harness": "claude",
-            "providerSessionId": "603e12da-53f4-4aba-8b6b-225e59336a4e",
+            "providerSessionId": "453d9139-d563-47ad-8383-3f0813b80174",
             "fromGeneration": 1,
             "toGeneration": null,
-            "path": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5/session-logs/cc9d2304-1fdf-4212-8c08-6e1986d986a5.jsonl",
+            "path": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU/session-logs/e4748124-5a27-412d-ba17-5e71ba2eb9c9.jsonl",
             "handoffId": null,
-            "createdAt": 1792480165455,
+            "createdAt": 1792480331218,
             "closedAt": null
           }
         }
       },
       {
         "seq": 71,
-        "ts": 1792480166812,
+        "ts": 1792480332572,
         "kind": "flag.clear_noop",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
           "flag": "spawn_failed"
         }
       },
       {
         "seq": 72,
-        "ts": 1792480166813,
+        "ts": 1792480332572,
         "kind": "flag.clear_noop",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
           "flag": "auth_needed"
         }
       },
       {
         "seq": 73,
-        "ts": 1792480166813,
+        "ts": 1792480332572,
         "kind": "flag.cleared",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "flagId": 1,
-          "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+          "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
           "flag": "resource_blocked",
-          "clearedAt": 1792480166813,
+          "clearedAt": 1792480332572,
           "detail": "successful turn served"
         }
       },
       {
         "seq": 74,
-        "ts": 1792480166814,
+        "ts": 1792480332574,
         "kind": "quota.recovery",
-        "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+        "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
         "payload": {
           "recovery": {
-            "id": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
-            "beeId": "cc9d2304-1fdf-4212-8c08-6e1986d986a5",
+            "id": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
+            "beeId": "e4748124-5a27-412d-ba17-5e71ba2eb9c9",
             "sourceGeneration": 1,
             "sourceAccount": "claude-a",
             "observationCursor": 716,
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "eventIds": [
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:716",
-              "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:912"
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:716",
+              "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:912"
             ],
             "messageIds": [
               1
@@ -1608,7 +1608,7 @@
             "controlFence": 3,
             "placement": {
               "agent": "claude",
-              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-d58bb5",
+              "cwd": "/var/tmp/hb-B-final-QhNdrb/hb-v2-daemon-wearIU",
               "cellId": null
             },
             "quota": {
@@ -1642,14 +1642,14 @@
             ],
             "retryAt": null,
             "reason": null,
-            "createdAt": 1792480166043,
-            "updatedAt": 1792480166814
+            "createdAt": 1792480331839,
+            "updatedAt": 1792480332574
           },
           "notice": {
             "kind": "quota_recovery",
-            "recoveryId": "quota:cc9d2304-1fdf-4212-8c08-6e1986d986a5:1:1",
+            "recoveryId": "quota:e4748124-5a27-412d-ba17-5e71ba2eb9c9:1:1",
             "state": "resumed",
-            "sourceId": "96c5cc42-fd57-4e18-ad59-c3e11320eefe",
+            "sourceId": "de8619ce-7014-4925-a48a-a1f12167e6d1",
             "accountLabel": "b",
             "window": "weekly",
             "retryAt": null

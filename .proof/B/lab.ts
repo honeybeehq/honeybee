@@ -7,10 +7,10 @@ import { makeDaemonDir, startDaemon, waitFor } from "../../v2/daemon/tests/helpe
 const proof = resolve(".proof/B");
 const repo = resolve(".");
 const summaries: unknown[] = [];
-for (const name of ["progress", "replay", "between", "restart", "stop", "boot-retry", "queued", "queued-early", "manual-swap", "archive", "postenqueue-stop", "synthetic-retry", "synthetic-delivered-failure"]) {
+for (const name of ["progress", "replay", "between", "restart", "stop", "boot-retry", "queued", "queued-early", "manual-swap", "archive", "postenqueue-stop", "synthetic-retry", "synthetic-delivered-failure", "pause"]) {
   const gate = join(process.env.TMPDIR!, `quota-gate-${process.pid}-${name}`);
-  const gated = ["restart", "stop", "boot-retry", "queued", "manual-swap", "archive", "postenqueue-stop"].includes(name);
-  const cancelled = ["stop", "manual-swap", "archive", "postenqueue-stop"].includes(name);
+  const gated = ["restart", "stop", "boot-retry", "queued", "manual-swap", "archive", "postenqueue-stop", "pause"].includes(name);
+  const cancelled = ["stop", "manual-swap", "archive", "postenqueue-stop", "pause"].includes(name);
   const deliveryGate = `${gate}-delivery`;
   if (gated) writeFileSync(gate, "pause continuation");
   const { dir } = makeDaemonDir({ accounts: { allocationMode: "shadow" }, agents: { claude: {
@@ -65,8 +65,9 @@ for (const name of ["progress", "replay", "between", "restart", "stop", "boot-re
       } else if (name === "stop") {
         await client.request("stop", { beeId: bee.beeId });
         renameSync(gate, `${gate}.trashed`);
-      } else if (name === "manual-swap" || name === "archive") {
+      } else if (name === "manual-swap" || name === "archive" || name === "pause") {
         if (name === "manual-swap") await client.request("bee.swapAccount", { beeId: bee.beeId, account: "claude-a" });
+        else if (name === "pause") await client.request("account.pause", { id: "claude-b" });
         else await client.request("archive", { beeId: bee.beeId });
         renameSync(gate, `${gate}.trashed`);
       } else if (name === "postenqueue-stop") {

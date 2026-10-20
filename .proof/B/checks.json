@@ -1,0 +1,62 @@
+{
+  "sourceCommit": "419a5a1c0495ae4abb113492e13e88f5f491e8f6",
+  "baseCommit": "5856406ef71c0b57ff5089c049b82b7c0ffc3285",
+  "branch": "review/sar-B-quota-continuation",
+  "sourceV2Tree": "dc15110821dba4d54d38224a69f011264b5edb66",
+  "checks": [
+    {
+      "command": "npm run check",
+      "receipt": "check.log",
+      "passed": true
+    },
+    {
+      "command": "npm run v2:check",
+      "receipt": "typecheck.log",
+      "passed": true
+    },
+    {
+      "command": "npm run build",
+      "receipt": "build.log",
+      "passed": true
+    },
+    {
+      "command": "node --test --test-isolation=none v2/core/tests/*.test.ts",
+      "receipt": "core-suites.log",
+      "passed": true
+    },
+    {
+      "command": "node --test v2/daemon/tests/accounts-rpc.test.ts v2/daemon/tests/auth-resume.test.ts v2/daemon/tests/loops.test.ts",
+      "receipt": "daemon-suites.log",
+      "passed": true
+    },
+    {
+      "command": "node --test v2/adapters/tests/*.test.ts v2/driver-hsr/tests/runner-host.test.ts",
+      "receipt": "driver-suites.log",
+      "passed": true
+    },
+    {
+      "command": "node --test v2/driver-tmux/tests/checkpoint-digest.test.ts",
+      "receipt": "checkpoint-digest.log",
+      "passed": true,
+      "note": "Plain gate rerun after rebase onto A5856406e, which owns projectionVersion7/stateVersion5 snapshot refresh. No duplicate fixture change remains in B.",
+      "testedV2Tree": "c913ed15bfcaebba54c538bcdb67355765c7129f"
+    }
+  ],
+  "labCommand": "env -i HOME=\"$PWD/.agent-home\" PATH=/usr/local/bin:/usr/bin:/bin TMPDIR=\"$lab_root\" NODE_OPTIONS=\"--import=$PWD/.proof/B/trash-cleanup.mjs\" node .proof/B/lab.ts",
+  "isolation": "fake HOME; private mkdtemp 0700 lab root under /var/tmp; provider endpoints loopback/disabled; retained cleanup trash",
+  "limitations": [
+    "Active owner routing and no-candidate wait timers are task C.",
+    "Real Apiary and complete lease/move/handoff matrix are task G.",
+    "Independent review is read-only source review; author executed gates."
+  ],
+  "labScenarios": 14,
+  "independentReviewer": {
+    "sessionId": "58439349-f891-48ac-a70b-cb853e6fe7a1",
+    "model": "claude-opus-5-5",
+    "reviewedSourceCommit": "419a5a1c0495ae4abb113492e13e88f5f491e8f6",
+    "scope": "read-only code and audit-trail review; no reviewer execution",
+    "verdict": "No open High code finding; final evidence receipts requested and included."
+  },
+  "deliveryProductionCommit": "c3d1ed7610903eecfd72f7eca205fabbe7bfc697",
+  "productionEquivalence": "Production paths core/src, daemon/src, driver-hsr/src and adapters/src are byte-identical to executed/reviewed sourceCommit 419a5a1c; final rebase only changes inherited checkpoint fixture and proof metadata."
+}

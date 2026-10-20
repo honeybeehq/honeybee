@@ -1,0 +1,996 @@
+diff --git a/tests/apiary-swap.lab.ts b/tests/apiary-swap.lab.ts
+index 9ac49818..1617d7fa 100644
+--- a/tests/apiary-swap.lab.ts
++++ b/tests/apiary-swap.lab.ts
+@@ -121,7 +121,7 @@ test("apiary RPC: released identity, acquire/release/abandon/recover lost replie
+     try {
+       assert.ok(f.api.DAEMON_CAPABILITIES.includes(APIARY_SWAP_CAPABILITY));
+       const status = await f.client.request("update.apiarySwap.status");
+-      assert.equal(status.schemaVersion, 44); assert.equal(status.storageSupported, true); assert.deepEqual(status.installedIdentity, identity);
++      assert.equal(status.schemaVersion, 45); assert.equal(status.storageSupported, true); assert.deepEqual(status.installedIdentity, identity);
+       const request = acquire(root);
+       await f.client.request("update.apiarySwap.acquire", request);
+       const held = (await f.client.request("update.apiarySwap.status")).reservation;
+diff --git a/v2/core/src/audit.ts b/v2/core/src/audit.ts
+index 45e1c52b..38725798 100644
+--- a/v2/core/src/audit.ts
++++ b/v2/core/src/audit.ts
+@@ -11,6 +11,7 @@ import type {
+   AccountAdmissionReservationRow,
+   AccountRow,
+   AuthInterruptionRow,
++  QuotaRecoveryRow,
+   ActionQueueView,
+   ActionView,
+   AuditRow,
+@@ -52,6 +53,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
+   const accountLimits = new Map<string, AccountLimitsRow>();
+   const selectionCursors = new Map<string, SelectionCursorRow>();
+   const accountAdmissions = new Map<string, AccountAdmissionReservationRow>();
++  const quotaRecoveries = new Map<string, QuotaRecoveryRow>();
+   const authInterruptions = new Map<number, AuthInterruptionRow>();
+   const tasks = new Map<string, TaskRow>();
+   const taskSupply = new Map<string, TaskSupplyRow>();
+@@ -240,6 +242,11 @@ export function replayAudit(rows: AuditRow[]): StateDump {
+         reservation.releasedAt = p.releasedAt as number;
+         break;
+       }
++      case "quota.recovery": {
++        const recovery = structuredClone(p.recovery as QuotaRecoveryRow);
++        quotaRecoveries.set(recovery.id, recovery);
++        break;
++      }
+       case "auth_interruption.put": {
+         const interruption = structuredClone(p.interruption as AuthInterruptionRow);
+         authInterruptions.set(interruption.id, interruption);
+@@ -253,6 +260,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
+       case "bee.deleted": {
+         const beeId = p.beeId as string;
+         bees.delete(beeId);
++        for (const [k, i] of quotaRecoveries) if (i.beeId === beeId) quotaRecoveries.delete(k);
+         for (const [k, i] of authInterruptions) if (i.beeId === beeId) authInterruptions.delete(k);
+         for (const [k, rt] of runtimes) if (rt.beeId === beeId) runtimes.delete(k);
+         for (const [k, f] of flags) if (f.beeId === beeId) flags.delete(k);
+@@ -629,6 +637,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
+     selectionCursors: [...selectionCursors.values()].sort((a, b) => (a.harness < b.harness ? -1 : a.harness > b.harness ? 1 : 0)),
+     accountAdmissions: [...accountAdmissions.values()].sort((a, b) =>
+       a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
++    quotaRecoveries: [...quotaRecoveries.values()].sort((a, b) => a.id.localeCompare(b.id)),
+     authInterruptions: [...authInterruptions.values()].sort((a, b) => a.id - b.id),
+     tasks: [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+     taskSupply: [...taskSupply.values()].sort((a, b) => (a.beeId < b.beeId ? -1 : a.beeId > b.beeId ? 1 : 0)),
+diff --git a/v2/core/src/quota.ts b/v2/core/src/quota.ts
+index 3b7f46ec..3193f9c3 100644
+--- a/v2/core/src/quota.ts
++++ b/v2/core/src/quota.ts
+@@ -7,6 +7,7 @@ export type QuotaBoundary = {
+ 
+ export type QuotaObservedEvent = {
+   eventId: string;
++  sourceId?: string;
+   beeId: string;
+   generation: number;
+   quota: QuotaBoundary;
+diff --git a/v2/core/src/schema.ts b/v2/core/src/schema.ts
+index 58ec6610..ac32c202 100644
+--- a/v2/core/src/schema.ts
++++ b/v2/core/src/schema.ts
+@@ -159,7 +159,7 @@
+  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
+  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
+  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
+-export const SCHEMA_VERSION = 44;
++export const SCHEMA_VERSION = 45;
+ 
+ export const QUESTIONS_TABLE_SQL = `
+ CREATE TABLE IF NOT EXISTS questions (
+@@ -1167,7 +1167,7 @@ CREATE TABLE IF NOT EXISTS mail_history_enqueues (
+   seq              INTEGER PRIMARY KEY,
+   message_id       INTEGER NOT NULL UNIQUE,
+   bee_id            TEXT NOT NULL,
+-  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed','action.dispatch','auth.resume')),
++  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed','action.dispatch','auth.resume','quota.resume')),
+   sender            BLOB NOT NULL,
+   sender_truncated  INTEGER NOT NULL CHECK (sender_truncated IN (0, 1)),
+   body              BLOB NOT NULL,
+@@ -1212,3 +1212,14 @@ CREATE TABLE IF NOT EXISTS phone_inputs (
+   FOREIGN KEY(message_id) REFERENCES mail_history_enqueues(message_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
+ ) STRICT;
+ `;
++
++export const QUOTA_RECOVERIES_TABLE_SQL = `
++CREATE TABLE IF NOT EXISTS quota_recoveries (
++  id TEXT PRIMARY KEY,
++  bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
++  state TEXT NOT NULL CHECK (state IN ('waiting','rotating','resumed','cancelled')),
++  payload TEXT NOT NULL
++) STRICT;
++CREATE INDEX IF NOT EXISTS quota_recoveries_by_bee ON quota_recoveries(bee_id, id);
++CREATE INDEX IF NOT EXISTS quota_recoveries_live ON quota_recoveries(bee_id) WHERE state IN ('waiting','rotating');
++`;
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index a7e79c87..9d00326b 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -1,3 +1,5 @@
++import type { QuotaRecoveryRow } from "./types.ts";
++import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
+ import type { QuotaObservedEvent } from "./quota.ts";
+ import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
+ import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
+@@ -2021,6 +2023,7 @@ export class CoreStore {
+       this.stmt("UPDATE sqlite_sequence SET seq = max(seq, ?) WHERE name = 'auth_interruptions'").run(authSequence);
+     }
+     this.db.exec(AUTH_INTERRUPTIONS_TABLE_SQL);
++    this.db.exec(QUOTA_RECOVERIES_TABLE_SQL);
+     // v28 was developed behind a shadow-mode rollout. Keep intermediate v28
+     // databases forward-openable while the shared-owner confirmation column
+     // is added before activation.
+@@ -2059,7 +2062,7 @@ export class CoreStore {
+     const historyDdl = this.stmt(
+       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mail_history_enqueues'",
+     ).get() as Row | undefined;
+-    if (historyDdl !== undefined && !String(historyDdl.sql).includes("auth.resume")) {
++    if (historyDdl !== undefined && !String(historyDdl.sql).includes("quota.resume")) {
+       const carried = [
+         "seq", "message_id", "bee_id", "origin", "sender", "sender_truncated", "body",
+         "body_truncated", "priority", "urgency", "enqueued_at",
+@@ -2169,7 +2172,159 @@ export class CoreStore {
+       const runtime = this.currentRuntime(event.beeId);
+       if (!runtime || runtime.generation !== event.generation) return;
+       const seen = this.stmt("SELECT 1 FROM audit WHERE kind = 'quota.observed' AND bee_id = ? AND json_extract(payload, '$.eventId') = ? LIMIT 1").get(event.beeId, event.eventId);
+-      if (!seen) this.audit("quota.observed", event.beeId, event);
++      if (seen) return;
++      this.audit("quota.observed", event.beeId, event);
++      const bee = this.mustGetBee(event.beeId);
++      const messageIds = [...new Set(event.turn.messageIds)].sort((a, b) => a - b);
++      const rotating = this.listQuotaRecoveries(bee.id).find(row => row.sourceGeneration === event.generation && row.state === "rotating");
++      const id = rotating?.id ?? `quota:${bee.id}:${event.generation}:${messageIds.join(",") || "native"}`;
++      const previous = this.getQuotaRecovery(id);
++      if (previous && previous.state !== "waiting" && previous.state !== "rotating") return;
++      const hints = { ...previous?.resetHints };
++      if (event.quota.resetsAt !== null) hints[event.quota.window] = event.quota.resetsAt;
++      const quota = { ...event.quota, window: event.quota.window === "other" && previous ? previous.quota.window : event.quota.window, resetsAt: event.quota.resetsAt ?? previous?.quota.resetsAt ?? null };
++      this.putQuotaRecovery(previous ? {
++        ...previous, eventIds: [...previous.eventIds, event.eventId], quota, resetHints: hints,
++        progress: leastCertainProgress(previous.progress, event.turn.progress),
++      } : {
++        id, beeId: bee.id, sourceGeneration: event.generation, sourceAccount: bee.account,
++        observationCursor: /^quota:.*:[0-9]+$/.test(event.eventId) ? Number(event.eventId.slice(event.eventId.lastIndexOf(":") + 1)) : null, sourceId: event.sourceId ?? null, accountLabel: null,
++        eventIds: [event.eventId], messageIds, progress: event.turn.progress,
++        interrupted: messageIds.length > 0 || event.turn.progress !== "none",
++        controlFence: bee.authControlFence ?? 0,
++        placement: { agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId ?? null },
++        quota, resetHints: hints, state: "waiting", attempt: 0, targetAccount: null,
++        successorGeneration: null, claimId: null, reservationId: null, commandId: null,
++        continuationKind: null, continuationMessageIds: [], continuationHistory: [], retryAt: null, reason: null,
++        createdAt: this.now(), updatedAt: this.now(),
++      });
++    });
++  }
++
++  getQuotaRecovery(id: string): QuotaRecoveryRow | null {
++    const row = this.stmt("SELECT payload FROM quota_recoveries WHERE id = ?").get(id) as Row | undefined;
++    return row ? JSON.parse(String(row.payload)) as QuotaRecoveryRow : null;
++  }
++
++  listQuotaRecoveries(beeId?: string): QuotaRecoveryRow[] {
++    return (beeId === undefined
++      ? this.stmt("SELECT payload FROM quota_recoveries ORDER BY id").all()
++      : this.stmt("SELECT payload FROM quota_recoveries WHERE bee_id = ? ORDER BY id").all(beeId) as Row[])
++      .map(row => JSON.parse(String(row.payload)) as QuotaRecoveryRow);
++  }
++
++  private putQuotaRecovery(row: QuotaRecoveryRow): QuotaRecoveryRow {
++    const updated = { ...row, updatedAt: this.now() };
++    this.stmt("INSERT INTO quota_recoveries(id, bee_id, state, payload) VALUES(?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, payload = excluded.payload")
++      .run(updated.id, updated.beeId, updated.state, JSON.stringify(updated));
++    this.audit("quota.recovery", updated.beeId, { recovery: updated, notice: {
++      kind: "quota_recovery", recoveryId: updated.id, state: updated.state,
++      sourceId: updated.sourceId, accountLabel: updated.accountLabel, window: updated.quota.window, retryAt: updated.retryAt,
++    } });
++    return updated;
++  }
++
++  waitQuotaRecovery(id: string, retryAt: number | null, reason: string): void {
++    this.tx(() => {
++      const row = this.getQuotaRecovery(id);
++      if (!row || row.state !== "waiting" || row.retryAt === retryAt && row.reason === reason) return;
++      this.putQuotaRecovery({ ...row, retryAt, reason });
++    });
++  }
++
++  claimQuotaRecovery(id: string, selection: { targetAccount: string; claimId?: string; reservationId?: string }): QuotaRecoveryRow | null {
++    return this.tx(() => {
++      const row = this.getQuotaRecovery(id);
++      if (!row || row.state !== "waiting" || !this.quotaRecoveryValid(row)) return null;
++      for (const sibling of this.listQuotaRecoveries(row.beeId)) {
++        if (sibling.id !== row.id && sibling.state === "waiting" && sibling.sourceGeneration === row.sourceGeneration) this.cancelQuotaRecovery(sibling.id, "superseded_by_quota_turn");
++      }
++      return this.putQuotaRecovery({ ...row, state: "rotating", attempt: row.attempt + 1,
++        targetAccount: selection.targetAccount, accountLabel: this.getAccount(selection.targetAccount)?.label ?? null, claimId: selection.claimId ?? null,
++        reservationId: selection.reservationId ?? null, retryAt: null, reason: null });
++    });
++  }
++
++  bindQuotaRecovery(id: string, commandId: number | null): void {
++    this.tx(() => {
++      const row = this.getQuotaRecovery(id);
++      if (row?.state === "rotating") this.putQuotaRecovery({ ...row, commandId, successorGeneration: row.sourceGeneration + 1, controlFence: this.mustGetBee(row.beeId).authControlFence ?? 0 });
++    });
++  }
++
++  quotaRecoveryValid(row: QuotaRecoveryRow): boolean {
++    const bee = this.getBee(row.beeId);
++    const runtime = this.currentRuntime(row.beeId);
++    return !!bee && bee.lifecycle === "active" && (bee.authControlFence ?? 0) === row.controlFence
++      && bee.agent === row.placement.agent && bee.cwd === row.placement.cwd && (bee.cellId ?? null) === row.placement.cellId
++      && !bee.activeMoveId && !bee.activeHandoffId
++      && bee.account === (row.state === "rotating" ? row.targetAccount : row.sourceAccount)
++      && !!runtime && (runtime.generation === row.sourceGeneration || row.state === "rotating" && row.successorGeneration !== null && runtime.generation >= row.successorGeneration)
++      && !this.listRuntimes(bee.id).some(rt => rt.generation >= row.sourceGeneration && rt.exitCause === "stopped_by_user");
++  }
++
++  cancelQuotaRecovery(id: string, reason: string): void {
++    this.tx(() => {
++      const row = this.getQuotaRecovery(id);
++      if (!row || row.state === "cancelled") return;
++      const pending = new Set(this.undeliveredMessages(row.beeId).map(message => message.id));
++      if (row.state === "resumed" && !row.continuationMessageIds.some(id => pending.has(id))) return;
++      for (const id of row.continuationMessageIds) if (pending.has(id)) this.cancelMessage(row.beeId, id);
++      this.putQuotaRecovery({ ...row, state: "cancelled", reason, retryAt: null });
++    });
++  }
++
++  cancelQuotaRecoveries(beeId: string, reason: string): void {
++    this.tx(() => {
++      for (const row of this.listQuotaRecoveries(beeId)) this.cancelQuotaRecovery(row.id, reason);
++    });
++  }
++
++  quotaTurnSucceeded(beeId: string, generation: number): void {
++    this.tx(() => {
++      for (const row of this.listQuotaRecoveries(beeId)) {
++        if (row.state === "waiting" && row.sourceGeneration === generation) this.cancelQuotaRecovery(row.id, "turn_succeeded");
++      }
++    });
++  }
++
++  quotaDeliveryGate(beeId: string): { held: boolean; messageIds: number[] } {
++    const rows = this.listQuotaRecoveries(beeId);
++    if (rows.length === 0) return { held: false, messageIds: [] };
++    const rotating = rows.find(row => row.state === "rotating");
++    if (rotating) return { held: rotating.continuationKind === null, messageIds: rotating.continuationMessageIds };
++    const pending = new Set(this.undeliveredMessages(beeId).map(message => message.id));
++    const continuation = rows.find(row => row.state === "resumed" && row.continuationMessageIds.some(id => pending.has(id)));
++    return { held: false, messageIds: continuation?.continuationMessageIds ?? [] };
++  }
++
++  resumeQuotaRecovery(id: string): QuotaRecoveryRow | null {
++    return this.tx(() => {
++      const row = this.getQuotaRecovery(id);
++      if (!row || row.state !== "rotating" || !this.quotaRecoveryValid(row)) return null;
++      const rt = this.currentRuntime(row.beeId);
++      if (row.continuationKind !== null) {
++        const attempts = row.continuationMessageIds.map(id => this.getMessage(id));
++        const runtimes = this.listRuntimes(row.beeId);
++        const failed = attempts.find(message => message?.deliveredGeneration != null && runtimes.some(runtime => runtime.generation === message.deliveredGeneration && runtime.state === "stopped" && runtime.bootEvidence !== "real"));
++        if (failed?.deliveredGeneration != null) {
++          const pending = new Set(this.undeliveredMessages(row.beeId).map(message => message.id));
++          for (const id of row.continuationMessageIds) if (pending.has(id)) this.cancelMessage(row.beeId, id);
++          const sent = this.send(row.beeId, "Continue the interrupted turn from where you stopped. The previous runtime failed before confirming its boot; check existing work before repeating any operation. Preserve the current action attempt.", { sender: "hive:quota-resume", origin: "quota.resume" });
++          return this.putQuotaRecovery({ ...row, continuationKind: "continue", continuationMessageIds: [sent.message.id], continuationHistory: [...(row.continuationHistory ?? []), { generation: failed.deliveredGeneration, messageIds: row.continuationMessageIds, kind: row.continuationKind === "replay" ? "replay" : "continue" }] });
++        }
++        if (rt && row.successorGeneration !== null && rt.generation >= row.successorGeneration && rt.state !== "stopped" && rt.bootEvidence === "real") return this.putQuotaRecovery({ ...row, state: "resumed", successorGeneration: rt.generation });
++        return row;
++      }
++      if (!rt || row.successorGeneration === null || rt.generation < row.successorGeneration || !(rt.state === "idle" || rt.state === "running" && rt.bootEvidence === "synthetic") || this.hasPendingStopCommand(row.beeId, rt.generation)) return null;
++      const originals = row.messageIds.map(id => this.getMessage(id));
++      const replay = row.progress === "none" && originals.length > 0 && originals.every(message => message?.beeId === row.beeId);
++      const sent = !row.interrupted ? [] : replay ? originals.map(message => this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
++        sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "quota.resume",
++        ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
++        ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `quota-resume:${row.id}:${message!.id}` } } : {}),
++      })) : [this.send(row.beeId, "Continue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.", { sender: "hive:quota-resume", origin: "quota.resume" })];
++      return this.putQuotaRecovery({ ...row, state: row.interrupted && rt.bootEvidence !== "real" ? "rotating" : "resumed", successorGeneration: rt.generation, continuationKind: !row.interrupted ? "none" : replay ? "replay" : "continue", continuationMessageIds: sent.map(result => result.message.id) });
+     });
+   }
+ 
+@@ -4521,7 +4676,9 @@ export class CoreStore {
+       this.mustGetBee(beeId);
+       const recovery = typeof args.authDeathRecoveryId === "number" ? this.getAuthInterruption(args.authDeathRecoveryId) : null;
+       const automatic = verb === "revive" && recovery?.beeId === beeId && recovery.deathRecovery?.claimedAt != null && recovery.deathRecovery.commandId === null && key === `auth-death:${beeId}:${recovery.generation}`;
+-      if ((verb === "stop" && args.cause !== "stopped_by_system" || ["revive", "archive", "delete"].includes(verb)) && !automatic) this.cancelAuthDeathRecovery(beeId);
++      const quota = this.listQuotaRecoveries(beeId).find(row => row.state === "rotating" && row.sourceGeneration === this.currentRuntime(beeId)?.generation);
++      const quotaRevive = verb === "revive" && quota && (args.reason === "quota_recovery" || args.reason === "after_stop" && this.hasStopThenReviveRequest(beeId, quota.sourceGeneration));
++      if ((verb === "stop" && args.cause !== "stopped_by_system" || ["revive", "archive", "delete"].includes(verb)) && !automatic && !quotaRevive) this.cancelAuthDeathRecovery(beeId);
+       let superseded = false;
+       if (this.lifecycleCommandSupersedesMove(verb as Verb, args, key ?? null)) {
+         const live = this.mustGetBee(beeId);
+@@ -6809,6 +6966,7 @@ export class CoreStore {
+   cancelAuthDeathRecovery(beeId: string, reason: AuthSettleReason = "auth_recovery_cancelled"): void {
+     this.tx(() => {
+       const bee = this.mustGetBee(beeId);
++      this.cancelQuotaRecoveries(beeId, "operator_control");
+       const row = this.liveAuthInterruption(beeId);
+       if (!this.currentRuntime(beeId)?.credentialStamp && !row?.deathRecovery) return;
+       const controlFence = (bee.authControlFence ?? 0) + 1;
+@@ -6831,7 +6989,7 @@ export class CoreStore {
+     this.tx(() => {
+       const bee = this.mustGetBee(beeId);
+       const row = this.liveAuthInterruption(beeId);
+-      if (!this.currentRuntime(beeId)?.credentialStamp && !row?.deathRecovery) return;
++      if (!this.currentRuntime(beeId)?.credentialStamp && !row?.deathRecovery && !this.listQuotaRecoveries(beeId).some(quota => quota.state === "waiting" || quota.state === "rotating")) return;
+       const controlFence = (bee.authControlFence ?? 0) + 1;
+       this.stmt("UPDATE bees SET auth_control_fence = ? WHERE id = ?").run(controlFence, beeId);
+       this.audit("bee.auth_control", beeId, { controlFence });
+@@ -10172,6 +10330,7 @@ export class CoreStore {
+       selectionCursors: this.listSelectionCursors(),
+       accountAdmissions: this.listAccountAdmissions(),
+       authInterruptions: this.listAuthInterruptions(),
++      quotaRecoveries: this.listQuotaRecoveries(),
+       tasks: (this.stmt("SELECT * FROM tasks ORDER BY id").all() as Row[]).map(mapTask),
+       taskSupply: (this.stmt("SELECT * FROM task_supply ORDER BY bee_id").all() as Row[]).map(mapTaskSupply),
+       loginFlows: this.listLoginFlows(),
+diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
+index 0bc02491..06c36daa 100644
+--- a/v2/core/src/types.ts
++++ b/v2/core/src/types.ts
+@@ -338,7 +338,7 @@ export const MAIL_CANCELLATION_REASONS = ["requested", "bee_deleted"] as const;
+ export type MailCancellationReason = (typeof MAIL_CANCELLATION_REASONS)[number];
+ 
+ /** Typed admission path for mailbox traffic; consumers must not sniff bodies. */
+-export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed", "action.dispatch", "auth.resume"] as const;
++export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed", "action.dispatch", "auth.resume", "quota.resume"] as const;
+ export type MailOrigin = (typeof MAIL_ORIGINS)[number];
+ 
+ /**
+@@ -1048,6 +1048,7 @@ export interface StateDump {
+   accountAdmissions: AccountAdmissionReservationRow[];
+   /** v33 — turns cut off by an auth failure and their continuation receipts. */
+   authInterruptions: AuthInterruptionRow[];
++  quotaRecoveries: QuotaRecoveryRow[];
+   /** v11 */
+   tasks: TaskRow[];
+   taskSupply: TaskSupplyRow[];
+@@ -1923,3 +1924,35 @@ export interface AccountObservationMetadata {
+   source: string | null;
+   highWatermarkMs: number;
+ }
++
++export interface QuotaRecoveryRow {
++  id: string;
++  beeId: string;
++  sourceGeneration: number;
++  observationCursor: number | null;
++  sourceId: string | null;
++  accountLabel: string | null;
++  sourceAccount: string | null;
++  eventIds: string[];
++  messageIds: number[];
++  progress: "none" | "some" | "unknown";
++  interrupted: boolean;
++  controlFence: number;
++  placement: { agent: string; cwd: string; cellId: string | null };
++  quota: import("./quota.ts").QuotaBoundary;
++  resetHints: Partial<Record<import("./quota.ts").QuotaBoundary["window"], number>>;
++  state: "waiting" | "rotating" | "resumed" | "cancelled";
++  attempt: number;
++  targetAccount: string | null;
++  successorGeneration: number | null;
++  claimId: string | null;
++  reservationId: string | null;
++  commandId: number | null;
++  continuationKind: "replay" | "continue" | "none" | null;
++  continuationMessageIds: number[];
++  continuationHistory: Array<{ generation: number; messageIds: number[]; kind: "replay" | "continue" }>;
++  retryAt: number | null;
++  reason: string | null;
++  createdAt: number;
++  updatedAt: number;
++}
+diff --git a/v2/core/tests/accounts.test.ts b/v2/core/tests/accounts.test.ts
+index 8257cd6f..dc1d1928 100644
+--- a/v2/core/tests/accounts.test.ts
++++ b/v2/core/tests/accounts.test.ts
+@@ -540,7 +540,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 44);
++      assert.equal(SCHEMA_VERSION, 45);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("account"));
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/actions.test.ts b/v2/core/tests/actions.test.ts
+index a12d21ca..80cd9de2 100644
+--- a/v2/core/tests/actions.test.ts
++++ b/v2/core/tests/actions.test.ts
+@@ -406,7 +406,7 @@ test("actions.8: audit replay reproduces the action tables; the store reopens at
+   const h = harness();
+   try {
+     let store = h.open();
+-    assert.equal(SCHEMA_VERSION, 44);
++    assert.equal(SCHEMA_VERSION, 45);
+     const bee = liveBee(store);
+     const { actions } = shipSequence(store, bee.id);
+     const { messageId } = store.dispatchAgentAction(actions[0]!.id);
+diff --git a/v2/core/tests/apiary-swap.test.ts b/v2/core/tests/apiary-swap.test.ts
+index 57a082a8..fc869ba7 100644
+--- a/v2/core/tests/apiary-swap.test.ts
++++ b/v2/core/tests/apiary-swap.test.ts
+@@ -100,11 +100,11 @@ async function seed(root: string) {
+   const store = openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true });
+   try { return store.acquireApiarySwap(acquire(root)); } finally { store.close(); }
+ }
+-test("apiary schema: current 44 remains unchanged and newer storage refuses", async () => {
++test("apiary schema: current version remains unchanged and newer storage refuses", async () => {
+   await world(async root => {
+     await seed(root);
+     const db = new DatabaseSync(join(root, "v2", "core.sqlite3"));
+-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "44");
++    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "45");
+     db.exec("UPDATE meta SET value='999' WHERE key='schema_version'"); db.close();
+     assert.throws(() => openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true }), /newer store/);
+   });
+diff --git a/v2/core/tests/auth-interruption.test.ts b/v2/core/tests/auth-interruption.test.ts
+index 1bd08205..08fb9619 100644
+--- a/v2/core/tests/auth-interruption.test.ts
++++ b/v2/core/tests/auth-interruption.test.ts
+@@ -189,7 +189,7 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
+     raw.close();
+ 
+     store = h.open();
+-    assert.equal(SCHEMA_VERSION, 44);
++    assert.equal(SCHEMA_VERSION, 45);
+     const row = interrupt(store, bee.id);
+     store.restoreAuthInterruption(row.id, { revision: "rev-2", by: "credentials_restored" });
+     store.resumeAuthInterruption(row.id, AUTH_CONTINUE_BODY);
+diff --git a/v2/core/tests/bee-args.test.ts b/v2/core/tests/bee-args.test.ts
+index f537664d..6e3e46df 100644
+--- a/v2/core/tests/bee-args.test.ts
++++ b/v2/core/tests/bee-args.test.ts
+@@ -278,7 +278,7 @@ test("args.2: a v4-shaped store (spawn_failures, no args column) migrates additi
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 44);
++      assert.equal(SCHEMA_VERSION, 45);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("args"));
+       assert.ok(cols.includes("spawn_failures"));
+diff --git a/v2/core/tests/cell-move.test.ts b/v2/core/tests/cell-move.test.ts
+index ec6b92cf..b3a92b52 100644
+--- a/v2/core/tests/cell-move.test.ts
++++ b/v2/core/tests/cell-move.test.ts
+@@ -336,7 +336,7 @@ test(`cell-move.schema v${previousVersion} store migrates to v22`, () => {
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 44);
++      assert.equal(SCHEMA_VERSION, 45);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("placement_version"));
+       assert.ok(cols.includes("active_move_id"));
+diff --git a/v2/core/tests/cell-retention.test.ts b/v2/core/tests/cell-retention.test.ts
+index 75a4b3ea..9663008e 100644
+--- a/v2/core/tests/cell-retention.test.ts
++++ b/v2/core/tests/cell-retention.test.ts
+@@ -139,7 +139,7 @@ test("cell-retention.schema: a v30 store's cells table is rebuilt with the evict
+     const check = new DatabaseSync(h.path, { readOnly: true });
+     try {
+       assert.equal(Number((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 44);
++      assert.equal(SCHEMA_VERSION, 45);
+       assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'cells_v30'").get(), undefined, "scratch table dropped");
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('cells')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("evicted_at") && cols.includes("evicted_head"));
+diff --git a/v2/core/tests/effect-resolve.test.ts b/v2/core/tests/effect-resolve.test.ts
+index 0d859841..3b3676a4 100644
+--- a/v2/core/tests/effect-resolve.test.ts
++++ b/v2/core/tests/effect-resolve.test.ts
+@@ -78,7 +78,7 @@ test("effect query never fences in-flight work and command admission is committe
+   } finally { store.close(); h.cleanup(); }
+ });
+ 
+-test("effect additive tables preserve schema44 and retained legacy positives bootstrap", () => {
++test("effect additive tables preserve schema45 and retained legacy positives bootstrap", () => {
+   const h = harness(); let store = h.open(); store.close();
+   const db = new DatabaseSync(h.path);
+   db.exec("DROP TABLE rpc_effect_keys");
+@@ -90,7 +90,7 @@ test("effect additive tables preserve schema44 and retained legacy positives boo
+     assert.throws(() => store.resolveEffect("legacy-absent", "spawn"), error("rpc_effect_history_unknown"));
+   } finally { store.close(); }
+   const inspect = new DatabaseSync(h.path, { readOnly: true });
+-  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "44"); }
++  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "45"); }
+   finally { inspect.close(); h.cleanup(); }
+ });
+ 
+diff --git a/v2/core/tests/external-parent.test.ts b/v2/core/tests/external-parent.test.ts
+index 3f707235..20ccbe45 100644
+--- a/v2/core/tests/external-parent.test.ts
++++ b/v2/core/tests/external-parent.test.ts
+@@ -193,7 +193,7 @@ test("a v20 store migrates existing parent edges to local lineage at the current
+         value: string;
+       };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 44);
++      assert.equal(SCHEMA_VERSION, 45);
+       const column = migrated.prepare(
+         "SELECT name FROM pragma_table_info('bees') WHERE name = 'parent_external'",
+       ).get() as { name: string } | undefined;
+diff --git a/v2/core/tests/handles.test.ts b/v2/core/tests/handles.test.ts
+index 7dab4b47..313319e2 100644
+--- a/v2/core/tests/handles.test.ts
++++ b/v2/core/tests/handles.test.ts
+@@ -96,7 +96,7 @@ test("handles.4: v9-shaped store backfills on open — an old pretty id becomes
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 44);
++      assert.equal(SCHEMA_VERSION, 45);
+       const idx = check.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='bees_handle'").get();
+       assert.ok(idx, "unique handle index exists");
+     } finally {
+diff --git a/v2/core/tests/import-frozen.test.ts b/v2/core/tests/import-frozen.test.ts
+index 9ed44bd8..9b5d5273 100644
+--- a/v2/core/tests/import-frozen.test.ts
++++ b/v2/core/tests/import-frozen.test.ts
+@@ -430,7 +430,7 @@ test("import.9: store v3 — recordProviderSessionId is bee-scoped, idempotent,
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 44);
++      assert.equal(SCHEMA_VERSION, 45);
+     } finally {
+       check.close();
+     }
+diff --git a/v2/core/tests/phone-origin.test.ts b/v2/core/tests/phone-origin.test.ts
+index ebfe90b8..c95107b7 100644
+--- a/v2/core/tests/phone-origin.test.ts
++++ b/v2/core/tests/phone-origin.test.ts
+@@ -38,7 +38,7 @@ test("phone data, shadow, history, audit replay and key bindings survive reopen
+       store.recordRpcResult("k", "send", sent.wakeCommand?.id ?? null, { commandId: sent.wakeCommand?.id ?? null, unarchived: sent.unarchived, messageId: sent.message.id });
+       return sent.message;
+     });
+-    assert.equal(SCHEMA_VERSION, 44);
++    assert.equal(SCHEMA_VERSION, 45);
+     assert.equal(message.body, renderPhoneInput(body));
+     assert.equal(message.phoneInput?.originalContent, body);
+     assert.equal(message.phoneInput?.envelope.contentDigest, phoneDigest(body));
+diff --git a/v2/core/tests/preflip-verbs.test.ts b/v2/core/tests/preflip-verbs.test.ts
+index b041fd95..290ba65e 100644
+--- a/v2/core/tests/preflip-verbs.test.ts
++++ b/v2/core/tests/preflip-verbs.test.ts
+@@ -322,7 +322,7 @@ test("v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed a
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 44);
++      assert.equal(SCHEMA_VERSION, 45);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       for (const c of ["parent_id", "parent_external", "forked_from", "fork_seed", "args", "spawn_failures"]) assert.ok(cols.includes(c), c);
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/question-withdraw.test.ts b/v2/core/tests/question-withdraw.test.ts
+index 1d30e8da..5e6c02d4 100644
+--- a/v2/core/tests/question-withdraw.test.ts
++++ b/v2/core/tests/question-withdraw.test.ts
+@@ -58,7 +58,7 @@ test("withdrawal is owner-only, quiet across retries, replayable and durable; bo
+   } finally { store.close(); f.cleanup(); }
+ });
+ 
+-test("schema 44 opens legacy questions additively without a version bump or extra-table refusal", () => {
++test("schema 44 legacy questions migrate additively without extra-table refusal", () => {
+   const f = fixture();
+   let store = f.open();
+   const bee = store.createBee({ name: "legacy", agent: "stub", substrate: "hsr", cwd: f.dir }).bee;
+@@ -84,8 +84,8 @@ test("schema 44 opens legacy questions additively without a version bump or extr
+     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+     store.close();
+     const check = new DatabaseSync(f.path);
+-    assert.equal(SCHEMA_VERSION, 44);
+-    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "44");
++    assert.equal(SCHEMA_VERSION, 45);
++    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "45");
+     assert.equal(check.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
+     assert.deepEqual(check.prepare("PRAGMA foreign_key_check").all(), []);
+     assert.equal(check.prepare("SELECT count(*) AS n FROM question_withdraw_receipts").get()!.n, 1);
+diff --git a/v2/core/tests/runtime-process-identity.test.ts b/v2/core/tests/runtime-process-identity.test.ts
+index 7126b22a..71a97055 100644
+--- a/v2/core/tests/runtime-process-identity.test.ts
++++ b/v2/core/tests/runtime-process-identity.test.ts
+@@ -25,7 +25,7 @@ test("runtime identity migration is additive, once-only and ignores malformed co
+     (store as unknown as {db: DatabaseSync}).db.prepare("UPDATE runtimes SET process_identity=NULL WHERE bee_id=?").run(bee.id);
+     store.close();
+     const db = new DatabaseSync(h.path);
+-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "44");
++    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "45");
+     assert.equal(db.prepare("SELECT value FROM meta WHERE key='runtime_process_identity_schema'").get()!.value, "1");
+     installRuntimeProcessIdentity(db); installRuntimeProcessIdentity(db);
+     assert.equal(db.prepare("PRAGMA table_info(runtimes)").all().filter(r => r.name === "process_identity").length, 1);
+diff --git a/v2/core/tests/urgency.test.ts b/v2/core/tests/urgency.test.ts
+index a1bfb95e..bdf931d3 100644
+--- a/v2/core/tests/urgency.test.ts
++++ b/v2/core/tests/urgency.test.ts
+@@ -157,7 +157,7 @@ test("urgency.5: v8 migration — a v7 store opens as v8: mailbox.urgency added,
+   try {
+     const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+     assert.equal(Number(version.value), SCHEMA_VERSION);
+-    assert.equal(SCHEMA_VERSION, 44);
++    assert.equal(SCHEMA_VERSION, 45);
+     const cols = (check.prepare("SELECT name FROM pragma_table_info('mailbox')").all() as Array<{ name: string }>).map((c) => c.name);
+     assert.ok(cols.includes("urgency"));
+     assert.ok(cols.includes("priority"));
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 162cd747..f0025364 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -221,6 +221,7 @@ import {
+ } from "../../adapters/src/index.ts";
+ import { liveGateways, type LiveGateway } from "./gateways.ts";
+ import { DaemonCore, type BootReport, type I1ViolationEvent } from "./loops.ts";
++import { QuotaRecovery } from "./quotaRecovery.ts";
+ import { AuthResume, type CredentialValidatedReceipt } from "./authResume.ts";
+ import {
+   ConfigError,
+@@ -724,6 +725,7 @@ export class HiveDaemon {
+   private readonly opLog: string[] = [];
+   private accounts: AccountsService | null = null;
+   private loginFlows: LoginFlowService | null = null;
++  private quotaRecovery: QuotaRecovery | null = null;
+   private authResume: AuthResume | null = null;
+   /** v31 — Cell disk retention pass + `cell.gc` / `cell.evict`. */
+   private retention: CellRetentionService | null = null;
+@@ -857,6 +859,7 @@ export class HiveDaemon {
+       onCredentialValidated: (accountId, by) => this.credentialValidatedQuietly(accountId, by),
+     });
+     const accounts = this.accounts;
++    this.quotaRecovery = new QuotaRecovery(store);
+     this.authResume = new AuthResume({
+       store,
+       log: (op) => this.log(op),
+@@ -1374,6 +1377,7 @@ export class HiveDaemon {
+       this.threadOperations?.tick();
+       this.performance.measureSync("daemon.tick.core", () => {
+         core.step();
++        this.quotaRecovery?.reconcile();
+         this.authResume?.reconcile();
+       });
+       tStep = Date.now();
+@@ -2411,7 +2415,7 @@ export class HiveDaemon {
+ 
+   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
+     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
+-    const storageSupported = SCHEMA_VERSION === 44 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
++    const storageSupported = SCHEMA_VERSION === 45 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+     if (verb === "update.apiarySwap.status") {
+       let installedIdentity: ComponentIdentity | null = null;
+       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
+@@ -5797,6 +5801,7 @@ export class HiveDaemon {
+       accounts: store.listAccounts().map((account) => this.mirrorAccount(account)),
+       accountLimits: store.listAccountLimits(),
+       accountAdmissions: store.listAccountAdmissions(),
++      quotaRecoveries: store.listQuotaRecoveries(),
+       tasks: store.listTasks(),
+       taskSupply: store.listTaskSupply(),
+       loginFlows: store.listLoginFlows(),
+@@ -6464,6 +6469,8 @@ export class HiveDaemon {
+     const bee = store.getBee(beeId) as BeeRow;
+     const selector = this.param(params, "account");
+     const onlyAccountIds = this.admissionAccountIdsParam(params, "onlyAccountIds");
++    const recoveryId = typeof params.quotaRecoveryId === "string" ? params.quotaRecoveryId : undefined;
++    if (recoveryId && store.getQuotaRecovery(recoveryId)?.beeId !== bee.id) throw new RpcError("invalid_request", "quota recovery belongs to another bee");
+     if (selector !== "auto") {
+       const target = this.resolveAccountSelector(selector, bee.agent);
+       if (onlyAccountIds && !onlyAccountIds.has(target.id)) {
+@@ -6481,7 +6488,7 @@ export class HiveDaemon {
+         claim, "swap", bee.agent, bee.id, runtime?.generation ?? 0, bee.account,
+         this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
+       );
+-      return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim);
++      return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim, recoveryId);
+     }
+     if (this.mustAccounts().allocationMode() === "active") this.ownerClaimRequired(bee.agent, "swap");
+     const admission = this.mustAccounts().admitNewWork(bee.agent, {
+@@ -6496,7 +6503,7 @@ export class HiveDaemon {
+       reconcileAfterGeneration: runtime?.generation ?? 0,
+     });
+     if (!admission.ok) throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
+-    return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id);
++    return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId);
+   }
+ 
+   private performSwap(
+@@ -6506,6 +6513,7 @@ export class HiveDaemon {
+     allocation?: AccountAllocationReceipt,
+     reservationId?: string,
+     claim?: AccountAdmissionClaim,
++    quotaRecoveryId?: string,
+   ): SwapAccountResult {
+     const store = this.mustStore();
+     const accounts = this.mustAccounts();
+@@ -6527,6 +6535,9 @@ export class HiveDaemon {
+     let rekeyed = false;
+     let commandId: number | null = null;
+     store.transact(() => {
++      if (quotaRecoveryId) {
++        if (!store.claimQuotaRecovery(quotaRecoveryId, { targetAccount: target.id, claimId: claim?.id, reservationId })) throw new RpcError("invalid_request", "quota recovery is no longer claimable");
++      } else store.cancelQuotaRecoveries(bee.id, "manual_swap");
+       store.setBeeAccount(bee.id, target.id);
+       const key = homeEnvFor(bee.agent);
+       const env = { ...bee.env };
+@@ -6542,6 +6553,10 @@ export class HiveDaemon {
+       if (live && rt) {
+         commandId = store.enqueueCommand("stop", bee.id, { cause: "stopped_by_system", reason: `swap_account:${by}`, thenRevive: true }).id;
+       }
++      if (quotaRecoveryId) {
++        if (!live) commandId = store.enqueueCommand("revive", bee.id, { reason: "quota_recovery" }).id;
++        store.bindQuotaRecovery(quotaRecoveryId, commandId);
++      }
+       if (claim) {
+         this.consumeAccountClaim(claim, bee.id);
+       } else if (reservationId) store.bindAccountAdmission(reservationId, bee.id);
+@@ -6648,6 +6663,7 @@ export class HiveDaemon {
+         this.authResume?.interrupted(ev);
+         if (account.harness === "claude" && !authorityInDoubt) accounts.scheduleClaudeRecovery(account.id);
+       } else {
++        store.quotaTurnSucceeded(bee.id, ev.generation);
+         this.authResume?.turnSucceeded(bee.id);
+         if (account.status === "auth_needed" && !authorityInDoubt) {
+           store.setAccountStatus(account.id, "ok", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`);
+@@ -6682,15 +6698,22 @@ export class HiveDaemon {
+       this.log(`account.rotate bee=${bee.id} account=${account.id} waiting=allocation_owner_required`);
+       return;
+     }
+-    const pick = accounts.pick(bee.agent, { excludeAccountIds: new Set([account.id]), excludeRecentlyExhausted: true, model: this.modelOfBee(bee) });
++    const pick = accounts.admitNewWork(bee.agent, {
++      operation: "swap", requestKey: `quota:${bee.id}:${generation}`, beeId: bee.id,
++      sourceAccount: account.id, reconcileAfterGeneration: generation,
++      excludeAccountIds: new Set([account.id]), excludeRecentlyExhausted: true, model: this.modelOfBee(bee),
++    });
+     if (!pick.ok) {
+       this.log(`account.rotate bee=${bee.id} account=${account.id} skipped=no_candidate (${pick.message})`);
+       return;
+     }
+     try {
+-      const res = this.performSwap(bee, pick.account, "rotation");
++      const recovery = store.listQuotaRecoveries(bee.id).find(row => row.sourceGeneration === generation && row.state === "waiting"
++        && row.messageIds.length === (ev.turn?.messageIds.length ?? 0) && row.messageIds.every(id => ev.turn?.messageIds.includes(id)));
++      const res = this.performSwap(bee, pick.account, "rotation", pick.receipt, pick.reservation?.id, undefined, recovery?.id);
+       this.log(`account.rotate bee=${bee.id} from=${account.id} to=${pick.account.id} action=${res.action} reason=${JSON.stringify(pick.reason)}`);
+     } catch (err) {
++      if (pick.reservation) store.releaseAccountAdmission(pick.reservation.id);
+       this.log(`account.rotate bee=${bee.id} from=${account.id} to=${pick.account.id} failed=${err instanceof Error ? err.message : String(err)}`);
+     }
+   }
+diff --git a/v2/daemon/src/loops.ts b/v2/daemon/src/loops.ts
+index da412fd0..2d5a89e0 100644
+--- a/v2/daemon/src/loops.ts
++++ b/v2/daemon/src/loops.ts
+@@ -149,6 +149,7 @@ export interface FlagEvidenceLike {
+   owner?: "sandbox_tmp";
+   quota?: QuotaBoundary;
+   eventId?: string;
++  sourceId?: string;
+ }
+ 
+ /** Observed subscription usage, structurally matching HsrDriver's UsageEvidence. */
+@@ -472,8 +473,8 @@ export class DaemonCore {
+     // "completion applied, cursor stale" ambiguity to replay.
+     this.store.transact(() => {
+       this.drainObservations();
+-      this.applyEvidence();
+       this.applySessionIds();
++      this.applyEvidence();
+       this.applyUsage();
+       this.applyObservationCursors();
+     });
+@@ -751,18 +752,27 @@ export class DaemonCore {
+         this.applySandboxTmpEvidence(ev);
+         continue;
+       }
+-      if (ev.quota && ev.eventId) this.store.recordQuotaEvidence({ eventId: ev.eventId, beeId: ev.beeId, generation: ev.generation, quota: ev.quota, turn: ev.turn ?? { messageIds: [], progress: "unknown" } });
+-      if (ev.action === "set") {
+-        this.store.setFlag(ev.beeId, ev.flag, ev.detail, { resetsAt: ev.resetsAt ?? null });
+-        this.log(
+-          `flag.set bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation}${ev.resetsAt != null ? ` resetsAt=${new Date(ev.resetsAt).toISOString()}` : ""}`,
+-        );
+-      } else {
+-        // Every clean turn re-emits contrary evidence; clearing an unset flag
+-        // is a store no-op — logging it too was pure noise (soak day-2).
+-        const { applied } = this.store.clearFlag(ev.beeId, ev.flag, ev.detail);
+-        if (applied) this.log(`flag.clear bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation}`);
++      const rebound = this.store.listQuotaRecoveries(ev.beeId).some(row => row.sourceGeneration === ev.generation
++        && row.targetAccount !== null && row.sourceAccount !== row.targetAccount && (row.state === "rotating" || row.state === "resumed"));
++      if (rebound) {
++        if (ev.quota && ev.eventId) this.store.recordQuotaEvidence({ eventId: ev.eventId, ...(ev.sourceId ? { sourceId: ev.sourceId } : {}), beeId: ev.beeId, generation: ev.generation, quota: ev.quota, turn: ev.turn ?? { messageIds: [], progress: "unknown" } });
++        this.log(`flag.skip bee=${ev.beeId} gen=${ev.generation} reason=rebound_generation`);
++        continue;
+       }
++      this.store.transact(() => {
++        if (ev.quota && ev.eventId) this.store.recordQuotaEvidence({ eventId: ev.eventId, ...(ev.sourceId ? { sourceId: ev.sourceId } : {}), beeId: ev.beeId, generation: ev.generation, quota: ev.quota, turn: ev.turn ?? { messageIds: [], progress: "unknown" } });
++        if (ev.action === "set") {
++          this.store.setFlag(ev.beeId, ev.flag, ev.detail, { resetsAt: ev.resetsAt ?? null });
++          this.log(
++            `flag.set bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation}${ev.resetsAt != null ? ` resetsAt=${new Date(ev.resetsAt).toISOString()}` : ""}`,
++          );
++        } else {
++          // Every clean turn re-emits contrary evidence; clearing an unset flag
++          // is a store no-op — logging it too was pure noise (soak day-2).
++          const { applied } = this.store.clearFlag(ev.beeId, ev.flag, ev.detail);
++          if (applied) this.log(`flag.clear bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation}`);
++        }
++      });
+       // v7: account policy (spec 08) rides the same evidence — never throws
+       // into the loop (a policy bug must not stall observation drain).
+       if (this.onFlagEvidence) {
+@@ -1636,9 +1646,12 @@ export class DaemonCore {
+           if (!identity || identity.socketPath === pane.socketPath && identity.paneId === pane.paneId && identity.serverIdentity === pane.serverIdentity) quarantined = true;
+         }
+         if (quarantined) continue;
+-        const pending = this.multilineFallback
++        const quotaGate = this.store.quotaDeliveryGate(rt.beeId);
++        if (quotaGate.held) continue;
++        const allPending = this.multilineFallback
+           ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => a.id - b.id)
+           : ordinaryPending;
++        const pending = quotaGate.messageIds.length > 0 ? allPending.filter(message => quotaGate.messageIds.includes(message.id)) : allPending;
+         if (rt.state === "booting") continue;
+         if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
+         const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index b00872b9..04f506ea 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -218,6 +218,7 @@ export const DAEMON_CAPABILITIES = [
+    * `account.credentialsRestored` and `account.interruptions`.
+    */
+   "account.auth_resume.v1",
++  "account.quota_recovery.v1",
+   "account.pause.owner.v1",
+   /**
+    * 2026-10 (no schema change): a centrally managed Claude account logs in
+@@ -1195,6 +1196,14 @@ export interface AccountAdmissionReleaseResult {
+  * carry). A seed with no transcript anywhere refuses the swap
+  * (`transcript_unavailable`) and leaves the bee untouched.
+  */
++export interface SwapAccountParams {
++  beeId: string;
++  account: string;
++  onlyAccountIds?: string[];
++  allocationClaim?: AccountAdmissionClaim;
++  quotaRecoveryId?: string;
++}
++
+ export interface SwapAccountResult extends DedupMarkers {
+   beeId: string;
+   from: string | null;
+@@ -1727,6 +1736,7 @@ export interface SnapshotResult {
+   accountLimits: MirrorAccountLimitsRow[];
+   /** v28 (additive): durable automatic-account admission holds and receipts. */
+   accountAdmissions: MirrorAccountAdmissionRow[];
++  quotaRecoveries?: import("../../core/src/types.ts").QuotaRecoveryRow[];
+   /** v11 (additive): agent task lists + per-bee auto-supply, store rows verbatim. */
+   tasks: MirrorTaskRow[];
+   taskSupply: MirrorTaskSupplyRow[];
+diff --git a/v2/daemon/src/quotaRecovery.ts b/v2/daemon/src/quotaRecovery.ts
+new file mode 100644
+index 00000000..614fe75c
+--- /dev/null
++++ b/v2/daemon/src/quotaRecovery.ts
+@@ -0,0 +1,27 @@
++import type { CoreStore } from "../../core/src/index.ts";
++
++export class QuotaRecovery {
++  private readonly store: CoreStore;
++  private reconciledSeq = -1;
++
++  constructor(store: CoreStore) {
++    this.store = store;
++  }
++
++  reconcile(): void {
++    if (this.store.lastAuditSeq() === this.reconciledSeq) return;
++    for (const row of this.store.listQuotaRecoveries()) {
++      if (row.state !== "waiting" && row.state !== "rotating") continue;
++      if (!this.store.quotaRecoveryValid(row)) {
++        this.store.cancelQuotaRecovery(row.id, "control_or_placement_changed");
++        continue;
++      }
++      if (row.state === "rotating") {
++        const runtime = this.store.currentRuntime(row.beeId);
++        if (runtime && runtime.generation > row.sourceGeneration && runtime.state === "stopped" && !this.store.activeFlags(row.beeId).some(flag => flag.flag === "spawn_failed")) this.store.enqueueBootRetry(row.beeId);
++        this.store.resumeQuotaRecovery(row.id);
++      }
++    }
++    this.reconciledSeq = this.store.lastAuditSeq();
++  }
++}
+diff --git a/v2/daemon/tests/accounts-rpc.test.ts b/v2/daemon/tests/accounts-rpc.test.ts
+index 60e2b73c..184484e2 100644
+--- a/v2/daemon/tests/accounts-rpc.test.ts
++++ b/v2/daemon/tests/accounts-rpc.test.ts
+@@ -795,7 +795,7 @@ test("rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the repla
+   }
+ });
+ 
+-test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @ratelimit) — swap to the untried account, the next turn continues there; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status", async () => {
++test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delayed) — swap to the untried account and continue automatically; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status", async () => {
+   const argvLog = join(makeDaemonDir().dir, "argv.jsonl");
+   const { dir, cleanup } = makeDaemonDir({
+     agents: {
+@@ -822,7 +822,7 @@ test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @ratelimit)
+     const m1 = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "warm up" });
+     await waitDelivered(client, bee.beeId, m1.messageId, "warm up delivered");
+     await waitState(client, bee.beeId, "idle", "idle");
+-    const m2 = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "@ratelimit please" });
++    const m2 = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "@quota:delayed please" });
+     await waitDelivered(client, bee.beeId, m2.messageId, "ratelimit delivered");
+     const swapped = await waitFor(async () => {
+       const v = await client.request<ViewResult>("view", { beeId: bee.beeId });
+@@ -832,8 +832,10 @@ test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @ratelimit)
+     // the exhausted account carries the evidence; the bee's flag was set by the adapter evidence
+     const acctA = await client.request<AccountGetResult>("account.get", { id: "claude-a" });
+     assert.ok(acctA.account.exhaustedAt, "exhaustion evidence recorded on the account");
+-    const m3 = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "continue" });
+-    assert.equal(await waitDelivered(client, bee.beeId, m3.messageId, "continue delivered on gen 2"), 2);
++    await waitFor(async () => {
++      const inbox = await client.request<{ messages: Array<{ body: string; deliveredGeneration: number | null }> }>("mailbox", { beeId: bee.beeId });
++      return inbox.messages.some(message => message.body.startsWith("Continue the interrupted turn") && message.deliveredGeneration === 2) ? true : null;
++    }, "automatic continuation delivered on gen 2");
+     // a successful turn on B clears resource_blocked (contrary evidence)
+     await waitFor(async () => {
+       const v = await client.request<ViewResult>("view", { beeId: bee.beeId });
+diff --git a/v2/driver-hsr/src/driver.ts b/v2/driver-hsr/src/driver.ts
+index c031d0c2..34ac1b88 100644
+--- a/v2/driver-hsr/src/driver.ts
++++ b/v2/driver-hsr/src/driver.ts
+@@ -1,3 +1,4 @@
++import { quotaSourceId } from "../../adapters/src/quota.ts";
+ import type { QuotaBoundary } from "../../core/src/quota.ts";
+ import type {RuntimeIdentityHooks} from "../../core/src/runtimeProcessIdentity.ts";
+ import {authenticatedProcessPeer} from "../../harness/src/processIdentity.ts";
+@@ -152,6 +153,7 @@ export interface FlagEvidence {
+   owner?: "sandbox_tmp";
+   quota?: QuotaBoundary;
+   eventId?: string;
++  sourceId?: string;
+ }
+ 
+ export interface TurnEvidence {
+@@ -1105,7 +1107,7 @@ export class HsrDriver implements RuntimeDriver {
+       const lateBoot = p.phase !== "booting" && signals.some((sig) => sig.kind === "booted");
+       for (const signal of signals) {
+         if (lateBoot && signal.kind === "turn_ended") continue;
+-        this.onSignal(p, signal, String(lineEndCursor));
++        this.onSignal(p, signal, String(lineEndCursor), line);
+       }
+       if (signals.length > 0) p.pendingObservationCursor = lineEndCursor;
+     }
+@@ -1591,7 +1593,7 @@ export class HsrDriver implements RuntimeDriver {
+   }
+ 
+ 
+-  private onSignal(p: ManagedProcess, signal: ReturnType<HarnessAdapter["parseLine"]>[number], sourceId: string): void {
++  private onSignal(p: ManagedProcess, signal: ReturnType<HarnessAdapter["parseLine"]>[number], sourceId: string, rawLine: string): void {
+     if (
+       (signal.kind === "turn_started" || signal.kind === "turn_ended")
+       && signal.threadId
+@@ -1691,13 +1693,15 @@ export class HsrDriver implements RuntimeDriver {
+         return;
+       }
+       case "flag": {
++        const raw = signal.quota ? JSON.parse(rawLine) as Record<string, unknown> : null;
++        const transcriptSourceId = raw && typeof raw.uuid === "string" && raw.uuid.trim().length > 0 ? raw.uuid : signal.quota ? quotaSourceId(rawLine) : undefined;
+         this.evidence.push({
+           beeId: p.beeId,
+           generation: p.generation,
+           flag: signal.flag,
+           action: signal.action,
+           detail: signal.detail,
+-          ...(signal.quota ? { quota: signal.quota, eventId: `quota:${p.beeId}:${p.generation}:${sourceId}` } : {}),
++          ...(signal.quota ? { quota: signal.quota, eventId: `quota:${p.beeId}:${p.generation}:${sourceId}`, sourceId: transcriptSourceId } : {}),
+           ...(signal.resetsAt !== undefined ? { resetsAt: signal.resetsAt } : {}),
+           ...(signal.action === "set" ? { turn: this.turnEvidence(p) } : {}),
+         });
