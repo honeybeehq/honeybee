@@ -5,7 +5,7 @@ export class QuotaRecovery {
   private stopped = false;
   private readonly pending = new Set<Promise<void>>();
   private readonly recover?: (row: QuotaRecoveryRow) => Promise<void>;
-  private readonly attempts = new Map<string, { at: number; fingerprint: string; pending: boolean }>();
+  private readonly attempts = new Map<string, { at: number; startedAt: number; fingerprint: string; pending: boolean }>();
 
   constructor(store: CoreStore, recover?: (row: QuotaRecoveryRow) => Promise<void>) {
     this.store = store;
@@ -38,9 +38,10 @@ export class QuotaRecovery {
         const now = Date.now();
         const fingerprint = this.fingerprint(row);
         const previous = this.attempts.get(row.id);
-        const due = Math.min(row.retryAt !== null && row.retryAt > (previous?.at ?? 0) ? row.retryAt : Infinity, (previous?.at ?? 0) + 30_000);
+        const deadlines = [row.retryAt, ...Object.values(row.resetHints)].filter((at): at is number => at != null && at > (previous?.startedAt ?? 0));
+        const due = Math.min(...deadlines, (previous?.at ?? 0) + 30_000);
         if (previous?.pending || previous && now < due && (previous.fingerprint === fingerprint || now - previous.at < 1000)) continue;
-        const attempt = { at: now, fingerprint, pending: true };
+        const attempt = { at: now, startedAt: now, fingerprint, pending: true };
         this.attempts.set(row.id, attempt);
         const pending = this.recover(row).catch(() => undefined).finally(() => {
           attempt.at = Date.now();

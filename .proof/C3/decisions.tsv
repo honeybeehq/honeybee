@@ -1,2 +1,4 @@
 ts	phase	decision	why	evidence	result
 2026-10-20T07:28:58Z	design	Persist exponential per-account recovery cadence in SQLite metadata	Restarts must retain provider protection and known reset evidence must wake immediately	v2/core/src/store.ts	implementation ready; real daemon lab pending
+2026-10-20T07:36:40Z	review	Reset cadence only for capacity-relevant evidence	Raw rising usage and exhaustion stamp churn would keep blocked accounts at thirty-second probes	v2/daemon/src/accountsService.ts	blocked-usage buckets and minute reset buckets preserve backoff
+2026-10-20T07:36:40Z	reliability	Track deadline consumption from attempt start	An in-flight probe finishing after reset must not consume a reset it never checked	v2/daemon/src/quotaRecovery.ts	real daemon cap/restart/overlapping reset lab passed

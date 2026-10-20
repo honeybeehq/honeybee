@@ -2360,7 +2360,9 @@ export class AccountsService {
   private quotaProbeEvidence(accountId: string): string {
     const account = this.store.getAccount(accountId);
     const row = this.store.getAccountLimits(accountId);
-    return JSON.stringify([account?.status, account?.exhaustedAt, account?.leasedFrom, row?.readable, row?.fiveHourPct, row?.weeklyPct, row?.fableWeeklyPct, row?.fiveHourResetsAt, row?.weeklyResetsAt, row?.fableResetsAt]);
+    const bucket = (percent: number | null | undefined) => percent == null ? null : percent >= DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent;
+    const reset = (at: number | null | undefined) => at == null ? null : Math.floor(at / 60_000);
+    return JSON.stringify([account?.status, account ? this.readiness(account).ready : null, row?.readable, bucket(row?.fiveHourPct), bucket(row?.weeklyPct), bucket(row?.fableWeeklyPct), reset(row?.fiveHourResetsAt), reset(row?.weeklyResetsAt), reset(row?.fableResetsAt)]);
   }
 
   private contextIsFresh(context: AccountAllocationContext | null | undefined, scope: string, now: number): context is AccountAllocationContext {
