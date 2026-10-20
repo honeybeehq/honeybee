@@ -2188,6 +2188,7 @@ export class CoreStore {
         progress: leastCertainProgress(previous.progress, event.turn.progress),
       } : {
         id, beeId: bee.id, sourceGeneration: event.generation, sourceAccount: bee.account,
+        sourceWindowUsedPercent: null, sourceWindowObservedAt: null,
         observationCursor: /^quota:.*:[0-9]+$/.test(event.eventId) ? Number(event.eventId.slice(event.eventId.lastIndexOf(":") + 1)) : null, sourceId: event.sourceId ?? null, accountLabel: null,
         eventIds: [event.eventId], messageIds, progress: event.turn.progress,
         interrupted: messageIds.length > 0 || event.turn.progress !== "none",
@@ -2214,14 +2215,29 @@ export class CoreStore {
   }
 
   private putQuotaRecovery(row: QuotaRecoveryRow): QuotaRecoveryRow {
+    const previous = this.getQuotaRecovery(row.id);
     const updated = { ...row, updatedAt: this.now() };
+    const notify = !previous || previous.state !== updated.state || previous.retryAt !== updated.retryAt || previous.reason !== updated.reason;
     this.stmt("INSERT INTO quota_recoveries(id, bee_id, state, payload) VALUES(?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, payload = excluded.payload")
       .run(updated.id, updated.beeId, updated.state, JSON.stringify(updated));
-    this.audit("quota.recovery", updated.beeId, { recovery: updated, notice: {
+    this.audit("quota.recovery", updated.beeId, { recovery: updated, ...(notify ? { notice: {
       kind: "quota_recovery", recoveryId: updated.id, state: updated.state,
       sourceId: updated.sourceId, accountLabel: updated.accountLabel, window: updated.quota.window, retryAt: updated.retryAt,
-    } });
+    } } : {}) });
     return updated;
+  }
+
+  observeQuotaRecoveryLimits(id: string, includeFable = false): void {
+    this.tx(() => {
+      const row = this.getQuotaRecovery(id);
+      if (!row || row.state !== "waiting" || row.sourceWindowObservedAt != null && (row.sourceWindowUsedPercent ?? 0) >= 90 || !row.sourceAccount) return;
+      const limits = this.getAccountLimits(row.sourceAccount);
+      if (!limits?.readable || limits.fetchedAt <= row.createdAt || limits.fetchedAt > this.now()) return;
+      const values = [limits.fiveHourPct, limits.weeklyPct, ...(includeFable ? [limits.fableWeeklyPct] : [])].filter((value): value is number => value !== null);
+      const used = row.quota.window === "weekly" ? limits.weeklyPct : row.quota.window === "five_hour" ? limits.fiveHourPct : values.length ? Math.max(...values) : null;
+      if (used === null || limits.fetchedAt <= (row.sourceWindowObservedAt ?? 0) || row.sourceWindowUsedPercent != null && used <= row.sourceWindowUsedPercent) return;
+      this.putQuotaRecovery({ ...row, sourceWindowUsedPercent: used, sourceWindowObservedAt: limits.fetchedAt });
+    });
   }
 
   waitQuotaRecovery(id: string, retryAt: number | null, reason: string): void {

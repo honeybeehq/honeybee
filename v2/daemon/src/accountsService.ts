@@ -260,6 +260,7 @@ export function describeWeeklyCeilingBreach(accountId: string, breach: WeeklyCei
 }
 
 export interface PickOptions {
+  minimumObservedAt?: number;
   /** Accounts already tried / the current one (rotation). */
   excludeAccountIds?: ReadonlySet<string>;
   /** Allowlist: only these account ids may win (the workstation binding a node-local pick). */
@@ -358,7 +359,17 @@ export type NewWorkAdmission =
   | { ok: true; account: AccountRow; reason: string; receipt: AccountAllocationReceipt; reservation: AccountAdmissionReservationRow | null }
   | { ok: false; code: "account_wait" | "account_unavailable" | AccountRefusalCode; message: string; receipt: AccountAllocationReceipt };
 
+export interface SourceQuotaRecovery {
+  usedPercentAtObservation?: number | null;
+  usedPercentObservedAt?: number | null;
+  observedAt: number;
+  window: "five_hour" | "weekly" | "other";
+  resetsAt: number | null;
+}
+
 export interface NewWorkAdmissionOptions extends PickOptions {
+  sourceQuotaRecovery?: SourceQuotaRecovery;
+  allowSourceAccount?: boolean;
   operation: AccountAdmissionOperation;
   requestKey: string;
   context?: AccountAllocationContext | null;
@@ -914,6 +925,7 @@ export class AccountsService {
   /** Grok/Kimi refresh tokens also rotate; share the whole provider read. */
   private readonly secondaryProviderFetches = new Map<string, Promise<PutAccountLimitsInput>>();
   /** Active-admission freshness probes join per account, including Claude. */
+  private readonly quotaProbeAt = new Map<string, number>();
   private readonly admissionRefreshes = new Map<string, Promise<void>>();
   /**
    * Auto picks not yet visible as runtimes (HIVE-80 reservation): each pick
@@ -2297,19 +2309,28 @@ export class AccountsService {
    * including the singleton case. Provider I/O happens before the store
    * transaction; selection then uses the resulting immutable rows.
    */
-  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}): Promise<void> {
-    if (this.cfg.accounts.allocationMode === "shadow") {
+  async ensureFreshAdmissionLimits(harness: string, opts: PickOptions = {}, quotaRecovery = false): Promise<void> {
+    if (this.cfg.accounts.allocationMode === "shadow" && !quotaRecovery) {
       this.scheduleFreshLimits(harness, opts);
       return;
     }
     const now = this.now();
     const stale = this.candidateIdsFor(harness, opts).filter((id) => {
       const row = this.store.getAccountLimits(id);
-      return !row || !row.readable || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs;
+      const account = this.store.getAccount(id);
+      const previous = this.quotaProbeAt.get(id);
+      const crossedReset = row && [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now && reset > (previous ?? 0));
+      if (quotaRecovery && previous !== undefined && now - previous < 30_000 && !crossedReset) return false;
+      return !row || !row.readable || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs
+        || opts.minimumObservedAt !== undefined && row.fetchedAt <= opts.minimumObservedAt
+        || [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now)
+        || account?.exhaustedAt != null && row.fetchedAt <= account.exhaustedAt
+        || quotaRecovery;
     });
     if (stale.length > 0) await Promise.all(stale.map(async (id) => {
       const joined = this.admissionRefreshes.get(id);
       if (joined) return joined;
+      if (quotaRecovery) this.quotaProbeAt.set(id, now);
       const pending = this.refreshLimits([id]).then(() => undefined);
       this.admissionRefreshes.set(id, pending);
       try {
@@ -2401,6 +2422,49 @@ export class AccountsService {
     return activities;
   }
 
+  private exhaustedAdmissionRetry(accounts: AccountRow[], model: string | undefined, hint: number | null): number | null {
+    const now = this.now();
+    const times = hint !== null && hint > now ? [hint] : [];
+    for (const account of accounts) {
+      if (!this.readiness(account).ready) continue;
+      const limits = this.store.getAccountLimits(account.id);
+      if (limits?.readable) {
+        for (const [pct, reset] of [[limits.fiveHourPct, limits.fiveHourResetsAt], [limits.weeklyPct, limits.weeklyResetsAt], ...(isFableModel(model) ? [[limits.fableWeeklyPct, limits.fableResetsAt]] : [])]) {
+          if (pct != null && pct >= DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent && reset != null && reset > now) times.push(reset);
+        }
+      }
+      const observed = limits?.readable ? [limits.fiveHourPct, limits.weeklyPct, ...(isFableModel(model) ? [limits.fableWeeklyPct] : [])] : [];
+      if (account.exhaustedAt != null && observed.length > 0 && observed.every(value => value !== null && value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent) && !this.restoredQuotaHeadroom(account, model)) {
+        const coolOff = account.exhaustedAt + this.cfg.accounts.exhaustionCoolOffMs;
+        if (coolOff > now) times.push(coolOff);
+      }
+    }
+    return times.length ? Math.min(...times) : null;
+  }
+
+  restoredQuotaHeadroom(account: AccountRow, model?: string): boolean {
+    const row = this.store.getAccountLimits(account.id);
+    const values = row?.readable ? [row.fiveHourPct, row.weeklyPct, ...(isFableModel(model) ? [row.fableWeeklyPct] : [])].filter((value): value is number => value !== null) : [];
+    return account.exhaustedAt !== null && row?.readable === true && row.fetchedAt > account.exhaustedAt
+      && this.now() - row.fetchedAt <= this.cfg.accounts.allocationQuotaFreshMs
+      && values.length > 0 && values.every(value => value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
+  }
+
+  private sourceQuotaRestored(account: AccountRow, source: SourceQuotaRecovery | undefined, model?: string): boolean {
+    if (!source) return false;
+    const now = this.now();
+    const row = this.store.getAccountLimits(account.id);
+    if (!row?.readable || row.fetchedAt <= source.observedAt || row.fetchedAt > now || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs) return false;
+    if (source.resetsAt !== null && (source.resetsAt > now || row.fetchedAt < source.resetsAt)) return false;
+    if (source.resetsAt === null && !(source.usedPercentAtObservation != null && source.usedPercentAtObservation >= DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent
+      && source.usedPercentObservedAt != null && source.usedPercentObservedAt > source.observedAt && row.fetchedAt > source.usedPercentObservedAt)) return false;
+    const exhausted = source.window === "weekly" ? row.weeklyPct : source.window === "five_hour" ? row.fiveHourPct : null;
+    if (source.window !== "other" && exhausted === null) return false;
+    const values = [row.fiveHourPct, row.weeklyPct, ...(isFableModel(model) ? [row.fableWeeklyPct] : [])];
+    if (source.window === "other" && values.some(value => value === null)) return false;
+    return values.some(value => value !== null) && values.every(value => value === null || value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
+  }
+
   private admissionCandidate(
     account: AccountRow,
     options: NewWorkAdmissionOptions,
@@ -2490,9 +2554,10 @@ export class AccountsService {
     const context = options.context ?? null;
     const contextFresh = this.contextIsFresh(context, scope, now);
     const excluded = new Set(options.excludeAccountIds ?? []);
-    if (options.operation === "swap" && options.sourceAccount) excluded.add(options.sourceAccount);
+    if (options.operation === "swap" && options.sourceAccount && !options.allowSourceAccount) excluded.add(options.sourceAccount);
     const accounts = this.store.listAccounts({ harness }).filter((account) =>
-      !excluded.has(account.id) && (!options.onlyAccountIds || options.onlyAccountIds.has(account.id)));
+      !excluded.has(account.id) && (!options.onlyAccountIds || options.onlyAccountIds.has(account.id))
+      && (account.id !== options.sourceAccount || !options.allowSourceAccount || this.sourceQuotaRestored(account, options.sourceQuotaRecovery, options.model)));
     const activityByAccount = this.localActivities(accounts.map((account) => account.id), now);
     const candidates = accounts.map((account) => this.admissionCandidate(account, options, context, contextFresh, now, activityByAccount.get(account.id)!));
     const decision = selectAccountAdmission(candidates, {
@@ -2503,6 +2568,18 @@ export class AccountsService {
     });
 
     if (this.cfg.accounts.allocationMode === "shadow") {
+      if (options.allowSourceAccount) {
+        for (const candidate of candidates) {
+          if (!candidate.quota) continue;
+          const observed = this.store.getAccountLimits(candidate.accountId);
+          if (observed && [observed.fiveHourPct, observed.weeklyPct, ...(isFableModel(options.model) ? [observed.fableWeeklyPct] : [])].some(value => value !== null && value >= DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent)) excluded.add(candidate.accountId);
+          if (candidate.quota.windows.length === 0) continue;
+          const localDecision = selectAccountAdmission([{ ...candidate, activity: { ...candidate.activity, coverage: "complete" } }], {
+            ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model: options.model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs,
+          });
+          if (localDecision.kind === "wait") excluded.add(candidate.accountId);
+        }
+      }
       const inherited = options.onlyAccountIds?.size === 1 && (options.operation === "fork" || options.operation === "handoff")
         ? this.store.getAccount([...options.onlyAccountIds][0]!)
         : null;
@@ -2511,13 +2588,18 @@ export class AccountsService {
         ? inheritedReadiness!.ready
           ? { ok: true, account: inherited, reason: "automatic inheritance", limitsAgeMs: null, stale: false, candidates: 1 }
           : { ok: false, code: inheritedReadiness!.code === "account_paused" ? "all_paused" : inheritedReadiness!.code === "account_credential_missing" ? "no_credentials" : "auth_needed", message: inheritedReadiness!.message }
-        : this.pick(harness, options);
+        : this.pick(harness, { ...options, excludeAccountIds: new Set([...excluded, ...this.store.listAccounts({ harness }).filter(account => {
+            if (!options.allowSourceAccount) return false;
+            if (account.id === options.sourceAccount) return !this.sourceQuotaRestored(account, options.sourceQuotaRecovery, options.model);
+            if (account.exhaustedAt !== null && !this.restoredQuotaHeadroom(account, options.model)) return true;
+            return false;
+          }).map(account => account.id)]) });
       if (!legacy.ok) {
         const receipt: AccountAllocationReceipt = {
           version: 1, mode: "shadow", scope, revision: contextFresh ? context!.revision : null,
           observedAt: now, operation: options.operation, outcome: "wait", account: null,
           reason: `shadow:${decision.kind === "wait" ? decision.reason : "selected"}; legacy:${legacy.code}`,
-          retryAt: decision.kind === "wait" ? decision.retryAt : null, candidates: decision.candidates,
+          retryAt: this.exhaustedAdmissionRetry(accounts, options.model, decision.kind === "wait" ? decision.retryAt : null), candidates: decision.candidates,
         };
         const code = inheritedReadiness && !inheritedReadiness.ready
           ? inheritedReadiness.code
@@ -2538,7 +2620,7 @@ export class AccountsService {
       const receipt: AccountAllocationReceipt = {
         version: 1, mode: "active", scope, revision: contextFresh ? context!.revision : null,
         observedAt: now, operation: options.operation, outcome: "wait", account: null,
-        reason: decision.reason, retryAt: decision.retryAt, candidates: decision.candidates,
+        reason: decision.reason, retryAt: this.exhaustedAdmissionRetry(accounts, options.model, decision.retryAt), candidates: decision.candidates,
       };
       this.log(`account.admission.wait operation=${options.operation} scope=${scope} reason=${decision.reason} retry_at=${decision.retryAt ?? "-"}`);
       return { ok: false, code: "account_wait", message: `Automatic account allocation is waiting: ${decision.reason}`, receipt };
@@ -2625,6 +2707,7 @@ export class AccountsService {
         opts.excludeRecentlyExhausted &&
         account.exhaustedAt != null &&
         now - account.exhaustedAt < this.cfg.accounts.exhaustionCoolOffMs
+        && !this.restoredQuotaHeadroom(account, opts.model)
       ) continue;
       candidates.push(account);
     }

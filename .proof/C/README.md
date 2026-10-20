@@ -1,0 +1,15 @@
+Run from this Cell checkout after `npm ci --ignore-scripts` and `npm run build`, with a fake HOME and package caches inside this Cell or a private `/var/tmp` root.
+
+`bash .proof/C/run.sh` runs eight real-daemon scenarios. Pass scenario names to select a subset: `claude-once`, `codex-once`, `source-reset`, `unknown-reset`, `autoswap-false`, `active-owner`, `restart-waiting`, `concurrent-unknown`.
+
+The launcher replaces the environment, creates a private `/var/tmp/hb-quota-C.*` run root, and prints its result directory. It retains commit/runtime metadata, RPC snapshots, raw session journals, usage requests, daemon logs, and `summary.json`. Nonzero exit means a scenario failed. Assertions continue across scenarios when daemon teardown succeeds. No cleanup deletes run roots; fixture fs.rmSync cleanup is redirected into that root's trash. Other runtime cleanup remains confined to the fixture paths. Runtime shutdown uses only handles owned by this process.
+
+Both accounts use synthetic fixture credentials. The initial store fixture seeds target exhaustion for the capacity scenarios. A loopback usage endpoint reports both accounts exhausted, then restores source headroom at the declared reset. A warmup initializes the native conversation before the quota work request. No `send` follows that work request. Continuation must be durable, delivered once on generation 2, and followed by a served turn. This proves transport and daemon continuation behavior; the fake Codex accepts resume by identity and does not prove strict cross-home context recall.
+
+Unknown reset, autoswap opt-out, and active allocation without an owner coordinator must remain waiting without continuation. Their default observation window is 33000ms, covering the coordinator retry interval; pass `C_HOLD_MS` to override it. Active owner deferral is a boundary check, not proof of the separate Apiary owner coordinator.
+
+`bash .proof/C/run.sh concurrent-unknown` runs two bees on the same exhausted source account for 35 seconds. Both must retain unknown-reset waits on generation 1. Each source/target account must receive exactly two loopback usage probes, separated by at least 29 seconds: initial observation plus one bounded refresh, shared across both bees. The usage request log and second-bee receipt retain the timestamps.
+
+This focused C lab does not dispatch an action, test tool side effects, prove context recall for either provider, or cover mid-swap crash, lease/claim rejection, manual cancellation, five-hour Claude quota, or queued-mail FIFO. The action-report assertion checks only that this run emitted none. Those broader acceptance checks belong to the integration lab.
+
+`bash .proof/C/verify.sh` runs repository typechecks, build, and the existing accounts RPC, loops, and runner-host suites under a fresh sanitized root. It prints the directory containing gate logs. It adds no unit tests. The repository verification skill is unavailable. DEPLOY HOLD remains in effect.

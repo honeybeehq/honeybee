@@ -1,0 +1,29 @@
+hived v2 listening on /var/tmp/hb-quota-C.wCQxIkhk/tmp/hb-v2-daemon-GRSwNY/hived.sock (store /var/tmp/hb-quota-C.wCQxIkhk/tmp/hb-v2-daemon-GRSwNY/core.sqlite3)
+{"ts":1792480726461,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792480726473,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792480726484,"op":"rpc.listen socket=/var/tmp/hb-quota-C.wCQxIkhk/tmp/hb-v2-daemon-GRSwNY/hived.sock"}
+{"ts":1792480726485,"op":"daemon.started pid=2258562 store=/var/tmp/hb-quota-C.wCQxIkhk/tmp/hb-v2-daemon-GRSwNY/core.sqlite3"}
+{"ts":1792480726499,"op":"spawn.account bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 account=claude-a reason=\"explicit\""}
+{"ts":1792480726511,"op":"account.activate account=claude-a home=/var/tmp/hb-quota-C.wCQxIkhk/tmp/hb-v2-daemon-GRSwNY/homes/claude-a copied=.credentials.json"}
+{"ts":1792480726511,"op":"account.activate.gateways account=claude-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792480726675,"op":"cmd.spawn id=1 bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 start gen=1"}
+{"ts":1792480726764,"op":"obs.booted bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1 pid=2258585 synthetic"}
+{"ts":1792480726765,"op":"obs.skip bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1 kind=turn_ended reason=mail_pending"}
+{"ts":1792480726769,"op":"deliver.refused bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 msg=1 reason=not_ready"}
+{"ts":1792480726776,"op":"deliver bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 msg=1 gen=1 urgency=next"}
+{"ts":1792480726796,"op":"obs.skip bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1 kind=turn_started reason=already_running"}
+{"ts":1792480726825,"op":"spawn.evidence bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1 kind=booted"}
+{"ts":1792480726825,"op":"obs.skip bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1 kind=booted reason=already_running"}
+{"ts":1792480726826,"op":"obs.turn_ended bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1"}
+{"ts":1792480726827,"op":"session.recorded bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1 id=56da54cc-7ed1-4b3c-bffe-5c4accc94045"}
+{"ts":1792480726829,"op":"obs.checkpoint bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1 cursor=501"}
+{"ts":1792480726853,"op":"deliver bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 msg=2 gen=1 urgency=next"}
+{"ts":1792480726877,"op":"obs.turn_started bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1 synthetic"}
+{"ts":1792480726878,"op":"obs.turn_ended bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1"}
+{"ts":1792480726881,"op":"flag.set bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 flag=resource_blocked gen=1 resetsAt=2026-10-20T08:18:46.118Z"}
+{"ts":1792480726883,"op":"account.rotate bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 account=claude-a skipped=autoswap_disabled"}
+{"ts":1792480726885,"op":"flag.set bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 flag=resource_blocked gen=1 resetsAt=2026-10-20T08:18:46.118Z"}
+{"ts":1792480726886,"op":"obs.checkpoint bee=09631b05-24fd-4b6a-8f7e-9da2bfae5982 gen=1 cursor=1035"}
+{"ts":1792480759905,"op":"daemon.stopping pid=2258562"}
+{"ts":1792480759913,"op":"daemon.stopped"}
+{"ts":1792480759913,"op":"daemon.stop_complete pid=2258562"}
