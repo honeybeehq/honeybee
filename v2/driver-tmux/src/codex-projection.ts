@@ -1,3 +1,4 @@
+import { codexQuotaBoundary, quotaSourceId } from "../../adapters/src/quota.ts";
 import {
   projectorCheckpoint, checkpointRecord, checkpointEntries, checkpointJson,
   checkpointNullable, checkpointString, checkpointStrings, checkpointBoolean,
@@ -498,6 +499,11 @@ export function createCodexProjector(restored?: CodexCheckpointState): Transcrip
     pushLine(line: string): TranscriptProjectedEvent[] {
       const row = parseLine(line);
       if (!row) return [];
+      const quota = codexQuotaBoundary(row);
+      const quotaEvents: TranscriptProjectedEvent[] = quota
+        ? [{ kind: "quota", ts: firstIso(row.emittedAtMs), quota, sourceId: quotaSourceId(line), raw: row, operational: true }]
+        : [];
+      if (quota && row.method !== "turn/completed") return withThreadId(quotaEvents, idString(asObject(row.params)?.threadId));
       const method = nonEmptyString(row.method);
       const requestId = idString(row.id);
       if (!method) {
@@ -537,7 +543,7 @@ export function createCodexProjector(restored?: CodexCheckpointState): Transcrip
           const interrupted = turn?.status === "interrupted";
           const usage = tokenUsageFrom(turn);
           const ts = firstIso(row.emittedAtMs);
-          const events: TranscriptProjectedEvent[] = [{
+          const events: TranscriptProjectedEvent[] = [...withThreadId(quotaEvents, threadId), {
             kind: "turn_end",
             ts,
             ...(turnId ? { turnId } : {}),

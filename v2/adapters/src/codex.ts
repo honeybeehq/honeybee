@@ -1,3 +1,4 @@
+import { codexQuotaBoundary } from "./quota.ts";
 /**
  * Codex harness adapter (WP3) — normalizes the `codex app-server` JSON-RPC 2.0
  * stdio stream.
@@ -45,7 +46,6 @@ import {
   bootedToIdle,
   isAuthNeededMessage,
   isResourceBlockedMessage,
-  isoFromEpochSeconds,
   parseJsonLine,
   successfulTurnClears,
   type AdapterSignal,
@@ -109,19 +109,19 @@ export interface CodexAdapterOptions {
 export function codexRateLimitSignals(rateLimits: unknown): AdapterSignal[] {
   const snapshot = asObject(rateLimits);
   if (!snapshot) return [];
+  const quota = codexQuotaBoundary({ method: "account/rateLimits/updated", params: { rateLimits: snapshot } });
   const reached = snapshot.rateLimitReachedType;
   if (reached === null || reached === undefined) return [];
-  const reset =
-    isoFromEpochSeconds(asObject(snapshot.primary)?.resetsAt) ??
-    isoFromEpochSeconds(asObject(snapshot.secondary)?.resetsAt);
-  const resetsAt =
-    epochMsFromSeconds(asObject(snapshot.primary)?.resetsAt) ??
-    epochMsFromSeconds(asObject(snapshot.secondary)?.resetsAt);
+  const resetsAt = quota?.resetsAt
+    ?? epochMsFromSeconds(asObject(snapshot.primary)?.resetsAt)
+    ?? epochMsFromSeconds(asObject(snapshot.secondary)?.resetsAt);
+  const reset = resetsAt !== undefined ? new Date(resetsAt).toISOString() : undefined;
   return [{
     kind: "flag",
     flag: "resource_blocked",
     action: "set",
     detail: `codex rate limit reached (${String(reached)})${reset ? `, resets ${reset}` : ""}`,
+    ...(quota ? { quota } : {}),
     ...(resetsAt !== undefined ? { resetsAt } : {}),
   }];
 }
@@ -129,8 +129,9 @@ export function codexRateLimitSignals(rateLimits: unknown): AdapterSignal[] {
 function errorSignals(message: string, codexErrorInfo?: unknown): AdapterSignal[] {
   // Prefer the native discriminant: provider wording is not a protocol.
   // Keep a recognizable cause in detail for the daemon's exhaustion policy.
-  if (codexErrorInfo === "usageLimitExceeded") {
-    return [{ kind: "flag", flag: "resource_blocked", action: "set", detail: `codex usage limit exceeded: ${message}`.slice(0, 500) }];
+  const quota = codexQuotaBoundary({ method: "error", params: { error: { message, codexErrorInfo } } });
+  if (quota) {
+    return [{ kind: "flag", flag: "resource_blocked", action: "set", detail: (quota.providerCategory === "text_fallback" ? message : `codex usage limit exceeded: ${message}`).slice(0, 500), quota }];
   }
   if (isAuthNeededMessage(message)) {
     return [{ kind: "flag", flag: "auth_needed", action: "set", detail: message.slice(0, 500) }];

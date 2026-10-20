@@ -1,3 +1,5 @@
+import type { QuotaBoundary } from "../../core/src/quota.ts";
+export type { QuotaBoundary } from "../../core/src/quota.ts";
 /**
  * Harness adapters — the normalization layer (WP3, spec 03).
  *
@@ -66,6 +68,7 @@ export type AdapterSignal =
       detail: string;
       /** Provider-declared instant (epoch ms) the condition lifts, when the provider states one. */
       resetsAt?: number;
+      quota?: QuotaBoundary;
     }
   /**
    * Subscription usage the harness observed on its own provider responses

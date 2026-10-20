@@ -1,3 +1,4 @@
+import { claudeQuotaBoundary } from "../../adapters/src/quota.ts";
 /**
  * Transcript-file observers (WP5, spec 05 observation source 2 — the
  * MANDATORY baseline for every supported harness under A3).
@@ -326,7 +327,7 @@ export const claudeTranscriptRenderer: TranscriptRenderer = {
   renderLine(line: string): TranscriptTurn[] {
     const row = jsonLine(line);
     if (!row) return [];
-    if (row.isSidechain === true || row.isMeta === true) return [];
+    if (row.isSidechain === true || row.isMeta === true || claudeQuotaBoundary(row)) return [];
     const message = row.message as { content?: unknown } | undefined;
     if (row.type === "user") return turnsFromBlocks("user", message?.content);
     if (row.type === "assistant") return turnsFromBlocks("assistant", message?.content);
@@ -647,6 +648,7 @@ export function renderTranscriptLines(harness: string, lines: readonly string[])
 
 function turnsFromProjectedEvent(event: TranscriptProjectedEvent): TranscriptTurn[] {
   switch (event.kind) {
+    case "quota": return [];
     case "message":
       return event.role === "developer" ? [] : [{ role: event.role, text: event.text }];
     case "shell":

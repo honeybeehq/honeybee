@@ -1,3 +1,4 @@
+export type { QuotaBoundary, QuotaObservedEvent } from "./quota.ts";
 /**
  * Honeybee v2 core library (WP1 of the reset).
  * Implements docs/design/specs/reset-01-core.md over docs/design/core-contract.md.

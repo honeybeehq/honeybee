@@ -1,3 +1,4 @@
+import type { QuotaBoundary } from "../../core/src/quota.ts";
 import type {RuntimeIdentityHooks} from "../../core/src/runtimeProcessIdentity.ts";
 import {authenticatedProcessPeer} from "../../harness/src/processIdentity.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
@@ -149,6 +150,8 @@ export interface FlagEvidence {
   /** The turn a `set` cut off: the mail delivered into it and whether the provider served any of it. */
   turn?: TurnEvidence;
   owner?: "sandbox_tmp";
+  quota?: QuotaBoundary;
+  eventId?: string;
 }
 
 export interface TurnEvidence {
@@ -1102,7 +1105,7 @@ export class HsrDriver implements RuntimeDriver {
       const lateBoot = p.phase !== "booting" && signals.some((sig) => sig.kind === "booted");
       for (const signal of signals) {
         if (lateBoot && signal.kind === "turn_ended") continue;
-        this.onSignal(p, signal);
+        this.onSignal(p, signal, String(lineEndCursor));
       }
       if (signals.length > 0) p.pendingObservationCursor = lineEndCursor;
     }
@@ -1588,7 +1591,7 @@ export class HsrDriver implements RuntimeDriver {
   }
 
 
-  private onSignal(p: ManagedProcess, signal: ReturnType<HarnessAdapter["parseLine"]>[number]): void {
+  private onSignal(p: ManagedProcess, signal: ReturnType<HarnessAdapter["parseLine"]>[number], sourceId: string): void {
     if (
       (signal.kind === "turn_started" || signal.kind === "turn_ended")
       && signal.threadId
@@ -1694,6 +1697,7 @@ export class HsrDriver implements RuntimeDriver {
           flag: signal.flag,
           action: signal.action,
           detail: signal.detail,
+          ...(signal.quota ? { quota: signal.quota, eventId: `quota:${p.beeId}:${p.generation}:${sourceId}` } : {}),
           ...(signal.resetsAt !== undefined ? { resetsAt: signal.resetsAt } : {}),
           ...(signal.action === "set" ? { turn: this.turnEvidence(p) } : {}),
         });

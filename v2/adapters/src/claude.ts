@@ -1,3 +1,4 @@
+import { claudeQuotaBoundary } from "./quota.ts";
 /**
  * Claude harness adapter (WP3) — normalizes the `claude -p --input-format
  * stream-json --output-format stream-json --verbose` NDJSON envelope.
@@ -96,6 +97,12 @@ function isProviderServed(msg: Record<string, unknown>): boolean {
 export function parseClaudeLine(line: string): AdapterSignal[] {
   const msg = parseJsonLine(line);
   if (!msg || typeof msg.type !== "string") return [];
+  const quota = claudeQuotaBoundary(msg);
+  if (quota) {
+    const resetsAt = quota.resetsAt ?? (msg.type === "rate_limit_event" ? epochMsFromSeconds(asObject(msg.rate_limit_info)?.resetsAt) : undefined);
+    const detail = msg.type === "rate_limit_event" ? `claude rate limit ${String(asObject(msg.rate_limit_info)?.status)}${resetsAt !== undefined ? `, resets ${new Date(resetsAt).toISOString()}` : ""}` : `claude quota exhausted: ${String(msg.result ?? "synthetic provider limit")}`;
+    return [{ kind: "flag", flag: "resource_blocked", action: "set", detail, quota, ...(resetsAt !== undefined ? { resetsAt } : {}) }, ...(msg.type === "result" ? [{ kind: "turn_ended" } as const] : [])];
+  }
   switch (msg.type) {
     case "system": {
       if (msg.subtype !== "init") return []; // thinking_tokens etc: progress pings

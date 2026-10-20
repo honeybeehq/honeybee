@@ -1,3 +1,4 @@
+import type { QuotaBoundary } from "../../core/src/quota.ts";
 import {ProcessIdentityUnavailableError} from "../../driver-hsr/src/psutil.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
@@ -146,6 +147,8 @@ export interface FlagEvidenceLike {
   /** The turn a `set` cut off: the mail delivered into it and whether the provider served any of it. */
   turn?: { messageIds: number[]; progress: "none" | "some" | "unknown" };
   owner?: "sandbox_tmp";
+  quota?: QuotaBoundary;
+  eventId?: string;
 }
 
 /** Observed subscription usage, structurally matching HsrDriver's UsageEvidence. */
@@ -717,12 +720,6 @@ export class DaemonCore {
     }
   }
 
-  /**
-   * Contrary-evidence clearing (spec 03, resolving WP2 ambiguity 6): every
-   * flag-setter has a clearer in the same adapter, and this policy applies
-   * both directions verbatim. Flags are bee-scoped; evidence from a stale
-   * generation still describes this bee's provider boundary, so it applies.
-   */
   private applySandboxTmpEvidence(ev: FlagEvidenceLike): void {
     const open = this.store.activeFlags(ev.beeId).find((f) => f.flag === ev.flag);
     const ours = open !== undefined && open.detail.startsWith(SANDBOX_TMP_FULL);
@@ -745,10 +742,16 @@ export class DaemonCore {
         this.log(`flag.skip bee=${ev.beeId} flag=${ev.flag} reason=no_bee`);
         continue;
       }
+      const runtime = this.store.currentRuntime(ev.beeId);
+      if (!runtime || runtime.generation !== ev.generation) {
+        this.log(`flag.skip bee=${ev.beeId} gen=${ev.generation} reason=stale_generation`);
+        continue;
+      }
       if (ev.owner === "sandbox_tmp") {
         this.applySandboxTmpEvidence(ev);
         continue;
       }
+      if (ev.quota && ev.eventId) this.store.recordQuotaEvidence({ eventId: ev.eventId, beeId: ev.beeId, generation: ev.generation, quota: ev.quota, turn: ev.turn ?? { messageIds: [], progress: "unknown" } });
       if (ev.action === "set") {
         this.store.setFlag(ev.beeId, ev.flag, ev.detail, { resetsAt: ev.resetsAt ?? null });
         this.log(
