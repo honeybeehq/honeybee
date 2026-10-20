@@ -614,6 +614,7 @@ export const RPC_VERBS = [
   "account.admission.release",
   "account.activity",
   "bee.swapAccount",
+  "quota.recovery.wait",
   // Auto-titler node config (additive): `config.get` is a read; `config.patch`
   // writes `naming` in the node's config.json.
   "config.get",
