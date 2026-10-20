@@ -2765,7 +2765,10 @@ export class HiveDaemon {
       excludeAccountIds: this.admissionAccountIdsParam(params, "excludeAccountIds"),
       onlyAccountIds: this.admissionAccountIdsParam(params, "onlyAccountIds"),
       reservationId,
-      reservationMetadata: { authority: { version: 1, owner: authority, target, model: model ?? null } },
+      reservationMetadata: {
+        authority: { version: 1, owner: authority, target, model: model ?? null },
+        ...(params.allowSourceAccount === true && params.sourceQuotaRecovery !== undefined ? { sourceQuotaRecovery: this.sourceQuotaRecoveryParam(params) } : {}),
+      },
     });
     if (!admission.ok) {
       throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
@@ -2783,7 +2786,7 @@ export class HiveDaemon {
       units: row.units,
       model: model ?? null,
       sourceAccount: row.sourceAccount,
-      ...(params.allowSourceAccount === true && params.sourceQuotaRecovery !== undefined ? { sourceQuotaRecovery: this.sourceQuotaRecoveryParam(params) } : {}),
+      ...(row.receipt.sourceQuotaRecovery !== undefined ? { sourceQuotaRecovery: this.sourceQuotaRecoveryParam({ sourceQuotaRecovery: row.receipt.sourceQuotaRecovery }) } : {}),
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
       authority: authority!,
@@ -2967,6 +2970,7 @@ export class HiveDaemon {
           receipt: {
             allocation: claim.allocation as unknown as Record<string, unknown>,
             authority: { version: 1, owner: claim.authority, target: claim.target, model: claim.model },
+            ...(claim.sourceQuotaRecovery ? { sourceQuotaRecovery: claim.sourceQuotaRecovery } : {}),
           },
         });
       }
@@ -2989,6 +2993,7 @@ export class HiveDaemon {
         receipt: {
           allocation: claim.allocation as unknown as Record<string, unknown>,
           authority: { version: 1, owner: claim.authority, target: claim.target, model: claim.model },
+          ...(claim.sourceQuotaRecovery ? { sourceQuotaRecovery: claim.sourceQuotaRecovery } : {}),
         },
       }, beeId);
     } catch (error) {
