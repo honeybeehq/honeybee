@@ -1925,6 +1925,14 @@ export interface AccountObservationMetadata {
   highWatermarkMs: number;
 }
 
+export interface AccountQuotaProbeCadence {
+  account: string;
+  lastProbeAt: number;
+  nextProbeAt: number;
+  delayMs: number;
+  evidence: string;
+}
+
 export interface QuotaRecoveryRow {
   sourceWindowUsedPercent?: number | null;
   sourceWindowObservedAt?: number | null;
