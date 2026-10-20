@@ -26,7 +26,7 @@ test("status listing prepares a bounded set of plans across different bee ids", 
       return original.call(this, sql);
     };
     assert.equal(reader.list(null).length, 40);
-    assert.ok(prepares <= 7, `listing compiled ${prepares} statements`);
+    assert.ok(prepares <= 8, `listing compiled ${prepares} statements`);
     const before = prepares;
     for (let i = 0; i < 40; i++) assert.equal(reader.view(`bee-${i}`).bee?.id, `bee-${i}`);
     assert.equal(prepares, before, "new bee ids reuse the same plans");

@@ -2501,7 +2501,7 @@ function makeAsyncDeliveryRig(): AsyncDeliveryRig {
   const frames: string[] = [];
   const proc: AsyncDeliveryProcessProbe = {
     processIdentity: { pid: 4242, birth: "linux:4242", bootId: "00000000-0000-0000-0000-000000000000" },
-    deliveryProtocol: { authenticated: true, supported: false, legacy: true, pending: new Set(), replies: new Map() },
+    deliveryProtocol: { authenticated: true, supported: false, legacy: true, pending: new Set(), replies: new Map<number, never>() },
     beeId: bee.id,
     generation: runtime.generation,
     pid: 4242,

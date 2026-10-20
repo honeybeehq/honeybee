@@ -1662,7 +1662,8 @@ export class DaemonCore {
         this.confirmationReady.delete(intent.messageId);
         this.confirmationPolls.delete(intent.messageId);
         this.deliveryRetries.delete(intent.beeId);
-      } else if (result === "not_written" && intent.wireLine !== null) {
+      } else if (result === "not_written") {
+        if (intent.wireLine === null) continue;
         if (this.ext.isDegraded?.(intent.beeId, intent.generation)) {
           this.store.replanDeliveryConfirmationIntent(intent, intent.digest);
           this.store.releaseUnwrittenDeliveryConfirmation(intent.messageId, intent.generation, intent.digest);

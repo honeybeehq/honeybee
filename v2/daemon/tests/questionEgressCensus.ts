@@ -70,6 +70,8 @@ const policy: Readonly<Record<string, string>> = {
  'v2/daemon/src/rpc.ts:flushWatch:projectAnswerTriggerDelta':'outer question projector before send',
  'v2/daemon/src/daemon.ts:flushWatchers:this.mirrorAuditRows':'canonical audit batch; RPC delta projection next',
  'v2/daemon/src/daemon.ts:mirrorAuditRows:mirrorBeeAuditRow':'canonical audit redaction; RPC delta projection next',
+ 'v2/daemon/src/daemon.ts:mirrorAuditRows:this.publicConfirmationAudit':'delivery-confirmation redaction; RPC question delta projection next',
+ 'v2/daemon/src/daemon.ts:rpcAuditTail:this.publicConfirmationAudit':'delivery-confirmation redaction; RPC question result projection next',
  'v2/daemon/src/daemon.ts:dispatch:this.envRedacted':'canonical RPC dispatch; sync/async projection next',
  'v2/daemon/src/daemon.ts:rpcActionReportIdempotent:store.recordRpcResult':'canonical private SQLite receipt; result projection next',
  'v2/cli/src/client.ts:onFrame:this.onEvent':'already projected owner frame',

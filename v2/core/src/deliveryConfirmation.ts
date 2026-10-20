@@ -23,8 +23,8 @@ CREATE INDEX IF NOT EXISTS thread_operations_continuation_message ON thread_oper
 CREATE INDEX IF NOT EXISTS delivery_confirmation_decision_message ON delivery_confirmation_decisions(bee_id, message_id, action);
 `;
 
-export function readDeliveryConfirmations(db: DatabaseSync, beeId: string, generation: number | null): DeliveryConfirmation[] {
-  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'delivery_confirmation_intents'").get()) return [];
+export function readDeliveryConfirmations(db: Pick<DatabaseSync, "prepare">, beeId: string, generation: number | null): DeliveryConfirmation[] {
+  if (!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get("delivery_confirmation_intents")) return [];
   return db.prepare("SELECT row_json FROM delivery_confirmation_intents WHERE bee_id = ? ORDER BY message_id").all(beeId).map(raw => {
     const row = JSON.parse(String(raw.row_json)) as DeliveryConfirmationIntent;
     return publicDeliveryConfirmation(generation !== null && generation !== row.generation ? { ...row, state: "held", reason: "generation_changed" } : row);

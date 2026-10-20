@@ -35,9 +35,9 @@ try{
   assert.deepEqual(await client.request('mail.delivery.resend_anyway',params),{...result,deduped:true});
   await assert.rejects(client.request('mail.delivery.drop',params),{code:'idempotency_conflict'});
   await assert.rejects(client.request('mail.delivery.drop',{...params,idempotencyKey:'not-held'}),{code:'delivery_not_held'});
-  const drop=await client.request('mail.delivery.drop',{...params,messageId:messages[1],idempotencyKey:'owned-drop'});assert.equal(drop.replacementMessageId,null);
   const delivered=await waitFor(async()=>{const row=await client.request('mailbox',{beeId:'held-bee'});return row.messages.find(message=>message.id===result.replacementMessageId&&message.deliveredAt!==null);},'replacement delivery');
   assert.equal(delivered.body,'Owned lost-ACK fixture for resend_anyway');
+  const drop=await client.request('mail.delivery.drop',{...params,messageId:messages[1],idempotencyKey:'owned-drop'});assert.equal(drop.replacementMessageId,null);
   console.log(JSON.stringify({case:'operator-resolution-rpcs',replacementMessageId:result.replacementMessageId,drop:true,idempotent:true,staleGenerationRefused:true,notHeldRefused:true,conflictingKeyRefused:true,auditPrivateFieldsRemoved:true}));
  }
 }catch(error){primaryError=error;console.error(error);throw error;}

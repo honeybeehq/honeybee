@@ -379,7 +379,7 @@ export class ReadOnlyStore {
         bee,
         runtime,
         bee ? facts.filter(row => row.flag !== null).map(row => row.flag as Flag) : [],
-        { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries), deliveryConfirmations: readDeliveryConfirmations(this.db, beeId, runtime?.generation ?? null) },
+        { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries), deliveryConfirmations: readDeliveryConfirmations({ prepare: sql => this.stmt(sql) }, beeId, runtime?.generation ?? null) },
       ),
       bee,
       runtime,
@@ -396,7 +396,7 @@ export class ReadOnlyStore {
   }
 
   mailbox(beeId: string): MessageRow[] {
-    const confirmations = new Map(readDeliveryConfirmations(this.db, beeId, this.currentRuntime(beeId)?.generation ?? null).map(row => [row.messageId, row]));
+    const confirmations = new Map(readDeliveryConfirmations({ prepare: sql => this.stmt(sql) }, beeId, this.currentRuntime(beeId)?.generation ?? null).map(row => [row.messageId, row]));
     return (this.db.prepare("SELECT * FROM mailbox WHERE bee_id = ? ORDER BY id").all(beeId) as Row[]).map(
       row => {
         const message = mapMessage(row);
