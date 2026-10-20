@@ -246,6 +246,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         accountLimits.delete(p.account as string);
         break;
       }
+      case "quota.observed":
       case "account_limits.observation": break;
       case "account_limits.put": {
         const limits = p.limits as AccountLimitsRow;

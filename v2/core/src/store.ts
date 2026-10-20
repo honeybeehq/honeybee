@@ -2410,6 +2410,7 @@ export class CoreStore {
     return this.tx(() => {
       const row = this.getQuotaRecovery(id);
       if (!row || row.state !== "rotating" || !this.quotaRecoveryValid(row)) return null;
+      if ([...row.messageIds, ...row.continuationMessageIds].some(messageId => this.getDeliveryConfirmationIntent(messageId) !== null)) return null;
       const rt = this.currentRuntime(row.beeId);
       if (row.continuationKind !== null) {
         const attempts = row.continuationMessageIds.map(id => this.getMessage(id));
@@ -7585,6 +7586,7 @@ export class CoreStore {
     return this.tx(() => {
       const row = this.getAuthInterruption(id);
       if (!row || row.state !== "restored") return { interruption: row, applied: false };
+      if ([...row.messageIds, ...row.continuationMessageIds].some(messageId => this.getDeliveryConfirmationIntent(messageId) !== null)) return { interruption: row, applied: false };
       if (row.deathRecovery?.claimedAt != null && row.messageIds.length === 0 && row.turnProgress !== "some") {
         return { interruption: this.putAuthInterruption({ ...row, state: "resumed", continuationKind: "revive", continuationMessageIds: [] }), applied: true };
       }
