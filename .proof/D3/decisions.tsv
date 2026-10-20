@@ -1,0 +1,8 @@
+ts	phase	decision	why	evidence	result
+2026-10-20T08:03:35.580121+00:00	ownership	Claimed D3 after Quiet confirmed no parallel fix	Avoid concurrent edits to the same test	Apiary message7398	D3 owner confirmed
+2026-10-20T08:03:35.580160+00:00	baseline	Retained delayed CLI reproduction at unchanged main7d92e556	The fixed-count assertion observed4 instead3 before the fix	.proof/D3/before-delay-readonly.log	failed at test:157
+2026-10-20T08:03:35.580165+00:00	fix	Run exact explicit-count checks with automatic early refresh disabled	A background generation must not race the keyed CLI result	v2/daemon/tests/codex-central-credentials.test.ts:26	exact assertions retained
+2026-10-20T08:03:35.580169+00:00	fix	Restart same fixture store with early refresh enabled for automatic phase	Exercise early refresh separately without production changes or sleeps	v2/daemon/tests/codex-central-credentials.test.ts:167	automatic gen6 and provider count5 retained
+2026-10-20T08:03:35.580172+00:00	fix	Return a2hour access token after the automatic refresh	Prevent another automatic generation while polling under load	v2/daemon/tests/codex-central-credentials.test.ts	same exact counts; no timing threshold increase
+2026-10-20T08:03:35.580175+00:00	review	Cross-model reviewer checked phase split and long-lived automatic result	Verify restart closure, secret scans and exact assertion preservation	Apiary messages7405,7410	claude-opus-5-5 no flags
+2026-10-20T08:04:44.150649+00:00	verification	Completed final exact-source matrix, full test file, typechecks and build	Prove slow CLI results cannot alter exact explicit or automatic counts	.proof/D3/checks.json	4 matrix cases, 3 existing tests, check/v2:check/build passed

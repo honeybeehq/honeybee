@@ -1,0 +1,25 @@
+status.v2 capability=true unsupported={"supported":false} non_enrolled={"supported":true,"phase":"native","generation":null,"expiresAt":null}
+status.v2 enrolled: supported=true phase=ready generation=2 expiresAt=1792486999000
+CLI status: phase=ready generation=2 expiry=2026-10-20T09:03:19.000Z
+mirror scrub and modes: home/.codex/auth.json access-only; 0600 files/0700 private directories; refresh-byte scan homes+vault=0 outside authority
+1 enable: ready generation=2 expiry=2026-10-20T09:03:19.000Z authority_refresh_present=true home_refresh_present=false daemon_pid=670871
+foreign mirror refresh chain blocked before provider call
+empty runtime mirror refused before provider call
+2 concurrent refresh: generation=3 refresh_calls=1 previous_token_matched=true rotated=true
+distinct concurrent requests: serialized; each used its own rotated generation; no token double-spent
+automatic early refresh enabled after exact explicit-refresh counts; daemon restarted with the same store
+3 automatic early refresh: generation=6 before_expiry=true
+4 invalid_grant: login_required retry_at=null calls_after_wait=0
+5 non-enabled account: native codex exec invoked; central status=native supported=true
+disable after refusal: disabled; mirror scrubbed; recovery instructions name disable before native login
+6 secret scan: logs=0 SQLite/ledger=0 RPC_metadata=0; daemon_pid=670978 stopped=true
+cleanup: owned daemon stopped; stub listener closed
+✔ central Codex: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native (11317.921161ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11586.867507

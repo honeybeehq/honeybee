@@ -1,0 +1,37 @@
+status.v2 capability=true unsupported={"supported":false} non_enrolled={"supported":true,"phase":"native","generation":null,"expiresAt":null}
+status.v2 enrolled: supported=true phase=ready generation=2 expiresAt=1792486391000
+CLI status: phase=ready generation=2 expiry=2026-10-20T08:53:11.000Z
+mirror scrub and modes: home/.codex/auth.json access-only; 0600 files/0700 private directories; refresh-byte scan homes+vault=0 outside authority
+1 enable: ready generation=2 expiry=2026-10-20T08:53:11.000Z authority_refresh_present=true home_refresh_present=false daemon_pid=658797
+foreign mirror refresh chain blocked before provider call
+empty runtime mirror refused before provider call
+cleanup: owned daemon stopped; stub listener closed
+✖ central Codex: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native (6272.379379ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6492.287979
+
+✖ failing tests:
+
+test at v2/daemon/tests/codex-central-credentials.test.ts:25:1
+✖ central Codex: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native (6272.379379ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  4 !== 3
+
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-d-codex-continuity-6ed00b46f96f/github-com-honeybeehq-honeybee-a9015b303498-space-6ed00b46f96f/v2/daemon/tests/codex-central-credentials.test.ts:157:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 4,
+    expected: 3,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

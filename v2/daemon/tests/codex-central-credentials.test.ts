@@ -23,11 +23,12 @@ function files(root: string): string[] {
 }
 
 test("central Codex: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native", async () => {
-  const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 3_600_000, centralRefreshMinIntervalMs: 1800, centralRefreshRetryBaseMs: 100 } });
+  const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0, centralRefreshMinIntervalMs: 1800, centralRefreshRetryBaseMs: 100 } });
   const id = "codex-test-example.com";
   const secrets: string[] = [];
   const requests: string[] = [];
   let generation = 0;
+  let accessLifetimeSeconds = 3600;
   let refused = false;
   let daemon: DaemonHandle | null = null;
   let client: RpcClient | null = null;
@@ -46,7 +47,7 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
       return;
     }
     generation += 1;
-    const access = token(3600);
+    const access = token(accessLifetimeSeconds);
     const refresh = randomUUID();
     secrets.push(access, refresh);
     expected = refresh;
@@ -163,6 +164,15 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     assert.equal(requests.length, 4);
     assert.equal(new Set(requests).size, requests.length);
     console.log("distinct concurrent requests: serialized; each used its own rotated generation; no token double-spent");
+    client.close(); client = null;
+    await daemon.stop();
+    const firstDaemonLogs = daemon.output();
+    accessLifetimeSeconds = 7200;
+    config.accounts.centralRefreshAheadMs = 3_600_000;
+    writeFileSync(cfgPath, JSON.stringify(config));
+    daemon = await startDaemon(dir, { env: { HIVE_CODEX_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, CODEX_HOME: join(dir, "unused") } });
+    client = await daemon.client();
+    console.log("automatic early refresh enabled after exact explicit-refresh counts; daemon restarted with the same store");
     const early = await waitFor(async () => {
       const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
       return state.generation === 6 && state.phase === "ready" ? state : null;
@@ -198,7 +208,7 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     console.log("disable after refusal: disabled; mirror scrubbed; recovery instructions name disable before native login");
     client.close(); client = null;
     await daemon.stop();
-    const logs = daemon.output();
+    const logs = firstDaemonLogs + daemon.output();
     assert.ok(secrets.every(secret => !logs.includes(secret)), "daemon logs contain no fixture credential bytes");
     assert.ok(secrets.every(secret => !JSON.stringify(rpcResults).includes(secret)), "RPC metadata contains no fixture credential bytes");
     const publicFiles = files(dir).filter(path => !path.startsWith(join(dir, "vault") + "/") && !path.startsWith(join(dir, "homes") + "/"));

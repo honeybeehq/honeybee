@@ -1,0 +1,55 @@
+{
+  "base": "7d92e55668d15c761df65fe5d4ecdb50fe35336b",
+  "testBlob": "bc5d46d60f9f23dc11343c92c9ed9a98755aa725",
+  "matrix": [
+    {
+      "case": "final-readonly-0-delay-0",
+      "exitCode": 0,
+      "observedDefaultCodexModes": [
+        "0o700"
+      ],
+      "passed": true
+    },
+    {
+      "case": "final-readonly-0-delay-1",
+      "exitCode": 0,
+      "observedDefaultCodexModes": [
+        "0o700"
+      ],
+      "passed": true
+    },
+    {
+      "case": "final-readonly-1-delay-0",
+      "exitCode": 0,
+      "observedDefaultCodexModes": [
+        "0o500"
+      ],
+      "passed": true
+    },
+    {
+      "case": "final-readonly-1-delay-1",
+      "exitCode": 0,
+      "observedDefaultCodexModes": [
+        "0o500"
+      ],
+      "passed": true
+    }
+  ],
+  "fullFile": {
+    "passed": 3,
+    "failed": 0
+  },
+  "check": {
+    "command": "npm run check",
+    "exitCode": 0
+  },
+  "v2check": {
+    "command": "npm run v2:check",
+    "exitCode": 0
+  },
+  "build": {
+    "command": "npm run build",
+    "exitCode": 0
+  },
+  "assertions": "All existing generation/provider-count assertions retained. Automatic phase after restart; token lifetime exits ahead window."
+}
