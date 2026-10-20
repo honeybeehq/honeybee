@@ -1,0 +1,11 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"15518e09-bb39-412c-801b-21585df017a3","cwd":"/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-NA6R3L"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"15518e09-bb39-412c-801b-21585df017a3","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"3742f79a-298a-40d1-8f18-e8fd64e60870"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"15518e09-bb39-412c-801b-21585df017a3","turn":{"id":"3742f79a-298a-40d1-8f18-e8fd64e60870"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"15518e09-bb39-412c-801b-21585df017a3","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"15518e09-bb39-412c-801b-21585df017a3","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"15518e09-bb39-412c-801b-21585df017a3","turn":{"id":"3742f79a-298a-40d1-8f18-e8fd64e60870","status":"completed","error":null}}}

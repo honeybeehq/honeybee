@@ -1,63 +1,63 @@
-hived v2 listening on /var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/hived.sock (store /var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/core.sqlite3)
-{"ts":1792483102415,"op":"tmp.policy beeTmpRoot=off"}
-{"ts":1792483102441,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
-{"ts":1792483102449,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
-{"ts":1792483102464,"op":"rpc.listen socket=/var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/hived.sock"}
-{"ts":1792483102465,"op":"daemon.started pid=664604 store=/var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/core.sqlite3"}
-{"ts":1792483102487,"op":"account.activate account=codex-a home=/var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/homes/codex-a copied=auth.json,.codex/auth.json by=limits_probe"}
-{"ts":1792483102488,"op":"account.add id=codex-a harness=codex home=/var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/homes/codex-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/vault/codex/codex-a files=auth.json verification=limits"}
-{"ts":1792483102499,"op":"account.add id=codex-b harness=codex home=/var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/homes/codex-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/vault/codex/codex-b files=auth.json verification=limits"}
-{"ts":1792483102621,"op":"account.credential_health account=codex-a unverified→verified by=limits_probe"}
-{"ts":1792483102621,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
-{"ts":1792483102623,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
-{"ts":1792483102626,"op":"account.activate account=codex-b home=/var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/homes/codex-b copied=auth.json,.codex/auth.json by=limits_probe"}
-{"ts":1792483102750,"op":"account.credential_health account=codex-b unverified→verified by=limits_probe"}
-{"ts":1792483102751,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
-{"ts":1792483102752,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
-{"ts":1792483102768,"op":"spawn.account bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d account=codex-a reason=\"explicit\""}
-{"ts":1792483102777,"op":"account.activate.gateways account=codex-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
-{"ts":1792483102991,"op":"cmd.spawn id=1 bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d start gen=1"}
-{"ts":1792483103132,"op":"obs.checkpoint bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1 cursor=63"}
-{"ts":1792483103201,"op":"spawn.evidence bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1 kind=booted"}
-{"ts":1792483103203,"op":"obs.booted bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1 pid=664654"}
-{"ts":1792483103204,"op":"obs.turn_ended bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1"}
-{"ts":1792483103206,"op":"session.recorded bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1 id=c365e295-999c-461d-a943-db4f037a932c"}
-{"ts":1792483103208,"op":"obs.checkpoint bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1 cursor=200"}
-{"ts":1792483103219,"op":"deliver.refused bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d msg=1 reason=not_ready"}
-{"ts":1792483103241,"op":"obs.turn_started bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1 synthetic"}
-{"ts":1792483103243,"op":"deliver.refused bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d msg=1 reason=not_ready"}
-{"ts":1792483103267,"op":"obs.turn_ended bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1"}
-{"ts":1792483103269,"op":"obs.checkpoint bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1 cursor=906"}
-{"ts":1792483103274,"op":"deliver bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d msg=1 gen=1 urgency=next"}
-{"ts":1792483103400,"op":"account.limits account=codex-a readable=true weekly=5 5h=87"}
-{"ts":1792483103525,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
-{"ts":1792483103680,"op":"account.limits account=codex-a readable=true weekly=5 5h=87"}
-{"ts":1792483103682,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
-{"ts":1792483103692,"op":"account auto → codex-b — only codex account with credentials"}
-{"ts":1792483103692,"op":"account.admission.shadow operation=swap selected=codex-b policy=wait:activity_unknown"}
-{"ts":1792483103698,"op":"bee.swapAccount.transcript bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d seed=c365e295-999c-461d-a943-db4f037a932c from=/var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/homes/codex-a/sessions/rollout-c365e295-999c-461d-a943-db4f037a932c.jsonl to=/var/tmp/E-zW0LH5/hb-v2-daemon-URkF3Z/homes/codex-b/sessions/honeybee/958360ec2afdf8f7ac1cfdbc6420ecc48e213460222620b9734897d30b9f2726.jsonl bytes=106 method=hardlink"}
-{"ts":1792483103704,"op":"bee.swapAccount bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d from=codex-a to=codex-b by=operator action=stop_then_revive rekeyed=false transcript=present stop=2"}
-{"ts":1792483103704,"op":"quota.rotate recovery=admission:0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d:1:0 to=codex-b"}
-{"ts":1792483103712,"op":"cmd.stop id=2 bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1 cause=stopped_by_system hadProcess=true"}
-{"ts":1792483103736,"op":"obs.exited bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1 cause=stopped_by_system"}
-{"ts":1792483103736,"op":"wake.enqueued bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=1"}
-{"ts":1792483103739,"op":"account.activate.gateways account=codex-b skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
-{"ts":1792483103943,"op":"cmd.send_wake id=3 bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d revive gen=2"}
-{"ts":1792483104037,"op":"obs.checkpoint bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2 cursor=63"}
-{"ts":1792483104091,"op":"spawn.evidence bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2 kind=booted"}
-{"ts":1792483104093,"op":"obs.booted bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2 pid=664718"}
-{"ts":1792483104094,"op":"obs.turn_ended bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2"}
-{"ts":1792483104095,"op":"obs.checkpoint bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2 cursor=200"}
-{"ts":1792483104121,"op":"deliver.refused bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d msg=2 reason=not_ready"}
-{"ts":1792483104145,"op":"obs.turn_started bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2 synthetic"}
-{"ts":1792483104146,"op":"obs.turn_ended bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2"}
-{"ts":1792483104148,"op":"obs.checkpoint bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2 cursor=906"}
-{"ts":1792483104151,"op":"deliver bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d msg=2 gen=2 urgency=next"}
-{"ts":1792483104175,"op":"deliver.refused bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d msg=3 reason=not_ready"}
-{"ts":1792483104199,"op":"obs.turn_started bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2 synthetic"}
-{"ts":1792483104200,"op":"obs.turn_ended bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2"}
-{"ts":1792483104201,"op":"obs.checkpoint bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d gen=2 cursor=1612"}
-{"ts":1792483104206,"op":"deliver bee=0fb9b1cd-adfc-45ec-bb44-2e41d1a7e57d msg=3 gen=2 urgency=next"}
-{"ts":1792483104222,"op":"daemon.stopping pid=664604"}
-{"ts":1792483104254,"op":"daemon.stopped"}
-{"ts":1792483104254,"op":"daemon.stop_complete pid=664604"}
+hived v2 listening on /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/hived.sock (store /var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/core.sqlite3)
+{"ts":1792484865754,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792484865824,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1792484865831,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792484865847,"op":"rpc.listen socket=/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/hived.sock"}
+{"ts":1792484865849,"op":"daemon.started pid=697384 store=/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/core.sqlite3"}
+{"ts":1792484865887,"op":"account.activate account=codex-a home=/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/homes/codex-a copied=auth.json,.codex/auth.json by=limits_probe"}
+{"ts":1792484865888,"op":"account.add id=codex-a harness=codex home=/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/homes/codex-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/vault/codex/codex-a files=auth.json verification=limits"}
+{"ts":1792484865890,"op":"account.add id=codex-b harness=codex home=/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/homes/codex-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/vault/codex/codex-b files=auth.json verification=limits"}
+{"ts":1792484866020,"op":"account.credential_health account=codex-a unverified→verified by=limits_probe"}
+{"ts":1792484866020,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
+{"ts":1792484866022,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
+{"ts":1792484866025,"op":"account.activate account=codex-b home=/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/homes/codex-b copied=auth.json,.codex/auth.json by=limits_probe"}
+{"ts":1792484866146,"op":"account.credential_health account=codex-b unverified→verified by=limits_probe"}
+{"ts":1792484866146,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
+{"ts":1792484866148,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
+{"ts":1792484866164,"op":"spawn.account bee=04094d60-0347-4e3a-b01d-3881f63942c4 account=codex-a reason=\"explicit\""}
+{"ts":1792484866173,"op":"account.activate.gateways account=codex-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792484866388,"op":"cmd.spawn id=1 bee=04094d60-0347-4e3a-b01d-3881f63942c4 start gen=1"}
+{"ts":1792484866531,"op":"obs.checkpoint bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1 cursor=63"}
+{"ts":1792484866601,"op":"spawn.evidence bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1 kind=booted"}
+{"ts":1792484866603,"op":"obs.booted bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1 pid=697439"}
+{"ts":1792484866604,"op":"obs.turn_ended bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1"}
+{"ts":1792484866606,"op":"session.recorded bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1 id=425c7060-75c9-469f-943d-4c63e93832c7"}
+{"ts":1792484866608,"op":"obs.checkpoint bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1 cursor=217"}
+{"ts":1792484866621,"op":"deliver.refused bee=04094d60-0347-4e3a-b01d-3881f63942c4 msg=1 reason=not_ready"}
+{"ts":1792484866643,"op":"obs.turn_started bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1 synthetic"}
+{"ts":1792484866645,"op":"deliver.refused bee=04094d60-0347-4e3a-b01d-3881f63942c4 msg=1 reason=not_ready"}
+{"ts":1792484866670,"op":"obs.turn_ended bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1"}
+{"ts":1792484866672,"op":"obs.checkpoint bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1 cursor=923"}
+{"ts":1792484866677,"op":"deliver bee=04094d60-0347-4e3a-b01d-3881f63942c4 msg=1 gen=1 urgency=next"}
+{"ts":1792484866808,"op":"account.limits account=codex-a readable=true weekly=5 5h=87"}
+{"ts":1792484866932,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
+{"ts":1792484867073,"op":"account.limits account=codex-a readable=true weekly=5 5h=87"}
+{"ts":1792484867077,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
+{"ts":1792484867082,"op":"account auto → codex-b — only codex account with credentials"}
+{"ts":1792484867082,"op":"account.admission.shadow operation=swap selected=codex-b policy=wait:activity_unknown"}
+{"ts":1792484867086,"op":"bee.swapAccount.transcript bee=04094d60-0347-4e3a-b01d-3881f63942c4 seed=425c7060-75c9-469f-943d-4c63e93832c7 from=/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/homes/codex-a/sessions/rollout-425c7060-75c9-469f-943d-4c63e93832c7.jsonl to=/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-qXkCZS/homes/codex-b/sessions/honeybee/c8b720f34f36a37a2628798cc8f94db499e8fcf45607d96230ec322f9dc91600.jsonl bytes=106 method=hardlink"}
+{"ts":1792484867088,"op":"bee.swapAccount bee=04094d60-0347-4e3a-b01d-3881f63942c4 from=codex-a to=codex-b by=operator action=stop_then_revive rekeyed=false transcript=present stop=2"}
+{"ts":1792484867088,"op":"quota.rotate recovery=admission:04094d60-0347-4e3a-b01d-3881f63942c4:1:0 to=codex-b"}
+{"ts":1792484867093,"op":"cmd.stop id=2 bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1 cause=stopped_by_system hadProcess=true"}
+{"ts":1792484867136,"op":"obs.exited bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1 cause=stopped_by_system"}
+{"ts":1792484867137,"op":"wake.enqueued bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=1"}
+{"ts":1792484867139,"op":"account.activate.gateways account=codex-b skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792484867370,"op":"cmd.send_wake id=3 bee=04094d60-0347-4e3a-b01d-3881f63942c4 revive gen=2"}
+{"ts":1792484867461,"op":"obs.checkpoint bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2 cursor=63"}
+{"ts":1792484867514,"op":"spawn.evidence bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2 kind=booted"}
+{"ts":1792484867516,"op":"obs.booted bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2 pid=697495"}
+{"ts":1792484867517,"op":"obs.turn_ended bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2"}
+{"ts":1792484867518,"op":"obs.checkpoint bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2 cursor=217"}
+{"ts":1792484867542,"op":"deliver.refused bee=04094d60-0347-4e3a-b01d-3881f63942c4 msg=2 reason=not_ready"}
+{"ts":1792484867567,"op":"obs.turn_started bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2 synthetic"}
+{"ts":1792484867567,"op":"obs.turn_ended bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2"}
+{"ts":1792484867569,"op":"obs.checkpoint bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2 cursor=923"}
+{"ts":1792484867572,"op":"deliver bee=04094d60-0347-4e3a-b01d-3881f63942c4 msg=2 gen=2 urgency=next"}
+{"ts":1792484867596,"op":"deliver.refused bee=04094d60-0347-4e3a-b01d-3881f63942c4 msg=3 reason=not_ready"}
+{"ts":1792484867619,"op":"obs.turn_started bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2 synthetic"}
+{"ts":1792484867620,"op":"obs.turn_ended bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2"}
+{"ts":1792484867621,"op":"obs.checkpoint bee=04094d60-0347-4e3a-b01d-3881f63942c4 gen=2 cursor=1629"}
+{"ts":1792484867624,"op":"deliver bee=04094d60-0347-4e3a-b01d-3881f63942c4 msg=3 gen=2 urgency=next"}
+{"ts":1792484867640,"op":"daemon.stopping pid=697384"}
+{"ts":1792484867667,"op":"daemon.stopped"}
+{"ts":1792484867667,"op":"daemon.stop_complete pid=697384"}

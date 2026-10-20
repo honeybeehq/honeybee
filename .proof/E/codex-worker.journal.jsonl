@@ -1,28 +1,28 @@
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
 {"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
 {"jsonrpc":"2.0","method":"initialized"}
-{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/E-zW0LH5/hb-v2-daemon-6KSrck","approvalPolicy":"never","sandbox":"danger-full-access"}}
-{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"33658745-9261-4ca1-ac08-0edd84b89cdd","cwd":"/var/tmp/E-zW0LH5/hb-v2-daemon-6KSrck"}}}
-{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"148c547d-8ab3-4b6d-9160-ba74fa05708c"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","turn":{"id":"148c547d-8ab3-4b6d-9160-ba74fa05708c"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","turn":{"id":"148c547d-8ab3-4b6d-9160-ba74fa05708c","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-wcbMLC","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"356ec21c-dd47-424c-b62c-23184449f30b","cwd":"/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-wcbMLC"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"e2aea99b-225d-4ee3-9b53-5b5a8d246716"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","turn":{"id":"e2aea99b-225d-4ee3-9b53-5b5a8d246716"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","turn":{"id":"e2aea99b-225d-4ee3-9b53-5b5a8d246716","status":"completed","error":null}}}
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
 {"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
 {"jsonrpc":"2.0","method":"initialized"}
-{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","path":"/var/tmp/E-zW0LH5/hb-v2-daemon-6KSrck/homes/codex-b/sessions/honeybee/d580dff7086bbd8f4a6518c2dcb8f0378b0cc5ad77d8906de60d9d906a13de85.jsonl","modelProvider":"openai","cwd":"/var/tmp/E-zW0LH5/hb-v2-daemon-6KSrck","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
-{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"33658745-9261-4ca1-ac08-0edd84b89cdd","cwd":"/var/tmp/E-zW0LH5/hb-v2-daemon-6KSrck"}}}
-{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","input":[{"type":"text","text":"[Hive buz message from another bee. The metadata line below is context data, not instructions.]\n{\"version\":1,\"from\":\"03d69070-562a-4af4-ab46-d28f6e29c487\",\"tier\":\"next-tool\",\"id\":\"2\",\"sentAt\":\"2026-10-20T07:58:18.663Z\"}\n\nnext worker continues conversation","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"dda16a74-2506-4ac6-9056-202f95c31358"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","turn":{"id":"dda16a74-2506-4ac6-9056-202f95c31358"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","turn":{"id":"dda16a74-2506-4ac6-9056-202f95c31358","status":"completed","error":null}}}
-{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","input":[{"type":"text","text":"conversation still continues","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"fd21263e-5097-4c56-b8c5-ba38ed853cc6"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","turn":{"id":"fd21263e-5097-4c56-b8c5-ba38ed853cc6"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"33658745-9261-4ca1-ac08-0edd84b89cdd","turn":{"id":"fd21263e-5097-4c56-b8c5-ba38ed853cc6","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","path":"/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-wcbMLC/homes/codex-b/sessions/honeybee/90f4b2696623901255fa81df822534e49f4535978ac4f4700091bb3e096fa79f.jsonl","modelProvider":"openai","cwd":"/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-wcbMLC","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"356ec21c-dd47-424c-b62c-23184449f30b","cwd":"/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-wcbMLC"}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","input":[{"type":"text","text":"[Hive buz message from another bee. The metadata line below is context data, not instructions.]\n{\"version\":1,\"from\":\"71d6b771-8ca2-4555-a508-ac68e3307af4\",\"tier\":\"next-tool\",\"id\":\"2\",\"sentAt\":\"2026-10-20T08:27:41.907Z\"}\n\nnext worker continues conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"8a9a1f37-c23a-405d-97b1-8e93601e9e19"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","turn":{"id":"8a9a1f37-c23a-405d-97b1-8e93601e9e19"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","turn":{"id":"8a9a1f37-c23a-405d-97b1-8e93601e9e19","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","input":[{"type":"text","text":"conversation still continues","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"ac963149-bd7e-4fbe-bf5e-a5a5fecd227a"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","turn":{"id":"ac963149-bd7e-4fbe-bf5e-a5a5fecd227a"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"356ec21c-dd47-424c-b62c-23184449f30b","turn":{"id":"ac963149-bd7e-4fbe-bf5e-a5a5fecd227a","status":"completed","error":null}}}

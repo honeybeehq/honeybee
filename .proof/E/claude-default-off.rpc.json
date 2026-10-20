@@ -1,0 +1,1621 @@
+[
+  {
+    "method": "account.add",
+    "params": {
+      "harness": "claude",
+      "label": "a",
+      "importExisting": true
+    },
+    "result": {
+      "account": {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "claude-a",
+        "harness": "claude",
+        "homePath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-a",
+        "label": "a",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792484853437,
+        "updatedAt": 1792484853437,
+        "credentialHealth": "unverified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      },
+      "credentialHealth": "unverified",
+      "imported": {
+        "source": "vault",
+        "from": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/vault/claude/claude-a",
+        "files": [
+          ".credentials.json"
+        ]
+      },
+      "verification": "limits"
+    }
+  },
+  {
+    "method": "account.add",
+    "params": {
+      "harness": "claude",
+      "label": "b",
+      "importExisting": true
+    },
+    "result": {
+      "account": {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "claude-b",
+        "harness": "claude",
+        "homePath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-b",
+        "label": "b",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792484853480,
+        "updatedAt": 1792484853480,
+        "credentialHealth": "unverified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      },
+      "credentialHealth": "unverified",
+      "imported": {
+        "source": "vault",
+        "from": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/vault/claude/claude-b",
+        "files": [
+          ".credentials.json"
+        ]
+      },
+      "verification": "limits"
+    }
+  },
+  {
+    "method": "account.limits",
+    "params": {},
+    "result": {
+      "limits": [
+        {
+          "account": "claude-a",
+          "fetchedAt": 1792484853501,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": null,
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792488453000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792574853000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "claude-b",
+          "fetchedAt": 1792484853506,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": null,
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792488453000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792574853000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "spawn",
+    "params": {
+      "name": "claude-default-off",
+      "agent": "claude",
+      "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8",
+      "account": "claude-a"
+    },
+    "result": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+      "agent": "claude",
+      "handle": "CL.0000",
+      "humanRef": null,
+      "issuingNamespace": null,
+      "commandId": 1,
+      "messageId": null,
+      "account": "claude-a"
+    }
+  },
+  {
+    "method": "send",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+      "body": "warm conversation"
+    },
+    "result": {
+      "messageId": 1,
+      "commandId": null,
+      "unarchived": false
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": 1792484853832,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "view": {
+        "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 1,
+        "runtimeState": "running",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": null,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "id": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "name": "claude-default-off",
+        "agent": "claude",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/session-logs/6c74ba8a-7718-4ad3-b91c-84922fb34340.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792484853512,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {
+          "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+          "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+          "ANTHROPIC_API_KEY": "<redacted>",
+          "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-a"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "claude-a",
+        "handle": "CL.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 1,
+          "startedAt": 1792484853832,
+          "humanAt": 1792484853832,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "generation": 1,
+        "state": "running",
+        "exitCause": null,
+        "pid": 696646,
+        "pidStartedAt": 1792484853729,
+        "bootEvidence": "synthetic",
+        "startedAt": 1792484853512,
+        "updatedAt": 1792484853823
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "view": {
+        "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 1,
+        "runtimeState": "running",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": null,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "id": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "name": "claude-default-off",
+        "agent": "claude",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/session-logs/6c74ba8a-7718-4ad3-b91c-84922fb34340.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792484853512,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {
+          "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+          "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+          "ANTHROPIC_API_KEY": "<redacted>",
+          "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-a"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "claude-a",
+        "handle": "CL.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 1,
+          "startedAt": 1792484853832,
+          "humanAt": 1792484853832,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "generation": 1,
+        "state": "running",
+        "exitCause": null,
+        "pid": 696646,
+        "pidStartedAt": 1792484853729,
+        "bootEvidence": "synthetic",
+        "startedAt": 1792484853512,
+        "updatedAt": 1792484853823
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "view": {
+        "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 1,
+        "runtimeState": "idle",
+        "exitCause": null,
+        "working": false,
+        "waitingForYou": true,
+        "lastOutputAt": 1792484853880,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "id": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "name": "claude-default-off",
+        "agent": "claude",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/session-logs/6c74ba8a-7718-4ad3-b91c-84922fb34340.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792484853512,
+        "archivedAt": null,
+        "lastOutputAt": 1792484853880,
+        "providerSessionId": "adf32c9e-f1f8-4ae5-87c7-40d954acdb9d",
+        "env": {
+          "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+          "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+          "ANTHROPIC_API_KEY": "<redacted>",
+          "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-a"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "claude-a",
+        "handle": "CL.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 1,
+          "startedAt": 1792484853832,
+          "humanAt": 1792484853832,
+          "endedAt": 1792484853880,
+          "endedQuiet": false
+        },
+        "lastHumanOutputAt": 1792484853880
+      },
+      "runtime": {
+        "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "generation": 1,
+        "state": "idle",
+        "exitCause": null,
+        "pid": 696646,
+        "pidStartedAt": 1792484853729,
+        "bootEvidence": "real",
+        "startedAt": 1792484853512,
+        "updatedAt": 1792484853880
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "account.limits",
+    "params": {},
+    "result": {
+      "limits": [
+        {
+          "account": "claude-a",
+          "fetchedAt": 1792484853889,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": null,
+          "fiveHourPct": 91,
+          "fiveHourResetsAt": 1792488453000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792574853000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "claude-b",
+          "fetchedAt": 1792484853893,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": null,
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792488453000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792574853000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "send",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+      "body": "next default-off continues conversation"
+    },
+    "result": {
+      "messageId": 2,
+      "commandId": null,
+      "unarchived": false
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": 1792484853832,
+          "deliveredGeneration": 1
+        },
+        {
+          "id": 2,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "next default-off continues conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853894,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "warm conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853516,
+          "deliveredAt": 1792484853832,
+          "deliveredGeneration": 1
+        },
+        {
+          "id": 2,
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "sender": "operator",
+          "body": "next default-off continues conversation",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792484853894,
+          "deliveredAt": 1792484853905,
+          "deliveredGeneration": 1
+        }
+      ]
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "view": {
+        "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 1,
+        "runtimeState": "idle",
+        "exitCause": null,
+        "working": false,
+        "waitingForYou": true,
+        "lastOutputAt": 1792484853880,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "id": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "name": "claude-default-off",
+        "agent": "claude",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/session-logs/6c74ba8a-7718-4ad3-b91c-84922fb34340.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792484853512,
+        "archivedAt": null,
+        "lastOutputAt": 1792484853880,
+        "providerSessionId": "adf32c9e-f1f8-4ae5-87c7-40d954acdb9d",
+        "env": {
+          "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+          "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+          "ANTHROPIC_API_KEY": "<redacted>",
+          "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-a"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "claude-a",
+        "handle": "CL.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 2,
+          "generation": 1,
+          "startedAt": 1792484853905,
+          "humanAt": 1792484853905,
+          "endedAt": null
+        },
+        "lastHumanOutputAt": 1792484853880
+      },
+      "runtime": {
+        "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "generation": 1,
+        "state": "idle",
+        "exitCause": null,
+        "pid": 696646,
+        "pidStartedAt": 1792484853729,
+        "bootEvidence": "real",
+        "startedAt": 1792484853512,
+        "updatedAt": 1792484853880
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340"
+    },
+    "result": {
+      "view": {
+        "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 1,
+        "runtimeState": "idle",
+        "exitCause": null,
+        "working": false,
+        "waitingForYou": true,
+        "lastOutputAt": 1792484853928,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "id": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "name": "claude-default-off",
+        "agent": "claude",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/session-logs/6c74ba8a-7718-4ad3-b91c-84922fb34340.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792484853512,
+        "archivedAt": null,
+        "lastOutputAt": 1792484853928,
+        "providerSessionId": "adf32c9e-f1f8-4ae5-87c7-40d954acdb9d",
+        "env": {
+          "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+          "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+          "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+          "ANTHROPIC_API_KEY": "<redacted>",
+          "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-a"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "claude-a",
+        "handle": "CL.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 2,
+          "generation": 1,
+          "startedAt": 1792484853905,
+          "humanAt": 1792484853905,
+          "endedAt": 1792484853928,
+          "endedQuiet": false
+        },
+        "lastHumanOutputAt": 1792484853928
+      },
+      "runtime": {
+        "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+        "generation": 1,
+        "state": "idle",
+        "exitCause": null,
+        "pid": 696646,
+        "pidStartedAt": 1792484853729,
+        "bootEvidence": "real",
+        "startedAt": 1792484853512,
+        "updatedAt": 1792484853928
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 37,
+      "views": [
+        {
+          "bee": {
+            "id": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "name": "claude-default-off",
+            "agent": "claude",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/session-logs/6c74ba8a-7718-4ad3-b91c-84922fb34340.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792484853512,
+            "archivedAt": null,
+            "lastOutputAt": 1792484853928,
+            "providerSessionId": "adf32c9e-f1f8-4ae5-87c7-40d954acdb9d",
+            "env": {
+              "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+              "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+              "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+              "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+              "ANTHROPIC_API_KEY": "<redacted>",
+              "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "claude-a",
+            "handle": "CL.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 2,
+              "generation": 1,
+              "startedAt": 1792484853905,
+              "humanAt": 1792484853905,
+              "endedAt": 1792484853928,
+              "endedQuiet": false
+            },
+            "lastHumanOutputAt": 1792484853928
+          },
+          "runtime": {
+            "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "generation": 1,
+            "state": "idle",
+            "exitCause": null,
+            "pid": 696646,
+            "pidStartedAt": 1792484853729,
+            "bootEvidence": "real",
+            "startedAt": 1792484853512,
+            "updatedAt": 1792484853928
+          },
+          "view": {
+            "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "idle",
+            "exitCause": null,
+            "working": false,
+            "waitingForYou": true,
+            "lastOutputAt": 1792484853928,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "claude-a",
+          "harness": "claude",
+          "homePath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792484853437,
+          "updatedAt": 1792484853496,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "claude-b",
+          "harness": "claude",
+          "homePath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792484853480,
+          "updatedAt": 1792484853505,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "claude-a",
+          "fetchedAt": 1792484853889,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": null,
+          "fiveHourPct": 91,
+          "fiveHourResetsAt": 1792488453000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792574853000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "claude-b",
+          "fetchedAt": 1792484853893,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": null,
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792488453000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792574853000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:6c74ba8a-7718-4ad3-b91c-84922fb34340:0",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "ordinal": 0,
+          "harness": "claude",
+          "providerSessionId": "adf32c9e-f1f8-4ae5-87c7-40d954acdb9d",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/session-logs/6c74ba8a-7718-4ad3-b91c-84922fb34340.jsonl",
+          "handoffId": null,
+          "createdAt": 1792484853512,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "audit.tail",
+    "params": {
+      "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+      "limit": 1000
+    },
+    "result": {
+      "rows": [
+        {
+          "seq": 10,
+          "ts": 1792484853513,
+          "kind": "bee.created",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "bee": {
+              "id": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "name": "claude-default-off",
+              "agent": "claude",
+              "substrate": "hsr",
+              "cwd": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8",
+              "title": null,
+              "tags": [],
+              "sessionLogPath": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/session-logs/6c74ba8a-7718-4ad3-b91c-84922fb34340.jsonl",
+              "lifecycle": "active",
+              "createdAt": 1792484853512,
+              "archivedAt": null,
+              "lastOutputAt": null,
+              "providerSessionId": null,
+              "env": {
+                "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+                "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+                "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+                "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+                "ANTHROPIC_API_KEY": "<redacted>",
+                "CLAUDE_CONFIG_DIR": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/homes/claude-a"
+              },
+              "importedFrom": null,
+              "spawnFailures": 0,
+              "args": null,
+              "parentId": null,
+              "parentExternal": false,
+              "forkedFrom": null,
+              "forkSeed": null,
+              "account": "claude-a",
+              "handle": "CL.0000",
+              "human_ref": null,
+              "issuing_namespace": null,
+              "placementVersion": 0,
+              "activeMoveId": null,
+              "cellId": null,
+              "activeHandoffId": null,
+              "lastTurnTrigger": null,
+              "lastHumanOutputAt": null
+            },
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 695516,
+              "verb": "spawn"
+            }
+          }
+        },
+        {
+          "seq": 11,
+          "ts": 1792484853513,
+          "kind": "transcript_segment.put",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "segment": {
+              "id": "seg:6c74ba8a-7718-4ad3-b91c-84922fb34340:0",
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "ordinal": 0,
+              "harness": "claude",
+              "providerSessionId": null,
+              "fromGeneration": 1,
+              "toGeneration": null,
+              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/session-logs/6c74ba8a-7718-4ad3-b91c-84922fb34340.jsonl",
+              "handoffId": null,
+              "createdAt": 1792484853512,
+              "closedAt": null
+            },
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 695516,
+              "verb": "spawn"
+            }
+          }
+        },
+        {
+          "seq": 12,
+          "ts": 1792484853514,
+          "kind": "runtime.created",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "runtime": {
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "generation": 1,
+              "state": "booting",
+              "exitCause": null,
+              "pid": null,
+              "pidStartedAt": null,
+              "bootEvidence": null,
+              "startedAt": 1792484853512,
+              "updatedAt": 1792484853512
+            },
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 695516,
+              "verb": "spawn"
+            }
+          }
+        },
+        {
+          "seq": 13,
+          "ts": 1792484853515,
+          "kind": "command.enqueued",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "command": {
+              "id": 1,
+              "verb": "spawn",
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "args": {},
+              "targetGeneration": 1,
+              "status": "queued",
+              "attempts": 0,
+              "nextAttemptAt": 1792484853514,
+              "enqueuedAt": 1792484853514,
+              "finishedAt": null,
+              "failureCause": null,
+              "idempotencyKey": null
+            },
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 695516,
+              "verb": "spawn"
+            }
+          }
+        },
+        {
+          "seq": 14,
+          "ts": 1792484853516,
+          "kind": "mail.enqueued",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "message": {
+              "id": 1,
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "sender": "operator",
+              "body": "warm conversation",
+              "priority": 0,
+              "urgency": "next",
+              "enqueuedAt": 1792484853516,
+              "deliveredAt": null,
+              "deliveredGeneration": null
+            },
+            "origin": "mail.send",
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 695516,
+              "verb": "send"
+            }
+          }
+        },
+        {
+          "seq": 15,
+          "ts": 1792484853528,
+          "kind": "command.claimed",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "commandId": 1
+          }
+        },
+        {
+          "seq": 16,
+          "ts": 1792484853732,
+          "kind": "runtime.updated",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "runtime": {
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "generation": 1,
+              "state": "booting",
+              "exitCause": null,
+              "pid": 696646,
+              "pidStartedAt": 1792484853729,
+              "bootEvidence": null,
+              "startedAt": 1792484853512,
+              "updatedAt": 1792484853512
+            }
+          }
+        },
+        {
+          "seq": 17,
+          "ts": 1792484853733,
+          "kind": "command.completed",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "commandId": 1,
+            "finishedAt": 1792484853733
+          }
+        },
+        {
+          "seq": 18,
+          "ts": 1792484853822,
+          "kind": "runtime.updated",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "runtime": {
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "generation": 1,
+              "state": "booting",
+              "exitCause": null,
+              "pid": 696646,
+              "pidStartedAt": 1792484853729,
+              "bootEvidence": null,
+              "startedAt": 1792484853512,
+              "updatedAt": 1792484853512
+            }
+          }
+        },
+        {
+          "seq": 19,
+          "ts": 1792484853823,
+          "kind": "runtime.updated",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "runtime": {
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "generation": 1,
+              "state": "running",
+              "exitCause": null,
+              "pid": 696646,
+              "pidStartedAt": 1792484853729,
+              "bootEvidence": "synthetic",
+              "startedAt": 1792484853512,
+              "updatedAt": 1792484853823
+            }
+          }
+        },
+        {
+          "seq": 20,
+          "ts": 1792484853833,
+          "kind": "mail.delivered",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "messageId": 1,
+            "deliveredAt": 1792484853832,
+            "deliveredGeneration": 1,
+            "turnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 1,
+              "generation": 1,
+              "startedAt": 1792484853832,
+              "humanAt": 1792484853832,
+              "endedAt": null
+            }
+          }
+        },
+        {
+          "seq": 21,
+          "ts": 1792484853880,
+          "kind": "runtime.updated",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "runtime": {
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "generation": 1,
+              "state": "running",
+              "exitCause": null,
+              "pid": 696646,
+              "pidStartedAt": 1792484853729,
+              "bootEvidence": "real",
+              "startedAt": 1792484853512,
+              "updatedAt": 1792484853823
+            }
+          }
+        },
+        {
+          "seq": 22,
+          "ts": 1792484853880,
+          "kind": "runtime.updated",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "runtime": {
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "generation": 1,
+              "state": "idle",
+              "exitCause": null,
+              "pid": 696646,
+              "pidStartedAt": 1792484853729,
+              "bootEvidence": "real",
+              "startedAt": 1792484853512,
+              "updatedAt": 1792484853880
+            },
+            "turnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 1,
+              "generation": 1,
+              "startedAt": 1792484853832,
+              "humanAt": 1792484853832,
+              "endedAt": 1792484853880,
+              "endedQuiet": false
+            }
+          }
+        },
+        {
+          "seq": 23,
+          "ts": 1792484853881,
+          "kind": "output.recorded",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "at": 1792484853880,
+            "lastHumanOutputAt": 1792484853880
+          }
+        },
+        {
+          "seq": 24,
+          "ts": 1792484853881,
+          "kind": "bee.provider_session",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "providerSessionId": "adf32c9e-f1f8-4ae5-87c7-40d954acdb9d",
+            "previous": null
+          }
+        },
+        {
+          "seq": 25,
+          "ts": 1792484853881,
+          "kind": "transcript_segment.put",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "segment": {
+              "id": "seg:6c74ba8a-7718-4ad3-b91c-84922fb34340:0",
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "ordinal": 0,
+              "harness": "claude",
+              "providerSessionId": "adf32c9e-f1f8-4ae5-87c7-40d954acdb9d",
+              "fromGeneration": 1,
+              "toGeneration": null,
+              "path": "/var/tmp/sar-e-queen-pinlab-FQsB7A/hb-v2-daemon-0tmFU8/session-logs/6c74ba8a-7718-4ad3-b91c-84922fb34340.jsonl",
+              "handoffId": null,
+              "createdAt": 1792484853512,
+              "closedAt": null
+            }
+          }
+        },
+        {
+          "seq": 26,
+          "ts": 1792484853882,
+          "kind": "flag.clear_noop",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "flag": "spawn_failed"
+          }
+        },
+        {
+          "seq": 27,
+          "ts": 1792484853882,
+          "kind": "flag.clear_noop",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "flag": "auth_needed"
+          }
+        },
+        {
+          "seq": 28,
+          "ts": 1792484853883,
+          "kind": "flag.clear_noop",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "flag": "resource_blocked"
+          }
+        },
+        {
+          "seq": 31,
+          "ts": 1792484853894,
+          "kind": "mail.enqueued",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "message": {
+              "id": 2,
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "sender": "operator",
+              "body": "next default-off continues conversation",
+              "priority": 0,
+              "urgency": "next",
+              "enqueuedAt": 1792484853894,
+              "deliveredAt": null,
+              "deliveredGeneration": null
+            },
+            "origin": "mail.send",
+            "rpcCaller": {
+              "transport": "local_unix",
+              "ingress": "local_unix",
+              "uid": 1001,
+              "pid": 695516,
+              "verb": "send"
+            }
+          }
+        },
+        {
+          "seq": 32,
+          "ts": 1792484853905,
+          "kind": "mail.delivered",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "messageId": 2,
+            "deliveredAt": 1792484853905,
+            "deliveredGeneration": 1,
+            "turnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 2,
+              "generation": 1,
+              "startedAt": 1792484853905,
+              "humanAt": 1792484853905,
+              "endedAt": null
+            }
+          }
+        },
+        {
+          "seq": 33,
+          "ts": 1792484853928,
+          "kind": "runtime.updated",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "runtime": {
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "generation": 1,
+              "state": "running",
+              "exitCause": null,
+              "pid": 696646,
+              "pidStartedAt": 1792484853729,
+              "bootEvidence": "real",
+              "startedAt": 1792484853512,
+              "updatedAt": 1792484853928
+            }
+          }
+        },
+        {
+          "seq": 34,
+          "ts": 1792484853928,
+          "kind": "runtime.updated",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "runtime": {
+              "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+              "generation": 1,
+              "state": "idle",
+              "exitCause": null,
+              "pid": 696646,
+              "pidStartedAt": 1792484853729,
+              "bootEvidence": "real",
+              "startedAt": 1792484853512,
+              "updatedAt": 1792484853928
+            },
+            "turnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 2,
+              "generation": 1,
+              "startedAt": 1792484853905,
+              "humanAt": 1792484853905,
+              "endedAt": 1792484853928,
+              "endedQuiet": false
+            }
+          }
+        },
+        {
+          "seq": 35,
+          "ts": 1792484853928,
+          "kind": "output.recorded",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "at": 1792484853928,
+            "lastHumanOutputAt": 1792484853928
+          }
+        },
+        {
+          "seq": 36,
+          "ts": 1792484853928,
+          "kind": "flag.clear_noop",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "flag": "auth_needed"
+          }
+        },
+        {
+          "seq": 37,
+          "ts": 1792484853929,
+          "kind": "flag.clear_noop",
+          "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+          "payload": {
+            "beeId": "6c74ba8a-7718-4ad3-b91c-84922fb34340",
+            "flag": "resource_blocked"
+          }
+        }
+      ]
+    }
+  }
+]
