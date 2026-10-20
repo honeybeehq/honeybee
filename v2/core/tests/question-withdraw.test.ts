@@ -84,8 +84,8 @@ test("schema 44 opens legacy questions additively without a version bump or extr
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close();
     const check = new DatabaseSync(f.path);
-    assert.equal(SCHEMA_VERSION, 44);
-    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "44");
+    assert.equal(SCHEMA_VERSION, 45);
+    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "45");
     assert.equal(check.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
     assert.deepEqual(check.prepare("PRAGMA foreign_key_check").all(), []);
     assert.equal(check.prepare("SELECT count(*) AS n FROM question_withdraw_receipts").get()!.n, 1);

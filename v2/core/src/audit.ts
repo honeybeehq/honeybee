@@ -11,6 +11,7 @@ import type {
   AccountAdmissionReservationRow,
   AccountRow,
   AuthInterruptionRow,
+  QuotaRecoveryRow,
   ActionQueueView,
   ActionView,
   AuditRow,
@@ -52,6 +53,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   const accountLimits = new Map<string, AccountLimitsRow>();
   const selectionCursors = new Map<string, SelectionCursorRow>();
   const accountAdmissions = new Map<string, AccountAdmissionReservationRow>();
+  const quotaRecoveries = new Map<string, QuotaRecoveryRow>();
   const authInterruptions = new Map<number, AuthInterruptionRow>();
   const tasks = new Map<string, TaskRow>();
   const taskSupply = new Map<string, TaskSupplyRow>();
@@ -240,6 +242,11 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         reservation.releasedAt = p.releasedAt as number;
         break;
       }
+      case "quota.recovery": {
+        const recovery = structuredClone(p.recovery as QuotaRecoveryRow);
+        quotaRecoveries.set(recovery.id, recovery);
+        break;
+      }
       case "auth_interruption.put": {
         const interruption = structuredClone(p.interruption as AuthInterruptionRow);
         authInterruptions.set(interruption.id, interruption);
@@ -253,6 +260,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "bee.deleted": {
         const beeId = p.beeId as string;
         bees.delete(beeId);
+        for (const [k, i] of quotaRecoveries) if (i.beeId === beeId) quotaRecoveries.delete(k);
         for (const [k, i] of authInterruptions) if (i.beeId === beeId) authInterruptions.delete(k);
         for (const [k, rt] of runtimes) if (rt.beeId === beeId) runtimes.delete(k);
         for (const [k, f] of flags) if (f.beeId === beeId) flags.delete(k);
@@ -629,6 +637,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     selectionCursors: [...selectionCursors.values()].sort((a, b) => (a.harness < b.harness ? -1 : a.harness > b.harness ? 1 : 0)),
     accountAdmissions: [...accountAdmissions.values()].sort((a, b) =>
       a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    quotaRecoveries: [...quotaRecoveries.values()].sort((a, b) => a.id.localeCompare(b.id)),
     authInterruptions: [...authInterruptions.values()].sort((a, b) => a.id - b.id),
     tasks: [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     taskSupply: [...taskSupply.values()].sort((a, b) => (a.beeId < b.beeId ? -1 : a.beeId > b.beeId ? 1 : 0)),

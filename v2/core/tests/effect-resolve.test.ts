@@ -90,7 +90,7 @@ test("effect additive tables preserve schema44 and retained legacy positives boo
     assert.throws(() => store.resolveEffect("legacy-absent", "spawn"), error("rpc_effect_history_unknown"));
   } finally { store.close(); }
   const inspect = new DatabaseSync(h.path, { readOnly: true });
-  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "44"); }
+  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "45"); }
   finally { inspect.close(); h.cleanup(); }
 });
 
