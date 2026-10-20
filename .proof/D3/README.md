@@ -1,0 +1,15 @@
+# D3: central Codex test stability
+
+Based on Honeybee main 7d92e556. The only existing source file changed is v2/daemon/tests/codex-central-credentials.test.ts. Product code, assertions, refresh intervals and sleeps are unchanged.
+
+Before: a 2200 ms delay in receipt of two CLI refresh results let automatic early refresh advance generation 4 before the exact generation 3 assertion. before-delay-readonly.log is the unchanged-main reproduction from D2, failing at line157 with 4 instead of 3. D2 also reproduced the same site at base9ecbb37f; approved masked-gate projection65dc0e31 confirmed the same 4-vs-3 failure. The subsequent true-mask base run passed, consistent with nondeterminism.
+
+After: the fixture starts with automatic early refresh disabled. Enrollment, same-key deduplication and distinct-key refreshes retain their exact generations/provider counts. The fixture daemon then restarts against the same store with early refresh enabled. The current 1-hour token triggers exactly one automatic refresh, whose 2-hour result lies outside the 1-hour ahead window. The existing generation 6 and provider-call-count 5 assertions remain exact, followed by invalid_grant and exact count 6. Both daemon outputs are included in the existing secret scan. This changes coverage: the automatic phase runs after a restart with the same store.
+
+Read final-readonly-1-delay-1.log for the delayed read-only case. It must show the generation 3 explicit-refresh check, the automatic generation 6 check, all later stages and one passing test. The source retains exact requests.length checks 2, 4, 5, 6 and every existing assertion. final-results.txt records all four matrix outcomes: writable/read-only default fake `.codex`, with/without the 2200 ms CLI-result delay. full-file.log covers all 3 existing tests in the file.
+
+The read-only probe uses an owned fake HOME/.codex with mode 0500 and verifies write EACCES in inherited child processes. Account-local fixture auth paths remain writable. This is permission-only read-only simulation, not the actual gate's tmpfs mask. All data and providers are synthetic; no real credentials or home config are accessed. The delay shim holds only promisified account credentials refresh results for 2200 ms after their subprocesses exit. Other calls delegate normally. probe.mjs and delay-cli.mjs are the exact preloads used for the proof.
+
+To rerun the matrix from this checkout, use a sanitized invoking HOME and run bash .proof/D3/run-matrix.sh. The script creates a 0700 /var/tmp root, isolates HOME/temp/cache, moves fixture cleanup to its owned trash, and writes four logs plus final-results.txt. Every shell must use login:false and env -i as in the worker exec rules. Prior preliminary matrix runs are retained under ignored pre-final/; cite only final logs.
+
+Typecheck, v2:check and build receipts are adjacent. The repository verification skill is unavailable; existing checks ran directly. No new unit tests or code comments were added. No merge or deployment; Queen reviews and Needle merges.
