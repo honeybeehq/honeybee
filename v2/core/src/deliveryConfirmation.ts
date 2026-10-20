@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS delivery_confirmation_decisions (
   action TEXT NOT NULL CHECK (action IN ('resend_anyway','drop')),
   row_json TEXT NOT NULL
 ) STRICT;
+CREATE INDEX IF NOT EXISTS bee_handoffs_seed_message ON bee_handoffs(seed_message_id) WHERE seed_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS tasks_mailbox_message ON tasks(mailbox_message_id) WHERE mailbox_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS thread_operations_continuation_message ON thread_operations(json_extract(row_json, '$.continuationMessageId'));
 CREATE INDEX IF NOT EXISTS delivery_confirmation_decision_message ON delivery_confirmation_decisions(bee_id, message_id, action);
 `;
 

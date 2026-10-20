@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
-import { DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
+import { DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { DeliveryNotHeldError } from "./types.ts";
 import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
@@ -352,7 +352,7 @@ export interface BeeViewRow {
 
 /** Body-free mailbox facts shared by daemon work and I1 telemetry. */
 export type DaemonPendingMessageMeta = Readonly<
-  Pick<MessageRow, "id" | "urgency" | "enqueuedAt">
+  Pick<MessageRow, "id" | "urgency" | "enqueuedAt" | "queueOrder">
 >;
 
 /** Runtime states that can affect daemon policy or delivery work. */
@@ -1435,6 +1435,8 @@ export function resetsAtFromDetail(detail: string): number | null {
 function mapMessage(r: Row): MessageRow {
   return {
     id: Number(r.id),
+    ...(r.queue_order == null ? {} : { queueOrder: Number(r.queue_order) }),
+    ...(r.replaces_message_id == null ? {} : { replacesMessageId: Number(r.replaces_message_id) }),
     beeId: r.bee_id as string,
     sender: r.sender as string,
     body: r.body as string,
@@ -2154,6 +2156,10 @@ export class CoreStore {
     }
     this.db.exec(PHONE_PROVENANCE_SQL);
     this.db.exec(DELIVERY_CONFIRMATION_SQL);
+    this.stmt("INSERT OR IGNORE INTO meta(key,value) SELECT 'confirmation_legacy_max_message_id', CAST(COALESCE(MAX(id),0) AS TEXT) FROM mailbox").run();
+    this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_pending ON mailbox(bee_id, COALESCE(queue_order,id), id, urgency, enqueued_at, delivered_at, queue_order) WHERE delivered_at IS NULL");
+    this.db.exec("CREATE INDEX IF NOT EXISTS audit_mail_replacement_message ON audit(CAST(json_extract(payload, '$.replacementMessageId') AS INTEGER), seq DESC) WHERE kind = 'mail.replaced'");
+    this.db.exec("CREATE INDEX IF NOT EXISTS audit_mail_replaced_message ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER), seq DESC) WHERE kind = 'mail.replaced'");
     this.db.exec(MULTILINE_DELIVERY_SQL);
     if (!(this.db.prepare("PRAGMA table_info(multiline_delivery)").all() as Row[]).some(column => column.name === "held_since")) this.db.exec("ALTER TABLE multiline_delivery ADD COLUMN held_since INTEGER");
     if (!(this.db.prepare("PRAGMA table_info(multiline_delivery)").all() as Row[]).some(column => column.name === "sender_notice_message_id")) this.db.exec("ALTER TABLE multiline_delivery ADD COLUMN sender_notice_message_id INTEGER");
@@ -3049,6 +3055,7 @@ export class CoreStore {
       }
       // ON DELETE CASCADE removes runtimes, flags, mailbox, questions, seals,
       // tasks, and task_supply.
+      this.stmt("DELETE FROM delivery_confirmation_decisions WHERE bee_id = ?").run(beeId);
       this.stmt("DELETE FROM bees WHERE id = ?").run(beeId);
       this.audit(
         "bee.deleted",
@@ -3863,15 +3870,15 @@ export class CoreStore {
 
   heldMultilineMail(): Map<string, (DaemonPendingMessageMeta & { fallback?: DeliveryFallback })[]> {
     const result = new Map<string, (DaemonPendingMessageMeta & { fallback?: DeliveryFallback })[]>();
-    const rows = this.stmt(`SELECT message.id, message.urgency, message.enqueued_at, held.*
+    const rows = this.stmt(`SELECT message.id, message.urgency, message.enqueued_at, message.queue_order, held.*
       FROM multiline_delivery AS held JOIN mailbox AS message ON message.id = held.message_id AND message.bee_id = held.bee_id
       WHERE held.held_since IS NOT NULL AND message.delivered_at IS NULL
         AND CASE WHEN json_valid(held.row_json) THEN COALESCE(json_extract(held.row_json, '$.fallback.state'), '') NOT IN ('held', 'delivered', 'removed') ELSE 1 END
-      ORDER BY message.id`).all() as Row[];
+      ORDER BY COALESCE(message.queue_order,message.id), message.id`).all() as Row[];
     for (const row of rows) {
       const beeId = String(row.bee_id), hold = readMultilineDelivery(String(row.row_json), Number(row.message_id), beeId, row.held_at == null ? null : Number(row.held_at), Number(row.held_since));
       const pending = result.get(beeId) ?? [];
-      pending.push({ ...mapDaemonPendingMessage(row.id, row.urgency, row.enqueued_at), ...(hold.fallback ? { fallback: hold.fallback } : {}) });
+      pending.push({ ...mapDaemonPendingMessage(row.id, row.urgency, row.enqueued_at), ...(row.queue_order == null ? {} : { queueOrder: Number(row.queue_order) }), ...(hold.fallback ? { fallback: hold.fallback } : {}) });
       result.set(beeId, pending);
     }
     return result;
@@ -4115,6 +4122,36 @@ export class CoreStore {
     }
   }
 
+  deliveryMayPredateConfirmation(messageId: number): boolean {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'confirmation_legacy_max_message_id'").get() as Row;
+    return Number.isSafeInteger(messageId) && messageId > 0 && messageId <= Number(row.value);
+  }
+
+  releaseUnwrittenDeliveryConfirmation(messageId: number, generation: number, digest: string): boolean {
+    return this.tx(() => {
+      const row = this.getDeliveryConfirmationIntent(messageId);
+      if (!row || row.wireLine === null || row.state !== "awaiting_confirmation" || row.generation !== generation || row.digest !== digest || this.currentRuntime(row.beeId)?.generation !== generation) return false;
+      this.stmt("DELETE FROM delivery_confirmation_intents WHERE message_id = ?").run(messageId);
+      this.audit("mail.confirmation_released", row.beeId, { messageId, generation, digest });
+      return true;
+    });
+  }
+
+  replanDeliveryConfirmationIntent(input: PrepareDeliveryConfirmationIntent, expectedDigest: string): KnownDeliveryConfirmationIntent {
+    return this.tx(() => {
+      const previous = this.getDeliveryConfirmationIntent(input.messageId);
+      if (!previous || previous.wireLine === null || previous.digest !== expectedDigest || previous.beeId !== input.beeId || previous.generation !== input.generation || previous.host.pid !== input.host.pid || previous.host.birth !== input.host.birth || previous.host.bootId !== input.host.bootId) throw new IdempotencyConflictError("delivery intent cannot be replanned");
+      const runtime = this.currentRuntime(input.beeId);
+      if (!runtime || runtime.generation !== input.generation || !LIVE_STATES.includes(runtime.state)) throw new StaleGenerationError("delivery generation is not current and live");
+      if (typeof input.wireLine !== "string" || !input.wireLine || !/^[a-f0-9]{64}$/.test(input.digest) || createHash("sha256").update(input.wireLine).digest("hex") !== input.digest || !processIdentityValue(input.host)) throw new CoreError("invalid_request: invalid delivery confirmation intent");
+      if (input.wireLine === previous.wireLine && input.digest === previous.digest && previous.state === "awaiting_confirmation") return previous;
+      const row: KnownDeliveryConfirmationIntent = { ...previous, wireLine: input.wireLine, digest: input.digest, state: "awaiting_confirmation", reason: "pending_ack", since: this.now() };
+      this.stmt("UPDATE delivery_confirmation_intents SET row_json = ? WHERE message_id = ?").run(JSON.stringify(row), row.messageId);
+      this.audit("mail.confirmation_prepared", row.beeId, { row, priorDigest: previous.digest });
+      return row;
+    });
+  }
+
   getDeliveryConfirmationIntent(messageId: number): DeliveryConfirmationIntent | null {
     const row = this.stmt("SELECT row_json FROM delivery_confirmation_intents WHERE message_id = ?").get(messageId) as Row | undefined;
     return row ? JSON.parse(String(row.row_json)) as DeliveryConfirmationIntent : null;
@@ -4139,7 +4176,7 @@ export class CoreStore {
     return readDeliveryConfirmations(this.db, beeId, this.currentRuntime(beeId)?.generation ?? null);
   }
 
-  prepareDeliveryConfirmationIntent(input: PrepareDeliveryConfirmationIntent): DeliveryConfirmationIntent {
+  prepareDeliveryConfirmationIntent(input: PrepareDeliveryConfirmationIntent): KnownDeliveryConfirmationIntent {
     if (!Number.isSafeInteger(input.messageId) || input.messageId <= 0 || !Number.isSafeInteger(input.generation) || input.generation <= 0 || typeof input.wireLine !== "string" || !input.wireLine || !/^[a-f0-9]{64}$/.test(input.digest) || createHash("sha256").update(input.wireLine).digest("hex") !== input.digest || !processIdentityValue(input.host)) throw new CoreError("invalid_request: invalid delivery confirmation intent");
     return this.tx(() => {
       this.mustGetBee(input.beeId);
@@ -4152,7 +4189,7 @@ export class CoreStore {
       if (!message || message.beeId !== input.beeId || message.deliveredAt !== null) throw new CoreError("invalid_request: delivery message unavailable");
       const runtime = this.currentRuntime(input.beeId);
       if (!runtime || runtime.generation !== input.generation || !LIVE_STATES.includes(runtime.state)) throw new StaleGenerationError("delivery generation is not current and live");
-      const intent: DeliveryConfirmationIntent = { ...input, host: { ...input.host }, since: this.now(), state: "awaiting_confirmation", reason: "pending_ack" };
+      const intent: KnownDeliveryConfirmationIntent = { ...input, host: { ...input.host }, since: this.now(), state: "awaiting_confirmation", reason: "pending_ack" };
       this.stmt("INSERT INTO delivery_confirmation_intents(message_id, bee_id, row_json) VALUES(?, ?, ?)").run(input.messageId, input.beeId, JSON.stringify(intent));
       this.audit("mail.confirmation_prepared", input.beeId, { row: intent });
       return intent;
@@ -4214,12 +4251,21 @@ export class CoreStore {
       const message = this.getMessage(input.messageId), intent = this.getDeliveryConfirmationIntent(input.messageId);
       const confirmation = this.deliveryConfirmations(input.beeId).find(row => row.messageId === input.messageId);
       if (!message || message.beeId !== input.beeId || message.deliveredAt !== null || !intent || confirmation?.state !== "held") throw new DeliveryNotHeldError("delivery_not_held: message is not held");
-      this.cancelMessage(input.beeId, input.messageId);
+      if (input.action === "drop") this.cancelMessageInternal(input.beeId, input.messageId, true);
       const replacement = input.action === "resend_anyway" ? this.send(input.beeId, message.phoneInput?.originalContent ?? message.body, {
         sender: message.sender, urgency: message.urgency, priority: message.priority,
         ...(message.senderKind === undefined ? {} : { senderKind: message.senderKind }),
         ...(message.phoneInput ? { phone: { origin: forwardPhoneOrigin(message.phoneInput, "forward"), key: `delivery-resend:${message.id}` } } : {}),
       }).message : null;
+      if (replacement) {
+        replacement.queueOrder = message.queueOrder ?? message.id;
+        replacement.replacesMessageId = message.id;
+        this.stmt("UPDATE mailbox SET queue_order = ?, replaces_message_id = ? WHERE id = ?").run(replacement.queueOrder, message.id, replacement.id);
+        this.replaceMessageLinks(message.id, replacement.id);
+        this.stmt("DELETE FROM mailbox WHERE id = ?").run(message.id);
+        this.multilineUnsupportedActive.delete(message.id);
+        this.audit("mail.replaced", input.beeId, { messageId: message.id, replacementMessageId: replacement.id, replacedAt: this.now(), replacement });
+      }
       const receipt: DeliveryConfirmationResolution = { action: input.action, beeId: input.beeId, messageId: input.messageId, generation: input.generation, replacementMessageId: replacement?.id ?? null };
       const decision: DeliveryConfirmationDecision = { idempotencyKey: input.idempotencyKey, generation: input.generation, receipt };
       this.stmt("INSERT INTO delivery_confirmation_decisions VALUES(?, ?, ?, ?, ?)").run(input.idempotencyKey, input.beeId, input.messageId, input.action, JSON.stringify(decision));
@@ -4228,16 +4274,36 @@ export class CoreStore {
     });
   }
 
+  private replaceMessageLinks(original: number, replacement: number): void {
+    this.stmt("UPDATE actions SET dispatch_message_id = ?, dispatch_json = json_set(dispatch_json, '$.messageId', ?) WHERE dispatch_message_id = ?").run(replacement, replacement, original);
+    this.stmt("UPDATE bee_handoffs SET seed_message_id = ? WHERE seed_message_id = ?").run(replacement, original);
+    this.stmt("UPDATE questions SET delivery_message_id = ? WHERE delivery_message_id = ?").run(replacement, original);
+    this.stmt("UPDATE questions SET dismissal_message_id = ? WHERE dismissal_message_id = ?").run(replacement, original);
+    this.stmt("UPDATE tasks SET mailbox_message_id = ? WHERE mailbox_message_id = ?").run(replacement, original);
+    this.stmt("UPDATE thread_operations SET row_json = json_set(row_json, '$.continuationMessageId', ?) WHERE json_extract(row_json, '$.continuationMessageId') = ?").run(replacement, original);
+    for (const row of this.stmt("SELECT id, message_ids, continuation_message_ids FROM auth_interruptions WHERE bee_id = (SELECT bee_id FROM mailbox WHERE id = ?)").all(original) as Row[]) {
+      const swap = (value: unknown): number[] => (JSON.parse(String(value)) as number[]).map(id => id === original ? replacement : id);
+      this.stmt("UPDATE auth_interruptions SET message_ids = ?, continuation_message_ids = ? WHERE id = ?").run(JSON.stringify(swap(row.message_ids)), JSON.stringify(swap(row.continuation_message_ids)), row.id as number);
+    }
+    for (const raw of this.stmt("SELECT id,payload FROM quota_recoveries WHERE bee_id = (SELECT bee_id FROM mailbox WHERE id = ?)").all(original) as Row[]) {
+      const row = JSON.parse(String(raw.payload)) as QuotaRecoveryRow;
+      row.messageIds = row.messageIds.map(id => id === original ? replacement : id);
+      row.continuationMessageIds = row.continuationMessageIds.map(id => id === original ? replacement : id);
+      this.stmt("UPDATE quota_recoveries SET payload = ? WHERE id = ?").run(JSON.stringify(row), String(raw.id));
+    }
+  }
+
   phoneInput(messageId: number): PhoneInput | undefined {
     const row = this.stmt("SELECT input_json FROM phone_inputs WHERE message_id = ?").get(messageId) as Row | undefined;
     return row ? JSON.parse(String(row.input_json)) as PhoneInput : undefined;
   }
 
   private withPhoneInput<T extends object>(message: T, messageId: number): T & { phoneOrigin?: PhoneInput["envelope"] } {
+    const queue = this.stmt("SELECT queue_order,replaces_message_id FROM mailbox WHERE id = ?").get(messageId) as Row | undefined;
     const input = this.phoneInput(messageId);
     const hold = this.multilineDelivery(messageId);
     const confirmation = this.deliveryConfirmationsForMessage(messageId);
-    return { ...message, ...(confirmation ? { deliveryConfirmation: confirmation } : {}), ...(input ? { phoneOrigin: input.envelope } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}), ...(hold?.fallback ? { deliveryFallback: publicDeliveryFallback(hold.fallback) } : {}) };
+    return { ...message, ...(queue?.queue_order == null ? {} : { queueOrder: Number(queue.queue_order) }), ...(queue?.replaces_message_id == null ? {} : { replacesMessageId: Number(queue.replaces_message_id) }), ...(confirmation ? { deliveryConfirmation: confirmation } : {}), ...(input ? { phoneOrigin: input.envelope } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}), ...(hold?.fallback ? { deliveryFallback: publicDeliveryFallback(hold.fallback) } : {}) };
   }
 
   private mapPhoneMessage(row: Row): MessageRow {
@@ -4356,7 +4422,7 @@ export class CoreStore {
    */
   undeliveredMessages(beeId: string): MessageRow[] {
     const rows = this.db
-      .prepare("SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id")
+      .prepare("SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY COALESCE(queue_order,id), id")
       .all(beeId) as Row[];
     return rows.map(row => this.mapPhoneMessage(row));
   }
@@ -4370,7 +4436,7 @@ export class CoreStore {
   /** All undelivered mail in per-bee FIFO order (daemon tick batch read). */
   listUndeliveredMessages(): MessageRow[] {
     const rows = this.stmt(
-      "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, id",
+      "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, COALESCE(queue_order,id), id",
     ).all() as Row[];
     return rows.map(row => this.mapPhoneMessage(row));
   }
@@ -4384,12 +4450,7 @@ export class CoreStore {
    * Both placeholders MUST bind the same bee.
    */
   listMessages(beeId: string): MessageRow[] {
-    const rows = this.stmt(
-      `SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL
-         UNION ALL
-         SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL
-         ORDER BY id`,
-    ).all(beeId, beeId) as Row[];
+    const rows = this.stmt("SELECT * FROM mailbox WHERE bee_id = ? ORDER BY COALESCE(queue_order,id), id").all(beeId) as Row[];
     return rows.map(row => this.mapPhoneMessage(row));
   }
 
@@ -4434,14 +4495,14 @@ export class CoreStore {
       ? Math.max(1, Math.min(MAIL_HISTORY_MAX_LIMIT, Math.floor(requestedLimit)))
       : MAIL_HISTORY_DEFAULT_LIMIT;
     const rows = this.stmt(
-      `SELECT h.*
+      `SELECT h.*, m.queue_order, m.replaces_message_id
        FROM mailbox m
        JOIN mail_history_enqueues h ON h.message_id = m.id
        WHERE m.bee_id = ? AND m.delivered_at IS NULL
-       ORDER BY m.id
+       ORDER BY COALESCE(m.queue_order,m.id), m.id
        LIMIT ?`,
     ).all(beeId, limit + 1) as Row[];
-    const candidates = rows.slice(0, limit).map(row => this.withPhoneInput(mailPendingMessage(row), Number(row.message_id)));
+    const candidates = rows.slice(0, limit).map(row => this.withPhoneInput({ ...mailPendingMessage(row), ...(row.queue_order == null ? {} : { queueOrder: Number(row.queue_order) }), ...(row.replaces_message_id == null ? {} : { replacesMessageId: Number(row.replaces_message_id) }) }, Number(row.message_id)));
     const messages: MailPendingMessage[] = [];
     let bodyBytes = 0;
     let jsonBytes = 0;
@@ -4496,6 +4557,11 @@ export class CoreStore {
     // expedites or historical duplicate terminal rows cannot enlarge work.
     const deletedByBee = new Map<string, { seq: number; ts: number } | null>();
     for (const message of candidates) {
+      const replacement = this.stmt("SELECT json_extract(payload, '$.replacement.queueOrder') AS queue_order, json_extract(payload, '$.messageId') AS original FROM audit WHERE kind = 'mail.replaced' AND CAST(json_extract(payload, '$.replacementMessageId') AS INTEGER) = ? AND seq <= ? ORDER BY seq DESC LIMIT 1").get(message.messageId, snapshotSeq) as Row | undefined;
+      if (replacement) {
+        message.queueOrder = Number(replacement.queue_order);
+        message.replacesMessageId = Number(replacement.original);
+      }
       const lifecycleRows = this.latestMailLifecycleRows(message.messageId, snapshotSeq);
       for (const row of lifecycleRows) {
         switch (row.kind) {
@@ -4515,6 +4581,9 @@ export class CoreStore {
                 `mail.delivered deliveredGeneration at seq ${row.seq}`,
               ),
             };
+            break;
+          case "mail.replaced":
+            message.lifecycle = { state: "replaced", replacedAt: row.ts, replacementMessageId: Number(row.payload.replacementMessageId) };
             break;
           case "mail.canceled":
             message.lifecycle = {
@@ -4595,7 +4664,8 @@ export class CoreStore {
          AND seq <= ?
        ORDER BY seq DESC LIMIT 1`,
     ).get(messageId, snapshotSeq) as Row | undefined;
-    return [delivered, expedited, canceled]
+    const replaced = this.stmt("SELECT * FROM audit WHERE kind = 'mail.replaced' AND CAST(json_extract(payload, '$.messageId') AS INTEGER) = ? AND seq <= ? ORDER BY seq DESC LIMIT 1").get(messageId, snapshotSeq) as Row | undefined;
+    return [delivered, expedited, canceled, replaced]
       .filter((row): row is Row => row !== undefined)
       .map(mapAudit)
       .sort((a, b) => a.seq - b.seq);
@@ -4627,12 +4697,17 @@ export class CoreStore {
   cancelMessage(
     beeId: string,
     messageId: number,
-  ): { canceled: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" } {
+  ): { canceled: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" | "confirmation_pending" } {
+    return this.cancelMessageInternal(beeId, messageId, false);
+  }
+
+  private cancelMessageInternal(beeId: string, messageId: number, explicitDecision: boolean): { canceled: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" | "confirmation_pending" } {
     return this.tx(() => {
       const message = this.getMessage(messageId);
       if (!message) return { canceled: false, reason: "not_found" };
       if (message.beeId !== beeId) return { canceled: false, reason: "bee_mismatch" };
       if (message.deliveredAt != null) return { canceled: false, reason: "delivered" };
+      if (!explicitDecision && this.getDeliveryConfirmationIntent(messageId)?.state === "awaiting_confirmation") return { canceled: false, reason: "confirmation_pending" };
       const canceledAt = this.now();
       this.stmt("DELETE FROM mailbox WHERE id = ?").run(messageId);
       this.multilineUnsupportedActive.delete(messageId);
@@ -5815,7 +5890,7 @@ export class CoreStore {
       `SELECT message.id,
               message.bee_id,
               message.urgency,
-              message.enqueued_at
+              message.enqueued_at, message.queue_order
        FROM runtimes AS runtime
        CROSS JOIN mailbox AS message
        WHERE runtime.state != 'stopped'
@@ -5827,13 +5902,13 @@ export class CoreStore {
          AND message.bee_id = runtime.bee_id
          AND message.delivered_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id = message.id AND held.held_since IS NOT NULL)
-       ORDER BY runtime.bee_id, message.id`,
+       ORDER BY runtime.bee_id, COALESCE(message.queue_order,message.id), message.id`,
     );
     if (typeof messageStatement.setReturnArrays === "function") {
       const messageRows = daemonStatementArrayRows(messageStatement);
       for (const raw of messageRows) {
         const beeId = daemonText(raw[1], "pending bee_id");
-        const message = mapDaemonPendingMessage(raw[0], raw[2], raw[3]);
+        const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }) };
         const row = workByBee.get(beeId);
         if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
         row.pending.push(message);
@@ -5842,7 +5917,7 @@ export class CoreStore {
       const messageRows: Row[] = messageStatement.all();
       for (const raw of messageRows) {
         const beeId = daemonText(raw.bee_id, "pending bee_id");
-        const message = mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at);
+        const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }) };
         const row = workByBee.get(beeId);
         if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
         row.pending.push(message);
@@ -5912,16 +5987,16 @@ export class CoreStore {
     const groupByBee = new Map(groups.map((group) => [group.beeId, group]));
 
     const messageStatement = this.stmt(
-      `SELECT id, bee_id, urgency, enqueued_at
+      `SELECT id, bee_id, urgency, enqueued_at, queue_order
        FROM mailbox
        WHERE delivered_at IS NULL
-       ORDER BY bee_id, id`,
+       ORDER BY bee_id, COALESCE(queue_order,id), id`,
     );
     if (typeof messageStatement.setReturnArrays === "function") {
       const messageRows = daemonStatementArrayRows(messageStatement);
       for (const raw of messageRows) {
         const beeId = daemonText(raw[1], "pending bee_id");
-        const message = mapDaemonPendingMessage(raw[0], raw[2], raw[3]);
+        const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }) };
         const group = groupByBee.get(beeId);
         if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
         group.pending.push(message);
@@ -5930,7 +6005,7 @@ export class CoreStore {
       const messageRows: Row[] = messageStatement.all();
       for (const raw of messageRows) {
         const beeId = daemonText(raw.bee_id, "pending bee_id");
-        const message = mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at);
+        const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }) };
         const group = groupByBee.get(beeId);
         if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
         group.pending.push(message);

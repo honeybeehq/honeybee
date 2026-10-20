@@ -297,6 +297,8 @@ export const MESSAGE_URGENCIES = ["now", "next", "idle"] as const;
 export type Urgency = (typeof MESSAGE_URGENCIES)[number];
 
 export interface MessageRow {
+  queueOrder?: number;
+  replacesMessageId?: number;
   deliveryConfirmation?: DeliveryConfirmation;
   deliveryFallback?: DeliveryFallback;
   deliveryHold?: DeliveryHold;
@@ -350,11 +352,14 @@ export type MailOrigin = (typeof MAIL_ORIGINS)[number];
  */
 export type MailHistoryLifecycle =
   | { state: "queued" }
+  | { state: "replaced"; replacedAt: number; replacementMessageId: number }
   | { state: "delivered"; deliveredAt: number; deliveredGeneration: number }
   | { state: "canceled"; canceledAt: number; reason: MailCancellationReason };
 
 /** One accepted send reconstructed from typed mail audit events, never a raw audit row. */
 export interface MailHistoryMessage {
+  queueOrder?: number;
+  replacesMessageId?: number;
   deliveryConfirmation?: DeliveryConfirmation;
   deliveryFallback?: DeliveryFallback;
   deliveryHold?: DeliveryHold;
@@ -406,6 +411,8 @@ export interface MailPendingParams {
 
 /** One undelivered mailbox row with bounded UTF-8 previews. */
 export interface MailPendingMessage {
+  queueOrder?: number;
+  replacesMessageId?: number;
   deliveryConfirmation?: DeliveryConfirmation;
   deliveryFallback?: DeliveryFallback;
   deliveryHold?: DeliveryHold;
