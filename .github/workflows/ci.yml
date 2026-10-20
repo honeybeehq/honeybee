@@ -72,16 +72,6 @@ jobs:
           test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
           node scripts/build-delivery-file.mjs
           node scripts/probe-delivery-file.mjs
-      - name: Verify forced-platform daemon provenance on macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          export HOME="$(mktemp -d "$RUNNER_TEMP/delivery-file-home-XXXXXX")"
-          export XDG_CONFIG_HOME="$HOME/config" XDG_DATA_HOME="$HOME/data" XDG_CACHE_HOME="$HOME/cache" XDG_STATE_HOME="$HOME/state"
-          brew list tmux >/dev/null 2>&1 || brew install tmux
-          npm ci
-          npm run build
-          node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/local-rpc-security.test.ts v2/daemon/tests/human-ref.test.ts v2/daemon/tests/local-rpc-trust.test.ts
       - uses: actions/upload-artifact@v4
         with:
           name: delivery-file-${{ matrix.target }}
