@@ -2188,10 +2188,7 @@ export class CoreStore {
         progress: leastCertainProgress(previous.progress, event.turn.progress),
       } : {
         id, beeId: bee.id, sourceGeneration: event.generation, sourceAccount: bee.account,
-        sourceWindowUsedPercent: (() => {
-          const limits = bee.account ? this.getAccountLimits(bee.account) : null;
-          return event.quota.window === "weekly" ? limits?.weeklyPct ?? null : event.quota.window === "five_hour" ? limits?.fiveHourPct ?? null : null;
-        })(),
+        sourceWindowUsedPercent: null, sourceWindowObservedAt: null,
         observationCursor: /^quota:.*:[0-9]+$/.test(event.eventId) ? Number(event.eventId.slice(event.eventId.lastIndexOf(":") + 1)) : null, sourceId: event.sourceId ?? null, accountLabel: null,
         eventIds: [event.eventId], messageIds, progress: event.turn.progress,
         interrupted: messageIds.length > 0 || event.turn.progress !== "none",
@@ -2228,6 +2225,19 @@ export class CoreStore {
       sourceId: updated.sourceId, accountLabel: updated.accountLabel, window: updated.quota.window, retryAt: updated.retryAt,
     } } : {}) });
     return updated;
+  }
+
+  observeQuotaRecoveryLimits(id: string): void {
+    this.tx(() => {
+      const row = this.getQuotaRecovery(id);
+      if (!row || row.state !== "waiting" || row.sourceWindowObservedAt != null || !row.sourceAccount) return;
+      const limits = this.getAccountLimits(row.sourceAccount);
+      if (!limits?.readable || limits.fetchedAt <= row.createdAt || limits.fetchedAt > this.now()) return;
+      const values = [limits.fiveHourPct, limits.weeklyPct, limits.fableWeeklyPct].filter((value): value is number => value !== null);
+      const used = row.quota.window === "weekly" ? limits.weeklyPct : row.quota.window === "five_hour" ? limits.fiveHourPct : values.length ? Math.max(...values) : null;
+      if (used === null) return;
+      this.putQuotaRecovery({ ...row, sourceWindowUsedPercent: used, sourceWindowObservedAt: limits.fetchedAt });
+    });
   }
 
   waitQuotaRecovery(id: string, retryAt: number | null, reason: string): void {
