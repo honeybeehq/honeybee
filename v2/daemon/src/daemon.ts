@@ -6871,7 +6871,9 @@ export class HiveDaemon {
         return true;
       }
       const limits = store.getAccountLimits(bee.account);
-      if (!limits || limits.fetchedAt <= pending.admission!.fetchedAt || this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), beeId, 2).status !== "eligible") return false;
+      if (!limits || limits.fetchedAt <= pending.admission!.fetchedAt) return false;
+      if (this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), beeId, 2).status !== "eligible"
+        && this.accounts.proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), beeId).size > 0) return false;
       store.cancelQuotaRecovery(pending.id, "completion_headroom_restored");
       return true;
     }
@@ -6879,7 +6881,7 @@ export class HiveDaemon {
     const accepted = recoveries.some(row => row.state === "resumed" && row.successorGeneration === generation);
     if (accepted && !store.hasDeliveredMail(beeId, generation)) return true;
     const headroom = this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), beeId);
-    if (headroom.status !== "protected") return true;
+    if (headroom.status !== "protected" || this.accounts.proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), beeId).size === 0) return true;
     const fetchedAt = store.getAccountLimits(bee.account)!.fetchedAt;
     const recovery = store.requireCompletionHeadroom(beeId, generation, { fetchedAt, maxProjectedPercent: headroom.maxProjectedPercent! }, headroom.retryAt);
     if (!recovery) return true;
@@ -6926,7 +6928,12 @@ export class HiveDaemon {
         this.requestTick();
         return;
       }
-      const targets = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee)) : undefined;
+      const targets = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee), bee.id) : undefined;
+      if (targets?.size === 0 && row.trigger === "proactive") {
+        store.cancelQuotaRecovery(id, "relative_headroom_unavailable");
+        this.requestTick();
+        return;
+      }
       if (targets?.size === 0) {
         const detail = accounts.recoveryWaitDetail(bee.agent);
         store.waitQuotaRecovery(id, this.quotaRetryAt(bee.id, row.retryAt), detail === null ? "account_wait" : "account_unavailable", detail);

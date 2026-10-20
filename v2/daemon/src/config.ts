@@ -946,7 +946,7 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
     loginTimeoutMs: num(a, "loginTimeoutMs", DEFAULTS.loginTimeoutMs),
     exhaustionCoolOffMs: num(a, "exhaustionCoolOffMs", DEFAULTS.exhaustionCoolOffMs),
     allocationMode,
-    proactiveAdmission: typeof a.proactiveAdmission === "boolean" ? a.proactiveAdmission : allocationMode === "active",
+    proactiveAdmission: typeof a.proactiveAdmission === "boolean" ? a.proactiveAdmission : true,
     allocationNodeId: allocationNodeId as string | null,
     allocationOwner: allocationOwner as { node: string; epoch: string } | null,
     allocationQuotaFreshMs,
