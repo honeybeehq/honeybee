@@ -1,61 +1,61 @@
-hived v2 listening on /var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/hived.sock (store /var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/core.sqlite3)
-{"ts":1792481834348,"op":"tmp.policy beeTmpRoot=off"}
-{"ts":1792481834376,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
-{"ts":1792481834383,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
-{"ts":1792481834395,"op":"rpc.listen socket=/var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/hived.sock"}
-{"ts":1792481834396,"op":"daemon.started pid=643732 store=/var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/core.sqlite3"}
-{"ts":1792481834413,"op":"account.add id=claude-a harness=claude home=/var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/homes/claude-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/vault/claude/claude-a files=.credentials.json verification=limits"}
-{"ts":1792481834454,"op":"account.add id=claude-b harness=claude home=/var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/homes/claude-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/vault/claude/claude-b files=.credentials.json verification=limits"}
-{"ts":1792481834471,"op":"account.credential_health account=claude-a unverified→verified by=limits_probe"}
-{"ts":1792481834471,"op":"account.limits account=claude-a readable=true weekly=5 5h=5"}
-{"ts":1792481834476,"op":"account.limits account=claude-a readable=true weekly=5 5h=5"}
-{"ts":1792481834480,"op":"account.credential_health account=claude-b unverified→verified by=limits_probe"}
-{"ts":1792481834480,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
-{"ts":1792481834482,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
-{"ts":1792481834489,"op":"spawn.account bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 account=claude-a reason=\"explicit\""}
-{"ts":1792481834500,"op":"account.activate account=claude-a home=/var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/homes/claude-a copied=.credentials.json"}
-{"ts":1792481834500,"op":"account.activate.gateways account=claude-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
-{"ts":1792481834700,"op":"cmd.spawn id=1 bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 start gen=1"}
-{"ts":1792481834790,"op":"obs.booted bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1 pid=643755 synthetic"}
-{"ts":1792481834791,"op":"obs.skip bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1 kind=turn_ended reason=mail_pending"}
-{"ts":1792481834802,"op":"deliver.refused bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 msg=1 reason=not_ready"}
-{"ts":1792481834813,"op":"deliver bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 msg=1 gen=1 urgency=next"}
-{"ts":1792481834834,"op":"obs.skip bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1 kind=turn_started reason=already_running"}
-{"ts":1792481834864,"op":"spawn.evidence bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1 kind=booted"}
-{"ts":1792481834864,"op":"obs.skip bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1 kind=booted reason=already_running"}
-{"ts":1792481834865,"op":"obs.turn_ended bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1"}
-{"ts":1792481834867,"op":"session.recorded bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1 id=3da762d6-9c92-476e-8424-7014da719732"}
-{"ts":1792481834870,"op":"obs.checkpoint bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1 cursor=488"}
-{"ts":1792481834881,"op":"account.limits account=claude-a readable=true weekly=5 5h=91"}
-{"ts":1792481834887,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
-{"ts":1792481834895,"op":"action.enqueue bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 key=claude-action items=commit deduped=false"}
-{"ts":1792481834900,"op":"action.dispatch bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 action=642597e8-217b-4bef-92fb-878d7b8cbfe5 kind=commit attempt=1 status=running msg=2"}
-{"ts":1792481834908,"op":"account.limits account=claude-a readable=true weekly=5 5h=91"}
-{"ts":1792481834909,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
-{"ts":1792481834914,"op":"account auto → claude-b — only claude account with credentials"}
-{"ts":1792481834914,"op":"account.admission.shadow operation=swap selected=claude-b policy=wait:activity_unknown"}
-{"ts":1792481834915,"op":"bee.swapAccount.transcript bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 seed=3da762d6-9c92-476e-8424-7014da719732 from=/var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/homes/claude-a/projects/-var-tmp-E-CazyCe-hb-v2-daemon-SjvMFu/3da762d6-9c92-476e-8424-7014da719732.jsonl to=/var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/homes/claude-b/projects/-var-tmp-E-CazyCe-hb-v2-daemon-SjvMFu/3da762d6-9c92-476e-8424-7014da719732.jsonl"}
-{"ts":1792481834918,"op":"bee.swapAccount bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 from=claude-a to=claude-b by=operator action=stop_then_revive rekeyed=true transcript=copied stop=2"}
-{"ts":1792481834918,"op":"quota.rotate recovery=admission:217e3d45-cd18-44ab-9dd7-1ff1761228b5:1:0 to=claude-b"}
-{"ts":1792481834921,"op":"cmd.stop id=2 bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1 cause=stopped_by_system hadProcess=true"}
-{"ts":1792481834964,"op":"obs.exited bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1 cause=stopped_by_system"}
-{"ts":1792481834965,"op":"wake.enqueued bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=1"}
-{"ts":1792481834971,"op":"account.activate account=claude-b home=/var/tmp/E-CazyCe/hb-v2-daemon-SjvMFu/homes/claude-b copied=.credentials.json"}
-{"ts":1792481834971,"op":"account.activate.gateways account=claude-b skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
-{"ts":1792481835170,"op":"cmd.send_wake id=3 bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 revive gen=2"}
-{"ts":1792481835262,"op":"obs.booted bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2 pid=643777 synthetic"}
-{"ts":1792481835263,"op":"obs.skip bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2 kind=turn_ended reason=mail_pending"}
-{"ts":1792481835276,"op":"deliver bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 msg=2 gen=2 urgency=next"}
-{"ts":1792481835296,"op":"obs.skip bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2 kind=turn_started reason=already_running"}
-{"ts":1792481835319,"op":"spawn.evidence bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2 kind=booted"}
-{"ts":1792481835319,"op":"obs.skip bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2 kind=booted reason=already_running"}
-{"ts":1792481835320,"op":"obs.turn_ended bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2"}
-{"ts":1792481835320,"op":"session.recorded bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2 id=972ae0c4-d504-4f2f-92fc-b9f8c3276e04"}
-{"ts":1792481835321,"op":"obs.checkpoint bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2 cursor=3044"}
-{"ts":1792481835345,"op":"deliver bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 msg=3 gen=2 urgency=next"}
-{"ts":1792481835366,"op":"obs.turn_started bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2 synthetic"}
-{"ts":1792481835389,"op":"obs.turn_ended bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2"}
-{"ts":1792481835390,"op":"obs.checkpoint bee=217e3d45-cd18-44ab-9dd7-1ff1761228b5 gen=2 cursor=3371"}
-{"ts":1792481835409,"op":"daemon.stopping pid=643732"}
-{"ts":1792481835437,"op":"daemon.stopped"}
-{"ts":1792481835437,"op":"daemon.stop_complete pid=643732"}
+hived v2 listening on /var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/hived.sock (store /var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/core.sqlite3)
+{"ts":1792482866678,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792482866703,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1792482866710,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792482866728,"op":"rpc.listen socket=/var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/hived.sock"}
+{"ts":1792482866729,"op":"daemon.started pid=659639 store=/var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/core.sqlite3"}
+{"ts":1792482866742,"op":"account.add id=claude-a harness=claude home=/var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/homes/claude-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/vault/claude/claude-a files=.credentials.json verification=limits"}
+{"ts":1792482866782,"op":"account.add id=claude-b harness=claude home=/var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/homes/claude-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/vault/claude/claude-b files=.credentials.json verification=limits"}
+{"ts":1792482866798,"op":"account.credential_health account=claude-a unverified→verified by=limits_probe"}
+{"ts":1792482866798,"op":"account.limits account=claude-a readable=true weekly=5 5h=5"}
+{"ts":1792482866802,"op":"account.limits account=claude-a readable=true weekly=5 5h=5"}
+{"ts":1792482866806,"op":"account.credential_health account=claude-b unverified→verified by=limits_probe"}
+{"ts":1792482866806,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792482866808,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792482866815,"op":"spawn.account bee=37113509-b88f-4a79-9c99-47339647012a account=claude-a reason=\"explicit\""}
+{"ts":1792482866826,"op":"account.activate account=claude-a home=/var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/homes/claude-a copied=.credentials.json"}
+{"ts":1792482866827,"op":"account.activate.gateways account=claude-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792482867027,"op":"cmd.spawn id=1 bee=37113509-b88f-4a79-9c99-47339647012a start gen=1"}
+{"ts":1792482867117,"op":"obs.booted bee=37113509-b88f-4a79-9c99-47339647012a gen=1 pid=659702 synthetic"}
+{"ts":1792482867117,"op":"obs.skip bee=37113509-b88f-4a79-9c99-47339647012a gen=1 kind=turn_ended reason=mail_pending"}
+{"ts":1792482867124,"op":"deliver.refused bee=37113509-b88f-4a79-9c99-47339647012a msg=1 reason=not_ready"}
+{"ts":1792482867132,"op":"deliver bee=37113509-b88f-4a79-9c99-47339647012a msg=1 gen=1 urgency=next"}
+{"ts":1792482867153,"op":"obs.skip bee=37113509-b88f-4a79-9c99-47339647012a gen=1 kind=turn_started reason=already_running"}
+{"ts":1792482867185,"op":"spawn.evidence bee=37113509-b88f-4a79-9c99-47339647012a gen=1 kind=booted"}
+{"ts":1792482867186,"op":"obs.skip bee=37113509-b88f-4a79-9c99-47339647012a gen=1 kind=booted reason=already_running"}
+{"ts":1792482867187,"op":"obs.turn_ended bee=37113509-b88f-4a79-9c99-47339647012a gen=1"}
+{"ts":1792482867189,"op":"session.recorded bee=37113509-b88f-4a79-9c99-47339647012a gen=1 id=8d2cfa93-bd49-458a-9fc7-f301eedbe457"}
+{"ts":1792482867192,"op":"obs.checkpoint bee=37113509-b88f-4a79-9c99-47339647012a gen=1 cursor=488"}
+{"ts":1792482867199,"op":"account.limits account=claude-a readable=true weekly=5 5h=91"}
+{"ts":1792482867204,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792482867212,"op":"action.enqueue bee=37113509-b88f-4a79-9c99-47339647012a key=claude-action items=commit deduped=false"}
+{"ts":1792482867218,"op":"action.dispatch bee=37113509-b88f-4a79-9c99-47339647012a action=ad27bd5b-fa75-4b4b-b219-2c19843ecf77 kind=commit attempt=1 status=running msg=2"}
+{"ts":1792482867227,"op":"account.limits account=claude-a readable=true weekly=5 5h=91"}
+{"ts":1792482867228,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792482867233,"op":"account auto → claude-b — only claude account with credentials"}
+{"ts":1792482867233,"op":"account.admission.shadow operation=swap selected=claude-b policy=wait:activity_unknown"}
+{"ts":1792482867234,"op":"bee.swapAccount.transcript bee=37113509-b88f-4a79-9c99-47339647012a seed=8d2cfa93-bd49-458a-9fc7-f301eedbe457 from=/var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/homes/claude-a/projects/-var-tmp-E-AS5RY7-hb-v2-daemon-6zu9IJ/8d2cfa93-bd49-458a-9fc7-f301eedbe457.jsonl to=/var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/homes/claude-b/projects/-var-tmp-E-AS5RY7-hb-v2-daemon-6zu9IJ/8d2cfa93-bd49-458a-9fc7-f301eedbe457.jsonl"}
+{"ts":1792482867237,"op":"bee.swapAccount bee=37113509-b88f-4a79-9c99-47339647012a from=claude-a to=claude-b by=operator action=stop_then_revive rekeyed=true transcript=copied stop=2"}
+{"ts":1792482867237,"op":"quota.rotate recovery=admission:37113509-b88f-4a79-9c99-47339647012a:1:0 to=claude-b"}
+{"ts":1792482867242,"op":"cmd.stop id=2 bee=37113509-b88f-4a79-9c99-47339647012a gen=1 cause=stopped_by_system hadProcess=true"}
+{"ts":1792482867264,"op":"obs.exited bee=37113509-b88f-4a79-9c99-47339647012a gen=1 cause=stopped_by_system"}
+{"ts":1792482867265,"op":"wake.enqueued bee=37113509-b88f-4a79-9c99-47339647012a gen=1"}
+{"ts":1792482867272,"op":"account.activate account=claude-b home=/var/tmp/E-AS5RY7/hb-v2-daemon-6zu9IJ/homes/claude-b copied=.credentials.json"}
+{"ts":1792482867272,"op":"account.activate.gateways account=claude-b skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792482867463,"op":"cmd.send_wake id=3 bee=37113509-b88f-4a79-9c99-47339647012a revive gen=2"}
+{"ts":1792482867551,"op":"obs.booted bee=37113509-b88f-4a79-9c99-47339647012a gen=2 pid=659739 synthetic"}
+{"ts":1792482867551,"op":"obs.skip bee=37113509-b88f-4a79-9c99-47339647012a gen=2 kind=turn_ended reason=mail_pending"}
+{"ts":1792482867559,"op":"deliver bee=37113509-b88f-4a79-9c99-47339647012a msg=2 gen=2 urgency=next"}
+{"ts":1792482867580,"op":"obs.skip bee=37113509-b88f-4a79-9c99-47339647012a gen=2 kind=turn_started reason=already_running"}
+{"ts":1792482867602,"op":"spawn.evidence bee=37113509-b88f-4a79-9c99-47339647012a gen=2 kind=booted"}
+{"ts":1792482867602,"op":"obs.skip bee=37113509-b88f-4a79-9c99-47339647012a gen=2 kind=booted reason=already_running"}
+{"ts":1792482867602,"op":"obs.turn_ended bee=37113509-b88f-4a79-9c99-47339647012a gen=2"}
+{"ts":1792482867603,"op":"session.recorded bee=37113509-b88f-4a79-9c99-47339647012a gen=2 id=38cbcdb1-c0c0-4727-afef-0222ff78bdc5"}
+{"ts":1792482867604,"op":"obs.checkpoint bee=37113509-b88f-4a79-9c99-47339647012a gen=2 cursor=3044"}
+{"ts":1792482867626,"op":"deliver bee=37113509-b88f-4a79-9c99-47339647012a msg=3 gen=2 urgency=next"}
+{"ts":1792482867647,"op":"obs.turn_started bee=37113509-b88f-4a79-9c99-47339647012a gen=2 synthetic"}
+{"ts":1792482867669,"op":"obs.turn_ended bee=37113509-b88f-4a79-9c99-47339647012a gen=2"}
+{"ts":1792482867670,"op":"obs.checkpoint bee=37113509-b88f-4a79-9c99-47339647012a gen=2 cursor=3371"}
+{"ts":1792482867688,"op":"daemon.stopping pid=659639"}
+{"ts":1792482867710,"op":"daemon.stopped"}
+{"ts":1792482867711,"op":"daemon.stop_complete pid=659639"}
