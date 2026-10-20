@@ -135,7 +135,9 @@ for (const name of selected.length ? selected : scenarios) {
       await waitFor(async () => {
         const mail = await client.request<MailboxResult>("mailbox", { beeId });
         const view = await client.request<ViewResult>("view", { beeId });
-        return mail.messages.some(message => message.id === resumed.continuationMessageIds[0] && message.deliveredGeneration === 2) && view.view.runtimeState === "idle" && !view.view.flags.includes("resource_blocked") ? true : null;
+        const journal = readFileSync(join(dir, "session-logs", `${beeId}.jsonl`), "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
+        const completed = journal.filter(row => harness === "claude" ? row.type === "result" && row.is_error === false : row.method === "turn/completed" && row.params?.turn?.status === "completed");
+        return completed.length >= 2 && mail.messages.some(message => message.id === resumed.continuationMessageIds[0] && message.deliveredGeneration === 2) && view.view.runtimeState === "idle" && !view.view.flags.includes("resource_blocked") ? true : null;
       }, `${name} continuation delivered and served`, 15_000);
       const after = await dump("resumed");
       assert.equal(after.view!.bee!.account, resumed.targetAccount);
