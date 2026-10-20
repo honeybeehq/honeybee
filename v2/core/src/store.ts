@@ -4195,6 +4195,24 @@ export class CoreStore {
     });
   }
 
+  retryRefusedDeliveryConfirmation(messageId: number, generation: number, expectedDigest: string): KnownDeliveryConfirmationIntent | null {
+    return this.tx(() => {
+      const previous = this.getDeliveryConfirmationIntent(messageId);
+      if (!previous || previous.wireLine === null || previous.digest !== expectedDigest || previous.generation !== generation) return null;
+      const runtime = this.currentRuntime(previous.beeId);
+      if (!runtime || runtime.generation !== generation || !LIVE_STATES.includes(runtime.state)) return null;
+      if ((previous.refusalRetries ?? 0) >= 1) {
+        this.holdDeliveryConfirmation(messageId, "refused");
+        return null;
+      }
+      const row: KnownDeliveryConfirmationIntent = { ...previous, state: "awaiting_confirmation", reason: "pending_ack", since: this.now(), refusalRetries: 1 };
+      this.assertDeliveryAuditSize({ row });
+      this.stmt("UPDATE delivery_confirmation_intents SET row_json = ? WHERE message_id = ?").run(JSON.stringify(row), messageId);
+      this.audit("mail.confirmation_prepared", row.beeId, { row, retryReason: "refused" });
+      return row;
+    });
+  }
+
   replanDeliveryConfirmationIntent(input: PrepareDeliveryConfirmationIntent, expectedDigest: string): KnownDeliveryConfirmationIntent {
     return this.tx(() => {
       const previous = this.getDeliveryConfirmationIntent(input.messageId);
@@ -4244,7 +4262,7 @@ export class CoreStore {
       if (!message || message.beeId !== input.beeId || message.deliveredAt !== null) throw new CoreError("invalid_request: delivery message unavailable");
       const runtime = this.currentRuntime(input.beeId);
       if (!runtime || runtime.generation !== input.generation || !LIVE_STATES.includes(runtime.state)) throw new StaleGenerationError("delivery generation is not current and live");
-      const intent: KnownDeliveryConfirmationIntent = { ...structuredClone(input), host: { ...input.host }, since: this.now(), state: "awaiting_confirmation", reason: "pending_ack" };
+      const intent: KnownDeliveryConfirmationIntent = { ...structuredClone(input), host: { ...input.host }, since: this.now(), state: "awaiting_confirmation", reason: "pending_ack", refusalRetries: 0 };
       this.assertDeliveryAuditSize({ row: intent });
       this.stmt("INSERT INTO delivery_confirmation_intents(message_id, bee_id, row_json) VALUES(?, ?, ?)").run(input.messageId, input.beeId, JSON.stringify(intent));
       this.audit("mail.confirmation_prepared", input.beeId, { row: intent });
