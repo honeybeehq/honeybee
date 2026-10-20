@@ -99,8 +99,9 @@ export function parseClaudeLine(line: string): AdapterSignal[] {
   if (!msg || typeof msg.type !== "string") return [];
   const quota = claudeQuotaBoundary(msg);
   if (quota) {
-    const detail = msg.type === "rate_limit_event" ? `claude rate limit ${String(asObject(msg.rate_limit_info)?.status)}${quota.resetsAt !== null ? `, resets ${new Date(quota.resetsAt).toISOString()}` : ""}` : `claude quota exhausted: ${String(msg.result ?? "synthetic provider limit")}`;
-    return [{ kind: "flag", flag: "resource_blocked", action: "set", detail, quota, ...(quota.resetsAt !== null ? { resetsAt: quota.resetsAt } : {}) }, ...(msg.type === "result" ? [{ kind: "turn_ended" } as const] : [])];
+    const resetsAt = quota.resetsAt ?? (msg.type === "rate_limit_event" ? epochMsFromSeconds(asObject(msg.rate_limit_info)?.resetsAt) : undefined);
+    const detail = msg.type === "rate_limit_event" ? `claude rate limit ${String(asObject(msg.rate_limit_info)?.status)}${resetsAt !== undefined ? `, resets ${new Date(resetsAt).toISOString()}` : ""}` : `claude quota exhausted: ${String(msg.result ?? "synthetic provider limit")}`;
+    return [{ kind: "flag", flag: "resource_blocked", action: "set", detail, quota, ...(resetsAt !== undefined ? { resetsAt } : {}) }, ...(msg.type === "result" ? [{ kind: "turn_ended" } as const] : [])];
   }
   switch (msg.type) {
     case "system": {
