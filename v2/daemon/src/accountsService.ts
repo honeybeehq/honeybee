@@ -2543,8 +2543,8 @@ export class AccountsService {
     const source = accounts.find(account => account.id === sourceAccount);
     if (!source) return { accountIds: new Set(), uncertain: true };
     const failed = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "cancelled" && ["relative_refresh_unavailable", "relative_swap_refused"].includes(row.reason ?? "")).sort((a, b) => b.updatedAt - a.updatedAt)[0] : undefined;
-    if (failed && now - failed.updatedAt < (failed.reason === "relative_refresh_unavailable" ? 15 * 60_000 : 30_000)
-      && !accounts.some(account => account.id !== sourceAccount && this.store.getAccountLimits(account.id)?.readable && (this.store.getAccountLimits(account.id)?.fetchedAt ?? 0) > failed.updatedAt)) return { accountIds: new Set(), uncertain: false };
+    const failedRefreshGrace = failed && now - failed.updatedAt < (failed.reason === "relative_refresh_unavailable" ? 15 * 60_000 : 30_000)
+      && !accounts.some(account => account.id !== sourceAccount && this.store.getAccountLimits(account.id)?.readable && (this.store.getAccountLimits(account.id)?.fetchedAt ?? 0) > failed.updatedAt);
     const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3) : [];
     if (history[0] && now - history[0].updatedAt < this.cfg.accounts.proactiveDwellMs) return { accountIds: new Set(), uncertain: false };
     const sourcePlan = this.store.getAccountLimits(sourceAccount)?.plan?.toLowerCase();
@@ -2569,7 +2569,7 @@ export class AccountsService {
       const fetchedAt = this.store.getAccountLimits(account.id)?.fetchedAt ?? 0;
       return fetchedAt > this.store.proactiveRecoveryBoundary(account.id);
     }).map(account => account.id));
-    return { accountIds, uncertain: accountIds.size === 0 && uncertain };
+    return { accountIds, uncertain: accountIds.size === 0 && uncertain && !failedRefreshGrace };
   }
 
   private admissionCandidate(
