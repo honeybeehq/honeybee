@@ -22,7 +22,9 @@ timestamps constitute proof of human approval, permission or identity.
 Answer trigger emission is negotiated once per RPC connection by the client hello:
 `{ protocol: "v2/1", capabilities: ["turn-trigger.answer.v1"] }`. The owner hello
 advertises the same capability. Missing or unknown tags retain legacy format.
-Capabilities accept at most 64 nonempty strings of at most 128 characters.
+Stored capabilities accept at most 64 nonempty strings of at most 128 characters.
+Malformed or oversized advertisements select legacy format and produce one
+bounded diagnostic, without disconnecting the client.
 They select output format only and never enter RpcCaller, authority, admission,
 or identity decisions. Request parameters cannot opt in or renegotiate.
 

@@ -360,12 +360,10 @@ export class RpcServer {
         conn.socket.end();
         return;
       }
-      if (frame.capabilities !== undefined && (!Array.isArray(frame.capabilities) || frame.capabilities.length > 64 || frame.capabilities.some((tag) => typeof tag !== "string" || tag.length === 0 || tag.length > 128))) {
-        conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "hello capabilities must be at most 64 nonempty strings of at most 128 characters." } });
-        conn.socket.end();
-        return;
-      }
-      conn.clientCapabilities = Object.freeze(Array.isArray(frame.capabilities) ? [...new Set(frame.capabilities as string[])] : []);
+      const offered = frame.capabilities;
+      const capabilities = Array.isArray(offered) && offered.length <= 64 && offered.every((tag): tag is string => typeof tag === "string" && tag.length > 0 && tag.length <= 128) ? offered : [];
+      if (offered !== undefined && capabilities !== offered) this.opts.log("rpc.hello.capabilities.invalid legacy_format");
+      conn.clientCapabilities = Object.freeze([...new Set(capabilities)]);
       const caller = helloCaller(frame.caller);
       if (caller === "invalid") {
         conn.send({ id: -1, ok: false, error: { code: "invalid_request", message: "caller must be {dataDir?: string, liveTarget?: boolean, expectedInstanceId?: string | null, allowForeignDaemon?: boolean}." } });

@@ -21,7 +21,8 @@ test("answer trigger negotiation: simultaneous legacy and capable sockets get in
   const result = Object.freeze({ bee });
   const events: AuditRow[] = [{ seq: 2, ts: 10, kind: "mail.delivered", beeId: "bee", payload: Object.freeze({ turnTrigger: trigger }) }];
   const callers: unknown[] = [];
-  const server = new RpcServer({ socketPath: join(dir, "rpc.sock"), dataDir: dir, log: () => {}, dispatch: (verb, _params, conn) => {
+  const diagnostics: string[] = [];
+  const server = new RpcServer({ socketPath: join(dir, "rpc.sock"), dataDir: dir, log: (line) => diagnostics.push(line), dispatch: (verb, _params, conn) => {
     callers.push(currentRpcCaller());
     if (verb === "watch") { conn.subscribeWatch(1); return { seq: 1, views: [result] }; }
     if (verb === "snapshot") { conn.alignWatch(2); return { seq: 2, views: [result] }; }
@@ -77,7 +78,7 @@ test("answer trigger negotiation: simultaneous legacy and capable sockets get in
     assert.deepEqual(replayed[0], oldFrames[0]);
     for (const capabilities of [null, "turn-trigger.answer.v1", [42], [""], ["x".repeat(129)], Array(65).fill("x")]) {
       const socket = createConnection(join(dir, "rpc.sock")); socket.setEncoding("utf8");
-      const refusal = await new Promise<Record<string, unknown>>((resolve, reject) => {
+      const reply = await new Promise<{ ok: boolean; result: ViewResult }>((resolve, reject) => {
         let lines = "", greeted = false;
         socket.on("error", reject);
         socket.on("data", (chunk: string) => {
@@ -85,13 +86,16 @@ test("answer trigger negotiation: simultaneous legacy and capable sockets get in
           for (;;) {
             const newline = lines.indexOf("\n"); if (newline < 0) return;
             const frame = JSON.parse(lines.slice(0, newline)); lines = lines.slice(newline + 1);
-            if (!greeted) { greeted = true; socket.write(`${JSON.stringify({ protocol: "v2/1", capabilities })}\n`); }
+            if (!greeted) { greeted = true; socket.write(`${JSON.stringify({ protocol: "v2/1", capabilities })}\n${JSON.stringify({ id: 1, verb: "view", params: {} })}\n`); }
             else resolve(frame);
           }
         });
       });
-      assert.equal((refusal.error as { code: string }).code, "invalid_request"); socket.destroy();
+      assert.equal(reply.ok, true);
+      assert.equal(reply.result.bee!.lastTurnTrigger!.kind, "human");
+      socket.destroy();
     }
+    assert.deepEqual(diagnostics.filter((line) => line.startsWith("rpc.hello.capabilities.invalid")), Array(6).fill("rpc.hello.capabilities.invalid legacy_format"));
   } finally {
     clients.forEach((c) => c.close()); await server.close(); rmSync(dir, { recursive: true, force: true });
   }
