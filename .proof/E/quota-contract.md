@@ -1,3 +1,7 @@
+Snapshot of Project contracts/quota-events.md through version 18.
+
+Proactive release hysteresis uses the same normalized projection with requestUnits=2: one opening for the held turn and one additional existing start-cost unit as a guard band. Initial gate and destination admission use requestUnits=1. This affects comparison only and never reserves a second unit. Near-reset horizon scaling remains the existing policy. Recovery IDs include a per-generation protection episode, so cancelling a restored obligation cannot make later openings bypass the gate.
+
 # Quota evidence contract (A)
 
 Provider evidence is not account recovery status. No consumer infers rotation or continuation from text.

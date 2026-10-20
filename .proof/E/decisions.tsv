@@ -15,3 +15,5 @@ ts	phase	decision	why	evidence	result
 2026-10-20T07:34:20Z	audit	Normalize opening activity and target only relevant bees	Charge one opening for idle and synthetic runtimes and avoid global bee mailbox reads	v2/daemon/src/accountsService.ts	integrated
 2026-10-20T07:34:20Z	verification	Reproduce the ceiling boot-log assertion on the unchanged base	Do not attribute an intermittent failure without a base run	.proof/E/ceiling-base.log	reproduced-on-base
 2026-10-20T07:37:10Z	hysteresis	Require one extra existing start-cost unit before releasing held work	A fresh projection near90 should not create and cancel an obligation on every refresh; this creates no reservation	v2/daemon/src/daemon.ts	integrated
+2026-10-20T07:40:49Z	verification	Twenty-eight final-pin daemon cases pass with hysteresis and restart receipts	Fresh switches, healthy negatives, source release and repeated same-generation admission are all observed	.proof/E/verification.log	passed
+2026-10-20T07:40:49Z	review	Claude Opus5.5 cleared code and hysteresis with no blocking findings	Independent audit fixes are checked; final receipt now names6d265285	.proof/E/review.md	passed

@@ -1,28 +1,28 @@
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
 {"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
 {"jsonrpc":"2.0","method":"initialized"}
-{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/E-9lwnxN/hb-v2-daemon-0DbCBc","approvalPolicy":"never","sandbox":"danger-full-access"}}
-{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"9e8d4664-6b42-4b47-84cc-182a034f5c59","cwd":"/var/tmp/E-9lwnxN/hb-v2-daemon-0DbCBc"}}}
-{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"336306bc-a8b4-4ed9-9d05-9f6d3f910e8f"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","turn":{"id":"336306bc-a8b4-4ed9-9d05-9f6d3f910e8f"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","turn":{"id":"336306bc-a8b4-4ed9-9d05-9f6d3f910e8f","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/E-CazyCe/hb-v2-daemon-299wCw","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"258b2223-935c-413e-8201-8fe5c13632f4","cwd":"/var/tmp/E-CazyCe/hb-v2-daemon-299wCw"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"40631702-23c3-44b2-8036-73981b3f56b3"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","turn":{"id":"40631702-23c3-44b2-8036-73981b3f56b3"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","turn":{"id":"40631702-23c3-44b2-8036-73981b3f56b3","status":"completed","error":null}}}
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
 {"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
 {"jsonrpc":"2.0","method":"initialized"}
-{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","cwd":"/var/tmp/E-9lwnxN/hb-v2-daemon-0DbCBc","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
-{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"9e8d4664-6b42-4b47-84cc-182a034f5c59","cwd":"/var/tmp/E-9lwnxN/hb-v2-daemon-0DbCBc"}}}
-{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","input":[{"type":"text","text":"[Hive action] Commit — action c86b4d20-1bbc-4dff-9329-40bf2ece1fdb, attempt 1\n\nCommit the work in your checkout now. Stage only the changes that belong to your current task, write a clear commit message, and create exactly one commit (if there is nothing to commit, report the current HEAD as commitSha).\n\nWhen you are done, report the outcome with the hive CLI. Finishing your turn does NOT complete this action; only the report does:\n  hive action report c86b4d20-1bbc-4dff-9329-40bf2ece1fdb --attempt 1 --token 653e167a8d0ce41b52c7 --succeeded --output commitSha=<commitSha>\n  hive action report c86b4d20-1bbc-4dff-9329-40bf2ece1fdb --attempt 1 --token 653e167a8d0ce41b52c7 --failed --detail \"<why>\"\n  hive action report c86b4d20-1bbc-4dff-9329-40bf2ece1fdb --attempt 1 --token 653e167a8d0ce41b52c7 --ask \"<question for the operator>\"    (holds the queue until answered; the answer arrives as mail)\n  hive action report c86b4d20-1bbc-4dff-9329-40bf2ece1fdb --attempt 1 --token 653e167a8d0ce41b52c7 --progress \"<short status>\"\n\nOutputs:\n- commitSha (required): Full sha of the commit that was created (or the existing HEAD when nothing needed committing).\n- branch: Branch the commit is on.\n\nQueued actions after this one wait for your report; do not start them yourself.","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"c198870b-3af2-480f-854b-c7dcb35cc473"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","turn":{"id":"c198870b-3af2-480f-854b-c7dcb35cc473"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","turn":{"id":"c198870b-3af2-480f-854b-c7dcb35cc473","status":"completed","error":null}}}
-{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","input":[{"type":"text","text":"conversation still continues","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"b4d4c4bd-0530-4343-afbd-99b80543673e"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","turn":{"id":"b4d4c4bd-0530-4343-afbd-99b80543673e"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"9e8d4664-6b42-4b47-84cc-182a034f5c59","turn":{"id":"b4d4c4bd-0530-4343-afbd-99b80543673e","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","cwd":"/var/tmp/E-CazyCe/hb-v2-daemon-299wCw","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"258b2223-935c-413e-8201-8fe5c13632f4","cwd":"/var/tmp/E-CazyCe/hb-v2-daemon-299wCw"}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","input":[{"type":"text","text":"[Hive action] Commit — action 9ffe43d4-23b2-4989-a7dd-05e6122fd7b8, attempt 1\n\nCommit the work in your checkout now. Stage only the changes that belong to your current task, write a clear commit message, and create exactly one commit (if there is nothing to commit, report the current HEAD as commitSha).\n\nWhen you are done, report the outcome with the hive CLI. Finishing your turn does NOT complete this action; only the report does:\n  hive action report 9ffe43d4-23b2-4989-a7dd-05e6122fd7b8 --attempt 1 --token 6b1fad5bf603f9bf2215 --succeeded --output commitSha=<commitSha>\n  hive action report 9ffe43d4-23b2-4989-a7dd-05e6122fd7b8 --attempt 1 --token 6b1fad5bf603f9bf2215 --failed --detail \"<why>\"\n  hive action report 9ffe43d4-23b2-4989-a7dd-05e6122fd7b8 --attempt 1 --token 6b1fad5bf603f9bf2215 --ask \"<question for the operator>\"    (holds the queue until answered; the answer arrives as mail)\n  hive action report 9ffe43d4-23b2-4989-a7dd-05e6122fd7b8 --attempt 1 --token 6b1fad5bf603f9bf2215 --progress \"<short status>\"\n\nOutputs:\n- commitSha (required): Full sha of the commit that was created (or the existing HEAD when nothing needed committing).\n- branch: Branch the commit is on.\n\nQueued actions after this one wait for your report; do not start them yourself.","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"c7a8a8ed-d73b-4118-8511-9c13a0468440"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","turn":{"id":"c7a8a8ed-d73b-4118-8511-9c13a0468440"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","turn":{"id":"c7a8a8ed-d73b-4118-8511-9c13a0468440","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","input":[{"type":"text","text":"conversation still continues","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"9aa0f145-6034-48fc-afb0-5a57db7150fb"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","turn":{"id":"9aa0f145-6034-48fc-afb0-5a57db7150fb"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"258b2223-935c-413e-8201-8fe5c13632f4","turn":{"id":"9aa0f145-6034-48fc-afb0-5a57db7150fb","status":"completed","error":null}}}
