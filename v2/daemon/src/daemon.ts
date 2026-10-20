@@ -6557,25 +6557,33 @@ export class HiveDaemon {
       return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim, recoveryId);
     }
     if (this.mustAccounts().allocationMode() === "active") this.ownerClaimRequired(bee.agent, "swap");
-    const admission = this.mustAccounts().admitNewWork(bee.agent, {
-      operation: "swap",
-      requestKey: this.idempotencyKeyOf(params) ?? `implicit:${bee.id}:${runtime?.generation ?? 0}:${bee.account ?? "unbound"}`,
-      excludeAccountIds: (!recoveryId || store.getQuotaRecovery(recoveryId)?.trigger === "proactive") && bee.account ? new Set([bee.account]) : undefined,
-      allowSourceAccount: !!recoveryId && store.getQuotaRecovery(recoveryId)?.trigger !== "proactive",
-      sourceQuotaRecovery: recoveryId ? (() => {
-        const recovery = store.getQuotaRecovery(recoveryId)!;
-        return { observedAt: recovery.createdAt, window: recovery.quota?.window ?? "other", resetsAt: recovery.quota?.resetsAt ?? recovery.resetHints.other ?? null, usedPercentAtObservation: recovery.sourceWindowUsedPercent, usedPercentObservedAt: recovery.sourceWindowObservedAt };
-      })() : undefined,
-      excludeRecentlyExhausted: !!recoveryId,
-      onlyAccountIds,
-      model: this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
-      context: this.allocationContextParam(params),
-      beeId: bee.id,
-      sourceAccount: bee.account,
-      reconcileAfterGeneration: runtime?.generation ?? 0,
+    return store.transact(() => {
+      let relativeTargets = onlyAccountIds;
+      if (recoveryId && store.getQuotaRecovery(recoveryId)?.trigger === "proactive" && bee.account) {
+        relativeTargets = this.mustAccounts().proactiveTargets(bee.agent, bee.account, this.modelOfBee(bee), bee.id);
+        if (onlyAccountIds) relativeTargets = new Set([...relativeTargets].filter(account => onlyAccountIds.has(account)));
+        if (relativeTargets.size === 0) throw new RpcError("account_wait", "No account has materially better remaining allowance", { retryAt: null });
+      }
+      const admission = this.mustAccounts().admitNewWork(bee.agent, {
+        operation: "swap",
+        requestKey: this.idempotencyKeyOf(params) ?? `implicit:${bee.id}:${runtime?.generation ?? 0}:${bee.account ?? "unbound"}`,
+        excludeAccountIds: (!recoveryId || store.getQuotaRecovery(recoveryId)?.trigger === "proactive") && bee.account ? new Set([bee.account]) : undefined,
+        allowSourceAccount: !!recoveryId && store.getQuotaRecovery(recoveryId)?.trigger !== "proactive",
+        sourceQuotaRecovery: recoveryId ? (() => {
+          const recovery = store.getQuotaRecovery(recoveryId)!;
+          return { observedAt: recovery.createdAt, window: recovery.quota?.window ?? "other", resetsAt: recovery.quota?.resetsAt ?? recovery.resetHints.other ?? null, usedPercentAtObservation: recovery.sourceWindowUsedPercent, usedPercentObservedAt: recovery.sourceWindowObservedAt };
+        })() : undefined,
+        excludeRecentlyExhausted: !!recoveryId,
+        onlyAccountIds: relativeTargets,
+        model: this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
+        context: this.allocationContextParam(params),
+        beeId: bee.id,
+        sourceAccount: bee.account,
+        reconcileAfterGeneration: runtime?.generation ?? 0,
+      });
+      if (!admission.ok) throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
+      return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId);
     });
-    if (!admission.ok) throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
-    return this.performSwap(bee, admission.account, "operator", admission.receipt, admission.reservation?.id, undefined, recoveryId);
   }
 
   private performSwap(
