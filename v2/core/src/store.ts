@@ -2227,15 +2227,15 @@ export class CoreStore {
     return updated;
   }
 
-  observeQuotaRecoveryLimits(id: string): void {
+  observeQuotaRecoveryLimits(id: string, includeFable = false): void {
     this.tx(() => {
       const row = this.getQuotaRecovery(id);
-      if (!row || row.state !== "waiting" || row.sourceWindowObservedAt != null || !row.sourceAccount) return;
+      if (!row || row.state !== "waiting" || row.sourceWindowObservedAt != null && (row.sourceWindowUsedPercent ?? 0) >= 90 || !row.sourceAccount) return;
       const limits = this.getAccountLimits(row.sourceAccount);
       if (!limits?.readable || limits.fetchedAt <= row.createdAt || limits.fetchedAt > this.now()) return;
-      const values = [limits.fiveHourPct, limits.weeklyPct, limits.fableWeeklyPct].filter((value): value is number => value !== null);
+      const values = [limits.fiveHourPct, limits.weeklyPct, ...(includeFable ? [limits.fableWeeklyPct] : [])].filter((value): value is number => value !== null);
       const used = row.quota.window === "weekly" ? limits.weeklyPct : row.quota.window === "five_hour" ? limits.fiveHourPct : values.length ? Math.max(...values) : null;
-      if (used === null) return;
+      if (used === null || limits.fetchedAt <= (row.sourceWindowObservedAt ?? 0) || row.sourceWindowUsedPercent != null && used <= row.sourceWindowUsedPercent) return;
       this.putQuotaRecovery({ ...row, sourceWindowUsedPercent: used, sourceWindowObservedAt: limits.fetchedAt });
     });
   }

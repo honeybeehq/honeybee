@@ -2422,6 +2422,25 @@ export class AccountsService {
     return activities;
   }
 
+  private exhaustedAdmissionRetry(accounts: AccountRow[], model: string | undefined, hint: number | null): number | null {
+    const now = this.now();
+    const times = hint !== null && hint > now ? [hint] : [];
+    for (const account of accounts) {
+      if (!this.readiness(account).ready) continue;
+      const limits = this.store.getAccountLimits(account.id);
+      if (limits?.readable) {
+        for (const [pct, reset] of [[limits.fiveHourPct, limits.fiveHourResetsAt], [limits.weeklyPct, limits.weeklyResetsAt], ...(isFableModel(model) ? [[limits.fableWeeklyPct, limits.fableResetsAt]] : [])]) {
+          if (pct != null && pct >= DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent && reset != null && reset > now) times.push(reset);
+        }
+      }
+      if (account.exhaustedAt != null && !this.restoredQuotaHeadroom(account, model)) {
+        const coolOff = account.exhaustedAt + this.cfg.accounts.exhaustionCoolOffMs;
+        if (coolOff > now) times.push(coolOff);
+      }
+    }
+    return times.length ? Math.min(...times) : null;
+  }
+
   restoredQuotaHeadroom(account: AccountRow, model?: string): boolean {
     const row = this.store.getAccountLimits(account.id);
     const values = row?.readable ? [row.fiveHourPct, row.weeklyPct, ...(isFableModel(model) ? [row.fableWeeklyPct] : [])].filter((value): value is number => value !== null) : [];
@@ -2576,7 +2595,7 @@ export class AccountsService {
           version: 1, mode: "shadow", scope, revision: contextFresh ? context!.revision : null,
           observedAt: now, operation: options.operation, outcome: "wait", account: null,
           reason: `shadow:${decision.kind === "wait" ? decision.reason : "selected"}; legacy:${legacy.code}`,
-          retryAt: decision.kind === "wait" ? decision.retryAt : null, candidates: decision.candidates,
+          retryAt: this.exhaustedAdmissionRetry(accounts, options.model, decision.kind === "wait" ? decision.retryAt : null), candidates: decision.candidates,
         };
         const code = inheritedReadiness && !inheritedReadiness.ready
           ? inheritedReadiness.code
@@ -2597,7 +2616,7 @@ export class AccountsService {
       const receipt: AccountAllocationReceipt = {
         version: 1, mode: "active", scope, revision: contextFresh ? context!.revision : null,
         observedAt: now, operation: options.operation, outcome: "wait", account: null,
-        reason: decision.reason, retryAt: decision.retryAt, candidates: decision.candidates,
+        reason: decision.reason, retryAt: this.exhaustedAdmissionRetry(accounts, options.model, decision.retryAt), candidates: decision.candidates,
       };
       this.log(`account.admission.wait operation=${options.operation} scope=${scope} reason=${decision.reason} retry_at=${decision.retryAt ?? "-"}`);
       return { ok: false, code: "account_wait", message: `Automatic account allocation is waiting: ${decision.reason}`, receipt };
