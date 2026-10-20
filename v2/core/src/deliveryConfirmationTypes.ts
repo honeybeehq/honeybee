@@ -22,16 +22,20 @@ export interface PrepareUnknownDeliveryConfirmationIntent {
   messageId: number;
   generation: number;
 }
-export type DeliveryConfirmationIntent = (PrepareDeliveryConfirmationIntent | (PrepareUnknownDeliveryConfirmationIntent & {
-  wireLine: null;
-  digest: null;
-  host: null;
-  state: "held";
-})) & {
+export type KnownDeliveryConfirmationIntent = PrepareDeliveryConfirmationIntent & {
   since: number;
   state: DeliveryConfirmation["state"];
   reason: DeliveryConfirmationReason;
 };
+export type UnknownDeliveryConfirmationIntent = PrepareUnknownDeliveryConfirmationIntent & {
+  wireLine: null;
+  digest: null;
+  host: null;
+  since: number;
+  state: "held";
+  reason: DeliveryConfirmationReason;
+};
+export type DeliveryConfirmationIntent = KnownDeliveryConfirmationIntent | UnknownDeliveryConfirmationIntent;
 export interface ResolveDeliveryConfirmation {
   action: "resend_anyway" | "drop";
   beeId: string;

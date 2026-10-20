@@ -99,6 +99,29 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         deliveryConfirmationIntents.set(intent.messageId, intent);
         break;
       }
+      case "mail.confirmation_released": {
+        deliveryConfirmationIntents.delete(p.messageId as number);
+        break;
+      }
+      case "mail.replaced": {
+        const original = p.messageId as number, replacement = p.replacementMessageId as number;
+        mailbox.delete(original);
+        deliveryConfirmationIntents.delete(original);
+        mailbox.set(replacement, structuredClone(p.replacement as MessageRow));
+        for (const action of actions.values()) if (action.dispatch?.messageId === original) action.dispatch.messageId = replacement;
+        for (const handoff of beeHandoffs.values()) if (handoff.seedMessageId === original) handoff.seedMessageId = replacement;
+        for (const question of questions.values()) {
+          if (question.deliveryMessageId === original) question.deliveryMessageId = replacement;
+          if (question.dismissalMessageId === original) question.dismissalMessageId = replacement;
+        }
+        for (const task of tasks.values()) if (task.mailboxMessageId === original) task.mailboxMessageId = replacement;
+        for (const operation of threadOperations.values()) if (operation.continuationMessageId === original) operation.continuationMessageId = replacement;
+        for (const recovery of [...authInterruptions.values(), ...quotaRecoveries.values()]) {
+          recovery.messageIds = recovery.messageIds.map(id => id === original ? replacement : id);
+          recovery.continuationMessageIds = recovery.continuationMessageIds.map(id => id === original ? replacement : id);
+        }
+        break;
+      }
       case "mail.confirmation_decision": {
         const decision = structuredClone(p.decision as DeliveryConfirmationDecision);
         deliveryConfirmationDecisions.set(decision.idempotencyKey, decision);
@@ -276,6 +299,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "bee.deleted": {
         for (const [id, intent] of deliveryConfirmationIntents) if (intent.beeId === row.beeId) deliveryConfirmationIntents.delete(id);
         const beeId = p.beeId as string;
+        for (const [key, decision] of deliveryConfirmationDecisions) if (decision.receipt.beeId === beeId) deliveryConfirmationDecisions.delete(key);
         bees.delete(beeId);
         for (const [k, i] of quotaRecoveries) if (i.beeId === beeId) quotaRecoveries.delete(k);
         for (const [k, i] of authInterruptions) if (i.beeId === beeId) authInterruptions.delete(k);

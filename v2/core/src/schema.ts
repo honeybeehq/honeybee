@@ -1134,6 +1134,8 @@ export const MAILBOX_PENDING_METADATA_INDEX_SQL =
 export const MAILBOX_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["urgency", "urgency TEXT NOT NULL DEFAULT 'next' CHECK (urgency IN ('now','next','idle'))"],
   ["sender_kind", "sender_kind TEXT CHECK (sender_kind IN ('human','automation'))"],
+  ["queue_order", "queue_order INTEGER"],
+  ["replaces_message_id", "replaces_message_id INTEGER"],
 ];
 
 /**
