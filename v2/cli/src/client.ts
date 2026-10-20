@@ -141,6 +141,7 @@ export class RpcClient {
   request<T = unknown>(verb: RpcVerb, params: Record<string, unknown> = {}, timeoutMs = 10_000, context?: RpcRequestContext): Promise<T> {
     if (verb.startsWith("rpc.execution.")) return Promise.reject(new RpcError("rpc_execution_fence_unsupported", "Owner does not support archive/send execution fencing; do not fall back"));
     if ((verb === "rpc.effect.resolve" || verb === "rpc.effect.status") && !this.capabilities.includes("rpc-effect-resolve.v1")) return Promise.reject(new RpcError("rpc_effect_resolve_unsupported", "Owner does not support effect resolution"));
+    if (verb === "question.dismiss" && !this.capabilities.includes("question.dismiss.v1")) return Promise.reject(new RpcError("question_dismiss_unsupported", "Question dismissal is unsupported by this Honeybee."));
     if (verb === "question.withdraw" && !this.capabilities.includes("question.withdraw.v1")) return Promise.reject(new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee."));
     if (this.closed) return Promise.reject(new DaemonDownError("(closed)", "connection closed"));
     const id = this.nextId++;

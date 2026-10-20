@@ -230,7 +230,7 @@ export type MirrorDelta = AuditRow;
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_TRACK_AUDIT_KINDS = ["track.put", "track.deleted"] as const;
-export const MIRROR_QUESTION_AUDIT_KINDS = ["question.asked", "question.answered", "question.withdrawn"] as const;
+export const MIRROR_QUESTION_AUDIT_KINDS = ["question.asked", "question.answered", "question.withdrawn", "question.dismissed"] as const;
 export const MIRROR_SEAL_AUDIT_KINDS = ["seal.created"] as const;
 export const MIRROR_ACCOUNT_AUDIT_KINDS = ["account.put", "account.removed"] as const;
 export const MIRROR_ACCOUNT_LIMITS_AUDIT_KINDS = ["account_limits.put", "account_limits.removed", "account.removed"] as const;
@@ -378,6 +378,9 @@ export const MIRROR_QUESTION_KEYS = [
   "deliveryMessageId",
   "withdrawalReason",
   "withdrawnAt",
+  "dismissedAt",
+  "dismissedBy",
+  "dismissalMessageId",
 ] as const;
 export const MIRROR_SEAL_KEYS = ["id", "beeId", "generation", "title", "body", "refs", "createdAt"] as const;
 export const MIRROR_ACCOUNT_KEYS = [
@@ -574,6 +577,13 @@ export const MIRROR_ACTION_QUEUE_KEYS = ["beeId", "paused", "pausedAt", "activeA
 /** Full authoritative replacement view; upsert by operation.id. */
 export const MIRROR_THREAD_OPERATION_AUDIT_KINDS = ["thread_operation.put"] as const;
 export const MIRROR_THREAD_OPERATION_KEYS = ["id", "kind", "sourceBeeId", "sourceProviderSessionId", "successorBeeId", "successorProviderSessionId", "commandId", "continuationMessageId", "phase", "transcriptReady", "compacted", "attempt", "createdAt", "updatedAt", "failure"] as const;
+
+export type QuestionDismissedEvent = {
+  questionId: string;
+  dismissedAt: number;
+  dismissedBy: "rpc";
+  dismissalMessageId: number;
+};
 
 export interface QuestionWithdrawnEvent {
   questionId: string;

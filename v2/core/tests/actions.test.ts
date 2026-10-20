@@ -802,3 +802,20 @@ test("actions.landing-receipts: only succeeded land actions with well-formed sha
     h.cleanup();
   }
 });
+
+test("dismissal leaves the waiting action and downstream lane held without an answer", () => {
+  const h = harness(); const store = h.open();
+  try {
+    const bee = liveBee(store); const { actions } = shipSequence(store, bee.id);
+    const first = actions[0]!; const { messageId } = store.dispatchAgentAction(first.id);
+    store.markDelivered(messageId!, 1);
+    const { attempt, token } = tokenOf(store.getMessage(messageId!)!.body);
+    const asked = store.reportAction({ actionId: first.id, attempt, token, reporter: { beeId: bee.id }, kind: "question", question: { text: "Proceed?" } });
+    const before = mustAction(store, first.id);
+    store.dismissQuestionWithKey(asked.question!.id, "dismiss-action-question");
+    assert.deepEqual(mustAction(store, first.id), before);
+    assert.deepEqual(store.listActionViews({beeId: bee.id})[1]!.hold, {reason: "predecessor_active", actionId: first.id, actionStatus: "waiting"});
+    assert.equal(store.getQuestion(asked.question!.id)!.answer, null);
+    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+  } finally {store.close(); h.cleanup();}
+});

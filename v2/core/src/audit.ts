@@ -420,7 +420,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       }
       case "question.asked": {
         const question = p.question as QuestionRow;
-        questions.set(question.id, { ...question, status: question.status ?? (question.answeredAt == null ? "open" : "answered"), withdrawalReason: question.withdrawalReason ?? null, withdrawnAt: question.withdrawnAt ?? null, options: question.options === null ? null : [...question.options] });
+        questions.set(question.id, { ...question, status: question.status ?? (question.answeredAt == null ? "open" : "answered"), withdrawalReason: question.withdrawalReason ?? null, withdrawnAt: question.withdrawnAt ?? null, dismissedAt: question.dismissedAt ?? null, dismissedBy: question.dismissedBy ?? null, dismissalMessageId: question.dismissalMessageId ?? null, options: question.options === null ? null : [...question.options] });
         break;
       }
       case "question.answered": {
@@ -431,6 +431,15 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         question.answeredAt = p.answeredAt as number;
         question.answeredBy = p.answeredBy as string;
         question.deliveryMessageId = p.deliveryMessageId as number;
+        break;
+      }
+      case "question.dismissed": {
+        const question = questions.get(p.questionId as string);
+        if (!question) throw new Error(`audit replay: unknown question ${String(p.questionId)}`);
+        question.status = "dismissed";
+        question.dismissedAt = p.dismissedAt as number;
+        question.dismissedBy = "rpc";
+        question.dismissalMessageId = p.dismissalMessageId as number;
         break;
       }
       case "question.withdrawn": {

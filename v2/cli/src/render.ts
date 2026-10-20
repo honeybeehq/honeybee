@@ -498,7 +498,7 @@ export function renderCommands(commands: CommandsResult["commands"], stale: bool
 export function questionLine(q: QuestionListResult["questions"][number], stale: boolean): string {
   const prefix = stalePrefix(stale);
   const opts = q.options && q.options.length > 0 ? ` options=${JSON.stringify(q.options)}` : "";
-  const status = q.status === "open" ? yellow("open") : q.status === "withdrawn" ? dim("withdrawn") : green("answered");
+  const status = q.status === "open" ? yellow("open") : q.status === "withdrawn" ? dim("withdrawn") : q.status === "dismissed" ? dim("dismissed") : green("answered");
   const ans = q.status === "answered" ? `  answered: ${q.answer}` : q.status === "withdrawn" ? `  reason: ${q.withdrawalReason}` : "";
   return `${prefix}${magenta(q.id)}  ${dim("bee=")}${q.beeId}  ${status}${opts}  ${q.text}${ans}`;
 }

@@ -25,10 +25,12 @@ for (const mode of ["foreign_uid", "lookup_failed", "load_failed"] as const) tes
     if (mode === "foreign_uid") {
       await assert.rejects(client.request("health"), code("local_peer_uid_mismatch"));
       await assert.rejects(client.request("spawn", {}), code("local_peer_uid_mismatch"));
+      await assert.rejects(client.request("question.dismiss", {questionId: "q", idempotencyKey: "existing-key"}), code("local_peer_uid_mismatch"));
       assert.equal(dispatches, 0);
     } else if (mode === "lookup_failed") {
       assert.deepEqual(await client.request("health"), {ok: true});
       await assert.rejects(client.request("spawn", {}), code("local_peer_credentials_unavailable"));
+      await assert.rejects(client.request("question.dismiss", {questionId: "q", idempotencyKey: "existing-key"}), code("local_peer_credentials_unavailable"));
       assert.equal(dispatches, 1);
     } else {
       assert.deepEqual(await client.request("health"), {ok: true});
