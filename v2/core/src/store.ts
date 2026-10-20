@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
-import { DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
+import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { DeliveryNotHeldError } from "./types.ts";
 import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
@@ -2170,6 +2170,11 @@ export class CoreStore {
     if (!(this.db.prepare("PRAGMA table_info(multiline_delivery)").all() as Row[]).some(column => column.name === "held_since")) this.db.exec("ALTER TABLE multiline_delivery ADD COLUMN held_since INTEGER");
     if (!(this.db.prepare("PRAGMA table_info(multiline_delivery)").all() as Row[]).some(column => column.name === "sender_notice_message_id")) this.db.exec("ALTER TABLE multiline_delivery ADD COLUMN sender_notice_message_id INTEGER");
     this.db.exec("CREATE INDEX IF NOT EXISTS multiline_delivery_hold ON multiline_delivery(bee_id, held_since); CREATE UNIQUE INDEX IF NOT EXISTS multiline_delivery_notice ON multiline_delivery(sender_notice_message_id); CREATE INDEX IF NOT EXISTS multiline_delivery_blocked ON multiline_delivery(message_id) WHERE held_since IS NOT NULL");
+    if (!this.stmt("SELECT 1 FROM meta WHERE key = 'confirmation_legacy_heads'").get()) {
+      const cohorts = JSON.parse(String((this.stmt("SELECT value FROM meta WHERE key = 'confirmation_legacy_generations'").get() as Row).value)) as { bee_id: string; generation: number }[];
+      const watermark = Number((this.stmt("SELECT value FROM meta WHERE key = 'confirmation_legacy_max_message_id'").get() as Row).value);
+      this.stmt("INSERT INTO meta(key,value) VALUES('confirmation_legacy_heads', ?)").run(JSON.stringify(cohorts.map(row => ({ ...row, messageIds: this.legacyConfirmationHeads(row.bee_id, watermark) }))));
+    }
     if (stored < 40) this.redactRpcIdempotencyEnv();
     installRuntimeProcessIdentity(this.db);
     this.db
@@ -2383,7 +2388,7 @@ export class CoreStore {
       if (!row || row.state === "cancelled") return;
       const pending = new Set(this.undeliveredMessages(row.beeId).map(message => message.id));
       if (row.state === "resumed" && !row.continuationMessageIds.some(id => pending.has(id))) return;
-      for (const id of row.continuationMessageIds) if (pending.has(id)) this.cancelMessage(row.beeId, id);
+      for (const id of row.continuationMessageIds) if (pending.has(id)) this.cancelMessageInternal(row.beeId, id, true, "quota.cancel");
       this.putQuotaRecovery({ ...row, state: "cancelled", reason, retryAt: null });
     });
   }
@@ -2434,7 +2439,7 @@ export class CoreStore {
       if (!rt || row.successorGeneration === null || rt.generation < row.successorGeneration || !(rt.state === "idle" || rt.state === "running" && rt.bootEvidence === "synthetic") || this.hasPendingStopCommand(row.beeId, rt.generation)) return null;
       const originals = row.messageIds.map(id => this.getMessage(id));
       const replay = row.progress === "none" && originals.length > 0 && originals.every(message => message?.beeId === row.beeId);
-      const sent = !row.interrupted ? [] : replay ? originals.map(message => message!.replacesMessageId != null ? { message: message! } : this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
+      const sent = !row.interrupted ? [] : replay ? originals.map(message => message!.replacesMessageId != null && message!.deliveredAt === null ? { message: message! } : this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
         sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "quota.resume",
         ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
         ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `quota-resume:${row.id}:${message!.id}` } } : {}),
@@ -2481,18 +2486,24 @@ export class CoreStore {
     }
   }
 
+  private assertDeliveryAuditSize(payload: Record<string, unknown>, reserve = 0): void {
+    const encoded = JSON.stringify(currentRpcCaller() ? { ...payload, rpcCaller: currentRpcCaller() } : payload);
+    if (Buffer.byteLength(encoded, "utf8") + reserve > MAX_DELIVERY_CONFIRMATION_BYTES) throw new CoreError("invalid_request: delivery confirmation audit exceeds 16 MiB");
+  }
+
   private audit(kind: string, beeId: string | null, payload: Record<string, unknown>, at = this.now()): number {
+    if (kind.startsWith("mail.confirmation_") || kind === "mail.replaced") this.assertDeliveryAuditSize(payload);
     const inserted = this.db
       .prepare("INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, ?, ?)")
       .run(at, kind, beeId, JSON.stringify(currentRpcCaller() ? {...payload, rpcCaller: currentRpcCaller()} : payload));
     return Number(inserted.lastInsertRowid);
   }
 
-  private auditMailCanceled(message: MessageRow, reason: MailCancellationReason, canceledAt: number): void {
+  private auditMailCanceled(message: MessageRow, reason: MailCancellationReason, canceledAt: number, cancellation?: { owner: string; confirmation: DeliveryConfirmation }): void {
     this.audit(
       "mail.canceled",
       message.beeId,
-      { messageId: message.id, urgency: message.urgency, reason, canceledAt },
+      { messageId: message.id, urgency: message.urgency, reason, canceledAt, ...(cancellation ? { cancellationOwner: cancellation.owner, deliveryConfirmation: cancellation.confirmation } : {}) },
       canceledAt,
     );
   }
@@ -4134,11 +4145,44 @@ export class CoreStore {
     return Number.isSafeInteger(messageId) && messageId > 0 && (row === undefined || messageId <= Number(row.value));
   }
 
+  private legacyConfirmationHeads(beeId: string, watermark: number): number[] {
+    const candidates = new Set<number>();
+    const addHeads = (ordinary: boolean, subset?: number[]): void => {
+      for (const midTurn of [false, true]) {
+        const row = this.stmt(`SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id <= ?
+          ${ordinary ? "AND NOT EXISTS (SELECT 1 FROM multiline_delivery WHERE message_id = mailbox.id AND held_since IS NOT NULL)" : ""}
+          ${midTurn ? "AND urgency != 'idle'" : ""}
+          ${subset ? "AND id IN (SELECT value FROM json_each(?))" : ""}
+          ORDER BY COALESCE(queue_order,id), id LIMIT 1`).get(beeId, watermark, ...(subset ? [JSON.stringify(subset)] : [])) as Row | undefined;
+        if (row) candidates.add(Number(row.id));
+      }
+    };
+    addHeads(false);
+    addHeads(true);
+    const seed = this.pendingHandoffSeedMessageId(beeId);
+    if (seed !== null && seed <= watermark) candidates.add(seed);
+    const recoveries = this.listQuotaRecoveries(beeId);
+    const quota = recoveries.find(row => row.state === "rotating") ?? recoveries.find(row => row.state === "resumed" && this.stmt("SELECT 1 FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id IN (SELECT value FROM json_each(?)) LIMIT 1").get(beeId, JSON.stringify(row.continuationMessageIds)));
+    if (quota?.continuationMessageIds.length) addHeads(false, quota.continuationMessageIds);
+    return [...candidates].sort((a, b) => a - b);
+  }
+
   legacyUnconfirmedMessageIds(beeId: string, generation: number): number[] {
-    const cohort = this.stmt("SELECT value FROM meta WHERE key = 'confirmation_legacy_generations'").get() as Row | undefined;
-    const rows = cohort ? JSON.parse(String(cohort.value)) as { bee_id: string; generation: number }[] : null;
-    if (rows && !rows.some(row => row.bee_id === beeId && row.generation === generation)) return [];
-    return (this.stmt("SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id <= CAST((SELECT value FROM meta WHERE key = 'confirmation_legacy_max_message_id') AS INTEGER) AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id = mailbox.id) AND NOT EXISTS (SELECT 1 FROM audit WHERE kind = 'mail.confirmation_released' AND CAST(json_extract(payload, '$.messageId') AS INTEGER) = mailbox.id) ORDER BY id").all(beeId) as Row[]).map(row => Number(row.id));
+    const metadata = this.stmt("SELECT value FROM meta WHERE key = 'confirmation_legacy_heads'").get() as Row;
+    const cohorts = JSON.parse(String(metadata.value)) as { bee_id: string; generation: number; messageIds: number[] }[];
+    const ids = cohorts.find(row => row.bee_id === beeId && row.generation === generation)?.messageIds ?? [];
+    if (!ids.length) return [];
+    return (this.stmt("SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id IN (SELECT value FROM json_each(?)) AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id = mailbox.id) AND NOT EXISTS (SELECT 1 FROM audit WHERE kind = 'mail.confirmation_released' AND CAST(json_extract(payload, '$.messageId') AS INTEGER) = mailbox.id) ORDER BY id").all(beeId, JSON.stringify(ids)) as Row[]).map(row => Number(row.id));
+  }
+
+  releaseNeverWrittenDeliveryHold(messageId: number, generation: number, reason: NeverWrittenDeliveryHoldReason): boolean {
+    return this.tx(() => {
+      const row = this.getDeliveryConfirmationIntent(messageId);
+      if (!["host_auth_failed", "message_too_large"].includes(reason) || !row || row.wireLine !== null || row.digest !== null || row.host !== null || row.state !== "held" || row.reason !== reason || row.generation !== generation || this.currentRuntime(row.beeId)?.generation !== generation) return false;
+      this.stmt("DELETE FROM delivery_confirmation_intents WHERE message_id = ?").run(messageId);
+      this.audit("mail.confirmation_released", row.beeId, { messageId, generation, reason, neverWritten: true });
+      return true;
+    });
   }
 
   releaseUnwrittenDeliveryConfirmation(messageId: number, generation: number, digest: string): boolean {
@@ -4157,9 +4201,10 @@ export class CoreStore {
       if (!previous || previous.wireLine === null || previous.digest !== expectedDigest || previous.beeId !== input.beeId || previous.generation !== input.generation || previous.host.pid !== input.host.pid || previous.host.birth !== input.host.birth || previous.host.bootId !== input.host.bootId) throw new IdempotencyConflictError("delivery intent cannot be replanned");
       const runtime = this.currentRuntime(input.beeId);
       if (!runtime || runtime.generation !== input.generation || !LIVE_STATES.includes(runtime.state)) throw new StaleGenerationError("delivery generation is not current and live");
-      if (typeof input.wireLine !== "string" || !input.wireLine || !/^[a-f0-9]{64}$/.test(input.digest) || createHash("sha256").update(input.wireLine).digest("hex") !== input.digest || !processIdentityValue(input.host)) throw new CoreError("invalid_request: invalid delivery confirmation intent");
-      if (input.wireLine === previous.wireLine && input.digest === previous.digest && previous.state === "awaiting_confirmation") return previous;
-      const row: KnownDeliveryConfirmationIntent = { ...previous, wireLine: input.wireLine, digest: input.digest, state: "awaiting_confirmation", reason: "pending_ack", since: this.now() };
+      if (typeof input.wireLine !== "string" || !input.wireLine || Buffer.byteLength(input.wireLine, "utf8") > DELIVERY_CONFIRMATION_MAX_WIRE_BYTES || !/^[a-f0-9]{64}$/.test(input.digest) || createHash("sha256").update(input.wireLine).digest("hex") !== input.digest || !processIdentityValue(input.host) || !deliveryConfirmationIntentFits(input)) throw new CoreError("invalid_request: invalid or oversized delivery confirmation intent (16 MiB audit bound)");
+      if (input.wireLine === previous.wireLine && input.digest === previous.digest && previous.state === "awaiting_confirmation" && stableStringify(input.settlement ?? null) === stableStringify(previous.settlement ?? null)) return previous;
+      const row: KnownDeliveryConfirmationIntent = { ...previous, settlement: input.settlement ? structuredClone(input.settlement) : undefined, wireLine: input.wireLine, digest: input.digest, state: "awaiting_confirmation", reason: "pending_ack", since: this.now() };
+      this.assertDeliveryAuditSize({ row, priorDigest: previous.digest });
       this.stmt("UPDATE delivery_confirmation_intents SET row_json = ? WHERE message_id = ?").run(JSON.stringify(row), row.messageId);
       this.audit("mail.confirmation_prepared", row.beeId, { row, priorDigest: previous.digest });
       return row;
@@ -4187,26 +4232,28 @@ export class CoreStore {
   }
 
   prepareDeliveryConfirmationIntent(input: PrepareDeliveryConfirmationIntent): KnownDeliveryConfirmationIntent {
-    if (!Number.isSafeInteger(input.messageId) || input.messageId <= 0 || !Number.isSafeInteger(input.generation) || input.generation <= 0 || typeof input.wireLine !== "string" || !input.wireLine || !/^[a-f0-9]{64}$/.test(input.digest) || createHash("sha256").update(input.wireLine).digest("hex") !== input.digest || !processIdentityValue(input.host)) throw new CoreError("invalid_request: invalid delivery confirmation intent");
+    if (!Number.isSafeInteger(input.messageId) || input.messageId <= 0 || !Number.isSafeInteger(input.generation) || input.generation <= 0 || typeof input.wireLine !== "string" || !input.wireLine || Buffer.byteLength(input.wireLine, "utf8") > DELIVERY_CONFIRMATION_MAX_WIRE_BYTES || !/^[a-f0-9]{64}$/.test(input.digest) || createHash("sha256").update(input.wireLine).digest("hex") !== input.digest || !processIdentityValue(input.host) || !deliveryConfirmationIntentFits(input)) throw new CoreError("invalid_request: invalid or oversized delivery confirmation intent (16 MiB audit bound)");
     return this.tx(() => {
       this.mustGetBee(input.beeId);
       const previous = this.getDeliveryConfirmationIntent(input.messageId);
       if (previous) {
-        if (previous.beeId !== input.beeId || previous.generation !== input.generation || previous.wireLine !== input.wireLine || previous.digest !== input.digest || previous.host === null || previous.host.pid !== input.host.pid || previous.host.birth !== input.host.birth || previous.host.bootId !== input.host.bootId) throw new IdempotencyConflictError("delivery attempt already bound to different bytes or host");
+        if (previous.beeId !== input.beeId || previous.generation !== input.generation || previous.wireLine !== input.wireLine || previous.digest !== input.digest || previous.host === null || previous.host.pid !== input.host.pid || previous.host.birth !== input.host.birth || previous.host.bootId !== input.host.bootId || stableStringify(previous.settlement ?? null) !== stableStringify(input.settlement ?? null)) throw new IdempotencyConflictError("delivery attempt already bound to different bytes or host");
         return previous;
       }
       const message = this.getMessage(input.messageId);
       if (!message || message.beeId !== input.beeId || message.deliveredAt !== null) throw new CoreError("invalid_request: delivery message unavailable");
       const runtime = this.currentRuntime(input.beeId);
       if (!runtime || runtime.generation !== input.generation || !LIVE_STATES.includes(runtime.state)) throw new StaleGenerationError("delivery generation is not current and live");
-      const intent: KnownDeliveryConfirmationIntent = { ...input, host: { ...input.host }, since: this.now(), state: "awaiting_confirmation", reason: "pending_ack" };
+      const intent: KnownDeliveryConfirmationIntent = { ...structuredClone(input), host: { ...input.host }, since: this.now(), state: "awaiting_confirmation", reason: "pending_ack" };
+      this.assertDeliveryAuditSize({ row: intent });
       this.stmt("INSERT INTO delivery_confirmation_intents(message_id, bee_id, row_json) VALUES(?, ?, ?)").run(input.messageId, input.beeId, JSON.stringify(intent));
       this.audit("mail.confirmation_prepared", input.beeId, { row: intent });
       return intent;
     });
   }
 
-  prepareUnknownDeliveryConfirmationIntent(input: PrepareUnknownDeliveryConfirmationIntent): DeliveryConfirmationIntent {
+  prepareUnknownDeliveryConfirmationIntent(input: PrepareUnknownDeliveryConfirmationIntent, reason: "unknown" | NeverWrittenDeliveryHoldReason = "unknown"): DeliveryConfirmationIntent {
+    if (!["unknown", "host_auth_failed", "message_too_large"].includes(reason)) throw new CoreError("invalid_request: invalid never-written hold reason");
     if (!Number.isSafeInteger(input.messageId) || input.messageId <= 0 || !Number.isSafeInteger(input.generation) || input.generation <= 0) throw new CoreError("invalid_request: invalid unknown delivery confirmation intent");
     return this.tx(() => {
       this.mustGetBee(input.beeId);
@@ -4219,7 +4266,8 @@ export class CoreStore {
       if (!message || message.beeId !== input.beeId || message.deliveredAt !== null) throw new CoreError("invalid_request: delivery message unavailable");
       const runtime = this.currentRuntime(input.beeId);
       if (!runtime || runtime.generation !== input.generation || !LIVE_STATES.includes(runtime.state)) throw new StaleGenerationError("delivery generation is not current and live");
-      const intent: DeliveryConfirmationIntent = { beeId: input.beeId, messageId: input.messageId, generation: input.generation, wireLine: null, digest: null, host: null, since: this.now(), state: "held", reason: "unknown" };
+      const intent: DeliveryConfirmationIntent = { beeId: input.beeId, messageId: input.messageId, generation: input.generation, wireLine: null, digest: null, host: null, since: this.now(), state: "held", reason };
+      this.assertDeliveryAuditSize({ row: intent });
       this.stmt("INSERT INTO delivery_confirmation_intents(message_id, bee_id, row_json) VALUES(?, ?, ?)").run(input.messageId, input.beeId, JSON.stringify(intent));
       this.audit("mail.confirmation_prepared", input.beeId, { row: intent });
       return intent;
@@ -4231,7 +4279,9 @@ export class CoreStore {
     return this.tx(() => {
       const previous = this.getDeliveryConfirmationIntent(messageId);
       if (!previous || previous.state === "held" && previous.reason === reason) return previous;
+      if (previous.wireLine === null && (reason === "host_auth_failed" || reason === "message_too_large")) throw new CoreError("invalid_request: never-written holds require atomic preparation");
       const row: DeliveryConfirmationIntent = { ...previous, state: "held", reason };
+      this.assertDeliveryAuditSize({ row }, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES);
       this.stmt("UPDATE delivery_confirmation_intents SET row_json = ? WHERE message_id = ?").run(JSON.stringify(row), messageId);
       this.audit("mail.confirmation_held", row.beeId, { row });
       return row;
@@ -4252,6 +4302,7 @@ export class CoreStore {
       if (original) {
         const receipt = (JSON.parse(String(original.row_json)) as DeliveryConfirmationDecision).receipt;
         const decision: DeliveryConfirmationDecision = { idempotencyKey: input.idempotencyKey, generation: input.generation, receipt };
+        this.assertDeliveryAuditSize({ decision, deduped: true });
         this.stmt("INSERT INTO delivery_confirmation_decisions VALUES(?, ?, ?, ?, ?)").run(input.idempotencyKey, input.beeId, input.messageId, input.action, JSON.stringify(decision));
         this.audit("mail.confirmation_decision", input.beeId, { decision, deduped: true });
         return { ...receipt, deduped: true };
@@ -4261,6 +4312,8 @@ export class CoreStore {
       const message = this.getMessage(input.messageId), intent = this.getDeliveryConfirmationIntent(input.messageId);
       const confirmation = this.deliveryConfirmations(input.beeId).find(row => row.messageId === input.messageId);
       if (!message || message.beeId !== input.beeId || message.deliveredAt !== null || !intent || confirmation?.state !== "held") throw new DeliveryNotHeldError("delivery_not_held: message is not held");
+      this.assertDeliveryAuditSize({ decision: input, prior: intent }, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES);
+      if (input.action === "resend_anyway") this.assertDeliveryAuditSize({ replacement: message }, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES);
       if (input.action === "drop") this.cancelMessageInternal(input.beeId, input.messageId, true);
       const replacement = input.action === "resend_anyway" ? this.send(input.beeId, message.phoneInput?.originalContent ?? message.body, {
         sender: message.sender, urgency: message.urgency, priority: message.priority, origin: this.mailOrigin(message.id),
@@ -4708,7 +4761,14 @@ export class CoreStore {
     return this.cancelMessageInternal(beeId, messageId, false);
   }
 
-  private cancelMessageInternal(beeId: string, messageId: number, explicitDecision: boolean): { canceled: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" | "confirmation_pending" } {
+  private removeOwnedMessage(message: MessageRow, owner: string, at: number): void {
+    const intent = this.getDeliveryConfirmationIntent(message.id);
+    this.stmt("DELETE FROM mailbox WHERE id = ?").run(message.id);
+    this.multilineUnsupportedActive.delete(message.id);
+    this.auditMailCanceled(message, "requested", at, intent ? { owner, confirmation: publicDeliveryConfirmation(intent) } : undefined);
+  }
+
+  private cancelMessageInternal(beeId: string, messageId: number, explicitDecision: boolean, owner = "mail.delivery.drop"): { canceled: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" | "confirmation_pending" } {
     return this.tx(() => {
       const message = this.getMessage(messageId);
       if (!message) return { canceled: false, reason: "not_found" };
@@ -4716,9 +4776,7 @@ export class CoreStore {
       if (message.deliveredAt != null) return { canceled: false, reason: "delivered" };
       if (!explicitDecision && this.getDeliveryConfirmationIntent(messageId)) return { canceled: false, reason: "confirmation_pending" };
       const canceledAt = this.now();
-      this.stmt("DELETE FROM mailbox WHERE id = ?").run(messageId);
-      this.multilineUnsupportedActive.delete(messageId);
-      this.auditMailCanceled(message, "requested", canceledAt);
+      this.removeOwnedMessage(message, owner, canceledAt);
       // v24: withdrawing a dispatched action instruction fails that attempt (typed, retryable).
       this.applyActionDispatchCanceled(messageId, canceledAt);
       return { canceled: true };
@@ -7355,7 +7413,7 @@ export class CoreStore {
           this.stmt("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(finishedAt, command.id);
           this.audit("command.moot", beeId, { commandId: command.id, verb: command.verb, targetGeneration: command.targetGeneration, currentGeneration: this.currentRuntime(beeId)?.generation ?? 0, finishedAt, reason: "auth_recovery_cancelled" });
         }
-        for (const messageId of row.continuationMessageIds) this.cancelMessage(beeId, messageId);
+        for (const messageId of row.continuationMessageIds) this.cancelMessageInternal(beeId, messageId, true, "auth.cancel");
       }
     });
   }
@@ -7382,7 +7440,7 @@ export class CoreStore {
         const finishedAt = this.now();
         this.stmt("UPDATE commands SET status = 'done', finished_at = ? WHERE id = ?").run(finishedAt, command.id);
         this.audit("command.moot", row.beeId, { commandId: command.id, verb: command.verb, targetGeneration: command.targetGeneration, currentGeneration: this.currentRuntime(row.beeId)?.generation ?? 0, finishedAt, reason });
-        for (const messageId of row.continuationMessageIds) this.cancelMessage(row.beeId, messageId);
+        for (const messageId of row.continuationMessageIds) this.cancelMessageInternal(row.beeId, messageId, true, "auth.release");
       }
       const { deathRecovery, ...legacy } = row;
       const pauseHold = queued && reason === "deadline_expired" && this.getAccount(row.account)?.status === "paused";
@@ -7606,7 +7664,7 @@ export class CoreStore {
       const notice = row.deathRecovery?.claimedAt != null && redeliver
         ? [this.send(row.beeId, "[Hive] Refreshed account material installed; conversation resumed automatically.", { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })] : [];
       const sent = redeliver
-        ? [...notice, ...originals.map((message) => message!.replacesMessageId != null ? { message: message! } : this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
+        ? [...notice, ...originals.map((message) => message!.replacesMessageId != null && message!.deliveredAt === null ? { message: message! } : this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
           sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "auth.resume",
           ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
           ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `auth-resume:${row.id}:${message!.id}` } } : {}),
@@ -8149,7 +8207,7 @@ export class CoreStore {
       if (current.status === "queued" && CLOSING_TASK_ACTIONS.includes(action) && current.mailboxMessageId != null) {
         const carryingMessage = this.getMessage(current.mailboxMessageId);
         const canceled = carryingMessage
-          ? this.cancelMessage(carryingMessage.beeId, current.mailboxMessageId)
+          ? this.cancelMessageInternal(carryingMessage.beeId, current.mailboxMessageId, true, "task.transition")
           : { canceled: false };
         if (canceled.canceled) mailboxMessageId = null;
         else mailboxMessageId = null;
@@ -9908,8 +9966,7 @@ export class CoreStore {
       if (row.executor === "agent" && row.dispatch?.messageId != null && row.dispatch.deliveredAt == null) {
         const message = this.getMessage(row.dispatch.messageId);
         if (message && message.deliveredAt == null) {
-          this.stmt("DELETE FROM mailbox WHERE id = ?").run(message.id);
-          this.auditMailCanceled(message, "requested", at);
+          this.removeOwnedMessage(message, "action.cancel", at);
         }
       }
       this.updateActionRow(actionId, {
@@ -10630,8 +10687,7 @@ export class CoreStore {
       if (row.dispatch?.messageId != null && row.dispatch.deliveredAt == null) {
         const message = this.getMessage(row.dispatch.messageId);
         if (message && message.deliveredAt == null) {
-          this.stmt("DELETE FROM mailbox WHERE id = ?").run(message.id);
-          this.auditMailCanceled(message, "requested", at);
+          this.removeOwnedMessage(message, "action.complete", at);
         }
       }
       const overridden = row.status === "failed" ? row.failure : null;
