@@ -1,0 +1,6 @@
+ts	phase	decision	why	evidence	result
+2026-10-20T06:50:00Z	setup	Use isolated Cell and exact guarded review branch fetch	Preserve deployment hold and account isolation	review/sar-B-quota-continuation ab8d63da	clean base fetched
+2026-10-20T06:54:00Z	baseline	Build native artifacts before real daemon lab	First run had not_ready delivery and runner teardown timeout	/var/tmp/hb-quota-C.bEaTNRex/results/claude-once.failure.json	baseline failure retained
+2026-10-20T06:55:00Z	baseline	Warm up native conversation and assert original delivery generation	First-turn Claude transcript unavailable; immediate Codex quota recorded original delivery on successor	/var/tmp/hb-quota-C.Fd2kyxYY/results	failures reported to parent; no implementation edits
+2026-10-20T06:56:00Z	integration	Use coordinator a9ed38ee	Test deferred recovery and source reset behavior	.proof/C/receipts/interim-summary.json	Claude and Codex continuation plus policy waits passed; reset assertion initially raced reason publication
+2026-10-20T06:57:00Z	verification	Await coordinator reason before asserting wait timing	Durable initial obligation intentionally precedes admission outcome	.proof/C/receipts/reset-summary.json	source reset and restart waiting passed
