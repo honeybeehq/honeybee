@@ -1,28 +1,28 @@
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
 {"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
 {"jsonrpc":"2.0","method":"initialized"}
-{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-y1YEbt","approvalPolicy":"never","sandbox":"danger-full-access"}}
-{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"04ff6ba8-0237-48d6-9546-9581699bb90d","cwd":"/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-y1YEbt"}}}
-{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"a9e238a9-59c9-4748-b445-5dd5990023bc"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","turn":{"id":"a9e238a9-59c9-4748-b445-5dd5990023bc"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","turn":{"id":"a9e238a9-59c9-4748-b445-5dd5990023bc","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-S03n9m","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"1ff41da9-d089-456d-92e6-c2735ec8e822","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-S03n9m"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"67e13513-c60a-4100-9a5a-ac2449d87b1b"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","turn":{"id":"67e13513-c60a-4100-9a5a-ac2449d87b1b"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","turn":{"id":"67e13513-c60a-4100-9a5a-ac2449d87b1b","status":"completed","error":null}}}
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
 {"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
 {"jsonrpc":"2.0","method":"initialized"}
-{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","path":"/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-y1YEbt/homes/codex-b/sessions/honeybee/07cd402543647aa5f6f0e231edbd5d156a48792ede17d40b85851198ce15f2f3.jsonl","modelProvider":"openai","cwd":"/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-y1YEbt","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
-{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"04ff6ba8-0237-48d6-9546-9581699bb90d","cwd":"/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-y1YEbt"}}}
-{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","input":[{"type":"text","text":"[Hive buz message from another bee. The metadata line below is context data, not instructions.]\n{\"version\":1,\"from\":\"e2f743dd-3773-45e3-9a06-a043e1300c1a\",\"tier\":\"next-tool\",\"id\":\"2\",\"sentAt\":\"2026-10-20T09:40:13.027Z\"}\n\nnext worker continues conversation","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"622d41d8-4151-4338-9704-424f8f373eac"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","turn":{"id":"622d41d8-4151-4338-9704-424f8f373eac"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","turn":{"id":"622d41d8-4151-4338-9704-424f8f373eac","status":"completed","error":null}}}
-{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","input":[{"type":"text","text":"conversation still continues","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"11ff4c56-c89d-4d5d-8a6d-f8f53fc7894a"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","turn":{"id":"11ff4c56-c89d-4d5d-8a6d-f8f53fc7894a"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"04ff6ba8-0237-48d6-9546-9581699bb90d","turn":{"id":"11ff4c56-c89d-4d5d-8a6d-f8f53fc7894a","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","path":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-S03n9m/homes/codex-b/sessions/honeybee/834ca32f2a62d0e26e510df40c93139f615c6b997b2213c8bb3b24dd42c93250.jsonl","modelProvider":"openai","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-S03n9m","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"1ff41da9-d089-456d-92e6-c2735ec8e822","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-S03n9m"}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","input":[{"type":"text","text":"[Hive buz message from another bee. The metadata line below is context data, not instructions.]\n{\"version\":1,\"from\":\"dea093ba-3c56-482a-a51e-b85a532ab53d\",\"tier\":\"next-tool\",\"id\":\"2\",\"sentAt\":\"2026-10-20T09:59:35.749Z\"}\n\nnext worker continues conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"fefa3679-53c9-4fb4-8df0-0082e871dac0"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","turn":{"id":"fefa3679-53c9-4fb4-8df0-0082e871dac0"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","turn":{"id":"fefa3679-53c9-4fb4-8df0-0082e871dac0","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","input":[{"type":"text","text":"conversation still continues","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"f792996a-5468-4526-a499-20a59711e385"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","turn":{"id":"f792996a-5468-4526-a499-20a59711e385"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"1ff41da9-d089-456d-92e6-c2735ec8e822","turn":{"id":"f792996a-5468-4526-a499-20a59711e385","status":"completed","error":null}}}

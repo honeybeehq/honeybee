@@ -1,0 +1,15 @@
+✔ cell-retention.0: verbs and capability are published (1.264403ms)
+✔ cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply evicts a clean archived Cell; a message revives it in place (4969.037733ms)
+✔ cell-retention.2: cell.evict on one bee — refused dirty, forced parks, live runtime is typed-refused, idempotent replay (1456.540233ms)
+✔ cell-retention.3: the automatic pass runs on its interval and evicts a clean stopped Cell past the age floor (2408.978426ms)
+✔ cell-retention.4: a clean retained Cell (its bee moved away) is removed by the pass; the moved bee is untouched (2414.667838ms)
+✔ cell-retention.5: ignored env files survive eviction and come back on revive; stashes and side branches hold the Cell (4657.568855ms)
+✔ cell-retention.6: idle Cells lose build output and keep everything else; eviction moves kept files aside and revive brings them back (4931.109588ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21207.975021

@@ -1,56 +1,59 @@
-hived v2 listening on /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS/hived.sock (store /var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS/core.sqlite3)
-{"ts":1792489286110,"op":"tmp.policy beeTmpRoot=off"}
-{"ts":1792489286139,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
-{"ts":1792489286147,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
-{"ts":1792489286165,"op":"rpc.listen socket=/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS/hived.sock"}
-{"ts":1792489286166,"op":"daemon.started pid=752453 store=/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS/core.sqlite3"}
-{"ts":1792489286184,"op":"account.activate account=codex-a home=/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS/homes/codex-a copied=auth.json,.codex/auth.json by=limits_probe"}
-{"ts":1792489286185,"op":"account.add id=codex-a harness=codex home=/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS/homes/codex-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS/vault/codex/codex-a files=auth.json verification=limits"}
-{"ts":1792489286195,"op":"account.add id=codex-b harness=codex home=/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS/homes/codex-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS/vault/codex/codex-b files=auth.json verification=limits"}
-{"ts":1792489286317,"op":"account.credential_health account=codex-a unverified→verified by=limits_probe"}
-{"ts":1792489286317,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
-{"ts":1792489286319,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
-{"ts":1792489286323,"op":"account.activate account=codex-b home=/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS/homes/codex-b copied=auth.json,.codex/auth.json by=limits_probe"}
-{"ts":1792489286448,"op":"account.credential_health account=codex-b unverified→verified by=limits_probe"}
-{"ts":1792489286448,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
-{"ts":1792489286450,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
-{"ts":1792489286465,"op":"spawn.account bee=0f941a5a-888c-40dd-9db3-bac41124b22c account=codex-a reason=\"explicit\""}
-{"ts":1792489286475,"op":"account.activate.gateways account=codex-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
-{"ts":1792489286684,"op":"cmd.spawn id=1 bee=0f941a5a-888c-40dd-9db3-bac41124b22c start gen=1"}
-{"ts":1792489286847,"op":"obs.checkpoint bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 cursor=63"}
-{"ts":1792489286896,"op":"spawn.evidence bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 kind=booted"}
-{"ts":1792489286898,"op":"obs.booted bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 pid=752529"}
-{"ts":1792489286899,"op":"obs.turn_ended bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1"}
-{"ts":1792489286901,"op":"session.recorded bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 id=a1bc5354-3850-4d5a-980f-185ab67a4b95"}
-{"ts":1792489286904,"op":"obs.checkpoint bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 cursor=213"}
-{"ts":1792489286917,"op":"deliver.refused bee=0f941a5a-888c-40dd-9db3-bac41124b22c msg=1 reason=not_ready"}
-{"ts":1792489286939,"op":"obs.turn_started bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 synthetic"}
-{"ts":1792489286941,"op":"deliver.refused bee=0f941a5a-888c-40dd-9db3-bac41124b22c msg=1 reason=not_ready"}
-{"ts":1792489286965,"op":"obs.turn_ended bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1"}
-{"ts":1792489286967,"op":"obs.checkpoint bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 cursor=919"}
-{"ts":1792489286973,"op":"deliver bee=0f941a5a-888c-40dd-9db3-bac41124b22c msg=1 gen=1 urgency=next"}
-{"ts":1792489286981,"op":"account.pause id=codex-b by=operator force=false applied=true"}
-{"ts":1792489287109,"op":"account.limits.transient_failure account=codex-a reason=provider_error kept_fetched_at=1792489286318 error=\"<anonymous_script>:1 fixture unavailable ^ SyntaxError: Unexpected token 'i', \\\"fixture unavailable\\\" is not valid JSON at JSON.parse (<anonymous>) at parseJSONFromBytes (node:internal/deps/undici/undici:4387:19) at successSteps (node:internal/deps/undici/undici:7041:27) at readAllBytes (node:internal/deps/undici/undici:5958:13) at process.processTicksAndRejections (node:internal/process/task_queues:104:5) Node.js v24.18.0\""}
-{"ts":1792489287109,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
-{"ts":1792489287245,"op":"account.limits.transient_failure account=codex-b reason=provider_error kept_fetched_at=1792489286448 error=\"<anonymous_script>:1 fixture unavailable ^ SyntaxError: Unexpected token 'i', \\\"fixture unavailable\\\" is not valid JSON at JSON.parse (<anonymous>) at parseJSONFromBytes (node:internal/deps/undici/undici:4387:19) at successSteps (node:internal/deps/undici/undici:7041:27) at readAllBytes (node:internal/deps/undici/undici:5958:13) at process.processTicksAndRejections (node:internal/process/task_queues:104:5) Node.js v24.18.0\""}
-{"ts":1792489287245,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
-{"ts":1792489287261,"op":"deliver.refused bee=0f941a5a-888c-40dd-9db3-bac41124b22c msg=2 reason=not_ready"}
-{"ts":1792489287287,"op":"obs.turn_started bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 synthetic"}
-{"ts":1792489287288,"op":"obs.turn_ended bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1"}
-{"ts":1792489287291,"op":"flag.set bee=0f941a5a-888c-40dd-9db3-bac41124b22c flag=resource_blocked gen=1 resetsAt=2026-10-20T10:41:27.000Z"}
-{"ts":1792489287298,"op":"quota.probe account=codex-a at=1792489287295 next_at=1792489317295 delay_ms=30000 reason=initial"}
-{"ts":1792489287301,"op":"flag.set bee=0f941a5a-888c-40dd-9db3-bac41124b22c flag=resource_blocked gen=1"}
-{"ts":1792489287303,"op":"flag.set bee=0f941a5a-888c-40dd-9db3-bac41124b22c flag=resource_blocked gen=1"}
-{"ts":1792489287304,"op":"obs.checkpoint bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 cursor=2084"}
-{"ts":1792489287309,"op":"deliver bee=0f941a5a-888c-40dd-9db3-bac41124b22c msg=2 gen=1 urgency=next"}
-{"ts":1792489287331,"op":"deliver.refused bee=0f941a5a-888c-40dd-9db3-bac41124b22c msg=3 reason=not_ready"}
-{"ts":1792489287353,"op":"obs.turn_started bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 synthetic"}
-{"ts":1792489287353,"op":"obs.turn_ended bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1"}
-{"ts":1792489287354,"op":"flag.clear bee=0f941a5a-888c-40dd-9db3-bac41124b22c flag=resource_blocked gen=1"}
-{"ts":1792489287355,"op":"obs.checkpoint bee=0f941a5a-888c-40dd-9db3-bac41124b22c gen=1 cursor=2790"}
-{"ts":1792489287357,"op":"deliver bee=0f941a5a-888c-40dd-9db3-bac41124b22c msg=3 gen=1 urgency=next"}
-{"ts":1792489287364,"op":"daemon.stopping pid=752453"}
-{"ts":1792489287450,"op":"account.limits.transient_failure account=codex-a reason=provider_error kept_fetched_at=1792489286318 error=\"<anonymous_script>:1 fixture unavailable ^ SyntaxError: Unexpected token 'i', \\\"fixture unavailable\\\" is not valid JSON at JSON.parse (<anonymous>) at parseJSONFromBytes (node:internal/deps/undici/undici:4387:19) at successSteps (node:internal/deps/undici/undici:7041:27) at readAllBytes (node:internal/deps/undici/undici:5958:13) at process.processTicksAndRejections (node:internal/process/task_queues:104:5) Node.js v24.18.0\""}
-{"ts":1792489287450,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
-{"ts":1792489287479,"op":"daemon.stopped"}
-{"ts":1792489287479,"op":"daemon.stop_complete pid=752453"}
+hived v2 listening on /var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p/hived.sock (store /var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p/core.sqlite3)
+{"ts":1792490448911,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792490448937,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1792490448945,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792490448968,"op":"rpc.listen socket=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p/hived.sock"}
+{"ts":1792490448969,"op":"daemon.started pid=776789 store=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p/core.sqlite3"}
+{"ts":1792490449011,"op":"account.activate account=codex-a home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p/homes/codex-a copied=auth.json,.codex/auth.json by=limits_probe"}
+{"ts":1792490449013,"op":"account.add id=codex-a harness=codex home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p/homes/codex-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p/vault/codex/codex-a files=auth.json verification=limits"}
+{"ts":1792490449014,"op":"account.add id=codex-b harness=codex home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p/homes/codex-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p/vault/codex/codex-b files=auth.json verification=limits"}
+{"ts":1792490449142,"op":"account.credential_health account=codex-a unverified→verified by=limits_probe"}
+{"ts":1792490449143,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
+{"ts":1792490449144,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
+{"ts":1792490449150,"op":"account.activate account=codex-b home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p/homes/codex-b copied=auth.json,.codex/auth.json by=limits_probe"}
+{"ts":1792490449275,"op":"account.credential_health account=codex-b unverified→verified by=limits_probe"}
+{"ts":1792490449275,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
+{"ts":1792490449277,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
+{"ts":1792490449294,"op":"spawn.account bee=9856b8a1-ea31-43d0-9576-0601c535f59a account=codex-a reason=\"explicit\""}
+{"ts":1792490449303,"op":"account.activate.gateways account=codex-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792490449588,"op":"cmd.spawn id=1 bee=9856b8a1-ea31-43d0-9576-0601c535f59a start gen=1"}
+{"ts":1792490449589,"op":"tick.slow total=282ms step=282ms accounts=0ms maintenance=0ms flush=0ms"}
+{"ts":1792490449730,"op":"obs.checkpoint bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 cursor=63"}
+{"ts":1792490449800,"op":"spawn.evidence bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 kind=booted"}
+{"ts":1792490449803,"op":"obs.booted bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 pid=776833"}
+{"ts":1792490449804,"op":"obs.turn_ended bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1"}
+{"ts":1792490449805,"op":"session.recorded bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 id=4ec002c8-bc1a-4537-9194-685c5cc07181"}
+{"ts":1792490449808,"op":"obs.checkpoint bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 cursor=210"}
+{"ts":1792490449820,"op":"deliver.refused bee=9856b8a1-ea31-43d0-9576-0601c535f59a msg=1 reason=not_ready"}
+{"ts":1792490449842,"op":"obs.turn_started bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 synthetic"}
+{"ts":1792490449844,"op":"deliver.refused bee=9856b8a1-ea31-43d0-9576-0601c535f59a msg=1 reason=not_ready"}
+{"ts":1792490449869,"op":"obs.turn_ended bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1"}
+{"ts":1792490449871,"op":"obs.checkpoint bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 cursor=916"}
+{"ts":1792490449876,"op":"deliver bee=9856b8a1-ea31-43d0-9576-0601c535f59a msg=1 gen=1 urgency=next"}
+{"ts":1792490449884,"op":"account.pause id=codex-b by=operator force=false applied=true"}
+{"ts":1792490450026,"op":"account.limits.transient_failure account=codex-a reason=provider_error kept_fetched_at=1792490449143 error=\"<anonymous_script>:1 fixture unavailable ^ SyntaxError: Unexpected token 'i', \\\"fixture unavailable\\\" is not valid JSON at JSON.parse (<anonymous>) at parseJSONFromBytes (node:internal/deps/undici/undici:4387:19) at successSteps (node:internal/deps/undici/undici:7041:27) at readAllBytes (node:internal/deps/undici/undici:5958:13) at process.processTicksAndRejections (node:internal/process/task_queues:104:5) Node.js v24.18.0\""}
+{"ts":1792490450026,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
+{"ts":1792490450158,"op":"account.limits.transient_failure account=codex-b reason=provider_error kept_fetched_at=1792490449276 error=\"<anonymous_script>:1 fixture unavailable ^ SyntaxError: Unexpected token 'i', \\\"fixture unavailable\\\" is not valid JSON at JSON.parse (<anonymous>) at parseJSONFromBytes (node:internal/deps/undici/undici:4387:19) at successSteps (node:internal/deps/undici/undici:7041:27) at readAllBytes (node:internal/deps/undici/undici:5958:13) at process.processTicksAndRejections (node:internal/process/task_queues:104:5) Node.js v24.18.0\""}
+{"ts":1792490450158,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
+{"ts":1792490450177,"op":"deliver.refused bee=9856b8a1-ea31-43d0-9576-0601c535f59a msg=2 reason=not_ready"}
+{"ts":1792490450203,"op":"obs.turn_started bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 synthetic"}
+{"ts":1792490450204,"op":"obs.turn_ended bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1"}
+{"ts":1792490450207,"op":"flag.set bee=9856b8a1-ea31-43d0-9576-0601c535f59a flag=resource_blocked gen=1 resetsAt=2026-10-20T11:00:50.000Z"}
+{"ts":1792490450213,"op":"quota.probe account=codex-a at=1792490450210 next_at=1792490480210 delay_ms=30000 reason=initial"}
+{"ts":1792490450215,"op":"flag.set bee=9856b8a1-ea31-43d0-9576-0601c535f59a flag=resource_blocked gen=1"}
+{"ts":1792490450217,"op":"flag.set bee=9856b8a1-ea31-43d0-9576-0601c535f59a flag=resource_blocked gen=1"}
+{"ts":1792490450218,"op":"obs.checkpoint bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 cursor=2081"}
+{"ts":1792490450221,"op":"deliver bee=9856b8a1-ea31-43d0-9576-0601c535f59a msg=2 gen=1 urgency=next"}
+{"ts":1792490450253,"op":"deliver.refused bee=9856b8a1-ea31-43d0-9576-0601c535f59a msg=3 reason=not_ready"}
+{"ts":1792490450275,"op":"obs.turn_started bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 synthetic"}
+{"ts":1792490450276,"op":"deliver.refused bee=9856b8a1-ea31-43d0-9576-0601c535f59a msg=3 reason=not_ready"}
+{"ts":1792490450297,"op":"deliver.refused bee=9856b8a1-ea31-43d0-9576-0601c535f59a msg=3 reason=not_ready"}
+{"ts":1792490450320,"op":"obs.turn_ended bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1"}
+{"ts":1792490450322,"op":"flag.clear bee=9856b8a1-ea31-43d0-9576-0601c535f59a flag=resource_blocked gen=1"}
+{"ts":1792490450322,"op":"obs.checkpoint bee=9856b8a1-ea31-43d0-9576-0601c535f59a gen=1 cursor=2787"}
+{"ts":1792490450325,"op":"deliver bee=9856b8a1-ea31-43d0-9576-0601c535f59a msg=3 gen=1 urgency=next"}
+{"ts":1792490450344,"op":"daemon.stopping pid=776789"}
+{"ts":1792490450380,"op":"account.limits.transient_failure account=codex-a reason=provider_error kept_fetched_at=1792490449143 error=\"<anonymous_script>:1 fixture unavailable ^ SyntaxError: Unexpected token 'i', \\\"fixture unavailable\\\" is not valid JSON at JSON.parse (<anonymous>) at parseJSONFromBytes (node:internal/deps/undici/undici:4387:19) at successSteps (node:internal/deps/undici/undici:7041:27) at readAllBytes (node:internal/deps/undici/undici:5958:13) at process.processTicksAndRejections (node:internal/process/task_queues:104:5) Node.js v24.18.0\""}
+{"ts":1792490450380,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
+{"ts":1792490450424,"op":"daemon.stopped"}
+{"ts":1792490450425,"op":"daemon.stop_complete pid=776789"}

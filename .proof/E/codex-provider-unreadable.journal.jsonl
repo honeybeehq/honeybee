@@ -1,24 +1,24 @@
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
 {"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
 {"jsonrpc":"2.0","method":"initialized"}
-{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS","approvalPolicy":"never","sandbox":"danger-full-access"}}
-{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"a1bc5354-3850-4d5a-980f-185ab67a4b95","cwd":"/var/tmp/sar-e-main-lab-RozNB0/hb-v2-daemon-0sq5hS"}}}
-{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"b0eeded1-e2e3-4b0c-815d-ee862fc5433d"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","turn":{"id":"b0eeded1-e2e3-4b0c-815d-ee862fc5433d"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","turn":{"id":"b0eeded1-e2e3-4b0c-815d-ee862fc5433d","status":"completed","error":null}}}
-{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","input":[{"type":"text","text":"@quota:weekly fixture provider limit","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"d4bbcae3-ddfe-48c4-a499-6d1bbf3293b5"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","turn":{"id":"d4bbcae3-ddfe-48c4-a499-6d1bbf3293b5"}}}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"4ec002c8-bc1a-4537-9194-685c5cc07181","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-Wpd48p"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"4b6a5be3-edcc-4e92-aa96-541623e82644"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","turn":{"id":"4b6a5be3-edcc-4e92-aa96-541623e82644"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","turn":{"id":"4b6a5be3-edcc-4e92-aa96-541623e82644","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","input":[{"type":"text","text":"@quota:weekly fixture provider limit","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"e001e3b6-5bfc-4db3-a929-e990276a45f0"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","turn":{"id":"e001e3b6-5bfc-4db3-a929-e990276a45f0"}}}
 {"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":null,"secondary":null,"rateLimitReachedType":null}}}
-{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":{"usedPercent":40,"windowDurationMins":300,"resetsAt":1792489287},"secondary":{"usedPercent":100,"windowDurationMins":10080,"resetsAt":1792492887},"rateLimitReachedType":"rate_limit_reached"}}}
-{"method":"error","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","turnId":"d4bbcae3-ddfe-48c4-a499-6d1bbf3293b5","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"},"willRetry":false}}
-{"method":"turn/completed","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","turn":{"id":"d4bbcae3-ddfe-48c4-a499-6d1bbf3293b5","status":"failed","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"}}}}
-{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","input":[{"type":"text","text":"operator mail must reach a waiting provider-limit bee","text_elements":[]}]}}
-{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"6217e511-19e1-4187-9365-4d8abe1b998a"}}}
-{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","turn":{"id":"6217e511-19e1-4187-9365-4d8abe1b998a"}}}
-{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","delta":"echo"}}
-{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","status":{"type":"idle"}}}
-{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"a1bc5354-3850-4d5a-980f-185ab67a4b95","turn":{"id":"6217e511-19e1-4187-9365-4d8abe1b998a","status":"completed","error":null}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":{"usedPercent":40,"windowDurationMins":300,"resetsAt":1792490450},"secondary":{"usedPercent":100,"windowDurationMins":10080,"resetsAt":1792494050},"rateLimitReachedType":"rate_limit_reached"}}}
+{"method":"error","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","turnId":"e001e3b6-5bfc-4db3-a929-e990276a45f0","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"},"willRetry":false}}
+{"method":"turn/completed","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","turn":{"id":"e001e3b6-5bfc-4db3-a929-e990276a45f0","status":"failed","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"}}}}
+{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","input":[{"type":"text","text":"operator mail must reach a waiting provider-limit bee","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"7ecba877-4af8-4bb9-b923-2ef9b0f3c0c3"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","turn":{"id":"7ecba877-4af8-4bb9-b923-2ef9b0f3c0c3"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"4ec002c8-bc1a-4537-9194-685c5cc07181","turn":{"id":"7ecba877-4af8-4bb9-b923-2ef9b0f3c0c3","status":"completed","error":null}}}
