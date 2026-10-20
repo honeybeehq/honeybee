@@ -7,11 +7,13 @@
  */
 
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { startTurnRunner, type TurnRunnerConfig } from "../src/hsr/turnRunner.js";
+import { __testOnlyRetainedOwnershipObserver } from "../src/hsr/sessionBase.js";
 import { ensureHsrRunDir } from "../src/hsr/runDir.js";
 import type { RunnerEvent, RunnerOpts, RunnerSession } from "../src/hsr/types.js";
 
@@ -375,11 +377,13 @@ test("turn runner: exact turn_end advances past an inherited stdout pipe and ses
       },
       sessionIdFromEvent: undefined,
     };
+    const ownership: Array<(pid: number) => boolean> = [];
     const session = await startTestTurnRunner(config, {
       bee: "turn-bee-inherited-stdout",
       cwd: dir,
       env: { ...process.env } as Record<string, string>,
       runDir: "unused",
+      onChildSpawn: async ({ pid }) => { ownership.push(__testOnlyRetainedOwnershipObserver(pid)); },
     });
     let descendantPids: number[] = [];
     try {
@@ -394,7 +398,30 @@ test("turn runner: exact turn_end advances past an inherited stdout pipe and ses
       assert.equal(descendantPids.length, 2, "the second turn started without waiting for the first inherited pipe EOF");
       assert.equal(descendantPids.every(isPidAlive), true, "tool descendants remain owned but alive between turns");
       await session.stop();
-      await waitFor(() => descendantPids.every((pid) => !isPidAlive(pid)), "inherited-pipe descendants to stop with session");
+      await assert.doesNotReject(() => waitFor(() => descendantPids.every((pid) => !isPidAlive(pid)), "inherited-pipe descendants to stop with session"));
+    } catch (error) {
+      if (error instanceof assert.AssertionError) {
+        let inspect: ((pid: number) => unknown) | undefined;
+        try {
+          inspect = createRequire(import.meta.url)(join(process.cwd(), "dist", "v2", "peercred", `${process.platform}-${process.arch}`, "peercred.node")).inspectProcess;
+        } catch {}
+        const descendants = descendantPids.map((pid) => {
+          let nativeState: "live" | "zombie" | "gone" | null = null;
+          let diagnosticError: "native_unavailable" | "native_invalid" | null = null;
+          try {
+            if (!inspect) diagnosticError = "native_unavailable";
+            else {
+              const value = inspect(pid) as { kind?: unknown; state?: unknown } | null;
+              if (value?.kind === "gone") nativeState = "gone";
+              else if (value?.kind === "present" && (value.state === "live" || value.state === "zombie")) nativeState = value.state;
+              else diagnosticError = "native_invalid";
+            }
+          } catch { diagnosticError = "native_unavailable"; }
+          return { retainedOwnership: ownership.some((observed) => observed(pid)) ? "yes" : "no", nativeState, diagnosticError };
+        });
+        console.error(JSON.stringify({ scenario: "inherited-stdout-descendants", descendants }));
+      }
+      throw error;
     } finally {
       await session.stop().catch(() => undefined);
       for (const pid of descendantPids) {
