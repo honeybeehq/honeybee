@@ -13,7 +13,7 @@ export class QuotaRecovery {
   }
 
   private fingerprint(row: QuotaRecoveryRow): string {
-    return JSON.stringify([row.eventIds, this.store.getBee(row.beeId)?.args, this.store.getBee(row.beeId)?.tags, this.store.listAccounts({ harness: row.placement.agent }).map(account => [account.id, account.status, account.exhaustedAt, account.leasedFrom, this.store.getAccountLimits(account.id)?.fetchedAt])]);
+    return JSON.stringify([row.eventIds, this.store.getBee(row.beeId)?.args, this.store.getBee(row.beeId)?.tags, this.store.listAccounts({ harness: row.placement.agent }).map(account => [account.id, account.status, account.exhaustedAt, account.leasedFrom, (() => { const limits = this.store.getAccountLimits(account.id); return limits ? [limits.readable, limits.fiveHourPct, limits.weeklyPct, limits.fableWeeklyPct, limits.fiveHourResetsAt, limits.weeklyResetsAt, limits.fableResetsAt] : null; })()])]);
   }
 
   async stop(): Promise<void> {
