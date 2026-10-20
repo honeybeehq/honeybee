@@ -6528,7 +6528,7 @@ export class HiveDaemon {
       allowSourceAccount: !!recoveryId,
       sourceQuotaRecovery: recoveryId ? (() => {
         const recovery = store.getQuotaRecovery(recoveryId)!;
-        return { observedAt: recovery.createdAt, window: recovery.quota.window, resetsAt: recovery.quota.resetsAt };
+        return { observedAt: recovery.createdAt, window: recovery.quota.window, resetsAt: recovery.quota.resetsAt, usedPercentAtObservation: recovery.sourceWindowUsedPercent };
       })() : undefined,
       excludeRecentlyExhausted: !!recoveryId,
       onlyAccountIds,
@@ -6781,7 +6781,7 @@ export class HiveDaemon {
     }
   }
 
-  private sourceQuotaRecoveryParam(params: Record<string, unknown>): { observedAt: number; window: "five_hour" | "weekly" | "other"; resetsAt: number | null } | undefined {
+  private sourceQuotaRecoveryParam(params: Record<string, unknown>): { observedAt: number; window: "five_hour" | "weekly" | "other"; resetsAt: number | null; usedPercentAtObservation: number | null } | undefined {
     const value = params.sourceQuotaRecovery;
     if (value === undefined) return undefined;
     if (!value || typeof value !== "object") throw new RpcError("invalid_request", "invalid sourceQuotaRecovery");
@@ -6789,7 +6789,9 @@ export class HiveDaemon {
     if (typeof source.observedAt !== "number" || !Number.isFinite(source.observedAt) || source.observedAt <= 0 || source.observedAt > Date.now()
       || source.window !== "five_hour" && source.window !== "weekly" && source.window !== "other"
       || source.resetsAt !== null && (typeof source.resetsAt !== "number" || !Number.isFinite(source.resetsAt))) throw new RpcError("invalid_request", "invalid sourceQuotaRecovery");
-    return { observedAt: source.observedAt, window: source.window, resetsAt: source.resetsAt };
+    const used = source.usedPercentAtObservation;
+    if (used !== undefined && used !== null && (typeof used !== "number" || !Number.isFinite(used) || used < 0)) throw new RpcError("invalid_request", "invalid source quota usage");
+    return { observedAt: source.observedAt, window: source.window, resetsAt: source.resetsAt, usedPercentAtObservation: typeof used === "number" ? used : null };
   }
 
   private quotaRetryAt(beeId: string, hint: number | null = null): number | null {

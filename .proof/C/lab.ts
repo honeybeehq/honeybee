@@ -32,7 +32,7 @@ for (const name of selected.length ? selected : scenarios) {
   const usage = createServer((request, response) => {
     const source = request.headers.authorization === "Bearer fixture-a";
     const used = waiting ? source && !unknown && Date.now() >= resetAt ? 5 : 100 : 5;
-    const resets = unknown ? null : new Date(source ? resetAt : resetAt + 3_600_000).toISOString();
+    const resets = unknown ? null : new Date(source && (!waiting || Date.now() < resetAt) ? resetAt : resetAt + 3_600_000).toISOString();
     requests.push({ at: Date.now(), path: request.url, account: source ? "a" : "b", used, resets });
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify(request.url?.includes("profile") ? { account: { uuid: "fixture" }, organization: { uuid: "fixture-org", organization_type: "claude_max" } } : { five_hour: { utilization: used, resets_at: resets }, seven_day: { utilization: used, resets_at: resets } }));
