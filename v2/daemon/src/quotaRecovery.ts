@@ -2,6 +2,8 @@ import type { CoreStore, QuotaRecoveryRow } from "../../core/src/index.ts";
 
 export class QuotaRecovery {
   private readonly store: CoreStore;
+  private stopped = false;
+  private readonly pending = new Set<Promise<void>>();
   private readonly recover?: (row: QuotaRecoveryRow) => Promise<void>;
   private readonly attempts = new Map<string, { at: number; fingerprint: string; pending: boolean }>();
 
@@ -11,10 +13,16 @@ export class QuotaRecovery {
   }
 
   private fingerprint(row: QuotaRecoveryRow): string {
-    return JSON.stringify([row.eventIds, this.store.getBee(row.beeId)?.args, this.store.getBee(row.beeId)?.tags, this.store.listAccounts({ harness: row.placement.agent }).map(account => [account.id, account.status, account.exhaustedAt, account.leasedFrom, this.store.getAccountLimits(account.id)?.fetchedAt])]);
+    return JSON.stringify([row.eventIds, this.store.getBee(row.beeId)?.args, this.store.getBee(row.beeId)?.tags, this.store.listAccounts({ harness: row.placement.agent }).map(account => [account.id, account.status, account.exhaustedAt, account.leasedFrom, (() => { const limits = this.store.getAccountLimits(account.id); return limits ? [limits.readable, limits.fiveHourPct, limits.weeklyPct, limits.fableWeeklyPct, limits.fiveHourResetsAt, limits.weeklyResetsAt, limits.fableResetsAt] : null; })()])]);
+  }
+
+  async stop(): Promise<void> {
+    this.stopped = true;
+    await Promise.allSettled(this.pending);
   }
 
   reconcile(): void {
+    if (this.stopped) return;
     for (const row of this.store.listQuotaRecoveries()) {
       if (row.state !== "waiting" && row.state !== "rotating") continue;
       if (!this.store.quotaRecoveryValid(row)) {
@@ -30,12 +38,14 @@ export class QuotaRecovery {
         if (previous?.pending || previous && now < due && (previous.fingerprint === fingerprint || now - previous.at < 1000)) continue;
         const attempt = { at: now, fingerprint, pending: true };
         this.attempts.set(row.id, attempt);
-        void this.recover(row).finally(() => {
+        const pending = this.recover(row).catch(() => undefined).finally(() => {
           attempt.at = Date.now();
           attempt.pending = false;
           const current = this.store.getQuotaRecovery(row.id);
           if (current) attempt.fingerprint = this.fingerprint(current);
+          this.pending.delete(pending);
         });
+        this.pending.add(pending);
       }
     }
     for (const id of this.attempts.keys()) if (this.store.getQuotaRecovery(id)?.state !== "waiting") this.attempts.delete(id);
