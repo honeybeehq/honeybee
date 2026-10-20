@@ -1927,6 +1927,7 @@ export interface AccountObservationMetadata {
 
 export interface QuotaRecoveryRow {
   sourceWindowUsedPercent?: number | null;
+  sourceWindowObservedAt?: number | null;
   id: string;
   beeId: string;
   sourceGeneration: number;
