@@ -4,7 +4,7 @@ registerHooks({ load(url, context, next) {
   const result = next(url, context);
   if (url.endsWith("/test-agent/fake-codex.mjs")) {
     const source = String(result.source);
-    result.source = 'import { readFileSync as cReadFileSync } from "node:fs";\n' + source.replace('    case "initialize":', `    case "account/rateLimits/read":
+    result.source = source.replace('import { appendFileSync,', 'import { readFileSync as cReadFileSync, appendFileSync,').replace('    case "initialize":', `    case "account/rateLimits/read":
       if (process.env.C_CODEX_UNKNOWN_USAGE_FILE) {
         const fixture = JSON.parse(cReadFileSync(process.env.C_CODEX_UNKNOWN_USAGE_FILE, "utf8"));
         const account = process.env.CODEX_HOME?.split("/").at(-1);
@@ -19,6 +19,7 @@ registerHooks({ load(url, context, next) {
       return;
     case "initialize":`);
     if (!source.includes('    case "initialize":')) throw new Error("Codex fixture probe patch no longer matches");
+    if (!source.includes('import { appendFileSync,')) throw new Error("Codex fixture import patch no longer matches");
     if (process.env.C_CODEX_UNKNOWN_USAGE_FILE) {
       const before = String(result.source);
       result.source = before.replace('if (quotaMode && quotaMode !== "text_fallback") {', 'if (quotaMode && quotaMode !== "text_fallback" && !process.env.C_CODEX_UNKNOWN_USAGE_FILE) {');
