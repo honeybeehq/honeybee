@@ -2542,7 +2542,7 @@ export class AccountsService {
     const activity = this.localActivities(accounts.map(account => account.id), now);
     const source = accounts.find(account => account.id === sourceAccount);
     if (!source) return { accountIds: new Set(), uncertain: true };
-    const failed = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).findLast(row => row.state === "cancelled" && ["relative_refresh_unavailable", "relative_swap_refused"].includes(row.reason ?? "")) : undefined;
+    const failed = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "cancelled" && ["relative_refresh_unavailable", "relative_swap_refused"].includes(row.reason ?? "")).sort((a, b) => b.updatedAt - a.updatedAt)[0] : undefined;
     if (failed && now - failed.updatedAt < (failed.reason === "relative_refresh_unavailable" ? 15 * 60_000 : 30_000)
       && !accounts.some(account => account.id !== sourceAccount && this.store.getAccountLimits(account.id)?.readable && (this.store.getAccountLimits(account.id)?.fetchedAt ?? 0) > failed.updatedAt)) return { accountIds: new Set(), uncertain: false };
     const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3) : [];
