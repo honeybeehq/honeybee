@@ -5,3 +5,6 @@ ts	phase	decision	why	evidence	result
 2026-10-20T07:11:20Z	rebase	Rebase E onto C c77413a6 and retain B continuation gating	Latest B already fixes synthetic readiness; provider continuations must pass the new gate	v2/daemon/src/daemon.ts	integrated
 2026-10-20T07:11:20Z	lab	Fourteen real-daemon cases passed on the updated C base	Fresh switches, stale and opt-out behavior, running reserve, waiting and owner trigger all exercised for both harnesses	.proof/E/summary.json	passed
 2026-10-20T07:11:20Z	verification	Extend lab with projected reserve, action dispatch and a full retry interval	A projected threshold and repeated recovery attempts need direct proof	.proof/E/lab.ts	running
+2026-10-20T07:17:46Z	rebase	Rebase onto C540eb8d2 and preserve actual unknown-limit probe baselines	Provider source restoration changed; proactive source uses its known window reset	7339398bb6dc56bd807616c505a9d23cc52c6f4f	integrated
+2026-10-20T07:17:46Z	lab	Round synthetic reset deadlines to native seconds	Codex reports epoch seconds; the earlier fixture changed usage milliseconds later and missed its first retry	.proof/E/lab-before-clock-fix.log	narrow-rerun
+2026-10-20T07:18:10Z	verification	Twenty real-daemon scenarios passed and all required gates are green	Fresh admission, source reset and no-churn receipts now cover both harnesses	.proof/E/verification.log	passed

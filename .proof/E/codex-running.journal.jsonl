@@ -1,0 +1,17 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/E-YppNCQ/hb-v2-daemon-bK9peL","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"05eba562-218b-473c-8c72-fdf767477d99","cwd":"/var/tmp/E-YppNCQ/hb-v2-daemon-bK9peL"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"05eba562-218b-473c-8c72-fdf767477d99","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"d1398af8-21a8-42b4-85a8-58e75152e234"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"05eba562-218b-473c-8c72-fdf767477d99","turn":{"id":"d1398af8-21a8-42b4-85a8-58e75152e234"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"05eba562-218b-473c-8c72-fdf767477d99","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"05eba562-218b-473c-8c72-fdf767477d99","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"05eba562-218b-473c-8c72-fdf767477d99","turn":{"id":"d1398af8-21a8-42b4-85a8-58e75152e234","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"05eba562-218b-473c-8c72-fdf767477d99","input":[{"type":"text","text":"@slow:1500 accepted work","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"468af1aa-9a77-48db-9083-8c93276911b7"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"05eba562-218b-473c-8c72-fdf767477d99","turn":{"id":"468af1aa-9a77-48db-9083-8c93276911b7"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"05eba562-218b-473c-8c72-fdf767477d99","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"05eba562-218b-473c-8c72-fdf767477d99","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"05eba562-218b-473c-8c72-fdf767477d99","turn":{"id":"468af1aa-9a77-48db-9083-8c93276911b7","status":"completed","error":null}}}

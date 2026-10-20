@@ -6,16 +6,19 @@ import { makeDaemonDir, startDaemon, waitFor } from "../../v2/daemon/tests/helpe
 
 const proof = resolve(".proof/E");
 const repo = resolve(".");
-const results: unknown[] = [];
-for (const harness of ["claude", "codex"]) for (const scenario of ["human", "worker", "action", "projected", "stale", "running", "both", "optout", "active"]) {
+const selected = new Set(process.argv.slice(2));
+const results: any[] = selected.size && existsSync(join(proof, "summary.json")) ? JSON.parse(readFileSync(join(proof, "summary.json"), "utf8")).filter((row: any) => !selected.has(row.name)) : [];
+for (const harness of ["claude", "codex"]) for (const scenario of ["human", "worker", "action", "projected", "stale", "running", "both", "source-reset", "optout", "active"]) {
   const name = `${harness}-${scenario}`;
+  if (selected.size && !selected.has(name)) continue;
   const usage = new Map([[`${harness}-a`, 5], [`${harness}-b`, 5]]);
-  const reset = Date.now() + 3_600_000;
+  const reset = Math.ceil((Date.now() + (scenario === "source-reset" ? 5000 : 3_600_000)) / 1000) * 1000;
   const server = createServer((req, res) => {
     const id = new URL(req.url!, "http://127.0.0.1").searchParams.get("id") ?? `${harness}-${req.headers.authorization?.endsWith("b") ? "b" : "a"}`;
-    const pct = usage.get(id) ?? 5;
+    const pct = scenario === "source-reset" && id.endsWith("-a") && Date.now() >= reset ? 5 : usage.get(id) ?? 5;
+    const observedReset = Date.now() >= reset ? reset + 3_600_000 : reset;
     res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ five_hour: { utilization: pct, resets_at: new Date(reset).toISOString() }, seven_day: { utilization: 5, resets_at: new Date(reset + 86_400_000).toISOString() }, rateLimits: { primary: { usedPercent: pct, windowDurationMins: 300, resetsAt: Math.floor(reset / 1000) }, secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: Math.floor((reset + 86_400_000) / 1000) } } }));
+    res.end(JSON.stringify({ five_hour: { utilization: pct, resets_at: new Date(observedReset).toISOString() }, seven_day: { utilization: 5, resets_at: new Date(reset + 86_400_000).toISOString() }, rateLimits: { primary: { usedPercent: pct, windowDurationMins: 300, resetsAt: Math.floor(observedReset / 1000) }, secondary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: Math.floor((reset + 86_400_000) / 1000) } } }));
   });
   await new Promise<void>(done => server.listen(0, "127.0.0.1", done));
   const url = `http://127.0.0.1:${(server.address() as any).port}`;
@@ -59,7 +62,7 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
       await waitFor(async () => (await request("view", { beeId })).view.runtimeState === "running", `${name} running`);
     }
     usage.set(`${harness}-a`, scenario === "projected" ? 85 : 91);
-    if (scenario === "both") usage.set(`${harness}-b`, 91);
+    if (scenario === "both" || scenario === "source-reset") usage.set(`${harness}-b`, 91);
     await request("account.limits");
     if (scenario === "stale") await new Promise(done => setTimeout(done, 800));
     if (scenario === "running") {
@@ -105,7 +108,7 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
           assert.equal(recoveries[0].interrupted, false);
           assert.equal(recoveries[0].continuationKind, "none");
           assert.deepEqual(recoveries[0].continuationMessageIds, []);
-          assert.equal((await request("view", { beeId })).bee.account, `${harness}-b`);
+          assert.equal((await request("view", { beeId })).bee.account, `${harness}-${scenario === "source-reset" ? "a" : "b"}`);
           if (action) assert.equal((await request("action.get", { actionId: action.actions[0].id })).action.status, "running");
           const again = await send("conversation still continues");
           assert.equal((await delivered(again.messageId)).deliveredGeneration, 2);
