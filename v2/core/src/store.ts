@@ -2157,7 +2157,9 @@ export class CoreStore {
     this.db.exec(PHONE_PROVENANCE_SQL);
     this.db.exec(DELIVERY_CONFIRMATION_SQL);
     this.stmt("INSERT OR IGNORE INTO meta(key,value) SELECT 'confirmation_legacy_max_message_id', CAST(COALESCE(MAX(id),0) AS TEXT) FROM mailbox").run();
-    this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_pending ON mailbox(bee_id, COALESCE(queue_order,id), id, urgency, enqueued_at, delivered_at, queue_order) WHERE delivered_at IS NULL");
+    if (!(this.stmt("SELECT name FROM pragma_index_info('mailbox_fifo_pending')").all() as Row[]).some(column => column.name === "replaces_message_id")) this.db.exec("DROP INDEX IF EXISTS mailbox_fifo_pending");
+    this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_pending ON mailbox(bee_id, COALESCE(queue_order,id), id, urgency, enqueued_at, delivered_at, queue_order, replaces_message_id) WHERE delivered_at IS NULL");
+    this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_delivered ON mailbox(bee_id, COALESCE(queue_order,id), id) WHERE delivered_at IS NOT NULL");
     this.db.exec("CREATE INDEX IF NOT EXISTS audit_mail_replacement_message ON audit(CAST(json_extract(payload, '$.replacementMessageId') AS INTEGER), seq DESC) WHERE kind = 'mail.replaced'");
     this.db.exec("CREATE INDEX IF NOT EXISTS audit_mail_replaced_message ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER), seq DESC) WHERE kind = 'mail.replaced'");
     this.db.exec(MULTILINE_DELIVERY_SQL);
@@ -4438,16 +4440,13 @@ export class CoreStore {
     return rows.map(row => this.mapPhoneMessage(row));
   }
 
-  /**
-   * All messages for a bee, delivered or not, per-bee FIFO order. One
-   * statement over two disjoint, exhaustive partitions of the bee's rows:
-   * each arm rides its own partial index in id order (partial-prefix
-   * equality plus the implicit trailing rowid), so SQLite merges the arms
-   * without a sort where a plain bee_id read would scan the whole mailbox.
-   * Both placeholders MUST bind the same bee.
-   */
   listMessages(beeId: string): MessageRow[] {
-    const rows = this.stmt("SELECT * FROM mailbox WHERE bee_id = ? ORDER BY COALESCE(queue_order,id), id").all(beeId) as Row[];
+    const rows = this.stmt(
+      `SELECT *, COALESCE(queue_order,id) AS fifo_order FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL
+         UNION ALL
+         SELECT *, COALESCE(queue_order,id) AS fifo_order FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL
+         ORDER BY fifo_order, id`,
+    ).all(beeId, beeId) as Row[];
     return rows.map(row => this.mapPhoneMessage(row));
   }
 

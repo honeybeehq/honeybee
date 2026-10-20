@@ -171,6 +171,9 @@ assert.equal(store.getMessage(fifoReceipt.replacementMessageId).replacesMessageI
 assert.equal(store.mailHistory().messages.find(row => row.messageId === fifoFirst.id).lifecycle.state, "replaced");
 assert.equal(store.readDaemonWork()[0].pending.find(row => row.id === fifoReceipt.replacementMessageId).queueOrder, fifoFirst.id);
 assert.equal(store.readDaemonStepInputs().work[0].pending.find(row => row.id === fifoReceipt.replacementMessageId).queueOrder, fifoFirst.id);
+store.markDelivered(fifoReceipt.replacementMessageId, 2);
+const mixedFifo = store.listMessages(beeId);
+assert.ok(mixedFifo.findIndex(row => row.id === fifoReceipt.replacementMessageId) < mixedFifo.findIndex(row => row.id === fifoSecond.id));
 const question = store.askQuestion(beeId, { text: "answer?" });
 const answer = store.answerQuestion(question.id, "yes");
 store.prepareUnknownDeliveryConfirmationIntent({ beeId, messageId: answer.send.message.id, generation: 2 });
