@@ -2765,7 +2765,10 @@ export class HiveDaemon {
       excludeAccountIds: this.admissionAccountIdsParam(params, "excludeAccountIds"),
       onlyAccountIds: this.admissionAccountIdsParam(params, "onlyAccountIds"),
       reservationId,
-      reservationMetadata: { authority: { version: 1, owner: authority, target, model: model ?? null } },
+      reservationMetadata: {
+        authority: { version: 1, owner: authority, target, model: model ?? null },
+        ...(params.allowSourceAccount === true && params.sourceQuotaRecovery !== undefined ? { sourceQuotaRecovery: this.sourceQuotaRecoveryParam(params) } : {}),
+      },
     });
     if (!admission.ok) {
       throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
@@ -2783,6 +2786,7 @@ export class HiveDaemon {
       units: row.units,
       model: model ?? null,
       sourceAccount: row.sourceAccount,
+      ...(row.receipt.sourceQuotaRecovery !== undefined ? { sourceQuotaRecovery: this.sourceQuotaRecoveryParam({ sourceQuotaRecovery: row.receipt.sourceQuotaRecovery }) } : {}),
       createdAt: row.createdAt,
       expiresAt: row.expiresAt,
       authority: authority!,
@@ -2878,7 +2882,9 @@ export class HiveDaemon {
     return { version: 1, id: claim.id, scope: claim.scope, account: claim.account,
       operation: claim.operation as AccountAdmissionClaim["operation"], units: 1,
       model: claim.model as string | null,
-      sourceAccount: claim.sourceAccount as string | null, createdAt: claim.createdAt as number,
+      sourceAccount: claim.sourceAccount as string | null,
+      ...(claim.sourceQuotaRecovery !== undefined ? { sourceQuotaRecovery: this.sourceQuotaRecoveryParam({ sourceQuotaRecovery: claim.sourceQuotaRecovery }) } : {}),
+      createdAt: claim.createdAt as number,
       expiresAt: claim.expiresAt as number, authority, target, allocation: claim.allocation as AccountAllocationReceipt };
   }
 
@@ -2890,6 +2896,7 @@ export class HiveDaemon {
     generation: number,
     sourceAccount: string | null,
     model?: string,
+    allowSourceAccount = false,
   ): AccountRow {
     const configured = this.configuredAllocationIdentity();
     if (claim.operation !== operation || claim.scope !== this.mustAccounts().allocationScope(harness)
@@ -2897,8 +2904,12 @@ export class HiveDaemon {
       || claim.authority.node !== configured.owner.node || claim.authority.epoch !== configured.owner.epoch
       || claim.target.node !== configured.node
       || claim.sourceAccount !== sourceAccount || claim.model !== (model ?? null)
-      || (operation === "swap" && claim.account === sourceAccount) || claim.expiresAt <= Date.now()) {
+      || claim.expiresAt <= Date.now()) {
       throw new RpcError("account_claim_refused", `allocation claim ${claim.id} is expired or does not match this ${operation}`);
+    }
+    if (operation === "swap" && claim.account === sourceAccount && !allowSourceAccount) {
+      this.refusedClaims.set(claim.id, claim);
+      throw new RpcError("account_claim_refused", `allocation claim ${claim.id} cannot restore the source without a matching provider quota recovery`, { claimId: claim.id, account: claim.account });
     }
     const account = this.resolveAccountSelector(claim.account, harness);
     if (account.harness !== harness) throw new RpcError("harness_mismatch", `account ${account.id} is a ${account.harness} account; expected ${harness}`);
@@ -2963,6 +2974,7 @@ export class HiveDaemon {
           receipt: {
             allocation: claim.allocation as unknown as Record<string, unknown>,
             authority: { version: 1, owner: claim.authority, target: claim.target, model: claim.model },
+            ...(claim.sourceQuotaRecovery ? { sourceQuotaRecovery: claim.sourceQuotaRecovery } : {}),
           },
         });
       }
@@ -2985,6 +2997,7 @@ export class HiveDaemon {
         receipt: {
           allocation: claim.allocation as unknown as Record<string, unknown>,
           authority: { version: 1, owner: claim.authority, target: claim.target, model: claim.model },
+          ...(claim.sourceQuotaRecovery ? { sourceQuotaRecovery: claim.sourceQuotaRecovery } : {}),
         },
       }, beeId);
     } catch (error) {
@@ -6520,6 +6533,15 @@ export class HiveDaemon {
       const target = this.accountFromClaim(
         claim, "swap", bee.agent, bee.id, runtime?.generation ?? 0, bee.account,
         this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
+        recoveryId !== undefined && (() => {
+          const recovery = store.getQuotaRecovery(recoveryId);
+          if (!recovery) return false;
+          return recovery.quota !== null && (!("trigger" in recovery) || recovery.trigger === "provider_limit")
+            && recovery.sourceAccount === bee.account && recovery.sourceGeneration === (runtime?.generation ?? 0)
+            && claim.sourceQuotaRecovery?.observedAt === recovery.createdAt
+            && claim.sourceQuotaRecovery.window === recovery.quota.window
+            && claim.sourceQuotaRecovery.resetsAt === recovery.quota.resetsAt;
+        })(),
       );
       return this.performSwap(bee, target, "operator", claim.allocation, undefined, claim, recoveryId);
     }

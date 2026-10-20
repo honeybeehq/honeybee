@@ -1,0 +1,15 @@
+{
+  "base": "6ed40d71967a24a7791400e41e0ffc83f1dc456a",
+  "implementation": "6a9c83de2a72b7dc368be342dd64e4527f5eab8c",
+  "gates": "check/v2check/build PASS;128/128 existing; allocation/checkpoint9/9",
+  "rpcLab": "Two real Honeybee processes ownerH1!=executionH2, source reset100->5 then exactly one native continuation gen2; acquire/apply retry dedup;4knownrefusals released,0outstandingunconfirmed; loopback only",
+  "review": "Opus7154fe9e noHighMedium through6a9c83de",
+  "fullApiaryIntegration": {
+    "GReceiptCommit": "95c26fb7453a12f96a3bdb853aba5c081fffbb34",
+    "honeybeeCombinedTree": "46f455661fb980ea3c94ebbf93728f93d713527b",
+    "apiary": "0b9224bddc6ce3422199333826c5ff9230267939",
+    "sourceRestore": "r6 PASS same-source owner H1 != exec H2, one confirmed reservation, one replay continuation, no human send or refusal rounds",
+    "proactive": "r7 correct target, source excluded, no source witness; original final journal assertion lab bug preserved; no dishonest forged claim tested",
+    "source": "https://github.com/honeybeehq/apiary.git review/sar-G-quota-lab"
+  }
+}

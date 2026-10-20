@@ -1,0 +1,386 @@
+{
+  "ownerSnapshot": {
+    "seq": 8,
+    "views": [],
+    "templates": [],
+    "tracks": [],
+    "questions": [],
+    "seals": [],
+    "accounts": [
+      {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "claude-source",
+        "harness": "claude",
+        "homePath": "/var/tmp/hb-quota-C.C4.BI2Q51LM/tmp/hb-v2-daemon-Ec9I36/homes/claude-source",
+        "label": "source",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792487341845,
+        "updatedAt": 1792487341845,
+        "credentialHealth": "verified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      }
+    ],
+    "accountLimits": [
+      {
+        "account": "claude-source",
+        "fetchedAt": 1792487351906,
+        "readable": true,
+        "unreadableReason": null,
+        "error": null,
+        "plan": null,
+        "fiveHourPct": 5,
+        "fiveHourResetsAt": 1792490951825,
+        "fiveHourMinutes": 300,
+        "weeklyPct": 5,
+        "weeklyResetsAt": 1792490951825,
+        "weeklyMinutes": 10080,
+        "fableWeeklyPct": null,
+        "fableResetsAt": null,
+        "fableMinutes": null,
+        "displayWindows": [],
+        "rateLimitResetCredits": null
+      }
+    ],
+    "accountAdmissions": [
+      {
+        "id": "289635ad-aa08-4ea2-88b4-2d6185e0fa3e",
+        "requestKey": "account-admission:swap:C4-acquire-source",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": null,
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487351910,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 14.117647058823529,
+                "maxProjectedPercent": 12.99981111111111,
+                "retryAt": 1792490951825
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "35e50d9d-d4a6-426b-97b0-75c7e25415f9",
+              "expectedGeneration": 1
+            },
+            "model": null
+          }
+        },
+        "createdAt": 1792487351913,
+        "expiresAt": 1792488251910,
+        "confirmedAt": 1792487351934,
+        "releasedAt": null
+      }
+    ],
+    "quotaRecoveries": [],
+    "tasks": [],
+    "taskSupply": [],
+    "loginFlows": [],
+    "cells": [],
+    "beeMoves": [],
+    "beeHandoffs": [],
+    "transcriptSegments": [],
+    "threadOperations": [],
+    "actions": [],
+    "actionQueues": []
+  },
+  "executionSnapshot": {
+    "seq": 70,
+    "views": [
+      {
+        "bee": {
+          "id": "35e50d9d-d4a6-426b-97b0-75c7e25415f9",
+          "name": "C4-source",
+          "agent": "claude",
+          "substrate": "hsr",
+          "cwd": "/var/tmp/hb-quota-C.C4.BI2Q51LM/tmp/hb-v2-daemon-W7aoB6",
+          "title": null,
+          "tags": [],
+          "sessionLogPath": "/var/tmp/hb-quota-C.C4.BI2Q51LM/tmp/hb-v2-daemon-W7aoB6/session-logs/35e50d9d-d4a6-426b-97b0-75c7e25415f9.jsonl",
+          "lifecycle": "active",
+          "createdAt": 1792487343285,
+          "archivedAt": null,
+          "lastOutputAt": 1792487352343,
+          "providerSessionId": "91f73095-820f-4bec-8f30-ca8cd4360670",
+          "env": {
+            "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+            "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+            "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+            "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+            "ANTHROPIC_API_KEY": "<redacted>",
+            "CLAUDE_CONFIG_DIR": "/var/tmp/hb-quota-C.C4.BI2Q51LM/tmp/hb-v2-daemon-W7aoB6/homes/claude-source"
+          },
+          "importedFrom": null,
+          "spawnFailures": 0,
+          "args": null,
+          "parentId": null,
+          "parentExternal": false,
+          "forkedFrom": null,
+          "forkSeed": null,
+          "account": "claude-source",
+          "handle": "CL.0000",
+          "human_ref": null,
+          "issuing_namespace": null,
+          "placementVersion": 0,
+          "activeMoveId": null,
+          "cellId": null,
+          "activeHandoffId": null,
+          "lastTurnTrigger": {
+            "kind": "human",
+            "from": "operator",
+            "messageId": 3,
+            "generation": 2,
+            "startedAt": 1792487352279,
+            "humanAt": 1792487352279,
+            "endedAt": 1792487352343,
+            "endedQuiet": false
+          },
+          "lastHumanOutputAt": 1792487352343
+        },
+        "runtime": {
+          "beeId": "35e50d9d-d4a6-426b-97b0-75c7e25415f9",
+          "generation": 2,
+          "state": "idle",
+          "exitCause": null,
+          "pid": 2494207,
+          "pidStartedAt": 1792487352185,
+          "bootEvidence": "real",
+          "startedAt": 1792487352005,
+          "updatedAt": 1792487352343
+        },
+        "view": {
+          "beeId": "35e50d9d-d4a6-426b-97b0-75c7e25415f9",
+          "exists": true,
+          "lifecycle": "active",
+          "generation": 2,
+          "runtimeState": "idle",
+          "exitCause": null,
+          "working": false,
+          "waitingForYou": true,
+          "lastOutputAt": 1792487352343,
+          "reachable": true,
+          "blocked": false,
+          "flags": []
+        },
+        "move": null,
+        "cell": null,
+        "handoff": null
+      }
+    ],
+    "templates": [],
+    "tracks": [],
+    "questions": [],
+    "seals": [],
+    "accounts": [
+      {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "claude-source",
+        "harness": "claude",
+        "homePath": "/var/tmp/hb-quota-C.C4.BI2Q51LM/tmp/hb-v2-daemon-W7aoB6/homes/claude-source",
+        "label": "source",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792487341859,
+        "updatedAt": 1792487352345,
+        "credentialHealth": "verified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      }
+    ],
+    "accountLimits": [
+      {
+        "account": "claude-source",
+        "fetchedAt": 1792487351841,
+        "readable": true,
+        "unreadableReason": null,
+        "error": null,
+        "plan": null,
+        "fiveHourPct": 5,
+        "fiveHourResetsAt": 1792490951825,
+        "fiveHourMinutes": 300,
+        "weeklyPct": 5,
+        "weeklyResetsAt": 1792490951825,
+        "weeklyMinutes": 10080,
+        "fableWeeklyPct": null,
+        "fableResetsAt": null,
+        "fableMinutes": null,
+        "displayWindows": [],
+        "rateLimitResetCredits": null
+      }
+    ],
+    "accountAdmissions": [
+      {
+        "id": "289635ad-aa08-4ea2-88b4-2d6185e0fa3e",
+        "requestKey": "shared-account-claim:289635ad-aa08-4ea2-88b4-2d6185e0fa3e",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": "35e50d9d-d4a6-426b-97b0-75c7e25415f9",
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487351910,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 14.117647058823529,
+                "maxProjectedPercent": 12.99981111111111,
+                "retryAt": 1792490951825
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "35e50d9d-d4a6-426b-97b0-75c7e25415f9",
+              "expectedGeneration": 1
+            },
+            "model": null
+          }
+        },
+        "createdAt": 1792487351931,
+        "expiresAt": 1792488251910,
+        "confirmedAt": null,
+        "releasedAt": null
+      }
+    ],
+    "quotaRecoveries": [
+      {
+        "id": "quota:35e50d9d-d4a6-426b-97b0-75c7e25415f9:1:2",
+        "beeId": "35e50d9d-d4a6-426b-97b0-75c7e25415f9",
+        "sourceGeneration": 1,
+        "sourceAccount": "claude-source",
+        "sourceWindowUsedPercent": 100,
+        "sourceWindowObservedAt": 1792487343796,
+        "observationCursor": 822,
+        "sourceId": "b93fa27d-d80c-4f7e-aeff-4a18914987dc",
+        "accountLabel": "source",
+        "eventIds": [
+          "quota:35e50d9d-d4a6-426b-97b0-75c7e25415f9:1:822",
+          "quota:35e50d9d-d4a6-426b-97b0-75c7e25415f9:1:1018"
+        ],
+        "messageIds": [
+          2
+        ],
+        "progress": "none",
+        "interrupted": true,
+        "controlFence": 0,
+        "placement": {
+          "agent": "claude",
+          "cwd": "/var/tmp/hb-quota-C.C4.BI2Q51LM/tmp/hb-v2-daemon-W7aoB6",
+          "cellId": null
+        },
+        "quota": {
+          "harness": "claude",
+          "window": "weekly",
+          "resetsAt": 1792487351825,
+          "providerCategory": "errored_result_limit"
+        },
+        "resetHints": {
+          "weekly": 1792487351825
+        },
+        "state": "resumed",
+        "attempt": 1,
+        "targetAccount": "claude-source",
+        "successorGeneration": 2,
+        "claimId": "289635ad-aa08-4ea2-88b4-2d6185e0fa3e",
+        "reservationId": null,
+        "commandId": 2,
+        "continuationKind": "replay",
+        "continuationMessageIds": [
+          3
+        ],
+        "continuationHistory": [],
+        "retryAt": null,
+        "reason": null,
+        "createdAt": 1792487343730,
+        "updatedAt": 1792487352347
+      }
+    ],
+    "tasks": [],
+    "taskSupply": [],
+    "loginFlows": [],
+    "cells": [],
+    "beeMoves": [],
+    "beeHandoffs": [],
+    "transcriptSegments": [
+      {
+        "id": "seg:35e50d9d-d4a6-426b-97b0-75c7e25415f9:0",
+        "beeId": "35e50d9d-d4a6-426b-97b0-75c7e25415f9",
+        "ordinal": 0,
+        "harness": "claude",
+        "providerSessionId": "91f73095-820f-4bec-8f30-ca8cd4360670",
+        "fromGeneration": 1,
+        "toGeneration": null,
+        "path": "/var/tmp/hb-quota-C.C4.BI2Q51LM/tmp/hb-v2-daemon-W7aoB6/session-logs/35e50d9d-d4a6-426b-97b0-75c7e25415f9.jsonl",
+        "handoffId": null,
+        "createdAt": 1792487343285,
+        "closedAt": null
+      }
+    ],
+    "threadOperations": [],
+    "actions": [],
+    "actionQueues": []
+  }
+}

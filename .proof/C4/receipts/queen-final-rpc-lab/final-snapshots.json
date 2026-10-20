@@ -1,0 +1,806 @@
+{
+  "ownerSnapshot": {
+    "seq": 16,
+    "views": [],
+    "templates": [],
+    "tracks": [],
+    "questions": [],
+    "seals": [],
+    "accounts": [
+      {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "claude-source",
+        "harness": "claude",
+        "homePath": "/var/tmp/hb-quota-C.C4.xn8o3GD0/tmp/hb-v2-daemon-pLA2rZ/homes/claude-source",
+        "label": "source",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792487606821,
+        "updatedAt": 1792487606821,
+        "credentialHealth": "verified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      }
+    ],
+    "accountLimits": [
+      {
+        "account": "claude-source",
+        "fetchedAt": 1792487616871,
+        "readable": true,
+        "unreadableReason": null,
+        "error": null,
+        "plan": null,
+        "fiveHourPct": 5,
+        "fiveHourResetsAt": 1792491216801,
+        "fiveHourMinutes": 300,
+        "weeklyPct": 5,
+        "weeklyResetsAt": 1792491216801,
+        "weeklyMinutes": 10080,
+        "fableWeeklyPct": null,
+        "fableResetsAt": null,
+        "fableMinutes": null,
+        "displayWindows": [],
+        "rateLimitResetCredits": null
+      }
+    ],
+    "accountAdmissions": [
+      {
+        "id": "52d3f7b7-1954-4feb-8eae-ea444b619d37",
+        "requestKey": "account-admission:swap:C4-acquire-source",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": null,
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487616874,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 14.117647058823529,
+                "maxProjectedPercent": 12.999837777777778,
+                "retryAt": 1792491216801
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+              "expectedGeneration": 1
+            },
+            "model": null
+          },
+          "sourceQuotaRecovery": {
+            "observedAt": 1792487608736,
+            "window": "weekly",
+            "resetsAt": 1792487616801,
+            "usedPercentAtObservation": null,
+            "usedPercentObservedAt": null
+          }
+        },
+        "createdAt": 1792487616876,
+        "expiresAt": 1792488516874,
+        "confirmedAt": 1792487616912,
+        "releasedAt": null
+      },
+      {
+        "id": "738f0de3-6893-4d96-8540-961e055462ef",
+        "requestKey": "account-admission:swap:C4-ordinary-source-acquire",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": null,
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487616879,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 21.176470588235293,
+                "maxProjectedPercent": 16.99974,
+                "retryAt": 1792491216801
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+              "expectedGeneration": 1
+            },
+            "model": null
+          },
+          "sourceQuotaRecovery": {
+            "observedAt": 1792487608736,
+            "window": "weekly",
+            "resetsAt": 1792487616801,
+            "usedPercentAtObservation": null,
+            "usedPercentObservedAt": null
+          }
+        },
+        "createdAt": 1792487616880,
+        "expiresAt": 1792488516879,
+        "confirmedAt": null,
+        "releasedAt": 1792487616889
+      },
+      {
+        "id": "bb314e70-b634-45f6-9892-10ed5447e5e9",
+        "requestKey": "account-admission:swap:C4-no-witness-acquire",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": null,
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487616890,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 21.176470588235293,
+                "maxProjectedPercent": 16.999703333333333,
+                "retryAt": 1792491216801
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+              "expectedGeneration": 1
+            },
+            "model": null
+          },
+          "sourceQuotaRecovery": {
+            "observedAt": 1792487608736,
+            "window": "weekly",
+            "resetsAt": 1792487616801,
+            "usedPercentAtObservation": null,
+            "usedPercentObservedAt": null
+          }
+        },
+        "createdAt": 1792487616891,
+        "expiresAt": 1792488516890,
+        "confirmedAt": null,
+        "releasedAt": 1792487616895
+      },
+      {
+        "id": "125d30b5-65fd-44ec-a771-e40c911d8ea3",
+        "requestKey": "account-admission:swap:C4-wrong-observation-acquire",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": null,
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487616896,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 21.176470588235293,
+                "maxProjectedPercent": 16.999683333333333,
+                "retryAt": 1792491216801
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+              "expectedGeneration": 1
+            },
+            "model": null
+          },
+          "sourceQuotaRecovery": {
+            "observedAt": 1792487608736,
+            "window": "weekly",
+            "resetsAt": 1792487616801,
+            "usedPercentAtObservation": null,
+            "usedPercentObservedAt": null
+          }
+        },
+        "createdAt": 1792487616896,
+        "expiresAt": 1792488516896,
+        "confirmedAt": null,
+        "releasedAt": 1792487616900
+      },
+      {
+        "id": "cd3bb104-bba4-454a-84af-11c919e7426d",
+        "requestKey": "account-admission:swap:C4-wrong-epoch-acquire",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": null,
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487616901,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 21.176470588235293,
+                "maxProjectedPercent": 16.99966666666667,
+                "retryAt": 1792491216801
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+              "expectedGeneration": 1
+            },
+            "model": null
+          },
+          "sourceQuotaRecovery": {
+            "observedAt": 1792487608736,
+            "window": "weekly",
+            "resetsAt": 1792487616801,
+            "usedPercentAtObservation": null,
+            "usedPercentObservedAt": null
+          }
+        },
+        "createdAt": 1792487616901,
+        "expiresAt": 1792488516901,
+        "confirmedAt": null,
+        "releasedAt": 1792487616903
+      }
+    ],
+    "quotaRecoveries": [],
+    "tasks": [],
+    "taskSupply": [],
+    "loginFlows": [],
+    "cells": [],
+    "beeMoves": [],
+    "beeHandoffs": [],
+    "transcriptSegments": [],
+    "threadOperations": [],
+    "actions": [],
+    "actionQueues": []
+  },
+  "executionSnapshot": {
+    "seq": 76,
+    "views": [
+      {
+        "bee": {
+          "id": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+          "name": "C4-source",
+          "agent": "claude",
+          "substrate": "hsr",
+          "cwd": "/var/tmp/hb-quota-C.C4.xn8o3GD0/tmp/hb-v2-daemon-Rslrcv",
+          "title": null,
+          "tags": [],
+          "sessionLogPath": "/var/tmp/hb-quota-C.C4.xn8o3GD0/tmp/hb-v2-daemon-Rslrcv/session-logs/5768fef6-16e8-48d0-976f-34931c67fbe4.jsonl",
+          "lifecycle": "active",
+          "createdAt": 1792487608266,
+          "archivedAt": null,
+          "lastOutputAt": 1792487617301,
+          "providerSessionId": "26b79fed-55ac-4cde-9e8c-57332f10302b",
+          "env": {
+            "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+            "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+            "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+            "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+            "ANTHROPIC_API_KEY": "<redacted>",
+            "CLAUDE_CONFIG_DIR": "/var/tmp/hb-quota-C.C4.xn8o3GD0/tmp/hb-v2-daemon-Rslrcv/homes/claude-source"
+          },
+          "importedFrom": null,
+          "spawnFailures": 0,
+          "args": null,
+          "parentId": null,
+          "parentExternal": false,
+          "forkedFrom": null,
+          "forkSeed": null,
+          "account": "claude-source",
+          "handle": "CL.0000",
+          "human_ref": null,
+          "issuing_namespace": null,
+          "placementVersion": 0,
+          "activeMoveId": null,
+          "cellId": null,
+          "activeHandoffId": null,
+          "lastTurnTrigger": {
+            "kind": "human",
+            "from": "operator",
+            "messageId": 3,
+            "generation": 2,
+            "startedAt": 1792487617256,
+            "humanAt": 1792487617256,
+            "endedAt": 1792487617301,
+            "endedQuiet": false
+          },
+          "lastHumanOutputAt": 1792487617301
+        },
+        "runtime": {
+          "beeId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+          "generation": 2,
+          "state": "idle",
+          "exitCause": null,
+          "pid": 2503596,
+          "pidStartedAt": 1792487617153,
+          "bootEvidence": "real",
+          "startedAt": 1792487616977,
+          "updatedAt": 1792487617301
+        },
+        "view": {
+          "beeId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+          "exists": true,
+          "lifecycle": "active",
+          "generation": 2,
+          "runtimeState": "idle",
+          "exitCause": null,
+          "working": false,
+          "waitingForYou": true,
+          "lastOutputAt": 1792487617301,
+          "reachable": true,
+          "blocked": false,
+          "flags": []
+        },
+        "move": null,
+        "cell": null,
+        "handoff": null
+      }
+    ],
+    "templates": [],
+    "tracks": [],
+    "questions": [],
+    "seals": [],
+    "accounts": [
+      {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "claude-source",
+        "harness": "claude",
+        "homePath": "/var/tmp/hb-quota-C.C4.xn8o3GD0/tmp/hb-v2-daemon-Rslrcv/homes/claude-source",
+        "label": "source",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792487606835,
+        "updatedAt": 1792487617303,
+        "credentialHealth": "verified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      }
+    ],
+    "accountLimits": [
+      {
+        "account": "claude-source",
+        "fetchedAt": 1792487616812,
+        "readable": true,
+        "unreadableReason": null,
+        "error": null,
+        "plan": null,
+        "fiveHourPct": 5,
+        "fiveHourResetsAt": 1792491216801,
+        "fiveHourMinutes": 300,
+        "weeklyPct": 5,
+        "weeklyResetsAt": 1792491216801,
+        "weeklyMinutes": 10080,
+        "fableWeeklyPct": null,
+        "fableResetsAt": null,
+        "fableMinutes": null,
+        "displayWindows": [],
+        "rateLimitResetCredits": null
+      }
+    ],
+    "accountAdmissions": [
+      {
+        "id": "738f0de3-6893-4d96-8540-961e055462ef",
+        "requestKey": "shared-account-claim:738f0de3-6893-4d96-8540-961e055462ef",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": null,
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487616879,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 21.176470588235293,
+                "maxProjectedPercent": 16.99974,
+                "retryAt": 1792491216801
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+              "expectedGeneration": 1
+            },
+            "model": null
+          },
+          "sourceQuotaRecovery": {
+            "observedAt": 1792487608736,
+            "window": "weekly",
+            "resetsAt": 1792487616801,
+            "usedPercentAtObservation": null,
+            "usedPercentObservedAt": null
+          }
+        },
+        "createdAt": 1792487616886,
+        "expiresAt": 1792488516879,
+        "confirmedAt": null,
+        "releasedAt": 1792487616887
+      },
+      {
+        "id": "bb314e70-b634-45f6-9892-10ed5447e5e9",
+        "requestKey": "shared-account-claim:bb314e70-b634-45f6-9892-10ed5447e5e9",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": null,
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487616890,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 21.176470588235293,
+                "maxProjectedPercent": 16.999703333333333,
+                "retryAt": 1792491216801
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+              "expectedGeneration": 1
+            },
+            "model": null
+          }
+        },
+        "createdAt": 1792487616893,
+        "expiresAt": 1792488516890,
+        "confirmedAt": null,
+        "releasedAt": 1792487616894
+      },
+      {
+        "id": "125d30b5-65fd-44ec-a771-e40c911d8ea3",
+        "requestKey": "shared-account-claim:125d30b5-65fd-44ec-a771-e40c911d8ea3",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": null,
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487616896,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 21.176470588235293,
+                "maxProjectedPercent": 16.999683333333333,
+                "retryAt": 1792491216801
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+              "expectedGeneration": 1
+            },
+            "model": null
+          },
+          "sourceQuotaRecovery": {
+            "observedAt": 1792487608735,
+            "window": "weekly",
+            "resetsAt": 1792487616801,
+            "usedPercentAtObservation": null,
+            "usedPercentObservedAt": null
+          }
+        },
+        "createdAt": 1792487616898,
+        "expiresAt": 1792488516896,
+        "confirmedAt": null,
+        "releasedAt": 1792487616899
+      },
+      {
+        "id": "52d3f7b7-1954-4feb-8eae-ea444b619d37",
+        "requestKey": "shared-account-claim:52d3f7b7-1954-4feb-8eae-ea444b619d37",
+        "scope": "claude:provider-accounts",
+        "account": "claude-source",
+        "sourceAccount": "claude-source",
+        "operation": "swap",
+        "units": 1,
+        "beeId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+        "reconcileAfterGeneration": 1,
+        "receipt": {
+          "allocation": {
+            "version": 1,
+            "mode": "active",
+            "scope": "claude:provider-accounts",
+            "revision": "C4-fleet",
+            "observedAt": 1792487616874,
+            "operation": "swap",
+            "outcome": "selected",
+            "account": "claude-source",
+            "reason": "weighted_fair",
+            "retryAt": null,
+            "candidates": [
+              {
+                "accountId": "claude-source",
+                "status": "eligible",
+                "rate": 0.14166666666666666,
+                "fairFinish": 14.117647058823529,
+                "maxProjectedPercent": 12.999837777777778,
+                "retryAt": 1792491216801
+              }
+            ]
+          },
+          "authority": {
+            "version": 1,
+            "owner": {
+              "node": "owner-H1",
+              "epoch": "C4-epoch"
+            },
+            "target": {
+              "node": "execution-H2",
+              "workId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+              "expectedGeneration": 1
+            },
+            "model": null
+          },
+          "sourceQuotaRecovery": {
+            "observedAt": 1792487608736,
+            "window": "weekly",
+            "resetsAt": 1792487616801,
+            "usedPercentAtObservation": null,
+            "usedPercentObservedAt": null
+          }
+        },
+        "createdAt": 1792487616910,
+        "expiresAt": 1792488516874,
+        "confirmedAt": null,
+        "releasedAt": null
+      }
+    ],
+    "quotaRecoveries": [
+      {
+        "id": "quota:5768fef6-16e8-48d0-976f-34931c67fbe4:1:2",
+        "beeId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+        "sourceGeneration": 1,
+        "sourceAccount": "claude-source",
+        "sourceWindowUsedPercent": 100,
+        "sourceWindowObservedAt": 1792487608778,
+        "observationCursor": 822,
+        "sourceId": "0b7497ea-eaea-4ad3-aa92-a8a5ef19cb03",
+        "accountLabel": "source",
+        "eventIds": [
+          "quota:5768fef6-16e8-48d0-976f-34931c67fbe4:1:822",
+          "quota:5768fef6-16e8-48d0-976f-34931c67fbe4:1:1018"
+        ],
+        "messageIds": [
+          2
+        ],
+        "progress": "none",
+        "interrupted": true,
+        "controlFence": 0,
+        "placement": {
+          "agent": "claude",
+          "cwd": "/var/tmp/hb-quota-C.C4.xn8o3GD0/tmp/hb-v2-daemon-Rslrcv",
+          "cellId": null
+        },
+        "quota": {
+          "harness": "claude",
+          "window": "weekly",
+          "resetsAt": 1792487616801,
+          "providerCategory": "errored_result_limit"
+        },
+        "resetHints": {
+          "weekly": 1792487616801
+        },
+        "state": "resumed",
+        "attempt": 1,
+        "targetAccount": "claude-source",
+        "successorGeneration": 2,
+        "claimId": "52d3f7b7-1954-4feb-8eae-ea444b619d37",
+        "reservationId": null,
+        "commandId": 2,
+        "continuationKind": "replay",
+        "continuationMessageIds": [
+          3
+        ],
+        "continuationHistory": [],
+        "retryAt": null,
+        "reason": null,
+        "createdAt": 1792487608736,
+        "updatedAt": 1792487617305
+      }
+    ],
+    "tasks": [],
+    "taskSupply": [],
+    "loginFlows": [],
+    "cells": [],
+    "beeMoves": [],
+    "beeHandoffs": [],
+    "transcriptSegments": [
+      {
+        "id": "seg:5768fef6-16e8-48d0-976f-34931c67fbe4:0",
+        "beeId": "5768fef6-16e8-48d0-976f-34931c67fbe4",
+        "ordinal": 0,
+        "harness": "claude",
+        "providerSessionId": "26b79fed-55ac-4cde-9e8c-57332f10302b",
+        "fromGeneration": 1,
+        "toGeneration": null,
+        "path": "/var/tmp/hb-quota-C.C4.xn8o3GD0/tmp/hb-v2-daemon-Rslrcv/session-logs/5768fef6-16e8-48d0-976f-34931c67fbe4.jsonl",
+        "handoffId": null,
+        "createdAt": 1792487608266,
+        "closedAt": null
+      }
+    ],
+    "threadOperations": [],
+    "actions": [],
+    "actionQueues": []
+  }
+}

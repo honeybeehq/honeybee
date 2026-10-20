@@ -1,0 +1,67 @@
+[
+  {
+    "id": "3e6ff869-cb2f-4d2e-b51b-7aea62256bbe",
+    "requestKey": "account-admission:swap:quota-recovery:1fb107f5917d9fe0f84e11c91c22cd386d1996ff9c759cf7205416fd8fdb98d5:0:account-acquire",
+    "scope": "claude:provider-accounts",
+    "account": "claude-b",
+    "sourceAccount": "claude-b",
+    "operation": "swap",
+    "units": 1,
+    "beeId": null,
+    "reconcileAfterGeneration": 4,
+    "receipt": {
+      "allocation": {
+        "version": 1,
+        "mode": "active",
+        "scope": "claude:provider-accounts",
+        "revision": "dbc8cf4b257fca576ebfbd73c101a39e285434e2d8b78a215772b5970c11234f",
+        "observedAt": 1792488573484,
+        "operation": "swap",
+        "outcome": "selected",
+        "account": "claude-b",
+        "reason": "weighted_fair",
+        "retryAt": null,
+        "candidates": [
+          {
+            "accountId": "claude-a",
+            "status": "protected",
+            "reason": "completion_reserve",
+            "maxProjectedPercent": 103
+          },
+          {
+            "accountId": "claude-b",
+            "status": "eligible",
+            "rate": 0.0056698172371100666,
+            "fairFinish": 294.4047473321947,
+            "maxProjectedPercent": 9,
+            "retryAt": 1792506273420
+          }
+        ]
+      },
+      "authority": {
+        "version": 1,
+        "owner": {
+          "node": "node-fixture",
+          "epoch": "g-lab-v1"
+        },
+        "target": {
+          "node": "4d7aa5f7-7fba-4ef7-a3d2-0b4ee8176123",
+          "workId": "allocation-963f1a50b40a8fcd239c4eabd32fef87",
+          "expectedGeneration": 4
+        },
+        "model": "claude-opus-5-5"
+      },
+      "sourceQuotaRecovery": {
+        "observedAt": 1792488275773,
+        "window": "five_hour",
+        "resetsAt": 1792488573468,
+        "usedPercentAtObservation": 100,
+        "usedPercentObservedAt": 1792488275784
+      }
+    },
+    "createdAt": 1792488573486,
+    "expiresAt": 1792489473484,
+    "confirmedAt": 1792488573508,
+    "releasedAt": null
+  }
+]

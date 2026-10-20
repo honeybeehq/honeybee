@@ -1,0 +1,12 @@
+{"ts":1792487469092,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792487469104,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792487469116,"op":"rpc.listen socket=/var/tmp/hb-quota-C.C4.GraHGfjv/tmp/hb-v2-daemon-brC31x/hived.sock"}
+{"ts":1792487469117,"op":"daemon.started pid=2499483 store=/var/tmp/hb-quota-C.C4.GraHGfjv/tmp/hb-v2-daemon-brC31x/core.sqlite3"}
+{"ts":1792487478302,"op":"quota.probe account=claude-source at=1792487478298 next_at=1792487508298 delay_ms=30000 reason=reset"}
+{"ts":1792487478368,"op":"account.limits account=claude-source readable=true weekly=5 5h=5"}
+{"ts":1792487478368,"op":"quota.probe account=claude-source at=1792487478368 next_at=1792487508368 delay_ms=30000 reason=fresh_evidence_changed"}
+{"ts":1792487478373,"op":"account.admission.selected operation=swap scope=claude:provider-accounts account=claude-source reservation=80a37be3-ba38-453d-8e62-cda10678356b"}
+{"ts":1792487478376,"op":"rpc.dedup verb=account.admission.acquire key=C4-acquire-source"}
+{"ts":1792487480923,"op":"daemon.stopping pid=2499483"}
+{"ts":1792487480933,"op":"daemon.stopped"}
+{"ts":1792487480933,"op":"daemon.stop_complete pid=2499483"}
