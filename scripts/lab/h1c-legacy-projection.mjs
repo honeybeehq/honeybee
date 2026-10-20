@@ -99,5 +99,17 @@ assert.deepEqual(projectedFrame.events.map(row => row.seq), retainedFrame.events
 const hiddenFrame = { ...frame, events: rows.filter(row => hidden.includes(row.kind)) };
 assert.deepEqual(delta(hiddenFrame, caps), { type: "gap", seq: frame.seq });
 assert.equal(project("send", { body }, [] ).body, body);
+for (const reason of ["host_auth_failed", "message_too_large"]) {
+  const payload = Object.freeze({ messageId: replacement.id, urgency: "idle", reason: "requested", canceledAt: 2000, cancellationOwner: "bee.delete", deliveryConfirmation: Object.freeze({ code: "delivery_confirmation_pending", messageId: replacement.id, generation: 1, since: 1000, state: "held", reason, delivered: false }), rpcCaller: Object.freeze({ uid: 1000 }) });
+  const row = Object.freeze({ seq: frame.seq + 1, ts: 2000, beeId, kind: "mail.canceled", payload });
+  const expected = { ...row, payload: { messageId: replacement.id, urgency: "idle", reason: "requested", canceledAt: 2000, rpcCaller: payload.rpcCaller } };
+  assert.deepEqual(project("audit.tail", { rows: [row] }, caps), { rows: [expected] });
+  assert.deepEqual(project("rpc.effect.resolve", { receipt: { verb: "audit.tail", result: { rows: [row] } } }, caps).receipt.result, { rows: [expected] });
+  const cancellationFrame = { type: "delta", baseSeq: frame.seq, seq: row.seq, events: [row] };
+  assert.deepEqual(delta(cancellationFrame, caps), { ...cancellationFrame, events: [expected] });
+  assert.equal(project("audit.tail", { rows: [row] }, [capability]).rows[0], row);
+  assert.equal(delta(cancellationFrame, [capability]), cancellationFrame);
+  assert.equal(row.payload, payload);
+}
 store.close();
 console.log(JSON.stringify({ result: "PASS", routes, receiptRoutes: routes, replacementId: replacement.id, inheritedQueueOrder: replacement.queueOrder, pendingOrder: [replacement.id, later.id], originalSeqsPreserved: true, hiddenWatch: "gap_requires_snapshot", legacyMailboxIds, newReplay: "exact", fixture: dir, limitation: "No legacy consumer implementation in repo; conservative gap used. Legacy clients cannot express inherited queue order or replacement links." }));

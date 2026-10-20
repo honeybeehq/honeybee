@@ -16,6 +16,7 @@ export const MAIL_DELIVERY_RESULTS = {
 export const MAIL_DELIVERY_AUDITS = {
   "mail.enqueued": ["message"],
   "mail.replaced": ["replacement"],
+  "mail.canceled": [""],
 } as const;
 export const MAIL_DELIVERY_HIDDEN_AUDITS = ["mail.confirmation_prepared", "mail.confirmation_held", "mail.confirmation_released", "mail.confirmation_decision"] as const;
 
@@ -42,6 +43,10 @@ function legacyMessage(value: unknown): unknown {
 
 function legacyAudit(value: unknown): unknown {
   if (!record(value)) return value;
+  if (value.kind === "mail.canceled" && record(value.payload)) {
+    const { cancellationOwner, deliveryConfirmation, ...payload } = value.payload;
+    return Object.hasOwn(value.payload, "cancellationOwner") || Object.hasOwn(value.payload, "deliveryConfirmation") ? { ...value, payload } : value;
+  }
   if (value.kind === "mail.replaced" && record(value.payload)) {
     const p = value.payload;
     return { ...value, kind: "mail.canceled", payload: {
