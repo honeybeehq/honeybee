@@ -1926,10 +1926,13 @@ export interface AccountObservationMetadata {
 }
 
 export interface QuotaRecoveryRow {
+  sourceWindowUsedPercent?: number | null;
+  sourceWindowObservedAt?: number | null;
   id: string;
   beeId: string;
   sourceGeneration: number;
   observationCursor: number | null;
+  sourceId: string | null;
   accountLabel: string | null;
   sourceAccount: string | null;
   eventIds: string[];

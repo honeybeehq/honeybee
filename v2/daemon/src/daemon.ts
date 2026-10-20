@@ -1,3 +1,4 @@
+import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess} from "../../harness/src/processIdentity.ts";
@@ -668,8 +669,7 @@ export function activationFailureName(error: unknown): string {
 
 /** Rate-limit cause classifier for resource_blocked evidence (spec 08 rotation trigger). */
 export function isRateLimitCause(detail: string): boolean {
-  const m = detail.toLowerCase();
-  return m.includes("rate limit") || m.includes("rate-limit") || m.includes("rate_limit") || m.includes("429") || (m.includes("quota") && (m.includes("exceeded") || m.includes("exhausted"))) || m.includes("usage limit");
+  return isQuotaTextFallback(detail);
 }
 
 /** Per-bee rotation opt-out: tag or arg `autoswap=false` (also `--autoswap=false`). */
@@ -6519,7 +6519,7 @@ export class HiveDaemon {
       allowSourceAccount: !!recoveryId,
       sourceQuotaRecovery: recoveryId ? (() => {
         const recovery = store.getQuotaRecovery(recoveryId)!;
-        return { observedAt: recovery.createdAt, window: recovery.quota.window, resetsAt: recovery.quota.resetsAt };
+        return { observedAt: recovery.createdAt, window: recovery.quota.window, resetsAt: recovery.quota.resetsAt, usedPercentAtObservation: recovery.sourceWindowUsedPercent, usedPercentObservedAt: recovery.sourceWindowObservedAt };
       })() : undefined,
       excludeRecentlyExhausted: !!recoveryId,
       onlyAccountIds,
@@ -6690,6 +6690,7 @@ export class HiveDaemon {
         this.authResume?.interrupted(ev);
         if (account.harness === "claude" && !authorityInDoubt) accounts.scheduleClaudeRecovery(account.id);
       } else {
+        store.quotaTurnSucceeded(bee.id, ev.generation);
         this.authResume?.turnSucceeded(bee.id);
         if (account.status === "auth_needed" && !authorityInDoubt) {
           store.setAccountStatus(account.id, "ok", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`);
@@ -6703,7 +6704,7 @@ export class HiveDaemon {
       if (account.exhaustedAt != null) store.recordAccountExhaustion(account.id, null);
       return;
     }
-    if (ev.quota === undefined && ((account.harness === "claude" || account.harness === "codex") || !isRateLimitCause(ev.detail))) return;
+    if (ev.quota === undefined && !isRateLimitCause(ev.detail)) return;
     // Exhaustion evidence on the account (rotation cool-off). Debounced: a
     // provider re-reports the wall on every call; one stamp a minute is plenty.
     const now = Date.now();
@@ -6738,15 +6739,17 @@ export class HiveDaemon {
       return;
     }
     try {
-      const recovery = store.listQuotaRecoveries(bee.id).find(row => row.sourceGeneration === generation && row.state === "waiting");
+      const recovery = store.listQuotaRecoveries(bee.id).find(row => row.sourceGeneration === generation && row.state === "waiting"
+        && row.messageIds.length === (ev.turn?.messageIds.length ?? 0) && row.messageIds.every(id => ev.turn?.messageIds.includes(id)));
       const res = this.performSwap(bee, pick.account, "rotation", pick.receipt, pick.reservation?.id, undefined, recovery?.id);
       this.log(`account.rotate bee=${bee.id} from=${account.id} to=${pick.account.id} action=${res.action} reason=${JSON.stringify(pick.reason)}`);
     } catch (err) {
+      if (pick.reservation) store.releaseAccountAdmission(pick.reservation.id);
       this.log(`account.rotate bee=${bee.id} from=${account.id} to=${pick.account.id} failed=${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  private sourceQuotaRecoveryParam(params: Record<string, unknown>): { observedAt: number; window: "five_hour" | "weekly" | "other"; resetsAt: number | null } | undefined {
+  private sourceQuotaRecoveryParam(params: Record<string, unknown>): { observedAt: number; window: "five_hour" | "weekly" | "other"; resetsAt: number | null; usedPercentAtObservation: number | null; usedPercentObservedAt: number | null } | undefined {
     const value = params.sourceQuotaRecovery;
     if (value === undefined) return undefined;
     if (!value || typeof value !== "object") throw new RpcError("invalid_request", "invalid sourceQuotaRecovery");
@@ -6754,7 +6757,11 @@ export class HiveDaemon {
     if (typeof source.observedAt !== "number" || !Number.isFinite(source.observedAt) || source.observedAt <= 0 || source.observedAt > Date.now()
       || source.window !== "five_hour" && source.window !== "weekly" && source.window !== "other"
       || source.resetsAt !== null && (typeof source.resetsAt !== "number" || !Number.isFinite(source.resetsAt))) throw new RpcError("invalid_request", "invalid sourceQuotaRecovery");
-    return { observedAt: source.observedAt, window: source.window, resetsAt: source.resetsAt };
+    const used = source.usedPercentAtObservation;
+    if (used !== undefined && used !== null && (typeof used !== "number" || !Number.isFinite(used) || used < 0)) throw new RpcError("invalid_request", "invalid source quota usage");
+    const observed = source.usedPercentObservedAt;
+    if (observed !== undefined && observed !== null && (typeof observed !== "number" || !Number.isFinite(observed) || observed <= 0 || observed > Date.now())) throw new RpcError("invalid_request", "invalid source quota observation time");
+    return { observedAt: source.observedAt, window: source.window, resetsAt: source.resetsAt, usedPercentAtObservation: typeof used === "number" ? used : null, usedPercentObservedAt: typeof observed === "number" ? observed : null };
   }
 
   private quotaRetryAt(beeId: string, hint: number | null = null): number | null {
@@ -6795,11 +6802,16 @@ export class HiveDaemon {
     }
     if (accounts.allocationMode() === "active") {
       store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required");
+      try {
+        await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt }, true);
+        if (!this.stopping) store.observeQuotaRecoveryLimits(id);
+      } catch (error) { this.log(`quota.probe recovery=${id} failed=${error instanceof Error ? error.message : String(error)}`); }
       return;
     }
     try {
       await accounts.ensureFreshAdmissionLimits(bee.agent, { model: this.modelOfBee(bee), minimumObservedAt: row.createdAt }, true);
       if (this.stopping) return;
+      store.observeQuotaRecoveryLimits(id);
       row = store.getQuotaRecovery(id);
       if (!row || row.state !== "waiting" || !store.quotaRecoveryValid(row)) return;
       bee = store.getBee(row.beeId)!;

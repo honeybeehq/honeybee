@@ -2176,9 +2176,10 @@ export class CoreStore {
       this.audit("quota.observed", event.beeId, event);
       const bee = this.mustGetBee(event.beeId);
       const messageIds = [...new Set(event.turn.messageIds)].sort((a, b) => a - b);
-      const id = `quota:${bee.id}:${event.generation}:${messageIds.join(",") || "native"}`;
+      const rotating = this.listQuotaRecoveries(bee.id).find(row => row.sourceGeneration === event.generation && row.state === "rotating");
+      const id = rotating?.id ?? `quota:${bee.id}:${event.generation}:${messageIds.join(",") || "native"}`;
       const previous = this.getQuotaRecovery(id);
-      if (previous && previous.state !== "waiting") return;
+      if (previous && previous.state !== "waiting" && previous.state !== "rotating") return;
       const hints = { ...previous?.resetHints };
       if (event.quota.resetsAt !== null) hints[event.quota.window] = event.quota.resetsAt;
       const quota = { ...event.quota, window: event.quota.window === "other" && previous ? previous.quota.window : event.quota.window, resetsAt: event.quota.resetsAt ?? previous?.quota.resetsAt ?? null };
@@ -2187,7 +2188,8 @@ export class CoreStore {
         progress: leastCertainProgress(previous.progress, event.turn.progress),
       } : {
         id, beeId: bee.id, sourceGeneration: event.generation, sourceAccount: bee.account,
-        observationCursor: /^quota:.*:[0-9]+$/.test(event.eventId) ? Number(event.eventId.slice(event.eventId.lastIndexOf(":") + 1)) : null, accountLabel: null,
+        sourceWindowUsedPercent: null, sourceWindowObservedAt: null,
+        observationCursor: /^quota:.*:[0-9]+$/.test(event.eventId) ? Number(event.eventId.slice(event.eventId.lastIndexOf(":") + 1)) : null, sourceId: event.sourceId ?? null, accountLabel: null,
         eventIds: [event.eventId], messageIds, progress: event.turn.progress,
         interrupted: messageIds.length > 0 || event.turn.progress !== "none",
         controlFence: bee.authControlFence ?? 0,
@@ -2206,7 +2208,9 @@ export class CoreStore {
   }
 
   listQuotaRecoveries(beeId?: string): QuotaRecoveryRow[] {
-    return (this.stmt("SELECT payload FROM quota_recoveries WHERE (? IS NULL OR bee_id = ?) ORDER BY id").all(beeId ?? null, beeId ?? null) as Row[])
+    return (beeId === undefined
+      ? this.stmt("SELECT payload FROM quota_recoveries ORDER BY id").all()
+      : this.stmt("SELECT payload FROM quota_recoveries WHERE bee_id = ? ORDER BY id").all(beeId) as Row[])
       .map(row => JSON.parse(String(row.payload)) as QuotaRecoveryRow);
   }
 
@@ -2218,9 +2222,22 @@ export class CoreStore {
       .run(updated.id, updated.beeId, updated.state, JSON.stringify(updated));
     this.audit("quota.recovery", updated.beeId, { recovery: updated, ...(notify ? { notice: {
       kind: "quota_recovery", recoveryId: updated.id, state: updated.state,
-      accountLabel: updated.accountLabel, window: updated.quota.window, retryAt: updated.retryAt,
+      sourceId: updated.sourceId, accountLabel: updated.accountLabel, window: updated.quota.window, retryAt: updated.retryAt,
     } } : {}) });
     return updated;
+  }
+
+  observeQuotaRecoveryLimits(id: string): void {
+    this.tx(() => {
+      const row = this.getQuotaRecovery(id);
+      if (!row || row.state !== "waiting" || row.sourceWindowObservedAt != null || !row.sourceAccount) return;
+      const limits = this.getAccountLimits(row.sourceAccount);
+      if (!limits?.readable || limits.fetchedAt <= row.createdAt || limits.fetchedAt > this.now()) return;
+      const values = [limits.fiveHourPct, limits.weeklyPct, limits.fableWeeklyPct].filter((value): value is number => value !== null);
+      const used = row.quota.window === "weekly" ? limits.weeklyPct : row.quota.window === "five_hour" ? limits.fiveHourPct : values.length ? Math.max(...values) : null;
+      if (used === null) return;
+      this.putQuotaRecovery({ ...row, sourceWindowUsedPercent: used, sourceWindowObservedAt: limits.fetchedAt });
+    });
   }
 
   waitQuotaRecovery(id: string, retryAt: number | null, reason: string): void {
@@ -2235,6 +2252,9 @@ export class CoreStore {
     return this.tx(() => {
       const row = this.getQuotaRecovery(id);
       if (!row || row.state !== "waiting" || !this.quotaRecoveryValid(row)) return null;
+      for (const sibling of this.listQuotaRecoveries(row.beeId)) {
+        if (sibling.id !== row.id && sibling.state === "waiting" && sibling.sourceGeneration === row.sourceGeneration) this.cancelQuotaRecovery(sibling.id, "superseded_by_quota_turn");
+      }
       return this.putQuotaRecovery({ ...row, state: "rotating", attempt: row.attempt + 1,
         targetAccount: selection.targetAccount, accountLabel: this.getAccount(selection.targetAccount)?.label ?? null, claimId: selection.claimId ?? null,
         reservationId: selection.reservationId ?? null, retryAt: null, reason: null });
@@ -2255,21 +2275,43 @@ export class CoreStore {
       && bee.agent === row.placement.agent && bee.cwd === row.placement.cwd && (bee.cellId ?? null) === row.placement.cellId
       && !bee.activeMoveId && !bee.activeHandoffId
       && bee.account === (row.state === "rotating" ? row.targetAccount : row.sourceAccount)
-      && !!runtime && (runtime.generation === row.sourceGeneration || row.state === "rotating" && runtime.generation === row.successorGeneration)
+      && !!runtime && (runtime.generation === row.sourceGeneration || row.state === "rotating" && row.successorGeneration !== null && runtime.generation >= row.successorGeneration)
       && !this.listRuntimes(bee.id).some(rt => rt.generation >= row.sourceGeneration && rt.exitCause === "stopped_by_user");
+  }
+
+  cancelQuotaRecovery(id: string, reason: string): void {
+    this.tx(() => {
+      const row = this.getQuotaRecovery(id);
+      if (!row || row.state === "cancelled") return;
+      const pending = new Set(this.undeliveredMessages(row.beeId).map(message => message.id));
+      if (row.state === "resumed" && !row.continuationMessageIds.some(id => pending.has(id))) return;
+      for (const id of row.continuationMessageIds) if (pending.has(id)) this.cancelMessage(row.beeId, id);
+      this.putQuotaRecovery({ ...row, state: "cancelled", reason, retryAt: null });
+    });
   }
 
   cancelQuotaRecoveries(beeId: string, reason: string): void {
     this.tx(() => {
+      for (const row of this.listQuotaRecoveries(beeId)) this.cancelQuotaRecovery(row.id, reason);
+    });
+  }
+
+  quotaTurnSucceeded(beeId: string, generation: number): void {
+    this.tx(() => {
       for (const row of this.listQuotaRecoveries(beeId)) {
-        if (row.state === "cancelled") continue;
-        if (row.state === "resumed") {
-          for (const id of row.continuationMessageIds) this.cancelMessage(beeId, id);
-          continue;
-        }
-        this.putQuotaRecovery({ ...row, state: "cancelled", reason, retryAt: null });
+        if (row.state === "waiting" && row.sourceGeneration === generation) this.cancelQuotaRecovery(row.id, "turn_succeeded");
       }
     });
+  }
+
+  quotaDeliveryGate(beeId: string): { held: boolean; messageIds: number[] } {
+    const rows = this.listQuotaRecoveries(beeId);
+    if (rows.length === 0) return { held: false, messageIds: [] };
+    const rotating = rows.find(row => row.state === "rotating");
+    if (rotating) return { held: rotating.continuationKind === null, messageIds: rotating.continuationMessageIds };
+    const pending = new Set(this.undeliveredMessages(beeId).map(message => message.id));
+    const continuation = rows.find(row => row.state === "resumed" && row.continuationMessageIds.some(id => pending.has(id)));
+    return { held: false, messageIds: continuation?.continuationMessageIds ?? [] };
   }
 
   resumeQuotaRecovery(id: string): QuotaRecoveryRow | null {
@@ -2277,7 +2319,11 @@ export class CoreStore {
       const row = this.getQuotaRecovery(id);
       if (!row || row.state !== "rotating" || !this.quotaRecoveryValid(row)) return null;
       const rt = this.currentRuntime(row.beeId);
-      if (rt?.generation !== row.successorGeneration || rt.state !== "idle" || this.hasPendingStopCommand(row.beeId, rt.generation)) return null;
+      if (row.continuationKind !== null) {
+        if (rt && row.successorGeneration !== null && rt.generation >= row.successorGeneration && rt.state !== "stopped" && rt.bootEvidence === "real") return this.putQuotaRecovery({ ...row, state: "resumed", successorGeneration: rt.generation });
+        return row;
+      }
+      if (!rt || row.successorGeneration === null || rt.generation < row.successorGeneration || !(rt.state === "idle" || rt.state === "running" && rt.bootEvidence === "synthetic") || this.hasPendingStopCommand(row.beeId, rt.generation)) return null;
       const originals = row.messageIds.map(id => this.getMessage(id));
       const replay = row.progress === "none" && originals.length > 0 && originals.every(message => message?.beeId === row.beeId);
       const sent = !row.interrupted ? [] : replay ? originals.map(message => this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
@@ -2285,7 +2331,7 @@ export class CoreStore {
         ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
         ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `quota-resume:${row.id}:${message!.id}` } } : {}),
       })) : [this.send(row.beeId, "Continue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.", { sender: "hive:quota-resume", origin: "quota.resume" })];
-      return this.putQuotaRecovery({ ...row, state: "resumed", continuationKind: !row.interrupted ? "none" : replay ? "replay" : "continue", continuationMessageIds: sent.map(result => result.message.id) });
+      return this.putQuotaRecovery({ ...row, state: row.interrupted && rt.bootEvidence !== "real" ? "rotating" : "resumed", successorGeneration: rt.generation, continuationKind: !row.interrupted ? "none" : replay ? "replay" : "continue", continuationMessageIds: sent.map(result => result.message.id) });
     });
   }
 
@@ -6950,7 +6996,7 @@ export class CoreStore {
     this.tx(() => {
       const bee = this.mustGetBee(beeId);
       const row = this.liveAuthInterruption(beeId);
-      if (!this.currentRuntime(beeId)?.credentialStamp && !row?.deathRecovery) return;
+      if (!this.currentRuntime(beeId)?.credentialStamp && !row?.deathRecovery && !this.listQuotaRecoveries(beeId).some(quota => quota.state === "waiting" || quota.state === "rotating")) return;
       const controlFence = (bee.authControlFence ?? 0) + 1;
       this.stmt("UPDATE bees SET auth_control_fence = ? WHERE id = ?").run(controlFence, beeId);
       this.audit("bee.auth_control", beeId, { controlFence });

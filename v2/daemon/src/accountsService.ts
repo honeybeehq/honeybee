@@ -360,6 +360,8 @@ export type NewWorkAdmission =
   | { ok: false; code: "account_wait" | "account_unavailable" | AccountRefusalCode; message: string; receipt: AccountAllocationReceipt };
 
 export interface SourceQuotaRecovery {
+  usedPercentAtObservation?: number | null;
+  usedPercentObservedAt?: number | null;
   observedAt: number;
   window: "five_hour" | "weekly" | "other";
   resetsAt: number | null;
@@ -2323,7 +2325,7 @@ export class AccountsService {
         || opts.minimumObservedAt !== undefined && row.fetchedAt <= opts.minimumObservedAt
         || [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now)
         || account?.exhaustedAt != null && row.fetchedAt <= account.exhaustedAt
-        || quotaRecovery && account?.exhaustedAt != null && !this.restoredQuotaHeadroom(account, opts.model);
+        || quotaRecovery;
     });
     if (stale.length > 0) await Promise.all(stale.map(async (id) => {
       const joined = this.admissionRefreshes.get(id);
@@ -2434,6 +2436,8 @@ export class AccountsService {
     const row = this.store.getAccountLimits(account.id);
     if (!row?.readable || row.fetchedAt <= source.observedAt || row.fetchedAt > now || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs) return false;
     if (source.resetsAt !== null && (source.resetsAt > now || row.fetchedAt < source.resetsAt)) return false;
+    if (source.resetsAt === null && !(source.usedPercentAtObservation != null && source.usedPercentAtObservation >= DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent
+      && source.usedPercentObservedAt != null && source.usedPercentObservedAt > source.observedAt && row.fetchedAt > source.usedPercentObservedAt)) return false;
     const exhausted = source.window === "weekly" ? row.weeklyPct : source.window === "five_hour" ? row.fiveHourPct : null;
     if (source.window !== "other" && exhausted === null) return false;
     const values = [row.fiveHourPct, row.weeklyPct, ...(isFableModel(model) ? [row.fableWeeklyPct] : [])];

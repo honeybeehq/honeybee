@@ -82,14 +82,14 @@ rl.on("line", (raw) => {
       const slow = /@slow:(\d+)/.exec(String(text));
       emit({ jsonrpc: "2.0", id: msg.id, result: { turn: { id: turnId } } });
       emit({ jsonrpc: "2.0", method: "turn/started", params: { threadId, turn: { id: turnId } } });
-      const quotaMode = /@quota:(native|delayed|once|weekly_only|weekly)/.exec(String(text))?.[1];
+      const quotaMode = /@quota:(text_fallback|native|delayed|once|weekly_only|weekly)/.exec(String(text))?.[1];
       const marker = process.env.FAKE_QUOTA_ONCE_PATH ?? join(process.cwd(), ".fake-codex-quota-once");
       if (String(text).includes("@usageLimit") || (quotaMode && !(quotaMode === "once" && marker && existsSync(marker)))) {
         if (quotaMode === "once" && marker) writeFileSync(marker, "failed");
         if (quotaMode === "delayed") emit({ method: "item/completed", params: { threadId, item: { id: randomUUID(), type: "agentMessage", text: "visible progress before quota" } } });
-        const error = { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded" };
+        const error = quotaMode === "text_fallback" ? { message: "429 Too Many Requests: rate limit exceeded" } : { message: "You've hit your usage limit.", codexErrorInfo: "usageLimitExceeded" };
         emit({ method: "account/rateLimits/updated", params: { rateLimits: { limitId: "premium", primary: null, secondary: null, rateLimitReachedType: null } } });
-        if (quotaMode) {
+        if (quotaMode && quotaMode !== "text_fallback") {
           const reset = Number(process.env.FAKE_QUOTA_RESETS_AT_SECONDS ?? Math.floor(Date.now() / 1000) + 3600);
           const weekly = quotaMode === "weekly" || quotaMode === "weekly_only";
           emit({ method: "account/rateLimits/updated", params: { rateLimits: { limitId: "premium", primary: quotaMode === "weekly_only" ? null : { usedPercent: weekly ? 40 : 100, windowDurationMins: 300, resetsAt: weekly ? reset - 3600 : reset }, secondary: weekly ? { usedPercent: 100, windowDurationMins: 10080, resetsAt: reset } : null, rateLimitReachedType: "rate_limit_reached" } } });

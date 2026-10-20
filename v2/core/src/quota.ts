@@ -2,11 +2,12 @@ export type QuotaBoundary = {
   harness: "claude" | "codex";
   window: "five_hour" | "weekly" | "other";
   resetsAt: number | null;
-  providerCategory: "rate_limit_event" | "synthetic_limit" | "errored_result_limit" | "rateLimitReachedType" | "usageLimitExceeded";
+  providerCategory: "rate_limit_event" | "synthetic_limit" | "errored_result_limit" | "rateLimitReachedType" | "usageLimitExceeded" | "text_fallback";
 };
 
 export type QuotaObservedEvent = {
   eventId: string;
+  sourceId?: string;
   beeId: string;
   generation: number;
   quota: QuotaBoundary;

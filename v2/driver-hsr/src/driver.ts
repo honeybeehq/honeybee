@@ -1,3 +1,4 @@
+import { quotaSourceId } from "../../adapters/src/quota.ts";
 import type { QuotaBoundary } from "../../core/src/quota.ts";
 import type {RuntimeIdentityHooks} from "../../core/src/runtimeProcessIdentity.ts";
 import {authenticatedProcessPeer} from "../../harness/src/processIdentity.ts";
@@ -152,6 +153,7 @@ export interface FlagEvidence {
   owner?: "sandbox_tmp";
   quota?: QuotaBoundary;
   eventId?: string;
+  sourceId?: string;
 }
 
 export interface TurnEvidence {
@@ -1105,7 +1107,7 @@ export class HsrDriver implements RuntimeDriver {
       const lateBoot = p.phase !== "booting" && signals.some((sig) => sig.kind === "booted");
       for (const signal of signals) {
         if (lateBoot && signal.kind === "turn_ended") continue;
-        this.onSignal(p, signal, String(lineEndCursor));
+        this.onSignal(p, signal, String(lineEndCursor), line);
       }
       if (signals.length > 0) p.pendingObservationCursor = lineEndCursor;
     }
@@ -1591,7 +1593,7 @@ export class HsrDriver implements RuntimeDriver {
   }
 
 
-  private onSignal(p: ManagedProcess, signal: ReturnType<HarnessAdapter["parseLine"]>[number], sourceId: string): void {
+  private onSignal(p: ManagedProcess, signal: ReturnType<HarnessAdapter["parseLine"]>[number], sourceId: string, rawLine: string): void {
     if (
       (signal.kind === "turn_started" || signal.kind === "turn_ended")
       && signal.threadId
@@ -1691,13 +1693,15 @@ export class HsrDriver implements RuntimeDriver {
         return;
       }
       case "flag": {
+        const raw = signal.quota ? JSON.parse(rawLine) as Record<string, unknown> : null;
+        const transcriptSourceId = raw && typeof raw.uuid === "string" && raw.uuid.trim().length > 0 ? raw.uuid : signal.quota ? quotaSourceId(rawLine) : undefined;
         this.evidence.push({
           beeId: p.beeId,
           generation: p.generation,
           flag: signal.flag,
           action: signal.action,
           detail: signal.detail,
-          ...(signal.quota ? { quota: signal.quota, eventId: `quota:${p.beeId}:${p.generation}:${sourceId}` } : {}),
+          ...(signal.quota ? { quota: signal.quota, eventId: `quota:${p.beeId}:${p.generation}:${sourceId}`, sourceId: transcriptSourceId } : {}),
           ...(signal.resetsAt !== undefined ? { resetsAt: signal.resetsAt } : {}),
           ...(signal.action === "set" ? { turn: this.turnEvidence(p) } : {}),
         });

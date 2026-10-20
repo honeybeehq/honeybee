@@ -26,10 +26,14 @@ export class QuotaRecovery {
     for (const row of this.store.listQuotaRecoveries()) {
       if (row.state !== "waiting" && row.state !== "rotating") continue;
       if (!this.store.quotaRecoveryValid(row)) {
-        this.store.cancelQuotaRecoveries(row.beeId, "control_or_placement_changed");
+        this.store.cancelQuotaRecovery(row.id, "control_or_placement_changed");
         continue;
       }
-      if (row.state === "rotating") this.store.resumeQuotaRecovery(row.id);
+      if (row.state === "rotating") {
+        const runtime = this.store.currentRuntime(row.beeId);
+        if (runtime && runtime.generation > row.sourceGeneration && runtime.state === "stopped" && !this.store.activeFlags(row.beeId).some(flag => flag.flag === "spawn_failed")) this.store.enqueueBootRetry(row.beeId);
+        this.store.resumeQuotaRecovery(row.id);
+      }
       else if (this.recover) {
         const now = Date.now();
         const fingerprint = this.fingerprint(row);
