@@ -1,6 +1,6 @@
 Independent audit: Claude Opus 5.5, session b6d511e9-7d77-4629-a99d-04e889351ed3.
 
-The audit found a real liveness gap: a waiting proactive obligation could hold mail until a reset even after fresh source headroom recovered. The gate now cancels that obligation in place and delivers on the same generation. The subside scenarios prove recovery before reset and a second protected opening on the same generation. Restart scenarios prove the waiting obligation survives daemon replacement.
+The audit found a real liveness gap: a waiting proactive obligation could hold mail until a reset even after fresh source headroom recovered. The gate now cancels that obligation in place and delivers on the same generation. Release requires fresh capacity for one additional opening beyond the queued turn, using existing per-window admission costs as hysteresis without creating reservations. The subside scenarios prove a fresh 85% observation stays held, recovered capacity releases before reset, and a second protected opening on the same generation is gated again. Restart scenarios prove the waiting obligation survives daemon replacement.
 
 Opening work is normalized out of the source's pending or synthetic-active count before charging one request unit. Destinations receive one new request charge; returning to the source uses the same normalization. Target eligibility is checked before selection. The headroom scenarios prove a destination at 85% continues on its replacement generation, and both-account scenarios hold at projected reserve without ping-pong.
 

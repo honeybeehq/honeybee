@@ -2504,13 +2504,13 @@ export class AccountsService {
     return { ...local, active: Math.max(0, local.active - (active ? 1 : 0)), pending: Math.max(0, local.pending - (active ? 0 : 1)) };
   }
 
-  turnHeadroom(accountId: string, model?: string, openingBeeId?: string) {
+  turnHeadroom(accountId: string, model?: string, openingBeeId?: string, requestUnits = 1) {
     const account = this.store.getAccount(accountId);
     if (!account) return { status: "uncertain" as const, retryAt: null };
     const now = this.now();
     const local = this.openingActivity(this.localActivities([accountId], now).get(accountId)!, openingBeeId);
     const candidate = this.admissionCandidate(account, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now, local);
-    return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
+    return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, requestUnits, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
   }
 
   proactiveTargets(harness: string, sourceAccount: string, model?: string, beeId?: string): Set<string> {

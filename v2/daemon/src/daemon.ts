@@ -6833,7 +6833,7 @@ export class HiveDaemon {
     if (pending) {
       if (pending.trigger !== "proactive" || pending.state !== "waiting") return pending.state === "rotating" && pending.continuationKind !== null && pending.trigger !== "proactive";
       const limits = store.getAccountLimits(bee.account);
-      if (!limits || limits.fetchedAt <= pending.admission!.fetchedAt || this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), beeId).status !== "eligible") return false;
+      if (!limits || limits.fetchedAt <= pending.admission!.fetchedAt || this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), beeId, 2).status !== "eligible") return false;
       store.cancelQuotaRecovery(pending.id, "completion_headroom_restored");
       return true;
     }

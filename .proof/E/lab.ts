@@ -97,6 +97,13 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
           return rows.some((r: any) => r.state === "waiting") ? rows : null;
         }, `${name} held`);
         const before = await waiting();
+        if (scenario === "subside") {
+          usage.set(`${harness}-a`, 85);
+          await request("account.limits");
+          await new Promise(done => setTimeout(done, 150));
+          assert.equal((await waiting()).length, 1);
+          assert.equal((await request("mailbox", { beeId })).messages.find((m: any) => m.id === sent.messageId).deliveredAt, null);
+        }
         if (scenario === "restart") {
           client.close();
           await daemon.kill();
