@@ -8,3 +8,5 @@ ts	phase	decision	why	evidence	result
 2026-10-20T07:17:46Z	rebase	Rebase onto C540eb8d2 and preserve actual unknown-limit probe baselines	Provider source restoration changed; proactive source uses its known window reset	7339398bb6dc56bd807616c505a9d23cc52c6f4f	integrated
 2026-10-20T07:17:46Z	lab	Round synthetic reset deadlines to native seconds	Codex reports epoch seconds; the earlier fixture changed usage milliseconds later and missed its first retry	.proof/E/lab-before-clock-fix.log	narrow-rerun
 2026-10-20T07:18:10Z	verification	Twenty real-daemon scenarios passed and all required gates are green	Fresh admission, source reset and no-churn receipts now cover both harnesses	.proof/E/verification.log	passed
+2026-10-20T07:21:08Z	rebase	Rebase onto frozen Cac005408 on final B and A	The final dependency stack includes the Codex continuity implementation	ac0054086fad2696a88fdd1bc490dd561ebeef26	integrated
+2026-10-20T07:21:08Z	schema	Initialize the required continuation history on proactive rows	Final B added a required field; typechecking caught the missing empty array	v2/core/src/store.ts:2226	fixed

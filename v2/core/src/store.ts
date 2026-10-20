@@ -2223,7 +2223,7 @@ export class CoreStore {
         controlFence: bee.authControlFence ?? 0, placement: { agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId ?? null },
         quota: null, admission, resetHints: retryAt === null ? {} : { other: retryAt }, state: "waiting", attempt: 0, targetAccount: null,
         successorGeneration: null, claimId: null, reservationId: null, commandId: null,
-        continuationKind: null, continuationMessageIds: [], retryAt, reason: "completion_reserve", createdAt: this.now(), updatedAt: this.now(),
+        continuationKind: null, continuationMessageIds: [], continuationHistory: [], retryAt, reason: "completion_reserve", createdAt: this.now(), updatedAt: this.now(),
       });
     });
   }
