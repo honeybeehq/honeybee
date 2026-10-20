@@ -2571,6 +2571,9 @@ export class AccountsService {
       if (options.allowSourceAccount) {
         for (const candidate of candidates) {
           if (!candidate.quota) continue;
+          const observed = this.store.getAccountLimits(candidate.accountId);
+          if (observed && [observed.fiveHourPct, observed.weeklyPct, ...(isFableModel(options.model) ? [observed.fableWeeklyPct] : [])].some(value => value !== null && value >= DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent)) excluded.add(candidate.accountId);
+          if (candidate.quota.windows.length === 0) continue;
           const localDecision = selectAccountAdmission([{ ...candidate, activity: { ...candidate.activity, coverage: "complete" } }], {
             ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model: options.model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs,
           });
