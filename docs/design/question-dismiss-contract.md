@@ -108,7 +108,12 @@ This applies to every question-bearing mutation/result (including action.report)
 question.list, snapshot/watch, audit.tail, live/replayed deltas and known nested
 receipts. An executable TypeScript census checks exported protocol types,
 inferred dispatch returns and actual typed audit payloads against the projector's
-coverage map. Injected uncovered row/result/event paths fail. Arbitrary action
+coverage map, including MirrorQuestionRow and MirrorSnapshot. A separate
+compiler/AST egress census checks typed row consumers and RPC serialization
+boundaries; injected raw mirror serializers, structural copies/indexed rows and
+unprojected replies fail. Existing legacy frozen bytes remain unchanged, and a
+second frozen document pins the advertising-reader shape. Injected uncovered
+row/result/event paths fail. Arbitrary action
 outputs and user JSON are not recursively rewritten, and shared cursor objects
 are never mutated. The separate turn-trigger.answer.v1 projector stays independent.
 
@@ -123,31 +128,37 @@ renders dismissed. No unmerged vendor/runtime pin ships.
 
 ## Schema and verification
 
-The stamp stays **44**, preserving apiary-swap's exact version requirement. Existing
-9ecbb37f questions have a status CHECK, so the migration transaction rebuilds that
-table using create-new/copy/drop-old/rename-new in the open transaction, with foreign
-keys disabled before BEGIN and restored after COMMIT or rollback. It preserves
-dependent rows and recreates indexes, views and triggers from their original SQL;
-foreign_key_check must be clean before commit. No old-table rename redirects
-references. The migration preserves open/answered/withdrawn rows. A schema
-without a status CHECK adds the nullable fields without a rebuild. Dedicated
-receipt storage is CREATE TABLE IF NOT EXISTS. The rollback lab proves old9ecbb37f
-writer → new writer → old9ecbb37f writer → new writer, with the dismissed row, receipt,
-one notice, integrity, dependent rows/views/triggers/indexes and foreign keys
-preserved. A deliberate foreign-key violation refuses the migration and restores
-the original schema and objects. No sqlite_master SQL retains a temporary table
-reference. Older writers refuse terminal
-mutation; no answer/reopen appears. This is not a claim that every older binary
-can replay the new canonical event.
+The stamp becomes **46** on the merged schema45 base e26ad024. The apiary-swap
+storage guard changes to exactly SCHEMA_VERSION === 46 in the same change, with
+no supported-version range. The status CHECK requires a create-new/copy/drop-old/
+rename-new rebuild in the open transaction. Foreign keys are disabled before
+BEGIN and restored after commit or rollback. Original dependent indexes, views
+and triggers are restored, and foreign_key_check must be clean before commit.
+A schema without a status CHECK takes the additive nullable-column path.
+
+The portable proof checks in the complete schema45 DDL and disposable seed rows
+produced by the unmodified pinned baseline CoreStore. Fixture hashes are pinned;
+no test-time Git source lookup or archive-layout skip is used. A deliberate FK
+violation proves failed-upgrade rollback restores the old schema, objects and
+stamp. Successful migration/reopen preserves one notice/receipt, dependent rows,
+exact object SQL and canonical replay, with no temporary table references.
+
+A schema45 binary refuses a migrated46 store with typed schema_newer; this is
+not a rollback-free schema change. The paired real Apiary coordinator lab owns
+45→46, the actual45 rollback outcome and forward46 again, including health/state
+and the satellite updater's existing refusal. It never invents a Honeybee data
+restore. Any typed refusal is reported as observed, not called a successful45
+rollback. Lab artifacts and synthetic identity/trust fixtures stay inside the
+approved I8 root and are destroyed after receipts; none is a production release.
 
 Run in a scrubbed disposable satellite lab with fake HOME/XDG/TMPDIR under cache:
 
 - `node --test scripts/proof/question-dismiss.test.ts`: actual daemon, controlled
   pair/triple race orders, both reader formats, one notice/no answer mail,
   real stub envelope, stopped/archived delivery, clean shutdown, replay/reconnect.
-- `node --test scripts/proof/question-dismiss-schema44.test.ts`: committed baseline
-  Git-source loading and pre-dismissal feature assertion, rollback writer and
-  receipt/notice/integrity checks.
+- `node --test scripts/proof/question-dismiss-schema46.test.ts`: pinned schema45 SQL/data
+  fixtures, transactional migration rollback, dependent objects and one notice.
+  It also runs from a source-only archive without .git.
 - Core dismissal/action tests and daemon census/projection/security tests cover
   insertion rollback, isolated keys, generic authorization-before-dispatch,
   immutable format conversion and dedicated pointer formatting.

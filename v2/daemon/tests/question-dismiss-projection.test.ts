@@ -8,9 +8,11 @@ import { deliveryText, deliveryPointer, QUESTION_DISMISSED_MARKER } from "../src
 
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const protocol = resolve(root, "v2/daemon/src/protocol.ts"), daemon = resolve(root, "v2/daemon/src/daemon.ts"), store = resolve(root, "v2/core/src/store.ts");
-const census = (patches: ReadonlyMap<string, (source: string) => string> = new Map()) => protocolTypeCensus(["QuestionRow", "QuestionDismissedEvent"], patches);
+const mirror = resolve(root, "v2/core/src/mirror.ts");
+const census = (patches: ReadonlyMap<string, (source: string) => string> = new Map()) => protocolTypeCensus(["QuestionRow", "MirrorQuestionRow", "QuestionDismissedEvent"], patches, new Map([["mirror", mirror]]));
 const sorted = (value: { values: readonly string[]; audits: readonly string[] }) => ({ values: [...new Set(value.values)].sort(), audits: [...new Set(value.audits)].sort() });
 function assertCovered(actual: ReturnType<typeof census>): void {
+  assert.deepEqual(actual.modules, {mirror: {MirrorQuestionRow: {values: [""], audits: []}, MirrorSnapshot: {values: ["questions[]"], audits: []}, MirrorDelta: {values: [], audits: [""]}, QuestionDismissedEvent: {values: [""], audits: []}}}, "Question mirror census differs from egress coverage");
   assert.deepEqual(actual.results, Object.fromEntries(Object.entries(QUESTION_DISMISSAL_RESULTS).map(([name, value]) => [name, sorted(value)])), "Question protocol census differs from egress coverage");
   assert.deepEqual(actual.audits, QUESTION_DISMISSAL_AUDITS, "Question audit census differs from egress coverage");
   assert.deepEqual(actual.dispatch, Object.fromEntries(Object.values(QUESTION_DISMISSAL_RESULTS).flatMap(value => value.verbs.map(verb => [verb, sorted(value)]))), "Question dispatch census differs from egress coverage");
@@ -22,6 +24,7 @@ test("dismissal census covers every typed result, dispatch and inferred row/even
 
 test("dismissal census rejects uncovered question/result, dispatch and dismissal event paths", () => {
   for (const patches of [
+    new Map([[mirror, (source: string) => source + '\nexport interface UncoveredMirrorResult {nested: MirrorQuestionRow}\n']]),
     new Map([[protocol, (source: string) => source + '\nexport interface UncoveredQuestionResult { nested: MirrorQuestionRow }\n']]),
     new Map([[daemon, (source: string) => source.replace('case "snapshot": {', 'case "uncovered": return { nested: this.mustStore().getQuestion("probe") };\n      case "snapshot": {')]]),
     new Map([[store, (source: string) => source + '\nfunction censusProbe(store: {audit: (...args: unknown[]) => void}, event: import("./mirror.ts").QuestionDismissedEvent) { store.audit("uncovered", null, {nested: event}); }\n']]),

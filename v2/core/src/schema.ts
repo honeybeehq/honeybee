@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 45;
+export const SCHEMA_VERSION = 46;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (

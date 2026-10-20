@@ -11,7 +11,7 @@ export type CensusPaths = { values: string[]; audits: string[] };
 const empty = (): CensusPaths => ({ values: [], audits: [] });
 const sorted = (paths: { values: readonly string[]; audits: readonly string[] }): CensusPaths => ({ values: [...new Set(paths.values)].sort(), audits: [...new Set(paths.audits)].sort() });
 
-export function protocolTypeCensus(valueTypes: readonly string[], patches: ReadonlyMap<string, (source: string) => string> = new Map()) {
+export function protocolTypeCensus(valueTypes: readonly string[], patches: ReadonlyMap<string, (source: string) => string> = new Map(), extraModules: ReadonlyMap<string, string> = new Map()) {
   const configPath = resolve(root, "v2/daemon/tsconfig.json");
   const config = ts.readConfigFile(configPath, ts.sys.readFile);
   const options = ts.parseJsonConfigFileContent(config.config, ts.sys, resolve(root, "v2/daemon"));
@@ -47,13 +47,18 @@ export function protocolTypeCensus(valueTypes: readonly string[], patches: Reado
     else return empty();
     return sorted({ values: children.flatMap((child) => child.values), audits: children.flatMap((child) => child.audits) });
   }
-  const protocol = program.getSourceFile(protocolPath)!;
-  const results: Record<string, CensusPaths> = {};
-  for (const symbol of checker.getExportsOfModule(checker.getSymbolAtLocation(protocol)!)) {
-    const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
-    const found = paths(checker.getDeclaredTypeOfSymbol(target));
-    if (found.values.length || found.audits.length) results[symbol.name] = found;
+  function moduleTypes(path: string): Record<string, CensusPaths> {
+    const source = program.getSourceFile(path)!;
+    const foundTypes: Record<string, CensusPaths> = {};
+    for (const symbol of checker.getExportsOfModule(checker.getSymbolAtLocation(source)!)) {
+      const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+      const found = paths(checker.getDeclaredTypeOfSymbol(target));
+      if (found.values.length || found.audits.length) foundTypes[symbol.name] = found;
+    }
+    return foundTypes;
   }
+  const results = moduleTypes(protocolPath);
+  const modules = Object.fromEntries([...extraModules].map(([name, path]) => [name, moduleTypes(path)]));
   const audits: Record<string, string[]> = {};
   function auditCalls(node: ts.Node): void {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "audit" && node.arguments.length >= 3) {
@@ -88,5 +93,5 @@ export function protocolTypeCensus(valueTypes: readonly string[], patches: Reado
     } else ts.forEachChild(node, methods);
   }
   methods(program.getSourceFile(daemonPath)!);
-  return { results, audits, dispatch };
+  return { results, audits, dispatch, modules };
 }

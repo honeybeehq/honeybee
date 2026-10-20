@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { projectQuestionDismissalResult } from "../../daemon/src/questionDismissalProjection.ts";
 import { presentAccountLease } from "../src/accountLease.ts";
 /**
  * WP6a — mirror-shape stability (spec 06 §2.2 "the mirror consumes view()
@@ -180,9 +182,11 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       loginFlows: [],
     };
     // Neutralize the nondeterministic values (bee uuid, minted handle) then freeze.
-    const text = JSON.stringify(snapshot, null, 2)
-      .replaceAll(bee.id, "BEE_ID")
-      .replaceAll(bee.handle as string, "BEE_HANDLE");
+    const render = (value: unknown) => JSON.stringify(value, null, 2).replaceAll(bee.id, "BEE_ID").replaceAll(bee.handle as string, "BEE_HANDLE");
+    const advertised = projectQuestionDismissalResult("snapshot", snapshot, ["question.dismissed.v1"]);
+    assert.equal(advertised, snapshot);
+    assert.equal(render(advertised), readFileSync(new URL("./fixtures/mirror-question-dismissed-v1.json", import.meta.url), "utf8").trimEnd());
+    const text = render(projectQuestionDismissalResult("snapshot", snapshot, []));
     assert.equal(
       text,
       `{

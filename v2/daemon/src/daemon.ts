@@ -2427,7 +2427,7 @@ export class HiveDaemon {
 
   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
-    const storageSupported = SCHEMA_VERSION === 45 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+    const storageSupported = SCHEMA_VERSION === 46 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
     if (verb === "update.apiarySwap.status") {
       let installedIdentity: ComponentIdentity | null = null;
       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}

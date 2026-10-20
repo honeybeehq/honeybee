@@ -88,7 +88,7 @@ for (const target of ["notice", "event", "receipt"] as const) test(`dismiss roll
   } finally { store.close(); h.cleanup(); }
 });
 
-test("schema44 without a status CHECK gains dismissal columns additively", () => {
+test("schema46 migration without a status CHECK gains dismissal columns additively", () => {
   const h = harness(); let store = h.open();
   try {
     const {bee} = makeBee(store); const q = store.askQuestion(bee.id, {text: "Additive migration?"}); store.close();
@@ -98,7 +98,7 @@ test("schema44 without a status CHECK gains dismissal columns additively", () =>
     store = h.open(); assert.equal(store.dismissQuestionWithKey(q.id, "additive").question.status, "dismissed"); store.close();
     const after = new DatabaseSync(h.path);
     assert.equal(after.prepare("SELECT rootpage FROM sqlite_master WHERE name='questions'").get()!.rootpage, rootPage);
-    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "44"); after.close();
+    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "46"); after.close();
     store = h.open(); assert.equal(store.getQuestion(q.id)!.status, "dismissed");
   } finally {store.close(); h.cleanup();}
 });
