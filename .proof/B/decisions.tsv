@@ -1,0 +1,10 @@
+ts	phase	decision	why	evidence	result
+2026-10-20T06:30:00Z	base	Built on A review head 501029f7	Typed quota contract is the evidence boundary	git parent history	clean base
+2026-10-20T06:36:00Z	state	Kept quota recovery separate from authentication recovery	Quota must not set auth_needed	v2/core/src/store.ts	implemented
+2026-10-20T06:38:00Z	continuation	Enqueued mail and resumed state in one transaction	Restart cannot lose or duplicate continuation	.proof/B/restart.rpc.json	lab passed
+2026-10-20T06:39:00Z	schema	Bumped schema to 45 and widened quota.resume origin	Old builds must refuse new persisted vocabulary	v2/core/src/schema.ts	existing version assertions updated
+2026-10-20T06:40:00Z	verification	Moved daemon lab to short private run root	Cell path exceeded Unix socket length	.proof/B/accounts-test.log	targeted test passed
+2026-10-20T06:42:00Z	fencing	Preserved automatic rebind fence while cancelling operator controls	Account/env/session rebind initially cancelled its own obligation	.proof/B/progress.rpc.json	lab passed
+2026-10-20T06:44:00Z	proof	Exercised progress replay between-turn restart and manual stop	Real daemon must prove ordinary-mail continuation	.proof/B/summary.json	5 cases passed
+2026-10-20T06:45:00Z	fencing	Ignored flags from source generation after its account rebind	Current generation alone does not fence the stop-before-revive interval	v2/daemon/src/loops.ts	implemented
+2026-10-20T06:46:00Z	verification	Retained full fixture trash in Cell and reran core on disk	Private var/tmp tmpfs filled while keeping all fixtures	.proof/B/core-suites-disk-full.log	rerun in progress
