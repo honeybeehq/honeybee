@@ -84,7 +84,10 @@ try {
   await waitFor(async () => {
     const journal = readFileSync(join(dir, "session-logs", `${beeId}.jsonl`), "utf8");
     const completeLines = journal.slice(0, journal.lastIndexOf("\n") + 1).split("\n").filter(Boolean).map(line => JSON.parse(line));
-    return completeLines.filter(row => row.method === "turn/completed" && row.params?.turn?.status === "completed").length === 2 ? true : null;
+    const mail = await client.request<MailboxResult>("mailbox", { beeId });
+    const view = await client.request<ViewResult>("view", { beeId });
+    return completeLines.filter(row => row.method === "turn/completed" && row.params?.turn?.status === "completed").length >= 2
+      && mail.messages.find(row => row.id === resumed.continuationMessageIds[0])?.deliveredGeneration === 2 && view.view.runtimeState === "idle" ? true : null;
   }, "warmup and continuation both natively completed", 15000);
   const after = await dump("resumed");
   assert.equal(after.view?.view.generation, 2);
