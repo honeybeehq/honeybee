@@ -2188,6 +2188,10 @@ export class CoreStore {
         progress: leastCertainProgress(previous.progress, event.turn.progress),
       } : {
         id, beeId: bee.id, sourceGeneration: event.generation, sourceAccount: bee.account,
+        sourceWindowUsedPercent: (() => {
+          const limits = bee.account ? this.getAccountLimits(bee.account) : null;
+          return event.quota.window === "weekly" ? limits?.weeklyPct ?? null : event.quota.window === "five_hour" ? limits?.fiveHourPct ?? null : null;
+        })(),
         observationCursor: /^quota:.*:[0-9]+$/.test(event.eventId) ? Number(event.eventId.slice(event.eventId.lastIndexOf(":") + 1)) : null, sourceId: event.sourceId ?? null, accountLabel: null,
         eventIds: [event.eventId], messageIds, progress: event.turn.progress,
         interrupted: messageIds.length > 0 || event.turn.progress !== "none",
