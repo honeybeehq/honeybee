@@ -2195,7 +2195,7 @@ export class CoreStore {
         placement: { agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId ?? null },
         quota, resetHints: hints, state: "waiting", attempt: 0, targetAccount: null,
         successorGeneration: null, claimId: null, reservationId: null, commandId: null,
-        continuationKind: null, continuationMessageIds: [], retryAt: null, reason: null,
+        continuationKind: null, continuationMessageIds: [], continuationHistory: [], retryAt: null, reason: null,
         createdAt: this.now(), updatedAt: this.now(),
       });
     });
@@ -2304,6 +2304,15 @@ export class CoreStore {
       if (!row || row.state !== "rotating" || !this.quotaRecoveryValid(row)) return null;
       const rt = this.currentRuntime(row.beeId);
       if (row.continuationKind !== null) {
+        const attempts = row.continuationMessageIds.map(id => this.getMessage(id));
+        const runtimes = this.listRuntimes(row.beeId);
+        const failed = attempts.find(message => message?.deliveredGeneration != null && runtimes.some(runtime => runtime.generation === message.deliveredGeneration && runtime.state === "stopped" && runtime.bootEvidence !== "real"));
+        if (failed?.deliveredGeneration != null) {
+          const pending = new Set(this.undeliveredMessages(row.beeId).map(message => message.id));
+          for (const id of row.continuationMessageIds) if (pending.has(id)) this.cancelMessage(row.beeId, id);
+          const sent = this.send(row.beeId, "Continue the interrupted turn from where you stopped. The previous runtime failed before confirming its boot; check existing work before repeating any operation. Preserve the current action attempt.", { sender: "hive:quota-resume", origin: "quota.resume" });
+          return this.putQuotaRecovery({ ...row, continuationKind: "continue", continuationMessageIds: [sent.message.id], continuationHistory: [...(row.continuationHistory ?? []), { generation: failed.deliveredGeneration, messageIds: row.continuationMessageIds, kind: row.continuationKind === "replay" ? "replay" : "continue" }] });
+        }
         if (rt && row.successorGeneration !== null && rt.generation >= row.successorGeneration && rt.state !== "stopped" && rt.bootEvidence === "real") return this.putQuotaRecovery({ ...row, state: "resumed", successorGeneration: rt.generation });
         return row;
       }

@@ -1950,6 +1950,7 @@ export interface QuotaRecoveryRow {
   commandId: number | null;
   continuationKind: "replay" | "continue" | "none" | null;
   continuationMessageIds: number[];
+  continuationHistory: Array<{ generation: number; messageIds: number[]; kind: "replay" | "continue" }>;
   retryAt: number | null;
   reason: string | null;
   createdAt: number;

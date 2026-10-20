@@ -7,7 +7,7 @@ import { makeDaemonDir, startDaemon, waitFor } from "../../v2/daemon/tests/helpe
 const proof = resolve(".proof/B");
 const repo = resolve(".");
 const summaries: unknown[] = [];
-for (const name of ["progress", "replay", "between", "restart", "stop", "boot-retry", "queued", "queued-early", "manual-swap", "archive", "postenqueue-stop", "synthetic-retry"]) {
+for (const name of ["progress", "replay", "between", "restart", "stop", "boot-retry", "queued", "queued-early", "manual-swap", "archive", "postenqueue-stop", "synthetic-retry", "synthetic-delivered-failure"]) {
   const gate = join(process.env.TMPDIR!, `quota-gate-${process.pid}-${name}`);
   const gated = ["restart", "stop", "boot-retry", "queued", "manual-swap", "archive", "postenqueue-stop"].includes(name);
   const cancelled = ["stop", "manual-swap", "archive", "postenqueue-stop"].includes(name);
@@ -15,8 +15,8 @@ for (const name of ["progress", "replay", "between", "restart", "stop", "boot-re
   if (gated) writeFileSync(gate, "pause continuation");
   const { dir } = makeDaemonDir({ accounts: { allocationMode: "shadow" }, agents: { claude: {
     command: process.execPath,
-    args: [join(repo, name === "between" ? ".proof/B/between-harness.mjs" : ["boot-retry", "synthetic-retry"].includes(name) ? ".proof/B/boot-fail-harness.mjs" : "v2/driver-hsr/test-agent/fake-claude.mjs")],
-    adapter: "claude", env: { B_BOOT_DELAY_MS: name === "synthetic-retry" ? "300" : "0", B_BOOT_ONCE_PATH: join(process.env.TMPDIR!, `boot-${process.pid}-${name}`), FAKE_QUOTA_ONCE_PATH: join(process.env.TMPDIR!, `once-${process.pid}-${name}`), FAKE_QUOTA_RESETS_AT: "2030-01-01T00:00:00.000Z" },
+    args: [join(repo, name === "between" ? ".proof/B/between-harness.mjs" : ["boot-retry", "synthetic-retry", "synthetic-delivered-failure"].includes(name) ? ".proof/B/boot-fail-harness.mjs" : "v2/driver-hsr/test-agent/fake-claude.mjs")],
+    adapter: "claude", env: { B_BOOT_FAIL_AFTER_INPUT: name === "synthetic-delivered-failure" ? "1" : "0", B_BOOT_INPUT_LOG: join(proof, "synthetic-delivered-failure.received.log"), B_BOOT_DELAY_MS: name === "synthetic-retry" ? "300" : "0", B_BOOT_ONCE_PATH: join(process.env.TMPDIR!, `boot-${process.pid}-${name}`), FAKE_QUOTA_ONCE_PATH: join(process.env.TMPDIR!, `once-${process.pid}-${name}`), FAKE_QUOTA_RESETS_AT: "2030-01-01T00:00:00.000Z" },
   } } });
   writeFileSync(join(proof, `${name}.root.log`), dir);
   for (const label of ["a", "b"]) {
@@ -115,6 +115,13 @@ for (const name of ["progress", "replay", "between", "restart", "stop", "boot-re
       const continued = deliveries.findIndex((r: any) => r.payload.messageId === settled.continuationMessageIds[0]);
       const queued = deliveries.findIndex((r: any) => r.payload.messageId !== original.messageId && r.payload.messageId !== settled.continuationMessageIds[0]);
       assert.ok(continued >= 0 && queued > continued, "recovery mail precedes already queued newer instruction");
+    }
+    if (name === "synthetic-delivered-failure") {
+      assert.ok(settled.successorGeneration >= 3);
+      assert.equal(settled.continuationHistory.length, 1);
+      assert.equal(settled.continuationHistory[0].generation, 2);
+      assert.ok(readFileSync(join(proof, "synthetic-delivered-failure.received.log"), "utf8").includes("Continue the interrupted turn"));
+      assert.ok(mail.messages.find((m: any) => m.id === settled.continuationHistory[0].messageIds[0]).deliveredGeneration === 2);
     }
     if (name === "synthetic-retry") {
       assert.ok(settled.successorGeneration >= 3);
