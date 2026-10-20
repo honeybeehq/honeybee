@@ -2428,7 +2428,7 @@ export class CoreStore {
       if (!rt || row.successorGeneration === null || rt.generation < row.successorGeneration || !(rt.state === "idle" || rt.state === "running" && rt.bootEvidence === "synthetic") || this.hasPendingStopCommand(row.beeId, rt.generation)) return null;
       const originals = row.messageIds.map(id => this.getMessage(id));
       const replay = row.progress === "none" && originals.length > 0 && originals.every(message => message?.beeId === row.beeId);
-      const sent = !row.interrupted ? [] : replay ? originals.map(message => this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
+      const sent = !row.interrupted ? [] : replay ? originals.map(message => message!.replacesMessageId != null ? { message: message! } : this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
         sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "quota.resume",
         ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
         ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `quota-resume:${row.id}:${message!.id}` } } : {}),
@@ -7596,7 +7596,7 @@ export class CoreStore {
       const notice = row.deathRecovery?.claimedAt != null && redeliver
         ? [this.send(row.beeId, "[Hive] Refreshed account material installed; conversation resumed automatically.", { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })] : [];
       const sent = redeliver
-        ? [...notice, ...originals.map((message) => this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
+        ? [...notice, ...originals.map((message) => message!.replacesMessageId != null ? { message: message! } : this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
           sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "auth.resume",
           ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
           ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `auth-resume:${row.id}:${message!.id}` } } : {}),
