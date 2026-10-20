@@ -1,4 +1,5 @@
-import { publicDeliveryConfirmation, type DeliveryConfirmationIntent, type DeliveryConfirmationDecision } from "./deliveryConfirmation.ts";
+import { publicDeliveryConfirmation } from "./deliveryConfirmation.ts";
+import type { DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { deliveryHold, publicDeliveryFallback, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
 /**

@@ -1,5 +1,5 @@
-import type { DeliveryConfirmation, DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmation.ts";
-export * from "./deliveryConfirmation.ts";
+import type { DeliveryConfirmation, DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
+export * from "./deliveryConfirmationTypes.ts";
 import type { DeliveryFallback, DeliveryHold, MultilineDeliveryRow } from "./multilineDeliveryTypes.ts";
 import type { PhoneInput, PhoneOperationOrigin } from "./phoneOriginTypes.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
