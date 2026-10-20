@@ -97,6 +97,11 @@ export class SubstrateRouter implements RuntimeDriver {
     return this.driverFor(beeId, generation).deliveryReceipt?.(beeId, generation, messageId, body) ?? "unknown";
   }
 
+  deliveryReadiness(beeId: string, generation: number, messageId: number): string {
+    const driver: RuntimeDriver = this.driverFor(beeId, generation);
+    return driver.deliveryReadiness?.(beeId, generation, messageId) ?? "";
+  }
+
   deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean }): DeliverOutcome {
     const driver = this.driverFor(beeId, generation);
     return driver.deliver(beeId, generation, messageId, body, options);

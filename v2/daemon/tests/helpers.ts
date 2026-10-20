@@ -151,6 +151,11 @@ export class FakeDriver implements RuntimeDriver {
     }
   }
 
+  deliveryReadiness(beeId: string, generation: number, _messageId: number): string {
+    const p = this.procs.get(beeId);
+    return JSON.stringify([p?.generation === generation, p?.degraded, this.acceptDeliveries]);
+  }
+
   deliver(beeId: string, generation: number, messageId: number, body: string): { accepted: boolean; reason?: "no_process" | "not_ready" } {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation) return { accepted: false, reason: "no_process" };

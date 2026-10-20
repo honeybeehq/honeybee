@@ -30,6 +30,7 @@ export const RPC_ACCESS = {
   "commands": "read",
   "deployInfo": "read",
   "health": "read",
+  "doctor.integrity": "read",
   "node.harnesses": "read",
   "audit.tail": "read",
   "watch": "read",

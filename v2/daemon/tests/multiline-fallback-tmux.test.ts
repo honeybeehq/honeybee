@@ -163,15 +163,16 @@ for (const clearWorks of [true, false, "unset_failure", "missing_identity", "leg
   ensureDeliveryFileArtifact();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "mfp-partial-"))), data = join(root, "data"), work = join(root, "work"), socketPath = join(root, "t.sock"), receipt = join(root, "receipt.jsonl");
   mkdirSync(data, {mode: 0o700}); mkdirSync(work, {mode: 0o700});
-  const store = openCoreStore(join(data, "core.sqlite3"), {now: () => 1000, ephemeral: true});
+  let now = 1000;
+  const store = openCoreStore(join(data, "core.sqlite3"), {now: () => now, ephemeral: true});
   const server = new TmuxServer({socketPath, allowKillServer: true});
   const fixture = fileURLToPath(new URL("../../driver-tmux/test-agent/phone-terminal.mjs", import.meta.url));
   const driver = new TmuxDriver({socketPath, eventsDir: join(root, "events"), allowKillServer: true, stopKillGraceMs: 100,
     resolve: () => ({command: process.execPath, args: [fixture, "off"], cwd: work, env: {...process.env, PHONE_PROVIDER_RECEIPT: receipt, PHONE_FALLBACK_ROOT: data, PHONE_IGNORE_CLEAR: clearWorks ? "0" : "1"}, deliveryMode: "type", observation: {paneFallback: true, quiesceMs: 10, deliveryGraceMs: 1000}})});
   t.after(() => cleanupOwnedTmux(driver, server, () => store.close(), root));
-  const core = new DaemonCore({store, driver, now: () => 1000, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}}); core.boot();
+  const core = new DaemonCore({store, driver, now: () => now, log: () => {}, policy: {commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100000}, multilineFallback: {root: data, worktrees: () => [work], files: new DeliveryFiles(undefined, root)}}); core.boot();
   const rows = (): {ready?: boolean; submittedBody?: string}[] => {try {return readFileSync(receipt, "utf8").trim().split("\n").map(line => JSON.parse(line));} catch {return [];}};
-  const wait = async (condition: () => boolean) => {for (let i = 0; i < 400; i++) {if (condition()) return; await new Promise(resolve => setTimeout(resolve, 15));} assert.fail("partial terminal timed out");};
+  const wait = async (condition: () => boolean) => {for (let i = 0; i < 400; i++) {now += 15; if (condition()) return; await new Promise(resolve => setTimeout(resolve, 15));} assert.fail("partial terminal timed out");};
   const bee = store.createBee({name: "partial", agent: "stub", substrate: "tmux", cwd: work}).bee; store.enqueueCommand("spawn", bee.id);
   await wait(() => {core.step(); return rows().some(row => row.ready) && store.currentRuntime(bee.id)?.state === "idle";});
   if (clearWorks === "legacy_query") {

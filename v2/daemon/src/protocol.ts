@@ -305,6 +305,7 @@ export const RPC_ERROR_CODES = [
   "account_adopt_central",
   "capability_missing",
   "reconnect_unsupported", "reconnect_not_ready", "reconnect_not_found",
+  "doctor_cooldown",
   "thread_unsupported", "thread_remote_unsupported", "thread_history_unavailable", "thread_operation_not_found", "thread_not_ready", "thread_busy",
   "bee_not_found",
   "node_stopped",
@@ -484,6 +485,7 @@ export const RPC_VERBS = [
   "commands",
   "deployInfo",
   "health",
+  "doctor.integrity",
   // F8 (additive read): per-harness executable facts — present/path/source/
   // version — resolved with the SAME rule the spawn path uses, so probe
   // truth equals spawn truth.

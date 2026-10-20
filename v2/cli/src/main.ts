@@ -4974,6 +4974,13 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       case "commands":
         return await cmdCommands(ctx, parsed);
       case "doctor": {
+        if (parsed.positional[1] === "integrity") {
+          if (parsed.positional.length !== 2) throw new Error("doctor integrity: unexpected argument");
+          const result = await withClient(ctx, client => client.request<{ ok: boolean; results: string[] }>("doctor.integrity", {}));
+          emit(ctx, result.results.map(line => `SQLite quick_check: ${line}`), result, false);
+          return result.ok ? 0 : 1;
+        }
+
         const health = await withClient(ctx, client => client.request<HealthResult>("health", {includeDeliveryPrepareAuditUnknown: true}));
         const security = health.localSecurity;
         const degraded = security?.peerCredentials.state === "peer_credentials_unavailable";

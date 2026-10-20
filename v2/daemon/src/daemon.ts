@@ -700,6 +700,8 @@ export class HiveDaemon {
   readonly cfg: ResolvedNodeConfig;
   private readonly deliveryFiles = new DeliveryFiles();
   private store: CoreStore | null = null;
+  private integrityCheck: Promise<{ ok: boolean; results: string[]; durationMs: number }> | null = null;
+  private integrityCheckAt = -Infinity;
   private threadOperations: ThreadOperations | null = null;
   /** The substrate router DaemonCore drives; `.hsr` / `.cell` / `.tmux` are the substrate drivers. */
   private driver: SubstrateRouter | null = null;
@@ -2346,6 +2348,18 @@ export class HiveDaemon {
           return this.mustStore().releaseUpdate({ id: this.param(params, "id"),
             recoverySubjectDigest: this.param(params, "recoverySubjectDigest"), epoch: params.epoch });
         });
+      case "doctor.integrity": {
+        if (this.integrityCheck) return this.integrityCheck;
+        if (Date.now() - this.integrityCheckAt < 60_000) throw new RpcError("doctor_cooldown", "Integrity check requires a sixty-second interval between runs");
+        this.integrityCheckAt = Date.now();
+        const pending: Promise<{ ok: boolean; results: string[]; durationMs: number }> = new Promise((resolve, reject) => setImmediate(() => {
+          const started = performance.now();
+          try { resolve({ ...this.mustStore().quickCheck(), durationMs: performance.now() - started }); }
+          catch (error) { reject(error); }
+        }));
+        this.integrityCheck = pending.finally(() => { this.integrityCheckAt = Date.now(); this.integrityCheck = null; });
+        return this.integrityCheck;
+      }
       case "node.harnesses":
         return this.rpcNodeHarnesses();
       case "health":

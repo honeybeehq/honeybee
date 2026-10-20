@@ -407,6 +407,9 @@ export class RpcServer {
         this.refusals.record("local_peer_credentials_unavailable", null, null);
         throw new RpcError("local_peer_credentials_unavailable", "Peer credentials are unavailable for this connection; reconnect before mutating state.");
       }
+      if (verb === "doctor.integrity" && (peer?.state !== "verified" || conn.ingress !== "local_unix" || conn.relayLane !== null)) {
+        throw new RpcError("caller_not_trusted", "Integrity check requires a verified direct local administrator connection.");
+      }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       const result = withRpcCaller(caller, () => {
         if (verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register") {
