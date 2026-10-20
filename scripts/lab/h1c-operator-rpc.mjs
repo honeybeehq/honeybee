@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
+import {createHash,createHmac} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {openCoreStore} from '../../v2/core/src/index.ts';
 import {makeDaemonDir,startDaemon,waitFor} from '../../v2/daemon/tests/helpers.ts';
+import {localTrustMessage} from '../../v2/daemon/src/localRpcTrust.ts';
+import {RpcClient} from '../../v2/cli/src/client.ts';
 assert(process.env.TMPDIR?.startsWith('/var/tmp/'),'set an owned TMPDIR');
-const fixture=makeDaemonDir();
+const fixture=makeDaemonDir({rpcLocalTrust:{requireObservationCaller:true}});
 const store=openCoreStore(join(fixture.dir,'core.sqlite3'));
 store.createBee({id:'held-bee',name:'owned-held-fixture',agent:'stub',substrate:'hsr',cwd:fixture.dir});
 store.updateRuntimeState('held-bee',1,'running');
@@ -16,9 +19,14 @@ for(const action of ['resend_anyway','drop']){
  store.holdDeliveryConfirmation(message.id,'unknown');
 }
 store.updateRuntimeState('held-bee',1,'stopped',{exitCause:'crashed'});store.close();
-const daemon=await startDaemon(fixture.dir);const client=await daemon.client();
+const daemon=await startDaemon(fixture.dir);const client=await RpcClient.connect(daemon.socketPath,3000,undefined,{capabilities:['mail.delivery.confirmation.v1']});
 let primaryError;
 try{
+ for(const verb of ['mail.delivery.resend_anyway','mail.delivery.drop'])await assert.rejects(client.request(verb,{beeId:'held-bee',messageId:messages[0],generation:2,idempotencyKey:'unregistered'}),{code:'caller_not_trusted'});
+ const challenge=await client.request('rpc.localTrust.challenge',{});
+ const key=readFileSync(join(fixture.dir,'rpc-private','registration.key'));
+ const token=createHmac('sha256',key).update(localTrustMessage(challenge)).digest('hex');key.fill(0);
+ await client.request('rpc.localTrust.register',{pid:process.pid,challengeId:challenge.challengeId,token});
  const view=await waitFor(async()=>{const row=await client.request('view',{beeId:'held-bee'});return row.view.generation===2&&row.runtime?.state==='idle'&&row;},'owned successor idle',15000);
  const params={beeId:'held-bee',messageId:messages[0],generation:view.view.generation,idempotencyKey:'owned-resend'};
  console.log(JSON.stringify({case:'held-fixture',socketPath:daemon.socketPath,dataDir:fixture.dir,beeId:'held-bee',generation:params.generation,messageIds:messages,pid:daemon.proc.pid}));

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 export const DELIVERY_STATUS_CAPABILITY = "delivery_status.v1";
+export const DELIVERY_FRAME_MAX_BYTES = 16_777_216;
 export type DeliveryReceiptState = "not_written" | "written" | "accepted" | "refused" | "unknown";
 export interface DeliveryStatus {
   id: number;
@@ -68,7 +69,10 @@ export class DeliveryReceipts {
   }
 
   begin(value: TaggedDelivery, line: string): boolean {
-    if (this.status(value).state !== "not_written") return false;
+    const state = this.status(value).state;
+    const prior = this.receipts.get(value.id);
+    const refused = this.matches(value) && prior?.state === "refused";
+    if (!refused && state !== "not_written") return false;
     if (createHash("sha256").update(line).digest("hex") !== value.digest) return false;
     let request: unknown;
     try { request = JSON.parse(line); } catch { return false; }

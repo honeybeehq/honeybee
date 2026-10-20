@@ -265,6 +265,14 @@ export class CellDriver implements RuntimeDriver {
     return this.inner.deliveryReadiness(beeId, generation, messageId);
   }
 
+  deliveryIssue(beeId: string, generation: number, messageId: number, body: string) {
+    return this.inner.deliveryIssue(beeId, generation, messageId, body);
+  }
+
+  deliveryLaneReady(beeId: string, generation: number): boolean {
+    return this.inner.deliveryLaneReady(beeId, generation);
+  }
+
   planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string) {
     return this.inner.planDeliveryConfirmation(beeId, generation, messageId, body);
   }

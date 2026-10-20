@@ -171,7 +171,6 @@ function bindToTestFixtureLease(lease: string | undefined): void {
 }
 
 export function runRunnerHost(configPath: string): void {
-  process.umask(0o077);
   stateFile(configPath, "runner configPath");
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
   runnerStateFiles(cfg);
@@ -322,7 +321,13 @@ export function runRunnerHost(configPath: string): void {
     status.at = Date.now();
     writeStatus(cfg.statusPath, status);
   });
-  server.listen(cfg.socketPath, () => chmodSync(cfg.socketPath, 0o600));
+  mkdirSync(dirname(cfg.socketPath), { recursive: true, mode: 0o700 });
+  const previousMask = process.umask(0o077);
+  try {
+    server.listen(cfg.socketPath, () => chmodSync(cfg.socketPath, 0o600));
+  } finally {
+    process.umask(previousMask);
+  }
 
   /**
    * One outbound line: session log FIRST (the host is the log's single

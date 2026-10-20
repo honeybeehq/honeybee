@@ -68,6 +68,7 @@ const policy: Readonly<Record<string, string>> = {
  'v2/daemon/src/loops.ts:buildHandoffContext:buildExtractiveHandoffContext':'text-only handoff; no question-row serialization',
  'v2/daemon/src/rpc.ts:flushWatch:byCursor.set':'canonical private cursor batch',
  'v2/daemon/src/rpc.ts:flushWatch:projectAnswerTriggerDelta':'outer question projector before send',
+ 'v2/daemon/src/rpc.ts:flushWatch:projectMailDeliveryDelta':'delivery capability projection before outer question projector',
  'v2/daemon/src/daemon.ts:flushWatchers:this.mirrorAuditRows':'canonical audit batch; RPC delta projection next',
  'v2/daemon/src/daemon.ts:mirrorAuditRows:mirrorBeeAuditRow':'canonical audit redaction; RPC delta projection next',
  'v2/daemon/src/daemon.ts:mirrorAuditRows:this.publicConfirmationAudit':'delivery-confirmation redaction; RPC question delta projection next',

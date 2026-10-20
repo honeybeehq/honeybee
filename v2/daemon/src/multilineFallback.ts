@@ -55,7 +55,7 @@ export class MultilineFallback {
     return false;
   }
 
-  deliver(message: MessageRow, text: string, generation: number, peer: boolean, questionId: string | null, source: TurnTriggerSource, reorderMessageIds: number[] = []): { handled: boolean; accepted: boolean; generation?: number } {
+  deliver(message: MessageRow, text: string, generation: number, peer: boolean, questionId: string | null, source: TurnTriggerSource, reorderMessageIds: number[] = []): { handled: boolean; accepted: boolean; generation?: number; confirmationBody?: string } {
     const hold = this.store.multilineDelivery(message.id);
     if (!hold || !hold.fallback && !["held", "expired"].includes(hold.stage)) return { handled: false, accepted: false };
     if (this.store.inTransaction) return { handled: true, accepted: false };
@@ -75,6 +75,7 @@ export class MultilineFallback {
     }
     if (!fallback) return { handled: true, accepted: false };
     if (fallback.state === "in_flight" || fallback.state === "unknown") {
+      if (fallback.pointer && this.driver.planDeliveryConfirmation?.(message.beeId, generation, message.id, fallback.pointer) != null) return { handled: false, accepted: false, confirmationBody: fallback.pointer };
       return { handled: true, accepted: this.reconcile(message, source), ...(fallback.generation === null ? {} : { generation: fallback.generation }) };
     }
     if (fallback.state !== "preparing" && fallback.state !== "ready") return { handled: true, accepted: false };
@@ -93,6 +94,10 @@ export class MultilineFallback {
       return { handled: true, accepted: false };
     }
     if (!fallback.path) return { handled: true, accepted: false };
+    if (fallback.pointer && this.driver.planDeliveryConfirmation?.(message.beeId, generation, message.id, fallback.pointer) != null) {
+      this.store.transitionMultilineFallback(message.id, "ready", "in_flight", { generation, attempts: (fallback.attempts ?? 0) + 1, attemptPhase: "injecting" });
+      return { handled: false, accepted: false, confirmationBody: fallback.pointer };
+    }
     const pane = this.driver.deliveryPane?.(message.beeId, generation);
     if (bee.substrate === "tmux" && !pane) {
       this.store.transitionMultilineFallback(message.id, "ready", "held", {detail: "delivery_pane_identity_unavailable"});

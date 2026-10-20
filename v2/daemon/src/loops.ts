@@ -1,4 +1,5 @@
 import type { QuotaBoundary } from "../../core/src/quota.ts";
+import { deliveryConfirmationIntentFits } from "../../core/src/deliveryConfirmationTypes.ts";
 import {ProcessIdentityUnavailableError} from "../../driver-hsr/src/psutil.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
@@ -1634,6 +1635,12 @@ export class DaemonCore {
         this.confirmationReady.delete(intent.messageId);
         continue;
       }
+      if (intent.wireLine === null && intent.reason === "host_auth_failed" && this.driver.deliveryLaneReady?.(intent.beeId, intent.generation)) {
+        this.store.releaseNeverWrittenDeliveryHold(intent.messageId, intent.generation, "host_auth_failed");
+        this.confirmationPolls.delete(intent.messageId);
+        this.deliveryRetries.delete(intent.beeId);
+        continue;
+      }
       const key = this.driver.deliveryReadiness?.(intent.beeId, intent.generation, intent.messageId) ?? "";
       const poll = this.confirmationPolls.get(intent.messageId);
       if (poll?.key === key && this.now() < poll.nextAt) continue;
@@ -1647,15 +1654,19 @@ export class DaemonCore {
         const message = this.store.getMessage(intent.messageId);
         if (!message) continue;
         const peer = isPeerSender(message.sender, id => this.store.getBee(id) != null);
-        const reorder = this.store.multilineReorderNotice(intent.beeId, intent.messageId);
-        if (this.store.markDelivered(intent.messageId, intent.generation, this.turnTriggerSourceOf(message, peer), reorder.messageIds).applied) {
+        const settlement = intent.wireLine === null ? undefined : intent.settlement;
+        const fallback = this.store.multilineDelivery(intent.messageId)?.fallback;
+        const applied = settlement?.multilineFallbackId && fallback?.id === settlement.multilineFallbackId
+          ? this.store.completeMultilineFallback(intent.messageId, intent.generation, this.turnTriggerSourceOf(message, peer), true).applied
+          : this.store.markDelivered(intent.messageId, intent.generation, this.turnTriggerSourceOf(message, peer), settlement?.reorderMessageIds ?? []).applied;
+        if (applied) {
           this.interruptRequested.delete(intent.messageId);
-          const instruction = this.store.placementInstructionMove(intent.beeId);
+          const instruction = settlement?.placementMoveId ? this.store.getBeeMove(settlement.placementMoveId) : null;
           if (instruction && runtime.generation !== instruction.sourceGeneration) {
             this.store.markMoveInstructionsApplied(instruction.id);
             if (this.store.activeMoveOf(intent.beeId)?.phase === "starting") this.store.completeBeeMove(instruction.id);
           }
-          const handoff = this.store.activeHandoffOf(intent.beeId);
+          const handoff = settlement?.handoffId ? this.store.getBeeHandoff(settlement.handoffId) : null;
           if (handoff?.phase === "starting" && handoff.seedMessageId === intent.messageId) this.store.completeBeeHandoff(handoff.id);
           this.log(`deliver.confirmed bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation}`);
         }
@@ -1736,6 +1747,11 @@ export class DaemonCore {
           ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => (a.queueOrder ?? a.id) - (b.queueOrder ?? b.id) || a.id - b.id)
           : ordinaryPending;
         const pending = quotaGate.messageIds.length > 0 ? allPending.filter(message => quotaGate.messageIds.includes(message.id)) : allPending;
+        const authHead = pending[0];
+        if (authHead && this.driver.deliveryIssue?.(rt.beeId, rt.generation, authHead.id, "") === "host_auth_failed" && !this.store.inTransaction && !this.store.getDeliveryConfirmationIntent(authHead.id)) {
+          this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: authHead.id, generation: rt.generation }, "host_auth_failed");
+          this.log(`deliver.held bee=${rt.beeId} msg=${authHead.id} reason=host_auth_failed`);
+        }
         if (rt.state === "booting") continue;
         if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
         const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);
@@ -1831,23 +1847,44 @@ export class DaemonCore {
         const retryKey = JSON.stringify([msg.id, msg.urgency, rt.generation, rt.state, rt.updatedAt, readiness, msg.deliveryHold?.stage, this.store.inTransaction]);
         const retry = this.deliveryRetries.get(rt.beeId);
         if (retry && retry.key === retryKey && this.now() < retry.nextAt) continue;
+        const refusePlan = (): void => {
+          if (this.store.inTransaction) return;
+          const attempts = retry?.key === retryKey ? retry.attempts + 1 : 1;
+          const delay = Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25);
+          this.deliveryRetries.set(rt.beeId, { key: retryKey, attempts, nextAt: this.now() + delay });
+          this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=not_ready detail=confirmation_plan_not_ready`);
+        };
         const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+        if (fallback?.confirmationBody) body = fallback.confirmationBody;
+        const issue = this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body);
+        if (issue && !this.store.inTransaction) {
+          this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, issue);
+          this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=${issue}`);
+          continue;
+        }
         let confirmation: DeliveryConfirmationPlan | undefined;
+        const settlement = { reorderMessageIds: reorderNotice.messageIds, placementMoveId: instruction?.id ?? null,
+          handoffId: handoff?.id ?? null, ...(fallback?.confirmationBody ? { multilineFallbackId: this.store.multilineDelivery(msg.id)?.fallback?.id } : {}) };
         if (!fallback?.handled) {
           const existing = this.store.getDeliveryConfirmationIntent(msg.id);
           if (existing) {
             if (existing.generation !== rt.generation || existing.wireLine === null || existing.state !== "awaiting_confirmation" || !this.confirmationReady.delete(msg.id)) continue;
             const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
-            if (!plan || plan === "not_ready") continue;
-            confirmation = this.store.replanDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id,
-              generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host }, existing.digest);
+            if (!plan || plan === "not_ready") { refusePlan(); continue; }
+            const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
+            if (!deliveryConfirmationIntentFits(input)) { this.store.holdDeliveryConfirmation(msg.id, "message_too_large"); continue; }
+            confirmation = this.store.replanDeliveryConfirmationIntent(input, existing.digest);
           } else {
             const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
-            if (plan === "not_ready") continue;
+            if (plan === "not_ready") { refusePlan(); continue; }
             if (plan) {
               if (this.store.inTransaction) continue;
-              confirmation = this.store.prepareDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id,
-                generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host });
+              const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
+              if (!deliveryConfirmationIntentFits(input)) {
+                this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, "message_too_large");
+                continue;
+              }
+              confirmation = this.store.prepareDeliveryConfirmationIntent(input);
               if (!plan.supported && !plan.legacyFirstWriteSafe) {
                 this.store.holdDeliveryConfirmation(msg.id, "old_host");
                 continue;
@@ -1859,7 +1896,8 @@ export class DaemonCore {
           : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { confirmation, multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
         if (outcome.accepted) {
           this.deliveryRetries.delete(rt.beeId);
-          if (!fallback?.handled) this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+          if (fallback?.confirmationBody) this.store.completeMultilineFallback(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), true);
+          else if (!fallback?.handled) this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
           const deliveredGeneration = fallback?.generation ?? rt.generation;
           this.interruptRequested.delete(msg.id);
           if (instruction && deliveredGeneration === rt.generation && rt.generation !== instruction.sourceGeneration) {

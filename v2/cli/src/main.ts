@@ -556,7 +556,7 @@ function withDaemonTarget(ctx: CliContext, value: unknown): unknown {
 async function connectDaemon(ctx: CliContext): Promise<RpcClient> {
   assertSocketMatchesDataDir(ctx.target);
   const client = await RpcClient.connect(ctx.cfg.socketPath, 3000, undefined, {
-    capabilities: ["question.dismissed.v1"],
+    capabilities: ["question.dismissed.v1", "mail.delivery.confirmation.v1"],
     caller: callerHelloFor(ctx.target, ctx.allowForeignDaemon),
     verifyInstance: (instance) => {
       assertInstanceMatchesDataDir(ctx.target, instance);
