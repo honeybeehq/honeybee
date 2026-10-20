@@ -1,0 +1,7 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"quota lab warmup"}]}}
+{"type":"system","subtype":"init","session_id":"6e4821f9-b087-4b32-9a9d-dcff611c8792","cwd":"/var/tmp/hb-quota-C.ly9DZk3x/tmp/hb-v2-daemon-lOBIJo","model":"fake","claude_code_version":"0.0.0-fake"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"echo:quota lab warmup"}]},"session_id":"6e4821f9-b087-4b32-9a9d-dcff611c8792"}
+{"type":"result","subtype":"success","is_error":false,"result":"echo:quota lab warmup","session_id":"6e4821f9-b087-4b32-9a9d-dcff611c8792"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"@quota:weekly_local concurrent unknown reset"}]}}
+{"type":"assistant","uuid":"203cad9c-c9c9-4ea9-805d-1b0494642f9c","error":"rate_limit","message":{"id":"e143541a-4429-4e57-90d5-cf3b5d58c30c","role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"You've hit your weekly limit · resets 2pm (Europe/Oslo)"}]},"session_id":"6e4821f9-b087-4b32-9a9d-dcff611c8792"}
+{"type":"result","subtype":"error_during_execution","is_error":true,"result":"You've hit your weekly limit · resets 2pm (Europe/Oslo)","session_id":"6e4821f9-b087-4b32-9a9d-dcff611c8792"}

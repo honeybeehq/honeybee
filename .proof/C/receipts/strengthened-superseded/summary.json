@@ -1,0 +1,91 @@
+[
+  {
+    "name": "claude-once",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.2mFkTxSn/tmp/hb-v2-daemon-CoGqDc",
+    "resetAt": 1792483441242,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:14f96f2b-c8c7-4e0e-8004-70353bfd8f18:1:2",
+    "state": "resumed",
+    "kind": "replay",
+    "targetAccount": "claude-b",
+    "continuationMessageIds": [
+      3
+    ]
+  },
+  {
+    "name": "codex-once",
+    "harness": "codex",
+    "dir": "/var/tmp/hb-quota-C.2mFkTxSn/tmp/hb-v2-daemon-gMRed8",
+    "resetAt": 1792483443474,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:4e7be6e8-b65c-4f41-a3b3-521c5e883707:1:2",
+    "state": "resumed",
+    "kind": "continue",
+    "targetAccount": "codex-b",
+    "continuationMessageIds": [
+      3
+    ]
+  },
+  {
+    "name": "source-reset",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.2mFkTxSn/tmp/hb-v2-daemon-h91BR0",
+    "resetAt": 1792479857282,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:bbf72921-f9f7-4af9-aaff-39ae374ab672:1:2",
+    "state": "resumed",
+    "kind": "replay",
+    "targetAccount": "claude-a",
+    "continuationMessageIds": [
+      3
+    ]
+  },
+  {
+    "name": "unknown-reset",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.2mFkTxSn/tmp/hb-v2-daemon-Hxfzlj",
+    "resetAt": null,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:cbd60170-52a2-4d50-a6aa-ffa1f16d56f5:1:2",
+    "state": "waiting",
+    "reason": "account_unavailable",
+    "retryAt": null
+  },
+  {
+    "name": "autoswap-false",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.2mFkTxSn/tmp/hb-v2-daemon-89xS6N",
+    "resetAt": 1792483491981,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:d83d48ca-e126-4986-8408-4c63e9423345:1:2",
+    "state": "waiting",
+    "reason": "autoswap_disabled",
+    "retryAt": null
+  },
+  {
+    "name": "active-owner",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.2mFkTxSn/tmp/hb-v2-daemon-aSCwXu",
+    "resetAt": 1792483526079,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:17257139-cca8-49df-8ea2-6fb42a68f43f:1:2",
+    "state": "waiting",
+    "reason": "allocation_owner_required",
+    "retryAt": 1792483526079
+  },
+  {
+    "name": "restart-waiting",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.2mFkTxSn/tmp/hb-v2-daemon-QzBzwO",
+    "resetAt": 1792479972160,
+    "passed": false,
+    "error": "Error: waitFor timeout: restart-waiting native conversation initialized\n    at waitFor (file:///home/trmd/.hive/v2/cells/sar-c-lab-driver-a4abb037a555/github-com-honeybeehq-honeybee-a9015b303498-space-a4abb037a555/v2/daemon/tests/helpers.ts:35:38)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async file:///home/trmd/.hive/v2/cells/sar-c-lab-driver-a4abb037a555/github-com-honeybeehq-honeybee-a9015b303498-space-a4abb037a555/.proof/C/lab.ts:81:5"
+  }
+]

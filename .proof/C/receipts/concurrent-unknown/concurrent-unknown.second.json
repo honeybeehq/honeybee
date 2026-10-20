@@ -1,0 +1,167 @@
+{
+  "view": {
+    "view": {
+      "beeId": "9e50650f-a217-4ead-84e7-368485979453",
+      "exists": true,
+      "lifecycle": "active",
+      "generation": 1,
+      "runtimeState": "idle",
+      "exitCause": null,
+      "working": false,
+      "waitingForYou": true,
+      "lastOutputAt": 1792480008150,
+      "reachable": true,
+      "blocked": true,
+      "flags": [
+        "resource_blocked"
+      ]
+    },
+    "bee": {
+      "id": "9e50650f-a217-4ead-84e7-368485979453",
+      "name": "C-concurrent-second",
+      "agent": "claude",
+      "substrate": "hsr",
+      "cwd": "/var/tmp/hb-quota-C.ly9DZk3x/tmp/hb-v2-daemon-lOBIJo",
+      "title": null,
+      "tags": [],
+      "sessionLogPath": "/var/tmp/hb-quota-C.ly9DZk3x/tmp/hb-v2-daemon-lOBIJo/session-logs/9e50650f-a217-4ead-84e7-368485979453.jsonl",
+      "lifecycle": "active",
+      "createdAt": 1792480007529,
+      "archivedAt": null,
+      "lastOutputAt": 1792480008150,
+      "providerSessionId": "2346d962-e750-4c14-b068-fe44b3da345a",
+      "env": {
+        "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+        "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+        "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+        "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+        "ANTHROPIC_API_KEY": "<redacted>",
+        "CLAUDE_CONFIG_DIR": "/var/tmp/hb-quota-C.ly9DZk3x/tmp/hb-v2-daemon-lOBIJo/homes/claude-a"
+      },
+      "importedFrom": null,
+      "spawnFailures": 0,
+      "args": null,
+      "parentId": null,
+      "parentExternal": false,
+      "forkedFrom": null,
+      "forkSeed": null,
+      "account": "claude-a",
+      "handle": "CL.0001",
+      "human_ref": null,
+      "issuing_namespace": null,
+      "placementVersion": 0,
+      "activeMoveId": null,
+      "cellId": null,
+      "activeHandoffId": null,
+      "lastTurnTrigger": {
+        "kind": "human",
+        "from": "operator",
+        "messageId": 4,
+        "generation": 1,
+        "startedAt": 1792480008121,
+        "humanAt": 1792480008121,
+        "endedAt": 1792480008150
+      },
+      "lastHumanOutputAt": 1792480008150
+    },
+    "runtime": {
+      "beeId": "9e50650f-a217-4ead-84e7-368485979453",
+      "generation": 1,
+      "state": "idle",
+      "exitCause": null,
+      "pid": 596825,
+      "pidStartedAt": 1792480007744,
+      "bootEvidence": "real",
+      "startedAt": 1792480007529,
+      "updatedAt": 1792480008150
+    },
+    "move": null,
+    "cell": null,
+    "handoff": null
+  },
+  "mail": {
+    "messages": [
+      {
+        "id": 2,
+        "beeId": "9e50650f-a217-4ead-84e7-368485979453",
+        "sender": "operator",
+        "body": "quota lab second warmup",
+        "priority": 0,
+        "urgency": "next",
+        "enqueuedAt": 1792480007533,
+        "deliveredAt": 1792480007908,
+        "deliveredGeneration": 1
+      },
+      {
+        "id": 4,
+        "beeId": "9e50650f-a217-4ead-84e7-368485979453",
+        "sender": "operator",
+        "body": "@quota:weekly_local concurrent unknown reset",
+        "priority": 0,
+        "urgency": "next",
+        "enqueuedAt": 1792480008101,
+        "deliveredAt": 1792480008121,
+        "deliveredGeneration": 1
+      }
+    ]
+  },
+  "recovery": {
+    "id": "quota:9e50650f-a217-4ead-84e7-368485979453:1:4",
+    "beeId": "9e50650f-a217-4ead-84e7-368485979453",
+    "sourceGeneration": 1,
+    "sourceAccount": "claude-a",
+    "observationCursor": 846,
+    "accountLabel": null,
+    "eventIds": [
+      "quota:9e50650f-a217-4ead-84e7-368485979453:1:846",
+      "quota:9e50650f-a217-4ead-84e7-368485979453:1:1035"
+    ],
+    "messageIds": [
+      4
+    ],
+    "progress": "none",
+    "interrupted": true,
+    "controlFence": 0,
+    "placement": {
+      "agent": "claude",
+      "cwd": "/var/tmp/hb-quota-C.ly9DZk3x/tmp/hb-v2-daemon-lOBIJo",
+      "cellId": null
+    },
+    "quota": {
+      "harness": "claude",
+      "window": "weekly",
+      "resetsAt": null,
+      "providerCategory": "errored_result_limit"
+    },
+    "resetHints": {},
+    "state": "waiting",
+    "attempt": 0,
+    "targetAccount": null,
+    "successorGeneration": null,
+    "claimId": null,
+    "reservationId": null,
+    "commandId": null,
+    "continuationKind": null,
+    "continuationMessageIds": [],
+    "retryAt": null,
+    "reason": "account_unavailable",
+    "createdAt": 1792480008168,
+    "updatedAt": 1792480008183
+  },
+  "accountProbes": [
+    {
+      "account": "a",
+      "timestamps": [
+        1792480008224,
+        1792480038192
+      ]
+    },
+    {
+      "account": "b",
+      "timestamps": [
+        1792480008231,
+        1792480038193
+      ]
+    }
+  ]
+}
