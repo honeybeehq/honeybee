@@ -1,0 +1,206 @@
+[
+  {
+    "name": "claude-active-owner",
+    "passed": true,
+    "elapsedMs": 723,
+    "recovery": {
+      "trigger": "proactive",
+      "id": "admission:0164c194-9175-4ddb-aec7-af00a967a108:1:0",
+      "beeId": "0164c194-9175-4ddb-aec7-af00a967a108",
+      "sourceGeneration": 1,
+      "sourceAccount": "claude-a",
+      "observationCursor": null,
+      "sourceId": null,
+      "accountLabel": "b",
+      "eventIds": [],
+      "messageIds": [],
+      "progress": "none",
+      "interrupted": false,
+      "controlFence": 2,
+      "placement": {
+        "agent": "claude",
+        "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-Sw16s0",
+        "cellId": null
+      },
+      "quota": null,
+      "admission": {
+        "fetchedAt": 1792525892190,
+        "maxProjectedPercent": 94,
+        "candidateAccountIds": [
+          "claude-b"
+        ]
+      },
+      "resetHints": {
+        "other": 1792536692000
+      },
+      "state": "resumed",
+      "attempt": 1,
+      "targetAccount": "claude-b",
+      "successorGeneration": 2,
+      "claimId": "7c610a9c-7357-47f7-af66-298faa800482",
+      "reservationId": null,
+      "commandId": 2,
+      "continuationKind": "none",
+      "continuationMessageIds": [],
+      "continuationHistory": [],
+      "retryAt": null,
+      "reason": null,
+      "createdAt": 1792525892521,
+      "updatedAt": 1792525892911,
+      "reasonDetail": null
+    }
+  },
+  {
+    "name": "codex-active-no-owner",
+    "passed": true,
+    "elapsedMs": 2541,
+    "recovery": {
+      "trigger": "proactive",
+      "id": "admission:d74c6caa-d657-454b-827c-0e324052fa4b:1:0",
+      "beeId": "d74c6caa-d657-454b-827c-0e324052fa4b",
+      "sourceGeneration": 1,
+      "sourceAccount": "codex-a",
+      "observationCursor": null,
+      "sourceId": null,
+      "accountLabel": null,
+      "eventIds": [],
+      "messageIds": [],
+      "progress": "none",
+      "interrupted": false,
+      "controlFence": 0,
+      "placement": {
+        "agent": "codex",
+        "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-mrN4vM",
+        "cellId": null
+      },
+      "quota": null,
+      "admission": {
+        "fetchedAt": 1792525893831,
+        "maxProjectedPercent": 94,
+        "candidateAccountIds": [
+          "codex-b"
+        ]
+      },
+      "resetHints": {
+        "other": 1792536694000
+      },
+      "state": "cancelled",
+      "attempt": 0,
+      "targetAccount": null,
+      "successorGeneration": null,
+      "claimId": null,
+      "reservationId": null,
+      "commandId": null,
+      "continuationKind": null,
+      "continuationMessageIds": [],
+      "continuationHistory": [],
+      "retryAt": null,
+      "reason": "owner_unavailable",
+      "createdAt": 1792525894458,
+      "updatedAt": 1792525896463,
+      "reasonDetail": null
+    }
+  },
+  {
+    "name": "codex-active-owner",
+    "passed": true,
+    "elapsedMs": 1016,
+    "recovery": {
+      "trigger": "proactive",
+      "id": "admission:5817ee3d-0c88-414d-865f-0413b6a0f3d4:1:0",
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+      "sourceGeneration": 1,
+      "sourceAccount": "codex-a",
+      "observationCursor": null,
+      "sourceId": null,
+      "accountLabel": "b",
+      "eventIds": [],
+      "messageIds": [],
+      "progress": "none",
+      "interrupted": false,
+      "controlFence": 2,
+      "placement": {
+        "agent": "codex",
+        "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+        "cellId": null
+      },
+      "quota": null,
+      "admission": {
+        "fetchedAt": 1792525898759,
+        "maxProjectedPercent": 94,
+        "candidateAccountIds": [
+          "codex-b"
+        ]
+      },
+      "resetHints": {
+        "other": 1792536699000
+      },
+      "state": "resumed",
+      "attempt": 1,
+      "targetAccount": "codex-b",
+      "successorGeneration": 2,
+      "claimId": "61046cbb-1eb2-4390-ba16-1a83ab3fd633",
+      "reservationId": null,
+      "commandId": 2,
+      "continuationKind": "none",
+      "continuationMessageIds": [],
+      "continuationHistory": [],
+      "retryAt": null,
+      "reason": null,
+      "createdAt": 1792525899325,
+      "updatedAt": 1792525899846,
+      "reasonDetail": null
+    }
+  },
+  {
+    "name": "claude-active-no-owner",
+    "passed": true,
+    "elapsedMs": 90382,
+    "recovery": {
+      "trigger": "proactive",
+      "id": "admission:39299a17-b6f0-4df1-9a46-3380f5f53801:1:0",
+      "beeId": "39299a17-b6f0-4df1-9a46-3380f5f53801",
+      "sourceGeneration": 1,
+      "sourceAccount": "claude-a",
+      "observationCursor": null,
+      "sourceId": null,
+      "accountLabel": null,
+      "eventIds": [],
+      "messageIds": [],
+      "progress": "none",
+      "interrupted": false,
+      "controlFence": 0,
+      "placement": {
+        "agent": "claude",
+        "cwd": "/var/tmp/sar-E5-default.pR2Z7Z/hb-v2-daemon-hNiL7y",
+        "cellId": null
+      },
+      "quota": null,
+      "admission": {
+        "fetchedAt": 1792525931825,
+        "maxProjectedPercent": 94,
+        "candidateAccountIds": [
+          "claude-b"
+        ]
+      },
+      "resetHints": {
+        "other": 1792536732000
+      },
+      "state": "cancelled",
+      "attempt": 0,
+      "targetAccount": null,
+      "successorGeneration": null,
+      "claimId": null,
+      "reservationId": null,
+      "commandId": null,
+      "continuationKind": null,
+      "continuationMessageIds": [],
+      "continuationHistory": [],
+      "retryAt": null,
+      "reason": "owner_unavailable",
+      "createdAt": 1792525932212,
+      "updatedAt": 1792526022214,
+      "reasonDetail": null
+    }
+  }
+]

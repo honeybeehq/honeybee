@@ -1,0 +1,13 @@
+E5 implementation b6e5b6bd4ab9ed8d4f55b1193af16eab0bd350c7
+Base main 8da098465e5f302921d5d1f37665ca2790a9a050
+Branch review/sar-E5-proactive-owner-fallback
+Product delta: three files21lines, waiting active proactive expiry90s plus durable15m cooldown. provider_limit and rotating paths unchanged. No package/lock/schema/capability changes. DEPLOY HOLD; no deployment.
+
+Four real-daemon cases PASS: Claude/Codex no-owner and owner. Configured wait2000ms, observed no-owner2383/2541ms; with-owner723/1016ms. Original no-owner mail generation1/sourceA, owner mail generation2/accountB. No-owner cases restart daemon, force fresh account.limits then deliver3more sourceA turns with exactly one cancelled owner_unavailable row. Lab scripts never call helper cleanup.
+Additional default90s real Claude run PASS: elapsed90382ms, durable row.createdAt to cancelled.updatedAt exactly90002ms. No proactiveOwnerWaitMs override supplied.
+config-controls PASS:90000/900000defaults, before/at expiry boundary, shadow non-expiry,10invalid config values.
+check PASS; v2:check PASS; build PASS; gates.exit0.
+Existing scoped suites PASS:61core allocation/admission/accounts/config tests;15daemon accounts-RPC;58daemon accounts-service with1existing skipped import. Total134pass1skip. Not the full daemon suite. Cleanup import routes owned fixture removal to trash via rename.
+Repository verification skill missing (known setup issue); did not run. Independent reviewer read source only, no independent rerun claimed.
+LOWs: time-based owner_unavailable does not prove owner death and can expire a live owner's capacity/credential wait; cancelled proactive wait no longer suppresses attention. Gate checks every eligible delivery tick, background-only expiration can take90–120s due30sreconcile cadence. With no owner, new activity may incur another90swait after15mcooldown. Config minimum1s permits impractically short operator deadlines.
+Contract Projectv32 copied quota-contract.md; no Apiary owner consumer change required.

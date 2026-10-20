@@ -1,0 +1,3600 @@
+[
+  {
+    "method": "account.add",
+    "params": {
+      "harness": "codex",
+      "label": "a",
+      "importExisting": true
+    },
+    "result": {
+      "account": {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "codex-a",
+        "harness": "codex",
+        "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+        "label": "a",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792525898596,
+        "updatedAt": 1792525898596,
+        "credentialHealth": "unverified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      },
+      "credentialHealth": "unverified",
+      "imported": {
+        "source": "vault",
+        "from": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/vault/codex/codex-a",
+        "files": [
+          "auth.json"
+        ]
+      },
+      "verification": "limits"
+    }
+  },
+  {
+    "method": "account.add",
+    "params": {
+      "harness": "codex",
+      "label": "b",
+      "importExisting": true
+    },
+    "result": {
+      "account": {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "codex-b",
+        "harness": "codex",
+        "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+        "label": "b",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792525898612,
+        "updatedAt": 1792525898612,
+        "credentialHealth": "unverified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      },
+      "credentialHealth": "unverified",
+      "imported": {
+        "source": "vault",
+        "from": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/vault/codex/codex-b",
+        "files": [
+          "auth.json"
+        ]
+      },
+      "verification": "limits"
+    }
+  },
+  {
+    "method": "account.limits",
+    "params": {},
+    "result": {
+      "limits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898886,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "spawn",
+    "params": {
+      "name": "codex-active-owner",
+      "agent": "codex",
+      "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+      "account": "codex-a"
+    },
+    "result": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+      "agent": "codex",
+      "handle": "CO.0000",
+      "humanRef": null,
+      "issuingNamespace": null,
+      "commandId": 1,
+      "messageId": null,
+      "account": "codex-a"
+    }
+  },
+  {
+    "method": "send",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+      "body": "bounded owner recovery original mail"
+    },
+    "result": {
+      "messageId": 1,
+      "commandId": null,
+      "unarchived": false
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 17,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": null,
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525898900
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "booting",
+            "exitCause": null,
+            "working": true,
+            "waitingForYou": false,
+            "lastOutputAt": null,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": null,
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 29,
+      "views": [
+        {
+          "bee": {
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": 1792525899317,
+            "providerSessionId": "62b1f2d5-4e05-4b18-95e9-f8cd039172ab",
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 1,
+            "state": "idle",
+            "exitCause": null,
+            "pid": 1096981,
+            "pidStartedAt": 1792525899112,
+            "bootEvidence": "real",
+            "startedAt": 1792525898900,
+            "updatedAt": 1792525899317
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "idle",
+            "exitCause": null,
+            "working": false,
+            "waitingForYou": false,
+            "lastOutputAt": 1792525899317,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525898759,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525898888,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [
+        {
+          "trigger": "proactive",
+          "id": "admission:5817ee3d-0c88-414d-865f-0413b6a0f3d4:1:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sourceGeneration": 1,
+          "sourceAccount": "codex-a",
+          "observationCursor": null,
+          "sourceId": null,
+          "accountLabel": null,
+          "eventIds": [],
+          "messageIds": [],
+          "progress": "none",
+          "interrupted": false,
+          "controlFence": 0,
+          "placement": {
+            "agent": "codex",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "cellId": null
+          },
+          "quota": null,
+          "admission": {
+            "fetchedAt": 1792525898759,
+            "maxProjectedPercent": 94,
+            "candidateAccountIds": [
+              "codex-b"
+            ]
+          },
+          "resetHints": {
+            "other": 1792536699000
+          },
+          "state": "waiting",
+          "attempt": 0,
+          "targetAccount": null,
+          "successorGeneration": null,
+          "claimId": null,
+          "reservationId": null,
+          "commandId": null,
+          "continuationKind": null,
+          "continuationMessageIds": [],
+          "continuationHistory": [],
+          "retryAt": 1792536699000,
+          "reason": "allocation_owner_required",
+          "createdAt": 1792525899325,
+          "updatedAt": 1792525899326,
+          "reasonDetail": null
+        }
+      ],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": "62b1f2d5-4e05-4b18-95e9-f8cd039172ab",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "account.admission.acquire",
+    "params": {
+      "harness": "codex",
+      "operation": "swap",
+      "target": {
+        "node": "lab",
+        "workId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+        "expectedGeneration": 1
+      },
+      "sourceAccount": "codex-a",
+      "allocationContext": {
+        "version": 1,
+        "scope": "codex:provider-accounts",
+        "authority": {
+          "node": "lab",
+          "epoch": "lab-e"
+        },
+        "revision": "codex-active-owner",
+        "observedAt": 1792525899331,
+        "complete": true,
+        "accounts": []
+      },
+      "onlyAccountIds": [
+        "codex-b"
+      ],
+      "idempotencyKey": "codex-active-owner-acquire"
+    },
+    "result": {
+      "authoritative": true,
+      "claim": {
+        "version": 1,
+        "id": "61046cbb-1eb2-4390-ba16-1a83ab3fd633",
+        "scope": "codex:provider-accounts",
+        "account": "codex-b",
+        "operation": "swap",
+        "units": 1,
+        "model": null,
+        "sourceAccount": "codex-a",
+        "createdAt": 1792525899337,
+        "expiresAt": 1792526799335,
+        "authority": {
+          "node": "lab",
+          "epoch": "lab-e"
+        },
+        "target": {
+          "node": "lab",
+          "workId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "expectedGeneration": 1
+        },
+        "allocation": {
+          "version": 1,
+          "mode": "active",
+          "scope": "codex:provider-accounts",
+          "revision": "codex-active-owner",
+          "observedAt": 1792525899335,
+          "operation": "swap",
+          "outcome": "selected",
+          "account": "codex-b",
+          "reason": "weighted_fair",
+          "retryAt": null,
+          "candidates": [
+            {
+              "accountId": "codex-b",
+              "status": "eligible",
+              "rate": 0.031481589982846135,
+              "fairFinish": 31.764596405228758,
+              "maxProjectedPercent": 9,
+              "retryAt": 1792536699000
+            }
+          ]
+        }
+      },
+      "allocation": {
+        "version": 1,
+        "mode": "active",
+        "scope": "codex:provider-accounts",
+        "revision": "codex-active-owner",
+        "observedAt": 1792525899335,
+        "operation": "swap",
+        "outcome": "selected",
+        "account": "codex-b",
+        "reason": "weighted_fair",
+        "retryAt": null,
+        "candidates": [
+          {
+            "accountId": "codex-b",
+            "status": "eligible",
+            "rate": 0.031481589982846135,
+            "fairFinish": 31.764596405228758,
+            "maxProjectedPercent": 9,
+            "retryAt": 1792536699000
+          }
+        ]
+      }
+    }
+  },
+  {
+    "method": "bee.swapAccount",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+      "account": "auto",
+      "quotaRecoveryId": "admission:5817ee3d-0c88-414d-865f-0413b6a0f3d4:1:0",
+      "allocationClaim": {
+        "version": 1,
+        "id": "61046cbb-1eb2-4390-ba16-1a83ab3fd633",
+        "scope": "codex:provider-accounts",
+        "account": "codex-b",
+        "operation": "swap",
+        "units": 1,
+        "model": null,
+        "sourceAccount": "codex-a",
+        "createdAt": 1792525899337,
+        "expiresAt": 1792526799335,
+        "authority": {
+          "node": "lab",
+          "epoch": "lab-e"
+        },
+        "target": {
+          "node": "lab",
+          "workId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "expectedGeneration": 1
+        },
+        "allocation": {
+          "version": 1,
+          "mode": "active",
+          "scope": "codex:provider-accounts",
+          "revision": "codex-active-owner",
+          "observedAt": 1792525899335,
+          "operation": "swap",
+          "outcome": "selected",
+          "account": "codex-b",
+          "reason": "weighted_fair",
+          "retryAt": null,
+          "candidates": [
+            {
+              "accountId": "codex-b",
+              "status": "eligible",
+              "rate": 0.031481589982846135,
+              "fairFinish": 31.764596405228758,
+              "maxProjectedPercent": 9,
+              "retryAt": 1792536699000
+            }
+          ]
+        }
+      },
+      "onlyAccountIds": [
+        "codex-b"
+      ],
+      "idempotencyKey": "codex-active-owner-swap"
+    },
+    "result": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+      "from": "codex-a",
+      "to": "codex-b",
+      "action": "stop_then_revive",
+      "commandId": 2,
+      "rekeyed": false,
+      "transcript": "present",
+      "allocation": {
+        "version": 1,
+        "mode": "active",
+        "scope": "codex:provider-accounts",
+        "revision": "codex-active-owner",
+        "observedAt": 1792525899335,
+        "operation": "swap",
+        "outcome": "selected",
+        "account": "codex-b",
+        "reason": "weighted_fair",
+        "retryAt": null,
+        "candidates": [
+          {
+            "accountId": "codex-b",
+            "status": "eligible",
+            "rate": 0.031481589982846135,
+            "fairFinish": 31.764596405228758,
+            "maxProjectedPercent": 9,
+            "retryAt": 1792536699000
+          }
+        ]
+      },
+      "allocationClaimId": "61046cbb-1eb2-4390-ba16-1a83ab3fd633"
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": null,
+          "deliveredGeneration": null
+        }
+      ]
+    }
+  },
+  {
+    "method": "mailbox",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "messages": [
+        {
+          "id": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sender": "operator",
+          "body": "bounded owner recovery original mail",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792525898916,
+          "deliveredAt": 1792525899919,
+          "deliveredGeneration": 2
+        }
+      ]
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "view": {
+        "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 2,
+        "runtimeState": "idle",
+        "exitCause": null,
+        "working": false,
+        "waitingForYou": true,
+        "lastOutputAt": 1792525899911,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+        "name": "codex-active-owner",
+        "agent": "codex",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792525898900,
+        "archivedAt": null,
+        "lastOutputAt": 1792525899911,
+        "providerSessionId": "62b1f2d5-4e05-4b18-95e9-f8cd039172ab",
+        "env": {
+          "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "codex-b",
+        "handle": "CO.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 2,
+          "startedAt": 1792525899908,
+          "humanAt": 1792525899908,
+          "endedAt": 1792525899911
+        },
+        "lastHumanOutputAt": 1792525899911
+      },
+      "runtime": {
+        "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+        "generation": 2,
+        "state": "idle",
+        "exitCause": null,
+        "pid": 1097019,
+        "pidStartedAt": 1792525899617,
+        "bootEvidence": "real",
+        "startedAt": 1792525899411,
+        "updatedAt": 1792525899911
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 61,
+      "views": [
+        {
+          "bee": {
+            "authControlFence": 2,
+            "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "name": "codex-active-owner",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792525898900,
+            "archivedAt": null,
+            "lastOutputAt": 1792525899911,
+            "providerSessionId": "62b1f2d5-4e05-4b18-95e9-f8cd039172ab",
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-b",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 1,
+              "generation": 2,
+              "startedAt": 1792525899908,
+              "humanAt": 1792525899908,
+              "endedAt": 1792525899911
+            },
+            "lastHumanOutputAt": 1792525899911
+          },
+          "runtime": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "generation": 2,
+            "state": "idle",
+            "exitCause": null,
+            "pid": 1097019,
+            "pidStartedAt": 1792525899617,
+            "bootEvidence": "real",
+            "startedAt": 1792525899411,
+            "updatedAt": 1792525899911
+          },
+          "view": {
+            "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 2,
+            "runtimeState": "idle",
+            "exitCause": null,
+            "working": false,
+            "waitingForYou": true,
+            "lastOutputAt": 1792525899911,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898596,
+          "updatedAt": 1792525898758,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792525898612,
+          "updatedAt": 1792525898887,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792525899696,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 90,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792525899699,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": "small",
+          "fiveHourPct": 5,
+          "fiveHourResetsAt": 1792536699000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 5,
+          "weeklyResetsAt": 1792623099000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [
+        {
+          "id": "61046cbb-1eb2-4390-ba16-1a83ab3fd633",
+          "requestKey": "account-admission:swap:codex-active-owner-acquire",
+          "scope": "codex:provider-accounts",
+          "account": "codex-b",
+          "sourceAccount": "codex-a",
+          "operation": "swap",
+          "units": 1,
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "reconcileAfterGeneration": 1,
+          "receipt": {
+            "allocation": {
+              "version": 1,
+              "mode": "active",
+              "scope": "codex:provider-accounts",
+              "revision": "codex-active-owner",
+              "observedAt": 1792525899335,
+              "operation": "swap",
+              "outcome": "selected",
+              "account": "codex-b",
+              "reason": "weighted_fair",
+              "retryAt": null,
+              "candidates": [
+                {
+                  "accountId": "codex-b",
+                  "status": "eligible",
+                  "rate": 0.031481589982846135,
+                  "fairFinish": 31.764596405228758,
+                  "maxProjectedPercent": 9,
+                  "retryAt": 1792536699000
+                }
+              ]
+            },
+            "authority": {
+              "version": 1,
+              "owner": {
+                "node": "lab",
+                "epoch": "lab-e"
+              },
+              "target": {
+                "node": "lab",
+                "workId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+                "expectedGeneration": 1
+              },
+              "model": null
+            }
+          },
+          "createdAt": 1792525899337,
+          "expiresAt": 1792526799335,
+          "confirmedAt": null,
+          "releasedAt": null
+        }
+      ],
+      "quotaRecoveries": [
+        {
+          "trigger": "proactive",
+          "id": "admission:5817ee3d-0c88-414d-865f-0413b6a0f3d4:1:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "sourceGeneration": 1,
+          "sourceAccount": "codex-a",
+          "observationCursor": null,
+          "sourceId": null,
+          "accountLabel": "b",
+          "eventIds": [],
+          "messageIds": [],
+          "progress": "none",
+          "interrupted": false,
+          "controlFence": 2,
+          "placement": {
+            "agent": "codex",
+            "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+            "cellId": null
+          },
+          "quota": null,
+          "admission": {
+            "fetchedAt": 1792525898759,
+            "maxProjectedPercent": 94,
+            "candidateAccountIds": [
+              "codex-b"
+            ]
+          },
+          "resetHints": {
+            "other": 1792536699000
+          },
+          "state": "resumed",
+          "attempt": 1,
+          "targetAccount": "codex-b",
+          "successorGeneration": 2,
+          "claimId": "61046cbb-1eb2-4390-ba16-1a83ab3fd633",
+          "reservationId": null,
+          "commandId": 2,
+          "continuationKind": "none",
+          "continuationMessageIds": [],
+          "continuationHistory": [],
+          "retryAt": null,
+          "reason": null,
+          "createdAt": 1792525899325,
+          "updatedAt": 1792525899846,
+          "reasonDetail": null
+        }
+      ],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:5817ee3d-0c88-414d-865f-0413b6a0f3d4:0",
+          "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": "62b1f2d5-4e05-4b18-95e9-f8cd039172ab",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+          "handoffId": null,
+          "createdAt": 1792525898900,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4"
+    },
+    "result": {
+      "view": {
+        "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 2,
+        "runtimeState": "idle",
+        "exitCause": null,
+        "working": false,
+        "waitingForYou": true,
+        "lastOutputAt": 1792525899911,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "authControlFence": 2,
+        "id": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+        "name": "codex-active-owner",
+        "agent": "codex",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/session-logs/5817ee3d-0c88-414d-865f-0413b6a0f3d4.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792525898900,
+        "archivedAt": null,
+        "lastOutputAt": 1792525899911,
+        "providerSessionId": "62b1f2d5-4e05-4b18-95e9-f8cd039172ab",
+        "env": {
+          "CODEX_HOME": "/var/tmp/sar-E5-lab.c5oFk0/hb-v2-daemon-04npRJ/homes/codex-b"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "codex-b",
+        "handle": "CO.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 2,
+          "startedAt": 1792525899908,
+          "humanAt": 1792525899908,
+          "endedAt": 1792525899911
+        },
+        "lastHumanOutputAt": 1792525899911
+      },
+      "runtime": {
+        "beeId": "5817ee3d-0c88-414d-865f-0413b6a0f3d4",
+        "generation": 2,
+        "state": "idle",
+        "exitCause": null,
+        "pid": 1097019,
+        "pidStartedAt": 1792525899617,
+        "bootEvidence": "real",
+        "startedAt": 1792525899411,
+        "updatedAt": 1792525899911
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  }
+]

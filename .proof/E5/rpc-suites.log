@@ -1,0 +1,24 @@
+✔ rpc.accounts.1: CRUD verbs, typed errors, idempotent add, spawn binding (explicit / paused / mismatch / auto / unbound), snapshot + watch carry accounts (1315.361096ms)
+✔ rpc.accounts.fuzzy: one selector works across account verbs, spawn agent shorthand, explicit override, and swap (1115.375138ms)
+✔ rpc account.resetLimits: duplicate keys return one effect; uncertain and wrong-harness failures stay typed (849.887857ms)
+✔ rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → rebind → revive with resume under a NEW session id in the new home; cross-harness refused; stopped bee rebound only (1722.18067ms)
+✔ rpc allocation owner: acquire is authoritative, claim swap is atomic, and all-protected returns account_wait (2071.266256ms)
+✔ rpc allocation owner serializes concurrent node admissions and a remote node consumes one claim once (1953.946249ms)
+✔ rpc allocation owner claim gates active automatic spawn while shadow acquisition remains observational (1340.605975ms)
+✔ rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the replacement generation presents as working (1380.1758ms)
+✔ rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delayed) — swap to the untried account and continue automatically; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status (2989.738287ms)
+✔ rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit work, idle bees move off with a note, and stopped bees move off when they wake (1966.805276ms)
+✔ rpc.accounts.f2: add refuses pre-existing credentials by default; importExisting adopts as unverified; health is validation evidence, never file-existence; a fresh add is auth_needed, never ok (640.959246ms)
+✔ rpc.accounts.v18: importExisting imports the MACHINE's vendor home (the field finding); nothing importable is `no_credentials_to_import` naming the paths; snapshot + watch deltas carry credentialHealth; login success flips status (660.471246ms)
+✔ rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries until successful recovery (1255.784419ms)
+✔ rpc central credentials: per-account opt-in/status/lease/disable, idempotent enable, in-place login, native capture fenced, expired and refused candidates rejected (734.377308ms)
+retained @ account and @ label: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid charset/overflow typed invalid_request
+✔ lease account ids share core validation: retained @ ids renew, revoke and reinstall without suffix rewriting (612.340848ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20951.374527
