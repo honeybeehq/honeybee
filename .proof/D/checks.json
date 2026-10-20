@@ -1,0 +1,30 @@
+{
+  "check": {
+    "command": "npm run check",
+    "exitCode": 0
+  },
+  "v2check": {
+    "command": "npm run v2:check",
+    "exitCode": 0
+  },
+  "build": {
+    "command": "npm run build",
+    "exitCode": 0
+  },
+  "existingSuites": {
+    "command": "node --test --test-concurrency=1 v2/daemon/tests/accounts-rpc.test.ts v2/daemon/tests/import-frozen.test.ts",
+    "passed": 16,
+    "failed": 0
+  },
+  "lab": {
+    "command": "node .proof/D/lab.ts",
+    "exitCode": 0
+  },
+  "baselineCeiling": {
+    "daemonSource": "exact HEAD; see baseline-source.txt",
+    "attempts": 5,
+    "passed": 3,
+    "failed": 2
+  },
+  "note": "Log trailing whitespace normalized; content retained. Commands run with login:false and env -i fake HOME, private var/tmp temp/cache root."
+}
