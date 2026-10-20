@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -15,6 +16,7 @@ assert.ok(root.startsWith("/var/tmp/hb-quota-C."));
 assert.ok(proof.startsWith(root + "/"));
 mkdirSync(proof, { recursive: true });
 console.log(JSON.stringify({ root, proof, pid: process.pid }));
+writeFileSync(join(proof, "metadata.json"), JSON.stringify({ head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), trackedChanges: execFileSync("git", ["status", "--short", "--untracked-files=no"], { encoding: "utf8" }), node: process.version, executable: process.execPath, args: process.argv.slice(2), holdMs: Number(process.env.C_HOLD_MS ?? 33000), repo, root }, null, 2));
 const scenarios = ["claude-once", "codex-once", "source-reset", "unknown-reset", "autoswap-false", "active-owner", "restart-waiting"];
 const selected = process.argv.slice(2);
 for (const name of selected) assert.ok(scenarios.includes(name), `unknown scenario ${name}`);
@@ -83,6 +85,7 @@ for (const name of selected.length ? selected : scenarios) {
     }, `${name} native conversation initialized`, 15_000);
     const sent = await client.request<{ messageId: number }>("send", { beeId, body: "@quota:once exact original quota work" });
     const initial = await waitFor(async () => await recovery(), `${name} durable obligation`, 20_000);
+    assert.ok(initial.messageIds.includes(sent.messageId));
     result.originalMessageId = sent.messageId;
     result.recoveryId = initial.id;
     if (waiting || active || name === "autoswap-false") {
@@ -110,10 +113,11 @@ for (const name of selected.length ? selected : scenarios) {
       }
     }
     if (unknown || active || name === "autoswap-false") {
-      await new Promise(done => setTimeout(done, Number(process.env.C_HOLD_MS ?? 1600)));
+      await new Promise(done => setTimeout(done, Number(process.env.C_HOLD_MS ?? 33000)));
       const held = await dump("held");
       const row = held.snapshot.quotaRecoveries.find(row => row.id === initial.id)!;
       assert.equal(row.state, "waiting");
+      assert.equal(row.reason, unknown ? "account_unavailable" : active ? "allocation_owner_required" : "autoswap_disabled");
       assert.deepEqual(row.continuationMessageIds, []);
       assert.equal(held.view?.view.generation, 1);
       assert.equal(held.mail?.messages.length, 2);
@@ -125,6 +129,8 @@ for (const name of selected.length ? selected : scenarios) {
         return row?.state === "resumed" ? row : null;
       }, `${name} automatic no-send continuation`, 45_000);
       assert.equal(resumed.continuationMessageIds.length, 1);
+      assert.equal(resumed.continuationKind, harness === "codex" ? "continue" : "replay");
+      assert.equal(resumed.progress, harness === "codex" ? "unknown" : "none");
       assert.equal(resumed.targetAccount, `${harness}-${waiting ? "a" : "b"}`);
       await waitFor(async () => {
         const mail = await client.request<MailboxResult>("mailbox", { beeId });
@@ -132,6 +138,8 @@ for (const name of selected.length ? selected : scenarios) {
         return mail.messages.some(message => message.id === resumed.continuationMessageIds[0] && message.deliveredGeneration === 2) && view.view.runtimeState === "idle" && !view.view.flags.includes("resource_blocked") ? true : null;
       }, `${name} continuation delivered and served`, 15_000);
       const after = await dump("resumed");
+      assert.equal(after.view!.bee!.account, resumed.targetAccount);
+      assert.equal(after.view!.bee!.env[harness === "claude" ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME"], join(dir, "homes", resumed.targetAccount!));
       assert.equal(after.mail!.messages.length, 3);
       assert.equal(after.mail!.messages.find(message => message.id === sent.messageId)?.deliveredGeneration, 1, "original delivery remains charged to source generation");
       assert.equal(after.snapshot.quotaRecoveries.filter(row => row.beeId === beeId).length, 1);
@@ -140,6 +148,9 @@ for (const name of selected.length ? selected : scenarios) {
       assert.equal(audit.rows.filter(row => row.kind === "action.report").length, 0);
       if (harness === "claude") assert.equal(resumed.quota.window, "weekly");
       else assert.ok(audit.rows.some(row => row.kind === "quota.observed"));
+      const journal = readFileSync(join(dir, "session-logs", `${beeId}.jsonl`), "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
+      const completed = journal.filter(row => harness === "claude" ? row.type === "result" && row.is_error === false : row.method === "turn/completed" && row.params?.turn?.status === "completed");
+      assert.equal(completed.length, 2, "warmup and one successful continuation turn");
       result = { ...result, passed: true, state: resumed.state, kind: resumed.continuationKind, targetAccount: resumed.targetAccount, continuationMessageIds: resumed.continuationMessageIds };
     }
   } catch (error) {
