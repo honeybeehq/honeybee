@@ -2904,8 +2904,12 @@ export class HiveDaemon {
       || claim.authority.node !== configured.owner.node || claim.authority.epoch !== configured.owner.epoch
       || claim.target.node !== configured.node
       || claim.sourceAccount !== sourceAccount || claim.model !== (model ?? null)
-      || (operation === "swap" && claim.account === sourceAccount && !allowSourceAccount) || claim.expiresAt <= Date.now()) {
+      || claim.expiresAt <= Date.now()) {
       throw new RpcError("account_claim_refused", `allocation claim ${claim.id} is expired or does not match this ${operation}`);
+    }
+    if (operation === "swap" && claim.account === sourceAccount && !allowSourceAccount) {
+      this.refusedClaims.set(claim.id, claim);
+      throw new RpcError("account_claim_refused", `allocation claim ${claim.id} cannot restore the source without a matching provider quota recovery`, { claimId: claim.id, account: claim.account });
     }
     const account = this.resolveAccountSelector(claim.account, harness);
     if (account.harness !== harness) throw new RpcError("harness_mismatch", `account ${account.id} is a ${account.harness} account; expected ${harness}`);
@@ -6530,7 +6534,8 @@ export class HiveDaemon {
         claim, "swap", bee.agent, bee.id, runtime?.generation ?? 0, bee.account,
         this.modelParamOf({ args: bee.args ?? [] }, bee.agent),
         recoveryId !== undefined && (() => {
-          const recovery = store.getQuotaRecovery(recoveryId)!;
+          const recovery = store.getQuotaRecovery(recoveryId);
+          if (!recovery) return false;
           return recovery.quota !== null && (!("trigger" in recovery) || recovery.trigger === "provider_limit")
             && recovery.sourceAccount === bee.account && recovery.sourceGeneration === (runtime?.generation ?? 0)
             && claim.sourceQuotaRecovery?.observedAt === recovery.createdAt

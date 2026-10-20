@@ -61,13 +61,16 @@ try {
   assert.equal(acquired.claim?.account, "claude-source");
   assert.ok(acquired.claim?.sourceQuotaRecovery);
   const claim = acquired.claim!;
-  const refused = async (label: string, params: Record<string, unknown>) => {
-    await assert.rejects(() => call("execution", "bee.swapAccount", { beeId: bee.beeId, account: "auto", idempotencyKey: label, ...params }), (error: unknown) => (error as { code?: string }).code === "account_claim_refused");
+  const refused = async (label: string, alter: (claim: NonNullable<AccountAdmissionAcquireResult["claim"]>) => Record<string, unknown>) => {
+    const attempt = await call<AccountAdmissionAcquireResult>("owner", "account.admission.acquire", { ...acquireParams, idempotencyKey: label + "-acquire" });
+    assert.ok(attempt.claim);
+    await assert.rejects(() => call("execution", "bee.swapAccount", { beeId: bee.beeId, account: "auto", idempotencyKey: label, ...alter(attempt.claim!) }), (error: unknown) => (error as { code?: string }).code === "account_claim_refused");
+    await call("owner", "account.admission.release", { claimId: attempt.claim!.id, reason: "known pre-commit refusal", idempotencyKey: label + "-release" });
   };
-  await refused("C4-ordinary-source", { allocationClaim: claim });
-  await refused("C4-no-witness", { allocationClaim: { ...claim, sourceQuotaRecovery: undefined }, quotaRecoveryId: recovery.id });
-  await refused("C4-wrong-observation", { allocationClaim: { ...claim, sourceQuotaRecovery: { ...claim.sourceQuotaRecovery, observedAt: recovery.createdAt - 1 } }, quotaRecoveryId: recovery.id });
-  await refused("C4-wrong-epoch", { allocationClaim: { ...claim, authority: { ...authority, epoch: "stale" } }, quotaRecoveryId: recovery.id });
+  await refused("C4-ordinary-source", c => ({ allocationClaim: c }));
+  await refused("C4-no-witness", c => ({ allocationClaim: { ...c, sourceQuotaRecovery: undefined }, quotaRecoveryId: recovery.id }));
+  await refused("C4-wrong-observation", c => ({ allocationClaim: { ...c, sourceQuotaRecovery: { ...c.sourceQuotaRecovery, observedAt: recovery.createdAt - 1 } }, quotaRecoveryId: recovery.id }));
+  await refused("C4-wrong-epoch", c => ({ allocationClaim: { ...c, authority: { ...authority, epoch: "stale" } }, quotaRecoveryId: recovery.id }));
   const params = { beeId: bee.beeId, account: "auto", allocationClaim: claim, quotaRecoveryId: recovery.id, idempotencyKey: "C4-apply-source" };
   const swapped = await call<{ to: string }>("execution", "bee.swapAccount", params);
   assert.equal(swapped.to, "claude-source");
@@ -84,10 +87,12 @@ try {
   writeFileSync(join(proof, "native.journal.jsonl"), readFileSync(join(rigs[1]!.dir, "session-logs", `${bee.beeId}.jsonl`)));
   const ownerSnapshot = await owner.request<SnapshotResult>("snapshot", {});
   const executionSnapshot = await execution.request<SnapshotResult>("snapshot", {});
-  assert.equal(ownerSnapshot.accountAdmissions.length, 1);
-  assert.ok(ownerSnapshot.accountAdmissions[0]!.confirmedAt);
-  assert.equal(executionSnapshot.accountAdmissions.length, 1);
-  const summary = { passed: true, sourceRestoreCount: 1, successorGeneration: 2, continuationCount: 1, reservationCount: ownerSnapshot.accountAdmissions.length, confirmed: true, negativeCases: ["ordinary source even with owner witness", "missing source approval witness", "wrong recovery observation", "stale owner epoch"], noApiaryd: "RPC owner saga exercised directly with two real Honeybee processes; full Apiary integration delegated to G" };
+  assert.equal(ownerSnapshot.accountAdmissions.length, 5);
+  assert.equal(ownerSnapshot.accountAdmissions.filter(row => row.confirmedAt !== null).length, 1);
+  assert.equal(ownerSnapshot.accountAdmissions.filter(row => row.releasedAt !== null).length, 4);
+  assert.equal(executionSnapshot.accountAdmissions.filter(row => row.releasedAt !== null).length, 3);
+  assert.equal(executionSnapshot.accountAdmissions.length, 4);
+  const summary = { passed: true, sourceRestoreCount: 1, successorGeneration: 2, continuationCount: 1, reservationCount: ownerSnapshot.accountAdmissions.length, releasedRefusals: 4, outstandingUnconfirmed: 0, confirmed: true, negativeCases: ["ordinary source even with owner witness", "missing source approval witness", "wrong recovery observation", "stale owner epoch"], noApiaryd: "RPC owner saga exercised directly with two real Honeybee processes; full Apiary integration delegated to G" };
   writeFileSync(join(proof, "summary.json"), JSON.stringify(summary, null, 2));
   writeFileSync(join(proof, "final-snapshots.json"), JSON.stringify({ ownerSnapshot, executionSnapshot }, null, 2));
   console.log(JSON.stringify(summary));
