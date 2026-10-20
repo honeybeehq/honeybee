@@ -54,7 +54,10 @@ try {
   writeFileSync(join(proof, "waiting.json"), JSON.stringify(recovery, null, 2));
   await waitFor(() => Date.now() >= resetAt, "known reset", 15000);
   const context = { version: 1, authority, scope: "claude:provider-accounts", revision: "C4-fleet", observedAt: Date.now(), complete: true, accounts: [{ account: "claude-source", active: 1, recent: 0, pending: 0, ongoingUnits: 1 }] };
-  const acquired = await call<AccountAdmissionAcquireResult>("owner", "account.admission.acquire", { harness: "claude", operation: "swap", target: { node: "execution-H2", workId: bee.beeId, expectedGeneration: 1 }, sourceAccount: "claude-source", allowSourceAccount: true, sourceQuotaRecovery: { observedAt: recovery.createdAt, window: recovery.quota.window, resetsAt: recovery.quota.resetsAt, usedPercentAtObservation: recovery.sourceWindowUsedPercent, usedPercentObservedAt: recovery.sourceWindowObservedAt }, allocationContext: context, idempotencyKey: "C4-acquire-source" });
+  const acquireParams = { harness: "claude", operation: "swap", target: { node: "execution-H2", workId: bee.beeId, expectedGeneration: 1 }, sourceAccount: "claude-source", allowSourceAccount: true, sourceQuotaRecovery: { observedAt: recovery.createdAt, window: recovery.quota.window, resetsAt: recovery.quota.resetsAt, usedPercentAtObservation: recovery.sourceWindowUsedPercent, usedPercentObservedAt: recovery.sourceWindowObservedAt }, allocationContext: context, idempotencyKey: "C4-acquire-source" };
+  const acquired = await call<AccountAdmissionAcquireResult>("owner", "account.admission.acquire", acquireParams);
+  const acquireReplay = await call<AccountAdmissionAcquireResult>("owner", "account.admission.acquire", acquireParams);
+  assert.equal(acquireReplay.claim?.id, acquired.claim?.id);
   assert.equal(acquired.claim?.account, "claude-source");
   assert.ok(acquired.claim?.sourceQuotaRecovery);
   const claim = acquired.claim!;
@@ -74,7 +77,11 @@ try {
   const resumed = await waitFor(async () => (await execution.request<SnapshotResult>("snapshot", {})).quotaRecoveries.find(r => r.id === recovery.id && r.state === "resumed"), "source continuation", 15000);
   assert.equal(resumed.successorGeneration, 2);
   assert.equal(resumed.continuationMessageIds.length, 1);
-  await waitFor(async () => { const v = await execution.request<ViewResult>("view", { beeId: bee.beeId }); return v.runtime?.generation === 2 && v.view.runtimeState === "idle"; }, "resumed output idle", 15000);
+  const nativeResults = () => readFileSync(join(rigs[1]!.dir, "session-logs", `${bee.beeId}.jsonl`), "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line)).filter(row => row.type === "result" && row.is_error === false);
+  await waitFor(async () => { const v = await execution.request<ViewResult>("view", { beeId: bee.beeId }); return v.runtime?.generation === 2 && v.view.runtimeState === "idle" && nativeResults().length === 2; }, "resumed native output idle", 15000);
+  await new Promise(done => setTimeout(done, 2000));
+  assert.equal(nativeResults().length, 2);
+  writeFileSync(join(proof, "native.journal.jsonl"), readFileSync(join(rigs[1]!.dir, "session-logs", `${bee.beeId}.jsonl`)));
   const ownerSnapshot = await owner.request<SnapshotResult>("snapshot", {});
   const executionSnapshot = await execution.request<SnapshotResult>("snapshot", {});
   assert.equal(ownerSnapshot.accountAdmissions.length, 1);
