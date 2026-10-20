@@ -12,7 +12,7 @@
         "leasedFrom": null,
         "id": "codex-a",
         "harness": "codex",
-        "homePath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a",
+        "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a",
         "label": "a",
         "status": "ok",
         "statusReason": null,
@@ -24,8 +24,8 @@
         "pausedBy": null,
         "pausedOwner": null,
         "pausedAt": null,
-        "addedAt": 1792486991577,
-        "updatedAt": 1792486991577,
+        "addedAt": 1792487528150,
+        "updatedAt": 1792487528150,
         "credentialHealth": "unverified",
         "loginDueAt": null,
         "nativeLogin": null
@@ -33,7 +33,7 @@
       "credentialHealth": "unverified",
       "imported": {
         "source": "vault",
-        "from": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/vault/codex/codex-a",
+        "from": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/vault/codex/codex-a",
         "files": [
           "auth.json"
         ]
@@ -54,7 +54,7 @@
         "leasedFrom": null,
         "id": "codex-b",
         "harness": "codex",
-        "homePath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-b",
+        "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-b",
         "label": "b",
         "status": "ok",
         "statusReason": null,
@@ -66,8 +66,8 @@
         "pausedBy": null,
         "pausedOwner": null,
         "pausedAt": null,
-        "addedAt": 1792486991594,
-        "updatedAt": 1792486991594,
+        "addedAt": 1792487528169,
+        "updatedAt": 1792487528169,
         "credentialHealth": "unverified",
         "loginDueAt": null,
         "nativeLogin": null
@@ -75,7 +75,7 @@
       "credentialHealth": "unverified",
       "imported": {
         "source": "vault",
-        "from": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/vault/codex/codex-b",
+        "from": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/vault/codex/codex-b",
         "files": [
           "auth.json"
         ]
@@ -90,16 +90,16 @@
       "limits": [
         {
           "account": "codex-a",
-          "fetchedAt": 1792486991714,
+          "fetchedAt": 1792487528300,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792573391000,
+          "fiveHourResetsAt": 1792573927000,
           "fiveHourMinutes": 300,
           "weeklyPct": 91,
-          "weeklyResetsAt": 1792573391000,
+          "weeklyResetsAt": 1792573927000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -109,16 +109,16 @@
         },
         {
           "account": "codex-b",
-          "fetchedAt": 1792486991835,
+          "fetchedAt": 1792487528430,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792573391000,
+          "fiveHourResetsAt": 1792573927000,
           "fiveHourMinutes": 300,
           "weeklyPct": 91,
-          "weeklyResetsAt": 1792573391000,
+          "weeklyResetsAt": 1792573927000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -134,11 +134,11 @@
     "params": {
       "name": "codex-optout",
       "agent": "codex",
-      "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+      "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
       "account": "codex-a"
     },
     "result": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
       "agent": "codex",
       "handle": "CO.0000",
       "humanRef": null,
@@ -151,7 +151,7 @@
   {
     "method": "send",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
       "body": "warm output for the unread cursor"
     },
     "result": {
@@ -163,11 +163,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -181,21 +181,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -216,15 +216,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -234,11 +234,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -252,21 +252,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -287,15 +287,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -305,11 +305,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -323,21 +323,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -358,15 +358,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -376,11 +376,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -394,21 +394,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -429,15 +429,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -447,11 +447,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -465,21 +465,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -500,15 +500,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -518,11 +518,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -536,21 +536,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -571,15 +571,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -589,11 +589,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -607,21 +607,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -642,15 +642,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -660,11 +660,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -678,21 +678,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -713,15 +713,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -731,11 +731,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -749,21 +749,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -784,15 +784,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -802,11 +802,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -820,21 +820,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -855,15 +855,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -873,11 +873,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -891,21 +891,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -926,15 +926,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -944,11 +944,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -962,21 +962,21 @@
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -997,15 +997,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "booting",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": null,
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486991843
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
       },
       "move": null,
       "cell": null,
@@ -1015,11 +1015,82 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 1,
+        "runtimeState": "booting",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": null,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+        "name": "codex-optout",
+        "agent": "codex",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792487528444,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "codex-a",
+        "handle": "CO.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": null,
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+        "generation": 1,
+        "state": "booting",
+        "exitCause": null,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
+        "bootEvidence": null,
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528444
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
+    },
+    "result": {
+      "view": {
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -1027,27 +1098,27 @@
         "exitCause": null,
         "working": false,
         "waitingForYou": true,
-        "lastOutputAt": 1792486992259,
+        "lastOutputAt": 1792487528887,
         "reachable": true,
         "blocked": false,
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
-        "lastOutputAt": 1792486992259,
-        "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+        "lastOutputAt": 1792487528887,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -1068,15 +1139,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "idle",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": "real",
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486992259
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528887
       },
       "move": null,
       "cell": null,
@@ -1086,11 +1157,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -1098,27 +1169,27 @@
         "exitCause": null,
         "working": false,
         "waitingForYou": true,
-        "lastOutputAt": 1792486992259,
+        "lastOutputAt": 1792487528887,
         "reachable": true,
         "blocked": false,
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
-        "lastOutputAt": 1792486992259,
-        "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+        "lastOutputAt": 1792487528887,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -1139,15 +1210,15 @@
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "idle",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": "real",
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486992259
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528887
       },
       "move": null,
       "cell": null,
@@ -1157,11 +1228,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -1169,27 +1240,27 @@
         "exitCause": null,
         "working": true,
         "waitingForYou": false,
-        "lastOutputAt": 1792486992259,
+        "lastOutputAt": 1792487528887,
         "reachable": true,
         "blocked": false,
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
-        "lastOutputAt": 1792486992259,
-        "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+        "lastOutputAt": 1792487528887,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -1211,22 +1282,22 @@
           "from": "operator",
           "messageId": 1,
           "generation": 1,
-          "startedAt": 1792486992295,
-          "humanAt": 1792486992295,
+          "startedAt": 1792487528914,
+          "humanAt": 1792487528914,
           "endedAt": null
         },
         "lastHumanOutputAt": null
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "running",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": "real",
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486992295
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528914
       },
       "move": null,
       "cell": null,
@@ -1236,11 +1307,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -1248,27 +1319,27 @@
         "exitCause": null,
         "working": false,
         "waitingForYou": true,
-        "lastOutputAt": 1792486992323,
+        "lastOutputAt": 1792487528937,
         "reachable": true,
         "blocked": false,
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
-        "lastOutputAt": 1792486992323,
-        "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+        "lastOutputAt": 1792487528937,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -1290,22 +1361,22 @@
           "from": "operator",
           "messageId": 1,
           "generation": 1,
-          "startedAt": 1792486992295,
-          "humanAt": 1792486992295,
-          "endedAt": 1792486992323
+          "startedAt": 1792487528914,
+          "humanAt": 1792487528914,
+          "endedAt": 1792487528937
         },
-        "lastHumanOutputAt": 1792486992323
+        "lastHumanOutputAt": 1792487528937
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "idle",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": "real",
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486992323
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528937
       },
       "move": null,
       "cell": null,
@@ -1315,7 +1386,7 @@
   {
     "method": "send",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
       "body": "@quota:weekly fixture automatic wait"
     },
     "result": {
@@ -1332,21 +1403,21 @@
       "views": [
         {
           "bee": {
-            "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "name": "codex-optout",
             "agent": "codex",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+            "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792486991843,
+            "createdAt": 1792487528444,
             "archivedAt": null,
-            "lastOutputAt": 1792486992323,
-            "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+            "lastOutputAt": 1792487528937,
+            "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
             "env": {
-              "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+              "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -1368,25 +1439,25 @@
               "from": "operator",
               "messageId": 1,
               "generation": 1,
-              "startedAt": 1792486992295,
-              "humanAt": 1792486992295,
-              "endedAt": 1792486992323
+              "startedAt": 1792487528914,
+              "humanAt": 1792487528914,
+              "endedAt": 1792487528937
             },
-            "lastHumanOutputAt": 1792486992323
+            "lastHumanOutputAt": 1792487528937
           },
           "runtime": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "generation": 1,
             "state": "idle",
             "exitCause": null,
-            "pid": 720744,
-            "pidStartedAt": 1792486992057,
+            "pid": 730283,
+            "pidStartedAt": 1792487528670,
             "bootEvidence": "real",
-            "startedAt": 1792486991843,
-            "updatedAt": 1792486992323
+            "startedAt": 1792487528444,
+            "updatedAt": 1792487528937
           },
           "view": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -1394,7 +1465,7 @@
             "exitCause": null,
             "working": false,
             "waitingForYou": true,
-            "lastOutputAt": 1792486992323,
+            "lastOutputAt": 1792487528937,
             "reachable": true,
             "blocked": false,
             "flags": []
@@ -1414,7 +1485,7 @@
           "leasedFrom": null,
           "id": "codex-a",
           "harness": "codex",
-          "homePath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -1426,8 +1497,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792486991577,
-          "updatedAt": 1792486991713,
+          "addedAt": 1792487528150,
+          "updatedAt": 1792487528298,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1437,7 +1508,7 @@
           "leasedFrom": null,
           "id": "codex-b",
           "harness": "codex",
-          "homePath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-b",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -1449,8 +1520,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792486991594,
-          "updatedAt": 1792486991836,
+          "addedAt": 1792487528169,
+          "updatedAt": 1792487528431,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1459,16 +1530,16 @@
       "accountLimits": [
         {
           "account": "codex-a",
-          "fetchedAt": 1792486991714,
+          "fetchedAt": 1792487528300,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792573391000,
+          "fiveHourResetsAt": 1792573927000,
           "fiveHourMinutes": 300,
           "weeklyPct": 91,
-          "weeklyResetsAt": 1792573391000,
+          "weeklyResetsAt": 1792573927000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1478,16 +1549,16 @@
         },
         {
           "account": "codex-b",
-          "fetchedAt": 1792486991836,
+          "fetchedAt": 1792487528432,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792573391000,
+          "fiveHourResetsAt": 1792573927000,
           "fiveHourMinutes": 300,
           "weeklyPct": 91,
-          "weeklyResetsAt": 1792573391000,
+          "weeklyResetsAt": 1792573927000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1506,16 +1577,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:0",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "id": "seg:3fd1eebd-7911-40ac-994e-78fe10ce2324:0",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "ordinal": 0,
           "harness": "codex",
-          "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+          "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+          "path": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
           "handoffId": null,
-          "createdAt": 1792486991843,
+          "createdAt": 1792487528444,
           "closedAt": null
         }
       ],
@@ -1527,11 +1598,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -1539,27 +1610,27 @@
         "exitCause": null,
         "working": false,
         "waitingForYou": true,
-        "lastOutputAt": 1792486992323,
+        "lastOutputAt": 1792487528937,
         "reachable": true,
         "blocked": false,
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
-        "lastOutputAt": 1792486992323,
-        "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+        "lastOutputAt": 1792487528937,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -1581,22 +1652,22 @@
           "from": "operator",
           "messageId": 1,
           "generation": 1,
-          "startedAt": 1792486992295,
-          "humanAt": 1792486992295,
-          "endedAt": 1792486992323
+          "startedAt": 1792487528914,
+          "humanAt": 1792487528914,
+          "endedAt": 1792487528937
         },
-        "lastHumanOutputAt": 1792486992323
+        "lastHumanOutputAt": 1792487528937
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "idle",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": "real",
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486992323
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528937
       },
       "move": null,
       "cell": null,
@@ -1611,21 +1682,21 @@
       "views": [
         {
           "bee": {
-            "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "name": "codex-optout",
             "agent": "codex",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+            "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792486991843,
+            "createdAt": 1792487528444,
             "archivedAt": null,
-            "lastOutputAt": 1792486992323,
-            "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+            "lastOutputAt": 1792487528937,
+            "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
             "env": {
-              "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+              "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -1647,25 +1718,25 @@
               "from": "operator",
               "messageId": 1,
               "generation": 1,
-              "startedAt": 1792486992295,
-              "humanAt": 1792486992295,
-              "endedAt": 1792486992323
+              "startedAt": 1792487528914,
+              "humanAt": 1792487528914,
+              "endedAt": 1792487528937
             },
-            "lastHumanOutputAt": 1792486992323
+            "lastHumanOutputAt": 1792487528937
           },
           "runtime": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "generation": 1,
             "state": "idle",
             "exitCause": null,
-            "pid": 720744,
-            "pidStartedAt": 1792486992057,
+            "pid": 730283,
+            "pidStartedAt": 1792487528670,
             "bootEvidence": "real",
-            "startedAt": 1792486991843,
-            "updatedAt": 1792486992323
+            "startedAt": 1792487528444,
+            "updatedAt": 1792487528937
           },
           "view": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -1673,7 +1744,7 @@
             "exitCause": null,
             "working": false,
             "waitingForYou": true,
-            "lastOutputAt": 1792486992323,
+            "lastOutputAt": 1792487528937,
             "reachable": true,
             "blocked": false,
             "flags": []
@@ -1693,7 +1764,7 @@
           "leasedFrom": null,
           "id": "codex-a",
           "harness": "codex",
-          "homePath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -1705,8 +1776,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792486991577,
-          "updatedAt": 1792486991713,
+          "addedAt": 1792487528150,
+          "updatedAt": 1792487528298,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1716,7 +1787,7 @@
           "leasedFrom": null,
           "id": "codex-b",
           "harness": "codex",
-          "homePath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-b",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -1728,8 +1799,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792486991594,
-          "updatedAt": 1792486991836,
+          "addedAt": 1792487528169,
+          "updatedAt": 1792487528431,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1738,16 +1809,16 @@
       "accountLimits": [
         {
           "account": "codex-a",
-          "fetchedAt": 1792486991714,
+          "fetchedAt": 1792487528300,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792573391000,
+          "fiveHourResetsAt": 1792573927000,
           "fiveHourMinutes": 300,
           "weeklyPct": 91,
-          "weeklyResetsAt": 1792573391000,
+          "weeklyResetsAt": 1792573927000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1757,16 +1828,16 @@
         },
         {
           "account": "codex-b",
-          "fetchedAt": 1792486991836,
+          "fetchedAt": 1792487528432,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792573391000,
+          "fiveHourResetsAt": 1792573927000,
           "fiveHourMinutes": 300,
           "weeklyPct": 91,
-          "weeklyResetsAt": 1792573391000,
+          "weeklyResetsAt": 1792573927000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -1785,16 +1856,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:0",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "id": "seg:3fd1eebd-7911-40ac-994e-78fe10ce2324:0",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "ordinal": 0,
           "harness": "codex",
-          "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+          "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+          "path": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
           "handoffId": null,
-          "createdAt": 1792486991843,
+          "createdAt": 1792487528444,
           "closedAt": null
         }
       ],
@@ -1806,11 +1877,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -1818,27 +1889,27 @@
         "exitCause": null,
         "working": false,
         "waitingForYou": true,
-        "lastOutputAt": 1792486992323,
+        "lastOutputAt": 1792487528937,
         "reachable": true,
         "blocked": false,
         "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
-        "lastOutputAt": 1792486992323,
-        "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+        "lastOutputAt": 1792487528937,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -1860,22 +1931,22 @@
           "from": "operator",
           "messageId": 1,
           "generation": 1,
-          "startedAt": 1792486992295,
-          "humanAt": 1792486992295,
-          "endedAt": 1792486992323
+          "startedAt": 1792487528914,
+          "humanAt": 1792487528914,
+          "endedAt": 1792487528937
         },
-        "lastHumanOutputAt": 1792486992323
+        "lastHumanOutputAt": 1792487528937
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "idle",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": "real",
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486992323
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528937
       },
       "move": null,
       "cell": null,
@@ -1886,25 +1957,304 @@
     "method": "snapshot",
     "params": {},
     "result": {
-      "seq": 46,
+      "seq": 32,
       "views": [
         {
           "bee": {
-            "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "name": "codex-optout",
             "agent": "codex",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+            "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792486991843,
+            "createdAt": 1792487528444,
             "archivedAt": null,
-            "lastOutputAt": 1792486992379,
-            "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+            "lastOutputAt": 1792487528937,
+            "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
             "env": {
-              "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+              "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 1,
+              "generation": 1,
+              "startedAt": 1792487528914,
+              "humanAt": 1792487528914,
+              "endedAt": 1792487528937
+            },
+            "lastHumanOutputAt": 1792487528937
+          },
+          "runtime": {
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+            "generation": 1,
+            "state": "idle",
+            "exitCause": null,
+            "pid": 730283,
+            "pidStartedAt": 1792487528670,
+            "bootEvidence": "real",
+            "startedAt": 1792487528444,
+            "updatedAt": 1792487528937
+          },
+          "view": {
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "idle",
+            "exitCause": null,
+            "working": false,
+            "waitingForYou": true,
+            "lastOutputAt": 1792487528937,
+            "reachable": true,
+            "blocked": false,
+            "flags": []
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792487528150,
+          "updatedAt": 1792487528298,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792487528169,
+          "updatedAt": 1792487528431,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792487528300,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": null,
+          "fiveHourPct": 91,
+          "fiveHourResetsAt": 1792573927000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 91,
+          "weeklyResetsAt": 1792573927000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792487528432,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": null,
+          "fiveHourPct": 91,
+          "fiveHourResetsAt": 1792573927000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 91,
+          "weeklyResetsAt": 1792573927000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:3fd1eebd-7911-40ac-994e-78fe10ce2324:0",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
+          "handoffId": null,
+          "createdAt": 1792487528444,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
+    },
+    "result": {
+      "view": {
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 1,
+        "runtimeState": "idle",
+        "exitCause": null,
+        "working": false,
+        "waitingForYou": true,
+        "lastOutputAt": 1792487528937,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+        "name": "codex-optout",
+        "agent": "codex",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792487528444,
+        "archivedAt": null,
+        "lastOutputAt": 1792487528937,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
+        "env": {
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "codex-a",
+        "handle": "CO.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 1,
+          "generation": 1,
+          "startedAt": 1792487528914,
+          "humanAt": 1792487528914,
+          "endedAt": 1792487528937
+        },
+        "lastHumanOutputAt": 1792487528937
+      },
+      "runtime": {
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+        "generation": 1,
+        "state": "idle",
+        "exitCause": null,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
+        "bootEvidence": "real",
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528937
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "snapshot",
+    "params": {},
+    "result": {
+      "seq": 33,
+      "views": [
+        {
+          "bee": {
+            "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+            "name": "codex-optout",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792487528444,
+            "archivedAt": null,
+            "lastOutputAt": 1792487528937,
+            "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -1926,38 +2276,36 @@
               "from": "operator",
               "messageId": 2,
               "generation": 1,
-              "startedAt": 1792486992379,
-              "humanAt": 1792486992379,
-              "endedAt": 1792486992379
+              "startedAt": 1792487528982,
+              "humanAt": 1792487528982,
+              "endedAt": null
             },
-            "lastHumanOutputAt": 1792486992379
+            "lastHumanOutputAt": 1792487528937
           },
           "runtime": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "generation": 1,
-            "state": "idle",
+            "state": "running",
             "exitCause": null,
-            "pid": 720744,
-            "pidStartedAt": 1792486992057,
+            "pid": 730283,
+            "pidStartedAt": 1792487528670,
             "bootEvidence": "real",
-            "startedAt": 1792486991843,
-            "updatedAt": 1792486992379
+            "startedAt": 1792487528444,
+            "updatedAt": 1792487528982
           },
           "view": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
-            "runtimeState": "idle",
+            "runtimeState": "running",
             "exitCause": null,
-            "working": false,
+            "working": true,
             "waitingForYou": false,
-            "lastOutputAt": 1792486992379,
+            "lastOutputAt": 1792487528937,
             "reachable": true,
-            "blocked": true,
-            "flags": [
-              "resource_blocked"
-            ]
+            "blocked": false,
+            "flags": []
           },
           "move": null,
           "cell": null,
@@ -1974,7 +2322,7 @@
           "leasedFrom": null,
           "id": "codex-a",
           "harness": "codex",
-          "homePath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -1982,12 +2330,12 @@
           "penalty": 0,
           "weeklyCeiling": null,
           "lastLoginAt": null,
-          "exhaustedAt": 1792486992383,
+          "exhaustedAt": null,
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792486991577,
-          "updatedAt": 1792486992384,
+          "addedAt": 1792487528150,
+          "updatedAt": 1792487528298,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -1997,7 +2345,7 @@
           "leasedFrom": null,
           "id": "codex-b",
           "harness": "codex",
-          "homePath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-b",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -2009,8 +2357,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792486991594,
-          "updatedAt": 1792486991836,
+          "addedAt": 1792487528169,
+          "updatedAt": 1792487528431,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -2019,16 +2367,16 @@
       "accountLimits": [
         {
           "account": "codex-a",
-          "fetchedAt": 1792486991714,
+          "fetchedAt": 1792487528300,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792573391000,
+          "fiveHourResetsAt": 1792573927000,
           "fiveHourMinutes": 300,
           "weeklyPct": 91,
-          "weeklyResetsAt": 1792573391000,
+          "weeklyResetsAt": 1792573927000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -2038,16 +2386,16 @@
         },
         {
           "account": "codex-b",
-          "fetchedAt": 1792486991836,
+          "fetchedAt": 1792487528432,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792573391000,
+          "fiveHourResetsAt": 1792573927000,
           "fiveHourMinutes": 300,
           "weeklyPct": 91,
-          "weeklyResetsAt": 1792573391000,
+          "weeklyResetsAt": 1792573927000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -2057,59 +2405,7 @@
         }
       ],
       "accountAdmissions": [],
-      "quotaRecoveries": [
-        {
-          "trigger": "provider_limit",
-          "id": "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:2",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
-          "sourceGeneration": 1,
-          "sourceAccount": "codex-a",
-          "sourceWindowUsedPercent": null,
-          "sourceWindowObservedAt": null,
-          "observationCursor": 1600,
-          "sourceId": "fcc1456d16ecb1bfb4bdf0eeef339a672f003df99debfd627f04452520fc52a5",
-          "accountLabel": null,
-          "eventIds": [
-            "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1600",
-            "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1835",
-            "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:2084"
-          ],
-          "messageIds": [
-            2
-          ],
-          "progress": "unknown",
-          "interrupted": true,
-          "controlFence": 0,
-          "placement": {
-            "agent": "codex",
-            "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
-            "cellId": null
-          },
-          "quota": {
-            "harness": "codex",
-            "window": "weekly",
-            "resetsAt": 1792490592000,
-            "providerCategory": "usageLimitExceeded"
-          },
-          "resetHints": {
-            "weekly": 1792490592000
-          },
-          "state": "waiting",
-          "attempt": 0,
-          "targetAccount": null,
-          "successorGeneration": null,
-          "claimId": null,
-          "reservationId": null,
-          "commandId": null,
-          "continuationKind": null,
-          "continuationMessageIds": [],
-          "continuationHistory": [],
-          "retryAt": null,
-          "reason": "account_wait",
-          "createdAt": 1792486992381,
-          "updatedAt": 1792486992392
-        }
-      ],
+      "quotaRecoveries": [],
       "tasks": [],
       "taskSupply": [],
       "loginFlows": [],
@@ -2118,16 +2414,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:0",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "id": "seg:3fd1eebd-7911-40ac-994e-78fe10ce2324:0",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "ordinal": 0,
           "harness": "codex",
-          "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+          "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+          "path": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
           "handoffId": null,
-          "createdAt": 1792486991843,
+          "createdAt": 1792487528444,
           "closedAt": null
         }
       ],
@@ -2139,41 +2435,39 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
-        "runtimeState": "idle",
+        "runtimeState": "running",
         "exitCause": null,
-        "working": false,
+        "working": true,
         "waitingForYou": false,
-        "lastOutputAt": 1792486992379,
+        "lastOutputAt": 1792487528937,
         "reachable": true,
-        "blocked": true,
-        "flags": [
-          "resource_blocked"
-        ]
+        "blocked": false,
+        "flags": []
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
-        "lastOutputAt": 1792486992379,
-        "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+        "lastOutputAt": 1792487528937,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -2195,22 +2489,22 @@
           "from": "operator",
           "messageId": 2,
           "generation": 1,
-          "startedAt": 1792486992379,
-          "humanAt": 1792486992379,
-          "endedAt": 1792486992379
+          "startedAt": 1792487528982,
+          "humanAt": 1792487528982,
+          "endedAt": null
         },
-        "lastHumanOutputAt": 1792486992379
+        "lastHumanOutputAt": 1792487528937
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
-        "state": "idle",
+        "state": "running",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": "real",
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486992379
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487528982
       },
       "move": null,
       "cell": null,
@@ -2218,27 +2512,28 @@
     }
   },
   {
-    "method": "list",
+    "method": "snapshot",
     "params": {},
     "result": {
+      "seq": 46,
       "views": [
         {
           "bee": {
-            "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "name": "codex-optout",
             "agent": "codex",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+            "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
             "title": null,
             "tags": [],
-            "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792486991843,
+            "createdAt": 1792487528444,
             "archivedAt": null,
-            "lastOutputAt": 1792486992379,
-            "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+            "lastOutputAt": 1792487529008,
+            "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
             "env": {
-              "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+              "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -2260,25 +2555,25 @@
               "from": "operator",
               "messageId": 2,
               "generation": 1,
-              "startedAt": 1792486992379,
-              "humanAt": 1792486992379,
-              "endedAt": 1792486992379
+              "startedAt": 1792487528982,
+              "humanAt": 1792487528982,
+              "endedAt": 1792487529008
             },
-            "lastHumanOutputAt": 1792486992379
+            "lastHumanOutputAt": 1792487529008
           },
           "runtime": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "generation": 1,
             "state": "idle",
             "exitCause": null,
-            "pid": 720744,
-            "pidStartedAt": 1792486992057,
+            "pid": 730283,
+            "pidStartedAt": 1792487528670,
             "bootEvidence": "real",
-            "startedAt": 1792486991843,
-            "updatedAt": 1792486992379
+            "startedAt": 1792487528444,
+            "updatedAt": 1792487529008
           },
           "view": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -2286,7 +2581,341 @@
             "exitCause": null,
             "working": false,
             "waitingForYou": false,
-            "lastOutputAt": 1792486992379,
+            "lastOutputAt": 1792487529008,
+            "reachable": true,
+            "blocked": true,
+            "flags": [
+              "resource_blocked"
+            ]
+          },
+          "move": null,
+          "cell": null,
+          "handoff": null
+        }
+      ],
+      "templates": [],
+      "tracks": [],
+      "questions": [],
+      "seals": [],
+      "accounts": [
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-a",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a",
+          "label": "a",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": 1792487529013,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792487528150,
+          "updatedAt": 1792487529013,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        },
+        {
+          "source": "local",
+          "leasedFrom": null,
+          "id": "codex-b",
+          "harness": "codex",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-b",
+          "label": "b",
+          "status": "ok",
+          "statusReason": null,
+          "refreshTokenExpiresAt": null,
+          "penalty": 0,
+          "weeklyCeiling": null,
+          "lastLoginAt": null,
+          "exhaustedAt": null,
+          "pausedBy": null,
+          "pausedOwner": null,
+          "pausedAt": null,
+          "addedAt": 1792487528169,
+          "updatedAt": 1792487528431,
+          "credentialHealth": "verified",
+          "loginDueAt": null,
+          "nativeLogin": null
+        }
+      ],
+      "accountLimits": [
+        {
+          "account": "codex-a",
+          "fetchedAt": 1792487528300,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": null,
+          "fiveHourPct": 91,
+          "fiveHourResetsAt": 1792573927000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 91,
+          "weeklyResetsAt": 1792573927000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        },
+        {
+          "account": "codex-b",
+          "fetchedAt": 1792487528432,
+          "readable": true,
+          "unreadableReason": null,
+          "error": null,
+          "plan": null,
+          "fiveHourPct": 91,
+          "fiveHourResetsAt": 1792573927000,
+          "fiveHourMinutes": 300,
+          "weeklyPct": 91,
+          "weeklyResetsAt": 1792573927000,
+          "weeklyMinutes": 10080,
+          "fableWeeklyPct": null,
+          "fableResetsAt": null,
+          "fableMinutes": null,
+          "displayWindows": [],
+          "rateLimitResetCredits": null
+        }
+      ],
+      "accountAdmissions": [],
+      "quotaRecoveries": [
+        {
+          "trigger": "provider_limit",
+          "id": "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:2",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+          "sourceGeneration": 1,
+          "sourceAccount": "codex-a",
+          "sourceWindowUsedPercent": null,
+          "sourceWindowObservedAt": null,
+          "observationCursor": 1606,
+          "sourceId": "d91ddb9abfc823c57091497035e13de9452d0fda75646c1808b546ffb7744fa6",
+          "accountLabel": null,
+          "eventIds": [
+            "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1606",
+            "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1841",
+            "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:2090"
+          ],
+          "messageIds": [
+            2
+          ],
+          "progress": "unknown",
+          "interrupted": true,
+          "controlFence": 0,
+          "placement": {
+            "agent": "codex",
+            "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
+            "cellId": null
+          },
+          "quota": {
+            "harness": "codex",
+            "window": "weekly",
+            "resetsAt": 1792491128000,
+            "providerCategory": "usageLimitExceeded"
+          },
+          "resetHints": {
+            "weekly": 1792491128000
+          },
+          "state": "waiting",
+          "attempt": 0,
+          "targetAccount": null,
+          "successorGeneration": null,
+          "claimId": null,
+          "reservationId": null,
+          "commandId": null,
+          "continuationKind": null,
+          "continuationMessageIds": [],
+          "continuationHistory": [],
+          "retryAt": null,
+          "reason": "account_wait",
+          "createdAt": 1792487529011,
+          "updatedAt": 1792487529023
+        }
+      ],
+      "tasks": [],
+      "taskSupply": [],
+      "loginFlows": [],
+      "cells": [],
+      "beeMoves": [],
+      "beeHandoffs": [],
+      "transcriptSegments": [
+        {
+          "id": "seg:3fd1eebd-7911-40ac-994e-78fe10ce2324:0",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+          "ordinal": 0,
+          "harness": "codex",
+          "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
+          "fromGeneration": 1,
+          "toGeneration": null,
+          "path": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
+          "handoffId": null,
+          "createdAt": 1792487528444,
+          "closedAt": null
+        }
+      ],
+      "threadOperations": [],
+      "actions": [],
+      "actionQueues": []
+    }
+  },
+  {
+    "method": "view",
+    "params": {
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
+    },
+    "result": {
+      "view": {
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 1,
+        "runtimeState": "idle",
+        "exitCause": null,
+        "working": false,
+        "waitingForYou": false,
+        "lastOutputAt": 1792487529008,
+        "reachable": true,
+        "blocked": true,
+        "flags": [
+          "resource_blocked"
+        ]
+      },
+      "bee": {
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+        "name": "codex-optout",
+        "agent": "codex",
+        "substrate": "hsr",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
+        "lifecycle": "active",
+        "createdAt": 1792487528444,
+        "archivedAt": null,
+        "lastOutputAt": 1792487529008,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
+        "env": {
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
+        },
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": "codex-a",
+        "handle": "CO.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": {
+          "kind": "human",
+          "from": "operator",
+          "messageId": 2,
+          "generation": 1,
+          "startedAt": 1792487528982,
+          "humanAt": 1792487528982,
+          "endedAt": 1792487529008
+        },
+        "lastHumanOutputAt": 1792487529008
+      },
+      "runtime": {
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+        "generation": 1,
+        "state": "idle",
+        "exitCause": null,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
+        "bootEvidence": "real",
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487529008
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  },
+  {
+    "method": "list",
+    "params": {},
+    "result": {
+      "views": [
+        {
+          "bee": {
+            "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+            "name": "codex-optout",
+            "agent": "codex",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
+            "title": null,
+            "tags": [],
+            "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792487528444,
+            "archivedAt": null,
+            "lastOutputAt": 1792487529008,
+            "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
+            "env": {
+              "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "codex-a",
+            "handle": "CO.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": {
+              "kind": "human",
+              "from": "operator",
+              "messageId": 2,
+              "generation": 1,
+              "startedAt": 1792487528982,
+              "humanAt": 1792487528982,
+              "endedAt": 1792487529008
+            },
+            "lastHumanOutputAt": 1792487529008
+          },
+          "runtime": {
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+            "generation": 1,
+            "state": "idle",
+            "exitCause": null,
+            "pid": 730283,
+            "pidStartedAt": 1792487528670,
+            "bootEvidence": "real",
+            "startedAt": 1792487528444,
+            "updatedAt": 1792487529008
+          },
+          "view": {
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+            "exists": true,
+            "lifecycle": "active",
+            "generation": 1,
+            "runtimeState": "idle",
+            "exitCause": null,
+            "working": false,
+            "waitingForYou": false,
+            "lastOutputAt": 1792487529008,
             "reachable": true,
             "blocked": true,
             "flags": [
@@ -2303,30 +2932,30 @@
   {
     "method": "bee.tag",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
       "add": [
         "autoswap=false"
       ]
     },
     "result": {
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [
           "autoswap=false"
         ],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
-        "lastOutputAt": 1792486992379,
-        "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+        "lastOutputAt": 1792487529008,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -2348,11 +2977,11 @@
           "from": "operator",
           "messageId": 2,
           "generation": 1,
-          "startedAt": 1792486992379,
-          "humanAt": 1792486992379,
-          "endedAt": 1792486992379
+          "startedAt": 1792487528982,
+          "humanAt": 1792487528982,
+          "endedAt": 1792487529008
         },
-        "lastHumanOutputAt": 1792486992379
+        "lastHumanOutputAt": 1792487529008
       },
       "applied": true,
       "added": [
@@ -2364,11 +2993,11 @@
   {
     "method": "view",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a"
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324"
     },
     "result": {
       "view": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -2376,7 +3005,7 @@
         "exitCause": null,
         "working": false,
         "waitingForYou": true,
-        "lastOutputAt": 1792486992379,
+        "lastOutputAt": 1792487529008,
         "reachable": true,
         "blocked": true,
         "flags": [
@@ -2384,23 +3013,23 @@
         ]
       },
       "bee": {
-        "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "name": "codex-optout",
         "agent": "codex",
         "substrate": "hsr",
-        "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+        "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
         "title": null,
         "tags": [
           "autoswap=false"
         ],
-        "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+        "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
         "lifecycle": "active",
-        "createdAt": 1792486991843,
+        "createdAt": 1792487528444,
         "archivedAt": null,
-        "lastOutputAt": 1792486992379,
-        "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+        "lastOutputAt": 1792487529008,
+        "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
         "env": {
-          "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+          "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
         },
         "importedFrom": null,
         "spawnFailures": 0,
@@ -2422,22 +3051,22 @@
           "from": "operator",
           "messageId": 2,
           "generation": 1,
-          "startedAt": 1792486992379,
-          "humanAt": 1792486992379,
-          "endedAt": 1792486992379
+          "startedAt": 1792487528982,
+          "humanAt": 1792487528982,
+          "endedAt": 1792487529008
         },
-        "lastHumanOutputAt": 1792486992379
+        "lastHumanOutputAt": 1792487529008
       },
       "runtime": {
-        "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+        "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
         "generation": 1,
         "state": "idle",
         "exitCause": null,
-        "pid": 720744,
-        "pidStartedAt": 1792486992057,
+        "pid": 730283,
+        "pidStartedAt": 1792487528670,
         "bootEvidence": "real",
-        "startedAt": 1792486991843,
-        "updatedAt": 1792486992379
+        "startedAt": 1792487528444,
+        "updatedAt": 1792487529008
       },
       "move": null,
       "cell": null,
@@ -2452,23 +3081,23 @@
       "views": [
         {
           "bee": {
-            "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "name": "codex-optout",
             "agent": "codex",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+            "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
             "title": null,
             "tags": [
               "autoswap=false"
             ],
-            "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792486991843,
+            "createdAt": 1792487528444,
             "archivedAt": null,
-            "lastOutputAt": 1792486992379,
-            "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+            "lastOutputAt": 1792487529008,
+            "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
             "env": {
-              "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+              "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -2490,25 +3119,25 @@
               "from": "operator",
               "messageId": 2,
               "generation": 1,
-              "startedAt": 1792486992379,
-              "humanAt": 1792486992379,
-              "endedAt": 1792486992379
+              "startedAt": 1792487528982,
+              "humanAt": 1792487528982,
+              "endedAt": 1792487529008
             },
-            "lastHumanOutputAt": 1792486992379
+            "lastHumanOutputAt": 1792487529008
           },
           "runtime": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "generation": 1,
             "state": "idle",
             "exitCause": null,
-            "pid": 720744,
-            "pidStartedAt": 1792486992057,
+            "pid": 730283,
+            "pidStartedAt": 1792487528670,
             "bootEvidence": "real",
-            "startedAt": 1792486991843,
-            "updatedAt": 1792486992379
+            "startedAt": 1792487528444,
+            "updatedAt": 1792487529008
           },
           "view": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -2516,7 +3145,7 @@
             "exitCause": null,
             "working": false,
             "waitingForYou": true,
-            "lastOutputAt": 1792486992379,
+            "lastOutputAt": 1792487529008,
             "reachable": true,
             "blocked": true,
             "flags": [
@@ -2538,7 +3167,7 @@
           "leasedFrom": null,
           "id": "codex-a",
           "harness": "codex",
-          "homePath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a",
           "label": "a",
           "status": "ok",
           "statusReason": null,
@@ -2546,12 +3175,12 @@
           "penalty": 0,
           "weeklyCeiling": null,
           "lastLoginAt": null,
-          "exhaustedAt": 1792486992383,
+          "exhaustedAt": 1792487529013,
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792486991577,
-          "updatedAt": 1792486992384,
+          "addedAt": 1792487528150,
+          "updatedAt": 1792487529013,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -2561,7 +3190,7 @@
           "leasedFrom": null,
           "id": "codex-b",
           "harness": "codex",
-          "homePath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-b",
+          "homePath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-b",
           "label": "b",
           "status": "ok",
           "statusReason": null,
@@ -2573,8 +3202,8 @@
           "pausedBy": null,
           "pausedOwner": null,
           "pausedAt": null,
-          "addedAt": 1792486991594,
-          "updatedAt": 1792486991836,
+          "addedAt": 1792487528169,
+          "updatedAt": 1792487528431,
           "credentialHealth": "verified",
           "loginDueAt": null,
           "nativeLogin": null
@@ -2583,16 +3212,16 @@
       "accountLimits": [
         {
           "account": "codex-a",
-          "fetchedAt": 1792486991714,
+          "fetchedAt": 1792487528300,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792573391000,
+          "fiveHourResetsAt": 1792573927000,
           "fiveHourMinutes": 300,
           "weeklyPct": 91,
-          "weeklyResetsAt": 1792573391000,
+          "weeklyResetsAt": 1792573927000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -2602,16 +3231,16 @@
         },
         {
           "account": "codex-b",
-          "fetchedAt": 1792486991836,
+          "fetchedAt": 1792487528432,
           "readable": true,
           "unreadableReason": null,
           "error": null,
           "plan": null,
           "fiveHourPct": 91,
-          "fiveHourResetsAt": 1792573391000,
+          "fiveHourResetsAt": 1792573927000,
           "fiveHourMinutes": 300,
           "weeklyPct": 91,
-          "weeklyResetsAt": 1792573391000,
+          "weeklyResetsAt": 1792573927000,
           "weeklyMinutes": 10080,
           "fableWeeklyPct": null,
           "fableResetsAt": null,
@@ -2624,19 +3253,19 @@
       "quotaRecoveries": [
         {
           "trigger": "provider_limit",
-          "id": "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:2",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "id": "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:2",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "sourceGeneration": 1,
           "sourceAccount": "codex-a",
           "sourceWindowUsedPercent": null,
           "sourceWindowObservedAt": null,
-          "observationCursor": 1600,
-          "sourceId": "fcc1456d16ecb1bfb4bdf0eeef339a672f003df99debfd627f04452520fc52a5",
+          "observationCursor": 1606,
+          "sourceId": "d91ddb9abfc823c57091497035e13de9452d0fda75646c1808b546ffb7744fa6",
           "accountLabel": null,
           "eventIds": [
-            "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1600",
-            "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1835",
-            "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:2084"
+            "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1606",
+            "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1841",
+            "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:2090"
           ],
           "messageIds": [
             2
@@ -2646,17 +3275,17 @@
           "controlFence": 0,
           "placement": {
             "agent": "codex",
-            "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+            "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
             "cellId": null
           },
           "quota": {
             "harness": "codex",
             "window": "weekly",
-            "resetsAt": 1792490592000,
+            "resetsAt": 1792491128000,
             "providerCategory": "usageLimitExceeded"
           },
           "resetHints": {
-            "weekly": 1792490592000
+            "weekly": 1792491128000
           },
           "state": "waiting",
           "attempt": 0,
@@ -2670,8 +3299,8 @@
           "continuationHistory": [],
           "retryAt": null,
           "reason": "account_wait",
-          "createdAt": 1792486992381,
-          "updatedAt": 1792486992392
+          "createdAt": 1792487529011,
+          "updatedAt": 1792487529023
         }
       ],
       "tasks": [],
@@ -2682,16 +3311,16 @@
       "beeHandoffs": [],
       "transcriptSegments": [
         {
-          "id": "seg:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:0",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "id": "seg:3fd1eebd-7911-40ac-994e-78fe10ce2324:0",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "ordinal": 0,
           "harness": "codex",
-          "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+          "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
           "fromGeneration": 1,
           "toGeneration": null,
-          "path": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+          "path": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
           "handoffId": null,
-          "createdAt": 1792486991843,
+          "createdAt": 1792487528444,
           "closedAt": null
         }
       ],
@@ -2707,23 +3336,23 @@
       "views": [
         {
           "bee": {
-            "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "name": "codex-optout",
             "agent": "codex",
             "substrate": "hsr",
-            "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+            "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
             "title": null,
             "tags": [
               "autoswap=false"
             ],
-            "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+            "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
             "lifecycle": "active",
-            "createdAt": 1792486991843,
+            "createdAt": 1792487528444,
             "archivedAt": null,
-            "lastOutputAt": 1792486992379,
-            "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+            "lastOutputAt": 1792487529008,
+            "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
             "env": {
-              "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+              "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
             },
             "importedFrom": null,
             "spawnFailures": 0,
@@ -2745,25 +3374,25 @@
               "from": "operator",
               "messageId": 2,
               "generation": 1,
-              "startedAt": 1792486992379,
-              "humanAt": 1792486992379,
-              "endedAt": 1792486992379
+              "startedAt": 1792487528982,
+              "humanAt": 1792487528982,
+              "endedAt": 1792487529008
             },
-            "lastHumanOutputAt": 1792486992379
+            "lastHumanOutputAt": 1792487529008
           },
           "runtime": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "generation": 1,
             "state": "idle",
             "exitCause": null,
-            "pid": 720744,
-            "pidStartedAt": 1792486992057,
+            "pid": 730283,
+            "pidStartedAt": 1792487528670,
             "bootEvidence": "real",
-            "startedAt": 1792486991843,
-            "updatedAt": 1792486992379
+            "startedAt": 1792487528444,
+            "updatedAt": 1792487529008
           },
           "view": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "exists": true,
             "lifecycle": "active",
             "generation": 1,
@@ -2771,7 +3400,7 @@
             "exitCause": null,
             "working": false,
             "waitingForYou": true,
-            "lastOutputAt": 1792486992379,
+            "lastOutputAt": 1792487529008,
             "reachable": true,
             "blocked": true,
             "flags": [
@@ -2788,33 +3417,33 @@
   {
     "method": "audit.tail",
     "params": {
-      "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+      "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
       "limit": 1000
     },
     "result": {
       "rows": [
         {
           "seq": 10,
-          "ts": 1792486991844,
+          "ts": 1792487528445,
           "kind": "bee.created",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "bee": {
-              "id": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "id": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "name": "codex-optout",
               "agent": "codex",
               "substrate": "hsr",
-              "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+              "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
               "title": null,
               "tags": [],
-              "sessionLogPath": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+              "sessionLogPath": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
               "lifecycle": "active",
-              "createdAt": 1792486991843,
+              "createdAt": 1792487528444,
               "archivedAt": null,
               "lastOutputAt": null,
               "providerSessionId": null,
               "env": {
-                "CODEX_HOME": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/homes/codex-a"
+                "CODEX_HOME": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/homes/codex-a"
               },
               "importedFrom": null,
               "spawnFailures": 0,
@@ -2838,81 +3467,81 @@
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 720421,
+              "pid": 729910,
               "verb": "spawn"
             }
           }
         },
         {
           "seq": 11,
-          "ts": 1792486991845,
+          "ts": 1792487528446,
           "kind": "transcript_segment.put",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "segment": {
-              "id": "seg:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:0",
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "id": "seg:3fd1eebd-7911-40ac-994e-78fe10ce2324:0",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "ordinal": 0,
               "harness": "codex",
               "providerSessionId": null,
               "fromGeneration": 1,
               "toGeneration": null,
-              "path": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+              "path": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
               "handoffId": null,
-              "createdAt": 1792486991843,
+              "createdAt": 1792487528444,
               "closedAt": null
             },
             "rpcCaller": {
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 720421,
+              "pid": 729910,
               "verb": "spawn"
             }
           }
         },
         {
           "seq": 12,
-          "ts": 1792486991846,
+          "ts": 1792487528447,
           "kind": "runtime.created",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "runtime": {
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "generation": 1,
               "state": "booting",
               "exitCause": null,
               "pid": null,
               "pidStartedAt": null,
               "bootEvidence": null,
-              "startedAt": 1792486991843,
-              "updatedAt": 1792486991843
+              "startedAt": 1792487528444,
+              "updatedAt": 1792487528444
             },
             "rpcCaller": {
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 720421,
+              "pid": 729910,
               "verb": "spawn"
             }
           }
         },
         {
           "seq": 13,
-          "ts": 1792486991849,
+          "ts": 1792487528449,
           "kind": "command.enqueued",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "command": {
               "id": 1,
               "verb": "spawn",
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "args": {},
               "targetGeneration": 1,
               "status": "queued",
               "attempts": 0,
-              "nextAttemptAt": 1792486991848,
-              "enqueuedAt": 1792486991848,
+              "nextAttemptAt": 1792487528449,
+              "enqueuedAt": 1792487528449,
               "finishedAt": null,
               "failureCause": null,
               "idempotencyKey": null
@@ -2921,25 +3550,25 @@
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 720421,
+              "pid": 729910,
               "verb": "spawn"
             }
           }
         },
         {
           "seq": 14,
-          "ts": 1792486991860,
+          "ts": 1792487528461,
           "kind": "mail.enqueued",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "message": {
               "id": 1,
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "sender": "operator",
               "body": "warm output for the unread cursor",
               "priority": 0,
               "urgency": "next",
-              "enqueuedAt": 1792486991860,
+              "enqueuedAt": 1792487528461,
               "deliveredAt": null,
               "deliveredGeneration": null
             },
@@ -2948,290 +3577,290 @@
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 720421,
+              "pid": 729910,
               "verb": "send"
             }
           }
         },
         {
           "seq": 15,
-          "ts": 1792486991865,
+          "ts": 1792487528466,
           "kind": "command.claimed",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "commandId": 1
           }
         },
         {
           "seq": 16,
-          "ts": 1792486992066,
+          "ts": 1792487528679,
           "kind": "runtime.updated",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "runtime": {
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "generation": 1,
               "state": "booting",
               "exitCause": null,
-              "pid": 720744,
-              "pidStartedAt": 1792486992057,
+              "pid": 730283,
+              "pidStartedAt": 1792487528670,
               "bootEvidence": null,
-              "startedAt": 1792486991843,
-              "updatedAt": 1792486991843
+              "startedAt": 1792487528444,
+              "updatedAt": 1792487528444
             }
           }
         },
         {
           "seq": 17,
-          "ts": 1792486992066,
+          "ts": 1792487528679,
           "kind": "command.completed",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "commandId": 1,
-            "finishedAt": 1792486992066
+            "finishedAt": 1792487528679
           }
         },
         {
           "seq": 18,
-          "ts": 1792486992255,
+          "ts": 1792487528886,
           "kind": "runtime.updated",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "runtime": {
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "generation": 1,
               "state": "booting",
               "exitCause": null,
-              "pid": 720744,
-              "pidStartedAt": 1792486992057,
+              "pid": 730283,
+              "pidStartedAt": 1792487528670,
               "bootEvidence": "real",
-              "startedAt": 1792486991843,
-              "updatedAt": 1792486991843
+              "startedAt": 1792487528444,
+              "updatedAt": 1792487528444
             }
           }
         },
         {
           "seq": 19,
-          "ts": 1792486992257,
+          "ts": 1792487528887,
           "kind": "runtime.updated",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "runtime": {
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "generation": 1,
               "state": "booting",
               "exitCause": null,
-              "pid": 720744,
-              "pidStartedAt": 1792486992057,
+              "pid": 730283,
+              "pidStartedAt": 1792487528670,
               "bootEvidence": "real",
-              "startedAt": 1792486991843,
-              "updatedAt": 1792486991843
+              "startedAt": 1792487528444,
+              "updatedAt": 1792487528444
             }
           }
         },
         {
           "seq": 20,
-          "ts": 1792486992258,
+          "ts": 1792487528887,
           "kind": "runtime.updated",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "runtime": {
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "generation": 1,
               "state": "running",
               "exitCause": null,
-              "pid": 720744,
-              "pidStartedAt": 1792486992057,
+              "pid": 730283,
+              "pidStartedAt": 1792487528670,
               "bootEvidence": "real",
-              "startedAt": 1792486991843,
-              "updatedAt": 1792486992258
+              "startedAt": 1792487528444,
+              "updatedAt": 1792487528887
             }
           }
         },
         {
           "seq": 21,
-          "ts": 1792486992259,
+          "ts": 1792487528888,
           "kind": "runtime.updated",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "runtime": {
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "generation": 1,
               "state": "idle",
               "exitCause": null,
-              "pid": 720744,
-              "pidStartedAt": 1792486992057,
+              "pid": 730283,
+              "pidStartedAt": 1792487528670,
               "bootEvidence": "real",
-              "startedAt": 1792486991843,
-              "updatedAt": 1792486992259
+              "startedAt": 1792487528444,
+              "updatedAt": 1792487528887
             }
           }
         },
         {
           "seq": 22,
-          "ts": 1792486992260,
+          "ts": 1792487528888,
           "kind": "output.recorded",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
-            "at": 1792486992259,
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+            "at": 1792487528887,
             "lastHumanOutputAt": null
           }
         },
         {
           "seq": 23,
-          "ts": 1792486992261,
+          "ts": 1792487528888,
           "kind": "bee.provider_session",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
-            "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+            "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
             "previous": null
           }
         },
         {
           "seq": 24,
-          "ts": 1792486992261,
+          "ts": 1792487528888,
           "kind": "transcript_segment.put",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "segment": {
-              "id": "seg:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:0",
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "id": "seg:3fd1eebd-7911-40ac-994e-78fe10ce2324:0",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "ordinal": 0,
               "harness": "codex",
-              "providerSessionId": "248cb745-3a50-4367-a367-486480e8d6d4",
+              "providerSessionId": "cf8eea8c-d91a-441a-8cd8-c04e14e1bf0c",
               "fromGeneration": 1,
               "toGeneration": null,
-              "path": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU/session-logs/7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a.jsonl",
+              "path": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6/session-logs/3fd1eebd-7911-40ac-994e-78fe10ce2324.jsonl",
               "handoffId": null,
-              "createdAt": 1792486991843,
+              "createdAt": 1792487528444,
               "closedAt": null
             }
           }
         },
         {
           "seq": 25,
-          "ts": 1792486992262,
+          "ts": 1792487528889,
           "kind": "flag.clear_noop",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "flag": "spawn_failed"
           }
         },
         {
           "seq": 26,
-          "ts": 1792486992295,
+          "ts": 1792487528914,
           "kind": "runtime.updated",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "runtime": {
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "generation": 1,
               "state": "running",
               "exitCause": null,
-              "pid": 720744,
-              "pidStartedAt": 1792486992057,
+              "pid": 730283,
+              "pidStartedAt": 1792487528670,
               "bootEvidence": "real",
-              "startedAt": 1792486991843,
-              "updatedAt": 1792486992295
+              "startedAt": 1792487528444,
+              "updatedAt": 1792487528914
             },
             "turnTrigger": {
               "kind": "human",
               "from": "operator",
               "messageId": 1,
               "generation": 1,
-              "startedAt": 1792486992295,
-              "humanAt": 1792486992295,
+              "startedAt": 1792487528914,
+              "humanAt": 1792487528914,
               "endedAt": null
             }
           }
         },
         {
           "seq": 27,
-          "ts": 1792486992323,
+          "ts": 1792487528938,
           "kind": "runtime.updated",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "runtime": {
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "generation": 1,
               "state": "idle",
               "exitCause": null,
-              "pid": 720744,
-              "pidStartedAt": 1792486992057,
+              "pid": 730283,
+              "pidStartedAt": 1792487528670,
               "bootEvidence": "real",
-              "startedAt": 1792486991843,
-              "updatedAt": 1792486992323
+              "startedAt": 1792487528444,
+              "updatedAt": 1792487528937
             },
             "turnTrigger": {
               "kind": "human",
               "from": "operator",
               "messageId": 1,
               "generation": 1,
-              "startedAt": 1792486992295,
-              "humanAt": 1792486992295,
-              "endedAt": 1792486992323
+              "startedAt": 1792487528914,
+              "humanAt": 1792487528914,
+              "endedAt": 1792487528937
             }
           }
         },
         {
           "seq": 28,
-          "ts": 1792486992323,
+          "ts": 1792487528938,
           "kind": "output.recorded",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
-            "at": 1792486992323,
-            "lastHumanOutputAt": 1792486992323
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+            "at": 1792487528937,
+            "lastHumanOutputAt": 1792487528937
           }
         },
         {
           "seq": 29,
-          "ts": 1792486992324,
+          "ts": 1792487528938,
           "kind": "flag.clear_noop",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "flag": "auth_needed"
           }
         },
         {
           "seq": 30,
-          "ts": 1792486992325,
+          "ts": 1792487528938,
           "kind": "flag.clear_noop",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "flag": "resource_blocked"
           }
         },
         {
           "seq": 31,
-          "ts": 1792486992329,
+          "ts": 1792487528940,
           "kind": "mail.delivered",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "messageId": 1,
-            "deliveredAt": 1792486992328,
+            "deliveredAt": 1792487528940,
             "deliveredGeneration": 1
           }
         },
         {
           "seq": 32,
-          "ts": 1792486992332,
+          "ts": 1792487528941,
           "kind": "mail.enqueued",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "message": {
               "id": 2,
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "sender": "operator",
               "body": "@quota:weekly fixture automatic wait",
               "priority": 0,
               "urgency": "next",
-              "enqueuedAt": 1792486992332,
+              "enqueuedAt": 1792487528941,
               "deliveredAt": null,
               "deliveredGeneration": null
             },
@@ -3240,92 +3869,92 @@
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 720421,
+              "pid": 729910,
               "verb": "send"
             }
           }
         },
         {
           "seq": 33,
-          "ts": 1792486992379,
+          "ts": 1792487528982,
           "kind": "runtime.updated",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "runtime": {
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "generation": 1,
               "state": "running",
               "exitCause": null,
-              "pid": 720744,
-              "pidStartedAt": 1792486992057,
+              "pid": 730283,
+              "pidStartedAt": 1792487528670,
               "bootEvidence": "real",
-              "startedAt": 1792486991843,
-              "updatedAt": 1792486992379
+              "startedAt": 1792487528444,
+              "updatedAt": 1792487528982
             },
             "turnTrigger": {
               "kind": "human",
               "from": "operator",
               "messageId": 2,
               "generation": 1,
-              "startedAt": 1792486992379,
-              "humanAt": 1792486992379,
+              "startedAt": 1792487528982,
+              "humanAt": 1792487528982,
               "endedAt": null
             }
           }
         },
         {
           "seq": 34,
-          "ts": 1792486992380,
+          "ts": 1792487529009,
           "kind": "runtime.updated",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "runtime": {
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "generation": 1,
               "state": "idle",
               "exitCause": null,
-              "pid": 720744,
-              "pidStartedAt": 1792486992057,
+              "pid": 730283,
+              "pidStartedAt": 1792487528670,
               "bootEvidence": "real",
-              "startedAt": 1792486991843,
-              "updatedAt": 1792486992379
+              "startedAt": 1792487528444,
+              "updatedAt": 1792487529008
             },
             "turnTrigger": {
               "kind": "human",
               "from": "operator",
               "messageId": 2,
               "generation": 1,
-              "startedAt": 1792486992379,
-              "humanAt": 1792486992379,
-              "endedAt": 1792486992379
+              "startedAt": 1792487528982,
+              "humanAt": 1792487528982,
+              "endedAt": 1792487529008
             }
           }
         },
         {
           "seq": 35,
-          "ts": 1792486992380,
+          "ts": 1792487529009,
           "kind": "output.recorded",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
-            "at": 1792486992379,
-            "lastHumanOutputAt": 1792486992379
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
+            "at": 1792487529008,
+            "lastHumanOutputAt": 1792487529008
           }
         },
         {
           "seq": 36,
-          "ts": 1792486992381,
+          "ts": 1792487529010,
           "kind": "quota.observed",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "eventId": "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1600",
-            "sourceId": "fcc1456d16ecb1bfb4bdf0eeef339a672f003df99debfd627f04452520fc52a5",
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "eventId": "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1606",
+            "sourceId": "d91ddb9abfc823c57091497035e13de9452d0fda75646c1808b546ffb7744fa6",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "generation": 1,
             "quota": {
               "harness": "codex",
               "window": "weekly",
-              "resetsAt": 1792490592000,
+              "resetsAt": 1792491128000,
               "providerCategory": "rateLimitReachedType"
             },
             "turn": {
@@ -3338,23 +3967,23 @@
         },
         {
           "seq": 37,
-          "ts": 1792486992382,
+          "ts": 1792487529011,
           "kind": "quota.recovery",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "recovery": {
-              "id": "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:2",
+              "id": "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:2",
               "trigger": "provider_limit",
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "sourceGeneration": 1,
               "sourceAccount": "codex-a",
               "sourceWindowUsedPercent": null,
               "sourceWindowObservedAt": null,
-              "observationCursor": 1600,
-              "sourceId": "fcc1456d16ecb1bfb4bdf0eeef339a672f003df99debfd627f04452520fc52a5",
+              "observationCursor": 1606,
+              "sourceId": "d91ddb9abfc823c57091497035e13de9452d0fda75646c1808b546ffb7744fa6",
               "accountLabel": null,
               "eventIds": [
-                "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1600"
+                "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1606"
               ],
               "messageIds": [
                 2
@@ -3364,17 +3993,17 @@
               "controlFence": 0,
               "placement": {
                 "agent": "codex",
-                "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+                "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
                 "cellId": null
               },
               "quota": {
                 "harness": "codex",
                 "window": "weekly",
-                "resetsAt": 1792490592000,
+                "resetsAt": 1792491128000,
                 "providerCategory": "rateLimitReachedType"
               },
               "resetHints": {
-                "weekly": 1792490592000
+                "weekly": 1792491128000
               },
               "state": "waiting",
               "attempt": 0,
@@ -3388,15 +4017,15 @@
               "continuationHistory": [],
               "retryAt": null,
               "reason": "account_wait",
-              "createdAt": 1792486992381,
-              "updatedAt": 1792486992382
+              "createdAt": 1792487529011,
+              "updatedAt": 1792487529011
             },
             "notice": {
               "kind": "quota_recovery",
-              "recoveryId": "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:2",
+              "recoveryId": "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:2",
               "trigger": "provider_limit",
               "state": "waiting",
-              "sourceId": "fcc1456d16ecb1bfb4bdf0eeef339a672f003df99debfd627f04452520fc52a5",
+              "sourceId": "d91ddb9abfc823c57091497035e13de9452d0fda75646c1808b546ffb7744fa6",
               "accountLabel": null,
               "window": "weekly",
               "retryAt": null
@@ -3405,30 +4034,30 @@
         },
         {
           "seq": 38,
-          "ts": 1792486992383,
+          "ts": 1792487529012,
           "kind": "flag.set",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "flag": {
               "id": 1,
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "flag": "resource_blocked",
-              "detail": "codex rate limit reached (rate_limit_reached), resets 2026-10-20T10:03:12.000Z",
-              "setAt": 1792486992383,
+              "detail": "codex rate limit reached (rate_limit_reached), resets 2026-10-20T10:12:08.000Z",
+              "setAt": 1792487529012,
               "clearedAt": null,
-              "resetsAt": 1792490592000
+              "resetsAt": 1792491128000
             }
           }
         },
         {
           "seq": 40,
-          "ts": 1792486992390,
+          "ts": 1792487529020,
           "kind": "quota.observed",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "eventId": "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1835",
-            "sourceId": "1f2f16c845443510203c3d9423b63645a2c6ca37fbfd58339a861747188a9f2b",
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "eventId": "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1841",
+            "sourceId": "6d353fe2420f20e2097b37c536e77897e9b93469de10214b86f5618784c2c573",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "generation": 1,
             "quota": {
               "harness": "codex",
@@ -3446,24 +4075,24 @@
         },
         {
           "seq": 41,
-          "ts": 1792486992390,
+          "ts": 1792487529021,
           "kind": "quota.recovery",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "recovery": {
               "trigger": "provider_limit",
-              "id": "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:2",
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "id": "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:2",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "sourceGeneration": 1,
               "sourceAccount": "codex-a",
               "sourceWindowUsedPercent": null,
               "sourceWindowObservedAt": null,
-              "observationCursor": 1600,
-              "sourceId": "fcc1456d16ecb1bfb4bdf0eeef339a672f003df99debfd627f04452520fc52a5",
+              "observationCursor": 1606,
+              "sourceId": "d91ddb9abfc823c57091497035e13de9452d0fda75646c1808b546ffb7744fa6",
               "accountLabel": null,
               "eventIds": [
-                "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1600",
-                "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1835"
+                "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1606",
+                "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1841"
               ],
               "messageIds": [
                 2
@@ -3473,17 +4102,17 @@
               "controlFence": 0,
               "placement": {
                 "agent": "codex",
-                "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+                "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
                 "cellId": null
               },
               "quota": {
                 "harness": "codex",
                 "window": "weekly",
-                "resetsAt": 1792490592000,
+                "resetsAt": 1792491128000,
                 "providerCategory": "usageLimitExceeded"
               },
               "resetHints": {
-                "weekly": 1792490592000
+                "weekly": 1792491128000
               },
               "state": "waiting",
               "attempt": 0,
@@ -3497,23 +4126,23 @@
               "continuationHistory": [],
               "retryAt": null,
               "reason": "account_wait",
-              "createdAt": 1792486992381,
-              "updatedAt": 1792486992390
+              "createdAt": 1792487529011,
+              "updatedAt": 1792487529021
             }
           }
         },
         {
           "seq": 42,
-          "ts": 1792486992391,
+          "ts": 1792487529021,
           "kind": "flag.set",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "flag": {
               "id": 1,
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "flag": "resource_blocked",
               "detail": "codex usage limit exceeded: You've hit your usage limit.",
-              "setAt": 1792486992383,
+              "setAt": 1792487529012,
               "clearedAt": null,
               "resetsAt": null
             }
@@ -3521,13 +4150,13 @@
         },
         {
           "seq": 43,
-          "ts": 1792486992392,
+          "ts": 1792487529023,
           "kind": "quota.observed",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "eventId": "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:2084",
-            "sourceId": "687acb6225e90f65d3c1ce6fcee2e213f8330b2b9b8db0c063736a5ad912fa39",
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "eventId": "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:2090",
+            "sourceId": "e5d3b71d73f4cb699d17050872b983c8ee72b4614496ef97f30b6f201f7f1ce5",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "generation": 1,
             "quota": {
               "harness": "codex",
@@ -3545,25 +4174,25 @@
         },
         {
           "seq": 44,
-          "ts": 1792486992393,
+          "ts": 1792487529023,
           "kind": "quota.recovery",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "recovery": {
               "trigger": "provider_limit",
-              "id": "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:2",
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "id": "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:2",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "sourceGeneration": 1,
               "sourceAccount": "codex-a",
               "sourceWindowUsedPercent": null,
               "sourceWindowObservedAt": null,
-              "observationCursor": 1600,
-              "sourceId": "fcc1456d16ecb1bfb4bdf0eeef339a672f003df99debfd627f04452520fc52a5",
+              "observationCursor": 1606,
+              "sourceId": "d91ddb9abfc823c57091497035e13de9452d0fda75646c1808b546ffb7744fa6",
               "accountLabel": null,
               "eventIds": [
-                "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1600",
-                "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:1835",
-                "quota:7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a:1:2084"
+                "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1606",
+                "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:1841",
+                "quota:3fd1eebd-7911-40ac-994e-78fe10ce2324:1:2090"
               ],
               "messageIds": [
                 2
@@ -3573,17 +4202,17 @@
               "controlFence": 0,
               "placement": {
                 "agent": "codex",
-                "cwd": "/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-vs2ZtU",
+                "cwd": "/var/tmp/sar-e2-condition-lab-W7ib08/hb-v2-daemon-GjLfL6",
                 "cellId": null
               },
               "quota": {
                 "harness": "codex",
                 "window": "weekly",
-                "resetsAt": 1792490592000,
+                "resetsAt": 1792491128000,
                 "providerCategory": "usageLimitExceeded"
               },
               "resetHints": {
-                "weekly": 1792490592000
+                "weekly": 1792491128000
               },
               "state": "waiting",
               "attempt": 0,
@@ -3597,23 +4226,23 @@
               "continuationHistory": [],
               "retryAt": null,
               "reason": "account_wait",
-              "createdAt": 1792486992381,
-              "updatedAt": 1792486992392
+              "createdAt": 1792487529011,
+              "updatedAt": 1792487529023
             }
           }
         },
         {
           "seq": 45,
-          "ts": 1792486992393,
+          "ts": 1792487529024,
           "kind": "flag.set",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "flag": {
               "id": 1,
-              "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+              "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
               "flag": "resource_blocked",
               "detail": "codex usage limit exceeded: You've hit your usage limit.",
-              "setAt": 1792486992383,
+              "setAt": 1792487529012,
               "clearedAt": null,
               "resetsAt": null
             }
@@ -3621,22 +4250,22 @@
         },
         {
           "seq": 46,
-          "ts": 1792486992397,
+          "ts": 1792487529028,
           "kind": "mail.delivered",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
             "messageId": 2,
-            "deliveredAt": 1792486992397,
+            "deliveredAt": 1792487529028,
             "deliveredGeneration": 1
           }
         },
         {
           "seq": 47,
-          "ts": 1792486992406,
+          "ts": 1792487529038,
           "kind": "bee.tagged",
-          "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+          "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
           "payload": {
-            "beeId": "7e59d2a6-e08e-4ac7-b097-d78d33a2cf6a",
+            "beeId": "3fd1eebd-7911-40ac-994e-78fe10ce2324",
             "tags": [
               "autoswap=false"
             ],
@@ -3649,7 +4278,7 @@
               "transport": "local_unix",
               "ingress": "local_unix",
               "uid": 1001,
-              "pid": 720421,
+              "pid": 729910,
               "verb": "bee.tag"
             }
           }
