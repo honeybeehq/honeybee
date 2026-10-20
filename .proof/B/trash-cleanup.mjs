@@ -20,5 +20,11 @@ registerHooks({ load(url, context, next) {
   if (url.endsWith("/v2/daemon/src/quotaRecovery.ts") && process.env.B_QUOTA_PAUSE_PATH) {
     result.source = 'import { existsSync as quotaGateExists } from "node:fs";\n' + String(result.source).replace('  reconcile(): void {', '  reconcile(): void { if (quotaGateExists(process.env.B_QUOTA_PAUSE_PATH!)) return;');
   }
+  if (url.endsWith("/v2/daemon/src/loops.ts") && process.env.B_DELIVERY_PAUSE_PATH) {
+    result.source = 'import { existsSync as quotaDeliveryGateExists } from "node:fs";\n' + String(result.source).replace('  private deliveryLoop(work: readonly DaemonWorkRow[]): void {', '  private deliveryLoop(work: readonly DaemonWorkRow[]): void { if (quotaDeliveryGateExists(process.env.B_DELIVERY_PAUSE_PATH!)) return;');
+  }
+  if (url.endsWith("/v2/daemon/src/loops.ts") && process.env.B_SKIP_GEN_TWO_DELIVERY === "1") {
+    result.source = String(result.source).replace('      for (const { runtime: rt, pending: ordinaryPending } of work) {', '      for (const { runtime: rt, pending: ordinaryPending } of work) { if (rt.generation === 2) continue;');
+  }
   return result;
 }});

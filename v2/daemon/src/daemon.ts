@@ -6695,6 +6695,7 @@ export class HiveDaemon {
         this.authResume?.interrupted(ev);
         if (account.harness === "claude" && !authorityInDoubt) accounts.scheduleClaudeRecovery(account.id);
       } else {
+        store.quotaTurnSucceeded(bee.id, ev.generation);
         this.authResume?.turnSucceeded(bee.id);
         if (account.status === "auth_needed" && !authorityInDoubt) {
           store.setAccountStatus(account.id, "ok", `bee ${bee.id}: ${ev.detail.slice(0, 200)}`);
@@ -6739,10 +6740,12 @@ export class HiveDaemon {
       return;
     }
     try {
-      const recovery = store.listQuotaRecoveries(bee.id).find(row => row.sourceGeneration === generation && row.state === "waiting");
+      const recovery = store.listQuotaRecoveries(bee.id).find(row => row.sourceGeneration === generation && row.state === "waiting"
+        && row.messageIds.length === (ev.turn?.messageIds.length ?? 0) && row.messageIds.every(id => ev.turn?.messageIds.includes(id)));
       const res = this.performSwap(bee, pick.account, "rotation", pick.receipt, pick.reservation?.id, undefined, recovery?.id);
       this.log(`account.rotate bee=${bee.id} from=${account.id} to=${pick.account.id} action=${res.action} reason=${JSON.stringify(pick.reason)}`);
     } catch (err) {
+      if (pick.reservation) store.releaseAccountAdmission(pick.reservation.id);
       this.log(`account.rotate bee=${bee.id} from=${account.id} to=${pick.account.id} failed=${err instanceof Error ? err.message : String(err)}`);
     }
   }

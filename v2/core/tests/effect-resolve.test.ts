@@ -78,7 +78,7 @@ test("effect query never fences in-flight work and command admission is committe
   } finally { store.close(); h.cleanup(); }
 });
 
-test("effect additive tables preserve schema44 and retained legacy positives bootstrap", () => {
+test("effect additive tables preserve schema45 and retained legacy positives bootstrap", () => {
   const h = harness(); let store = h.open(); store.close();
   const db = new DatabaseSync(h.path);
   db.exec("DROP TABLE rpc_effect_keys");

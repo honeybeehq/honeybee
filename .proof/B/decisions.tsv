@@ -8,3 +8,11 @@ ts	phase	decision	why	evidence	result
 2026-10-20T06:44:00Z	proof	Exercised progress replay between-turn restart and manual stop	Real daemon must prove ordinary-mail continuation	.proof/B/summary.json	5 cases passed
 2026-10-20T06:45:00Z	fencing	Ignored flags from source generation after its account rebind	Current generation alone does not fence the stop-before-revive interval	v2/daemon/src/loops.ts	implemented
 2026-10-20T06:46:00Z	verification	Retained full fixture trash in Cell and reran core on disk	Private var/tmp tmpfs filled while keeping all fixtures	.proof/B/core-suites-disk-full.log	rerun in progress
+2026-10-20T06:49:00Z	lab	Made one-shot fixture markers unique per lab process	Reusing a run root skipped the intended replay failure on rerun	.proof/B/lab.ts	corrected rerun
+2026-10-20T06:48:00Z	base	Rebased onto A final review pin 4db4790d	Orchestrator pinned the dependency	ab8d63da	complete
+2026-10-20T06:54:00Z	review	Accepted independent Opus findings on retry fencing ordering and hint merge	Initial candidate missed successor retry and stale sibling cases	Apiary session 58439349-f891-48ac-a70b-cb853e6fe7a1	fixed in follow-up
+2026-10-20T06:55:00Z	scope	Left active owner routing and no-candidate timer to C; full Apiary lab to G	Those tasks explicitly own those parts of the Project	Project design.md task rows C and G	handoff explicit
+2026-10-20T06:56:00Z	evidence	Added exact transcript sourceId to durable row and notice	Apiary must anchor the quiet notice without time guessing	contracts/quota-events.md v6	implemented and lab checks projection
+2026-10-20T07:00:00Z	readiness	Kept interrupted recovery rotating after synthetic enqueue until real output	Synthetic readiness can accept mail but does not prove a real boot	v2/core/src/store.ts resumeQuotaRecovery	implemented
+2026-10-20T07:02:00Z	continuity	Projected source session identity before quota policy in the same transaction	Init and quota in one poll otherwise swapped without a transcript seed	v2/daemon/src/loops.ts observe	exact replay lab passed
+2026-10-20T07:03:00Z	verification	Retained weekly ceiling fork-count failures and baseline/current isolated passes	Existing test has a provider-session timing race with no quota obligation	.proof/B/ceiling-baseline.log and ceiling-current-repeat.log	independent reviewer found no B cause
