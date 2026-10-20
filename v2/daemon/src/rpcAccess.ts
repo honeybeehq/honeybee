@@ -142,6 +142,7 @@ export const RPC_ACCESS = {
   "account.admission.release": "mutate",
   "account.activity": "read",
   "bee.swapAccount": "mutate",
+  "quota.recovery.wait": "mutate",
   "config.get": "read",
   "config.patch": "mutate",
   "contextPolicy.get": "read",
