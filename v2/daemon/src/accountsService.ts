@@ -2433,7 +2433,8 @@ export class AccountsService {
           if (pct != null && pct >= DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent && reset != null && reset > now) times.push(reset);
         }
       }
-      if (account.exhaustedAt != null && !this.restoredQuotaHeadroom(account, model)) {
+      const observed = limits?.readable ? [limits.fiveHourPct, limits.weeklyPct, ...(isFableModel(model) ? [limits.fableWeeklyPct] : [])] : [];
+      if (account.exhaustedAt != null && observed.length > 0 && observed.every(value => value !== null && value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent) && !this.restoredQuotaHeadroom(account, model)) {
         const coolOff = account.exhaustedAt + this.cfg.accounts.exhaustionCoolOffMs;
         if (coolOff > now) times.push(coolOff);
       }
