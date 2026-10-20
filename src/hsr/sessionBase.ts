@@ -168,6 +168,11 @@ export function __testOnlyOwnedProcessGroups(child: ChildProcess): number[] {
   return [...(ownershipByChild.get(child)?.livePgids ?? [])];
 }
 
+export function __testOnlyRetainedOwnershipObserver(rootPid: number): (pid: number) => boolean {
+  const scope = [...ownershipScopes].find((candidate) => candidate.rootPid === rootPid);
+  return (pid) => scope?.identities.has(pid) ?? false;
+}
+
 function scheduleToolOwnershipSample(scope: OwnedProcessScope, attemptsRemaining: number): void {
   if (scope.delayedSample) clearTimeout(scope.delayedSample);
   scope.delayedSample = setTimeout(() => {
