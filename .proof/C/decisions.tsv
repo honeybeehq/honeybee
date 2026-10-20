@@ -1,2 +1,3 @@
 ts	phase	decision	why	evidence	result
 2026-10-20T06:55:22Z	implementation	Drive durable waiting recoveries through admission and performSwap	Keep allocation authority and exactly-once continuation in their existing owners	v2/daemon/src/quotaRecovery.ts	typecheck and build passed; lab pending
+2026-10-20T06:59:05Z	verification	Keep existing no-candidate diagnostic and share bounded quota probes	Existing accounts RPC suite asserted the diagnostic; shared probe lane prevents duplicate fleet requests	.proof/C/accounts-rpc.log	diagnostic-only failure corrected; rerun pending
