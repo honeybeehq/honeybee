@@ -18,7 +18,7 @@ writeFileSync(fixturePath, JSON.stringify({ recoverAt: Number.MAX_SAFE_INTEGER, 
 const metadata = { head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), trackedChanges: execFileSync("git", ["status", "--short", "--untracked-files=no"], { encoding: "utf8" }), node: process.version, root, repo };
 writeFileSync(join(proof, "metadata.json"), JSON.stringify(metadata, null, 2));
 console.log(JSON.stringify({ root, proof, metadata }));
-const { dir } = makeDaemonDir({ accounts: { allocationMode: "shadow" }, agents: { codex: { command: join(repo, ".proof/C/codex.mjs"), args: [], adapter: "codex" } } });
+const { dir } = makeDaemonDir({ accounts: { allocationMode: "shadow" }, agents: { codex: { command: join(repo, ".proof/C/codex.mjs"), args: [], adapter: "codex", env: { FAKE_CODEX_STRICT_HOME: "1" } } } });
 const store = openCoreStore(join(dir, "core.sqlite3"), { ephemeral: true });
 try {
   for (const label of ["a", "b"]) {

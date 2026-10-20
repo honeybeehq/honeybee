@@ -46,7 +46,7 @@ for (const name of selected.length ? selected : scenarios) {
   }, agents: { [harness]: {
     command: harness === "codex" ? join(repo, ".proof/C/codex.mjs") : process.execPath,
     args: harness === "codex" ? [] : [join(repo, ".proof/C/claude.mjs")], adapter: harness,
-    env: { FAKE_QUOTA_ONCE_PATH: marker, FAKE_QUOTA_RESETS_AT: new Date(resetAt).toISOString(), FAKE_QUOTA_RESETS_AT_SECONDS: String(Math.floor(resetAt / 1000)), C_UNKNOWN_RESET: unknown ? "1" : "0" },
+    env: { ...(harness === "codex" ? { FAKE_CODEX_STRICT_HOME: "1" } : {}), FAKE_QUOTA_ONCE_PATH: marker, FAKE_QUOTA_RESETS_AT: new Date(resetAt).toISOString(), FAKE_QUOTA_RESETS_AT_SECONDS: String(Math.floor(resetAt / 1000)), C_UNKNOWN_RESET: unknown ? "1" : "0" },
   } } });
   const store = openCoreStore(join(dir, "core.sqlite3"), { ephemeral: true });
   try {
