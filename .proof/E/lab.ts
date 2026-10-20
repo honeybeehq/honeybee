@@ -8,7 +8,7 @@ const proof = resolve(".proof/E");
 const repo = resolve(".");
 const selected = new Set(process.argv.slice(2));
 const results: any[] = selected.size && existsSync(join(proof, "summary.json")) ? JSON.parse(readFileSync(join(proof, "summary.json"), "utf8")).filter((row: any) => !selected.has(row.name)) : [];
-for (const harness of ["claude", "codex"]) for (const scenario of ["human", "worker", "action", "projected", "headroom", "stale", "running", "both", "source-reset", "optout", "active"]) {
+for (const harness of ["claude", "codex"]) for (const scenario of ["human", "worker", "action", "projected", "headroom", "healthy", "subside", "restart", "stale", "running", "both", "source-reset", "optout", "active"]) {
   const name = `${harness}-${scenario}`;
   if (selected.size && !selected.has(name)) continue;
   const usage = new Map([[`${harness}-a`, 5], [`${harness}-b`, 5]]);
@@ -39,8 +39,9 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
     mkdirSync(vault, { recursive: true });
     writeFileSync(join(vault, harness === "claude" ? ".credentials.json" : "auth.json"), JSON.stringify(harness === "claude" ? { claudeAiOauth: { accessToken: `fixture-${label}`, expiresAt: 4102444800000 } } : { tokens: { access_token: `fixture-${label}` } }));
   }
-  const daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_USAGE_URL: url } });
-  const client = await daemon.client();
+  let daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_USAGE_URL: url } });
+  let client = await daemon.client();
+  const daemonLogs: string[] = [];
   const rpc: unknown[] = [];
   const request = async (method: string, params: any = {}) => { const result = await client.request<any>(method, params); rpc.push({ method, params, result }); return result; };
   try {
@@ -50,8 +51,16 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
     const beeId = bee.beeId;
     const worker = scenario === "worker" ? await request("spawn", { name: name + "-sender", agent: "stub", cwd: dir, account: null }) : null;
     const send = (body: string, peer = false) => request("send", { beeId, body, ...(peer ? { sender: worker.beeId } : {}) });
-    const delivered = async (id: number) => waitFor(async () => (await request("mailbox", { beeId })).messages.find((m: any) => m.id === id && m.deliveredAt !== null), `${name} delivery`, 20000);
-    const idle = async () => waitFor(async () => (await request("view", { beeId })).view.runtimeState === "idle", `${name} idle`, 15000);
+    let lastDeliveredId: number | null = null;
+    const delivered = async (id: number) => {
+      const message = await waitFor(async () => (await request("mailbox", { beeId })).messages.find((m: any) => m.id === id && m.deliveredAt !== null), `${name} delivery`, 20000);
+      lastDeliveredId = id;
+      return message;
+    };
+    const idle = async () => waitFor(async () => {
+      const result = await request("view", { beeId });
+      return result.view.runtimeState === "idle" && result.bee.lastTurnTrigger?.messageId === lastDeliveredId && result.bee.lastTurnTrigger?.endedAt !== null;
+    }, `${name} idle`, 15000);
     const warm = await send("warm conversation");
     await delivered(warm.messageId);
     await idle();
@@ -61,9 +70,10 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
       await delivered(running.messageId);
       await waitFor(async () => (await request("view", { beeId })).view.runtimeState === "running", `${name} running`);
     }
-    usage.set(`${harness}-a`, scenario === "projected" || scenario === "both" ? 87 : 91);
+    usage.set(`${harness}-a`, scenario === "healthy" ? 5 : scenario === "projected" || scenario === "both" ? 87 : 91);
     if (scenario === "both" || scenario === "source-reset") usage.set(`${harness}-b`, scenario === "both" ? 87 : 91);
     if (scenario === "headroom") usage.set(`${harness}-b`, 85);
+    if (scenario === "subside" || scenario === "restart") usage.set(`${harness}-b`, 91);
     await request("account.limits");
     if (scenario === "stale") await new Promise(done => setTimeout(done, 800));
     if (scenario === "running") {
@@ -81,7 +91,37 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
           return mail ? { messageId: mail.id } : null;
         }, `${name} dispatch`);
       } else sent = await send(`next ${scenario} continues conversation`, scenario === "worker");
-      if (scenario === "both" || scenario === "active") {
+      if (scenario === "subside" || scenario === "restart") {
+        const waiting = async () => waitFor(async () => {
+          const rows = (await request("snapshot")).quotaRecoveries.filter((r: any) => r.beeId === beeId);
+          return rows.some((r: any) => r.state === "waiting") ? rows : null;
+        }, `${name} held`);
+        const before = await waiting();
+        if (scenario === "restart") {
+          client.close();
+          await daemon.kill();
+          daemonLogs.push(daemon.output());
+          daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_USAGE_URL: url } });
+          client = await daemon.client();
+          assert.equal((await waiting())[0].id, before[0].id);
+        }
+        usage.set(`${harness}-a`, 5);
+        await request("account.limits");
+        assert.equal((await delivered(sent.messageId)).deliveredGeneration, 1);
+        await idle();
+        assert.ok(reset > Date.now());
+        assert.equal((await request("snapshot")).quotaRecoveries.find((r: any) => r.id === before[0].id).reason, "completion_headroom_restored");
+        if (scenario === "subside") {
+          usage.set(`${harness}-a`, 91);
+          await request("account.limits");
+          const next = await send("a later turn must be admitted again");
+          assert.equal((await waiting()).length, 2);
+          usage.set(`${harness}-a`, 5);
+          await request("account.limits");
+          assert.equal((await delivered(next.messageId)).deliveredGeneration, 1);
+          await idle();
+        }
+      } else if (scenario === "both" || scenario === "active") {
         await waitFor(async () => (await request("snapshot")).quotaRecoveries.some((r: any) => r.beeId === beeId && r.reason === (scenario === "active" ? "allocation_owner_required" : "account_wait")), `${name} waiting`);
         const first = await request("snapshot");
         for (let i = 0; i < (scenario === "both" ? 34 : 20); i++) { await new Promise(done => setTimeout(done, scenario === "both" ? 1000 : 25)); await request("snapshot"); }
@@ -97,11 +137,11 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
         assert.equal(new Set(notices.map((r: any) => r.payload.notice.recoveryId)).size, 1);
       } else {
         const mail = await delivered(sent.messageId);
-        assert.equal(mail.deliveredGeneration, scenario === "stale" || scenario === "optout" ? 1 : 2);
+        assert.equal(mail.deliveredGeneration, scenario === "stale" || scenario === "optout" || scenario === "healthy" ? 1 : 2);
         await idle();
         const snapshot = await request("snapshot");
         const recoveries = snapshot.quotaRecoveries.filter((r: any) => r.beeId === beeId);
-        if (scenario === "stale" || scenario === "optout") assert.equal(recoveries.length, 0);
+        if (scenario === "stale" || scenario === "optout" || scenario === "healthy") assert.equal(recoveries.length, 0);
         else {
           assert.equal(recoveries.length, 1);
           assert.equal(recoveries[0].trigger, "proactive");
@@ -130,7 +170,7 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["human", "wor
     writeFileSync(join(proof, `${name}.rpc.json`), JSON.stringify(rpc, null, 2));
     client.close();
     await daemon.stop().catch(error => console.error("cleanup", String(error)));
-    writeFileSync(join(proof, `${name}.daemon.log`), daemon.output() + (existsSync(join(dir, "hived.log")) ? readFileSync(join(dir, "hived.log"), "utf8") : ""));
+    writeFileSync(join(proof, `${name}.daemon.log`), [...daemonLogs, daemon.output()].join("\nRESTART\n") + (existsSync(join(dir, "hived.log")) ? readFileSync(join(dir, "hived.log"), "utf8") : ""));
     await new Promise<void>(done => server.close(() => done()));
     writeFileSync(join(proof, "summary.json"), JSON.stringify(results, null, 2));
   }

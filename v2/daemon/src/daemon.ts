@@ -6830,10 +6830,16 @@ export class HiveDaemon {
     if (!bee?.account || !this.accounts || autoswapDisabled(bee) || bee.agent !== "claude" && bee.agent !== "codex") return true;
     const recoveries = store.listQuotaRecoveries(beeId);
     const pending = recoveries.find(row => (row.state === "waiting" || row.state === "rotating") && store.quotaRecoveryValid(row));
-    if (pending) return pending.state === "rotating" && pending.continuationKind !== null && pending.trigger !== "proactive";
+    if (pending) {
+      if (pending.trigger !== "proactive" || pending.state !== "waiting") return pending.state === "rotating" && pending.continuationKind !== null && pending.trigger !== "proactive";
+      const limits = store.getAccountLimits(bee.account);
+      if (!limits || limits.fetchedAt <= pending.admission!.fetchedAt || this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), beeId).status !== "eligible") return false;
+      store.cancelQuotaRecovery(pending.id, "completion_headroom_restored");
+      return true;
+    }
     const accepted = recoveries.some(row => row.state === "resumed" && row.successorGeneration === generation);
-    if (accepted && !store.listMessages(beeId).some(message => message.deliveredGeneration === generation)) return true;
-    const headroom = this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), true);
+    if (accepted && !store.hasDeliveredMail(beeId, generation)) return true;
+    const headroom = this.accounts.turnHeadroom(bee.account, this.modelOfBee(bee), beeId);
     if (headroom.status !== "protected") return true;
     const fetchedAt = store.getAccountLimits(bee.account)!.fetchedAt;
     const recovery = store.requireCompletionHeadroom(beeId, generation, { fetchedAt, maxProjectedPercent: headroom.maxProjectedPercent! }, headroom.retryAt);
@@ -6870,7 +6876,7 @@ export class HiveDaemon {
       if (!row || row.state !== "waiting" || !store.quotaRecoveryValid(row)) return;
       bee = store.getBee(row.beeId)!;
       if (autoswapDisabled(bee) || accounts.allocationMode() === "active") return;
-      const targets = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee)) : undefined;
+      const targets = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee), bee.id) : undefined;
       if (targets?.size === 0) {
         store.waitQuotaRecovery(id, this.quotaRetryAt(bee.id, row.retryAt), "account_wait");
         return;

@@ -2405,7 +2405,13 @@ export class AccountsService {
       if (reservations) reservations.push(reservation);
       else reservationsByBee.set(beeId, [reservation]);
     }
-    for (const bee of this.store.listBees()) {
+    const bees = new Map(accountIds.flatMap(id => this.store.beesOnAccount(id)).map(bee => [bee.id, bee]));
+    for (const [beeId, reservations] of reservationsByBee) {
+      if (!reservations.some(reservation => reservation.sourceAccount !== null && activities.has(reservation.sourceAccount))) continue;
+      const bee = this.store.getBee(beeId);
+      if (bee) bees.set(bee.id, bee);
+    }
+    for (const bee of bees.values()) {
       const runtime = this.store.currentRuntime(bee.id);
       const reservations = reservationsByBee.get(bee.id) ?? [];
       const transfer = reservations.find((reservation) => reservation.sourceAccount !== null && reservation.sourceAccount !== reservation.account
@@ -2491,20 +2497,34 @@ export class AccountsService {
     return values.some(value => value !== null) && values.every(value => value === null || value < DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent);
   }
 
-  turnHeadroom(accountId: string, model?: string, queuedTurn = false) {
+  private openingActivity(local: LocalAccountActivity, beeId?: string): LocalAccountActivity {
+    if (!beeId) return local;
+    const runtime = this.store.currentRuntime(beeId);
+    const active = runtime?.state === "booting" || runtime?.state === "running";
+    return { ...local, active: Math.max(0, local.active - (active ? 1 : 0)), pending: Math.max(0, local.pending - (active ? 0 : 1)) };
+  }
+
+  turnHeadroom(accountId: string, model?: string, openingBeeId?: string) {
     const account = this.store.getAccount(accountId);
     if (!account) return { status: "uncertain" as const, retryAt: null };
     const now = this.now();
-    const local = this.localActivities([accountId], now).get(accountId)!;
+    const local = this.openingActivity(this.localActivities([accountId], now).get(accountId)!, openingBeeId);
     const candidate = this.admissionCandidate(account, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now, local);
-    return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, requestUnits: queuedTurn ? 0 : 1, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
+    return completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs });
   }
 
-  proactiveTargets(harness: string, sourceAccount: string, model?: string): Set<string> {
-    return new Set(this.store.listAccounts({ harness }).filter(account => {
-      if (this.turnHeadroom(account.id, model).status !== "eligible" || account.id === sourceAccount && !this.restoredQuotaHeadroom(account, model)) return false;
+  proactiveTargets(harness: string, sourceAccount: string, model?: string, beeId?: string): Set<string> {
+    const accounts = this.store.listAccounts({ harness });
+    const now = this.now();
+    const activity = this.localActivities(accounts.map(account => account.id), now);
+    const recoveries = this.store.listQuotaRecoveries();
+    return new Set(accounts.filter(account => {
+      const local = this.openingActivity(activity.get(account.id)!, account.id === sourceAccount ? beeId : undefined);
+      const candidate = this.admissionCandidate(account, { operation: "swap", requestKey: "turn-headroom", model }, null, false, now, local);
+      if (candidate.eligibility.state !== "eligible" || completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs }).status !== "eligible"
+        || account.id === sourceAccount && !this.restoredQuotaHeadroom(account, model)) return false;
       const fetchedAt = this.store.getAccountLimits(account.id)?.fetchedAt ?? 0;
-      return !this.store.listQuotaRecoveries().some(row => row.admission && row.sourceAccount === account.id && fetchedAt <= row.createdAt);
+      return !recoveries.some(row => row.admission && row.sourceAccount === account.id && fetchedAt <= row.createdAt);
     }).map(account => account.id));
   }
 

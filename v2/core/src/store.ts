@@ -2212,9 +2212,10 @@ export class CoreStore {
       const bee = this.mustGetBee(beeId);
       const runtime = this.currentRuntime(beeId);
       if (!runtime || runtime.generation !== generation || runtime.state !== "idle" && !(runtime.state === "running" && runtime.bootEvidence === "synthetic")) return null;
-      const existing = this.listQuotaRecoveries(beeId).find(row => (row.state === "waiting" || row.state === "rotating") && this.quotaRecoveryValid(row));
+      const recoveries = this.listQuotaRecoveries(beeId);
+      const existing = recoveries.find(row => (row.state === "waiting" || row.state === "rotating") && this.quotaRecoveryValid(row));
       if (existing) return existing;
-      const id = `admission:${beeId}:${generation}`;
+      const id = `admission:${beeId}:${generation}:${recoveries.filter(row => row.trigger === "proactive" && row.sourceGeneration === generation).length}`;
       const previous = this.getQuotaRecovery(id);
       if (previous) return previous.state === "waiting" ? previous : null;
       return this.putQuotaRecovery({
@@ -2233,6 +2234,10 @@ export class CoreStore {
       ? this.stmt("SELECT payload FROM quota_recoveries ORDER BY id").all()
       : this.stmt("SELECT payload FROM quota_recoveries WHERE bee_id = ? ORDER BY id").all(beeId) as Row[])
       .map(row => ({ trigger: "provider_limit", ...JSON.parse(String(row.payload)) }) as QuotaRecoveryRow);
+  }
+
+  hasDeliveredMail(beeId: string, generation: number): boolean {
+    return !!this.stmt("SELECT 1 FROM mailbox WHERE bee_id = ? AND delivered_generation = ? LIMIT 1").get(beeId, generation);
   }
 
   private putQuotaRecovery(row: QuotaRecoveryRow): QuotaRecoveryRow {
