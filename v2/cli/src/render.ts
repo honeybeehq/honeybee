@@ -227,7 +227,7 @@ export function renderBeeView(v: ViewResult, stale: boolean): string[] {
   if (bee.providerSessionId) details.push(["session", bee.providerSessionId]);
   if (bee.forkedFrom) details.push(["forked", bee.forkedFrom]);
   for (const hold of v.view.deliveryConfirmations ?? []) {
-    details.push(["undelivered", `#${hold.messageId} ${hold.state} (${hold.reason}, attempted gen ${hold.generation})`]);
+    details.push(["undelivered", `#${hold.messageId} ${hold.state} (${hold.reason}, current gen ${v.view.generation}, attempted gen ${hold.generation})`]);
   }
   for (const [label, value] of details) {
     lines.push(`${prefix}${kv(label, value).slice(2)}`);

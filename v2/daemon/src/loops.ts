@@ -388,6 +388,14 @@ export class DaemonCore {
     const rec = this.store.reconcileAtBoot(
       live.map((p) => ({ pid: p.pid, startedAt: p.pidStartedAt })), unresolved,
     );
+    for (const proc of live) {
+      if (!this.driver.adoptedDeliveryUncertain?.(proc.beeId, proc.generation)) continue;
+      const runtime = this.store.currentRuntime(proc.beeId);
+      if (runtime?.generation !== proc.generation || runtime.state === "stopped") continue;
+      for (const messageId of this.store.legacyUnconfirmedMessageIds(proc.beeId)) {
+        this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: proc.beeId, generation: proc.generation, messageId });
+      }
+    }
     let orphansReaped = 0;
     for (const p of live) {
       const bee = this.store.getBee(p.beeId);
@@ -934,7 +942,7 @@ export class DaemonCore {
     for (const { runtime: rt, pending } of work) {
       if (!this.ext.isDegraded(rt.beeId, rt.generation)) continue;
       if (pending.length === 0) continue;
-      if (this.store.listDeliveryConfirmationIntents(rt.beeId).length > 0) continue;
+      if (this.store.listDeliveryConfirmationIntents(rt.beeId).some(row => row.generation === rt.generation)) continue;
       if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "degraded_runtime" });
       this.log(`policy.degraded_stop bee=${rt.beeId} gen=${rt.generation}`);
@@ -1626,6 +1634,7 @@ export class DaemonCore {
         this.confirmationReady.delete(intent.messageId);
         continue;
       }
+      if (intent.wireLine === null) continue;
       const key = this.driver.deliveryReadiness?.(intent.beeId, intent.generation, intent.messageId) ?? "";
       const poll = this.confirmationPolls.get(intent.messageId);
       if (poll?.key === key && this.now() < poll.nextAt) continue;
@@ -1653,7 +1662,15 @@ export class DaemonCore {
         this.confirmationPolls.delete(intent.messageId);
         this.deliveryRetries.delete(intent.beeId);
       } else if (result === "not_written") {
-        this.confirmationReady.add(intent.messageId);
+        if (this.ext.isDegraded?.(intent.beeId, intent.generation)) {
+          this.store.replanDeliveryConfirmationIntent(intent, intent.digest);
+          this.store.releaseUnwrittenDeliveryConfirmation(intent.messageId, intent.generation, intent.digest);
+          this.confirmationPolls.delete(intent.messageId);
+          this.confirmationReady.delete(intent.messageId);
+        } else {
+          this.store.replanDeliveryConfirmationIntent(intent, intent.digest);
+          this.confirmationReady.add(intent.messageId);
+        }
       } else if (result !== "pending_ack") {
         this.confirmationReady.delete(intent.messageId);
         this.store.holdDeliveryConfirmation(intent.messageId, result);
@@ -1714,7 +1731,7 @@ export class DaemonCore {
         const quotaGate = this.store.quotaDeliveryGate(rt.beeId);
         if (quotaGate.held) { this.deliveryRetries.delete(rt.beeId); continue; }
         const allPending = this.multilineFallback
-          ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => a.id - b.id)
+          ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => (a.queueOrder ?? a.id) - (b.queueOrder ?? b.id) || a.id - b.id)
           : ordinaryPending;
         const pending = quotaGate.messageIds.length > 0 ? allPending.filter(message => quotaGate.messageIds.includes(message.id)) : allPending;
         if (rt.state === "booting") continue;
@@ -1817,15 +1834,19 @@ export class DaemonCore {
         if (!fallback?.handled) {
           const existing = this.store.getDeliveryConfirmationIntent(msg.id);
           if (existing) {
-            if (existing.generation !== rt.generation || !this.confirmationReady.delete(msg.id)) continue;
-            confirmation = existing;
+            if (existing.generation !== rt.generation || existing.wireLine === null || existing.state !== "awaiting_confirmation" || !this.confirmationReady.delete(msg.id)) continue;
+            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
+            if (!plan || plan === "not_ready") continue;
+            confirmation = this.store.replanDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id,
+              generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host }, existing.digest);
           } else {
             const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
+            if (plan === "not_ready") continue;
             if (plan) {
               if (this.store.inTransaction) continue;
               confirmation = this.store.prepareDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id,
                 generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host });
-              if (!plan.supported && !plan.legacyFirstWriteSafe && !this.store.isExplicitDeliveryResend(msg.id)) {
+              if (!plan.supported && !plan.legacyFirstWriteSafe) {
                 this.store.holdDeliveryConfirmation(msg.id, "old_host");
                 continue;
               }

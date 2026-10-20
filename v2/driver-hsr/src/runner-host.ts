@@ -171,6 +171,7 @@ function bindToTestFixtureLease(lease: string | undefined): void {
 }
 
 export function runRunnerHost(configPath: string): void {
+  process.umask(0o077);
   stateFile(configPath, "runner configPath");
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
   runnerStateFiles(cfg);

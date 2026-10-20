@@ -42,7 +42,7 @@ import type {
   CredentialHealth,
   ExecutableResolutionSource,
   LoginFlowRow,
-  MailCancellationReason,
+  MailHistoryLifecycle as CoreMailHistoryLifecycle,
   MailHistoryMessage as CoreMailHistoryMessage,
   MailHistoryParams as CoreMailHistoryParams,
   MailHistoryResult as CoreMailHistoryResult,
@@ -1630,10 +1630,7 @@ export interface MailExpediteResult extends DedupMarkers {
 /** `mail.history` request params. See the core contract for cursor and bound semantics. */
 export type MailHistoryParams = CoreMailHistoryParams;
 
-export type MailHistoryLifecycle =
-  | { state: "queued" }
-  | { state: "delivered"; deliveredAt: number; deliveredGeneration: number }
-  | { state: "canceled"; canceledAt: number; reason?: MailCancellationReason };
+export type MailHistoryLifecycle = CoreMailHistoryLifecycle;
 
 /** New preview metadata is optional at the rolling-compatible v1 client boundary. */
 export interface MailHistoryMessage

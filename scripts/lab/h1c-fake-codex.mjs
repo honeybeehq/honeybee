@@ -9,7 +9,7 @@ createInterface({input:process.stdin}).on('line',line=>{
  if(request.method==='turn/start'||request.method==='turn/steer'){
   appendFileSync(process.env.H1C_WRITES,JSON.stringify({id:request.id,method:request.method})+'\n');
   turnId??='h1c-turn-'+request.id;
-  if(process.env.H1C_ACK!=='never'){
+  if(process.env.H1C_ACK!=='never'&&!(process.env.H1C_SKIP_ACK_IDS??'').split(',').includes(String(request.id))){
    const reply={id:request.id,result:{turn:{id:turnId}}};
    setTimeout(()=>emit(reply),Number(process.env.H1C_ACK_DELAY_MS??'0'));
   }

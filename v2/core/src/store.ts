@@ -4128,6 +4128,10 @@ export class CoreStore {
     return Number.isSafeInteger(messageId) && messageId > 0 && messageId <= Number(row.value);
   }
 
+  legacyUnconfirmedMessageIds(beeId: string): number[] {
+    return (this.stmt("SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id <= CAST((SELECT value FROM meta WHERE key = 'confirmation_legacy_max_message_id') AS INTEGER) AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id = mailbox.id) ORDER BY id").all(beeId) as Row[]).map(row => Number(row.id));
+  }
+
   releaseUnwrittenDeliveryConfirmation(messageId: number, generation: number, digest: string): boolean {
     return this.tx(() => {
       const row = this.getDeliveryConfirmationIntent(messageId);
@@ -4704,7 +4708,7 @@ export class CoreStore {
       if (!message) return { canceled: false, reason: "not_found" };
       if (message.beeId !== beeId) return { canceled: false, reason: "bee_mismatch" };
       if (message.deliveredAt != null) return { canceled: false, reason: "delivered" };
-      if (!explicitDecision && this.getDeliveryConfirmationIntent(messageId)?.state === "awaiting_confirmation") return { canceled: false, reason: "confirmation_pending" };
+      if (!explicitDecision && this.getDeliveryConfirmationIntent(messageId)) return { canceled: false, reason: "confirmation_pending" };
       const canceledAt = this.now();
       this.stmt("DELETE FROM mailbox WHERE id = ?").run(messageId);
       this.multilineUnsupportedActive.delete(messageId);

@@ -212,7 +212,7 @@ export interface ObservationCursorEvidence {
 }
 
 interface ManagedProcess {
-  deliveryProtocol?: { authenticated: boolean; supported: boolean; pending: Set<number>; replies: Map<number, DeliveryStatus> };
+  deliveryProtocol?: { authenticated: boolean; supported: boolean; legacy: boolean; pending: Set<number>; replies: Map<number, DeliveryStatus> };
   processIdentity?: ProcessIdentity;
   legacyBirthPending?: boolean;
   executionStart?: ExecutionStart;
@@ -700,7 +700,9 @@ export class HsrDriver implements RuntimeDriver {
       const fd = (attempt as unknown as { _handle?: { fd?: number } })._handle?.fd;
       const supported = status?.beeId === p.beeId && status.generation === p.generation && status.hostPid === p.pid
         && status.capabilities?.includes(DELIVERY_STATUS_CAPABILITY) === true;
-      p.deliveryProtocol = { authenticated: fd !== undefined && authenticatedProcessPeer(fd, p.processIdentity), supported, pending: new Set(), replies: new Map() };
+      const exactStatus = status?.beeId === p.beeId && status.generation === p.generation && status.hostPid === p.pid;
+      p.deliveryProtocol = { authenticated: fd !== undefined && authenticatedProcessPeer(fd, p.processIdentity), supported,
+        legacy: exactStatus && !supported, pending: new Set(), replies: new Map() };
       for (const line of p.pendingWrites.splice(0)) {
         attempt.write(`${JSON.stringify({ op: "write", line })}\n`);
       }
@@ -779,27 +781,47 @@ export class HsrDriver implements RuntimeDriver {
       p.deliveryProtocol?.replies.get(messageId)?.state === "written" ? null : p.deliveryProtocol?.replies.get(messageId)]);
   }
 
-  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | null {
+  adoptedDeliveryUncertain(beeId: string, generation: number): boolean {
     const p = this.procs.get(beeId);
-    if (!p || p.generation !== generation || p.exited || !p.adapter?.confirmsDelivery || !p.hostStyle
-      || !p.processIdentity || p.phase === "booting" || p.stopCause || p.phase === "running" && !p.adapter.acceptsMidTurn) return null;
+    if (!p || p.generation !== generation || p.child !== null) return false;
+    if (p.adapter) return p.adapter.confirmsDelivery === true;
+    try { return this.cfg.resolve(beeId).adapter.confirmsDelivery === true; } catch { return true; }
+  }
+
+  private refreshDeliveryProtocol(p: ManagedProcess): void {
+    const protocol = p.deliveryProtocol;
+    if (!protocol || !p.statusPath) return;
+    const status = readRunnerStatus(p.statusPath);
+    if (!status || status.beeId !== p.beeId || status.generation !== p.generation || status.hostPid !== p.pid || status.exited) return;
+    protocol.supported = status.capabilities?.includes(DELIVERY_STATUS_CAPABILITY) === true;
+    protocol.legacy = !protocol.supported;
+  }
+
+  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null {
+    const p = this.procs.get(beeId);
+    if (!p || p.generation !== generation || !p.adapter?.confirmsDelivery) return null;
+    this.refreshDeliveryProtocol(p);
+    if (p.exited || !p.hostStyle || !p.processIdentity || !p.deliveryProtocol?.authenticated || p.socketBroken
+      || !p.socket || p.socket.destroyed || !p.socket.writable || !p.deliveryProtocol.supported && !p.deliveryProtocol.legacy
+      || p.phase === "booting" || p.stopCause || p.phase === "running" && !p.adapter.acceptsMidTurn) return "not_ready";
     const wireLine = p.adapter.encodeMessage(body, { sessionId: p.sessionId, messageId, turnActive: p.phase === "running", turnId: p.turnId });
-    if (wireLine == null) return null;
+    if (wireLine == null) return "not_ready";
     return { wireLine, digest: createHash("sha256").update(wireLine).digest("hex"), host: p.processIdentity,
       supported: p.deliveryProtocol?.authenticated === true && p.deliveryProtocol.supported,
-      legacyFirstWriteSafe: p.child !== null && p.deliveryProtocol?.authenticated === true && !p.deliveryProtocol.supported };
+      legacyFirstWriteSafe: p.deliveryProtocol.authenticated && p.deliveryProtocol.legacy };
   }
 
   reconcileDeliveryConfirmation(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || !p.processIdentity || p.processIdentity.pid !== plan.host.pid
       || p.processIdentity.birth !== plan.host.birth || p.processIdentity.bootId !== plan.host.bootId) return "unknown";
+    this.refreshDeliveryProtocol(p);
     if (p.confirmedDeliveries.delete(messageId)) {
       p.pendingDeliveries.delete(messageId);
       this.consumed.set(messageId, generation);
       return "accepted";
     }
-    if (!p.deliveryProtocol?.authenticated || !p.deliveryProtocol.supported) return "old_host";
+    if (!p.deliveryProtocol?.authenticated || !p.deliveryProtocol.supported) return p.deliveryProtocol?.legacy ? "old_host" : "pending_ack";
     const reply = p.deliveryProtocol.replies.get(messageId);
     if (reply) {
       p.deliveryProtocol.replies.delete(messageId);
@@ -874,7 +896,7 @@ export class HsrDriver implements RuntimeDriver {
     if (options?.confirmation && !p.deliveryProtocol?.authenticated) return refused("not_ready");
     const delivery = options?.confirmation && p.deliveryProtocol?.authenticated && p.deliveryProtocol.supported
       ? { id: messageId, digest: options.confirmation.digest, beeId, generation } : undefined;
-    if (!this.writeLine(p, encoded, delivery)) return { accepted: false, reason: "not_ready" };
+    if (!this.writeLine(p, encoded, delivery, options?.confirmation !== undefined)) return { accepted: false, reason: "not_ready" };
     if (options?.singleAttempt) this.pointerAttempts.set(messageId, { beeId, generation, digest: createHash("sha256").update(body).digest("hex") });
     p.turn.messageIds.push(messageId);
     if (p.adapter.confirmsDelivery) p.pendingDeliveries.add(messageId);
@@ -1404,8 +1426,8 @@ export class HsrDriver implements RuntimeDriver {
       }
     }
     if (execution) return false;
-    const receiptHost = status?.hostPid === pid && status.beeId === beeId && status.generation === generation
-      && !status.exited && status.capabilities?.includes(DELIVERY_STATUS_CAPABILITY) === true;
+    const receiptHost = status ? status.hostPid === pid && status.beeId === beeId && status.generation === generation && !status.exited
+      : (() => { try { return statSync(paths.status).isFile(); } catch { return false; } })();
     this.procs.set(beeId, {
       processIdentity,
       beeId,
@@ -1615,7 +1637,7 @@ export class HsrDriver implements RuntimeDriver {
   // internals
   // -------------------------------------------------------------------------
 
-  private writeLine(p: ManagedProcess, line: string, delivery?: TaggedDelivery): boolean {
+  private writeLine(p: ManagedProcess, line: string, delivery?: TaggedDelivery, confirmationWrite = false): boolean {
     if (process.env.HIVE_SPAWN_TRACE) {
       appendFileSync(process.env.HIVE_SPAWN_TRACE, JSON.stringify({ write: line.slice(0, 160), at: Date.now(), stack: new Error().stack?.split("\n").slice(2, 6).join(" | ") }) + "\n");
     }
@@ -1635,6 +1657,7 @@ export class HsrDriver implements RuntimeDriver {
           p.socket.write(`${JSON.stringify({ op: "write", line, ...(delivery ? { delivery } : {}) })}\n`);
           return true;
         } else {
+          if (confirmationWrite) return false;
           p.pendingWrites.push(line);
           this.connectSocket(p);
           return false;

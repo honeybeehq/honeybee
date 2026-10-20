@@ -17,6 +17,7 @@ for(const action of ['resend_anyway','drop']){
 }
 store.updateRuntimeState('held-bee',1,'stopped',{exitCause:'crashed'});store.close();
 const daemon=await startDaemon(fixture.dir);const client=await daemon.client();
+let primaryError;
 try{
  const view=await waitFor(async()=>{const row=await client.request('view',{beeId:'held-bee'});return row.view.generation===2&&row.runtime?.state==='idle'&&row;},'owned successor idle',15000);
  const params={beeId:'held-bee',messageId:messages[0],generation:view.view.generation,idempotencyKey:'owned-resend'};
@@ -39,4 +40,5 @@ try{
   assert.equal(delivered.body,'Owned lost-ACK fixture for resend_anyway');
   console.log(JSON.stringify({case:'operator-resolution-rpcs',replacementMessageId:result.replacementMessageId,drop:true,idempotent:true,staleGenerationRefused:true,notHeldRefused:true,conflictingKeyRefused:true,auditPrivateFieldsRemoved:true}));
  }
-}finally{client.close();await daemon.stop();}
+}catch(error){primaryError=error;console.error(error);throw error;}
+finally{client.close();try{await daemon.stop();}catch(error){console.error('owned daemon cleanup:',error.message);if(!primaryError)throw error;}}

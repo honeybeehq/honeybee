@@ -1476,6 +1476,7 @@ export class HiveDaemon {
   private publicConfirmationAudit(row: AuditRow): AuditRow {
     if (!row.kind.startsWith("mail.confirmation_")) return row;
     const payload = { ...row.payload };
+    for (const key of ["wireLine", "digest", "host", "priorDigest"]) delete payload[key];
     for (const key of ["row", "prior"]) {
       const value = payload[key];
       if (value && typeof value === "object" && !Array.isArray(value)) {

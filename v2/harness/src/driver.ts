@@ -130,7 +130,8 @@ export interface RuntimeDriver {
    * is the durable truth and the daemon retries against it.
    */
   deliveryReadiness?(beeId: string, generation: number, messageId: number): string;
-  planDeliveryConfirmation?(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | null;
+  adoptedDeliveryUncertain?(beeId: string, generation: number): boolean;
+  planDeliveryConfirmation?(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null;
   reconcileDeliveryConfirmation?(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult;
   deliver(beeId: string, generation: number, messageId: number, body: string, options?: { confirmation?: DeliveryConfirmationPlan; multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome;
   deliveryPaneClear?(beeId: string, generation: number): boolean;

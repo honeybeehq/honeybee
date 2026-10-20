@@ -269,6 +269,10 @@ export class CellDriver implements RuntimeDriver {
     return this.inner.planDeliveryConfirmation(beeId, generation, messageId, body);
   }
 
+  adoptedDeliveryUncertain(beeId: string, generation: number): boolean {
+    return this.inner.adoptedDeliveryUncertain(beeId, generation);
+  }
+
   reconcileDeliveryConfirmation(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan) {
     return this.inner.reconcileDeliveryConfirmation(beeId, generation, messageId, plan);
   }
