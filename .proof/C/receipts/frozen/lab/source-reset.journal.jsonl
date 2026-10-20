@@ -1,0 +1,11 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"quota lab warmup"}]}}
+{"type":"system","subtype":"init","session_id":"3cd1b656-0b8e-4175-81fe-3d2f376443c1","cwd":"/var/tmp/hb-quota-C.wCQxIkhk/tmp/hb-v2-daemon-lExaGz","model":"fake","claude_code_version":"0.0.0-fake"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"echo:quota lab warmup"}]},"session_id":"3cd1b656-0b8e-4175-81fe-3d2f376443c1"}
+{"type":"result","subtype":"success","is_error":false,"result":"echo:quota lab warmup","session_id":"3cd1b656-0b8e-4175-81fe-3d2f376443c1"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"@quota:once exact original quota work"}]}}
+{"type":"assistant","uuid":"9280bc50-6c89-4194-a38a-12e0b20a6d18","error":"rate_limit","message":{"id":"0eb31fed-1fdf-44fd-b639-0c0094333b8c","role":"assistant","model":"<synthetic>","content":[{"type":"text","text":"You've hit your weekly limit · resets 2026-10-20T07:18:11.798Z"}]},"session_id":"3cd1b656-0b8e-4175-81fe-3d2f376443c1"}
+{"type":"result","subtype":"error_during_execution","is_error":true,"result":"You've hit your weekly limit · resets 2026-10-20T07:18:11.798Z","session_id":"3cd1b656-0b8e-4175-81fe-3d2f376443c1"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"@quota:once exact original quota work"}]}}
+{"type":"system","subtype":"init","session_id":"3cd1b656-0b8e-4175-81fe-3d2f376443c1","cwd":"/var/tmp/hb-quota-C.wCQxIkhk/tmp/hb-v2-daemon-lExaGz","model":"fake","claude_code_version":"0.0.0-fake"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"echo:@quota:once exact original quota work"}]},"session_id":"3cd1b656-0b8e-4175-81fe-3d2f376443c1"}
+{"type":"result","subtype":"success","is_error":false,"result":"echo:@quota:once exact original quota work","session_id":"3cd1b656-0b8e-4175-81fe-3d2f376443c1"}
