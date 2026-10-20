@@ -10,9 +10,9 @@
         "reason": null
       }
     ],
-    "sourceAt": 1792502341887,
-    "targetAt": 1792502339576,
-    "elapsedMs": 968
+    "sourceAt": 1792503393360,
+    "targetAt": 1792503391048,
+    "elapsedMs": 1046
   },
   {
     "name": "claude-queen-unreadable",
@@ -25,9 +25,9 @@
         "reason": "relative_refresh_unavailable"
       }
     ],
-    "sourceAt": 1792502345999,
-    "targetAt": 1792502343690,
-    "elapsedMs": 634
+    "sourceAt": 1792503397599,
+    "targetAt": 1792503395291,
+    "elapsedMs": 606
   },
   {
     "name": "claude-queen-cross",
@@ -35,7 +35,7 @@
     "deliveredGeneration": 1,
     "account": "claude-a",
     "recoveries": [],
-    "elapsedMs": 430
+    "elapsedMs": 387
   },
   {
     "name": "claude-queen-mixed",
@@ -48,7 +48,7 @@
         "reason": null
       }
     ],
-    "elapsedMs": 736
+    "elapsedMs": 766
   },
   {
     "name": "claude-queen-near-window",
@@ -61,7 +61,7 @@
         "reason": null
       }
     ],
-    "elapsedMs": 721
+    "elapsedMs": 746
   },
   {
     "name": "claude-queen-backed-off",
@@ -74,9 +74,27 @@
         "reason": null
       }
     ],
-    "sourceAt": 1792502355714,
-    "targetAt": 1792502353404,
-    "elapsedMs": 975
+    "sourceAt": 1792503407490,
+    "targetAt": 1792503405179,
+    "elapsedMs": 1029
+  },
+  {
+    "name": "claude-queen-grace-fresh",
+    "passed": true,
+    "deliveredGeneration": 2,
+    "account": "claude-b",
+    "recoveries": [
+      {
+        "state": "cancelled",
+        "reason": "relative_refresh_unavailable"
+      },
+      {
+        "state": "resumed",
+        "reason": null
+      }
+    ],
+    "failedTargetAt": 1792503416979,
+    "elapsedMs": 640
   },
   {
     "name": "codex-queen-stale-target",
@@ -89,9 +107,9 @@
         "reason": null
       }
     ],
-    "sourceAt": 1792502360386,
-    "targetAt": 1792502357960,
-    "elapsedMs": 1257
+    "sourceAt": 1792503423696,
+    "targetAt": 1792503421278,
+    "elapsedMs": 1291
   },
   {
     "name": "codex-queen-unreadable",
@@ -104,9 +122,9 @@
         "reason": "relative_refresh_unavailable"
       }
     ],
-    "sourceAt": 1792502365392,
-    "targetAt": 1792502362965,
-    "elapsedMs": 760
+    "sourceAt": 1792503428743,
+    "targetAt": 1792503426318,
+    "elapsedMs": 774
   },
   {
     "name": "codex-queen-cross",
@@ -114,7 +132,7 @@
     "deliveredGeneration": 1,
     "account": "codex-a",
     "recoveries": [],
-    "elapsedMs": 499
+    "elapsedMs": 474
   },
   {
     "name": "codex-queen-mixed",
@@ -127,7 +145,7 @@
         "reason": null
       }
     ],
-    "elapsedMs": 1174
+    "elapsedMs": 1170
   },
   {
     "name": "codex-queen-near-window",
@@ -140,7 +158,7 @@
         "reason": null
       }
     ],
-    "elapsedMs": 1140
+    "elapsedMs": 1182
   },
   {
     "name": "codex-queen-backed-off",
@@ -153,9 +171,95 @@
         "reason": null
       }
     ],
-    "sourceAt": 1792502377911,
-    "targetAt": 1792502375483,
-    "elapsedMs": 1239
+    "sourceAt": 1792503441323,
+    "targetAt": 1792503438904,
+    "elapsedMs": 1233
+  },
+  {
+    "name": "codex-queen-grace-fresh",
+    "passed": true,
+    "deliveredGeneration": 2,
+    "account": "codex-b",
+    "recoveries": [
+      {
+        "state": "cancelled",
+        "reason": "relative_refresh_unavailable"
+      },
+      {
+        "state": "resumed",
+        "reason": null
+      }
+    ],
+    "failedTargetAt": 1792503454379,
+    "elapsedMs": 1092
+  },
+  {
+    "name": "claude-queen-flaky-peer",
+    "passed": true,
+    "deliveredGeneration": 2,
+    "account": "claude-b",
+    "recoveries": [
+      {
+        "state": "resumed",
+        "reason": null
+      }
+    ],
+    "failedTargetAt": 1792503508401,
+    "candidateAccountIds": [
+      "claude-b"
+    ],
+    "elapsedMs": 477
+  },
+  {
+    "name": "claude-queen-active-flaky-peer",
+    "passed": true,
+    "deliveredGeneration": 2,
+    "account": "claude-b",
+    "recoveries": [
+      {
+        "state": "resumed",
+        "reason": null
+      }
+    ],
+    "failedTargetAt": 1792503512056,
+    "candidateAccountIds": [
+      "claude-b"
+    ],
+    "elapsedMs": 538
+  },
+  {
+    "name": "codex-queen-flaky-peer",
+    "passed": true,
+    "deliveredGeneration": 2,
+    "account": "codex-b",
+    "recoveries": [
+      {
+        "state": "resumed",
+        "reason": null
+      }
+    ],
+    "failedTargetAt": 1792503516520,
+    "candidateAccountIds": [
+      "codex-b"
+    ],
+    "elapsedMs": 833
+  },
+  {
+    "name": "codex-queen-active-flaky-peer",
+    "passed": true,
+    "deliveredGeneration": 2,
+    "account": "codex-b",
+    "recoveries": [
+      {
+        "state": "resumed",
+        "reason": null
+      }
+    ],
+    "failedTargetAt": 1792503521621,
+    "candidateAccountIds": [
+      "codex-b"
+    ],
+    "elapsedMs": 784
   },
   {
     "name": "claude-queen-active-three",
@@ -168,7 +272,10 @@
         "reason": null
       }
     ],
-    "elapsedMs": 474
+    "candidateAccountIds": [
+      "claude-c"
+    ],
+    "elapsedMs": 493
   },
   {
     "name": "codex-queen-active-three",
@@ -181,6 +288,9 @@
         "reason": null
       }
     ],
-    "elapsedMs": 629
+    "candidateAccountIds": [
+      "codex-c"
+    ],
+    "elapsedMs": 615
   }
 ]

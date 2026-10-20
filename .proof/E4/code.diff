@@ -63,7 +63,7 @@ index 8c3d9134..b68c43b9 100644
 -  admission?: { fetchedAt: number; maxProjectedPercent: number };
 +  admission?: { fetchedAt: number; maxProjectedPercent: number; candidateAccountIds?: string[] | null };
 diff --git a/v2/daemon/src/accountsService.ts b/v2/daemon/src/accountsService.ts
-index b3be7156..3881500a 100644
+index b3be7156..defeef97 100644
 --- a/v2/daemon/src/accountsService.ts
 +++ b/v2/daemon/src/accountsService.ts
 @@ -62,0 +63 @@ import {
@@ -90,13 +90,14 @@ index b3be7156..3881500a 100644
 @@ -2531 +2539 @@ export class AccountsService {
 -  proactiveTargets(harness: string, sourceAccount: string, model?: string): Set<string> {
 +  proactiveTargets(harness: string, sourceAccount: string, model?: string, openingBeeId?: string, openingClaimId?: string): { accountIds: Set<string>; uncertain: boolean } {
-@@ -2535 +2543,13 @@ export class AccountsService {
+@@ -2535 +2543,14 @@ export class AccountsService {
 -    return new Set(accounts.filter(account => {
 +    const source = accounts.find(account => account.id === sourceAccount);
 +    if (!source) return { accountIds: new Set(), uncertain: true };
 +    const failed = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "cancelled" && ["relative_refresh_unavailable", "relative_swap_refused"].includes(row.reason ?? "")).sort((a, b) => b.updatedAt - a.updatedAt)[0] : undefined;
-+    if (failed && now - failed.updatedAt < (failed.reason === "relative_refresh_unavailable" ? 15 * 60_000 : 30_000)
-+      && !accounts.some(account => account.id !== sourceAccount && this.store.getAccountLimits(account.id)?.readable && (this.store.getAccountLimits(account.id)?.fetchedAt ?? 0) > failed.updatedAt)) return { accountIds: new Set(), uncertain: false };
++    const failedRefreshGrace = failed && now - failed.updatedAt < (failed.reason === "relative_refresh_unavailable" ? 15 * 60_000 : 30_000)
++      && !accounts.some(account => account.id !== sourceAccount && this.store.getAccountLimits(account.id)?.readable && (this.store.getAccountLimits(account.id)?.fetchedAt ?? 0) > failed.updatedAt);
++    if (failed?.reason === "relative_swap_refused" && failedRefreshGrace) return { accountIds: new Set(), uncertain: false };
 +    const history = openingBeeId ? this.store.listQuotaRecoveries(openingBeeId).filter(row => row.state === "resumed").sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3) : [];
 +    if (history[0] && now - history[0].updatedAt < this.cfg.accounts.proactiveDwellMs) return { accountIds: new Set(), uncertain: false };
 +    const sourcePlan = this.store.getAccountLimits(sourceAccount)?.plan?.toLowerCase();
@@ -105,7 +106,7 @@ index b3be7156..3881500a 100644
 +      this.openingActivity(activity.get(sourceAccount)!, openingBeeId));
 +    let uncertain = completionHeadroom(sourceCandidate, policy).status === "uncertain";
 +    const accountIds = new Set(accounts.filter(account => {
-@@ -2539 +2559,10 @@ export class AccountsService {
+@@ -2539 +2560,10 @@ export class AccountsService {
 -      if (candidate.eligibility.state !== "eligible" || completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs }).status !== "eligible") return false;
 +      const ownClaim = openingClaimId ? this.store.getAccountAdmission(openingClaimId) : null;
 +      if (ownClaim?.account === account.id && ownClaim.releasedAt === null && ownClaim.confirmedAt === null) candidate.reservations = Math.max(0, candidate.reservations - ownClaim.units);
@@ -117,8 +118,8 @@ index b3be7156..3881500a 100644
 +        || [limits.fiveHourResetsAt, limits.weeklyResetsAt, ...(isFableModel(model) ? [limits.fableResetsAt] : [])].some(reset => reset != null && reset <= now);
 +      if (candidate.eligibility.state === "eligible" && stale && completionHeadroom(candidate, policy).status === "uncertain") uncertain = true;
 +      if (!relativeCompletionHeadroom(sourceCandidate, candidate, policy, history.some(row => row.sourceAccount === account.id) ? 2 : 1)) return false;
-@@ -2542,0 +2572 @@ export class AccountsService {
-+    return { accountIds, uncertain };
+@@ -2542,0 +2573 @@ export class AccountsService {
++    return { accountIds, uncertain: accountIds.size === 0 && uncertain && !failedRefreshGrace };
 diff --git a/v2/daemon/src/config.ts b/v2/daemon/src/config.ts
 index 24f22fd7..7276e43c 100644
 --- a/v2/daemon/src/config.ts

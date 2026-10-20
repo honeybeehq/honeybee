@@ -11,17 +11,19 @@ const proof = resolve(".proof/E4");
 const repo = resolve(".");
 const selected = new Set(process.argv.slice(2));
 const results: any[] = selected.size && existsSync(join(proof, "queen-summary.json")) ? JSON.parse(readFileSync(join(proof, "queen-summary.json"), "utf8")).filter((row: any) => !selected.has(row.name)) : [];
-for (const harness of ["claude", "codex"]) for (const scenario of ["stale-target", "unreadable", "cross", "mixed", "active-three", "near-window", "backed-off"]) {
+for (const harness of ["claude", "codex"]) for (const scenario of ["stale-target", "unreadable", "cross", "mixed", "active-three", "near-window", "backed-off", "flaky-peer", "active-flaky-peer", "grace-fresh"]) {
   const name = `${harness}-queen-${scenario}`;
   if (selected.size && !selected.has(name)) continue;
-  const usage = new Map([[`${harness}-a`, scenario === "mixed" ? 99.9 : scenario === "near-window" ? 99 : 90], [`${harness}-b`, scenario === "active-three" ? 50 : scenario === "cross" ? 10 : 5], [`${harness}-c`, 10]]);
+  const usage = new Map([[`${harness}-a`, scenario === "mixed" ? 99.9 : scenario === "near-window" ? 99 : scenario.includes("flaky-peer") ? 92 : 90], [`${harness}-b`, scenario === "active-three" ? 50 : scenario === "grace-fresh" ? 85 : scenario === "cross" ? 10 : 5], [`${harness}-c`, 10]]);
   let targetsDelayed = false;
+  const flaky = scenario === "flaky-peer" || scenario === "active-flaky-peer" || scenario === "grace-fresh";
   const reset = Math.ceil((Date.now() + (scenario === "near-window" ? 1_800_000 : 10_800_000)) / 1000) * 1000;
   let readable = true;
   const server = createServer(async (req, res) => {
     if (!readable) { res.statusCode = 503; res.end("fixture unavailable"); return; }
     const id = new URL(req.url!, "http://127.0.0.1").searchParams.get("id") ?? `${harness}-${req.headers.authorization?.endsWith("c") ? "c" : req.headers.authorization?.endsWith("b") ? "b" : "a"}`;
-    if (targetsDelayed && !id.endsWith("-a")) {
+    if (flaky && targetsDelayed && id.endsWith("-c")) { res.statusCode = 503; res.end(JSON.stringify({ error: "rate limited fixture" })); return; }
+    if (targetsDelayed && !flaky && !id.endsWith("-a")) {
       await new Promise(done => setTimeout(done, 500));
       if (scenario === "unreadable") { res.statusCode = 503; res.end(JSON.stringify({ error: "fixture unavailable" })); return; }
     }
@@ -41,11 +43,11 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["stale-target
     case "initialize":`);
   writeFileSync(fakeCodex, source);
   chmodSync(fakeCodex, 0o700);
-  const { dir } = makeDaemonDir({ accounts: { allocationPlanCapacityUnits: { large: 20, small: 1 }, allocationMode: scenario === "active-three" ? "active" : "shadow", allocationNodeId: "lab", allocationOwner: { node: "lab", epoch: "lab-e" }, allocationQuotaFreshMs: scenario === "stale-target" || scenario === "unreadable" || scenario === "backed-off" ? 2000 : 120_000 }, agents: {
+  const { dir } = makeDaemonDir({ accounts: { allocationPlanCapacityUnits: { large: 20, small: 1 }, allocationMode: scenario === "active-three" || scenario === "active-flaky-peer" ? "active" : "shadow", allocationNodeId: "lab", allocationOwner: { node: "lab", epoch: "lab-e" }, allocationQuotaFreshMs: scenario === "stale-target" || scenario === "unreadable" || scenario === "backed-off" || flaky ? 2000 : 120_000 }, agents: {
     [harness]: { command: harness === "codex" ? fakeCodex : process.execPath, args: harness === "codex" ? [] : [join(repo, "v2/driver-hsr/test-agent/fake-claude.mjs")], adapter: harness, ...(harness === "codex" ? { env: { FAKE_CODEX_STRICT_HOME: "1" } } : {}) },
   } });
   writeFileSync(join(proof, `${name}.root.log`), dir);
-  for (const label of (scenario === "active-three" ? ["a", "b", "c"] : ["a", "b"])) {
+  for (const label of (scenario === "active-three" || flaky ? ["a", "b", "c"] : ["a", "b"])) {
     const vault = join(dir, "vault", harness, `${harness}-${label}`);
     mkdirSync(vault, { recursive: true });
     writeFileSync(join(vault, harness === "claude" ? ".credentials.json" : "auth.json"), JSON.stringify(harness === "claude" ? { claudeAiOauth: { accessToken: `fixture-${label}`, subscriptionType: (scenario === "mixed" || scenario === "active-three") && label !== "b" ? "large" : "small", expiresAt: 4102444800000 } } : { tokens: { access_token: `fixture-${label}` } }));
@@ -56,7 +58,7 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["stale-target
   const rpc: unknown[] = [];
   const request = async (method: string, params: any = {}) => { const result = await client.request<any>(method, params); rpc.push({ method, params, result }); return result; };
   try {
-    for (const label of (scenario === "active-three" ? ["a", "b", "c"] : ["a", "b"])) await request("account.add", { harness, label, importExisting: true });
+    for (const label of (scenario === "active-three" || flaky ? ["a", "b", "c"] : ["a", "b"])) await request("account.add", { harness, label, importExisting: true });
     await request("account.limits");
     if (scenario === "backed-off") {
       client.close();
@@ -105,8 +107,29 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["stale-target
     if (scenario === "stale-target" || scenario === "unreadable" || scenario === "backed-off") {
       assert(sourceAt !== undefined && targetAt !== undefined && sourceAt - targetAt > 2000, "source fetch fresh; target fetch beyond configured freshness");
     }
+    let failedTargetAt: number | undefined;
+    if (flaky) {
+      const initial = await request("account.limits");
+      failedTargetAt = initial.limits.find((l: any) => l.account === `${harness}-c`).fetchedAt;
+      await new Promise(done => setTimeout(done, 2300));
+      targetsDelayed = true;
+      const failing = await request("account.limits", { id: `${harness}-c` });
+      assert.equal(failing.limits[0].fetchedAt, failedTargetAt, "failed target retains stale last-good facts");
+      await request("account.limits", { id: `${harness}-a` });
+      await request("account.limits", { id: `${harness}-b` });
+      assert(Date.now() - failedTargetAt! > 2000, "failing target's cached quota is stale");
+    }
     const startedAt = Date.now();
-    const sent = await send("Queen relative regression original mail");
+    let sent = await send("Queen relative regression original mail");
+    if (scenario === "grace-fresh") {
+      assert.equal((await delivered(sent.messageId)).deliveredGeneration, 1);
+      await idle();
+      const prior = (await request("snapshot")).quotaRecoveries.find((r: any) => r.beeId === beeId && r.state === "cancelled" && r.reason === "relative_refresh_unavailable");
+      assert(prior, "prior failed refresh establishes a live failure grace");
+      usage.set(`${harness}-a`, 99);
+      await request("account.limits", { id: `${harness}-a` });
+      sent = await send("fresh qualifier must override prior failure grace");
+    }
     if (scenario === "active-three") {
       const recovery = await waitFor(async () => (await request("snapshot")).quotaRecoveries.find((r: any) => r.beeId === beeId && r.state === "waiting" && r.admission?.candidateAccountIds?.length), `${name} candidates`);
       assert.deepEqual(recovery.admission.candidateAccountIds, [`${harness}-c`]);
@@ -125,13 +148,25 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["stale-target
       assert.equal(replay.deduped, true);
       assert.equal(replay.commandId, applied.commandId);
     }
+    if (scenario === "active-flaky-peer") {
+      const recovery = await waitFor(async () => (await request("snapshot")).quotaRecoveries.find((r: any) => r.beeId === beeId && r.state === "waiting" && r.admission?.candidateAccountIds?.length), `${name} fresh target candidates`);
+      assert.deepEqual(recovery.admission.candidateAccountIds, [`${harness}-b`]);
+      const acquired = await request("account.admission.acquire", { harness, operation: "swap", target: { node: "lab", workId: beeId, expectedGeneration: 1 }, sourceAccount: `${harness}-a`, allocationContext: { version: 1, scope: `${harness}:provider-accounts`, authority: { node: "lab", epoch: "lab-e" }, revision: name, observedAt: Date.now(), complete: true, accounts: [] }, onlyAccountIds: recovery.admission.candidateAccountIds, idempotencyKey: `${name}-acquire` });
+      assert.equal(acquired.claim.account, `${harness}-b`);
+      await request("bee.swapAccount", { beeId, account: "auto", quotaRecoveryId: recovery.id, allocationClaim: acquired.claim, onlyAccountIds: recovery.admission.candidateAccountIds, idempotencyKey: `${name}-swap` });
+    }
     const mail = await delivered(sent.messageId);
     await idle();
-    const switched = ["stale-target", "mixed", "active-three", "near-window", "backed-off"].includes(scenario);
+    const switched = ["stale-target", "mixed", "active-three", "near-window", "backed-off", "flaky-peer", "active-flaky-peer", "grace-fresh"].includes(scenario);
     assert.equal(mail.deliveredGeneration, switched ? 2 : 1);
     const view = await request("view", { beeId });
     assert.equal(view.bee.account, `${harness}-${switched ? scenario === "active-three" ? "c" : "b" : "a"}`);
     const rows = (await request("snapshot")).quotaRecoveries.filter((r: any) => r.beeId === beeId);
+    if (flaky) {
+      assert.equal(rows.length, scenario === "grace-fresh" ? 2 : 1);
+      assert.equal(rows.at(-1).state, "resumed");
+      assert.deepEqual(rows.at(-1).admission.candidateAccountIds, [`${harness}-b`]);
+    }
     if (scenario === "cross") assert.equal(rows.length, 0);
     if (scenario === "stale-target" || scenario === "backed-off") {
       assert.equal(rows.length, 1);
@@ -147,7 +182,7 @@ for (const harness of ["claude", "codex"]) for (const scenario of ["stale-target
       assert(rows.every((r: any) => r.state === "cancelled"));
       assert(Date.now() - startedAt < 10000, "unreadable target must not hold delivery indefinitely");
     }
-    results.push({ name, passed: true, deliveredGeneration: mail.deliveredGeneration, account: view.bee.account, recoveries: rows.map((r: any) => ({ state: r.state, reason: r.reason })), sourceAt, targetAt, elapsedMs: Date.now() - startedAt });
+    results.push({ name, passed: true, deliveredGeneration: mail.deliveredGeneration, account: view.bee.account, recoveries: rows.map((r: any) => ({ state: r.state, reason: r.reason })), sourceAt, targetAt, failedTargetAt, candidateAccountIds: rows.at(-1)?.admission?.candidateAccountIds, elapsedMs: Date.now() - startedAt });
     console.log(JSON.stringify(results.at(-1)));
   } finally {
     writeFileSync(join(proof, `${name}.rpc.json`), JSON.stringify(rpc, null, 2));
