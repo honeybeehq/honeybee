@@ -1661,7 +1661,10 @@ export class CoreStore {
       }
       this.db.exec("PRAGMA foreign_keys = ON");
       this.db.exec(SCHEMA_SQL);
-      this.tx(() => {
+      const questionsDdl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
+      const rebuildQuestions = !questionsDdl.includes("'dismissed'") && /CHECK\s*\(\s*status\s+IN/i.test(questionsDdl);
+      if (rebuildQuestions) this.db.exec("PRAGMA foreign_keys = OFF");
+      try { this.tx(() => {
         // Version gate + explicit migrations FIRST (before any other write
         // touches possibly-old tables), atomically with the stamp.
         this.ensureSchemaVersion();
@@ -1675,7 +1678,8 @@ export class CoreStore {
           "INSERT INTO meta(key, value) VALUES('opened_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         ).run(String(this.now()));
         this.bootRequeueRunningCommands();
-      });
+        if (rebuildQuestions && this.db.prepare("PRAGMA foreign_key_check").all().length) throw new CoreError("Question schema migration violates foreign keys");
+      }); } finally { if (rebuildQuestions) this.db.exec("PRAGMA foreign_keys = ON"); }
     } catch (err) {
       this.stmts.clear();
       try {
@@ -1808,11 +1812,14 @@ export class CoreStore {
     const ddl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
     if (!ddl.includes("'dismissed'")) {
       if (/CHECK\s*\(\s*status\s+IN/i.test(ddl)) {
-        this.db.exec("ALTER TABLE questions RENAME TO questions_v44");
-        this.db.exec(QUESTIONS_TABLE_SQL);
+        const objects = this.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL AND (type IN ('view','trigger') OR (type = 'index' AND tbl_name = 'questions')) ORDER BY type,name").all() as Row[];
+        this.db.exec(QUESTIONS_TABLE_SQL.split("CREATE INDEX")[0]!.replace("CREATE TABLE IF NOT EXISTS questions", "CREATE TABLE questions_new"));
         const columns = "id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id" + (ddl.includes("'withdrawn'") ? ",withdrawal_reason,withdrawn_at" : "");
-        this.db.exec(`INSERT INTO questions(${columns}) SELECT ${columns} FROM questions_v44`);
-        this.db.exec("DROP TABLE questions_v44");
+        this.db.exec(`INSERT INTO questions_new(${columns}) SELECT ${columns} FROM questions`);
+        for (const type of ["trigger", "view"]) for (const object of objects.filter(object => object.type === type)) this.db.exec(`DROP ${type.toUpperCase()} "${String(object.name).replaceAll('"', '""')}"`);
+        this.db.exec("DROP TABLE questions");
+        this.db.exec("ALTER TABLE questions_new RENAME TO questions");
+        for (const type of ["index", "view", "trigger"]) for (const object of objects.filter(object => object.type === type)) this.db.exec(String(object.sql));
         this.db.exec(QUESTIONS_TABLE_SQL);
       } else {
         const columns = new Set((this.stmt("SELECT name FROM pragma_table_info('questions')").all() as Row[]).map(column => String(column.name)));

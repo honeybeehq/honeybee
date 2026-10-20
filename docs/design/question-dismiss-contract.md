@@ -125,11 +125,18 @@ renders dismissed. No unmerged vendor/runtime pin ships.
 
 The stamp stays **44**, preserving apiary-swap's exact version requirement. Existing
 9ecbb37f questions have a status CHECK, so the migration transaction rebuilds that
-table and restores indices while preserving open/answered/withdrawn rows. A schema
+table using create-new/copy/drop-old/rename-new in the open transaction, with foreign
+keys disabled before BEGIN and restored after COMMIT or rollback. It preserves
+dependent rows and recreates indexes, views and triggers from their original SQL;
+foreign_key_check must be clean before commit. No old-table rename redirects
+references. The migration preserves open/answered/withdrawn rows. A schema
 without a status CHECK adds the nullable fields without a rebuild. Dedicated
 receipt storage is CREATE TABLE IF NOT EXISTS. The rollback lab proves old9ecbb37f
 writer → new writer → old9ecbb37f writer → new writer, with the dismissed row, receipt,
-one notice, integrity and foreign keys preserved. Older writers refuse terminal
+one notice, integrity, dependent rows/views/triggers/indexes and foreign keys
+preserved. A deliberate foreign-key violation refuses the migration and restores
+the original schema and objects. No sqlite_master SQL retains a temporary table
+reference. Older writers refuse terminal
 mutation; no answer/reopen appears. This is not a claim that every older binary
 can replay the new canonical event.
 
