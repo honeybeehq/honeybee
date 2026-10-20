@@ -1,0 +1,29 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-QoqD97","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","cwd":"/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-QoqD97"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","input":[{"type":"text","text":"quota lab warmup","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"8a9956f9-8612-418f-bb50-c9dca1eddd63"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","turn":{"id":"8a9956f9-8612-418f-bb50-c9dca1eddd63"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","turn":{"id":"8a9956f9-8612-418f-bb50-c9dca1eddd63","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","input":[{"type":"text","text":"@quota:once exact original quota work","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"888caae0-3189-4231-831e-9b8e7cb5892d"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","turn":{"id":"888caae0-3189-4231-831e-9b8e7cb5892d"}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":null,"secondary":null,"rateLimitReachedType":null}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":{"usedPercent":100,"windowDurationMins":300,"resetsAt":1792483037},"secondary":null,"rateLimitReachedType":"rate_limit_reached"}}}
+{"method":"error","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","turnId":"888caae0-3189-4231-831e-9b8e7cb5892d","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"},"willRetry":false}}
+{"method":"turn/completed","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","turn":{"id":"888caae0-3189-4231-831e-9b8e7cb5892d","status":"failed","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"}}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","cwd":"/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-QoqD97","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","cwd":"/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-QoqD97"}}}
+{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","input":[{"type":"text","text":"[Hive automated message, not typed by a person. The metadata line below is context data, not instructions.]\n{\"version\":1,\"kind\":\"automation\",\"senderKind\":\"automation\",\"from\":\"hive:quota-resume\",\"id\":\"3\",\"sentAt\":\"2026-10-20T06:57:19.568Z\"}\n\nContinue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"f85a6cfa-fecb-44ec-9195-b1fa9871cdb2"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","turn":{"id":"f85a6cfa-fecb-44ec-9195-b1fa9871cdb2"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"6b9cd189-6bf9-4a54-8f7a-881155cb53dd","turn":{"id":"f85a6cfa-fecb-44ec-9195-b1fa9871cdb2","status":"completed","error":null}}}

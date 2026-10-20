@@ -1,0 +1,1107 @@
+{
+  "snapshot": {
+    "seq": 37,
+    "views": [
+      {
+        "bee": {
+          "id": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "name": "C-autoswap-false",
+          "agent": "claude",
+          "substrate": "hsr",
+          "cwd": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh",
+          "title": null,
+          "tags": [
+            "autoswap=false"
+          ],
+          "sessionLogPath": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/session-logs/c447c0ee-5c2e-4065-89aa-29dd437c37c6.jsonl",
+          "lifecycle": "active",
+          "createdAt": 1792479455374,
+          "archivedAt": null,
+          "lastOutputAt": 1792479455801,
+          "providerSessionId": "bbee8c70-b7e3-43cc-b0a0-18a2594c946a",
+          "env": {
+            "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+            "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+            "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+            "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+            "ANTHROPIC_API_KEY": "<redacted>",
+            "CLAUDE_CONFIG_DIR": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/homes/claude-a"
+          },
+          "importedFrom": null,
+          "spawnFailures": 0,
+          "args": null,
+          "parentId": null,
+          "parentExternal": false,
+          "forkedFrom": null,
+          "forkSeed": null,
+          "account": "claude-a",
+          "handle": "CL.0000",
+          "human_ref": null,
+          "issuing_namespace": null,
+          "placementVersion": 0,
+          "activeMoveId": null,
+          "cellId": null,
+          "activeHandoffId": null,
+          "lastTurnTrigger": {
+            "kind": "human",
+            "from": "operator",
+            "messageId": 2,
+            "generation": 1,
+            "startedAt": 1792479455776,
+            "humanAt": 1792479455776,
+            "endedAt": 1792479455801
+          },
+          "lastHumanOutputAt": 1792479455801
+        },
+        "runtime": {
+          "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "generation": 1,
+          "state": "idle",
+          "exitCause": null,
+          "pid": 588875,
+          "pidStartedAt": 1792479455588,
+          "bootEvidence": "real",
+          "startedAt": 1792479455374,
+          "updatedAt": 1792479455801
+        },
+        "view": {
+          "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "exists": true,
+          "lifecycle": "active",
+          "generation": 1,
+          "runtimeState": "idle",
+          "exitCause": null,
+          "working": false,
+          "waitingForYou": true,
+          "lastOutputAt": 1792479455801,
+          "reachable": true,
+          "blocked": true,
+          "flags": [
+            "resource_blocked"
+          ]
+        },
+        "move": null,
+        "cell": null,
+        "handoff": null
+      }
+    ],
+    "templates": [],
+    "tracks": [],
+    "questions": [],
+    "seals": [],
+    "accounts": [
+      {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "claude-a",
+        "harness": "claude",
+        "homePath": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/homes/claude-a",
+        "label": "a",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": 1792479455805,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792479454925,
+        "updatedAt": 1792479455805,
+        "credentialHealth": "verified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      },
+      {
+        "source": "local",
+        "leasedFrom": null,
+        "id": "claude-b",
+        "harness": "claude",
+        "homePath": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/homes/claude-b",
+        "label": "b",
+        "status": "ok",
+        "statusReason": null,
+        "refreshTokenExpiresAt": null,
+        "penalty": 0,
+        "weeklyCeiling": null,
+        "lastLoginAt": null,
+        "exhaustedAt": null,
+        "pausedBy": null,
+        "pausedOwner": null,
+        "pausedAt": null,
+        "addedAt": 1792479454925,
+        "updatedAt": 1792479454925,
+        "credentialHealth": "verified",
+        "loginDueAt": null,
+        "nativeLogin": null
+      }
+    ],
+    "accountLimits": [
+      {
+        "account": "claude-a",
+        "fetchedAt": 1792479454925,
+        "readable": true,
+        "unreadableReason": null,
+        "error": null,
+        "plan": null,
+        "fiveHourPct": 5,
+        "fiveHourResetsAt": 1792483054905,
+        "fiveHourMinutes": 300,
+        "weeklyPct": 5,
+        "weeklyResetsAt": 1792483054905,
+        "weeklyMinutes": 10080,
+        "fableWeeklyPct": null,
+        "fableResetsAt": null,
+        "fableMinutes": null,
+        "displayWindows": [],
+        "rateLimitResetCredits": null
+      },
+      {
+        "account": "claude-b",
+        "fetchedAt": 1792479454926,
+        "readable": true,
+        "unreadableReason": null,
+        "error": null,
+        "plan": null,
+        "fiveHourPct": 5,
+        "fiveHourResetsAt": 1792483054905,
+        "fiveHourMinutes": 300,
+        "weeklyPct": 5,
+        "weeklyResetsAt": 1792483054905,
+        "weeklyMinutes": 10080,
+        "fableWeeklyPct": null,
+        "fableResetsAt": null,
+        "fableMinutes": null,
+        "displayWindows": [],
+        "rateLimitResetCredits": null
+      }
+    ],
+    "accountAdmissions": [],
+    "quotaRecoveries": [
+      {
+        "id": "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:2",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "sourceGeneration": 1,
+        "sourceAccount": "claude-a",
+        "observationCursor": 839,
+        "accountLabel": null,
+        "eventIds": [
+          "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:839",
+          "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:1035"
+        ],
+        "messageIds": [
+          2
+        ],
+        "progress": "none",
+        "interrupted": true,
+        "controlFence": 0,
+        "placement": {
+          "agent": "claude",
+          "cwd": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh",
+          "cellId": null
+        },
+        "quota": {
+          "harness": "claude",
+          "window": "weekly",
+          "resetsAt": 1792483054905,
+          "providerCategory": "errored_result_limit"
+        },
+        "resetHints": {
+          "weekly": 1792483054905
+        },
+        "state": "waiting",
+        "attempt": 0,
+        "targetAccount": null,
+        "successorGeneration": null,
+        "claimId": null,
+        "reservationId": null,
+        "commandId": null,
+        "continuationKind": null,
+        "continuationMessageIds": [],
+        "retryAt": null,
+        "reason": "autoswap_disabled",
+        "createdAt": 1792479455803,
+        "updatedAt": 1792479455809
+      }
+    ],
+    "tasks": [],
+    "taskSupply": [],
+    "loginFlows": [],
+    "cells": [],
+    "beeMoves": [],
+    "beeHandoffs": [],
+    "transcriptSegments": [
+      {
+        "id": "seg:c447c0ee-5c2e-4065-89aa-29dd437c37c6:0",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "ordinal": 0,
+        "harness": "claude",
+        "providerSessionId": "bbee8c70-b7e3-43cc-b0a0-18a2594c946a",
+        "fromGeneration": 1,
+        "toGeneration": null,
+        "path": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/session-logs/c447c0ee-5c2e-4065-89aa-29dd437c37c6.jsonl",
+        "handoffId": null,
+        "createdAt": 1792479455374,
+        "closedAt": null
+      }
+    ],
+    "threadOperations": [],
+    "actions": [],
+    "actionQueues": []
+  },
+  "view": {
+    "view": {
+      "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+      "exists": true,
+      "lifecycle": "active",
+      "generation": 1,
+      "runtimeState": "idle",
+      "exitCause": null,
+      "working": false,
+      "waitingForYou": true,
+      "lastOutputAt": 1792479455801,
+      "reachable": true,
+      "blocked": true,
+      "flags": [
+        "resource_blocked"
+      ]
+    },
+    "bee": {
+      "id": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+      "name": "C-autoswap-false",
+      "agent": "claude",
+      "substrate": "hsr",
+      "cwd": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh",
+      "title": null,
+      "tags": [
+        "autoswap=false"
+      ],
+      "sessionLogPath": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/session-logs/c447c0ee-5c2e-4065-89aa-29dd437c37c6.jsonl",
+      "lifecycle": "active",
+      "createdAt": 1792479455374,
+      "archivedAt": null,
+      "lastOutputAt": 1792479455801,
+      "providerSessionId": "bbee8c70-b7e3-43cc-b0a0-18a2594c946a",
+      "env": {
+        "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+        "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+        "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+        "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+        "ANTHROPIC_API_KEY": "<redacted>",
+        "CLAUDE_CONFIG_DIR": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/homes/claude-a"
+      },
+      "importedFrom": null,
+      "spawnFailures": 0,
+      "args": null,
+      "parentId": null,
+      "parentExternal": false,
+      "forkedFrom": null,
+      "forkSeed": null,
+      "account": "claude-a",
+      "handle": "CL.0000",
+      "human_ref": null,
+      "issuing_namespace": null,
+      "placementVersion": 0,
+      "activeMoveId": null,
+      "cellId": null,
+      "activeHandoffId": null,
+      "lastTurnTrigger": {
+        "kind": "human",
+        "from": "operator",
+        "messageId": 2,
+        "generation": 1,
+        "startedAt": 1792479455776,
+        "humanAt": 1792479455776,
+        "endedAt": 1792479455801
+      },
+      "lastHumanOutputAt": 1792479455801
+    },
+    "runtime": {
+      "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+      "generation": 1,
+      "state": "idle",
+      "exitCause": null,
+      "pid": 588875,
+      "pidStartedAt": 1792479455588,
+      "bootEvidence": "real",
+      "startedAt": 1792479455374,
+      "updatedAt": 1792479455801
+    },
+    "move": null,
+    "cell": null,
+    "handoff": null
+  },
+  "mail": {
+    "messages": [
+      {
+        "id": 1,
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "sender": "operator",
+        "body": "quota lab warmup",
+        "priority": 0,
+        "urgency": "next",
+        "enqueuedAt": 1792479455377,
+        "deliveredAt": 1792479455693,
+        "deliveredGeneration": 1
+      },
+      {
+        "id": 2,
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "sender": "operator",
+        "body": "@quota:once exact original quota work",
+        "priority": 0,
+        "urgency": "next",
+        "enqueuedAt": 1792479455756,
+        "deliveredAt": 1792479455776,
+        "deliveredGeneration": 1
+      }
+    ]
+  },
+  "audit": {
+    "rows": [
+      {
+        "seq": 6,
+        "ts": 1792479455374,
+        "kind": "bee.created",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "bee": {
+            "id": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "name": "C-autoswap-false",
+            "agent": "claude",
+            "substrate": "hsr",
+            "cwd": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh",
+            "title": null,
+            "tags": [
+              "autoswap=false"
+            ],
+            "sessionLogPath": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/session-logs/c447c0ee-5c2e-4065-89aa-29dd437c37c6.jsonl",
+            "lifecycle": "active",
+            "createdAt": 1792479455374,
+            "archivedAt": null,
+            "lastOutputAt": null,
+            "providerSessionId": null,
+            "env": {
+              "CLAUDE_CODE_OAUTH_TOKEN": "<redacted>",
+              "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "<redacted>",
+              "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR": "<redacted>",
+              "ANTHROPIC_AUTH_TOKEN": "<redacted>",
+              "ANTHROPIC_API_KEY": "<redacted>",
+              "CLAUDE_CONFIG_DIR": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/homes/claude-a"
+            },
+            "importedFrom": null,
+            "spawnFailures": 0,
+            "args": null,
+            "parentId": null,
+            "parentExternal": false,
+            "forkedFrom": null,
+            "forkSeed": null,
+            "account": "claude-a",
+            "handle": "CL.0000",
+            "human_ref": null,
+            "issuing_namespace": null,
+            "placementVersion": 0,
+            "activeMoveId": null,
+            "cellId": null,
+            "activeHandoffId": null,
+            "lastTurnTrigger": null,
+            "lastHumanOutputAt": null
+          },
+          "rpcCaller": {
+            "transport": "local_unix",
+            "ingress": "local_unix",
+            "uid": 1001,
+            "pid": 588434,
+            "verb": "spawn"
+          }
+        }
+      },
+      {
+        "seq": 7,
+        "ts": 1792479455375,
+        "kind": "transcript_segment.put",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "segment": {
+            "id": "seg:c447c0ee-5c2e-4065-89aa-29dd437c37c6:0",
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "ordinal": 0,
+            "harness": "claude",
+            "providerSessionId": null,
+            "fromGeneration": 1,
+            "toGeneration": null,
+            "path": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/session-logs/c447c0ee-5c2e-4065-89aa-29dd437c37c6.jsonl",
+            "handoffId": null,
+            "createdAt": 1792479455374,
+            "closedAt": null
+          },
+          "rpcCaller": {
+            "transport": "local_unix",
+            "ingress": "local_unix",
+            "uid": 1001,
+            "pid": 588434,
+            "verb": "spawn"
+          }
+        }
+      },
+      {
+        "seq": 8,
+        "ts": 1792479455375,
+        "kind": "runtime.created",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "runtime": {
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": null,
+            "pidStartedAt": null,
+            "bootEvidence": null,
+            "startedAt": 1792479455374,
+            "updatedAt": 1792479455374
+          },
+          "rpcCaller": {
+            "transport": "local_unix",
+            "ingress": "local_unix",
+            "uid": 1001,
+            "pid": 588434,
+            "verb": "spawn"
+          }
+        }
+      },
+      {
+        "seq": 9,
+        "ts": 1792479455376,
+        "kind": "command.enqueued",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "command": {
+            "id": 1,
+            "verb": "spawn",
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "args": {},
+            "targetGeneration": 1,
+            "status": "queued",
+            "attempts": 0,
+            "nextAttemptAt": 1792479455376,
+            "enqueuedAt": 1792479455376,
+            "finishedAt": null,
+            "failureCause": null,
+            "idempotencyKey": null
+          },
+          "rpcCaller": {
+            "transport": "local_unix",
+            "ingress": "local_unix",
+            "uid": 1001,
+            "pid": 588434,
+            "verb": "spawn"
+          }
+        }
+      },
+      {
+        "seq": 10,
+        "ts": 1792479455378,
+        "kind": "mail.enqueued",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "message": {
+            "id": 1,
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "sender": "operator",
+            "body": "quota lab warmup",
+            "priority": 0,
+            "urgency": "next",
+            "enqueuedAt": 1792479455377,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          "origin": "mail.send",
+          "rpcCaller": {
+            "transport": "local_unix",
+            "ingress": "local_unix",
+            "uid": 1001,
+            "pid": 588434,
+            "verb": "send"
+          }
+        }
+      },
+      {
+        "seq": 11,
+        "ts": 1792479455396,
+        "kind": "command.claimed",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "commandId": 1
+        }
+      },
+      {
+        "seq": 12,
+        "ts": 1792479455592,
+        "kind": "runtime.updated",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "runtime": {
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 588875,
+            "pidStartedAt": 1792479455588,
+            "bootEvidence": null,
+            "startedAt": 1792479455374,
+            "updatedAt": 1792479455374
+          }
+        }
+      },
+      {
+        "seq": 13,
+        "ts": 1792479455592,
+        "kind": "command.completed",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "commandId": 1,
+          "finishedAt": 1792479455592
+        }
+      },
+      {
+        "seq": 14,
+        "ts": 1792479455680,
+        "kind": "runtime.updated",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "runtime": {
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "generation": 1,
+            "state": "booting",
+            "exitCause": null,
+            "pid": 588875,
+            "pidStartedAt": 1792479455588,
+            "bootEvidence": null,
+            "startedAt": 1792479455374,
+            "updatedAt": 1792479455374
+          }
+        }
+      },
+      {
+        "seq": 15,
+        "ts": 1792479455681,
+        "kind": "runtime.updated",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "runtime": {
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "generation": 1,
+            "state": "running",
+            "exitCause": null,
+            "pid": 588875,
+            "pidStartedAt": 1792479455588,
+            "bootEvidence": "synthetic",
+            "startedAt": 1792479455374,
+            "updatedAt": 1792479455681
+          }
+        }
+      },
+      {
+        "seq": 16,
+        "ts": 1792479455693,
+        "kind": "mail.delivered",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "messageId": 1,
+          "deliveredAt": 1792479455693,
+          "deliveredGeneration": 1,
+          "turnTrigger": {
+            "kind": "human",
+            "from": "operator",
+            "messageId": 1,
+            "generation": 1,
+            "startedAt": 1792479455693,
+            "humanAt": 1792479455693,
+            "endedAt": null
+          }
+        }
+      },
+      {
+        "seq": 17,
+        "ts": 1792479455744,
+        "kind": "runtime.updated",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "runtime": {
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "generation": 1,
+            "state": "running",
+            "exitCause": null,
+            "pid": 588875,
+            "pidStartedAt": 1792479455588,
+            "bootEvidence": "real",
+            "startedAt": 1792479455374,
+            "updatedAt": 1792479455681
+          }
+        }
+      },
+      {
+        "seq": 18,
+        "ts": 1792479455745,
+        "kind": "runtime.updated",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "runtime": {
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "generation": 1,
+            "state": "idle",
+            "exitCause": null,
+            "pid": 588875,
+            "pidStartedAt": 1792479455588,
+            "bootEvidence": "real",
+            "startedAt": 1792479455374,
+            "updatedAt": 1792479455745
+          },
+          "turnTrigger": {
+            "kind": "human",
+            "from": "operator",
+            "messageId": 1,
+            "generation": 1,
+            "startedAt": 1792479455693,
+            "humanAt": 1792479455693,
+            "endedAt": 1792479455745,
+            "endedQuiet": false
+          }
+        }
+      },
+      {
+        "seq": 19,
+        "ts": 1792479455746,
+        "kind": "output.recorded",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "at": 1792479455745,
+          "lastHumanOutputAt": 1792479455745
+        }
+      },
+      {
+        "seq": 20,
+        "ts": 1792479455747,
+        "kind": "flag.clear_noop",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "flag": "spawn_failed"
+        }
+      },
+      {
+        "seq": 21,
+        "ts": 1792479455748,
+        "kind": "flag.clear_noop",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "flag": "auth_needed"
+        }
+      },
+      {
+        "seq": 22,
+        "ts": 1792479455749,
+        "kind": "flag.clear_noop",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "flag": "resource_blocked"
+        }
+      },
+      {
+        "seq": 23,
+        "ts": 1792479455750,
+        "kind": "bee.provider_session",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "providerSessionId": "bbee8c70-b7e3-43cc-b0a0-18a2594c946a",
+          "previous": null
+        }
+      },
+      {
+        "seq": 24,
+        "ts": 1792479455750,
+        "kind": "transcript_segment.put",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "segment": {
+            "id": "seg:c447c0ee-5c2e-4065-89aa-29dd437c37c6:0",
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "ordinal": 0,
+            "harness": "claude",
+            "providerSessionId": "bbee8c70-b7e3-43cc-b0a0-18a2594c946a",
+            "fromGeneration": 1,
+            "toGeneration": null,
+            "path": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh/session-logs/c447c0ee-5c2e-4065-89aa-29dd437c37c6.jsonl",
+            "handoffId": null,
+            "createdAt": 1792479455374,
+            "closedAt": null
+          }
+        }
+      },
+      {
+        "seq": 25,
+        "ts": 1792479455756,
+        "kind": "mail.enqueued",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "message": {
+            "id": 2,
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "sender": "operator",
+            "body": "@quota:once exact original quota work",
+            "priority": 0,
+            "urgency": "next",
+            "enqueuedAt": 1792479455756,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          "origin": "mail.send",
+          "rpcCaller": {
+            "transport": "local_unix",
+            "ingress": "local_unix",
+            "uid": 1001,
+            "pid": 588434,
+            "verb": "send"
+          }
+        }
+      },
+      {
+        "seq": 26,
+        "ts": 1792479455776,
+        "kind": "mail.delivered",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "messageId": 2,
+          "deliveredAt": 1792479455776,
+          "deliveredGeneration": 1,
+          "turnTrigger": {
+            "kind": "human",
+            "from": "operator",
+            "messageId": 2,
+            "generation": 1,
+            "startedAt": 1792479455776,
+            "humanAt": 1792479455776,
+            "endedAt": null
+          }
+        }
+      },
+      {
+        "seq": 27,
+        "ts": 1792479455800,
+        "kind": "runtime.updated",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "runtime": {
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "generation": 1,
+            "state": "running",
+            "exitCause": null,
+            "pid": 588875,
+            "pidStartedAt": 1792479455588,
+            "bootEvidence": "real",
+            "startedAt": 1792479455374,
+            "updatedAt": 1792479455800
+          }
+        }
+      },
+      {
+        "seq": 28,
+        "ts": 1792479455801,
+        "kind": "runtime.updated",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "runtime": {
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "generation": 1,
+            "state": "idle",
+            "exitCause": null,
+            "pid": 588875,
+            "pidStartedAt": 1792479455588,
+            "bootEvidence": "real",
+            "startedAt": 1792479455374,
+            "updatedAt": 1792479455801
+          },
+          "turnTrigger": {
+            "kind": "human",
+            "from": "operator",
+            "messageId": 2,
+            "generation": 1,
+            "startedAt": 1792479455776,
+            "humanAt": 1792479455776,
+            "endedAt": 1792479455801
+          }
+        }
+      },
+      {
+        "seq": 29,
+        "ts": 1792479455801,
+        "kind": "output.recorded",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "at": 1792479455801,
+          "lastHumanOutputAt": 1792479455801
+        }
+      },
+      {
+        "seq": 30,
+        "ts": 1792479455802,
+        "kind": "quota.observed",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "eventId": "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:839",
+          "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "generation": 1,
+          "quota": {
+            "harness": "claude",
+            "window": "weekly",
+            "resetsAt": 1792483054905,
+            "providerCategory": "synthetic_limit"
+          },
+          "turn": {
+            "messageIds": [
+              2
+            ],
+            "progress": "none"
+          }
+        }
+      },
+      {
+        "seq": 31,
+        "ts": 1792479455803,
+        "kind": "quota.recovery",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "recovery": {
+            "id": "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:2",
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "sourceGeneration": 1,
+            "sourceAccount": "claude-a",
+            "observationCursor": 839,
+            "accountLabel": null,
+            "eventIds": [
+              "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:839"
+            ],
+            "messageIds": [
+              2
+            ],
+            "progress": "none",
+            "interrupted": true,
+            "controlFence": 0,
+            "placement": {
+              "agent": "claude",
+              "cwd": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh",
+              "cellId": null
+            },
+            "quota": {
+              "harness": "claude",
+              "window": "weekly",
+              "resetsAt": 1792483054905,
+              "providerCategory": "synthetic_limit"
+            },
+            "resetHints": {
+              "weekly": 1792483054905
+            },
+            "state": "waiting",
+            "attempt": 0,
+            "targetAccount": null,
+            "successorGeneration": null,
+            "claimId": null,
+            "reservationId": null,
+            "commandId": null,
+            "continuationKind": null,
+            "continuationMessageIds": [],
+            "retryAt": null,
+            "reason": null,
+            "createdAt": 1792479455803,
+            "updatedAt": 1792479455803
+          },
+          "notice": {
+            "kind": "quota_recovery",
+            "recoveryId": "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:2",
+            "state": "waiting",
+            "accountLabel": null,
+            "window": "weekly",
+            "retryAt": null
+          }
+        }
+      },
+      {
+        "seq": 32,
+        "ts": 1792479455804,
+        "kind": "flag.set",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "flag": {
+            "id": 1,
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "flag": "resource_blocked",
+            "detail": "claude quota exhausted: synthetic provider limit",
+            "setAt": 1792479455804,
+            "clearedAt": null,
+            "resetsAt": 1792483054905
+          }
+        }
+      },
+      {
+        "seq": 34,
+        "ts": 1792479455809,
+        "kind": "quota.recovery",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "recovery": {
+            "id": "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:2",
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "sourceGeneration": 1,
+            "sourceAccount": "claude-a",
+            "observationCursor": 839,
+            "accountLabel": null,
+            "eventIds": [
+              "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:839"
+            ],
+            "messageIds": [
+              2
+            ],
+            "progress": "none",
+            "interrupted": true,
+            "controlFence": 0,
+            "placement": {
+              "agent": "claude",
+              "cwd": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh",
+              "cellId": null
+            },
+            "quota": {
+              "harness": "claude",
+              "window": "weekly",
+              "resetsAt": 1792483054905,
+              "providerCategory": "synthetic_limit"
+            },
+            "resetHints": {
+              "weekly": 1792483054905
+            },
+            "state": "waiting",
+            "attempt": 0,
+            "targetAccount": null,
+            "successorGeneration": null,
+            "claimId": null,
+            "reservationId": null,
+            "commandId": null,
+            "continuationKind": null,
+            "continuationMessageIds": [],
+            "retryAt": null,
+            "reason": "autoswap_disabled",
+            "createdAt": 1792479455803,
+            "updatedAt": 1792479455808
+          },
+          "notice": {
+            "kind": "quota_recovery",
+            "recoveryId": "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:2",
+            "state": "waiting",
+            "accountLabel": null,
+            "window": "weekly",
+            "retryAt": null
+          }
+        }
+      },
+      {
+        "seq": 35,
+        "ts": 1792479455809,
+        "kind": "quota.observed",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "eventId": "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:1035",
+          "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+          "generation": 1,
+          "quota": {
+            "harness": "claude",
+            "window": "weekly",
+            "resetsAt": 1792483054905,
+            "providerCategory": "errored_result_limit"
+          },
+          "turn": {
+            "messageIds": [
+              2
+            ],
+            "progress": "none"
+          }
+        }
+      },
+      {
+        "seq": 36,
+        "ts": 1792479455809,
+        "kind": "quota.recovery",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "recovery": {
+            "id": "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:2",
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "sourceGeneration": 1,
+            "sourceAccount": "claude-a",
+            "observationCursor": 839,
+            "accountLabel": null,
+            "eventIds": [
+              "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:839",
+              "quota:c447c0ee-5c2e-4065-89aa-29dd437c37c6:1:1035"
+            ],
+            "messageIds": [
+              2
+            ],
+            "progress": "none",
+            "interrupted": true,
+            "controlFence": 0,
+            "placement": {
+              "agent": "claude",
+              "cwd": "/var/tmp/hb-quota-C.1Mq8Y8qn/tmp/hb-v2-daemon-pkiUxh",
+              "cellId": null
+            },
+            "quota": {
+              "harness": "claude",
+              "window": "weekly",
+              "resetsAt": 1792483054905,
+              "providerCategory": "errored_result_limit"
+            },
+            "resetHints": {
+              "weekly": 1792483054905
+            },
+            "state": "waiting",
+            "attempt": 0,
+            "targetAccount": null,
+            "successorGeneration": null,
+            "claimId": null,
+            "reservationId": null,
+            "commandId": null,
+            "continuationKind": null,
+            "continuationMessageIds": [],
+            "retryAt": null,
+            "reason": "autoswap_disabled",
+            "createdAt": 1792479455803,
+            "updatedAt": 1792479455809
+          }
+        }
+      },
+      {
+        "seq": 37,
+        "ts": 1792479455810,
+        "kind": "flag.set",
+        "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+        "payload": {
+          "flag": {
+            "id": 1,
+            "beeId": "c447c0ee-5c2e-4065-89aa-29dd437c37c6",
+            "flag": "resource_blocked",
+            "detail": "claude quota exhausted: You've hit your weekly limit · resets 2026-10-20T07:57:34.905Z",
+            "setAt": 1792479455804,
+            "clearedAt": null,
+            "resetsAt": 1792483054905
+          }
+        }
+      }
+    ]
+  }
+}
