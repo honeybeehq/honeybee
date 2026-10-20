@@ -39,7 +39,7 @@
  * env FAKE_CLAUDE_ARGV_LOG   append {argv, cwd, env:{CLAUDE_CONFIG_DIR, HIVE_BEE, HIVE_BEE_ID, HIVE_V2_DATA_DIR, HIVE_PARENT, CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY, CLAUDE_CODE_DISABLE_1M_CONTEXT, CLAUDE_CODE_AUTO_COMPACT_WINDOW, CLAUDE_AUTOCOMPACT_PCT_OVERRIDE}, sessionId, resumed, forked} per boot
  * env FAKE_CLAUDE_FAIL_RESUME=1  exit 1 on --resume ("No conversation found") — the failure shape
  */
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { appendFileSync, writeFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
@@ -152,6 +152,27 @@ rl.on("line", (raw) => {
     recordTranscript({ type: "init", resumed: resumed ?? null, forked });
   }
   recordTranscript({ type: "user", text });
+  const quotaMode = /@quota:(weekly|five_hour|result_five_hour|delayed|once|quote)/.exec(text)?.[1];
+  const onceMarker = process.env.FAKE_QUOTA_ONCE_PATH;
+  const quotaFails = quotaMode && quotaMode !== "quote" && !(quotaMode === "once" && onceMarker && existsSync(onceMarker));
+  if (quotaFails) {
+    if (quotaMode === "once" && onceMarker) writeFileSync(onceMarker, "failed");
+    const window = quotaMode === "five_hour" || quotaMode === "result_five_hour" ? "" : "weekly ";
+    const resets = process.env.FAKE_QUOTA_RESETS_AT ?? new Date(Date.now() + 3600000).toISOString();
+    const result = `You've hit your ${window}limit · resets ${resets}`;
+    if (quotaMode === "delayed") emit({ type: "assistant", message: { role: "assistant", model: "fake", content: [{ type: "text", text: "visible progress before quota" }] }, session_id: sessionId });
+    turnTimer = setTimeout(() => {
+      turnTimer = null;
+      if (quotaMode !== "result_five_hour") emit({ type: "assistant", uuid: randomUUID(), error: "rate_limit", message: { id: randomUUID(), role: "assistant", model: "<synthetic>", content: [{ type: "text", text: result }] }, session_id: sessionId });
+      emit({ type: "result", subtype: "error_during_execution", is_error: true, result, session_id: sessionId });
+    }, quotaMode === "delayed" ? 200 : 10);
+    return;
+  }
+  if (quotaMode === "quote") {
+    emit({ type: "assistant", message: { role: "assistant", model: "fake", content: [{ type: "text", text: "You've hit your weekly limit · resets 2030-01-01T00:00:00.000Z" }] }, session_id: sessionId });
+    emit({ type: "result", is_error: false, result: "quoted provider wording", session_id: sessionId });
+    return;
+  }
   const slow = /@slow:(\d+)/.exec(text);
   const stepDelay = slow ? Number(slow[1]) : 10;
   const steps = Number(/@steps:(\d+)/.exec(text)?.[1] ?? 0);

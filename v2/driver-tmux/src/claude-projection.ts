@@ -1,3 +1,4 @@
+import { claudeQuotaBoundary, quotaSourceId } from "../../core/src/quota.ts";
 import { projectorCheckpoint } from "./transcript-projection.ts";
 import type {
   TranscriptIsoTs,
@@ -185,6 +186,11 @@ export function createClaudeProjector(): TranscriptProjector {
       }
       if (!row) return [];
       const type = nonEmptyString(row.type);
+      const quota = claudeQuotaBoundary(row);
+      const quotaEvents: TranscriptProjectedEvent[] = quota
+        ? [{ kind: "quota", ts: lineTimestamp(row), quota, sourceId: nonEmptyString(row.uuid) ?? quotaSourceId(line), raw: row, operational: true }]
+        : [];
+      if (quota && type !== "result") return quotaEvents;
       if (!type || NOISE_TYPES.has(type)) return [];
       const providerEventId = nonEmptyString(row.uuid);
       const ts = lineTimestamp(row);
@@ -319,7 +325,7 @@ export function createClaudeProjector(): TranscriptProjector {
       }
 
       if (type === "result") {
-        const events: TranscriptProjectedEvent[] = [];
+        const events: TranscriptProjectedEvent[] = [...quotaEvents];
         const usage = usageFrom(row.usage);
         if (usage) {
           // The turn total (sum of the assistant lines above it) plus the
@@ -348,7 +354,7 @@ export function createClaudeProjector(): TranscriptProjector {
         // Its reason is otherwise dropped (turn_end carries no error), so the
         // pane showed an empty turn and a crashed bee with no explanation.
         const halt = resultErrorReason(row);
-        if (halt) events.push({ kind: "interrupt", ts, reason: halt });
+        if (halt && !quota) events.push({ kind: "interrupt", ts, reason: halt });
         events.push({
           kind: "turn_end",
           ts,
