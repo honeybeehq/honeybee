@@ -1,3 +1,5 @@
+import type { BeeRow, QuotaRecoveryRow, RuntimeRow } from "./types.ts";
+
 export type QuotaBoundary = {
   harness: "claude" | "codex";
   window: "five_hour" | "weekly" | "other";
@@ -13,3 +15,16 @@ export type QuotaObservedEvent = {
   quota: QuotaBoundary;
   turn: { messageIds: number[]; progress: "none" | "some" | "unknown" };
 };
+
+export function quotaRecoveryMatches(row: QuotaRecoveryRow, bee: BeeRow | null, runtime: RuntimeRow | null): boolean {
+  return !!bee && bee.lifecycle === "active" && (bee.authControlFence ?? 0) === row.controlFence
+    && bee.agent === row.placement.agent && bee.cwd === row.placement.cwd && (bee.cellId ?? null) === row.placement.cellId
+    && !bee.activeMoveId && !bee.activeHandoffId
+    && bee.account === (row.state === "rotating" ? row.targetAccount : row.sourceAccount)
+    && !!runtime && (runtime.generation === row.sourceGeneration || row.state === "rotating" && row.successorGeneration !== null && runtime.generation >= row.successorGeneration);
+}
+
+export function automaticQuotaRecovery(bee: BeeRow | null, runtime: RuntimeRow | null, recoveries: readonly QuotaRecoveryRow[]): boolean {
+  if (!bee || [...bee.tags, ...(bee.args ?? [])].some(value => /^-{0,2}autoswap=false$/i.test(value.trim()))) return false;
+  return recoveries.some(row => (row.state === "waiting" || row.state === "rotating") && quotaRecoveryMatches(row, bee, runtime));
+}

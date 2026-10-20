@@ -1,0 +1,4 @@
+ts	phase	decision	why	evidence	result
+2026-10-20T08:48:00Z	derive	Pass valid automatic quota recovery into the core view and preserve resource flags	Automatic waits must not ask the human to intervene	v2/core/src/view.ts;v2/core/src/quota.ts	implemented
+2026-10-20T08:52:00Z	read-model	Share validity fences and preserve batch and stale view agreement	All Honeybee read paths must answer waitingForYou consistently	.proof/E2/seams.log;v2/core/src/store.ts;v2/cli/src/readonly.ts	4 seam phases passed
+2026-10-20T08:53:00Z	verify	Use the existing seven-plan bound instead of loosening its test	The first fallback implementation prepared two extra statements	.proof/E2/suites.log	87 existing checks passed

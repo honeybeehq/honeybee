@@ -9,6 +9,8 @@ import { readAccountLease, presentAccountLease } from "../../core/src/accountLea
 import { DatabaseSync } from "node:sqlite";
 import {
   deriveBeeView,
+  automaticQuotaRecovery,
+  type QuotaRecoveryRow,
   type AccountLimitsRow,
   type AccountRow,
   type AuditRow,
@@ -76,6 +78,7 @@ function mapBee(r: Row): BeeRow {
     human_ref: (r.human_ref as string | null | undefined) ?? null,
     issuing_namespace: (r.issuing_namespace as string | null | undefined) ?? null,
     placementVersion: Number((r.placement_version as number | null | undefined) ?? 0),
+    ...(Number(r.auth_control_fence ?? 0) > 0 ? { authControlFence: Number(r.auth_control_fence) } : {}),
     activeMoveId: (r.active_move_id as string | null | undefined) ?? null,
     cellId: (r.cell_id as string | null | undefined) ?? null,
     // v23 column; same tolerance.
@@ -360,12 +363,17 @@ export class ReadOnlyStore {
   view(beeId: string): StaleViewResult {
     const bee = this.getBee(beeId);
     const runtime = bee ? this.currentRuntime(beeId) : null;
+    const facts = this.tableExists("quota_recoveries")
+      ? this.stmt("SELECT flag, NULL AS recovery FROM (SELECT flag FROM flags WHERE bee_id = ? AND cleared_at IS NULL ORDER BY id) UNION ALL SELECT NULL AS flag, payload AS recovery FROM quota_recoveries AS recovery WHERE recovery.bee_id = ? AND recovery.state IN ('waiting','rotating') AND NOT EXISTS (SELECT 1 FROM runtimes WHERE bee_id = recovery.bee_id AND generation >= json_extract(recovery.payload, '$.sourceGeneration') AND exit_cause = 'stopped_by_user')").all(beeId, beeId) as Row[]
+      : this.activeFlags(beeId).map(flag => ({ flag, recovery: null }));
+    const recoveries = facts.filter(row => row.recovery !== null).map(row => JSON.parse(String(row.recovery)) as QuotaRecoveryRow);
     return {
       view: deriveBeeView(
         beeId,
         bee,
         runtime,
-        bee ? this.activeFlags(beeId) : [],
+        bee ? facts.filter(row => row.flag !== null).map(row => row.flag as Flag) : [],
+        { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries) },
       ),
       bee,
       runtime,

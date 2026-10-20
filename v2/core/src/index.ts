@@ -1,3 +1,4 @@
+export { automaticQuotaRecovery, quotaRecoveryMatches } from "./quota.ts";
 export type { QuotaBoundary, QuotaObservedEvent } from "./quota.ts";
 /**
  * Honeybee v2 core library (WP1 of the reset).
