@@ -354,6 +354,7 @@ import {
   type QuestionAnswerResult,
   type QuestionAskResult,
   type QuestionWithdrawResult,
+  type QuestionDismissResult,
   type QuestionListResult,
   type RenameResult,
   type RpcVerb,
@@ -2243,6 +2244,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcQuestionAsk(params));
       case "question.answer":
         return this.withIdempotency(verb, params, () => this.rpcQuestionAnswer(params));
+      case "question.dismiss":
+        return this.rpcQuestionDismiss(params);
       case "question.withdraw":
         return this.rpcQuestionWithdraw(params, conn);
       case "question.list":
@@ -2437,7 +2440,7 @@ export class HiveDaemon {
 
   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
-    const storageSupported = SCHEMA_VERSION === 45 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+    const storageSupported = SCHEMA_VERSION === 46 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
     if (verb === "update.apiarySwap.status") {
       let installedIdentity: ComponentIdentity | null = null;
       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
@@ -5342,6 +5345,14 @@ export class HiveDaemon {
       commandId: res.send.wakeCommand?.id ?? null,
       unarchived: res.send.unarchived,
     };
+  }
+
+  private rpcQuestionDismiss(params: Record<string, unknown>): QuestionDismissResult {
+    for (const key of Object.keys(params)) if (!["questionId", "idempotencyKey"].includes(key)) throw new RpcError("invalid_request", `question.dismiss does not accept ${key}`);
+    const questionId = this.param(params, "questionId");
+    const key = this.idempotencyKeyOf(params);
+    if (!key) throw new RpcError("invalid_request", "question.dismiss requires idempotencyKey");
+    return this.mustStore().dismissQuestionWithKey(questionId, key);
   }
 
   private rpcQuestionWithdraw(params: Record<string, unknown>, conn: RpcConn): QuestionWithdrawResult {

@@ -12,6 +12,7 @@ import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionR
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
 import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
 import { currentRpcCaller } from "./rpcAuditContext.ts";
+import type { QuestionDismissedEvent } from "./mirror.ts";
 import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
 import { isAccountId } from "./accountRecipes.ts";
 import { parseUpdateReservation, type UpdateReservation } from "../../../src/updateReservation.ts";
@@ -171,6 +172,7 @@ import {
   QuestionNotOwnerError,
   QuestionAlreadyAnsweredError,
   QuestionWithdrawnError,
+  QuestionDismissedError,
   SchemaVersionError,
   SealNotFoundError,
   TaskNotFoundError,
@@ -431,6 +433,12 @@ export interface AskQuestionInput {
 export interface AnswerResult {
   question: QuestionRow;
   send: SendResult;
+}
+
+export interface DismissResult {
+  question: QuestionRow;
+  commandId: number | null;
+  unarchived: boolean;
 }
 
 /** v7 — `createAccount` input. */
@@ -1122,6 +1130,9 @@ function mapQuestion(r: Row): QuestionRow {
     status: (r.status ?? (r.answered_at == null ? "open" : "answered")) as QuestionRow["status"],
     withdrawalReason: (r.withdrawal_reason as string | null) ?? null,
     withdrawnAt: r.withdrawn_at == null ? null : Number(r.withdrawn_at),
+    dismissedAt: r.dismissed_at == null ? null : Number(r.dismissed_at),
+    dismissedBy: r.dismissed_by == null ? null : r.dismissed_by as "rpc",
+    dismissalMessageId: r.dismissal_message_id == null ? null : Number(r.dismissal_message_id),
     answer: (r.answer as string | null) ?? null,
     askedAt: Number(r.asked_at),
     answeredAt: r.answered_at == null ? null : Number(r.answered_at),
@@ -1656,7 +1667,10 @@ export class CoreStore {
       }
       this.db.exec("PRAGMA foreign_keys = ON");
       this.db.exec(SCHEMA_SQL);
-      this.tx(() => {
+      const questionsDdl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
+      const rebuildQuestions = !questionsDdl.includes("'dismissed'") && /CHECK\s*\(\s*status\s+IN/i.test(questionsDdl);
+      if (rebuildQuestions) this.db.exec("PRAGMA foreign_keys = OFF");
+      try { this.tx(() => {
         // Version gate + explicit migrations FIRST (before any other write
         // touches possibly-old tables), atomically with the stamp.
         this.ensureSchemaVersion();
@@ -1670,7 +1684,8 @@ export class CoreStore {
           "INSERT INTO meta(key, value) VALUES('opened_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         ).run(String(this.now()));
         this.bootRequeueRunningCommands();
-      });
+        if (rebuildQuestions) this.assertQuestionMigrationForeignKeys();
+      }); } finally { if (rebuildQuestions) this.db.exec("PRAGMA foreign_keys = ON"); }
     } catch (err) {
       this.stmts.clear();
       try {
@@ -1681,6 +1696,18 @@ export class CoreStore {
       if (err instanceof CoreError) throw err;
       throw new SecondWriterError(path, err);
     }
+  }
+
+  private assertQuestionMigrationForeignKeys(): void {
+    const tables = this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map(row => String(row.name));
+    const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"';
+    const references = new Map(tables.map(table => [table, this.db.prepare(`PRAGMA foreign_key_list(${quote(table)})`).all().map(row => String(row.table).toLowerCase())]));
+    const affected = new Set(["questions"]);
+    for (let changed = true; changed;) {
+      changed = false;
+      for (const [table, parents] of references) if (!affected.has(table.toLowerCase()) && parents.some(parent => affected.has(parent))) { affected.add(table.toLowerCase()); changed = true; }
+    }
+    for (const table of tables) if (affected.has(table.toLowerCase()) && this.db.prepare(`PRAGMA foreign_key_check(${quote(table)})`).all().length) throw new CoreError(`Question schema migration violates foreign keys in ${table}`);
   }
 
   close(): void {
@@ -1801,14 +1828,25 @@ export class CoreStore {
       );
     }
     const ddl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
-    if (!ddl.includes("'withdrawn'")) {
-      this.db.exec("ALTER TABLE questions RENAME TO questions_v44");
-      this.db.exec(QUESTIONS_TABLE_SQL);
-      const columns = "id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id";
-      this.db.exec(`INSERT INTO questions(${columns}) SELECT ${columns} FROM questions_v44`);
-      this.db.exec("DROP TABLE questions_v44");
-      this.db.exec(QUESTIONS_TABLE_SQL);
+    if (!ddl.includes("'dismissed'")) {
+      if (/CHECK\s*\(\s*status\s+IN/i.test(ddl)) {
+        const objects = this.db.prepare("SELECT type,name,sql FROM sqlite_master WHERE sql IS NOT NULL AND (type IN ('view','trigger') OR (type = 'index' AND tbl_name = 'questions')) ORDER BY type,name").all() as Row[];
+        this.db.exec(QUESTIONS_TABLE_SQL.split("CREATE INDEX")[0]!.replace("CREATE TABLE IF NOT EXISTS questions", "CREATE TABLE questions_new"));
+        const columns = "id,bee_id,generation,text,options,status,answer,asked_at,answered_at,answered_by,delivery_message_id" + (ddl.includes("'withdrawn'") ? ",withdrawal_reason,withdrawn_at" : "");
+        this.db.exec(`INSERT INTO questions_new(${columns}) SELECT ${columns} FROM questions`);
+        for (const type of ["trigger", "view"]) for (const object of objects.filter(object => object.type === type)) this.db.exec(`DROP ${type.toUpperCase()} "${String(object.name).replaceAll('"', '""')}"`);
+        this.db.exec("DROP TABLE questions");
+        this.db.exec("ALTER TABLE questions_new RENAME TO questions");
+        for (const type of ["index", "view", "trigger"]) for (const object of objects.filter(object => object.type === type)) this.db.exec(String(object.sql));
+        this.db.exec(QUESTIONS_TABLE_SQL);
+      } else {
+        const columns = new Set((this.stmt("SELECT name FROM pragma_table_info('questions')").all() as Row[]).map(column => String(column.name)));
+        for (const [name, type] of [["withdrawal_reason", "TEXT"], ["withdrawn_at", "INTEGER"], ["dismissed_at", "INTEGER"], ["dismissed_by", "TEXT"], ["dismissal_message_id", "INTEGER"]] as const) {
+          if (!columns.has(name)) this.db.exec(`ALTER TABLE questions ADD COLUMN ${name} ${type}`);
+        }
+      }
     }
+    this.db.exec("CREATE INDEX IF NOT EXISTS questions_dismissal_message ON questions(dismissal_message_id) WHERE dismissal_message_id IS NOT NULL");
     const needsHumanRefMigration = stored < 30;
     if (needsHumanRefMigration && !this.stmt("SELECT 1 FROM meta WHERE key = 'human_ref_installation_id'").get()) {
       this.stmt("INSERT INTO meta(key, value) VALUES('human_ref_installation_id', ?)").run(randomUUID());
@@ -6120,6 +6158,7 @@ export class CoreStore {
       const question = this.getQuestion(questionId);
       if (!question) throw new QuestionNotFoundError(questionId);
       if (question.status === "withdrawn") throw new QuestionWithdrawnError(question.withdrawalReason!);
+      if (question.status === "dismissed") throw new QuestionDismissedError();
       if (question.status !== "open") {
         throw new QuestionNotOpenError(`question ${questionId} is already ${question.status} (answered at ${question.answeredAt})`);
       }
@@ -6149,7 +6188,7 @@ export class CoreStore {
     const text = normalizeWithdrawalReason(reason);
     return this.tx(() => {
       const question = this.requireQuestionOwner(questionId, callerBeeId);
-      if (question.status === "withdrawn") return question;
+      if (question.status === "withdrawn" || question.status === "dismissed") return question;
       if (question.status === "answered") throw new QuestionAlreadyAnsweredError(`question ${questionId} is already answered`);
       const withdrawnAt = this.now();
       const won = this.db.prepare("UPDATE questions SET status = 'withdrawn', withdrawal_reason = ?, withdrawn_at = ? WHERE id = ? AND status = 'open'").run(text, withdrawnAt, questionId);
@@ -6159,7 +6198,7 @@ export class CoreStore {
     });
   }
 
-  withdrawQuestionWithKey(questionId: string, callerBeeId: string, reason: string, key: string): { question: QuestionRow; deduped?: true } {
+  withdrawQuestionWithKey(questionId: string, callerBeeId: string, reason: string, key: string): { question: QuestionRow; alreadyTerminal?: "dismissed"; deduped?: true } {
     requireNonEmpty(key, "withdrawQuestion: idempotencyKey");
     const text = normalizeWithdrawalReason(reason);
     return this.tx(() => {
@@ -6167,14 +6206,56 @@ export class CoreStore {
       const hit = this.stmt("SELECT question_id, result FROM question_withdraw_receipts WHERE bee_id = ? AND key = ?").get(callerBeeId, key) as Row | undefined;
       if (hit) {
         if (hit.question_id !== questionId) throw new IdempotencyConflictError("Withdrawal key belongs to another question");
-        return { question: JSON.parse(String(hit.result)) as QuestionRow, deduped: true };
+        const recorded = JSON.parse(String(hit.result)) as QuestionRow | { question: QuestionRow; alreadyTerminal?: "dismissed" };
+        const result = "question" in recorded ? recorded : {question: recorded};
+        const question = {...result.question, dismissedAt: result.question.dismissedAt ?? null, dismissedBy: result.question.dismissedBy ?? null, dismissalMessageId: result.question.dismissalMessageId ?? null};
+        return {...result, question, deduped: true};
       }
       const question = this.withdrawQuestion(questionId, callerBeeId, text);
-      this.stmt("INSERT INTO question_withdraw_receipts(bee_id,key,question_id,result,created_at) VALUES(?,?,?,?,?)").run(callerBeeId, key, questionId, JSON.stringify(question), this.now());
+      const result = { question, ...(question.status === "dismissed" ? { alreadyTerminal: "dismissed" as const } : {}) };
+      this.stmt("INSERT INTO question_withdraw_receipts(bee_id,key,question_id,result,created_at) VALUES(?,?,?,?,?)").run(callerBeeId, key, questionId, JSON.stringify(result), this.now());
       const count = Number((this.stmt("SELECT count(*) AS n FROM question_withdraw_receipts").get() as Row).n);
       if (count > this.maxRpcIdempotencyRows) this.stmt("DELETE FROM question_withdraw_receipts WHERE rowid IN (SELECT rowid FROM question_withdraw_receipts ORDER BY created_at, rowid LIMIT ?)").run(count - this.maxRpcIdempotencyRows);
-      return { question };
+      return result;
     });
+  }
+
+  dismissQuestionWithKey(questionId: string, key: string): DismissResult & { deduped?: true } {
+    requireNonEmpty(key, "dismissQuestion: idempotencyKey");
+    return this.tx(() => {
+      const question = this.getQuestion(questionId);
+      if (!question) throw new QuestionNotFoundError(questionId);
+      const hit = this.stmt("SELECT question_id, result FROM question_dismiss_receipts WHERE key = ?").get(key) as Row | undefined;
+      if (hit) {
+        if (hit.question_id !== questionId) throw new IdempotencyConflictError("Dismissal key belongs to another question");
+        return { ...JSON.parse(String(hit.result)) as DismissResult, deduped: true };
+      }
+      if (question.status === "answered") throw new QuestionAlreadyAnsweredError(`question ${questionId} is already answered`);
+      if (question.status === "withdrawn") throw new QuestionWithdrawnError(question.withdrawalReason!);
+      let commandId: number | null = null, unarchived = false;
+      if (question.status === "open") {
+        const dismissedAt = this.now();
+        const won = this.stmt("UPDATE questions SET status = 'dismissed', dismissed_at = ?, dismissed_by = 'rpc' WHERE id = ? AND status = 'open'").run(dismissedAt, questionId);
+        if (won.changes !== 1) throw new QuestionNotOpenError(`question ${questionId} is no longer open`);
+        const send = this.send(question.beeId, "Your question was dismissed without an answer.", { sender: "rpc", senderKind: "automation", urgency: "next" });
+        commandId = send.wakeCommand?.id ?? null; unarchived = send.unarchived;
+        this.stmt("UPDATE questions SET dismissal_message_id = ? WHERE id = ?").run(send.message.id, questionId);
+        const event: QuestionDismissedEvent = { questionId, dismissedAt, dismissedBy: "rpc", dismissalMessageId: send.message.id };
+        this.audit("question.dismissed", question.beeId, event);
+      }
+      const updated = this.getQuestion(questionId)!;
+      const first = question.status === "dismissed" ? this.stmt("SELECT result FROM question_dismiss_receipts WHERE question_id = ? ORDER BY created_at,rowid LIMIT 1").get(questionId) as Row | undefined : undefined;
+      const result = first ? JSON.parse(String(first.result)) as DismissResult : { question: updated, commandId, unarchived };
+      this.stmt("INSERT INTO question_dismiss_receipts(key,bee_id,question_id,result,created_at) VALUES(?,?,?,?,?)").run(key, question.beeId, questionId, JSON.stringify(result), this.now());
+      const count = Number((this.stmt("SELECT count(*) AS n FROM question_dismiss_receipts").get() as Row).n);
+      if (count > this.maxRpcIdempotencyRows) this.stmt("DELETE FROM question_dismiss_receipts WHERE rowid IN (SELECT rowid FROM question_dismiss_receipts ORDER BY created_at, rowid LIMIT ?)").run(count - this.maxRpcIdempotencyRows);
+      return result;
+    });
+  }
+
+  dismissedQuestionId(messageId: number): string | null {
+    const row = this.stmt("SELECT id FROM questions WHERE dismissal_message_id = ?").get(messageId) as Row | undefined;
+    return row === undefined ? null : String(row.id);
   }
 
   private requireQuestionOwner(questionId: string, callerBeeId: string): QuestionRow {

@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 45;
+export const SCHEMA_VERSION = 46;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -168,7 +168,7 @@ CREATE TABLE IF NOT EXISTS questions (
   generation          INTEGER,
   text                TEXT NOT NULL,
   options             TEXT,
-  status              TEXT NOT NULL CHECK (status IN ('open','answered','withdrawn')),
+  status              TEXT NOT NULL CHECK (status IN ('open','answered','withdrawn','dismissed')),
   answer              TEXT,
   asked_at            INTEGER NOT NULL,
   answered_at         INTEGER,
@@ -176,6 +176,14 @@ CREATE TABLE IF NOT EXISTS questions (
   delivery_message_id INTEGER,
   withdrawal_reason   TEXT,
   withdrawn_at        INTEGER,
+  dismissed_at        INTEGER,
+  dismissed_by        TEXT,
+  dismissal_message_id INTEGER,
+  CHECK ((status = 'dismissed') = (dismissed_at IS NOT NULL)),
+  CHECK ((status = 'dismissed') = (dismissed_by IS NOT NULL)),
+  CHECK (dismissed_by IS NULL OR dismissed_by = 'rpc'),
+  CHECK (status <> 'dismissed' OR (answer IS NULL AND answered_at IS NULL AND answered_by IS NULL AND delivery_message_id IS NULL AND withdrawal_reason IS NULL AND withdrawn_at IS NULL)),
+  CHECK (status = 'dismissed' OR dismissal_message_id IS NULL),
   CHECK ((status = 'withdrawn') = (withdrawn_at IS NOT NULL)),
   CHECK ((status = 'withdrawn') = (withdrawal_reason IS NOT NULL)),
   CHECK (status <> 'withdrawn' OR (answer IS NULL AND answered_at IS NULL AND answered_by IS NULL AND delivery_message_id IS NULL)),
@@ -542,6 +550,14 @@ CREATE INDEX IF NOT EXISTS rpc_idempotency_created_at ON rpc_idempotency(created
 -- answered; the answer is ALSO delivered to the bee as an ordinary mailbox
 -- message (delivery_message_id) so the bee learns it through the one channel.
 ${QUESTIONS_TABLE_SQL}
+
+CREATE TABLE IF NOT EXISTS question_dismiss_receipts (
+  key TEXT PRIMARY KEY,
+  bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL,
+  result TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+) STRICT;
 
 CREATE TABLE IF NOT EXISTS question_withdraw_receipts (
   bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,

@@ -28,7 +28,7 @@ function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function rewritePath(value: unknown, parts: readonly string[], rewrite: (value: unknown) => unknown): unknown {
+export function rewritePath(value: unknown, parts: readonly string[], rewrite: (value: unknown) => unknown): unknown {
   if (parts.length === 0) return rewrite(value);
   if (!record(value)) return value;
   const [part, ...rest] = parts;

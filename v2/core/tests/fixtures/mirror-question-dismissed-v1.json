@@ -1,0 +1,213 @@
+{
+  "threadOperations": [],
+  "seq": 11,
+  "bees": [
+    {
+      "view": {
+        "beeId": "BEE_ID",
+        "exists": true,
+        "lifecycle": "active",
+        "generation": 1,
+        "runtimeState": "booting",
+        "exitCause": null,
+        "working": true,
+        "waitingForYou": false,
+        "lastOutputAt": null,
+        "reachable": true,
+        "blocked": false,
+        "flags": []
+      },
+      "bee": {
+        "id": "BEE_ID",
+        "name": "alpha",
+        "agent": "claude",
+        "substrate": "tmux",
+        "cwd": "/tmp/w",
+        "title": null,
+        "tags": [],
+        "sessionLogPath": null,
+        "lifecycle": "active",
+        "createdAt": 1002000,
+        "archivedAt": null,
+        "lastOutputAt": null,
+        "providerSessionId": null,
+        "env": {},
+        "importedFrom": null,
+        "spawnFailures": 0,
+        "args": null,
+        "parentId": null,
+        "parentExternal": false,
+        "forkedFrom": null,
+        "forkSeed": null,
+        "account": null,
+        "handle": "BEE_HANDLE",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placementVersion": 0,
+        "activeMoveId": null,
+        "cellId": null,
+        "activeHandoffId": null,
+        "lastTurnTrigger": null,
+        "lastHumanOutputAt": null
+      },
+      "runtime": {
+        "beeId": "BEE_ID",
+        "generation": 1,
+        "state": "booting",
+        "exitCause": null,
+        "pid": null,
+        "pidStartedAt": null,
+        "bootEvidence": null,
+        "startedAt": 1002000,
+        "updatedAt": 1002000
+      },
+      "move": null,
+      "cell": null,
+      "handoff": null
+    }
+  ],
+  "cells": [],
+  "beeMoves": [],
+  "beeHandoffs": [],
+  "transcriptSegments": [],
+  "actions": [],
+  "actionQueues": [],
+  "templates": [
+    {
+      "id": "tpl-1",
+      "name": "commit",
+      "scope": "team",
+      "source": "api",
+      "description": null,
+      "agent": "codex",
+      "substrate": null,
+      "model": null,
+      "effort": null,
+      "args": [],
+      "prompt": "Commit.",
+      "preamble": null,
+      "preambleEnabled": true,
+      "cwdPolicy": "caller",
+      "cwd": null,
+      "env": {
+        "A": "1"
+      },
+      "account": null,
+      "yolo": false,
+      "tags": [
+        "git"
+      ],
+      "createdAt": 1006000,
+      "updatedAt": 1006000
+    }
+  ],
+  "tracks": [
+    {
+      "id": "trk-1",
+      "name": "ship",
+      "scope": "personal",
+      "source": "api",
+      "description": "d",
+      "steps": [
+        {
+          "id": "s1",
+          "name": "Build",
+          "kind": "action",
+          "templateId": "tpl-1",
+          "instruction": "go",
+          "note": null,
+          "status": "pending"
+        }
+      ],
+      "tags": [],
+      "createdAt": 1008000,
+      "updatedAt": 1008000
+    }
+  ],
+  "questions": [
+    {
+      "id": "q-1",
+      "beeId": "BEE_ID",
+      "generation": 1,
+      "text": "ship it?",
+      "options": [
+        "yes",
+        "no"
+      ],
+      "status": "answered",
+      "withdrawalReason": null,
+      "withdrawnAt": null,
+      "dismissedAt": null,
+      "dismissedBy": null,
+      "dismissalMessageId": null,
+      "answer": "yes",
+      "askedAt": 1010000,
+      "answeredAt": 1012000,
+      "answeredBy": "operator",
+      "deliveryMessageId": 1
+    }
+  ],
+  "seals": [
+    {
+      "id": "seal-1",
+      "beeId": "BEE_ID",
+      "generation": 1,
+      "title": "shipped",
+      "body": "landed on main",
+      "refs": [
+        "main@abc"
+      ],
+      "createdAt": 1016000
+    }
+  ],
+  "accounts": [
+    {
+      "source": "local",
+      "leasedFrom": null,
+      "id": "codex-work",
+      "harness": "codex",
+      "homePath": "/tmp/homes/codex-work",
+      "label": "work",
+      "status": "ok",
+      "statusReason": null,
+      "refreshTokenExpiresAt": null,
+      "penalty": 5,
+      "weeklyCeiling": null,
+      "lastLoginAt": null,
+      "exhaustedAt": null,
+      "pausedBy": null,
+      "pausedOwner": null,
+      "pausedAt": null,
+      "addedAt": 1018000,
+      "updatedAt": 1018000,
+      "credentialHealth": "absent",
+      "loginDueAt": null,
+      "nativeLogin": null
+    }
+  ],
+  "accountLimits": [
+    {
+      "account": "codex-work",
+      "fetchedAt": 1020000,
+      "readable": true,
+      "unreadableReason": null,
+      "error": null,
+      "plan": "pro",
+      "fiveHourPct": 12,
+      "fiveHourResetsAt": 2000000,
+      "fiveHourMinutes": 300,
+      "weeklyPct": 40,
+      "weeklyResetsAt": 3000000,
+      "weeklyMinutes": 10080,
+      "fableWeeklyPct": null,
+      "fableResetsAt": null,
+      "fableMinutes": null,
+      "displayWindows": [],
+      "rateLimitResetCredits": null
+    }
+  ],
+  "accountAdmissions": [],
+  "tasks": [],
+  "taskSupply": [],
+  "loginFlows": []
+}

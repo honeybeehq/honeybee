@@ -1,0 +1,185 @@
+{
+  "beeId": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+  "questionId": "dismiss-fixture-question",
+  "pendingId": "dismiss-fixture-pending",
+  "rows": {
+    "audit": [
+      {
+        "seq": 1,
+        "ts": 1002,
+        "kind": "bee.created",
+        "bee_id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "payload": "{\"bee\":{\"id\":\"74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8\",\"name\":\"rollback\",\"agent\":\"inbox\",\"substrate\":\"hsr\",\"cwd\":\"/fixture/dismiss\",\"title\":null,\"tags\":[],\"sessionLogPath\":null,\"lifecycle\":\"active\",\"createdAt\":1001,\"archivedAt\":null,\"lastOutputAt\":null,\"providerSessionId\":null,\"env\":{},\"importedFrom\":null,\"spawnFailures\":0,\"args\":null,\"parentId\":null,\"parentExternal\":false,\"forkedFrom\":null,\"forkSeed\":null,\"account\":null,\"handle\":\"IN.0000\",\"human_ref\":null,\"issuing_namespace\":null,\"placementVersion\":0,\"activeMoveId\":null,\"cellId\":null,\"activeHandoffId\":null,\"lastTurnTrigger\":null,\"lastHumanOutputAt\":null}}"
+      },
+      {
+        "seq": 2,
+        "ts": 1003,
+        "kind": "transcript_segment.put",
+        "bee_id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "payload": "{\"segment\":{\"id\":\"seg:74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8:0\",\"beeId\":\"74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8\",\"ordinal\":0,\"harness\":\"inbox\",\"providerSessionId\":null,\"fromGeneration\":1,\"toGeneration\":null,\"path\":null,\"handoffId\":null,\"createdAt\":1001,\"closedAt\":null}}"
+      },
+      {
+        "seq": 3,
+        "ts": 1004,
+        "kind": "runtime.created",
+        "bee_id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "payload": "{\"runtime\":{\"beeId\":\"74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8\",\"generation\":1,\"state\":\"stopped\",\"exitCause\":\"clean\",\"pid\":null,\"pidStartedAt\":null,\"bootEvidence\":null,\"startedAt\":1001,\"updatedAt\":1001}}"
+      },
+      {
+        "seq": 4,
+        "ts": 1006,
+        "kind": "question.asked",
+        "bee_id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "payload": "{\"question\":{\"id\":\"dismiss-fixture-question\",\"beeId\":\"74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8\",\"generation\":1,\"text\":\"Dismiss after migration?\",\"options\":null,\"status\":\"open\",\"withdrawalReason\":null,\"withdrawnAt\":null,\"answer\":null,\"askedAt\":1005,\"answeredAt\":null,\"answeredBy\":null,\"deliveryMessageId\":null}}"
+      },
+      {
+        "seq": 5,
+        "ts": 1008,
+        "kind": "question.asked",
+        "bee_id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "payload": "{\"question\":{\"id\":\"dismiss-fixture-pending\",\"beeId\":\"74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8\",\"generation\":1,\"text\":\"Other writing still works?\",\"options\":null,\"status\":\"open\",\"withdrawalReason\":null,\"withdrawnAt\":null,\"answer\":null,\"askedAt\":1007,\"answeredAt\":null,\"answeredBy\":null,\"deliveryMessageId\":null}}"
+      }
+    ],
+    "bee_handle_reservations": [
+      {
+        "handle": "IN.0000"
+      }
+    ],
+    "bee_reference_claims": [
+      {
+        "bee_id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "handle": "IN.0000",
+        "human_ref": null,
+        "issuing_namespace": null
+      }
+    ],
+    "bees": [
+      {
+        "id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "name": "rollback",
+        "agent": "inbox",
+        "substrate": "hsr",
+        "cwd": "/fixture/dismiss",
+        "title": null,
+        "tags": "[]",
+        "session_log_path": null,
+        "lifecycle": "active",
+        "created_at": 1001,
+        "archived_at": null,
+        "last_output_at": null,
+        "provider_session_id": null,
+        "env": "{}",
+        "imported_from": null,
+        "spawn_failures": 0,
+        "args": null,
+        "parent_id": null,
+        "parent_external": 0,
+        "forked_from": null,
+        "fork_seed": null,
+        "account": null,
+        "handle": "IN.0000",
+        "human_ref": null,
+        "issuing_namespace": null,
+        "placement_version": 0,
+        "active_move_id": null,
+        "cell_id": null,
+        "active_handoff_id": null,
+        "last_turn_trigger": null,
+        "last_human_output_at": null,
+        "auth_control_fence": 0
+      }
+    ],
+    "meta": [
+      {
+        "key": "human_ref_installation_id",
+        "value": "83bee315-131b-403e-b09a-c922e86ae83e"
+      },
+      {
+        "key": "runtime_process_identity_schema",
+        "value": "1"
+      },
+      {
+        "key": "schema_version",
+        "value": "45"
+      },
+      {
+        "key": "rpc_effect_owner",
+        "value": "05927b55-527d-4219-a959-f21ff90acc90"
+      },
+      {
+        "key": "rpc_effect_coverage",
+        "value": "76ba9e6f-0009-46da-b71c-39b07995f4e0"
+      },
+      {
+        "key": "opened_at",
+        "value": "1000"
+      },
+      {
+        "key": "handle_sequence:IN",
+        "value": "1"
+      }
+    ],
+    "questions": [
+      {
+        "id": "dismiss-fixture-question",
+        "bee_id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "generation": 1,
+        "text": "Dismiss after migration?",
+        "options": null,
+        "status": "open",
+        "answer": null,
+        "asked_at": 1005,
+        "answered_at": null,
+        "answered_by": null,
+        "delivery_message_id": null,
+        "withdrawal_reason": null,
+        "withdrawn_at": null
+      },
+      {
+        "id": "dismiss-fixture-pending",
+        "bee_id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "generation": 1,
+        "text": "Other writing still works?",
+        "options": null,
+        "status": "open",
+        "answer": null,
+        "asked_at": 1007,
+        "answered_at": null,
+        "answered_by": null,
+        "delivery_message_id": null,
+        "withdrawal_reason": null,
+        "withdrawn_at": null
+      }
+    ],
+    "runtimes": [
+      {
+        "bee_id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "generation": 1,
+        "state": "stopped",
+        "exit_cause": "clean",
+        "pid": null,
+        "pid_started_at": null,
+        "boot_evidence": null,
+        "started_at": 1001,
+        "updated_at": 1001,
+        "credential_stamp": null,
+        "process_identity": null
+      }
+    ],
+    "transcript_segments": [
+      {
+        "id": "seg:74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8:0",
+        "bee_id": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
+        "ordinal": 0,
+        "harness": "inbox",
+        "provider_session_id": null,
+        "from_generation": 1,
+        "to_generation": null,
+        "path": null,
+        "handoff_id": null,
+        "created_at": 1001,
+        "closed_at": null
+      }
+    ]
+  }
+}

@@ -1,0 +1,190 @@
+# Question dismissal (v1)
+
+An operator can dismiss a question without supplying an answer. Apiary owns the
+asking-workspace operator policy (decision a65bcd28) at its T29g admission flip.
+Honeybee accepts this operation under the same local RPC policy as question.answer.
+It records observed ingress as `rpc`; this is not proof of a person. Same-uid local
+clients retain the existing ability to invoke question mutations. No T29g marker,
+withdraw sessionPrincipal, phone credential or hello capability grants operator
+identity in Honeybee. Stronger owner admission remains target-(a)/T15r work.
+
+## Request and result
+
+The actual owner's live hello/deployInfo advertises `question.dismiss.v1`.
+Clients refuse with `question_dismiss_unsupported` when it is absent, with message
+`Question dismissal is unsupported by this Honeybee.` No fallback mutation occurs.
+
+`question.dismiss {questionId, idempotencyKey}` requires both nonempty strings and
+rejects every extra param, including actor, workspace, reason and answer fields.
+It returns `{question: QuestionRow, unarchived: boolean, commandId: number | null}`
+plus optional `deduped: true` on same-key replay. The owner assigns the time, actor and original notice binding.
+
+The canonical status vocabulary is `open | answered | withdrawn | dismissed`.
+Dismissed rows have `dismissedAt` (epoch milliseconds), `dismissedBy: "rpc"`, and
+`dismissalMessageId`. They retain the original question and asker. All answer and
+withdrawal fields remain null. Other statuses have null dismissal fields. Old
+rows/events missing those fields normalize to null.
+
+## Transaction, retries and refusals
+
+The serialized owner transaction secures `WHERE status = 'open'` before inserting
+a notice. Row, mailbox insertion, wake/unarchive intent, event and receipt commit
+together; any failure rolls everything back. The first answer/withdraw/dismiss
+terminal commit wins. A dismissed question never generates answer mail or reopens.
+Dismissal does not answer or complete a waiting action or release its downstream
+lane. Normal action reconciliation remains separate.
+
+Receipts live in `question_dismiss_receipts`, outside the generic RPC key namespace.
+The current authority scope is this owner's ordinary RPC scope, with no invented
+operator identity. Generic RPC peer/admission checks run before daemon dispatch and
+therefore before receipt lookup. Unauthorized calls cannot replay a receipt or
+poison its key. Same-key reuse for another question is `idempotency_conflict`.
+A new valid key for an already-dismissed row returns the first row/time/notice and
+emits no event/mail. The result and receipt retain the first send's `unarchived` flag and wake `commandId` (nullable), including replay and new keys while a receipt remains. Receipt eviction cannot mint another notice. Successful
+replay does not bypass Apiary's current operator admission at its own cache layers.
+
+| Code | Meaning |
+| --- | --- |
+| `question_dismiss_unsupported` | Owner capability absent. |
+| `invalid_request` | Missing/invalid params or key, or any extra param. |
+| `question_not_found` | Question absent. |
+| `question_already_answered` | Answer committed before dismissal. |
+| `question_withdrawn` | Withdrawal committed first; existing message and `details.withdrawalReason` carry its reason. |
+| `question_dismissed` | Answer loses to dismissal for a modern reader; `This question was dismissed without an answer.` |
+| `idempotency_conflict` | Dismissal key already belongs to another question. |
+
+There is no new Honeybee `dismiss_not_authorized` operator gate in this version.
+Existing RPC peer/credential refusal codes apply exactly as for question.answer.
+
+An owner-authorized withdrawal on an already-dismissed question is a terminal
+no-op success for every reader. Storage stays dismissed, with no new audit event,
+mail, wake or lifecycle effect. The existing (bee, key) withdrawal receipt records
+`{question, alreadyTerminal: "dismissed"}`; cross-question key conflict and owner
+checks still run. Modern readers get that canonical outcome. Legacy egress removes
+the marker and returns the rewritten withdrawn row. Existing v45 row-only
+withdrawal receipts remain readable. Answer-on-dismissed remains a refusal:
+modern `question_dismissed`, legacy `question_withdrawn` with
+`details.withdrawalReason: "Dismissed without an answer"` and the same neutral
+reason in its message. Sync and async RPC errors share that immutable projection.
+
+## Event and notice
+
+The committing sequenced audit event is:
+
+```json
+{
+  "kind": "question.dismissed",
+  "beeId": "asking-bee-id",
+  "payload": {
+    "questionId": "question-id",
+    "dismissedAt": 1792470000000,
+    "dismissedBy": "rpc",
+    "dismissalMessageId": 7
+  }
+}
+```
+
+The normal envelope adds seq/ts and optional existing rpcCaller attribution.
+Canonical audit replay and snapshots reproduce the same row.
+
+The one durable mailbox body is exactly:
+
+`Your question was dismissed without an answer.`
+
+Delivery uses `[Hive notice that your question was dismissed]`, then one JSON
+metadata line `{version:1,kind:"question.dismissed",questionId,from:"rpc",id,sentAt}`,
+a blank line and that body. It never uses the answer envelope or claims human
+identity. The durable dismissalMessageId selects this envelope, including file
+fallback/pointers, rather than sender or body heuristics. The notice has automation
+sender kind, ordinary next urgency and the existing other turn trigger. It does
+not stamp human bookkeeping. Standard mailbox wake/unarchive/recovery applies to
+stopped and archived askers. Existing answer envelope bytes remain unchanged.
+
+## Per-reader compatibility
+
+Client hello capability **`question.dismissed.v1`** opts into the new status/event
+format, independently per connection. It is format only: no admission, identity
+or authority decision reads it. Absence, unknown tags and malformed advertisements
+retain the bounded tolerant hello behavior introduced by T29c.
+
+For a nonadvertising connection, immutable egress copies remove the three new
+row fields. A dismissed row becomes `status: "withdrawn"`, with
+`withdrawalReason: "Dismissed without an answer"` and `withdrawnAt: dismissedAt`.
+A question.dismissed audit event becomes the existing question.withdrawn payload
+`{questionId, withdrawalReason, withdrawnAt}` with that exact reason/time.
+Seq/ts/beeId and existing rpcCaller metadata are preserved. Other question states
+retain their meaning. The canonical store/audit/replay never downgrades.
+
+This applies to every question-bearing mutation/result (including action.report),
+question.list, snapshot/watch, audit.tail, live/replayed deltas and known nested
+receipts. An executable TypeScript census checks exported protocol types,
+inferred dispatch returns and actual typed audit payloads against the projector's
+coverage map, including MirrorQuestionRow and MirrorSnapshot. A separate
+compiler/AST egress census checks typed row consumers and RPC serialization
+boundaries; injected raw mirror serializers, structural copies/indexed rows and
+unprojected replies fail. Existing legacy frozen bytes remain unchanged, and a
+second frozen document pins the advertising-reader shape. Injected uncovered
+row/result/event paths fail. Arbitrary action
+outputs and user JSON are not recursively rewritten, and shared cursor objects
+are never mutated. The separate turn-trigger.answer.v1 projector stays independent.
+
+Apiary advertises question.dismissed.v1 only once its reviewed DTO/validator/fold
+accepts dismissed and the exact merged owner artifact is vendored. Older direct Honeybee
+readers retain withdrawn format without an every-node upgrade ordering. Apiary
+node-to-node/phone projection after a newer Apiary stores canonical dismissed is
+NOT_COVERED by the owner lab; the paired Apiary backend must handle those peers
+before it advertises question.dismissed.v1 upstream or exposes the feature. Older local CLIs
+may label an unfamiliar canonical dismissed row as answered; the current CLI
+renders dismissed. No unmerged vendor/runtime pin ships.
+
+## Schema and verification
+
+The stamp becomes **46** on the merged schema45 base e26ad024. The apiary-swap
+storage guard changes to exactly SCHEMA_VERSION === 46 in the same change, with
+no supported-version range. The status CHECK requires a create-new/copy/drop-old/
+rename-new rebuild in the open transaction. Foreign keys are disabled before
+BEGIN and restored after commit or rollback. Original dependent indexes, views
+and triggers are restored. Before commit, foreign_key_check is scoped to questions
+and its transitive FK-dependent tables; unrelated pre-existing orphans do not
+block the upgrade. Violations in the affected scope abort and roll back.
+A schema without a status CHECK takes the additive nullable-column path.
+
+The portable proof checks in the complete schema45 DDL and disposable seed rows
+produced by the unmodified pinned baseline CoreStore. Fixture hashes are pinned;
+no test-time Git source lookup or archive-layout skip is used. A deliberate FK
+violation in a direct or transitive dependent proves failed-upgrade rollback
+restores the old schema, objects and stamp; an unrelated orphan remains intact
+and does not block successful upgrade. Successful migration/reopen preserves one notice/receipt, dependent rows,
+exact object SQL and canonical replay, with no temporary table references.
+
+A schema45 binary refuses a migrated46 store with typed schema_newer. Migration
+is one-way: a rollback45 attempt means that refusal, never a restored45 runtime. The paired real Apiary coordinator lab owns
+45→46, the actual45 rollback outcome and forward46 again, including health/state
+and the satellite updater's existing refusal. It never invents a Honeybee data
+restore. Any typed refusal is reported as observed, not called a successful45
+rollback. Lab artifacts and synthetic identity/trust fixtures stay inside the
+approved I8 root and are destroyed after receipts; none is a production release.
+
+Run in a scrubbed disposable satellite lab with fake HOME/XDG/TMPDIR under cache:
+
+- `node --test scripts/proof/question-dismiss.test.ts`: actual daemon, controlled
+  pair/triple race orders, both reader formats, one notice/no answer mail,
+  real stub envelope, stopped/archived delivery, clean shutdown, replay/reconnect.
+- `node --test scripts/proof/question-dismiss-schema46.test.ts`: pinned schema45 SQL/data
+  fixtures, transactional migration rollback, dependent objects and one notice.
+  It also runs from a source-only archive without .git.
+- Core dismissal/action tests and daemon census/projection/security tests cover
+  insertion rollback, isolated keys, generic authorization-before-dispatch,
+  immutable format conversion and dedicated pointer formatting.
+
+The full #52 masked gate runs through the approved Quiet/662 lane, check and
+v2:check then build third, focused cases and applicable suites. Queen reviews the
+wire/projector/schema delta before PR. Needle merges only pinned green CI.
+**DEPLOY HOLD remains; this contract does not authorize a deployment or Apiary
+operator-policy enforcement flip.**
+
+
+Carried LOW documentation item: the existing mirror.ts event doc comment omits
+question.dismissed. No code comments are authored under this task's standing rule;
+the event and projector contract above is authoritative. Real45-binary refusal
+remains a required paired coordinator lab result, not inferred evidence.

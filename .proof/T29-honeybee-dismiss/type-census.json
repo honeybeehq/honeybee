@@ -1,0 +1,1008 @@
+[
+  {
+    "questionDismissalTypeCensus": {
+      "results": {
+        "WatchFrame": {
+          "values": [],
+          "audits": [
+            "events[]"
+          ]
+        },
+        "QuestionAskResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionAnswerResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionDismissResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionWithdrawResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionListResult": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "AuditTailResult": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "SnapshotResult": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "ActionReportResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        }
+      },
+      "audits": {
+        "question.asked": [
+          "question"
+        ],
+        "question.dismissed": [
+          ""
+        ]
+      },
+      "dispatch": {
+        "action.report": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.ask": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.answer": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.dismiss": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.withdraw": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.list": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "audit.tail": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "snapshot": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "watch": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        }
+      },
+      "modules": {
+        "mirror": {
+          "MirrorQuestionRow": {
+            "values": [
+              ""
+            ],
+            "audits": []
+          },
+          "MirrorSnapshot": {
+            "values": [
+              "questions[]"
+            ],
+            "audits": []
+          },
+          "MirrorDelta": {
+            "values": [],
+            "audits": [
+              ""
+            ]
+          },
+          "QuestionDismissedEvent": {
+            "values": [
+              ""
+            ],
+            "audits": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "answerTriggerTypeCensus": {
+      "results": {
+        "WatchFrame": {
+          "values": [],
+          "audits": [
+            "events[]"
+          ]
+        },
+        "RenameResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "TagResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ForkResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ChildrenResult": {
+          "values": [
+            "children[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "SetArgsResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ReconfigureResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ViewResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ListResult": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "AuditTailResult": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "SnapshotResult": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        }
+      },
+      "audits": {
+        "bee.created": [
+          "bee.lastTurnTrigger"
+        ],
+        "runtime.updated": [
+          "turnTrigger"
+        ],
+        "mail.delivered": [
+          "turnTrigger"
+        ]
+      },
+      "dispatch": {
+        "bee.setArgs": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.reconfigure": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.rename": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.tag": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.fork": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.children": {
+          "values": [
+            "children[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "view": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "list": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "audit.tail": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "snapshot": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "watch": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        }
+      },
+      "modules": {}
+    }
+  },
+  {
+    "answerTriggerTypeCensus": {
+      "results": {
+        "WatchFrame": {
+          "values": [],
+          "audits": [
+            "events[]"
+          ]
+        },
+        "RenameResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "TagResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ForkResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ChildrenResult": {
+          "values": [
+            "children[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "SetArgsResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ReconfigureResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ViewResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ListResult": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "AuditTailResult": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "SnapshotResult": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        }
+      },
+      "audits": {
+        "bee.created": [
+          "bee.lastTurnTrigger"
+        ],
+        "runtime.updated": [
+          "turnTrigger"
+        ],
+        "mail.delivered": [
+          "turnTrigger"
+        ]
+      },
+      "dispatch": {
+        "bee.setArgs": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.reconfigure": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.rename": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.tag": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.fork": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.children": {
+          "values": [
+            "children[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "view": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "list": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "audit.tail": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "snapshot": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "watch": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        }
+      },
+      "modules": {}
+    }
+  },
+  {
+    "questionEgressCensus": {
+      "productionFiles": 180,
+      "consumers": [
+        {
+          "file": "v2/core/src/store.ts",
+          "line": 6090,
+          "scope": "askQuestion",
+          "call": "this.audit",
+          "typedArguments": [
+            2
+          ],
+          "policy": "canonical audit"
+        },
+        {
+          "file": "v2/core/src/store.ts",
+          "line": 6162,
+          "scope": "withdrawQuestionWithKey",
+          "call": "JSON.stringify",
+          "typedArguments": [
+            0
+          ],
+          "policy": "canonical private SQLite receipt"
+        },
+        {
+          "file": "v2/core/src/store.ts",
+          "line": 6190,
+          "scope": "dismissQuestionWithKey",
+          "call": "this.audit",
+          "typedArguments": [
+            2
+          ],
+          "policy": "canonical audit"
+        },
+        {
+          "file": "v2/core/src/store.ts",
+          "line": 6195,
+          "scope": "dismissQuestionWithKey",
+          "call": "JSON.stringify",
+          "typedArguments": [
+            0
+          ],
+          "policy": "canonical private SQLite receipt"
+        },
+        {
+          "file": "v2/core/src/store.ts",
+          "line": 10198,
+          "scope": "reportAction",
+          "call": "finish",
+          "typedArguments": [
+            2
+          ],
+          "policy": "canonical internal result; RPC dispatch census covers egress"
+        },
+        {
+          "file": "v2/core/src/store.ts",
+          "line": 10204,
+          "scope": "reportAction",
+          "call": "finish",
+          "typedArguments": [
+            2
+          ],
+          "policy": "canonical internal result; RPC dispatch census covers egress"
+        },
+        {
+          "file": "v2/core/src/audit.ts",
+          "line": 431,
+          "scope": "replayAudit",
+          "call": "questions.set",
+          "typedArguments": [
+            1
+          ],
+          "policy": "canonical internal replay map, not external serialization"
+        },
+        {
+          "file": "v2/daemon/src/loops.ts",
+          "line": 1301,
+          "scope": "buildHandoffContext",
+          "call": "buildExtractiveHandoffContext",
+          "typedArguments": [
+            0
+          ],
+          "policy": "text-only handoff; no question-row serialization"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 270,
+          "scope": "flushWatch",
+          "call": "byCursor.set",
+          "typedArguments": [
+            1
+          ],
+          "policy": "canonical private cursor batch"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 282,
+          "scope": "flushWatch",
+          "call": "projectAnswerTriggerDelta",
+          "typedArguments": [
+            0
+          ],
+          "policy": "outer question projector before send"
+        },
+        {
+          "file": "v2/daemon/src/daemon.ts",
+          "line": 1449,
+          "scope": "flushWatchers",
+          "call": "this.mirrorAuditRows",
+          "typedArguments": [
+            0
+          ],
+          "policy": "canonical audit batch; RPC delta projection next"
+        },
+        {
+          "file": "v2/daemon/src/daemon.ts",
+          "line": 1462,
+          "scope": "mirrorAuditRows",
+          "call": "mirrorBeeAuditRow",
+          "typedArguments": [
+            0
+          ],
+          "policy": "canonical audit redaction; RPC delta projection next"
+        },
+        {
+          "file": "v2/daemon/src/daemon.ts",
+          "line": 2293,
+          "scope": "dispatch",
+          "call": "this.envRedacted",
+          "typedArguments": [
+            1
+          ],
+          "policy": "canonical RPC dispatch; sync/async projection next"
+        },
+        {
+          "file": "v2/daemon/src/daemon.ts",
+          "line": 4288,
+          "scope": "rpcActionReportIdempotent",
+          "call": "store.recordRpcResult",
+          "typedArguments": [
+            3
+          ],
+          "policy": "canonical private SQLite receipt; result projection next"
+        },
+        {
+          "file": "v2/cli/src/client.ts",
+          "line": 193,
+          "scope": "onFrame",
+          "call": "this.onEvent",
+          "typedArguments": [
+            0
+          ],
+          "policy": "already projected owner frame"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 1753,
+          "scope": "cmdAction",
+          "call": "emit",
+          "typedArguments": [
+            2
+          ],
+          "policy": "current CLI advertises new reader capability; projected RPC result"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 1921,
+          "scope": "cmdAsk",
+          "call": "emit",
+          "typedArguments": [
+            2
+          ],
+          "policy": "current CLI advertises new reader capability; projected RPC result"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 1959,
+          "scope": "cmdQuestion",
+          "call": "questionLine",
+          "typedArguments": [
+            0
+          ],
+          "policy": "feature-aware CLI text"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 1960,
+          "scope": "cmdQuestion",
+          "call": "emit",
+          "typedArguments": [
+            2
+          ],
+          "policy": "current CLI projected RPC or feature-aware stale local row"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 1980,
+          "scope": "cmdAnswer",
+          "call": "emit",
+          "typedArguments": [
+            2
+          ],
+          "policy": "current CLI advertises new reader capability; projected RPC result"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 3390,
+          "scope": "cmdWatch",
+          "call": "printSnapshot",
+          "typedArguments": [
+            0
+          ],
+          "policy": "view-only text; no question rows emitted"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 4351,
+          "scope": "readRows",
+          "call": "envOutput",
+          "typedArguments": [
+            1
+          ],
+          "policy": "current CLI projected RPC or feature-aware stale local audit"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 4356,
+          "scope": "cmdEvents",
+          "call": "emit",
+          "typedArguments": [
+            2
+          ],
+          "policy": "current CLI projected RPC or feature-aware stale local audit"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 4358,
+          "scope": "cmdEvents",
+          "call": "auditLine",
+          "typedArguments": [
+            0
+          ],
+          "policy": "feature-aware CLI text"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 4379,
+          "scope": "cmdEvents",
+          "call": "withDaemonTarget",
+          "typedArguments": [
+            1
+          ],
+          "policy": "feature-aware CLI JSON follow; projected RPC or stale local audit"
+        },
+        {
+          "file": "v2/cli/src/main.ts",
+          "line": 4379,
+          "scope": "cmdEvents",
+          "call": "auditLine",
+          "typedArguments": [
+            0
+          ],
+          "policy": "feature-aware CLI text"
+        },
+        {
+          "file": "v2/harness/src/invariants.ts",
+          "line": 114,
+          "scope": "checkStep",
+          "call": "this.checkModel",
+          "typedArguments": [
+            1
+          ],
+          "policy": "in-process harness invariant"
+        },
+        {
+          "file": "v2/harness/src/invariants.ts",
+          "line": 115,
+          "scope": "checkStep",
+          "call": "this.checkI1",
+          "typedArguments": [
+            2
+          ],
+          "policy": "in-process harness invariant"
+        },
+        {
+          "file": "v2/harness/src/invariants.ts",
+          "line": 116,
+          "scope": "checkStep",
+          "call": "this.checkQueue",
+          "typedArguments": [
+            2
+          ],
+          "policy": "in-process harness invariant"
+        },
+        {
+          "file": "v2/harness/src/invariants.ts",
+          "line": 385,
+          "scope": "checkReplay",
+          "call": "replayAudit",
+          "typedArguments": [
+            0
+          ],
+          "policy": "in-process harness invariant"
+        },
+        {
+          "file": "v2/harness/src/invariants.ts",
+          "line": 390,
+          "scope": "checkReplay",
+          "call": "isDeepStrictEqual",
+          "typedArguments": [
+            0,
+            1
+          ],
+          "policy": "in-process harness invariant"
+        }
+      ],
+      "boundaries": [
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 275,
+          "scope": "flushWatch",
+          "coverage": "gap, no question rows"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 282,
+          "scope": "flushWatch",
+          "coverage": "projected delta"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 320,
+          "scope": "onConnection",
+          "coverage": "hello, no question rows"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 345,
+          "scope": "onFrame",
+          "coverage": "literal request validation error"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 350,
+          "scope": "onFrame",
+          "coverage": "literal request validation error"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 362,
+          "scope": "onFrame",
+          "coverage": "literal request validation error"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 372,
+          "scope": "onFrame",
+          "coverage": "literal request validation error"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 384,
+          "scope": "onFrame",
+          "coverage": "literal request validation error"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 396,
+          "scope": "onFrame",
+          "coverage": "literal request validation error"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 458,
+          "scope": "onFrame",
+          "coverage": "projected RPC result"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 462,
+          "scope": "onFrame",
+          "coverage": "projected RPC error"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 468,
+          "scope": "onFrame",
+          "coverage": "projected RPC result"
+        },
+        {
+          "file": "v2/daemon/src/rpc.ts",
+          "line": 472,
+          "scope": "onFrame",
+          "coverage": "projected RPC error"
+        }
+      ]
+    }
+  },
+  {
+    "questionDismissalTypeCensus": {
+      "results": {
+        "WatchFrame": {
+          "values": [],
+          "audits": [
+            "events[]"
+          ]
+        },
+        "QuestionAskResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionAnswerResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionDismissResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionWithdrawResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionListResult": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "AuditTailResult": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "SnapshotResult": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "ActionReportResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        }
+      },
+      "audits": {
+        "question.asked": [
+          "question"
+        ],
+        "question.dismissed": [
+          ""
+        ]
+      },
+      "dispatch": {
+        "action.report": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.ask": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.answer": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.dismiss": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.withdraw": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.list": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "audit.tail": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "snapshot": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "watch": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        }
+      },
+      "modules": {
+        "mirror": {
+          "MirrorQuestionRow": {
+            "values": [
+              ""
+            ],
+            "audits": []
+          },
+          "MirrorSnapshot": {
+            "values": [
+              "questions[]"
+            ],
+            "audits": []
+          },
+          "MirrorDelta": {
+            "values": [],
+            "audits": [
+              ""
+            ]
+          },
+          "QuestionDismissedEvent": {
+            "values": [
+              ""
+            ],
+            "audits": []
+          }
+        }
+      }
+    }
+  }
+]
