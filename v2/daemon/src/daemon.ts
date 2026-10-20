@@ -1109,6 +1109,7 @@ export class HiveDaemon {
       if (this.loopDelayTimer) clearInterval(this.loopDelayTimer);
       this.loopDelay?.disable();
       this.tickTimer = null;
+      await this.quotaRecovery?.stop();
       await this.retention?.stop();
       this.titleGenerator?.close();
       this.titleGenerator = null;
@@ -6778,15 +6779,8 @@ export class HiveDaemon {
       return;
     }
     try {
-      await accounts.ensureFreshAdmissionLimits(bee.agent, { model: this.modelOfBee(bee) });
-      const now = Date.now();
-      const probe = store.listAccounts({ harness: bee.agent }).filter(account => {
-        if (!accounts.readiness(account).ready) return false;
-        const limits = store.getAccountLimits(account.id);
-        return !limits || !limits.readable || now - limits.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs
-          || account.exhaustedAt !== null && (limits.fetchedAt <= account.exhaustedAt || [limits.fiveHourResetsAt, limits.weeklyResetsAt, limits.fableResetsAt].some(reset => reset !== null && reset <= now));
-      }).map(account => account.id);
-      if (probe.length) await accounts.refreshLimits(probe);
+      await accounts.ensureFreshAdmissionLimits(bee.agent, { model: this.modelOfBee(bee) }, true);
+      if (this.stopping) return;
       row = store.getQuotaRecovery(id);
       if (!row || row.state !== "waiting" || !store.quotaRecoveryValid(row)) return;
       bee = store.getBee(row.beeId)!;
@@ -6801,7 +6795,7 @@ export class HiveDaemon {
       const allocation = data?.allocation as { retryAt?: number | null } | undefined;
       const retry = typeof data?.retryAt === "number" ? data.retryAt : allocation?.retryAt ?? null;
       store.waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retry), error instanceof RpcError && error.code === "account_wait" ? "account_wait" : "account_unavailable");
-      this.log(`quota.wait recovery=${id} reason=${error instanceof Error ? error.message : String(error)}`);
+      this.log(`account.rotate bee=${row.beeId} account=${row.sourceAccount} skipped=no_candidate recovery=${id} (${error instanceof Error ? error.message : String(error)})`);
     }
   }
 
