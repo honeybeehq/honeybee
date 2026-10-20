@@ -1,0 +1,224 @@
+{
+  "original24StepRun": {
+    "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+    "base": "e26ad0241105b3d374bfe73649af60a90736aa9b",
+    "planned": 24,
+    "completed": 24,
+    "rows": [
+      {
+        "step": "check",
+        "exit": 0,
+        "seconds": 17.01,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "v2:check",
+        "exit": 0,
+        "seconds": 26.27,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "build",
+        "exit": 0,
+        "seconds": 8.23,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/core/tests/question-dismiss.test.ts",
+        "exit": 0,
+        "seconds": 0.39,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/core/tests/actions.test.ts",
+        "exit": 0,
+        "seconds": 0.58,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/core/tests/preflip-verbs.test.ts",
+        "exit": 0,
+        "seconds": 0.36,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/core/tests/question-withdraw.test.ts",
+        "exit": 0,
+        "seconds": 0.3,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/daemon/tests/question-dismiss-projection.test.ts",
+        "exit": 0,
+        "seconds": 7.94,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/daemon/tests/answer-trigger-census.test.ts",
+        "exit": 0,
+        "seconds": 6.68,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/daemon/tests/answer-trigger-negotiation.test.ts",
+        "exit": 0,
+        "seconds": 0.39,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/daemon/tests/local-rpc-security.test.ts",
+        "exit": 0,
+        "seconds": 4.21,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/daemon/tests/local-rpc-trust.test.ts",
+        "exit": 0,
+        "seconds": 0.21,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/daemon/tests/envelope.test.ts",
+        "exit": 0,
+        "seconds": 0.24,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/daemon/tests/preflip-verbs.test.ts",
+        "exit": 0,
+        "seconds": 11.98,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/daemon/tests/delivery-file-read.test.ts",
+        "exit": 0,
+        "seconds": 3.29,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:v2/cli/tests/cli.test.ts",
+        "exit": 0,
+        "seconds": 16.19,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:scripts/proof/question-dismiss.test.ts",
+        "exit": 0,
+        "seconds": 3.15,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "test:scripts/proof/question-dismiss-schema46.test.ts",
+        "exit": 0,
+        "seconds": 0.27,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "npm-test",
+        "exit": 1,
+        "seconds": 82.66,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "tolerated": false,
+        "failingNames": [
+          "the deploy archive allowlist excludes workstation state and retains runtime assets",
+          "a packed and extracted compiled tree with no node_modules, git, or esbuild materializes and runs the staged artifact",
+          "turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants",
+          "local launcher scrubs inherited no-color env for interactive agents"
+        ],
+        "deadPaneDiagnostics": [],
+        "outcome": "FAIL"
+      },
+      {
+        "step": "v2:test",
+        "exit": 0,
+        "seconds": 14.34,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "v2:daemon",
+        "exit": 0,
+        "seconds": 713.68,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "v2:driver",
+        "exit": 0,
+        "seconds": 7.64,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "v2:driver2",
+        "exit": 0,
+        "seconds": 12.39,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      },
+      {
+        "step": "v2:harness",
+        "exit": 0,
+        "seconds": 10.56,
+        "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+        "outcome": "PASS"
+      }
+    ],
+    "allowedTolerances": [
+      "driver2 exact has-session assertion at176 with complete Queen4138 removed/dead/owned/exact socket-proof/no-other-session/teardown-lag diagnostic"
+    ],
+    "expiredPasteAllowance": false,
+    "codexGenerationAllowance": false,
+    "maskedGate": false
+  },
+  "officialToolchainNpmTestComparisons": [
+    {
+      "label": "base",
+      "sourceRevision": "e26ad0241105b3d374bfe73649af60a90736aa9b",
+      "exit": 1,
+      "seconds": 79.11,
+      "failingNames": [
+        "turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants",
+        "local launcher scrubs inherited no-color env for interactive agents"
+      ],
+      "npm": "11.16.0",
+      "node": "v24.18.0"
+    },
+    {
+      "label": "candidate",
+      "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+      "exit": 1,
+      "seconds": 79.27,
+      "failingNames": [
+        "turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants",
+        "local launcher scrubs inherited no-color env for interactive agents"
+      ],
+      "npm": "11.16.0",
+      "node": "v24.18.0"
+    }
+  ],
+  "toolchain": {
+    "node": "v24.18.0",
+    "npm": "11.16.0",
+    "officialTarSha256": "55aa7153f9d88f28d765fcdad5ae6945b5c0f98a36881703817e4c450fa76742"
+  },
+  "disposition": "Queen22871 permits masked re-gate request; two exact base-reproducing local process failures are not pre-tolerated. If masked candidate fails either, a matching exact base-only masked reproduction is required. Host npm12 pack JSON failures are pre-existing and resolved with official bundled npm11."
+}

@@ -1,11 +1,912 @@
 {
+  "sourceRevision": "ea5f5b68e7579c094a59d87a8c9b97387c337c43",
+  "base": "e26ad0241105b3d374bfe73649af60a90736aa9b",
   "runs": [
     {
       "host": "<LAB_HOST>",
-      "baseline": "9ecbb37f7cb448503cdcfaf8747538a3580f982f",
-      "schemaVersion": "44",
-      "baselineLoads": 40,
-      "baselinePredatesDismissal": true,
+      "data": "<TASK_CACHE>/46/h16/t/hb-v2-daemon-8utSbW",
+      "socket": "<TASK_CACHE>/46/h16/t/hb-v2-daemon-8utSbW/hived.sock",
+      "shutdown": {
+        "code": 0,
+        "signal": null
+      },
+      "first": {
+        "id": "dadaf48c-b16e-4a10-9805-39ed2cd2014a",
+        "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+        "generation": 1,
+        "text": "Dismiss once?",
+        "options": null,
+        "status": "dismissed",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "dismissedAt": 1792487015723,
+        "dismissedBy": "rpc",
+        "dismissalMessageId": 1,
+        "answer": null,
+        "askedAt": 1792487015722,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "legacy": {
+        "id": "dadaf48c-b16e-4a10-9805-39ed2cd2014a",
+        "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+        "generation": 1,
+        "text": "Dismiss once?",
+        "options": null,
+        "status": "withdrawn",
+        "withdrawalReason": "Dismissed without an answer",
+        "withdrawnAt": 1792487015723,
+        "answer": null,
+        "askedAt": 1792487015722,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "races": [
+        {
+          "questionId": "8b4d866c-b8b4-4c19-af0c-d68fc9f1eaab",
+          "order": [
+            "answer",
+            "dismiss"
+          ],
+          "status": "answered",
+          "newMailCount": 1,
+          "answerMail": 1,
+          "dismissalMail": 0,
+          "refusals": [
+            {
+              "code": "question_already_answered",
+              "message": "question 8b4d866c-b8b4-4c19-af0c-d68fc9f1eaab is already answered"
+            }
+          ]
+        },
+        {
+          "questionId": "033db90e-171d-476e-babd-cec50bd56902",
+          "order": [
+            "dismiss",
+            "answer"
+          ],
+          "status": "dismissed",
+          "newMailCount": 1,
+          "answerMail": 0,
+          "dismissalMail": 1,
+          "refusals": [
+            {
+              "code": "question_dismissed",
+              "message": "This question was dismissed without an answer."
+            }
+          ]
+        },
+        {
+          "questionId": "321a04a3-bd5b-457a-8546-a1035b428afe",
+          "order": [
+            "withdraw",
+            "dismiss"
+          ],
+          "status": "withdrawn",
+          "newMailCount": 0,
+          "answerMail": 0,
+          "dismissalMail": 0,
+          "refusals": [
+            {
+              "code": "question_withdrawn",
+              "message": "This question was withdrawn: Superseded."
+            }
+          ]
+        },
+        {
+          "questionId": "ecda3f8c-3f19-4c89-b81c-c7045274f633",
+          "order": [
+            "dismiss",
+            "withdraw"
+          ],
+          "status": "dismissed",
+          "newMailCount": 1,
+          "answerMail": 0,
+          "dismissalMail": 1,
+          "refusals": [
+            {
+              "code": "question_dismissed",
+              "message": "This question was dismissed without an answer."
+            }
+          ]
+        },
+        {
+          "questionId": "1b71f8b7-4acd-4e99-a046-cc7fb1554836",
+          "order": [
+            "answer",
+            "withdraw",
+            "dismiss"
+          ],
+          "status": "answered",
+          "newMailCount": 1,
+          "answerMail": 1,
+          "dismissalMail": 0,
+          "refusals": [
+            {
+              "code": "question_already_answered",
+              "message": "question 1b71f8b7-4acd-4e99-a046-cc7fb1554836 is already answered"
+            },
+            {
+              "code": "question_already_answered",
+              "message": "question 1b71f8b7-4acd-4e99-a046-cc7fb1554836 is already answered"
+            }
+          ]
+        },
+        {
+          "questionId": "83e57bc1-3170-4ed4-a7eb-74ca385da89f",
+          "order": [
+            "answer",
+            "dismiss",
+            "withdraw"
+          ],
+          "status": "answered",
+          "newMailCount": 1,
+          "answerMail": 1,
+          "dismissalMail": 0,
+          "refusals": [
+            {
+              "code": "question_already_answered",
+              "message": "question 83e57bc1-3170-4ed4-a7eb-74ca385da89f is already answered"
+            },
+            {
+              "code": "question_already_answered",
+              "message": "question 83e57bc1-3170-4ed4-a7eb-74ca385da89f is already answered"
+            }
+          ]
+        },
+        {
+          "questionId": "5cc48f47-e0a7-4ae7-bbe8-d87f0f2cd3f8",
+          "order": [
+            "withdraw",
+            "answer",
+            "dismiss"
+          ],
+          "status": "withdrawn",
+          "newMailCount": 0,
+          "answerMail": 0,
+          "dismissalMail": 0,
+          "refusals": [
+            {
+              "code": "question_withdrawn",
+              "message": "This question was withdrawn: Superseded."
+            },
+            {
+              "code": "question_withdrawn",
+              "message": "This question was withdrawn: Superseded."
+            }
+          ]
+        },
+        {
+          "questionId": "6aae8caa-33e9-4fb7-aff7-4da406d3dd76",
+          "order": [
+            "withdraw",
+            "dismiss",
+            "answer"
+          ],
+          "status": "withdrawn",
+          "newMailCount": 0,
+          "answerMail": 0,
+          "dismissalMail": 0,
+          "refusals": [
+            {
+              "code": "question_withdrawn",
+              "message": "This question was withdrawn: Superseded."
+            },
+            {
+              "code": "question_withdrawn",
+              "message": "This question was withdrawn: Superseded."
+            }
+          ]
+        },
+        {
+          "questionId": "6f3f8ae8-6146-4657-bbc1-bb8c1167181e",
+          "order": [
+            "dismiss",
+            "answer",
+            "withdraw"
+          ],
+          "status": "dismissed",
+          "newMailCount": 1,
+          "answerMail": 0,
+          "dismissalMail": 1,
+          "refusals": [
+            {
+              "code": "question_dismissed",
+              "message": "This question was dismissed without an answer."
+            },
+            {
+              "code": "question_dismissed",
+              "message": "This question was dismissed without an answer."
+            }
+          ]
+        },
+        {
+          "questionId": "42315701-693f-46c2-a2af-5954067f7739",
+          "order": [
+            "dismiss",
+            "withdraw",
+            "answer"
+          ],
+          "status": "dismissed",
+          "newMailCount": 1,
+          "answerMail": 0,
+          "dismissalMail": 1,
+          "refusals": [
+            {
+              "code": "question_dismissed",
+              "message": "This question was dismissed without an answer."
+            },
+            {
+              "code": "question_dismissed",
+              "message": "This question was dismissed without an answer."
+            }
+          ]
+        }
+      ],
+      "terminalProofs": [
+        {
+          "question": {
+            "id": "dadaf48c-b16e-4a10-9805-39ed2cd2014a",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Dismiss once?",
+            "options": null,
+            "status": "dismissed",
+            "withdrawalReason": null,
+            "withdrawnAt": null,
+            "dismissedAt": 1792487015723,
+            "dismissedBy": "rpc",
+            "dismissalMessageId": 1,
+            "answer": null,
+            "askedAt": 1792487015722,
+            "answeredAt": null,
+            "answeredBy": null,
+            "deliveryMessageId": null
+          },
+          "event": {
+            "seq": 8,
+            "ts": 1792487015723,
+            "kind": "question.dismissed",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "dadaf48c-b16e-4a10-9805-39ed2cd2014a",
+              "dismissedAt": 1792487015723,
+              "dismissedBy": "rpc",
+              "dismissalMessageId": 1,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.dismiss"
+              }
+            }
+          },
+          "answerMail": [],
+          "notice": {
+            "id": 1,
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "sender": "rpc",
+            "body": "Your question was dismissed without an answer.",
+            "priority": 0,
+            "urgency": "next",
+            "enqueuedAt": 1792487015723,
+            "deliveredAt": null,
+            "deliveredGeneration": null,
+            "senderKind": "automation"
+          }
+        },
+        {
+          "question": {
+            "id": "3456e7a7-b35b-458d-9c7a-7875e02e9757",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "No failed-key poison?",
+            "options": null,
+            "status": "dismissed",
+            "withdrawalReason": null,
+            "withdrawnAt": null,
+            "dismissedAt": 1792487015728,
+            "dismissedBy": "rpc",
+            "dismissalMessageId": 2,
+            "answer": null,
+            "askedAt": 1792487015728,
+            "answeredAt": null,
+            "answeredBy": null,
+            "deliveryMessageId": null
+          },
+          "event": {
+            "seq": 11,
+            "ts": 1792487015728,
+            "kind": "question.dismissed",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "3456e7a7-b35b-458d-9c7a-7875e02e9757",
+              "dismissedAt": 1792487015728,
+              "dismissedBy": "rpc",
+              "dismissalMessageId": 2,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.dismiss"
+              }
+            }
+          },
+          "answerMail": [],
+          "notice": {
+            "id": 2,
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "sender": "rpc",
+            "body": "Your question was dismissed without an answer.",
+            "priority": 0,
+            "urgency": "next",
+            "enqueuedAt": 1792487015728,
+            "deliveredAt": null,
+            "deliveredGeneration": null,
+            "senderKind": "automation"
+          }
+        },
+        {
+          "question": {
+            "id": "8b4d866c-b8b4-4c19-af0c-d68fc9f1eaab",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Race 0?",
+            "options": null,
+            "status": "answered",
+            "withdrawalReason": null,
+            "withdrawnAt": null,
+            "dismissedAt": null,
+            "dismissedBy": null,
+            "dismissalMessageId": null,
+            "answer": "yes",
+            "askedAt": 1792487015753,
+            "answeredAt": 1792487015755,
+            "answeredBy": "rpc",
+            "deliveryMessageId": 3
+          },
+          "event": {
+            "seq": 14,
+            "ts": 1792487015755,
+            "kind": "question.answered",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "8b4d866c-b8b4-4c19-af0c-d68fc9f1eaab",
+              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "answer": "yes",
+              "answeredAt": 1792487015755,
+              "answeredBy": "rpc",
+              "deliveryMessageId": 3,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.answer"
+              }
+            }
+          },
+          "answerMail": [
+            {
+              "id": 3,
+              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "sender": "rpc",
+              "body": "[answer to question 8b4d866c-b8b4-4c19-af0c-d68fc9f1eaab] yes\n\n(question was: Race 0?)",
+              "priority": 0,
+              "urgency": "next",
+              "enqueuedAt": 1792487015755,
+              "deliveredAt": null,
+              "deliveredGeneration": null
+            }
+          ],
+          "notice": null
+        },
+        {
+          "question": {
+            "id": "033db90e-171d-476e-babd-cec50bd56902",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Race 1?",
+            "options": null,
+            "status": "dismissed",
+            "withdrawalReason": null,
+            "withdrawnAt": null,
+            "dismissedAt": 1792487015758,
+            "dismissedBy": "rpc",
+            "dismissalMessageId": 4,
+            "answer": null,
+            "askedAt": 1792487015757,
+            "answeredAt": null,
+            "answeredBy": null,
+            "deliveryMessageId": null
+          },
+          "event": {
+            "seq": 17,
+            "ts": 1792487015759,
+            "kind": "question.dismissed",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "033db90e-171d-476e-babd-cec50bd56902",
+              "dismissedAt": 1792487015758,
+              "dismissedBy": "rpc",
+              "dismissalMessageId": 4,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.dismiss"
+              }
+            }
+          },
+          "answerMail": [],
+          "notice": {
+            "id": 4,
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "sender": "rpc",
+            "body": "Your question was dismissed without an answer.",
+            "priority": 0,
+            "urgency": "next",
+            "enqueuedAt": 1792487015758,
+            "deliveredAt": null,
+            "deliveredGeneration": null,
+            "senderKind": "automation"
+          }
+        },
+        {
+          "question": {
+            "id": "321a04a3-bd5b-457a-8546-a1035b428afe",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Race 2?",
+            "options": null,
+            "status": "withdrawn",
+            "withdrawalReason": "Superseded.",
+            "withdrawnAt": 1792487015763,
+            "dismissedAt": null,
+            "dismissedBy": null,
+            "dismissalMessageId": null,
+            "answer": null,
+            "askedAt": 1792487015761,
+            "answeredAt": null,
+            "answeredBy": null,
+            "deliveryMessageId": null
+          },
+          "event": {
+            "seq": 19,
+            "ts": 1792487015763,
+            "kind": "question.withdrawn",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "321a04a3-bd5b-457a-8546-a1035b428afe",
+              "withdrawalReason": "Superseded.",
+              "withdrawnAt": 1792487015763,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.withdraw"
+              }
+            }
+          },
+          "answerMail": [],
+          "notice": null
+        },
+        {
+          "question": {
+            "id": "ecda3f8c-3f19-4c89-b81c-c7045274f633",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Race 3?",
+            "options": null,
+            "status": "dismissed",
+            "withdrawalReason": null,
+            "withdrawnAt": null,
+            "dismissedAt": 1792487015766,
+            "dismissedBy": "rpc",
+            "dismissalMessageId": 5,
+            "answer": null,
+            "askedAt": 1792487015765,
+            "answeredAt": null,
+            "answeredBy": null,
+            "deliveryMessageId": null
+          },
+          "event": {
+            "seq": 22,
+            "ts": 1792487015766,
+            "kind": "question.dismissed",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "ecda3f8c-3f19-4c89-b81c-c7045274f633",
+              "dismissedAt": 1792487015766,
+              "dismissedBy": "rpc",
+              "dismissalMessageId": 5,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.dismiss"
+              }
+            }
+          },
+          "answerMail": [],
+          "notice": {
+            "id": 5,
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "sender": "rpc",
+            "body": "Your question was dismissed without an answer.",
+            "priority": 0,
+            "urgency": "next",
+            "enqueuedAt": 1792487015766,
+            "deliveredAt": null,
+            "deliveredGeneration": null,
+            "senderKind": "automation"
+          }
+        },
+        {
+          "question": {
+            "id": "1b71f8b7-4acd-4e99-a046-cc7fb1554836",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Race 4?",
+            "options": null,
+            "status": "answered",
+            "withdrawalReason": null,
+            "withdrawnAt": null,
+            "dismissedAt": null,
+            "dismissedBy": null,
+            "dismissalMessageId": null,
+            "answer": "yes",
+            "askedAt": 1792487015768,
+            "answeredAt": 1792487015768,
+            "answeredBy": "rpc",
+            "deliveryMessageId": 6
+          },
+          "event": {
+            "seq": 25,
+            "ts": 1792487015769,
+            "kind": "question.answered",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "1b71f8b7-4acd-4e99-a046-cc7fb1554836",
+              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "answer": "yes",
+              "answeredAt": 1792487015768,
+              "answeredBy": "rpc",
+              "deliveryMessageId": 6,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.answer"
+              }
+            }
+          },
+          "answerMail": [
+            {
+              "id": 6,
+              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "sender": "rpc",
+              "body": "[answer to question 1b71f8b7-4acd-4e99-a046-cc7fb1554836] yes\n\n(question was: Race 4?)",
+              "priority": 0,
+              "urgency": "next",
+              "enqueuedAt": 1792487015769,
+              "deliveredAt": null,
+              "deliveredGeneration": null
+            }
+          ],
+          "notice": null
+        },
+        {
+          "question": {
+            "id": "83e57bc1-3170-4ed4-a7eb-74ca385da89f",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Race 5?",
+            "options": null,
+            "status": "answered",
+            "withdrawalReason": null,
+            "withdrawnAt": null,
+            "dismissedAt": null,
+            "dismissedBy": null,
+            "dismissalMessageId": null,
+            "answer": "yes",
+            "askedAt": 1792487015771,
+            "answeredAt": 1792487015772,
+            "answeredBy": "rpc",
+            "deliveryMessageId": 7
+          },
+          "event": {
+            "seq": 28,
+            "ts": 1792487015773,
+            "kind": "question.answered",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "83e57bc1-3170-4ed4-a7eb-74ca385da89f",
+              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "answer": "yes",
+              "answeredAt": 1792487015772,
+              "answeredBy": "rpc",
+              "deliveryMessageId": 7,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.answer"
+              }
+            }
+          },
+          "answerMail": [
+            {
+              "id": 7,
+              "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+              "sender": "rpc",
+              "body": "[answer to question 83e57bc1-3170-4ed4-a7eb-74ca385da89f] yes\n\n(question was: Race 5?)",
+              "priority": 0,
+              "urgency": "next",
+              "enqueuedAt": 1792487015772,
+              "deliveredAt": null,
+              "deliveredGeneration": null
+            }
+          ],
+          "notice": null
+        },
+        {
+          "question": {
+            "id": "5cc48f47-e0a7-4ae7-bbe8-d87f0f2cd3f8",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Race 6?",
+            "options": null,
+            "status": "withdrawn",
+            "withdrawalReason": "Superseded.",
+            "withdrawnAt": 1792487015776,
+            "dismissedAt": null,
+            "dismissedBy": null,
+            "dismissalMessageId": null,
+            "answer": null,
+            "askedAt": 1792487015775,
+            "answeredAt": null,
+            "answeredBy": null,
+            "deliveryMessageId": null
+          },
+          "event": {
+            "seq": 30,
+            "ts": 1792487015776,
+            "kind": "question.withdrawn",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "5cc48f47-e0a7-4ae7-bbe8-d87f0f2cd3f8",
+              "withdrawalReason": "Superseded.",
+              "withdrawnAt": 1792487015776,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.withdraw"
+              }
+            }
+          },
+          "answerMail": [],
+          "notice": null
+        },
+        {
+          "question": {
+            "id": "6aae8caa-33e9-4fb7-aff7-4da406d3dd76",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Race 7?",
+            "options": null,
+            "status": "withdrawn",
+            "withdrawalReason": "Superseded.",
+            "withdrawnAt": 1792487015778,
+            "dismissedAt": null,
+            "dismissedBy": null,
+            "dismissalMessageId": null,
+            "answer": null,
+            "askedAt": 1792487015778,
+            "answeredAt": null,
+            "answeredBy": null,
+            "deliveryMessageId": null
+          },
+          "event": {
+            "seq": 32,
+            "ts": 1792487015778,
+            "kind": "question.withdrawn",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "6aae8caa-33e9-4fb7-aff7-4da406d3dd76",
+              "withdrawalReason": "Superseded.",
+              "withdrawnAt": 1792487015778,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.withdraw"
+              }
+            }
+          },
+          "answerMail": [],
+          "notice": null
+        },
+        {
+          "question": {
+            "id": "6f3f8ae8-6146-4657-bbc1-bb8c1167181e",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Race 8?",
+            "options": null,
+            "status": "dismissed",
+            "withdrawalReason": null,
+            "withdrawnAt": null,
+            "dismissedAt": 1792487015780,
+            "dismissedBy": "rpc",
+            "dismissalMessageId": 8,
+            "answer": null,
+            "askedAt": 1792487015779,
+            "answeredAt": null,
+            "answeredBy": null,
+            "deliveryMessageId": null
+          },
+          "event": {
+            "seq": 35,
+            "ts": 1792487015781,
+            "kind": "question.dismissed",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "6f3f8ae8-6146-4657-bbc1-bb8c1167181e",
+              "dismissedAt": 1792487015780,
+              "dismissedBy": "rpc",
+              "dismissalMessageId": 8,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.dismiss"
+              }
+            }
+          },
+          "answerMail": [],
+          "notice": {
+            "id": 8,
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "sender": "rpc",
+            "body": "Your question was dismissed without an answer.",
+            "priority": 0,
+            "urgency": "next",
+            "enqueuedAt": 1792487015780,
+            "deliveredAt": null,
+            "deliveredGeneration": null,
+            "senderKind": "automation"
+          }
+        },
+        {
+          "question": {
+            "id": "42315701-693f-46c2-a2af-5954067f7739",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "generation": 1,
+            "text": "Race 9?",
+            "options": null,
+            "status": "dismissed",
+            "withdrawalReason": null,
+            "withdrawnAt": null,
+            "dismissedAt": 1792487015783,
+            "dismissedBy": "rpc",
+            "dismissalMessageId": 9,
+            "answer": null,
+            "askedAt": 1792487015782,
+            "answeredAt": null,
+            "answeredBy": null,
+            "deliveryMessageId": null
+          },
+          "event": {
+            "seq": 38,
+            "ts": 1792487015783,
+            "kind": "question.dismissed",
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "payload": {
+              "questionId": "42315701-693f-46c2-a2af-5954067f7739",
+              "dismissedAt": 1792487015783,
+              "dismissedBy": "rpc",
+              "dismissalMessageId": 9,
+              "rpcCaller": {
+                "transport": "local_unix",
+                "ingress": "local_unix",
+                "uid": 1001,
+                "pid": 850463,
+                "verb": "question.dismiss"
+              }
+            }
+          },
+          "answerMail": [],
+          "notice": {
+            "id": 9,
+            "beeId": "dde661d8-a3c5-4982-b99c-1cc20bca99f0",
+            "sender": "rpc",
+            "body": "Your question was dismissed without an answer.",
+            "priority": 0,
+            "urgency": "next",
+            "enqueuedAt": 1792487015783,
+            "deliveredAt": null,
+            "deliveredGeneration": null,
+            "senderKind": "automation"
+          }
+        }
+      ],
+      "replayEqual": true,
+      "reconnectDeduped": true,
+      "dedicatedEnvelopeObserved": true,
+      "lifecycleReceipts": [
+        {
+          "from": "stop",
+          "questionId": "d0c4fc29-87a1-48b7-a5dc-c4a02763ffb9",
+          "messageId": 11,
+          "lifecycle": "active",
+          "generation": 2
+        },
+        {
+          "from": "archive",
+          "questionId": "e4ab1380-10d4-4305-a385-eefd73fd09a9",
+          "messageId": 12,
+          "lifecycle": "active",
+          "generation": 2
+        }
+      ],
+      "liveNoticeMessageId": 10,
+      "lastHumanOutputAt": null
+    },
+    {
+      "host": "<LAB_HOST>",
+      "artifact": "dist/cli.js",
+      "data": "<TASK_CACHE>/46/h16/t/hb-v2-daemon-epmY2o",
+      "socket": "<TASK_CACHE>/46/h16/t/hb-v2-daemon-epmY2o/built.sock",
+      "shutdown": {
+        "code": 0,
+        "signal": null
+      },
+      "question": {
+        "id": "3c4869c5-335c-47a2-b9f6-a38ca11a8155",
+        "beeId": "7881ad9b-e3cf-4f4a-8fba-d5df6c2b3fa5",
+        "generation": 1,
+        "text": "Built artifact?",
+        "options": null,
+        "status": "dismissed",
+        "withdrawalReason": null,
+        "withdrawnAt": null,
+        "dismissedAt": 1792487017642,
+        "dismissedBy": "rpc",
+        "dismissalMessageId": 1,
+        "answer": null,
+        "askedAt": 1792487017636,
+        "answeredAt": null,
+        "answeredBy": null,
+        "deliveryMessageId": null
+      },
+      "notice": {
+        "id": 1,
+        "body": "Your question was dismissed without an answer.",
+        "senderKind": "automation"
+      },
+      "stableRetry": true
+    },
+    {
+      "host": "<LAB_HOST>",
+      "baseline": "e26ad0241105b3d374bfe73649af60a90736aa9b",
+      "baselineSchemaVersion": 45,
+      "schemaVersion": "46",
+      "baselineSchemaSha256": "ae2b3b9f36cef4dda133cdc9db50352a324cd4514017d439ac7e802659f0fee9",
+      "portableFixture": true,
       "statusColumn": "CHECK rebuilt",
       "integrity": "ok",
       "foreignKeys": [],
@@ -23,11 +924,11 @@
       ],
       "dependentRows": [
         {
-          "question_id": "d4e469f4-7e36-4a08-838e-b8d173231e82"
+          "question_id": "dismiss-fixture-question"
         }
       ],
       "dependentView": {
-        "id": "d4e469f4-7e36-4a08-838e-b8d173231e82",
+        "id": "dismiss-fixture-question",
         "status": "dismissed"
       },
       "dependentObjects": [
@@ -71,923 +972,25 @@
         "sender_kind": "automation"
       },
       "question": {
-        "id": "d4e469f4-7e36-4a08-838e-b8d173231e82",
-        "beeId": "f929c01f-1b9b-4ade-9745-e46f760ce9fe",
+        "id": "dismiss-fixture-question",
+        "beeId": "74ba6e3b-9cc7-4ac2-bea4-3b8126acb0e8",
         "generation": 1,
-        "text": "Dismiss before rollback?",
+        "text": "Dismiss after migration?",
         "options": null,
         "status": "dismissed",
         "withdrawalReason": null,
         "withdrawnAt": null,
-        "dismissedAt": 1792478393932,
+        "dismissedAt": 1792487017959,
         "dismissedBy": "rpc",
         "dismissalMessageId": 1,
         "answer": null,
-        "askedAt": 1792478393905,
+        "askedAt": 1005,
         "answeredAt": null,
         "answeredBy": null,
         "deliveryMessageId": null
       },
-      "rollbackOpenedAndWrote": true,
       "replayEqual": true
-    },
-    {
-      "host": "<LAB_HOST>",
-      "data": "<TASK_CACHE>/tmp/hb-v2-daemon-R5HGOQ",
-      "socket": "<TASK_CACHE>/tmp/hb-v2-daemon-R5HGOQ/hived.sock",
-      "shutdown": {
-        "code": 0,
-        "signal": null
-      },
-      "first": {
-        "id": "b3f9f01c-0ab3-40e1-9d88-51b4bf9e808e",
-        "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-        "generation": 1,
-        "text": "Dismiss once?",
-        "options": null,
-        "status": "dismissed",
-        "withdrawalReason": null,
-        "withdrawnAt": null,
-        "dismissedAt": 1792478394586,
-        "dismissedBy": "rpc",
-        "dismissalMessageId": 1,
-        "answer": null,
-        "askedAt": 1792478394585,
-        "answeredAt": null,
-        "answeredBy": null,
-        "deliveryMessageId": null
-      },
-      "legacy": {
-        "id": "b3f9f01c-0ab3-40e1-9d88-51b4bf9e808e",
-        "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-        "generation": 1,
-        "text": "Dismiss once?",
-        "options": null,
-        "status": "withdrawn",
-        "withdrawalReason": "Dismissed without an answer",
-        "withdrawnAt": 1792478394586,
-        "answer": null,
-        "askedAt": 1792478394585,
-        "answeredAt": null,
-        "answeredBy": null,
-        "deliveryMessageId": null
-      },
-      "races": [
-        {
-          "questionId": "5c820da2-f254-48c1-a264-bbd113d091f8",
-          "order": [
-            "answer",
-            "dismiss"
-          ],
-          "status": "answered",
-          "newMailCount": 1,
-          "answerMail": 1,
-          "dismissalMail": 0,
-          "refusals": [
-            {
-              "code": "question_already_answered",
-              "message": "question 5c820da2-f254-48c1-a264-bbd113d091f8 is already answered"
-            }
-          ]
-        },
-        {
-          "questionId": "4ffdb64c-7bb7-4b28-ae4f-c93c5b6a3934",
-          "order": [
-            "dismiss",
-            "answer"
-          ],
-          "status": "dismissed",
-          "newMailCount": 1,
-          "answerMail": 0,
-          "dismissalMail": 1,
-          "refusals": [
-            {
-              "code": "question_dismissed",
-              "message": "This question was dismissed without an answer."
-            }
-          ]
-        },
-        {
-          "questionId": "f3f24223-5384-4c49-a422-1251d2bbe25b",
-          "order": [
-            "withdraw",
-            "dismiss"
-          ],
-          "status": "withdrawn",
-          "newMailCount": 0,
-          "answerMail": 0,
-          "dismissalMail": 0,
-          "refusals": [
-            {
-              "code": "question_withdrawn",
-              "message": "This question was withdrawn: Superseded."
-            }
-          ]
-        },
-        {
-          "questionId": "8c6ea3cc-1bcb-4092-a71f-d3a0c2833d2c",
-          "order": [
-            "dismiss",
-            "withdraw"
-          ],
-          "status": "dismissed",
-          "newMailCount": 1,
-          "answerMail": 0,
-          "dismissalMail": 1,
-          "refusals": [
-            {
-              "code": "question_dismissed",
-              "message": "This question was dismissed without an answer."
-            }
-          ]
-        },
-        {
-          "questionId": "0cd36303-3b95-495a-a37c-d002dcba7906",
-          "order": [
-            "answer",
-            "withdraw",
-            "dismiss"
-          ],
-          "status": "answered",
-          "newMailCount": 1,
-          "answerMail": 1,
-          "dismissalMail": 0,
-          "refusals": [
-            {
-              "code": "question_already_answered",
-              "message": "question 0cd36303-3b95-495a-a37c-d002dcba7906 is already answered"
-            },
-            {
-              "code": "question_already_answered",
-              "message": "question 0cd36303-3b95-495a-a37c-d002dcba7906 is already answered"
-            }
-          ]
-        },
-        {
-          "questionId": "410ff297-2f99-4b4f-9a9f-73f695709fea",
-          "order": [
-            "answer",
-            "dismiss",
-            "withdraw"
-          ],
-          "status": "answered",
-          "newMailCount": 1,
-          "answerMail": 1,
-          "dismissalMail": 0,
-          "refusals": [
-            {
-              "code": "question_already_answered",
-              "message": "question 410ff297-2f99-4b4f-9a9f-73f695709fea is already answered"
-            },
-            {
-              "code": "question_already_answered",
-              "message": "question 410ff297-2f99-4b4f-9a9f-73f695709fea is already answered"
-            }
-          ]
-        },
-        {
-          "questionId": "9ea04070-146c-4f25-97e0-6c807c314a65",
-          "order": [
-            "withdraw",
-            "answer",
-            "dismiss"
-          ],
-          "status": "withdrawn",
-          "newMailCount": 0,
-          "answerMail": 0,
-          "dismissalMail": 0,
-          "refusals": [
-            {
-              "code": "question_withdrawn",
-              "message": "This question was withdrawn: Superseded."
-            },
-            {
-              "code": "question_withdrawn",
-              "message": "This question was withdrawn: Superseded."
-            }
-          ]
-        },
-        {
-          "questionId": "75827130-8ac5-4ee5-9d05-68c9b3b90cbe",
-          "order": [
-            "withdraw",
-            "dismiss",
-            "answer"
-          ],
-          "status": "withdrawn",
-          "newMailCount": 0,
-          "answerMail": 0,
-          "dismissalMail": 0,
-          "refusals": [
-            {
-              "code": "question_withdrawn",
-              "message": "This question was withdrawn: Superseded."
-            },
-            {
-              "code": "question_withdrawn",
-              "message": "This question was withdrawn: Superseded."
-            }
-          ]
-        },
-        {
-          "questionId": "7ef4c256-32a5-46d7-b5cb-b0a48836e512",
-          "order": [
-            "dismiss",
-            "answer",
-            "withdraw"
-          ],
-          "status": "dismissed",
-          "newMailCount": 1,
-          "answerMail": 0,
-          "dismissalMail": 1,
-          "refusals": [
-            {
-              "code": "question_dismissed",
-              "message": "This question was dismissed without an answer."
-            },
-            {
-              "code": "question_dismissed",
-              "message": "This question was dismissed without an answer."
-            }
-          ]
-        },
-        {
-          "questionId": "5d039ceb-4aac-40af-9e22-c18d1722d73d",
-          "order": [
-            "dismiss",
-            "withdraw",
-            "answer"
-          ],
-          "status": "dismissed",
-          "newMailCount": 1,
-          "answerMail": 0,
-          "dismissalMail": 1,
-          "refusals": [
-            {
-              "code": "question_dismissed",
-              "message": "This question was dismissed without an answer."
-            },
-            {
-              "code": "question_dismissed",
-              "message": "This question was dismissed without an answer."
-            }
-          ]
-        }
-      ],
-      "terminalProofs": [
-        {
-          "question": {
-            "id": "b3f9f01c-0ab3-40e1-9d88-51b4bf9e808e",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Dismiss once?",
-            "options": null,
-            "status": "dismissed",
-            "withdrawalReason": null,
-            "withdrawnAt": null,
-            "dismissedAt": 1792478394586,
-            "dismissedBy": "rpc",
-            "dismissalMessageId": 1,
-            "answer": null,
-            "askedAt": 1792478394585,
-            "answeredAt": null,
-            "answeredBy": null,
-            "deliveryMessageId": null
-          },
-          "event": {
-            "seq": 8,
-            "ts": 1792478394586,
-            "kind": "question.dismissed",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "b3f9f01c-0ab3-40e1-9d88-51b4bf9e808e",
-              "dismissedAt": 1792478394586,
-              "dismissedBy": "rpc",
-              "dismissalMessageId": 1,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.dismiss"
-              }
-            }
-          },
-          "answerMail": [],
-          "notice": {
-            "id": 1,
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "sender": "rpc",
-            "body": "Your question was dismissed without an answer.",
-            "priority": 0,
-            "urgency": "next",
-            "enqueuedAt": 1792478394586,
-            "deliveredAt": null,
-            "deliveredGeneration": null,
-            "senderKind": "automation"
-          }
-        },
-        {
-          "question": {
-            "id": "fe3a1241-e380-4a35-b8bb-65816616a549",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "No failed-key poison?",
-            "options": null,
-            "status": "dismissed",
-            "withdrawalReason": null,
-            "withdrawnAt": null,
-            "dismissedAt": 1792478394591,
-            "dismissedBy": "rpc",
-            "dismissalMessageId": 2,
-            "answer": null,
-            "askedAt": 1792478394591,
-            "answeredAt": null,
-            "answeredBy": null,
-            "deliveryMessageId": null
-          },
-          "event": {
-            "seq": 11,
-            "ts": 1792478394592,
-            "kind": "question.dismissed",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "fe3a1241-e380-4a35-b8bb-65816616a549",
-              "dismissedAt": 1792478394591,
-              "dismissedBy": "rpc",
-              "dismissalMessageId": 2,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.dismiss"
-              }
-            }
-          },
-          "answerMail": [],
-          "notice": {
-            "id": 2,
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "sender": "rpc",
-            "body": "Your question was dismissed without an answer.",
-            "priority": 0,
-            "urgency": "next",
-            "enqueuedAt": 1792478394591,
-            "deliveredAt": null,
-            "deliveredGeneration": null,
-            "senderKind": "automation"
-          }
-        },
-        {
-          "question": {
-            "id": "5c820da2-f254-48c1-a264-bbd113d091f8",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Race 0?",
-            "options": null,
-            "status": "answered",
-            "withdrawalReason": null,
-            "withdrawnAt": null,
-            "dismissedAt": null,
-            "dismissedBy": null,
-            "dismissalMessageId": null,
-            "answer": "yes",
-            "askedAt": 1792478394612,
-            "answeredAt": 1792478394613,
-            "answeredBy": "rpc",
-            "deliveryMessageId": 3
-          },
-          "event": {
-            "seq": 14,
-            "ts": 1792478394613,
-            "kind": "question.answered",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "5c820da2-f254-48c1-a264-bbd113d091f8",
-              "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-              "answer": "yes",
-              "answeredAt": 1792478394613,
-              "answeredBy": "rpc",
-              "deliveryMessageId": 3,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.answer"
-              }
-            }
-          },
-          "answerMail": [
-            {
-              "id": 3,
-              "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-              "sender": "rpc",
-              "body": "[answer to question 5c820da2-f254-48c1-a264-bbd113d091f8] yes\n\n(question was: Race 0?)",
-              "priority": 0,
-              "urgency": "next",
-              "enqueuedAt": 1792478394613,
-              "deliveredAt": null,
-              "deliveredGeneration": null
-            }
-          ],
-          "notice": null
-        },
-        {
-          "question": {
-            "id": "4ffdb64c-7bb7-4b28-ae4f-c93c5b6a3934",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Race 1?",
-            "options": null,
-            "status": "dismissed",
-            "withdrawalReason": null,
-            "withdrawnAt": null,
-            "dismissedAt": 1792478394615,
-            "dismissedBy": "rpc",
-            "dismissalMessageId": 4,
-            "answer": null,
-            "askedAt": 1792478394615,
-            "answeredAt": null,
-            "answeredBy": null,
-            "deliveryMessageId": null
-          },
-          "event": {
-            "seq": 17,
-            "ts": 1792478394615,
-            "kind": "question.dismissed",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "4ffdb64c-7bb7-4b28-ae4f-c93c5b6a3934",
-              "dismissedAt": 1792478394615,
-              "dismissedBy": "rpc",
-              "dismissalMessageId": 4,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.dismiss"
-              }
-            }
-          },
-          "answerMail": [],
-          "notice": {
-            "id": 4,
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "sender": "rpc",
-            "body": "Your question was dismissed without an answer.",
-            "priority": 0,
-            "urgency": "next",
-            "enqueuedAt": 1792478394615,
-            "deliveredAt": null,
-            "deliveredGeneration": null,
-            "senderKind": "automation"
-          }
-        },
-        {
-          "question": {
-            "id": "f3f24223-5384-4c49-a422-1251d2bbe25b",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Race 2?",
-            "options": null,
-            "status": "withdrawn",
-            "withdrawalReason": "Superseded.",
-            "withdrawnAt": 1792478394617,
-            "dismissedAt": null,
-            "dismissedBy": null,
-            "dismissalMessageId": null,
-            "answer": null,
-            "askedAt": 1792478394616,
-            "answeredAt": null,
-            "answeredBy": null,
-            "deliveryMessageId": null
-          },
-          "event": {
-            "seq": 19,
-            "ts": 1792478394617,
-            "kind": "question.withdrawn",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "f3f24223-5384-4c49-a422-1251d2bbe25b",
-              "withdrawalReason": "Superseded.",
-              "withdrawnAt": 1792478394617,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.withdraw"
-              }
-            }
-          },
-          "answerMail": [],
-          "notice": null
-        },
-        {
-          "question": {
-            "id": "8c6ea3cc-1bcb-4092-a71f-d3a0c2833d2c",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Race 3?",
-            "options": null,
-            "status": "dismissed",
-            "withdrawalReason": null,
-            "withdrawnAt": null,
-            "dismissedAt": 1792478394619,
-            "dismissedBy": "rpc",
-            "dismissalMessageId": 5,
-            "answer": null,
-            "askedAt": 1792478394618,
-            "answeredAt": null,
-            "answeredBy": null,
-            "deliveryMessageId": null
-          },
-          "event": {
-            "seq": 22,
-            "ts": 1792478394619,
-            "kind": "question.dismissed",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "8c6ea3cc-1bcb-4092-a71f-d3a0c2833d2c",
-              "dismissedAt": 1792478394619,
-              "dismissedBy": "rpc",
-              "dismissalMessageId": 5,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.dismiss"
-              }
-            }
-          },
-          "answerMail": [],
-          "notice": {
-            "id": 5,
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "sender": "rpc",
-            "body": "Your question was dismissed without an answer.",
-            "priority": 0,
-            "urgency": "next",
-            "enqueuedAt": 1792478394619,
-            "deliveredAt": null,
-            "deliveredGeneration": null,
-            "senderKind": "automation"
-          }
-        },
-        {
-          "question": {
-            "id": "0cd36303-3b95-495a-a37c-d002dcba7906",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Race 4?",
-            "options": null,
-            "status": "answered",
-            "withdrawalReason": null,
-            "withdrawnAt": null,
-            "dismissedAt": null,
-            "dismissedBy": null,
-            "dismissalMessageId": null,
-            "answer": "yes",
-            "askedAt": 1792478394620,
-            "answeredAt": 1792478394620,
-            "answeredBy": "rpc",
-            "deliveryMessageId": 6
-          },
-          "event": {
-            "seq": 25,
-            "ts": 1792478394621,
-            "kind": "question.answered",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "0cd36303-3b95-495a-a37c-d002dcba7906",
-              "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-              "answer": "yes",
-              "answeredAt": 1792478394620,
-              "answeredBy": "rpc",
-              "deliveryMessageId": 6,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.answer"
-              }
-            }
-          },
-          "answerMail": [
-            {
-              "id": 6,
-              "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-              "sender": "rpc",
-              "body": "[answer to question 0cd36303-3b95-495a-a37c-d002dcba7906] yes\n\n(question was: Race 4?)",
-              "priority": 0,
-              "urgency": "next",
-              "enqueuedAt": 1792478394620,
-              "deliveredAt": null,
-              "deliveredGeneration": null
-            }
-          ],
-          "notice": null
-        },
-        {
-          "question": {
-            "id": "410ff297-2f99-4b4f-9a9f-73f695709fea",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Race 5?",
-            "options": null,
-            "status": "answered",
-            "withdrawalReason": null,
-            "withdrawnAt": null,
-            "dismissedAt": null,
-            "dismissedBy": null,
-            "dismissalMessageId": null,
-            "answer": "yes",
-            "askedAt": 1792478394622,
-            "answeredAt": 1792478394622,
-            "answeredBy": "rpc",
-            "deliveryMessageId": 7
-          },
-          "event": {
-            "seq": 28,
-            "ts": 1792478394623,
-            "kind": "question.answered",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "410ff297-2f99-4b4f-9a9f-73f695709fea",
-              "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-              "answer": "yes",
-              "answeredAt": 1792478394622,
-              "answeredBy": "rpc",
-              "deliveryMessageId": 7,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.answer"
-              }
-            }
-          },
-          "answerMail": [
-            {
-              "id": 7,
-              "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-              "sender": "rpc",
-              "body": "[answer to question 410ff297-2f99-4b4f-9a9f-73f695709fea] yes\n\n(question was: Race 5?)",
-              "priority": 0,
-              "urgency": "next",
-              "enqueuedAt": 1792478394622,
-              "deliveredAt": null,
-              "deliveredGeneration": null
-            }
-          ],
-          "notice": null
-        },
-        {
-          "question": {
-            "id": "9ea04070-146c-4f25-97e0-6c807c314a65",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Race 6?",
-            "options": null,
-            "status": "withdrawn",
-            "withdrawalReason": "Superseded.",
-            "withdrawnAt": 1792478394625,
-            "dismissedAt": null,
-            "dismissedBy": null,
-            "dismissalMessageId": null,
-            "answer": null,
-            "askedAt": 1792478394624,
-            "answeredAt": null,
-            "answeredBy": null,
-            "deliveryMessageId": null
-          },
-          "event": {
-            "seq": 30,
-            "ts": 1792478394625,
-            "kind": "question.withdrawn",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "9ea04070-146c-4f25-97e0-6c807c314a65",
-              "withdrawalReason": "Superseded.",
-              "withdrawnAt": 1792478394625,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.withdraw"
-              }
-            }
-          },
-          "answerMail": [],
-          "notice": null
-        },
-        {
-          "question": {
-            "id": "75827130-8ac5-4ee5-9d05-68c9b3b90cbe",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Race 7?",
-            "options": null,
-            "status": "withdrawn",
-            "withdrawalReason": "Superseded.",
-            "withdrawnAt": 1792478394627,
-            "dismissedAt": null,
-            "dismissedBy": null,
-            "dismissalMessageId": null,
-            "answer": null,
-            "askedAt": 1792478394626,
-            "answeredAt": null,
-            "answeredBy": null,
-            "deliveryMessageId": null
-          },
-          "event": {
-            "seq": 32,
-            "ts": 1792478394627,
-            "kind": "question.withdrawn",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "75827130-8ac5-4ee5-9d05-68c9b3b90cbe",
-              "withdrawalReason": "Superseded.",
-              "withdrawnAt": 1792478394627,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.withdraw"
-              }
-            }
-          },
-          "answerMail": [],
-          "notice": null
-        },
-        {
-          "question": {
-            "id": "7ef4c256-32a5-46d7-b5cb-b0a48836e512",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Race 8?",
-            "options": null,
-            "status": "dismissed",
-            "withdrawalReason": null,
-            "withdrawnAt": null,
-            "dismissedAt": 1792478394628,
-            "dismissedBy": "rpc",
-            "dismissalMessageId": 8,
-            "answer": null,
-            "askedAt": 1792478394628,
-            "answeredAt": null,
-            "answeredBy": null,
-            "deliveryMessageId": null
-          },
-          "event": {
-            "seq": 35,
-            "ts": 1792478394628,
-            "kind": "question.dismissed",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "7ef4c256-32a5-46d7-b5cb-b0a48836e512",
-              "dismissedAt": 1792478394628,
-              "dismissedBy": "rpc",
-              "dismissalMessageId": 8,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.dismiss"
-              }
-            }
-          },
-          "answerMail": [],
-          "notice": {
-            "id": 8,
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "sender": "rpc",
-            "body": "Your question was dismissed without an answer.",
-            "priority": 0,
-            "urgency": "next",
-            "enqueuedAt": 1792478394628,
-            "deliveredAt": null,
-            "deliveredGeneration": null,
-            "senderKind": "automation"
-          }
-        },
-        {
-          "question": {
-            "id": "5d039ceb-4aac-40af-9e22-c18d1722d73d",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "generation": 1,
-            "text": "Race 9?",
-            "options": null,
-            "status": "dismissed",
-            "withdrawalReason": null,
-            "withdrawnAt": null,
-            "dismissedAt": 1792478394630,
-            "dismissedBy": "rpc",
-            "dismissalMessageId": 9,
-            "answer": null,
-            "askedAt": 1792478394629,
-            "answeredAt": null,
-            "answeredBy": null,
-            "deliveryMessageId": null
-          },
-          "event": {
-            "seq": 38,
-            "ts": 1792478394630,
-            "kind": "question.dismissed",
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "payload": {
-              "questionId": "5d039ceb-4aac-40af-9e22-c18d1722d73d",
-              "dismissedAt": 1792478394630,
-              "dismissedBy": "rpc",
-              "dismissalMessageId": 9,
-              "rpcCaller": {
-                "transport": "local_unix",
-                "ingress": "local_unix",
-                "uid": 1001,
-                "pid": 2837447,
-                "verb": "question.dismiss"
-              }
-            }
-          },
-          "answerMail": [],
-          "notice": {
-            "id": 9,
-            "beeId": "6b2ba4cc-b495-45d8-ad5c-b962cda8de70",
-            "sender": "rpc",
-            "body": "Your question was dismissed without an answer.",
-            "priority": 0,
-            "urgency": "next",
-            "enqueuedAt": 1792478394630,
-            "deliveredAt": null,
-            "deliveredGeneration": null,
-            "senderKind": "automation"
-          }
-        }
-      ],
-      "replayEqual": true,
-      "reconnectDeduped": true,
-      "dedicatedEnvelopeObserved": true,
-      "lifecycleReceipts": [
-        {
-          "from": "stop",
-          "questionId": "c9daf281-94e5-4061-a4fd-9a832a3f5b58",
-          "messageId": 11,
-          "lifecycle": "active",
-          "generation": 2
-        },
-        {
-          "from": "archive",
-          "questionId": "100fa695-2c5b-495b-a8ba-6cc29879db19",
-          "messageId": 12,
-          "lifecycle": "active",
-          "generation": 2
-        }
-      ],
-      "liveNoticeMessageId": 10,
-      "lastHumanOutputAt": null
-    },
-    {
-      "host": "<LAB_HOST>",
-      "artifact": "dist/cli.js",
-      "data": "<TASK_CACHE>/tmp/hb-v2-daemon-M5JUeb",
-      "socket": "<TASK_CACHE>/tmp/hb-v2-daemon-M5JUeb/built.sock",
-      "shutdown": {
-        "code": 0,
-        "signal": null
-      },
-      "question": {
-        "id": "3fc29448-7596-4700-bd14-c2f9062e68d0",
-        "beeId": "7e1e903a-f33c-4b7d-9b96-b065200ad596",
-        "generation": 1,
-        "text": "Built artifact?",
-        "options": null,
-        "status": "dismissed",
-        "withdrawalReason": null,
-        "withdrawnAt": null,
-        "dismissedAt": 1792478396585,
-        "dismissedBy": "rpc",
-        "dismissalMessageId": 1,
-        "answer": null,
-        "askedAt": 1792478396579,
-        "answeredAt": null,
-        "answeredBy": null,
-        "deliveryMessageId": null
-      },
-      "notice": {
-        "id": 1,
-        "body": "Your question was dismissed without an answer.",
-        "senderKind": "automation"
-      },
-      "stableRetry": true
     }
-  ]
+  ],
+  "coordinatorLab": "PENDING; no v45 binary rollback success or runtime artifact claimed"
 }

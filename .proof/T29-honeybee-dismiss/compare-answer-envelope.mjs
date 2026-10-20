@@ -5,7 +5,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const base = '9ecbb37f7cb448503cdcfaf8747538a3580f982f';
+const base = 'e26ad0241105b3d374bfe73649af60a90736aa9b';
 const candidate = execFileSync('git', ['rev-parse', process.argv[2] ?? 'HEAD'], { encoding: 'utf8' }).trim();
 const path = 'v2/daemon/src/envelope.ts';
 const moduleUrl = pathToFileURL(resolve(path));

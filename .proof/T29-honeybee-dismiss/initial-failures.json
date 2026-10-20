@@ -1,30 +1,20 @@
 {
-  "retainedPrivately": true,
-  "failures": [
-    {
-      "stage": "core fixture",
-      "issue": "Strictly increasing harness clock was compared after another clock read; corrected to compare against ask time.",
-      "resolved": true
-    },
-    {
-      "stage": "integration typecheck",
-      "issue": "Added the missing read-only row fields and represented the typed audit payload as a record-compatible object alias.",
-      "resolved": true
-    },
-    {
-      "stage": "proof typecheck",
-      "issue": "Nullable view fixture and private-constructor type needed explicit narrowing and ReturnType.",
-      "resolved": true
-    },
-    {
-      "stage": "rollback scaffold",
-      "issue": "Inherited entry resolver missed leading dot-slash and selected working-tree sources. Corrected resolver and now assert committed Git sources loaded plus old core has no dismissal method. Package imports remain explicit external file URLs.",
-      "resolved": true
-    },
-    {
-      "stage": "whitespace check",
-      "issue": "Removed one trailing blank line from extracted census helper.",
-      "resolved": true
-    }
-  ]
+  "historicalCandidate": "e5c98e8ca99b88bb4274dd3190f9b71df95d3fbd",
+  "historicalMaskedReceipt": "ef156ca7cb9a0d09f8482cf9ec90833ef791ab589341493cf6d59d2530bbe7e1",
+  "historicalGate": "FAILED, superseded by v46; no successful re-gate claimed",
+  "resolvedInSource": [
+    "Source-only gate could not load baseline with Git: replaced with pinned complete SQL/data fixture.",
+    "Raw canonical mirror differed from legacy frozen shape: old document unchanged through actual projector; modern document added, raw-egress census strengthened."
+  ],
+  "localReproductionCorrections": [
+    "Used repo-equivalent v2 compiler options for standalone proof typecheck.",
+    "Shortened disposable socket roots after109-byte path caused listen EINVAL.",
+    "Used official bundled npm11 after host npm12 changed pack JSON shape."
+  ],
+  "pendingBaselineDefects": [
+    "turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants",
+    "local launcher scrubs inherited no-color env for interactive agents"
+  ],
+  "ownership": "f585 MEDIUM; masked gate decides exact-name disposition per Queen22871",
+  "rawLogs": "Private task cache only; no raw controller or runner transcript committed"
 }
