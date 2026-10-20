@@ -34,6 +34,7 @@ export class QuotaRecovery {
         if (runtime && runtime.generation > row.sourceGeneration && runtime.state === "stopped") {
           if (this.store.activeFlags(row.beeId).some(flag => flag.flag === "spawn_failed")) {
             if (row.trigger === "proactive") this.store.cancelQuotaRecovery(row.id, "successor_spawn_failed");
+            else this.store.resumeQuotaRecovery(row.id);
             continue;
           }
           this.store.enqueueBootRetry(row.beeId);

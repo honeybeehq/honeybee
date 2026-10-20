@@ -35,7 +35,8 @@ export function deriveBeeView(
   const working = state === "booting" || state === "running";
   const unreadOutput =
     bee.lastOutputAt != null && (opts.readCursor == null || opts.readCursor < bee.lastOutputAt);
-  const waitingForYou = !opts.automaticQuotaRecovery && (state === "idle" || (state === "stopped" && unreadOutput));
+  const stalledQuotaRecovery = opts.automaticQuotaRecovery === true && state === "stopped" && flags.includes("spawn_failed");
+  const waitingForYou = stalledQuotaRecovery || !opts.automaticQuotaRecovery && (state === "idle" || (state === "stopped" && unreadOutput));
   return {
     beeId,
     exists: true,
