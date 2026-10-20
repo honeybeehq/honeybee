@@ -23,7 +23,19 @@ for (const scenario of ["normal", "legacy-no-projection", "malformed-waiting", "
     resolve: beeId => ({ command: process.execPath, args: [fixture, "off"], cwd: root, env: { ...process.env, PHONE_PROVIDER_RECEIPT: join(root, `${beeId}.jsonl`) }, deliveryMode: mode, observation: { paneFallback: true, quiesceMs: 10, deliveryGraceMs: 1000 } }) });
   const calls: { id: number; body: string }[] = [];
   const deliver = driver.deliver.bind(driver);
-  driver.deliver = (...args) => { calls.push({ id: args[2], body: args[3] }); return deliver(...args); };
+  const outcomes: { generation: number; outcome: string; detail: string | null; bytesCouldSubmit: boolean }[] = [];
+  const injectable = driver as unknown as { inject: (...args: unknown[]) => void };
+  const inject = injectable.inject.bind(driver);
+  let bytesCouldSubmit = false;
+  injectable.inject = (...args) => { bytesCouldSubmit = true; return inject(...args); };
+  driver.deliver = (...args) => {
+    calls.push({ id: args[2], body: args[3] });
+    bytesCouldSubmit = false;
+    const outcome = deliver(...args);
+    outcomes.push({ generation: args[1], outcome: outcome.accepted ? "accepted" : outcome.reason ?? "unknown",
+      detail: outcome.accepted ? null : outcome.detail ?? null, bytesCouldSubmit });
+    return outcome;
+  };
   const makeCore = () => new DaemonCore({ store, driver, now: () => clock.now, log: () => {}, policy: { commandsPerStep: 8, idleWindowSteps: null, bootHangTimeoutSteps: 100_000 } });
   let core = makeCore();
   const rows = (beeId: string): { ready?: boolean; submittedBody?: string }[] => {
@@ -113,5 +125,8 @@ for (const scenario of ["normal", "legacy-no-projection", "malformed-waiting", "
     assert.equal(store.getMessage(first.id)?.deliveryHold?.heldSince, hold.heldSince);
     assert.equal(store.getMessage(first.id)?.deliveryHold?.receipt?.senderNoticeMessageId, noticeId);
     assert.equal(store.readDaemonWork().find(row => row.runtime.beeId === receiver.id)?.pending.length, 0);
+  } catch (error) {
+    if (error instanceof assert.AssertionError) console.error(JSON.stringify({ scenario, deliveryOutcomes: outcomes }));
+    throw error;
   } finally { driver.disposeAll(); server.killServer(); store.close(); rmSync(root, { recursive: true, force: true }); }
 });
