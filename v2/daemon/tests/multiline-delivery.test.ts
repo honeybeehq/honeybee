@@ -12,6 +12,9 @@ class MultilineDriver extends FakeDriver {
   refusal: string | null | undefined = undefined;
   noProcess = false;
   readonly calls: number[] = [];
+  override deliveryReadiness(beeId: string, generation: number, messageId: number): string {
+    return JSON.stringify([super.deliveryReadiness(beeId, generation, messageId), this.refusal === undefined ? "busy" : this.refusal, this.noProcess]);
+  }
   override deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean }): DeliverOutcome {
     this.calls.push(messageId);
     if (this.noProcess) return { accepted: false, reason: "no_process" };

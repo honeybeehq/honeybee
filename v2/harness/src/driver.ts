@@ -120,6 +120,7 @@ export interface RuntimeDriver {
    * mid-turn); never blocks. A refusal is not a failure — the mailbox record
    * is the durable truth and the daemon retries against it.
    */
+  deliveryReadiness?(beeId: string, generation: number, messageId: number): string;
   deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome;
   deliveryPaneClear?(beeId: string, generation: number): boolean;
   reconcileDeliveryPane?(beeId: string, generation: number, messageId: number, body: string): boolean;

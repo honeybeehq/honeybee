@@ -260,6 +260,10 @@ export class CellDriver implements RuntimeDriver {
     });
   }
 
+  deliveryReadiness(beeId: string, generation: number, messageId: number): string {
+    return this.inner.deliveryReadiness(beeId, generation, messageId);
+  }
+
   deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean }): DeliverOutcome {
     return this.inner.deliver(beeId, generation, messageId, body, options);
   }

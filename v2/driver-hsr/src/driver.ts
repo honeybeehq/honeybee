@@ -733,6 +733,16 @@ export class HsrDriver implements RuntimeDriver {
     return matching && (this.consumed.get(messageId) === generation || p?.generation === generation && p.confirmedDeliveries.has(messageId)) ? "accepted" : "unknown";
   }
 
+  deliveryReadiness(beeId: string, generation: number, messageId: number): string {
+    const p = this.procs.get(beeId);
+    if (!p || p.generation !== generation) return "absent";
+    return JSON.stringify([p.exited, p.degraded, p.adapter?.harness, p.phase, p.stopCause,
+      p.sessionId, p.turnId, this.reconnecting.has(`${beeId}:${generation}`),
+      p.pendingDeliveries.has(messageId), p.confirmedDeliveries.has(messageId),
+      p.socketBroken, p.socket?.destroyed, p.socket?.writable,
+      p.child?.stdin?.destroyed, p.child?.stdin?.writable]);
+  }
+
   deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean }): DeliverOutcome {
     const refused = (reason: "no_process" | "not_ready"): DeliverOutcome => ({ accepted: false, reason, ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) });
     const p = this.procs.get(beeId);

@@ -2346,6 +2346,8 @@ export class HiveDaemon {
           return this.mustStore().releaseUpdate({ id: this.param(params, "id"),
             recoverySubjectDigest: this.param(params, "recoverySubjectDigest"), epoch: params.epoch });
         });
+      case "doctor.integrity":
+        return this.mustStore().quickCheck();
       case "node.harnesses":
         return this.rpcNodeHarnesses();
       case "health":

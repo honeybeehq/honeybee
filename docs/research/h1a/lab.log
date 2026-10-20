@@ -1,0 +1,11 @@
+BEFORE main 8da09846, unchanged owned daemon-core lab
+{"case": "refusal-cadence", "ticks": 300, "pending": true, "attemptsCount": 300}
+{"case":"busy-to-idle","delivered":true,"at":61200}
+AFTER H1a, same 200ms virtual cadence; fixed random jitter 0.5
+{"case":"refusal-cadence","ticks":300,"attempts":[{"at":1000,"op":"deliver.refused bee=lab msg=1 reason=not_ready"},{"at":1400,"op":"deliver.refused bee=lab msg=1 reason=not_ready"},{"at":2200,"op":"deliver.refused bee=lab msg=1 reason=not_ready"},{"at":3600,"op":"deliver.refused bee=lab msg=1 reason=not_ready"},{"at":6400,"op":"deliver.refused bee=lab msg=1 reason=not_ready"},{"at":12000,"op":"deliver.refused bee=lab msg=1 reason=not_ready"},{"at":23200,"op":"deliver.refused bee=lab msg=1 reason=not_ready"},{"at":45600,"op":"deliver.refused bee=lab msg=1 reason=not_ready"}],"pending":true}
+{"case":"bounded-retry-and-i1","attempts":[1000,1400,2200,3600,6400,12000,23200,45600,72000,98400,124800,151200,177600,204000,230400,256800,283200,309600,336000,362400,388800,415200,441600,468000,494400,520800,547200,573600,600000],"violations":1}
+{"case":"busy-to-idle","delivered":true,"at":601400}
+{"case":"owned-sqlite-full","full":true,"message":"database or disk is full"}
+{"case":"recovery-integrity","delivered":true,"check":{"ok":true,"results":["ok"]},"restart":false}
+OWNED DAEMON RPC
+{"case":"live-owned-daemon-doctor-rpc","result":{"ok":true,"results":["ok"]},"pid":1131281}

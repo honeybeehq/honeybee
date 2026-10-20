@@ -1710,6 +1710,12 @@ export class CoreStore {
     for (const table of tables) if (affected.has(table.toLowerCase()) && this.db.prepare(`PRAGMA foreign_key_check(${quote(table)})`).all().length) throw new CoreError(`Question schema migration violates foreign keys in ${table}`);
   }
 
+  quickCheck(): { ok: boolean; results: string[] } {
+    if (this.txDepth > 0) throw new CoreError("Integrity check requires a settled transaction");
+    const results = this.db.prepare("PRAGMA quick_check").all().map(row => String(row.quick_check));
+    return { ok: results.length === 1 && results[0] === "ok", results };
+  }
+
   close(): void {
     if (this.closed) return;
     this.closed = true;

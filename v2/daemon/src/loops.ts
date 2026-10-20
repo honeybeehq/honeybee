@@ -1602,6 +1602,7 @@ export class DaemonCore {
   }
 
   private readonly interruptRequested = new Set<number>();
+  private readonly deliveryRetries = new Map<string, { key: string; attempts: number; nextAt: number }>();
 
   /**
    * Eligibility/ordering rule (Q2 amendment): urgency governs WHEN a message
@@ -1621,6 +1622,8 @@ export class DaemonCore {
    */
   private deliveryLoop(work: readonly DaemonWorkRow[]): void {
     const unsupportedAttempts = new Set<number>();
+    const retryBees = new Set(work.map(row => row.runtime.beeId));
+    for (const beeId of this.deliveryRetries.keys()) if (!retryBees.has(beeId)) this.deliveryRetries.delete(beeId);
     this.multilineFallback?.cleanupDeleted();
     const quarantines = this.multilineFallback ? this.store.multilinePaneQuarantines() : [];
     const heldMail = this.multilineFallback ? this.store.heldMultilineMail() : null;
@@ -1650,7 +1653,7 @@ export class DaemonCore {
         }
         if (quarantined) continue;
         const quotaGate = this.store.quotaDeliveryGate(rt.beeId);
-        if (quotaGate.held) continue;
+        if (quotaGate.held) { this.deliveryRetries.delete(rt.beeId); continue; }
         const allPending = this.multilineFallback
           ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => a.id - b.id)
           : ordinaryPending;
@@ -1659,7 +1662,7 @@ export class DaemonCore {
         if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
         const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);
         if (threadOperation && threadOperation.phase !== "ready") continue;
-        if (pending.length === 0) continue;
+        if (pending.length === 0) { this.deliveryRetries.delete(rt.beeId); continue; }
         // `running` on nothing but a SYNTHETIC boot is provisional (v9): the
         // driver's accept point is open and no real turn exists to disturb, so
         // `idle` mail is eligible. Without this, idle mail sent to a stopped
@@ -1680,7 +1683,7 @@ export class DaemonCore {
         if (handoff && handoffFencesSource(handoff.phase)) continue;
         const seedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
         const seed = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
-        if (!trulyMidTurn && this.beforeTurn && !this.beforeTurn(rt.beeId, rt.generation)) continue;
+        if (!trulyMidTurn && this.beforeTurn && !this.beforeTurn(rt.beeId, rt.generation)) { this.deliveryRetries.delete(rt.beeId); continue; }
         if (rt.state === "running") {
           // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
           // interrupt per message; an eligible `now` behind an undelivered
@@ -1746,10 +1749,15 @@ export class DaemonCore {
             }),
           );
         }
+        const readiness = this.driver.deliveryReadiness?.(rt.beeId, rt.generation, msg.id) ?? "";
+        const retryKey = JSON.stringify([msg.id, msg.urgency, rt.generation, rt.state, rt.updatedAt, readiness, msg.deliveryHold?.stage]);
+        const retry = this.deliveryRetries.get(rt.beeId);
+        if (retry && retry.key === retryKey && this.now() < retry.nextAt) continue;
         const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
         const outcome = fallback?.handled ? { accepted: fallback.accepted, reason: "not_ready" as const, detail: undefined }
           : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
         if (outcome.accepted) {
+          this.deliveryRetries.delete(rt.beeId);
           if (!fallback?.handled) this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
           const deliveredGeneration = fallback?.generation ?? rt.generation;
           this.interruptRequested.delete(msg.id);
@@ -1775,7 +1783,12 @@ export class DaemonCore {
             }
             else this.store.pauseMultilineDeliveryWait(msg.id);
           }
-          this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}`);
+          if (outcome.reason === "not_ready" && !unsupportedAttempts.has(msg.id)) {
+            const attempts = retry?.key === retryKey ? retry.attempts + 1 : 1;
+            const delay = Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + Math.random() * 0.25);
+            this.deliveryRetries.set(rt.beeId, { key: retryKey, attempts, nextAt: this.now() + delay });
+          } else this.deliveryRetries.delete(rt.beeId);
+          this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}` + (outcome.detail ? ` detail=${outcome.detail}` : ""));
         }
       }
     } finally { this.store.retainMultilineDeliveryWaits(unsupportedAttempts); }

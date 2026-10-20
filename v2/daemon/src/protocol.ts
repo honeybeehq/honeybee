@@ -484,6 +484,7 @@ export const RPC_VERBS = [
   "commands",
   "deployInfo",
   "health",
+  "doctor.integrity",
   // F8 (additive read): per-harness executable facts — present/path/source/
   // version — resolved with the SAME rule the spawn path uses, so probe
   // truth equals spawn truth.
