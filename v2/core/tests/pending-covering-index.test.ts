@@ -8,14 +8,14 @@ import { SCHEMA_VERSION } from "../src/schema.ts";
 import { harness, makeBee } from "./helpers.ts";
 
 // Verbatim production texts (asserted against store.ts so pins cannot drift).
-const I1_MESSAGES_SQL = `SELECT id, bee_id, urgency, enqueued_at
+const I1_MESSAGES_SQL = `SELECT id, bee_id, urgency, enqueued_at, queue_order
        FROM mailbox
        WHERE delivered_at IS NULL
-       ORDER BY bee_id, id`;
+       ORDER BY bee_id, COALESCE(queue_order,id), id`;
 const WORK_MESSAGES_SQL = `SELECT message.id,
               message.bee_id,
               message.urgency,
-              message.enqueued_at
+              message.enqueued_at, message.queue_order
        FROM runtimes AS runtime
        CROSS JOIN mailbox AS message
        WHERE runtime.state != 'stopped'
@@ -27,7 +27,7 @@ const WORK_MESSAGES_SQL = `SELECT message.id,
          AND message.bee_id = runtime.bee_id
          AND message.delivered_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id = message.id AND held.held_since IS NOT NULL)
-       ORDER BY runtime.bee_id, message.id`;
+       ORDER BY runtime.bee_id, COALESCE(message.queue_order,message.id), message.id`;
 const PENDING_BEES_CTE_SQL = `SELECT DISTINCT bee_id
          FROM mailbox
          WHERE delivered_at IS NULL`;
@@ -197,14 +197,21 @@ for (const withHold of [false, true]) test(`pending-metadata index is covering f
     assert.match(indexSql.sql, /WHERE delivered_at IS NULL/);
     assert.doesNotMatch(indexSql.sql, /body|json/i, "no body column and no JSON expression in the index");
 
+    const fifoColumns = check.prepare("SELECT name FROM pragma_index_info('mailbox_fifo_pending') ORDER BY seqno").all().map(row => row.name);
+    assert.deepEqual(fifoColumns, ["bee_id", null, "id", "urgency", "enqueued_at", "delivered_at", "queue_order", "replaces_message_id"]);
+    const fifoSql = String(check.prepare("SELECT sql FROM sqlite_master WHERE name = 'mailbox_fifo_pending'").get()?.sql);
+    assert.match(fifoSql, /COALESCE\(queue_order,id\)/);
+    assert.match(fifoSql, /WHERE delivered_at IS NULL/);
+    assert.doesNotMatch(fifoSql, /body|json/i);
+
     const plan = (sql: string) => check.prepare(`EXPLAIN QUERY PLAN ${sql}`).all()
       .map((row) => String((row as { detail?: unknown }).detail)).join("\n");
     for (const [name, sql, access] of [
-      ["i1-messages", I1_MESSAGES_SQL, /mailbox USING COVERING INDEX mailbox_pending_metadata/],
+      ["i1-messages", I1_MESSAGES_SQL, /mailbox USING COVERING INDEX mailbox_fifo_pending/],
       // The work query aliases mailbox as `message`; its outer runtimes scan
       // may sort the LAST ORDER BY term (per-bee id micro-sort) — only a
       // full-ORDER-BY temp b-tree would betray a non-index order source.
-      ["work-messages", WORK_MESSAGES_SQL, /message USING COVERING INDEX mailbox_pending_metadata/],
+      ["work-messages", WORK_MESSAGES_SQL, /message USING COVERING INDEX mailbox_fifo_pending/],
       ["pending-bees-cte", PENDING_BEES_CTE_SQL, /mailbox USING COVERING INDEX mailbox_pending_metadata/],
     ] as const) {
       const details = plan(sql);

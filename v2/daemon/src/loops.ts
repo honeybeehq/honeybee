@@ -1,4 +1,5 @@
 import type { QuotaBoundary } from "../../core/src/quota.ts";
+import { deliveryConfirmationIntentFits } from "../../core/src/deliveryConfirmationTypes.ts";
 import {ProcessIdentityUnavailableError} from "../../driver-hsr/src/psutil.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
@@ -81,7 +82,7 @@ import {
   NOOP_PERFORMANCE,
   type PerformanceRecorder,
 } from "./performance.ts";
-import { SANDBOX_TMP_FULL, type DriverObservation, type RuntimeDriver, type StopCause } from "../../harness/src/driver.ts";
+import { SANDBOX_TMP_FULL, type DeliveryConfirmationPlan, type DriverObservation, type RuntimeDriver, type StopCause } from "../../harness/src/driver.ts";
 
 /** Where the (injected) executor-crash fault hits, if it does. */
 export type ExecutorCrashPoint = "none" | "before_effect" | "after_effect";
@@ -388,6 +389,14 @@ export class DaemonCore {
     const rec = this.store.reconcileAtBoot(
       live.map((p) => ({ pid: p.pid, startedAt: p.pidStartedAt })), unresolved,
     );
+    for (const proc of live) {
+      if (!this.driver.adoptedDeliveryUncertain?.(proc.beeId, proc.generation)) continue;
+      const runtime = this.store.currentRuntime(proc.beeId);
+      if (runtime?.generation !== proc.generation || runtime.state === "stopped") continue;
+      for (const messageId of this.store.legacyUnconfirmedMessageIds(proc.beeId, proc.generation)) {
+        this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: proc.beeId, generation: proc.generation, messageId });
+      }
+    }
     let orphansReaped = 0;
     for (const p of live) {
       const bee = this.store.getBee(p.beeId);
@@ -434,6 +443,7 @@ export class DaemonCore {
 
   private stepPhases(): void {
     this.performance.measureSync("core.step.observe", () => this.observe());
+    this.reconcileDeliveryConfirmations();
     this.performance.measureSync("core.step.flags", () => this.expireFlags());
     let seq = this.store.lastAuditSeq();
     let snapshot = this.performance.measureSync("core.step.snapshot", () =>
@@ -571,6 +581,7 @@ export class DaemonCore {
       return;
     }
     this.deliveryRetries.delete(obs.beeId);
+    for (const [id, poll] of this.confirmationPolls) if (poll.beeId === obs.beeId) this.confirmationPolls.delete(id);
     // v9 synthetic-boot budget: a non-synthetic booted/turn observation was
     // parsed by the adapter from REAL process output — the boot evidence that
     // resets the bee's spawn-failure budget and clears spawn_failed. Driver-
@@ -932,6 +943,7 @@ export class DaemonCore {
     for (const { runtime: rt, pending } of work) {
       if (!this.ext.isDegraded(rt.beeId, rt.generation)) continue;
       if (pending.length === 0) continue;
+      if (this.store.listDeliveryConfirmationIntents(rt.beeId).some(row => row.generation === rt.generation)) continue;
       if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "degraded_runtime" });
       this.log(`policy.degraded_stop bee=${rt.beeId} gen=${rt.generation}`);
@@ -1607,6 +1619,97 @@ export class DaemonCore {
 
   private readonly interruptRequested = new Set<number>();
   private readonly deliveryRetries = new Map<string, { key: string; attempts: number; nextAt: number }>();
+  private readonly confirmationReady = new Set<number>();
+  private readonly confirmationPolls = new Map<number, { beeId: string; key: string; attempts: number; nextAt: number }>();
+
+  private reconcileDeliveryConfirmations(): void {
+    if (this.store.inTransaction) return;
+    const intents = this.store.listDeliveryConfirmationIntents();
+    const ids = new Set(intents.map(row => row.messageId));
+    for (const id of this.confirmationPolls.keys()) if (!ids.has(id)) this.confirmationPolls.delete(id);
+    for (const id of this.confirmationReady) if (!ids.has(id)) this.confirmationReady.delete(id);
+    for (const intent of intents) {
+      const runtime = this.store.currentRuntime(intent.beeId);
+      if (!runtime || runtime.generation !== intent.generation || runtime.state === "stopped") {
+        this.store.holdDeliveryConfirmation(intent.messageId, "generation_changed");
+        this.confirmationReady.delete(intent.messageId);
+        continue;
+      }
+      if (intent.wireLine === null && intent.reason === "host_auth_failed" && this.driver.deliveryLaneReady?.(intent.beeId, intent.generation)) {
+        this.store.releaseNeverWrittenDeliveryHold(intent.messageId, intent.generation, "host_auth_failed");
+        this.confirmationPolls.delete(intent.messageId);
+        this.deliveryRetries.delete(intent.beeId);
+        continue;
+      }
+      if (this.confirmationReady.has(intent.messageId)) {
+        if (this.now() - intent.since >= 30_000) {
+          this.store.holdDeliveryConfirmation(intent.messageId, "lane_unavailable");
+          this.confirmationReady.delete(intent.messageId);
+          this.confirmationPolls.delete(intent.messageId);
+        }
+        continue;
+      }
+      if (intent.state === "held" && intent.reason === "lane_unavailable") {
+        const plan = this.driver.planDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId, "");
+        if (!plan || plan === "not_ready") continue;
+      }
+      const key = this.driver.deliveryReadiness?.(intent.beeId, intent.generation, intent.messageId) ?? "";
+      const poll = this.confirmationPolls.get(intent.messageId);
+      if (poll?.key === key && this.now() < poll.nextAt) continue;
+      const result = intent.wireLine === null
+        ? this.driver.consumeDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId) ? "accepted" : "pending_ack"
+        : this.driver.reconcileDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId, intent) ?? "unknown";
+      const attempts = poll?.key === key ? poll.attempts + 1 : 1;
+      this.confirmationPolls.set(intent.messageId, { beeId: intent.beeId, key, attempts,
+        nextAt: this.now() + Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25) });
+      if (result === "accepted") {
+        const message = this.store.getMessage(intent.messageId);
+        if (!message) continue;
+        const peer = isPeerSender(message.sender, id => this.store.getBee(id) != null);
+        const settlement = intent.wireLine === null ? undefined : intent.settlement;
+        const fallback = this.store.multilineDelivery(intent.messageId)?.fallback;
+        const applied = settlement?.multilineFallbackId && fallback?.id === settlement.multilineFallbackId
+          ? this.store.completeMultilineFallback(intent.messageId, intent.generation, this.turnTriggerSourceOf(message, peer), true).applied
+          : this.store.markDelivered(intent.messageId, intent.generation, this.turnTriggerSourceOf(message, peer), settlement?.reorderMessageIds ?? []).applied;
+        if (applied) {
+          this.interruptRequested.delete(intent.messageId);
+          const instruction = settlement?.placementMoveId ? this.store.getBeeMove(settlement.placementMoveId) : null;
+          if (instruction && runtime.generation !== instruction.sourceGeneration) {
+            this.store.markMoveInstructionsApplied(instruction.id);
+            if (this.store.activeMoveOf(intent.beeId)?.phase === "starting") this.store.completeBeeMove(instruction.id);
+          }
+          const handoff = settlement?.handoffId ? this.store.getBeeHandoff(settlement.handoffId) : null;
+          if (handoff?.phase === "starting" && handoff.seedMessageId === intent.messageId) this.store.completeBeeHandoff(handoff.id);
+          this.log(`deliver.confirmed bee=${intent.beeId} msg=${intent.messageId} gen=${intent.generation}`);
+        }
+        this.confirmationReady.delete(intent.messageId);
+        this.confirmationPolls.delete(intent.messageId);
+        this.deliveryRetries.delete(intent.beeId);
+      } else if (intent.state === "held" && intent.reason === "message_too_large") {
+        continue;
+      } else if (result === "not_written") {
+        if (intent.wireLine === null) continue;
+        if (this.ext.isDegraded?.(intent.beeId, intent.generation)) {
+          this.store.replanDeliveryConfirmationIntent(intent, intent.digest);
+          this.store.releaseUnwrittenDeliveryConfirmation(intent.messageId, intent.generation, intent.digest);
+          this.confirmationPolls.delete(intent.messageId);
+          this.confirmationReady.delete(intent.messageId);
+        } else {
+          this.store.replanDeliveryConfirmationIntent(intent, intent.digest);
+          this.confirmationReady.add(intent.messageId);
+        }
+      } else if (result === "refused") {
+        if (intent.wireLine === null) continue;
+        if (this.store.retryRefusedDeliveryConfirmation(intent.messageId, intent.generation, intent.digest)) this.confirmationReady.add(intent.messageId);
+        else this.confirmationReady.delete(intent.messageId);
+      } else if (result !== "pending_ack") {
+        this.confirmationReady.delete(intent.messageId);
+        this.store.holdDeliveryConfirmation(intent.messageId, result);
+      } else if (intent.state === "awaiting_confirmation" && this.now() - intent.since >= 30_000) {
+        this.store.holdDeliveryConfirmation(intent.messageId, "unknown");
+      }
+    }
+  }
 
   /**
    * Eligibility/ordering rule (Q2 amendment): urgency governs WHEN a message
@@ -1659,9 +1762,15 @@ export class DaemonCore {
         const quotaGate = this.store.quotaDeliveryGate(rt.beeId);
         if (quotaGate.held) { this.deliveryRetries.delete(rt.beeId); continue; }
         const allPending = this.multilineFallback
-          ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => a.id - b.id)
+          ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => (a.queueOrder ?? a.id) - (b.queueOrder ?? b.id) || a.id - b.id)
           : ordinaryPending;
         const pending = quotaGate.messageIds.length > 0 ? allPending.filter(message => quotaGate.messageIds.includes(message.id)) : allPending;
+        const authHead = pending[0];
+        const authFallback = authHead ? this.store.multilineDelivery(authHead.id)?.fallback : null;
+        if (authHead && !authFallback && this.driver.deliveryIssue?.(rt.beeId, rt.generation, authHead.id) === "host_auth_failed" && !this.store.inTransaction && !this.store.getDeliveryConfirmationIntent(authHead.id)) {
+          this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: authHead.id, generation: rt.generation }, "host_auth_failed");
+          this.log(`deliver.held bee=${rt.beeId} msg=${authHead.id} reason=host_auth_failed`);
+        }
         if (rt.state === "booting") continue;
         if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
         const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);
@@ -1693,7 +1802,7 @@ export class DaemonCore {
           // interrupt per message; an eligible `now` behind an undelivered
           // `next` still interrupts — the accept point it creates serves the
           // whole FIFO, which keeps delivering in enqueue order.
-          const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id));
+          const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
           if (urgent) {
             // Give the driver the triggering mailbox id so an asynchronously
             // confirmed delivery cannot interrupt the turn it just opened.
@@ -1757,12 +1866,77 @@ export class DaemonCore {
         const retryKey = JSON.stringify([msg.id, msg.urgency, rt.generation, rt.state, rt.updatedAt, readiness, msg.deliveryHold?.stage, this.store.inTransaction]);
         const retry = this.deliveryRetries.get(rt.beeId);
         if (retry && retry.key === retryKey && this.now() < retry.nextAt) continue;
+        const refusePlan = (): void => {
+          if (this.store.inTransaction) return;
+          const attempts = retry?.key === retryKey ? retry.attempts + 1 : 1;
+          const delay = Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25);
+          this.deliveryRetries.set(rt.beeId, { key: retryKey, attempts, nextAt: this.now() + delay });
+          this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=not_ready detail=confirmation_plan_not_ready`);
+        };
+        const fallbackHold = this.store.multilineDelivery(msg.id);
+        const holdIssue = (issue: "host_auth_failed" | "message_too_large"): void => {
+          const prior = this.store.getDeliveryConfirmationIntent(msg.id);
+          if (prior?.wireLine != null) this.store.holdDeliveryConfirmation(msg.id, issue);
+          else this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, issue);
+          this.confirmationReady.delete(msg.id);
+          this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=${issue}`);
+        };
+        const usesFallback = fallbackHold && (fallbackHold.fallback || ["held", "expired"].includes(fallbackHold.stage));
+        const initialIssue = usesFallback ? null : this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body);
+        if (initialIssue && !this.store.inTransaction) {
+          holdIssue(initialIssue);
+          continue;
+        }
         const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+        if (fallback?.confirmationBody) body = fallback.confirmationBody;
+        const issue = fallback?.confirmationBody ? this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body) : null;
+        if (issue && !this.store.inTransaction) {
+          holdIssue(issue);
+          continue;
+        }
+        let confirmation: DeliveryConfirmationPlan | undefined;
+        const settlement = { reorderMessageIds: reorderNotice.messageIds, placementMoveId: instruction?.id ?? null,
+          handoffId: handoff?.id ?? null, ...(fallback?.confirmationBody ? { multilineFallbackId: this.store.multilineDelivery(msg.id)?.fallback?.id } : {}) };
+        const recordPointerAttempt = (): void => {
+          let pointer = fallback?.confirmationBody ? this.store.multilineDelivery(msg.id)?.fallback : null;
+          if (pointer?.state === "in_flight" || pointer?.state === "unknown") pointer = this.store.transitionMultilineFallback(msg.id, pointer.state, "ready", { detail: "delivery_not_attempted", attemptPhase: "before_enter_cleared" });
+          if (pointer?.state === "ready") this.store.transitionMultilineFallback(msg.id, "ready", "in_flight", { generation: rt.generation, attempts: (pointer.attempts ?? 0) + 1, attemptPhase: "injecting" });
+        };
+        if (!fallback?.handled) {
+          const existing = this.store.getDeliveryConfirmationIntent(msg.id);
+          if (existing) {
+            if (existing.generation !== rt.generation || existing.wireLine === null || existing.state !== "awaiting_confirmation" || !this.confirmationReady.has(msg.id)) continue;
+            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
+            if (!plan || plan === "not_ready") { refusePlan(); continue; }
+            if (this.store.inTransaction) continue;
+            const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
+            if (!deliveryConfirmationIntentFits(input)) { holdIssue("message_too_large"); continue; }
+            confirmation = this.store.transact(() => { const row = this.store.replanDeliveryConfirmationIntent(input, existing.digest); recordPointerAttempt(); return row; });
+            this.confirmationReady.delete(msg.id);
+          } else {
+            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
+            if (plan === "not_ready") { refusePlan(); continue; }
+            if (plan) {
+              if (this.store.inTransaction) continue;
+              const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
+              if (!deliveryConfirmationIntentFits(input)) {
+                this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: rt.beeId, messageId: msg.id, generation: rt.generation }, "message_too_large");
+                continue;
+              }
+              confirmation = this.store.transact(() => { const row = this.store.prepareDeliveryConfirmationIntent(input); recordPointerAttempt(); return row; });
+              if (!plan.supported && !plan.legacyFirstWriteSafe) {
+                this.store.holdDeliveryConfirmation(msg.id, "old_host");
+                continue;
+              }
+            }
+          }
+        }
         const outcome = fallback?.handled ? { accepted: fallback.accepted, reason: "not_ready" as const, detail: undefined }
-          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
+          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { confirmation, multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
         if (outcome.accepted) {
           this.deliveryRetries.delete(rt.beeId);
-          if (!fallback?.handled) this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+          if (fallback?.confirmationBody) this.store.completeMultilineFallback(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), true);
+          else if (!fallback?.handled) this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
           const deliveredGeneration = fallback?.generation ?? rt.generation;
           this.interruptRequested.delete(msg.id);
           if (instruction && deliveredGeneration === rt.generation && rt.generation !== instruction.sourceGeneration) {

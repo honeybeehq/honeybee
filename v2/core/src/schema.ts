@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 46;
+export const SCHEMA_VERSION = 47;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -1134,6 +1134,8 @@ export const MAILBOX_PENDING_METADATA_INDEX_SQL =
 export const MAILBOX_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["urgency", "urgency TEXT NOT NULL DEFAULT 'next' CHECK (urgency IN ('now','next','idle'))"],
   ["sender_kind", "sender_kind TEXT CHECK (sender_kind IN ('human','automation'))"],
+  ["queue_order", "queue_order INTEGER"],
+  ["replaces_message_id", "replaces_message_id INTEGER"],
 ];
 
 /**

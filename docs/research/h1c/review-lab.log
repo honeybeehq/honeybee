@@ -1,0 +1,78 @@
+
+{"sourceLog": "h1c-queen-original-labs.log", "sha256": "84ce03ac524012e0ed0691b7c6ed5b1d64980f8d2621d53300b801ed3dce0646", "format": "unmodified stdout follows"}
+{"run":"store","command":["/opt/node-v24.18.0-linux-x64/bin/node","scripts/lab-h1c-store-confirmations.mjs","/var/tmp/h1-tIGsozLa"]}
+{"result":"PASS","database":"/var/tmp/h1-tIGsozLa/h1c-lab-LRuw2p/core.sqlite","checks":["transaction rollback","exact binding","semantic no-op audit","pending is undelivered after turn end","reopen persistence","generation fence","held-only decisions","replacement row","idempotent aliases","conflicting keys","drop","atomic delivery and cancellation","phone provenance","read-only legacy fallback","bee deletion decision cleanup","audit replay parity","resend and settlement rollback","v46 to v47 migration","unknown null intent binding and reopen","unknown drop and resend","unknown and known non-overwrite","unwritten release and held replan","replacement FIFO","question answer and dismissal links","action attempt preservation","legacy watermark migration and reopen","awaiting plain cancel refusal","quota and auth recovery cannot clone uncertain mail","quota reuses pending explicit resend","auth replays delivered explicit resend with owner token intact","legacy generation cohort avoids new-generation holds","proven-unwritten release survives reopen","replacement origin preserved","legacy FIFO frozen head avoids backlog holds","quota replays replacement delivered to prior generation","atomic never-written auth hold release","settlement context persists and replans","16 MiB wire and audit bounds","oversized replacement preflight is atomic","terminal action cancellation preserves uncertainty audit","terminal quota cancellation removes held continuation without resend","legacy backlog needs one action and urgency heads stay conservative","refusal retry budget persists across replan and reopen"]}
+{"run":"crash","command":["/opt/node-v24.18.0-linux-x64/bin/node","scripts/lab/h1c-crash-windows.mjs"]}
+{"case":"before-intent-commit","stdinWrites":1,"delivered":true,"restart":false,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"case":"after-intent-before-write","stdinWrites":1,"delivered":true,"restart":true,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"case":"after-write-before-ack","stdinWrites":1,"delivered":true,"restart":true,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"case":"after-ack-before-settlement","stdinWrites":1,"delivered":true,"restart":true,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"case":"after-settlement","stdinWrites":1,"delivered":true,"restart":true,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"case":"unknown-held","stdinWrites":1,"delivered":false,"restart":true,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"case":"held-not-written-resume","stdinWrites":1,"delivered":true,"restart":true,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"case":"steer-intent-before-write","stdinWrites":1,"delivered":true,"restart":true,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"case":"degraded-not-written","stdinWrites":1,"delivered":true,"restart":true,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"case":"lane-outage-before-intent","stdinWrites":1,"delivered":true,"restart":false,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"case":"status-unreadable-at-connect","stdinWrites":1,"delivered":true,"restart":false,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-crash-WHaZ2l"}
+{"run":"receipts","command":["/opt/node-v24.18.0-linux-x64/bin/node","scripts/lab/h1c-host-receipts.mjs"]}
+{"case":"journal-full","midTurn":true,"afterTurnEnd":true,"afterDaemonDetach":true,"status":"accepted","stdinWrites":1,"pid":1327481,"root":"/var/tmp/h1-tIGsozLa/h1c-receipts-ZnBo26"}
+{"case":"missing-ack","midTurn":true,"afterTurnEnd":true,"afterDaemonDetach":true,"status":"pending_ack","stdinWrites":1,"pid":1327497,"root":"/var/tmp/h1-tIGsozLa/h1c-receipts-ZnBo26"}
+{"case":"bounded-retention-and-fences","countEviction":"unknown","ageEviction":"unknown","wrongGeneration":"unknown","wrongBee":"unknown","digestMismatch":"unknown","agedOutWrites":0}
+{"run":"upgrade","command":["/opt/node-v24.18.0-linux-x64/bin/node","scripts/lab/h1c-upgrade.mjs"]}
+{"case":"old-host-upgrade-and-explicit-escape","originalStdinWrites":1,"replacementStdinWrites":1,"freshMailDelivered":true,"freshMailWrites":1,"delayedAckMs":500,"noTransientHold":true,"pendingResendRefused":true,"sameHost":true,"unknownFrames":0,"oldMessageHeld":true,"replacementMessageId":2,"root":"/var/tmp/h1-tIGsozLa/h1c-upgrade-lheBY8"}
+{"run":"late-ack","command":["/opt/node-v24.18.0-linux-x64/bin/node","scripts/lab/h1c-upgrade.mjs","--late-ack"]}
+{"case":"positive-late-ack-for-unknown-upgrade-hold","ackReleasedAfterAdoption":true,"delivered":true,"stdinWrites":1,"operatorAction":false,"unknownFrames":0,"root":"/var/tmp/h1-tIGsozLa/h1c-upgrade-C07aoi"}
+{"run":"lock","command":["/opt/node-v24.18.0-linux-x64/bin/node","scripts/lab/h1c-upgrade-lock.mjs"]}
+{"case":"exclusive-writer-fences-upgrade-watermark","secondOpener":"database_locked","watermarkNotCapturedEarly":true,"lateOldWriterMessageIncluded":true,"watermark":1,"integrity":"ok","root":"/var/tmp/h1-tIGsozLa/h1c-lock-sTvWPu"}
+{"run":"rpc","command":["/opt/node-v24.18.0-linux-x64/bin/node","scripts/lab/h1c-operator-rpc.mjs"]}
+{"case":"held-fixture","socketPath":"/var/tmp/h1-tIGsozLa/hb-v2-daemon-t3K24i/hived.sock","dataDir":"/var/tmp/h1-tIGsozLa/hb-v2-daemon-t3K24i","beeId":"held-bee","generation":2,"messageIds":[1,2],"pid":1327600}
+{"case":"operator-resolution-rpcs","replacementMessageId":3,"drop":true,"idempotent":true,"staleGenerationRefused":true,"notHeldRefused":true,"conflictingKeyRefused":true,"auditPrivateFieldsRemoved":true}
+
+{"sourceLog": "h1c-final-review-driver.log", "sha256": "32425ff1561518f4c9739cedf466c09d5e632ca97c83b5c7a0c08ea4eafa5d0c", "format": "unmodified stdout follows"}
+{"case":"child-umask","mask":2,"file":436,"directory":509,"socketDirectory":448,"socketMode":384}
+{"case":"steer-refused","refusedSteerWrites":1,"acceptedStartWrites":1,"held":false,"delivered":true}
+{"case":"deterministic-refusal","stdinWrites":2,"automaticRetries":1,"heldReason":"refused","visible":true}
+{"case":"oversize-confirming","heldReason":"message_too_large","stdinWrites":0,"delivered":false,"visible":true}
+{"case":"oversize-nonconfirming","heldReason":"message_too_large","stdinWrites":0,"delivered":false,"visible":true}
+{"case":"multiline-intent","intentCommittedBeforePointerWrite":true,"stdinWrites":1,"fallbackSettled":true}
+{"case":"multiline-plan-not-ready","notReadyLeavesReady":true,"outerTransactionNoEffect":true,"stdinWrites":1,"operatorActions":0}
+{"case":"confirmation-ready-lane-timeout","heldReason":"lane_unavailable","visibleAfter30s":true,"writesWhileHeld":0,"deliveredAfterLaneRecovery":true,"stdinWrites":1,"operatorActions":0}
+{"case":"captured-settlement","settled":true,"ackRecomputedEffects":false}
+{"case":"unknown-pointer-same-generation","originalPointerWrites":1,"newPointerWrites":0,"heldReason":"unknown","originalGeneration":1,"currentGeneration":1}
+{"case":"unknown-pointer-old-generation","originalPointerWrites":1,"newPointerWrites":0,"heldReason":"unknown","originalGeneration":1,"currentGeneration":2}
+
+{"sourceLog": "h1c-queen-auth-lab.log", "sha256": "9a95371dd2286fcbdf31554c061f97733e40659e0a999df3fd0ab1671881411c", "format": "unmodified stdout follows"}
+{"case":"authenticated-lane-recovery","failedAttemptsIn1second":3,"closedOnAuthFailure":true,"planRefusalsLogged":true,"heldReason":"host_auth_failed","visibleAfter30s":true,"deliveredAfterRecovery":true,"stdinWrites":1,"root":"/var/tmp/h1-tIGsozLa/h1c-auth-spN1YG"}
+
+{"sourceLog": "h1c-queen-cell-auth.log", "sha256": "bf0264815e5e8e6ceaeb83e61aa698363df1c63cb4412c19f911de06e3888ce8", "format": "unmodified stdout follows"}
+{"case":"sandboxed-Cell-host-authentication","hostPid":1321825,"agentPid":1321833,"peerMatchesHost":true,"peerIsAgent":false,"sandbox":true,"receipt":"accepted","root":"/var/tmp/h1-tIGsozLa/hb-v2-cell-18NmTW"}
+
+{"sourceLog": "h1c-queen-service-gate.log", "sha256": "15fe879958ec2f6c09382967d3dd48df975a33e11ed0f6cc19d8fc0beb8b56d6", "format": "unmodified stdout follows"}
+{"case":"delivery-resolution-trust-disabled","resendRefused":true,"dropRefused":true,"failClosed":true}
+
+{"sourceLog": "h1c-queen-rpc-final.log", "sha256": "99057be2661f9eef21f62d79fc27af8a651e54c33c7075ba96b23aeaf07f8502", "format": "unmodified stdout follows"}
+{"case":"held-fixture","socketPath":"/var/tmp/h1-tIGsozLa/hb-v2-daemon-dCe9VQ/hived.sock","dataDir":"/var/tmp/h1-tIGsozLa/hb-v2-daemon-dCe9VQ","beeId":"held-bee","generation":2,"messageIds":[1,2],"pid":1336740}
+{"case":"registered-service-and-reader-capability","unregisteredResendRefused":true,"unregisteredDropRefused":true,"registeredActions":true,"legacyFieldsAbsent":true,"legacyReplacementCanceled":true,"legacyConfirmationAuditsAbsent":true,"legacyWatchGap":true}
+{"case":"operator-resolution-rpcs","replacementMessageId":3,"drop":true,"idempotent":true,"staleGenerationRefused":true,"notHeldRefused":true,"conflictingKeyRefused":true,"auditPrivateFieldsRemoved":true}
+
+{"sourceLog": "h1c-queen-upgrade-backlog.log", "sha256": "d1f1138c38f56530d85a9d8bee54fec42fc11227f111311dfa667340c9880d9d", "format": "unmodified stdout follows"}
+{"case":"upgrade-backlog-head-only","queuedMessages":4,"ambiguousHolds":1,"operatorActions":1,"backlogDelivered":3,"sameHost":true}
+{"case":"old-host-upgrade-and-explicit-escape","originalStdinWrites":1,"replacementStdinWrites":1,"freshMailDelivered":true,"freshMailWrites":1,"delayedAckMs":500,"noTransientHold":true,"pendingResendRefused":true,"sameHost":true,"unknownFrames":0,"oldMessageHeld":true,"replacementMessageId":5,"root":"/var/tmp/h1-tIGsozLa/h1c-upgrade-kQuAVf"}
+
+{"sourceLog": "h1c-peer-base-claude-final.log", "sha256": "d52a318708693c6c58d89dd4935e7f7fa14b44ae3d60eefdc0608eee998aca6c", "format": "unmodified stdout follows"}
+{"case":"missing-peer-artifact-parity","revision":"main-8d71abd2","harness":"claude","delivered":false,"reason":"not_ready","socketOpen":false,"stdinWrites":0}
+
+{"sourceLog": "h1c-peer-base-codex-final.log", "sha256": "4e93983add13cba09a02fb74d5a6fe9f740945488b58fbf60236f9e92c4b22e9", "format": "unmodified stdout follows"}
+{"case":"missing-peer-artifact-parity","revision":"main-8d71abd2","harness":"codex","delivered":false,"reason":"not_ready","socketOpen":false,"stdinWrites":0}
+
+{"sourceLog": "h1c-peer-fixed-claude.log", "sha256": "10bcc5c8e1463b7cdd829b97eb13062cd720e799a9ec466a17202cb96cfc29d3", "format": "unmodified stdout follows"}
+{"case":"missing-peer-artifact-parity","revision":"fixed","harness":"claude","delivered":false,"reason":"not_ready","socketOpen":false,"stdinWrites":0}
+
+{"sourceLog": "h1c-peer-fixed-codex.log", "sha256": "a4da70e7174294538ac2af0c73752ebf5542ac8810002deb485c71adad281bad", "format": "unmodified stdout follows"}
+{"case":"missing-peer-artifact-parity","revision":"fixed","harness":"codex","delivered":false,"reason":"not_ready","socketOpen":false,"stdinWrites":0}
+
+{"sourceLog": "h1c-peer-conditional-base-final.log", "sha256": "34998cf77db20c7ec145eabbd22ad50acdfd89e68427ae9d9a8c85047b109463", "format": "unmodified stdout follows"}
+{"case":"nonconfirming-peer-check-remains-conditional","revision":"main-8d71abd2","harness":"claude","delivered":true,"reason":null,"socketOpen":true,"stdinWrites":1}
+
+{"sourceLog": "h1c-peer-conditional-fixed.log", "sha256": "01912f276406f189f79aebbc149a6d789f20e54264a568cbf3f273b2bade020b", "format": "unmodified stdout follows"}
+{"case":"nonconfirming-peer-check-remains-conditional","revision":"fixed","harness":"claude","delivered":true,"reason":null,"socketOpen":true,"stdinWrites":1}

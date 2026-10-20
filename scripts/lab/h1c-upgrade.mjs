@@ -1,0 +1,59 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,readFileSync,writeFileSync} from 'node:fs';
+import {join} from 'node:path';
+import {openCoreStore,DeliveryNotHeldError} from '../../v2/core/src/index.ts';
+import {DaemonCore} from '../../v2/daemon/src/loops.ts';
+import {HsrDriver} from '../../v2/driver-hsr/src/index.ts';
+import {codexAdapter} from '../../v2/adapters/src/index.ts';
+import {fixtureRuntimeIdentity,persistFixtureProcess,sleep,pidAlive} from '../../v2/driver-hsr/tests/helpers.ts';
+assert(process.env.TMPDIR?.startsWith('/var/tmp/'),'set an owned TMPDIR');
+const root=mkdtempSync(join(process.env.TMPDIR,'h1c-upgrade-'));const path=join(root,'core.sqlite');const writes=join(root,'writes.jsonl');
+const lateAck=process.argv.includes('--late-ack');const ackGate=join(root,'ack-gate');
+const withBacklog=process.argv.includes('--backlog');const backlog=[];
+const fake=new URL('./h1c-fake-codex.mjs',import.meta.url).pathname;const old=new URL('./h1c-old-host.mjs',import.meta.url).pathname;const host=new URL('../../v2/driver-hsr/src/runner-host-main.ts',import.meta.url).pathname;
+let clock=Date.now();let store=openCoreStore(path,{now:()=>clock});
+const config={sessionLogDir:join(root,'logs'),runtimeIdentity:fixtureRuntimeIdentity(root),hostCommand:path=>({command:process.execPath,args:['--import',old,host,path]}),resolve:()=>({adapter:codexAdapter({cwd:root}),command:process.execPath,args:[fake],cwd:root,env:{...process.env,H1C_WRITES:writes,H1C_SKIP_ACK_IDS:lateAck?'':'1001',H1C_ACK_DELAY_MS:'500',...(lateAck?{H1C_ACK_GATE:ackGate}:{})}})};
+let driver=new HsrDriver(config);let core;let pid;let queries=0;
+const makeCore=()=>new DaemonCore({store,driver,now:()=>clock,random:()=>0.5,policy:{bootHangTimeoutSteps:500000,commandsPerStep:8,i1DeadlineSteps:540000},log:()=>{}});
+const tick=async()=>{clock+=200;core.step();await sleep(5);};
+const until=async predicate=>{for(let i=0;i<1000&&!predicate();i++)await tick();assert(predicate());};
+try{
+ core=makeCore();core.boot();store.createBee({id:'bee',name:'old-host',agent:'codex',substrate:'hsr',cwd:root});store.enqueueCommand('spawn','bee');
+ await until(()=>store.currentRuntime('bee')?.state==='idle'&&driver.procs.get('bee')?.deliveryProtocol?.authenticated);pid=driver.procs.get('bee').pid;
+ const message=store.send('bee','owned pre-upgrade request').message;
+ if(withBacklog)for(let i=0;i<3;i++)backlog.push(store.send('bee','owned queued backlog '+i).message.id);
+ assert.equal(driver.deliver('bee',1,message.id,message.body).accepted,false);
+ for(let i=0;i<100;i++){clock+=200;core.observe();await sleep(5);}
+ const p=driver.procs.get('bee');assert.equal(p.phase,'idle');assert.equal(store.getDeliveryConfirmationIntent(message.id),null);
+ persistFixtureProcess(root,'bee',1,driver.procOf('bee',1));driver.detachAll();
+ store.db.exec("DELETE FROM meta WHERE key IN ('confirmation_legacy_max_message_id','confirmation_legacy_generations','confirmation_legacy_heads'); UPDATE meta SET value='46' WHERE key='schema_version'");
+ store.close();store=openCoreStore(path,{now:()=>clock});driver=new HsrDriver(config);
+ assert(driver.adopt('bee',1,p.pid,p.pidStartedAt,'idle',store.runtimeObservationCursor('bee',1),store.getBee('bee').providerSessionId));core=makeCore();core.boot();
+ await until(()=>driver.procs.get('bee')?.deliveryProtocol?.authenticated);
+ const socket=driver.procs.get('bee').socket;const socketWrite=socket.write.bind(socket);socket.write=(frame,...rest)=>{if(JSON.parse(String(frame)).op==='delivery_status')queries++;return socketWrite(frame,...rest);};
+ await until(()=>store.getMessage(message.id)?.deliveryConfirmation?.state==='held');
+ if(withBacklog)assert.equal(store.listDeliveryConfirmationIntents('bee').length,1);
+ if(lateAck){
+  assert.equal(store.getDeliveryConfirmationIntent(message.id).wireLine,null);assert.equal(store.getMessage(message.id).deliveredAt,null);
+  writeFileSync(ackGate,'release owned ACK');
+  await until(()=>store.getMessage(message.id)?.deliveredAt!=null);
+  assert.equal(store.getMessage(message.id).deliveryConfirmation,undefined);assert.equal(store.listDeliveryConfirmationIntents().length,0);
+  assert.equal(readFileSync(writes,'utf8').trim().split('\n').length,1);assert.equal(queries,0);
+  console.log(JSON.stringify({case:'positive-late-ack-for-unknown-upgrade-hold',ackReleasedAfterAdoption:true,delivered:true,stdinWrites:1,operatorAction:false,unknownFrames:0,root}));
+ }else{
+ for(let i=0;i<100;i++)await tick();assert.equal(store.getMessage(message.id).deliveryConfirmation.reason,'unknown');assert.equal(store.getDeliveryConfirmationIntent(message.id).wireLine,null);assert.equal(queries,0);
+ assert.equal(readFileSync(writes,'utf8').trim().split('\n').length,1);
+ const receipt=store.resolveDeliveryConfirmation({action:'resend_anyway',beeId:'bee',messageId:message.id,generation:1,idempotencyKey:'owned-escape'});
+ await until(()=>store.getMessage(receipt.replacementMessageId)?.deliveredAt!=null);
+ if(withBacklog)await until(()=>backlog.every(id=>store.getMessage(id)?.deliveredAt!=null));
+ const fresh=store.send('bee','fresh post-upgrade mail').message;
+ await tick();for(let i=0;i<20;i++)await tick();
+ assert.equal(store.getMessage(fresh.id).deliveryConfirmation.state,'awaiting_confirmation');assert.equal(store.view('bee').waitingForYou,false);
+ assert.throws(()=>store.resolveDeliveryConfirmation({action:'resend_anyway',beeId:'bee',messageId:fresh.id,generation:1,idempotencyKey:'too-early'}),DeliveryNotHeldError);
+ await until(()=>store.getMessage(fresh.id)?.deliveredAt!=null);
+ const rows=readFileSync(writes,'utf8').trim().split('\n').map(JSON.parse);assert.equal(rows.length,3+backlog.length);assert.equal(new Set(rows.map(row=>row.id)).size,3+backlog.length);assert.equal(queries,0);
+ if(withBacklog)console.log(JSON.stringify({case:'upgrade-backlog-head-only',queuedMessages:4,ambiguousHolds:1,operatorActions:1,backlogDelivered:3,sameHost:true}));
+ assert.equal(driver.procs.get('bee').pid,pid);
+ console.log(JSON.stringify({case:'old-host-upgrade-and-explicit-escape',originalStdinWrites:1,replacementStdinWrites:1,freshMailDelivered:true,freshMailWrites:1,delayedAckMs:500,noTransientHold:true,pendingResendRefused:true,sameHost:true,unknownFrames:queries,oldMessageHeld:true,replacementMessageId:receipt.replacementMessageId,root}));
+ }
+}finally{driver.disposeAll();for(let i=0;i<500&&pid&&pidAlive(pid);i++)await sleep(10);store.close();if(pid)assert.equal(pidAlive(pid),false);}

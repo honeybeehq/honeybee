@@ -1,0 +1,15 @@
+{"sourceLog": "h1c-final-typecheck.log", "exitCode": 0, "sha256": "d7bfc4305159e691936f59cbb07b237ab0ddc155b33acea3b88ce8d81d08fa27", "counts": {}}
+{"sourceLog": "h1c-final-check.log", "exitCode": 0, "sha256": "0a0bd5cacd6d6ef092ed76e393d672e99aa95ae839c861155bc1726309f0d73d", "counts": {}}
+{"sourceLog": "h1c-queen-final-build.log", "exitCode": 0, "sha256": "afc91427e4f8c55a4fa4898d99ccb14d5d7e0c6d6871ed7b92a525609c4c3788", "counts": {}}
+{"sourceLog": "h1c-queen-final-root-tests.log", "exitCode": 0, "sha256": "4594e229f747a58582bbd569b94eeaa2a10037731366864835d819875ea813b2", "counts": {"tests": 16, "pass": 16, "fail": 0, "skipped": 0}}
+{"sourceLog": "h1c-queen-final-driver.log", "exitCode": 0, "sha256": "0b201617c3db7909dfabcf87323db8d1ddb0ea6e7e90582cd048ca455338a9f0", "counts": {"tests": 163, "pass": 163, "fail": 0, "skipped": 0}}
+{"sourceLog": "h1c-queen-final-driver2.log", "exitCode": 0, "sha256": "0b5190fbc33db922d7e0b9a5a151cedb0c658bbca7e6e9cb14c1dcc19d85e897", "counts": {"tests": 309, "pass": 287, "fail": 0, "skipped": 22}}
+{"sourceLog": "h1c-queen-loop-final.log", "exitCode": 0, "sha256": "1083065a3cf99e91dde130cd9a56b363bc9cc323be22ad88eff7b5ca95137291", "counts": {"tests": 140, "pass": 140, "fail": 0, "skipped": 0}}
+{"sourceLog": "h1c-queen-pointer-fixtures.log", "exitCode": 0, "sha256": "68149c1e774b69e59709463bdf3838d832288525b94b777d74a30224a44080be", "counts": {"tests": 6, "pass": 6, "fail": 0, "skipped": 0}}
+{"sourceLog": "h1c-queen-census.log", "exitCode": 0, "sha256": "e8d07a88206c65583fe4b4ecd05845de4cb7cb5f5d2e5b9aad4bb058a3c794a7", "counts": {"tests": 2, "pass": 2, "fail": 0, "skipped": 0}}
+{"sourceLog": "h1c-queen-daemon-remaining.log", "exitCode": 0, "sha256": "d0071ec90fa841a25be6c7c8efcf3fa614bf4ed57ad86f9b12124c16c0ae7917", "counts": {"tests": 696, "pass": 692, "fail": 0, "skipped": 4}}
+{"gate": "store worker core/fleet", "pass": 604, "source": "41f5f0f7 review-fix gate report through7bfcf516", "limitation": "Reported by isolated child; no duplicate parent rerun claimed."}
+{"initialDaemonRun": "h1c-queen-daemon.log", "exitCode": 1, "remainingLimitation": "Two delivery-file-read OS setup cases need a short root outside private mounts. Four pointer failures repaired and six targeted cases pass. Remaining daemon/CLI files pass separately; no blanket full-daemon pass."}
+{"fixtureChanges": "Durable intent/positive ACK overrides lost volatile pointer attempts; passive pointer receipt remains unknown. Fake clocks advance for backoff. Urgency ACK settles independently of later interrupt."}
+{"review": "383b5271 and ddb19046 independently read cumulative source throughfedf2eb3: no open Medium+. They ran no labs. Remaining Low: since-based retry age can produce a brief conservative early hold."}
+{"setup": "Missing repository verification skill; explicit no-new-unit-tests brief overrides general AGENTS rule. No live daemon/store access or deployment."}

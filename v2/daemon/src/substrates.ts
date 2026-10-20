@@ -17,6 +17,8 @@ import type { ExecutionStart } from "../../core/src/executionStart.ts";
  */
 import type {
   DeliverOutcome,
+  DeliveryConfirmationPlan,
+  DeliveryConfirmationResult,
   DriverObservation,
   InterruptOutcome,
   LiveProcess,
@@ -102,7 +104,37 @@ export class SubstrateRouter implements RuntimeDriver {
     return driver.deliveryReadiness?.(beeId, generation, messageId) ?? "";
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean }): DeliverOutcome {
+  deliveryIssue(beeId: string, generation: number, messageId: number, body?: string) {
+    const driver: RuntimeDriver = this.driverFor(beeId, generation);
+    return driver.deliveryIssue?.(beeId, generation, messageId, body) ?? null;
+  }
+
+  deliveryLaneReady(beeId: string, generation: number): boolean {
+    const driver: RuntimeDriver = this.driverFor(beeId, generation);
+    return driver.deliveryLaneReady?.(beeId, generation) ?? false;
+  }
+
+  adoptedDeliveryUncertain(beeId: string, generation: number): boolean {
+    const driver: RuntimeDriver = this.driverFor(beeId, generation);
+    return driver.adoptedDeliveryUncertain?.(beeId, generation) ?? false;
+  }
+
+  consumeDeliveryConfirmation(beeId: string, generation: number, messageId: number): boolean {
+    const driver: RuntimeDriver = this.driverFor(beeId, generation);
+    return driver.consumeDeliveryConfirmation?.(beeId, generation, messageId) ?? false;
+  }
+
+  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null {
+    const driver: RuntimeDriver = this.driverFor(beeId, generation);
+    return driver.planDeliveryConfirmation?.(beeId, generation, messageId, body) ?? null;
+  }
+
+  reconcileDeliveryConfirmation(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult {
+    const driver: RuntimeDriver = this.driverFor(beeId, generation);
+    return driver.reconcileDeliveryConfirmation?.(beeId, generation, messageId, plan) ?? "unknown";
+  }
+
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
     const driver = this.driverFor(beeId, generation);
     return driver.deliver(beeId, generation, messageId, body, options);
   }

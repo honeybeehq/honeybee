@@ -90,3 +90,5 @@ export * from "./rpcAuditContext.ts";
 export * from "./phoneOrigin.ts";
 
 export * from "./multilineDelivery.ts";
+
+export { publicDeliveryConfirmation, readDeliveryConfirmations, DELIVERY_CONFIRMATION_SQL } from "./deliveryConfirmation.ts";

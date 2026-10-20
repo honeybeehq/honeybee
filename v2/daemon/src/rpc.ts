@@ -1,3 +1,4 @@
+import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
 import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
 import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
 import { canonicalDigest } from "../../../src/comb/canonical.ts";
@@ -35,6 +36,7 @@ import {
   CellNotFoundError,
   ContinuationUnsupportedError,
   CoreError,
+  DeliveryNotHeldError,
   HandoffInProgressError,
   HandoffNotFoundError,
   IdempotencyConflictError,
@@ -157,6 +159,7 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string;
   if (err instanceof LeaseRefusal) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof CredentialAuthorityError) return { code: "account_unavailable", message: err.message, details: credentialErrorDetails(err) };
   if (err instanceof BeeNotFoundError) return { code: "bee_not_found", message: err.message };
+  if (err instanceof DeliveryNotHeldError) return { code: "delivery_not_held", message: err.message };
   if (err instanceof TemplateNotFoundError) return { code: "template_not_found", message: err.message };
   if (err instanceof TrackNotFoundError) return { code: "track_not_found", message: err.message };
   if (err instanceof QuestionNotOwnerError) return { code: "question_not_owner", message: err.message };
@@ -279,7 +282,7 @@ export class RpcServer {
       }
       const last = events[events.length - 1] as AuditRow;
       const frame: WatchFrame = { type: "delta", baseSeq: conn.watchCursor, seq: last.seq, events };
-      conn.send(projectQuestionDismissalDelta(projectAnswerTriggerDelta(frame, conn.clientCapabilities), conn.clientCapabilities));
+      conn.send(projectQuestionDismissalDelta(projectAnswerTriggerDelta(projectMailDeliveryDelta(frame, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities));
       conn.watchCursor = last.seq;
     }
   }
@@ -424,6 +427,10 @@ export class RpcServer {
           if (!peer && this.trust.enabled) throw new RpcError("caller_not_trusted", "Observation trust requires a local Unix connection.");
           if (peer) this.trust.require(peer, conn.ingress);
         }
+        if (verb === "mail.delivery.resend_anyway" || verb === "mail.delivery.drop") {
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Delivery resolution requires a registered local service.");
+          this.trust.require(peer, conn.ingress);
+        }
         if (verb === "question.withdraw") {
           if (!this.capabilities.includes("question.withdraw.v1")) throw new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee.");
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Withdrawal requires a registered local service.");
@@ -458,7 +465,7 @@ export class RpcServer {
         result.then(
           (value) => {
             span.end();
-            conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, value, conn.clientCapabilities), conn.clientCapabilities) });
+            conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities) });
           },
           (err) => {
             span.end("error");
@@ -468,7 +475,7 @@ export class RpcServer {
         return;
       }
       span.end();
-      conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, result, conn.clientCapabilities), conn.clientCapabilities) });
+      conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities) });
     } catch (err) {
       if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
       span.end("error");

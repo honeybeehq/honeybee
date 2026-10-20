@@ -15,6 +15,8 @@ export const RPC_ACCESS = {
   "spawn": "mutate",
   "send": "mutate",
   "mail.cancel": "mutate",
+  "mail.delivery.resend_anyway": "mutate",
+  "mail.delivery.drop": "mutate",
   "mail.expedite": "mutate",
   "mail.ack": "mutate",
   "stop": "mutate",

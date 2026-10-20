@@ -2417,6 +2417,8 @@ test("urgency.d3: `now` to an idle runtime is a plain delivery — no interrupt"
 });
 
 interface AsyncDeliveryProcessProbe {
+  processIdentity: { pid: number; birth: string; bootId: string };
+  deliveryProtocol: { authenticated: true; supported: false; legacy: true; pending: Set<number>; replies: Map<number, never> };
   beeId: string;
   generation: number;
   pid: number;
@@ -2498,6 +2500,8 @@ function makeAsyncDeliveryRig(): AsyncDeliveryRig {
 
   const frames: string[] = [];
   const proc: AsyncDeliveryProcessProbe = {
+    processIdentity: { pid: 4242, birth: "linux:4242", bootId: "00000000-0000-0000-0000-000000000000" },
+    deliveryProtocol: { authenticated: true, supported: false, legacy: true, pending: new Set(), replies: new Map<number, never>() },
     beeId: bee.id,
     generation: runtime.generation,
     pid: 4242,
@@ -2620,7 +2624,7 @@ test("urgency.d3c: a distinct later `now` message still interrupts an async-conf
     rig.core.step();
 
     assert.equal(interruptFrameCount(rig.frames), 1, "a different urgent message still interrupts existing work");
-    assert.equal(rig.store.getMessage(active.id)?.deliveredAt, null, "interrupt settles before FIFO delivery retries");
+    assert.equal(rig.store.getMessage(active.id)?.deliveredGeneration, 1, "positive ACK settles independently of a later interrupt");
     assert.equal(rig.store.getMessage(urgent.id)?.deliveredAt, null);
   } finally {
     rig.cleanup();

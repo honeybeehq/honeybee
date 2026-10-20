@@ -1463,7 +1463,7 @@ export class HiveDaemon {
   private mirrorAuditRows(rows: AuditRow[]): AuditRow[] {
     const accounts = this.accounts;
     return rows.map((source) => {
-      const row = mirrorBeeAuditRow(source);
+      const row = this.publicConfirmationAudit(mirrorBeeAuditRow(source));
       if (row.kind === "thread_operation.put") return { ...row, payload: { operation: row.payload.operation } };
       if (!accounts) return row;
       if (row.kind !== "account.put") return row;
@@ -1471,6 +1471,20 @@ export class HiveDaemon {
       if (!account || typeof account !== "object" || Array.isArray(account)) return row;
       return { ...row, payload: { ...row.payload, account: accounts.mirrorRow(account as AccountRow) } };
     });
+  }
+
+  private publicConfirmationAudit(row: AuditRow): AuditRow {
+    if (!row.kind.startsWith("mail.confirmation_")) return row;
+    const payload = { ...row.payload };
+    for (const key of ["wireLine", "digest", "host", "priorDigest"]) delete payload[key];
+    for (const key of ["row", "prior"]) {
+      const value = payload[key];
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        const { wireLine, digest, host, ...visible } = value as Record<string, unknown>;
+        payload[key] = visible;
+      }
+    }
+    return { ...row, payload };
   }
 
   private mirrorAccount(account: AccountRow): MirrorAccountRow {
@@ -2106,6 +2120,22 @@ export class HiveDaemon {
           return res;
         });
       }
+      case "mail.delivery.resend_anyway":
+      case "mail.delivery.drop": {
+        const keys = Object.keys(params);
+        if (keys.some(key => !["beeId", "messageId", "generation", "idempotencyKey"].includes(key))) throw new RpcError("invalid_request", "Unknown delivery resolution parameter");
+        const beeId = this.param(params, "beeId");
+        const messageId = this.numberParam(params, "messageId");
+        const generation = this.numberParam(params, "generation");
+        const idempotencyKey = this.param(params, "idempotencyKey");
+        if (!Number.isSafeInteger(messageId) || messageId <= 0 || !Number.isSafeInteger(generation) || generation <= 0
+          || !idempotencyKey.trim() || idempotencyKey.length > 256) throw new RpcError("invalid_request", "Invalid delivery resolution parameters");
+        const result = this.mustStore().resolveDeliveryConfirmation({
+          action: verb === "mail.delivery.drop" ? "drop" : "resend_anyway", beeId, messageId, generation, idempotencyKey,
+        });
+        this.requestTick();
+        return result;
+      }
       case "mail.expedite": {
         const messageId = this.numberParam(params, "messageId");
         const urgency = this.param(params, "urgency");
@@ -2456,7 +2486,7 @@ export class HiveDaemon {
 
   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
-    const storageSupported = SCHEMA_VERSION === 46 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+    const storageSupported = SCHEMA_VERSION === 47 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
     if (verb === "update.apiarySwap.status") {
       let installedIdentity: ComponentIdentity | null = null;
       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
@@ -5697,7 +5727,7 @@ export class HiveDaemon {
     const rawLimit = typeof params.limit === "number" && Number.isFinite(params.limit) ? Math.floor(params.limit) : 100;
     const limit = Math.max(1, Math.min(1000, rawLimit));
     const beeId = typeof params.beeId === "string" && params.beeId.length > 0 ? params.beeId : null;
-    return { rows: store.auditTail(afterSeq, limit, beeId) };
+    return { rows: store.auditTail(afterSeq, limit, beeId).map(row => this.publicConfirmationAudit(row)) };
   }
 
   private rpcMailHistory(params: Record<string, unknown>): MailHistoryResult {

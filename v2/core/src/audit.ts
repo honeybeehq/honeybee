@@ -1,3 +1,5 @@
+import { publicDeliveryConfirmation } from "./deliveryConfirmation.ts";
+import type { DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { deliveryHold, publicDeliveryFallback, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
 /**
@@ -38,6 +40,8 @@ import type {
 import type { LoginFlowRow } from "./loginFlow.ts";
 
 export function replayAudit(rows: AuditRow[]): StateDump {
+  const deliveryConfirmationIntents = new Map<number, DeliveryConfirmationIntent>();
+  const deliveryConfirmationDecisions = new Map<string, DeliveryConfirmationDecision>();
   const threadOperations = new Map<string, ThreadOperationRow>();
   const bees = new Map<string, BeeRow>();
   const runtimes = new Map<string, RuntimeRow>(); // key beeId#generation
@@ -89,6 +93,41 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   for (const row of rows) {
     const p = row.payload;
     switch (row.kind) {
+      case "mail.confirmation_prepared":
+      case "mail.confirmation_held": {
+        const intent = structuredClone(p.row as DeliveryConfirmationIntent);
+        deliveryConfirmationIntents.set(intent.messageId, intent);
+        break;
+      }
+      case "mail.confirmation_released": {
+        deliveryConfirmationIntents.delete(p.messageId as number);
+        break;
+      }
+      case "mail.replaced": {
+        const original = p.messageId as number, replacement = p.replacementMessageId as number;
+        mailbox.delete(original);
+        deliveryConfirmationIntents.delete(original);
+        mailbox.set(replacement, structuredClone(p.replacement as MessageRow));
+        for (const action of actions.values()) if (action.dispatch?.messageId === original) action.dispatch.messageId = replacement;
+        for (const handoff of beeHandoffs.values()) if (handoff.seedMessageId === original) handoff.seedMessageId = replacement;
+        for (const question of questions.values()) {
+          if (question.deliveryMessageId === original) question.deliveryMessageId = replacement;
+          if (question.dismissalMessageId === original) question.dismissalMessageId = replacement;
+        }
+        for (const task of tasks.values()) if (task.mailboxMessageId === original) task.mailboxMessageId = replacement;
+        for (const operation of threadOperations.values()) if (operation.continuationMessageId === original) operation.continuationMessageId = replacement;
+        for (const recovery of [...authInterruptions.values(), ...quotaRecoveries.values()]) {
+          recovery.messageIds = recovery.messageIds.map(id => id === original ? replacement : id);
+          recovery.continuationMessageIds = recovery.continuationMessageIds.map(id => id === original ? replacement : id);
+        }
+        break;
+      }
+      case "mail.confirmation_decision": {
+        const decision = structuredClone(p.decision as DeliveryConfirmationDecision);
+        deliveryConfirmationDecisions.set(decision.idempotencyKey, decision);
+        break;
+      }
+
       case "thread_operation.put": {
         const operation = structuredClone(p.row as ThreadOperationRow);
         threadOperations.set(operation.id, operation);
@@ -207,6 +246,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         accountLimits.delete(p.account as string);
         break;
       }
+      case "quota.observed":
       case "account_limits.observation": break;
       case "account_limits.put": {
         const limits = p.limits as AccountLimitsRow;
@@ -258,7 +298,9 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         break;
       }
       case "bee.deleted": {
+        for (const [id, intent] of deliveryConfirmationIntents) if (intent.beeId === row.beeId) deliveryConfirmationIntents.delete(id);
         const beeId = p.beeId as string;
+        for (const [key, decision] of deliveryConfirmationDecisions) if (decision.receipt.beeId === beeId) deliveryConfirmationDecisions.delete(key);
         bees.delete(beeId);
         for (const [k, i] of quotaRecoveries) if (i.beeId === beeId) quotaRecoveries.delete(k);
         for (const [k, i] of authInterruptions) if (i.beeId === beeId) authInterruptions.delete(k);
@@ -341,6 +383,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "mail.delivered": {
         const message = mailbox.get(p.messageId as number);
         if (!message) throw new Error(`audit replay: unknown message ${String(p.messageId)}`);
+        deliveryConfirmationIntents.delete(message.id);
         message.deliveredAt = p.deliveredAt as number;
         message.deliveredGeneration = p.deliveredGeneration as number;
         if (p.turnTrigger !== undefined) mustBee(message.beeId).lastTurnTrigger = { ...(p.turnTrigger as TurnTrigger) };
@@ -348,6 +391,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       }
       case "mail.canceled": {
         const messageId = p.messageId as number;
+        deliveryConfirmationIntents.delete(messageId);
         if (!mailbox.delete(messageId)) throw new Error(`audit replay: unknown message ${String(messageId)}`);
         break;
       }
@@ -627,7 +671,14 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     }
   }
 
+  for (const intent of deliveryConfirmationIntents.values()) {
+    const message = mailbox.get(intent.messageId);
+    const current = [...runtimes.values()].filter(runtime => runtime.beeId === intent.beeId).sort((a, b) => b.generation - a.generation)[0];
+    if (message) message.deliveryConfirmation = publicDeliveryConfirmation(current && current.generation !== intent.generation ? { ...intent, state: "held", reason: "generation_changed" } : intent);
+  }
   return {
+    ...(deliveryConfirmationIntents.size ? { deliveryConfirmationIntents: [...deliveryConfirmationIntents.values()].sort((a, b) => a.messageId - b.messageId) } : {}),
+    ...(deliveryConfirmationDecisions.size ? { deliveryConfirmationDecisions: [...deliveryConfirmationDecisions.values()].sort((a, b) => a.idempotencyKey < b.idempotencyKey ? -1 : a.idempotencyKey > b.idempotencyKey ? 1 : 0) } : {}),
     ...(deliveryHolds.size ? { deliveryHolds: [...deliveryHolds.values()].sort((a, b) => a.messageId - b.messageId) } : {}),
     threadOperations: [...threadOperations.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     bees: [...bees.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),

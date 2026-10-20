@@ -6,17 +6,14 @@ import { harness, makeBee } from "./helpers.ts";
 import { SCHEMA_VERSION } from "../src/schema.ts";
 import type { CoreStore, MessageRow } from "../src/index.ts";
 
-// The candidate statement, verbatim (normalized-contains asserted against
-// store.ts below): one compound read over two disjoint, exhaustive
-// partitions, merged in id order by each partial index's implicit rowid.
-const UNION_SQL = `SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL
+const UNION_SQL = `SELECT *, COALESCE(queue_order,id) AS fifo_order FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL
          UNION ALL
-         SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL
-         ORDER BY id`;
+         SELECT *, COALESCE(queue_order,id) AS fifo_order FROM mailbox WHERE bee_id = ? AND delivered_at IS NOT NULL
+         ORDER BY fifo_order, id`;
 
 // The pre-candidate single-scan read: the identity oracle for raw-vs-raw
 // row comparison (NOT production SQL anymore; used only as the oracle).
-const LEGACY_SQL = "SELECT * FROM mailbox WHERE bee_id = ? ORDER BY id";
+const LEGACY_SQL = "SELECT *, COALESCE(queue_order,id) AS fifo_order FROM mailbox WHERE bee_id = ? ORDER BY COALESCE(queue_order,id), id";
 
 // The 12 production mailbox statements plus ONE test-only delivered-arm
 // content probe for the no-theft matrix. The production statements are
@@ -30,28 +27,28 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
   },
   {
     name: "undeliveredMessages",
-    sql: "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY id",
-    pin: /SEARCH mailbox USING INDEX mailbox_pending_metadata \(bee_id=\?\)/,
+    sql: "SELECT * FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL ORDER BY COALESCE(queue_order,id), id",
+    pin: /SEARCH mailbox USING INDEX mailbox_fifo_pending \(bee_id=\?\)/,
   },
   {
     name: "per-bee pending probe",
     sql: "SELECT 1 FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL LIMIT 1",
-    pin: /SEARCH mailbox USING COVERING INDEX mailbox_pending_metadata \(bee_id=\?\)/,
+    pin: /SEARCH mailbox USING COVERING INDEX mailbox_(?:pending_metadata|fifo_pending) \(bee_id=\?\)/,
   },
   {
     name: "listUndeliveredMessages",
-    sql: "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, id",
-    pin: /SCAN mailbox USING INDEX mailbox_pending_metadata/,
+    sql: "SELECT * FROM mailbox WHERE delivered_at IS NULL ORDER BY bee_id, COALESCE(queue_order,id), id",
+    pin: /SCAN mailbox USING INDEX mailbox_fifo_pending/,
   },
   {
     name: "pendingMail join",
-    sql: `SELECT h.*
+    sql: `SELECT h.*, m.queue_order, m.replaces_message_id
        FROM mailbox m
        JOIN mail_history_enqueues h ON h.message_id = m.id
        WHERE m.bee_id = ? AND m.delivered_at IS NULL
-       ORDER BY m.id
+       ORDER BY COALESCE(m.queue_order,m.id), m.id
        LIMIT ?`,
-    pin: /SEARCH m USING COVERING INDEX mailbox_pending_metadata \(bee_id=\?\)/,
+    pin: /SEARCH m USING COVERING INDEX mailbox_fifo_pending \(bee_id=\?\)/,
   },
   {
     name: "getMessage",
@@ -63,7 +60,7 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
     sql: `SELECT message.id,
               message.bee_id,
               message.urgency,
-              message.enqueued_at
+              message.enqueued_at, message.queue_order
        FROM runtimes AS runtime
        CROSS JOIN mailbox AS message
        WHERE runtime.state != 'stopped'
@@ -75,8 +72,8 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
          AND message.bee_id = runtime.bee_id
          AND message.delivered_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id = message.id AND held.held_since IS NOT NULL)
-       ORDER BY runtime.bee_id, message.id`,
-    pin: /SEARCH message USING COVERING INDEX mailbox_pending_metadata \(bee_id=\?\)/,
+       ORDER BY runtime.bee_id, COALESCE(message.queue_order,message.id), message.id`,
+    pin: /SEARCH message USING COVERING INDEX mailbox_fifo_pending \(bee_id=\?\)/,
   },
   {
     name: "i1 facts",
@@ -108,16 +105,16 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
   },
   {
     name: "i1 messages",
-    sql: `SELECT id, bee_id, urgency, enqueued_at
+    sql: `SELECT id, bee_id, urgency, enqueued_at, queue_order
        FROM mailbox
        WHERE delivered_at IS NULL
-       ORDER BY bee_id, id`,
-    pin: /SCAN mailbox USING COVERING INDEX mailbox_pending_metadata/,
+       ORDER BY bee_id, COALESCE(queue_order,id), id`,
+    pin: /SCAN mailbox USING COVERING INDEX mailbox_(?:pending_metadata|fifo_pending)/,
   },
   {
     name: "global pending probe",
     sql: "SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1",
-    pin: /SCAN mailbox USING COVERING INDEX mailbox_pending_metadata/,
+    pin: /SCAN mailbox USING COVERING INDEX mailbox_(?:pending_metadata|fifo_pending)/,
   },
   {
     name: "ids among",
@@ -327,9 +324,9 @@ for (const withHold of [false, true]) test(`the union statement is production SQ
   try {
     const unionPlan = planOf(check, UNION_SQL);
     assert.match(unionPlan, /MERGE \(UNION ALL\)/, "compound read is a merge, not a concatenate-and-sort");
-    assert.match(unionPlan, /SEARCH mailbox USING INDEX mailbox_pending_metadata \(bee_id=\?\)/);
-    assert.match(unionPlan, /SEARCH mailbox USING INDEX mailbox_delivered_by_bee \(bee_id=\?\)/);
-    assert.doesNotMatch(unionPlan, /TEMP B-TREE/, "both arms emit id order; no sort");
+    assert.match(unionPlan, /SEARCH mailbox USING INDEX mailbox_fifo_pending \(bee_id=\?\)/);
+    assert.match(unionPlan, /SEARCH mailbox USING INDEX mailbox_fifo_delivered \(bee_id=\?\)/);
+    assert.doesNotMatch(unionPlan, /TEMP B-TREE/, "both arms emit FIFO order; no sort");
 
     for (const { name, sql, pin } of MATRIX) {
       const plan = planOf(check, sql);

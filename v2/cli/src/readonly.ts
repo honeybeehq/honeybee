@@ -9,6 +9,7 @@ import { readAccountLease, presentAccountLease } from "../../core/src/accountLea
 import { DatabaseSync } from "node:sqlite";
 import {
   deriveBeeView,
+  readDeliveryConfirmations,
   automaticQuotaRecovery,
   type QuotaRecoveryRow,
   type AccountLimitsRow,
@@ -235,6 +236,8 @@ function mapRuntime(r: Row): RuntimeRow {
 function mapMessage(r: Row): MessageRow {
   return {
     id: Number(r.id),
+    ...(r.queue_order == null ? {} : { queueOrder: Number(r.queue_order) }),
+    ...(r.replaces_message_id == null ? {} : { replacesMessageId: Number(r.replaces_message_id) }),
     beeId: r.bee_id as string,
     sender: r.sender as string,
     body: r.body as string,
@@ -376,7 +379,7 @@ export class ReadOnlyStore {
         bee,
         runtime,
         bee ? facts.filter(row => row.flag !== null).map(row => row.flag as Flag) : [],
-        { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries) },
+        { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries), deliveryConfirmations: readDeliveryConfirmations({ prepare: sql => this.stmt(sql) }, beeId, runtime?.generation ?? null) },
       ),
       bee,
       runtime,
@@ -393,9 +396,14 @@ export class ReadOnlyStore {
   }
 
   mailbox(beeId: string): MessageRow[] {
+    const confirmations = new Map(readDeliveryConfirmations({ prepare: sql => this.stmt(sql) }, beeId, this.currentRuntime(beeId)?.generation ?? null).map(row => [row.messageId, row]));
     return (this.db.prepare("SELECT * FROM mailbox WHERE bee_id = ? ORDER BY id").all(beeId) as Row[]).map(
-      mapMessage,
-    );
+      row => {
+        const message = mapMessage(row);
+        const deliveryConfirmation = confirmations.get(message.id);
+        return deliveryConfirmation ? { ...message, deliveryConfirmation } : message;
+      },
+    ).sort((a, b) => (a.queueOrder ?? a.id) - (b.queueOrder ?? b.id) || a.id - b.id);
   }
 
   listTemplates(): TemplateRow[] {
@@ -597,6 +605,19 @@ export class ReadOnlyStore {
         beeId: (r.bee_id as string | null) ?? null,
         payload: JSON.parse(r.payload as string) as Record<string, unknown>,
       }))
-      .filter((r) => beeId === undefined || r.beeId === beeId);
+      .filter((r) => beeId === undefined || r.beeId === beeId)
+      .map(row => {
+        if (!row.kind.startsWith("mail.confirmation_")) return row;
+        const payload = { ...row.payload };
+        for (const key of ["wireLine", "digest", "host", "priorDigest"]) delete payload[key];
+        for (const key of ["row", "prior"]) {
+          const value = payload[key];
+          if (value && typeof value === "object" && !Array.isArray(value)) {
+            const { wireLine, digest, host, ...visible } = value as Record<string, unknown>;
+            payload[key] = visible;
+          }
+        }
+        return { ...row, payload };
+      });
   }
 }

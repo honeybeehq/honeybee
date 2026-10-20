@@ -30,6 +30,15 @@ export const SANDBOX_TMP_FULL = "sandbox tmp full";
 
 export type StopCause = "stopped_by_user" | "stopped_by_system";
 
+export interface DeliveryConfirmationPlan {
+  wireLine: string;
+  digest: string;
+  host: { pid: number; birth: string; bootId: string };
+  supported?: boolean;
+  legacyFirstWriteSafe?: boolean;
+}
+export type DeliveryConfirmationResult = "accepted" | "not_written" | "pending_ack" | "old_host" | "unknown" | "refused";
+
 export type ObservedExitCause = "clean" | "crashed" | StopCause;
 
 export interface DriverObservation {
@@ -121,7 +130,13 @@ export interface RuntimeDriver {
    * is the durable truth and the daemon retries against it.
    */
   deliveryReadiness?(beeId: string, generation: number, messageId: number): string;
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome;
+  adoptedDeliveryUncertain?(beeId: string, generation: number): boolean;
+  consumeDeliveryConfirmation?(beeId: string, generation: number, messageId: number): boolean;
+  planDeliveryConfirmation?(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null;
+  deliveryIssue?(beeId: string, generation: number, messageId: number, body?: string): "host_auth_failed" | "message_too_large" | null;
+  deliveryLaneReady?(beeId: string, generation: number): boolean;
+  reconcileDeliveryConfirmation?(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult;
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { confirmation?: DeliveryConfirmationPlan; multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome;
   deliveryPaneClear?(beeId: string, generation: number): boolean;
   reconcileDeliveryPane?(beeId: string, generation: number, messageId: number, body: string): boolean;
   deliveryPane?(beeId: string, generation: number): {socketPath: string; paneId: string; serverIdentity: string} | null;

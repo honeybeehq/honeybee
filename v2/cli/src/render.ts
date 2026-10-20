@@ -226,6 +226,9 @@ export function renderBeeView(v: ViewResult, stale: boolean): string[] {
   if (bee.lastOutputAt != null) details.push(["last out", `${formatRelativeTime(bee.lastOutputAt)} ago`]);
   if (bee.providerSessionId) details.push(["session", bee.providerSessionId]);
   if (bee.forkedFrom) details.push(["forked", bee.forkedFrom]);
+  for (const hold of v.view.deliveryConfirmations ?? []) {
+    details.push(["undelivered", `#${hold.messageId} ${hold.state} (${hold.reason}, current gen ${v.view.generation}, attempted gen ${hold.generation})`]);
+  }
   for (const [label, value] of details) {
     lines.push(`${prefix}${kv(label, value).slice(2)}`);
   }
@@ -472,8 +475,9 @@ export function renderMailbox(messages: MailboxResult["messages"], stale: boolea
   const prefix = stalePrefix(stale);
   if (messages.length === 0) return [`${prefix}${dim("mailbox empty")}`];
   return messages.map((m) => {
-    const state =
-      m.deliveredAt == null ? yellow("undelivered") : dim(`delivered(gen ${m.deliveredGeneration})`);
+    const state = m.deliveryConfirmation
+      ? yellow(`undelivered: ${m.deliveryConfirmation.state} (${m.deliveryConfirmation.reason}, attempted gen ${m.deliveryConfirmation.generation})`)
+      : m.deliveredAt == null ? yellow("undelivered") : dim(`delivered(gen ${m.deliveredGeneration})`);
     const urgency = m.urgency && m.urgency !== "next" ? `  ${colorUrgency(m.urgency)}` : "";
     return `${prefix}${magenta(`#${m.id}`)}  ${dim("from=")}${m.sender}${urgency}  ${state}  ${m.body}`;
   });
