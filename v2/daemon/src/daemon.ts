@@ -790,6 +790,8 @@ export class HiveDaemon {
   // -------------------------------------------------------------------------
 
   async start(): Promise<void> {
+    const runtimeTarget = `${process.platform}-${process.arch}`;
+    if (BUILD_IDENTITY.target !== runtimeTarget) throw new Error(`daemon: build target ${BUILD_IDENTITY.target} differs from runtime target ${runtimeTarget}; install an artifact built for this node`);
     mkdirSync(this.cfg.dataDir, { recursive: true, mode: 0o700 });
     mkdirSync(this.cfg.sessionLogDir, { recursive: true });
     mkdirSync(dirname(this.cfg.logPath), { recursive: true });

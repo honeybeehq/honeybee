@@ -686,6 +686,11 @@ export class HsrDriver implements RuntimeDriver {
         p.legacyBirthPending = false;
       }
       if (!p.processIdentity || !verifyProcessIdentity(p.pid, p.processIdentity)) { attempt.destroy(); return; }
+      if (p.socketBroken) {
+        const fd = (attempt as unknown as { _handle?: { fd?: number } })._handle?.fd;
+        if (fd === undefined || !authenticatedProcessPeer(fd, p.processIdentity)) { attempt.destroy(); return; }
+        p.socketBroken = false;
+      }
       p.socket = attempt;
       for (const line of p.pendingWrites.splice(0)) {
         attempt.write(`${JSON.stringify({ op: "write", line })}\n`);
