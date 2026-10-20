@@ -1,0 +1,51 @@
+{
+  "trigger": "provider_limit",
+  "id": "quota:d3dc9166-59d8-47b4-84a5-6832e6525a34:1:2",
+  "beeId": "d3dc9166-59d8-47b4-84a5-6832e6525a34",
+  "sourceGeneration": 1,
+  "sourceAccount": "claude-source",
+  "sourceWindowUsedPercent": null,
+  "sourceWindowObservedAt": null,
+  "observationCursor": 822,
+  "sourceId": "e62c1a52-8677-485b-a2a8-b49fd61ea52b",
+  "accountLabel": null,
+  "eventIds": [
+    "quota:d3dc9166-59d8-47b4-84a5-6832e6525a34:1:822",
+    "quota:d3dc9166-59d8-47b4-84a5-6832e6525a34:1:1018"
+  ],
+  "messageIds": [
+    2
+  ],
+  "progress": "none",
+  "interrupted": true,
+  "controlFence": 0,
+  "placement": {
+    "agent": "claude",
+    "cwd": "/var/tmp/hb-quota-C.C4.YJ5b8Cx0/tmp/hb-v2-daemon-qO7iNC",
+    "cellId": null
+  },
+  "quota": {
+    "harness": "claude",
+    "window": "weekly",
+    "resetsAt": 1792490645672,
+    "providerCategory": "errored_result_limit"
+  },
+  "resetHints": {
+    "weekly": 1792490645672
+  },
+  "state": "waiting",
+  "attempt": 0,
+  "targetAccount": null,
+  "successorGeneration": null,
+  "claimId": null,
+  "reservationId": null,
+  "commandId": null,
+  "continuationKind": null,
+  "continuationMessageIds": [],
+  "continuationHistory": [],
+  "retryAt": null,
+  "reason": "allocation_owner_required",
+  "createdAt": 1792490645796,
+  "updatedAt": 1792490645801,
+  "reasonDetail": null
+}

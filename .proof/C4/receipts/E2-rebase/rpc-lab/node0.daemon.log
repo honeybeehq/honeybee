@@ -1,0 +1,16 @@
+{"ts":1792490636447,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792490636459,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792490636473,"op":"rpc.listen socket=/var/tmp/hb-quota-C.C4.YJ5b8Cx0/tmp/hb-v2-daemon-oWNCAD/hived.sock"}
+{"ts":1792490636474,"op":"daemon.started pid=2664575 store=/var/tmp/hb-quota-C.C4.YJ5b8Cx0/tmp/hb-v2-daemon-oWNCAD/core.sqlite3"}
+{"ts":1792490645811,"op":"quota.probe account=claude-source at=1792490645808 next_at=1792490675808 delay_ms=30000 reason=reset"}
+{"ts":1792490645846,"op":"account.limits account=claude-source readable=true weekly=5 5h=5"}
+{"ts":1792490645847,"op":"quota.probe account=claude-source at=1792490645847 next_at=1792490675847 delay_ms=30000 reason=fresh_evidence_changed"}
+{"ts":1792490645850,"op":"account.admission.selected operation=swap scope=claude:provider-accounts account=claude-source reservation=c58cb308-7425-48c9-8758-866fcf5848f9"}
+{"ts":1792490645852,"op":"rpc.dedup verb=account.admission.acquire key=C4-acquire-source"}
+{"ts":1792490645854,"op":"account.admission.selected operation=swap scope=claude:provider-accounts account=claude-source reservation=2029b29b-7284-4030-be9c-2b6981f6cb9d"}
+{"ts":1792490645864,"op":"account.admission.selected operation=swap scope=claude:provider-accounts account=claude-source reservation=0c8fb229-5059-4c5d-8977-dee4f7a74692"}
+{"ts":1792490645868,"op":"account.admission.selected operation=swap scope=claude:provider-accounts account=claude-source reservation=6b3f5ada-efbe-4c99-a320-1ff64dba6ce4"}
+{"ts":1792490645873,"op":"account.admission.selected operation=swap scope=claude:provider-accounts account=claude-source reservation=56c753a1-c951-49bd-b66d-3b181f0cc130"}
+{"ts":1792490648379,"op":"daemon.stopping pid=2664575"}
+{"ts":1792490648389,"op":"daemon.stopped"}
+{"ts":1792490648390,"op":"daemon.stop_complete pid=2664575"}
