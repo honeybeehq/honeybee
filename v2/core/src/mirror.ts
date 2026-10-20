@@ -600,3 +600,5 @@ export const MIRROR_PHONE_SOURCE_KEYS = ["ownerStoreId", "admissionId", "content
 
 export const MIRROR_MULTILINE_OPTIONAL_MESSAGE_KEYS = ["deliveryHold", "deliveryFallback"] as const;
 export const MIRROR_MULTILINE_OPTIONAL_HISTORY_KEYS = ["deliveryHold", "deliveryFallback"] as const;
+
+export const MIRROR_BEE_VIEW_OPTIONAL_KEYS = ["deliveryConfirmations"] as const;

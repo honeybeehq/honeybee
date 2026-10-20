@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { DELIVERY_CONFIRMATION_SQL, DELIVERY_CONFIRMATION_REASONS, publicDeliveryConfirmation, type DeliveryConfirmation, type DeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
+import { DeliveryNotHeldError } from "./types.ts";
 import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
 import { automaticQuotaRecovery, quotaRecoveryMatches, type QuotaObservedEvent } from "./quota.ts";
@@ -2149,6 +2152,7 @@ export class CoreStore {
       }
     }
     this.db.exec(PHONE_PROVENANCE_SQL);
+    this.db.exec(DELIVERY_CONFIRMATION_SQL);
     this.db.exec(MULTILINE_DELIVERY_SQL);
     if (!(this.db.prepare("PRAGMA table_info(multiline_delivery)").all() as Row[]).some(column => column.name === "held_since")) this.db.exec("ALTER TABLE multiline_delivery ADD COLUMN held_since INTEGER");
     if (!(this.db.prepare("PRAGMA table_info(multiline_delivery)").all() as Row[]).some(column => column.name === "sender_notice_message_id")) this.db.exec("ALTER TABLE multiline_delivery ADD COLUMN sender_notice_message_id INTEGER");
@@ -4110,6 +4114,95 @@ export class CoreStore {
     }
   }
 
+  getDeliveryConfirmationIntent(messageId: number): DeliveryConfirmationIntent | null {
+    const row = this.stmt("SELECT row_json FROM delivery_confirmation_intents WHERE message_id = ?").get(messageId) as Row | undefined;
+    return row ? JSON.parse(String(row.row_json)) as DeliveryConfirmationIntent : null;
+  }
+
+  listDeliveryConfirmationIntents(beeId?: string): DeliveryConfirmationIntent[] {
+    return (this.stmt("SELECT row_json FROM delivery_confirmation_intents WHERE (? IS NULL OR bee_id = ?) ORDER BY message_id").all(beeId ?? null, beeId ?? null) as Row[]).map(row => JSON.parse(String(row.row_json)) as DeliveryConfirmationIntent);
+  }
+
+  private deliveryConfirmationsForMessage(messageId: number): DeliveryConfirmation | null {
+    const row = this.getDeliveryConfirmationIntent(messageId);
+    if (!row) return null;
+    const runtime = this.currentRuntime(row.beeId);
+    return publicDeliveryConfirmation(runtime && runtime.generation !== row.generation ? { ...row, state: "held", reason: "generation_changed" } : row);
+  }
+
+  private deliveryConfirmations(beeId: string): DeliveryConfirmation[] {
+    return readDeliveryConfirmations(this.db, beeId, this.currentRuntime(beeId)?.generation ?? null);
+  }
+
+  prepareDeliveryConfirmationIntent(input: PrepareDeliveryConfirmationIntent): DeliveryConfirmationIntent {
+    if (!Number.isSafeInteger(input.messageId) || input.messageId <= 0 || !Number.isSafeInteger(input.generation) || input.generation <= 0 || typeof input.wireLine !== "string" || !input.wireLine || !/^[a-f0-9]{64}$/.test(input.digest) || createHash("sha256").update(input.wireLine).digest("hex") !== input.digest || !processIdentityValue(input.host)) throw new CoreError("invalid_request: invalid delivery confirmation intent");
+    return this.tx(() => {
+      this.mustGetBee(input.beeId);
+      const previous = this.getDeliveryConfirmationIntent(input.messageId);
+      if (previous) {
+        if (previous.beeId !== input.beeId || previous.generation !== input.generation || previous.wireLine !== input.wireLine || previous.digest !== input.digest || previous.host.pid !== input.host.pid || previous.host.birth !== input.host.birth || previous.host.bootId !== input.host.bootId) throw new IdempotencyConflictError("delivery attempt already bound to different bytes or host");
+        return previous;
+      }
+      const message = this.getMessage(input.messageId);
+      if (!message || message.beeId !== input.beeId || message.deliveredAt !== null) throw new CoreError("invalid_request: delivery message unavailable");
+      const runtime = this.currentRuntime(input.beeId);
+      if (!runtime || runtime.generation !== input.generation || !LIVE_STATES.includes(runtime.state)) throw new StaleGenerationError("delivery generation is not current and live");
+      const intent: DeliveryConfirmationIntent = { ...input, host: { ...input.host }, since: this.now(), state: "awaiting_confirmation", reason: "pending_ack" };
+      this.stmt("INSERT INTO delivery_confirmation_intents(message_id, bee_id, row_json) VALUES(?, ?, ?)").run(input.messageId, input.beeId, JSON.stringify(intent));
+      this.audit("mail.confirmation_prepared", input.beeId, { row: intent });
+      return intent;
+    });
+  }
+
+  holdDeliveryConfirmation(messageId: number, reason: DeliveryConfirmationReason): DeliveryConfirmationIntent | null {
+    if (!DELIVERY_CONFIRMATION_REASONS.includes(reason) || reason === "pending_ack") throw new CoreError("invalid_request: invalid delivery hold reason");
+    return this.tx(() => {
+      const previous = this.getDeliveryConfirmationIntent(messageId);
+      if (!previous || previous.state === "held" && previous.reason === reason) return previous;
+      const row: DeliveryConfirmationIntent = { ...previous, state: "held", reason };
+      this.stmt("UPDATE delivery_confirmation_intents SET row_json = ? WHERE message_id = ?").run(JSON.stringify(row), messageId);
+      this.audit("mail.confirmation_held", row.beeId, { row });
+      return row;
+    });
+  }
+
+  resolveDeliveryConfirmation(input: ResolveDeliveryConfirmation): DeliveryConfirmationResolution {
+    if (!input || Object.keys(input).sort().join(",") !== "action,beeId,generation,idempotencyKey,messageId" || !["resend_anyway", "drop"].includes(input.action) || typeof input.beeId !== "string" || !input.beeId || !Number.isSafeInteger(input.messageId) || input.messageId <= 0 || !Number.isSafeInteger(input.generation) || input.generation <= 0 || typeof input.idempotencyKey !== "string" || !input.idempotencyKey.trim()) throw new CoreError("invalid_request: invalid delivery decision");
+    return this.tx(() => {
+      const bound = this.stmt("SELECT row_json FROM delivery_confirmation_decisions WHERE idempotency_key = ?").get(input.idempotencyKey) as Row | undefined;
+      if (bound) {
+        const prior = JSON.parse(String(bound.row_json)) as DeliveryConfirmationDecision;
+        const receipt = prior.receipt;
+        if (receipt.beeId !== input.beeId || receipt.messageId !== input.messageId || prior.generation !== input.generation || receipt.action !== input.action) throw new IdempotencyConflictError();
+        return { ...receipt, deduped: true };
+      }
+      const original = this.stmt("SELECT row_json FROM delivery_confirmation_decisions WHERE bee_id = ? AND message_id = ? AND action = ? ORDER BY rowid LIMIT 1").get(input.beeId, input.messageId, input.action) as Row | undefined;
+      if (original) {
+        const receipt = (JSON.parse(String(original.row_json)) as DeliveryConfirmationDecision).receipt;
+        const decision: DeliveryConfirmationDecision = { idempotencyKey: input.idempotencyKey, generation: input.generation, receipt };
+        this.stmt("INSERT INTO delivery_confirmation_decisions VALUES(?, ?, ?, ?, ?)").run(input.idempotencyKey, input.beeId, input.messageId, input.action, JSON.stringify(decision));
+        this.audit("mail.confirmation_decision", input.beeId, { decision, deduped: true });
+        return { ...receipt, deduped: true };
+      }
+      this.mustGetBee(input.beeId);
+      if (this.currentRuntime(input.beeId)?.generation !== input.generation) throw new StaleGenerationError("delivery decision generation is stale");
+      const message = this.getMessage(input.messageId), intent = this.getDeliveryConfirmationIntent(input.messageId);
+      const confirmation = this.deliveryConfirmations(input.beeId).find(row => row.messageId === input.messageId);
+      if (!message || message.beeId !== input.beeId || message.deliveredAt !== null || !intent || confirmation?.state !== "held") throw new DeliveryNotHeldError("delivery_not_held: message is not held");
+      this.cancelMessage(input.beeId, input.messageId);
+      const replacement = input.action === "resend_anyway" ? this.send(input.beeId, message.phoneInput?.originalContent ?? message.body, {
+        sender: message.sender, urgency: message.urgency, priority: message.priority,
+        ...(message.senderKind === undefined ? {} : { senderKind: message.senderKind }),
+        ...(message.phoneInput ? { phone: { origin: forwardPhoneOrigin(message.phoneInput, "forward"), key: `delivery-resend:${message.id}` } } : {}),
+      }).message : null;
+      const receipt: DeliveryConfirmationResolution = { action: input.action, beeId: input.beeId, messageId: input.messageId, generation: input.generation, replacementMessageId: replacement?.id ?? null };
+      const decision: DeliveryConfirmationDecision = { idempotencyKey: input.idempotencyKey, generation: input.generation, receipt };
+      this.stmt("INSERT INTO delivery_confirmation_decisions VALUES(?, ?, ?, ?, ?)").run(input.idempotencyKey, input.beeId, input.messageId, input.action, JSON.stringify(decision));
+      this.audit("mail.confirmation_decision", input.beeId, { decision, prior: intent });
+      return receipt;
+    });
+  }
+
   phoneInput(messageId: number): PhoneInput | undefined {
     const row = this.stmt("SELECT input_json FROM phone_inputs WHERE message_id = ?").get(messageId) as Row | undefined;
     return row ? JSON.parse(String(row.input_json)) as PhoneInput : undefined;
@@ -4118,14 +4211,16 @@ export class CoreStore {
   private withPhoneInput<T extends object>(message: T, messageId: number): T & { phoneOrigin?: PhoneInput["envelope"] } {
     const input = this.phoneInput(messageId);
     const hold = this.multilineDelivery(messageId);
-    return { ...message, ...(input ? { phoneOrigin: input.envelope } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}), ...(hold?.fallback ? { deliveryFallback: publicDeliveryFallback(hold.fallback) } : {}) };
+    const confirmation = this.deliveryConfirmationsForMessage(messageId);
+    return { ...message, ...(confirmation ? { deliveryConfirmation: confirmation } : {}), ...(input ? { phoneOrigin: input.envelope } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}), ...(hold?.fallback ? { deliveryFallback: publicDeliveryFallback(hold.fallback) } : {}) };
   }
 
   private mapPhoneMessage(row: Row): MessageRow {
     const message = mapMessage(row), input = this.phoneInput(message.id);
     if (input && (phoneDigest(input.originalContent) !== input.envelope.contentDigest || renderPhoneInput(input.originalContent) !== message.body)) throw new CoreError("Phone input and body shadow differ");
     const hold = this.multilineDelivery(message.id);
-    return { ...message, ...(input ? { phoneInput: input, renderedBody: message.body } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}), ...(hold?.fallback ? { deliveryFallback: publicDeliveryFallback(hold.fallback) } : {}) };
+    const confirmation = this.deliveryConfirmationsForMessage(message.id);
+    return { ...message, ...(confirmation ? { deliveryConfirmation: confirmation } : {}), ...(input ? { phoneInput: input, renderedBody: message.body } : {}), ...(hold && deliveryHold(hold) ? { deliveryHold: deliveryHold(hold) } : {}), ...(hold?.fallback ? { deliveryFallback: publicDeliveryFallback(hold.fallback) } : {}) };
   }
 
   checkPhoneBinding(key: string, verb: string, lane: string, digest: string): void {
@@ -4577,6 +4672,8 @@ export class CoreStore {
         });
         return { applied: false };
       }
+      const intent = this.getDeliveryConfirmationIntent(messageId);
+      if (intent && intent.generation !== generation) return { applied: false };
       const current = this.currentRuntime(message.beeId);
       const currentMatches = current && current.generation === generation && LIVE_STATES.includes(current.state);
       if (!currentMatches && !recoveredFallback) {
@@ -4590,6 +4687,7 @@ export class CoreStore {
         return { applied: false };
       }
       if (!currentMatches && !this.stmt("SELECT 1 FROM runtimes WHERE bee_id = ? AND generation = ?").get(message.beeId, generation)) return { applied: false };
+      this.stmt("DELETE FROM delivery_confirmation_intents WHERE message_id = ?").run(messageId);
       this.resetMultilineDeliveryProgress(messageId, message.beeId);
       const at = this.now();
       this.db
@@ -5869,7 +5967,7 @@ export class CoreStore {
       bee,
       runtime,
       bee ? this.activeFlags(beeId).map((f) => f.flag) : [],
-      { ...opts, automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, this.liveQuotaRecoveries(beeId)) },
+      { ...opts, deliveryConfirmations: this.deliveryConfirmations(beeId), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, this.liveQuotaRecoveries(beeId)) },
     );
   }
 
@@ -5924,6 +6022,13 @@ export class CoreStore {
       if (selected.has(recovery.beeId)) recoveriesByBee.set(recovery.beeId, [...(recoveriesByBee.get(recovery.beeId) ?? []), recovery]);
     }
 
+    const confirmationsByBee = new Map<string, DeliveryConfirmation[]>();
+    for (const intent of this.listDeliveryConfirmationIntents()) {
+      const generation = runtimeByBee.get(intent.beeId)?.generation;
+      const confirmation = publicDeliveryConfirmation(generation !== undefined && generation !== intent.generation ? { ...intent, state: "held", reason: "generation_changed" } : intent);
+      confirmationsByBee.set(intent.beeId, [...(confirmationsByBee.get(intent.beeId) ?? []), confirmation]);
+    }
+
     const cells = (this.stmt(
       `SELECT * FROM cells WHERE id IN (
          SELECT cell_id FROM bees WHERE cell_id != '' AND (? IS NULL OR lifecycle = ?)
@@ -5956,7 +6061,7 @@ export class CoreStore {
       return {
         bee,
         runtime,
-        view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? [], { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveriesByBee.get(bee.id) ?? []) }),
+        view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? [], { deliveryConfirmations: confirmationsByBee.get(bee.id), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveriesByBee.get(bee.id) ?? []) }),
         move: move ? toBeeMoveView(mapBeeMove(move)) : null,
         cell: bee.cellId ? (cellsById.get(bee.cellId) ?? null) : null,
         handoff: handoff ? toBeeHandoffView(handoff) : null,
@@ -10477,6 +10582,8 @@ export class CoreStore {
   /** Deterministic snapshot of all replayable state (meta and audit excluded). */
   dumpState(): StateDump {
     return {
+      ...(this.listDeliveryConfirmationIntents().length ? { deliveryConfirmationIntents: this.listDeliveryConfirmationIntents() } : {}),
+      ...((this.stmt("SELECT row_json FROM delivery_confirmation_decisions ORDER BY idempotency_key").all() as Row[]).length ? { deliveryConfirmationDecisions: (this.stmt("SELECT row_json FROM delivery_confirmation_decisions ORDER BY idempotency_key").all() as Row[]).map(row => JSON.parse(String(row.row_json)) as DeliveryConfirmationDecision) } : {}),
       bees: this.listBees(),
       runtimes: (this.stmt("SELECT * FROM runtimes ORDER BY bee_id, generation").all() as Row[]).map(
         mapRuntime,

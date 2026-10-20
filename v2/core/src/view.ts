@@ -5,14 +5,14 @@
  * read-only SQLite fallback calls it against directly-read rows so a stale
  * read still derives through the same logic.
  */
-import type { BeeRow, BeeView, Flag, RuntimeRow } from "./types.ts";
+import type { BeeRow, BeeView, DeliveryConfirmation, Flag, RuntimeRow } from "./types.ts";
 
 export function deriveBeeView(
   beeId: string,
   bee: Pick<BeeRow, "lifecycle" | "lastOutputAt"> | null,
   runtime: RuntimeRow | null,
   flags: Flag[],
-  opts: { readCursor?: number; automaticQuotaRecovery?: boolean } = {},
+  opts: { readCursor?: number; automaticQuotaRecovery?: boolean; deliveryConfirmations?: DeliveryConfirmation[] } = {},
 ): BeeView {
   if (!bee) {
     // Deleted (or never-existed) bee: unreachable — the one lifecycle that is.
@@ -36,9 +36,10 @@ export function deriveBeeView(
   const unreadOutput =
     bee.lastOutputAt != null && (opts.readCursor == null || opts.readCursor < bee.lastOutputAt);
   const stalledQuotaRecovery = opts.automaticQuotaRecovery === true && state === "stopped" && flags.includes("spawn_failed");
-  const waitingForYou = stalledQuotaRecovery || !opts.automaticQuotaRecovery && (state === "idle" || (state === "stopped" && unreadOutput));
+  const waitingForYou = opts.deliveryConfirmations?.some(row => row.state === "held") === true || stalledQuotaRecovery || !opts.automaticQuotaRecovery && (state === "idle" || (state === "stopped" && unreadOutput));
   return {
     beeId,
+    ...(opts.deliveryConfirmations?.length ? { deliveryConfirmations: opts.deliveryConfirmations } : {}),
     exists: true,
     lifecycle: bee.lifecycle,
     generation: runtime?.generation ?? null,

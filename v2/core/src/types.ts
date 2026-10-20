@@ -1,3 +1,5 @@
+import type { DeliveryConfirmation, DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmation.ts";
+export * from "./deliveryConfirmation.ts";
 import type { DeliveryFallback, DeliveryHold, MultilineDeliveryRow } from "./multilineDeliveryTypes.ts";
 import type { PhoneInput, PhoneOperationOrigin } from "./phoneOriginTypes.ts";
 import type { ThreadOperationRow } from "./threadOperation.ts";
@@ -295,6 +297,7 @@ export const MESSAGE_URGENCIES = ["now", "next", "idle"] as const;
 export type Urgency = (typeof MESSAGE_URGENCIES)[number];
 
 export interface MessageRow {
+  deliveryConfirmation?: DeliveryConfirmation;
   deliveryFallback?: DeliveryFallback;
   deliveryHold?: DeliveryHold;
   phoneInput?: PhoneInput;
@@ -352,6 +355,7 @@ export type MailHistoryLifecycle =
 
 /** One accepted send reconstructed from typed mail audit events, never a raw audit row. */
 export interface MailHistoryMessage {
+  deliveryConfirmation?: DeliveryConfirmation;
   deliveryFallback?: DeliveryFallback;
   deliveryHold?: DeliveryHold;
   phoneOrigin?: PhoneInput["envelope"];
@@ -402,6 +406,7 @@ export interface MailPendingParams {
 
 /** One undelivered mailbox row with bounded UTF-8 previews. */
 export interface MailPendingMessage {
+  deliveryConfirmation?: DeliveryConfirmation;
   deliveryFallback?: DeliveryFallback;
   deliveryHold?: DeliveryHold;
   phoneOrigin?: PhoneInput["envelope"];
@@ -930,6 +935,7 @@ export interface TaskSupplyRow {
 
 /** B8 — the derived read model. Computed, never stored. */
 export interface BeeView {
+  deliveryConfirmations?: DeliveryConfirmation[];
   beeId: string;
   exists: boolean;
   lifecycle: Lifecycle | null;
@@ -1031,6 +1037,8 @@ export interface TrackRow {
 
 /** Deterministic full-store snapshot (audit excluded); comparison target for replay. */
 export interface StateDump {
+  deliveryConfirmationIntents?: DeliveryConfirmationIntent[];
+  deliveryConfirmationDecisions?: DeliveryConfirmationDecision[];
   deliveryHolds?: MultilineDeliveryRow[];
   threadOperations: ThreadOperationRow[];
   bees: BeeRow[];
@@ -1976,3 +1984,5 @@ export interface QuotaRecoveryRow {
   createdAt: number;
   updatedAt: number;
 }
+
+export class DeliveryNotHeldError extends CoreError {}
