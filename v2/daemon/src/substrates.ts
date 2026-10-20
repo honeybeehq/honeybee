@@ -109,6 +109,11 @@ export class SubstrateRouter implements RuntimeDriver {
     return driver.adoptedDeliveryUncertain?.(beeId, generation) ?? false;
   }
 
+  consumeDeliveryConfirmation(beeId: string, generation: number, messageId: number): boolean {
+    const driver: RuntimeDriver = this.driverFor(beeId, generation);
+    return driver.consumeDeliveryConfirmation?.(beeId, generation, messageId) ?? false;
+  }
+
   planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null {
     const driver: RuntimeDriver = this.driverFor(beeId, generation);
     return driver.planDeliveryConfirmation?.(beeId, generation, messageId, body) ?? null;

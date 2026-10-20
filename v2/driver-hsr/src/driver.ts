@@ -788,6 +788,14 @@ export class HsrDriver implements RuntimeDriver {
     try { return this.cfg.resolve(beeId).adapter.confirmsDelivery === true; } catch { return true; }
   }
 
+  consumeDeliveryConfirmation(beeId: string, generation: number, messageId: number): boolean {
+    const p = this.procs.get(beeId);
+    if (!p || p.generation !== generation || p.exited || !p.processIdentity || !p.confirmedDeliveries.delete(messageId)) return false;
+    p.pendingDeliveries.delete(messageId);
+    this.consumed.set(messageId, generation);
+    return true;
+  }
+
   private refreshDeliveryProtocol(p: ManagedProcess): void {
     const protocol = p.deliveryProtocol;
     if (!protocol || !p.statusPath) return;
@@ -816,11 +824,7 @@ export class HsrDriver implements RuntimeDriver {
     if (!p || p.generation !== generation || !p.processIdentity || p.processIdentity.pid !== plan.host.pid
       || p.processIdentity.birth !== plan.host.birth || p.processIdentity.bootId !== plan.host.bootId) return "unknown";
     this.refreshDeliveryProtocol(p);
-    if (p.confirmedDeliveries.delete(messageId)) {
-      p.pendingDeliveries.delete(messageId);
-      this.consumed.set(messageId, generation);
-      return "accepted";
-    }
+    if (this.consumeDeliveryConfirmation(beeId, generation, messageId)) return "accepted";
     if (!p.deliveryProtocol?.authenticated || !p.deliveryProtocol.supported) return "pending_ack";
     const reply = p.deliveryProtocol.replies.get(messageId);
     if (reply) {

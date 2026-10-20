@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync} from 'node:fs';
+import {mkdtempSync,readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {openCoreStore,DeliveryNotHeldError} from '../../v2/core/src/index.ts';
 import {DaemonCore} from '../../v2/daemon/src/loops.ts';
@@ -8,9 +8,10 @@ import {codexAdapter} from '../../v2/adapters/src/index.ts';
 import {fixtureRuntimeIdentity,persistFixtureProcess,sleep,pidAlive} from '../../v2/driver-hsr/tests/helpers.ts';
 assert(process.env.TMPDIR?.startsWith('/var/tmp/'),'set an owned TMPDIR');
 const root=mkdtempSync(join(process.env.TMPDIR,'h1c-upgrade-'));const path=join(root,'core.sqlite');const writes=join(root,'writes.jsonl');
+const lateAck=process.argv.includes('--late-ack');const ackGate=join(root,'ack-gate');
 const fake=new URL('./h1c-fake-codex.mjs',import.meta.url).pathname;const old=new URL('./h1c-old-host.mjs',import.meta.url).pathname;const host=new URL('../../v2/driver-hsr/src/runner-host-main.ts',import.meta.url).pathname;
 let clock=Date.now();let store=openCoreStore(path,{now:()=>clock});
-const config={sessionLogDir:join(root,'logs'),runtimeIdentity:fixtureRuntimeIdentity(root),hostCommand:path=>({command:process.execPath,args:['--import',old,host,path]}),resolve:()=>({adapter:codexAdapter({cwd:root}),command:process.execPath,args:[fake],cwd:root,env:{...process.env,H1C_WRITES:writes,H1C_SKIP_ACK_IDS:'1001',H1C_ACK_DELAY_MS:'500'}})};
+const config={sessionLogDir:join(root,'logs'),runtimeIdentity:fixtureRuntimeIdentity(root),hostCommand:path=>({command:process.execPath,args:['--import',old,host,path]}),resolve:()=>({adapter:codexAdapter({cwd:root}),command:process.execPath,args:[fake],cwd:root,env:{...process.env,H1C_WRITES:writes,H1C_SKIP_ACK_IDS:lateAck?'':'1001',H1C_ACK_DELAY_MS:'500',...(lateAck?{H1C_ACK_GATE:ackGate}:{})}})};
 let driver=new HsrDriver(config);let core;let pid;let queries=0;
 const makeCore=()=>new DaemonCore({store,driver,now:()=>clock,random:()=>0.5,policy:{bootHangTimeoutSteps:500000,commandsPerStep:8,i1DeadlineSteps:540000},log:()=>{}});
 const tick=async()=>{clock+=200;core.step();await sleep(5);};
@@ -29,6 +30,14 @@ try{
  await until(()=>driver.procs.get('bee')?.deliveryProtocol?.authenticated);
  const socket=driver.procs.get('bee').socket;const socketWrite=socket.write.bind(socket);socket.write=(frame,...rest)=>{if(JSON.parse(String(frame)).op==='delivery_status')queries++;return socketWrite(frame,...rest);};
  await until(()=>store.getMessage(message.id)?.deliveryConfirmation?.state==='held');
+ if(lateAck){
+  assert.equal(store.getDeliveryConfirmationIntent(message.id).wireLine,null);assert.equal(store.getMessage(message.id).deliveredAt,null);
+  writeFileSync(ackGate,'release owned ACK');
+  await until(()=>store.getMessage(message.id)?.deliveredAt!=null);
+  assert.equal(store.getMessage(message.id).deliveryConfirmation,undefined);assert.equal(store.listDeliveryConfirmationIntents().length,0);
+  assert.equal(readFileSync(writes,'utf8').trim().split('\n').length,1);assert.equal(queries,0);
+  console.log(JSON.stringify({case:'positive-late-ack-for-unknown-upgrade-hold',ackReleasedAfterAdoption:true,delivered:true,stdinWrites:1,operatorAction:false,unknownFrames:0,root}));
+ }else{
  for(let i=0;i<100;i++)await tick();assert.equal(store.getMessage(message.id).deliveryConfirmation.reason,'unknown');assert.equal(store.getDeliveryConfirmationIntent(message.id).wireLine,null);assert.equal(queries,0);
  assert.equal(readFileSync(writes,'utf8').trim().split('\n').length,1);
  const receipt=store.resolveDeliveryConfirmation({action:'resend_anyway',beeId:'bee',messageId:message.id,generation:1,idempotencyKey:'owned-escape'});
@@ -41,4 +50,5 @@ try{
  const rows=readFileSync(writes,'utf8').trim().split('\n').map(JSON.parse);assert.equal(rows.length,3);assert.equal(new Set(rows.map(row=>row.id)).size,3);assert.equal(queries,0);
  assert.equal(driver.procs.get('bee').pid,pid);
  console.log(JSON.stringify({case:'old-host-upgrade-and-explicit-escape',originalStdinWrites:1,replacementStdinWrites:1,freshMailDelivered:true,freshMailWrites:1,delayedAckMs:500,noTransientHold:true,pendingResendRefused:true,sameHost:true,unknownFrames:queries,oldMessageHeld:true,replacementMessageId:receipt.replacementMessageId,root}));
+ }
 }finally{driver.disposeAll();for(let i=0;i<500&&pid&&pidAlive(pid);i++)await sleep(10);store.close();if(pid)assert.equal(pidAlive(pid),false);}

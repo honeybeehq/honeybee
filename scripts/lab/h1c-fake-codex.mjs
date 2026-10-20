@@ -1,5 +1,5 @@
 import {createInterface} from 'node:readline';
-import {appendFileSync} from 'node:fs';
+import {appendFileSync,existsSync} from 'node:fs';
 const emit=value=>process.stdout.write(JSON.stringify(value)+'\n');
 let turnId=null;
 createInterface({input:process.stdin}).on('line',line=>{
@@ -11,7 +11,8 @@ createInterface({input:process.stdin}).on('line',line=>{
   turnId??='h1c-turn-'+request.id;
   if(process.env.H1C_ACK!=='never'&&!(process.env.H1C_SKIP_ACK_IDS??'').split(',').includes(String(request.id))){
    const reply={id:request.id,result:{turn:{id:turnId}}};
-   setTimeout(()=>emit(reply),Number(process.env.H1C_ACK_DELAY_MS??'0'));
+   if(process.env.H1C_ACK_GATE){const timer=setInterval(()=>{if(existsSync(process.env.H1C_ACK_GATE)){clearInterval(timer);emit(reply);}},5);}
+   else setTimeout(()=>emit(reply),Number(process.env.H1C_ACK_DELAY_MS??'0'));
   }
   emit({method:'turn/started',params:{threadId:'h1c-thread',turn:{id:turnId}}});
   setTimeout(()=>{emit({method:'turn/completed',params:{threadId:'h1c-thread',turn:{id:turnId,status:'completed',error:null}}});turnId=null;},Number(process.env.H1C_TURN_MS??'100'));

@@ -131,6 +131,7 @@ export interface RuntimeDriver {
    */
   deliveryReadiness?(beeId: string, generation: number, messageId: number): string;
   adoptedDeliveryUncertain?(beeId: string, generation: number): boolean;
+  consumeDeliveryConfirmation?(beeId: string, generation: number, messageId: number): boolean;
   planDeliveryConfirmation?(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null;
   reconcileDeliveryConfirmation?(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult;
   deliver(beeId: string, generation: number, messageId: number, body: string, options?: { confirmation?: DeliveryConfirmationPlan; multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome;

@@ -1634,11 +1634,12 @@ export class DaemonCore {
         this.confirmationReady.delete(intent.messageId);
         continue;
       }
-      if (intent.wireLine === null) continue;
       const key = this.driver.deliveryReadiness?.(intent.beeId, intent.generation, intent.messageId) ?? "";
       const poll = this.confirmationPolls.get(intent.messageId);
       if (poll?.key === key && this.now() < poll.nextAt) continue;
-      const result = this.driver.reconcileDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId, intent) ?? "unknown";
+      const result = intent.wireLine === null
+        ? this.driver.consumeDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId) ? "accepted" : "pending_ack"
+        : this.driver.reconcileDeliveryConfirmation?.(intent.beeId, intent.generation, intent.messageId, intent) ?? "unknown";
       const attempts = poll?.key === key ? poll.attempts + 1 : 1;
       this.confirmationPolls.set(intent.messageId, { beeId: intent.beeId, key, attempts,
         nextAt: this.now() + Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25) });
@@ -1661,7 +1662,7 @@ export class DaemonCore {
         this.confirmationReady.delete(intent.messageId);
         this.confirmationPolls.delete(intent.messageId);
         this.deliveryRetries.delete(intent.beeId);
-      } else if (result === "not_written") {
+      } else if (result === "not_written" && intent.wireLine !== null) {
         if (this.ext.isDegraded?.(intent.beeId, intent.generation)) {
           this.store.replanDeliveryConfirmationIntent(intent, intent.digest);
           this.store.releaseUnwrittenDeliveryConfirmation(intent.messageId, intent.generation, intent.digest);
