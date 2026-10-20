@@ -1,0 +1,11 @@
+Independent reviewer: Claude Opus5.5, session b6d511e9-7d77-4629-a99d-04e889351ed3. It read product diffs and the trail; the author runs the tests and daemon labs.
+
+The first E2 implementation hid all valid automatic obligations. The reviewer raised a MEDIUM about credential and operator waits. The orchestrator explicitly narrowed E2 (messages7486/7489): capacity and owner-required waits are automatic, while credential, lease and pause failures require attention. Commit d2bb75e7 implements that decision with reasonDetail, a closed typed RPC field; unknowns fail toward attention. Project contractv21 and the proof state the narrowed scope.
+
+The reviewer confirmed the shared validity fences, unchanged blocked/flags, batching, stale read-only parity, typed classification and reasonDetail audit/RPC propagation. It also confirmed the LOW fixes: one autoswapDisabled helper shared with daemon, deterministic SQL flag order, and legacy trigger default. The final ee264ccd one-line correction removes a comparison against an impossible RPC code; operation_in_progress remains a supported typed wait category supplied by the owner. No blocking findings remain in the product. Final clearance depends on committed receipts.
+
+Carried LOWs: active initial versus owner-reported account_wait labels use undefined/null reasonDetail; legacy null-reason rows show needs-you until their next typed update; a transient local control conflict conservatively shows needs-you until retry (usually30s). reason/detail are on payload.recovery and snapshots, not compact payload.notice, explicitly documented in contractv21.
+
+The first fixture required account_wait although the old C shadow path returned account_unavailable for an all-excluded fleet. E2 now publishes typed account_wait for that capacity case and the final lab asserts it. The first readonly implementation added prepared plans; the unchanged existing seven-plan bound caught it and passes after the combined flags/recovery query. A strict v2 check caught the impossible RPC-code comparison after an early commentary called the gates green; the author corrected that update and only generates verification.log once gates.exit is0.
+
+No deployment; DEPLOY HOLD remains. Owner propagation of typed receipts belongs to C2d; F2 handles quiet copy. No new unit tests or production comments.

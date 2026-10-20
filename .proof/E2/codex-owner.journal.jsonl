@@ -1,0 +1,18 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-QTLkCe","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"5776a4b5-05ff-4b14-9c97-3de2bfa55d05","cwd":"/var/tmp/sar-e2-pinlabs-qcLhvo/hb-v2-daemon-QTLkCe"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"5776a4b5-05ff-4b14-9c97-3de2bfa55d05","input":[{"type":"text","text":"warm output for the unread cursor","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"1cf2cfb4-68c7-40b7-b7ce-e3988dd0af83"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"5776a4b5-05ff-4b14-9c97-3de2bfa55d05","turn":{"id":"1cf2cfb4-68c7-40b7-b7ce-e3988dd0af83"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"5776a4b5-05ff-4b14-9c97-3de2bfa55d05","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"5776a4b5-05ff-4b14-9c97-3de2bfa55d05","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"5776a4b5-05ff-4b14-9c97-3de2bfa55d05","turn":{"id":"1cf2cfb4-68c7-40b7-b7ce-e3988dd0af83","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"5776a4b5-05ff-4b14-9c97-3de2bfa55d05","input":[{"type":"text","text":"@quota:weekly fixture automatic wait","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"8746e5dc-2d30-4c66-b5fe-37406d676a67"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"5776a4b5-05ff-4b14-9c97-3de2bfa55d05","turn":{"id":"8746e5dc-2d30-4c66-b5fe-37406d676a67"}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":null,"secondary":null,"rateLimitReachedType":null}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":{"usedPercent":40,"windowDurationMins":300,"resetsAt":1792486994},"secondary":{"usedPercent":100,"windowDurationMins":10080,"resetsAt":1792490594},"rateLimitReachedType":"rate_limit_reached"}}}
+{"method":"error","params":{"threadId":"5776a4b5-05ff-4b14-9c97-3de2bfa55d05","turnId":"8746e5dc-2d30-4c66-b5fe-37406d676a67","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"},"willRetry":false}}
+{"method":"turn/completed","params":{"threadId":"5776a4b5-05ff-4b14-9c97-3de2bfa55d05","turn":{"id":"8746e5dc-2d30-4c66-b5fe-37406d676a67","status":"failed","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"}}}}

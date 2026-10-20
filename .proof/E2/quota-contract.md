@@ -126,3 +126,5 @@ Honeybee suppresses waitingForYou only for a valid non-opted-out recovery: rotat
 
 Local recovery classifies typed credential and lease refusals and account readiness, never error prose. When a ready account exists but every eligible slot is in reserve, local shadow recovery records account_wait. Active owner receipts must pass the typed reasonDetail for manual credential/lease/pause failures; omitted unavailable detail fails toward human attention. Owner liveness belongs to apiaryd; allocation_owner_required remains automatic. This is an attention/copy contract, not a change to allocation, leases or continuation ownership.
 
+E2 notice clarification: reason and reasonDetail are fields on audit.payload.recovery and snapshot quotaRecoveries rows, not on the compact payload.notice object. Consumers classify from the recovery row; the optional notice remains only a quiet presentation update keyed recoveryId. Older waiting rows with reason:null retain needs-you until reconciliation publishes a typed wait.
+

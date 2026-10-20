@@ -1,0 +1,35 @@
+E2 automatic quota recovery attention: 8/8 real-daemon cases passed;13/13 seam phases passed.
+Implementation ee264ccdadb6a6667248391f24d5901b560b851b
+Base 975ab53eb7b1842113d6874dfd777a47e910d9f7
+Branch review/sar-E2-recovery-not-needs-you
+check,v2:check,build: PASS (gates.exit0).
+Existing suites:160 passed,1 existing real-HOME import skipped,0 failed. No new unit tests or production comments.
+Capacity(account_wait, including null retryAt), completion_reserve, rotating and allocation_owner_required are automatic.
+account_unavailable only hides with operation_in_progress; credential_login_required, lease_needs_operator, paused, unavailable and unknown details retain attention.
+blocked and resource_blocked stay visible in every daemon case. Core single/list and stale readonly agree.
+Typed reasonDetail lives on recovery rows and quota.recovery.wait, not compact notices. Contractv21 snapshot is quota-contract.md.
+Credential cases publish a typed owner-refusal receipt through real daemon RPC; no real provider or credential service is used.
+Author ran the gates and labs; independent reviewer reads the product and committed receipts.
+Carried LOWs: active initial-vs-owner wait label uses undefined/null reasonDetail distinction; old null-reason rows retain attention until next typed update.
+No deployment; DEPLOY HOLD remains. C2d owns owner typed-reason propagation; F2 owns copy.
+{"name":"claude-cancel","passed":true,"before":{"waitingForYou":false,"blocked":true,"recovery":"waiting","reason":"account_wait"},"after":{"waitingForYou":true,"blocked":true,"recovery":"cancelled","reason":"operator_control","reasonDetail":null},"flags":["resource_blocked"]}
+{"name":"claude-optout","passed":true,"before":{"waitingForYou":false,"blocked":true,"recovery":"waiting","reason":"account_wait"},"after":{"waitingForYou":true,"blocked":true,"recovery":"waiting","reason":"account_wait","reasonDetail":null},"flags":["resource_blocked"]}
+{"name":"claude-owner","passed":true,"before":{"waitingForYou":false,"blocked":true,"recovery":"waiting","reason":"allocation_owner_required"},"after":{"waitingForYou":true,"blocked":true,"recovery":"waiting","reason":"allocation_owner_required","reasonDetail":null},"flags":["resource_blocked"]}
+{"name":"claude-credential","passed":true,"before":{"waitingForYou":false,"blocked":true,"recovery":"waiting","reason":"allocation_owner_required"},"after":{"waitingForYou":true,"blocked":true,"recovery":"waiting","reason":"account_unavailable","reasonDetail":"credential_login_required"},"flags":["resource_blocked"]}
+{"name":"codex-cancel","passed":true,"before":{"waitingForYou":false,"blocked":true,"recovery":"waiting","reason":"account_wait"},"after":{"waitingForYou":true,"blocked":true,"recovery":"cancelled","reason":"operator_control"},"flags":["resource_blocked"]}
+{"name":"codex-optout","passed":true,"before":{"waitingForYou":false,"blocked":true,"recovery":"waiting","reason":"account_wait"},"after":{"waitingForYou":true,"blocked":true,"recovery":"waiting","reason":"account_wait"},"flags":["resource_blocked"]}
+{"name":"codex-owner","passed":true,"before":{"waitingForYou":false,"blocked":true,"recovery":"waiting","reason":"allocation_owner_required"},"after":{"waitingForYou":true,"blocked":true,"recovery":"waiting","reason":"allocation_owner_required","reasonDetail":null},"flags":["resource_blocked"]}
+{"name":"codex-credential","passed":true,"before":{"waitingForYou":false,"blocked":true,"recovery":"waiting","reason":"allocation_owner_required"},"after":{"waitingForYou":true,"blocked":true,"recovery":"waiting","reason":"account_unavailable","reasonDetail":"credential_login_required"},"flags":["resource_blocked"]}
+{"phase":"waiting","waitingForYou":false,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"credential_login_required","waitingForYou":true,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"lease_needs_operator","waitingForYou":true,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"paused","waitingForYou":true,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"unavailable","waitingForYou":true,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"operation_in_progress","waitingForYou":false,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"unknown-detail","waitingForYou":true,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"unknown-reason","waitingForYou":true,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"owner-required","waitingForYou":false,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"capacity-without-retry","waitingForYou":false,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"rotating","waitingForYou":false,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"invalid-control-fence","waitingForYou":true,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
+{"phase":"cancelled","waitingForYou":true,"flags":["resource_blocked"],"coreListAndReadonlyAgree":true}
