@@ -2350,7 +2350,7 @@ export class HiveDaemon {
         });
       case "doctor.integrity": {
         if (this.integrityCheck) return this.integrityCheck;
-        if (Date.now() - this.integrityCheckAt < 60_000) throw new RpcError("invalid_request", "Integrity check requires a sixty-second interval between runs");
+        if (Date.now() - this.integrityCheckAt < 60_000) throw new RpcError("doctor_cooldown", "Integrity check requires a sixty-second interval between runs");
         this.integrityCheckAt = Date.now();
         const pending: Promise<{ ok: boolean; results: string[]; durationMs: number }> = new Promise((resolve, reject) => setImmediate(() => {
           const started = performance.now();

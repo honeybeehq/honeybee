@@ -7,8 +7,8 @@ AFTER H1a, injected jitter=0.5, real DaemonCore virtual clock
 {"case":"busy-to-idle","delivered":true,"at":601400}
 {"case":"owned-sqlite-full","full":true,"message":"database or disk is full"}
 {"case":"recovery-integrity","delivered":true,"check":{"ok":true,"results":["ok"]},"restart":false}
-OWNED DAEMON RPC: single-flight, cooldown, remote refusal
-{"case":"live-owned-daemon-doctor-single-flight","results":[{"ok":true,"results":["ok"],"durationMs":0.9040729999999257},{"ok":true,"results":["ok"],"durationMs":0.9040729999999257}],"pid":1164884}
+OWNED DAEMON RPC: single-flight, typed doctor_cooldown, remote refusal
+{"case":"live-owned-daemon-doctor-single-flight","results":[{"ok":true,"results":["ok"],"durationMs":0.9574049999999943},{"ok":true,"results":["ok"],"durationMs":0.9574049999999943}],"pid":1169491}
 {"case":"doctor-cooldown","refused":true}
 {"case":"doctor-remote-relay","refused":true}
 SIZED NORMAL-DURABILITY SQLITE CHECK: 256 MiB payload on Cell disk, no shared tmpfs filling
