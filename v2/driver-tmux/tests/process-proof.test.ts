@@ -133,6 +133,39 @@ for (const witness of [false, true]) test(`single exact dead pane cleanup remove
   const {TmuxServer, exactSession, shQuote} = await import("../src/tmux.ts");
   const {sessionNameFor} = await import("../src/driver.ts");
   const h = harness(), store = h.open(), rig = makeRig({cleanup: store.tmuxCleanupHooks()}), server = new TmuxServer({socketPath: rig.socketPath});
+  const diagnostic: {cleanupResult: "removed" | "retained" | "proof-missing" | "command-error" | null; paneDead: boolean | null; paneScopePresent: boolean | null; spawnSocketProofPresent: boolean | null; currentSocketOwned: boolean | null; socketProofMatches: boolean | null; hasSessionStatus: number | null} = {cleanupResult: null, paneDead: null, paneScopePresent: null, spawnSocketProofPresent: null, currentSocketOwned: null, socketProofMatches: null, hasSessionStatus: null};
+  const observed = rig.driver as unknown as {cleanupExitedPane: (pane: {paneId: string; paneScope: unknown; spawnSocketProof: Parameters<typeof sameSocketProof>[0]}, deadline?: bigint) => void; server: InstanceType<typeof TmuxServer>};
+  const cleanup = observed.cleanupExitedPane.bind(rig.driver);
+  const command = observed.server.try.bind(observed.server);
+  observed.server.try = (...args) => {
+    if (args[0][0] !== "if-shell") return command(...args);
+    try {
+      const result = command(...args);
+      diagnostic.cleanupResult = result.status === 0 && result.stdout.trim() === "SCG_CLEANUP_REMOVED" ? "removed" : result.status === 0 && result.stdout.trim() === "SCG_CLEANUP_RETAINED" ? "retained" : "command-error";
+      return result;
+    } catch (error) { diagnostic.cleanupResult = "command-error"; throw error; }
+  };
+  observed.cleanupExitedPane = (...args) => {
+    const [pane] = args;
+    const proof = ownedSocketProof(rig.socketPath);
+    diagnostic.paneScopePresent = pane.paneScope != null;
+    diagnostic.spawnSocketProofPresent = pane.spawnSocketProof != null;
+    diagnostic.currentSocketOwned = proof != null;
+    diagnostic.socketProofMatches = sameSocketProof(pane.spawnSocketProof, proof);
+    diagnostic.cleanupResult = "proof-missing";
+    try {
+      const result = server.try(["display-message", "-p", "-t", pane.paneId, "#{pane_dead}"]);
+      const value = result.stdout.trim();
+      diagnostic.paneDead = result.status === 0 && (value === "0" || value === "1") ? value === "1" : null;
+    } catch { diagnostic.paneDead = null; }
+    cleanup(...args);
+  };
+  const query = server.try.bind(server);
+  server.try = (...args) => {
+    const result = query(...args);
+    if (args[0][0] === "has-session" && diagnostic.hasSessionStatus === null) diagnostic.hasSessionStatus = result.status;
+    return result;
+  };
   try {
     const {bee} = makeBee(store);
     rig.configure(bee.id, "transcript"); rig.driver.start(bee.id, 1);
@@ -143,6 +176,9 @@ for (const witness of [false, true]) test(`single exact dead pane cleanup remove
     assert.notEqual(server.try(["has-session", "-t", exactSession(sessionNameFor(bee.id, 1))]).status, 0);
     if (witness) assert.equal(server.try(["has-session", "-t", "=cleanup-witness"]).status, 0);
     assert.deepEqual(store.tmuxCleanupCounts(), {retained: 0, informational: 0});
+  } catch (error) {
+    if (error instanceof assert.AssertionError) console.error(JSON.stringify({otherSession: witness, ...diagnostic}));
+    throw error;
   } finally {rig.cleanup(); store.close(); h.cleanup();}
 });
 
