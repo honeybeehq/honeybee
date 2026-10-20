@@ -17,14 +17,15 @@ assert.ok(proof.startsWith(root + "/"));
 mkdirSync(proof, { recursive: true });
 console.log(JSON.stringify({ root, proof, pid: process.pid }));
 writeFileSync(join(proof, "metadata.json"), JSON.stringify({ head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), trackedChanges: execFileSync("git", ["status", "--short", "--untracked-files=no"], { encoding: "utf8" }), node: process.version, executable: process.execPath, args: process.argv.slice(2), holdMs: Number(process.env.C_HOLD_MS ?? 33000), repo, root }, null, 2));
-const scenarios = ["claude-once", "codex-once", "source-reset", "unknown-reset", "autoswap-false", "active-owner", "restart-waiting"];
+const scenarios = ["claude-once", "codex-once", "source-reset", "unknown-reset", "autoswap-false", "active-owner", "restart-waiting", "concurrent-unknown"];
 const selected = process.argv.slice(2);
 for (const name of selected) assert.ok(scenarios.includes(name), `unknown scenario ${name}`);
 const summary: unknown[] = [];
 for (const name of selected.length ? selected : scenarios) {
   const harness = name === "codex-once" ? "codex" : "claude";
-  const waiting = ["source-reset", "unknown-reset", "restart-waiting"].includes(name);
-  const unknown = name === "unknown-reset";
+  const concurrent = name === "concurrent-unknown";
+  const waiting = ["source-reset", "unknown-reset", "restart-waiting", "concurrent-unknown"].includes(name);
+  const unknown = name === "unknown-reset" || concurrent;
   const active = name === "active-owner";
   const resetAt = Date.now() + (waiting ? 12_000 : 3_600_000);
   const marker = join(root, `${name}.once`);
@@ -64,6 +65,7 @@ for (const name of selected.length ? selected : scenarios) {
   let client = await daemon.client();
   const logs: string[] = [];
   let beeId: string | undefined;
+  let secondBeeId: string | undefined;
   let result: Record<string, unknown> = { name, harness, dir, resetAt: unknown ? null : resetAt, passed: false };
   const dump = async (suffix: string) => {
     const snapshot = await client.request<SnapshotResult>("snapshot", {});
@@ -83,7 +85,19 @@ for (const name of selected.length ? selected : scenarios) {
       const view = await client.request<ViewResult>("view", { beeId });
       return mail.messages.some(message => message.id === warmup.messageId && message.deliveredGeneration === 1) && view.view.runtimeState === "idle" && !!view.bee?.providerSessionId ? true : null;
     }, `${name} native conversation initialized`, 15_000);
-    const sent = await client.request<{ messageId: number }>("send", { beeId, body: "@quota:once exact original quota work" });
+    if (concurrent) {
+      const second = await client.request<SpawnResult>("spawn", { name: "C-concurrent-second", agent: harness, cwd: dir, account: `${harness}-a` });
+      secondBeeId = second.beeId;
+      const secondWarmup = await client.request<{ messageId: number }>("send", { beeId: secondBeeId, body: "quota lab second warmup" });
+      await waitFor(async () => {
+        const mail = await client.request<MailboxResult>("mailbox", { beeId: secondBeeId });
+        const view = await client.request<ViewResult>("view", { beeId: secondBeeId });
+        return mail.messages.some(message => message.id === secondWarmup.messageId && message.deliveredGeneration === 1) && view.view.runtimeState === "idle" ? true : null;
+      }, "concurrent second initialized", 15_000);
+    }
+    const quotaBody = concurrent ? "@quota:weekly_local concurrent unknown reset" : "@quota:once exact original quota work";
+    const sent = await client.request<{ messageId: number }>("send", { beeId, body: quotaBody });
+    if (secondBeeId) await client.request("send", { beeId: secondBeeId, body: quotaBody });
     const initial = await waitFor(async () => await recovery(), `${name} durable obligation`, 20_000);
     assert.ok(initial.messageIds.includes(sent.messageId));
     result.originalMessageId = sent.messageId;
@@ -113,7 +127,11 @@ for (const name of selected.length ? selected : scenarios) {
       }
     }
     if (unknown || active || name === "autoswap-false") {
-      await new Promise(done => setTimeout(done, Number(process.env.C_HOLD_MS ?? 33000)));
+      if (secondBeeId) await waitFor(async () => {
+        const snapshot = await client.request<SnapshotResult>("snapshot", {});
+        return snapshot.quotaRecoveries.some(row => row.beeId === secondBeeId && row.state === "waiting" && row.reason === "account_unavailable") ? true : null;
+      }, "both shared account recoveries waiting", 15_000);
+      await new Promise(done => setTimeout(done, concurrent ? 35000 : Number(process.env.C_HOLD_MS ?? 33000)));
       const held = await dump("held");
       const row = held.snapshot.quotaRecoveries.find(row => row.id === initial.id)!;
       assert.equal(row.state, "waiting");
@@ -122,6 +140,27 @@ for (const name of selected.length ? selected : scenarios) {
       assert.equal(held.view?.view.generation, 1);
       assert.equal(held.mail?.messages.length, 2);
       assert.equal(held.view?.view.flags.includes("auth_needed"), false);
+      if (secondBeeId) {
+        const secondView = await client.request<ViewResult>("view", { beeId: secondBeeId });
+        const secondMail = await client.request<MailboxResult>("mailbox", { beeId: secondBeeId });
+        const secondRecovery = held.snapshot.quotaRecoveries.find(row => row.beeId === secondBeeId)!;
+        assert.equal(secondView.view.generation, 1);
+        assert.equal(secondView.bee?.account, `${harness}-a`);
+        assert.equal(secondRecovery.state, "waiting");
+        assert.equal(secondRecovery.reason, "account_unavailable");
+        assert.equal(secondRecovery.retryAt, null);
+        assert.deepEqual(secondRecovery.continuationMessageIds, []);
+        assert.equal(secondMail.messages.length, 2);
+        const probes = requests as Array<{ at: number; path: string; account: string }>;
+        const accountProbes = ["a", "b"].map(account => ({ account, timestamps: probes.filter(request => request.path === "/usage" && request.account === account).map(request => request.at) }));
+        for (const account of accountProbes) {
+          assert.equal(account.timestamps.length, 2, `shared account ${account.account} has initial and one bounded refresh probe`);
+          assert.ok(account.timestamps[1] - account.timestamps[0] >= 29000, "shared unknown-reset probes are not per-bee or one-per-second");
+        }
+        writeFileSync(join(proof, `${name}.second.json`), JSON.stringify({ view: secondView, mail: secondMail, recovery: secondRecovery, accountProbes }, null, 2));
+        result.accountProbes = accountProbes;
+        result.secondBeeId = secondBeeId;
+      }
       result = { ...result, passed: true, state: row.state, reason: row.reason, retryAt: row.retryAt };
     } else {
       const resumed = await waitFor(async () => {
@@ -160,6 +199,7 @@ for (const name of selected.length ? selected : scenarios) {
     await dump("failure").catch(() => undefined);
     process.exitCode = 1;
   } finally {
+    if (secondBeeId) await client.request("stop", { beeId: secondBeeId }).catch(() => undefined);
     if (beeId) await client.request("stop", { beeId }).catch(() => undefined);
     client.close();
     await daemon.stop();
