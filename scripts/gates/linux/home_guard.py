@@ -30,7 +30,7 @@ def home_guard(environment, passwd_homes, resolve=os.path.realpath, protected_ro
         if name in ('HOME', 'TMPDIR') or name.startswith('XDG_'):
             if any(not any(path == target or path.startswith(target + os.sep) for target in allowed) for path in paths):
                 return dict(allowed=False, offendingVariable=name, checkedVariables=names)
-    return dict(allowed=True, checkedVariables=names, beforeFirstWrite=True, ruleVersion=30, protectedRoots=sorted(set(protected)), allowedRoots=sorted(set(allowed)))
+    return dict(allowed=True, checkedVariables=names, beforeFirstWrite=True, ruleVersion=31, protectedRoots=sorted(set(protected)), allowedRoots=sorted(set(allowed)))
 
 
 def entry_guard(root=None):

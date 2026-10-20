@@ -2,7 +2,7 @@ import errno
 import pathlib
 import re
 
-RULE_VERSION = 30
+RULE_VERSION = 31
 
 
 def workload_test_evidence(exit_code, output):
@@ -205,3 +205,18 @@ def closing_verdict(change, real_home, masked_eligible, clean, config_times, tou
     if clean and dotdir and unnamed and not any(within(target, path) for target in touched):
         return 'WARN'
     return 'FAIL'
+
+
+def closing_category(change, real_home, guard_accepted, sampler_clean):
+    if guard_accepted is not True or sampler_clean is not True:
+        return None
+    path, old, new = change['path'], change['before'], change['after']
+    if path != str(pathlib.Path(real_home) / '.nectar') or not old or not new:
+        return None
+    if old.get('type') != 'directory' or new.get('type') != 'directory':
+        return None
+    if any(key not in old or key not in new or old[key] != new[key] for key in ('inode', 'uid', 'gid', 'mode', 'type')):
+        return None
+    if old.keys() == new.keys() and old.get('mtime_ns') != new.get('mtime_ns') and all(old[key] == new[key] for key in old if key != 'mtime_ns'):
+        return 'home-dotdir:.nectar'
+    return None

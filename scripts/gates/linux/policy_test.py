@@ -8,7 +8,7 @@ import posixpath
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from policy import closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed,mask_targets,mask_probe_failed,pid_observation
+from policy import closing_category, closing_verdict, error_verdict, wal_mtime_only, preexec_verdict, flake_verdict,update_fd_prior,namespace_pid,mapping_coverage,probe_failed,mask_targets,mask_probe_failed,pid_observation
 from gate import fake_env, lab_home, socket_path_lengths, host_observation
 from home_guard import home_guard, entry_guard, pull_destination, PROVIDER_DIRS, PROVIDER_KEYS, APIARY_DIRS
 from thread_records import ThreadRecords
@@ -385,6 +385,39 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(self.closing(path), 'FAIL')
         self.assertEqual(self.closing(path, times=[11]), 'WARN')
         self.assertEqual(self.closing(path, times=[14]), 'FAIL')
+
+    def test_nectar_closing_category_requires_exact_mtime_only_and_clean_guard(self):
+        old = dict(META, type='directory')
+        change = dict(path=HOME + '/.nectar', before=old,
+                      after=dict(old, mtime_ns=old['mtime_ns'] + 1))
+        self.assertEqual(closing_category(change, HOME, True, True), 'home-dotdir:.nectar')
+        self.assertEqual(closing_verdict(change, HOME, True, True, [], [], []), 'WARN')
+        for guard, clean in ((False, True), (True, False), (False, False), (1, True), (True, 1)):
+            self.assertIsNone(closing_category(change, HOME, guard, clean))
+        for key in ('inode', 'size', 'uid', 'gid', 'mode'):
+            with self.subTest(key=key):
+                altered = dict(change, after=dict(change['after'], **{key: old[key] + 1}))
+                self.assertIsNone(closing_category(altered, HOME, True, True))
+        for altered in (dict(change, before=None), dict(change, after=None),
+                        dict(change, after=old),
+                        dict(change, path=HOME + '/.other'),
+                        dict(change, path=HOME + '/.nectar/child'),
+                        dict(change, after=dict(change['after'], type='symlink')),
+                        dict(change, before=dict(old, type='file'))):
+            self.assertIsNone(closing_category(altered, HOME, True, True))
+
+    def test_closing_categories_leave_other_verdict_branches_unchanged(self):
+        cases = ((HIVE + '/v2/core.sqlite3', dict(META, inode=2), False, [], 'FAIL'),
+                 (HIVE + '/v2/core.sqlite3', dict(META, size=101), True, [], 'WARN'),
+                 (HIVE + '/v2/hived.log', dict(META, size=101), True, [], 'WARN'),
+                 (HIVE + '/v2/config.json', dict(META, mtime_ns=11000000000), True, [11], 'WARN'),
+                 (HIVE + '/v2/config.json', dict(META, mtime_ns=11000000000), True, [], 'FAIL'),
+                 (HOME + '/.other', dict(META, type='directory'), True, [], 'WARN'))
+        for path, new, eligible, times, verdict in cases:
+            change = dict(path=path, before=dict(META, type=new['type']), after=new)
+            with self.subTest(path=path, verdict=verdict):
+                self.assertEqual(closing_verdict(change, HOME, eligible, True, times, [], []), verdict)
+                self.assertIsNone(closing_category(change, HOME, True, True))
 
     def test_unnamed_dotdir_requires_no_touch(self):
         new = dict(META, type='directory')

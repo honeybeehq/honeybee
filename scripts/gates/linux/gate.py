@@ -24,7 +24,7 @@ from test_capabilities import SETPRIV_ARGS, capability_receipt_valid
 from stat_observation import parse_stat, resolve_stat_observation, STAT_RETRY_LIMIT, STAT_RETRY_DELAY
 from error_summary import error_summary_valid, error_summary_totals
 
-from policy import RULE_VERSION, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,mask_probe_failed,pid_observation
+from policy import RULE_VERSION, closing_category, closing_verdict, differences, preexec_verdict, flake_verdict, within,namespace_pid,error_verdict,mapping_coverage,mask_probe_failed,pid_observation
 
 
 def save(path, value):
@@ -342,6 +342,10 @@ def adjudicate(home, root, out, physical, before, after):
     for change in changes:
         change['verdict'] = closing_verdict(change, str(home), eligible, clean, config_times, inv['touched'], mask.get('namedRealExceptions', []))
     guard_accepted = physical['workloadStarted'] and eligible and before['valid'] and after['valid'] and all(item['verdict'] != 'FAIL' for item in changes)
+    for change in changes:
+        category = closing_category(change, str(home), guard_accepted, clean)
+        if change['verdict'] == 'WARN' and category is not None:
+            change['category'] = category
     ok = physical.get('scopeExit') == 0 and guard_accepted
     warnings = sum(item['verdict'] == 'WARN' for item in changes) + sum(item['verdict'] == 'WARN' for item in pre['changes']) + raw.get('errorCounts', {}).get('masked_unknown_prior_WARN', 0)
     result = dict(ruleVersion=RULE_VERSION, outcome=('WARN' if warnings else 'PASS') if ok else 'FAIL', guardAccepted=guard_accepted, testCapabilities=capabilities, testExit=raw.get('exit'), testEvidence=raw.get('testEvidence'),missingHostPidMappings=missing_mappings,hostMapErrors=host_errors,preExec=pre, closingChanges=changes, errorCounts=raw.get('errorCounts'), errnoCounts=raw.get('errnoCounts'), samplerClean=clean, logAudit=audit, maskAsserted=valid_mask, citedAttempt=physical['attemptId'] if ok else None, physical=physical)
