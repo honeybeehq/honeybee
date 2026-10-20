@@ -1,3 +1,18 @@
+import assert from 'node:assert/strict';
 import {makeDaemonDir,startDaemon} from '../../v2/daemon/tests/helpers.ts';
+import {RpcClient} from '../../v2/cli/src/client.ts';
 const fixture=makeDaemonDir();const daemon=await startDaemon(fixture.dir);const client=await daemon.client();
-try{const result=await client.request('doctor.integrity',{}); console.log(JSON.stringify({case:'live-owned-daemon-doctor-rpc',result,pid:daemon.proc.pid}));if(!result.ok)throw Error('check failed');}finally{client.close();await daemon.stop();}
+try {
+ client.socket.cork();
+ const requests=Promise.allSettled([client.request('doctor.integrity',{}),client.request('doctor.integrity',{})]);
+ client.socket.uncork();
+ const settled=await requests;
+ const results=settled.filter(x=>x.status==='fulfilled').map(x=>x.value);
+ assert(results.length>=1);for(const item of settled)if(item.status==='rejected')assert.equal(item.reason.code,'invalid_request');
+ assert(results.every(result=>result.ok));if(results.length===2)assert.deepEqual(results[0],results[1]);
+ console.log(JSON.stringify({case:'live-owned-daemon-doctor-single-flight',results,pid:daemon.proc.pid}));
+ await assert.rejects(client.request('doctor.integrity',{}),{code:'invalid_request'});
+ console.log(JSON.stringify({case:'doctor-cooldown',refused:true}));
+ const remote=await RpcClient.connect(daemon.socketPath,3000,'remote');
+ try {await assert.rejects(remote.request('doctor.integrity',{}),{code:'caller_not_trusted'});console.log(JSON.stringify({case:'doctor-remote-relay',refused:true}));}finally{remote.close();}
+}finally{client.close();await daemon.stop();}

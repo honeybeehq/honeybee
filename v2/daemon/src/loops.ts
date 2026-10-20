@@ -214,6 +214,7 @@ export interface DaemonCoreOptions {
   driver: RuntimeDriver;
   policy: DaemonPolicy;
   now: () => number;
+  random?: () => number;
   log: (op: string) => void;
   faults?: FaultHooks;
   /** Recorder for I1 deadline breaches (the real daemon's i1_violations table). */
@@ -309,6 +310,7 @@ export class DaemonCore {
   protected readonly driver: RuntimeDriver;
   protected readonly policy: DaemonPolicy;
   protected readonly now: () => number;
+  private readonly random: () => number;
   protected readonly log: (op: string) => void;
   private readonly faults: FaultHooks | null;
   private readonly onI1Violation: ((violation: I1ViolationEvent) => void) | null;
@@ -348,6 +350,7 @@ export class DaemonCore {
     this.multilineFallback = opts.multilineFallback ? new MultilineFallback(opts.store, opts.driver, opts.multilineFallback) : null;
     this.policy = opts.policy;
     this.now = opts.now;
+    this.random = opts.random ?? Math.random;
     this.log = opts.log;
     this.faults = opts.faults ?? null;
     this.onI1Violation = opts.onI1Violation ?? null;
@@ -567,6 +570,7 @@ export class DaemonCore {
       );
       return;
     }
+    this.deliveryRetries.delete(obs.beeId);
     // v9 synthetic-boot budget: a non-synthetic booted/turn observation was
     // parsed by the adapter from REAL process output — the boot evidence that
     // resets the bee's spawn-failure budget and clears spawn_failed. Driver-
@@ -1750,7 +1754,7 @@ export class DaemonCore {
           );
         }
         const readiness = this.driver.deliveryReadiness?.(rt.beeId, rt.generation, msg.id) ?? "";
-        const retryKey = JSON.stringify([msg.id, msg.urgency, rt.generation, rt.state, rt.updatedAt, readiness, msg.deliveryHold?.stage]);
+        const retryKey = JSON.stringify([msg.id, msg.urgency, rt.generation, rt.state, rt.updatedAt, readiness, msg.deliveryHold?.stage, this.store.inTransaction]);
         const retry = this.deliveryRetries.get(rt.beeId);
         if (retry && retry.key === retryKey && this.now() < retry.nextAt) continue;
         const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
@@ -1783,9 +1787,9 @@ export class DaemonCore {
             }
             else this.store.pauseMultilineDeliveryWait(msg.id);
           }
-          if (outcome.reason === "not_ready" && !unsupportedAttempts.has(msg.id)) {
+          if (outcome.reason === "not_ready" && !unsupportedAttempts.has(msg.id) && !this.store.inTransaction) {
             const attempts = retry?.key === retryKey ? retry.attempts + 1 : 1;
-            const delay = Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + Math.random() * 0.25);
+            const delay = Math.min(30_000, 200 * 2 ** Math.min(attempts, 8)) * (0.75 + this.random() * 0.25);
             this.deliveryRetries.set(rt.beeId, { key: retryKey, attempts, nextAt: this.now() + delay });
           } else this.deliveryRetries.delete(rt.beeId);
           this.log(`deliver.refused bee=${rt.beeId} msg=${msg.id} reason=${outcome.reason}` + (outcome.detail ? ` detail=${outcome.detail}` : ""));
