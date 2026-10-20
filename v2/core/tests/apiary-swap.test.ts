@@ -100,11 +100,11 @@ async function seed(root: string) {
   const store = openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true });
   try { return store.acquireApiarySwap(acquire(root)); } finally { store.close(); }
 }
-test("apiary schema: current 44 remains unchanged and newer storage refuses", async () => {
+test("apiary schema: current version remains unchanged and newer storage refuses", async () => {
   await world(async root => {
     await seed(root);
     const db = new DatabaseSync(join(root, "v2", "core.sqlite3"));
-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "44");
+    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "45");
     db.exec("UPDATE meta SET value='999' WHERE key='schema_version'"); db.close();
     assert.throws(() => openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true }), /newer store/);
   });

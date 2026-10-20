@@ -338,7 +338,7 @@ export const MAIL_CANCELLATION_REASONS = ["requested", "bee_deleted"] as const;
 export type MailCancellationReason = (typeof MAIL_CANCELLATION_REASONS)[number];
 
 /** Typed admission path for mailbox traffic; consumers must not sniff bodies. */
-export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed", "action.dispatch", "auth.resume"] as const;
+export const MAIL_ORIGINS = ["mail.send", "spawn.prompt", "legacy.unknown", "handoff.seed", "action.dispatch", "auth.resume", "quota.resume"] as const;
 export type MailOrigin = (typeof MAIL_ORIGINS)[number];
 
 /**
@@ -1048,6 +1048,7 @@ export interface StateDump {
   accountAdmissions: AccountAdmissionReservationRow[];
   /** v33 — turns cut off by an auth failure and their continuation receipts. */
   authInterruptions: AuthInterruptionRow[];
+  quotaRecoveries: QuotaRecoveryRow[];
   /** v11 */
   tasks: TaskRow[];
   taskSupply: TaskSupplyRow[];
@@ -1922,4 +1923,36 @@ export interface AccountObservationMetadata {
   provenance: LimitsObserverProvenance | null;
   source: string | null;
   highWatermarkMs: number;
+}
+
+export interface QuotaRecoveryRow {
+  id: string;
+  beeId: string;
+  sourceGeneration: number;
+  observationCursor: number | null;
+  sourceId: string | null;
+  accountLabel: string | null;
+  sourceAccount: string | null;
+  eventIds: string[];
+  messageIds: number[];
+  progress: "none" | "some" | "unknown";
+  interrupted: boolean;
+  controlFence: number;
+  placement: { agent: string; cwd: string; cellId: string | null };
+  quota: import("./quota.ts").QuotaBoundary;
+  resetHints: Partial<Record<import("./quota.ts").QuotaBoundary["window"], number>>;
+  state: "waiting" | "rotating" | "resumed" | "cancelled";
+  attempt: number;
+  targetAccount: string | null;
+  successorGeneration: number | null;
+  claimId: string | null;
+  reservationId: string | null;
+  commandId: number | null;
+  continuationKind: "replay" | "continue" | "none" | null;
+  continuationMessageIds: number[];
+  continuationHistory: Array<{ generation: number; messageIds: number[]; kind: "replay" | "continue" }>;
+  retryAt: number | null;
+  reason: string | null;
+  createdAt: number;
+  updatedAt: number;
 }

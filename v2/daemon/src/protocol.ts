@@ -218,6 +218,7 @@ export const DAEMON_CAPABILITIES = [
    * `account.credentialsRestored` and `account.interruptions`.
    */
   "account.auth_resume.v1",
+  "account.quota_recovery.v1",
   "account.pause.owner.v1",
   /**
    * 2026-10 (no schema change): a centrally managed Claude account logs in
@@ -1195,6 +1196,14 @@ export interface AccountAdmissionReleaseResult {
  * carry). A seed with no transcript anywhere refuses the swap
  * (`transcript_unavailable`) and leaves the bee untouched.
  */
+export interface SwapAccountParams {
+  beeId: string;
+  account: string;
+  onlyAccountIds?: string[];
+  allocationClaim?: AccountAdmissionClaim;
+  quotaRecoveryId?: string;
+}
+
 export interface SwapAccountResult extends DedupMarkers {
   beeId: string;
   from: string | null;
@@ -1727,6 +1736,7 @@ export interface SnapshotResult {
   accountLimits: MirrorAccountLimitsRow[];
   /** v28 (additive): durable automatic-account admission holds and receipts. */
   accountAdmissions: MirrorAccountAdmissionRow[];
+  quotaRecoveries?: import("../../core/src/types.ts").QuotaRecoveryRow[];
   /** v11 (additive): agent task lists + per-bee auto-supply, store rows verbatim. */
   tasks: MirrorTaskRow[];
   taskSupply: MirrorTaskSupplyRow[];

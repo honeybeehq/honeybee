@@ -149,6 +149,7 @@ export interface FlagEvidenceLike {
   owner?: "sandbox_tmp";
   quota?: QuotaBoundary;
   eventId?: string;
+  sourceId?: string;
 }
 
 /** Observed subscription usage, structurally matching HsrDriver's UsageEvidence. */
@@ -472,8 +473,8 @@ export class DaemonCore {
     // "completion applied, cursor stale" ambiguity to replay.
     this.store.transact(() => {
       this.drainObservations();
-      this.applyEvidence();
       this.applySessionIds();
+      this.applyEvidence();
       this.applyUsage();
       this.applyObservationCursors();
     });
@@ -751,18 +752,27 @@ export class DaemonCore {
         this.applySandboxTmpEvidence(ev);
         continue;
       }
-      if (ev.quota && ev.eventId) this.store.recordQuotaEvidence({ eventId: ev.eventId, beeId: ev.beeId, generation: ev.generation, quota: ev.quota, turn: ev.turn ?? { messageIds: [], progress: "unknown" } });
-      if (ev.action === "set") {
-        this.store.setFlag(ev.beeId, ev.flag, ev.detail, { resetsAt: ev.resetsAt ?? null });
-        this.log(
-          `flag.set bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation}${ev.resetsAt != null ? ` resetsAt=${new Date(ev.resetsAt).toISOString()}` : ""}`,
-        );
-      } else {
-        // Every clean turn re-emits contrary evidence; clearing an unset flag
-        // is a store no-op — logging it too was pure noise (soak day-2).
-        const { applied } = this.store.clearFlag(ev.beeId, ev.flag, ev.detail);
-        if (applied) this.log(`flag.clear bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation}`);
+      const rebound = this.store.listQuotaRecoveries(ev.beeId).some(row => row.sourceGeneration === ev.generation
+        && row.targetAccount !== null && row.sourceAccount !== row.targetAccount && (row.state === "rotating" || row.state === "resumed"));
+      if (rebound) {
+        if (ev.quota && ev.eventId) this.store.recordQuotaEvidence({ eventId: ev.eventId, ...(ev.sourceId ? { sourceId: ev.sourceId } : {}), beeId: ev.beeId, generation: ev.generation, quota: ev.quota, turn: ev.turn ?? { messageIds: [], progress: "unknown" } });
+        this.log(`flag.skip bee=${ev.beeId} gen=${ev.generation} reason=rebound_generation`);
+        continue;
       }
+      this.store.transact(() => {
+        if (ev.quota && ev.eventId) this.store.recordQuotaEvidence({ eventId: ev.eventId, ...(ev.sourceId ? { sourceId: ev.sourceId } : {}), beeId: ev.beeId, generation: ev.generation, quota: ev.quota, turn: ev.turn ?? { messageIds: [], progress: "unknown" } });
+        if (ev.action === "set") {
+          this.store.setFlag(ev.beeId, ev.flag, ev.detail, { resetsAt: ev.resetsAt ?? null });
+          this.log(
+            `flag.set bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation}${ev.resetsAt != null ? ` resetsAt=${new Date(ev.resetsAt).toISOString()}` : ""}`,
+          );
+        } else {
+          // Every clean turn re-emits contrary evidence; clearing an unset flag
+          // is a store no-op — logging it too was pure noise (soak day-2).
+          const { applied } = this.store.clearFlag(ev.beeId, ev.flag, ev.detail);
+          if (applied) this.log(`flag.clear bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation}`);
+        }
+      });
       // v7: account policy (spec 08) rides the same evidence — never throws
       // into the loop (a policy bug must not stall observation drain).
       if (this.onFlagEvidence) {
@@ -1636,9 +1646,12 @@ export class DaemonCore {
           if (!identity || identity.socketPath === pane.socketPath && identity.paneId === pane.paneId && identity.serverIdentity === pane.serverIdentity) quarantined = true;
         }
         if (quarantined) continue;
-        const pending = this.multilineFallback
+        const quotaGate = this.store.quotaDeliveryGate(rt.beeId);
+        if (quotaGate.held) continue;
+        const allPending = this.multilineFallback
           ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => a.id - b.id)
           : ordinaryPending;
+        const pending = quotaGate.messageIds.length > 0 ? allPending.filter(message => quotaGate.messageIds.includes(message.id)) : allPending;
         if (rt.state === "booting") continue;
         if (rt.state === "idle" && this.store.hasPendingReconnect(rt.beeId, rt.generation)) continue;
         const threadOperation = this.store.threadOperationForSuccessor(rt.beeId);

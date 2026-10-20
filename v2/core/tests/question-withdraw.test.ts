@@ -58,7 +58,7 @@ test("withdrawal is owner-only, quiet across retries, replayable and durable; bo
   } finally { store.close(); f.cleanup(); }
 });
 
-test("schema 44 opens legacy questions additively without a version bump or extra-table refusal", () => {
+test("schema 44 legacy questions migrate additively without extra-table refusal", () => {
   const f = fixture();
   let store = f.open();
   const bee = store.createBee({ name: "legacy", agent: "stub", substrate: "hsr", cwd: f.dir }).bee;
@@ -84,8 +84,8 @@ test("schema 44 opens legacy questions additively without a version bump or extr
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close();
     const check = new DatabaseSync(f.path);
-    assert.equal(SCHEMA_VERSION, 44);
-    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "44");
+    assert.equal(SCHEMA_VERSION, 45);
+    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "45");
     assert.equal(check.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
     assert.deepEqual(check.prepare("PRAGMA foreign_key_check").all(), []);
     assert.equal(check.prepare("SELECT count(*) AS n FROM question_withdraw_receipts").get()!.n, 1);

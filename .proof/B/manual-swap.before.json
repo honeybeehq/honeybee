@@ -1,0 +1,47 @@
+{
+  "id": "quota:0b10ffcd-380d-4770-8a57-696ad4f06be9:1:1",
+  "beeId": "0b10ffcd-380d-4770-8a57-696ad4f06be9",
+  "sourceGeneration": 1,
+  "sourceAccount": "claude-a",
+  "observationCursor": 717,
+  "sourceId": "8fe3dfc9-e8ed-47e4-9fef-3116dba81395",
+  "accountLabel": "b",
+  "eventIds": [
+    "quota:0b10ffcd-380d-4770-8a57-696ad4f06be9:1:717",
+    "quota:0b10ffcd-380d-4770-8a57-696ad4f06be9:1:913"
+  ],
+  "messageIds": [
+    1
+  ],
+  "progress": "some",
+  "interrupted": true,
+  "controlFence": 3,
+  "placement": {
+    "agent": "claude",
+    "cwd": "/var/tmp/hb-B-rebase-MdcO9j/hb-v2-daemon-9bsVEZ",
+    "cellId": null
+  },
+  "quota": {
+    "harness": "claude",
+    "window": "weekly",
+    "resetsAt": 1893456000000,
+    "providerCategory": "errored_result_limit"
+  },
+  "resetHints": {
+    "weekly": 1893456000000
+  },
+  "state": "rotating",
+  "attempt": 1,
+  "targetAccount": "claude-b",
+  "successorGeneration": 2,
+  "claimId": null,
+  "reservationId": null,
+  "commandId": 2,
+  "continuationKind": null,
+  "continuationMessageIds": [],
+  "continuationHistory": [],
+  "retryAt": null,
+  "reason": null,
+  "createdAt": 1792482177364,
+  "updatedAt": 1792482177372
+}

@@ -795,7 +795,7 @@ test("rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the repla
   }
 });
 
-test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @ratelimit) — swap to the untried account, the next turn continues there; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status", async () => {
+test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delayed) — swap to the untried account and continue automatically; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status", async () => {
   const argvLog = join(makeDaemonDir().dir, "argv.jsonl");
   const { dir, cleanup } = makeDaemonDir({
     agents: {
@@ -822,7 +822,7 @@ test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @ratelimit) 
     const m1 = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "warm up" });
     await waitDelivered(client, bee.beeId, m1.messageId, "warm up delivered");
     await waitState(client, bee.beeId, "idle", "idle");
-    const m2 = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "@ratelimit please" });
+    const m2 = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "@quota:delayed please" });
     await waitDelivered(client, bee.beeId, m2.messageId, "ratelimit delivered");
     const swapped = await waitFor(async () => {
       const v = await client.request<ViewResult>("view", { beeId: bee.beeId });
@@ -832,8 +832,10 @@ test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @ratelimit) 
     // the exhausted account carries the evidence; the bee's flag was set by the adapter evidence
     const acctA = await client.request<AccountGetResult>("account.get", { id: "claude-a" });
     assert.ok(acctA.account.exhaustedAt, "exhaustion evidence recorded on the account");
-    const m3 = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "continue" });
-    assert.equal(await waitDelivered(client, bee.beeId, m3.messageId, "continue delivered on gen 2"), 2);
+    await waitFor(async () => {
+      const inbox = await client.request<{ messages: Array<{ body: string; deliveredGeneration: number | null }> }>("mailbox", { beeId: bee.beeId });
+      return inbox.messages.some(message => message.body.startsWith("Continue the interrupted turn") && message.deliveredGeneration === 2) ? true : null;
+    }, "automatic continuation delivered on gen 2");
     // a successful turn on B clears resource_blocked (contrary evidence)
     await waitFor(async () => {
       const v = await client.request<ViewResult>("view", { beeId: bee.beeId });

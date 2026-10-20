@@ -1,0 +1,63 @@
+{
+  "sourceCommit": "6790f0d8ec206d96b9817cf145e9a8948eb69c53",
+  "baseCommit": "806cdf18cb7b8d759d3c7a794d9718942fdca3aa",
+  "branch": "review/sar-B-quota-continuation",
+  "sourceV2Tree": "8003e053aa70027293828939af3cc48a7ca79300",
+  "checks": [
+    {
+      "command": "npm run check",
+      "receipt": "check.log",
+      "passed": true
+    },
+    {
+      "command": "npm run v2:check",
+      "receipt": "typecheck.log",
+      "passed": true
+    },
+    {
+      "command": "npm run build",
+      "receipt": "build.log",
+      "passed": true
+    },
+    {
+      "command": "node --test --test-isolation=none v2/core/tests/*.test.ts",
+      "receipt": "core-suites.log",
+      "passed": true
+    },
+    {
+      "command": "node --test v2/daemon/tests/accounts-rpc.test.ts v2/daemon/tests/auth-resume.test.ts v2/daemon/tests/loops.test.ts",
+      "receipt": "daemon-suites.log",
+      "passed": true
+    },
+    {
+      "command": "node --test v2/adapters/tests/*.test.ts v2/driver-hsr/tests/runner-host.test.ts",
+      "receipt": "driver-suites.log",
+      "passed": true
+    },
+    {
+      "command": "node --test v2/driver-tmux/tests/checkpoint-digest.test.ts",
+      "receipt": "checkpoint-digest.log",
+      "passed": true,
+      "note": "Plain gate rerun after rebase onto A806cdf18, which owns projectionVersion7/stateVersion5 snapshot. No duplicate fixture change in B.",
+      "testedV2Tree": "8003e053aa70027293828939af3cc48a7ca79300"
+    }
+  ],
+  "labCommand": "env -i HOME=\"$PWD/.agent-home\" PATH=/usr/local/bin:/usr/bin:/bin TMPDIR=\"$lab_root\" NODE_OPTIONS=\"--import=$PWD/.proof/B/trash-cleanup.mjs\" node .proof/B/lab.ts",
+  "isolation": "fake HOME; private mkdtemp 0700 lab root under /var/tmp; provider endpoints loopback/disabled; retained cleanup trash",
+  "limitations": [
+    "Active owner routing and no-candidate wait timers are task C.",
+    "Real Apiary and complete lease/move/handoff matrix are task G.",
+    "Independent review is read-only source review; author executed gates."
+  ],
+  "labScenarios": 14,
+  "independentReviewer": {
+    "sessionId": "58439349-f891-48ac-a70b-cb853e6fe7a1",
+    "model": "claude-opus-5-5",
+    "reviewedSourceCommit": "419a5a1c0495ae4abb113492e13e88f5f491e8f6",
+    "scope": "read-only code and audit-trail review; no reviewer execution",
+    "verdict": "No open High code finding; final evidence receipts requested and included."
+  },
+  "deliveryProductionCommit": "721f36a22f610fcceb0dcc46b1b105cee944622b",
+  "productionEquivalence": "Rebase onto A806cdf18/main7d92 had no manual conflicts. All four pre-refresh B patch IDs are identical; see rebase.patchids.before.tsv, rebase.patchids.after.tsv and rebase.range-diff.txt. Every listed gate and the14-case lab was rerun against sourceCommit after rebase.",
+  "mainBaseCommit": "7d92e55668d15c761df65fe5d4ecdb50fe35336b"
+}

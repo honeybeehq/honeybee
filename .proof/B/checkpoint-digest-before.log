@@ -1,0 +1,39 @@
+✖ projector source changes require checkpoint version review (4.015543ms)
+✔ checkpoint digest excludes stateless projectors and unrelated shared-module code (1.489051ms)
+✔ checkpoint digest guards stateful modules, registry and shared validators (12.474187ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 150.295121
+
+✖ failing tests:
+
+test at v2/driver-tmux/tests/checkpoint-digest.test.ts:33:1
+✖ projector source changes require checkpoint version review (4.015543ms)
+  AssertionError [ERR_ASSERTION]: Projector source changed: bump projectionVersion for event semantics or stateVersion for state compatibility, then refresh digest with UPDATE_TRANSCRIPT_CHECKPOINT_DIGEST=1 node --test v2/driver-tmux/tests/checkpoint-digest.test.ts
+  + actual - expected
+  
+    {
+  +   digest: '132bcd65c70f1cf25aba09817af50c03559416b593c1b1139fdb3fdab51f699a',
+  +   projectionVersion: 7,
+  -   digest: '540b2eb58b3bfb2f1642489e16463df9e36e86000ecd7df602a087e7f221976b',
+  -   projectionVersion: 6,
+      stateVersion: 5
+    }
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-b-quota-continuation-a7db2addf50c/github-com-honeybeehq-honeybee-a9015b303498-space-a7db2addf50c/v2/driver-tmux/tests/checkpoint-digest.test.ts:46:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: { projectionVersion: 7, stateVersion: 5, digest: '132bcd65c70f1cf25aba09817af50c03559416b593c1b1139fdb3fdab51f699a' },
+    expected: { projectionVersion: 6, stateVersion: 5, digest: '540b2eb58b3bfb2f1642489e16463df9e36e86000ecd7df602a087e7f221976b' },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

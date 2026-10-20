@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 44;
+export const SCHEMA_VERSION = 45;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -1167,7 +1167,7 @@ CREATE TABLE IF NOT EXISTS mail_history_enqueues (
   seq              INTEGER PRIMARY KEY,
   message_id       INTEGER NOT NULL UNIQUE,
   bee_id            TEXT NOT NULL,
-  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed','action.dispatch','auth.resume')),
+  origin            TEXT NOT NULL CHECK (origin IN ('mail.send','spawn.prompt','legacy.unknown','handoff.seed','action.dispatch','auth.resume','quota.resume')),
   sender            BLOB NOT NULL,
   sender_truncated  INTEGER NOT NULL CHECK (sender_truncated IN (0, 1)),
   body              BLOB NOT NULL,
@@ -1211,4 +1211,15 @@ CREATE TABLE IF NOT EXISTS phone_inputs (
   message_id INTEGER PRIMARY KEY, admission_id TEXT NOT NULL UNIQUE, input_json TEXT NOT NULL,
   FOREIGN KEY(message_id) REFERENCES mail_history_enqueues(message_id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED
 ) STRICT;
+`;
+
+export const QUOTA_RECOVERIES_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS quota_recoveries (
+  id TEXT PRIMARY KEY,
+  bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+  state TEXT NOT NULL CHECK (state IN ('waiting','rotating','resumed','cancelled')),
+  payload TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS quota_recoveries_by_bee ON quota_recoveries(bee_id, id);
+CREATE INDEX IF NOT EXISTS quota_recoveries_live ON quota_recoveries(bee_id) WHERE state IN ('waiting','rotating');
 `;
