@@ -58,6 +58,15 @@ try {
     }, String(name), 20000);
     writeFileSync(join(proof, `${name}.rpc.json`), JSON.stringify({ born, sent, ...rows, text: undefined }, null, 2));
     writeFileSync(join(proof, `${name}.journal.jsonl`), rows.text);
+    const outputJournal = readFileSync(join(dir, "runners", `${born.beeId}.1.observations.jsonl`), "utf8");
+    writeFileSync(join(proof, `${name}.observations.jsonl`), outputJournal);
+    for (const row of rows.quota) {
+      const cursor = Number(row.payload.eventId.split(":").at(-1));
+      const prefix = Buffer.from(outputJournal).subarray(0, cursor).toString("utf8").trimEnd();
+      assert.ok(prefix.endsWith("}"));
+      const native = JSON.parse(prefix.split("\n").at(-1));
+      assert.ok(native.type === "assistant" || native.type === "result" || native.type === "rate_limit_event" || native.method === "account/rateLimits/updated" || native.method === "error" || native.method === "turn/completed");
+    }
     const projector = createTranscriptProjector(String(harness));
     const projected = rows.text.split("\n").flatMap(line => projector.pushLine(line));
     projected.push(...projector.flush());

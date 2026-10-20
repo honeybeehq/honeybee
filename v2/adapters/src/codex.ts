@@ -53,7 +53,7 @@ import {
   type HarnessAdapter,
   type InterruptContext,
 } from "./types.ts";
-import { asObject } from "./types.ts";
+import { asObject, epochMsFromSeconds } from "./types.ts";
 
 const INITIALIZE_ID = 1;
 const THREAD_START_ID = 2;
@@ -112,7 +112,9 @@ export function codexRateLimitSignals(rateLimits: unknown): AdapterSignal[] {
   const quota = codexQuotaBoundary({ method: "account/rateLimits/updated", params: { rateLimits: snapshot } });
   const reached = snapshot.rateLimitReachedType;
   if (reached === null || reached === undefined) return [];
-  const resetsAt = quota?.resetsAt ?? undefined;
+  const resetsAt = quota?.resetsAt
+    ?? epochMsFromSeconds(asObject(snapshot.primary)?.resetsAt)
+    ?? epochMsFromSeconds(asObject(snapshot.secondary)?.resetsAt);
   const reset = resetsAt !== undefined ? new Date(resetsAt).toISOString() : undefined;
   return [{
     kind: "flag",
