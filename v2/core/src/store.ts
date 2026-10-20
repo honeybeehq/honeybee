@@ -1,6 +1,6 @@
-import type { QuotaRecoveryRow } from "./types.ts";
+import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
-import type { QuotaObservedEvent } from "./quota.ts";
+import { automaticQuotaRecovery, quotaRecoveryMatches, type QuotaObservedEvent } from "./quota.ts";
 import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
 import {installRuntimeProcessIdentity, processIdentityValue, readRuntimeProcessIdentity, type RuntimeIdentityHooks, type RuntimeProcessIdentity} from "./runtimeProcessIdentity.ts";
@@ -2196,7 +2196,7 @@ export class CoreStore {
         placement: { agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId ?? null },
         quota, resetHints: hints, state: "waiting", attempt: 0, targetAccount: null,
         successorGeneration: null, claimId: null, reservationId: null, commandId: null,
-        continuationKind: null, continuationMessageIds: [], continuationHistory: [], retryAt: null, reason: null,
+        continuationKind: null, continuationMessageIds: [], continuationHistory: [], retryAt: null, reason: "account_wait",
         createdAt: this.now(), updatedAt: this.now(),
       });
     });
@@ -2248,7 +2248,7 @@ export class CoreStore {
   private putQuotaRecovery(row: QuotaRecoveryRow): QuotaRecoveryRow {
     const previous = this.getQuotaRecovery(row.id);
     const updated = { ...row, updatedAt: this.now() };
-    const notify = !previous || previous.state !== updated.state || previous.retryAt !== updated.retryAt || previous.reason !== updated.reason;
+    const notify = !previous || previous.state !== updated.state || previous.retryAt !== updated.retryAt || previous.reason !== updated.reason || previous.reasonDetail !== updated.reasonDetail;
     this.stmt("INSERT INTO quota_recoveries(id, bee_id, state, payload) VALUES(?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET state = excluded.state, payload = excluded.payload")
       .run(updated.id, updated.beeId, updated.state, JSON.stringify(updated));
     this.audit("quota.recovery", updated.beeId, { recovery: updated, ...(notify ? { notice: {
@@ -2271,11 +2271,11 @@ export class CoreStore {
     });
   }
 
-  waitQuotaRecovery(id: string, retryAt: number | null, reason: string): void {
+  waitQuotaRecovery(id: string, retryAt: number | null, reason: string, reasonDetail: QuotaRecoveryReasonDetail | null = null): void {
     this.tx(() => {
       const row = this.getQuotaRecovery(id);
-      if (!row || row.state !== "waiting" || row.retryAt === retryAt && row.reason === reason) return;
-      this.putQuotaRecovery({ ...row, retryAt, reason });
+      if (!row || row.state !== "waiting" || row.retryAt === retryAt && row.reason === reason && (row.reasonDetail ?? null) === reasonDetail) return;
+      this.putQuotaRecovery({ ...row, retryAt, reason, reasonDetail });
     });
   }
 
@@ -2302,12 +2302,8 @@ export class CoreStore {
   quotaRecoveryValid(row: QuotaRecoveryRow): boolean {
     const bee = this.getBee(row.beeId);
     const runtime = this.currentRuntime(row.beeId);
-    return !!bee && bee.lifecycle === "active" && (bee.authControlFence ?? 0) === row.controlFence
-      && bee.agent === row.placement.agent && bee.cwd === row.placement.cwd && (bee.cellId ?? null) === row.placement.cellId
-      && !bee.activeMoveId && !bee.activeHandoffId
-      && bee.account === (row.state === "rotating" ? row.targetAccount : row.sourceAccount)
-      && !!runtime && (runtime.generation === row.sourceGeneration || row.state === "rotating" && row.successorGeneration !== null && runtime.generation >= row.successorGeneration)
-      && !this.listRuntimes(bee.id).some(rt => rt.generation >= row.sourceGeneration && rt.exitCause === "stopped_by_user");
+    return quotaRecoveryMatches(row, bee, runtime)
+      && !this.stmt("SELECT 1 FROM runtimes WHERE bee_id = ? AND generation >= ? AND exit_cause = 'stopped_by_user' LIMIT 1").get(row.beeId, row.sourceGeneration);
   }
 
   cancelQuotaRecovery(id: string, reason: string): void {
@@ -5806,14 +5802,20 @@ export class CoreStore {
     return rows.map((row) => Number(row.id));
   }
 
+  liveQuotaRecoveries(beeId?: string): QuotaRecoveryRow[] {
+    return (this.stmt("SELECT recovery.payload FROM quota_recoveries AS recovery WHERE recovery.state IN ('waiting','rotating') AND (? IS NULL OR recovery.bee_id = ?) AND NOT EXISTS (SELECT 1 FROM runtimes WHERE bee_id = recovery.bee_id AND generation >= json_extract(recovery.payload, '$.sourceGeneration') AND exit_cause = 'stopped_by_user')").all(beeId ?? null, beeId ?? null) as Row[])
+      .map(row => ({ trigger: "provider_limit", ...JSON.parse(String(row.payload)) }) as QuotaRecoveryRow);
+  }
+
   view(beeId: string, opts: { readCursor?: number } = {}): BeeView {
     const bee = this.getBee(beeId);
+    const runtime = bee ? this.currentRuntime(beeId) : null;
     return deriveBeeView(
       beeId,
       bee,
-      bee ? this.currentRuntime(beeId) : null,
+      runtime,
       bee ? this.activeFlags(beeId).map((f) => f.flag) : [],
-      opts,
+      { ...opts, automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, this.liveQuotaRecoveries(beeId)) },
     );
   }
 
@@ -5863,6 +5865,11 @@ export class CoreStore {
       flagsByBee.set(row.beeId, [...(flagsByBee.get(row.beeId) ?? []), row.flag]);
     }
 
+    const recoveriesByBee = new Map<string, QuotaRecoveryRow[]>();
+    for (const recovery of this.liveQuotaRecoveries()) {
+      if (selected.has(recovery.beeId)) recoveriesByBee.set(recovery.beeId, [...(recoveriesByBee.get(recovery.beeId) ?? []), recovery]);
+    }
+
     const cells = (this.stmt(
       `SELECT * FROM cells WHERE id IN (
          SELECT cell_id FROM bees WHERE cell_id != '' AND (? IS NULL OR lifecycle = ?)
@@ -5895,7 +5902,7 @@ export class CoreStore {
       return {
         bee,
         runtime,
-        view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? []),
+        view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? [], { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveriesByBee.get(bee.id) ?? []) }),
         move: move ? toBeeMoveView(mapBeeMove(move)) : null,
         cell: bee.cellId ? (cellsById.get(bee.cellId) ?? null) : null,
         handoff: handoff ? toBeeHandoffView(handoff) : null,

@@ -2266,6 +2266,16 @@ export class AccountsService {
     return `${harness}:provider-accounts`;
   }
 
+  recoveryWaitDetail(harness: string): "unavailable" | "credential_login_required" | "lease_needs_operator" | "paused" | null {
+    const readiness = this.store.listAccounts({ harness }).map(account => this.readiness(account));
+    if (readiness.some(row => row.ready)) return null;
+    const refusals = readiness.filter((row): row is Extract<AccountReadiness, { ready: false }> => !row.ready);
+    if (refusals.some(row => row.code === "account_lease_revoked" || row.reason === "lease_unknown")) return "lease_needs_operator";
+    if (refusals.some(row => ["account_auth_needed", "account_credential_missing", "account_credential_invalid", "account_credential_expired"].includes(row.code))) return "credential_login_required";
+    if (refusals.some(row => row.code === "account_paused")) return "paused";
+    return "unavailable";
+  }
+
   proactiveAdmissionEnabled(): boolean {
     return this.cfg.accounts.proactiveAdmission;
   }

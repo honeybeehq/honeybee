@@ -1,0 +1,14 @@
+diff --git a/v2/core/src/view.ts b/v2/core/src/view.ts
+index 545645fd..b62ee852 100644
+--- a/v2/core/src/view.ts
++++ b/v2/core/src/view.ts
+@@ -38 +38,2 @@ export function deriveBeeView(
+-  const waitingForYou = !opts.automaticQuotaRecovery && (state === "idle" || (state === "stopped" && unreadOutput));
++  const stalledQuotaRecovery = opts.automaticQuotaRecovery === true && state === "stopped" && flags.includes("spawn_failed");
++  const waitingForYou = stalledQuotaRecovery || !opts.automaticQuotaRecovery && (state === "idle" || (state === "stopped" && unreadOutput));
+diff --git a/v2/daemon/src/quotaRecovery.ts b/v2/daemon/src/quotaRecovery.ts
+index 5df7f427..7787a537 100644
+--- a/v2/daemon/src/quotaRecovery.ts
++++ b/v2/daemon/src/quotaRecovery.ts
+@@ -36,0 +37 @@ export class QuotaRecovery {
++            else this.store.resumeQuotaRecovery(row.id);

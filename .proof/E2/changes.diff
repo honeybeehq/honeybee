@@ -1,0 +1,184 @@
+diff --git a/v2/cli/src/readonly.ts b/v2/cli/src/readonly.ts
+index b8293bd0..a7a56a0f 100644
+--- a/v2/cli/src/readonly.ts
++++ b/v2/cli/src/readonly.ts
+@@ -11,0 +12,2 @@ import {
++  automaticQuotaRecovery,
++  type QuotaRecoveryRow,
+@@ -78,0 +81 @@ function mapBee(r: Row): BeeRow {
++    ...(Number(r.auth_control_fence ?? 0) > 0 ? { authControlFence: Number(r.auth_control_fence) } : {}),
+@@ -362,0 +366,4 @@ export class ReadOnlyStore {
++    const facts = this.tableExists("quota_recoveries")
++      ? this.stmt("SELECT flag, NULL AS recovery, id AS order_id, 0 AS source_order FROM flags WHERE bee_id = ? AND cleared_at IS NULL UNION ALL SELECT NULL AS flag, payload AS recovery, 0 AS order_id, 1 AS source_order FROM quota_recoveries AS recovery WHERE recovery.bee_id = ? AND recovery.state IN ('waiting','rotating') AND NOT EXISTS (SELECT 1 FROM runtimes WHERE bee_id = recovery.bee_id AND generation >= json_extract(recovery.payload, '$.sourceGeneration') AND exit_cause = 'stopped_by_user') ORDER BY source_order, order_id").all(beeId, beeId) as Row[]
++      : this.activeFlags(beeId).map(flag => ({ flag, recovery: null }));
++    const recoveries = facts.filter(row => row.recovery !== null).map(row => ({ trigger: "provider_limit", ...JSON.parse(String(row.recovery)) }) as QuotaRecoveryRow);
+@@ -368 +375,2 @@ export class ReadOnlyStore {
+-        bee ? this.activeFlags(beeId) : [],
++        bee ? facts.filter(row => row.flag !== null).map(row => row.flag as Flag) : [],
++        { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries) },
+diff --git a/v2/core/src/index.ts b/v2/core/src/index.ts
+index f9efa5fa..0b88d016 100644
+--- a/v2/core/src/index.ts
++++ b/v2/core/src/index.ts
+@@ -0,0 +1 @@
++export { automaticQuotaRecovery, quotaRecoveryMatches, autoswapDisabled } from "./quota.ts";
+diff --git a/v2/core/src/quota.ts b/v2/core/src/quota.ts
+index 3193f9c3..3e495077 100644
+--- a/v2/core/src/quota.ts
++++ b/v2/core/src/quota.ts
+@@ -0,0 +1,2 @@
++import type { BeeRow, QuotaRecoveryRow, RuntimeRow } from "./types.ts";
++
+@@ -15,0 +18,20 @@ export type QuotaObservedEvent = {
++
++export function quotaRecoveryMatches(row: QuotaRecoveryRow, bee: BeeRow | null, runtime: RuntimeRow | null): boolean {
++  return !!bee && bee.lifecycle === "active" && (bee.authControlFence ?? 0) === row.controlFence
++    && bee.agent === row.placement.agent && bee.cwd === row.placement.cwd && (bee.cellId ?? null) === row.placement.cellId
++    && !bee.activeMoveId && !bee.activeHandoffId
++    && bee.account === (row.state === "rotating" ? row.targetAccount : row.sourceAccount)
++    && !!runtime && (runtime.generation === row.sourceGeneration || row.state === "rotating" && row.successorGeneration !== null && runtime.generation >= row.successorGeneration);
++}
++
++export function automaticQuotaRecovery(bee: BeeRow | null, runtime: RuntimeRow | null, recoveries: readonly QuotaRecoveryRow[]): boolean {
++  if (!bee || autoswapDisabled(bee)) return false;
++  return recoveries.some(row => quotaRecoveryMatches(row, bee, runtime) && (row.state === "rotating" || row.state === "waiting"
++    && (row.reason === "account_wait" || row.reason === "completion_reserve" || row.reason === "allocation_owner_required"
++      || row.reason === "account_unavailable" && row.reasonDetail === "operation_in_progress")));
++}
++
++export function autoswapDisabled(bee: { tags: string[]; args: string[] | null }): boolean {
++  const spelled = (value: string) => /^-{0,2}autoswap=false$/i.test(value.trim());
++  return bee.tags.some(spelled) || (bee.args ?? []).some(spelled);
++}
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index a07f0fa4..a2f8f6ab 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -1 +1 @@
+-import type { QuotaRecoveryRow } from "./types.ts";
++import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
+@@ -3 +3 @@ import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
+-import type { QuotaObservedEvent } from "./quota.ts";
++import { automaticQuotaRecovery, quotaRecoveryMatches, type QuotaObservedEvent } from "./quota.ts";
+@@ -2199 +2199 @@ export class CoreStore {
+-        continuationKind: null, continuationMessageIds: [], continuationHistory: [], retryAt: null, reason: null,
++        continuationKind: null, continuationMessageIds: [], continuationHistory: [], retryAt: null, reason: "account_wait",
+@@ -2251 +2251 @@ export class CoreStore {
+-    const notify = !previous || previous.state !== updated.state || previous.retryAt !== updated.retryAt || previous.reason !== updated.reason;
++    const notify = !previous || previous.state !== updated.state || previous.retryAt !== updated.retryAt || previous.reason !== updated.reason || previous.reasonDetail !== updated.reasonDetail;
+@@ -2274 +2274 @@ export class CoreStore {
+-  waitQuotaRecovery(id: string, retryAt: number | null, reason: string): void {
++  waitQuotaRecovery(id: string, retryAt: number | null, reason: string, reasonDetail: QuotaRecoveryReasonDetail | null = null): void {
+@@ -2277,2 +2277,2 @@ export class CoreStore {
+-      if (!row || row.state !== "waiting" || row.retryAt === retryAt && row.reason === reason) return;
+-      this.putQuotaRecovery({ ...row, retryAt, reason });
++      if (!row || row.state !== "waiting" || row.retryAt === retryAt && row.reason === reason && (row.reasonDetail ?? null) === reasonDetail) return;
++      this.putQuotaRecovery({ ...row, retryAt, reason, reasonDetail });
+@@ -2305,6 +2305,2 @@ export class CoreStore {
+-    return !!bee && bee.lifecycle === "active" && (bee.authControlFence ?? 0) === row.controlFence
+-      && bee.agent === row.placement.agent && bee.cwd === row.placement.cwd && (bee.cellId ?? null) === row.placement.cellId
+-      && !bee.activeMoveId && !bee.activeHandoffId
+-      && bee.account === (row.state === "rotating" ? row.targetAccount : row.sourceAccount)
+-      && !!runtime && (runtime.generation === row.sourceGeneration || row.state === "rotating" && row.successorGeneration !== null && runtime.generation >= row.successorGeneration)
+-      && !this.listRuntimes(bee.id).some(rt => rt.generation >= row.sourceGeneration && rt.exitCause === "stopped_by_user");
++    return quotaRecoveryMatches(row, bee, runtime)
++      && !this.stmt("SELECT 1 FROM runtimes WHERE bee_id = ? AND generation >= ? AND exit_cause = 'stopped_by_user' LIMIT 1").get(row.beeId, row.sourceGeneration);
+@@ -5808,0 +5805,5 @@ export class CoreStore {
++  liveQuotaRecoveries(beeId?: string): QuotaRecoveryRow[] {
++    return (this.stmt("SELECT recovery.payload FROM quota_recoveries AS recovery WHERE recovery.state IN ('waiting','rotating') AND (? IS NULL OR recovery.bee_id = ?) AND NOT EXISTS (SELECT 1 FROM runtimes WHERE bee_id = recovery.bee_id AND generation >= json_extract(recovery.payload, '$.sourceGeneration') AND exit_cause = 'stopped_by_user')").all(beeId ?? null, beeId ?? null) as Row[])
++      .map(row => ({ trigger: "provider_limit", ...JSON.parse(String(row.payload)) }) as QuotaRecoveryRow);
++  }
++
+@@ -5810,0 +5812 @@ export class CoreStore {
++    const runtime = bee ? this.currentRuntime(beeId) : null;
+@@ -5814 +5816 @@ export class CoreStore {
+-      bee ? this.currentRuntime(beeId) : null,
++      runtime,
+@@ -5816 +5818 @@ export class CoreStore {
+-      opts,
++      { ...opts, automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, this.liveQuotaRecoveries(beeId)) },
+@@ -5865,0 +5868,5 @@ export class CoreStore {
++    const recoveriesByBee = new Map<string, QuotaRecoveryRow[]>();
++    for (const recovery of this.liveQuotaRecoveries()) {
++      if (selected.has(recovery.beeId)) recoveriesByBee.set(recovery.beeId, [...(recoveriesByBee.get(recovery.beeId) ?? []), recovery]);
++    }
++
+@@ -5898 +5905 @@ export class CoreStore {
+-        view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? []),
++        view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? [], { automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveriesByBee.get(bee.id) ?? []) }),
+diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
+index 370b6dfe..4f2205bd 100644
+--- a/v2/core/src/types.ts
++++ b/v2/core/src/types.ts
+@@ -1927,0 +1928,2 @@ export interface AccountObservationMetadata {
++export type QuotaRecoveryReasonDetail = "operation_in_progress" | "unavailable" | "credential_login_required" | "lease_needs_operator" | "paused";
++
+@@ -1959,0 +1962 @@ export interface QuotaRecoveryRow {
++  reasonDetail?: QuotaRecoveryReasonDetail | null;
+diff --git a/v2/core/src/view.ts b/v2/core/src/view.ts
+index 2471303d..b62ee852 100644
+--- a/v2/core/src/view.ts
++++ b/v2/core/src/view.ts
+@@ -15 +15 @@ export function deriveBeeView(
+-  opts: { readCursor?: number } = {},
++  opts: { readCursor?: number; automaticQuotaRecovery?: boolean } = {},
+@@ -38 +38,2 @@ export function deriveBeeView(
+-  const waitingForYou = state === "idle" || (state === "stopped" && unreadOutput);
++  const stalledQuotaRecovery = opts.automaticQuotaRecovery === true && state === "stopped" && flags.includes("spawn_failed");
++  const waitingForYou = stalledQuotaRecovery || !opts.automaticQuotaRecovery && (state === "idle" || (state === "stopped" && unreadOutput));
+diff --git a/v2/daemon/src/accountsService.ts b/v2/daemon/src/accountsService.ts
+index fb24c196..90afb8bc 100644
+--- a/v2/daemon/src/accountsService.ts
++++ b/v2/daemon/src/accountsService.ts
+@@ -2268,0 +2269,10 @@ export class AccountsService {
++  recoveryWaitDetail(harness: string): "unavailable" | "credential_login_required" | "lease_needs_operator" | "paused" | null {
++    const readiness = this.store.listAccounts({ harness }).map(account => this.readiness(account));
++    if (readiness.some(row => row.ready)) return null;
++    const refusals = readiness.filter((row): row is Extract<AccountReadiness, { ready: false }> => !row.ready);
++    if (refusals.some(row => row.code === "account_lease_revoked" || row.reason === "lease_unknown")) return "lease_needs_operator";
++    if (refusals.some(row => ["account_auth_needed", "account_credential_missing", "account_credential_invalid", "account_credential_expired"].includes(row.code))) return "credential_login_required";
++    if (refusals.some(row => row.code === "account_paused")) return "paused";
++    return "unavailable";
++  }
++
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 9313a78d..35508d46 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -2 +2,2 @@ import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
+-import { isFableModel } from "../../core/src/index.ts";
++import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
++export { autoswapDisabled } from "../../core/src/index.ts";
+@@ -135,0 +137 @@ import {
++  LeaseRefusal,
+@@ -676,5 +677,0 @@ export function isRateLimitCause(detail: string): boolean {
+-/** Per-bee rotation opt-out: tag or arg `autoswap=false` (also `--autoswap=false`). */
+-export function autoswapDisabled(bee: { tags: string[]; args: string[] | null }): boolean {
+-  const spelled = (v: string) => /^-{0,2}autoswap=false$/i.test(v.trim());
+-  return bee.tags.some(spelled) || (bee.args ?? []).some(spelled);
+-}
+@@ -1927 +1924,3 @@ export class HiveDaemon {
+-        this.mustStore().waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retryAt as number | null), reason);
++        const detail = params.reasonDetail;
++        if (detail !== undefined && detail !== null && !["operation_in_progress", "unavailable", "credential_login_required", "lease_needs_operator", "paused"].includes(String(detail))) throw new RpcError("invalid_request", "invalid quota wait reasonDetail");
++        this.mustStore().waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retryAt as number | null), reason, reason === "account_unavailable" ? (detail ?? "unavailable") as import("../../core/src/types.ts").QuotaRecoveryReasonDetail : null);
+@@ -6876 +6875 @@ export class HiveDaemon {
+-      store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required");
++      store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" && row.reasonDetail !== undefined || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required", row.reasonDetail ?? null);
+@@ -6899 +6898,2 @@ export class HiveDaemon {
+-        store.waitQuotaRecovery(id, this.quotaRetryAt(bee.id, row.retryAt), "account_wait");
++        const detail = accounts.recoveryWaitDetail(bee.agent);
++        store.waitQuotaRecovery(id, this.quotaRetryAt(bee.id, row.retryAt), detail === null ? "account_wait" : "account_unavailable", detail);
+@@ -6911 +6911,5 @@ export class HiveDaemon {
+-      store.waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retry), error instanceof RpcError && error.code === "account_wait" ? "account_wait" : "account_unavailable");
++      const code = error instanceof RpcError || error instanceof LeaseRefusal ? error.code : null;
++      const detail = code === "credential_login_required" || code === "account_auth_needed" || code === "account_credential_missing" || code === "account_credential_invalid" || code === "account_credential_expired"
++        ? "credential_login_required" : code === "account_paused" ? "paused" : code === "account_lease_revoked" || code === "lease_unavailable" || code === "lease_unsupported"
++          ? "lease_needs_operator" : code === "account_wait" ? null : code === "account_unavailable" ? accounts.recoveryWaitDetail(bee.agent) : "unavailable";
++      store.waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retry), detail === null ? "account_wait" : "account_unavailable", detail);
+diff --git a/v2/daemon/src/quotaRecovery.ts b/v2/daemon/src/quotaRecovery.ts
+index 5df7f427..7787a537 100644
+--- a/v2/daemon/src/quotaRecovery.ts
++++ b/v2/daemon/src/quotaRecovery.ts
+@@ -36,0 +37 @@ export class QuotaRecovery {
++            else this.store.resumeQuotaRecovery(row.id);
