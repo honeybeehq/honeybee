@@ -152,10 +152,10 @@ rl.on("line", (raw) => {
     recordTranscript({ type: "init", resumed: resumed ?? null, forked });
   }
   recordTranscript({ type: "user", text });
-  const quotaMode = /@quota:(weekly_event|weekly_local|backpressure|unknown_status|weekly|five_hour|result_five_hour|delayed|once|quote)/.exec(text)?.[1];
-  if (quotaMode === "backpressure" || quotaMode === "unknown_status" || quotaMode === "weekly_event") {
-    if (quotaMode !== "backpressure") emit({ type: "rate_limit_event", rate_limit_info: { status: quotaMode === "weekly_event" ? "rejected" : "temporarily_unavailable", rateLimitType: "seven_day", resetsAt: Math.floor(Date.parse(process.env.FAKE_QUOTA_RESETS_AT ?? new Date(Date.now() + 3600000).toISOString()) / 1000) }, session_id: sessionId });
-    emit({ type: "result", is_error: true, result: quotaMode === "weekly_event" ? `You've hit your weekly limit · resets ${process.env.FAKE_QUOTA_RESETS_AT ?? new Date(Date.now() + 3600000).toISOString()}` : "529 overloaded", session_id: sessionId });
+  const quotaMode = /@quota:(text_fallback|weekly_event|weekly_local|backpressure|unknown_status|weekly|five_hour|result_five_hour|delayed|once|quote)/.exec(text)?.[1];
+  if (quotaMode === "text_fallback" || quotaMode === "backpressure" || quotaMode === "unknown_status" || quotaMode === "weekly_event") {
+    if (quotaMode !== "backpressure" && quotaMode !== "text_fallback") emit({ type: "rate_limit_event", rate_limit_info: { status: quotaMode === "weekly_event" ? "rejected" : "temporarily_unavailable", rateLimitType: "seven_day", resetsAt: Math.floor(Date.parse(process.env.FAKE_QUOTA_RESETS_AT ?? new Date(Date.now() + 3600000).toISOString()) / 1000) }, session_id: sessionId });
+    emit({ type: "result", is_error: true, result: quotaMode === "weekly_event" ? `You've hit your weekly limit · resets ${process.env.FAKE_QUOTA_RESETS_AT ?? new Date(Date.now() + 3600000).toISOString()}` : quotaMode === "text_fallback" ? "429 Too Many Requests: rate limit exceeded" : "529 overloaded", session_id: sessionId });
     return;
   }
   const onceMarker = process.env.FAKE_QUOTA_ONCE_PATH ?? join(process.cwd(), ".fake-claude-quota-once");

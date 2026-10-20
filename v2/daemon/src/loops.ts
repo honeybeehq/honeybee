@@ -742,13 +742,13 @@ export class DaemonCore {
         this.log(`flag.skip bee=${ev.beeId} flag=${ev.flag} reason=no_bee`);
         continue;
       }
-      if (ev.owner === "sandbox_tmp") {
-        this.applySandboxTmpEvidence(ev);
-        continue;
-      }
       const runtime = this.store.currentRuntime(ev.beeId);
       if (!runtime || runtime.generation !== ev.generation) {
         this.log(`flag.skip bee=${ev.beeId} gen=${ev.generation} reason=stale_generation`);
+        continue;
+      }
+      if (ev.owner === "sandbox_tmp") {
+        this.applySandboxTmpEvidence(ev);
         continue;
       }
       if (ev.quota && ev.eventId) this.store.recordQuotaEvidence({ eventId: ev.eventId, beeId: ev.beeId, generation: ev.generation, quota: ev.quota, turn: ev.turn ?? { messageIds: [], progress: "unknown" } });

@@ -23,7 +23,9 @@ const cases = [
   ["structured-weekly", "claude", "@quota:weekly_event", "weekly"],
   ["weekly-local", "claude", "@quota:weekly_local", "weekly"],
   ["backpressure", "claude", "@quota:backpressure", null],
-  ["unknown-status", "claude", "@quota:unknown_status", null],
+  ["unknown-status", "claude", "@quota:unknown_status", "other"],
+  ["claude-text-fallback", "claude", "@quota:text_fallback", "other"],
+  ["codex-text-fallback", "codex", "@quota:text_fallback", "other"],
   ["codex-weekly", "codex", "@quota:weekly", "weekly"],
   ["codex-weekly-only", "codex", "@quota:weekly_only", "weekly"],
   ["weekly", "claude", "@quota:weekly", "weekly"],
@@ -53,7 +55,7 @@ try {
       if (!done || view.view.runtimeState !== "idle") return null;
       const quota = tail.rows.filter(row => row.kind === "quota.observed");
       if (expected !== null && quota.length === 0) return null;
-      if (harness === "codex" && expected !== null && !quota.some(row => row.payload.quota.providerCategory === "usageLimitExceeded")) return null;
+      if (harness === "codex" && expected !== null && !quota.some(row => row.payload.quota.providerCategory === (name === "codex-text-fallback" ? "text_fallback" : "usageLimitExceeded"))) return null;
       return { audit: tail.rows, text, view, quota };
     }, String(name), 20000);
     writeFileSync(join(proof, `${name}.rpc.json`), JSON.stringify({ born, sent, ...rows, text: undefined }, null, 2));
@@ -83,17 +85,22 @@ try {
       else assert.ok(rows.text.includes('"status":"completed"'));
       assert.ok(!projected.some(e => e.kind === "quota"));
     } else {
-      const expectedCount = name === "bare-result" ? 1 : harness === "codex" && name !== "codex-observed-native" ? 3 : 2;
+      const expectedCount = name === "bare-result" || name === "unknown-status" || name === "claude-text-fallback" ? 1 : harness === "codex" && name !== "codex-observed-native" && name !== "codex-text-fallback" ? 3 : 2;
       assert.equal(rows.quota.length, expectedCount);
       assert.equal(new Set(rows.quota.map(row => row.payload.eventId)).size, expectedCount);
       assert.ok(rows.quota.some(row => row.payload.quota.window === expected));
-      if (name !== "codex-observed-native" && name !== "weekly-local") assert.ok(rows.quota.some(row => row.payload.quota.resetsAt === Date.parse(reset)));
+      if (name !== "codex-observed-native" && !new Set(["weekly-local", "unknown-status", "claude-text-fallback", "codex-text-fallback"]).has(name)) assert.ok(rows.quota.some(row => row.payload.quota.resetsAt === Date.parse(reset)));
       if (name === "structured-weekly") assert.ok(rows.quota.some(row => row.payload.quota.providerCategory === "rate_limit_event"));
       if (name === "weekly-local") assert.ok(rows.quota.every(row => row.payload.quota.resetsAt === null));
-      if (harness === "codex") assert.ok(rows.quota.some(row => row.payload.quota.providerCategory === "usageLimitExceeded"));
+      if (harness === "codex") assert.ok(rows.quota.some(row => row.payload.quota.providerCategory === (name === "codex-text-fallback" ? "text_fallback" : "usageLimitExceeded")));
       assert.ok(projected.some(e => e.kind === "quota"));
       assert.ok(!projected.some(e => e.kind === "message" && e.role === "assistant" && e.text.startsWith("You've hit")));
-      assert.ok(!projected.some(e => e.kind === "interrupt"));
+      if (name !== "unknown-status") assert.ok(!projected.some(e => e.kind === "interrupt"));
+      if (name === "unknown-status") {
+        const account = await client.request("account.get", { id: "claude-quota-lab" });
+        assert.notEqual(account.account.exhaustedAt, null);
+        writeFileSync(join(proof, `${name}.account.json`), JSON.stringify(account, null, 2));
+      }
       if (String(name).includes("mid-turn")) assert.ok(rows.quota.some(row => row.payload.turn.progress === (harness === "claude" ? "some" : "unknown")));
       for (const row of rows.quota) assert.ok(row.payload.turn.messageIds.includes(sent.messageId));
     }
