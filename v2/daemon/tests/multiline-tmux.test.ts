@@ -97,7 +97,17 @@ for (const scenario of ["normal", "legacy-no-projection", "malformed-waiting", "
     const noticeId = hold.receipt?.senderNoticeMessageId;
     if (noticeId != null) assert.equal(store.getMessage(noticeId)?.body.includes("\n"), false);
     const originalCalls = calls.filter(call => call.id === first.id).length;
-    assert.equal(originalCalls, (scenario === "normal" || scenario === "legacy-no-projection") ? 3 : 1);
+    if (scenario === "expired-paste") {
+      const originalOutcomes = outcomes.filter((_, index) => calls[index]?.id === first.id);
+      const generation = store.currentRuntime(receiver.id)!.generation;
+      assert.equal(originalOutcomes.filter(outcome => outcome.generation === generation && outcome.outcome === "not_ready" && outcome.detail === "multiline_type_mode").length, 1);
+      assert.deepEqual(originalOutcomes.at(-1), { generation, outcome: "not_ready", detail: "multiline_type_mode", bytesCouldSubmit: false });
+      for (const outcome of originalOutcomes.slice(0, -1)) {
+        assert.equal(outcome.outcome, "not_ready");
+        assert.equal(outcome.detail, null);
+        assert.equal(outcome.bytesCouldSubmit, false);
+      }
+    } else assert.equal(originalCalls, (scenario === "normal" || scenario === "legacy-no-projection") ? 3 : 1);
     await wait(() => { clock.now += 1000; core.step(); return store.getMessage(second.id)?.deliveredAt != null && store.getMessage(third.id)?.deliveredAt != null && (noticeId == null || store.getMessage(noticeId)?.deliveredAt != null); });
     await wait(() => rows(receiver.id).filter(row => row.submittedBody !== undefined).length >= 2 && (malformed || rows(sender.id).some(row => row.submittedBody !== undefined)));
     assert.deepEqual(calls.filter(call => [second.id, third.id].includes(call.id)).map(call => call.id), [second.id, third.id]);
