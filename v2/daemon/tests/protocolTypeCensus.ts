@@ -90,4 +90,3 @@ export function protocolTypeCensus(valueTypes: readonly string[], patches: Reado
   methods(program.getSourceFile(daemonPath)!);
   return { results, audits, dispatch };
 }
-
