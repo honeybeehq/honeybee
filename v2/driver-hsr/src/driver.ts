@@ -821,7 +821,7 @@ export class HsrDriver implements RuntimeDriver {
       this.consumed.set(messageId, generation);
       return "accepted";
     }
-    if (!p.deliveryProtocol?.authenticated || !p.deliveryProtocol.supported) return p.deliveryProtocol?.legacy ? "old_host" : "pending_ack";
+    if (!p.deliveryProtocol?.authenticated || !p.deliveryProtocol.supported) return "pending_ack";
     const reply = p.deliveryProtocol.replies.get(messageId);
     if (reply) {
       p.deliveryProtocol.replies.delete(messageId);

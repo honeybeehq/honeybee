@@ -63,6 +63,9 @@ for(const window of ['before-intent-commit','after-intent-before-write','after-w
     const p=driver.procs.get('bee');const status=JSON.parse(readFileSync(p.statusPath,'utf8'));status.observationError='owned injected journal failure';writeFileSync(p.statusPath,JSON.stringify(status));
    }
    restart();
+   if(window==='degraded-not-written'){
+    assert.equal(driver.isDegraded('bee',1),true);assert.equal(driver.procs.get('bee').hostStyle,true);assert.equal(driver.procs.get('bee').adapter,null);
+   }
    if(window==='held-not-written-resume'){
     const deliver=driver.deliver.bind(driver);driver.deliver=(...args)=>{
      if(args[4]?.confirmation)assert.throws(()=>store.resolveDeliveryConfirmation({action:'resend_anyway',beeId:'bee',messageId:message.id,generation:1,idempotencyKey:'stale-held-ui'}),DeliveryNotHeldError);

@@ -2157,6 +2157,10 @@ export class CoreStore {
     this.db.exec(PHONE_PROVENANCE_SQL);
     this.db.exec(DELIVERY_CONFIRMATION_SQL);
     this.stmt("INSERT OR IGNORE INTO meta(key,value) SELECT 'confirmation_legacy_max_message_id', CAST(COALESCE(MAX(id),0) AS TEXT) FROM mailbox").run();
+    if (!this.stmt("SELECT 1 FROM meta WHERE key = 'confirmation_legacy_generations'").get()) {
+      this.stmt("INSERT INTO meta(key,value) VALUES('confirmation_legacy_generations', ?)").run(JSON.stringify(this.stmt("SELECT bee_id, MAX(generation) AS generation FROM runtimes GROUP BY bee_id").all()));
+    }
+    this.db.exec("CREATE INDEX IF NOT EXISTS audit_confirmation_released_message ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER)) WHERE kind = 'mail.confirmation_released'");
     if (!(this.stmt("SELECT name FROM pragma_index_info('mailbox_fifo_pending')").all() as Row[]).some(column => column.name === "replaces_message_id")) this.db.exec("DROP INDEX IF EXISTS mailbox_fifo_pending");
     this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_pending ON mailbox(bee_id, COALESCE(queue_order,id), id, urgency, enqueued_at, delivered_at, queue_order, replaces_message_id) WHERE delivered_at IS NULL");
     this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_delivered ON mailbox(bee_id, COALESCE(queue_order,id), id) WHERE delivered_at IS NOT NULL");
@@ -4126,12 +4130,15 @@ export class CoreStore {
   }
 
   deliveryMayPredateConfirmation(messageId: number): boolean {
-    const row = this.stmt("SELECT value FROM meta WHERE key = 'confirmation_legacy_max_message_id'").get() as Row;
-    return Number.isSafeInteger(messageId) && messageId > 0 && messageId <= Number(row.value);
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'confirmation_legacy_max_message_id'").get() as Row | undefined;
+    return Number.isSafeInteger(messageId) && messageId > 0 && (row === undefined || messageId <= Number(row.value));
   }
 
-  legacyUnconfirmedMessageIds(beeId: string): number[] {
-    return (this.stmt("SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id <= CAST((SELECT value FROM meta WHERE key = 'confirmation_legacy_max_message_id') AS INTEGER) AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id = mailbox.id) ORDER BY id").all(beeId) as Row[]).map(row => Number(row.id));
+  legacyUnconfirmedMessageIds(beeId: string, generation: number): number[] {
+    const cohort = this.stmt("SELECT value FROM meta WHERE key = 'confirmation_legacy_generations'").get() as Row | undefined;
+    const rows = cohort ? JSON.parse(String(cohort.value)) as { bee_id: string; generation: number }[] : null;
+    if (rows && !rows.some(row => row.bee_id === beeId && row.generation === generation)) return [];
+    return (this.stmt("SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND id <= CAST((SELECT value FROM meta WHERE key = 'confirmation_legacy_max_message_id') AS INTEGER) AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id = mailbox.id) AND NOT EXISTS (SELECT 1 FROM audit WHERE kind = 'mail.confirmation_released' AND CAST(json_extract(payload, '$.messageId') AS INTEGER) = mailbox.id) ORDER BY id").all(beeId) as Row[]).map(row => Number(row.id));
   }
 
   releaseUnwrittenDeliveryConfirmation(messageId: number, generation: number, digest: string): boolean {
@@ -4256,7 +4263,7 @@ export class CoreStore {
       if (!message || message.beeId !== input.beeId || message.deliveredAt !== null || !intent || confirmation?.state !== "held") throw new DeliveryNotHeldError("delivery_not_held: message is not held");
       if (input.action === "drop") this.cancelMessageInternal(input.beeId, input.messageId, true);
       const replacement = input.action === "resend_anyway" ? this.send(input.beeId, message.phoneInput?.originalContent ?? message.body, {
-        sender: message.sender, urgency: message.urgency, priority: message.priority,
+        sender: message.sender, urgency: message.urgency, priority: message.priority, origin: this.mailOrigin(message.id),
         ...(message.senderKind === undefined ? {} : { senderKind: message.senderKind }),
         ...(message.phoneInput ? { phone: { origin: forwardPhoneOrigin(message.phoneInput, "forward"), key: `delivery-resend:${message.id}` } } : {}),
       }).message : null;

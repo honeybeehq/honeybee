@@ -392,7 +392,7 @@ export class DaemonCore {
       if (!this.driver.adoptedDeliveryUncertain?.(proc.beeId, proc.generation)) continue;
       const runtime = this.store.currentRuntime(proc.beeId);
       if (runtime?.generation !== proc.generation || runtime.state === "stopped") continue;
-      for (const messageId of this.store.legacyUnconfirmedMessageIds(proc.beeId)) {
+      for (const messageId of this.store.legacyUnconfirmedMessageIds(proc.beeId, proc.generation)) {
         this.store.prepareUnknownDeliveryConfirmationIntent({ beeId: proc.beeId, generation: proc.generation, messageId });
       }
     }
