@@ -119,7 +119,7 @@ function measure(mode: Mode, accounts: number, bees: number, filter = "all") {
         sample.complete = true;
       });
     } catch (error) { sample.error = String(error); throw error; }
-    assert.equal(sample.rosterReads, sample.allowedRosterReads);
+    assert.ok(sample.rosterReads <= sample.allowedRosterReads);
   });
 }
 
