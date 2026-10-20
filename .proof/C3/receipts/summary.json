@@ -1,0 +1,300 @@
+{
+  "passed": true,
+  "events": [
+    {
+      "phase": "initial",
+      "cadence": {
+        "account": "claude-a",
+        "lastProbeAt": 1792481989571,
+        "nextProbeAt": 1792482019571,
+        "delayMs": 30000,
+        "evidence": "[\"ok\",true,true,true,true,null,29874766,29874766,null]"
+      }
+    },
+    {
+      "phase": "backoff",
+      "cadence": {
+        "account": "claude-a",
+        "lastProbeAt": 1792482019608,
+        "nextProbeAt": 1792482079608,
+        "delayMs": 60000,
+        "evidence": "[\"ok\",true,true,true,true,null,29874766,29874766,null]"
+      }
+    },
+    {
+      "phase": "backoff",
+      "cadence": {
+        "account": "claude-a",
+        "lastProbeAt": 1792482079650,
+        "nextProbeAt": 1792482199650,
+        "delayMs": 120000,
+        "evidence": "[\"ok\",true,true,true,true,null,29874766,29874766,null]"
+      }
+    },
+    {
+      "phase": "backoff",
+      "cadence": {
+        "account": "claude-a",
+        "lastProbeAt": 1792482199689,
+        "nextProbeAt": 1792482439689,
+        "delayMs": 240000,
+        "evidence": "[\"ok\",true,true,true,true,null,29874766,29874766,null]"
+      }
+    },
+    {
+      "phase": "backoff",
+      "cadence": {
+        "account": "claude-a",
+        "lastProbeAt": 1792482439721,
+        "nextProbeAt": 1792482919721,
+        "delayMs": 480000,
+        "evidence": "[\"ok\",true,true,true,true,null,29874766,29874766,null]"
+      }
+    },
+    {
+      "phase": "backoff",
+      "cadence": {
+        "account": "claude-a",
+        "lastProbeAt": 1792482919761,
+        "nextProbeAt": 1792483819761,
+        "delayMs": 900000,
+        "evidence": "[\"ok\",true,true,true,true,null,29874766,29874766,null]"
+      }
+    },
+    {
+      "phase": "backoff",
+      "cadence": {
+        "account": "claude-a",
+        "lastProbeAt": 1792483819814,
+        "nextProbeAt": 1792484719814,
+        "delayMs": 900000,
+        "evidence": "[\"ok\",true,true,true,true,null,29874766,29874766,null]"
+      }
+    },
+    {
+      "phase": "backoff",
+      "cadence": {
+        "account": "claude-a",
+        "lastProbeAt": 1792484719865,
+        "nextProbeAt": 1792485619865,
+        "delayMs": 900000,
+        "evidence": "[\"ok\",true,true,true,true,null,29874766,29874766,null]"
+      }
+    },
+    {
+      "phase": "restart_preserved",
+      "cadence": {
+        "account": "claude-a",
+        "lastProbeAt": 1792485649977,
+        "nextProbeAt": 1792486549977,
+        "delayMs": 900000,
+        "evidence": "[\"ok\",true,true,true,true,null,29874766,29874766,null]"
+      }
+    },
+    {
+      "phase": "fresh_evidence",
+      "cadence": {
+        "account": "claude-b",
+        "lastProbeAt": 1792485651060,
+        "nextProbeAt": 1792485681060,
+        "delayMs": 30000,
+        "evidence": "[\"ok\",true,true,true,true,null,29874767,29874767,null]"
+      }
+    },
+    {
+      "phase": "known_reset_resumed",
+      "cadence": {
+        "account": "claude-a",
+        "lastProbeAt": 1792485987950,
+        "nextProbeAt": 1792486017957,
+        "delayMs": 30000,
+        "evidence": "[\"ok\",true,true,false,false,null,29884846,29884846,null]"
+      },
+      "recovery": {
+        "id": "quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3",
+        "beeId": "d115ee87-1c8b-452b-9337-554cf212d6d8",
+        "sourceGeneration": 1,
+        "sourceAccount": "claude-a",
+        "sourceWindowUsedPercent": 98,
+        "sourceWindowObservedAt": 1792482017774,
+        "observationCursor": 822,
+        "sourceId": "e3ae5f34-e36e-4905-8fd2-df0adb7c59ff",
+        "accountLabel": "a",
+        "eventIds": [
+          "quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:822",
+          "quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:1018"
+        ],
+        "messageIds": [
+          3
+        ],
+        "progress": "none",
+        "interrupted": true,
+        "controlFence": 0,
+        "placement": {
+          "agent": "claude",
+          "cwd": "/var/tmp/hb-quota-C.C3.4k5nwBTl/tmp/hb-v2-daemon-j3jP96",
+          "cellId": null
+        },
+        "quota": {
+          "harness": "claude",
+          "window": "weekly",
+          "resetsAt": 1792485987909,
+          "providerCategory": "errored_result_limit"
+        },
+        "resetHints": {
+          "weekly": 1792485987909
+        },
+        "state": "resumed",
+        "attempt": 1,
+        "targetAccount": "claude-a",
+        "successorGeneration": 2,
+        "claimId": null,
+        "reservationId": null,
+        "commandId": 3,
+        "continuationKind": "replay",
+        "continuationMessageIds": [
+          18
+        ],
+        "continuationHistory": [],
+        "retryAt": null,
+        "reason": null,
+        "createdAt": 1792481989568,
+        "updatedAt": 1792485988371
+      }
+    }
+  ],
+  "requests": [
+    {
+      "account": "claude-a",
+      "wallAt": 1792481989606,
+      "logicalAt": 1792481989605,
+      "used": 98
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481989610,
+      "logicalAt": 1792481989610,
+      "used": 98
+    },
+    {
+      "account": "claude-a",
+      "wallAt": 1792481989962,
+      "logicalAt": 1792482019611,
+      "used": 98.01
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481989964,
+      "logicalAt": 1792482019613,
+      "used": 98.01
+    },
+    {
+      "account": "claude-a",
+      "wallAt": 1792481990325,
+      "logicalAt": 1792482079655,
+      "used": 98.02
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481990328,
+      "logicalAt": 1792482079658,
+      "used": 98.02
+    },
+    {
+      "account": "claude-a",
+      "wallAt": 1792481990725,
+      "logicalAt": 1792482199695,
+      "used": 98.03
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481990726,
+      "logicalAt": 1792482199696,
+      "used": 98.03
+    },
+    {
+      "account": "claude-a",
+      "wallAt": 1792481991068,
+      "logicalAt": 1792482439726,
+      "used": 98.04
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481991072,
+      "logicalAt": 1792482439730,
+      "used": 98.04
+    },
+    {
+      "account": "claude-a",
+      "wallAt": 1792481991417,
+      "logicalAt": 1792482919767,
+      "used": 98.05
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481991418,
+      "logicalAt": 1792482919768,
+      "used": 98.05
+    },
+    {
+      "account": "claude-a",
+      "wallAt": 1792481991777,
+      "logicalAt": 1792483819818,
+      "used": 98.06
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481991780,
+      "logicalAt": 1792483819821,
+      "used": 98.06
+    },
+    {
+      "account": "claude-a",
+      "wallAt": 1792481992139,
+      "logicalAt": 1792484719870,
+      "used": 98.07
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481992140,
+      "logicalAt": 1792484719871,
+      "used": 98.07
+    },
+    {
+      "account": "claude-a",
+      "wallAt": 1792481993554,
+      "logicalAt": 1792485650038,
+      "used": 98.08
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481993555,
+      "logicalAt": 1792485650039,
+      "used": 98.08
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481993577,
+      "logicalAt": 1792485650061,
+      "used": 98.09
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481994588,
+      "logicalAt": 1792485651071,
+      "used": 98.1
+    },
+    {
+      "account": "claude-a",
+      "wallAt": 1792481994610,
+      "logicalAt": 1792485987955,
+      "used": 5
+    },
+    {
+      "account": "claude-b",
+      "wallAt": 1792481994613,
+      "logicalAt": 1792485987958,
+      "used": 98.11
+    }
+  ]
+}

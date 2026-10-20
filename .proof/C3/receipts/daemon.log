@@ -1,0 +1,208 @@
+hived v2 listening on /var/tmp/hb-quota-C.C3.4k5nwBTl/tmp/hb-v2-daemon-j3jP96/hived.sock (store /var/tmp/hb-quota-C.C3.4k5nwBTl/tmp/hb-v2-daemon-j3jP96/core.sqlite3)
+
+RESTART
+hived v2 listening on /var/tmp/hb-quota-C.C3.4k5nwBTl/tmp/hb-v2-daemon-j3jP96/hived.sock (store /var/tmp/hb-quota-C.C3.4k5nwBTl/tmp/hb-v2-daemon-j3jP96/core.sqlite3)
+{"ts":1792481988630,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792481988642,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792481988654,"op":"rpc.listen socket=/var/tmp/hb-quota-C.C3.4k5nwBTl/tmp/hb-v2-daemon-j3jP96/hived.sock"}
+{"ts":1792481988655,"op":"daemon.started pid=2271350 store=/var/tmp/hb-quota-C.C3.4k5nwBTl/tmp/hb-v2-daemon-j3jP96/core.sqlite3"}
+{"ts":1792481988697,"op":"spawn.account bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a reason=\"explicit\""}
+{"ts":1792481988705,"op":"account.activate account=claude-a home=/var/tmp/hb-quota-C.C3.4k5nwBTl/tmp/hb-v2-daemon-j3jP96/homes/claude-a copied=.credentials.json"}
+{"ts":1792481988705,"op":"account.activate.gateways account=claude-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792481988872,"op":"cmd.spawn id=1 bee=d115ee87-1c8b-452b-9337-554cf212d6d8 start gen=1"}
+{"ts":1792481989030,"op":"obs.booted bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 pid=2271463 synthetic"}
+{"ts":1792481989030,"op":"obs.skip bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 kind=turn_ended reason=mail_pending"}
+{"ts":1792481989035,"op":"deliver.refused bee=d115ee87-1c8b-452b-9337-554cf212d6d8 msg=1 reason=not_ready"}
+{"ts":1792481989041,"op":"deliver bee=d115ee87-1c8b-452b-9337-554cf212d6d8 msg=1 gen=1 urgency=next"}
+{"ts":1792481989062,"op":"obs.skip bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 kind=turn_started reason=already_running"}
+{"ts":1792481989089,"op":"spawn.evidence bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 kind=booted"}
+{"ts":1792481989090,"op":"obs.skip bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 kind=booted reason=already_running"}
+{"ts":1792481989091,"op":"obs.turn_ended bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1"}
+{"ts":1792481989092,"op":"session.recorded bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 id=99792622-2288-45e0-bc57-c7e3f617f177"}
+{"ts":1792481989095,"op":"obs.checkpoint bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 cursor=484"}
+{"ts":1792481989101,"op":"spawn.account bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a account=claude-a reason=\"explicit\""}
+{"ts":1792481989106,"op":"account.activate.gateways account=claude-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792481989279,"op":"cmd.spawn id=2 bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a start gen=1"}
+{"ts":1792481989433,"op":"obs.booted bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 pid=2271485 synthetic"}
+{"ts":1792481989433,"op":"obs.skip bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 kind=turn_ended reason=mail_pending"}
+{"ts":1792481989434,"op":"deliver.refused bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=2 reason=not_ready"}
+{"ts":1792481989437,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=2 gen=1 urgency=next"}
+{"ts":1792481989457,"op":"obs.skip bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 kind=turn_started reason=already_running"}
+{"ts":1792481989500,"op":"spawn.evidence bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 kind=booted"}
+{"ts":1792481989500,"op":"obs.skip bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 kind=booted reason=already_running"}
+{"ts":1792481989501,"op":"obs.turn_ended bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1"}
+{"ts":1792481989501,"op":"session.recorded bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 id=492cf38f-efa9-48c1-9e66-6069f1e980ad"}
+{"ts":1792481989502,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=484"}
+{"ts":1792481989523,"op":"deliver bee=d115ee87-1c8b-452b-9337-554cf212d6d8 msg=3 gen=1 urgency=next"}
+{"ts":1792481989544,"op":"obs.turn_started bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 synthetic"}
+{"ts":1792481989568,"op":"obs.turn_ended bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1"}
+{"ts":1792481989569,"op":"flag.set bee=d115ee87-1c8b-452b-9337-554cf212d6d8 flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792481989572,"op":"quota.probe account=claude-a at=1792481989571 next_at=1792482019571 delay_ms=30000 reason=initial"}
+{"ts":1792481989573,"op":"quota.probe account=claude-b at=1792481989571 next_at=1792482019571 delay_ms=30000 reason=initial"}
+{"ts":1792481989574,"op":"flag.set bee=d115ee87-1c8b-452b-9337-554cf212d6d8 flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792481989574,"op":"obs.checkpoint bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 cursor=1018"}
+{"ts":1792482017775,"op":"account.limits account=claude-a readable=true weekly=98 5h=98"}
+{"ts":1792482017777,"op":"account.limits account=claude-b readable=true weekly=98 5h=98"}
+{"ts":1792482017782,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792482017786,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=4 gen=1 urgency=next"}
+{"ts":1792482017808,"op":"obs.turn_started bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 synthetic"}
+{"ts":1792482017809,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=5 gen=1 urgency=next"}
+{"ts":1792482017852,"op":"obs.turn_ended bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1"}
+{"ts":1792482017853,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792482017855,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792482017855,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=1383"}
+{"ts":1792482017858,"op":"account.rotate bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a account=claude-a skipped=no_candidate recovery=quota:962b5a0d-1a3f-4212-ac6b-12cb79c2e08a:1:native (No untried claude account remains)"}
+{"ts":1792482019609,"op":"quota.probe account=claude-a at=1792482019608 next_at=1792482079608 delay_ms=60000 reason=backoff"}
+{"ts":1792482019609,"op":"quota.probe account=claude-b at=1792482019608 next_at=1792482079608 delay_ms=60000 reason=backoff"}
+{"ts":1792482019613,"op":"account.limits account=claude-a readable=true weekly=98.01 5h=98.01"}
+{"ts":1792482019615,"op":"account.limits account=claude-b readable=true weekly=98.01 5h=98.01"}
+{"ts":1792482019617,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792482077820,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=6 gen=1 urgency=next"}
+{"ts":1792482077825,"op":"account.rotate bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a account=claude-a skipped=no_candidate recovery=quota:962b5a0d-1a3f-4212-ac6b-12cb79c2e08a:1:native (No untried claude account remains)"}
+{"ts":1792482077826,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792482077844,"op":"obs.turn_started bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 synthetic"}
+{"ts":1792482077845,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=7 gen=1 urgency=next"}
+{"ts":1792482077889,"op":"obs.turn_ended bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1"}
+{"ts":1792482077890,"op":"flag.clear bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1"}
+{"ts":1792482077890,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792482077891,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792482077891,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=2282"}
+{"ts":1792482079651,"op":"quota.probe account=claude-a at=1792482079650 next_at=1792482199650 delay_ms=120000 reason=backoff"}
+{"ts":1792482079652,"op":"quota.probe account=claude-b at=1792482079650 next_at=1792482199650 delay_ms=120000 reason=backoff"}
+{"ts":1792482079657,"op":"account.limits account=claude-a readable=true weekly=98.02 5h=98.02"}
+{"ts":1792482079661,"op":"account.limits account=claude-b readable=true weekly=98.02 5h=98.02"}
+{"ts":1792482079664,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792482197856,"op":"tick.slow total=118183ms step=118182ms accounts=1ms maintenance=0ms flush=0ms"}
+{"ts":1792482197859,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792482197878,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=8 gen=1 urgency=next"}
+{"ts":1792482197899,"op":"obs.turn_started bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 synthetic"}
+{"ts":1792482197903,"op":"flag.clear bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1"}
+{"ts":1792482197904,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=2647"}
+{"ts":1792482197906,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=9 gen=1 urgency=next"}
+{"ts":1792482197928,"op":"obs.turn_ended bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1"}
+{"ts":1792482197928,"op":"obs.turn_started bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 synthetic"}
+{"ts":1792482197954,"op":"obs.turn_ended bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1"}
+{"ts":1792482197955,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792482197959,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792482197960,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=3181"}
+{"ts":1792482197966,"op":"account.rotate bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a account=claude-a skipped=no_candidate recovery=quota:962b5a0d-1a3f-4212-ac6b-12cb79c2e08a:1:9 (No untried claude account remains)"}
+{"ts":1792482199690,"op":"quota.probe account=claude-a at=1792482199689 next_at=1792482439689 delay_ms=240000 reason=backoff"}
+{"ts":1792482199691,"op":"quota.probe account=claude-b at=1792482199689 next_at=1792482439689 delay_ms=240000 reason=backoff"}
+{"ts":1792482199698,"op":"account.limits account=claude-a readable=true weekly=98.03 5h=98.03"}
+{"ts":1792482437890,"op":"account.limits account=claude-b readable=true weekly=98.03 5h=98.03"}
+{"ts":1792482437894,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792482437904,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=10 gen=1 urgency=next"}
+{"ts":1792482437913,"op":"account.rotate bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a account=claude-a skipped=no_candidate recovery=quota:962b5a0d-1a3f-4212-ac6b-12cb79c2e08a:1:9 (No untried claude account remains)"}
+{"ts":1792482437914,"op":"cell.retention.plan dry_run=false kind=scheduled cells=0 planned=0 planned_bytes=? held=0 dirty=0 present_bytes=? trim_cells=0 trim_bytes=? inspect_ms=5 gather_ms=1"}
+{"ts":1792482437914,"op":"cell.retention.apply evicted=0 refused=0 failed=0 bytes=0 trimmed=0 trim_bytes=0 trim_refused=0 trim_failed=0"}
+{"ts":1792482437915,"op":"cell.retention.pass kind=scheduled outcome=nothing_to_do evicted=0 freed_bytes=0 free_before=338098573312 free_after=338098552832 floor=-"}
+{"ts":1792482437930,"op":"obs.turn_started bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 synthetic"}
+{"ts":1792482437932,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=11 gen=1 urgency=next"}
+{"ts":1792482437957,"op":"obs.turn_ended bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1"}
+{"ts":1792482437959,"op":"flag.clear bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1"}
+{"ts":1792482437960,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792482437962,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792482437962,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=4080"}
+{"ts":1792482439722,"op":"quota.probe account=claude-a at=1792482439721 next_at=1792482919721 delay_ms=480000 reason=backoff"}
+{"ts":1792482439723,"op":"quota.probe account=claude-b at=1792482439721 next_at=1792482919721 delay_ms=480000 reason=backoff"}
+{"ts":1792482439724,"op":"tick.slow total=1509ms step=1508ms accounts=0ms maintenance=0ms flush=1ms"}
+{"ts":1792482439729,"op":"account.limits account=claude-a readable=true weekly=98.04 5h=98.04"}
+{"ts":1792482439732,"op":"account.limits account=claude-b readable=true weekly=98.04 5h=98.04"}
+{"ts":1792482439736,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792482917927,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=12 gen=1 urgency=next"}
+{"ts":1792482917933,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792482917951,"op":"obs.turn_started bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 synthetic"}
+{"ts":1792482917977,"op":"obs.turn_ended bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1"}
+{"ts":1792482917977,"op":"flag.clear bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1"}
+{"ts":1792482917978,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=4445"}
+{"ts":1792482917980,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=13 gen=1 urgency=next"}
+{"ts":1792482918002,"op":"obs.turn_started bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 synthetic"}
+{"ts":1792482918027,"op":"obs.turn_ended bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1"}
+{"ts":1792482918028,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792482918032,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792482918033,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=4979"}
+{"ts":1792482918039,"op":"account.rotate bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a account=claude-a skipped=no_candidate recovery=quota:962b5a0d-1a3f-4212-ac6b-12cb79c2e08a:1:13 (No untried claude account remains)"}
+{"ts":1792482919762,"op":"quota.probe account=claude-a at=1792482919761 next_at=1792483819761 delay_ms=900000 reason=backoff"}
+{"ts":1792482919763,"op":"quota.probe account=claude-b at=1792482919761 next_at=1792483819761 delay_ms=900000 reason=backoff"}
+{"ts":1792482919769,"op":"account.limits account=claude-a readable=true weekly=98.05 5h=98.05"}
+{"ts":1792482919775,"op":"account.limits account=claude-b readable=true weekly=98.05 5h=98.05"}
+{"ts":1792483817965,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792483817974,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=14 gen=1 urgency=next"}
+{"ts":1792483817981,"op":"account.rotate bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a account=claude-a skipped=no_candidate recovery=quota:962b5a0d-1a3f-4212-ac6b-12cb79c2e08a:1:13 (No untried claude account remains)"}
+{"ts":1792483817998,"op":"obs.turn_started bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 synthetic"}
+{"ts":1792483818000,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=15 gen=1 urgency=next"}
+{"ts":1792483818025,"op":"obs.turn_ended bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1"}
+{"ts":1792483818027,"op":"flag.clear bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1"}
+{"ts":1792483818027,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=5344"}
+{"ts":1792483818075,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792483818077,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792483818078,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=5878"}
+{"ts":1792483819815,"op":"quota.probe account=claude-a at=1792483819814 next_at=1792484719814 delay_ms=900000 reason=backoff"}
+{"ts":1792483819816,"op":"quota.probe account=claude-b at=1792483819814 next_at=1792484719814 delay_ms=900000 reason=backoff"}
+{"ts":1792483819820,"op":"account.limits account=claude-a readable=true weekly=98.06 5h=98.06"}
+{"ts":1792483819822,"op":"account.limits account=claude-b readable=true weekly=98.06 5h=98.06"}
+{"ts":1792483819826,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792484718023,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=16 gen=1 urgency=next"}
+{"ts":1792484718029,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792484718047,"op":"obs.turn_started bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 synthetic"}
+{"ts":1792484718049,"op":"deliver bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a msg=17 gen=1 urgency=next"}
+{"ts":1792484718074,"op":"obs.turn_ended bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1"}
+{"ts":1792484718075,"op":"flag.clear bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1"}
+{"ts":1792484718076,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792484718077,"op":"flag.set bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked gen=1 resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792484718078,"op":"obs.checkpoint bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cursor=6777"}
+{"ts":1792484719866,"op":"quota.probe account=claude-a at=1792484719865 next_at=1792485619865 delay_ms=900000 reason=backoff"}
+{"ts":1792484719867,"op":"quota.probe account=claude-b at=1792484719865 next_at=1792485619865 delay_ms=900000 reason=backoff"}
+{"ts":1792484719872,"op":"account.limits account=claude-a readable=true weekly=98.07 5h=98.07"}
+{"ts":1792484719874,"op":"account.limits account=claude-b readable=true weekly=98.07 5h=98.07"}
+{"ts":1792484719877,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792484720584,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792484720602,"op":"boot.adopt bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 pid=2271485 ok=true"}
+{"ts":1792484720604,"op":"boot.adopt bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 pid=2271463 ok=true"}
+{"ts":1792484720607,"op":"boot adopted=2 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792484720621,"op":"rpc.listen socket=/var/tmp/hb-quota-C.C3.4k5nwBTl/tmp/hb-v2-daemon-j3jP96/hived.sock"}
+{"ts":1792484720622,"op":"daemon.started pid=2271505 store=/var/tmp/hb-quota-C.C3.4k5nwBTl/tmp/hb-v2-daemon-j3jP96/core.sqlite3"}
+{"ts":1792484720643,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792485617871,"op":"tick.slow total=896912ms step=896910ms accounts=0ms maintenance=2ms flush=0ms"}
+{"ts":1792485617875,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792485617876,"op":"cell.retention.plan dry_run=false kind=scheduled cells=0 planned=0 planned_bytes=? held=0 dirty=0 present_bytes=? trim_cells=0 trim_bytes=? inspect_ms=4 gather_ms=1"}
+{"ts":1792485617876,"op":"cell.retention.apply evicted=0 refused=0 failed=0 bytes=0 trimmed=0 trim_bytes=0 trim_refused=0 trim_failed=0"}
+{"ts":1792485617877,"op":"cell.retention.pass kind=scheduled outcome=nothing_to_do evicted=0 freed_bytes=0 free_before=338097205248 free_after=338097201152 floor=-"}
+{"ts":1792485649979,"op":"quota.probe account=claude-a at=1792485649977 next_at=1792486549977 delay_ms=900000 reason=backoff"}
+{"ts":1792485649982,"op":"quota.probe account=claude-b at=1792485649977 next_at=1792486549977 delay_ms=900000 reason=backoff"}
+{"ts":1792485650048,"op":"account.limits account=claude-a readable=true weekly=98.08 5h=98.08"}
+{"ts":1792485650050,"op":"account.limits account=claude-b readable=true weekly=98.08 5h=98.08"}
+{"ts":1792485650052,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792485650063,"op":"account.limits account=claude-b readable=true weekly=98.09 5h=98.09"}
+{"ts":1792485651062,"op":"quota.probe account=claude-b at=1792485651060 next_at=1792485681060 delay_ms=30000 reason=evidence_changed"}
+{"ts":1792485987940,"op":"account.limits account=claude-b readable=true weekly=98.1 5h=98.1"}
+{"ts":1792485987944,"op":"account.rotate bee=d115ee87-1c8b-452b-9337-554cf212d6d8 account=claude-a skipped=no_candidate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 (No untried claude account remains)"}
+{"ts":1792485987949,"op":"flag.expire bee=d115ee87-1c8b-452b-9337-554cf212d6d8 flag=resource_blocked resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792485987949,"op":"flag.expire bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a flag=resource_blocked resetsAt=2026-10-20T08:46:27.909Z"}
+{"ts":1792485987952,"op":"quota.probe account=claude-a at=1792485987950 next_at=1792486017950 delay_ms=30000 reason=reset"}
+{"ts":1792485987952,"op":"quota.probe account=claude-b at=1792485987950 next_at=1792486017950 delay_ms=30000 reason=reset"}
+{"ts":1792485987957,"op":"account.limits account=claude-a readable=true weekly=5 5h=5"}
+{"ts":1792485987957,"op":"quota.probe account=claude-a at=1792485987957 next_at=1792486017957 delay_ms=30000 reason=fresh_evidence_changed"}
+{"ts":1792485987959,"op":"account.limits account=claude-b readable=true weekly=98.11 5h=98.11"}
+{"ts":1792485987962,"op":"account auto → claude-a — only claude account with credentials"}
+{"ts":1792485987962,"op":"account.admission.shadow operation=swap selected=claude-a policy=wait:activity_unknown"}
+{"ts":1792485987965,"op":"bee.swapAccount bee=d115ee87-1c8b-452b-9337-554cf212d6d8 from=claude-a to=claude-a by=operator action=stop_then_revive rekeyed=false transcript=present stop=3"}
+{"ts":1792485987966,"op":"quota.rotate recovery=quota:d115ee87-1c8b-452b-9337-554cf212d6d8:1:3 to=claude-a"}
+{"ts":1792485987970,"op":"cmd.stop id=3 bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 cause=stopped_by_system hadProcess=true"}
+{"ts":1792485988043,"op":"obs.exited bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 cause=stopped_by_system"}
+{"ts":1792485988044,"op":"revive.after_stop bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=1 cmd=4"}
+{"ts":1792485988048,"op":"account.activate.gateways account=claude-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792485988225,"op":"cmd.revive id=4 bee=d115ee87-1c8b-452b-9337-554cf212d6d8 revive gen=2"}
+{"ts":1792485988314,"op":"obs.booted bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=2 pid=2271568 synthetic"}
+{"ts":1792485988314,"op":"obs.turn_ended bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=2 synthetic"}
+{"ts":1792485988322,"op":"deliver bee=d115ee87-1c8b-452b-9337-554cf212d6d8 msg=18 gen=2 urgency=next"}
+{"ts":1792485988343,"op":"obs.turn_started bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=2 synthetic"}
+{"ts":1792485988367,"op":"spawn.evidence bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=2 kind=booted"}
+{"ts":1792485988367,"op":"obs.skip bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=2 kind=booted reason=already_running"}
+{"ts":1792485988368,"op":"obs.turn_ended bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=2"}
+{"ts":1792485988370,"op":"obs.checkpoint bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=2 cursor=528"}
+{"ts":1792485988395,"op":"cmd.stop id=5 bee=d115ee87-1c8b-452b-9337-554cf212d6d8 gen=2 cause=stopped_by_user hadProcess=true"}
+{"ts":1792485988397,"op":"cmd.stop id=6 bee=962b5a0d-1a3f-4212-ac6b-12cb79c2e08a gen=1 cause=stopped_by_user hadProcess=true"}
+{"ts":1792485988398,"op":"daemon.stopping pid=2271505"}
+{"ts":1792485988405,"op":"daemon.stopped"}
+{"ts":1792485988405,"op":"daemon.stop_complete pid=2271505"}

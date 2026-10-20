@@ -6809,6 +6809,18 @@ export class CoreStore {
     });
   }
 
+  getAccountQuotaProbeCadence(account: string): import("./types.ts").AccountQuotaProbeCadence | null {
+    const row = this.stmt("SELECT value FROM meta WHERE key = ?").get(`quota_probe:${account}`) as Row | undefined;
+    return row ? JSON.parse(String(row.value)) as import("./types.ts").AccountQuotaProbeCadence : null;
+  }
+
+  putAccountQuotaProbeCadence(cadence: import("./types.ts").AccountQuotaProbeCadence, reason: string): void {
+    this.tx(() => {
+      this.stmt("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(`quota_probe:${cadence.account}`, JSON.stringify(cadence));
+      this.audit("account.quota_probe", null, { cadence, reason });
+    });
+  }
+
   getAccountLimits(accountId: string): AccountLimitsRow | null {
     const row = this.stmt("SELECT * FROM account_limits WHERE account = ?").get(accountId) as Row | undefined;
     return row ? mapAccountLimits(row) : null;

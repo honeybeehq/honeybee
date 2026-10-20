@@ -260,6 +260,7 @@ export function describeWeeklyCeilingBreach(accountId: string, breach: WeeklyCei
 }
 
 export interface PickOptions {
+  quotaResetAt?: number;
   minimumObservedAt?: number;
   /** Accounts already tried / the current one (rotation). */
   excludeAccountIds?: ReadonlySet<string>;
@@ -925,7 +926,6 @@ export class AccountsService {
   /** Grok/Kimi refresh tokens also rotate; share the whole provider read. */
   private readonly secondaryProviderFetches = new Map<string, Promise<PutAccountLimitsInput>>();
   /** Active-admission freshness probes join per account, including Claude. */
-  private readonly quotaProbeAt = new Map<string, number>();
   private readonly admissionRefreshes = new Map<string, Promise<void>>();
   /**
    * Auto picks not yet visible as runtimes (HIVE-80 reservation): each pick
@@ -2318,9 +2318,9 @@ export class AccountsService {
     const stale = this.candidateIdsFor(harness, opts).filter((id) => {
       const row = this.store.getAccountLimits(id);
       const account = this.store.getAccount(id);
-      const previous = this.quotaProbeAt.get(id);
-      const crossedReset = row && [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now && reset > (previous ?? 0));
-      if (quotaRecovery && previous !== undefined && now - previous < 30_000 && !crossedReset) return false;
+      const previous = quotaRecovery ? this.store.getAccountQuotaProbeCadence(id) : null;
+      const crossedReset = opts.quotaResetAt !== undefined && opts.quotaResetAt <= now && opts.quotaResetAt > (previous?.lastProbeAt ?? 0) || row && [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now && reset > (previous?.lastProbeAt ?? 0));
+      if (previous && now < previous.nextProbeAt && !crossedReset && previous.evidence === this.quotaProbeEvidence(id)) return false;
       return !row || !row.readable || now - row.fetchedAt > this.cfg.accounts.allocationQuotaFreshMs
         || opts.minimumObservedAt !== undefined && row.fetchedAt <= opts.minimumObservedAt
         || [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now)
@@ -2330,8 +2330,24 @@ export class AccountsService {
     if (stale.length > 0) await Promise.all(stale.map(async (id) => {
       const joined = this.admissionRefreshes.get(id);
       if (joined) return joined;
-      if (quotaRecovery) this.quotaProbeAt.set(id, now);
-      const pending = this.refreshLimits([id]).then(() => undefined);
+      const previous = quotaRecovery ? this.store.getAccountQuotaProbeCadence(id) : null;
+      const evidence = this.quotaProbeEvidence(id);
+      const row = this.store.getAccountLimits(id);
+      const crossedReset = opts.quotaResetAt !== undefined && opts.quotaResetAt <= now && opts.quotaResetAt > (previous?.lastProbeAt ?? 0) || row && [row.fiveHourResetsAt, row.weeklyResetsAt, ...(isFableModel(opts.model) ? [row.fableResetsAt] : [])].some(reset => reset !== null && reset <= now && reset > (previous?.lastProbeAt ?? 0));
+      const changed = previous !== null && previous.evidence !== evidence;
+      const delayMs = !previous || changed || crossedReset ? 30_000 : Math.min(15 * 60_000, previous.delayMs * 2);
+      if (quotaRecovery) {
+        this.store.putAccountQuotaProbeCadence({ account: id, lastProbeAt: now, nextProbeAt: now + delayMs, delayMs, evidence }, crossedReset ? "reset" : changed ? "evidence_changed" : previous ? "backoff" : "initial");
+        this.log(`quota.probe account=${id} at=${now} next_at=${now + delayMs} delay_ms=${delayMs} reason=${crossedReset ? "reset" : changed ? "evidence_changed" : previous ? "backoff" : "initial"}`);
+      }
+      const pending = this.refreshLimits([id]).then(() => {
+        if (!quotaRecovery) return;
+        const nextEvidence = this.quotaProbeEvidence(id);
+        if (nextEvidence === evidence) return;
+        const at = this.now();
+        this.store.putAccountQuotaProbeCadence({ account: id, lastProbeAt: now, nextProbeAt: at + 30_000, delayMs: 30_000, evidence: nextEvidence }, "fresh_evidence_changed");
+        this.log(`quota.probe account=${id} at=${at} next_at=${at + 30_000} delay_ms=30000 reason=fresh_evidence_changed`);
+      });
       this.admissionRefreshes.set(id, pending);
       try {
         await pending;
@@ -2339,6 +2355,14 @@ export class AccountsService {
         if (this.admissionRefreshes.get(id) === pending) this.admissionRefreshes.delete(id);
       }
     }));
+  }
+
+  private quotaProbeEvidence(accountId: string): string {
+    const account = this.store.getAccount(accountId);
+    const row = this.store.getAccountLimits(accountId);
+    const bucket = (percent: number | null | undefined) => percent == null ? null : percent >= DEFAULT_ACCOUNT_ADMISSION_POLICY.completionReservePercent;
+    const reset = (at: number | null | undefined) => at == null ? null : Math.floor(at / 60_000);
+    return JSON.stringify([account?.status, account ? this.readiness(account).ready : null, row?.readable, bucket(row?.fiveHourPct), bucket(row?.weeklyPct), bucket(row?.fableWeeklyPct), reset(row?.fiveHourResetsAt), reset(row?.weeklyResetsAt), reset(row?.fableResetsAt)]);
   }
 
   private contextIsFresh(context: AccountAllocationContext | null | undefined, scope: string, now: number): context is AccountAllocationContext {

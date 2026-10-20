@@ -2730,7 +2730,7 @@ export class HiveDaemon {
       ? new Set([...(requestedExclusions ?? []), sourceAccount])
       : requestedExclusions;
     const sourceRecovery = this.sourceQuotaRecoveryParam(params);
-    await this.mustAccounts().ensureFreshAdmissionLimits(harness, { model, excludeAccountIds, minimumObservedAt: sourceRecovery?.observedAt }, !!sourceRecovery);
+    await this.mustAccounts().ensureFreshAdmissionLimits(harness, { model, excludeAccountIds, minimumObservedAt: sourceRecovery?.observedAt, quotaResetAt: sourceRecovery?.resetsAt ?? undefined }, !!sourceRecovery);
     return this.withIdempotency("account.admission.acquire", params, () => this.rpcAccountAdmissionAcquire(params));
   }
 
@@ -6835,13 +6835,13 @@ export class HiveDaemon {
     if (accounts.allocationMode() === "active") {
       store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required");
       try {
-        await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt }, true);
+        await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota.resetsAt ?? undefined }, true);
         if (!this.stopping) store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
       } catch (error) { this.log(`quota.probe recovery=${id} failed=${error instanceof Error ? error.message : String(error)}`); }
       return;
     }
     try {
-      await accounts.ensureFreshAdmissionLimits(bee.agent, { model: this.modelOfBee(bee), minimumObservedAt: row.createdAt }, true);
+      await accounts.ensureFreshAdmissionLimits(bee.agent, { model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota.resetsAt ?? undefined }, true);
       if (this.stopping) return;
       store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
       row = store.getQuotaRecovery(id);
