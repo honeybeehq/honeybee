@@ -1,0 +1,24 @@
+✔ policy: bees.tmpRoot wins, absent defaults by nodeKind, null turns it off (2.572769ms)
+✔ config: bees.tmpRoot is additive and validated (8.24546ms)
+✔ names: safe ids map to themselves; unsafe ids and the daemon name hash into one segment (1.079839ms)
+✔ dirs: ensure creates, remove deletes, sweep keeps daemon and kept bees (2.99802ms)
+✔ satellite daemon: per-bee TMPDIR, shared compile cache, removed on archive after stop (1164.196349ms)
+✔ bees.tmpRoot turns it on for a node whose nodeKind is unset, and null turns a satellite off (1936.445909ms)
+✔ workstation daemon: TMPDIR and compile cache are inherited unchanged (1470.055839ms)
+✔ a restart that turns the policy on keeps reaching the surviving runner: same generation, mail delivered (1429.973909ms)
+✔ boot sweep removes only this store's archived bees' dirs (1824.582269ms)
+✔ satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writable inside the sandbox (1309.821279ms)
+✔ symlinks: a planted link at any owned level is replaced by a real dir, never granted or followed (8.026074ms)
+✔ Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets no write access through it on the next generation (2047.00618ms)
+✔ an invalid bees setting boots with the policy off and logs why; a template TMPDIR override is logged once (2168.345011ms)
+✔ config: bees.sandboxTmpBytes is additive, nullable and falls back to the default when invalid (4.301905ms)
+✔ sandboxed bee past its tmpfs cap: ENOSPC inside, a typed resource_blocked outside, the cap logged per bee (6129.30381ms)
+✔ a bad bees.sandboxTmpBytes boots, logs why and spawns with the 1 GiB default (8337.126094ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 28042.618407

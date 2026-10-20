@@ -1221,5 +1221,6 @@ CREATE TABLE IF NOT EXISTS quota_recoveries (
   payload TEXT NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS quota_recoveries_by_bee ON quota_recoveries(bee_id, id);
+CREATE INDEX IF NOT EXISTS quota_recoveries_proactive_account ON quota_recoveries(json_extract(payload, '$.sourceAccount'), json_extract(payload, '$.createdAt')) WHERE json_type(payload, '$.admission') = 'object';
 CREATE INDEX IF NOT EXISTS quota_recoveries_live ON quota_recoveries(bee_id) WHERE state IN ('waiting','rotating');
 `;

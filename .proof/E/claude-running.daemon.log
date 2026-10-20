@@ -1,0 +1,37 @@
+hived v2 listening on /var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-sfNIoR/hived.sock (store /var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-sfNIoR/core.sqlite3)
+{"ts":1792490320624,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792490320649,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1792490320656,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792490320672,"op":"rpc.listen socket=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-sfNIoR/hived.sock"}
+{"ts":1792490320673,"op":"daemon.started pid=771698 store=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-sfNIoR/core.sqlite3"}
+{"ts":1792490320692,"op":"account.add id=claude-a harness=claude home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-sfNIoR/homes/claude-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-sfNIoR/vault/claude/claude-a files=.credentials.json verification=limits"}
+{"ts":1792490320733,"op":"account.add id=claude-b harness=claude home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-sfNIoR/homes/claude-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-sfNIoR/vault/claude/claude-b files=.credentials.json verification=limits"}
+{"ts":1792490320750,"op":"account.credential_health account=claude-a unverified→verified by=limits_probe"}
+{"ts":1792490320750,"op":"account.limits account=claude-a readable=true weekly=5 5h=5"}
+{"ts":1792490320756,"op":"account.limits account=claude-a readable=true weekly=5 5h=5"}
+{"ts":1792490320759,"op":"account.credential_health account=claude-b unverified→verified by=limits_probe"}
+{"ts":1792490320759,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792490320761,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792490320769,"op":"spawn.account bee=aaa9d320-4df6-4567-aabe-c2488822ef7a account=claude-a reason=\"explicit\""}
+{"ts":1792490320780,"op":"account.activate account=claude-a home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-sfNIoR/homes/claude-a copied=.credentials.json"}
+{"ts":1792490320780,"op":"account.activate.gateways account=claude-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792490320992,"op":"cmd.spawn id=1 bee=aaa9d320-4df6-4567-aabe-c2488822ef7a start gen=1"}
+{"ts":1792490321083,"op":"obs.booted bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1 pid=771757 synthetic"}
+{"ts":1792490321083,"op":"obs.skip bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1 kind=turn_ended reason=mail_pending"}
+{"ts":1792490321094,"op":"deliver.refused bee=aaa9d320-4df6-4567-aabe-c2488822ef7a msg=1 reason=not_ready"}
+{"ts":1792490321104,"op":"deliver bee=aaa9d320-4df6-4567-aabe-c2488822ef7a msg=1 gen=1 urgency=next"}
+{"ts":1792490321125,"op":"obs.skip bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1 kind=turn_started reason=already_running"}
+{"ts":1792490321155,"op":"spawn.evidence bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1 kind=booted"}
+{"ts":1792490321155,"op":"obs.skip bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1 kind=booted reason=already_running"}
+{"ts":1792490321157,"op":"obs.turn_ended bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1"}
+{"ts":1792490321158,"op":"session.recorded bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1 id=6b0cf5a3-d147-4ede-8475-fa683f6a8cc7"}
+{"ts":1792490321162,"op":"obs.checkpoint bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1 cursor=498"}
+{"ts":1792490321188,"op":"deliver bee=aaa9d320-4df6-4567-aabe-c2488822ef7a msg=2 gen=1 urgency=next"}
+{"ts":1792490321212,"op":"obs.turn_started bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1 synthetic"}
+{"ts":1792490321224,"op":"account.limits account=claude-a readable=true weekly=5 5h=91"}
+{"ts":1792490321230,"op":"account.limits account=claude-b readable=true weekly=5 5h=5"}
+{"ts":1792490322758,"op":"obs.turn_ended bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1"}
+{"ts":1792490322759,"op":"obs.checkpoint bee=aaa9d320-4df6-4567-aabe-c2488822ef7a gen=1 cursor=817"}
+{"ts":1792490322778,"op":"daemon.stopping pid=771698"}
+{"ts":1792490322807,"op":"daemon.stopped"}
+{"ts":1792490322807,"op":"daemon.stop_complete pid=771698"}

@@ -130,6 +130,26 @@ function waitReason(reasons: Set<AccountAdmissionWaitReason>): AccountAdmissionW
   return "no_eligible_account";
 }
 
+export function completionHeadroom(candidate: AccountAdmissionCandidate, policy: AccountAdmissionPolicy): { status: "uncertain" | "protected" | "eligible"; maxProjectedPercent?: number; retryAt: number | null } {
+  const quota = candidate.quota;
+  const windows = applicableWindows(candidate, policy.model);
+  if (!quota || !Number.isFinite(quota.fetchedAt) || quota.fetchedAt > policy.now + 60_000
+    || policy.now - quota.fetchedAt > policy.quotaFreshMs || windows.length === 0
+    || windows.some(window => !usableWindow(window, policy.now))
+    || !(candidate.capacityUnits > 0 && Number.isFinite(candidate.capacityUnits))) return { status: "uncertain", retryAt: null };
+  const projected = windows.map(window => {
+    const horizon = Math.min(policy.projectionHorizonHours, (window.resetsAt - policy.now) / 3_600_000);
+    return window.usedPercent + window.velocityPerHour * horizon
+      + window.admissionCostPercent * horizon * (candidate.reservations + candidate.activity.pending + (policy.requestUnits ?? 1));
+  });
+  const maxProjectedPercent = Math.max(...projected);
+  const protectedNow = activityPresent(candidate) && windows.some(window => window.usedPercent >= policy.completionReservePercent);
+  const protectedResets = windows.filter((window, index) => projected[index]! >= policy.completionReservePercent
+    || activityPresent(candidate) && window.usedPercent >= policy.completionReservePercent).map(window => window.resetsAt);
+  return { status: protectedNow || maxProjectedPercent >= policy.completionReservePercent ? "protected" : "eligible", maxProjectedPercent,
+    retryAt: protectedResets.length ? Math.max(...protectedResets) : Math.min(...windows.map(window => window.resetsAt)) };
+}
+
 /**
  * Weighted-fair admission. Each accepted start advances the selected
  * account's durable reservation count; minimizing virtual finish therefore
@@ -162,34 +182,16 @@ export function selectAccountAdmission(
       reasons.add("activity_unknown");
       continue;
     }
-    const quota = candidate.quota;
     const windows = applicableWindows(candidate, policy.model);
-    if (
-      !quota
-      || !Number.isFinite(quota.fetchedAt)
-      || quota.fetchedAt > policy.now + 60_000
-      || policy.now - quota.fetchedAt > policy.quotaFreshMs
-      || windows.length === 0
-      || windows.some((window) => !usableWindow(window, policy.now))
-      || !(candidate.capacityUnits > 0 && Number.isFinite(candidate.capacityUnits))
-    ) {
+    const headroom = completionHeadroom(candidate, policy);
+    if (headroom.status === "uncertain") {
       receipts.push({ accountId: candidate.accountId, status: "uncertain", reason: "quota_uncertain" });
       reasons.add("quota_uncertain");
       continue;
     }
 
-    const projected = windows.map((window) => {
-      const remainingHours = (window.resetsAt - policy.now) / 3_600_000;
-      const horizon = Math.min(policy.projectionHorizonHours, remainingHours);
-      return window.usedPercent
-        + window.velocityPerHour * horizon
-        + window.admissionCostPercent * horizon * (candidate.reservations + candidate.activity.pending + requestUnits);
-    });
-    const maxProjectedPercent = Math.max(...projected);
-    const protectedNow = activityPresent(candidate)
-      && windows.some((window) => window.usedPercent >= policy.completionReservePercent);
-    const protectedProjected = projected.some((percent) => percent >= policy.completionReservePercent);
-    if (protectedNow || protectedProjected) {
+    const maxProjectedPercent = headroom.maxProjectedPercent!;
+    if (headroom.status === "protected") {
       receipts.push({ accountId: candidate.accountId, status: "protected", reason: "completion_reserve", maxProjectedPercent });
       reasons.add("completion_reserve");
       const nextReset = Math.min(...windows.map((window) => window.resetsAt));

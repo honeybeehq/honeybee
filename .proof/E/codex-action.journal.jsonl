@@ -1,0 +1,28 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-jrV1TK","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-jrV1TK"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"6bc3b89f-4517-4119-8f68-ef9c982f1198"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","turn":{"id":"6bc3b89f-4517-4119-8f68-ef9c982f1198"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","turn":{"id":"6bc3b89f-4517-4119-8f68-ef9c982f1198","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","path":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-jrV1TK/homes/codex-b/sessions/honeybee/266c3afecb58f0ec1c89e3c97e492b65e2415869f152b997a5cb82b76a411b35.jsonl","modelProvider":"openai","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-jrV1TK","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-jrV1TK"}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","input":[{"type":"text","text":"[Hive action] Commit — action 95a9e4e7-8c71-4670-962b-ae79ace089da, attempt 1\n\nCommit the work in your checkout now. Stage only the changes that belong to your current task, write a clear commit message, and create exactly one commit (if there is nothing to commit, report the current HEAD as commitSha).\n\nWhen you are done, report the outcome with the hive CLI. Finishing your turn does NOT complete this action; only the report does:\n  hive action report 95a9e4e7-8c71-4670-962b-ae79ace089da --attempt 1 --token 9e95bfec462d67e163c5 --succeeded --output commitSha=<commitSha>\n  hive action report 95a9e4e7-8c71-4670-962b-ae79ace089da --attempt 1 --token 9e95bfec462d67e163c5 --failed --detail \"<why>\"\n  hive action report 95a9e4e7-8c71-4670-962b-ae79ace089da --attempt 1 --token 9e95bfec462d67e163c5 --ask \"<question for the operator>\"    (holds the queue until answered; the answer arrives as mail)\n  hive action report 95a9e4e7-8c71-4670-962b-ae79ace089da --attempt 1 --token 9e95bfec462d67e163c5 --progress \"<short status>\"\n\nOutputs:\n- commitSha (required): Full sha of the commit that was created (or the existing HEAD when nothing needed committing).\n- branch: Branch the commit is on.\n\nQueued actions after this one wait for your report; do not start them yourself.","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"886f2937-5828-4b96-a374-bab4570c069a"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","turn":{"id":"886f2937-5828-4b96-a374-bab4570c069a"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","turn":{"id":"886f2937-5828-4b96-a374-bab4570c069a","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","input":[{"type":"text","text":"conversation still continues","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"84a73640-977e-4eb8-aed7-a64185a270d9"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","turn":{"id":"84a73640-977e-4eb8-aed7-a64185a270d9"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"6531fb20-9d94-4aa5-82d0-5e942dcccee6","turn":{"id":"84a73640-977e-4eb8-aed7-a64185a270d9","status":"completed","error":null}}}

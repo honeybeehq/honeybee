@@ -1,0 +1,12 @@
+Implementation 4f69709aad6d3be1338ae799e00043149a11c6f7
+Base 3c56237742491bfe4d686606ddd920870840020b
+Product/test patch-id 0935fbf0773a50bb2deeeb995161b0ca65188567
+check PASS; v2:check PASS; build PASS (main-gates.exit 0).
+Real daemon fake-provider matrix: 36/36 PASS (main-lab.log).
+Admission targeted/full-roster parity: 40/40 PASS; missing, incomplete and stale activity all wait with zero reservations. See admission-coverage.md and activity-uncertainty.log.
+Broad daemon suite ATTEMPTED, NOT GREEN: main-daemon-final.log passes corrected admission fixtures then fixture cleanup boundary failed. Stable trash hook fixes bee-tmp (main-bee-tmp-final.exit 0). main-daemon-rest.log fails Cell-pressure startup timeouts. Exact pinned-main source overlay reproduces cell-pressure.1 archived-1 idle timeout in main-pressure-base-final.log. main-daemon-after-pressure.log additionally fails Cell-retention startup timeouts; these retention failures have not independently been base-attributed.
+Beyond mechanical rebase: two optional quota reset-hint reads, and one existing roster-read assertion changed to upper bound. Full completeness evidence and unknown/stale controls are in admission-coverage.md.
+No package.json or package-lock.json changes. DEPLOY HOLD remains. Shadow proactiveAdmission remains default OFF; active owner routing must ship with C2/G.
+
+Superseding reset-cadence validation: combined source 8c5d678531cbb0b288e20ac6394193b39c76ebe2 includes two row.resetHints.other fallbacks. 36/36 lab and check/v2:check/build pass. Isolated Cell-retention 7/7 pass on pinned main and combined source (main-retention-base.log, main-retention-final.log); --test-force-exit bounds lingering fixture handles after assertions. No claim that the entire broad daemon suite is green.
+Final E implementation 378c63ec679a94cae432710d384cf967a8d6f3ab; product/test patch-id 94323b84cbaad80fc01cc13366039c8a0e94fa6b. Final reset fallback was validated on equivalent combined E+E2 source8c5d6785 before transplant; E production delta is exactly main-delta.diff.

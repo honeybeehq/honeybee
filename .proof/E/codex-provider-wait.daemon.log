@@ -1,0 +1,51 @@
+hived v2 listening on /var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-HNFQTv/hived.sock (store /var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-HNFQTv/core.sqlite3)
+{"ts":1792490447257,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792490447285,"op":"store.migration.rpc_idempotency_env seen=0 redacted=0 skipped_unparseable=0 skipped_unrecognised=0 complete=true ms=0"}
+{"ts":1792490447293,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792490447309,"op":"rpc.listen socket=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-HNFQTv/hived.sock"}
+{"ts":1792490447310,"op":"daemon.started pid=776723 store=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-HNFQTv/core.sqlite3"}
+{"ts":1792490447327,"op":"account.activate account=codex-a home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-HNFQTv/homes/codex-a copied=auth.json,.codex/auth.json by=limits_probe"}
+{"ts":1792490447328,"op":"account.add id=codex-a harness=codex home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-HNFQTv/homes/codex-a importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-HNFQTv/vault/codex/codex-a files=auth.json verification=limits"}
+{"ts":1792490447330,"op":"account.add id=codex-b harness=codex home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-HNFQTv/homes/codex-b importExisting=true status=ok credentialHealth=unverified imported=vault:/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-HNFQTv/vault/codex/codex-b files=auth.json verification=limits"}
+{"ts":1792490447486,"op":"account.credential_health account=codex-a unverified→verified by=limits_probe"}
+{"ts":1792490447486,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
+{"ts":1792490447489,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
+{"ts":1792490447493,"op":"account.activate account=codex-b home=/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-HNFQTv/homes/codex-b copied=auth.json,.codex/auth.json by=limits_probe"}
+{"ts":1792490447634,"op":"account.credential_health account=codex-b unverified→verified by=limits_probe"}
+{"ts":1792490447634,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
+{"ts":1792490447635,"op":"account.limits account=codex-b readable=true weekly=5 5h=5"}
+{"ts":1792490447651,"op":"spawn.account bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc account=codex-a reason=\"explicit\""}
+{"ts":1792490447660,"op":"account.activate.gateways account=codex-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792490447889,"op":"cmd.spawn id=1 bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc start gen=1"}
+{"ts":1792490448033,"op":"obs.checkpoint bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 cursor=63"}
+{"ts":1792490448081,"op":"spawn.evidence bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 kind=booted"}
+{"ts":1792490448083,"op":"obs.booted bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 pid=776766"}
+{"ts":1792490448084,"op":"obs.turn_ended bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1"}
+{"ts":1792490448086,"op":"session.recorded bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 id=1a5ac3c5-208e-49f2-a3d1-a9b409de3dc2"}
+{"ts":1792490448088,"op":"obs.checkpoint bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 cursor=210"}
+{"ts":1792490448099,"op":"deliver.refused bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc msg=1 reason=not_ready"}
+{"ts":1792490448121,"op":"obs.turn_started bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 synthetic"}
+{"ts":1792490448123,"op":"deliver.refused bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc msg=1 reason=not_ready"}
+{"ts":1792490448148,"op":"obs.turn_ended bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1"}
+{"ts":1792490448149,"op":"obs.checkpoint bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 cursor=916"}
+{"ts":1792490448154,"op":"deliver bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc msg=1 gen=1 urgency=next"}
+{"ts":1792490448179,"op":"deliver.refused bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc msg=2 reason=not_ready"}
+{"ts":1792490448205,"op":"obs.turn_started bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 synthetic"}
+{"ts":1792490448206,"op":"obs.turn_ended bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1"}
+{"ts":1792490448209,"op":"flag.set bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc flag=resource_blocked gen=1 resetsAt=2026-10-20T11:00:48.000Z"}
+{"ts":1792490448217,"op":"quota.probe account=codex-a at=1792490448214 next_at=1792490478214 delay_ms=30000 reason=initial"}
+{"ts":1792490448219,"op":"flag.set bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc flag=resource_blocked gen=1"}
+{"ts":1792490448221,"op":"flag.set bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc flag=resource_blocked gen=1"}
+{"ts":1792490448222,"op":"obs.checkpoint bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 cursor=2081"}
+{"ts":1792490448226,"op":"deliver bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc msg=2 gen=1 urgency=next"}
+{"ts":1792490448248,"op":"deliver.refused bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc msg=3 reason=not_ready"}
+{"ts":1792490448270,"op":"obs.turn_started bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 synthetic"}
+{"ts":1792490448271,"op":"obs.turn_ended bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1"}
+{"ts":1792490448272,"op":"flag.clear bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc flag=resource_blocked gen=1"}
+{"ts":1792490448272,"op":"obs.checkpoint bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc gen=1 cursor=2787"}
+{"ts":1792490448274,"op":"deliver bee=9a6ae0d4-6e5d-4813-94f1-401cfdf20ccc msg=3 gen=1 urgency=next"}
+{"ts":1792490448291,"op":"daemon.stopping pid=776723"}
+{"ts":1792490448357,"op":"auth.resume.error account=codex-a by=limits_probe err=daemon is shutting down"}
+{"ts":1792490448358,"op":"account.limits account=codex-a readable=true weekly=5 5h=5"}
+{"ts":1792490448388,"op":"daemon.stopped"}
+{"ts":1792490448388,"op":"daemon.stop_complete pid=776723"}

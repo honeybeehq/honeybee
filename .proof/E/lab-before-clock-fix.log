@@ -1,0 +1,31 @@
+{"name":"claude-human","passed":true}
+{"name":"claude-worker","passed":true}
+{"name":"claude-action","passed":true}
+{"name":"claude-projected","passed":true}
+{"name":"claude-stale","passed":true}
+{"name":"claude-running","passed":true}
+{"name":"claude-both","passed":true}
+{"name":"claude-source-reset","passed":true}
+{"name":"claude-optout","passed":true}
+{"name":"claude-active","passed":true}
+{"name":"codex-human","passed":true}
+{"name":"codex-worker","passed":true}
+{"name":"codex-action","passed":true}
+{"name":"codex-projected","passed":true}
+{"name":"codex-stale","passed":true}
+{"name":"codex-running","passed":true}
+{"name":"codex-both","passed":true}
+codex-source-reset Error: waitFor timeout: codex-source-reset delivery
+    at waitFor (file://<CELL>/v2/daemon/tests/helpers.ts:35:38)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file://<CELL>/.proof/E/lab.ts:96:22
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: waitFor timeout: codex-source-reset delivery
+    at waitFor (file://<CELL>/v2/daemon/tests/helpers.ts:35:38)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async file://<CELL>/.proof/E/lab.ts:96:22
+
+Node.js v24.18.0

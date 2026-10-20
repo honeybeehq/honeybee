@@ -1936,6 +1936,7 @@ export interface AccountQuotaProbeCadence {
 export interface QuotaRecoveryRow {
   sourceWindowUsedPercent?: number | null;
   sourceWindowObservedAt?: number | null;
+  trigger: "provider_limit" | "proactive";
   id: string;
   beeId: string;
   sourceGeneration: number;
@@ -1949,7 +1950,8 @@ export interface QuotaRecoveryRow {
   interrupted: boolean;
   controlFence: number;
   placement: { agent: string; cwd: string; cellId: string | null };
-  quota: import("./quota.ts").QuotaBoundary;
+  quota: import("./quota.ts").QuotaBoundary | null;
+  admission?: { fetchedAt: number; maxProjectedPercent: number };
   resetHints: Partial<Record<import("./quota.ts").QuotaBoundary["window"], number>>;
   state: "waiting" | "rotating" | "resumed" | "cancelled";
   attempt: number;

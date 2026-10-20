@@ -1,0 +1,26 @@
+{"name": "E-old", "base": "3e4980a0", "head": "975ab53e", "productPatchId": "f6a4910dc9d7f6281e5d598f913e112dbfb045ef"}
+{"name": "E-rebase-only", "base": "3c562377", "head": "ff1eff1d", "productPatchId": "f6a4910dc9d7f6281e5d598f913e112dbfb045ef"}
+{"name": "E-fixed", "base": "3c562377", "head": "67d3732f", "productPatchId": "793cfefcf3e3c9f60cb1aafb83b79d28fe81591a"}
+ 1:  bac9c300 !  1:  581a4b07 Gate new provider turns on projected completion headroom
+    @@ v2/core/src/store.ts: export class CoreStore {
+        }
+     
+      ## v2/core/src/types.ts ##
+    -@@ v2/core/src/types.ts: export interface AccountObservationMetadata {
+    +@@ v2/core/src/types.ts: export interface AccountQuotaProbeCadence {
+      export interface QuotaRecoveryRow {
+        sourceWindowUsedPercent?: number | null;
+        sourceWindowObservedAt?: number | null;
+ 2:  5455c5ab =  2:  2c0a6c9a Record isolated proactive account rotation proof
+ 3:  a0cb327b =  3:  561a4400 Initialize proactive recovery continuation history
+ 4:  0f34109a =  4:  3bf1b17c Count pending provider work once to prevent reserve churn
+ 5:  de64cbfe =  5:  624016f0 Release restored proactive headroom without restarting work
+ 6:  d8d0e740 =  6:  9d84aef8 Use existing admission costs as proactive release hysteresis
+ 7:  410af472 =  7:  6f03a878 Record final proactive release and restart validation
+ 8:  ea4848fe =  8:  f95a5eb4 Record execution isolation audit note
+ 9:  5570b82e =  9:  3598cef0 Use indexed Codex history in proactive rotation proof
+10:  eb03d1ab = 10:  e3d5dc2e Publish final-base proof and redact Cell paths from receipts
+11:  b0230e90 = 11:  5d21ba24 Keep the code diff receipt free of whitespace warnings
+12:  83e32bef = 12:  40cc191a Preserve control-operation and provider-limit delivery during proactive admission
+13:  529518af = 13:  afdf6322 Preserve owed provider replay when a successor exhausts its boot budget
+14:  975ab53e = 14:  ff1eff1d Record Queen-fix daemon matrix and final verification receipts

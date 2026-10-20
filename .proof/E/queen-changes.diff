@@ -1,0 +1,128 @@
+diff --git a/v2/core/src/accountAllocation.ts b/v2/core/src/accountAllocation.ts
+index 763246ea..030681fd 100644
+--- a/v2/core/src/accountAllocation.ts
++++ b/v2/core/src/accountAllocation.ts
+@@ -146,0 +147,2 @@ export function completionHeadroom(candidate: AccountAdmissionCandidate, policy:
++  const protectedResets = windows.filter((window, index) => projected[index]! >= policy.completionReservePercent
++    || activityPresent(candidate) && window.usedPercent >= policy.completionReservePercent).map(window => window.resetsAt);
+@@ -148 +150 @@ export function completionHeadroom(candidate: AccountAdmissionCandidate, policy:
+-    retryAt: Math.min(...windows.map(window => window.resetsAt)) };
++    retryAt: protectedResets.length ? Math.max(...protectedResets) : Math.min(...windows.map(window => window.resetsAt)) };
+diff --git a/v2/core/src/schema.ts b/v2/core/src/schema.ts
+index ac32c202..10adedb1 100644
+--- a/v2/core/src/schema.ts
++++ b/v2/core/src/schema.ts
+@@ -1223,0 +1224 @@ CREATE INDEX IF NOT EXISTS quota_recoveries_by_bee ON quota_recoveries(bee_id, i
++CREATE INDEX IF NOT EXISTS quota_recoveries_proactive_account ON quota_recoveries(json_extract(payload, '$.sourceAccount'), json_extract(payload, '$.createdAt')) WHERE json_type(payload, '$.admission') = 'object';
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index 26e3f019..a07f0fa4 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -2214 +2214 @@ export class CoreStore {
+-      if (!runtime || runtime.generation !== generation || runtime.state !== "idle" && !(runtime.state === "running" && runtime.bootEvidence === "synthetic")) return null;
++      if (bee.lifecycle !== "active" || bee.activeMoveId || bee.activeHandoffId || !runtime || runtime.generation !== generation || runtime.state !== "idle" && !(runtime.state === "running" && runtime.bootEvidence === "synthetic")) return null;
+@@ -2238,0 +2239,5 @@ export class CoreStore {
++  proactiveRecoveryBoundary(accountId: string): number {
++    const row = this.stmt("SELECT MAX(json_extract(payload, '$.createdAt')) AS boundary FROM quota_recoveries WHERE json_extract(payload, '$.sourceAccount') = ? AND json_type(payload, '$.admission') = 'object'").get(accountId) as Row;
++    return Number(row.boundary ?? 0);
++  }
++
+diff --git a/v2/daemon/src/accountsService.ts b/v2/daemon/src/accountsService.ts
+index d06a7b90..fb24c196 100644
+--- a/v2/daemon/src/accountsService.ts
++++ b/v2/daemon/src/accountsService.ts
+@@ -2268,0 +2269,4 @@ export class AccountsService {
++  proactiveAdmissionEnabled(): boolean {
++    return this.cfg.accounts.proactiveAdmission;
++  }
++
+@@ -2454 +2458 @@ export class AccountsService {
+-    const boundaryAt = Math.max(account.exhaustedAt ?? 0, ...this.store.listQuotaRecoveries().filter(recovery => recovery.sourceAccount === account.id && recovery.admission).map(recovery => recovery.createdAt));
++    const boundaryAt = Math.max(account.exhaustedAt ?? 0, this.store.proactiveRecoveryBoundary(account.id));
+@@ -2492 +2496 @@ export class AccountsService {
+-  proactiveTargets(harness: string, sourceAccount: string, model?: string, beeId?: string): Set<string> {
++  proactiveTargets(harness: string, sourceAccount: string, model?: string): Set<string> {
+@@ -2496 +2499,0 @@ export class AccountsService {
+-    const recoveries = this.store.listQuotaRecoveries();
+@@ -2498 +2501,2 @@ export class AccountsService {
+-      const local = this.openingActivity(activity.get(account.id)!, account.id === sourceAccount ? beeId : undefined);
++      if (account.id === sourceAccount) return false;
++      const local = activity.get(account.id)!;
+@@ -2500,2 +2504 @@ export class AccountsService {
+-      if (candidate.eligibility.state !== "eligible" || completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs }).status !== "eligible"
+-        || account.id === sourceAccount && !this.restoredQuotaHeadroom(account, model)) return false;
++      if (candidate.eligibility.state !== "eligible" || completionHeadroom(candidate, { ...DEFAULT_ACCOUNT_ADMISSION_POLICY, now, model, quotaFreshMs: this.cfg.accounts.allocationQuotaFreshMs }).status !== "eligible") return false;
+@@ -2503 +2506 @@ export class AccountsService {
+-      return !recoveries.some(row => row.admission && row.sourceAccount === account.id && fetchedAt <= row.createdAt);
++      return fetchedAt > this.store.proactiveRecoveryBoundary(account.id);
+diff --git a/v2/daemon/src/config.ts b/v2/daemon/src/config.ts
+index a5684495..24f22fd7 100644
+--- a/v2/daemon/src/config.ts
++++ b/v2/daemon/src/config.ts
+@@ -134,0 +135 @@ export interface AccountsConfig {
++  proactiveAdmission?: boolean;
+@@ -888,0 +890,3 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
++  if (a.proactiveAdmission !== undefined && typeof a.proactiveAdmission !== "boolean") {
++    throw new ConfigError("config: accounts.proactiveAdmission must be a boolean");
++  }
+@@ -944,0 +949 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
++    proactiveAdmission: typeof a.proactiveAdmission === "boolean" ? a.proactiveAdmission : allocationMode === "active",
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index ee6b2c2e..9313a78d 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -6519,0 +6520 @@ export class HiveDaemon {
++      if (recoveryId && store.getQuotaRecovery(recoveryId)?.trigger === "proactive" && claim.account === bee.account) throw new RpcError("account_wait", "Proactive recovery must release the source in place", { retryAt: null });
+@@ -6530,2 +6531,2 @@ export class HiveDaemon {
+-      excludeAccountIds: !recoveryId && bee.account ? new Set([bee.account]) : undefined,
+-      allowSourceAccount: !!recoveryId,
++      excludeAccountIds: (!recoveryId || store.getQuotaRecovery(recoveryId)?.trigger === "proactive") && bee.account ? new Set([bee.account]) : undefined,
++      allowSourceAccount: !!recoveryId && store.getQuotaRecovery(recoveryId)?.trigger !== "proactive",
+@@ -6830 +6831 @@ export class HiveDaemon {
+-    if (!bee?.account || !this.accounts || autoswapDisabled(bee) || bee.agent !== "claude" && bee.agent !== "codex") return true;
++    if (!bee?.account || bee.activeMoveId || bee.activeHandoffId || !this.accounts || autoswapDisabled(bee) || bee.agent !== "claude" && bee.agent !== "codex") return true;
+@@ -6834 +6835,6 @@ export class HiveDaemon {
+-      if (pending.trigger !== "proactive" || pending.state !== "waiting") return pending.state === "rotating" && pending.continuationKind !== null && pending.trigger !== "proactive";
++      if (pending.trigger !== "proactive") return pending.state === "waiting" || pending.continuationKind !== null;
++      if (pending.state !== "waiting") return false;
++      if (!this.accounts.proactiveAdmissionEnabled()) {
++        store.cancelQuotaRecovery(pending.id, "proactive_admission_disabled");
++        return true;
++      }
+@@ -6839,0 +6846 @@ export class HiveDaemon {
++    if (!this.accounts.proactiveAdmissionEnabled()) return true;
+@@ -6857,0 +6865,5 @@ export class HiveDaemon {
++    if (row.trigger === "proactive" && !accounts.proactiveAdmissionEnabled()) {
++      store.cancelQuotaRecovery(id, "proactive_admission_disabled");
++      this.requestTick();
++      return;
++    }
+@@ -6879 +6891,7 @@ export class HiveDaemon {
+-      const targets = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee), bee.id) : undefined;
++      if (row.trigger === "proactive" && bee.account && (store.getAccountLimits(bee.account)?.fetchedAt ?? 0) > row.admission!.fetchedAt
++        && accounts.turnHeadroom(bee.account, this.modelOfBee(bee), bee.id, 2).status === "eligible") {
++        store.cancelQuotaRecovery(id, "completion_headroom_restored");
++        this.requestTick();
++        return;
++      }
++      const targets = row.admission ? accounts.proactiveTargets(bee.agent, row.sourceAccount!, this.modelOfBee(bee)) : undefined;
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 4df6605a..8aa52fe1 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -221 +221 @@ export const DAEMON_CAPABILITIES = [
+-  "account.quota_recovery.v1",
++  "account.quota_recovery.v2",
+diff --git a/v2/daemon/src/quotaRecovery.ts b/v2/daemon/src/quotaRecovery.ts
+index de73663d..5df7f427 100644
+--- a/v2/daemon/src/quotaRecovery.ts
++++ b/v2/daemon/src/quotaRecovery.ts
+@@ -34 +34,7 @@ export class QuotaRecovery {
+-        if (runtime && runtime.generation > row.sourceGeneration && runtime.state === "stopped" && !this.store.activeFlags(row.beeId).some(flag => flag.flag === "spawn_failed")) this.store.enqueueBootRetry(row.beeId);
++        if (runtime && runtime.generation > row.sourceGeneration && runtime.state === "stopped") {
++          if (this.store.activeFlags(row.beeId).some(flag => flag.flag === "spawn_failed")) {
++            if (row.trigger === "proactive") this.store.cancelQuotaRecovery(row.id, "successor_spawn_failed");
++            continue;
++          }
++          this.store.enqueueBootRetry(row.beeId);
++        }

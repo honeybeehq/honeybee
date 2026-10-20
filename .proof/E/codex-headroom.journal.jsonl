@@ -1,0 +1,28 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-w4TvRr","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"9e423acf-f535-4f20-a210-a9c3bab3a67d","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-w4TvRr"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"97e0edbf-45a6-44b8-b638-5e058c4c8f5d"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","turn":{"id":"97e0edbf-45a6-44b8-b638-5e058c4c8f5d"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","turn":{"id":"97e0edbf-45a6-44b8-b638-5e058c4c8f5d","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","path":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-w4TvRr/homes/codex-b/sessions/honeybee/1501e9e1901bd65c01cc534cccc4d5844ee6a34b0f7fdb6aaffb7b1fe831e914.jsonl","modelProvider":"openai","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-w4TvRr","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"9e423acf-f535-4f20-a210-a9c3bab3a67d","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-w4TvRr"}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","input":[{"type":"text","text":"next headroom continues conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"d8e27d0f-3e49-46fb-8e83-c09bd7204c67"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","turn":{"id":"d8e27d0f-3e49-46fb-8e83-c09bd7204c67"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","turn":{"id":"d8e27d0f-3e49-46fb-8e83-c09bd7204c67","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","input":[{"type":"text","text":"conversation still continues","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"5d2b91ca-3fe4-4e18-be52-98c36689919c"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","turn":{"id":"5d2b91ca-3fe4-4e18-be52-98c36689919c"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"9e423acf-f535-4f20-a210-a9c3bab3a67d","turn":{"id":"5d2b91ca-3fe4-4e18-be52-98c36689919c","status":"completed","error":null}}}

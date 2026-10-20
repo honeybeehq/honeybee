@@ -1,0 +1,30 @@
+{"name":"claude-human","passed":true}
+{"name":"claude-worker","passed":true}
+{"name":"claude-action","passed":true}
+{"name":"claude-projected","passed":true}
+{"name":"claude-headroom","passed":true}
+{"name":"claude-healthy","passed":true}
+{"name":"claude-subside","passed":true}
+{"name":"claude-restart","passed":true}
+{"name":"claude-stale","passed":true}
+{"name":"claude-running","passed":true}
+{"name":"claude-both","passed":true}
+{"name":"claude-source-reset","passed":true}
+{"name":"claude-optout","passed":true}
+{"name":"claude-active","passed":true}
+codex-human Error: waitFor timeout: codex-human delivery
+    at waitFor (file://<CELL>/v2/daemon/tests/helpers.ts:35:38)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async delivered (file://<CELL>/.proof/E/lab.ts:56:23)
+    at async file://<CELL>/.proof/E/lab.ts:146:22
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+Error: waitFor timeout: codex-human delivery
+    at waitFor (file://<CELL>/v2/daemon/tests/helpers.ts:35:38)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async delivered (file://<CELL>/.proof/E/lab.ts:56:23)
+    at async file://<CELL>/.proof/E/lab.ts:146:22
+
+Node.js v24.18.0

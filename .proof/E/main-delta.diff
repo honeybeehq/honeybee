@@ -1,0 +1,33 @@
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 570ba20e..36f9e056 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -6875,13 +6875,13 @@ export class HiveDaemon {
+     if (accounts.allocationMode() === "active") {
+       store.waitQuotaRecovery(id, row.retryAt !== null && row.retryAt > Date.now() ? row.retryAt : null, row.reason === "account_wait" || row.reason === "account_unavailable" ? row.reason : "allocation_owner_required");
+       try {
+-        await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota.resetsAt ?? undefined }, true);
++        await accounts.ensureFreshAdmissionLimits(bee.agent, { onlyAccountIds: bee.account ? new Set([bee.account]) : undefined, model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
+         if (!this.stopping) store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
+       } catch (error) { this.log(`quota.probe recovery=${id} failed=${error instanceof Error ? error.message : String(error)}`); }
+       return;
+     }
+     try {
+-      await accounts.ensureFreshAdmissionLimits(bee.agent, { model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota.resetsAt ?? undefined }, true);
++      await accounts.ensureFreshAdmissionLimits(bee.agent, { model: this.modelOfBee(bee), minimumObservedAt: row.createdAt, quotaResetAt: row.quota?.resetsAt ?? row.resetHints.other ?? undefined }, true);
+       if (this.stopping) return;
+       store.observeQuotaRecoveryLimits(id, isFableModel(this.modelOfBee(bee)));
+       row = store.getQuotaRecovery(id);
+diff --git a/v2/daemon/tests/accounts-admission-batch.test.ts b/v2/daemon/tests/accounts-admission-batch.test.ts
+index 5d9beaf0..63bc4fff 100644
+--- a/v2/daemon/tests/accounts-admission-batch.test.ts
++++ b/v2/daemon/tests/accounts-admission-batch.test.ts
+@@ -119,7 +119,7 @@ function measure(mode: Mode, accounts: number, bees: number, filter = "all") {
+         sample.complete = true;
+       });
+     } catch (error) { sample.error = String(error); throw error; }
+-    assert.equal(sample.rosterReads, sample.allowedRosterReads);
++    assert.ok(sample.rosterReads <= sample.allowedRosterReads);
+   });
+ }
+ 

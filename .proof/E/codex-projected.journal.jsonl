@@ -1,0 +1,28 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-0I2zrO","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"325a2961-b69a-4555-b309-e4d974121f23","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-0I2zrO"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","input":[{"type":"text","text":"warm conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"d559f814-5da6-4010-9158-49137a29758d"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","turn":{"id":"d559f814-5da6-4010-9158-49137a29758d"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","turn":{"id":"d559f814-5da6-4010-9158-49137a29758d","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","path":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-0I2zrO/homes/codex-b/sessions/honeybee/a7c03b193ac64c009b452a05861f5b7ea06c15a95002d70f53988eadef075fe5.jsonl","modelProvider":"openai","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-0I2zrO","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"325a2961-b69a-4555-b309-e4d974121f23","cwd":"/var/tmp/sar-e-hints-HRFjyC/hb-v2-daemon-0I2zrO"}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","input":[{"type":"text","text":"next projected continues conversation","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"2293c98b-8ebf-4312-8638-d3cc77ebee36"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","turn":{"id":"2293c98b-8ebf-4312-8638-d3cc77ebee36"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","turn":{"id":"2293c98b-8ebf-4312-8638-d3cc77ebee36","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","input":[{"type":"text","text":"conversation still continues","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"c828a372-ec50-4830-86ab-38f701cfbda6"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","turn":{"id":"c828a372-ec50-4830-86ab-38f701cfbda6"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"325a2961-b69a-4555-b309-e4d974121f23","turn":{"id":"c828a372-ec50-4830-86ab-38f701cfbda6","status":"completed","error":null}}}

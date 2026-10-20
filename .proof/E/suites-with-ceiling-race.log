@@ -1,0 +1,127 @@
+✔ admission: weighted fair starts follow remaining-capacity rates instead of a greedy best score (3.847075ms)
+✔ admission: the 90 percent completion reserve is hard for active, recent, pending, and projected work (0.498663ms)
+✔ admission: stale, absent, past-reset, and remotely-unknown facts are uncertainty, never empty capacity (0.400841ms)
+✔ admission: ongoing long-session consumption participates in fairness and old idle work does not (0.294608ms)
+✔ admission: model-scoped windows are applicable only to that model (0.519404ms)
+✔ admission simulator: mixed plans avoid reset herds and Fable-only saturation deterministically (1.127951ms)
+✔ rpc.accounts.1: CRUD verbs, typed errors, idempotent add, spawn binding (explicit / paused / mismatch / auto / unbound), snapshot + watch carry accounts (1337.019064ms)
+✔ rpc.accounts.fuzzy: one selector works across account verbs, spawn agent shorthand, explicit override, and swap (1015.659884ms)
+✔ rpc account.resetLimits: duplicate keys return one effect; uncertain and wrong-harness failures stay typed (819.884542ms)
+✔ rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → rebind → revive with resume under a NEW session id in the new home; cross-harness refused; stopped bee rebound only (1597.898054ms)
+✔ rpc allocation owner: acquire is authoritative, claim swap is atomic, and all-protected returns account_wait (2060.625481ms)
+✔ rpc allocation owner serializes concurrent node admissions and a remote node consumes one claim once (1785.978196ms)
+✔ rpc allocation owner claim gates active automatic spawn while shadow acquisition remains observational (1360.701351ms)
+✔ rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the replacement generation presents as working (1507.21715ms)
+✔ rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delayed) — swap to the untried account and continue automatically; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status (3607.588851ms)
+✖ rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit work, idle bees move off with a note, and stopped bees move off when they wake (2173.286944ms)
+✔ rpc.accounts.f2: add refuses pre-existing credentials by default; importExisting adopts as unverified; health is validation evidence, never file-existence; a fresh add is auth_needed, never ok (820.535482ms)
+✔ rpc.accounts.v18: importExisting imports the MACHINE's vendor home (the field finding); nothing importable is `no_credentials_to_import` naming the paths; snapshot + watch deltas carry credentialHealth; login success flips status (642.759552ms)
+✔ rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries until successful recovery (1277.056924ms)
+✔ rpc central credentials: per-account opt-in/status/lease/disable, idempotent enable, in-place login, native capture fenced, expired and refused candidates rejected (760.188963ms)
+retained @ account and @ label: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid charset/overflow typed invalid_request
+✔ lease account ids share core validation: retained @ ids renew, revoke and reinstall without suffix rewriting (607.513295ms)
+✔ select.1: candidate rules — none registered / all paused / none credentialed are typed refusals; a lone candidate short-circuits without a limits read (31.878985ms)
+✔ select.2: the operator's case over ROWS — 30% weekly with 3h to reset beats 25% with 6 days; stale rows are used and logged as stale (25.336007ms)
+✔ allocation.1: active owner admissions are durable, proportional, and fail closed without complete fleet activity (43.672364ms)
+✔ allocation.2: all protected accounts return a typed wait; there is no singleton or least-bad fallback (21.035631ms)
+✔ allocation.3: authoritative local activity charges long sessions and lets idle history age out (26.865029ms)
+✔ allocation.4: only fresh provider evidence after exhaustion reopens headroom (22.063918ms)
+✔ allocation.5: a remotely observed claim replaces its owner hold without a gap or double count (21.950985ms)
+✔ allocation.6: node activity reports authoritative pending work, freshness, and observed claims (23.96204ms)
+✔ select.3: auth_needed accounts are skipped while a healthy one exists (named in the reason) and refused (typed) otherwise; paused never (24.431083ms)
+✔ select.4: live-bee commitments steer around a busy account; the winner's in-flight load and penalty are named (28.177815ms)
+✔ select.5: near-ties rotate through the per-harness cursor ROW (a same-instant burst spreads); a Fable model reaches the scoring (29.080819ms)
+✔ select.6: rr cycles in registration order, skips auth failures, and does not disturb auto's near-tie cursor (32.279286ms)
+✔ select.7: pick debits expire; measured velocity from consecutive refreshes ages and projects the hot account out; exhaustion evidence is a down-tier class until the cool-off (32.81297ms)
+✔ select.8: exhaustion evidence down-tiers an account for the cool-off, then it competes again (22.563832ms)
+✔ select.9: an account at or past its weekly ceiling leaves auto, rr and admission until its window resets (26.536689ms)
+✔ limits.0:the real Codex app-server transport returns typed success and authentication failures (164.414601ms)
+✔ reset limits: passes one key through consume, accepts only closed outcomes, refreshes, and preserves count-only credits (26.852039ms)
+✔ reset transport: sends the supplied key, refreshes after redemption, and rejects unknown outcomes (413.296872ms)
+✔ limits.1: fetch writes the table (claude via the home token + injected usage transport, codex via the injected app-server transport); failures = unreadable rows; auth failure → auth_needed, recovery → ok (36.000937ms)
+✔ limits.agy: an imported HOME-scoped token clears auth_needed while provider limits remain unsupported (21.259227ms)
+✔ limits.muse: the XDG-pair home and auth.json expiry decide credential state; provider limits stay unsupported and expiry drives auth_needed (23.420686ms)
+✔ limits.muse.observed: usage a Muse runtime observed becomes the readable limits row, dated by observedAtMs; the probe keeps it, a credential loss replaces it (30.21945ms)
+✔ muse.darwin: one Keychain login per macOS user — a Muse account is held, captured and leased there but never ready, selected or activated into a home (25.201234ms)
+✔ muse.expiry: an OAuth login whose access token passed expires_at is expired where nothing can refresh it (darwin), and the limits probe then marks it auth_needed (22.202993ms)
+✔ muse.keychain: an auth.json that only points at the OS keychain is a present login that is never captured, imported or leased (22.005937ms)
+✔ muse.native: This Mac — on darwin the machine's own Muse login is the one runnable Muse account; it runs with no home env and is never activated, copied, leased or written (27.489356ms)
+✔ muse.native.stranded: a native account whose daemon now resolves another muse home stays native and fails closed, never an ordinary account (39.370738ms)
+✔ accounts.foreign-home: capture, config import, backup restore and adoption are refused for a home outside homesDir; homes inside it are unaffected (27.63453ms)
+✔ accounts.foreign-home.activation: the vault is never copied into an empty home outside homesDir; auto selection skips it and homes inside it still activate (26.20952ms)
+✔ accounts.foreign-home.gateways: gateway MCP config is never seeded into a populated home outside homesDir; a populated home inside it still converges (21.208675ms)
+✔ muse.native.env: a native bee's own env cannot redirect where Muse finds its login or config; other accounts keep theirs (20.62688ms)
+✔ limits.1a: Codex probes are per-home single-flight; transient failure keeps the last good row while auth failure invalidates it (28.184265ms)
+✔ limits.1aa: concurrent active admissions join one fresh quota probe per account (40.350094ms)
+✔ limits.1b: expired Claude chains refresh once, persist home + keychain + vault, and a rejected refresh is typed auth_failed (47.769656ms)
+✔ hive2.1: two sessions sharing one account that both failed auth do NOT strand refresh — the daemon takes it over and recovers (30.324772ms)
+✔ hive2.2: a single HEALTHY session still owns refresh even when an unhealthy sibling is present (no regression on rotating tokens) (23.295172ms)
+✔ hive2.3: rejected refresh requests login; temporary/timeout refresh keeps last-good and never requests login (26.488769ms)
+✔ hive2.4: daemon-restart recovery re-attempts every auth_needed Claude account and leaves other harnesses alone (36.441789ms)
+✔ hive2.5: reauthentication landing DURING recovery is used without a network refresh (check newer credentials first) (23.330914ms)
+✔ hive2.6: claudeCredentialFresh preserves a still-valid on-disk token against a delayed error (21.635036ms)
+✔ limits.1c: Grok, Kimi, Cursor, MiniMax, and z.ai use their real provider windows; rotating OAuth chains persist (34.242589ms)
+✔ limits.1d: the daemon never races a live Grok runtime's rotating refresh token (21.062261ms)
+✔ limits.2: freshness policy schedules stale candidates off the caller path, deduplicates the lane, and skips fresh/lone candidates (56.826332ms)
+✔ limits.3: the periodic in-daemon sweep runs every limitsRefreshMs, never overlaps itself, and is bounded by the fetch timeout (87.482693ms)
+✔ activation.1: an EMPTY home is activated from the vault (+ home defaults, mirrors); a POPULATED home is untouched byte for byte; the vault is never written by a spawn; claude keychain seeded via the injected writer (51.490697ms)
+✔ activation.2: a populated account waits for the common gateway seeder, preserves operator config, and stores only forwarded names (29.10123ms)
+✔ capture.1: explicit recovery captures an unchanged valid Claude credential from the external store (dotted account id) (22.963782ms)
+✔ capture.2: explicit recovery refuses an invalid current credential without touching the vault or login state (19.589972ms)
+✔ import.1: the old registry → rows (dry-run plans, real applies, re-run skips); the operator's ids/penalty/pause/addedAt come across; env-only bees backfill by home path (26.715585ms)
+﹣ import.2 (READ-ONLY): a dry-run of the importer against the REAL ~/.hive plans the operator's accounts without writing anything (0.126584ms) # no ~/.hive/vault/accounts.json on this machine
+✔ health.1: credentialHealthOf — absent without a primary credential; a file alone is unverified; login or a readable limits probe verify (22.161751ms)
+✔ import.v18.1: importExisting copies the vendor home's credential (+ config) into the vault — the home env var when set, else the recipe default under $HOME; nothing anywhere is a typed refusal listing every path checked (25.253285ms)
+✔ import.v18.2: relocated vendor files — Claude's ~/.claude.json + Keychain item (external), opencode's XDG data store — land under the recipe's vault layout (25.393439ms)
+✔ status.v18: honestStatus never returns ok without a credential (auth_needed instead); paused / auth_needed pass through; a recipe-less harness is always credentialed (19.444997ms)
+Grok busy probes: enrolling/disabling/refreshing operation_in_progress=provider_error; account auth remains ok
+✔ verify.v18: the real limits probe settles an import — readable → verified (and the row is re-published for the mirror), auth failure → auth_needed; no probe → unverified; nothing → absent; a Codex probe activates the EMPTY home from the vault first (48.753722ms)
+✔ import.v18.3: the old-registry importer creates a credential-less record as auth_needed, never as a usable-looking ok row (20.022723ms)
+✔ Grok central busy limits probes preserve account auth during ownership changes (22.654474ms)
+✔ lease unknown stays raw across reopen, refuses readiness and admission, and names the account (153.157235ms)
+✔ lease unknown background refresh cannot activate a home or probe credentials (127.075677ms)
+✔ actions.rpc.ship: Commit → Land → Archive over a real daemon + real Cell — capability, durable acceptance, mailbox dispatch, SIGKILL mid-sequence, real landing receipt, archive, mirror shapes (4795.79026ms)
+✔ actions.rpc.controls: pause/resume, cancel, invalid reorder, a question that holds the lane, retry after a conflict, external claim (2679.297039ms)
+✔ actions.rpc.external-land: destination Land holds Archive across an uncertain result and daemon restart (1468.049467ms)
+✔ actions.rpc.complete: the operator completes an unreported commit — HEAD filled from the Cell space (or the checkout), Land proceeds, late report dedupes; refusals are typed (2839.371783ms)
+✔ actions.rpc.failed-exits: a failed Commit is completed (HEAD filled, failure kept in the receipt, Land proceeds) or cancelled (a $ref Land fails input_unresolved); keys replay; late reports are refused (1857.577118ms)
+✔ auth-resume.1: capture after a logged-out cut — an untouched turn is redelivered, a half-done turn gets one continue message, a bee the user stopped stays stopped (3990.852294ms)
+✔ auth-resume.2: account.credentialsRestored on a satellite — refused while the credential is expired, one continuation per bee across a daemon kill, repeat calls send nothing (2424.532117ms)
+✔ auth-resume.3: a bee that cannot authenticate on a credential that validates is continued once, then left flagged until the credential changes (1519.362433ms)
+✔ auth-resume.4: the daemon's own refresh and a readable limits probe each resume the bee with no operator action (1643.884564ms)
+✔ auth-resume.5: swapping an interrupted bee onto a healthy account continues its turn there; the old account's later restore does not touch it (1830.983707ms)
+✔ auth-resume.6: recovering a centrally managed account — the login does not wake its bees on the native chain; enabling central credentials resumes them (2382.584646ms)
+✔ auth-resume.7: a readable limits probe on an account with 300 bees and nothing open reaches a watcher as deltas, never a gap (1666.76454ms)
+✔ auth resume: a bee mid-turn is not disturbed; the owed continuation survives a restart and is sent once when the turn ends (54.900178ms)
+✔ auth resume: a turn that succeeds before the continuation is sent supersedes it (21.822811ms)
+✔ auth resume: archive and a user stop cancel the continuation; a system stop does not (29.997863ms)
+✔ auth resume: a restore clears flags by where the failure came from, not only by current binding (32.934143ms)
+✔ auth resume: a probe tick touches only bees with an open flag or interruption; 300 bees with neither write nothing (221.73642ms)
+ℹ tests 97
+ℹ suites 0
+ℹ pass 95
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 32391.154085
+
+✖ failing tests:
+
+test at v2/daemon/tests/accounts-rpc.test.ts:893:1
+✖ rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit work, idle bees move off with a note, and stopped bees move off when they wake (2173.286944ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  1 !== 2
+
+      at TestContext.<anonymous> (file://<CELL>/v2/daemon/tests/accounts-rpc.test.ts:975:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 2,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

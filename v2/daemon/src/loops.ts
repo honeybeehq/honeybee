@@ -229,6 +229,7 @@ export interface DaemonCoreOptions {
    * evidence + automatic rotation). Absent in the harness (no accounts).
    */
   onFlagEvidence?: (ev: FlagEvidenceLike) => void;
+  beforeTurn?: (beeId: string, generation: number) => boolean;
   /**
    * Account limits hook for observed subscription usage (Muse usage/changed,
    * quota details). Runs inside the observation fold; absent in the harness.
@@ -315,6 +316,7 @@ export class DaemonCore {
   private readonly removeSessionLog: ((path: string) => void) | null;
   private readonly removeBeeTmp: ((beeId: string) => void) | null;
   private readonly onFlagEvidence: ((ev: FlagEvidenceLike) => void) | null;
+  private readonly beforeTurn: ((beeId: string, generation: number) => boolean) | null;
   private readonly onUsageEvidence: ((ev: UsageEvidenceLike) => void) | null;
   private readonly performance: PerformanceRecorder;
   private readonly sourceProcessAbsent: (beeId: string, generation: number) => boolean;
@@ -353,6 +355,7 @@ export class DaemonCore {
     this.removeThreadArtifacts = opts.removeThreadArtifacts ?? null;
     this.removeBeeTmp = opts.removeBeeTmp ?? null;
     this.onFlagEvidence = opts.onFlagEvidence ?? null;
+    this.beforeTurn = opts.beforeTurn ?? null;
     this.onUsageEvidence = opts.onUsageEvidence ?? null;
     this.performance = opts.performance ?? NOOP_PERFORMANCE;
     this.sourceProcessAbsent = opts.sourceProcessAbsent ?? ((beeId, generation) => !this.driver.hasProcess(beeId, generation));
@@ -1677,6 +1680,7 @@ export class DaemonCore {
         if (handoff && handoffFencesSource(handoff.phase)) continue;
         const seedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
         const seed = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
+        if (!trulyMidTurn && this.beforeTurn && !this.beforeTurn(rt.beeId, rt.generation)) continue;
         if (rt.state === "running") {
           // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
           // interrupt per message; an eligible `now` behind an undelivered
