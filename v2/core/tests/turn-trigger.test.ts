@@ -245,6 +245,8 @@ test("turn-trigger.answer: mail.delivered names the answered question through an
     assert.equal(store.answeredQuestionId(answer.id), question.id);
     assert.equal(store.answeredQuestionId(plain.id), null);
     store.markDelivered(answer.id, 1, HUMAN);
+    assert.equal(store.getBee(bee.id)!.lastTurnTrigger!.kind, "answer");
+    assert.equal(store.getBee(bee.id)!.lastTurnTrigger!.humanAt, store.getBee(bee.id)!.lastTurnTrigger!.startedAt);
     store.markDelivered(plain.id, 1, HUMAN);
     const delivered = store.auditRows().filter((row) => row.kind === "mail.delivered");
     assert.deepEqual(delivered.map((row) => row.payload.questionId), [question.id, undefined]);
@@ -335,4 +337,38 @@ test("quiet completion preserves human recency across replay, restart and stale 
   assert.ok(store.getBee(bee.id)!.lastHumanOutputAt! > quiet.lastOutputAt!);
   assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
   store.close();
+});
+
+
+test("turn-trigger.answer-recovery: stale human descriptors and mid-turn answers preserve bookkeeping without human attribution", (t) => {
+  const h = harness();
+  t.after(() => h.cleanup());
+  const store = h.open();
+  t.after(() => store.close());
+  const bee = idleBee(store);
+  const q = store.askQuestion(bee.id, { text: "ready?" });
+  const first = store.answerQuestion(q.id, "yes").send.message;
+  for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(first.id, 1, "multiline_type_mode");
+  store.prepareMultilineFallback(first.id, h.path, []);
+  store.transitionMultilineFallback(first.id, "preparing", "ready", { path: `${h.path}.delivery`, pointer: "full text", digest: "a".repeat(64), bytes: 1 });
+  store.transitionMultilineFallback(first.id, "ready", "in_flight", { generation: 1 });
+  assert.equal(store.completeMultilineFallback(first.id, 1, HUMAN).applied, true);
+  let row = store.getBee(bee.id)!;
+  assert.equal(row.lastTurnTrigger!.kind, "answer");
+  assert.equal(row.lastTurnTrigger!.from, "rpc");
+  store.updateRuntimeState(bee.id, 1, "running", { turnOpener: { ...HUMAN, messageId: first.id } });
+  store.updateRuntimeState(bee.id, 1, "idle", { recordOutput: true });
+  assert.equal(store.getBee(bee.id)!.lastHumanOutputAt, store.getBee(bee.id)!.lastOutputAt);
+  deliver(store, bee.id, PEER);
+  store.updateRuntimeState(bee.id, 1, "running");
+  const next = store.askQuestion(bee.id, { text: "next?" });
+  const second = store.answerQuestion(next.id, "continue").send.message;
+  store.markDelivered(second.id, 1, PEER);
+  row = store.getBee(bee.id)!;
+  assert.equal(row.lastTurnTrigger!.kind, "mail");
+  assert.notEqual(row.lastTurnTrigger!.humanAt, null);
+  store.updateRuntimeState(bee.id, 1, "idle", { recordOutput: true });
+  row = store.getBee(bee.id)!;
+  assert.equal(row.lastHumanOutputAt, row.lastOutputAt);
+  assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
 });

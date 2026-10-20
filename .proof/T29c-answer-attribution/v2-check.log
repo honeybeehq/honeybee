@@ -1,0 +1,12 @@
+npm notice run honeybee@0.0.1 v2:check
+npm notice run tsc -p v2/core/tsconfig.json && tsc -p v2/harness/tsconfig.json && tsc -p v2/adapters/tsconfig.json && tsc -p v2/driver-hsr/tsconfig.json && tsc -p v2/daemon/tsconfig.json && tsc -p v2/cli/tsconfig.json && tsc -p v2/driver-cell/tsconfig.json && tsc -p v2/driver-tmux/tsconfig.json
+v2/daemon/tests/answer-trigger-census.test.ts(36,106): error TS2345: Argument of type 'Type' is not assignable to parameter of type 'TypeReference'.
+  Type 'Type' is missing the following properties from type 'TypeReference': target, objectFlags
+v2/daemon/tests/answer-trigger-census.test.ts(90,115): error TS2345: Argument of type '{ readonly verbs: readonly ["bee.rename"]; readonly triggers: readonly ["bee.lastTurnTrigger"]; readonly audits: readonly []; } | { readonly verbs: readonly ["bee.tag"]; readonly triggers: readonly ["bee.lastTurnTrigger"]; readonly audits: readonly []; } | ... 8 more ... | { ...; }' is not assignable to parameter of type 'Paths'.
+  Type '{ readonly verbs: readonly ["bee.rename"]; readonly triggers: readonly ["bee.lastTurnTrigger"]; readonly audits: readonly []; }' is not assignable to type 'Paths'.
+    Types of property 'triggers' are incompatible.
+      The type 'readonly ["bee.lastTurnTrigger"]' is 'readonly' and cannot be assigned to the mutable type 'string[]'.
+v2/daemon/tests/answer-trigger-census.test.ts(93,136): error TS2345: Argument of type '{ readonly verbs: readonly ["bee.rename"]; readonly triggers: readonly ["bee.lastTurnTrigger"]; readonly audits: readonly []; } | { readonly verbs: readonly ["bee.tag"]; readonly triggers: readonly ["bee.lastTurnTrigger"]; readonly audits: readonly []; } | ... 8 more ... | { ...; }' is not assignable to parameter of type 'Paths'.
+  Type '{ readonly verbs: readonly ["bee.rename"]; readonly triggers: readonly ["bee.lastTurnTrigger"]; readonly audits: readonly []; }' is not assignable to type 'Paths'.
+    Types of property 'triggers' are incompatible.
+      The type 'readonly ["bee.lastTurnTrigger"]' is 'readonly' and cannot be assigned to the mutable type 'string[]'.

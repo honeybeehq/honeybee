@@ -484,7 +484,7 @@ test("v6.rpc.6: questions + seals — ask → open row → answer → delivered 
     const answered = await client.request<QuestionAnswerResult>("question.answer", { questionId: asked.question.id, answer: "rebase", answeredBy: "tormod", idempotencyKey: "ans-1" });
     assert.equal(answered.question.status, "answered");
     assert.equal(answered.question.answer, "rebase");
-    assert.equal(answered.question.answeredBy, "tormod");
+    assert.equal(answered.question.answeredBy, "rpc");
     assert.equal(answered.question.deliveryMessageId, answered.messageId);
     assert.equal(answered.commandId, null, "runtime is live: no wake needed");
     // the answer reaches the bee as ordinary mail, prefixed
@@ -493,7 +493,7 @@ test("v6.rpc.6: questions + seals — ask → open row → answer → delivered 
     const { messages } = await client.request<MailboxResult>("mailbox", { beeId });
     const mail = messages.find((m) => m.id === answered.messageId)!;
     assert.ok(mail.body.startsWith(`[answer to question ${asked.question.id}] rebase`), mail.body);
-    assert.equal(mail.sender, "tormod");
+    assert.equal(mail.sender, "rpc");
     // "delivered" only means the driver accepted the write; the runtime is
     // still reported idle until the daemon's next tick observes turn_started,
     // so waiting on idle here would pass BEFORE the turn — wait for the echo
@@ -506,7 +506,8 @@ test("v6.rpc.6: questions + seals — ask → open row → answer → delivered 
     assert.ok(worked.includes(answerEcho), worked);
     assert.ok(worked.includes(`\\"questionId\\":\\"${asked.question.id}\\"`), worked);
     assert.ok(worked.includes(`[answer to question ${asked.question.id}] rebase`), worked);
-    const replay = await client.request<QuestionAnswerResult>("question.answer", { questionId: asked.question.id, answer: "rebase", answeredBy: "tormod", idempotencyKey: "ans-1" });
+    const replay = await client.request<QuestionAnswerResult>("question.answer", { questionId: asked.question.id, answer: "rebase", answeredBy: "operator", idempotencyKey: "ans-1" });
+    assert.equal(replay.question.answeredBy, "rpc");
     assert.equal(replay.deduped, true);
     assert.equal(replay.messageId, answered.messageId, "no second delivery");
     await assert.rejects(client.request("question.answer", { questionId: asked.question.id, answer: "merge" }), (e: unknown) => e instanceof RpcError && e.code === "invalid_request");
@@ -539,6 +540,15 @@ test("v6.rpc.6: questions + seals — ask → open row → answer → delivered 
     const snap = await client.request<SnapshotResult>("snapshot");
     assert.equal(snap.seals.length, 2);
     assert.equal(snap.questions.length, 2);
+    for (const claimed of [undefined, "operator", beeId, 42, { role: "operator" }]) {
+      const question = await client.request<QuestionAskResult>("question.ask", { beeId, text: "attribution probe" });
+      const fresh = await client.request<QuestionAnswerResult>("question.answer", { questionId: question.question.id, answer: "yes", answeredBy: claimed });
+      assert.equal(fresh.question.answeredBy, "rpc");
+      const mailbox = await client.request<MailboxResult>("mailbox", { beeId });
+      assert.equal(mailbox.messages.find((m) => m.id === fresh.messageId)!.sender, "rpc");
+      await waitDelivered(client, beeId, fresh.messageId, "attribution probe delivered");
+    }
+
     client.close();
   } finally {
     await daemon?.stop();

@@ -132,7 +132,7 @@ test("turn-trigger.daemon.3: system origins and automation are other, a child's 
   assert.deepEqual(turnTriggerSource(from("CL.a3f2"), "legacy.unknown", true, null), { kind: "mail", from: "CL.a3f2" });
 });
 
-test("turn-trigger.daemon.answer: a question answer is delivered with the answer marker, mail.delivered names the question, and the turn is human", () => {
+test("turn-trigger.daemon.answer: a question answer is delivered with the answer marker, mail.delivered names the question, and the turn is an answer with unchanged human bookkeeping", () => {
   const rig = makeRig();
   try {
     spawnIdle(rig, "champion");
@@ -152,7 +152,7 @@ test("turn-trigger.daemon.answer: a question answer is delivered with the answer
     assert.equal(rig.store.getQuestion(question.id)!.deliveryMessageId, answer.id);
 
     const bee = rig.store.getBee("champion")!;
-    assert.deepEqual([bee.lastTurnTrigger!.kind, bee.lastTurnTrigger!.from, bee.lastTurnTrigger!.messageId], ["human", "tormod", answer.id]);
+    assert.deepEqual([bee.lastTurnTrigger!.kind, bee.lastTurnTrigger!.from, bee.lastTurnTrigger!.messageId], ["answer", "tormod", answer.id]);
     assert.equal(bee.lastHumanOutputAt, bee.lastOutputAt);
 
     const plain = rig.store.send("champion", "thanks", { sender: "operator" }).message;

@@ -32,6 +32,7 @@ export interface DaemonInstance {
 }
 
 export interface ConnectOptions {
+  capabilities?: readonly string[];
   caller?: { dataDir?: string; liveTarget?: boolean; expectedInstanceId: string | null; allowForeignDaemon?: boolean };
   verifyInstance?: (instance: DaemonInstance | null) => void;
 }
@@ -108,7 +109,7 @@ export class RpcClient {
             reject(err);
             return;
           }
-          socket.write(`${JSON.stringify({ protocol: PROTOCOL, ...(clientLane ? { clientLane } : {}), ...(options.caller ? { caller: options.caller } : {}) })}\n`);
+          socket.write(`${JSON.stringify({ protocol: PROTOCOL, ...(clientLane ? { clientLane } : {}), ...(options.caller ? { caller: options.caller } : {}), ...(options.capabilities ? { capabilities: options.capabilities } : {}) })}\n`);
           socket.on("data", (c: string) => client.onData(c));
           socket.on("close", () => client.onSocketClose());
           socket.on("error", () => socket.destroy());

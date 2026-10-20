@@ -712,7 +712,7 @@ test("cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --paren
       await runV2Cli(["mailbox", "chief", "--data-dir", dir, "--json"], m.io);
       const mail = JSON.parse(m.out[0] ?? "{}") as { messages: Array<{ id: number; deliveredAt: number | null; body: string; sender: string }> };
       const row = mail.messages.find((x) => x.id === answered.messageId);
-      return row?.deliveredAt != null && row.body.startsWith(`[answer to question ${asked.question.id}] rebase please`) && row.sender === "tormod";
+      return row?.deliveredAt != null && row.body.startsWith(`[answer to question ${asked.question.id}] rebase please`) && row.sender === "rpc";
     }, "answer delivered as mail", 10_000);
     const an2 = capture();
     assert.equal(await runV2Cli(["question", "answer", asked.question.id, "again", "--data-dir", dir], an2.io), 1, "already answered = typed error");
@@ -1000,6 +1000,52 @@ test("cli.task: add/ls/done/supply round-trip through the daemon; unknown comman
     assert.ok(help.out.join("\n").includes("task"));
   } finally {
     await daemon?.stop().catch(() => {});
+    cleanup();
+  }
+});
+
+
+test("cli.answer-display-label: --by stays local and question rows use plain answered wording", async () => {
+  const { dir, cleanup } = makeDaemonDir();
+  const socketPath = join(dir, "hived.sock");
+  const requests: Array<{ verb: string; params: Record<string, unknown> }> = [];
+  const server = createServer((socket) => {
+    socket.setEncoding("utf8");
+    socket.write(`${JSON.stringify({ protocol: "v2/1" })}\n`);
+    let buffer = "";
+    socket.on("data", (chunk: string) => {
+      buffer += chunk;
+      for (;;) {
+        const newline = buffer.indexOf("\n");
+        if (newline < 0) return;
+        const frame = JSON.parse(buffer.slice(0, newline));
+        buffer = buffer.slice(newline + 1);
+        if (typeof frame.id !== "number" || typeof frame.verb !== "string") continue;
+        requests.push({ verb: frame.verb, params: frame.params ?? {} });
+        const question = { id: "q1", beeId: "bee1", status: "answered", text: "ready?", answer: "yes", answeredBy: "rpc", askedAt: 1 };
+        const result = frame.verb === "question.list" ? { questions: [question] } : { question, messageId: 7, commandId: null };
+        socket.write(`${JSON.stringify({ id: frame.id, ok: true, result })}\n`);
+      }
+    });
+  });
+  try {
+    await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(socketPath, resolve); });
+    const text = capture();
+    const flags = ["--socket", socketPath, "--data-dir", dir];
+    assert.equal(await runV2Cli(["answer", "q1", "yes", "--by", "operator", ...flags], text.io), 0);
+    assert.match(text.out.join("\n"), /display label: "operator"/);
+    const json = capture();
+    assert.equal(await runV2Cli(["answer", "q1", "yes", "--by", "someone", ...flags, "--json"], json.io), 0);
+    assert.equal(JSON.parse(json.out[0]!).question.answeredBy, "rpc");
+    const listed = capture();
+    assert.equal(await runV2Cli(["question", "list", ...flags], listed.io), 0);
+    assert.match(listed.out.join("\n"), /answered: yes/);
+    assert.doesNotMatch(listed.out.join("\n"), /answered by|by rpc/);
+    assert.deepEqual(requests.filter((r) => r.verb === "question.answer").map((r) => r.params), [
+      { questionId: "q1", answer: "yes" }, { questionId: "q1", answer: "yes" },
+    ]);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     cleanup();
   }
 });

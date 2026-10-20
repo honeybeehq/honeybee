@@ -540,8 +540,10 @@ test("actions.10: complete answers the attempt's open question, withdraws an und
     const q = store.getQuestion(asked.question!.id)!;
     assert.equal(q.status, "answered");
     assert.ok(q.answer?.includes("completed by the operator"), q.answer ?? "");
+    assert.equal(q.answeredBy, "rpc");
     const answerMail = store.getMessage(q.deliveryMessageId!)!;
     assert.ok(answerMail.body.startsWith(`[answer to question ${q.id}]`));
+    assert.equal(answerMail.sender, "rpc");
     const puts = store.auditTail(0, 100_000, bee.id).filter((r) => r.kind === "action.put" && (r.payload.action as { id: string }).id === commit.id);
     assert.equal(puts.at(-1)?.payload.reason, "operator_complete");
     assert.equal(puts.at(-1)?.payload.previous, "waiting");

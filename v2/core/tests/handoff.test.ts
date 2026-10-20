@@ -398,3 +398,23 @@ test("handoff.migration: a v22 store gains segment 0 per bee, the handoff tables
     h.cleanup();
   }
 });
+
+
+test("handoff.answer-attribution: an answer keeps its prompt priority with rpc attribution", () => {
+  const h = harness();
+  const store = h.open();
+  try {
+    const { bee } = makeBee(store, "answer-priority");
+    store.updateRuntimeState(bee.id, 1, "running", { pid: 1, pidStartedAt: 1 });
+    const peer = store.send(bee.id, "peer background", { sender: "CL.a123" }).message;
+    store.markDelivered(peer.id, 1);
+    const question = store.askQuestion(bee.id, { text: "what next?" });
+    const answer = store.answerQuestion(question.id, "continue with parser").send.message;
+    store.markDelivered(answer.id, 1);
+    const handoff = admit(store, bee.id);
+    assert.equal(contextFor(store, bee.id, handoff.id).task, answer.body.replace("\n\n", "\n"));
+  } finally {
+    store.close();
+    h.cleanup();
+  }
+});

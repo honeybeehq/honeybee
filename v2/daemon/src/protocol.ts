@@ -94,6 +94,7 @@ export const DAEMON_CAPABILITIES = [
   "question.withdraw.v1",
   "bee.human_ref.v1",
   "bee.turn_trigger.v1",
+  "turn-trigger.answer.v1",
   "bee.turn_quiet.v1",
   "mail.answer_marker.v1",
   "mail.automation_marker.v1",
@@ -252,6 +253,12 @@ export const DAEMON_CAPABILITIES = [
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
 /** Initial hello exchanged by client and server; clientLane only downgrades client ingress. */
+export interface ClientHelloFrame {
+  protocol: string;
+  capabilities?: readonly string[];
+  clientLane?: "node_relay" | "remote";
+}
+
 export interface HelloFrame {
   clientLane?: "node_relay" | "remote";
   identity?: BuildIdentity;
@@ -1335,13 +1342,6 @@ export interface QuestionAskResult extends DedupMarkers {
   question: MirrorQuestionRow;
 }
 
-/**
- * `question.answer {questionId, answer, answeredBy?}` — marks answered AND
- * delivers the answer to the bee as an ordinary mailbox message prefixed
- * `[answer to question <id>]` (send()'s wake/unarchive rules apply). A
- * answered question is `invalid_request`; a withdrawn question is `question_withdrawn`
- * with its withdrawalReason in details and a clear message. Audit `question.answered`.
- */
 export interface QuestionAnswerResult extends DedupMarkers {
   question: MirrorQuestionRow;
   messageId: number;

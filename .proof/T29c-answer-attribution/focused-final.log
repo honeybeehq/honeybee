@@ -1,0 +1,94 @@
+✔ actions.1: a sequence is accepted in order with item refs rewritten; the same key replays, a different request under the key conflicts (20.072627ms)
+✔ actions.2: agent dispatch rides the mailbox; delivery is evidence, the authenticated report completes; stale/duplicate/foreign reports are harmless (19.106218ms)
+✔ actions.3: a question holds the attempt (waiting/input) until question.answer resumes it; the answer is ordinary mail (15.27918ms)
+✔ actions.4: controls — cancel (pending / undelivered / force), reorder validity, pause/resume, retry as a new attempt with a rotated token (35.513299ms)
+✔ actions.5: mail.cancel of an undelivered dispatch fails the attempt (typed, retryable); an unresolvable $ref fails at dispatch (12.627795ms)
+✔ actions.6: lifecycle.archive dispatches the bee's archive command under the attempt key and settles from the command; already-archived succeeds immediately (14.303477ms)
+✔ actions.7: external kinds wait for an executor; claim is idempotent per executor and exclusive across executors; the claimant reports with its token (17.363705ms)
+✔ actions.8: audit replay reproduces the action tables; the store reopens at v24 with the lane intact; bee deletion cascades (22.717944ms)
+✔ queued Land v2 holds Archive until the destination executor reports durable integration (13.256437ms)
+✔ actions.9: action.complete settles the open agent attempt as the operator; late reports dedupe or are refused; refusals are typed (18.031025ms)
+✔ actions.10: complete answers the attempt's open question, withdraws an undelivered instruction, and checks requested outputs (15.863546ms)
+✔ actions.11: the reminder mail — origin action.dispatch + Reminder marker, urgency idle, the exact report command; recorded once per attempt as dispatch.nudgedAt (15.619641ms)
+✔ actions.12: dispatch JSON written before the reminder slice reads nudgedAt null and can still be reminded (18.062814ms)
+✔ actions.13: an archived bee is never reminded (send would unarchive it) (10.894125ms)
+✔ actions.14: action.complete on a failed agent action overrides the failure — receipt records it, history stays failed, a $ref Land releases, late reports are refused (16.895083ms)
+✔ actions.15: action.cancel on a failed action removes it — the next step releases; a $ref successor fails input_unresolved; late reports are refused (20.99512ms)
+✔ actions.landing-receipts: only succeeded land actions with well-formed shas become landing receipts (11.193845ms)
+✔ handoff.segment0: every bee is born with transcript segment 0 on its spawn harness and log path (17.990646ms)
+✔ handoff.admit: CAS on generation, idempotent by key, conflict on a different request, one in flight, fence (16.16583ms)
+✔ handoff.stale: a second admission after generation moved is stale_generation; archived bees are refused (10.67026ms)
+✔ handoff.switch: segments close/open, bee flips with no provider thread, seed mail first, fenced revive, complete (22.144984ms)
+✔ handoff.fail-before-switch: source untouched on its old harness, wake re-armed for fenced mail, live source revived (15.024417ms)
+✔ handoff.supersede: operator stop/delete during an in-flight handoff fails it as superseded and moots its commands (14.447293ms)
+✔ handoff.move-exclusion: an in-flight move refuses a handoff and vice versa (11.552562ms)
+✔ handoff.migration: a v22 store gains segment 0 per bee, the handoff tables, and the widened mail-history origin (22.718023ms)
+✔ handoff.answer-attribution: an answer keeps its prompt priority with rpc attribution (12.433714ms)
+✔ setBeeTitle: sets title, audits bee.titled with previous, replays; identical = silent no-op; empty refused (19.850194ms)
+✔ v6.rename: renames, audits bee.renamed with previous, replays; identical = silent no-op; empty refused (11.472232ms)
+✔ v6.tag: remove-then-add, order preserved, duplicates collapse, audit carries the full list; replay (11.121235ms)
+✔ v6.parenting: parent_id at create; children read; archive parent leaves children; delete parent ORPHANS (audit bee.orphaned), never cascades; replay (12.960633ms)
+✔ v6.fork-seed: forkedFrom/forkSeed at create; recording the fork's own session id consumes the seed (audit forkSeedConsumed); replay (11.161055ms)
+✔ v6.questions: ask → open row (generation stamped); answer → answered + delivered as prefixed mail (+ wake when no live runtime); twice refused; unknown refused; list filters; replay; cascade on delete (15.053422ms)
+✔ v6.seals: create ties to the current generation; list/get; refs; typed not-found; replay; cascade on delete (12.312902ms)
+✔ v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed added, questions/seals created, data intact, stamp bumped (20.619658ms)
+✔ v6.dump: StateDump carries questions + seals; a fresh store's replay equals its dump (9.798012ms)
+✔ turn-trigger.1: an idle delivery opens the turn with its trigger; only human turns move lastHumanOutputAt (24.42284ms)
+✔ turn-trigger.2: a human message delivered mid-turn marks the turn human; mid-turn mail changes nothing (13.992401ms)
+✔ turn-trigger.3: a turn with no delivery is other; a driver opener replaces a stale open turn; a second idle delivery does not reopen (13.71889ms)
+✔ turn-trigger.6: a confirmed delivery that arrives after its driver-opened turn ended does not reopen it (13.587012ms)
+✔ turn-trigger.4: a new generation never inherits the previous generation's human turn (13.570928ms)
+✔ turn-trigger.7: senderKind is stored, read back, audited and replayed; unknown kinds are refused (12.272101ms)
+✔ turn-trigger.5: a store without the columns gains them on open; existing bees read null (25.686014ms)
+✔ turn-trigger.8: an auth-interrupted turn's redelivered mail keeps its senderKind (12.375696ms)
+✔ turn-trigger.answer: mail.delivered names the answered question through an index, also for mailbox-only acks (14.975243ms)
+✔ turn-trigger.automation-sender: mail.delivered reports automation for automation senders that named no senderKind, on delivery and on ack (12.190238ms)
+✔ quiet completion preserves human recency across replay, restart and stale generations (15.232019ms)
+✖ turn-trigger.answer-recovery: stale human descriptors and mid-turn answers preserve bookkeeping without human attribution (13.123737ms)
+✔ envelope.1: bee-sent mail wraps in the v1 envelope — marker, one parseable meta line, blank line, body verbatim (1.068563ms)
+✔ envelope.2: only POSITIVELY-identified peers envelope — unverified sender labels stay bare (0.305688ms)
+✔ envelope.3: tier mapping matches the Q2 amendment (0.107452ms)
+✔ envelope.remote: a relayed agent on another authority is a peer; malformed claims are not (0.154992ms)
+✔ envelope.5: the interrupt notice sits between the blank line and the body, for peer mail only (0.223385ms)
+✔ envelope.answer: a question answer carries the answer marker and its questionId, for people and peers alike (0.69367ms)
+✔ envelope.automation: an automated send carries the automation marker and its senderKind; human and unmarked sends stay bare (0.20698ms)
+✔ envelope.automation-senders: Honeybee's own and known automation senders get the automation marker without a senderKind; self-framed senders stay bare (0.224747ms)
+✔ envelope.automation-interrupt: an interrupting automated message carries the automation notice; human mail and human answers never claim no person is waiting (0.204587ms)
+✔ turn-trigger.daemon.1: the delivery loop records human for operator mail and mail with the sender for peer mail (33.679539ms)
+✔ turn-trigger.daemon.2: a driver-opened turn keeps its opener when the store has not folded the previous turn_ended (16.444157ms)
+✔ turn-trigger.daemon.3: system origins and automation are other, a child's spawn prompt is mail from its parent, people are human (0.255372ms)
+✔ turn-trigger.daemon.answer: a question answer is delivered with the answer marker, mail.delivered names the question, and the turn is an answer with unchanged human bookkeeping (16.730165ms)
+✔ turn-trigger.daemon.automation: an automated send is delivered with the automation marker and mail.delivered carries its senderKind (16.147813ms)
+✔ turn-trigger.daemon.automation-sender: task-supply mail is delivered with the automation marker, mail.delivered reports automation, and an interrupting automated send carries its notice (17.061833ms)
+✔ quiet turn observations preserve the spoken human output cursor (15.340622ms)
+ℹ tests 63
+ℹ suites 0
+ℹ pass 62
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 541.269518
+
+✖ failing tests:
+
+test at v2/core/tests/turn-trigger.test.ts:343:1
+✖ turn-trigger.answer-recovery: stale human descriptors and mid-turn answers preserve bookkeeping without human attribution (13.123737ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file://<CELL>/v2/core/tests/turn-trigger.test.ts:355:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:911:18)
+      at Test.postRun (node:internal/test_runner/test:1465:19)
+      at Test.run (node:internal/test_runner/test:1390:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

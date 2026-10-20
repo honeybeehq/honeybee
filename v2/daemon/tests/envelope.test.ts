@@ -25,13 +25,13 @@ test("envelope.1: bee-sent mail wraps in the v1 envelope — marker, one parseab
   assert.equal(lines.slice(3).join("\n"), "shard 3 is yours");
 });
 
-test("envelope.2: only POSITIVELY-identified peers envelope — operator, humans, and answeredBy names stay bare", () => {
+test("envelope.2: only POSITIVELY-identified peers envelope — unverified sender labels stay bare", () => {
   assert.equal(deliveryText({ ...baseMsg, sender: "operator" }, false), baseMsg.body);
   const none = (): boolean => false;
   const knows = (id: string): boolean => id === "some-uuid";
   assert.equal(isPeerSender("operator", knows), false, "operator never envelopes, even if a bee had that id");
   assert.equal(isPeerSender("human:tormod", none), false);
-  assert.equal(isPeerSender("tormod", none), false, "answeredBy names are people (v6.rpc.6)");
+  assert.equal(isPeerSender("tormod", none), false, "an arbitrary label does not identify a peer or human");
   assert.equal(isPeerSender("CO.a3f", none), true, "handle grammar is peer evidence");
   assert.equal(
     isPeerSender("b7cd0186-d02e-4337-87af-e6679402aa65", none),

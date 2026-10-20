@@ -4439,7 +4439,8 @@ export class CoreStore {
   }
 
   private openTurnTrigger(beeId: string, generation: number, source: TurnTriggerSource, messageId: number | null, at: number): TurnTrigger {
-    return this.writeTurnTrigger(beeId, { ...source, messageId, generation, startedAt: at, humanAt: source.kind === "human" ? at : null, endedAt: null });
+    if (messageId !== null && this.answeredQuestionId(messageId) !== null) source = { kind: "answer", from: this.getMessage(messageId)!.sender };
+    return this.writeTurnTrigger(beeId, { ...source, messageId, generation, startedAt: at, humanAt: source.kind === "human" || source.kind === "answer" ? at : null, endedAt: null });
   }
 
   private openTurnOf(beeId: string, generation: number): TurnTrigger | null {
@@ -4448,11 +4449,12 @@ export class CoreStore {
   }
 
   private applyDeliveryTurnTrigger(beeId: string, runtime: RuntimeRow, messageId: number, source: TurnTriggerSource, at: number): TurnTrigger | null {
+    if (this.answeredQuestionId(messageId) !== null) source = { kind: "answer", from: this.getMessage(messageId)!.sender };
     const last = this.mustGetBee(beeId).lastTurnTrigger;
     const sameGeneration = last !== null && last.generation === runtime.generation;
     if (sameGeneration && last.messageId === messageId) return null;
     if (!sameGeneration || last.endedAt !== null) return this.openTurnTrigger(beeId, runtime.generation, source, messageId, at);
-    if (source.kind !== "human" || last.humanAt !== null) return null;
+    if ((source.kind !== "human" && source.kind !== "answer") || last.humanAt !== null) return null;
     return this.writeTurnTrigger(beeId, { ...last, humanAt: at });
   }
 
@@ -5900,7 +5902,7 @@ export class CoreStore {
       if (question.status !== "open") {
         throw new QuestionNotOpenError(`question ${questionId} is already ${question.status} (answered at ${question.answeredAt})`);
       }
-      const answeredBy = opts.answeredBy ?? "operator";
+      const answeredBy = opts.answeredBy ?? "rpc";
       const body = `[answer to question ${questionId}] ${text}\n\n(question was: ${question.text})`;
       const at = this.now();
       const won = this.db.prepare("UPDATE questions SET status = 'answered', answer = ?, answered_at = ?, answered_by = ? WHERE id = ? AND status = 'open'").run(text, at, answeredBy, questionId);

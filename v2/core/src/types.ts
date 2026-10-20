@@ -195,7 +195,7 @@ export interface BeeRow {
   lastHumanOutputAt: number | null;
 }
 
-export const TURN_TRIGGER_KINDS = ["human", "mail", "other"] as const;
+export const TURN_TRIGGER_KINDS = ["human", "answer", "mail", "other"] as const;
 export type TurnTriggerKind = (typeof TURN_TRIGGER_KINDS)[number];
 
 export interface TurnTriggerSource {
@@ -857,7 +857,6 @@ export interface QuestionRow {
   answer: string | null;
   askedAt: number;
   answeredAt: number | null;
-  /** Who answered (`operator` by default; apiary passes its principal). */
   answeredBy: string | null;
   /** The mailbox message the answer was delivered to the bee as. */
   deliveryMessageId: number | null;
