@@ -1,0 +1,64 @@
+{
+  "base": "9ecbb37f7cb448503cdcfaf8747538a3580f982f",
+  "codeParentBeforeEvidence": "7a826661fb294ba63f37ff6ccf19aa9776f3329e",
+  "sourceDigestsSha256": {
+    "docs/design/question-dismiss-contract.md": "df171da24d66ab5d551c831629efd1d46b092b9b08cebcde8fcf6012136e5b8e",
+    "scripts/proof/question-dismiss-schema44.test.ts": "20ce8425f6be0def042e2b65177330b0e3273568102b5c61c2f43c45dfd089b2",
+    "scripts/proof/question-dismiss.test.ts": "78d629a914459cceaa31574e7875e49822df14885440243744bf52001741e4cb",
+    "v2/cli/src/client.ts": "d22c61b1723cd7658278deba625050e2295014837ac8adb1e99d375b6b300924",
+    "v2/cli/src/main.ts": "da43348d9a1bf8e679bcda011a3821ec38b7fb35ae5a5ed0d3702c4209a9a09a",
+    "v2/cli/src/readonly.ts": "94ac89a6f94e7874378d5459cd26257f0e3633be61fa59c112e3ef09bebb0a11",
+    "v2/cli/src/render.ts": "a0c7ca0f509f958cec3924a476c7988b4c44701956973536dd05956aa0a60999",
+    "v2/core/src/audit.ts": "ccf723675587bf0c863bb27b5d00aa274e5b85072963a5fd34c5eb3460a5cbd0",
+    "v2/core/src/mirror.ts": "1d23522de5e4c80f79e35d21eeaa853832e2e409df9013bd0679c96f5c474c8d",
+    "v2/core/src/schema.ts": "67d007e765cac4c27fdac7e6c1735fc9050b0828d33ab662dfb8ddb93c525d7d",
+    "v2/core/src/store.ts": "33df3b8ffb538c8ef20c33909bbda58cc4e387cf8d32ca9f176701ada8fbda3b",
+    "v2/core/src/types.ts": "add2344b70a8a3e6c72a733af6c463d3039a9015c59a297cb8979ece9ace1f95",
+    "v2/core/tests/actions.test.ts": "346cb27779b95b5bde3907fc4fbc379b14ec5745402d83ba906c2184a8c3d5cf",
+    "v2/core/tests/question-dismiss.test.ts": "abb334b19bdcea5d8ba9c0630fcb39f0ff62f6c4f349e1a1d7fca55acc51271e",
+    "v2/daemon/src/answerTriggerProjection.ts": "faeb0d77f205b24e81a208c93114a558204fbff91f778a6151aa3645747e7c24",
+    "v2/daemon/src/daemon.ts": "ab6245f3bc7fa649bf6467c5a181ca3e9f43934bf03dfd95e5f7a32f15803bc0",
+    "v2/daemon/src/envelope.ts": "837cb1117a94071ebd9368c50828da9a9dae588a0768aedb274658da87a72919",
+    "v2/daemon/src/loops.ts": "aa41f369de3bf0aa9ff766ed9df118516395dc5d210814195d6e1386215f2e30",
+    "v2/daemon/src/multilineFallback.ts": "b409769f9d5fbfc9d53673b55193261fa7a92ccdb4836930b16b951976d1d8e1",
+    "v2/daemon/src/protocol.ts": "2b7779f352b832ffbca27fa47eff556c7066b31379922808b839d8620da62864",
+    "v2/daemon/src/questionDismissalProjection.ts": "d334632a7eb49045688be28a07227283346f8c24147256354083f5ea479c9419",
+    "v2/daemon/src/rpc.ts": "bdaf32bf6daaf0a8e1d9d90d7c8a8c0fc4696411bcb921ca740a4eda7726e1fb",
+    "v2/daemon/src/rpcAccess.ts": "199ca9f8ba9f00800355622707ade9c961ec809d4c1dfb63b3d730fc0245f009",
+    "v2/daemon/tests/answer-trigger-census.test.ts": "448f00c4c7dc5fe4ca0795810a68f1bd9abef68e29d553206fccef87ab207315",
+    "v2/daemon/tests/local-rpc-security.test.ts": "c7e969c99c635142dc67ba7533cabf78ee6949f9bbf9ee3834a2c3f876c43015",
+    "v2/daemon/tests/protocolTypeCensus.ts": "02ddd20d55c5b336563d898ef4e4703dd698cc5ffd7c419433801801ab8008a7",
+    "v2/daemon/tests/question-dismiss-projection.test.ts": "f839b763a9aa1fe3c4a920e56332ad2ab2e7f0e7973ce4926cc0c1d5fa256664"
+  },
+  "environment": "Scrubbed satellite lab; fake HOME/XDG/TMPDIR under task cache; no real units, services or live stores.",
+  "checks": {
+    "check": 0,
+    "v2:check": 0,
+    "build": 0,
+    "proofTypecheck": 0
+  },
+  "featureProof": {
+    "tests": 35,
+    "pass": 35,
+    "fail": 0
+  },
+  "regressions": {
+    "tests": 61,
+    "pass": 61,
+    "fail": 0
+  },
+  "detailedRealRunRerun": {
+    "tests": 3,
+    "pass": 3,
+    "fail": 0
+  },
+  "answerEnvelopeCases": 8,
+  "schemaVersion": 44,
+  "schemaMigration": "Existing status CHECK rebuilt; no-CHECK additive branch covered by core fixture.",
+  "maskedGate": "PENDING after Queen review; no result claimed.",
+  "sameUidLimit": "Owner uses ordinary question.answer RPC policy; no operator/marker verifier. Apiary owns policy(a) enforcement.",
+  "notCovered": [
+    "Apiary node-to-node and phone dismissal projection; paired backend must handle it before upstream reader advertisement/exposure.",
+    "Production rollout; DEPLOY HOLD stands."
+  ]
+}

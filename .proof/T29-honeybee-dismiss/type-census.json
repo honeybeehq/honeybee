@@ -1,0 +1,277 @@
+[
+  {
+    "questionDismissalTypeCensus": {
+      "results": {
+        "WatchFrame": {
+          "values": [],
+          "audits": [
+            "events[]"
+          ]
+        },
+        "QuestionAskResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionAnswerResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionDismissResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionWithdrawResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "QuestionListResult": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "AuditTailResult": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "SnapshotResult": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "ActionReportResult": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        }
+      },
+      "audits": {
+        "question.asked": [
+          "question"
+        ],
+        "question.dismissed": [
+          ""
+        ]
+      },
+      "dispatch": {
+        "action.report": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.ask": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.answer": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.dismiss": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.withdraw": {
+          "values": [
+            "question"
+          ],
+          "audits": []
+        },
+        "question.list": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "audit.tail": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "snapshot": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        },
+        "watch": {
+          "values": [
+            "questions[]"
+          ],
+          "audits": []
+        }
+      }
+    }
+  },
+  {
+    "answerTriggerTypeCensus": {
+      "results": {
+        "WatchFrame": {
+          "values": [],
+          "audits": [
+            "events[]"
+          ]
+        },
+        "RenameResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "TagResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ForkResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ChildrenResult": {
+          "values": [
+            "children[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "SetArgsResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ReconfigureResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ViewResult": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "ListResult": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "AuditTailResult": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "SnapshotResult": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        }
+      },
+      "audits": {
+        "bee.created": [
+          "bee.lastTurnTrigger"
+        ],
+        "runtime.updated": [
+          "turnTrigger"
+        ],
+        "mail.delivered": [
+          "turnTrigger"
+        ]
+      },
+      "dispatch": {
+        "bee.setArgs": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.reconfigure": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.rename": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.tag": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.fork": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "bee.children": {
+          "values": [
+            "children[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "view": {
+          "values": [
+            "bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "list": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "audit.tail": {
+          "values": [],
+          "audits": [
+            "rows[]"
+          ]
+        },
+        "snapshot": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        },
+        "watch": {
+          "values": [
+            "views[].bee.lastTurnTrigger"
+          ],
+          "audits": []
+        }
+      }
+    }
+  }
+]

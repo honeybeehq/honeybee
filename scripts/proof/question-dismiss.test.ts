@@ -94,7 +94,18 @@ test("real disposable Honeybee: dismissal races, dedicated notice, independent r
       assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
       assert.equal(store.auditRows().filter(event => event.kind === "question.dismissed" && event.payload.questionId === q.id).length, 1);
       assert.equal(store.listMessages(beeId).filter(message => message.id === result.question.dismissalMessageId).length, 1);
-      console.log(JSON.stringify({host: hostname(), data: fixture.dir, socket: daemon.socketPath, shutdown: {code: daemon.proc.exitCode, signal: daemon.proc.signalCode}, first: result.question, legacy, races, replayEqual: true, reconnectDeduped: true, dedicatedEnvelopeObserved: true, lifecycleReceipts, liveNoticeMessageId: delivered.question.dismissalMessageId, lastHumanOutputAt: view.bee.lastHumanOutputAt}));
+      assert.deepEqual(store.getQuestion(q.id), result.question);
+      const terminalProofs = store.listQuestions({beeId}).map(question => {
+        const events = store.auditRows().filter(event => ["question.answered", "question.withdrawn", "question.dismissed"].includes(event.kind) && event.payload.questionId === question.id);
+        assert.equal(events.length, 1);
+        const answerMail = store.listMessages(beeId).filter(message => message.body.startsWith(`[answer to question ${question.id}]`));
+        assert.equal(answerMail.length, question.status === "answered" ? 1 : 0);
+        const notice = question.dismissalMessageId === null ? null : store.getMessage(question.dismissalMessageId);
+        assert.equal(notice !== null, question.status === "dismissed");
+        if (notice) assert.equal(notice.body, body);
+        return {question, event: events[0], answerMail, notice};
+      });
+      console.log(JSON.stringify({host: hostname(), data: fixture.dir, socket: daemon.socketPath, shutdown: {code: daemon.proc.exitCode, signal: daemon.proc.signalCode}, first: result.question, legacy, races, terminalProofs, replayEqual: true, reconnectDeduped: true, dedicatedEnvelopeObserved: true, lifecycleReceipts, liveNoticeMessageId: delivered.question.dismissalMessageId, lastHumanOutputAt: view.bee.lastHumanOutputAt}));
     } finally {store.close();}
     daemon = await startDaemon(fixture.dir); service = await connect(); assert.deepEqual(await dismiss(q.id, "shared-key"), {...result, deduped: true});
     clients.splice(0).forEach(client => client.close()); await daemon.stop(); assert.equal(daemon.proc.exitCode, 0, daemon.output()); assert.equal(daemon.proc.signalCode, null);
