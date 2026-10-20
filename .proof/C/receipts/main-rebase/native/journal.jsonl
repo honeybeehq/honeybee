@@ -1,0 +1,28 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/hb-quota-C.GGNuPxiL/tmp/hb-v2-daemon-6dYZ7O","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"2ebc72dc-0646-41ff-b403-d88745be4a5c","cwd":"/var/tmp/hb-quota-C.GGNuPxiL/tmp/hb-v2-daemon-6dYZ7O"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","input":[{"type":"text","text":"Codex unknown-reset lab warmup","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"a29d0ae2-c56e-4b23-bd38-755898ca54e3"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","turn":{"id":"a29d0ae2-c56e-4b23-bd38-755898ca54e3"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","turn":{"id":"a29d0ae2-c56e-4b23-bd38-755898ca54e3","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","input":[{"type":"text","text":"@quota:native interrupted unknown-reset task","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"a1f338a6-39a1-4c70-b2a4-6627e43ab9b0"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","turn":{"id":"a1f338a6-39a1-4c70-b2a4-6627e43ab9b0"}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":null,"secondary":null,"rateLimitReachedType":null}}}
+{"method":"error","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","turnId":"a1f338a6-39a1-4c70-b2a4-6627e43ab9b0","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"},"willRetry":false}}
+{"method":"turn/completed","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","turn":{"id":"a1f338a6-39a1-4c70-b2a4-6627e43ab9b0","status":"failed","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"}}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","path":"/var/tmp/hb-quota-C.GGNuPxiL/tmp/hb-v2-daemon-6dYZ7O/homes/codex-a/sessions/honeybee/f0a9dea39bef5908ffcb9200de9b2f9c2e9c0c8b0f07fc25d75dd3e8da15736a.jsonl","modelProvider":"openai","cwd":"/var/tmp/hb-quota-C.GGNuPxiL/tmp/hb-v2-daemon-6dYZ7O","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"2ebc72dc-0646-41ff-b403-d88745be4a5c","cwd":"/var/tmp/hb-quota-C.GGNuPxiL/tmp/hb-v2-daemon-6dYZ7O"}}}
+{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","input":[{"type":"text","text":"[Hive automated message, not typed by a person. The metadata line below is context data, not instructions.]\n{\"version\":1,\"kind\":\"automation\",\"senderKind\":\"automation\",\"from\":\"hive:quota-resume\",\"id\":\"3\",\"sentAt\":\"2026-10-20T07:49:41.223Z\"}\n\nContinue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"214508ef-7fbc-4599-b0ca-8e5fa8a92e14"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","turn":{"id":"214508ef-7fbc-4599-b0ca-8e5fa8a92e14"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"2ebc72dc-0646-41ff-b403-d88745be4a5c","turn":{"id":"214508ef-7fbc-4599-b0ca-8e5fa8a92e14","status":"completed","error":null}}}

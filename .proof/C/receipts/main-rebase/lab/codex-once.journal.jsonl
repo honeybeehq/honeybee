@@ -1,0 +1,29 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/start","params":{"cwd":"/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-B7JeXP","approvalPolicy":"never","sandbox":"danger-full-access"}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"f56fb75c-54d7-47fe-8b7e-5e305197649e","cwd":"/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-B7JeXP"}}}
+{"jsonrpc":"2.0","id":1001,"method":"turn/start","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","input":[{"type":"text","text":"quota lab warmup","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1001,"result":{"turn":{"id":"3ac96921-b211-401f-b9d3-3776fcd83dec"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","turn":{"id":"3ac96921-b211-401f-b9d3-3776fcd83dec"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","turn":{"id":"3ac96921-b211-401f-b9d3-3776fcd83dec","status":"completed","error":null}}}
+{"jsonrpc":"2.0","id":1002,"method":"turn/start","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","input":[{"type":"text","text":"@quota:once exact original quota work","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1002,"result":{"turn":{"id":"20d94efa-47ae-4c03-b3fc-f5f52a6e8ffa"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","turn":{"id":"20d94efa-47ae-4c03-b3fc-f5f52a6e8ffa"}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":null,"secondary":null,"rateLimitReachedType":null}}}
+{"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"premium","primary":{"usedPercent":100,"windowDurationMins":300,"resetsAt":1792486120},"secondary":null,"rateLimitReachedType":"rate_limit_reached"}}}
+{"method":"error","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","turnId":"20d94efa-47ae-4c03-b3fc-f5f52a6e8ffa","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"},"willRetry":false}}
+{"method":"turn/completed","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","turn":{"id":"20d94efa-47ae-4c03-b3fc-f5f52a6e8ffa","status":"failed","error":{"message":"You've hit your usage limit.","codexErrorInfo":"usageLimitExceeded"}}}}
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"hive-hsr","title":null,"version":"0"},"capabilities":null}}
+{"jsonrpc":"2.0","id":1,"result":{"userAgent":"fake-codex/0"}}
+{"jsonrpc":"2.0","method":"initialized"}
+{"jsonrpc":"2.0","id":2,"method":"thread/resume","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","path":"/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-B7JeXP/homes/codex-b/sessions/honeybee/54988c48e4bb58185ea1b42e8e499ef770fd17cbe1d1de82f5955b743e1cc777.jsonl","modelProvider":"openai","cwd":"/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-B7JeXP","approvalPolicy":"never","sandbox":"danger-full-access","excludeTurns":true}}
+{"jsonrpc":"2.0","id":2,"result":{"thread":{"id":"f56fb75c-54d7-47fe-8b7e-5e305197649e","cwd":"/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-B7JeXP"}}}
+{"jsonrpc":"2.0","id":1003,"method":"turn/start","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","input":[{"type":"text","text":"[Hive automated message, not typed by a person. The metadata line below is context data, not instructions.]\n{\"version\":1,\"kind\":\"automation\",\"senderKind\":\"automation\",\"from\":\"hive:quota-resume\",\"id\":\"3\",\"sentAt\":\"2026-10-20T07:48:42.203Z\"}\n\nContinue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.","text_elements":[]}]}}
+{"jsonrpc":"2.0","id":1003,"result":{"turn":{"id":"74d3c85e-515d-4144-bdb4-6bbc0b857bff"}}}
+{"jsonrpc":"2.0","method":"turn/started","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","turn":{"id":"74d3c85e-515d-4144-bdb4-6bbc0b857bff"}}}
+{"jsonrpc":"2.0","method":"item/agentMessage/delta","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","delta":"echo"}}
+{"jsonrpc":"2.0","method":"thread/status/changed","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","status":{"type":"idle"}}}
+{"jsonrpc":"2.0","method":"turn/completed","params":{"threadId":"f56fb75c-54d7-47fe-8b7e-5e305197649e","turn":{"id":"74d3c85e-515d-4144-bdb4-6bbc0b857bff","status":"completed","error":null}}}

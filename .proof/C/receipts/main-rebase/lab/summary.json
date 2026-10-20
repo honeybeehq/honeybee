@@ -1,0 +1,127 @@
+[
+  {
+    "name": "claude-once",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-aU9iQ0",
+    "resetAt": 1792486119197,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:cc4afb42-9d42-4932-bb7d-b7dbe1c56a54:1:2",
+    "state": "resumed",
+    "kind": "replay",
+    "targetAccount": "claude-b",
+    "continuationMessageIds": [
+      3
+    ]
+  },
+  {
+    "name": "codex-once",
+    "harness": "codex",
+    "dir": "/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-B7JeXP",
+    "resetAt": 1792486120935,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:1ac851fc-6a97-42ca-86ac-de586cdbd73b:1:2",
+    "state": "resumed",
+    "kind": "continue",
+    "targetAccount": "codex-b",
+    "continuationMessageIds": [
+      3
+    ]
+  },
+  {
+    "name": "source-reset",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-escjMO",
+    "resetAt": 1792482534320,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:e8238f2e-449c-411e-96a2-4cbfe1d0697d:1:2",
+    "state": "resumed",
+    "kind": "replay",
+    "targetAccount": "claude-a",
+    "continuationMessageIds": [
+      3
+    ]
+  },
+  {
+    "name": "unknown-reset",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-ZBYmVB",
+    "resetAt": null,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:f3888862-cea0-4ecd-bd47-4150cc56b7f7:1:2",
+    "state": "waiting",
+    "reason": "account_unavailable",
+    "retryAt": null
+  },
+  {
+    "name": "autoswap-false",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-ZLmSoM",
+    "resetAt": 1792486168620,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:064ffe83-9d4a-40ca-8fdf-8936d29bc28c:1:2",
+    "state": "waiting",
+    "reason": "autoswap_disabled",
+    "retryAt": null
+  },
+  {
+    "name": "active-owner",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-XBx99p",
+    "resetAt": 1792486202471,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:52932cba-bae3-487a-be7a-15703e074423:1:2",
+    "state": "waiting",
+    "reason": "allocation_owner_required",
+    "retryAt": null
+  },
+  {
+    "name": "restart-waiting",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-DC7PDH",
+    "resetAt": 1792482648350,
+    "passed": true,
+    "originalMessageId": 2,
+    "recoveryId": "quota:cc5809cf-433b-4208-b0c9-7a1c26f56d61:1:2",
+    "state": "resumed",
+    "kind": "replay",
+    "targetAccount": "claude-a",
+    "continuationMessageIds": [
+      3
+    ]
+  },
+  {
+    "name": "concurrent-unknown",
+    "harness": "claude",
+    "dir": "/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-AtNvNJ",
+    "resetAt": null,
+    "passed": true,
+    "originalMessageId": 3,
+    "recoveryId": "quota:1f51fa41-d838-491e-a4d3-65ced2f1ff32:1:3",
+    "accountProbes": [
+      {
+        "account": "a",
+        "timestamps": [
+          1792482649967,
+          1792482679952
+        ]
+      },
+      {
+        "account": "b",
+        "timestamps": [
+          1792482649967,
+          1792482679953
+        ]
+      }
+    ],
+    "secondBeeId": "d1e92b92-0425-4284-ab83-ff886d089567",
+    "state": "waiting",
+    "reason": "account_unavailable",
+    "retryAt": null
+  }
+]

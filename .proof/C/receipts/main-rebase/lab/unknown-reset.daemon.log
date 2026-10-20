@@ -1,0 +1,34 @@
+hived v2 listening on /var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-ZBYmVB/hived.sock (store /var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-ZBYmVB/core.sqlite3)
+{"ts":1792482535061,"op":"tmp.policy beeTmpRoot=off"}
+{"ts":1792482535073,"op":"boot adopted=0 stopped=0 requeued=0 reaped=0 wakes=0"}
+{"ts":1792482535085,"op":"rpc.listen socket=/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-ZBYmVB/hived.sock"}
+{"ts":1792482535085,"op":"daemon.started pid=2279075 store=/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-ZBYmVB/core.sqlite3"}
+{"ts":1792482535099,"op":"spawn.account bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 account=claude-a reason=\"explicit\""}
+{"ts":1792482535122,"op":"account.activate account=claude-a home=/var/tmp/hb-quota-C.cefjFr7J/tmp/hb-v2-daemon-ZBYmVB/homes/claude-a copied=.credentials.json"}
+{"ts":1792482535123,"op":"account.activate.gateways account=claude-a skipped=\"gateway discovery is disabled; existing MCP seed state left untouched\""}
+{"ts":1792482535289,"op":"cmd.spawn id=1 bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 start gen=1"}
+{"ts":1792482535378,"op":"obs.booted bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1 pid=2279101 synthetic"}
+{"ts":1792482535379,"op":"obs.skip bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1 kind=turn_ended reason=mail_pending"}
+{"ts":1792482535383,"op":"deliver.refused bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 msg=1 reason=not_ready"}
+{"ts":1792482535390,"op":"deliver bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 msg=1 gen=1 urgency=next"}
+{"ts":1792482535410,"op":"obs.skip bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1 kind=turn_started reason=already_running"}
+{"ts":1792482535437,"op":"spawn.evidence bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1 kind=booted"}
+{"ts":1792482535437,"op":"obs.skip bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1 kind=booted reason=already_running"}
+{"ts":1792482535438,"op":"obs.turn_ended bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1"}
+{"ts":1792482535439,"op":"session.recorded bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1 id=d0020825-d2e4-4614-934d-bea046b00cac"}
+{"ts":1792482535442,"op":"obs.checkpoint bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1 cursor=501"}
+{"ts":1792482535466,"op":"deliver bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 msg=2 gen=1 urgency=next"}
+{"ts":1792482535490,"op":"obs.turn_started bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1 synthetic"}
+{"ts":1792482535490,"op":"obs.turn_ended bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1"}
+{"ts":1792482535492,"op":"flag.set bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 flag=resource_blocked gen=1"}
+{"ts":1792482535500,"op":"flag.set bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 flag=resource_blocked gen=1"}
+{"ts":1792482535501,"op":"obs.checkpoint bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 gen=1 cursor=1021"}
+{"ts":1792482535554,"op":"account.limits account=claude-a readable=true weekly=100 5h=100"}
+{"ts":1792482535555,"op":"account.limits account=claude-b readable=true weekly=100 5h=100"}
+{"ts":1792482535559,"op":"account.rotate bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 account=claude-a skipped=no_candidate recovery=quota:f3888862-cea0-4ecd-bd47-4150cc56b7f7:1:2 (No untried claude account remains)"}
+{"ts":1792482565578,"op":"account.limits account=claude-a readable=true weekly=100 5h=100"}
+{"ts":1792482565580,"op":"account.limits account=claude-b readable=true weekly=100 5h=100"}
+{"ts":1792482565583,"op":"account.rotate bee=f3888862-cea0-4ecd-bd47-4150cc56b7f7 account=claude-a skipped=no_candidate recovery=quota:f3888862-cea0-4ecd-bd47-4150cc56b7f7:1:2 (No untried claude account remains)"}
+{"ts":1792482568588,"op":"daemon.stopping pid=2279075"}
+{"ts":1792482568594,"op":"daemon.stopped"}
+{"ts":1792482568594,"op":"daemon.stop_complete pid=2279075"}
