@@ -48,6 +48,35 @@ jobs:
           name: peercred-${{ matrix.target }}
           path: dist/v2/peercred/${{ matrix.target }}/
           if-no-files-found: error
+  delivery-file:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: macos-15
+            target: darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+      - name: Build and prove the target bridge on its native runner
+        shell: bash
+        run: |
+          test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
+          node scripts/build-delivery-file.mjs
+          node scripts/probe-delivery-file.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: delivery-file-${{ matrix.target }}
+          path: dist/v2/delivery-file/${{ matrix.target }}/
+          if-no-files-found: error
   verify:
     # Source tests need tmux >= 3.3 (allow-passthrough); Ubuntu 24.04 ships 3.4.
     # Release archive packaging remains controlled by release.yml.
