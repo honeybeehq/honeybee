@@ -49,9 +49,9 @@ child.stdout.on('data',chunk=>{rest+=chunk;const lines=rest.split('\n');rest=lin
  if(obj.method==='turn/completed'){ends++;if(sent){endOriginal();if(ends===4)setTimeout(()=>child.stdin.end(),300)}}
 }})
 child.on('error',error=>{throw error})
-process.once('uncaughtException',error=>{log('failure',String(error.stack ?? error));child.kill('SIGTERM');server.close();fixture.close();process.exit(1)})
+process.once('uncaughtException',error=>{log('failure',String(error.stack ?? error));child.kill('SIGTERM');server.close();fixture.fail(error);fixture.close();process.exit(1)})
 child.stderr.on('data',chunk=>log('stderr',String(chunk)))
 send('initialize',{clientInfo:{name:'fixture',version:'1'},capabilities:{}})
 const timeout=setTimeout(()=>{log('timeout',{});process.exitCode=1;child.kill('SIGTERM')},25000)
-await new Promise(r=>child.on('exit',(code,signal)=>{log('exit',{code,signal});if(code!==0||signal)process.exitCode=1;r()}));clearTimeout(timeout);server.close();assert.ok(!process.exitCode,'native CLI must exit cleanly');try{fixture.verify();log('final-mailbox',fixture.inspect())}finally{fixture.close()}console.log(root)
+await new Promise(r=>child.on('exit',(code,signal)=>{log('exit',{code,signal});if(code!==0||signal)process.exitCode=1;r()}));clearTimeout(timeout);server.close();assert.ok(!process.exitCode,'native CLI must exit cleanly');try{fixture.verify();log('final-mailbox',fixture.inspect())}catch(error){fixture.fail(error);throw error}finally{fixture.close()}console.log(root)
 

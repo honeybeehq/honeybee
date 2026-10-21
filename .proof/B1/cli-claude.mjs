@@ -53,10 +53,10 @@ child=spawn(binary,['-p','--input-format','stream-json','--output-format','strea
 let rest=''
 child.stdout.on('data',chunk=>{rest+=chunk;const lines=rest.split('\n');rest=lines.pop();for(const line of lines){let obj;try{obj=JSON.parse(line)}catch{log('stdout-other',line);continue}log('stdout',obj);if(obj.type==='result'){results++;if(sent){endOriginal();if(results===4)setTimeout(()=>child.stdin.end(),300)}}}})
 child.on('error',error=>{throw error})
-process.once('uncaughtException',error=>{log('failure',String(error.stack ?? error));child.kill('SIGTERM');server.close();fixture.close();process.exit(1)})
+process.once('uncaughtException',error=>{log('failure',String(error.stack ?? error));child.kill('SIGTERM');server.close();fixture.fail(error);fixture.close();process.exit(1)})
 child.stderr.on('data',chunk=>log('stderr',String(chunk)))
 send({type:'user',message:{role:'user',content:[{type:'text',text:'Run the fixture tool.'}]}})
 const timeout=setTimeout(()=>{log('timeout',{});process.exitCode=1;child.kill('SIGTERM')},25000)
 await new Promise(r=>child.on('exit',(code,signal)=>{log('exit',{code,signal});if(code!==0||signal)process.exitCode=1;r()}))
-clearTimeout(timeout);server.close();assert.ok(!process.exitCode,'native CLI must exit cleanly');try{fixture.verify();log('final-mailbox',fixture.inspect())}finally{fixture.close()}console.log(root)
+clearTimeout(timeout);server.close();assert.ok(!process.exitCode,'native CLI must exit cleanly');try{fixture.verify();log('final-mailbox',fixture.inspect())}catch(error){fixture.fail(error);throw error}finally{fixture.close()}console.log(root)
 

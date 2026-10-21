@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
 export async function createCliFixture({root,mode,log,nativeHuman}) {
-  assert.ok(['idle','restart'].includes(mode),'mode must be idle or restart')
+  assert.ok(['idle','restart','human-active'].includes(mode),'mode must be idle, restart or human-active')
   const sourceRoot=resolve(process.env.B1_SOURCE_ROOT ?? '.')
   const load=path=>import(pathToFileURL(resolve(sourceRoot,path)).href)
   const [{openCoreStore},{DaemonCore},{FakeDriver}]=await Promise.all([
@@ -25,7 +25,7 @@ export async function createCliFixture({root,mode,log,nativeHuman}) {
   for(let i=0;i<4;i++)core.step()
   driver.events.push({beeId:bee.id,generation:1,kind:'turn_started'})
   core.step()
-  let human,reprompt,peers=[],turns=0,admitted=false
+  let human,reprompt,peers=[],turns=0,admitted=false,activeWindowExpired=false
   const wires=[]
   const originalDeliver=driver.deliver.bind(driver)
   driver.deliver=(id,generation,messageId,body,options)=>{
@@ -51,7 +51,7 @@ export async function createCliFixture({root,mode,log,nativeHuman}) {
     admit(){
       assert.equal(admitted,false);admitted=true
       const senders=Array.from({length:12},(_,index)=>store.createBee({name:`fixture-peer-${index}`,agent:'stub',substrate:'hsr',cwd:root}).bee)
-      peers=Array.from({length:12},(_,index)=>store.send(bee.id,`PEER_${String(index).padStart(2,'0')}_SENTINEL full original body λ`,{sender:senders[index].id,urgency:index%2?'next':'now',senderKind:'automation'}).message)
+      peers=Array.from({length:12},(_,index)=>store.send(bee.id,`PEER_${String(index).padStart(2,'0')}_SENTINEL full original body λ`,{sender:senders[index].id,urgency:index%2?'next':'now'}).message)
       const body='HUMAN_SENTINEL'
       const humanChat={version:1,authorityId:'fixture-apiary',admissionId:'human-1',beeId:bee.id,bodySha256:createHash('sha256').update(body).digest('hex'),idempotencyKey:'human-1',humanFirst:true}
       human=store.send(bee.id,body,{humanChat}).message
@@ -70,7 +70,11 @@ export async function createCliFixture({root,mode,log,nativeHuman}) {
       core.step()
       if(turns===1)assert.deepEqual(wires.map(w=>w.kind),['human'])
       if(turns===2)assert.deepEqual(wires.map(w=>w.kind),['human','reprompt'])
-      if(turns===3){
+      if(turns===3&&mode==='human-active'){
+        assert.equal(activeWindowExpired,true)
+        assert.deepEqual(wires.map(w=>w.kind),['human','reprompt','digest'])
+      }
+      if(turns===3&&mode!=='human-active'){
         clock+=119999;core.step()
         assert.equal(wires.length,2,'ordinary peers held before 120 seconds')
         if(mode==='restart')restart('before-window-release')
@@ -84,6 +88,7 @@ export async function createCliFixture({root,mode,log,nativeHuman}) {
     },
     nativeRequest(){
       const before=wires.length
+      if(mode==='human-active'&&before===1&&!activeWindowExpired){clock+=120000;activeWindowExpired=true}
       core.step()
       assert.equal(wires.length,before,'no delivery during native provider request')
       assert.equal(driver.interrupts.length,0)
@@ -120,11 +125,13 @@ export async function createCliFixture({root,mode,log,nativeHuman}) {
       assert.ok(!lastUser(requests[3]).includes('HUMAN_SENTINEL'))
       assert.ok(lastUser(requests[4]).includes('Background digest'))
       assert.ok(!lastUser(requests[4]).includes('TELL_REPROMPT_SENTINEL'))
+      assert.ok(!lastUser(requests[4]).includes('HUMAN_SENTINEL'))
       assert.ok(events.some(e=>e.kind==='stdout'&&JSON.stringify(e.data).includes('FIXTURE_ACK')),'fixture acknowledgement emitted in native output; not a real model ack')
       const digestContext=JSON.stringify(context(requests[4]))
       for(const peer of peers)assert.ok(digestContext.includes(peer.body),'full peer body in actual provider context')
       writeFileSync(`${root}/summary.json`,JSON.stringify({passed:true,scope:'stock native CLI + local fixture provider + real CoreStore/DaemonCore + FakeDriver bridge; store-level classification only; not HSR or RPC end-to-end; authority gates, frozen/uncertain confirmation restarts, paging/bounds, deferred stopped wake and cancel/expedite unqualified; restarts gracefully reopen store and retain FakeDriver/native process; not real data or model ack latency',mode,sourceRoot,binary:events.find(e=>e.kind==='binary')?.data,node:process.version,...inspect()},null,2))
     },
+    fail(error){writeFileSync(`${root}/summary.json`,JSON.stringify({passed:false,error:String(error.stack ?? error),mode,sourceRoot,...inspect()},null,2))},
     close(){store.close()},
   }
 }
