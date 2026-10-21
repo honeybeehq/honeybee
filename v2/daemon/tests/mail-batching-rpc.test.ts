@@ -31,7 +31,7 @@ for (const enabled of [false, true]) test(`batching RPC requires registered dire
   } as unknown as PeerCredentials;
   const server = new RpcServer({ socketPath, dataDir: root, peerCredentials: peers,
     localTrust: { requireObservationCaller: enabled, registrationKeyFile: keyFile }, log: () => {},
-    dispatch: (verb, params, conn) => { const result = { verb, params, authority: conn.automationAuthority ?? false }; seen.push(result); return result; } });
+    dispatch: (verb, params, conn) => { const result = { verb, params, authority: conn.automationAuthority ?? false, authenticatedBeeId: conn.authenticatedBeeId ?? null }; seen.push(result); return result; } });
   const clients: RpcClient[] = [];
   try {
     await server.listen();
@@ -43,6 +43,9 @@ for (const enabled of [false, true]) test(`batching RPC requires registered dire
     for (const verb of ["mail.batching.set", "mail.batching.get"] as const) await assert.rejects(c.request(verb, { beeId: "fixture", enabled: true }), code("automation_unauthorized"));
     const ordinary = await c.request<{ authority: boolean }>("send", { ...params, senderKind: "automation", automationAuthority: true });
     assert.equal(ordinary.authority, false);
+    const readParams = { beeId: "fixture", batchId: "batch-fixture", messageId: 1 };
+    await assert.rejects(c.request("mail.batch.read", readParams), code("caller_not_trusted"));
+    await assert.rejects(c.request("mail.batch.read", { ...readParams, automationAuthority: true, authenticatedBeeId: "fixture" }, 1000, { sessionPrincipal: { beeId: "fixture" } }), code("caller_not_trusted"));
     if (!enabled) return;
     const challenge = await c.request<LocalTrustChallenge>("rpc.localTrust.challenge");
     const key = readFileSync(keyFile);
@@ -59,9 +62,21 @@ for (const enabled of [false, true]) test(`batching RPC requires registered dire
       assert.equal((await c.request<{ authority: boolean }>(verb, { beeId: "fixture", enabled: true })).authority, true);
       await assert.rejects(c.request(verb, { beeId: "fixture", enabled: true }, 1000, { sessionPrincipal: { beeId: "forged" } }), code("automation_unauthorized"));
     }
+    const authorityRead = await c.request<{ authority: boolean; authenticatedBeeId: string | null }>("mail.batch.read", readParams);
+    assert.equal(authorityRead.authority, true);
+    assert.equal(authorityRead.authenticatedBeeId, null);
+    const ownerRead = await c.request<{ authority: boolean; authenticatedBeeId: string | null }>("mail.batch.read", readParams, 1000, { sessionPrincipal: { beeId: "fixture" } });
+    assert.equal(ownerRead.authority, false);
+    assert.equal(ownerRead.authenticatedBeeId, "fixture");
+    const beforeRefusedReads = seen.length;
+    for (const sessionPrincipal of [{ beeId: "sibling" }, { beeId: "" }, { beeId: "fixture\0" }, {}, null, []]) await assert.rejects(c.request("mail.batch.read", { ...readParams, automationAuthority: true }, 1000, { sessionPrincipal } as never), code("caller_not_trusted"));
+    for (const context of [{ phoneLane: "interim-v1" }, { phoneOrigin: {} }, { humanChat: {} }, []]) await assert.rejects(c.request("mail.batch.read", readParams, 1000, context as never), code("caller_not_trusted"));
+    assert.equal(seen.length, beforeRefusedReads);
     const accepted = seen.length;
     for (const lane of ["remote", "node_relay"] as const) {
       const relay = await RpcClient.connect(socketPath, 1000, lane); clients.push(relay);
+      await assert.rejects(relay.request("mail.batch.read", readParams), code("caller_not_trusted"));
+      await assert.rejects(relay.request("mail.batch.read", readParams, 1000, { sessionPrincipal: { beeId: "fixture" } }), code("caller_not_trusted"));
       await assert.rejects(relay.request("send", automation), code("automation_unauthorized"));
       await assert.rejects(relay.request("mail.batching.set", { beeId: "fixture", enabled: true }), code("automation_unauthorized"));
     }
@@ -181,4 +196,27 @@ test("bypass requires protected live-reference binding before effect",()=>{
     assert.deepEqual(r.store.getMessage(first.messageId)?.automationReference,reference(r.bee.id));
     assert.throws(()=>r.call("send",params,{...connection,automationReference:reference(r.bee.id,"fixture","foreign-workspace")}),code("idempotency_conflict"));
   }finally{r.close();}
+});
+
+
+test("daemon batch reads allow only the owning principal or direct Apiary authority", () => {
+  const r = daemonFixture();
+  try {
+    r.call("mail.batching.set", { beeId: r.bee.id, enabled: true });
+    const message = r.call("send", { beeId: r.bee.id, body: "private batch body" }) as { messageId: number };
+    const batch = r.store.freezeMailBatch(r.bee.id)!;
+    const params = { beeId: r.bee.id, batchId: batch.id, messageId: message.messageId };
+    const owner: RpcConn = { ...connection, automationAuthority: undefined, authenticatedBeeId: r.bee.id };
+    const authority = r.call("mail.batch.read", params);
+    assert.deepEqual(r.call("mail.batch.read", params, owner), authority);
+    const sibling = r.store.createBee({ name: "sibling", agent: "stub", substrate: "hsr", cwd: r.bee.cwd }).bee;
+    for (const conn of [
+      { ...connection, automationAuthority: undefined },
+      { ...owner, authenticatedBeeId: sibling.id },
+      { ...connection, authenticatedBeeId: sibling.id },
+      { ...connection, ingress: "node_relay" },
+      { ...owner, ingress: "remote" },
+      { ...connection, phoneLane: "interim-v1" },
+    ]) assert.throws(() => r.call("mail.batch.read", params, conn as RpcConn), code("caller_not_trusted"));
+  } finally { r.close(); }
 });

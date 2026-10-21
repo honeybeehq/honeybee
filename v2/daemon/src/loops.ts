@@ -1847,11 +1847,11 @@ export class DaemonCore {
         }
         let selected = seed ?? eligible.find(message => !batching || this.batchingEligible(rt.beeId,message.id,trulyMidTurn));
         if (batching && !seed && !trulyMidTurn && !humanState.active && humanState.head === null && quotaGate.messageIds.length === 0) {
-          const priority = eligible.find(message => this.store.getMessage(message.id)?.humanChat || automationDeliveryClass(this.store.getMessage(message.id)?.automationKind) !== "ordinary");
+          const priority = eligible.find(message => this.store.getMessage(message.id)?.humanChat || this.store.mailBatchControl(message.id) || automationDeliveryClass(this.store.getMessage(message.id)?.automationKind) !== "ordinary");
           selected = priority ?? selected;
         }
         let batch = selected && quotaGate.messageIds.length === 0 ? this.store.mailBatchForMessage(selected.id) : null;
-        if (batching && selected && quotaGate.messageIds.length === 0 && !seed && !this.store.getMessage(selected.id)?.humanChat && automationDeliveryClass(this.store.getMessage(selected.id)?.automationKind) === "ordinary") {
+        if (batching && selected && quotaGate.messageIds.length === 0 && !seed && !this.store.getMessage(selected.id)?.humanChat && !this.store.mailBatchControl(selected.id) && automationDeliveryClass(this.store.getMessage(selected.id)?.automationKind) === "ordinary") {
           batch = this.store.freezeMailBatch(rt.beeId);
           if (!batch || batch.memberIds[0] !== selected.id) continue;
         }
@@ -1875,30 +1875,35 @@ export class DaemonCore {
         // The mailbox row stays the durable truth — the envelope is
         // delivery-time rendering only.
         if (msg.deliveryHold?.detail === "delivery_hold_state_unknown") {this.store.reconcileUnknownMultilineHold(msg.id); continue;}
-        const freshTurn = (humanFirst || batching) && msg.humanChat !== undefined && msg.urgency !== "now" || batch !== null || batching && msg.automationKind !== undefined;
+        const freshTurn = (humanFirst || batching) && msg.humanChat !== undefined && msg.urgency !== "now" || batch !== null || batching && (msg.automationKind !== undefined || this.store.mailBatchControl(msg.id));
         if (freshTurn && this.store.getBee(rt.beeId)?.substrate === "tmux") continue;
         const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
         const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
+        const reorderNotice = this.store.multilineReorderNotice(rt.beeId, msg.id);
+        const instruction = this.store.placementInstructionMove(rt.beeId);
+        const prefixBody = (text: string): string => {
+          const reordered = (reorderNotice.text ?? "") + text;
+          return instruction && rt.generation !== instruction.sourceGeneration
+            ? prefixPlacementDelivery(reordered,placementContextText({placementVersion:instruction.to.version,cwd:instruction.to.cwd,cellId:instruction.retainedCellId}))
+            : reordered;
+        };
         let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id), this.store.dismissedQuestionId(msg.id));
         if (batch) {
-          const rendered = renderMailBatch(batch,batch.memberIds.map(id => this.store.getMessage(id)!));
-          if (rendered === null) continue;
+          const members = batch.memberIds.map(id => this.store.getMessage(id));
+          if (members.some(member => !member || member.mailBatchId !== batch.id || member.deliveredAt !== null)) {
+            if (this.store.getDeliveryConfirmationIntent(msg.id)) this.store.holdDeliveryConfirmation(msg.id,"unknown");
+            this.log(`deliver.held bee=${rt.beeId} batch=${batch.id} reason=batch_membership_changed`);
+            continue;
+          }
+          const rendered = renderMailBatch(batch,members as MessageRow[],32768 - Buffer.byteLength(prefixBody("")));
+          if (rendered === null) {
+            if (!this.store.getDeliveryConfirmationIntent(msg.id)) this.store.prepareUnknownDeliveryConfirmationIntent({beeId:rt.beeId,messageId:msg.id,generation:rt.generation},"message_too_large");
+            continue;
+          }
           body = rendered;
         }
-        if (!msg.phoneInput && msg.sender === "automation:delivery" && msg.senderKind === "automation" && this.store.multilineSenderNotice(msg.id)) body = msg.body;
-        const reorderNotice = this.store.multilineReorderNotice(rt.beeId, msg.id);
-        if (reorderNotice.text) body = reorderNotice.text + body;
-        const instruction = this.store.placementInstructionMove(rt.beeId);
-        if (instruction && rt.generation !== instruction.sourceGeneration) {
-          body = prefixPlacementDelivery(
-            body,
-            placementContextText({
-              placementVersion: instruction.to.version,
-              cwd: instruction.to.cwd,
-              cellId: instruction.retainedCellId,
-            }),
-          );
-        }
+        if (!batch && !msg.phoneInput && msg.sender === "automation:delivery" && msg.senderKind === "automation" && this.store.multilineSenderNotice(msg.id)) body = msg.body;
+        body = prefixBody(body);
         const readiness = this.driver.deliveryReadiness?.(rt.beeId, rt.generation, msg.id) ?? "";
         const retryKey = JSON.stringify([msg.id, msg.urgency, rt.generation, rt.state, rt.updatedAt, readiness, msg.deliveryHold?.stage, this.store.inTransaction]);
         const retry = this.deliveryRetries.get(rt.beeId);
@@ -2044,7 +2049,7 @@ export class DaemonCore {
     const trigger = this.store.getBee(beeId)?.lastTurnTrigger;
     if (!trigger || trigger.generation !== generation || trigger.endedAt !== null || trigger.messageId === null) return false;
     const message = this.store.getMessage(trigger.messageId);
-    return message?.mailBatchId !== undefined || message?.automationKind !== undefined;
+    return message?.mailBatchId !== undefined || message?.automationKind !== undefined || message != null && this.store.mailBatchControl(message.id);
   }
 
   private batchingEligible(beeId: string, messageId: number, midTurn: boolean): boolean {
@@ -2054,7 +2059,7 @@ export class DaemonCore {
     if (message.humanChat) return true;
     if (this.store.pendingHumanFirstSeedMessageId(beeId) === messageId || this.store.pendingHandoffSeedMessageId(beeId) === messageId) return true;
     if (midTurn) return false;
-    if (automationDeliveryClass(message.automationKind) !== "ordinary") return true;
+    if (this.store.mailBatchControl(messageId) || automationDeliveryClass(message.automationKind) !== "ordinary") return true;
     const batch = this.store.mailBatchForMessage(messageId);
     return this.store.mailBatchReleaseReason(beeId) !== null && (batch ? batch.memberIds[0] === messageId : this.store.mailBatchCandidate(messageId));
   }

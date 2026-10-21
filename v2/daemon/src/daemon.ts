@@ -2143,6 +2143,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb,params,() => this.mustStore().resolveMailBatch(beeId,batchId,generation,params.action as "resend_anyway" | "drop",key));
       }
       case "mail.batch.read": {
+        if (conn.ingress !== "local_unix" || conn.humanChat !== undefined || conn.phoneOrigin !== undefined || conn.phoneLane !== undefined
+          || (conn.authenticatedBeeId !== undefined ? conn.authenticatedBeeId !== params.beeId : !conn.automationAuthority)) throw new RpcError("caller_not_trusted", "Batch reads require the registered direct local Apiary authority or the authenticated owning bee.");
         const beeId = this.requireBee(params);
         const batchId = this.param(params, "batchId");
         const messageId = this.numberParam(params, "messageId");

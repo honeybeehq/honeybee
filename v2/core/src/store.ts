@@ -2455,7 +2455,7 @@ export class CoreStore {
         sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "quota.resume",
         ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
         ...(message!.humanChat ? { replayHumanChatMessageId: message!.id } : {}),
-        ...(message!.automationKind ? { automationKind: message!.automationKind, ...(message!.automationRef ? { automationRef: message!.automationRef } : {}), ...(message!.automationReference ? { automationReference: message!.automationReference } : {}) } : {}),
+        ...this.replayAutomation(message!),
         ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `quota-resume:${row.id}:${message!.id}` } } : {}),
       })) : [this.send(row.beeId, "Continue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.", { sender: "hive:quota-resume", origin: "quota.resume" })];
       return this.putQuotaRecovery({ ...row, state: row.interrupted && rt.bootEvidence !== "real" ? "rotating" : "resumed", successorGeneration: rt.generation, continuationKind: !row.interrupted ? "none" : replay ? "replay" : "continue", continuationMessageIds: sent.map(result => result.message.id) });
@@ -4354,7 +4354,7 @@ export class CoreStore {
         sender: message.sender, urgency: message.urgency, priority: message.priority, origin: this.mailOrigin(message.id),
         ...(message.senderKind === undefined ? {} : { senderKind: message.senderKind }),
         ...(message.humanChat ? { replayHumanChatMessageId: message.id } : {}),
-        ...(message.automationKind ? { automationKind: message.automationKind, ...(message.automationRef ? { automationRef: message.automationRef } : {}), ...(message.automationReference ? { automationReference: message.automationReference } : {}) } : {}),
+        ...this.replayAutomation(message),
         ...(message.phoneInput ? { phone: { origin: forwardPhoneOrigin(message.phoneInput, "forward"), key: `delivery-resend:${message.id}` } } : {}),
       }).message : null;
       if (replacement) {
@@ -4493,16 +4493,26 @@ export class CoreStore {
     return received !== null && this.now() - received < 120_000 || runtime != null && runtime.state !== "stopped" && this.humanTurnActive(beeId, runtime.generation) || this.unansweredHumanOpen(beeId);
   }
 
+  private replayAutomation(message: MessageRow) {
+    if (!message.automationKind || automationDeliveryClass(message.automationKind) === "bypass") return {};
+    return {automationKind:message.automationKind,...(message.automationRef ? {automationRef:message.automationRef} : {}),...(message.automationReference ? {automationReference:message.automationReference} : {})};
+  }
+
+  mailBatchControl(messageId: number): boolean {
+    return !["mail.send","legacy.unknown"].includes(this.mailOrigin(messageId)) || this.multilineSenderNotice(messageId);
+  }
+
   mailBatchCandidate(messageId: number): boolean {
     const message = this.getMessage(messageId);
-    if (!message || message.deliveredAt !== null || message.humanChat || automationDeliveryClass(message.automationKind) !== "ordinary" || this.getDeliveryConfirmationIntent(messageId)) return false;
+    if (!message || message.deliveredAt !== null || message.humanChat || this.mailBatchControl(messageId) || automationDeliveryClass(message.automationKind) !== "ordinary" || this.getDeliveryConfirmationIntent(messageId)) return false;
     const hold = this.multilineDelivery(messageId);
     return !hold || hold.heldSince === null || hold.fallback?.state === "ready";
   }
 
   mailBatchReleaseReason(beeId: string): MailBatch["releaseReason"] | null {
-    const oldest = this.stmt("SELECT MIN(enqueued_at) AS enqueued_at FROM mailbox WHERE bee_id=? AND delivered_at IS NULL AND human_chat IS NULL AND (automation_kind IS NULL OR automation_kind IN ('obligation-notice','proof-notice')) AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=mailbox.id) AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id=mailbox.id AND held.held_since IS NOT NULL AND COALESCE(json_extract(held.row_json,'$.fallback.state'),'') != 'ready')").get(beeId) as Row;
-    if (oldest.enqueued_at !== null && this.now() - Number(oldest.enqueued_at) > 600_000) return "max-age";
+    const candidates = this.stmt("SELECT id,enqueued_at,mail_batch_id FROM mailbox WHERE bee_id=? AND delivered_at IS NULL AND human_chat IS NULL AND (automation_kind IS NULL OR automation_kind IN ('obligation-notice','proof-notice')) AND (mail_batch_id IS NOT NULL OR (NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=mailbox.id) AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id=mailbox.id AND held.held_since IS NOT NULL AND COALESCE(json_extract(held.row_json,'$.fallback.state'),'') != 'ready'))) ORDER BY enqueued_at,id").all(beeId) as Row[];
+    const oldest = candidates.find(row => row.mail_batch_id != null || !this.mailBatchControl(Number(row.id)));
+    if (oldest && this.now() - Number(oldest.enqueued_at) > 600_000) return "max-age";
     if (this.activeHumanWindow(beeId)) return null;
     return this.humanFirstPolicy(beeId).lastHumanReceivedAt === null ? "idle" : "window-close";
   }
@@ -4530,7 +4540,7 @@ export class CoreStore {
       const releaseReason = this.mailBatchReleaseReason(beeId);
       if (!policy.enabled || releaseReason === null) return null;
       const seed = this.pendingHumanFirstSeedMessageId(beeId), handoff = this.pendingHandoffSeedMessageId(beeId);
-      let eligible = (this.stmt("SELECT message.* FROM mailbox AS message WHERE message.bee_id=? AND message.delivered_at IS NULL AND message.human_chat IS NULL AND (message.automation_kind IS NULL OR message.automation_kind IN ('obligation-notice','proof-notice')) AND message.id != ? AND message.id != ? AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id=message.id AND held.held_since IS NOT NULL AND COALESCE(json_extract(held.row_json,'$.fallback.state'),'') != 'ready') AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=message.id) ORDER BY COALESCE(message.queue_order,message.id),message.id LIMIT 64").all(beeId,seed ?? -1,handoff ?? -1) as Row[]).map(row => this.mapPhoneMessage(row));
+      let eligible = (this.stmt("SELECT message.* FROM mailbox AS message WHERE message.bee_id=? AND message.delivered_at IS NULL AND message.human_chat IS NULL AND (message.automation_kind IS NULL OR message.automation_kind IN ('obligation-notice','proof-notice')) AND message.id != ? AND message.id != ? AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id=message.id AND held.held_since IS NOT NULL AND COALESCE(json_extract(held.row_json,'$.fallback.state'),'') != 'ready') AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=message.id) ORDER BY COALESCE(message.queue_order,message.id),message.id LIMIT 64").all(beeId,seed ?? -1,handoff ?? -1) as Row[]).map(row => this.mapPhoneMessage(row)).filter(message => !this.mailBatchControl(message.id));
       if (!eligible.length) return null;
       const at = this.now();
       let batch: MailBatch = { id: `batch-${beeId}-${eligible[0]!.id}`, beeId, memberIds: eligible.map(message => message.id), cutoff: eligible.at(-1)!.id, policyRevision: policy.updatedAt ?? 0, frozenAt: at, releaseReason, deliveredAt: null, deliveredGeneration: null };
@@ -4570,7 +4580,10 @@ export class CoreStore {
       if (anchorIntent?.wireLine !== null && anchorIntent !== null && (anchorIntent.settlement?.mailBatchId !== batch.id || stableStringify(anchorIntent.settlement.batchMemberIds) !== stableStringify(batch.memberIds))) throw new CoreError("batch confirmation membership differs");
       for (const id of batch.memberIds) {
         const message = this.getMessage(id);
-        if (!message || message.deliveredAt !== null || message.mailBatchId !== batch.id) throw new CoreError("batch membership changed");
+        if (!message || message.deliveredAt !== null || message.mailBatchId !== batch.id) {
+          this.holdDeliveryConfirmation(batch.memberIds[0]!,"unknown");
+          return {applied:false};
+        }
       }
       const at = this.now();
       for (let index = 0; index < batch.memberIds.length; index++) {
@@ -4595,17 +4608,18 @@ export class CoreStore {
       if (this.currentRuntime(beeId)?.generation !== generation) throw new StaleGenerationError("batch resolution generation is stale");
       const anchor = batch.memberIds[0]!;
       const intent = this.getDeliveryConfirmationIntent(anchor);
-      if (!intent || intent.state !== "held") throw new DeliveryNotHeldError("batch resolution requires a held confirmation");
+      if (intent && intent.state !== "held") throw new DeliveryNotHeldError("batch resolution requires an unwritten group or a held confirmation");
       const at = this.now();
       if (action === "drop") {
         for (const id of batch.memberIds) {
           const message = this.getMessage(id);
-          if (!message || message.beeId !== beeId || message.mailBatchId !== batch.id || message.deliveredAt !== null) throw new CoreError("batch membership changed");
+          if (!message) continue;
+          if (message.beeId !== beeId || message.mailBatchId !== batch.id || message.deliveredAt !== null) throw new CoreError("batch membership changed");
           this.removeOwnedMessage(message,"mail.batch.resolve",at);
         }
       } else {
         this.stmt("DELETE FROM delivery_confirmation_intents WHERE message_id=?").run(anchor);
-        this.audit("mail.confirmation_released",beeId,{messageId:anchor,generation:intent.generation,groupResolution:true});
+        this.audit("mail.confirmation_released",beeId,{messageId:anchor,generation:intent?.generation ?? generation,groupResolution:true});
       }
       const resolved = this.putMailBatch({...batch,...(action === "drop" ? {droppedAt:at} : {}),resolution:{action,key,generation,at}});
       if (action === "resend_anyway") this.enqueueWake(beeId);
@@ -4624,7 +4638,7 @@ export class CoreStore {
   private batchingWakeEligible(beeId: string): boolean {
     if (!this.mailBatchingPolicy(beeId).enabled || this.mailBatchReleaseReason(beeId) !== null) return true;
     const seed = this.pendingHumanFirstSeedMessageId(beeId), handoff = this.pendingHandoffSeedMessageId(beeId);
-    return this.undeliveredMessages(beeId).some(message => message.humanChat || message.id === seed || message.id === handoff || automationDeliveryClass(message.automationKind) !== "ordinary");
+    return this.undeliveredMessages(beeId).some(message => message.humanChat || message.id === seed || message.id === handoff || this.mailBatchControl(message.id) || automationDeliveryClass(message.automationKind) !== "ordinary");
   }
 
   humanFirstPolicy(beeId: string): HumanFirstPolicy {
@@ -5042,6 +5056,7 @@ export class CoreStore {
   }
 
   private removeOwnedMessage(message: MessageRow, owner: string, at: number): void {
+    if (message.mailBatchId && owner !== "mail.batch.resolve") throw new CoreError("batch_frozen");
     const intent = this.getDeliveryConfirmationIntent(message.id);
     this.stmt("DELETE FROM mailbox WHERE id = ?").run(message.id);
     this.multilineUnsupportedActive.delete(message.id);
@@ -7965,7 +7980,7 @@ export class CoreStore {
           sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "auth.resume",
           ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
         ...(message!.humanChat ? { replayHumanChatMessageId: message!.id } : {}),
-        ...(message!.automationKind ? { automationKind: message!.automationKind, ...(message!.automationRef ? { automationRef: message!.automationRef } : {}), ...(message!.automationReference ? { automationReference: message!.automationReference } : {}) } : {}),
+        ...this.replayAutomation(message!),
           ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `auth-resume:${row.id}:${message!.id}` } } : {}),
         }))]
         : [this.send(row.beeId, (row.deathRecovery?.claimedAt != null ? "[Hive] Refreshed account material installed; conversation resumed automatically.\n\n" : "") + continueBody, { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })];

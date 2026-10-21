@@ -1,9 +1,11 @@
+import type { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { renderMailBatch } from "../../core/src/mailBatch.ts";
 import { replayAudit } from "../../core/src/audit.ts";
 import { openCoreStore } from "../../core/src/store.ts";
 import type { DeliveryConfirmationPlan, DeliveryConfirmationResult } from "../../harness/src/driver.ts";
@@ -245,4 +247,98 @@ test("a ready file fallback head joins the digest and settles with its immutable
     assert.deepEqual(r.store.listMailBatches()[0]?.memberIds,[a.id,b.id]);
     r.driver.acceptDeliveries=true;r.advance(30000);assert.equal(r.store.getMessage(a.id)?.deliveredGeneration,1);assert.equal(r.store.multilineDelivery(a.id)?.fallback?.state,"delivered");r.replay();
   }finally{r.close();}
+});
+
+
+test("Honeybee receipt notices and action instructions never become digest members",()=>{
+  const r=rig();try {
+    const target=r.store.createBee({name:"recipient",agent:"stub",substrate:"hsr",cwd:r.bee.cwd}).bee;
+    const held=r.store.send(target.id,"held\nmail",{sender:r.bee.id}).message;
+    for(let i=0;i<3;i++)r.store.recordMultilineDeliveryRefusal(held.id,1,"multiline_type_mode");
+    const notice=r.store.undeliveredMessages(r.bee.id)[0]!;
+    assert.equal(r.store.multilineSenderNotice(notice.id),true);
+    const peer=r.peer("ordinary after receipt");r.core.step();
+    assert.deepEqual(r.driver.deliveredIds,[notice.id]);assert.equal(r.driver.deliveredBodies[0],notice.body);
+    assert.equal(r.store.getMessage(peer.id)?.deliveredAt,null);assert.equal(r.store.listMailBatches().length,0);
+    r.start();r.end();assert.deepEqual(r.store.listMailBatches()[0]?.memberIds,[peer.id]);r.start();r.end();
+    const action=r.store.enqueueActions({beeId:r.bee.id,idempotencyKey:"action",requestHash:"action",items:[{kind:"fix",inputs:{instruction:"fix fixture"}}]}).actions[0]!;
+    const dispatch=r.store.dispatchAgentAction(action.id);const later=r.peer("after action");r.core.step();
+    assert.equal(r.driver.deliveredIds.at(-1),dispatch.messageId);assert.equal(r.store.getMessage(dispatch.messageId!)?.mailBatchId,undefined);
+    assert.equal(r.store.getMessage(later.id)?.deliveredAt,null);r.replay();
+  }finally{r.close();}
+});
+
+test("legacy frozen action members cannot be removed by cancel or complete",()=>{
+  for(const operation of ["cancel","complete"] as const){const r=rig();try {
+    const action=r.store.enqueueActions({beeId:r.bee.id,idempotencyKey:"action",requestHash:"action",items:[{kind:"fix",inputs:{instruction:"fix fixture"}}]}).actions[0]!;
+    const dispatch=r.store.dispatchAgentAction(action.id);const peer=r.peer("second member");
+    const classify=r.store.mailBatchControl;r.store.mailBatchControl=()=>false;
+    const batch=r.store.freezeMailBatch(r.bee.id)!;r.store.mailBatchControl=classify;assert.deepEqual(batch.memberIds,[dispatch.messageId,peer.id]);
+    assert.throws(()=>operation==="cancel"?r.store.cancelAction(action.id):r.store.completeAction(action.id),/batch_frozen/);
+    assert.equal(r.store.getAction(action.id)?.status,"running");assert.ok(r.store.getMessage(dispatch.messageId!));assert.ok(r.store.getMessage(peer.id));
+    r.store.resolveMailBatch(r.bee.id,batch.id,1,"drop","drop");
+    assert.equal(operation==="cancel"?r.store.cancelAction(action.id).applied:r.store.completeAction(action.id).applied,true);
+  }finally{r.close();}}
+});
+
+test("unwritten whole groups can be retried or dropped without a confirmation intent",()=>{
+  const r=rig();try {
+    const peer=r.peer("unwritten");const batch=r.store.freezeMailBatch(r.bee.id)!;
+    const retry=r.store.resolveMailBatch(r.bee.id,batch.id,1,"resend_anyway","retry");assert.deepEqual(retry.memberIds,[peer.id]);
+    assert.deepEqual(r.store.resolveMailBatch(r.bee.id,batch.id,1,"resend_anyway","retry"),retry);
+    const dropped=r.store.resolveMailBatch(r.bee.id,batch.id,1,"drop","drop");assert.ok(dropped.droppedAt!==undefined);
+    r.store.setMailBatchingPolicy(r.bee.id,false);r.replay();
+  }finally{r.close();}
+});
+
+test("a frozen unwritten group still reaches max age after a renewed human admission",()=>{
+  const r=rig();try {
+    const peer=r.peer("old frozen");const batch=r.store.freezeMailBatch(r.bee.id)!;
+    r.human();r.core.step();r.start();r.end();r.driver.acceptDeliveries=false;r.advance(599999);r.human("new human");r.driver.acceptDeliveries=true;r.core.step();r.start();r.end();
+    assert.equal(r.store.getMessage(peer.id)?.deliveredAt,null);r.advance(2);
+    assert.equal(r.store.listMailBatches()[0]?.id,batch.id);assert.equal(r.store.listMailBatches()[0]?.releaseReason,"max-age");assert.notEqual(r.store.getMessage(peer.id)?.deliveredAt,null);r.replay();
+  }finally{r.close();}
+});
+
+test("reorder prefixes share the digest byte budget",()=>{
+  const r=rig();try {
+    const held=r.peer("held\nmail");for(let i=0;i<3;i++)r.store.recordMultilineDeliveryRefusal(held.id,1,"multiline_type_mode");
+    const id=held.id+1;
+    const predicted={...held,id,sender:"bee-fixture",body:""};
+    const template={id:`batch-${r.bee.id}-${id}`,beeId:r.bee.id,memberIds:[id],cutoff:id,policyRevision:1000,frozenAt:1000,releaseReason:"idle" as const,deliveredAt:null,deliveredGeneration:null};
+    const overhead=Buffer.byteLength(renderMailBatch(template,[predicted])!);
+    const peer=r.peer("x".repeat(32767-overhead));r.core.step();const wire=r.driver.deliveredBodies[0]!;
+    const batch=r.store.listMailBatches()[0]!;assert.equal(Buffer.byteLength(renderMailBatch(batch,[r.store.getMessage(peer.id)!])!),32767);assert.match(wire,/bodyRef/);
+    assert.match(wire,/delivery_unsupported_multiline/);assert.match(wire,/Background digest/);assert.ok(Buffer.byteLength(wire)<=32768);r.replay();
+  }finally{r.close();}
+});
+
+
+test("internal resend strips privileged reference snapshots and preserves ordinary and control kinds",()=>{
+  const r=rig();try {
+    for(const kind of ["blocking_decision","actionable_warning","obligation-notice","context-notice"] as const){
+      const reference={version:1 as const,workspaceId:"fixture",beeId:r.bee.id,kind:"proof" as const,id:kind,status:"open" as const};
+      const original=r.store.send(r.bee.id,kind,{automationKind:kind,automationRef:`proof:${kind}`,automationReference:reference}).message;
+      r.store.prepareUnknownDeliveryConfirmationIntent({beeId:r.bee.id,messageId:original.id,generation:1},"host_auth_failed");
+      const resolved=r.store.resolveDeliveryConfirmation({beeId:r.bee.id,messageId:original.id,generation:1,action:"resend_anyway",idempotencyKey:kind});
+      const replay=r.store.getMessage(resolved.replacementMessageId!)!;
+      if(kind==="blocking_decision"||kind==="actionable_warning"){
+        assert.equal(replay.automationKind,undefined);assert.equal(replay.automationRef,undefined);assert.equal(replay.automationReference,undefined);
+      }else{assert.equal(replay.automationKind,kind);assert.deepEqual(replay.automationReference,reference);}
+    }
+    r.replay();
+  }finally{r.close();}
+});
+
+
+test("a legacy group missing a member is recoverable and never stops another bee",()=>{
+  for(const missingAnchor of [false,true]){const r=rig();try {
+    const a=r.peer("a"),b=r.peer("b");const batch=r.store.freezeMailBatch(r.bee.id)!;
+    const db=(r.store as unknown as {db:DatabaseSync}).db;db.prepare("DELETE FROM mailbox WHERE id=?").run(missingAnchor?a.id:b.id);
+    assert.deepEqual(r.store.markMailBatchDelivered(batch.id,1),{applied:false});
+    const other=r.store.createBee({name:"other",agent:"stub",substrate:"hsr",cwd:r.bee.cwd}).bee;r.store.enqueueCommand("spawn",other.id);for(let i=0;i<4;i++)r.core.step();
+    const next=r.store.send(other.id,"unrelated next bee").message;r.core.step();assert.notEqual(r.store.getMessage(next.id)?.deliveredAt,null);
+    r.store.resolveMailBatch(r.bee.id,batch.id,1,"drop","recover");assert.ok(r.store.listMailBatches(r.bee.id)[0]?.droppedAt!==undefined);
+    const later=r.peer("after recovery");r.core.step();assert.notEqual(r.store.getMessage(later.id)?.deliveredAt,null);
+  }finally{r.close();}}
 });

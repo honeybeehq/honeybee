@@ -3166,7 +3166,7 @@ async function cmdMailBatch(ctx: CliContext, parsed: Parsed): Promise<number> {
     const list = await c.request<ListResult>("list");
     const beeId = resolveBeeIn(list.views,needle);
     return c.request<{body:string}>("mail.batch.read",{beeId,batchId,messageId,offset,limit,field});
-  }, store => store.readMailBatch(resolveBeeIn(store.list(null),needle),batchId,messageId,offset,limit,field));
+  }, () => { throw new Error("mail.batch.read requires the registered Apiary authority or its attested owning-bee proxy"); });
   emit(ctx,[result.body],result,stale);
   return 0;
 }
