@@ -26,6 +26,11 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
     assert.equal(spoken.bee!.lastTurnTrigger!.endedQuiet, false);
     assert.equal(spoken.bee!.lastHumanOutputAt, spoken.bee!.lastOutputAt);
     console.log("LAB root reply + quiet sidechains: endedQuiet=false, human cursor advances");
+    const content = await ended((await send("@content-quiet")).messageId);
+    assert.equal(content.bee!.lastTurnTrigger!.endedQuiet, false);
+    assert.equal(content.bee!.lastHumanOutputAt, content.bee!.lastOutputAt);
+    assert.ok(content.bee!.lastHumanOutputAt! > spoken.bee!.lastHumanOutputAt!);
+    console.log("LAB visible text + trailing token: endedQuiet=false, human cursor advances");
     const failed = await ended((await send("@quiet-error")).messageId);
     assert.equal(failed.bee!.lastTurnTrigger!.endedQuiet, undefined);
     console.log("LAB quiet then native error: endedQuiet absent");
@@ -45,7 +50,7 @@ test("quiet facts through a throwaway daemon: root/child isolation, failure, int
       const journalPath = join(rig.dir, "runners", `${beeId}.1.observations.jsonl`);
       let journal: string;
       try { journal = readFileSync(journalPath, "utf8"); } catch { return null; }
-      const messageAt = journal.lastIndexOf("restart ready <quiet/>");
+      const messageAt = journal.lastIndexOf("<quiet/>\u{E0100}");
       if (messageAt < 0) return null;
       messageEnd = Buffer.byteLength(journal.slice(0, journal.indexOf("\n", messageAt) + 1));
       return value;
@@ -84,13 +89,14 @@ for (const harness of ["grok", "kimi"] as const) {
       const spawned = await client.request<SpawnResult>("spawn", { name: `quiet-${harness}`, agent: harness, substrate: "hsr", cwd: rig.dir });
       const beeId = spawned.beeId;
       await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).runtime?.state === "idle", `${harness} fixture ready`, 20_000);
-      for (const [body, expected] of [["@success", true], ["@error", undefined], ["@cancelled", undefined], ["@refusal", undefined]] as const) {
+      for (const [body, expected] of [["@success", true], ["@content-quiet", false], ["@error", undefined], ["@cancelled", undefined], ["@refusal", undefined]] as const) {
         const sent = await client.request<SendRpcResult>("send", { beeId, body });
         const value = await waitFor(async () => {
           const current = await client.request<ViewResult>("view", { beeId });
           return current.bee?.lastTurnTrigger?.messageId === sent.messageId && current.bee.lastTurnTrigger.endedAt !== null ? current : null;
         }, `${harness} ${body} turn ended`, 20_000);
         assert.equal(value.bee!.lastTurnTrigger!.endedQuiet, expected, `${harness} ${body}`);
+        if (expected === false) assert.equal(value.bee!.lastHumanOutputAt, value.bee!.lastOutputAt);
         console.log(`LAB ${harness} ${body}: endedQuiet=${String(expected)}`);
       }
     } finally {

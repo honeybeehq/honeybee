@@ -18,11 +18,11 @@ createInterface({ input: process.stdin }).on("line", raw => {
     emit({ type: "system", subtype: "init", session_id: sessionId });
   }
   const text = row.message.content[0].text;
-  const root = text.includes("@root-sub") ? "Please review the root reply" : text.includes("@restart") ? "restart ready <quiet/>" : "done <quiet/>";
+  const root = text.includes("@root-sub") ? "Please review the root reply" : text.includes("@content-quiet") ? "done <quiet/>" : text.includes("@restart") ? "<quiet/>\u{E0100}" : "<quiet/>";
   assistant(root);
   if (text.includes("@root-sub")) {
-    assistant("child done <quiet/>", { isSidechain: true });
-    assistant("other child done <quiet/>", { parent_tool_use_id: "child-tool" });
+    assistant("<quiet/>", { isSidechain: true });
+    assistant("<quiet/>", { parent_tool_use_id: "child-tool" });
   }
   const finish = () => emit({ type: "result", subtype: text.includes("@quiet-error") ? "error_during_execution" : "success", is_error: text.includes("@quiet-error"), result: text.includes("@quiet-error") ? "fixture failure" : root, session_id: sessionId });
   if (text.includes("@restart") || text.includes("@interrupt")) timer = setTimeout(finish, 5000);
