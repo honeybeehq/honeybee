@@ -244,6 +244,14 @@ export async function verifyRepackedDist(distDir: string, expectedBaseHash: stri
   if (identity.sourceRevision !== record.sourceHead) {
     throw new Error(`repack sourceHead ${record.sourceHead.slice(0, 12)} is not the build's ${String(identity.sourceRevision).slice(0, 12)}`);
   }
+  // Reject symlinked ancestors before reading any recorded addition. The tree
+  // digest skips symlinks, so following one here would prove different bytes.
+  for (const relative of ["v2", "v2/peercred"]) {
+    const stat = await lstat(join(distDir, relative)).catch(() => null);
+    if (!stat?.isDirectory()) throw new Error(`repacked dist requires a real directory at ${relative}`);
+  }
+  const links = await symlinksUnder(join(distDir, "v2", "peercred"));
+  if (links.length > 0) throw new Error(`repacked dist holds a symlink under v2/peercred: ${links[0]}`);
   for (const file of record.addedFiles) {
     const path = join(distDir, ...file.path.split("/"));
     const stat = await lstat(path).catch(() => null);
@@ -251,8 +259,6 @@ export async function verifyRepackedDist(distDir: string, expectedBaseHash: stri
     const sha256 = createHash("sha256").update(await readFile(path)).digest("hex");
     if (sha256 !== file.sha256) throw new Error(`repack added file ${file.path} does not match its sha256`);
   }
-  const links = await symlinksUnder(join(distDir, "v2", "peercred"));
-  if (links.length > 0) throw new Error(`repacked dist holds a symlink under v2/peercred: ${links[0]}`);
   const repackHash = await hashDirectoryTree(distDir);
   if (repackHash !== record.repackArtifactHash) {
     throw new Error(`repacked tree ${repackHash.slice(0, 12)} is not the recorded ${record.repackArtifactHash.slice(0, 12)}`);

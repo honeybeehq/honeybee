@@ -6,7 +6,7 @@ import { parseNpmPackResult } from "../src/npmPack.js";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmod, symlink } from "node:fs/promises";
+import { chmod, rename, symlink } from "node:fs/promises";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -199,6 +199,12 @@ test("a repack that changed anything beyond its recorded additions never settles
       await writeFile(join(dist, REPACK_RECORD_FILENAME), JSON.stringify(record));
     }, /outside v2\/peercred\//],
     ["symlink in the bridge dir", async (dist) => symlink("../../../cli.js", join(dist, "v2", "peercred", TARGET, "link.js")), /symlink under v2\/peercred/],
+    ["symlink at the peercred root", async (dist, record) => {
+      await rename(join(dist, "v2", "peercred"), join(dist, "bridge-outside"));
+      await symlink("../bridge-outside", join(dist, "v2", "peercred"));
+      record.repackArtifactHash = await hashDirectoryTree(dist);
+      await writeFile(join(dist, REPACK_RECORD_FILENAME), JSON.stringify(record));
+    }, /requires a real directory at v2\/peercred/],
     ["bridge for another target", async (dist, record) => {
       record.peercred.target = "plan9-mips";
       await writeFile(join(dist, REPACK_RECORD_FILENAME), JSON.stringify(record));
