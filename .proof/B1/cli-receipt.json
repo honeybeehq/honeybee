@@ -1,0 +1,103 @@
+{
+  "passed": true,
+  "fixtureRevision": "b2a48dfd68ccdb88ca25b01b595c999c43b59d31",
+  "implementationRevision": "d32e5b96cc13d516887b10cfa3bc7a8ff8145584",
+  "runs": [
+    {
+      "cli": "claude",
+      "mode": "idle",
+      "passed": true,
+      "binary": {
+        "binary": "/home/trmd/.local/share/apiary-satellite/bin/claude",
+        "version": "2.1.305 (Claude Code)",
+        "sha256": "86cb722ab68348877dba7971e4d0c659919e05e6228c05e006e83da320e656ef",
+        "node": "v24.18.0"
+      },
+      "turns": 4,
+      "members": 12,
+      "scope": "stock native CLI + local fixture provider + real CoreStore/DaemonCore + FakeDriver bridge; store-level classification only; not HSR or RPC end-to-end; authority gates, frozen/uncertain confirmation restarts, paging/bounds, deferred stopped wake and cancel/expedite unqualified; restarts gracefully reopen store and retain FakeDriver/native process; not real data or model ack latency",
+      "events": ".proof/B1/cli-receipts/claude-idle.events.jsonl",
+      "summary": ".proof/B1/cli-receipts/claude-idle.summary.json"
+    },
+    {
+      "cli": "claude",
+      "mode": "restart",
+      "passed": true,
+      "binary": {
+        "binary": "/home/trmd/.local/share/apiary-satellite/bin/claude",
+        "version": "2.1.305 (Claude Code)",
+        "sha256": "86cb722ab68348877dba7971e4d0c659919e05e6228c05e006e83da320e656ef",
+        "node": "v24.18.0"
+      },
+      "turns": 4,
+      "members": 12,
+      "scope": "stock native CLI + local fixture provider + real CoreStore/DaemonCore + FakeDriver bridge; store-level classification only; not HSR or RPC end-to-end; authority gates, frozen/uncertain confirmation restarts, paging/bounds, deferred stopped wake and cancel/expedite unqualified; restarts gracefully reopen store and retain FakeDriver/native process; not real data or model ack latency",
+      "events": ".proof/B1/cli-receipts/claude-restart.events.jsonl",
+      "summary": ".proof/B1/cli-receipts/claude-restart.summary.json"
+    },
+    {
+      "cli": "claude",
+      "mode": "human-active",
+      "passed": true,
+      "binary": {
+        "binary": "/home/trmd/.local/share/apiary-satellite/bin/claude",
+        "version": "2.1.305 (Claude Code)",
+        "sha256": "86cb722ab68348877dba7971e4d0c659919e05e6228c05e006e83da320e656ef",
+        "node": "v24.18.0"
+      },
+      "turns": 4,
+      "members": 12,
+      "scope": "stock native CLI + local fixture provider + real CoreStore/DaemonCore + FakeDriver bridge; store-level classification only; not HSR or RPC end-to-end; authority gates, frozen/uncertain confirmation restarts, paging/bounds, deferred stopped wake and cancel/expedite unqualified; restarts gracefully reopen store and retain FakeDriver/native process; not real data or model ack latency",
+      "events": ".proof/B1/cli-receipts/claude-human-active.events.jsonl",
+      "summary": ".proof/B1/cli-receipts/claude-human-active.summary.json"
+    },
+    {
+      "cli": "codex",
+      "mode": "idle",
+      "passed": true,
+      "binary": {
+        "binary": "/home/trmd/.local/share/apiary-satellite/bin/codex",
+        "version": "codex-cli 0.163.0",
+        "sha256": "61b0194f3bb6534439c8d26a3ed57d0805f84b884588b761795323eeb92fcf70",
+        "node": "v24.18.0"
+      },
+      "turns": 4,
+      "members": 12,
+      "scope": "stock native CLI + local fixture provider + real CoreStore/DaemonCore + FakeDriver bridge; store-level classification only; not HSR or RPC end-to-end; authority gates, frozen/uncertain confirmation restarts, paging/bounds, deferred stopped wake and cancel/expedite unqualified; restarts gracefully reopen store and retain FakeDriver/native process; not real data or model ack latency",
+      "events": ".proof/B1/cli-receipts/codex-idle.events.jsonl",
+      "summary": ".proof/B1/cli-receipts/codex-idle.summary.json"
+    },
+    {
+      "cli": "codex",
+      "mode": "restart",
+      "passed": true,
+      "binary": {
+        "binary": "/home/trmd/.local/share/apiary-satellite/bin/codex",
+        "version": "codex-cli 0.163.0",
+        "sha256": "61b0194f3bb6534439c8d26a3ed57d0805f84b884588b761795323eeb92fcf70",
+        "node": "v24.18.0"
+      },
+      "turns": 4,
+      "members": 12,
+      "scope": "stock native CLI + local fixture provider + real CoreStore/DaemonCore + FakeDriver bridge; store-level classification only; not HSR or RPC end-to-end; authority gates, frozen/uncertain confirmation restarts, paging/bounds, deferred stopped wake and cancel/expedite unqualified; restarts gracefully reopen store and retain FakeDriver/native process; not real data or model ack latency",
+      "events": ".proof/B1/cli-receipts/codex-restart.events.jsonl",
+      "summary": ".proof/B1/cli-receipts/codex-restart.summary.json"
+    },
+    {
+      "cli": "codex",
+      "mode": "human-active",
+      "passed": true,
+      "binary": {
+        "binary": "/home/trmd/.local/share/apiary-satellite/bin/codex",
+        "version": "codex-cli 0.163.0",
+        "sha256": "61b0194f3bb6534439c8d26a3ed57d0805f84b884588b761795323eeb92fcf70",
+        "node": "v24.18.0"
+      },
+      "turns": 4,
+      "members": 12,
+      "scope": "stock native CLI + local fixture provider + real CoreStore/DaemonCore + FakeDriver bridge; store-level classification only; not HSR or RPC end-to-end; authority gates, frozen/uncertain confirmation restarts, paging/bounds, deferred stopped wake and cancel/expedite unqualified; restarts gracefully reopen store and retain FakeDriver/native process; not real data or model ack latency",
+      "events": ".proof/B1/cli-receipts/codex-human-active.events.jsonl",
+      "summary": ".proof/B1/cli-receipts/codex-human-active.summary.json"
+    }
+  ]
+}
