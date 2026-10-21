@@ -137,3 +137,15 @@ if (runnerHostBytes > runnerHostMaxBytes) {
 process.stdout.write(
   `v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, and dist/v2/runner-host.js (${runnerHostBytes} bytes)\n`,
 );
+
+await build({
+  absWorkingDir: root,
+  entryPoints: [join(root, "v2", "experimental", "champion-harness", "bridge", "main.ts")],
+  outfile: join(outDir, "champion-bridge.js"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  external: ["@anthropic-ai/claude-agent-sdk"],
+  logLevel: "silent",
+});
