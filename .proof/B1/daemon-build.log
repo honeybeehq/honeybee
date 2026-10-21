@@ -1,0 +1,22 @@
+npm warn using --force Recommended protections disabled.
+npm warn EBADDEVENGINES The developer of this package has specified the following through devEngines
+npm warn EBADDEVENGINES Invalid devEngines.packageManager
+npm warn EBADDEVENGINES Invalid semver version ">=11 <12" does not match "12.0.1" for "packageManager"
+npm warn EBADDEVENGINES {
+npm warn EBADDEVENGINES   current: { name: 'npm', version: '12.0.1' },
+npm warn EBADDEVENGINES   required: { name: 'npm', version: '>=11 <12', onFail: 'error' }
+npm warn EBADDEVENGINES }
+npm notice run honeybee@0.0.1 build
+npm notice run tsc -p tsconfig.json && node scripts/build-runner-host-artifact.mjs && node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs && node scripts/build-cli-entry.mjs
+runner-host artifact 627f7e4c81d71227c0cf3ad993dabc06bd6e6cfc144691a26a4ccde367dbe95d (1630216 bytes) staged under /home/trmd/.hive/v2/cells/cli-champions-b1-rpc-e59746daf9ec/github-com-honeybeehq-honeybee-a9015b303498-space-e59746daf9ec/dist/hsr/artifacts
+peer credential bridge linux-x64 (145 C lines)
+{"passed":true,"target":"linux-x64","node":"v24.18.0","uid":1001,"pid":2430206,"processBirth":"linux:2049032946","pidfd":true}
+v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, and dist/v2/runner-host.js (21444 bytes)
+dependency-light cli entry staged at dist/cli.js
+npm notice run honeybee@0.0.1 postbuild
+npm notice run chmod +x dist/cli.js dist/cli-x.js
+npm notice
+npm notice New minor version of npm available! 12.0.1 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice

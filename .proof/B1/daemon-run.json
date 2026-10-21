@@ -1,0 +1,570 @@
+{
+  "scope": "disposable account-free daemon and stub HSR; registered RPC plus distinct PID refusal; real clock; idleWindowMs=0; restart before freeze; context/relay refusal and transaction atomicity remain unit-test scope; no live data",
+  "sourceRevision": "184878fc34a74b364f57ad18c2926b9a086e440c",
+  "sourceStatusSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "benchmarkSha256": "ff6081d9422b69eea81cf4d4b61173b1761d7655d45ff7a02d4f9360de735c1e",
+  "passed": true,
+  "log": [
+    {
+      "phase": "distinct unregistered PID refused",
+      "at": 1792580891973,
+      "data": {
+        "pid": 2457087,
+        "refused": [
+          "automation_unauthorized",
+          "automation_unauthorized"
+        ]
+      }
+    },
+    {
+      "phase": "tool-held human and 12 now peers and reprompt",
+      "at": 1792580892204,
+      "data": {
+        "original": 1,
+        "human": 2,
+        "peers": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14
+        ],
+        "reprompt": 15,
+        "rows": [
+          {
+            "id": 1,
+            "deliveredAt": 1792580891803,
+            "deliveredGeneration": 1
+          },
+          {
+            "id": 2,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 3,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 4,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 5,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 6,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 7,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 8,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 9,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 10,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 11,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 12,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 13,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 14,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 15,
+            "automationKind": "tell-reprompt",
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          }
+        ]
+      }
+    },
+    {
+      "phase": "human runs alone",
+      "at": 1792580892316,
+      "data": {
+        "rows": [
+          {
+            "id": 1,
+            "deliveredAt": 1792580891803,
+            "deliveredGeneration": 1
+          },
+          {
+            "id": 2,
+            "deliveredAt": 1792580892265,
+            "deliveredGeneration": 1
+          },
+          {
+            "id": 3,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 4,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 5,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 6,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 7,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 8,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 9,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 10,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 11,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 12,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 13,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 14,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 15,
+            "automationKind": "tell-reprompt",
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          }
+        ]
+      }
+    },
+    {
+      "phase": "reprompt runs alone after human",
+      "at": 1792580892443,
+      "data": {
+        "rows": [
+          {
+            "id": 1,
+            "deliveredAt": 1792580891803,
+            "deliveredGeneration": 1
+          },
+          {
+            "id": 2,
+            "deliveredAt": 1792580892265,
+            "deliveredGeneration": 1
+          },
+          {
+            "id": 3,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 4,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 5,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 6,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 7,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 8,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 9,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 10,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 11,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 12,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 13,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 14,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 15,
+            "automationKind": "tell-reprompt",
+            "deliveredAt": 1792580892384,
+            "deliveredGeneration": 1
+          }
+        ]
+      }
+    },
+    {
+      "phase": "fixture daemon killed before freeze",
+      "at": 1792580892555,
+      "data": {
+        "signal": "SIGKILL"
+      }
+    },
+    {
+      "phase": "restart before freeze retains generation process and held peers",
+      "at": 1792580893154,
+      "data": {
+        "generation": 1,
+        "pid": 2457023,
+        "rows": [
+          {
+            "id": 1,
+            "deliveredAt": 1792580891803,
+            "deliveredGeneration": 1
+          },
+          {
+            "id": 2,
+            "deliveredAt": 1792580892265,
+            "deliveredGeneration": 1
+          },
+          {
+            "id": 3,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 4,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 5,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 6,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 7,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 8,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 9,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 10,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 11,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 12,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 13,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 14,
+            "deliveredAt": null,
+            "deliveredGeneration": null
+          },
+          {
+            "id": 15,
+            "automationKind": "tell-reprompt",
+            "deliveredAt": 1792580892384,
+            "deliveredGeneration": 1
+          }
+        ]
+      }
+    },
+    {
+      "phase": "human window still holds",
+      "at": 1792580893166,
+      "data": {
+        "ageMs": 1328
+      }
+    },
+    {
+      "phase": "human window still holds",
+      "at": 1792580918191,
+      "data": {
+        "ageMs": 26353
+      }
+    },
+    {
+      "phase": "human window still holds",
+      "at": 1792580943206,
+      "data": {
+        "ageMs": 51368
+      }
+    },
+    {
+      "phase": "human window still holds",
+      "at": 1792580968229,
+      "data": {
+        "ageMs": 76391
+      }
+    },
+    {
+      "phase": "human window still holds",
+      "at": 1792580993246,
+      "data": {
+        "ageMs": 101408
+      }
+    },
+    {
+      "phase": "one exact 12-member digest settled with full body paging",
+      "at": 1792581012358,
+      "data": {
+        "batch": {
+          "id": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3",
+          "beeId": "dbe36179-6b14-4bdf-82f6-b05ca931f51f",
+          "memberIds": [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "cutoff": 14,
+          "policyRevision": 1792580891835,
+          "frozenAt": 1792581011843,
+          "deliveredAt": 1792581011853,
+          "deliveredGeneration": 1
+        },
+        "rows": [
+          {
+            "id": 1,
+            "deliveredAt": 1792580891803,
+            "deliveredGeneration": 1
+          },
+          {
+            "id": 2,
+            "deliveredAt": 1792580892265,
+            "deliveredGeneration": 1
+          },
+          {
+            "id": 3,
+            "deliveredAt": 1792581011851,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 4,
+            "deliveredAt": 1792581011852,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 5,
+            "deliveredAt": 1792581011852,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 6,
+            "deliveredAt": 1792581011852,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 7,
+            "deliveredAt": 1792581011852,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 8,
+            "deliveredAt": 1792581011852,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 9,
+            "deliveredAt": 1792581011852,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 10,
+            "deliveredAt": 1792581011852,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 11,
+            "deliveredAt": 1792581011853,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 12,
+            "deliveredAt": 1792581011853,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 13,
+            "deliveredAt": 1792581011853,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 14,
+            "deliveredAt": 1792581011853,
+            "deliveredGeneration": 1,
+            "mailBatchId": "batch-dbe36179-6b14-4bdf-82f6-b05ca931f51f-3"
+          },
+          {
+            "id": 15,
+            "automationKind": "tell-reprompt",
+            "deliveredAt": 1792580892384,
+            "deliveredGeneration": 1
+          }
+        ],
+        "pages": [
+          {
+            "offset": 0,
+            "nextOffset": 16380,
+            "totalBytes": 40016,
+            "bytes": 16380
+          },
+          {
+            "offset": 16380,
+            "nextOffset": 32760,
+            "totalBytes": 40016,
+            "bytes": 16380
+          },
+          {
+            "offset": 32760,
+            "nextOffset": null,
+            "totalBytes": 40016,
+            "bytes": 7256
+          }
+        ],
+        "fullBodySha256": "201df6e2cfd6591fb467e08f8ce14a8776dd5a21b2809cd2e450a6b8bd9748ba",
+        "sessionLogBytes": 13026,
+        "digestWireCount": 1,
+        "digestWireBytes": 5384,
+        "wireMessageIds": [
+          1,
+          2,
+          15,
+          3
+        ]
+      }
+    }
+  ],
+  "daemonOutput": [
+    "hived v2 listening on /proc/2456887/cwd/.proof/B1/daemon-tmp/hb-v2-daemon-alaqoy/hived.sock (store /proc/2456887/cwd/.proof/B1/daemon-tmp/hb-v2-daemon-alaqoy/core.sqlite3)\n",
+    "hived v2 listening on /proc/2456887/cwd/.proof/B1/daemon-tmp/hb-v2-daemon-alaqoy/hived.sock (store /proc/2456887/cwd/.proof/B1/daemon-tmp/hb-v2-daemon-alaqoy/core.sqlite3)\n"
+  ]
+}
