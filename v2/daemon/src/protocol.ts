@@ -280,6 +280,7 @@ export const RPC_ERROR_CODES = [
   "human_first_unsupported",
   "automation_unauthorized",
   "automation_invalid",
+  "batch_frozen",
   "mail_batching_unsupported",
   "rpc_execution_stale", "rpc_execution_busy", "rpc_execution_history_unknown", "rpc_execution_fence_unsupported",
   "rpc_effect_fenced", "rpc_effect_history_unknown", "rpc_effect_resolve_unsupported",
@@ -1758,6 +1759,8 @@ export interface HealthResult {
 export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };
 
 export interface SnapshotResult {
+  mailBatchingPolicies?: import("../../core/src/types.ts").MailBatchingPolicy[];
+  mailBatches?: import("../../core/src/types.ts").MailBatch[];
   humanFirstPolicies?: import("../../core/src/types.ts").HumanFirstPolicy[];
   threadOperations: ThreadOperationView[];
   seq: number;
