@@ -247,13 +247,13 @@ test("tmux quiet facts require final evidence and discard late text between hook
     await sleep(80);
     rig.driver.observe();
     const append = (path: string, value: unknown) => appendFileSync(path, JSON.stringify(value) + "\n");
-    append(transcript, { type: "assistant", message: { content: [{ type: "text", text: "intermediate <quiet/>" }] } });
+    append(transcript, { type: "assistant", message: { content: [{ type: "text", text: "<quiet/>" }] } });
     rig.driver.observe();
     append(hooks, { hook_event_name: "Stop" });
     const unproven = rig.driver.observe().find(row => row.kind === "turn_ended")!;
     assert.equal(unproven.endedQuiet, undefined);
-    append(transcript, { type: "assistant", message: { content: [{ type: "text", text: "late <quiet/>" }] } });
-    append(transcript, { type: "result", result: "late <quiet/>" });
+    append(transcript, { type: "assistant", message: { content: [{ type: "text", text: "<quiet/>" }] } });
+    append(transcript, { type: "result", result: "<quiet/>" });
     rig.driver.observe();
     assert.equal(rig.driver.deliver("quiet", 1, 2, "next").accepted, true);
     append(hooks, { event: "turn_ended" });
@@ -263,7 +263,7 @@ test("tmux quiet facts require final evidence and discard late text between hook
     append(hooks, { hook_event_name: "Stop", last_assistant_message: "Please review" });
     assert.equal(rig.driver.observe().find(row => row.kind === "turn_ended")!.endedQuiet, false);
     append(hooks, { hook_event_name: "UserPromptSubmit" });
-    append(hooks, { hook_event_name: "Stop", last_assistant_message: "done <quiet/>\u{E0100}" });
+    append(hooks, { hook_event_name: "Stop", last_assistant_message: "<quiet/>\u{E0100}" });
     assert.equal(rig.driver.observe().find(row => row.kind === "turn_ended")!.endedQuiet, true);
   } finally { rig.cleanup(); }
 });

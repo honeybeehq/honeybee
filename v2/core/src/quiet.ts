@@ -19,9 +19,9 @@ export function quietReply(text: string, token: string = QUIET_REPLY): QuietRepl
     end -= token.length
     cut = end
   }
-  const quiet = cut >= 0
-  const said = quiet ? text.slice(0, cut).trimEnd() : text
-  return { said: said.replace(/[\p{Default_Ignorable_Code_Point}\u2800]/gu, '').trim() === '' ? '' : said, quiet }
+  const said = cut >= 0 ? text.slice(0, cut).trimEnd() : text
+  const empty = said.replace(/[\p{Default_Ignorable_Code_Point}\u2800]/gu, '').trim() === ''
+  return { said: empty ? '' : said, quiet: cut >= 0 && empty }
 }
 
 export function spokenReply(text: string): string | null {
