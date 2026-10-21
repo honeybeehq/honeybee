@@ -1,4 +1,4 @@
-export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutput.ts";
+export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import { honeybeeBuildIdentity, type BuildIdentity } from "../../../src/release/buildIdentity.ts";
 export { UPDATE_RECOVERY_CONTRACT } from "../../../src/updateReservation.ts";
 export type { ReconnectToolsResult, ReconnectToolsReceipt, ReconnectToolsError } from "../../core/src/reconnectTools.ts";
@@ -1755,8 +1755,8 @@ export interface HealthResult {
 export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };
 
 export interface SnapshotResult {
-  tells?: import("../../core/src/humanOutput.ts").BeeTellRow[];
-  reactions?: import("../../core/src/humanOutput.ts").BeeReactionRow[];
+  tells?: import("../../core/src/humanOutputTypes.ts").BeeTellRow[];
+  reactions?: import("../../core/src/humanOutputTypes.ts").BeeReactionRow[];
   threadOperations: ThreadOperationView[];
   seq: number;
   views: ViewResult[];

@@ -1,4 +1,4 @@
-import type { BeeTellRow, BeeReactionRow } from "./humanOutput.ts";
+import type { BeeTellRow, BeeReactionRow } from "./humanOutputTypes.ts";
 import type { ThreadOperationView } from "./threadOperation.ts";
 /**
  * Mirror-shape contract (spec 06 §2.2): the EXACT row shapes apiaryd

@@ -1,4 +1,4 @@
-import type { BeeTellRow, BeeReactionRow } from "./humanOutput.ts";
+import type { BeeTellRow, BeeReactionRow } from "./humanOutputTypes.ts";
 import { publicDeliveryConfirmation } from "./deliveryConfirmation.ts";
 import type { DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { deliveryHold, publicDeliveryFallback, type MultilineDeliveryRow } from "./multilineDelivery.ts";
