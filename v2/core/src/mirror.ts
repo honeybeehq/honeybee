@@ -18,6 +18,7 @@ import { LOGIN_FLOW_KEYS, type LoginFlowRow } from "./loginFlow.ts";
 
 /** One bee as apiaryd stores it: B8 view verbatim + record + current runtime. */
 export interface MirrorBeeRow {
+  externalExecution?: import("./externalExec.ts").ExternalExecutionView;
   view: BeeView;
   /** null only for a view of a deleted/never-existed bee (never in snapshots). */
   bee: BeeRow | null;
@@ -606,3 +607,5 @@ export const MIRROR_CONFIRMATION_OPTIONAL_MESSAGE_KEYS = ["deliveryConfirmation"
 export const MIRROR_CONFIRMATION_OPTIONAL_HISTORY_KEYS = ["deliveryConfirmation"] as const;
 export const MIRROR_REPLACEMENT_OPTIONAL_MESSAGE_KEYS = ["queueOrder", "replacesMessageId"] as const;
 export const MIRROR_REPLACEMENT_OPTIONAL_HISTORY_KEYS = ["queueOrder", "replacesMessageId"] as const;
+
+export const MIRROR_EXTERNAL_EXEC_OPTIONAL_KEYS = ["externalExecution"] as const;

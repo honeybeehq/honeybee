@@ -27,6 +27,8 @@ export type { QuotaBoundary } from "../../core/src/quota.ts";
 export type AdapterFlag = "auth_needed" | "resource_blocked" | "spawn_failed";
 
 export type AdapterSignal =
+  | { kind: "external_error" }
+  | { kind: "external_receipt"; receipt: import("../../core/src/externalExec.ts").BridgeReceipt }
   | { kind: "tools_control_result"; requestId: string; error?: string }
   /**
    * The CLI signaled readiness. `sessionId` is the provider session/thread id

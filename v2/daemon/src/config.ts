@@ -1,3 +1,4 @@
+import { externalConfig, type ExternalExecConfig } from "../../core/src/externalExec.ts";
 /**
  * Per-node daemon config (spec 04 behavior 7; Q1 resolution: json).
  *
@@ -295,6 +296,7 @@ export interface NodeConfigFile {
   storePath?: string;
   telemetryPath?: string;
   sessionLogDir?: string;
+  externalExec?: ExternalExecConfig;
   agents?: Record<string, AgentSpecConfig>;
   /** v7 (spec 08). */
   accounts?: AccountsConfig;
@@ -361,6 +363,7 @@ export interface ResolvedNodeConfig {
   storePath: string;
   telemetryPath: string;
   sessionLogDir: string;
+  externalExec?: ExternalExecConfig;
   agents: Record<string, AgentSpecConfig>;
   /** v7 (spec 08): resolved accounts settings (every field defaulted). */
   accounts: Required<Omit<AccountsConfig, "tmuxSocket" | "allocationNodeId" | "allocationOwner">> & {
@@ -1039,6 +1042,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     storePath: str(raw, "storePath", join(dataDir, "core.sqlite3")),
     telemetryPath: str(raw, "telemetryPath", join(dataDir, "telemetry.sqlite3")),
     sessionLogDir: str(raw, "sessionLogDir", join(dataDir, "session-logs")),
+    externalExec: externalConfig(raw.externalExec),
     agents: { ...BUILTIN_AGENTS, ...agentsOf(raw) },
     accounts: accountsOf(raw),
     naming: namingOrDisabled(raw, dataDir),

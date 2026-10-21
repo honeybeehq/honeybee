@@ -192,6 +192,7 @@ const RATE_LIMIT_EXHAUSTED =
   /(?:reached|hit|exceeded)\s+(?:your\s+)?(?:usage|rate)\s+limit|(?:usage|rate)\s+limit\s+(?:reached|hit|exceeded)|quota\s+(?:reached|exceeded)/i;
 
 const AGENT_DRIVERS: Record<string, AgentDriver> = {
+  "external-exec-v1": { kind: "external-exec-v1", defaultsToYolo: false },
   claude: {
     kind: "claude",
     homeEnv: "CLAUDE_CONFIG_DIR",

@@ -1,3 +1,4 @@
+import { EXTERNAL_EXEC_SQL, ExternalExecutions, type ExternalBinding } from "./externalExec.ts";
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
 import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
@@ -339,6 +340,7 @@ export interface CreateBeeInput {
 
 /** One authoritative, internally consistent bee/read-model row for list RPCs. */
 export interface BeeViewRow {
+  externalExecution?: import("./externalExec.ts").ExternalExecutionView;
   bee: BeeRow;
   runtime: RuntimeRow | null;
   view: BeeView;
@@ -1630,6 +1632,7 @@ export class CoreStore {
   private readonly effectLedger: EffectLedger;
   private readonly executionLedger: ExecutionLedger;
   private readonly executionStarts: ExecutionStarts;
+  private readonly externalExecutions: ExternalExecutions;
   private executionKey: string | null = null;
   private readonly db: DatabaseSync;
   private readonly now: () => number;
@@ -1654,6 +1657,7 @@ export class CoreStore {
     this.backoffBaseMs = opts.backoffBaseMs ?? 30_000;
     this.maxRpcIdempotencyRows = opts.maxRpcIdempotencyRows ?? 10_000;
     this.db = new DatabaseSync(path);
+    this.externalExecutions = new ExternalExecutions(this.db);
     this.effectLedger = new EffectLedger(this.db, this.now);
     this.executionLedger = new ExecutionLedger(this.db, this.now, () => this.effectCoverage(), (kind, beeId, data) => { this.audit(kind, beeId, data); }, claim => this.executionStarts.assertAdvance(claim));
     this.executionStarts = new ExecutionStarts(this.db, claim => this.executionLedger.validateCurrent(claim), (kind,beeId,data) => { this.audit(kind,beeId,data); }, key => this.executionLedger.spawnStarted(key), key => this.executionLedger.spawnUnknown(key));
@@ -2154,6 +2158,7 @@ export class CoreStore {
         if (!previous.lastLocal && previous.highWatermarkMs === 0) this.putAccountObservation(account,{lastLocal:{limits:this.getAccountLimits(account)!,source:null},provenance:null,source:null,highWatermarkMs:0});
       }
     }
+    this.db.exec(EXTERNAL_EXEC_SQL);
     this.db.exec(PHONE_PROVENANCE_SQL);
     this.db.exec(DELIVERY_CONFIRMATION_SQL);
     this.stmt("INSERT OR IGNORE INTO meta(key,value) SELECT 'confirmation_legacy_max_message_id', CAST(COALESCE(MAX(id),0) AS TEXT) FROM mailbox").run();
@@ -5740,6 +5745,36 @@ export class CoreStore {
     };
   }
 
+  externalView(beeId: string) { return this.externalExecutions.view(beeId); }
+  externalBinding(beeId: string): ExternalBinding | null { return this.externalExecutions.get(beeId); }
+  admitExternal(binding: ExternalBinding): void {
+    this.tx(() => {
+      this.externalExecutions.admit(binding);
+      this.audit("external_exec.admitted", binding.beeId, { bridgeId: binding.bridgeId, workspace: binding.workspace, attemptId: binding.dispatch.attemptId });
+    });
+  }
+  externalFailed(beeId: string, generation: number): void {
+    this.tx(() => {
+      if (this.currentRuntime(beeId)?.generation === generation && this.externalExecutions.fail(beeId)) this.audit("external_exec.uncertain", beeId, { reason: "reconcile_required" });
+    });
+  }
+  claimExternalDispatch(beeId: string) {
+    return this.tx(() => {
+      const operation = this.externalExecutions.claimDispatch(beeId);
+      if (operation === "start") this.audit("external_exec.dispatched", beeId, { operation });
+      return operation;
+    });
+  }
+  settleExternal(beeId: string, generation: number, receipt: unknown): void {
+    this.tx(() => {
+      if (this.currentRuntime(beeId)?.generation !== generation) return;
+      const before = this.externalExecutions.view(beeId);
+      const settled = this.externalExecutions.settle(beeId, receipt);
+      if (before?.status !== "pending") return;
+      this.audit("external_exec.terminal", beeId, { attemptId: settled.attemptId, status: settled.status });
+    });
+  }
+
   executionOrigin(beeId: string) { return this.executionStarts.bee(beeId); }
   existingExecutionStart(beeId: string, generation: number) { return this.executionStarts.existing(beeId,generation); }
   executionStartHost(start: ExecutionStart) { return this.executionStarts.host(start); }
@@ -6242,6 +6277,7 @@ export class CoreStore {
       const move = latestMoveByBee.get(bee.id) ?? null;
       const handoff = latestHandoffByBee.get(bee.id) ?? null;
       return {
+        ...(bee.agent === "external-exec-v1" ? { externalExecution: this.externalExecutions.view(bee.id)! } : {}),
         bee,
         runtime,
         view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? [], { deliveryConfirmations: confirmationsByBee.get(bee.id), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveriesByBee.get(bee.id) ?? []) }),

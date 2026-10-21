@@ -1,3 +1,7 @@
+import { constants, fstatSync } from "node:fs";
+import { createHmac } from "node:crypto";
+import { localTrustMessage, type LocalTrustChallenge } from "../../daemon/src/localRpcTrust.ts";
+import { dispatchValue } from "../../core/src/externalExec.ts";
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
@@ -226,6 +230,8 @@ const LIST_FLAGS = new Set(["--add", "--remove", "--option", "--ref", "--env", "
 
 const VALUE_FLAGS = new Set([
   "--command-id",
+  "--bridge",
+  "--workspace",
   "--agent",
   "--cwd",
   "--title",
@@ -816,6 +822,31 @@ function envFrom(entries: readonly string[]): Record<string, string> {
     env[entry.slice(0, equals)] = entry.slice(equals + 1);
   }
   return env;
+}
+
+async function cmdExternalExec(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const name = parsed.positional[1], file = parsed.flags.get("--file"), workspace = parsed.flags.get("--workspace"), bridgeId = parsed.flags.get("--bridge");
+  if (!name || typeof file !== "string" || typeof workspace !== "string" || typeof bridgeId !== "string") throw new Error("usage: hive external-exec <name> --bridge <registered-id> --workspace <id> --file <private-dispatch> --idempotency-key <key>");
+  if (!ctx.cfg.rpcLocalTrust.requireObservationCaller) throw new Error("External execution requires owner-configured local management trust");
+  const path = resolve(file), fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  let dispatch;
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.uid !== process.getuid!() || (stat.mode & 0o077) !== 0 || stat.size > 2 * 1024 * 1024) throw new Error("Dispatch must be a private bounded regular file");
+    dispatch = dispatchValue(JSON.parse(readFileSync(fd, "utf8")));
+  } finally { closeSync(fd); }
+  const result = await withClient(ctx, async client => {
+    if (!client.capabilities.includes("external-exec.v1")) throw new Error("external-exec.v1 is not enabled by this owner");
+    const challenge = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge");
+    const key = readFileSync(ctx.cfg.rpcLocalTrust.registrationKeyFile);
+    try {
+      const token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex");
+      await client.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge.challengeId, token });
+    } finally { key.fill(0); }
+    return await client.request<SpawnResult>("spawn", { name, agent: "external-exec-v1", bridgeId, dispatch, idempotencyKey: parsed.flags.get("--idempotency-key") }, 10_000, { externalExecWorkspace: workspace });
+  });
+  emit(ctx, [confirm("ok", "spawned external execution", result.beeId)], result, false);
+  return 0;
 }
 
 async function cmdSpawn(ctx: CliContext, parsed: Parsed): Promise<number> {
@@ -4168,7 +4199,7 @@ async function followFileLines(path: string, fromBytes: number, onLine: (line: s
       }
       if (size < pos) pos = 0; // truncated: restart from the top
       if (size === pos) return;
-      const fd = openSync(path, "r");
+      const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
       try {
         const buf = Buffer.alloc(size - pos);
         const read = readSync(fd, buf, 0, buf.length, pos);
@@ -4877,6 +4908,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
     switch (command) {
       case "human-ref":
         return await cmdHumanRef(ctx, parsed);
+      case "external-exec":
+        return await cmdExternalExec(ctx, parsed);
       case "spawn":
         return await cmdSpawn(ctx, parsed);
       case "send":

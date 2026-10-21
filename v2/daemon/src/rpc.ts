@@ -84,6 +84,7 @@ export interface RpcConn {
   readonly phoneLane?: "envelope-v1" | "interim-v1";
   readonly executionCoordinatorUid?: number;
   readonly authenticatedBeeId?: string;
+  readonly externalExecWorkspace?: string;
   readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
   readonly ingress?: "local_unix" | "node_relay" | "remote";
   readonly caller?: Readonly<HelloCaller>;
@@ -122,6 +123,7 @@ export type RpcDispatch = (
 ) => unknown;
 
 export interface RpcServerOptions {
+  externalExecEnabled?: boolean;
   dataDir?: string;
   instance?: {id: string; dataDir: string};
   localTrust?: LocalTrustConfig;
@@ -288,7 +290,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => capability !== "question.withdraw.v1" || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => (capability !== "external-exec.v1" || this.opts.externalExecEnabled === true && this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready") && (capability !== "question.withdraw.v1" || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready")));
   }
 
   private onConnection(socket: Socket): void {
@@ -430,6 +432,13 @@ export class RpcServer {
         if (verb === "mail.delivery.resend_anyway" || verb === "mail.delivery.drop") {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Delivery resolution requires a registered local service.");
           this.trust.require(peer, conn.ingress);
+        }
+        if (verb === "spawn" && params.agent === "external-exec-v1") {
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "External execution requires a registered local management caller");
+          this.trust.require(peer, conn.ingress);
+          const context = frame.context as Record<string, unknown> | undefined;
+          if (!context || typeof context.externalExecWorkspace !== "string" || !context.externalExecWorkspace.trim()) throw new RpcError("caller_not_trusted", "External execution requires management-authenticated workspace context");
+          return this.opts.dispatch(verb, params, { ...conn, externalExecWorkspace: context.externalExecWorkspace });
         }
         if (verb === "question.withdraw") {
           if (!this.capabilities.includes("question.withdraw.v1")) throw new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee.");

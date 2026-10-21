@@ -1,3 +1,7 @@
+import { EXTERNAL_EXEC, EXTERNAL_EXEC_CAPABILITY, dispatchValue, record, type ExternalBinding } from "../../core/src/externalExec.ts";
+import { externalExecAdapter } from "../../adapters/src/externalExec.ts";
+import { BRIDGE_ENV } from "../../driver-hsr/src/externalBridge.ts";
+import { fileURLToPath } from "node:url";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
@@ -396,7 +400,7 @@ import {
   type ViewResult,
 } from "./protocol.ts";
 
-const ADAPTER_NAMES = ["agy", "claude", "codex", "grok", "kimi", "muse", "stub"] as const;
+const ADAPTER_NAMES = [EXTERNAL_EXEC, "agy", "claude", "codex", "grok", "kimi", "muse", "stub"] as const;
 
 const FOREIGN_GUARDED_VERBS = new Set<RpcVerb>([
   "spawn", "revive", "bee.fork", "bee.reconfigure", "bee.move", "bee.handoff", "bee.swapAccount",
@@ -906,6 +910,9 @@ export class HiveDaemon {
     // stream must never be appended to that file.
     const sessionLogPathFor = (beeId: string): string | null => this.ownedSessionLogPath(store.getBee(beeId)?.sessionLogPath ?? null);
     const hsrConfig = {
+      isExternal: (beeId: string) => store.externalBinding(beeId) !== null,
+      onExternalError: (beeId: string, generation: number) => store.externalFailed(beeId, generation),
+      onExternalReceipt: (beeId: string, generation: number, receipt: unknown) => store.settleExternal(beeId, generation, receipt),
       sessionLogDir: this.cfg.sessionLogDir,
       sessionLogPathFor,
       stopKillGraceMs: this.cfg.stopKillGraceMs,
@@ -1082,6 +1089,7 @@ export class HiveDaemon {
       socketPath: this.cfg.socketPath,
       dataDir: this.cfg.dataDir,
       instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
+      externalExecEnabled: Object.values(this.cfg.externalExec?.workspaces ?? {}).some(w => w.capabilities.includes(EXTERNAL_EXEC_CAPABILITY)),
       localTrust: this.cfg.rpcLocalTrust,
       securityAudit: (kind, payload) => store.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
       log: (op) => this.log(op),
@@ -1537,6 +1545,18 @@ export class HiveDaemon {
   }
 
   private resolveSpawnSpec(beeId: string, generation?: number): SpawnSpec {
+    const external = this.mustStore().externalBinding(beeId);
+    if (external) {
+      const registered = this.cfg.externalExec?.bridges[external.bridgeId];
+      const grant = this.cfg.externalExec?.workspaces[external.workspace];
+      if (!registered || JSON.stringify(registered) !== JSON.stringify(external.registration) || !grant?.capabilities.includes(EXTERNAL_EXEC_CAPABILITY) || !grant.bridges.includes(external.bridgeId)) throw new RpcError("capability_missing", "External execution registration or workspace grant is unavailable");
+      const outputDirectory = join(this.cfg.dataDir, "external-output", beeId, String(generation ?? this.mustStore().currentRuntime(beeId)?.generation ?? 0));
+      mkdirSync(outputDirectory, { recursive: true, mode: 0o700 });
+      const operation = generation === undefined ? "reconcile" : this.mustStore().claimExternalDispatch(beeId);
+      const source = fileURLToPath(import.meta.url).endsWith(".ts");
+      const entry = source ? fileURLToPath(new URL("../../driver-hsr/src/external-runner-main.ts", import.meta.url)) : fileURLToPath(new URL("./external-runner.js", import.meta.url));
+      return { adapter: externalExecAdapter(external, { operation, outputDirectory }), command: process.execPath, args: source ? ["--experimental-strip-types", entry] : [entry], cwd: "/", env: { ...BRIDGE_ENV } };
+    }
     if (generation !== undefined) this.stampRuntimeCredential(beeId, generation);
     const store = this.mustStore();
     const bee = store.getBee(beeId);
@@ -1698,6 +1718,7 @@ export class HiveDaemon {
    * (no headless plumbing args) plus the harness transcript locator.
    */
   private resolveTmuxSpec(beeId: string, generation?: number): ReturnType<typeof tmuxSpawnSpec> {
+    if (this.mustStore().externalBinding(beeId)) throw new RpcError("invalid_request", "External execution cannot use tmux");
     if (generation !== undefined) this.stampRuntimeCredential(beeId, generation);
     const store = this.mustStore();
     const bee = store.getBee(beeId);
@@ -1903,6 +1924,8 @@ export class HiveDaemon {
       const operation = this.mustStore().threadOperationForSuccessor(params.beeId);
       if (operation && operation.phase !== "ready") throw new RpcError("thread_busy", "Successor execution is owned by its thread operation; recover it with thread.operation.retry");
     }
+    if (typeof params.beeId === "string" && this.mustStore().externalBinding(params.beeId) && ["bee.swapAccount", "bee.setArgs", "bee.reconfigure", "bee.move", "bee.handoff", "bee.fork", "thread.fork", "thread.handoff", "bee.reconnectTools"].includes(verb)) throw new RpcError("invalid_request", "External execution does not support conversation or account mutation");
+    if (verb === "revive" && params.args !== undefined && typeof params.beeId === "string" && this.mustStore().externalBinding(params.beeId)) throw new RpcError("invalid_request", "External execution does not accept resume arguments");
     if (verb === "bee.fork") for (const key of Object.keys(params)) if (!["beeId", "name", "id", "idempotencyKey", "allocationContext", "allocationClaim"].includes(key)) throw new RpcError("thread_unsupported", `Fork is a plain copy and does not accept '${key}'`);
     if (typeof params.idempotencyKey === "string" && verb !== "thread.fork" && verb !== "thread.handoff" && this.mustStore().threadOperationByKey(params.idempotencyKey)) throw new RpcError("idempotency_conflict", "Key belongs to a thread operation");
     if (!verb.startsWith("rpc.execution.") && verb !== "rpc.effect.resolve" && typeof params.idempotencyKey === "string") {
@@ -1913,6 +1936,10 @@ export class HiveDaemon {
         && (prior.verb !== verb || (prior.result as { operation?: { id?: string } }).operation?.id !== params.operationId)) {
         throw new RpcError("idempotency_conflict", "Retry key is already bound to a different operation");
       }
+    }
+    if (verb === "delete" && typeof params.beeId === "string") {
+      const external = this.mustStore().externalView(params.beeId);
+      if (external && (external.status === "pending" || this.mustStore().currentRuntime(params.beeId)?.state !== "stopped")) throw new RpcError("runtime_refused", "External execution must have a validated terminal receipt and stopped capture owner before deletion");
     }
     if (verb === "delete" && typeof params.beeId === "string") {
       const operation = this.mustStore().threadOperationForSuccessor(params.beeId);
@@ -1944,6 +1971,11 @@ export class HiveDaemon {
         return this.mustStore().reserveHumanRefNamespace(this.param(params, "installationId"));
       case "spawn":
         this.assertApiaryTagWriter(verb, params);
+        if (params.agent === EXTERNAL_EXEC) {
+          const result = this.rpcSpawnExternal(params, conn);
+          this.requestTick();
+          return result;
+        }
         // The start command is due now; do not wait out the tick cadence.
         return this.releasingRefusedClaim(() => this.rpcSpawnEffect(params)).then((result) => { this.requestTick(); return result; });
       case "quota.recovery.wait": {
@@ -2500,7 +2532,7 @@ export class HiveDaemon {
 
   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
-    const storageSupported = SCHEMA_VERSION === 47 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+    const storageSupported = Number(SCHEMA_VERSION) === 47 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
     if (verb === "update.apiarySwap.status") {
       let installedIdentity: ComponentIdentity | null = null;
       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
@@ -3302,6 +3334,38 @@ export class HiveDaemon {
     return { account: admission.account, reason: admission.reason, allocation: admission.receipt, reservationId: admission.reservation?.id };
   }
 
+  private rpcSpawnExternal(params: Record<string, unknown>, conn: RpcConn): SpawnResult {
+    const allowed = ["name", "agent", "bridgeId", "dispatch", "substrate", "cwd", "title", "tags", "parentId", "parentExternal", "id", "idempotencyKey"];
+    if (conn.phoneOrigin || !conn.externalExecWorkspace || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "External execution requires an authenticated management workspace");
+    if (Object.keys(params).some(key => !allowed.includes(key))) throw new RpcError("invalid_request", "External execution does not accept account, prompt, args, env, or executable overrides");
+    const config = this.cfg.externalExec;
+    const bridgeId = this.param(params, "bridgeId"), workspace = conn.externalExecWorkspace;
+    const registration = config?.bridges[bridgeId], grant = config?.workspaces[workspace];
+    if (!registration || !grant?.capabilities.includes(EXTERNAL_EXEC_CAPABILITY) || !grant.bridges.includes(bridgeId)) throw new RpcError("capability_missing", "external-exec.v1 is not granted for this workspace and bridge");
+    if (this.substrateParam(params) !== "hsr") throw new RpcError("invalid_request", "External execution uses the host HSR substrate");
+    let dispatch;
+    try { dispatch = dispatchValue(params.dispatch); } catch { throw new RpcError("invalid_request", "Invalid or unauthorized external dispatch"); }
+    const key = this.idempotencyKeyOf(params);
+    if (!key) throw new RpcError("invalid_request", "External execution requires an idempotency key");
+    const store = this.mustStore();
+    const admissionDigest = canonicalDigest(JSON.parse(JSON.stringify(params)));
+    const prior = store.lookupRpcResult(key);
+    if (prior) {
+      const previous = store.externalBinding((prior.result as SpawnResult).beeId);
+      if (prior.verb !== "spawn" || !previous || previous.bridgeId !== bridgeId || previous.workspace !== workspace || previous.admissionDigest !== admissionDigest || JSON.stringify(previous.dispatch) !== JSON.stringify(dispatch)) throw new RpcError("idempotency_conflict", "External spawn key differs from its original binding");
+      return { ...(prior.result as SpawnResult), deduped: true };
+    }
+    return this.withIdempotency("spawn", params, () => {
+      const name = this.param(params, "name"), parent = this.parentParam(params);
+      const id = typeof params.id === "string" && params.id ? params.id : randomUUID();
+      const { bee } = store.createBee({ id, name, agent: EXTERNAL_EXEC, substrate: "hsr", cwd: "/", tags: [`apiary:workspace=${workspace}`], parentId: parent.parentId, parentExternal: parent.parentExternal, sessionLogPath: this.driver?.sessionLogPath(id) });
+      const binding: ExternalBinding = { beeId: bee.id, bridgeId, workspace, admissionDigest, registration, dispatch };
+      store.admitExternal(binding);
+      const cmd = store.enqueueCommand("spawn", id, { idempotencyKey: key });
+      return { beeId: id, agent: EXTERNAL_EXEC, handle: bee.handle, humanRef: bee.human_ref, issuingNamespace: bee.issuing_namespace, commandId: cmd.id, messageId: null, account: null };
+    });
+  }
+
   private rpcSpawn(params: Record<string, unknown>, accountRequest: string | null, execution?: ExecutionRequest): SpawnResult {
     const store = this.mustStore();
     const key = this.idempotencyKeyOf(params);
@@ -3333,7 +3397,7 @@ export class HiveDaemon {
     const cwd = substrate === "cell" ? "" : this.param(params, "cwd");
     const agentSpec = this.cfg.agents[agent];
     const adapterName = agentSpec?.adapter ?? agent;
-    if (!agentSpec || !(ADAPTER_NAMES as readonly string[]).includes(adapterName)) {
+    if (adapterName === EXTERNAL_EXEC || !agentSpec || !(ADAPTER_NAMES as readonly string[]).includes(adapterName)) {
       throw new RpcError("invalid_request", `unknown agent '${agent}' (no spawn spec/adapter configured)`);
     }
     const tags = Array.isArray(params.tags) && params.tags.every((t) => typeof t === "string")
@@ -5710,6 +5774,7 @@ export class HiveDaemon {
     const bee = store.getBee(beeId);
     return {
       ...this.identityDiagnostic(beeId, store.currentRuntime(beeId)?.generation ?? null),
+      ...(bee?.agent === EXTERNAL_EXEC ? { externalExecution: store.externalView(beeId)! } : {}),
       view: store.view(beeId),
       bee,
       runtime: bee ? store.currentRuntime(beeId) : null,

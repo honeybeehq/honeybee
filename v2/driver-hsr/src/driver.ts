@@ -102,6 +102,9 @@ export interface SpawnSpec {
 }
 
 export interface HsrDriverConfig {
+  isExternal?(beeId: string): boolean;
+  onExternalError?(beeId: string, generation: number): void;
+  onExternalReceipt?(beeId: string, generation: number, receipt: import("../../core/src/externalExec.ts").BridgeReceipt): void;
   runtimeIdentity?: RuntimeIdentityHooks;
   execution?: ExecutionRuntimeHooks;
   executionStartFor?(beeId: string, generation: number): ExecutionStart | null;
@@ -562,7 +565,7 @@ export class HsrDriver implements RuntimeDriver {
       statusPath: paths.status,
       bootLines: spec.adapter.bootLines(),
     };
-    writeFileSync(paths.config, JSON.stringify(hostConfig));
+    writeFileSync(paths.config, JSON.stringify(hostConfig), { mode: 0o600 });
     const launch = this.hostCommandFor(paths.config);
     if (start) this.cfg.execution!.dispatch(start);
     const child = spawn(launch.command, launch.args, {
@@ -1049,6 +1052,12 @@ export class HsrDriver implements RuntimeDriver {
     this.captureProcessIdentity(p);
     if (processDisposition(p.processIdentity ?? null, inspectProcess(p.pid)) === "exited") { this.finishHost(p); return {hadProcess: false}; }
     if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) throw new ProcessIdentityUnavailableError();
+    if (this.cfg.isExternal?.(beeId) || p.adapter?.harness === "external-exec-v1") {
+      if (p.degraded || p.adapter?.harness !== "external-exec-v1") throw new ProcessIdentityUnavailableError();
+      if (!this.writeLine(p, JSON.stringify({ operation: "stop" }))) throw new ProcessIdentityUnavailableError();
+      if (p.stopCause == null) p.stopCause = cause;
+      return { hadProcess: true };
+    }
     if (p.stopCause == null) p.stopCause = cause;
     // Exact identity (spec points 4–5): we signal only the pid we spawned and
     // still hold the un-exited handle for — parenthood guarantees the pid has
@@ -1800,6 +1809,12 @@ export class HsrDriver implements RuntimeDriver {
       }
     }
     switch (signal.kind) {
+      case "external_error":
+        this.cfg.onExternalError?.(p.beeId, p.generation);
+        return;
+      case "external_receipt":
+        this.cfg.onExternalReceipt?.(p.beeId, p.generation, signal.receipt);
+        return;
       case "tools_control_result":
         p.reconnectReplies.set(signal.requestId, signal.error ?? null);
         return;

@@ -89,6 +89,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "external-exec.v1",
   "mail.delivery.confirmation.v1",
   "rpc.local_trust.v1",
   "rpc-effect-resolve.v1",
@@ -665,7 +666,16 @@ export const RPC_VERBS = [
 export type RpcVerb = (typeof RPC_VERBS)[number];
 
 /** Service assertion, accepted only on a registered direct-local RPC connection. */
+export interface ExternalExecSpawnParams {
+  agent: "external-exec-v1";
+  name: string;
+  bridgeId: string;
+  dispatch: import("../../core/src/externalExec.ts").ExternalDispatch;
+  idempotencyKey: string;
+}
+
 export interface RpcRequestContext {
+  externalExecWorkspace?: string;
   sessionPrincipal?: { beeId: string };
   phoneOrigin?: import("../../core/src/phoneOrigin.ts").PhoneOriginRequest;
   phoneLane?: "envelope-v1" | "interim-v1";
@@ -1588,6 +1598,7 @@ export interface MutationResult extends DedupMarkers {
 }
 
 export interface ViewResult {
+  externalExecution?: import("../../core/src/externalExec.ts").ExternalExecutionView;
   identityDiagnostic?: {message: "identity unresolved"; warning: boolean};
   view: BeeView;
   bee: BeeRow | null;

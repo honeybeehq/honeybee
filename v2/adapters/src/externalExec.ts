@@ -1,0 +1,24 @@
+import type { HarnessAdapter, AdapterSignal } from "./types.ts";
+import { bridgeEvent, record, validateReceipt, type ExternalBinding } from "../../core/src/externalExec.ts";
+
+export function externalExecAdapter(binding: ExternalBinding, launch?: { operation: "start" | "reconcile"; outputDirectory: string }): HarnessAdapter {
+  return {
+    harness: "external-exec-v1",
+    acceptsMidTurn: false,
+    readyAtSpawn: false,
+    bootLines: () => launch ? [JSON.stringify({ binding, ...launch })] : [],
+    encodeMessage: () => null,
+    parseLine(line): AdapterSignal[] {
+      try {
+        const frame = record(JSON.parse(line));
+        if (frame.schema === "honeybee.external.error.v1" && ["reconcile_required", "stop_reconcile_required", "raw_capture_failed"].includes(String(frame.code))) return [{ kind: "external_error" }];
+        if (frame.schema !== "honeybee.external.observation.v1") return [];
+        const raw = record(frame.event);
+        const event = bridgeEvent(raw, binding, Number(raw.seq));
+        if (event.type === "started") return [{ kind: "booted" }];
+        if (event.type === "terminal") return [{ kind: "external_receipt", receipt: validateReceipt(event.data, binding) }];
+      } catch {}
+      return [];
+    },
+  };
+}

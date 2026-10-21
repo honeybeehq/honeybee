@@ -25,3 +25,5 @@ export {
   type ArgGrammar,
   type ArgUnit,
 } from "./args.ts";
+
+export { externalExecAdapter } from "./externalExec.ts";

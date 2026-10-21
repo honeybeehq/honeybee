@@ -140,6 +140,7 @@ export type ResolveAgentOptions = {
 };
 
 export function resolveAgent(kind: AgentKind, extraArgs: string[] = [], options: ResolveAgentOptions = {}): AgentSpec {
+  if (String(kind) === "external-exec-v1") throw new Error("external-exec-v1 requires owner-registered daemon external-exec admission");
   const requestedCfg = beeConfig(String(kind));
   const profile = options.protocolLaunch
     ? (() => {
@@ -153,6 +154,7 @@ export function resolveAgent(kind: AgentKind, extraArgs: string[] = [], options:
         };
       })()
     : resolveProfile(kind, options.home ?? requestedCfg.home);
+  if (profile.kind === "external-exec-v1") throw new Error("external-exec-v1 cannot be selected through a spawn profile");
   const canonicalCfg = profile.kind !== kind ? beeConfig(profile.kind) : requestedCfg;
   // Per-profile env keys (HIVE_MINIMAX_CMD) win over the canonical kind's keys
   // (HIVE_OPENCODE_CMD) so aliased profiles override independently. For a plain

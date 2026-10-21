@@ -93,6 +93,11 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   for (const row of rows) {
     const p = row.payload;
     switch (row.kind) {
+      case "external_exec.dispatched":
+      case "external_exec.uncertain":
+      case "external_exec.admitted":
+      case "external_exec.terminal":
+        break;
       case "mail.confirmation_prepared":
       case "mail.confirmation_held": {
         const intent = structuredClone(p.row as DeliveryConfirmationIntent);

@@ -27,7 +27,7 @@ async function main(argv: string[]): Promise<void> {
     process.exitCode = await (await loadV2()).runV2Cli(argv.slice(1));
     return;
   }
-  if (v2IsDefault(argv[0])) {
+  if (argv[0] === "external-exec" || v2IsDefault(argv[0])) {
     process.exitCode = await (await loadV2()).runV2Cli(argv);
     return;
   }
