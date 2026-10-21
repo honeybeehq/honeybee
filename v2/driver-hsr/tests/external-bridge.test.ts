@@ -41,7 +41,7 @@ test("Linux fd exec retains the opened script when its pathname is replaced", as
     const child = spawn("/proc/self/fd/3", ["start", "--manifest", "-"], { env: { ...BRIDGE_ENV }, stdio: ["pipe", "pipe", "pipe", fd] });
     let output = "";
     child.stdout!.on("data", chunk => { output += chunk.toString(); });
-    child.stdin!.end("synthetic manifest");
+    child.stdin!.end();
     const code = await new Promise<number | null>((resolve, reject) => { child.on("error", reject); child.on("close", resolve); });
     assert.equal(code, 0);
     assert.equal(output, "original");

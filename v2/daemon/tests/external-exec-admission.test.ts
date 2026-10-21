@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { HiveDaemon } from "../src/daemon.ts";
@@ -47,4 +50,19 @@ test("late external receipt does not touch a stopped daemon's writer", () => {
   const daemon = Object.create(HiveDaemon.prototype) as {stopping: boolean; settleExternal(beeId: string, generation: number, receipt: unknown): void};
   daemon.stopping = true;
   assert.doesNotThrow(() => daemon.settleExternal("external", 1, {}));
+});
+
+test("daemon detaches pending stop ownership while its writer is still open", async () => {
+  const daemon = Object.create(HiveDaemon.prototype);
+  const calls: string[] = [];
+  Object.assign(daemon, {
+    stopping: false,
+    cfg: {dataDir: mkdtempSync(join(tmpdir(), "hb-shutdown-order-"))},
+    log() {},
+    performance: {stop() {}},
+    driver: {detachAll() {calls.push("uncertainty");}},
+    store: {close() {calls.push("close");}},
+  });
+  await daemon.shutdown();
+  assert.deepEqual(calls, ["uncertainty", "close"]);
 });

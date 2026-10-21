@@ -110,8 +110,10 @@ const survivor=cp.spawn(process.execPath,['-e',"process.on('SIGTERM',()=>{}); co
 survivor.stdout.once('data',()=>{ require('node:fs').writeFileSync(${JSON.stringify(survivorFile)}, String(survivor.pid)); console.log(${JSON.stringify(JSON.stringify(event))}); });
 process.on('SIGTERM',()=>process.exit(0)); setInterval(()=>{},1000);`;
   let uncertain = 0;
+  const detached: Array<[string, number]> = [];
   const driver = new HsrDriver({sessionLogDir: join(root, "logs"), socketDir: `/proc/self/cwd/.local/external-exec-tests/${basename(root)}`, stopKillGraceMs: 150, isExternal: () => true,
     onExternalError: () => {uncertain++;},
+    onExternalDetach: (beeId, generation) => {detached.push([beeId, generation]);},
     resolve: () => ({adapter: externalExecAdapter(externalIdentity(binding)), command: process.execPath, args: ["-e", script], env: {...BRIDGE_ENV}})});
   try {
     driver.start("leader-exits", 1);
@@ -122,6 +124,7 @@ process.on('SIGTERM',()=>process.exit(0)); setInterval(()=>{},1000);`;
     driver.stop("leader-exits", 1, "stopped_by_user");
     await drainUntil(driver, events => events.some(e => e.kind === "exited"));
     driver.detachAll();
+    assert.deepEqual(detached, [["leader-exits", 1]]);
     const deadline = Date.now() + 5000;
     while (Date.now() < deadline) {
       const value = inspectProcess(survivor);

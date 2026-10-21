@@ -106,6 +106,7 @@ export interface SpawnSpec {
 export interface HsrDriverConfig {
   isExternal?(beeId: string): boolean;
   onExternalError?(beeId: string, generation: number): void;
+  onExternalDetach?(beeId: string, generation: number): void;
   onExternalReceipt?(beeId: string, generation: number, receipt: import("../../core/src/externalExec.ts").BridgeReceipt, truncated?: boolean): void;
   runtimeIdentity?: RuntimeIdentityHooks;
   execution?: ExecutionRuntimeHooks;
@@ -1671,6 +1672,7 @@ export class HsrDriver implements RuntimeDriver {
    */
   detachAll(): void {
     this.detached = true;
+    for (const p of this.externalStops.keys()) this.cfg.onExternalDetach?.(p.beeId, p.generation);
     this.pendingStarts.clear();
     for (const p of this.procs.values()) {
       if (p.killTimer) {

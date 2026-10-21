@@ -64,3 +64,10 @@ test("management authority refuses the hive v2 root and every ancestor", () => {
   const v2 = join(homedir(), ".hive", "v2");
   for (const root of [v2, join(homedir(), ".hive"), homedir(), "/"]) assert.throws(() => externalOwner(join(root, "owner.json"), join(v2, "cells")), /outside_cell/);
 });
+
+test("management authority refuses descendants of default and configured data roots", () => {
+  const node = join(tmpdir(), "hb-custom-data-root");
+  for (const root of [join(homedir(), ".hive", "v2", "mgmt"), join(node, "mgmt")]) {
+    assert.throws(() => externalOwner(join(root, "owner.json"), join(node, "cells"), node), /outside_cell/);
+  }
+});

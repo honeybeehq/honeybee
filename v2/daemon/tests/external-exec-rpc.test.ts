@@ -79,6 +79,7 @@ test("daemon keeps public RPC usable while management uses its own protected lis
     chmodSync(join(owner, "management.key"), 0o000);
     assert.equal(loadNodeConfig(node.dir).socketPath, join(node.dir, "hived.sock"));
     assert.ok(await publicClient.request("health"));
+    assert.ok(await publicClient.request("config.get"));
     assert.throws(() => loadNodeConfig(node.dir, undefined, "management"));
     await assert.rejects(management.request("list"), refused);
   } finally {clients.forEach(client => client.close()); await forceStopTestDaemon(daemon);}

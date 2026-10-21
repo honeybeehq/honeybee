@@ -913,6 +913,7 @@ export class HiveDaemon {
     const hsrConfig = {
       isExternal: (beeId: string) => store.externalBinding(beeId) !== null,
       onExternalError: (beeId: string, generation: number) => { if (!this.stopping) store.externalFailed(beeId, generation); },
+      onExternalDetach: (beeId: string, generation: number) => store.externalFailed(beeId, generation),
       onExternalReceipt: (beeId: string, generation: number, receipt: unknown, truncated = false) => this.settleExternal(beeId, generation, receipt, truncated),
       sessionLogDir: this.cfg.sessionLogDir,
       sessionLogPathFor,
@@ -1179,13 +1180,13 @@ export class HiveDaemon {
           this.telemetry?.close();
         }
       } else {
-        this.store?.close();
-        this.telemetry?.close();
         // Children are NOT killed: detached runtimes survive daemon restarts by
         // design and the next boot re-adopts them (contract §3.2). Their pipe
         // handles must not pin our event loop, though — detach them so the
         // process can actually exit.
         this.driver?.detachAll();
+        this.store?.close();
+        this.telemetry?.close();
       }
       this.log("daemon.stopped");
       this.log(`daemon.stop_complete pid=${process.pid}`);
@@ -5000,7 +5001,7 @@ export class HiveDaemon {
 
   private rpcConfigGet(): ConfigGetResult {
     try {
-      this.naming = loadNodeConfig(this.cfg.dataDir, this.cfg.configPath, "daemon").naming;
+      this.naming = loadNodeConfig(this.cfg.dataDir, this.cfg.configPath, "public").naming;
     } catch (err) {
       if (!(err instanceof ConfigError)) throw err;
       throw new RpcError("invalid_request", err.message);
