@@ -1,3 +1,5 @@
+import type { HumanChatAdmission, HumanChatProvenance, HumanFirstPolicy } from "./types.ts";
+import { HUMAN_FIRST_SQL } from "./schema.ts";
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
 import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
@@ -352,7 +354,7 @@ export interface BeeViewRow {
 
 /** Body-free mailbox facts shared by daemon work and I1 telemetry. */
 export type DaemonPendingMessageMeta = Readonly<
-  Pick<MessageRow, "id" | "urgency" | "enqueuedAt" | "queueOrder">
+  Pick<MessageRow, "id" | "urgency" | "enqueuedAt" | "queueOrder" | "humanChat">
 >;
 
 /** Runtime states that can affect daemon policy or delivery work. */
@@ -1445,6 +1447,7 @@ function mapMessage(r: Row): MessageRow {
     enqueuedAt: Number(r.enqueued_at),
     deliveredAt: r.delivered_at == null ? null : Number(r.delivered_at),
     deliveredGeneration: r.delivered_generation == null ? null : Number(r.delivered_generation),
+    ...(r.human_chat == null ? {} : { humanChat: JSON.parse(String(r.human_chat)) as HumanChatProvenance }),
     ...(r.sender_kind == null ? {} : { senderKind: r.sender_kind as SenderKind }),
   };
 }
@@ -1863,6 +1866,7 @@ export class CoreStore {
     if (needsHumanRefMigration && !this.stmt("SELECT 1 FROM meta WHERE key = 'human_ref_installation_id'").get()) {
       this.stmt("INSERT INTO meta(key, value) VALUES('human_ref_installation_id', ?)").run(randomUUID());
     }
+    this.db.exec(HUMAN_FIRST_SQL);
     this.humanRefInstallationId(); // Missing/corrupt completed-v30 identity never silently remints.
     if (stored < SCHEMA_VERSION) {
       // v1 → v2: additive idempotency_key column on commands. A FRESH database
@@ -2162,7 +2166,8 @@ export class CoreStore {
     }
     this.db.exec("CREATE INDEX IF NOT EXISTS audit_confirmation_released_message ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER)) WHERE kind = 'mail.confirmation_released'");
     if (!(this.stmt("SELECT name FROM pragma_index_info('mailbox_fifo_pending')").all() as Row[]).some(column => column.name === "replaces_message_id")) this.db.exec("DROP INDEX IF EXISTS mailbox_fifo_pending");
-    this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_pending ON mailbox(bee_id, COALESCE(queue_order,id), id, urgency, enqueued_at, delivered_at, queue_order, replaces_message_id) WHERE delivered_at IS NULL");
+    if (stored < 48) this.db.exec("DROP INDEX IF EXISTS mailbox_fifo_pending");
+    this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_pending ON mailbox(bee_id, COALESCE(queue_order,id), id, urgency, enqueued_at, delivered_at, queue_order, replaces_message_id, human_chat) WHERE delivered_at IS NULL");
     this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_delivered ON mailbox(bee_id, COALESCE(queue_order,id), id) WHERE delivered_at IS NOT NULL");
     this.db.exec("CREATE INDEX IF NOT EXISTS audit_mail_replacement_message ON audit(CAST(json_extract(payload, '$.replacementMessageId') AS INTEGER), seq DESC) WHERE kind = 'mail.replaced'");
     this.db.exec("CREATE INDEX IF NOT EXISTS audit_mail_replaced_message ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER), seq DESC) WHERE kind = 'mail.replaced'");
@@ -3888,7 +3893,7 @@ export class CoreStore {
 
   heldMultilineMail(): Map<string, (DaemonPendingMessageMeta & { fallback?: DeliveryFallback })[]> {
     const result = new Map<string, (DaemonPendingMessageMeta & { fallback?: DeliveryFallback })[]>();
-    const rows = this.stmt(`SELECT message.id, message.urgency, message.enqueued_at, message.queue_order, held.*
+    const rows = this.stmt(`SELECT message.id, message.urgency, message.enqueued_at, message.queue_order, message.human_chat, held.*
       FROM multiline_delivery AS held JOIN mailbox AS message ON message.id = held.message_id AND message.bee_id = held.bee_id
       WHERE held.held_since IS NOT NULL AND message.delivered_at IS NULL
         AND CASE WHEN json_valid(held.row_json) THEN COALESCE(json_extract(held.row_json, '$.fallback.state'), '') NOT IN ('held', 'delivered', 'removed') ELSE 1 END
@@ -4443,10 +4448,55 @@ export class CoreStore {
     return { envelope: { ...this.makePhoneOrigin(raw, contentDigest, key, beeId), contentDigest }, originalContent };
   }
 
+  humanFirstPolicy(beeId: string): HumanFirstPolicy {
+    const row = this.stmt("SELECT * FROM human_first_policies WHERE bee_id = ?").get(beeId) as Row | undefined;
+    return row ? { beeId, enabled: row.enabled === 1, updatedAt: row.updated_at == null ? null : Number(row.updated_at), lastHumanReceivedAt: row.last_human_received_at == null ? null : Number(row.last_human_received_at) } : { beeId, enabled: false, updatedAt: null, lastHumanReceivedAt: null };
+  }
+
+  listHumanFirstPolicies(): HumanFirstPolicy[] {
+    return (this.stmt("SELECT bee_id FROM human_first_policies ORDER BY bee_id").all() as Row[]).map(row => this.humanFirstPolicy(String(row.bee_id)));
+  }
+
+  setHumanFirstPolicy(beeId: string, enabled: boolean): HumanFirstPolicy {
+    return this.tx(() => {
+      this.mustGetBee(beeId);
+      const policy = this.humanFirstPolicy(beeId);
+      if (policy.enabled === enabled) return policy;
+      return this.putHumanFirstPolicy({ ...policy, enabled, updatedAt: this.now() });
+    });
+  }
+
+  private putHumanFirstPolicy(policy: HumanFirstPolicy): HumanFirstPolicy {
+    this.stmt("INSERT INTO human_first_policies(bee_id,enabled,updated_at,last_human_received_at) VALUES(?,?,?,?) ON CONFLICT(bee_id) DO UPDATE SET enabled=excluded.enabled, updated_at=excluded.updated_at,last_human_received_at=excluded.last_human_received_at").run(policy.beeId, Number(policy.enabled), policy.updatedAt, policy.lastHumanReceivedAt);
+    this.audit("mail.human_first.put", policy.beeId, { policy });
+    return policy;
+  }
+
+  assertHumanChatBinding(admission: HumanChatAdmission | undefined, body: string, beeId: string, key?: string): void {
+    if (!admission) {
+      if (key && this.stmt("SELECT 1 FROM human_chat_admissions WHERE idempotency_key = ?").get(key)) throw new IdempotencyConflictError("Key belongs to authenticated human chat");
+      return;
+    }
+    if (admission.beeId !== beeId || admission.bodySha256 !== createHash("sha256").update(body).digest("hex") || (key !== undefined && key !== admission.idempotencyKey)) throw new CoreError("Human chat target, body or key binding differs");
+    const prior = this.stmt("SELECT * FROM human_chat_admissions WHERE idempotency_key = ? OR (authority_id = ? AND admission_id = ?)").get(admission.idempotencyKey, admission.authorityId, admission.admissionId) as Row | undefined;
+    if (prior && (prior.idempotency_key !== admission.idempotencyKey || prior.authority_id !== admission.authorityId || prior.admission_id !== admission.admissionId || prior.bee_id !== beeId || prior.body_sha256 !== admission.bodySha256 || prior.policy_enabled !== (admission.humanFirst === undefined ? null : Number(admission.humanFirst)))) throw new IdempotencyConflictError("Human chat admission is bound to another request");
+    if (!prior && this.lookupRpcResult(admission.idempotencyKey)) throw new IdempotencyConflictError("Key already belongs to a different request");
+  }
+
+  humanTurnActive(beeId: string, generation: number): boolean {
+    const trigger = this.getBee(beeId)?.lastTurnTrigger;
+    return trigger != null && trigger.generation === generation && trigger.endedAt === null && trigger.messageId !== null && this.getMessage(trigger.messageId)?.humanChat !== undefined;
+  }
+
+  pendingHumanChatId(beeId: string): number | null {
+    const row = this.stmt("SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND human_chat IS NOT NULL ORDER BY COALESCE(queue_order,id),id LIMIT 1").get(beeId) as Row | undefined;
+    return row ? Number(row.id) : null;
+  }
+
   send(
     beeId: string,
     body: string,
-    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; phone?: { origin: PhoneOriginRequest; key: string } } = {},
+    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; humanChat?: HumanChatAdmission; phone?: { origin: PhoneOriginRequest; key: string } } = {},
   ): SendResult {
     const urgency = opts.urgency ?? "next";
     if (opts.senderKind !== undefined && !(SENDER_KINDS as readonly string[]).includes(opts.senderKind)) throw new CoreError(`unknown sender kind: ${String(opts.senderKind)}`);
@@ -4460,6 +4510,15 @@ export class CoreStore {
     const normalizedBody = phoneInput ? renderPhoneInput(body) : wellFormedUtf16(body);
     const sender = wellFormedUtf16(rawSender);
     return this.tx(() => {
+      if (opts.humanChat) {
+        this.assertHumanChatBinding(opts.humanChat, body, beeId);
+        const prior = this.stmt("SELECT message_id FROM human_chat_admissions WHERE idempotency_key = ?").get(opts.humanChat.idempotencyKey) as Row | undefined;
+        if (prior) {
+          const message = this.getMessage(Number(prior.message_id));
+          if (!message) throw new IdempotencyConflictError("Human admission has already settled without a mailbox row");
+          return { message, wakeCommand: null, unarchived: false };
+        }
+      }
       const bee = this.mustGetBee(beeId);
       let unarchived = false;
       if (bee.lifecycle === "archived") {
@@ -4467,9 +4526,10 @@ export class CoreStore {
         unarchived = true;
       }
       const at = this.now();
+      const humanChat: HumanChatProvenance | undefined = opts.humanChat ? { version: 1, authorityId: opts.humanChat.authorityId, admissionId: opts.humanChat.admissionId, receivedAt: at } : undefined;
       const res = this.db
-        .prepare("INSERT INTO mailbox(bee_id, sender, body, priority, urgency, enqueued_at, sender_kind) VALUES(?, ?, ?, ?, ?, ?, ?)")
-        .run(beeId, sender, normalizedBody, opts.priority ?? 0, urgency, at, opts.senderKind ?? null);
+        .prepare("INSERT INTO mailbox(bee_id, sender, body, priority, urgency, enqueued_at, sender_kind, human_chat) VALUES(?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(beeId, sender, normalizedBody, opts.priority ?? 0, urgency, at, opts.senderKind ?? null, humanChat ? JSON.stringify(humanChat) : null);
       const message: MessageRow = {
         id: Number(res.lastInsertRowid),
         beeId,
@@ -4482,7 +4542,13 @@ export class CoreStore {
         deliveredGeneration: null,
         ...(opts.senderKind === undefined ? {} : { senderKind: opts.senderKind }),
         ...(phoneInput ? { phoneInput, renderedBody: normalizedBody } : {}),
+        ...(humanChat ? { humanChat } : {}),
       };
+      if (opts.humanChat) {
+        this.stmt("INSERT INTO human_chat_admissions(idempotency_key,authority_id,admission_id,bee_id,body_sha256,policy_enabled,message_id) VALUES(?,?,?,?,?,?,?)").run(opts.humanChat.idempotencyKey, opts.humanChat.authorityId, opts.humanChat.admissionId, beeId, opts.humanChat.bodySha256, opts.humanChat.humanFirst === undefined ? null : Number(opts.humanChat.humanFirst), message.id);
+        const policy = this.humanFirstPolicy(beeId);
+        this.putHumanFirstPolicy({ ...policy, enabled: opts.humanChat.humanFirst ?? policy.enabled, updatedAt: at, lastHumanReceivedAt: at });
+      }
       if (phoneInput) this.stmt("INSERT INTO phone_inputs(message_id, admission_id, input_json) VALUES(?, ?, ?)").run(message.id, phoneInput.envelope.admissionId, JSON.stringify(phoneInput));
       const enqueueSeq = this.audit("mail.enqueued", beeId, { message, origin });
       this.insertMailHistoryEnqueue(enqueueSeq, message, origin);
@@ -5973,7 +6039,7 @@ export class CoreStore {
       `SELECT message.id,
               message.bee_id,
               message.urgency,
-              message.enqueued_at, message.queue_order
+              message.enqueued_at, message.queue_order, message.human_chat
        FROM runtimes AS runtime
        CROSS JOIN mailbox AS message
        WHERE runtime.state != 'stopped'
@@ -5991,7 +6057,7 @@ export class CoreStore {
       const messageRows = daemonStatementArrayRows(messageStatement);
       for (const raw of messageRows) {
         const beeId = daemonText(raw[1], "pending bee_id");
-        const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }) };
+        const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }), ...(raw[5] == null ? {} : { humanChat: JSON.parse(String(raw[5])) as HumanChatProvenance }) };
         const row = workByBee.get(beeId);
         if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
         row.pending.push(message);
@@ -6000,7 +6066,7 @@ export class CoreStore {
       const messageRows: Row[] = messageStatement.all();
       for (const raw of messageRows) {
         const beeId = daemonText(raw.bee_id, "pending bee_id");
-        const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }) };
+        const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }), ...(raw.human_chat == null ? {} : { humanChat: JSON.parse(String(raw.human_chat)) as HumanChatProvenance }) };
         const row = workByBee.get(beeId);
         if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
         row.pending.push(message);
@@ -6070,7 +6136,7 @@ export class CoreStore {
     const groupByBee = new Map(groups.map((group) => [group.beeId, group]));
 
     const messageStatement = this.stmt(
-      `SELECT id, bee_id, urgency, enqueued_at, queue_order
+      `SELECT id, bee_id, urgency, enqueued_at, queue_order, human_chat
        FROM mailbox
        WHERE delivered_at IS NULL
        ORDER BY bee_id, COALESCE(queue_order,id), id`,
@@ -6079,7 +6145,7 @@ export class CoreStore {
       const messageRows = daemonStatementArrayRows(messageStatement);
       for (const raw of messageRows) {
         const beeId = daemonText(raw[1], "pending bee_id");
-        const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }) };
+        const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }), ...(raw[5] == null ? {} : { humanChat: JSON.parse(String(raw[5])) as HumanChatProvenance }) };
         const group = groupByBee.get(beeId);
         if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
         group.pending.push(message);
@@ -6088,7 +6154,7 @@ export class CoreStore {
       const messageRows: Row[] = messageStatement.all();
       for (const raw of messageRows) {
         const beeId = daemonText(raw.bee_id, "pending bee_id");
-        const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }) };
+        const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }), ...(raw.human_chat == null ? {} : { humanChat: JSON.parse(String(raw.human_chat)) as HumanChatProvenance }) };
         const group = groupByBee.get(beeId);
         if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
         group.pending.push(message);

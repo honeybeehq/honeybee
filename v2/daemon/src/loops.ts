@@ -1784,8 +1784,14 @@ export class DaemonCore {
         // budget.11's race; real claude would end mis-flagged spawn_failed).
         // Any real parsed output upgrades bootEvidence and re-engages the gate.
         const trulyMidTurn = rt.state === "running" && rt.bootEvidence === "real";
-        const eligible = trulyMidTurn ? pending.filter((m) => m.urgency !== "idle") : pending;
-        if (eligible.length === 0) continue;
+        const humanFirst = this.store.humanFirstPolicy(rt.beeId).enabled;
+        const humanHead = humanFirst ? this.store.pendingHumanChatId(rt.beeId) : null;
+        const humanPending = humanHead !== null;
+        const humanActive = humanFirst && this.store.humanTurnActive(rt.beeId, rt.generation);
+        const eligible = humanFirst && (humanPending || humanActive)
+          ? trulyMidTurn || humanActive ? pending.filter(m => m.humanChat !== undefined && m.urgency === "now").slice(0, 1) : pending.filter(m => m.id === humanHead)
+          : trulyMidTurn ? pending.filter((m) => m.urgency !== "idle") : pending;
+
         const move = this.store.activeMoveOf(rt.beeId);
         if (move && move.phase !== "starting") continue;
         // v23: a quiescing source takes no new turn; the target runtime receives
@@ -1796,6 +1802,7 @@ export class DaemonCore {
         if (handoff && handoffFencesSource(handoff.phase)) continue;
         const seedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
         const seed = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
+        if (eligible.length === 0 && !seed) continue;
         if (!trulyMidTurn && this.beforeTurn && !this.beforeTurn(rt.beeId, rt.generation)) { this.deliveryRetries.delete(rt.beeId); continue; }
         if (rt.state === "running") {
           // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
@@ -1828,7 +1835,8 @@ export class DaemonCore {
           }
         }
         const selected = seed ?? eligible[0];
-        if (!selected) continue;
+        if (!selected || humanFirst && humanPending && selected.humanChat !== undefined && selected.id !== humanHead && !seed) continue;
+        if (humanFirst && this.store.listDeliveryConfirmationIntents(rt.beeId).some(intent => intent.messageId !== selected.id && intent.wireLine !== null && !this.confirmationReady.has(intent.messageId))) continue;
         const msg = this.store.getMessage(selected.id);
         if (
           !msg ||
@@ -1845,6 +1853,8 @@ export class DaemonCore {
         // The mailbox row stays the durable truth — the envelope is
         // delivery-time rendering only.
         if (msg.deliveryHold?.detail === "delivery_hold_state_unknown") {this.store.reconcileUnknownMultilineHold(msg.id); continue;}
+        const freshTurn = humanFirst && msg.humanChat !== undefined && msg.urgency !== "now";
+        if (freshTurn && this.store.getBee(rt.beeId)?.substrate === "tmux") { this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=human_first_unsupported`); continue; }
         const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
         const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
         let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id), this.store.dismissedQuestionId(msg.id));
@@ -1906,7 +1916,7 @@ export class DaemonCore {
           const existing = this.store.getDeliveryConfirmationIntent(msg.id);
           if (existing) {
             if (existing.generation !== rt.generation || existing.wireLine === null || existing.state !== "awaiting_confirmation" || !this.confirmationReady.has(msg.id)) continue;
-            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
+            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
             if (!plan || plan === "not_ready") { refusePlan(); continue; }
             if (this.store.inTransaction) continue;
             const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
@@ -1914,7 +1924,7 @@ export class DaemonCore {
             confirmation = this.store.transact(() => { const row = this.store.replanDeliveryConfirmationIntent(input, existing.digest); recordPointerAttempt(); return row; });
             this.confirmationReady.delete(msg.id);
           } else {
-            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
+            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
             if (plan === "not_ready") { refusePlan(); continue; }
             if (plan) {
               if (this.store.inTransaction) continue;
@@ -1932,7 +1942,7 @@ export class DaemonCore {
           }
         }
         const outcome = fallback?.handled ? { accepted: fallback.accepted, reason: "not_ready" as const, detail: undefined }
-          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { confirmation, multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
+          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { confirmation, freshTurn, multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
         if (outcome.accepted) {
           this.deliveryRetries.delete(rt.beeId);
           if (fallback?.confirmationBody) this.store.completeMultilineFallback(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), true);

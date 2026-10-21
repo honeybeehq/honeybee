@@ -407,7 +407,8 @@ export class TmuxDriver implements RuntimeDriver {
     return receipt?.beeId === beeId && receipt.generation === generation && receipt.digest === createHash("sha256").update(body).digest("hex") ? "accepted" : "unknown";
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome {
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome {
+    if (options?.freshTurn) return { accepted: false, reason: "not_ready", detail: "fresh_turn_unsupported" };
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { accepted: false, reason: "no_process", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };
     if (p.stopCause != null || !verifyProcessIdentity(p.pid, p.processIdentity)) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { HumanChatAdmission } from "../../core/src/types.ts";
 import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
 import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
 import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
@@ -79,6 +81,8 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly humanChat?: HumanChatAdmission;
+  readonly humanPolicyAuthority?: true;
   readonly phoneOrigin?: PhoneOriginRequest;
   readonly phoneCarrierDigest?: string;
   readonly phoneLane?: "envelope-v1" | "interim-v1";
@@ -288,7 +292,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => capability !== "question.withdraw.v1" || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => (capability !== "question.withdraw.v1" && capability !== "mail.humanFirst.v1") || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
   }
 
   private onConnection(socket: Socket): void {
@@ -442,6 +446,24 @@ export class RpcServer {
           const beeId = (principal as Record<string, unknown>).beeId;
           if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal.");
           return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
+        }
+        if (params.humanChat !== undefined || params.humanFirst !== undefined || params.provenance !== undefined) throw new RpcError("human_chat_unauthorized", "Human provenance belongs in protected RPC context");
+        const humanContext = frame.context as Record<string, unknown> | undefined;
+        if (verb === "mail.humanFirst.set" || humanContext?.humanChat !== undefined) {
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("human_chat_unauthorized", "Human chat requires the registered local Apiary authority");
+          try { this.trust.require(peer, conn.ingress); } catch { throw new RpcError("human_chat_unauthorized", "Human chat requires the registered local Apiary authority"); }
+          if (verb === "mail.humanFirst.set") return this.opts.dispatch(verb, params, { ...conn, humanPolicyAuthority: true });
+          if (verb !== "send" || humanContext?.phoneOrigin !== undefined || humanContext?.phoneLane !== undefined) throw new RpcError("human_chat_unauthorized", "Human chat context is only valid for send");
+          const raw = humanContext?.humanChat;
+          if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("human_chat_invalid", "Malformed human chat admission");
+          const chat = raw as Record<string, unknown>;
+          if (Object.keys(chat).some(key => !["version", "authorityId", "admissionId", "beeId", "bodySha256", "idempotencyKey", "humanFirst"].includes(key)) || chat.version !== 1
+            || [chat.authorityId, chat.admissionId, chat.beeId, chat.idempotencyKey].some(value => typeof value !== "string" || !value.length || value.length > 512 || value.includes("\0"))
+            || typeof chat.bodySha256 !== "string" || !/^[a-f0-9]{64}$/.test(chat.bodySha256)
+            || chat.humanFirst !== undefined && typeof chat.humanFirst !== "boolean"
+            || chat.beeId !== params.beeId || chat.idempotencyKey !== params.idempotencyKey || typeof params.body !== "string"
+            || chat.bodySha256 !== createHash("sha256").update(params.body).digest("hex")) throw new RpcError("human_chat_invalid", "Human chat destination, body or key binding is invalid");
+          return this.opts.dispatch(verb, params, { ...conn, humanChat: chat as unknown as HumanChatAdmission });
         }
         if (params.phoneOrigin !== undefined || params.phoneInput !== undefined || params.phoneLane !== undefined) throw new RpcError("invalid_request", "Phone carriers belong in RPC context, not args");
         const context = frame.context as Record<string, unknown> | undefined;

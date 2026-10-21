@@ -100,6 +100,7 @@ export type MirrorLoginFlowRow = LoginFlowRow;
  * unknown keys stays correct.
  */
 export interface MirrorSnapshot {
+  humanFirstPolicies?: import("./types.ts").HumanFirstPolicy[];
   threadOperations: ThreadOperationView[];
   seq: number;
   bees: MirrorBeeRow[];
@@ -606,3 +607,5 @@ export const MIRROR_CONFIRMATION_OPTIONAL_MESSAGE_KEYS = ["deliveryConfirmation"
 export const MIRROR_CONFIRMATION_OPTIONAL_HISTORY_KEYS = ["deliveryConfirmation"] as const;
 export const MIRROR_REPLACEMENT_OPTIONAL_MESSAGE_KEYS = ["queueOrder", "replacesMessageId"] as const;
 export const MIRROR_REPLACEMENT_OPTIONAL_HISTORY_KEYS = ["queueOrder", "replacesMessageId"] as const;
+
+export const MIRROR_HUMAN_FIRST_AUDIT_KINDS = ["mail.human_first.put"] as const;
