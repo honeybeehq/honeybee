@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 
 export async function createCliFixture({root,mode,log,nativeHuman}) {
@@ -33,6 +34,7 @@ export async function createCliFixture({root,mode,log,nativeHuman}) {
       const kind=messageId===human?.id?'human':messageId===reprompt?.id?'reprompt':'digest'
       const wire={messageId,body,options,kind,clock}
       wires.push(wire);log('honeybee-wire',wire)
+      driver.events.push({beeId:id,generation,kind:'turn_started',messageId})
       nativeHuman(body)
     }
     return outcome
@@ -48,7 +50,8 @@ export async function createCliFixture({root,mode,log,nativeHuman}) {
   return {
     admit(){
       assert.equal(admitted,false);admitted=true
-      peers=Array.from({length:12},(_,index)=>store.send(bee.id,`PEER_${String(index).padStart(2,'0')}_SENTINEL full original body λ`,{sender:`fixture-peer-${index}`,urgency:index%2?'next':'now',senderKind:'automation'}).message)
+      const senders=Array.from({length:12},(_,index)=>store.createBee({name:`fixture-peer-${index}`,agent:'stub',substrate:'hsr',cwd:root}).bee)
+      peers=Array.from({length:12},(_,index)=>store.send(bee.id,`PEER_${String(index).padStart(2,'0')}_SENTINEL full original body λ`,{sender:senders[index].id,urgency:index%2?'next':'now',senderKind:'automation'}).message)
       const body='HUMAN_SENTINEL'
       const humanChat={version:1,authorityId:'fixture-apiary',admissionId:'human-1',beeId:bee.id,bodySha256:createHash('sha256').update(body).digest('hex'),idempotencyKey:'human-1',humanFirst:true}
       human=store.send(bee.id,body,{humanChat}).message
@@ -75,6 +78,17 @@ export async function createCliFixture({root,mode,log,nativeHuman}) {
         assert.deepEqual(wires.map(w=>w.kind),['human','reprompt','digest'])
       }
     },
+    recordBinary(binary){
+      const version=execFileSync(binary,['--version'],{cwd:`${root}/cwd`,env:{PATH:'/usr/local/bin:/usr/bin:/bin',HOME:`${root}/home`,TMPDIR:`${root}/tmp`,CODEX_HOME:`${root}/config`,CLAUDE_CONFIG_DIR:`${root}/home/.claude`},encoding:'utf8',timeout:10000}).trim()
+      log('binary',{binary,version,sha256:createHash('sha256').update(readFileSync(binary)).digest('hex'),node:process.version})
+    },
+    nativeRequest(){
+      const before=wires.length
+      core.step()
+      assert.equal(wires.length,before,'no delivery during native provider request')
+      assert.equal(driver.interrupts.length,0)
+      log('mid-turn-probe',{clock,wires:before})
+    },
     inspect,
     verify(){
       assert.equal(turns,4,'bootstrap, human, reprompt and digest must each complete')
@@ -99,9 +113,17 @@ export async function createCliFixture({root,mode,log,nativeHuman}) {
       assert.ok(!JSON.stringify(context(requests[2])).includes('PEER_00_SENTINEL'))
       assert.ok(JSON.stringify(context(requests[3])).includes('TELL_REPROMPT_SENTINEL'))
       assert.ok(!JSON.stringify(context(requests[3])).includes('PEER_00_SENTINEL'))
+      const lastUser=e=>{const items=context(e);return JSON.stringify(items.filter(item=>item.role==='user').at(-1))}
+      assert.ok(lastUser(requests[2]).includes('HUMAN_SENTINEL'))
+      assert.ok(!lastUser(requests[2]).includes('TELL_REPROMPT_SENTINEL'))
+      assert.ok(lastUser(requests[3]).includes('TELL_REPROMPT_SENTINEL'))
+      assert.ok(!lastUser(requests[3]).includes('HUMAN_SENTINEL'))
+      assert.ok(lastUser(requests[4]).includes('Background digest'))
+      assert.ok(!lastUser(requests[4]).includes('TELL_REPROMPT_SENTINEL'))
+      assert.ok(events.some(e=>e.kind==='stdout'&&JSON.stringify(e.data).includes('FIXTURE_ACK')),'fixture acknowledgement emitted in native output; not a real model ack')
       const digestContext=JSON.stringify(context(requests[4]))
       for(const peer of peers)assert.ok(digestContext.includes(peer.body),'full peer body in actual provider context')
-      writeFileSync(`${root}/summary.json`,JSON.stringify({passed:true,scope:'stock native CLI + local fixture provider + real CoreStore/DaemonCore + FakeDriver bridge; not HSR or RPC end-to-end; not real data or model ack latency',mode,sourceRoot,...inspect()},null,2))
+      writeFileSync(`${root}/summary.json`,JSON.stringify({passed:true,scope:'stock native CLI + local fixture provider + real CoreStore/DaemonCore + FakeDriver bridge; store-level classification only; not HSR or RPC end-to-end; authority gates, frozen/uncertain confirmation restarts, paging/bounds, deferred stopped wake and cancel/expedite unqualified; restarts gracefully reopen store and retain FakeDriver/native process; not real data or model ack latency',mode,sourceRoot,binary:events.find(e=>e.kind==='binary')?.data,node:process.version,...inspect()},null,2))
     },
     close(){store.close()},
   }

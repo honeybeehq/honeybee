@@ -1,3 +1,7 @@
 ts	phase	decision	why	evidence	result
 2026-10-21T10:49:05Z	source	Adapt committed Claude and Codex H2 benches directly	Parent supplied B1 store API names and requested the real FakeDriver bridge	.proof/H2B/claude-bench.mjs	B1 runner scripts prepared
 2026-10-21T10:49:05Z	verification	Require B1 APIs and fail on H2-only source	Synthetic fallback could falsely claim batching qualification	.proof/B1/cli-fixture.mjs	Native qualification awaits parent implementation
+2026-10-21T10:50:37Z	gates	Typecheck source and test projects and build on Linux through forage	Repository requires typecheck test and build; npm12 wrapper required force because repository declares npm11	forage runs tdnAis,8K4Jom,GZOgmJ	source/test typechecks and build green; targeted test path corrected from core to daemon
+2026-10-21T10:52:36Z	review	Observe delivered turn starts and probe the core during provider requests	Independent Opus review found an idle-only bridge could falsely pass batching	.proof/B1/cli-fixture.mjs	fixed; native runs pending parent B1 source
+2026-10-21T10:52:36Z	gates	Run isolated Linux gate script through forage	Direct shell quoting failed so gate script owns isolation and commands	forage AVErG8; .proof/B1/cli-gates.sh	20 human-first tests passed; both root typechecks and build passed
+2026-10-21T10:52:36Z	negative-control	Run node .proof/B1/cli-claude.mjs idle on H2-only base	Must refuse a batching proof without actual B1 APIs	978097d9; .proof/B1/cli-fixture.mjs:16	failed missing setMailBatchingPolicy before native spawn

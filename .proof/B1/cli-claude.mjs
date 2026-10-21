@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { createCliFixture } from './cli-fixture.mjs'
 import http from 'node:http'
 import { spawn } from 'node:child_process'
@@ -23,7 +24,10 @@ const send = obj => { log('stdin', obj); child.stdin.write(JSON.stringify(obj)+'
 const server = http.createServer(async (req,res) => {
   let raw = ''; for await (const chunk of req) raw += chunk
   if (!req.url.includes('/messages')) { res.writeHead(200,{'content-type':'application/json'}); res.end('{}'); return }
-  const body = JSON.parse(raw); count++; log('provider-request', { count, messages: body.messages })
+  const body = JSON.parse(raw)
+  if(req.url.includes('count_tokens')){log('provider-aux-request',{url:req.url});res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({input_tokens:10}));return}
+  if(!body.stream || !body.tools?.some(t=>t.name==='Bash') || !body.model.includes('sonnet')){log('provider-aux-request',{url:req.url,body});res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({id:'msg_aux',type:'message',role:'assistant',model:body.model,content:[{type:'text',text:'FIXTURE_AUX'}],stop_reason:'end_turn',usage:{input_tokens:1,output_tokens:1}}));return}
+  fixture.nativeRequest();count++; log('provider-request', { count, messages: body.messages })
   const isFirst = count === 1
   const content = isFirst ? { type: 'tool_use', id: 'toolu_fixture', name: 'Bash', input: { command: `sleep 2; printf TOOL_RESULT_SENTINEL`, description:'Fixture slow tool' } } : { type: 'text', text: body.messages.some(x=>JSON.stringify(x).includes('HUMAN_SENTINEL')) ? 'FIXTURE_ACK' : 'FIXTURE_DONE' }
   const contents = [content]
@@ -43,7 +47,9 @@ const server = http.createServer(async (req,res) => {
 })
 await new Promise(r=>server.listen(0,'127.0.0.1',r))
 const port=server.address().port
-child=spawn(process.env.B1_CLAUDE_BIN ?? '/home/trmd/.local/share/apiary-satellite/bin/claude',['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--dangerously-skip-permissions','--model','claude-sonnet-4-6','--strict-mcp-config','--mcp-config','{"mcpServers":{}}'],{cwd:`${root}/cwd`,env:{HOME:`${root}/home`,TMPDIR:`${root}/tmp`,PATH:'/usr/local/bin:/usr/bin:/bin',ANTHROPIC_API_KEY:'fixture-key-no-account',ANTHROPIC_BASE_URL:`http://127.0.0.1:${port}`,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',CLAUDE_CONFIG_DIR:`${root}/home/.claude`,DISABLE_AUTOUPDATER:'1'}})
+const binary=process.env.B1_CLAUDE_BIN ?? '/home/trmd/.local/share/apiary-satellite/bin/claude'
+fixture.recordBinary(binary)
+child=spawn(binary,['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--dangerously-skip-permissions','--model','claude-sonnet-4-6','--strict-mcp-config','--mcp-config','{"mcpServers":{}}'],{cwd:`${root}/cwd`,env:{HOME:`${root}/home`,TMPDIR:`${root}/tmp`,PATH:'/usr/local/bin:/usr/bin:/bin',ANTHROPIC_API_KEY:'fixture-key-no-account',ANTHROPIC_BASE_URL:`http://127.0.0.1:${port}`,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',CLAUDE_CONFIG_DIR:`${root}/home/.claude`,DISABLE_AUTOUPDATER:'1'}})
 let rest=''
 child.stdout.on('data',chunk=>{rest+=chunk;const lines=rest.split('\n');rest=lines.pop();for(const line of lines){let obj;try{obj=JSON.parse(line)}catch{log('stdout-other',line);continue}log('stdout',obj);if(obj.type==='result'){results++;if(sent){endOriginal();if(results===4)setTimeout(()=>child.stdin.end(),300)}}}})
 child.on('error',error=>{throw error})
@@ -51,6 +57,6 @@ process.once('uncaughtException',error=>{log('failure',String(error.stack ?? err
 child.stderr.on('data',chunk=>log('stderr',String(chunk)))
 send({type:'user',message:{role:'user',content:[{type:'text',text:'Run the fixture tool.'}]}})
 const timeout=setTimeout(()=>{log('timeout',{});process.exitCode=1;child.kill('SIGTERM')},25000)
-await new Promise(r=>child.on('exit',(code,signal)=>{log('exit',{code,signal});r()}))
-clearTimeout(timeout);server.close();fixture.verify();log('final-mailbox',fixture.inspect());fixture.close();console.log(root)
+await new Promise(r=>child.on('exit',(code,signal)=>{log('exit',{code,signal});if(code!==0||signal)process.exitCode=1;r()}))
+clearTimeout(timeout);server.close();assert.ok(!process.exitCode,'native CLI must exit cleanly');try{fixture.verify();log('final-mailbox',fixture.inspect())}finally{fixture.close()}console.log(root)
 
