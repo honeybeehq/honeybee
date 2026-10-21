@@ -1,3 +1,4 @@
+import { passDiagnostics, readPassDiagnostics } from "./cellRetentionDiagnostics.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 /**
  * Cell disk retention (v31) — the daemon policy over Honeybee-owned Cells.
@@ -182,6 +183,7 @@ function summaryFrom(raw: Record<string, unknown> | null): CellGcPassSummary | n
     floorBytes: num(raw.floorBytes),
     targetBytes: num(raw.targetBytes),
     error: typeof raw.error === "string" ? raw.error : null,
+    diagnostics: readPassDiagnostics(raw.diagnostics),
   };
 }
 
@@ -415,7 +417,7 @@ export class CellRetentionService {
       floorUnmet: this.floorUnmet,
       checkedAt: disk.at,
       currentPass: this.progress ? structuredClone(this.progress) : null,
-      lastPass: this.lastPass ? { ...this.lastPass } : null,
+      lastPass: this.lastPass ? structuredClone(this.lastPass) : null,
     };
   }
 
@@ -492,10 +494,13 @@ export class CellRetentionService {
   }
 
   private recordPass(summary: CellGcPassSummary): void {
-    this.lastPass = summary;
+    if (summary.diagnostics?.errorCount && summary.error == null) {
+      summary.error = `${summary.diagnostics.inspectErrors} Cell inspections and ${summary.diagnostics.applyErrors} Cell apply operations failed`;
+    }
+    this.lastPass = structuredClone(summary);
     this.deps.log(
       `cell.retention.pass kind=${summary.kind} outcome=${summary.outcome} evicted=${summary.evicted} freed_bytes=${summary.freedBytes ?? "?"}` +
-        ` free_before=${summary.freeBefore ?? "?"} free_after=${summary.freeAfter ?? "?"} floor=${summary.floorBytes ?? "-"}${summary.error ? ` err=${JSON.stringify(summary.error)}` : ""}`,
+        ` errors=${summary.diagnostics?.errorCount ?? 0} free_before=${summary.freeBefore ?? "?"} free_after=${summary.freeAfter ?? "?"} floor=${summary.floorBytes ?? "-"}${summary.error ? ` err=${JSON.stringify(summary.error)}` : ""}`,
     );
     try {
       this.deps.audit?.("cell.retention.pass", { ...summary, ...(this.submoduleHolds.length > 0 ? { submoduleHolds: this.submoduleHolds } : {}) });
@@ -526,6 +531,7 @@ export class CellRetentionService {
         floorBytes: after?.floorBytes ?? before?.floorBytes ?? null,
         targetBytes: after?.targetBytes ?? before?.targetBytes ?? null,
         error: null,
+        diagnostics: result.diagnostics,
       };
       this.recordPass(result.pass);
       return result;
@@ -575,6 +581,8 @@ export class CellRetentionService {
         ` present_bytes=${result.totals.presentBytes ?? "?"} trim_cells=${result.totals.trimCells} trim_bytes=${result.totals.trimBytes ?? "?"}` +
         ` inspect_ms=${inspectMs} gather_ms=${plannedAt - startedAt - inspectMs}`,
     );
+    const inspectionErrors = [...inspections.values()].filter(i => i.error != null || i.inspection == null).length;
+    result.diagnostics = passDiagnostics(items, [], [], inspectionErrors);
     if (opts.dryRun) {
       result.pass = {
         kind: opts.kind, startedAt, endedAt: this.deps.now(), outcome: "dry_run", evicted: 0, freedBytes: null,
@@ -593,6 +601,7 @@ export class CellRetentionService {
         ` trimmed=${trimmed.length} trim_bytes=${trimmed.reduce((sum, o) => sum + (o.bytes ?? 0), 0)}` +
         ` trim_refused=${result.trimOutcomes.filter((o) => o.status === "refused").length} trim_failed=${result.trimOutcomes.filter((o) => o.status === "failed").length}`,
     );
+    result.diagnostics = passDiagnostics(items, result.outcomes ?? [], result.trimOutcomes ?? [], inspectionErrors);
     return result;
   }
 
@@ -630,12 +639,14 @@ export class CellRetentionService {
     let reading = disk;
     let evicted = 0;
     let inspectMs = 0;
+    let inspectionErrors = 0;
     let cursor = 0;
     let capped = false;
     while (!capped && cursor < eligible.length && reading.freeBytes < target && evicted < policy.maxPerPass) {
       const batch = eligible.slice(cursor, cursor + PRESSURE_BATCH);
       const inspectStarted = Date.now();
       const inspections = await this.inspect(batch, true, "pressure");
+      inspectionErrors += [...inspections.values()].filter(i => i.error != null || i.inspection == null).length;
       inspectMs += Date.now() - inspectStarted;
       this.assertRunning();
       const now = this.deps.now();
@@ -681,6 +692,7 @@ export class CellRetentionService {
       floorBytes: floor,
       targetBytes: target,
       error: null,
+      diagnostics: passDiagnostics(items, outcomes, [], inspectionErrors),
     };
     const result: CellGcResult = {
       dryRun: false,
