@@ -9,7 +9,7 @@ const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const protocolPath = resolve(root, "v2/daemon/src/protocol.ts");
 const storePath = resolve(root, "v2/core/src/store.ts");
 const daemonPath = resolve(root, "v2/daemon/src/daemon.ts");
-const census = (patches: ReadonlyMap<string, (source: string) => string> = new Map()) => protocolTypeCensus(["TurnTrigger", "TurnTriggerSource"], patches);
+const census = (patches: ReadonlyMap<string, (source: string) => string> = new Map()) => protocolTypeCensus(["TurnTrigger", "TurnTriggerSource", "UnansweredHumanMessage"], patches);
 const sorted = (paths: { triggers: readonly string[]; audits: readonly string[] }) => ({ values: [...new Set(paths.triggers)].sort(), audits: [...new Set(paths.audits)].sort() });
 
 function assertCovered(actual: ReturnType<typeof census>): void {
@@ -28,6 +28,7 @@ test("answer trigger egress coverage enumerates all protocol, dispatch and infer
 test("answer trigger census fails for a new result, dispatch path or audit carrying a trigger", () => {
   for (const patches of [
     new Map([[protocolPath, (source: string) => `${source}\nexport interface UncoveredResult { bee: BeeRow }\n`]]),
+    new Map([[protocolPath, (source: string) => `${source}\nexport interface UncoveredPending { pending: import("../../core/src/humanOutputTypes.ts").UnansweredHumanMessage }\n`]]),
     new Map([[daemonPath, (source: string) => source.replace('case "snapshot": {', 'case "uncovered": return { nested: this.mustStore().getBee("probe") };\n      case "snapshot": {')]]),
     new Map([[storePath, (source: string) => `${source}\nfunction censusProbe(store: { audit: (...args: unknown[]) => void }, trigger: import("./types.ts").TurnTrigger) { store.audit("uncovered", null, { turnTrigger: trigger }); }\n`]]),
   ]) assert.throws(() => assertCovered(census(patches)), /census differs from egress coverage/);

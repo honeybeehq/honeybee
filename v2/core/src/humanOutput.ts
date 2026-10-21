@@ -99,10 +99,16 @@ export class HumanOutputLedger {
     return result;
   }
 
-  delivery(beeId: string, seq: number, fact: UnansweredHumanMessage): HumanOutputFacts | null {
-    if (this.facts(beeId).humanAcknowledgementTrackingSince === null) return null;
-    this.db.prepare("INSERT OR IGNORE INTO bee_human_deliveries VALUES(?,?,?,?,?)").run(seq, beeId, fact.messageId, fact.generation, JSON.stringify(fact));
-    return this.facts(beeId);
+  prepareDelivery(beeId: string, fact: UnansweredHumanMessage) {
+    const facts = this.facts(beeId);
+    if (facts.humanAcknowledgementTrackingSince === null) return null;
+    const existing = this.db.prepare("SELECT 1 FROM bee_human_deliveries WHERE bee_id=? AND message_id=? AND generation=?").get(beeId, fact.messageId, fact.generation);
+    return {
+      facts: { ...facts, unansweredHumanMessage: facts.unansweredHumanMessage ?? (existing ? null : fact) },
+      commit: (seq: number) => {
+        this.db.prepare("INSERT OR IGNORE INTO bee_human_deliveries VALUES(?,?,?,?,?)").run(seq, beeId, fact.messageId, fact.generation, JSON.stringify(fact));
+      },
+    };
   }
   private target(beeId: string, messageId: number): number {
     if (!Number.isSafeInteger(messageId) || messageId < 1) invalid("human_output_target_invalid", "Target must be a human-origin delivery to this bee.");

@@ -171,3 +171,42 @@ test("human output: text plus quiet token advances legacy cursor but explicit mo
     } finally { store.close(); }
   }
 });
+
+for (const kind of ["runtime", "inbox"] as const) test(`human output: ${kind} deliveries bind to the actual audit sequence despite intervening audit`, t => {
+  const h = harness(); t.after(h.cleanup); const store = h.open(); t.after(() => store.close());
+  const bee = kind === "runtime" ? setup(store) : store.createBee({ name: "inbox", agent: "inbox", substrate: "mailbox", cwd: "/tmp" }).bee;
+  if (kind === "inbox") store.setHumanOutputMode(bee.id, "explicit", "mode");
+  const internal = store as unknown as { db: DatabaseSync; audit: (kind: string, beeId: string | null, payload: Record<string, unknown>, at?: number) => number };
+  const audit = internal.audit.bind(store);
+  internal.audit = (eventKind, beeId, payload, at) => {
+    if (eventKind === "mail.delivered") audit("mail.deliver_noop", beeId, { reason: "intervening audit" });
+    return audit(eventKind, beeId, payload, at);
+  };
+  const ids: number[] = [];
+  for (let index = 0; index < 2; index++) {
+    const message = store.send(bee.id, "human", { senderKind: "human" }).message; ids.push(message.id);
+    if (kind === "runtime") store.markDelivered(message.id, 1, { kind: "human", from: "operator" });
+    else store.ackMail(bee.id, message.id);
+    const event = store.auditRows().filter(event => event.kind === "mail.delivered").at(-1)!;
+    const fact = internal.db.prepare("SELECT seq FROM bee_human_deliveries WHERE bee_id=? AND message_id=?").get(bee.id, message.id)!;
+    assert.equal(fact.seq, event.seq);
+    assert.equal((event.payload.unansweredHumanMessage as { messageId: number }).messageId, ids[0]);
+  }
+  const tell = store.tellHuman({ beeId: bee.id, text: "acknowledged", idempotencyKey: "reply" }).tell;
+  assert.deepEqual(tell.acknowledgedMessageIds, ids);
+  assert.equal(tell.acknowledgedDeliveryRange!.throughSeq, store.auditRows().filter(event => event.kind === "mail.delivered").at(-1)!.seq);
+  assert.equal(store.view(bee.id).unansweredHumanMessage, null);
+  assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+});
+
+for (const kind of ["runtime", "inbox"] as const) test(`human output: ${kind} fact insertion failure rolls back delivery and audit together`, t => {
+  const h = harness(); t.after(h.cleanup); const store = h.open(); t.after(() => store.close());
+  const bee = kind === "runtime" ? setup(store) : store.createBee({ name: "inbox", agent: "inbox", substrate: "mailbox", cwd: "/tmp" }).bee;
+  if (kind === "inbox") store.setHumanOutputMode(bee.id, "explicit", "mode");
+  const message = store.send(bee.id, "human", { senderKind: "human" }).message;
+  const before = store.dumpState(), seq = store.lastAuditSeq();
+  const db = (store as unknown as { db: DatabaseSync }).db;
+  db.exec("CREATE TRIGGER refuse_human_delivery BEFORE INSERT ON bee_human_deliveries BEGIN SELECT RAISE(ABORT,'injected delivery failure'); END");
+  assert.throws(() => kind === "runtime" ? store.markDelivered(message.id, 1, { kind: "human", from: "operator" }) : store.ackMail(bee.id, message.id), /injected delivery failure/);
+  assert.equal(store.lastAuditSeq(), seq); assert.deepEqual(store.dumpState(), before);
+});

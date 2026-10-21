@@ -4,24 +4,26 @@ export const ANSWER_TRIGGER_CAPABILITY = "turn-trigger.answer.v1";
 export const ANSWER_TRIGGER_RESULTS = {
   BeeTellResult: { verbs: ["bee.tell"], triggers: ["tell.turnTrigger"], audits: [] },
   BeeReactResult: { verbs: ["bee.react"], triggers: ["reaction.turnTrigger"], audits: [] },
-  RenameResult: { verbs: ["bee.rename"], triggers: ["bee.lastTurnTrigger"], audits: [] },
-  TagResult: { verbs: ["bee.tag"], triggers: ["bee.lastTurnTrigger"], audits: [] },
-  ForkResult: { verbs: ["bee.fork"], triggers: ["bee.lastTurnTrigger"], audits: [] },
-  ChildrenResult: { verbs: ["bee.children"], triggers: ["children[].bee.lastTurnTrigger"], audits: [] },
-  SetArgsResult: { verbs: ["bee.setArgs"], triggers: ["bee.lastTurnTrigger"], audits: [] },
-  ReconfigureResult: { verbs: ["bee.reconfigure"], triggers: ["bee.lastTurnTrigger"], audits: [] },
-  ViewResult: { verbs: ["view"], triggers: ["bee.lastTurnTrigger"], audits: [] },
-  ListResult: { verbs: ["list"], triggers: ["views[].bee.lastTurnTrigger"], audits: [] },
-  SnapshotResult: { verbs: ["snapshot", "watch"], triggers: ["views[].bee.lastTurnTrigger", "tells[].turnTrigger", "reactions[].turnTrigger"], audits: [] },
+  SetHumanOutputModeResult: { verbs: ["bee.setHumanOutputMode"], triggers: ["unansweredHumanMessage"], audits: [] },
+  RenameResult: { verbs: ["bee.rename"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
+  TagResult: { verbs: ["bee.tag"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
+  ForkResult: { verbs: ["bee.fork"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
+  ChildrenResult: { verbs: ["bee.children"], triggers: ["children[].bee.lastTurnTrigger", "children[].bee.unansweredHumanMessage", "children[].view.unansweredHumanMessage"], audits: [] },
+  SetArgsResult: { verbs: ["bee.setArgs"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
+  ReconfigureResult: { verbs: ["bee.reconfigure"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
+  ViewResult: { verbs: ["view"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage", "view.unansweredHumanMessage"], audits: [] },
+  ListResult: { verbs: ["list"], triggers: ["views[].bee.lastTurnTrigger", "views[].bee.unansweredHumanMessage", "views[].view.unansweredHumanMessage"], audits: [] },
+  SnapshotResult: { verbs: ["snapshot", "watch"], triggers: ["views[].bee.lastTurnTrigger", "views[].bee.unansweredHumanMessage", "views[].view.unansweredHumanMessage", "tells[].turnTrigger", "reactions[].turnTrigger"], audits: [] },
   AuditTailResult: { verbs: ["audit.tail"], triggers: [], audits: ["rows[]"] },
   WatchFrame: { verbs: [], triggers: [], audits: ["events[]"] },
 } as const satisfies Record<string, { verbs: readonly RpcVerb[]; triggers: readonly string[]; audits: readonly string[] }>;
 export const ANSWER_TRIGGER_AUDITS: Readonly<Record<string, readonly string[]>> = {
-  "bee.created": ["bee.lastTurnTrigger"],
-  "bee.told": ["tell.turnTrigger"],
-  "bee.reacted": ["reaction.turnTrigger"],
+  "bee.created": ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"],
+  "bee.told": ["tell.turnTrigger", "unansweredHumanMessage"],
+  "bee.reacted": ["reaction.turnTrigger", "unansweredHumanMessage"],
+  "bee.human_output_mode_changed": ["unansweredHumanMessage"],
   "runtime.updated": ["turnTrigger"],
-  "mail.delivered": ["turnTrigger"],
+  "mail.delivered": ["turnTrigger", "unansweredHumanMessage"],
 };
 
 const routes = new Map<string, { triggers: readonly string[]; audits: readonly string[] }>(
@@ -51,7 +53,11 @@ export function rewritePath(value: unknown, parts: readonly string[], rewrite: (
 }
 
 function legacyTrigger(value: unknown): unknown {
-  return record(value) && value.kind === "answer" ? { ...value, kind: "human" } : value;
+  if (!record(value)) return value;
+  let projected = value;
+  if (value.kind === "answer") projected = { ...projected, kind: "human" };
+  if (value.triggerKind === "answer") projected = { ...projected, triggerKind: "human" };
+  return projected;
 }
 
 function legacyAudit(value: unknown): unknown {

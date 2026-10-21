@@ -97,7 +97,7 @@ bee.reacted carries {reaction,...HumanOutputFacts};
 bee.human_output_mode_changed carries {beeId,...HumanOutputFacts}.
 Human mail.delivered events include the refreshed facts in the same transaction.
 The usual envelope supplies sequence, time and existing RPC audit attribution.
-Answer-trigger compatibility projection also covers new rows and snapshots.
+Answer-trigger compatibility projection also covers new rows, snapshots and every pending-human fact. Legacy readers receive triggerKind=human for pending answers, including phone readers with no capabilities; canonical rows and capable readers retain answer. The projection changes only the declared fact paths and preserves arbitrary output data. Delivery ordering uses the sequence returned by the committing mail.delivered audit insert, never a prediction of its next sequence.
 
 Apiary uses owner facts; it must not infer acknowledgements from transcripts.
 Only upgraded Apiary enables explicit mode. An older mirror encountering a new

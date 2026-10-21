@@ -2886,7 +2886,7 @@ export class CoreStore {
   listTells(): BeeTellRow[] { return this.humanOutputLedger().list<BeeTellRow>("tell"); }
   listReactions(): BeeReactionRow[] { return this.humanOutputLedger().list<BeeReactionRow>("react"); }
 
-  private recordHumanDelivery(beeId: string, messageId: number, generation: number, at: number, source?: TurnTriggerSource) {
+  private prepareHumanDelivery(beeId: string, messageId: number, generation: number, at: number, source?: TurnTriggerSource) {
     const message = this.getMessage(messageId);
     const answer = this.answeredQuestionId(messageId) !== null;
     if (!message) return null;
@@ -2896,7 +2896,7 @@ export class CoreStore {
     const system = origin === "action.dispatch" || origin === "handoff.seed";
     const human = source ? source.kind === "human" : !peerSeed && !system && (kind === "human" || kind !== "automation" && (message.sender === "operator" || message.sender.startsWith("human:")));
     if (!answer && !message.phoneInput && !human) return null;
-    return this.humanOutputLedger().delivery(beeId, this.lastAuditSeq() + 1, {
+    return this.humanOutputLedger().prepareDelivery(beeId, {
       messageId, generation, humanAt: at, triggerKind: answer ? "answer" : "human",
       ...(message.phoneInput ? { phoneOrigin: message.phoneInput.envelope } : {}),
     });
@@ -4916,9 +4916,9 @@ export class CoreStore {
       const turnTrigger = source && currentMatches ? this.applyDeliveryTurnTrigger(message.beeId, current!, messageId, source, at) : null;
       const questionId = this.answeredQuestionId(messageId);
       const senderKind = deliveredSenderKind(message);
-      const humanOutputFacts = this.recordHumanDelivery(message.beeId, messageId, generation, at, source);
-      this.audit("mail.delivered", message.beeId, {
-        ...(humanOutputFacts ?? {}),
+      const humanDelivery = this.prepareHumanDelivery(message.beeId, messageId, generation, at, source);
+      const deliverySeq = this.audit("mail.delivered", message.beeId, {
+        ...(humanDelivery?.facts ?? {}),
         messageId,
         deliveredAt: at,
         deliveredGeneration: generation,
@@ -4928,6 +4928,7 @@ export class CoreStore {
         ...(questionId !== null ? { questionId } : {}),
         ...(senderKind !== undefined ? { senderKind } : {}),
       });
+      humanDelivery?.commit(deliverySeq);
       // v24: an action instruction reached its runtime — delivery evidence only, never completion.
       this.applyActionDelivered(messageId, generation, at);
       this.recordMultilineReorder(message.beeId, messageId, reorderMessageIds);
@@ -4967,9 +4968,9 @@ export class CoreStore {
         this.stmt("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?").run(at, generation, messageId);
         const questionId = this.answeredQuestionId(messageId);
         const senderKind = deliveredSenderKind({ sender: String(row.sender), ...(row.sender_kind != null ? { senderKind: row.sender_kind as SenderKind } : {}) });
-        const humanOutputFacts = this.recordHumanDelivery(beeId, messageId, generation, at);
-        this.audit("mail.delivered", beeId, {
-          ...(humanOutputFacts ?? {}),
+        const humanDelivery = this.prepareHumanDelivery(beeId, messageId, generation, at);
+        const deliverySeq = this.audit("mail.delivered", beeId, {
+          ...(humanDelivery?.facts ?? {}),
           messageId,
           deliveredAt: at,
           deliveredGeneration: generation,
@@ -4978,6 +4979,7 @@ export class CoreStore {
           ...(questionId !== null ? { questionId } : {}),
           ...(senderKind !== undefined ? { senderKind } : {}),
         });
+        humanDelivery?.commit(deliverySeq);
         acked.push(messageId);
       }
       return { acked };
