@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 47;
+export const SCHEMA_VERSION = 48;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -476,6 +476,7 @@ CREATE TABLE IF NOT EXISTS mailbox (
   enqueued_at          INTEGER NOT NULL,
   delivered_at         INTEGER,
   delivered_generation INTEGER,
+  human_chat           TEXT,
   sender_kind          TEXT CHECK (sender_kind IN ('human','automation'))
 ) STRICT;
 -- mailbox_undelivered (bee_id, id) was superseded by mailbox_pending_metadata
@@ -1131,8 +1132,28 @@ export const MAILBOX_PENDING_METADATA_INDEX_SQL =
  * Additive columns on `mailbox` since v7 — same add-iff-missing discipline as
  * BEES_ADDITIVE_COLUMNS. v8: urgency.
  */
+export const HUMAN_FIRST_SQL = `
+CREATE TABLE IF NOT EXISTS human_first_policies (
+ bee_id TEXT PRIMARY KEY REFERENCES bees(id) ON DELETE CASCADE,
+ enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
+ updated_at INTEGER,
+ last_human_received_at INTEGER
+) STRICT;
+CREATE TABLE IF NOT EXISTS human_chat_admissions (
+ idempotency_key TEXT PRIMARY KEY,
+ authority_id TEXT NOT NULL,
+ admission_id TEXT NOT NULL,
+ bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+ body_sha256 TEXT NOT NULL,
+ policy_enabled INTEGER,
+ message_id INTEGER NOT NULL,
+ UNIQUE(authority_id, admission_id)
+) STRICT;
+`;
+
 export const MAILBOX_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["urgency", "urgency TEXT NOT NULL DEFAULT 'next' CHECK (urgency IN ('now','next','idle'))"],
+  ["human_chat", "human_chat TEXT"],
   ["sender_kind", "sender_kind TEXT CHECK (sender_kind IN ('human','automation'))"],
   ["queue_order", "queue_order INTEGER"],
   ["replaces_message_id", "replaces_message_id INTEGER"],

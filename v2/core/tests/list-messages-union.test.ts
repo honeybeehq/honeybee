@@ -60,7 +60,7 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
     sql: `SELECT message.id,
               message.bee_id,
               message.urgency,
-              message.enqueued_at, message.queue_order
+              message.enqueued_at, message.queue_order, message.human_chat
        FROM runtimes AS runtime
        CROSS JOIN mailbox AS message
        WHERE runtime.state != 'stopped'
@@ -105,7 +105,7 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
   },
   {
     name: "i1 messages",
-    sql: `SELECT id, bee_id, urgency, enqueued_at, queue_order
+    sql: `SELECT id, bee_id, urgency, enqueued_at, queue_order, human_chat
        FROM mailbox
        WHERE delivered_at IS NULL
        ORDER BY bee_id, COALESCE(queue_order,id), id`,

@@ -8,14 +8,14 @@ import { SCHEMA_VERSION } from "../src/schema.ts";
 import { harness, makeBee } from "./helpers.ts";
 
 // Verbatim production texts (asserted against store.ts so pins cannot drift).
-const I1_MESSAGES_SQL = `SELECT id, bee_id, urgency, enqueued_at, queue_order
+const I1_MESSAGES_SQL = `SELECT id, bee_id, urgency, enqueued_at, queue_order, human_chat
        FROM mailbox
        WHERE delivered_at IS NULL
        ORDER BY bee_id, COALESCE(queue_order,id), id`;
 const WORK_MESSAGES_SQL = `SELECT message.id,
               message.bee_id,
               message.urgency,
-              message.enqueued_at, message.queue_order
+              message.enqueued_at, message.queue_order, message.human_chat
        FROM runtimes AS runtime
        CROSS JOIN mailbox AS message
        WHERE runtime.state != 'stopped'
@@ -198,7 +198,7 @@ for (const withHold of [false, true]) test(`pending-metadata index is covering f
     assert.doesNotMatch(indexSql.sql, /body|json/i, "no body column and no JSON expression in the index");
 
     const fifoColumns = check.prepare("SELECT name FROM pragma_index_info('mailbox_fifo_pending') ORDER BY seqno").all().map(row => row.name);
-    assert.deepEqual(fifoColumns, ["bee_id", null, "id", "urgency", "enqueued_at", "delivered_at", "queue_order", "replaces_message_id"]);
+    assert.deepEqual(fifoColumns, ["bee_id", null, "id", "urgency", "enqueued_at", "delivered_at", "queue_order", "replaces_message_id", "human_chat"]);
     const fifoSql = String(check.prepare("SELECT sql FROM sqlite_master WHERE name = 'mailbox_fifo_pending'").get()?.sql);
     assert.match(fifoSql, /COALESCE\(queue_order,id\)/);
     assert.match(fifoSql, /WHERE delivered_at IS NULL/);

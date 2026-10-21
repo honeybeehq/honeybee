@@ -273,8 +273,8 @@ export class CellDriver implements RuntimeDriver {
     return this.inner.deliveryLaneReady(beeId, generation);
   }
 
-  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string) {
-    return this.inner.planDeliveryConfirmation(beeId, generation, messageId, body);
+  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean }) {
+    return this.inner.planDeliveryConfirmation(beeId, generation, messageId, body, options);
   }
 
   adoptedDeliveryUncertain(beeId: string, generation: number): boolean {
@@ -289,7 +289,7 @@ export class CellDriver implements RuntimeDriver {
     return this.inner.reconcileDeliveryConfirmation(beeId, generation, messageId, plan);
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
     return this.inner.deliver(beeId, generation, messageId, body, options);
   }
 

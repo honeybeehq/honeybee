@@ -124,9 +124,9 @@ export class SubstrateRouter implements RuntimeDriver {
     return driver.consumeDeliveryConfirmation?.(beeId, generation, messageId) ?? false;
   }
 
-  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null {
+  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean }): DeliveryConfirmationPlan | "not_ready" | null {
     const driver: RuntimeDriver = this.driverFor(beeId, generation);
-    return driver.planDeliveryConfirmation?.(beeId, generation, messageId, body) ?? null;
+    return driver.planDeliveryConfirmation?.(beeId, generation, messageId, body, options) ?? null;
   }
 
   reconcileDeliveryConfirmation(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult {
@@ -134,7 +134,7 @@ export class SubstrateRouter implements RuntimeDriver {
     return driver.reconcileDeliveryConfirmation?.(beeId, generation, messageId, plan) ?? "unknown";
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; multilineWaitExpired?: boolean; singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
     const driver = this.driverFor(beeId, generation);
     return driver.deliver(beeId, generation, messageId, body, options);
   }

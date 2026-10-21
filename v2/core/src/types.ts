@@ -296,7 +296,36 @@ export interface FlagRow {
 export const MESSAGE_URGENCIES = ["now", "next", "idle"] as const;
 export type Urgency = (typeof MESSAGE_URGENCIES)[number];
 
+export interface HumanChatProvenance {
+  version: 1;
+  authorityId: string;
+  admissionId: string;
+  receivedAt: number;
+}
+
+export interface HumanFirstPolicy {
+  beeId: string;
+  enabled: boolean;
+  updatedAt: number | null;
+  lastHumanReceivedAt: number | null;
+}
+
+export interface HumanChatAdmission {
+  version: 1;
+  authorityId: string;
+  admissionId: string;
+  beeId: string;
+  bodySha256: string;
+  idempotencyKey: string;
+  humanFirst?: boolean;
+}
+
+export interface HumanChatReceipt extends HumanChatAdmission {
+  messageId: number;
+}
+
 export interface MessageRow {
+  humanChat?: HumanChatProvenance;
   queueOrder?: number;
   replacesMessageId?: number;
   deliveryConfirmation?: DeliveryConfirmation;
@@ -1044,6 +1073,8 @@ export interface TrackRow {
 
 /** Deterministic full-store snapshot (audit excluded); comparison target for replay. */
 export interface StateDump {
+  humanFirstPolicies?: HumanFirstPolicy[];
+  humanChatAdmissions?: HumanChatReceipt[];
   deliveryConfirmationIntents?: DeliveryConfirmationIntent[];
   deliveryConfirmationDecisions?: DeliveryConfirmationDecision[];
   deliveryHolds?: MultilineDeliveryRow[];

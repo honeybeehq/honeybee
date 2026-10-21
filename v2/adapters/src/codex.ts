@@ -305,6 +305,7 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
       return JSON.stringify({ jsonrpc: "2.0", id: `hive-reconnect-tools-${commandId}`, method: "config/mcpServer/reload" });
     },
     encodeMessage(body: string, ctx: EncodeContext): string | null {
+      if (ctx.freshTurn && ctx.turnActive) return null;
       if (!ctx.sessionId) return null; // thread id not learned yet → not_ready
       if (ctx.turnActive && !ctx.turnId) return null; // cannot safely steer without the native precondition
       return JSON.stringify({
