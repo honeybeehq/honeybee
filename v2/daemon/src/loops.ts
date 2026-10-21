@@ -1802,8 +1802,10 @@ export class DaemonCore {
         // that jumped the queue).
         const handoff = this.store.activeHandoffOf(rt.beeId);
         if (handoff && handoffFencesSource(handoff.phase)) continue;
-        const seedId = this.store.pendingHandoffSeedMessageId(rt.beeId) ?? humanState.seed;
-        const seed = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
+        const handoffSeedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
+        const seedId = handoffSeedId ?? humanState.seed;
+        const seedCandidate = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
+        const seed = seedCandidate && (handoffSeedId !== null || this.humanFirstEligible(seedCandidate, trulyMidTurn, humanState)) ? seedCandidate : null;
         if (eligible.length === 0 && !seed && !urgentHuman) continue;
         if (!trulyMidTurn && this.beforeTurn && !this.beforeTurn(rt.beeId, rt.generation)) { this.deliveryRetries.delete(rt.beeId); continue; }
         if (rt.state === "running") {
@@ -2001,7 +2003,7 @@ export class DaemonCore {
   }
 
   private humanFirstEligible(message: Pick<MessageRow, "id" | "urgency" | "humanChat">, midTurn: boolean, state: ReturnType<DaemonCore["humanFirstState"]>): boolean {
-    if (state.enabled && message.id === state.seed) return !midTurn || message.urgency !== "idle";
+    if (state.enabled && message.id === state.seed) return !midTurn && !state.active;
     if (state.enabled && (state.head !== null || state.active)) {
       if (message.id !== state.head) return false;
       return !(midTurn || state.active) || message.urgency === "now";
@@ -2017,7 +2019,7 @@ export class DaemonCore {
     for (const { beeId, runtime: rt, hasActiveFlag, pending } of rows) {
       const humanState = this.humanFirstState(beeId);
       const midTurn = rt?.state === "running" && rt.bootEvidence === "real";
-      const seedId = humanState.enabled ? this.store.pendingHandoffSeedMessageId(beeId) ?? humanState.seed : null;
+      const seedId = humanState.enabled ? this.store.pendingHandoffSeedMessageId(beeId) : null;
       const quotaGate = humanState.enabled ? this.store.quotaDeliveryGate(beeId) : null;
       if (hasActiveFlag) {
         for (const message of pending) this.humanEligibilitySince.delete(message.id);

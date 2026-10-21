@@ -253,3 +253,37 @@ for (const origin of ["spawn.prompt", "auth.resume"] as const) test(`core-owned 
     assert.equal(r.store.getMessage(ordinary.id)?.deliveredAt, null);
   } finally { r.close(); }
 });
+
+
+for (const origin of ["auth.resume", "quota.resume"] as const) test(`trusted ${origin} replay preserves human provenance and one-turn isolation without a new admission`, () => {
+  const r = rig();
+  try {
+    const source = r.human("human to recover");
+    r.core.step(); r.event("turn_started"); r.event("turn_ended");
+    const before = r.store.humanFirstPolicy(r.bee.id);
+    const replay = r.store.send(r.bee.id, source.body, { sender: source.sender, origin, replayHumanChatMessageId: source.id }).message;
+    const background = r.store.send(r.bee.id, "background after replay").message;
+    r.core.step();
+    assert.deepEqual(replay.humanChat, source.humanChat);
+    assert.equal(r.store.listHumanChatAdmissions().length, 1);
+    assert.deepEqual(r.store.humanFirstPolicy(r.bee.id), before);
+    r.core.step(); r.event("turn_started"); r.advance(100000);
+    assert.equal(r.store.getMessage(background.id)?.deliveredAt, null);
+    r.event("turn_ended");
+    assert.notEqual(r.store.getMessage(background.id)?.deliveredAt, null);
+    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
+  } finally { r.close(); }
+});
+
+for (const urgency of ["next", "idle"] as const) test(`core ${urgency} context waits for the active human turn to end`, () => {
+  const r = rig();
+  try {
+    r.human("human"); r.core.step(); r.event("turn_started");
+    const seed = r.store.send(r.bee.id, "context", { origin: "auth.resume", urgency }).message;
+    r.advance(100000);
+    assert.equal(r.store.getMessage(seed.id)?.deliveredAt, null);
+    assert.deepEqual(r.violations, []);
+    r.event("turn_ended");
+    assert.notEqual(r.store.getMessage(seed.id)?.deliveredAt, null);
+  } finally { r.close(); }
+});

@@ -2447,6 +2447,7 @@ export class CoreStore {
       const sent = !row.interrupted ? [] : replay ? originals.map(message => message!.replacesMessageId != null && message!.deliveredAt === null ? { message: message! } : this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
         sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "quota.resume",
         ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
+        ...(message!.humanChat ? { replayHumanChatMessageId: message!.id } : {}),
         ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `quota-resume:${row.id}:${message!.id}` } } : {}),
       })) : [this.send(row.beeId, "Continue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.", { sender: "hive:quota-resume", origin: "quota.resume" })];
       return this.putQuotaRecovery({ ...row, state: row.interrupted && rt.bootEvidence !== "real" ? "rotating" : "resumed", successorGeneration: rt.generation, continuationKind: !row.interrupted ? "none" : replay ? "replay" : "continue", continuationMessageIds: sent.map(result => result.message.id) });
@@ -4341,6 +4342,7 @@ export class CoreStore {
       const replacement = input.action === "resend_anyway" ? this.send(input.beeId, message.phoneInput?.originalContent ?? message.body, {
         sender: message.sender, urgency: message.urgency, priority: message.priority, origin: this.mailOrigin(message.id),
         ...(message.senderKind === undefined ? {} : { senderKind: message.senderKind }),
+        ...(message.humanChat ? { replayHumanChatMessageId: message.id } : {}),
         ...(message.phoneInput ? { phone: { origin: forwardPhoneOrigin(message.phoneInput, "forward"), key: `delivery-resend:${message.id}` } } : {}),
       }).message : null;
       if (replacement) {
@@ -4506,7 +4508,7 @@ export class CoreStore {
   send(
     beeId: string,
     body: string,
-    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; humanChat?: HumanChatAdmission; phone?: { origin: PhoneOriginRequest; key: string } } = {},
+    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; humanChat?: HumanChatAdmission; replayHumanChatMessageId?: number; phone?: { origin: PhoneOriginRequest; key: string } } = {},
   ): SendResult {
     const urgency = opts.urgency ?? "next";
     if (opts.senderKind !== undefined && !(SENDER_KINDS as readonly string[]).includes(opts.senderKind)) throw new CoreError(`unknown sender kind: ${String(opts.senderKind)}`);
@@ -4536,7 +4538,9 @@ export class CoreStore {
         unarchived = true;
       }
       const at = this.now();
-      const humanChat: HumanChatProvenance | undefined = opts.humanChat ? { version: 1, authorityId: opts.humanChat.authorityId, admissionId: opts.humanChat.admissionId, receivedAt: at } : undefined;
+      const replaySource = opts.replayHumanChatMessageId === undefined ? undefined : this.getMessage(opts.replayHumanChatMessageId);
+      if (opts.replayHumanChatMessageId !== undefined && (!replaySource || replaySource.beeId !== beeId || replaySource.body !== normalizedBody || replaySource.sender !== sender || opts.humanChat)) throw new CoreError("Human chat replay must preserve the original target, sender and body");
+      const humanChat: HumanChatProvenance | undefined = opts.humanChat ? { version: 1, authorityId: opts.humanChat.authorityId, admissionId: opts.humanChat.admissionId, receivedAt: at } : replaySource?.humanChat;
       const res = this.db
         .prepare("INSERT INTO mailbox(bee_id, sender, body, priority, urgency, enqueued_at, sender_kind, human_chat) VALUES(?, ?, ?, ?, ?, ?, ?, ?)")
         .run(beeId, sender, normalizedBody, opts.priority ?? 0, urgency, at, opts.senderKind ?? null, humanChat ? JSON.stringify(humanChat) : null);
@@ -7762,6 +7766,7 @@ export class CoreStore {
         ? [...notice, ...originals.map((message) => message!.replacesMessageId != null && message!.deliveredAt === null ? { message: message! } : this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
           sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "auth.resume",
           ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
+        ...(message!.humanChat ? { replayHumanChatMessageId: message!.id } : {}),
           ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `auth-resume:${row.id}:${message!.id}` } } : {}),
         }))]
         : [this.send(row.beeId, (row.deathRecovery?.claimedAt != null ? "[Hive] Refreshed account material installed; conversation resumed automatically.\n\n" : "") + continueBody, { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })];
