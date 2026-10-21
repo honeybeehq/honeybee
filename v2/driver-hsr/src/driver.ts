@@ -435,10 +435,6 @@ export class HsrDriver implements RuntimeDriver {
     return resolvePath(parent, "runners");
   }
 
-  private socketDir(): string {
-    return stateDirectory(this.cfg.socketDir === undefined ? tmpdir() : this.cfg.socketDir, "socketDir");
-  }
-
   private selectHostLaunch(): HostLaunch {
     // Overrides are a complete caller-owned launch policy. In particular,
     // embedding/tests may intentionally provide one without packaging our
@@ -466,12 +462,12 @@ export class HsrDriver implements RuntimeDriver {
   }
 
   private socketDir(): string {
-    if (this.cfg.socketDir) return this.cfg.socketDir;
+    if (this.cfg.socketDir !== undefined) return stateDirectory(this.cfg.socketDir, "socketDir");
     if (!this.fallbackSocketDir) {
-      const sample = `hb-rh-${"0".repeat(16)}.sock`;
+      const sample = join(`hb-rh-${"0".repeat(16)}`, "stdin.sock");
       this.fallbackSocketDir = socketPathFits(join(tmpdir(), sample)) ? tmpdir() : shortSocketDir("hb-rh-", sample);
     }
-    return this.fallbackSocketDir;
+    return stateDirectory(this.fallbackSocketDir, "socketDir");
   }
 
   private runnerPaths(

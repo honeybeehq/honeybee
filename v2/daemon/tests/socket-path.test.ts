@@ -17,10 +17,10 @@ function deepDir(root: string): string {
 }
 
 test("socket placement: a data dir whose sockets fit keeps them in place", () => {
-  const root = mkdtempSync(join("/tmp", "hb-sp-"));
+  const root = mkdtempSync(join("/var/tmp", "hb-sp-"));
   try {
-    const placed = placeDaemonSockets(root, join(root, "hived.sock"), { runnerSocketDir: "/tmp" });
-    assert.deepEqual(placed, { socketPath: join(root, "hived.sock"), tmuxSocketPath: join(root, "tmux.sock"), runnerSocketDir: "/tmp", socketDir: null });
+    const placed = placeDaemonSockets(root, join(root, "hived.sock"), { runnerSocketDir: "/var/tmp" });
+    assert.deepEqual(placed, { socketPath: join(root, "hived.sock"), tmuxSocketPath: join(root, "tmux.sock"), runnerSocketDir: "/var/tmp", socketDir: null });
     assert.equal(existsSync(join(root, SOCKET_DIR_RECORD_FILE)), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -68,9 +68,9 @@ test("socket placement: a recorded dir that is world-writable or a symlink to a 
     assert.ok(ownedPrivateDir(afterLoose.socketDir!));
     assert.equal(readFileSync(join(dir, SOCKET_DIR_RECORD_FILE), "utf8").trim(), afterLoose.socketDir);
 
-    const foreign = mkdtempSync(join("/tmp", "hb-sp-foreign-"));
-    const link = join("/tmp", `hb-sp-link-${process.pid}`);
-    const ancestorLink = join("/tmp", `hb-sp-ancestor-${process.pid}`);
+    const foreign = mkdtempSync(join("/var/tmp", "hb-sp-foreign-"));
+    const link = join("/var/tmp", `hb-sp-link-${process.pid}`);
+    const ancestorLink = join("/var/tmp", `hb-sp-ancestor-${process.pid}`);
     const minted: string[] = [first.socketDir!, afterLoose.socketDir!];
     try {
       chmodSync(foreign, 0o777);
@@ -105,7 +105,7 @@ test("socket placement: a recorded dir that is world-writable or a symlink to a 
 
 test("socket placement: the fit check uses the real path of the base", () => {
   const root = mkdtempSync(join(tmpdir(), "hb-sp-real-"));
-  const link = join("/tmp", `hb-sp-base-${process.pid}`);
+  const link = join("/var/tmp", `hb-sp-base-${process.pid}`);
   try {
     let real = realpathSync(root);
     const name = "x.sock";
@@ -131,7 +131,7 @@ test("socket placement: the refusal names the path when no base can hold a short
         && error.message.includes(join(dir, "hived-XXXXXX")) && error.message.includes(String(UNIX_SOCKET_PATH_LIMIT)),
     );
     assert.throws(
-      () => placeDaemonSockets(dir, join(dir, "explicit.sock"), { runnerSocketDir: "/tmp" }),
+      () => placeDaemonSockets(dir, join(dir, "explicit.sock"), { runnerSocketDir: "/var/tmp" }),
       (error: unknown) => error instanceof RpcError && error.code === "socket_path_too_long"
         && error.message.includes(join(dir, "explicit.sock")) && error.details?.socketPath === join(dir, "explicit.sock"),
     );

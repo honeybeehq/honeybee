@@ -6,7 +6,7 @@ import { RpcError } from "./protocol.ts";
 
 export { socketPathBytes, socketPathFits, UNIX_SOCKET_PATH_LIMIT } from "../../core/src/socketPath.ts";
 export const SOCKET_DIR_RECORD_FILE = "socket-dir";
-export const RUNNER_SOCKET_SAMPLE = `hb-rh-${"0".repeat(16)}.sock`;
+export const RUNNER_SOCKET_SAMPLE = join(`hb-rh-${"0".repeat(16)}`, "stdin.sock");
 const SOCKET_DIR_PREFIX = "hived-";
 
 export interface SocketPlacement {
