@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { BRIDGE_ENV, bridgeOperation } from "../src/externalBridge.ts";
 import { externalExecAdapter } from "../../adapters/src/externalExec.ts";
 import { externalFixture, externalReceipt } from "../../core/tests/fixtures/externalExec.ts";
-import { sha256 } from "../../core/src/externalExec.ts";
+import { sha256, externalIdentity } from "../../core/src/externalExec.ts";
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync, renameSync, openSync, closeSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +18,7 @@ test("every external lifecycle operation refuses an unavailable pinned install b
 });
 
 test("external adapter has no app-server init, mail encoding or resume; raw native data cannot settle it", () => {
-  const b = externalFixture(), adapter = externalExecAdapter(b);
+  const b = externalFixture(), adapter = externalExecAdapter(externalIdentity(b));
   assert.deepEqual(adapter.bootLines(), []);
   assert.equal(adapter.encodeMessage("ignored", { sessionId: null, messageId: 1, turnActive: false, turnId: null }), null);
   assert.equal(adapter.resumeArgs, undefined);

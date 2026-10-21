@@ -7,6 +7,8 @@ export const RPC_ACCESS = {
   "rpc.execution.resolve": "read",
   "rpc.effect.resolve": "mutate",
   "rpc.effect.status": "read",
+  "rpc.externalManagement.challenge": "mutate",
+  "rpc.externalManagement.register": "mutate",
   "rpc.localTrust.challenge": "mutate",
   "rpc.localTrust.register": "mutate",
   "humanRef.status": "read",

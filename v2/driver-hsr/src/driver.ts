@@ -55,7 +55,7 @@ import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
  * pid adoption; silence never manufactures idle.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, constants, fchmodSync, fstatSync, ftruncateSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { connect, type Socket } from "node:net";
@@ -87,6 +87,7 @@ const PINNED_HSR_MODULE_DIR = dirname(PINNED_HSR_MODULE_PATH);
 
 /** What `start` needs to know per bee: which agent, how to spawn it. */
 export interface SpawnSpec {
+  privateBootLines?: string[];
   adapter: HarnessAdapter;
   command: string;
   args: string[];
@@ -564,15 +565,25 @@ export class HsrDriver implements RuntimeDriver {
       socketPath: paths.socket,
       statusPath: paths.status,
       bootLines: spec.adapter.bootLines(),
+      ...(spec.privateBootLines ? {privateBoot: true} : {}),
     };
-    writeFileSync(paths.config, JSON.stringify(hostConfig), { mode: 0o600 });
+    const configFd = openSync(paths.config, constants.O_WRONLY | constants.O_CREAT | constants.O_NONBLOCK | constants.O_NOFOLLOW, 0o600);
+    try {
+      const stat = fstatSync(configFd);
+      if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.geteuid!()) throw new Error("Invalid runner configuration file");
+      fchmodSync(configFd, 0o600); ftruncateSync(configFd, 0); writeFileSync(configFd, JSON.stringify(hostConfig));
+    } finally { closeSync(configFd); }
     const launch = this.hostCommandFor(paths.config);
     if (start) this.cfg.execution!.dispatch(start);
     const child = spawn(launch.command, launch.args, {
       env: nativeNodeEnv(),
       detached: true,
-      stdio: start ? ["ignore", "ignore", "ignore", "ipc"] : ["ignore", "ignore", "ignore"],
+      stdio: start ? ["ignore", "ignore", "ignore", "ipc"] : [spec.privateBootLines ? "pipe" : "ignore", "ignore", "ignore"],
     });
+    if (spec.privateBootLines) {
+      child.stdin!.on("error", () => undefined);
+      child.stdin!.end(JSON.stringify(spec.privateBootLines));
+    }
     const hostBirth = start && child.pid ? exactProcessBirth(child.pid) : null;
     const proc: ManagedProcess = {
       ...(start ? { executionStart: start, ...(hostBirth && child.pid ? { executionHost: { pid: child.pid, birth: hostBirth } } : {}) } : {}),
@@ -712,7 +723,7 @@ export class HsrDriver implements RuntimeDriver {
       if (!p.processIdentity || !verifyProcessIdentity(p.pid, p.processIdentity)) { this.rejectHostPeer(p, attempt); return; }
       const fd = (attempt as unknown as { _handle?: { fd?: number } })._handle?.fd;
       const authenticated = fd !== undefined && authenticatedProcessPeer(fd, p.processIdentity);
-      if ((p.socketBroken || p.adapter?.confirmsDelivery) && !authenticated) { this.rejectHostPeer(p, attempt); return; }
+      if ((p.socketBroken || p.adapter?.confirmsDelivery || p.adapter?.harness === "external-exec-v1") && !authenticated) { this.rejectHostPeer(p, attempt); return; }
       p.authFailureSince = undefined;
       p.authFailures = 0;
       if (p.socketBroken) {
@@ -1053,9 +1064,23 @@ export class HsrDriver implements RuntimeDriver {
     if (processDisposition(p.processIdentity ?? null, inspectProcess(p.pid)) === "exited") { this.finishHost(p); return {hadProcess: false}; }
     if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) throw new ProcessIdentityUnavailableError();
     if (this.cfg.isExternal?.(beeId) || p.adapter?.harness === "external-exec-v1") {
-      if (p.degraded || p.adapter?.harness !== "external-exec-v1") throw new ProcessIdentityUnavailableError();
-      if (!this.writeLine(p, JSON.stringify({ operation: "stop" }))) throw new ProcessIdentityUnavailableError();
+      if (p.degraded || p.adapter?.harness !== "external-exec-v1") this.cfg.onExternalError?.(p.beeId, p.generation);
+      else this.writeLine(p, JSON.stringify({ operation: "stop" }));
       if (p.stopCause == null) p.stopCause = cause;
+      if (p.killTimer == null) {
+        p.killTimer = setTimeout(() => {
+          p.killTimer = null;
+          if (p.exited) return;
+          this.signalGroup(p, "SIGTERM");
+          this.cfg.onExternalError?.(p.beeId, p.generation);
+          p.killTimer = setTimeout(() => {
+            p.killTimer = null;
+            if (!p.exited) this.signalGroup(p, "SIGKILL");
+          }, this.graceMs);
+          p.killTimer.unref();
+        }, this.graceMs);
+        p.killTimer.unref();
+      }
       return { hadProcess: true };
     }
     if (p.stopCause == null) p.stopCause = cause;

@@ -1,6 +1,8 @@
+import { privateManagementFile } from "../../daemon/src/externalAuthority.ts";
+import { inspectProcess } from "../../harness/src/processIdentity.ts";
 import { constants, fstatSync } from "node:fs";
 import { createHmac } from "node:crypto";
-import { localTrustMessage, type LocalTrustChallenge } from "../../daemon/src/localRpcTrust.ts";
+import { localTrustMessage, verifyManagementChallenge, type LocalTrustChallenge } from "../../daemon/src/localRpcTrust.ts";
 import { dispatchValue } from "../../core/src/externalExec.ts";
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
@@ -827,7 +829,10 @@ function envFrom(entries: readonly string[]): Record<string, string> {
 async function cmdExternalExec(ctx: CliContext, parsed: Parsed): Promise<number> {
   const name = parsed.positional[1], file = parsed.flags.get("--file"), workspace = parsed.flags.get("--workspace"), bridgeId = parsed.flags.get("--bridge");
   if (!name || typeof file !== "string" || typeof workspace !== "string" || typeof bridgeId !== "string") throw new Error("usage: hive external-exec <name> --bridge <registered-id> --workspace <id> --file <private-dispatch> --idempotency-key <key>");
-  if (!ctx.cfg.rpcLocalTrust.requireObservationCaller) throw new Error("External execution requires owner-configured local management trust");
+  const management = ctx.cfg.externalManagement;
+  if (!management || ctx.cfg.socketPath !== management.socketPath) throw new Error("External execution requires protected owner-side management configuration");
+  const endpoint = JSON.parse(privateManagementFile(management.endpointFile, management.root).toString("utf8"));
+  if (typeof endpoint.daemonInstanceId !== "string") throw new Error("Protected daemon identity unavailable");
   const path = resolve(file), fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   let dispatch;
   try {
@@ -837,11 +842,15 @@ async function cmdExternalExec(ctx: CliContext, parsed: Parsed): Promise<number>
   } finally { closeSync(fd); }
   const result = await withClient(ctx, async client => {
     if (!client.capabilities.includes("external-exec.v1")) throw new Error("external-exec.v1 is not enabled by this owner");
-    const challenge = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge");
-    const key = readFileSync(ctx.cfg.rpcLocalTrust.registrationKeyFile);
+    if (client.instance?.id !== endpoint.daemonInstanceId) throw new Error("Unexpected external management daemon");
+    const challenge = await client.request<LocalTrustChallenge>("rpc.externalManagement.challenge", {workspace});
+    const self = inspectProcess(process.pid);
+    if (self.kind !== "present" || self.state !== "live") throw new Error("Own process identity unavailable");
+    verifyManagementChallenge(challenge, {uid: process.geteuid!(), pid: process.pid, processBirth: self.birth, daemonInstanceId: endpoint.daemonInstanceId, workspace});
+    const key = privateManagementFile(management.keyFile, management.root);
     try {
       const token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex");
-      await client.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge.challengeId, token });
+      await client.request("rpc.externalManagement.register", { workspace, pid: process.pid, challengeId: challenge.challengeId, token });
     } finally { key.fill(0); }
     return await client.request<SpawnResult>("spawn", { name, agent: "external-exec-v1", bridgeId, dispatch, idempotencyKey: parsed.flags.get("--idempotency-key") }, 10_000, { externalExecWorkspace: workspace });
   });

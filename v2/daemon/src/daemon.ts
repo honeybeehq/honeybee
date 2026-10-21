@@ -1,4 +1,4 @@
-import { EXTERNAL_EXEC, EXTERNAL_EXEC_CAPABILITY, dispatchValue, record, type ExternalBinding } from "../../core/src/externalExec.ts";
+import { EXTERNAL_EXEC, EXTERNAL_EXEC_CAPABILITY, dispatchValue, dispatchBytes, sha256, record, type ExternalDispatch, type ExternalBinding } from "../../core/src/externalExec.ts";
 import { externalExecAdapter } from "../../adapters/src/externalExec.ts";
 import { BRIDGE_ENV } from "../../driver-hsr/src/externalBridge.ts";
 import { fileURLToPath } from "node:url";
@@ -48,7 +48,7 @@ import { threadOperationView, type ThreadOperationRow } from "../../core/src/thr
  *  - behavior 6 (service mgmt)     → service.ts (wired by the CLI)
  *  - behavior 7 (config)           → config.ts
  */
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
+import { closeSync, copyFileSync, constants, fchmodSync, fstatSync, ftruncateSync, writeFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
@@ -1091,13 +1091,25 @@ export class HiveDaemon {
       instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
       externalExecEnabled: Object.values(this.cfg.externalExec?.workspaces ?? {}).some(w => w.capabilities.includes(EXTERNAL_EXEC_CAPABILITY)),
       localTrust: this.cfg.rpcLocalTrust,
+      externalManagement: this.cfg.externalManagement,
+      externalWorkspaces: Object.entries(this.cfg.externalExec?.workspaces ?? {}).filter(([,w]) => w.capabilities.includes(EXTERNAL_EXEC_CAPABILITY)).map(([id]) => id),
       securityAudit: (kind, payload) => store.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
       log: (op) => this.log(op),
       dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
       performance: this.performance,
     });
     try {
-      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), tmuxSocketPath: this.tmuxSocketPath, pid: process.pid, startedAt: this.startedAt, ...this.daemonProcessIdentity() }));
+      await this.rpc.listen(() => {
+        if (this.cfg.externalManagement) {
+          const fd = openSync(this.cfg.externalManagement.endpointFile, constants.O_WRONLY | constants.O_CREAT | constants.O_NONBLOCK | constants.O_NOFOLLOW, 0o600);
+          try {
+            const stat = fstatSync(fd);
+            if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.geteuid!()) throw new Error("Invalid protected endpoint file");
+            fchmodSync(fd, 0o600); ftruncateSync(fd, 0); writeFileSync(fd, JSON.stringify({daemonInstanceId: this.instanceId}));
+          } finally { closeSync(fd); }
+        }
+        writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), tmuxSocketPath: this.tmuxSocketPath, pid: process.pid, startedAt: this.startedAt, ...this.daemonProcessIdentity() });
+      });
     } catch (error) {
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       throw error;
@@ -1552,10 +1564,13 @@ export class HiveDaemon {
       if (!registered || JSON.stringify(registered) !== JSON.stringify(external.registration) || !grant?.capabilities.includes(EXTERNAL_EXEC_CAPABILITY) || !grant.bridges.includes(external.bridgeId)) throw new RpcError("capability_missing", "External execution registration or workspace grant is unavailable");
       const outputDirectory = join(this.cfg.dataDir, "external-output", beeId, String(generation ?? this.mustStore().currentRuntime(beeId)?.generation ?? 0));
       mkdirSync(outputDirectory, { recursive: true, mode: 0o700 });
+      const dispatch = this.externalDispatches?.get(beeId);
+      if (generation !== undefined && !dispatch) throw new RpcError("capability_missing", "Management must resupply the original dispatch capability before reconciliation");
       const operation = generation === undefined ? "reconcile" : this.mustStore().claimExternalDispatch(beeId);
       const source = fileURLToPath(import.meta.url).endsWith(".ts");
       const entry = source ? fileURLToPath(new URL("../../driver-hsr/src/external-runner-main.ts", import.meta.url)) : fileURLToPath(new URL("./external-runner.js", import.meta.url));
-      return { adapter: externalExecAdapter(external, { operation, outputDirectory }), command: process.execPath, args: source ? ["--experimental-strip-types", entry] : [entry], cwd: "/", env: { ...BRIDGE_ENV } };
+      return { adapter: externalExecAdapter(external),
+        ...(generation !== undefined && dispatch ? { privateBootLines: [JSON.stringify({ binding: { ...external, dispatch }, operation, outputDirectory })] } : {}), command: process.execPath, args: source ? ["--experimental-strip-types", entry] : [entry], cwd: "/", env: { ...BRIDGE_ENV } };
     }
     if (generation !== undefined) this.stampRuntimeCredential(beeId, generation);
     const store = this.mustStore();
@@ -3334,6 +3349,8 @@ export class HiveDaemon {
     return { account: admission.account, reason: admission.reason, allocation: admission.receipt, reservationId: admission.reservation?.id };
   }
 
+  private externalDispatches = new Map<string, ExternalDispatch>();
+
   private rpcSpawnExternal(params: Record<string, unknown>, conn: RpcConn): SpawnResult {
     const allowed = ["name", "agent", "bridgeId", "dispatch", "substrate", "cwd", "title", "tags", "parentId", "parentExternal", "id", "idempotencyKey"];
     if (conn.phoneOrigin || !conn.externalExecWorkspace || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "External execution requires an authenticated management workspace");
@@ -3352,7 +3369,9 @@ export class HiveDaemon {
     const prior = store.lookupRpcResult(key);
     if (prior) {
       const previous = store.externalBinding((prior.result as SpawnResult).beeId);
-      if (prior.verb !== "spawn" || !previous || previous.bridgeId !== bridgeId || previous.workspace !== workspace || previous.admissionDigest !== admissionDigest || JSON.stringify(previous.dispatch) !== JSON.stringify(dispatch)) throw new RpcError("idempotency_conflict", "External spawn key differs from its original binding");
+      if (prior.verb !== "spawn" || !previous || previous.bridgeId !== bridgeId || previous.workspace !== workspace || previous.admissionDigest !== admissionDigest || previous.dispatchManifestSha256 !== sha256(dispatchBytes(dispatch))) throw new RpcError("idempotency_conflict", "External spawn key differs from its original binding");
+      this.externalDispatches ??= new Map();
+      this.externalDispatches.set(previous.beeId, dispatch);
       return { ...(prior.result as SpawnResult), deduped: true };
     }
     return this.withIdempotency("spawn", params, () => {
@@ -3361,6 +3380,8 @@ export class HiveDaemon {
       const { bee } = store.createBee({ id, name, agent: EXTERNAL_EXEC, substrate: "hsr", cwd: "/", tags: [`apiary:workspace=${workspace}`], parentId: parent.parentId, parentExternal: parent.parentExternal, sessionLogPath: this.driver?.sessionLogPath(id) });
       const binding: ExternalBinding = { beeId: bee.id, bridgeId, workspace, admissionDigest, registration, dispatch };
       store.admitExternal(binding);
+      this.externalDispatches ??= new Map();
+      this.externalDispatches.set(id, dispatch);
       const cmd = store.enqueueCommand("spawn", id, { idempotencyKey: key });
       return { beeId: id, agent: EXTERNAL_EXEC, handle: bee.handle, humanRef: bee.human_ref, issuingNamespace: bee.issuing_namespace, commandId: cmd.id, messageId: null, account: null };
     });

@@ -40,6 +40,17 @@ export interface ExternalBinding {
   registration: BridgeRegistration;
   dispatch: ExternalDispatch;
 }
+export type ExternalIdentity = Omit<ExternalBinding, "dispatch"> & {
+  dispatch: Omit<ExternalDispatch, "fencingToken">;
+  fencingTokenSha256: string;
+  dispatchManifestSha256: string;
+};
+export function externalIdentity(binding: ExternalBinding | ExternalIdentity): ExternalIdentity {
+  if (!("fencingToken" in binding.dispatch)) return binding as ExternalIdentity;
+  const full = binding as ExternalBinding;
+  const { fencingToken, ...dispatch } = full.dispatch;
+  return { ...full, dispatch, fencingTokenSha256: sha256(fencingToken), dispatchManifestSha256: sha256(dispatchBytes(full.dispatch)) };
+}
 export interface BridgeReceipt extends Record<string, JsonValue> {
   schema: "urbench.receipt.v1";
   attemptId: string;
@@ -112,15 +123,16 @@ export function dispatchValue(value: unknown): ExternalDispatch {
   if (Buffer.byteLength(canonicalJson(value)) > 2 * 1024 * 1024 - 1) throw new Error("external_exec_dispatch_too_large");
   return JSON.parse(canonicalJson(value)) as ExternalDispatch;
 }
-export function validateReceipt(value: unknown, binding: ExternalBinding): BridgeReceipt {
+export function validateReceipt(value: unknown, binding: ExternalBinding | ExternalIdentity): BridgeReceipt {
+  const identity = externalIdentity(binding);
   const v = record(value);
   keys(v, ["schema", "attemptId", "fencingTokenSha256", "dispatchManifestSha256", "installManifestSha256", "status", "mode", "qualified", "nativeReceipt", "captureErrors", "evidence", "auth"]);
   const native = record(v.nativeReceipt), evidence = record(v.evidence), auth = record(v.auth);
   keys(native, ["path", "sha256"]); keys(auth, ["handle", "accountId", "release"]);
   if (native.path !== posix.join(binding.dispatch.stateDir, "attempts", binding.dispatch.attemptId, "terminal.json") || !hash(native.sha256) || !Array.isArray(v.captureErrors) || v.captureErrors.some(x => typeof x !== "string") || Object.entries(evidence).some(([path, digest]) => path.startsWith("/") || path.split("/").includes("..") || !hash(digest)) || auth.handle !== "" || auth.accountId !== null || auth.release !== "not-applicable-no-inference") throw new Error("external_exec_invalid_receipt_evidence");
-  if (v.schema !== "urbench.receipt.v1" || v.attemptId !== binding.dispatch.attemptId || v.fencingTokenSha256 !== sha256(binding.dispatch.fencingToken) || v.dispatchManifestSha256 !== sha256(dispatchBytes(binding.dispatch)) || v.installManifestSha256 !== binding.registration.payloadManifestSha256 || v.mode !== "no-inference" || v.qualified !== false || !["completed", "failed", "stopped", "interrupted"].includes(String(v.status))) throw new Error("external_exec_receipt_binding_mismatch");
+  if (v.schema !== "urbench.receipt.v1" || v.attemptId !== binding.dispatch.attemptId || v.fencingTokenSha256 !== identity.fencingTokenSha256 || v.dispatchManifestSha256 !== identity.dispatchManifestSha256 || v.installManifestSha256 !== binding.registration.payloadManifestSha256 || v.mode !== "no-inference" || v.qualified !== false || !["completed", "failed", "stopped", "interrupted"].includes(String(v.status))) throw new Error("external_exec_receipt_binding_mismatch");
   assertCanonicalData(v);
-  if (JSON.stringify(v).includes(binding.dispatch.fencingToken)) throw new Error("external_exec_receipt_contains_capability");
+  if ("fencingToken" in binding.dispatch && JSON.stringify(v).includes(String(binding.dispatch.fencingToken))) throw new Error("external_exec_receipt_contains_capability");
   return v as BridgeReceipt;
 }
 
@@ -135,12 +147,16 @@ export interface ExternalExecutionView {
 export class ExternalExecutions {
   private readonly db: DatabaseSync;
   constructor(db: DatabaseSync) { this.db = db; }
-  get(beeId: string): ExternalBinding | null {
+  get(beeId: string): ExternalIdentity | null {
     const row = this.db.prepare("SELECT binding FROM external_exec WHERE bee_id=?").get(beeId);
     if (!row) return null;
     const stored = record(JSON.parse(String(row.binding)));
     if (stored.beeId !== beeId || typeof stored.bridgeId !== "string" || typeof stored.workspace !== "string" || typeof stored.admissionDigest !== "string" || !/^sha256:[a-f0-9]{64}$/.test(stored.admissionDigest)) throw new Error("external_exec_corrupt_binding");
-    return { beeId, bridgeId: stored.bridgeId, workspace: stored.workspace, admissionDigest: stored.admissionDigest, registration: registrationValue(stored.registration), dispatch: dispatchValue(stored.dispatch) };
+    if (!hash(stored.fencingTokenSha256) || !hash(stored.dispatchManifestSha256) || Object.hasOwn(record(stored.dispatch), "fencingToken")) throw new Error("external_exec_plaintext_or_corrupt_binding");
+    const dispatch = record(stored.dispatch);
+    const validated = dispatchValue({ ...dispatch, fencingToken: "validation-only-synthetic-fence" });
+    const { fencingToken, ...redacted } = validated;
+    return { beeId, bridgeId: stored.bridgeId, workspace: stored.workspace, admissionDigest: stored.admissionDigest, registration: registrationValue(stored.registration), dispatch: redacted, fencingTokenSha256: stored.fencingTokenSha256, dispatchManifestSha256: stored.dispatchManifestSha256 };
   }
   view(beeId: string): ExternalExecutionView | null {
     const binding = this.get(beeId);
@@ -150,9 +166,10 @@ export class ExternalExecutions {
     return { bridgeId: binding.bridgeId, workspace: binding.workspace, attemptId: binding.dispatch.attemptId, dispatched: row.dispatched === 1, status: receipt?.status ?? "pending", observation: row.failure ? "reconcile_required" : receipt ? "terminal" : "pending" };
   }
   admit(binding: ExternalBinding): void {
-    this.db.prepare("INSERT INTO external_exec(bee_id,attempt_id,binding,receipt_path) VALUES(?,?,?,?)").run(binding.beeId, binding.dispatch.attemptId, JSON.stringify(binding), posix.join(binding.dispatch.stateDir, "control", binding.dispatch.attemptId, "receipt.json"));
+    this.db.prepare("INSERT INTO external_exec(bee_id,attempt_id,binding,receipt_path) VALUES(?,?,?,?)").run(binding.beeId, binding.dispatch.attemptId, JSON.stringify(externalIdentity(binding)), posix.join(binding.dispatch.stateDir, "control", binding.dispatch.attemptId, "receipt.json"));
   }
   claimDispatch(beeId: string): "start" | "reconcile" {
+    if (!this.get(beeId)) throw new Error("external_exec_missing_binding");
     const row = this.db.prepare("SELECT dispatched FROM external_exec WHERE bee_id=?").get(beeId);
     if (!row) throw new Error("external_exec_missing_binding");
     if (row.dispatched === 1) return "reconcile";
@@ -168,7 +185,7 @@ export class ExternalExecutions {
     const receipt = validateReceipt(value, binding);
     const old = this.db.prepare("SELECT receipt FROM external_exec WHERE bee_id=?").get(beeId);
     if (old?.receipt && canonicalJson(JSON.parse(String(old.receipt))) !== canonicalJson(receipt)) throw new Error("external_exec_terminal_conflict");
-    this.db.prepare("UPDATE external_exec SET receipt=? WHERE bee_id=? AND receipt IS NULL").run(JSON.stringify(receipt), beeId);
+    this.db.prepare("UPDATE external_exec SET receipt=?,failure=NULL WHERE bee_id=?").run(JSON.stringify(receipt), beeId);
     return receipt;
   }
 }
@@ -180,11 +197,12 @@ export interface BridgeEvent extends Record<string, unknown> {
   data: Record<string, unknown>;
 }
 
-export function bridgeEvent(value: unknown, binding: ExternalBinding, seq: number): BridgeEvent {
+export function bridgeEvent(value: unknown, binding: ExternalBinding | ExternalIdentity, seq: number): BridgeEvent {
+  const identity = externalIdentity(binding);
   const event = record(value);
-  if (Object.keys(event).sort().join(",") !== "attemptId,data,fencingTokenSha256,schema,seq,type" || event.schema !== "urbench.bridge.event.v1" || event.seq !== seq || event.attemptId !== binding.dispatch.attemptId || event.fencingTokenSha256 !== sha256(binding.dispatch.fencingToken) || !["started", "status", "stop_requested", "waiting", "terminal", "error"].includes(String(event.type))) throw new Error("external_exec_invalid_event");
+  if (Object.keys(event).sort().join(",") !== "attemptId,data,fencingTokenSha256,schema,seq,type" || event.schema !== "urbench.bridge.event.v1" || event.seq !== seq || event.attemptId !== binding.dispatch.attemptId || event.fencingTokenSha256 !== identity.fencingTokenSha256 || !["started", "status", "stop_requested", "waiting", "terminal", "error"].includes(String(event.type))) throw new Error("external_exec_invalid_event");
   record(event.data);
-  if (JSON.stringify(event).includes(binding.dispatch.fencingToken)) throw new Error("external_exec_event_contains_capability");
+  if ("fencingToken" in binding.dispatch && JSON.stringify(event).includes(String(binding.dispatch.fencingToken))) throw new Error("external_exec_event_contains_capability");
   if (event.type === "terminal") validateReceipt(event.data, binding);
   return event as BridgeEvent;
 }

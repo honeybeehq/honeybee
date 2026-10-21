@@ -1,12 +1,12 @@
 import type { HarnessAdapter, AdapterSignal } from "./types.ts";
-import { bridgeEvent, record, validateReceipt, type ExternalBinding } from "../../core/src/externalExec.ts";
+import { bridgeEvent, record, validateReceipt, type ExternalIdentity } from "../../core/src/externalExec.ts";
 
-export function externalExecAdapter(binding: ExternalBinding, launch?: { operation: "start" | "reconcile"; outputDirectory: string }): HarnessAdapter {
+export function externalExecAdapter(binding: ExternalIdentity): HarnessAdapter {
   return {
     harness: "external-exec-v1",
     acceptsMidTurn: false,
     readyAtSpawn: false,
-    bootLines: () => launch ? [JSON.stringify({ binding, ...launch })] : [],
+    bootLines: () => [],
     encodeMessage: () => null,
     parseLine(line): AdapterSignal[] {
       try {

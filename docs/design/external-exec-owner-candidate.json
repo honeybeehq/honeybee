@@ -1,0 +1,25 @@
+{
+  "schema": "honeybee.external-owner.v1",
+  "externalExec": {
+    "bridges": {
+      "urbench-v2": {
+        "executable": "/home/trmd/.local/share/urbench-v2/bridge/786395452f59b286fc328e7a491f0553606d7857/bin/urbench-bridge",
+        "executableSha256": "8c627f587ec95f13488fe68a132971b88cf911096d4ada8de1e11814f46bf295",
+        "filesManifest": "/home/trmd/.local/share/urbench-v2/bridge/786395452f59b286fc328e7a491f0553606d7857/files.json",
+        "filesManifestSha256": "7629a3d68905dc96241364d352106fcfb36a86d3be066694eefa96fd6a6860f9",
+        "payloadManifest": "/home/trmd/.local/share/urbench-v2/bridge/786395452f59b286fc328e7a491f0553606d7857/payload.sha256",
+        "payloadManifestSha256": "c9e8ff4b1a24b8f09d9390ad3645525d8d3955ae293f99ff4c8e7725ab3fdbaf"
+      }
+    },
+    "workspaces": {
+      "ur": {
+        "capabilities": [
+          "external-exec.v1"
+        ],
+        "bridges": [
+          "urbench-v2"
+        ]
+      }
+    }
+  }
+}

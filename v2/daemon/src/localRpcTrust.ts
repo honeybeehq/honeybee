@@ -1,3 +1,4 @@
+import { privateManagementFile } from "./externalAuthority.ts";
 import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { constants, closeSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
@@ -6,6 +7,7 @@ import type { PeerConnection } from "./peerCredentials.ts";
 
 export interface LocalTrustConfig { requireObservationCaller: boolean; registrationKeyFile: string }
 export interface LocalTrustChallenge {
+  workspace?: string;
   challengeId: string;
   nonce: string;
   uid: number;
@@ -15,7 +17,10 @@ export interface LocalTrustChallenge {
   expiresAtMs: number;
 }
 export function localTrustMessage(challenge: LocalTrustChallenge): string {
-  return JSON.stringify(["hive-local-trust-v1", challenge.challengeId, challenge.nonce, challenge.uid, challenge.pid, challenge.processBirth, challenge.daemonInstanceId, challenge.expiresAtMs]);
+  return JSON.stringify([...(challenge.workspace ? ["hive-external-management-v1", challenge.workspace] : ["hive-local-trust-v1"]), challenge.challengeId, challenge.nonce, challenge.uid, challenge.pid, challenge.processBirth, challenge.daemonInstanceId, challenge.expiresAtMs]);
+}
+export function verifyManagementChallenge(challenge: LocalTrustChallenge, expected: {uid: number; pid: number; processBirth: string; daemonInstanceId: string; workspace: string}, now = Date.now()): void {
+  if (challenge.uid !== expected.uid || challenge.pid !== expected.pid || challenge.processBirth !== expected.processBirth || challenge.daemonInstanceId !== expected.daemonInstanceId || challenge.workspace !== expected.workspace || !Number.isSafeInteger(challenge.expiresAtMs) || challenge.expiresAtMs <= now || challenge.expiresAtMs > now + 60_000 || typeof challenge.nonce !== "string" || challenge.nonce.length !== 43 || typeof challenge.challengeId !== "string" || challenge.challengeId.length !== 36) throw new Error("External management challenge identity mismatch");
 }
 function refusal(reason: string): never { throw new RpcError("caller_not_trusted", "The local caller is not registered as trusted.", {reason}); }
 function privateKey(file: string, root: string, uid: number): Buffer {
@@ -86,9 +91,10 @@ export class LocalRpcTrust {
   readonly daemonInstanceId = randomUUID();
   private config: LocalTrustConfig;
   private readonly now: () => number;
+  private readonly binding?: {workspace: string; daemonInstanceId: string};
   private readonly audit: (kind: string, data: Record<string, unknown>) => void;
-  constructor(config: LocalTrustConfig, root: string, audit: (kind: string, data: Record<string, unknown>) => void, now = Date.now) {
-    this.config = config; this.audit = audit; this.now = now;
+  constructor(config: LocalTrustConfig, root: string, audit: (kind: string, data: Record<string, unknown>) => void, now = Date.now, binding?: {workspace: string; daemonInstanceId: string}) {
+    this.config = config; this.audit = audit; this.now = now; this.binding = binding;
     this.reload(config, root);
   }
   reload(config: LocalTrustConfig, root: string): void {
@@ -96,7 +102,8 @@ export class LocalRpcTrust {
     this.config = config;
     this.keyUnavailable = false;
     if (config.requireObservationCaller) {
-      try { this.key = privateKey(config.registrationKeyFile, root, process.geteuid!()); }
+      try { this.key = this.binding ? privateManagementFile(config.registrationKeyFile, root) : privateKey(config.registrationKeyFile, root, process.geteuid!());
+        if (this.key.length !== 32) { this.key.fill(0); this.key = null; throw new Error("Invalid management key"); } }
       catch { this.keyUnavailable = true; }
     }
   }
@@ -128,7 +135,7 @@ export class LocalRpcTrust {
       for (const ids of processes.values()) if (ids.length > largest.length) largest = ids;
       this.challenges.delete(largest[0]!);
     }
-    const challenge = {challengeId: randomUUID(), nonce: randomBytes(32).toString("base64url"), uid: verified.peer.uid, pid: verified.peer.pid, processBirth: verified.peer.processBirth!, daemonInstanceId: this.daemonInstanceId, expiresAtMs: now + 60_000};
+    const challenge = {...(this.binding ? {workspace: this.binding.workspace} : {}), challengeId: randomUUID(), nonce: randomBytes(32).toString("base64url"), uid: verified.peer.uid, pid: verified.peer.pid, processBirth: verified.peer.processBirth!, daemonInstanceId: this.binding?.daemonInstanceId ?? this.daemonInstanceId, expiresAtMs: now + 60_000};
     this.challenges.set(challenge.challengeId, {challenge, connection: identity, consumed: false});
     return challenge;
   }

@@ -1,68 +1,88 @@
 # External execution dev review
 
-The adapter is `external-exec-v1`. Spawn chooses `bridgeId: urbench-v2`, never an
-executable or arguments. The four permitted bridge operations are start, wait, stop
-and reconcile. No guest credentials or provider calls are implemented.
+`external-exec-v1` is review code under DEPLOY HOLD. No merge, deploy, guest proof
+or credentials are authorized by this document. Phase 3 remains design only.
 
-Owner configuration has an `externalExec` object with `bridges` and `workspaces`.
-Each bridge pins executable, filesManifest and payloadManifest absolute paths and
-their SHA-256 values. Workspace entries must explicitly grant `external-exec.v1`
-and the bridge id. Absent configuration grants nothing. The existing local RPC
-trust challenge must authenticate the management caller; workspace context is an
-assertion by that service, not by an ordinary bee. Agents with the same unrestricted
-OS uid as management are not isolated by configuration alone; the management key
-must remain outside their filesystem authority. Production integration needs Apiary
-to carry the workspace assertion through its authenticated management channel.
+Spawn selects a pre-registered bridge id. Executable paths, all three SHA-256 pins
+and workspace grants come exclusively from an owner file. Inline `externalExec`
+configuration is rejected. `externalOwnerFile` points outside the Cell to a 0600
+regular, single-link file under a canonical 0700 management directory. The file is
+`{"schema":"honeybee.external-owner.v1","externalExec":{"bridges":{},"workspaces":{}}}`.
+Only the owner or trusted management may provision it; the loader never creates
+this authority. The directory also contains an existing 0600, 32-byte
+`management.key`, a daemon-written 0600 `endpoint.json`, and the absolute
+`hived.sock`. Files and private parents require the daemon owner's uid; ancestors
+must be protected from other writers (root-owned sticky temporary roots are safe
+for isolated test fixtures). Cell paths, symlinks and permissive authority files
+refuse. No such directory or owner configuration was provisioned by this work.
 
-The CLI `hive external-exec NAME --bridge urbench-v2 --workspace WORKSPACE --file
-PRIVATE-DISPATCH --idempotency-key KEY` sends a typed spawn through daemon RPC.
-It does not install an account, inject a preamble, resolve native Codex, or seed MCP.
-No ordinary spawn profile may alias this adapter.
+The dedicated `rpc.externalManagement.challenge/register` slot is separate from
+Apiary's observation registration. The HMAC binds workspace, uid, pid, process
+birth, nonce, expiry and daemon instance. The CLI checks its own process identity
+and expected daemon instance from the protected endpoint before signing. Spawn
+uses the connection's registered workspace, ignoring caller-asserted workspace
+context. Existing local uid, peer-credential, remote, relay and phone checks still
+apply. Capability `external-exec.v1` is off without a protected management slot and
+an explicit workspace grant. An unrestricted bee sharing management's uid is NOT
+isolated by 0700/0600: production must keep the management files and socket outside
+bee filesystem authority using a separate uid or sandbox. No Apiary grant path is
+implemented here.
 
-Before every bridge exec, the driver opens all three pinned files with O_NOFOLLOW,
-requires root ownership and no write bits, and checks their bytes. On Linux the
-executable is invoked through its already-open fd rather than re-opening its path.
-The pinned launcher checks its runtime closure; host root/kernel remain trusted.
-The environment is exactly PATH=/usr/sbin:/usr/bin:/sbin:/bin, LANG=C.UTF-8,
-LC_ALL=C.UTF-8. Dispatch is canonical JSON with a trailing newline on stdin.
+The CLI is `hive external-exec NAME --bridge urbench-v2 --workspace WORKSPACE
+--file PRIVATE-DISPATCH --idempotency-key KEY`. It installs no account, config,
+preamble, kit or MCP and does not initialize app-server or resume a vendor session.
+Ordinary spawn profiles cannot alias this adapter. Mail is never a native prompt.
 
-SQLite schema 48 adds external_exec: immutable attempt/bridge/workspace binding,
-dispatch ownership, and validated terminal receipt. Claiming dispatch commits before
-launch; every subsequent runtime reconciles, never blindly starts. Existing HSR hosts
-own pipes, exact PID/birth identities and generation journals across daemon restart.
-Stop is an in-band owner control invoking bridge stop, preserving capture and VM
-ownership. Ordinary messages remain durable mail and are never converted into native
-prompts. Conversation/account mutations are refused. Delete requires terminal proof.
+Before EACH start/wait/stop/reconcile exec, the driver verifies the three pins on
+open descriptors, requires immutable root-owned install files and a root-owned
+path chain with no group/other writers, hashes every files.json and payload.sha256
+entry, and verifies the shebang interpreter is listed and immutable. Root-owned
+symlinks are permitted only with a protected original AND resolved chain. The
+executable remains on fd 3 for exec. Manifests may be reopened by the launcher only
+because their entire chain is immutable to unprivileged callers. Root and kernel
+are trusted. The current FINAL home-directory install fails this chain check;
+changing only its file modes or matching its hashes does not make it usable.
+A relocated launcher may require new pins from Ur Bench, because its paths are
+embedded. This work does not alter that installation or weaken the root check.
 
-Bridge events are validated for schema, invocation sequence and attempt/fence binding.
-Terminal receipts additionally bind canonical dispatch and pinned payload. Native
-stdout/stderr are copied unchanged into private generation output files and never
-parsed as lifecycle commands. Bridge stderr is stored separately. Missing receipts,
-exit 75, protocol failure or transport loss require reconciliation. A terminal model
-failure is recorded independently of process exit; zero exit is not model success.
+The bridge env is exactly PATH=/usr/sbin:/usr/bin:/sbin:/bin, LANG=C.UTF-8,
+LC_ALL=C.UTF-8. Dispatch is canonical JSON plus newline on stdin. HOME being unset
+DOES NOT hide the real account home from getpwuid or direct filesystem access;
+separate uid/sandbox isolation is required for that guarantee.
 
-Public views optionally include externalExecution with bridge/workspace/attempt,
-dispatch ownership and terminal status. No fencing capability, dispatch body, raw
-receipt or host authentication material is mirrored. Snapshot/delta consumers must
-accept this optional field and the new external_exec audit notifications. Schema 48
-refuses older writers; rollback requires restoring the prior isolated store.
+SQLite schema 48 stores attempt/bridge/workspace, redacted dispatch, fence hash,
+dispatch digest, ownership and validated receipt. The full fence passes through a
+private daemon-to-host stdin pipe and a host-to-runner pipe, never host config or
+the bidirectional session log. Existing config files are checked, truncated and
+chmodded through their fd. The survivor holds the dispatch in memory. Adoption
+needs only hashes. Losing the survivor also loses the launch capability: management
+must resubmit the identical dispatch/key before revive can reconcile. Dispatch is
+claimed before launch; a new observer never blindly starts an existing attempt.
+The pre-review schema-48 prototype with plaintext bindings is incompatible and
+refuses when read; use a fresh isolated dev store. Existing prototype database/WAL
+files and runner configs must remain private and be retired, not treated as
+securely erased by an SQL update. This unreleased format has no production upgrade
+or rollback promise. Public mirrors retain only optional safe execution metadata.
 
-The only intended registration is the FINAL Ur Bench main 786395452f59b286fc328e7a491f0553606d7857.
-The Cell-local .local/external-exec-dev/config.json pins its complete executable,
-files.json and payload.sha256 hashes. It is not the live node configuration.
-No bridge proof or guest start is permitted until Queen receives the code.
-DEPLOY HOLD prohibits merge and deploy.
+Stop first uses the owner control lane. After the grace period, exact process
+identity is checked again before group SIGTERM; the survivor attempts reconcile
+with its in-memory dispatch if transport is interrupted. A second grace period
+bounds it with a verified group SIGKILL. Missing terminal proof stays durably
+reconcile_required, requiring management recovery; signaling never proves guest
+teardown. Destructive conversation/account mutations are refused; delete requires
+a terminal receipt and stopped runtime.
 
-## Review limits
+Raw native stdout/stderr and operational bridge stderr remain untrusted private
+data. Each stream has a 16 MiB cap, recorded in capture.json with truncation and
+drain status; final drain is bounded to 32 passes of at most 1 MiB per native
+stream. Events have a 2 MiB frame cap and 16 MiB invocation cap. Receipt publication
+waits for bounded capture and its metadata write; truncated/incomplete capture
+refuses terminal publication. Receipt binds attempt, fence hash, canonical
+dispatch and pinned payload. Zero bridge exit never implies model success.
 
-The current evidence is static/type checks, synthetic protocol/admission/path/HSR
-stop tests, existing regression suites and a dev build. The FINAL pin checker reads
-all three installed files and proves each mismatch refuses without executing the
-bridge. No KVM round trip, live daemon registration, provider call or credential
-probe has run. Usability requires Queen's code review followed by a separately
-reported no-inference end-to-end exercise. Run the Cell CLI from this checkout:
-its owner config uses /proc/self/cwd/.local/external-exec-dev/hived.sock to avoid
-Linux's Unix-socket pathname length limit in this long Cell path. Accounts roots
-are Cell-local empty directories and automatic naming/limits refresh are disabled.
-The earlier Apiary swap storage contract remains unsupported at schema 48 rather
-than silently widening its schema-47 authority attestation.
+The FINAL candidate is Ur Bench main 786395452f59b286fc328e7a491f0553606d7857,
+bridge id urbench-v2. `docs/design/external-exec-owner-candidate.json` preserves the
+exact executable/files.json/payload pins for review, but is inside the Cell and is
+explicitly NOT loadable authority. `.local/external-exec-dev/config.json` has no
+external grant, key or relative/proc socket. No live configuration changed. Trusted
+provisioning and Queen's review must precede any no-inference round trip.

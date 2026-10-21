@@ -464,6 +464,8 @@ export const RPC_VERBS = [
   "rpc.execution.coordinator.register", "rpc.execution.claim.compareAndSet", "rpc.execution.execute", "rpc.execution.resolve",
   "rpc.effect.resolve",
   "rpc.effect.status",
+  "rpc.externalManagement.challenge",
+  "rpc.externalManagement.register",
   "rpc.localTrust.challenge",
   "rpc.localTrust.register",
   "humanRef.status", "humanRef.enroll", "humanRef.registry.status", "humanRef.registry.init", "humanRef.registry.reserve",

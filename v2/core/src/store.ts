@@ -5746,7 +5746,7 @@ export class CoreStore {
   }
 
   externalView(beeId: string) { return this.externalExecutions.view(beeId); }
-  externalBinding(beeId: string): ExternalBinding | null { return this.externalExecutions.get(beeId); }
+  externalBinding(beeId: string) { return this.externalExecutions.get(beeId); }
   admitExternal(binding: ExternalBinding): void {
     this.tx(() => {
       this.externalExecutions.admit(binding);

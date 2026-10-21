@@ -1,4 +1,5 @@
-import { externalConfig, type ExternalExecConfig } from "../../core/src/externalExec.ts";
+import { externalOwner, type ExternalManagement } from "./externalAuthority.ts";
+import { type ExternalExecConfig } from "../../core/src/externalExec.ts";
 /**
  * Per-node daemon config (spec 04 behavior 7; Q1 resolution: json).
  *
@@ -297,6 +298,7 @@ export interface NodeConfigFile {
   telemetryPath?: string;
   sessionLogDir?: string;
   externalExec?: ExternalExecConfig;
+  externalOwnerFile?: string;
   agents?: Record<string, AgentSpecConfig>;
   /** v7 (spec 08). */
   accounts?: AccountsConfig;
@@ -364,6 +366,8 @@ export interface ResolvedNodeConfig {
   telemetryPath: string;
   sessionLogDir: string;
   externalExec?: ExternalExecConfig;
+  externalOwnerFile?: string;
+  externalManagement?: ExternalManagement;
   agents: Record<string, AgentSpecConfig>;
   /** v7 (spec 08): resolved accounts settings (every field defaulted). */
   accounts: Required<Omit<AccountsConfig, "tmuxSocket" | "allocationNodeId" | "allocationOwner">> & {
@@ -1013,6 +1017,8 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
 
   const nodeKind = nodeKindOf(raw);
   const cells = cellsOf(raw, nodeKind);
+  if (raw.externalExec !== undefined) throw new Error("Inline externalExec is forbidden; trusted management must provision externalOwnerFile outside the Cell");
+  const owner = externalOwner(raw.externalOwnerFile, cells.root ?? join(dataDir, "cells"));
   const resolved: ResolvedNodeConfig = {
     dataDir,
     configPath: path,
@@ -1037,12 +1043,12 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     stopKillGraceMs: num(raw, "stopKillGraceMs", DEFAULTS.stopKillGraceMs),
     adoptToleranceMs: num(raw, "adoptToleranceMs", DEFAULTS.adoptToleranceMs),
     watchMaxBatch: num(raw, "watchMaxBatch", DEFAULTS.watchMaxBatch),
-    socketPath: str(raw, "socketPath", join(dataDir, "hived.sock")),
+    socketPath: owner.externalManagement?.socketPath ?? str(raw, "socketPath", join(dataDir, "hived.sock")),
     logPath: str(raw, "logPath", join(dataDir, "hived.log")),
     storePath: str(raw, "storePath", join(dataDir, "core.sqlite3")),
     telemetryPath: str(raw, "telemetryPath", join(dataDir, "telemetry.sqlite3")),
     sessionLogDir: str(raw, "sessionLogDir", join(dataDir, "session-logs")),
-    externalExec: externalConfig(raw.externalExec),
+    ...owner,
     agents: { ...BUILTIN_AGENTS, ...agentsOf(raw) },
     accounts: accountsOf(raw),
     naming: namingOrDisabled(raw, dataDir),

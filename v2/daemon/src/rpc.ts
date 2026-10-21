@@ -1,3 +1,4 @@
+import type { ExternalManagement } from "./externalAuthority.ts";
 import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
 import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
 import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
@@ -124,6 +125,8 @@ export type RpcDispatch = (
 
 export interface RpcServerOptions {
   externalExecEnabled?: boolean;
+  externalManagement?: ExternalManagement;
+  externalWorkspaces?: string[];
   dataDir?: string;
   instance?: {id: string; dataDir: string};
   localTrust?: LocalTrustConfig;
@@ -136,6 +139,7 @@ export interface RpcServerOptions {
 }
 
 interface Connection extends RpcConn {
+  managementWorkspace?: string;
   peerConnection: PeerConnection | null;
   socket: Socket;
   buffer: string;
@@ -208,6 +212,7 @@ export class RpcServer {
   private listening = false;
   private readonly credentials: PeerCredentials;
   private readonly trust: LocalRpcTrust;
+  private readonly management = new Map<string, LocalRpcTrust>();
   private readonly refusals: LocalRpcRefusals;
 
   get localSecurity() { return {peerCredentials: {...this.credentials.status}, localTrust: this.trust.state}; }
@@ -217,6 +222,9 @@ export class RpcServer {
     const audit = opts.securityAudit ?? (() => {});
     this.credentials = opts.peerCredentials ?? new PeerCredentials({degraded: status => audit("rpc.peer_credentials_unavailable", {...status})});
     this.trust = new LocalRpcTrust(opts.localTrust ?? {requireObservationCaller: false, registrationKeyFile: ""}, opts.dataDir ?? "/", audit);
+    if (opts.externalManagement && opts.instance && opts.socketPath === opts.externalManagement.socketPath) {
+      for (const workspace of opts.externalWorkspaces ?? []) this.management.set(workspace, new LocalRpcTrust({requireObservationCaller: true, registrationKeyFile: opts.externalManagement.keyFile}, opts.externalManagement.root, audit, Date.now, {workspace, daemonInstanceId: opts.instance.id}));
+    }
     this.refusals = new LocalRpcRefusals(audit);
     this.performance = opts.performance ?? NOOP_PERFORMANCE;
     this.server = createServer((socket) => this.onConnection(socket));
@@ -245,6 +253,7 @@ export class RpcServer {
     this.conns.clear();
     this.credentials.close();
     this.trust.close();
+    for (const trust of this.management.values()) trust.close();
     this.refusals.close();
     return new Promise((resolve) => {
       if (!this.listening) {
@@ -290,7 +299,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => (capability !== "external-exec.v1" || this.opts.externalExecEnabled === true && this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready") && (capability !== "question.withdraw.v1" || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready")));
+    return DAEMON_CAPABILITIES.filter(capability => (capability !== "external-exec.v1" || this.opts.externalExecEnabled === true && [...this.management.values()].some(trust => trust.state === "ready") && this.credentials.status.state === "ready") && (capability !== "question.withdraw.v1" || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready")));
   }
 
   private onConnection(socket: Socket): void {
@@ -325,7 +334,7 @@ export class RpcServer {
     conn.send({ protocol: PROTOCOL, capabilities: this.capabilities, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}) } satisfies HelloFrame);
     socket.on("data", (chunk: string) => this.onData(conn, chunk));
     socket.on("error", () => socket.destroy());
-    socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.conns.delete(conn); });
+    socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); for (const trust of this.management.values()) trust.disconnect(conn); this.conns.delete(conn); });
   }
 
   private onData(conn: Connection, chunk: string): void {
@@ -417,6 +426,19 @@ export class RpcServer {
       }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       const result = withRpcCaller(caller, () => {
+        if (verb === "rpc.externalManagement.challenge" || verb === "rpc.externalManagement.register") {
+          const workspace = params.workspace;
+          const trust = typeof workspace === "string" ? this.management.get(workspace) : undefined;
+          if (!peer || !trust || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "Protected local management registration required");
+          if (verb === "rpc.externalManagement.challenge") {
+            if (Object.keys(params).length !== 1) throw new RpcError("invalid_request", "Only workspace is accepted");
+            return trust.challenge(peer, conn, conn.ingress);
+          }
+          const {workspace: _, ...registration} = params;
+          const result = trust.register(registration, peer, conn, conn.ingress);
+          conn.managementWorkspace = workspace as string;
+          return result;
+        }
         if (verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register") {
           if (!peer) throw new RpcError("caller_not_trusted", "Registration requires a local Unix connection.");
           if (verb === "rpc.localTrust.challenge") {
@@ -434,11 +456,11 @@ export class RpcServer {
           this.trust.require(peer, conn.ingress);
         }
         if (verb === "spawn" && params.agent === "external-exec-v1") {
-          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "External execution requires a registered local management caller");
-          this.trust.require(peer, conn.ingress);
-          const context = frame.context as Record<string, unknown> | undefined;
-          if (!context || typeof context.externalExecWorkspace !== "string" || !context.externalExecWorkspace.trim()) throw new RpcError("caller_not_trusted", "External execution requires management-authenticated workspace context");
-          return this.opts.dispatch(verb, params, { ...conn, externalExecWorkspace: context.externalExecWorkspace });
+          const workspace = conn.managementWorkspace;
+          const trust = workspace ? this.management.get(workspace) : undefined;
+          if (!peer || !trust || !trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "External execution requires protected local management registration");
+          trust.require(peer, conn.ingress);
+          return this.opts.dispatch(verb, params, { ...conn, externalExecWorkspace: workspace });
         }
         if (verb === "question.withdraw") {
           if (!this.capabilities.includes("question.withdraw.v1")) throw new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee.");

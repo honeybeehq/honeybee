@@ -1,8 +1,9 @@
+import { ExternalCapture, EXTERNAL_CAPTURE_CAP, EXTERNAL_DRAIN_PASSES } from "./externalCapture.ts";
 import { openExternalFile } from "./externalFiles.ts";
 import { createInterface } from "node:readline";
 import { writeSync, closeSync, fstatSync, readSync } from "node:fs";
 import { join } from "node:path";
-import { dispatchValue, registrationValue, record, validateReceipt, type ExternalBinding } from "../../core/src/externalExec.ts";
+import { dispatchValue, registrationValue, record, validateReceipt, type ExternalBinding, type BridgeEvent } from "../../core/src/externalExec.ts";
 import { bridgeOperation } from "./externalBridge.ts";
 
 export async function externalRunner(): Promise<void> {
@@ -12,10 +13,26 @@ export async function externalRunner(): Promise<void> {
   let stopRequested = false;
   let startCompleted = false;
   let terminal = false;
+  let terminalEvent: BridgeEvent | null = null;
+  let escalated = false;
+  process.on("SIGTERM", () => { escalated = true; stopRequested = true; });
   let timer: ReturnType<typeof setInterval> | null = null;
   const offsets = new Map<string, number>();
   const emit = (value: unknown) => process.stdout.write(`${JSON.stringify(value)}\n`);
   let captureFailed = false;
+  const capture = new ExternalCapture();
+  const appendRaw = (name: string, bytes: Buffer) => {
+    const output = openExternalFile(outputDirectory!, name, true);
+    try {
+      if (fstatSync(output).size + bytes.length > EXTERNAL_CAPTURE_CAP) throw new Error("external_exec_existing_capture_exceeds_cap");
+      let written = 0;
+      while (written < bytes.length) {
+        const count = writeSync(output, bytes.subarray(written));
+        if (!count) throw new Error("external_exec_capture_write_stalled");
+        written += count;
+      }
+    } finally { closeSync(output); }
+  };
   const raw = () => {
     if (!binding) return;
     for (const [source, target] of [["run-output.log", "stdout.raw"], ["run-error.log", "stderr.raw"]]) {
@@ -26,13 +43,14 @@ export async function externalRunner(): Promise<void> {
         if (!stat.isFile() || stat.uid !== process.getuid!()) throw new Error("external_exec_invalid_raw_source");
         const position = offsets.get(source!) ?? 0;
         if (stat.size < position) throw new Error("external_exec_raw_truncated");
-        const bytes = Buffer.alloc(Math.min(stat.size - position, 1024 * 1024));
+        const wanted = Math.min(stat.size - position, 1024 * 1024);
+        const allowed = capture.take(target!, wanted);
+        const bytes = Buffer.alloc(allowed);
         const size = readSync(fd, bytes, 0, bytes.length, position);
         if (size) {
-          const output = openExternalFile(outputDirectory!, target!, true);
-          try { let written = 0; while (written < size) written += writeSync(output, bytes.subarray(written, size)); } finally { closeSync(output); }
+          appendRaw(target!, bytes.subarray(0, size));
         }
-        offsets.set(source!, position + size);
+        offsets.set(source!, allowed < wanted ? stat.size : position + size);
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       finally { if (fd !== null) closeSync(fd); }
     }
@@ -41,11 +59,13 @@ export async function externalRunner(): Promise<void> {
   const invoke = async (operation: "start" | "wait" | "stop" | "reconcile") => {
     const current = binding!;
     return await bridgeOperation(current, operation, event => {
-      emit({ schema: "honeybee.external.observation.v1", event });
-      if (event.type === "terminal") { validateReceipt(event.data, current); terminal = true; }
+      if (event.type === "terminal") { validateReceipt(event.data, current); terminal = true; terminalEvent = event; }
+      else emit({ schema: "honeybee.external.observation.v1", event });
     }, bytes => {
-      const output = openExternalFile(outputDirectory!, "bridge-stderr.raw", true);
-      try { let written = 0; while (written < bytes.length) written += writeSync(output, bytes.subarray(written)); } finally { closeSync(output); }
+      const allowed = capture.take("bridge-stderr.raw", bytes.length);
+      if (!allowed) return;
+      bytes = bytes.subarray(0, allowed);
+      appendRaw("bridge-stderr.raw", bytes);
     });
   };
   const run = async (value: unknown) => {
@@ -64,8 +84,13 @@ export async function externalRunner(): Promise<void> {
       if (result.code !== 0 || !result.receipt) throw new Error("external_exec_transport_or_receipt_lost");
     }
     if (stopping) await stopping;
+
+  };
+  const finishCapture = () => {
     let previous = "";
-    while (previous !== JSON.stringify([...offsets])) { previous = JSON.stringify([...offsets]); raw(); }
+    for (let pass = 0; pass < EXTERNAL_DRAIN_PASSES && previous !== JSON.stringify([...offsets]); pass++) { previous = JSON.stringify([...offsets]); raw(); }
+    if (previous !== JSON.stringify([...offsets])) captureFailed = true;
+    if (capture.truncated) captureFailed = true;
     if (captureFailed) throw new Error("external_exec_raw_capture_failed");
   };
   await new Promise<void>(resolve => {
@@ -73,9 +98,27 @@ export async function externalRunner(): Promise<void> {
     lines.on("line", line => {
       if (!begun) {
         begun = true;
-        void Promise.resolve().then(() => run(JSON.parse(line))).then(() => { process.exitCode = 0; }, () => {
+        void Promise.resolve().then(() => run(JSON.parse(line))).catch(async error => {
+          if ((!escalated && !stopRequested) || !binding) throw error;
+          const result = await invoke("reconcile");
+          if (result.code !== 0 || !result.receipt) throw error;
+        }).then(() => {
+          finishCapture();
+          if (!terminalEvent) throw new Error("external_exec_terminal_missing");
+          if (timer) {clearInterval(timer); timer = null;}
+          const fd = openExternalFile(outputDirectory!, "capture.json", true);
+          try {writeSync(fd, JSON.stringify({...capture.snapshot(), drainIncomplete: false}));} finally {closeSync(fd);}
+          emit({schema: "honeybee.external.observation.v1", event: terminalEvent});
+          process.exitCode = 0;
+        }).catch(() => {
           emit({ schema: "honeybee.external.error.v1", code: "reconcile_required" }); process.exitCode = 75;
-        }).finally(() => { if (timer) clearInterval(timer); lines.close(); process.stdin.destroy(); resolve(); });
+        }).finally(() => {
+          if (timer) clearInterval(timer);
+          if (outputDirectory && process.exitCode !== 0) {
+            try { const fd = openExternalFile(outputDirectory, "capture.json", true); try { writeSync(fd, JSON.stringify({...capture.snapshot(), drainIncomplete: captureFailed})); } finally { closeSync(fd); } } catch { process.exitCode = 75; }
+          }
+          lines.close(); process.stdin.destroy(); resolve();
+        });
       } else {
         try {
           const control = record(JSON.parse(line));

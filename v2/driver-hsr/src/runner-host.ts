@@ -43,6 +43,7 @@ import { dirname } from "node:path";
  */
 
 export interface RunnerHostConfig {
+  privateBoot?: boolean;
   executionStart?: ExecutionStart;
   executionOwner?: ExecutionProcess;
   beeId: string;
@@ -173,6 +174,14 @@ function bindToTestFixtureLease(lease: string | undefined): void {
 export function runRunnerHost(configPath: string): void {
   stateFile(configPath, "runner configPath");
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
+  let privateBootLines: string[] = [];
+  if (cfg.privateBoot) {
+    const bytes = readFileSync(0);
+    if (bytes.length > 2 * 1024 * 1024 + 16384) throw new Error("Private boot too large");
+    const value: unknown = JSON.parse(bytes.toString("utf8")); bytes.fill(0);
+    if (!Array.isArray(value) || value.length !== 1 || typeof value[0] !== "string") throw new Error("Invalid private boot");
+    privateBootLines = value;
+  }
   runnerStateFiles(cfg);
   mkdirSync(dirname(cfg.socketPath), { recursive: true, mode: 0o700 });
   bindToTestFixtureLease(process.env.HIVE_TEST_FIXTURE_LEASE);
@@ -355,4 +364,6 @@ export function runRunnerHost(configPath: string): void {
   }
 
   for (const line of cfg.bootLines) writeAgentLine(line);
+  for (const line of privateBootLines) child.stdin?.write(`${line}\n`);
+  privateBootLines = [];
 }

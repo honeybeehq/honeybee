@@ -43,6 +43,8 @@ test("external ownership survives observer reconstruction, refuses attempt reuse
     db.exec(EXTERNAL_EXEC_SQL);
     const b = externalFixture(), first = new ExternalExecutions(db);
     first.admit(b);
+    assert.ok(!String(db.prepare("SELECT binding FROM external_exec").get()!.binding).includes(b.dispatch.fencingToken));
+    assert.equal(first.get(b.beeId)?.fencingTokenSha256, sha256(b.dispatch.fencingToken));
     assert.equal(first.claimDispatch(b.beeId), "start");
     const recovered = new ExternalExecutions(db);
     assert.equal(recovered.claimDispatch(b.beeId), "reconcile");
@@ -56,6 +58,8 @@ test("external ownership survives observer reconstruction, refuses attempt reuse
     assert.equal(recovered.view(b.beeId)?.status, "failed");
     assert.equal(recovered.view(b.beeId)?.observation, "reconcile_required");
     assert.equal(recovered.fail(b.beeId), false);
+    recovered.settle(b.beeId, externalReceipt(b));
+    assert.equal(recovered.view(b.beeId)?.observation, "terminal");
   } finally { db.close(); }
 });
 
@@ -80,4 +84,16 @@ test("external dispatch ownership and terminal evidence survive closing and reop
     assert.equal(owner.view(binding.beeId)?.status, "failed");
     assert.equal(owner.claimDispatch(binding.beeId), "reconcile");
   } finally { db.close(); }
+});
+
+test("plaintext prototype bindings cannot be read or dispatched", () => {
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec("CREATE TABLE bees(id TEXT PRIMARY KEY); INSERT INTO bees VALUES('external-test')"); db.exec(EXTERNAL_EXEC_SQL);
+    const binding = externalFixture(), owner = new ExternalExecutions(db); owner.admit(binding);
+    db.prepare("UPDATE external_exec SET binding=? WHERE bee_id=?").run(JSON.stringify(binding), binding.beeId);
+    assert.throws(() => owner.get(binding.beeId), /plaintext_or_corrupt/);
+    assert.throws(() => owner.claimDispatch(binding.beeId), /plaintext_or_corrupt/);
+    assert.equal(db.prepare("SELECT dispatched FROM external_exec").get()!.dispatched, 0);
+  } finally {db.close();}
 });
