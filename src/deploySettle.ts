@@ -1,3 +1,5 @@
+import { assertPeercredReceipt } from "./peercredReceipt.js";
+import type { PeercredProvenance } from "./peercredProvenance.js";
 /**
  * Deploy settling: prove the globally installed module tree is EXACTLY the
  * tree the local build produced before anything restarts the daemon.
@@ -33,8 +35,8 @@ export const BUILD_STAMP_FILENAME = ".build-stamp.json";
  */
 export const REPACK_RECORD_FILENAME = ".build-repack.json";
 
-/** Stamps are verified on other machines; the walk order must not follow the host locale. */
-const TREE_HASH_LOCALE = "en-US";
+/** Legacy artifact hashes retain their original process-locale ordering. */
+// Preserve the historical process-locale digest for existing artifacts and rollback stamps.
 
 const DIST_ROOT_METADATA: ReadonlySet<string> = new Set([BUILD_STAMP_FILENAME, REPACK_RECORD_FILENAME]);
 
@@ -44,7 +46,7 @@ export type RepackRecord = {
   baseArtifactHash: string;
   repackArtifactHash: string;
   addedFiles: Array<{ path: string; sha256: string }>;
-  peercred: { target: string; sha256: string; ciRun: number; ciJob: number };
+  peercred: { target: string; sha256: string; ciRun: number; ciJob: number; provenance: PeercredProvenance };
 };
 
 export type BuildStamp = {
@@ -81,7 +83,7 @@ export async function hashDirectoryTree(dir: string, omit: ReadonlySet<string> =
   const relativeFiles: string[] = [];
   const walk = async (relative: string): Promise<void> => {
     const entries = await readdir(join(dir, relative), { withFileTypes: true });
-    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name, TREE_HASH_LOCALE))) {
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
       const relPath = relative ? `${relative}/${entry.name}` : entry.name;
       if (entry.isDirectory()) await walk(relPath);
       else if (entry.isFile() && !DIST_ROOT_METADATA.has(relPath) && !omit.has(relPath)) relativeFiles.push(relPath);
@@ -161,10 +163,11 @@ export function parseRepackRecord(raw: string, target: string = hostTarget()): R
   const peercred = record.peercred;
   if (!peercred || typeof peercred !== "object" || Array.isArray(peercred)) throw new Error("repack peercred is not an object");
   const bridge = peercred as Record<string, unknown>;
-  if (!exactKeys(bridge, ["target", "sha256", "ciRun", "ciJob"])) throw new Error("repack peercred keys are not exactly target, sha256, ciRun, ciJob");
+  if (!exactKeys(bridge, ["target", "sha256", "ciRun", "ciJob", "provenance"])) throw new Error("repack peercred keys are not exactly target, sha256, ciRun, ciJob");
   if (bridge.target !== target) throw new Error(`repack peercred target ${String(bridge.target)} is not this host's ${target}`);
   if (typeof bridge.sha256 !== "string" || !HEX64.test(bridge.sha256)) throw new Error("repack peercred sha256 is not a 64-hex digest");
   if (!positiveInteger(bridge.ciRun) || !positiveInteger(bridge.ciJob)) throw new Error("repack peercred ciRun and ciJob must be positive integers");
+  assertPeercredReceipt(bridge, record.sourceHead, target, bridge.sha256);
   const prefix = `v2/peercred/${target}/`;
   if (!Array.isArray(record.addedFiles) || record.addedFiles.length === 0) throw new Error("repack addedFiles is empty");
   const addedFiles: RepackRecord["addedFiles"] = [];
@@ -193,7 +196,7 @@ export function parseRepackRecord(raw: string, target: string = hostTarget()): R
     baseArtifactHash: record.baseArtifactHash as string,
     repackArtifactHash: record.repackArtifactHash as string,
     addedFiles,
-    peercred: { target: bridge.target as string, sha256: bridge.sha256, ciRun: bridge.ciRun, ciJob: bridge.ciJob },
+    peercred: { target: bridge.target as string, sha256: bridge.sha256, ciRun: bridge.ciRun, ciJob: bridge.ciJob, provenance: bridge.provenance as PeercredProvenance },
   };
 }
 
@@ -318,7 +321,7 @@ export async function waitForSettledInstall(
       } else {
         const localRecord = await readRepackRecordText(localDist);
         const installedRecord = await readRepackRecordText(installedDist);
-        if (localRecord !== null && localRecord !== installedRecord) {
+        if (localRecord !== installedRecord) {
           lastDisagreement = "installed repack record differs from the local one";
         } else if (installedRecord !== null) {
           const hash = await verifyRepackedDist(installedDist, localStamp.hash, installedRecord, options.target);

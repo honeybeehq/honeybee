@@ -158,7 +158,9 @@ async function repack(dist: string, base: string, files: Record<string, string> 
     baseArtifactHash: base,
     repackArtifactHash: await hashDirectoryTree(dist),
     addedFiles: Object.keys(files).sort().map((path) => ({ path, sha256: sha256(files[path]!) })),
-    peercred: { target: TARGET, sha256: sha256(files[`v2/peercred/${TARGET}/peercred.node`] ?? ""), ciRun: 101, ciJob: 202 },
+    peercred: { target: TARGET, sha256: sha256(files[`v2/peercred/${TARGET}/peercred.node`] ?? ""), ciRun: 101, ciJob: 202,
+      provenance: { repository: "honeybeehq/honeybee", workflow: ".github/workflows/ci.yml", event: "push", branch: "main", sourceHead: SOURCE_HEAD,
+        runId: 101, jobId: 202, artifactId: 303, artifactSha256: "a".repeat(64), binarySha256: sha256(files[`v2/peercred/${TARGET}/peercred.node`] ?? ""), target: TARGET } },
   };
   await writeFile(join(dist, REPACK_RECORD_FILENAME), JSON.stringify(record));
   return record;
@@ -172,6 +174,8 @@ test("a recorded repack settles: base stamp, additions with their digests, nothi
     await cp(local, installed, { recursive: true });
     const record = await repack(installed, base);
     assert.notEqual(await hashDirectoryTree(installed), base, "the additions are not excluded from the digest");
+    await assert.rejects(waitForSettledInstall(local, installed, { timeoutMs: 20, pollIntervalMs: 5 }), /differs from the local one/);
+    await writeFile(join(local, REPACK_RECORD_FILENAME), await readFile(join(installed, REPACK_RECORD_FILENAME)));
     const settled = await waitForSettledInstall(local, installed, { timeoutMs: 1_000, pollIntervalMs: 1 });
     assert.deepEqual(settled, { hash: record.repackArtifactHash, attempts: 1, repacked: true });
     assert.deepEqual(await verifyDistAgainstArtifact(installed, base), { hash: record.repackArtifactHash, repacked: true });
@@ -221,6 +225,7 @@ test("a repack that changed anything beyond its recorded additions never settles
       await cp(local, installed, { recursive: true });
       const record = await repack(installed, base);
       await mutate(installed, record);
+      await writeFile(join(local, REPACK_RECORD_FILENAME), await readFile(join(installed, REPACK_RECORD_FILENAME)));
       await assert.rejects(
         waitForSettledInstall(local, installed, { timeoutMs: 20, pollIntervalMs: 5 }),
         (error: unknown) => error instanceof Error && /did not settle/.test(error.message) && reason.test(error.message),
@@ -243,14 +248,14 @@ test("a local repack record must be byte-identical to the installed one", async 
   });
 });
 
-test("the tree digest is the same under every host locale", async () => {
+test("the tree digest preserves historical host-locale ordering for rollback", async () => {
   await withTempDir(async (root) => {
     for (const name of ["aa.js", "ab.js", "z.js", "Ab.js", "\u00e6.js", "I.js", "\u0131.js"]) await writeFile(join(root, name), name);
     const moduleUrl = new URL("../src/deploySettle.js", import.meta.url).href;
     const script = `const { hashDirectoryTree } = await import(${JSON.stringify(moduleUrl)}); process.stdout.write(await hashDirectoryTree(${JSON.stringify(root)}));`;
     const digests = new Set(["en_US.UTF-8", "nb_NO.UTF-8", "da_DK.UTF-8", "tr_TR.UTF-8"].map((locale) =>
       execFileSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", env: { ...process.env, LANG: locale, LC_ALL: locale } })));
-    assert.equal(digests.size, 1, `digests per locale: ${[...digests].join(", ")}`);
+    assert.ok(digests.size > 1, `digests per locale: ${[...digests].join(", ")}`);
     assert.ok(digests.has(await hashDirectoryTree(root)));
   });
 });
