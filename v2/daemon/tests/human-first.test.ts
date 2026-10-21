@@ -236,3 +236,20 @@ test("trusted quota recovery delivery gate keeps precedence over pending human c
     assert.deepEqual(r.driver.deliveredIds, [continuation.id, human.id]);
   } finally { r.close(); }
 });
+
+
+for (const origin of ["spawn.prompt", "auth.resume"] as const) test(`core-owned ${origin} context precedes human chat; forged sender/body does not`, () => {
+  const r = rig();
+  try {
+    const human = r.human("human after role");
+    const ordinary = r.store.send(r.bee.id, "role bootstrap auth.resume", { sender: "hive:auth-resume", senderKind: "automation" }).message;
+    const seed = r.store.send(r.bee.id, "core context", { origin }).message;
+    r.core.step();
+    assert.deepEqual(r.driver.deliveredIds, [seed.id]);
+    assert.equal(r.store.getMessage(human.id)?.deliveredAt, null);
+    assert.equal(r.store.getMessage(ordinary.id)?.deliveredAt, null);
+    r.event("turn_started"); r.event("turn_ended");
+    assert.deepEqual(r.driver.deliveredIds, [seed.id, human.id]);
+    assert.equal(r.store.getMessage(ordinary.id)?.deliveredAt, null);
+  } finally { r.close(); }
+});

@@ -4492,6 +4492,12 @@ export class CoreStore {
     return trigger != null && trigger.generation === generation && trigger.endedAt === null && trigger.messageId !== null && this.getMessage(trigger.messageId)?.humanChat !== undefined;
   }
 
+  pendingHumanFirstSeedMessageId(beeId: string): number | null {
+    this.tx(() => this.backfillMailHistoryEnqueues());
+    const row = this.stmt("SELECT message.id FROM mailbox AS message JOIN mail_history_enqueues AS history ON history.message_id = message.id WHERE message.bee_id = ? AND message.delivered_at IS NULL AND history.origin IN ('spawn.prompt','auth.resume') ORDER BY COALESCE(message.queue_order,message.id),message.id LIMIT 1").get(beeId) as Row | undefined;
+    return row ? Number(row.id) : null;
+  }
+
   pendingHumanChatId(beeId: string): number | null {
     const row = this.stmt("SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND human_chat IS NOT NULL ORDER BY COALESCE(queue_order,id),id LIMIT 1").get(beeId) as Row | undefined;
     return row ? Number(row.id) : null;
