@@ -33,6 +33,7 @@ import {
 import { execFileSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { shortSocketDir, socketPathFits } from "../core/src/socketPath.ts";
 import { securityExecutable } from "../../src/keychain.ts";
 import { fileURLToPath } from "node:url";
 import { TmuxDriver, type TmuxSpawnSpec } from "./src/driver.ts";
@@ -69,7 +70,7 @@ const PHASES: Record<string, PhaseKind[]> = {
 };
 
 const runDir = mkdtempSync(join(tmpdir(), "hive-tmux-smoke-"));
-const socketPath = join(runDir, "tmux.sock");
+const socketPath = socketPathFits(join(runDir, "tmux.sock")) ? join(runDir, "tmux.sock") : join(shortSocketDir("hive-tmux-smoke-", "tmux.sock", [tmpdir()]), "tmux.sock");
 /** Read-only pane peeking + final server teardown (same private socket). */
 const server = new TmuxServer({ socketPath, allowKillServer: true });
 
@@ -550,7 +551,7 @@ try {
     console.log(`  [${kind}] phase wall time: ${((Date.now() - phaseT0) / 1000).toFixed(1)}s`);
   }
   const failed = results.filter(([, ok]) => !ok);
-  console.log(`\nartifacts kept for inspection under: ${runDir}`);
+  console.log(`\nartifacts kept for inspection under: ${runDir}${dirname(socketPath) === runDir ? "" : ` (socket dir ${dirname(socketPath)})`}`);
   if (harness === "grok") {
     console.log("note: grok's parser was fixture-derived — a passing transcript phase here is");
     console.log("      the first live validation of that format. Record the result in SMOKE.md.");

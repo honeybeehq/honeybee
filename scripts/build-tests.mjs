@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
@@ -111,6 +112,8 @@ await build({
   target: "node22",
   logLevel: "silent",
 });
+execFileSync(process.execPath, [join(root, "scripts", "build-peercred.mjs")], { stdio: "inherit" });
+await cp(join(root, "dist", "v2", "peercred"), join(outDir, "src", "v2", "peercred"), { recursive: true });
 await Promise.all([
   cp(join(root, "tests", "fixtures"), join(outDir, "tests", "fixtures"), { recursive: true }),
   cp(join(root, "docs"), join(outDir, "docs"), { recursive: true }),

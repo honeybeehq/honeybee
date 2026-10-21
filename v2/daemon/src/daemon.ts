@@ -52,6 +52,7 @@ import { homedir, tmpdir, hostname } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { canonicalPath, removeEndpointRecord, samePath, writeEndpointRecord } from "./endpointRecord.ts";
+import { placeDaemonSockets } from "./socketPath.ts";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { getSystemErrorMap } from "node:util";
 import { GatewayMcpSeedLockError } from "../../../src/accounts/gatewayMcpSeed.ts";
@@ -697,7 +698,7 @@ const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>([
 ]);
 
 export class HiveDaemon {
-  readonly cfg: ResolvedNodeConfig;
+  cfg: ResolvedNodeConfig;
   private readonly deliveryFiles = new DeliveryFiles();
   private store: CoreStore | null = null;
   private integrityCheck: Promise<{ ok: boolean; results: string[]; durationMs: number }> | null = null;
@@ -758,7 +759,8 @@ export class HiveDaemon {
   private readonly performance: PerformanceProfiler;
   private activeStartupPhase: PerformanceSpan | null = null;
   private readonly beeTmp: BeeTmpPolicy | null;
-  private readonly runnerSocketDir: string;
+  private runnerSocketDir: string;
+  private tmuxSocketPath = "";
   private readonly beeTmpOverrideLogged = new Set<string>();
 
   constructor(cfg: ResolvedNodeConfig, deps: HiveDaemonDeps = {}) {
@@ -793,6 +795,11 @@ export class HiveDaemon {
     const runtimeTarget = `${process.platform}-${process.arch}`;
     if (BUILD_IDENTITY.target !== runtimeTarget) throw new Error(`daemon: build target ${BUILD_IDENTITY.target} differs from runtime target ${runtimeTarget}; install an artifact built for this node`);
     mkdirSync(this.cfg.dataDir, { recursive: true, mode: 0o700 });
+    const sockets = placeDaemonSockets(this.cfg.dataDir, this.cfg.socketPath, { runnerSocketDir: this.runnerSocketDir });
+    this.cfg = { ...this.cfg, socketPath: sockets.socketPath };
+    this.tmuxSocketPath = sockets.tmuxSocketPath;
+    this.runnerSocketDir = sockets.runnerSocketDir;
+    if (sockets.socketDir) this.log(`socket.relocated dir=${sockets.socketDir} socket=${sockets.socketPath} tmux=${sockets.tmuxSocketPath}`);
     mkdirSync(this.cfg.sessionLogDir, { recursive: true });
     mkdirSync(dirname(this.cfg.logPath), { recursive: true });
     if (this.beeTmp) applyDaemonTmpPolicy(this.beeTmp, process.env, (path, was) => this.log(`tmp.replaced path=${path} was=${was}`));
@@ -815,6 +822,13 @@ export class HiveDaemon {
       this.performance.stop();
       throw error;
     }
+  }
+
+  private daemonProcessIdentity() {
+    const identity = inspectProcess(process.pid);
+    // Preserve degraded RPC service when the optional native bridge is unavailable.
+    // Deploy readers require exact evidence and will not follow this record.
+    return identity.kind === "present" ? { processBirth: identity.birth, bootId: identity.bootId } : {};
   }
 
   private async startProfiled(): Promise<void> {
@@ -942,7 +956,7 @@ export class HiveDaemon {
       cleanup: store.tmuxCleanupHooks(),
       runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
       doctor: counts => this.log(`doctor.runtime_identity non_destructive_legacy=${counts.nonDestructiveLegacy}`),
-      socketPath: join(this.cfg.dataDir, "tmux.sock"),
+      socketPath: this.tmuxSocketPath,
       eventsDir: join(this.cfg.dataDir, "tmux-events"),
       sessionLogDir: this.cfg.sessionLogDir,
       sessionLogPathFor,
@@ -1075,7 +1089,7 @@ export class HiveDaemon {
       performance: this.performance,
     });
     try {
-      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), pid: process.pid, startedAt: this.startedAt }));
+      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), tmuxSocketPath: this.tmuxSocketPath, pid: process.pid, startedAt: this.startedAt, ...this.daemonProcessIdentity() }));
     } catch (error) {
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       throw error;

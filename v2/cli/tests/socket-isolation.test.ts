@@ -8,6 +8,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { canonicalPath, ENDPOINT_RECORD_FILE, readLiveEndpointRecord, writeEndpointRecord } from "../../daemon/src/endpointRecord.ts";
 import { RpcServer, socketAcceptsConnections } from "../../daemon/src/rpc.ts";
+import { shortSocketDir } from "../../daemon/src/socketPath.ts";
 import { DAEMON_BIN, makeDaemonDir, ownerBoundEnv, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
 import { RpcError } from "../../daemon/src/protocol.ts";
 import { RpcClient } from "../src/client.ts";
@@ -106,7 +107,7 @@ test("target resolution: flag > env > live record > config, empty env is unset, 
 });
 
 test("socket_in_use probe is a bare connect: no bytes reach the listener", async () => {
-  const root = mkdtempSync(join(tmpdir(), "hb-p8-probe-"));
+  const root = shortSocketDir("hb-p8-probe-", "absent.sock", [tmpdir()]);
   const path = join(root, "live.sock");
   let received = "";
   const server = createServer((socket) => { socket.setEncoding("utf8"); socket.on("data", (chunk: string) => { received += chunk; }); });
@@ -124,7 +125,7 @@ test("socket_in_use probe is a bare connect: no bytes reach the listener", async
 });
 
 test("the endpoint record is written after the socket_in_use probe and before the socket accepts", async () => {
-  const root = mkdtempSync(join(tmpdir(), "hb-p8f-bind-"));
+  const root = shortSocketDir("hb-p8f-bind-", "rpc.sock", [tmpdir()]);
   const path = join(root, "rpc.sock");
   const server = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
   const second = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
@@ -189,7 +190,8 @@ test("socket isolation against throwaway daemons", async (t) => {
   const argvLogB = join(c.dir, "argv-b.jsonl");
   const a = makeDaemonDir({ agents: claudeAgent(argvLogA) });
   const b = makeDaemonDir({ agents: claudeAgent(argvLogB) });
-  const aSock = join(c.dir, "a-custom.sock");
+  const sockDir = shortSocketDir("hb-p8-iso-", "inherited.sock", [tmpdir()]);
+  const aSock = join(sockDir, "a-custom.sock");
   const home = join(c.dir, "home");
   mkdirSync(home, { recursive: true });
   const scratch = join(c.dir, "work");
@@ -198,7 +200,7 @@ test("socket isolation against throwaway daemons", async (t) => {
   let daemonB: DaemonHandle | null = null;
   try {
     daemonA = await startDaemon(a.dir, { socketPath: aSock });
-    daemonB = await startDaemon(b.dir, { env: { HIVE_V2_SOCKET_PATH: join(c.dir, "inherited.sock") } });
+    daemonB = await startDaemon(b.dir, { env: { HIVE_V2_SOCKET_PATH: join(sockDir, "inherited.sock") } });
     const infoA = (await cli(["deploy-info", "--json", "--socket", aSock, "--data-dir", a.dir], { HOME: home })).json[0]!;
     const infoB = (await cli(["deploy-info", "--json", "--data-dir", b.dir], { HOME: home })).json[0]!;
     assert.match(infoA.instanceId, /^[0-9a-f-]{36}$/);
@@ -496,5 +498,6 @@ test("socket isolation against throwaway daemons", async (t) => {
     a.cleanup();
     b.cleanup();
     c.cleanup();
+    rmSync(sockDir, { recursive: true, force: true });
   }
 });

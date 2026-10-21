@@ -543,7 +543,7 @@
     },
     {
       "path": "v2/driver-hsr/src/driver.ts",
-      "sha256": "0d12306038d849af72569b91dbd4bf3976c100b2c8026c08e88026518d511b83",
+      "sha256": "76e1ae959673f6c3dc49a87570bb3a8bc52a9ee16b8e9794315fd0a8dfa2fef6",
       "siblingClosure": true
     },
     {
@@ -660,12 +660,17 @@
       "path": "src/peercredReceipt.ts",
       "sha256": "df1960b105d1b7b5e128259df724189f67535b81bd38ab9f2b9fca3f8ce8bf29",
       "siblingClosure": true
+    },
+    {
+      "path": "v2/core/src/socketPath.ts",
+      "sha256": "47130b1d5066b4fd7d17b865df4a34fe1cdf382c8909d1aed5f7dbd07945c67c",
+      "siblingClosure": true
     }
   ],
   "spawns": [
     {
       "path": "v2/driver-hsr/src/driver.ts",
-      "line": 542,
+      "line": 568,
       "context": "    const child = spawn(launch.command, launch.args, {",
       "executable": "node",
       "receiver": "HsrDriver.start ChildProcess; these three rows construct HsrDriver without hostCommand, so its source HostLaunch is the pinned Node executable and runner-host-main.ts, not a provider CLI.",
@@ -1261,7 +1266,7 @@
     {
       "kind": "import",
       "path": "v2/driver-hsr/src/driver.ts",
-      "line": 53,
+      "line": 57,
       "context": "import { spawn, type ChildProcess } from \"node:child_process\";",
       "module": "node:child_process",
       "manualReview": true
@@ -1269,7 +1274,7 @@
     {
       "kind": "import",
       "path": "v2/driver-hsr/src/driver.ts",
-      "line": 57,
+      "line": 61,
       "context": "import { connect, type Socket } from \"node:net\";",
       "module": "node:net",
       "manualReview": true
@@ -1277,7 +1282,7 @@
     {
       "kind": "reference",
       "path": "v2/driver-hsr/src/driver.ts",
-      "line": 666,
+      "line": 692,
       "context": "    const attempt = connect(p.socketPath);",
       "module": "node:net",
       "manualReview": true

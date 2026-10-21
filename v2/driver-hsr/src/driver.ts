@@ -75,6 +75,7 @@ import type {
 import type { HarnessAdapter } from "../../adapters/src/index.ts";
 import { executableNotFoundDetail, type SpawnCommandResolution } from "../../core/src/executables.ts";
 import { inspectProcess, sameProcess, processDisposition, legacyProcessCandidate, ProcessIdentityUnavailableError, verifyProcessIdentity, type ProcessIdentity } from "./psutil.ts";
+import { persistentSocketDir, socketPathFits } from "../../core/src/socketPath.ts";
 
 // Pin the module's physical deployment before an immutable runtime's
 // `current` symlink can move. Node normally realpaths imported modules, but
@@ -392,6 +393,7 @@ export class HsrDriver implements RuntimeDriver {
   private readonly reconnecting = new Set<string>();
   private detached = false;
   private readonly cfg: HsrDriverConfig;
+  private fallbackSocketDir: string | null = null;
   private readonly hostLaunch: HostLaunch;
   private readonly now: () => number;
   private readonly graceMs: number;
@@ -433,10 +435,6 @@ export class HsrDriver implements RuntimeDriver {
     return resolvePath(parent, "runners");
   }
 
-  private socketDir(): string {
-    return stateDirectory(this.cfg.socketDir === undefined ? tmpdir() : this.cfg.socketDir, "socketDir");
-  }
-
   private selectHostLaunch(): HostLaunch {
     // Overrides are a complete caller-owned launch policy. In particular,
     // embedding/tests may intentionally provide one without packaging our
@@ -461,6 +459,19 @@ export class HsrDriver implements RuntimeDriver {
       );
     }
     return source ? { kind: "source", entry } : { kind: "artifact", entry };
+  }
+
+  private socketDir(): string {
+    if (this.cfg.socketDir !== undefined) return stateDirectory(this.cfg.socketDir, "socketDir");
+    if (!this.fallbackSocketDir) {
+      const sample = join(`hb-rh-${"0".repeat(16)}`, "stdin.sock");
+      if (socketPathFits(join(tmpdir(), sample))) this.fallbackSocketDir = tmpdir();
+      else {
+        mkdirSync(this.runnersDir(), { recursive: true });
+        this.fallbackSocketDir = persistentSocketDir(this.runnersDir(), sample);
+      }
+    }
+    return stateDirectory(this.fallbackSocketDir, "socketDir");
   }
 
   private runnerPaths(

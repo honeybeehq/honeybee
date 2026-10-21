@@ -1,6 +1,7 @@
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
+import { readLiveEndpointRecord } from "../../daemon/src/endpointRecord.ts";
 /**
  * The thin v2 CLI (spec 04 "CLI"). Ships inside the existing `hive` binary as
  * `hive <verb>` (src/cli.ts routes here) and as a standalone bin for tests.
@@ -4554,8 +4555,9 @@ async function attachToBee(
   const generation = result.view.generation;
   if (generation == null) throw new Error(`hive attach: ${bee.id} has no recorded runtime generation`);
   const session = sessionNameFor(bee.id, generation);
-  const socket = join(ctx.cfg.dataDir, "tmux.sock");
-  const command = `tmux -S ${socket} attach-session -t =${session}`;
+  const socket = readLiveEndpointRecord(ctx.cfg.dataDir)?.tmuxSocketPath ?? join(ctx.cfg.dataDir, "tmux.sock");
+  const quote = (value: string) => "'" + value.replaceAll("'", "'\"'\"'") + "'";
+  const command = `tmux -S ${quote(socket)} attach-session -t ${quote(`=${session}`)}`;
   if (opts.print || parsed.flags.get("--print") === true || ctx.json) {
     emit(ctx, [command], { beeId: bee.id, session, socket, command }, false);
     return 0;

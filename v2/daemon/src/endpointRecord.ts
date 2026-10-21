@@ -9,8 +9,11 @@ export interface EndpointRecord {
   instanceId: string;
   dataDir: string;
   socketPath: string;
+  tmuxSocketPath?: string;
   pid: number;
   startedAt: number;
+  processBirth?: string;
+  bootId?: string;
 }
 
 export function canonicalPath(path: string): string {
@@ -69,5 +72,14 @@ export function readLiveEndpointRecord(dataDir: string, alive: (pid: number) => 
   if (r.schema !== 1 || typeof r.instanceId !== "string" || typeof r.dataDir !== "string" || typeof r.socketPath !== "string"
     || typeof r.pid !== "number" || !Number.isSafeInteger(r.pid) || r.pid <= 0 || typeof r.startedAt !== "number") return null;
   if (!alive(r.pid)) return null;
-  return { schema: 1, instanceId: r.instanceId, dataDir: r.dataDir, socketPath: r.socketPath, pid: r.pid, startedAt: r.startedAt };
+  return {
+    schema: 1,
+    instanceId: r.instanceId,
+    ...(typeof r.processBirth === "string" && typeof r.bootId === "string" ? { processBirth: r.processBirth, bootId: r.bootId } : {}),
+    dataDir: r.dataDir,
+    socketPath: r.socketPath,
+    ...(typeof r.tmuxSocketPath === "string" ? { tmuxSocketPath: r.tmuxSocketPath } : {}),
+    pid: r.pid,
+    startedAt: r.startedAt,
+  };
 }

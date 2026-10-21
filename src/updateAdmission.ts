@@ -1,3 +1,4 @@
+import { recordedSocketPath } from "./daemonSocketPath.js";
 import { childNodePath, nativeNodeEnv } from "./nodeRuntime.js";
 /** Read-only deploy admission. SQLite remains the daemon's sole authority. */
 import { DatabaseSync } from "node:sqlite";
@@ -53,7 +54,7 @@ async function readUpdateOwner(root: string): Promise<Owner> {
   let response: string | undefined;
   try {
     const { stdout } = await promisify(execFile)(childNodePath(),
-      [join(root, "current", "dist", "v2", "cli.js"), "update-owner", "status", "--data-dir", dataDir, "--socket", join(dataDir, "hived.sock")],
+      [join(root, "current", "dist", "v2", "cli.js"), "update-owner", "status", "--data-dir", dataDir, "--socket", recordedSocketPath(dataDir)],
       { timeout: 10_000, env: nativeNodeEnv() });
     response = stdout;
   } catch {
