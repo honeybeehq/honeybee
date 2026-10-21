@@ -16,60 +16,88 @@ package and three full hashes in external-exec-owner-candidate.json. That Cell
 file is non-authoritative. Copy/review it owner-side only after approval, initially
 without the workspace capability grant.
 
-## Channel and session identity (design choices)
+## Decision pending: authority path
 
-Use TLS 1.3 mutual authentication with explicit SHA-256 SPKI pins in both
-directions, in addition to certificate validity checks. The broker has one
-filesystem Unix listener inside its 0700 service-UID directory; a trusted
-service-UID relay carries mutually authenticated TLS bytes over that socket.
-The relay has no TCP listener: it maintains an outbound mutually authenticated
-TLS connection to the operator's Apiary management host. Apiary validates the
-broker certificate through that end-to-end tunnel. Neither the relay nor broker
-exposes an abstract socket or TCP listener. Tailnet membership grants no authority.
+Tormod chooses one path: per-attempt human approval for no-inference phases 1–2,
+the full protected executor/attestor, or pause. None is selected or authorized by
+this revision. Human approval does not authorize inference, account leasing,
+guest credentials or phase-3 code. The owner CLI alone is not agent authority.
 
-The accepted Apiary client SPKI and management server pin are root-owned config,
-not writable by service UID or Cells. Apiary also keeps the expected broker SPKI
-in root-owned management config on the operator host. Apiary's client private key stays on
-Tormods-Mac-Studio in the operator's protected management service/Keychain, never
-in any metal-3 trmd process, environment or file. The broker private key is a
-systemd credential readable only by the dedicated service. This requires a
-separate trusted Apiary management process: running it as unrestricted trmd on
-metal-3 is explicitly unsupported. No TLS session secrets enter Cell tools.
+The near-term alternative has no attestor. Treat agent proposals, bearer tokens
+and claimed session identities as untrusted. In a protected Apiary approval UI,
+the human explicitly chooses actor and ur workspace and reviews the complete
+canonical job, immutable input digests, bridge/install identity, no-inference
+mode, deadline and resource limits. The management service binds a one-use
+approval id to that exact body digest, actor, workspace and expiry (60 seconds).
+Any change or retry with changed content requires new approval. Copied session
+tokens may submit an untrusted proposal but cannot authorize or change a run.
+Status/stop requests without an attested actor likewise require human authority;
+no agent bearer token becomes authority just because a start was approved.
+An approval authorizes one no-inference attempt, not a session or standing grant.
 
-Rotate keys through human/trusted management root-owned pin updates: accept old
-and new pins for a bounded 24-hour overlap, verify new identity, then remove old.
-Compromise revokes the old pin immediately, closes existing channels, invalidates
-sessions and suspends admission; reconnect always rechecks pins and policy.
-No fallback to unpinned TLS or tailnet identity. TLS resumption is disabled.
+The full automatic alternative requires direct harness integration with a
+separate-UID tool executor, SO_PEERCRED plus PID birth/boot binding and protected
+launch registration. The harness must connect directly to that executor; today's
+same-UID MCP child cannot be promoted by declaring it trusted. Enforce
+ptrace_scope >= 1 (with no agent parent/debug privilege over the executor), or
+separate PID namespaces, in addition to separate UID and no privilege escalation.
+A trusted attestor binds the canonical request digest, actor/workspace, nonce,
+expiry and destination to the kernel peer identity; Apiary checks its registry.
+No caller PID, parentage, copied token or unprotected registration is accepted.
+Agent processes cannot signal, ptrace or inject into executor/attestor. Queen
+estimates 3–5 weeks including harness work; this is not a small broker-only change.
+Implementation and end-to-end proof remain gated on Tormod choosing this path.
 
-Choose process-bound session identity, not bearer-token authentication. A trusted
-metal-3 session attestor accepts local tool invocations on a filesystem Unix
-socket and obtains SO_PEERCRED plus native PID birth/boot identity. Trusted
-management registers each session's exact tool-executor process identity and
-workspace at launch through a protected control channel; neither the agent nor
-the executor can register or change this binding. This executor belongs to the
-trusted harness tool plane, not an arbitrary agent subprocess. The attestor
-rechecks birth/liveness before each acceptance and forwards an authenticated
-attestation bound to the body digest, session, workspace, nonce and expiry.
-Apiary checks the attestation against its own session registry. Exit/relaunch
-revokes the old binding; a replacement requires trusted registration.
+## Protected Mac service and direct channel
 
-Apiary must reject a copied session bearer token without this attestation.
-Caller-supplied PID, birth, workspace and claimed parentage never count.
-Same-UID /proc/environ or token-file access therefore does not impersonate another
-session. A fake executor has a different kernel peer identity; an untrusted
-subprocess cannot inherit registration. Attestor signing keys live under a
-separate protected service UID/systemd credential, not trmd. Cells cannot ptrace,
-signal or mutate trusted executors/attestor; this requires a protected tool-plane
-UID and brokered tool execution, not today's arbitrary same-UID helper process.
-This is additional proposed Apiary integration work, a hard enable prerequisite.
-No claim is made that current Apiary bearer authentication provides this boundary.
+Choose a separate macOS management user running a launchd management service,
+with its key in that user's private keychain. The normal Apiary process and all
+Studio Cell agents running as trmd have neither read nor signing access. Keychain
+non-exportability alone is insufficient: no signing oracle is exposed to trmd.
+The management user has its own protected approval UI/login session; ordinary
+trmd Apiary can only submit untrusted proposals for display there. If Apiary
+cannot provide that separate protected UI, the human path is blocked.
+
+Attest the helper caller with XPC audit-token effective UID AND a pinned
+code-signing designated requirement for the root-owned, signed, hardened approval
+UI (library validation, no debugger/get-task-allow entitlement or user-writable
+plugins). The service checks both on each request; PID strings, same binary run
+as trmd, bearer tokens and a forwarded audit token do not count. Only this UI under
+the management UID can approve an exact job for signing. Automatic attestor-mode
+requests would instead require the independently pinned attestor identity and
+validated process-bound attestation; that route is disabled in human-only mode.
+No generic sign-bytes/key-use RPC exists. Root-owned launchd/config/binaries and
+the private keychain are not writable/readable by trmd. A human or trusted root
+management provisions them only after authorization. Prove that trmd has no
+sudo, task-port, UI-automation or cross-user control route to this service/UI.
+An unrestricted admin/root path from a Cell invalidates the boundary.
+
+Drop the relay and TLS-in-TLS entirely. The metal-3 broker itself dials a direct
+TLS 1.3 mutually authenticated connection to the separate Mac management service.
+Use SHA-256 SPKI pins both ways plus certificate validity checks. On metal-3,
+the management server pin is root-owned config; on the Mac the expected broker
+client pin is root-owned management config. The broker's private key is a
+systemd credential; the Mac service's private key stays in its own keychain.
+No key lives in a trmd process, environment or file on either machine.
+
+The broker has no inbound TCP or abstract socket listener; owner-local control
+uses only a filesystem Unix socket in its 0700 service-UID root. The management
+service queues authorized requests and sends them on the authenticated outbound
+broker connection. Only that service's pinned identity is accepted. The Mac
+management listener requires the pinned broker client; tailnet membership and
+the shared host identity grant no authority. There is no outer TLS layer or
+second set of undefined transport pins.
+
+Rotate through trusted root-owned pin updates with at most 24 hours dual-pin
+overlap, verify new identity, then remove old. Compromise immediately removes the
+old pin, closes existing channels and suspends admission. Disable TLS resumption;
+every reconnect validates pins, time and current policy. No unpinned fallback.
 
 ## Exact agent caller path
 
-1. Ur Bench agent invokes the dedicated external-attempt tool. The protected
-   executor/attestor establishes the process-bound session above. Apiary derives
-   actor and ur workspace from its registry and checks the external-exec role.
+1. An agent proposes a job. Admission requires the authority path Tormod chooses:
+   exact per-attempt human approval in the protected Mac UI, or a proven protected
+   executor/attestor plus Apiary registry/role check. No path is enabled today.
 2. Apiary sends only the approved job specification over pinned mTLS. The broker
    independently authorizes actor, ur workspace, operation and policy. Only
    urbench-v2 is allowed. No generic RPC, exec or file operations are exposed.
@@ -95,8 +123,8 @@ Each authenticated envelope has a 256-bit nonce, issuedAt and expiresAt, with
 maximum lifetime 60 seconds and at most 5 seconds future skew. Apiary and broker
 use host CLOCK_REALTIME synchronized by trusted host time service; a time step,
 unhealthy synchronization or uncertainty exceeding 5 seconds suspends admission.
-Within a boot, monotonic time also bounds envelope age. Attestations use the
-same limits and bind the full canonical body digest and target broker identity.
+Within a boot, monotonic time also bounds envelope age. Approvals and any future
+attestations use the same limits and bind the full canonical body digest and target broker identity.
 
 Atomically persist accepted nonces before effects in a protected request journal.
 Keep them at least until expiresAt + 5 seconds and never less than 65 seconds
@@ -150,17 +178,44 @@ No fences, token values, full dispatch, secret-bearing argv or raw output in aud
 Raw output remains untrusted evidence, subject to separately approved capture
 policy before publication. Bound denial logging; retain security audit 30 days.
 
-## Bridge trust and host policy
+## Sandboxed bridge and host policy
 
-Explicit choice: the pinned Ur Bench host bridge and interpreter inventory are
-trusted code in the management TCB, running as honeybee-exec-dev. It can read
-management.key, owner root and the dev store. Hashes prove identity, not safety:
-enable requires Queen's security review of this exact bridge's host-side parsers,
-guest control and output handling. Guest/model code never runs as that UID.
-Only disposable KVM guest execution is permitted; guest output is parsed as
-untrusted data and cannot choose host commands/paths. If that trust is not
-accepted, a separate bridge UID plus an authenticated restricted launcher is a
-new design gate, not a same-UID permission workaround.
+The bridge is not management TCB. Require a root-owned, hash-pinned bwrap binary
+with a protected canonical install chain; verify it before each launch alongside
+the bridge's existing install pins. This is a future launcher change, not present
+in the source-PASS head. No host bridge operation bypasses this sandbox.
+
+Build a minimal filesystem view from an empty root, not a read-only bind of the
+whole host. Read-only bind only the verified pinned inventory and immutable job
+inputs at their approved paths; mount tmpfs over the owner root, Honeybee data
+directory and broker recovery/key root. Also hide alternate spellings, mounts,
+homes and /run service credential locations. Bind a private per-attempt writable
+state directory and private tmpfs; expose /dev/kvm as the only host device
+(private minimal /dev supplies synthetic null/zero/random only). No host sockets,
+account homes, management files or credentials enter the view. The private state
+directory cannot contain links, FDs or nested mounts leading back to management.
+
+Require --die-with-parent, --new-session, a private PID namespace/private /proc,
+no_new_privs and dropped capabilities. Private /proc must not expose daemon or
+broker memory/fd/root; the sandbox cannot ptrace or signal those outside processes.
+QEMU inherits this boundary and cannot escape it or change the mount policy.
+Neither bridge nor QEMU opens abstract sockets; disallow AF_UNIX socket creation
+in their sandbox policy (private control uses inherited pipes), with enforcement
+and compatibility proved before enablement. Network policy remains no inference
+in phases 1–2; phase-3 egress remains separately gated.
+
+Re-prove fd exec under bwrap, including pathname replacement and interpreter
+dependencies: the bridge executable and inventory are the verified FD objects,
+only explicit FDs cross the launcher, and bwrap cannot reopen a swapped path.
+Re-prove TERM/KILL and reconciliation with actual sandboxed bridge/QEMU: new
+session/PID namespaces change pgid/sid, so the existing host-group test is not
+proof. Supervise every attempt in an owner-created private cgroup v2, inaccessible
+to Cells and sandbox children, with a protected attempt/identity binding. Stop
+first uses the bridge control protocol; escalation must target verified sandbox
+ownership including every new session/group, never a guessed outer pgid.
+Admission stays off until reviewed launcher/cgroup support proves no survivors
+or records durable uncertainty on every stop/restart path. No live cgroup
+provisioning or sandbox execution is authorized here.
 
 All Ur Bench host state is service-UID-owned in private directories, never a
 Cell-writable or trmd-owned location. Provision protected copies of immutable
@@ -172,7 +227,9 @@ No login shell (nologin), password login, sudoers or polkit grant for service UI
 No supplementary group shared with trmd, including kvm: do not add the daemon or
 broker to kvm. For the approved dev KVM path, provision a device ACL granting only
 the service UID access to /dev/kvm; verify effective device permissions and systemd
-DeviceAllow. A later separate bridge UID would receive that ACL instead.
+DeviceAllow. No trmd membership, owner permission, group permission or ACL may
+permit KVM access. If the host currently grants it, that is a provisioning blocker requiring
+explicit operator remediation, not a condition already proven.
 Operator privilege stays outside Cells; a Cell able to sudo invalidates isolation.
 
 Systemd units require NoNewPrivileges=yes, ProtectHome=yes, PrivateTmp=yes,
@@ -192,7 +249,7 @@ The required inventory-FD mappings are intentional, not leaked authority.
 
 ## Acceptance and enable gate
 
-This entire caller channel, protected executor/attestor, broker and policy are
+Both authority alternatives, the channel, sandbox launcher, broker and policy are
 design only and require Tormod authorization before implementation/provisioning.
 The owner CLI alone is not an Ur Bench agent integration. Current source remains
 disabled and not usable; no claim of isolation proofs having run is made.
@@ -203,16 +260,34 @@ Acceptance must include all of the following on metal-3 after authorization:
 - Inspect systemd hardening and actual effective identity/capabilities/umask.
 - Run ss -lxp and ss -ltp, with a complete per-service PID inventory: only expected
   filesystem Unix listeners; no abstract sockets or TCP listeners for these UIDs.
-  Inspect established outbound relay TLS separately.
+  Inspect the broker's direct outbound pinned-mTLS connection separately.
 - Actual Cell plus harness-native tools cannot read owner/key/state/recovery,
   connect to broker/management Unix sockets, signal/ptrace service processes,
   inspect private /proc aliases, escalate or control services.
 - A Cell using copied bearer tokens, another actor's handle, fake PID/workspace,
   a relayed challenge or host tailnet identity cannot obtain an accepted request.
   Prove rejection end to end at the real Apiary entry and broker audit, not only
-  with unit mocks. Own-session approved requests succeed through the attestor.
+  with unit mocks. A chosen human-approval path must reject every unapproved
+  request regardless of bearer identity; test the full attestor only if selected.
 - Test pin rotation/revocation, expiry/skew, nonce replay across restart,
   body/id conflict, actor/workspace isolation, quota and revocation teardown.
+- On the Studio, trmd agent processes cannot read or use the management key,
+  invoke approval/signing through the helper, fake XPC audit identity, inject a
+  library/debugger, or automate/control the protected user's UI.
+- Under the full attestor option, a Cell cannot ptrace/inject into the direct
+  harness executor or attestor; verify effective ptrace_scope/namespace policy.
+- Real sandboxed bridge and QEMU cannot read owner/key/data/recovery roots,
+  including /proc/fd/root and path aliases; enumerate all mounts and open FDs.
+  Verify neither opens abstract sockets and AF_UNIX creation is denied.
+- Inspect effective /dev/kvm owner/mode/groups/ACL: no trmd access path; actual
+  Cell open fails while the sandbox service's intended KVM access succeeds.
+- Simulate loss of time synchronization/time steps: admission suspends before
+  any effect and resumes only after trusted health recovery.
+- Crash after durable nonce/request persist but before Honeybee effect: restart
+  retains the nonce and same handle, creates at most one attempt, rejects changed
+  bodies and reconciles ambiguous effects without another start.
+- Re-run fd-exec replacement and full process-group teardown tests under bwrap
+  with --new-session and private PID namespace, including leader exit/restart.
 - Inventory child FDs across every exec boundary and prove CLOEXEC exclusions.
   Confirm protected inputs and every ancestor are not writable from a Cell.
 - Positive trusted operator and approved ur agent paths work; ordinary live Cell
@@ -267,3 +342,12 @@ failures from a driver run overlapping native-helper rebuild; tests were rerun
 after build with no overlap. Logs: .local/external-exec-dev/r4-*.
 The revised boundary design and acceptance checks have not been implemented or
 exercised on live services. No provisioning, sudo, registration or bridge exec.
+
+## Second boundary amendment
+
+Documentation only against source-PASS 4fe7e4b501563f7a5c23a25ad908bc96177ae7e6.
+No authority alternative has been chosen, and no provisioning, sudo, broker,
+Apiary, attestor or sandbox-launcher code is authorized until Tormod answers.
+This revision specifies future proofs; none was run. Validation is document
+review and git diff --check. No runtime change, build or execution was needed.
+Stop after submitting this revision. DEPLOY HOLD and the phase-3 gate stand.
