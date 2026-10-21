@@ -1,3 +1,4 @@
+import { HUMAN_OUTPUT_SQL, HumanOutputLedger, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
 import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
@@ -1839,6 +1840,7 @@ export class CoreStore {
         "core store is schema v29 from reverted build 7374447d; restore from backup before opening with this build.",
       );
     }
+    this.db.exec(HUMAN_OUTPUT_SQL);
     const ddl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
     if (!ddl.includes("'dismissed'")) {
       if (/CHECK\s*\(\s*status\s+IN/i.test(ddl)) {
@@ -2860,9 +2862,44 @@ export class CoreStore {
   }
 
   private mapPhoneBee(row: Row): BeeRow {
-    const bee = mapBee(row);
+    const bee = { ...mapBee(row), ...this.humanOutputLedger().facts(String(row.id)) };
     const origin = this.stmt("SELECT origin_json FROM phone_spawn_origins WHERE bee_id = ?").get(bee.id) as Row | undefined;
     return origin ? { ...bee, phoneOperationOrigin: JSON.parse(String(origin.origin_json)) as PhoneOperationOrigin } : bee;
+  }
+
+  private humanOutputLedger(): HumanOutputLedger {
+    return new HumanOutputLedger({ prepare: sql => this.stmt(sql) }, () => this.now(), (kind, beeId, payload, at) => this.audit(kind, beeId, payload, at));
+  }
+
+  tellHuman(params: BeeTellParams) {
+    return this.tx(() => this.humanOutputLedger().tell(this.mustGetBee(params.beeId), this.currentRuntime(params.beeId)?.generation ?? null, params));
+  }
+
+  reactHuman(params: BeeReactParams) {
+    return this.tx(() => this.humanOutputLedger().react(this.mustGetBee(params.beeId), this.currentRuntime(params.beeId)?.generation ?? null, params));
+  }
+
+  setHumanOutputMode(beeId: string, mode: HumanOutputMode, idempotencyKey: string) {
+    return this.tx(() => this.humanOutputLedger().setMode(this.mustGetBee(beeId), mode, idempotencyKey));
+  }
+
+  listTells(): BeeTellRow[] { return this.humanOutputLedger().list<BeeTellRow>("tell"); }
+  listReactions(): BeeReactionRow[] { return this.humanOutputLedger().list<BeeReactionRow>("react"); }
+
+  private prepareHumanDelivery(beeId: string, messageId: number, generation: number, at: number, source?: TurnTriggerSource) {
+    const message = this.getMessage(messageId);
+    const answer = this.answeredQuestionId(messageId) !== null;
+    if (!message) return null;
+    const kind = deliveredSenderKind(message);
+    const origin = source ? null : this.mailOrigin(messageId);
+    const peerSeed = origin === "spawn.prompt" && this.mustGetBee(beeId).parentId !== null;
+    const system = origin === "action.dispatch" || origin === "handoff.seed";
+    const human = source ? source.kind === "human" : !peerSeed && !system && (kind === "human" || kind !== "automation" && (message.sender === "operator" || message.sender.startsWith("human:")));
+    if (!answer && !message.phoneInput && !human) return null;
+    return this.humanOutputLedger().prepareDelivery(beeId, {
+      messageId, generation, humanAt: at, triggerKind: answer ? "answer" : "human",
+      ...(message.phoneInput ? { phoneOrigin: message.phoneInput.envelope } : {}),
+    });
   }
 
   getBee(beeId: string): BeeRow | null {
@@ -4879,7 +4916,9 @@ export class CoreStore {
       const turnTrigger = source && currentMatches ? this.applyDeliveryTurnTrigger(message.beeId, current!, messageId, source, at) : null;
       const questionId = this.answeredQuestionId(messageId);
       const senderKind = deliveredSenderKind(message);
-      this.audit("mail.delivered", message.beeId, {
+      const humanDelivery = this.prepareHumanDelivery(message.beeId, messageId, generation, at, source);
+      const deliverySeq = this.audit("mail.delivered", message.beeId, {
+        ...(humanDelivery?.facts ?? {}),
         messageId,
         deliveredAt: at,
         deliveredGeneration: generation,
@@ -4889,6 +4928,7 @@ export class CoreStore {
         ...(questionId !== null ? { questionId } : {}),
         ...(senderKind !== undefined ? { senderKind } : {}),
       });
+      humanDelivery?.commit(deliverySeq);
       // v24: an action instruction reached its runtime — delivery evidence only, never completion.
       this.applyActionDelivered(messageId, generation, at);
       this.recordMultilineReorder(message.beeId, messageId, reorderMessageIds);
@@ -4928,7 +4968,9 @@ export class CoreStore {
         this.stmt("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?").run(at, generation, messageId);
         const questionId = this.answeredQuestionId(messageId);
         const senderKind = deliveredSenderKind({ sender: String(row.sender), ...(row.sender_kind != null ? { senderKind: row.sender_kind as SenderKind } : {}) });
-        this.audit("mail.delivered", beeId, {
+        const humanDelivery = this.prepareHumanDelivery(beeId, messageId, generation, at);
+        const deliverySeq = this.audit("mail.delivered", beeId, {
+          ...(humanDelivery?.facts ?? {}),
           messageId,
           deliveredAt: at,
           deliveredGeneration: generation,
@@ -4937,6 +4979,7 @@ export class CoreStore {
           ...(questionId !== null ? { questionId } : {}),
           ...(senderKind !== undefined ? { senderKind } : {}),
         });
+        humanDelivery?.commit(deliverySeq);
         acked.push(messageId);
       }
       return { acked };
@@ -4957,7 +5000,7 @@ export class CoreStore {
   private applyRecordOutput(beeId: string, at: number, generation: number | null): void {
     const row = this.stmt(
       `UPDATE bees SET last_output_at = ?, last_human_output_at = CASE
-         WHEN json_extract(last_turn_trigger, '$.humanAt') IS NOT NULL AND json_extract(last_turn_trigger, '$.generation') = ?
+         WHEN COALESCE((SELECT mode FROM bee_human_output_state WHERE bee_id = bees.id), 'legacy') = 'legacy' AND json_extract(last_turn_trigger, '$.humanAt') IS NOT NULL AND json_extract(last_turn_trigger, '$.generation') = ?
            AND COALESCE(json_extract(last_turn_trigger, '$.endedQuiet'), 0) = 0 THEN ?
          ELSE last_human_output_at END
        WHERE id = ? RETURNING last_human_output_at`,
@@ -10775,6 +10818,8 @@ export class CoreStore {
       commands: (this.stmt("SELECT * FROM commands ORDER BY id").all() as Row[]).map(mapCommand),
       templates: this.listTemplates(),
       tracks: this.listTracks(),
+      tells: this.listTells(),
+      reactions: this.listReactions(),
       questions: (this.stmt("SELECT * FROM questions ORDER BY id").all() as Row[]).map(mapQuestion),
       seals: (this.stmt("SELECT * FROM seals ORDER BY id").all() as Row[]).map(mapSeal),
       accounts: this.listAccounts(),

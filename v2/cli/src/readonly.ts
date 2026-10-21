@@ -1,3 +1,4 @@
+import { HumanOutputLedger } from "../../core/src/humanOutput.ts";
 import { readAccountLease, presentAccountLease } from "../../core/src/accountLease.ts";
 /**
  * Read-only SQLite fallback for CLI reads when the daemon is down (spec 04
@@ -343,13 +344,19 @@ export class ReadOnlyStore {
     return statement;
   }
 
+  private mapHumanOutputBee(row: Row): BeeRow {
+    const bee = mapBee(row);
+    if (!this.tableExists("bee_human_output_state")) return bee;
+    return { ...bee, ...new HumanOutputLedger({ prepare: sql => this.stmt(sql) }, Date.now, () => { throw new Error("Read-only human output ledger"); }).facts(bee.id) };
+  }
+
   getBee(beeId: string): BeeRow | null {
     const row = this.stmt("SELECT * FROM bees WHERE id = ?").get(beeId) as Row | undefined;
-    return row ? mapBee(row) : null;
+    return row ? this.mapHumanOutputBee(row) : null;
   }
 
   listBees(): BeeRow[] {
-    return (this.db.prepare("SELECT * FROM bees ORDER BY id").all() as Row[]).map(mapBee);
+    return (this.db.prepare("SELECT * FROM bees ORDER BY id").all() as Row[]).map(row => this.mapHumanOutputBee(row));
   }
 
   currentRuntime(beeId: string): RuntimeRow | null {

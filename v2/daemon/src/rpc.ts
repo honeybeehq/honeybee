@@ -1,3 +1,4 @@
+import { HumanOutputError } from "../../core/src/humanOutput.ts";
 import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
 import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
 import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
@@ -84,6 +85,7 @@ export interface RpcConn {
   readonly phoneLane?: "envelope-v1" | "interim-v1";
   readonly executionCoordinatorUid?: number;
   readonly authenticatedBeeId?: string;
+  readonly humanOutputManagement?: boolean;
   readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
   readonly ingress?: "local_unix" | "node_relay" | "remote";
   readonly caller?: Readonly<HelloCaller>;
@@ -154,6 +156,7 @@ function isRpcVerb(value: unknown): value is RpcVerb {
 export function toRpcError(err: unknown): { code: RpcErrorCode; message: string; details?: Record<string, unknown> } {
   if (err instanceof ExecutionFenceError) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof EffectKeyError) return { code: err.code, message: err.message };
+  if (err instanceof HumanOutputError) return { code: err.code, message: err.message };
   if (err instanceof RpcError) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
   if (err instanceof LoginFlowRefusal) return { code: err.code, message: err.message };
   if (err instanceof LeaseRefusal) return { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) };
@@ -288,7 +291,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => capability !== "question.withdraw.v1" || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => !(["question.withdraw.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
   }
 
   private onConnection(socket: Socket): void {
@@ -430,6 +433,23 @@ export class RpcServer {
         if (verb === "mail.delivery.resend_anyway" || verb === "mail.delivery.drop") {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Delivery resolution requires a registered local service.");
           this.trust.require(peer, conn.ingress);
+        }
+        if (verb === "bee.tell" || verb === "bee.react" || verb === "bee.setHumanOutputMode") {
+          const capability = verb === "bee.tell" ? "bee.tell.v1" : verb === "bee.react" ? "bee.react.v1" : "bee.human_output_mode.v1";
+          if (!(this.capabilities as readonly string[]).includes(capability)) throw new RpcError("capability_missing", "Explicit human output requires registered local-service support.");
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Human output requires a registered local service.");
+          this.trust.require(peer, conn.ingress);
+          const context = frame.context;
+          if (context !== undefined && (!context || typeof context !== "object" || Array.isArray(context))) throw new RpcError("caller_not_trusted", "Invalid human output context.");
+          const principal = (context as Record<string, unknown> | undefined)?.sessionPrincipal;
+          if (verb === "bee.setHumanOutputMode") {
+            if (principal !== undefined) throw new RpcError("caller_not_trusted", "A session principal cannot change its mode.");
+            return this.opts.dispatch(verb, params, { ...conn, humanOutputManagement: true });
+          }
+          if (!principal || typeof principal !== "object" || Array.isArray(principal) || Object.keys(principal).some(key => key !== "beeId")) throw new RpcError("caller_not_trusted", "Human output requires an authenticated session principal.");
+          const beeId = (principal as Record<string, unknown>).beeId;
+          if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256 || params.beeId !== beeId) throw new RpcError("caller_not_trusted", "Human output principal does not match beeId.");
+          return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
         }
         if (verb === "question.withdraw") {
           if (!this.capabilities.includes("question.withdraw.v1")) throw new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee.");

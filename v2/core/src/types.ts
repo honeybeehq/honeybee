@@ -1,3 +1,4 @@
+import type { HumanOutputFacts, BeeTellRow, BeeReactionRow } from "./humanOutputTypes.ts";
 import type { DeliveryConfirmation, DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 export * from "./deliveryConfirmationTypes.ts";
 import type { DeliveryFallback, DeliveryHold, MultilineDeliveryRow } from "./multilineDeliveryTypes.ts";
@@ -91,7 +92,7 @@ export const RUNTIME_TRANSITIONS: Readonly<Record<RuntimeState, readonly Runtime
 // Row shapes (as exposed by the API and by dumpState()/replayAudit()).
 // ---------------------------------------------------------------------------
 
-export interface BeeRow {
+export interface BeeRow extends Partial<HumanOutputFacts> {
   phoneOperationOrigin?: PhoneOperationOrigin;
   id: string;
   name: string;
@@ -941,7 +942,7 @@ export interface TaskSupplyRow {
 }
 
 /** B8 — the derived read model. Computed, never stored. */
-export interface BeeView {
+export interface BeeView extends Partial<HumanOutputFacts> {
   deliveryConfirmations?: DeliveryConfirmation[];
   beeId: string;
   exists: boolean;
@@ -1044,6 +1045,8 @@ export interface TrackRow {
 
 /** Deterministic full-store snapshot (audit excluded); comparison target for replay. */
 export interface StateDump {
+  tells?: BeeTellRow[];
+  reactions?: BeeReactionRow[];
   deliveryConfirmationIntents?: DeliveryConfirmationIntent[];
   deliveryConfirmationDecisions?: DeliveryConfirmationDecision[];
   deliveryHolds?: MultilineDeliveryRow[];

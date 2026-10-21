@@ -9,7 +9,7 @@ import type { BeeRow, BeeView, DeliveryConfirmation, Flag, RuntimeRow } from "./
 
 export function deriveBeeView(
   beeId: string,
-  bee: Pick<BeeRow, "lifecycle" | "lastOutputAt"> | null,
+  bee: Pick<BeeRow, "lifecycle" | "lastOutputAt" | "humanOutputMode" | "humanAcknowledgementTrackingSince" | "lastHumanAcknowledgementAt" | "unansweredHumanMessage"> | null,
   runtime: RuntimeRow | null,
   flags: Flag[],
   opts: { readCursor?: number; automaticQuotaRecovery?: boolean; deliveryConfirmations?: DeliveryConfirmation[] } = {},
@@ -40,6 +40,10 @@ export function deriveBeeView(
   return {
     beeId,
     ...(opts.deliveryConfirmations?.length ? { deliveryConfirmations: opts.deliveryConfirmations } : {}),
+    humanOutputMode: bee.humanOutputMode ?? "legacy",
+    humanAcknowledgementTrackingSince: bee.humanAcknowledgementTrackingSince ?? null,
+    lastHumanAcknowledgementAt: bee.lastHumanAcknowledgementAt ?? null,
+    unansweredHumanMessage: bee.unansweredHumanMessage ?? null,
     exists: true,
     lifecycle: bee.lifecycle,
     generation: runtime?.generation ?? null,
