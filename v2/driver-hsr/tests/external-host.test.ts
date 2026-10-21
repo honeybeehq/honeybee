@@ -136,3 +136,24 @@ process.on('SIGTERM',()=>process.exit(0)); setInterval(()=>{},1000);`;
     assert.ok(uncertain >= 1);
   } finally {driver.disposeAll();}
 });
+
+test("detach continues after one external uncertainty write fails", () => {
+  const base = join(process.cwd(), ".local", "external-exec-tests");
+  mkdirSync(base, {recursive: true, mode: 0o700});
+  const root = mkdtempSync(join(base, "detach-failure-"));
+  const attempted: string[] = [];
+  let detached = 0;
+  const driver = new HsrDriver({
+    sessionLogDir: join(root, "logs"),
+    socketDir: `/proc/self/cwd/.local/external-exec-tests/${basename(root)}`,
+    resolve() {throw new Error("unused");},
+    onExternalDetach(beeId) {attempted.push(beeId); if (beeId === "first") throw new Error("writer unavailable");},
+  });
+  Object.assign(driver, {
+    externalStops: new Map([[{beeId: "first", generation: 1}, {}], [{beeId: "second", generation: 1}, {}]]),
+    procs: new Map([["survivor", {child: {unref() {detached++;}}}]]),
+  });
+  assert.doesNotThrow(() => driver.detachAll());
+  assert.deepEqual(attempted, ["first", "second"]);
+  assert.equal(detached, 1);
+});

@@ -1672,7 +1672,10 @@ export class HsrDriver implements RuntimeDriver {
    */
   detachAll(): void {
     this.detached = true;
-    for (const p of this.externalStops.keys()) this.cfg.onExternalDetach?.(p.beeId, p.generation);
+    for (const p of this.externalStops.keys()) {
+      try { this.cfg.onExternalDetach?.(p.beeId, p.generation); }
+      catch { console.error("external_exec.detach_uncertainty_failed"); }
+    }
     this.pendingStarts.clear();
     for (const p of this.procs.values()) {
       if (p.killTimer) {
