@@ -104,6 +104,7 @@ export type MirrorLoginFlowRow = LoginFlowRow;
 export interface MirrorSnapshot {
   tells?: BeeTellRow[];
   reactions?: BeeReactionRow[];
+  humanFirstPolicies?: import("./types.ts").HumanFirstPolicy[];
   threadOperations: ThreadOperationView[];
   seq: number;
   bees: MirrorBeeRow[];
@@ -618,3 +619,9 @@ export type MirrorBeeReactionRow = BeeReactionRow;
 export const MIRROR_HUMAN_OUTPUT_AUDIT_KINDS = ["bee.told", "bee.reacted", "bee.human_output_mode_changed"] as const;
 export const MIRROR_BEE_TELL_KEYS = ["id", "beeId", "generation", "turnTrigger", "at", "idempotencyKey", "text", "replyTo", "acknowledgedDeliveryRange", "acknowledgedMessageIds", "acknowledgedOverflow"] as const;
 export const MIRROR_BEE_REACTION_KEYS = ["id", "beeId", "generation", "turnTrigger", "at", "idempotencyKey", "messageId", "emoji"] as const;
+export const MIRROR_HUMAN_FIRST_AUDIT_KINDS = ["mail.human_first.put"] as const;
+
+export const MIRROR_MESSAGE_OPTIONAL_HUMAN_CHAT_KEYS = ["humanChat"] as const;
+export interface HumanFirstPolicyEvent {
+  policy: import("./types.ts").HumanFirstPolicy;
+}

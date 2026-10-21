@@ -1,4 +1,5 @@
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
+import type { HumanChatAdmission } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
@@ -2162,8 +2163,17 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcAccountAdmissionConfirm(params));
       case "account.admission.release":
         return this.withIdempotency(verb, params, () => this.rpcAccountAdmissionRelease(params));
+      case "mail.humanFirst.get":
+        return this.mustStore().humanFirstPolicy(this.requireBee(params));
+      case "mail.humanFirst.set":
+        if (!conn.humanPolicyAuthority) throw new RpcError("human_chat_unauthorized", "Policy changes require the registered Apiary authority");
+        if (typeof params.enabled !== "boolean") throw new RpcError("invalid_request", "enabled must be boolean");
+        if (params.enabled && this.mustStore().getBee(this.requireBee(params))?.substrate === "tmux") throw new RpcError("human_first_unsupported", "tmux cannot guarantee fresh human turns");
+        return this.mustStore().setHumanFirstPolicy(this.requireBee(params), params.enabled);
       case "send":
-        return this.withIdempotency(verb, params, () => this.rpcSend(params));
+        if (conn.humanChat?.humanFirst === true && this.mustStore().getBee(this.param(params, "beeId"))?.substrate === "tmux") throw new RpcError("human_first_unsupported", "tmux cannot guarantee fresh human turns");
+        this.mustStore().assertHumanChatBinding(conn.humanChat, this.param(params, "body"), this.param(params, "beeId"), this.idempotencyKeyOf(params) ?? undefined);
+        return this.withIdempotency(verb, params, () => this.rpcSend(params, conn.humanChat));
       case "mail.cancel": {
         const messageId = this.numberParam(params, "messageId");
         return this.withIdempotency(verb, params, () => {
@@ -2548,7 +2558,7 @@ export class HiveDaemon {
 
   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
-    const storageSupported = ([48, 49] as readonly number[]).includes(SCHEMA_VERSION) && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+    const storageSupported = ([48, 49, 50] as readonly number[]).includes(SCHEMA_VERSION) && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
     if (verb === "update.apiarySwap.status") {
       let installedIdentity: ComponentIdentity | null = null;
       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
@@ -5666,7 +5676,7 @@ export class HiveDaemon {
     return { supply };
   }
 
-  private rpcSend(params: Record<string, unknown>): SendRpcResult {
+  private rpcSend(params: Record<string, unknown>, humanChat?: HumanChatAdmission): SendRpcResult {
     const store = this.mustStore();
     const beeId = this.param(params, "beeId");
     const body = this.param(params, "body");
@@ -5689,6 +5699,7 @@ export class HiveDaemon {
         throw new RpcError("invalid_request", "send: human sender name must not be empty");
       }
     }
+    if (humanChat && (params.senderKind === "automation" || sender !== "operator" && !sender.startsWith("human:"))) throw new RpcError("human_chat_invalid", "Authenticated human chat requires an operator or human sender");
     // v8: optional delivery urgency (spec 01 Q2 amendment); omitted = 'next'.
     let urgency: Urgency = "next";
     if (params.urgency !== undefined && params.urgency !== null) {
@@ -5708,7 +5719,7 @@ export class HiveDaemon {
       }
     }
     if (this.phoneOriginOf(params)) { sender = `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone`; senderKind = undefined; }
-    const res = store.send(beeId, body, { sender, urgency, ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
+    const res = store.send(beeId, body, { sender, urgency, ...(humanChat ? { humanChat } : {}), ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
     this.forwardIfMailboxOnly(beeId, res.message);
     const held = this.authResume?.waitingForMaterial(beeId);
     return { messageId: res.message.id, commandId: res.wakeCommand?.id ?? null, unarchived: res.unarchived,
@@ -5967,6 +5978,7 @@ export class HiveDaemon {
     this.publishedSeq = seq;
     return {
       seq,
+      humanFirstPolicies: store.listHumanFirstPolicies(),
       views: store.listBeeViewRows().map((row) => ({ ...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
       templates: store.listTemplates(),
       tracks: store.listTracks(),

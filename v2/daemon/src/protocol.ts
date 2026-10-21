@@ -90,6 +90,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "mail.humanFirst.v1",
   "mail.delivery.confirmation.v1",
   "rpc.local_trust.v1",
   "rpc-effect-resolve.v1",
@@ -277,6 +278,9 @@ export interface HelloFrame {
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
 export const RPC_ERROR_CODES = [
+  "human_chat_unauthorized",
+  "human_chat_invalid",
+  "human_first_unsupported",
   "rpc_execution_stale", "rpc_execution_busy", "rpc_execution_history_unknown", "rpc_execution_fence_unsupported",
   "rpc_effect_fenced", "rpc_effect_history_unknown", "rpc_effect_resolve_unsupported",
   "socket_mismatch",
@@ -469,6 +473,8 @@ export const RPC_ERROR_CODES = [
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
 export const RPC_VERBS = [
+  "mail.humanFirst.set",
+  "mail.humanFirst.get",
   "rpc.execution.coordinator.register", "rpc.execution.claim.compareAndSet", "rpc.execution.execute", "rpc.execution.resolve",
   "rpc.effect.resolve",
   "rpc.effect.status",
@@ -678,6 +684,7 @@ export type RpcVerb = (typeof RPC_VERBS)[number];
 
 /** Service assertion, accepted only on a registered direct-local RPC connection. */
 export interface RpcRequestContext {
+  humanChat?: import("../../core/src/types.ts").HumanChatAdmission;
   sessionPrincipal?: { beeId: string };
   phoneOrigin?: import("../../core/src/phoneOrigin.ts").PhoneOriginRequest;
   phoneLane?: "envelope-v1" | "interim-v1";
@@ -1758,6 +1765,7 @@ export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason
 export interface SnapshotResult {
   tells?: import("../../core/src/humanOutputTypes.ts").BeeTellRow[];
   reactions?: import("../../core/src/humanOutputTypes.ts").BeeReactionRow[];
+  humanFirstPolicies?: import("../../core/src/types.ts").HumanFirstPolicy[];
   threadOperations: ThreadOperationView[];
   seq: number;
   views: ViewResult[];
