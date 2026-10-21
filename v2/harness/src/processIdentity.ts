@@ -1,5 +1,6 @@
+import { assertPeercredReceipt } from "../../../src/peercredReceipt.ts";
 import { createHash } from "node:crypto";
-import { closeSync, readFileSync } from "node:fs";
+import { closeSync, existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +13,11 @@ export function validatePeerArtifact(directory: string, target: string): string 
   const bytes = readFileSync(binary);
   const hash = createHash("sha256").update(bytes).digest("hex");
   if (manifest.version !== 1 || manifest.target !== target || manifest.napi !== 8 || manifest.sha256 !== hash) throw new Error("Invalid peer credential artifact metadata");
+  const recordPath = join(directory, "..", "..", "..", ".build-repack.json");
+  if (existsSync(recordPath)) {
+    const record = JSON.parse(readFileSync(recordPath, "utf8"));
+    assertPeercredReceipt(record.peercred, record.sourceHead, target, hash);
+  }
   const [platform, architecture] = target.split("-");
   if (platform === "linux") {
     if (bytes.length < 64 || bytes.toString("hex", 0, 4) !== "7f454c46" || bytes[4] !== 2 || bytes[5] !== 1 || bytes.readUInt16LE(16) !== 3 || bytes.readUInt16LE(18) !== (architecture === "x64" ? 62 : 183)) throw new Error("Wrong peer credential ELF target");

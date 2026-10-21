@@ -633,7 +633,7 @@
     },
     {
       "path": "v2/harness/src/processIdentity.ts",
-      "sha256": "e6b8737a717b21c1d4540acf8914187e80fb1f273a0ecaf9acfa2f0f270f4785",
+      "sha256": "9cd5a63012ab5b2f8f92c265ce3ef1d238940766981f65652157ff281ee3e33e",
       "siblingClosure": true
     },
     {
@@ -654,6 +654,11 @@
     {
       "path": "v2/core/src/processIdentity.ts",
       "sha256": "6e0f9ecf9be188d9c81cee671c36b1a5dc1281345a73e59f148df0abb0f9cb6b",
+      "siblingClosure": true
+    },
+    {
+      "path": "src/peercredReceipt.ts",
+      "sha256": "df1960b105d1b7b5e128259df724189f67535b81bd38ab9f2b9fca3f8ce8bf29",
       "siblingClosure": true
     }
   ],
@@ -726,7 +731,7 @@
     {
       "kind": "native-artifact",
       "path": "v2/harness/src/processIdentity.ts",
-      "line": 34,
+      "line": 40,
       "context": "    const bridge = createRequire(import.meta.url)(validatePeerArtifact(join(root, target), target));",
       "artifact": "src/dist/v2/peercred/darwin-arm64/peercred.node",
       "sha256Source": "controller-manifest"
@@ -1336,7 +1341,7 @@
     {
       "kind": "import",
       "path": "v2/harness/src/processIdentity.ts",
-      "line": 3,
+      "line": 4,
       "context": "import { createRequire } from \"node:module\";",
       "module": "node:module",
       "manualReview": true
@@ -1344,7 +1349,7 @@
     {
       "kind": "reference",
       "path": "v2/harness/src/processIdentity.ts",
-      "line": 34,
+      "line": 40,
       "context": "    const bridge = createRequire(import.meta.url)(validatePeerArtifact(join(root, target), target));",
       "module": "node:module",
       "manualReview": true

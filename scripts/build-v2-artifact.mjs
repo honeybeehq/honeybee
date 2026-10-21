@@ -24,6 +24,7 @@ const runnerHostInputs = [
   "src/runtimeEnvironment.ts",
   "v2/driver-hsr/src/runner-host-main.ts",
   "v2/driver-hsr/src/runner-host.ts",
+  "src/peercredReceipt.ts",
 ];
 const runnerHostMaxBytes = 32 * 1024;
 await mkdir(outDir, { recursive: true });
