@@ -1,0 +1,18 @@
+import { spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import { hostname } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { assertStudio, PINNED_ACCOUNT, readPolicy, runtimeEnv, sandboxProfile } from "./bridge/policy.ts";
+const [policyPath, championHome, beeId, configDir] = process.argv.slice(2);
+if (!policyPath || !championHome || !beeId || !configDir) throw new Error("Usage: studio-check.ts <approved-policy.json> <champion-home> <bee-id> <pinned-config-dir>");
+assertStudio(process.platform, hostname(), PINNED_ACCOUNT, true);
+readPolicy(policyPath);
+const home = join(resolve(championHome), ".champion-harness");
+const tmp = join(home, "tmp");
+mkdirSync(tmp, { recursive: true, mode: 0o700 });
+const env = runtimeEnv(process.env, resolve(configDir), tmp);
+const entry = join(dirname(fileURLToPath(import.meta.url)), "bridge", "main.ts");
+const child = spawn("/usr/bin/sandbox-exec", ["-p", sandboxProfile([home, resolve(configDir), tmp]), process.execPath, "--experimental-strip-types", entry, "--home", home, "--bee", beeId, "--node", hostname(), "--generation", "1", "--policy", resolve(policyPath), "--account", PINNED_ACCOUNT, "--autoswap", "false", "--config-dir", resolve(configDir)], { env, stdio: ["pipe", "inherit", "inherit"] });
+child.stdin.end(`${JSON.stringify({ v: 1, type: "mail", messageId: 1, body: "Reply with ok. This is an explicitly authorized SDK verification turn." })}\n`);
+child.on("exit", code => { process.exitCode = code ?? 1; });

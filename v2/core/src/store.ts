@@ -1,3 +1,4 @@
+import { executionBackendOf } from "./executionBackend.ts";
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
 import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
@@ -2799,6 +2800,8 @@ export class CoreStore {
       const createdAt = input.createdAt ?? at;
       if (!Number.isFinite(createdAt)) throw new CoreError("createBee: createdAt must be a finite epoch-ms number");
       const args = normalizeBeeArgs(input.args, "createBee");
+      const backend = executionBackendOf({ tags: input.tags ?? [] });
+      if (backend === "champion_sdk" && (input.agent !== "claude" || input.substrate !== "hsr" || input.account !== "claude-claude-trmd-trmd.me" || !input.tags?.includes("autoswap=false"))) throw new CoreError("Champion SDK requires Claude HSR, pinned account and autoswap=false");
       requireNonEmpty(input.name, "createBee: name");
       const account = input.account ?? null;
       if (account !== null) {
@@ -2843,7 +2846,7 @@ export class CoreStore {
       this.insertTranscriptSegment({
         beeId: id,
         ordinal: 0,
-        harness: input.agent,
+        harness: backend === "champion_sdk" ? "claude-sdk" : input.agent,
         providerSessionId: input.providerSessionId ?? null,
         fromGeneration: 1,
         path: input.sessionLogPath ?? null,
@@ -2947,6 +2950,8 @@ export class CoreStore {
       const next: string[] = [];
       for (const t of bee.tags) if (!removeSet.has(t) && !next.includes(t)) next.push(t);
       for (const t of add) if (!next.includes(t)) next.push(t);
+      if (executionBackendOf(bee) !== executionBackendOf({ tags: next })) throw new CoreError("Execution backend changes require the quiesce/export route operation");
+      if (executionBackendOf(bee) === "champion_sdk" && !next.includes("autoswap=false")) throw new CoreError("Champion SDK requires autoswap=false");
       const removed = bee.tags.filter((t) => !next.includes(t));
       const added = next.filter((t) => !bee.tags.includes(t));
       const applied = next.length !== bee.tags.length || next.some((t, i) => bee.tags[i] !== t);

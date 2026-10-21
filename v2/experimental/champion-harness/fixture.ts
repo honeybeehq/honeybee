@@ -1,0 +1,142 @@
+import { executionBackendOf } from "../../core/src/executionBackend.ts";
+import assert from "node:assert/strict";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { once } from "node:events";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { createInterface } from "node:readline";
+import { DatabaseSync } from "node:sqlite";
+import { claudeSdkAdapter, claudeAdapter } from "../../adapters/src/index.ts";
+import { composeSpawn } from "../../daemon/src/daemon.ts";
+import { openCoreStore } from "../../core/src/index.ts";
+import { assertStudio, readPolicy, runtimeEnv, sandboxProfile } from "./bridge/policy.ts";
+import type { OutputFrame } from "./bridge/protocol.ts";
+
+const base = resolve(".audit/champion-adapter");
+mkdirSync(base, { recursive: true });
+const root = mkdtempSync(join(base, "fixture-"));
+const home = join(root, "champion");
+const processes: ChildProcessWithoutNullStreams[] = [];
+function bridge(generation = 1, policyPath?: string) {
+  const child = spawn(process.execPath, ["--experimental-strip-types", resolve("v2/experimental/champion-harness/bridge/main.ts"), "--home", home, "--bee", "fixture-bee", "--node", "fixture-node", "--generation", String(generation), "--sdk", "fixture", ...(policyPath ? ["--policy", policyPath] : [])], { env: { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR }, stdio: "pipe" });
+  processes.push(child);
+  const frames: OutputFrame[] = [];
+  const waits = new Set<() => void>();
+  let stderr = "";
+  child.stderr.on("data", chunk => { stderr += String(chunk); });
+  createInterface({ input: child.stdout }).on("line", line => {
+    frames.push(JSON.parse(line) as OutputFrame);
+    for (const wake of waits) wake();
+  });
+  const wait = (predicate: (frame: OutputFrame) => boolean) => new Promise<OutputFrame>((resolveWait, reject) => {
+    const timer = setTimeout(() => { waits.delete(check); reject(new Error(`fixture timeout: ${stderr}`)); }, 10000);
+    function check() { const frame = frames.find(predicate); if (frame) { clearTimeout(timer); waits.delete(check); resolveWait(frame); } }
+    waits.add(check); check();
+  });
+  return { child, frames, wait, send: (messageId: number, body: string) => child.stdin.write(`${claudeSdkAdapter.encodeMessage(body, { messageId, sessionId: null, turnActive: false, turnId: null })}\n`) };
+}
+function database() { return new DatabaseSync(join(home, "state.sqlite"), { readOnly: true }); }
+function row(messageId: number) {
+  const db = database();
+  try { return db.prepare("SELECT * FROM inbox WHERE message_id=?").get(messageId)!; } finally { db.close(); }
+}
+try {
+  const first = bridge();
+  await first.wait(f => f.type === "ready");
+  first.send(1, "fixture:hold");
+  await first.wait(f => f.type === "accepted" && f.messageId === 1);
+  assert.equal(row(1).body, "fixture:hold");
+  assert.ok(["pending", "running"].includes(String(row(1).status)));
+  console.log("PASS persist-before-confirm: accepted(1) has a committed inbox row visible from an independent SQLite reader");
+  first.send(1, "fixture:hold");
+  first.send(2, "after crash");
+  await first.wait(f => f.type === "accepted" && f.messageId === 2);
+  assert.equal(row(2).status, "pending");
+  const second = bridge();
+  const refusal = await second.wait(f => f.type === "fatal");
+  assert.equal(refusal.type === "fatal" && refusal.code, "writer_conflict");
+  await once(second.child, "exit");
+  console.log("PASS writer-lock refusal: concurrent bridge exits with typed writer_conflict");
+  const exited = once(first.child, "exit");
+  first.child.kill("SIGKILL");
+  await exited;
+  const restarted = bridge(2);
+  const ready = await restarted.wait(f => f.type === "ready");
+  assert.equal(ready.type === "ready" && ready.writerEpoch, 2);
+  await restarted.wait(f => f.type === "turn_started" && f.messageId === 1);
+  restarted.child.stdin.write(`${JSON.stringify({ v: 1, type: "interrupt" })}\n`);
+  await restarted.wait(f => f.type === "turn_finished" && f.messageId === 1);
+  restarted.send(2, "after crash");
+  const success = await restarted.wait(f => f.type === "turn_finished" && f.messageId === 2);
+  assert.equal(success.type === "turn_finished" && success.outcome, "success");
+  assert.equal(row(2).status, "done");
+  const db = database();
+  assert.equal(db.prepare("SELECT count(*) AS n FROM inbox").get()!.n, 2);
+  db.close();
+  console.log("PASS crash/restart replay: epoch increases, interrupted work is retained, pending input finishes once, duplicate delivery stays one row");
+  restarted.send(3, "fixture:auth");
+  const auth = await restarted.wait(f => f.type === "turn_finished" && f.messageId === 3);
+  assert.equal(auth.type === "turn_finished" && auth.outcome, "auth_error");
+  const authFrames = restarted.frames.filter(f => "messageId" in f && f.messageId === 3);
+  const signals = authFrames.flatMap(f => claudeSdkAdapter.parseLine(JSON.stringify(f)));
+  assert.ok(signals.some(s => s.kind === "flag" && s.flag === "auth_needed" && s.action === "set"));
+  assert.ok(!signals.some(s => s.kind === "flag" && s.action === "clear"));
+  assert.equal(row(3).status, "held");
+  console.log("PASS auth honesty: synthetic SDK success after revoked OAuth never clears auth_needed or completes accepted work");
+  assert.ok(!JSON.stringify(restarted.frames).includes("PRIVATE MODEL TEXT"));
+  assert.ok(restarted.frames.some(f => f.type === "timing" && f.event === "first_token" && f.messageId === 2));
+  assert.ok(!restarted.frames.some(f => f.type === "human_output"));
+  console.log("PASS private output: model text stays in SQLite; stdout contains only typed frames and correlated timing, no code-authored human receipt");
+  restarted.send(5, "fixture:visible");
+  const visible = await restarted.wait(f => f.type === "human_output" && f.messageId === 5);
+  const firstVisible = await restarted.wait(f => f.type === "timing" && f.messageId === 5 && f.event === "first_visible");
+  assert.equal(visible.type === "human_output" && visible.content, "ok");
+  assert.equal(firstVisible.type === "timing" && firstVisible.at, visible.type === "human_output" && visible.at);
+  console.log("PASS model-output timing: explicit typed model output emits first_visible with the input messageId, no ingress receipt");
+  const ended = once(restarted.child, "exit");
+  restarted.child.stdin.end();
+  await ended;
+  const enabledPolicy = join(root, "switch.json");
+  writeFileSync(enabledPolicy, JSON.stringify({ version: 1, enabled: true, realHomeApproved: true, refreshProof: { passed: true, proofId: "fixture-proof", account: "claude-claude-trmd-trmd.me", cliPath: process.execPath }, cliPath: process.execPath, allowedTools: [], mcpServers: { apiary: { command: process.execPath, args: [] } }, identity: "fixture" }));
+  const switched = bridge(3, enabledPolicy);
+  await switched.wait(f => f.type === "ready");
+  switched.send(4, "fixture:hold");
+  await switched.wait(f => f.type === "turn_started" && f.messageId === 4);
+  const stopped = once(switched.child, "exit");
+  writeFileSync(enabledPolicy, JSON.stringify({ version: 1, enabled: false }));
+  await Promise.race([stopped, new Promise((_, reject) => { const t = setTimeout(() => reject(new Error("kill switch did not close bridge")), 3000); t.unref(); })]);
+  assert.equal(row(4).status, "held");
+  console.log("PASS kill switch: disabling policy ends an active fake query and bridge, retaining accepted input");
+  const storePath = join(root, "core.sqlite3");
+  let core = openCoreStore(storePath, { ephemeral: true });
+  const cli = core.createBee({ name: "CLI unchanged", agent: "claude", substrate: "hsr", cwd: root }).bee;
+  assert.equal(executionBackendOf(cli), "cli");
+  const spec = { command: "claude", args: ["--output-format", "stream-json"] };
+  assert.equal(composeSpawn(spec, "claude", cli).adapter, claudeAdapter);
+  core.close();
+  core = openCoreStore(storePath, { ephemeral: true });
+  assert.equal(composeSpawn(spec, "claude", core.getBee(cli.id)!).adapter, claudeAdapter);
+  core.createAccount({ id: "claude-claude-trmd-trmd.me", harness: "claude", label: "fixture only", homePath: root });
+  const sdkBee = core.createBee({ name: "SDK opted in", agent: "claude", substrate: "hsr", cwd: root, account: "claude-claude-trmd-trmd.me", tags: ["execution_backend=champion_sdk", "autoswap=false"] }).bee;
+  assert.equal(composeSpawn(spec, "claude", sdkBee).adapter, claudeSdkAdapter);
+  core.close();
+  core = openCoreStore(storePath, { ephemeral: true });
+  assert.equal(composeSpawn(spec, "claude", core.getBee(sdkBee.id)!).adapter, claudeSdkAdapter);
+  assert.equal(core.listTranscriptSegments(sdkBee.id)[0]?.harness, "claude-sdk");
+  assert.throws(() => executionBackendOf({ tags: ["execution_backend=unknown"] }));
+  assert.throws(() => executionBackendOf({ tags: ["execution_backend=cli", "execution_backend=champion_sdk"] }));
+  core.close();
+  console.log("PASS CLI unaffected: absent backend keeps Claude CLI adapter before and after store reopen; explicit SDK route selects dedicated adapter");
+  const env = runtimeEnv({ ANTHROPIC_API_KEY: "fixture-secret", CLAUDE_CODE_OAUTH_TOKEN: "fixture-secret", APIARY_SESSION_ID: "fixture-id", HIVE_BEE_ID: "fixture-bee", AWS_SECRET_ACCESS_KEY: "fixture-secret" }, "/pinned", "/private/tmp");
+  assert.deepEqual(Object.keys(env).sort(), ["APIARY_SESSION_ID", "CLAUDE_CONFIG_DIR", "HIVE_BEE_ID", "HOME", "PATH", "TMPDIR"]);
+  assert.throws(() => assertStudio("linux", "metal-1", "claude-claude-trmd-trmd.me", true));
+  const policy = join(root, "disabled.json");
+  writeFileSync(policy, JSON.stringify({ version: 1, enabled: false }));
+  assert.throws(() => readPolicy(policy));
+  assert.ok(sandboxProfile(["/private/champion", "/pinned", "/private/tmp"]).includes("(deny file-write*)"));
+  console.log("PASS launch guards: ambient auth scrubbed, satellite refused, missing refresh proof and disabled flag fail closed; sandbox profile write-deny generated");
+  console.log(`FIXTURE PASS: ${root}`);
+  console.log("not checked on real data / live SDK unverified; macOS sandbox-exec and same-account concurrent refresh unverified");
+} finally {
+  for (const child of processes) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+}

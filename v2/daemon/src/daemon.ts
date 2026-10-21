@@ -1,3 +1,6 @@
+import { executionBackendOf } from "../../core/src/executionBackend.ts";
+import { assertStudio, readPolicy } from "../../experimental/champion-harness/bridge/policy.ts";
+import { championSpawn } from "./championSdk.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
@@ -206,6 +209,7 @@ import {
   agyAdapter,
   agyArgGrammar,
   claudeAdapter,
+  claudeSdkAdapter,
   claudeArgGrammar,
   codexAdapter,
   codexArgGrammar,
@@ -491,10 +495,11 @@ function withoutRoleTags(tags: readonly string[]): string[] {
 export function composeSpawn(
   spec: AgentSpecConfig,
   adapterName: string,
-  bee: { cwd: string; args: string[] | null; providerSessionId: string | null; forkSeed?: string | null },
+  bee: { tags?: string[]; cwd: string; args: string[] | null; providerSessionId: string | null; forkSeed?: string | null },
   grokMcpServers: readonly GrokMcpServerStdio[] = [],
   placementInstruction?: string | null,
 ): { adapter: HarnessAdapter | null; args: string[]; model: string | undefined } {
+  if (executionBackendOf(bee) === "champion_sdk") return { adapter: claudeSdkAdapter, args: [], model: undefined };
   const grammar = grammarFor(adapterName);
   // v6 fork: a fork with no session of its own yet forks the SOURCE's
   // conversation (`--resume <seed> --fork-session` / thread/fork) into a new
@@ -1560,6 +1565,13 @@ export class HiveDaemon {
         cellId: instructionMove.retainedCellId,
       })
       : null;
+    if (executionBackendOf(bee) === "champion_sdk") {
+      const account = bee.account ? store.getAccount(bee.account) : null;
+      if (!account) throw new RpcError("invalid_request", "Champion SDK requires a pinned account");
+      const env = this.runtimeEnvOf(bee, spec, "champion_sdk");
+      const { command } = resolveSpawnCommand(spec.command, { env });
+      return championSpawn(bee, generation ?? store.currentRuntime(beeId)?.generation ?? 1, join(this.cfg.dataDir, "champion-sdk-policy.json"), command, account.homePath, env);
+    }
     const composed = composeSpawn(spec, adapterName, bee, grokMcpServers, placementInstruction);
     const operation = store.threadOperationForSuccessor(beeId);
     let adapter = operation && bee.providerSessionId === operation.successorProviderSessionId && adapterName === "codex"
@@ -3328,7 +3340,10 @@ export class HiveDaemon {
     }
     const name = this.param(params, "name");
     const agent = this.param(params, "agent");
+    const executionBackend = params.executionBackend ?? "cli";
+    if (executionBackend !== "cli" && executionBackend !== "champion_sdk") throw new RpcError("invalid_request", "executionBackend must be cli or champion_sdk");
     const substrate = this.substrateParam(params);
+    if (executionBackend === "champion_sdk" && (agent !== "claude" || substrate !== "hsr" || accountRequest !== "claude-claude-trmd-trmd.me")) throw new RpcError("invalid_request", "Champion SDK requires Claude HSR and an explicitly pinned account");
     // The cell owns the cwd (the space checkout): `cwd` is optional/ignored for cell spawns.
     const cwd = substrate === "cell" ? "" : this.param(params, "cwd");
     const agentSpec = this.cfg.agents[agent];
@@ -3339,6 +3354,16 @@ export class HiveDaemon {
     const tags = Array.isArray(params.tags) && params.tags.every((t) => typeof t === "string")
       ? (params.tags as string[])
       : [];
+    if (executionBackend === "champion_sdk") {
+      try {
+        assertStudio(process.platform, hostname(), accountRequest, tags.includes("autoswap=false"));
+        readPolicy(join(this.cfg.dataDir, "champion-sdk-policy.json"));
+      } catch (error) { throw new RpcError("invalid_request", error instanceof Error ? error.message : "Champion SDK refused", { reason: "champion_sdk_refused" }); }
+    }
+    const taggedBackend = executionBackendOf({ tags });
+    if (params.executionBackend !== undefined && taggedBackend !== "cli" && params.executionBackend !== taggedBackend) throw new RpcError("invalid_request", "Conflicting execution backend selectors");
+    if (executionBackend === "champion_sdk" && taggedBackend === "cli") tags.push("execution_backend=champion_sdk");
+    if (executionBackendOf({ tags }) === "champion_sdk" && executionBackend !== "champion_sdk") throw new RpcError("invalid_request", "Use explicit executionBackend=champion_sdk for SDK spawn");
     const parent = this.parentParam(params);
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : randomUUID();
     const driver = this.driver;
@@ -3903,6 +3928,7 @@ export class HiveDaemon {
   private rpcBeeMove(params: Record<string, unknown>): BeeMoveResult {
     const store = this.mustStore();
     const beeId = this.requireBee(params);
+    if (executionBackendOf(store.getBee(beeId)!) === "champion_sdk") throw new RpcError("invalid_request", "Champion SDK route changes require the later quiesce/export slice");
     const bee = store.getBee(beeId);
     if (!bee) throw new RpcError("bee_not_found", `bee not found: ${beeId}`);
     const dest = params.destination;
@@ -4032,6 +4058,7 @@ export class HiveDaemon {
     const key = this.idempotencyKeyOf(params);
     if (key == null) throw new RpcError("invalid_request", "bee.handoff: idempotencyKey is required");
     const beeId = this.param(params, "beeId");
+    if (executionBackendOf(store.getBee(beeId)!) === "champion_sdk") throw new RpcError("invalid_request", "Champion SDK route changes require the later quiesce/export slice");
     const expectedRaw = params.expected;
     if (expectedRaw === null || typeof expectedRaw !== "object" || Array.isArray(expectedRaw)) {
       throw new RpcError("invalid_request", "bee.handoff: expected {generation, agent?} is required");
@@ -5308,6 +5335,7 @@ export class HiveDaemon {
     }
     const sourceId = this.requireBee(params);
     const source = store.getBee(sourceId);
+    if (source && executionBackendOf(source) === "champion_sdk") throw new RpcError("invalid_request", "Champion SDK provider sessions cannot be forked into CLI");
     if (!source) throw new RpcError("bee_not_found", `bee not found: ${sourceId}`);
     if (source.substrate === "cell") {
       throw new RpcError("invalid_request", `bee ${sourceId} runs in a cell (single-tenant checkout); spawn a new cell bee instead of forking`);
@@ -6577,6 +6605,7 @@ export class HiveDaemon {
   private rpcSwapAccount(params: Record<string, unknown>, commit?: (effect: () => SwapAccountResult) => SwapAccountResult): SwapAccountResult {
     const store = this.mustStore();
     const beeId = this.requireBee(params);
+    if (executionBackendOf(store.getBee(beeId)!) === "champion_sdk") throw new RpcError("invalid_request", "Champion SDK route changes require the later quiesce/export slice");
     const bee = store.getBee(beeId) as BeeRow;
     const selector = this.param(params, "account");
     const onlyAccountIds = this.admissionAccountIdsParam(params, "onlyAccountIds");

@@ -89,6 +89,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "bee.execution_backend.champion_sdk.v1",
   "mail.delivery.confirmation.v1",
   "rpc.local_trust.v1",
   "rpc-effect-resolve.v1",
