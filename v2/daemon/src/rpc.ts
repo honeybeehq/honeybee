@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { HumanChatAdmission } from "../../core/src/types.ts";
+import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
 import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
 import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
@@ -83,6 +83,7 @@ import {
 export interface RpcConn {
   readonly humanChat?: HumanChatAdmission;
   readonly humanPolicyAuthority?: true;
+  readonly automationAuthority?: true;
   readonly phoneOrigin?: PhoneOriginRequest;
   readonly phoneCarrierDigest?: string;
   readonly phoneLane?: "envelope-v1" | "interim-v1";
@@ -97,6 +98,25 @@ export interface RpcConn {
   subscribeWatch(cursor: number): void;
   /** Re-align the watch cursor (after serving a snapshot to a watching client). */
   alignWatch(cursor: number): void;
+}
+
+const AUTOMATION_KINDS: readonly AutomationKind[] = [
+  "tell-reprompt", "tell-mode", "role-refresh", "obligation-notice", "proof-notice", "context-notice", "blocking_decision", "actionable_warning",
+];
+
+export function assertAutomationSend(params: Record<string, unknown>, conn: RpcConn): void {
+  if (params.automationKind === undefined && params.automationRef === undefined) return;
+  if (!conn.automationAuthority || conn.ingress !== "local_unix" || conn.authenticatedBeeId !== undefined
+    || conn.humanChat !== undefined || conn.phoneOrigin !== undefined || conn.phoneLane !== undefined
+    || params.humanChat !== undefined || params.humanFirst !== undefined || params.provenance !== undefined || params.replayHumanChatMessageId !== undefined
+    || params.phoneOrigin !== undefined || params.phoneLane !== undefined || params.phoneInput !== undefined) {
+    throw new RpcError("automation_unauthorized", "Automation metadata requires the registered direct local Apiary authority");
+  }
+  if (typeof params.automationKind !== "string" || !(AUTOMATION_KINDS as readonly string[]).includes(params.automationKind)
+    || params.automationRef !== undefined && (typeof params.automationRef !== "string" || !params.automationRef.trim() || params.automationRef.length > 512 || params.automationRef.includes("\0"))
+    || ["blocking_decision", "actionable_warning"].includes(params.automationKind) && params.automationRef === undefined) {
+    throw new RpcError("automation_invalid", "Invalid automation kind or owner reference");
+  }
 }
 
 const LOCAL_HANDOFF_VERBS = new Set<RpcVerb>([
@@ -292,7 +312,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => (capability !== "question.withdraw.v1" && capability !== "mail.humanFirst.v1") || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => (capability !== "question.withdraw.v1" && capability !== "mail.humanFirst.v1" && capability !== "mail.batching.v1") || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
   }
 
   private onConnection(socket: Socket): void {
@@ -419,6 +439,27 @@ export class RpcServer {
       }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       const result = withRpcCaller(caller, () => {
+        const automationContext = frame.context as Record<string, unknown> | undefined;
+        if (params.automationKind !== undefined || params.automationRef !== undefined) {
+          if (verb !== "send" || !peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null
+            || automationContext?.sessionPrincipal !== undefined || automationContext?.humanChat !== undefined
+            || automationContext?.phoneOrigin !== undefined || automationContext?.phoneLane !== undefined) {
+            throw new RpcError("automation_unauthorized", "Automation metadata requires the registered direct local Apiary authority");
+          }
+          try { this.trust.require(peer, conn.ingress); } catch { throw new RpcError("automation_unauthorized", "Automation metadata requires the registered direct local Apiary authority"); }
+          const authorized = { ...conn, automationAuthority: true as const };
+          assertAutomationSend(params, authorized);
+          return this.opts.dispatch(verb, params, authorized);
+        }
+        if (verb === "mail.batching.set" || verb === "mail.batching.get") {
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null
+            || automationContext?.sessionPrincipal !== undefined || automationContext?.humanChat !== undefined
+            || automationContext?.phoneOrigin !== undefined || automationContext?.phoneLane !== undefined) {
+            throw new RpcError("automation_unauthorized", "Batching policy requires the registered direct local Apiary authority");
+          }
+          try { this.trust.require(peer, conn.ingress); } catch { throw new RpcError("automation_unauthorized", "Batching policy requires the registered direct local Apiary authority"); }
+          return this.opts.dispatch(verb, params, { ...conn, automationAuthority: true });
+        }
         if (verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register") {
           if (!peer) throw new RpcError("caller_not_trusted", "Registration requires a local Unix connection.");
           if (verb === "rpc.localTrust.challenge") {

@@ -1,4 +1,4 @@
-import type { HumanChatAdmission } from "../../core/src/types.ts";
+import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
@@ -274,7 +274,7 @@ import {
   type PerformanceProfiler,
   type PerformanceSpan,
 } from "./performance.ts";
-import { RpcServer, assertLocalHandoffRpc, type RpcConn } from "./rpc.ts";
+import { RpcServer, assertAutomationSend, assertLocalHandoffRpc, type RpcConn } from "./rpc.ts";
 import { applyDaemonTmpPolicy, beeTmpPaths, describeBeeTmpPolicy, ensureBeeTmpEnv, removeBeeTmpDir, resolveBeeTmpPolicy, sweepBeeTmpDirs, type BeeTmpPolicy } from "./beeTmp.ts";
 import {
   DAEMON_VERSION,
@@ -1885,6 +1885,10 @@ export class HiveDaemon {
   }
 
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    if (params.automationKind !== undefined || params.automationRef !== undefined) {
+      if (verb !== "send") throw new RpcError("automation_unauthorized", "Automation metadata is only valid for send");
+      assertAutomationSend(params, conn);
+    }
     if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: local coordinator installation is NOT_COVERED");
     if (verb === "send" || verb === "spawn") {
       if (conn.phoneOrigin) {
@@ -2121,6 +2125,25 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcAccountAdmissionConfirm(params));
       case "account.admission.release":
         return this.withIdempotency(verb, params, () => this.rpcAccountAdmissionRelease(params));
+      case "mail.batching.get":
+      case "mail.batching.set": {
+        if (!conn.automationAuthority || conn.ingress !== "local_unix" || conn.authenticatedBeeId !== undefined || conn.humanChat !== undefined || conn.phoneOrigin !== undefined || conn.phoneLane !== undefined) throw new RpcError("automation_unauthorized", "Batching policy requires the registered direct local Apiary authority");
+        const beeId = this.requireBee(params);
+        if (verb === "mail.batching.get") return this.mustStore().mailBatchingPolicy(beeId);
+        if (typeof params.enabled !== "boolean") throw new RpcError("invalid_request", "enabled must be boolean");
+        if (params.enabled && this.mustStore().getBee(beeId)?.substrate === "tmux") throw new RpcError("mail_batching_unsupported", "tmux cannot guarantee fresh digest turns");
+        return this.withIdempotency(verb, params, () => this.mustStore().setMailBatchingPolicy(beeId, params.enabled as boolean));
+      }
+      case "mail.batch.read": {
+        const beeId = this.requireBee(params);
+        const batchId = this.param(params, "batchId");
+        const messageId = this.numberParam(params, "messageId");
+        const offset = params.offset === undefined ? 0 : params.offset;
+        const limit = params.limit === undefined ? 16384 : params.limit;
+        if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0
+          || typeof limit !== "number" || !Number.isSafeInteger(limit) || limit <= 0 || limit > 16384) throw new RpcError("invalid_request", "Invalid UTF-8 page offset or limit");
+        return this.mustStore().readMailBatch(beeId, batchId, messageId, offset, limit);
+      }
       case "mail.humanFirst.get":
         return this.mustStore().humanFirstPolicy(this.requireBee(params));
       case "mail.humanFirst.set":
@@ -2130,6 +2153,13 @@ export class HiveDaemon {
         return this.mustStore().setHumanFirstPolicy(this.requireBee(params), params.enabled);
       case "send":
         if (conn.humanChat?.humanFirst === true && this.mustStore().getBee(this.param(params, "beeId"))?.substrate === "tmux") throw new RpcError("human_first_unsupported", "tmux cannot guarantee fresh human turns");
+        {
+          const key = this.idempotencyKeyOf(params);
+          const prior = key ? this.mustStore().lookupRpcResult(key) : null;
+          const messageId = (prior?.result as SendRpcResult | undefined)?.messageId;
+          const original = prior?.verb === "send" && typeof messageId === "number" ? this.mustStore().getMessage(messageId) : null;
+          if (original && ((original.automationKind ?? undefined) !== params.automationKind || (original.automationRef ?? undefined) !== params.automationRef)) throw new RpcError("idempotency_conflict", "Send key is already bound to different automation metadata");
+        }
         this.mustStore().assertHumanChatBinding(conn.humanChat, this.param(params, "body"), this.param(params, "beeId"), this.idempotencyKeyOf(params) ?? undefined);
         return this.withIdempotency(verb, params, () => this.rpcSend(params, conn.humanChat));
       case "mail.cancel": {
@@ -5654,7 +5684,7 @@ export class HiveDaemon {
       }
     }
     if (this.phoneOriginOf(params)) { sender = `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone`; senderKind = undefined; }
-    const res = store.send(beeId, body, { sender, urgency, ...(humanChat ? { humanChat } : {}), ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
+    const res = store.send(beeId, body, { sender, urgency, ...(params.automationKind !== undefined ? { automationKind: params.automationKind as AutomationKind, ...(typeof params.automationRef === "string" ? { automationRef: params.automationRef } : {}) } : {}), ...(humanChat ? { humanChat } : {}), ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
     this.forwardIfMailboxOnly(beeId, res.message);
     const held = this.authResume?.waitingForMaterial(beeId);
     return { messageId: res.message.id, commandId: res.wakeCommand?.id ?? null, unarchived: res.unarchived,
@@ -5914,6 +5944,8 @@ export class HiveDaemon {
     return {
       seq,
       humanFirstPolicies: store.listHumanFirstPolicies(),
+      mailBatchingPolicies: store.listMailBatchingPolicies(),
+      mailBatches: store.listMailBatches(),
       views: store.listBeeViewRows().map((row) => ({ ...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
       templates: store.listTemplates(),
       tracks: store.listTracks(),
