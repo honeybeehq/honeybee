@@ -131,7 +131,7 @@ export async function createCliFixture({root,mode,log,nativeHuman}) {
       for(const peer of peers)assert.ok(digestContext.includes(peer.body),'full peer body in actual provider context')
       writeFileSync(`${root}/summary.json`,JSON.stringify({passed:true,scope:'stock native CLI + local fixture provider + real CoreStore/DaemonCore + FakeDriver bridge; store-level classification only; not HSR or RPC end-to-end; authority gates, frozen/uncertain confirmation restarts, paging/bounds, deferred stopped wake and cancel/expedite unqualified; restarts gracefully reopen store and retain FakeDriver/native process; not real data or model ack latency',mode,sourceRoot,binary:events.find(e=>e.kind==='binary')?.data,node:process.version,...inspect()},null,2))
     },
-    fail(error){writeFileSync(`${root}/summary.json`,JSON.stringify({passed:false,error:String(error.stack ?? error),mode,sourceRoot,...inspect()},null,2))},
+    fail(error){let snapshot;try{snapshot=inspect()}catch(storeError){snapshot={storeError:String(storeError)}}writeFileSync(`${root}/summary.json`,JSON.stringify({passed:false,error:String(error.stack ?? error),mode,sourceRoot,...snapshot},null,2))},
     close(){store.close()},
   }
 }

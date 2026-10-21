@@ -58,5 +58,5 @@ child.stderr.on('data',chunk=>log('stderr',String(chunk)))
 send({type:'user',message:{role:'user',content:[{type:'text',text:'Run the fixture tool.'}]}})
 const timeout=setTimeout(()=>{log('timeout',{});process.exitCode=1;child.kill('SIGTERM')},25000)
 await new Promise(r=>child.on('exit',(code,signal)=>{log('exit',{code,signal});if(code!==0||signal)process.exitCode=1;r()}))
-clearTimeout(timeout);server.close();assert.ok(!process.exitCode,'native CLI must exit cleanly');try{fixture.verify();log('final-mailbox',fixture.inspect())}catch(error){fixture.fail(error);throw error}finally{fixture.close()}console.log(root)
+clearTimeout(timeout);server.close();try{assert.ok(!process.exitCode,'native CLI must exit cleanly');fixture.verify();log('final-mailbox',fixture.inspect())}catch(error){fixture.fail(error);throw error}finally{fixture.close()}console.log(root)
 
