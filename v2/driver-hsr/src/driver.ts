@@ -852,14 +852,15 @@ export class HsrDriver implements RuntimeDriver {
     protocol.legacy = !protocol.supported;
   }
 
-  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null {
+  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean }): DeliveryConfirmationPlan | "not_ready" | null {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || !p.adapter?.confirmsDelivery) return null;
+    if (options?.freshTurn && p.phase === "running") return "not_ready";
     this.refreshDeliveryProtocol(p);
     if (p.exited || !p.hostStyle || !p.processIdentity || !p.deliveryProtocol?.authenticated || p.socketBroken
       || !p.socket || p.socket.destroyed || !p.socket.writable || !p.deliveryProtocol.supported && !p.deliveryProtocol.legacy
       || p.phase === "booting" || p.stopCause || p.phase === "running" && !p.adapter.acceptsMidTurn) return "not_ready";
-    const wireLine = p.adapter.encodeMessage(body, { sessionId: p.sessionId, messageId, turnActive: p.phase === "running", turnId: p.turnId });
+    const wireLine = p.adapter.encodeMessage(body, { sessionId: p.sessionId, messageId, turnActive: p.phase === "running", turnId: p.turnId, freshTurn: options?.freshTurn });
     if (wireLine == null) return "not_ready";
     return { wireLine, digest: createHash("sha256").update(wireLine).digest("hex"), host: p.processIdentity,
       supported: p.deliveryProtocol?.authenticated === true && p.deliveryProtocol.supported,
@@ -894,7 +895,7 @@ export class HsrDriver implements RuntimeDriver {
     return "pending_ack";
   }
 
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
     const refused = (reason: "no_process" | "not_ready"): DeliverOutcome => ({ accepted: false, reason, ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) });
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) {
@@ -932,12 +933,16 @@ export class HsrDriver implements RuntimeDriver {
       // stdin gone means the process is dying; its exit observation follows.
       return refused("no_process");
     }
-    const encoded = options?.confirmation?.wireLine ?? p.adapter.encodeMessage(body, {
+    if (options?.freshTurn && p.phase === "running") return refused("not_ready");
+    const currentEncoding = options?.confirmation && !options.freshTurn ? options.confirmation.wireLine : p.adapter.encodeMessage(body, {
       sessionId: p.sessionId,
       messageId,
       turnActive: p.phase === "running",
       turnId: p.turnId,
+      freshTurn: options?.freshTurn,
     });
+    if (options?.freshTurn && options.confirmation && options.confirmation.wireLine !== currentEncoding) return refused("not_ready");
+    const encoded = options?.confirmation?.wireLine ?? currentEncoding;
     if (encoded == null) return refused("not_ready");
     if (this.deliveryFrameOversized(p, messageId, encoded)) return { accepted: false, reason: "not_ready", detail: "message_too_large" };
     // Host-style reaches here only with a connected write lane. Node's

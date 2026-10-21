@@ -132,11 +132,11 @@ export interface RuntimeDriver {
   deliveryReadiness?(beeId: string, generation: number, messageId: number): string;
   adoptedDeliveryUncertain?(beeId: string, generation: number): boolean;
   consumeDeliveryConfirmation?(beeId: string, generation: number, messageId: number): boolean;
-  planDeliveryConfirmation?(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null;
+  planDeliveryConfirmation?(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean }): DeliveryConfirmationPlan | "not_ready" | null;
   deliveryIssue?(beeId: string, generation: number, messageId: number, body?: string): "host_auth_failed" | "message_too_large" | null;
   deliveryLaneReady?(beeId: string, generation: number): boolean;
   reconcileDeliveryConfirmation?(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult;
-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { confirmation?: DeliveryConfirmationPlan; multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome;
+  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; confirmation?: DeliveryConfirmationPlan; multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome;
   deliveryPaneClear?(beeId: string, generation: number): boolean;
   reconcileDeliveryPane?(beeId: string, generation: number, messageId: number, body: string): boolean;
   deliveryPane?(beeId: string, generation: number): {socketPath: string; paneId: string; serverIdentity: string} | null;
