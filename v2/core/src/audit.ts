@@ -1,3 +1,4 @@
+import type { BeeTellRow, BeeReactionRow } from "./humanOutput.ts";
 import { publicDeliveryConfirmation } from "./deliveryConfirmation.ts";
 import type { DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
 import { deliveryHold, publicDeliveryFallback, type MultilineDeliveryRow } from "./multilineDelivery.ts";
@@ -44,6 +45,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   const deliveryConfirmationDecisions = new Map<string, DeliveryConfirmationDecision>();
   const threadOperations = new Map<string, ThreadOperationRow>();
   const bees = new Map<string, BeeRow>();
+  const tells = new Map<string, BeeTellRow>();
+  const reactions = new Map<string, BeeReactionRow>();
   const runtimes = new Map<string, RuntimeRow>(); // key beeId#generation
   const flags = new Map<number, FlagRow>();
   const mailbox = new Map<number, MessageRow>();
@@ -146,6 +149,10 @@ export function replayAudit(rows: AuditRow[]): StateDump {
           activeHandoffId: bee.activeHandoffId ?? null,
           lastTurnTrigger: bee.lastTurnTrigger ?? null,
           lastHumanOutputAt: bee.lastHumanOutputAt ?? null,
+          humanOutputMode: bee.humanOutputMode ?? "legacy",
+          humanAcknowledgementTrackingSince: bee.humanAcknowledgementTrackingSince ?? null,
+          lastHumanAcknowledgementAt: bee.lastHumanAcknowledgementAt ?? null,
+          unansweredHumanMessage: bee.unansweredHumanMessage ?? null,
         });
         break;
       }
@@ -302,6 +309,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         const beeId = p.beeId as string;
         for (const [key, decision] of deliveryConfirmationDecisions) if (decision.receipt.beeId === beeId) deliveryConfirmationDecisions.delete(key);
         bees.delete(beeId);
+        for (const [id, tell] of tells) if (tell.beeId === beeId) tells.delete(id);
+        for (const [id, reaction] of reactions) if (reaction.beeId === beeId) reactions.delete(id);
         for (const [k, i] of quotaRecoveries) if (i.beeId === beeId) quotaRecoveries.delete(k);
         for (const [k, i] of authInterruptions) if (i.beeId === beeId) authInterruptions.delete(k);
         for (const [k, rt] of runtimes) if (rt.beeId === beeId) runtimes.delete(k);
@@ -384,6 +393,10 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         const message = mailbox.get(p.messageId as number);
         if (!message) throw new Error(`audit replay: unknown message ${String(p.messageId)}`);
         deliveryConfirmationIntents.delete(message.id);
+        if (p.humanOutputMode !== undefined) {
+          const bee = mustBee(message.beeId);
+          for (const key of ["humanOutputMode", "humanAcknowledgementTrackingSince", "lastHumanAcknowledgementAt", "unansweredHumanMessage"] as const) Object.assign(bee, { [key]: structuredClone(p[key]) });
+        }
         message.deliveredAt = p.deliveredAt as number;
         message.deliveredGeneration = p.deliveredGeneration as number;
         if (p.turnTrigger !== undefined) mustBee(message.beeId).lastTurnTrigger = { ...(p.turnTrigger as TurnTrigger) };
@@ -443,6 +456,21 @@ export function replayAudit(rows: AuditRow[]): StateDump {
           const command = mustCommand(id);
           command.status = "queued";
           command.nextAttemptAt = p.nextAttemptAt as number;
+        }
+        break;
+      }
+      case "bee.told":
+      case "bee.reacted":
+      case "bee.human_output_mode_changed": {
+        const bee = mustBee(row.beeId!);
+        for (const key of ["humanOutputMode", "humanAcknowledgementTrackingSince", "lastHumanAcknowledgementAt", "unansweredHumanMessage"] as const) Object.assign(bee, { [key]: structuredClone(p[key]) });
+        if (row.kind === "bee.told") {
+          const tell = structuredClone(p.tell as BeeTellRow);
+          tells.set(tell.id, tell);
+          bee.lastHumanOutputAt = p.lastHumanOutputAt as number;
+        } else if (row.kind === "bee.reacted") {
+          const reaction = structuredClone(p.reaction as BeeReactionRow);
+          reactions.set(reaction.id, reaction);
         }
         break;
       }
@@ -681,6 +709,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     ...(deliveryConfirmationDecisions.size ? { deliveryConfirmationDecisions: [...deliveryConfirmationDecisions.values()].sort((a, b) => a.idempotencyKey < b.idempotencyKey ? -1 : a.idempotencyKey > b.idempotencyKey ? 1 : 0) } : {}),
     ...(deliveryHolds.size ? { deliveryHolds: [...deliveryHolds.values()].sort((a, b) => a.messageId - b.messageId) } : {}),
     threadOperations: [...threadOperations.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    tells: [...tells.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    reactions: [...reactions.values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
     bees: [...bees.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     runtimes: [...runtimes.values()].sort((a, b) =>
       a.beeId !== b.beeId ? (a.beeId < b.beeId ? -1 : 1) : a.generation - b.generation,

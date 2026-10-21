@@ -1,3 +1,4 @@
+import type { BeeTellRow, BeeReactionRow } from "./humanOutput.ts";
 import type { ThreadOperationView } from "./threadOperation.ts";
 /**
  * Mirror-shape contract (spec 06 §2.2): the EXACT row shapes apiaryd
@@ -100,6 +101,8 @@ export type MirrorLoginFlowRow = LoginFlowRow;
  * unknown keys stays correct.
  */
 export interface MirrorSnapshot {
+  tells?: BeeTellRow[];
+  reactions?: BeeReactionRow[];
   threadOperations: ThreadOperationView[];
   seq: number;
   bees: MirrorBeeRow[];
@@ -270,6 +273,7 @@ export type MirrorLoginFlowAuditKind = (typeof MIRROR_LOGIN_FLOW_AUDIT_KINDS)[nu
 /** Key lists — the shape snapshot; a materializer's column map must cover exactly these. */
 export const MIRROR_BEE_ROW_KEYS = ["view", "bee", "runtime", "move", "cell", "handoff"] as const;
 export const MIRROR_BEE_VIEW_KEYS = [
+  "humanOutputMode", "humanAcknowledgementTrackingSince", "lastHumanAcknowledgementAt", "unansweredHumanMessage",
   "beeId",
   "exists",
   "lifecycle",
@@ -284,6 +288,7 @@ export const MIRROR_BEE_VIEW_KEYS = [
   "flags",
 ] as const;
 export const MIRROR_BEE_RECORD_KEYS = [
+  "humanOutputMode", "humanAcknowledgementTrackingSince", "lastHumanAcknowledgementAt", "unansweredHumanMessage",
   "id",
   "name",
   "agent",
@@ -606,3 +611,9 @@ export const MIRROR_CONFIRMATION_OPTIONAL_MESSAGE_KEYS = ["deliveryConfirmation"
 export const MIRROR_CONFIRMATION_OPTIONAL_HISTORY_KEYS = ["deliveryConfirmation"] as const;
 export const MIRROR_REPLACEMENT_OPTIONAL_MESSAGE_KEYS = ["queueOrder", "replacesMessageId"] as const;
 export const MIRROR_REPLACEMENT_OPTIONAL_HISTORY_KEYS = ["queueOrder", "replacesMessageId"] as const;
+
+export type MirrorBeeTellRow = BeeTellRow;
+export type MirrorBeeReactionRow = BeeReactionRow;
+export const MIRROR_HUMAN_OUTPUT_AUDIT_KINDS = ["bee.told", "bee.reacted", "bee.human_output_mode_changed"] as const;
+export const MIRROR_BEE_TELL_KEYS = ["id", "beeId", "generation", "turnTrigger", "at", "idempotencyKey", "text", "replyTo", "acknowledgedDeliveryRange", "acknowledgedMessageIds", "acknowledgedOverflow"] as const;
+export const MIRROR_BEE_REACTION_KEYS = ["id", "beeId", "generation", "turnTrigger", "at", "idempotencyKey", "messageId", "emoji"] as const;

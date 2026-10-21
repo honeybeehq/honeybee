@@ -1,3 +1,4 @@
+export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutput.ts";
 import { honeybeeBuildIdentity, type BuildIdentity } from "../../../src/release/buildIdentity.ts";
 export { UPDATE_RECOVERY_CONTRACT } from "../../../src/updateReservation.ts";
 export type { ReconnectToolsResult, ReconnectToolsReceipt, ReconnectToolsError } from "../../core/src/reconnectTools.ts";
@@ -92,6 +93,9 @@ export const DAEMON_CAPABILITIES = [
   "mail.delivery.confirmation.v1",
   "rpc.local_trust.v1",
   "rpc-effect-resolve.v1",
+  "bee.tell.v1",
+  "bee.react.v1",
+  "bee.human_output_mode.v1",
   "question.withdraw.v1",
   "question.dismiss.v1",
   "question.dismissed.v1",
@@ -313,6 +317,10 @@ export const RPC_ERROR_CODES = [
   "bee_not_found",
   "node_stopped",
   "protocol_mismatch",
+  "human_output_mode_legacy",
+  "human_output_target_invalid",
+  "tell_text_invalid",
+  "react_emoji_invalid",
   "invalid_request",
   "caller_not_trusted",
   "local_peer_credentials_unavailable",
@@ -539,6 +547,9 @@ export const RPC_VERBS = [
   "bee.interrupt",
   "bee.fork",
   "bee.children",
+  "bee.tell",
+  "bee.react",
+  "bee.setHumanOutputMode",
   "question.ask",
   "question.answer",
   "question.withdraw",
@@ -1744,6 +1755,8 @@ export interface HealthResult {
 export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };
 
 export interface SnapshotResult {
+  tells?: import("../../core/src/humanOutput.ts").BeeTellRow[];
+  reactions?: import("../../core/src/humanOutput.ts").BeeReactionRow[];
   threadOperations: ThreadOperationView[];
   seq: number;
   views: ViewResult[];

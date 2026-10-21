@@ -2,6 +2,8 @@ import type { RpcVerb } from "./protocol.ts";
 
 export const ANSWER_TRIGGER_CAPABILITY = "turn-trigger.answer.v1";
 export const ANSWER_TRIGGER_RESULTS = {
+  BeeTellResult: { verbs: ["bee.tell"], triggers: ["tell.turnTrigger"], audits: [] },
+  BeeReactResult: { verbs: ["bee.react"], triggers: ["reaction.turnTrigger"], audits: [] },
   RenameResult: { verbs: ["bee.rename"], triggers: ["bee.lastTurnTrigger"], audits: [] },
   TagResult: { verbs: ["bee.tag"], triggers: ["bee.lastTurnTrigger"], audits: [] },
   ForkResult: { verbs: ["bee.fork"], triggers: ["bee.lastTurnTrigger"], audits: [] },
@@ -10,12 +12,14 @@ export const ANSWER_TRIGGER_RESULTS = {
   ReconfigureResult: { verbs: ["bee.reconfigure"], triggers: ["bee.lastTurnTrigger"], audits: [] },
   ViewResult: { verbs: ["view"], triggers: ["bee.lastTurnTrigger"], audits: [] },
   ListResult: { verbs: ["list"], triggers: ["views[].bee.lastTurnTrigger"], audits: [] },
-  SnapshotResult: { verbs: ["snapshot", "watch"], triggers: ["views[].bee.lastTurnTrigger"], audits: [] },
+  SnapshotResult: { verbs: ["snapshot", "watch"], triggers: ["views[].bee.lastTurnTrigger", "tells[].turnTrigger", "reactions[].turnTrigger"], audits: [] },
   AuditTailResult: { verbs: ["audit.tail"], triggers: [], audits: ["rows[]"] },
   WatchFrame: { verbs: [], triggers: [], audits: ["events[]"] },
 } as const satisfies Record<string, { verbs: readonly RpcVerb[]; triggers: readonly string[]; audits: readonly string[] }>;
 export const ANSWER_TRIGGER_AUDITS: Readonly<Record<string, readonly string[]>> = {
   "bee.created": ["bee.lastTurnTrigger"],
+  "bee.told": ["tell.turnTrigger"],
+  "bee.reacted": ["reaction.turnTrigger"],
   "runtime.updated": ["turnTrigger"],
   "mail.delivered": ["turnTrigger"],
 };

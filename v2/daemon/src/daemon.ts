@@ -1,3 +1,4 @@
+import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutput.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
@@ -2288,6 +2289,12 @@ export class HiveDaemon {
         return this.releasingRefusedClaim(() => this.rpcForkWithAdmission(params));
       case "bee.children":
         return this.rpcChildren(params);
+      case "bee.tell":
+        return this.rpcHumanOutput("bee.tell", params, conn);
+      case "bee.react":
+        return this.rpcHumanOutput("bee.react", params, conn);
+      case "bee.setHumanOutputMode":
+        return this.rpcHumanOutput("bee.setHumanOutputMode", params, conn);
       case "question.ask":
         return this.withIdempotency(verb, params, () => this.rpcQuestionAsk(params));
       case "question.answer":
@@ -2500,7 +2507,7 @@ export class HiveDaemon {
 
   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
-    const storageSupported = SCHEMA_VERSION === 47 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+    const storageSupported = SCHEMA_VERSION === 48 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
     if (verb === "update.apiarySwap.status") {
       let installedIdentity: ComponentIdentity | null = null;
       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
@@ -5379,6 +5386,22 @@ export class HiveDaemon {
     return { beeId, children: store.listChildren(beeId).map((b) => this.viewOf(store, b.id)) };
   }
 
+  private rpcHumanOutput(verb: "bee.tell", params: Record<string, unknown>, conn: RpcConn): BeeTellResult;
+  private rpcHumanOutput(verb: "bee.react", params: Record<string, unknown>, conn: RpcConn): BeeReactResult;
+  private rpcHumanOutput(verb: "bee.setHumanOutputMode", params: Record<string, unknown>, conn: RpcConn): SetHumanOutputModeResult;
+  private rpcHumanOutput(verb: "bee.tell" | "bee.react" | "bee.setHumanOutputMode", params: Record<string, unknown>, conn: RpcConn) {
+    const allowed = verb === "bee.tell" ? ["beeId", "text", "replyTo", "idempotencyKey"] : verb === "bee.react" ? ["beeId", "messageId", "emoji", "idempotencyKey"] : ["beeId", "mode", "idempotencyKey"];
+    for (const key of Object.keys(params)) if (!allowed.includes(key)) throw new RpcError("invalid_request", `${verb} does not accept ${key}`);
+    const beeId = this.requireBee(params);
+    if (verb !== "bee.setHumanOutputMode" && conn.authenticatedBeeId !== beeId) throw new RpcError("caller_not_trusted", "Human output requires the matching authenticated bee principal.");
+    if (verb === "bee.setHumanOutputMode" && !conn.humanOutputManagement) throw new RpcError("caller_not_trusted", "Mode changes require trusted local-service management.");
+    const idempotencyKey = this.param(params, "idempotencyKey");
+    const store = this.mustStore();
+    if (verb === "bee.setHumanOutputMode") return store.setHumanOutputMode(beeId, params.mode as HumanOutputMode, idempotencyKey);
+    if (verb === "bee.tell") return store.tellHuman({ beeId, text: params.text, ...(params.replyTo !== undefined ? { replyTo: params.replyTo } : {}), idempotencyKey } as BeeTellParams);
+    return store.reactHuman({ beeId, messageId: params.messageId, emoji: params.emoji, idempotencyKey } as BeeReactParams);
+  }
+
   private rpcQuestionAsk(params: Record<string, unknown>): QuestionAskResult {
     const beeId = this.requireBee(params);
     const text = this.param(params, "text");
@@ -5785,7 +5808,7 @@ export class HiveDaemon {
   private rpcDeployInfo(): DeployInfoResult {
     return {
       protocol: PROTOCOL,
-      capabilities: this.rpc?.capabilities ?? DAEMON_CAPABILITIES.filter(c => c !== "question.withdraw.v1"),
+      capabilities: this.rpc?.capabilities ?? DAEMON_CAPABILITIES.filter(c => !(["question.withdraw.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(c)),
       daemonVersion: DAEMON_VERSION,
       identity: BUILD_IDENTITY,
       nodeVersion: process.version,
@@ -5906,6 +5929,8 @@ export class HiveDaemon {
       views: store.listBeeViewRows().map((row) => ({ ...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
       templates: store.listTemplates(),
       tracks: store.listTracks(),
+      tells: store.listTells(),
+      reactions: store.listReactions(),
       questions: store.listQuestions(),
       seals: store.listSeals(),
       accounts: store.listAccounts().map((account) => this.mirrorAccount(account)),

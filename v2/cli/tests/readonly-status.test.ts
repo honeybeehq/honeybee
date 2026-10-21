@@ -26,7 +26,7 @@ test("status listing prepares a bounded set of plans across different bee ids", 
       return original.call(this, sql);
     };
     assert.equal(reader.list(null).length, 40);
-    assert.ok(prepares <= 8, `listing compiled ${prepares} statements`);
+    assert.ok(prepares <= 9, `listing compiled ${prepares} statements`);
     const before = prepares;
     for (let i = 0; i < 40; i++) assert.equal(reader.view(`bee-${i}`).bee?.id, `bee-${i}`);
     assert.equal(prepares, before, "new bee ids reuse the same plans");
@@ -118,4 +118,20 @@ test("read-only isolation and close semantics survive statement reuse", () => {
     finally { reopened.close(); }
     assert.equal(right.getBee("bee-0")?.name, "other-store");
   } finally { left.close(); right.close(); a.cleanup(); b.cleanup(); }
+});
+
+test("stale explicit-mode status reads the owner acknowledgement facts", () => {
+  const h = harness(); let core = h.open();
+  try {
+    const { bee } = core.createBee({ id: "explicit", name: "explicit", agent: "inbox", substrate: "mailbox", cwd: "/tmp" });
+    core.setHumanOutputMode(bee.id, "explicit", "enable");
+    const { message } = core.send(bee.id, "human", { senderKind: "human" }); core.ackMail(bee.id, message.id);
+    const expected = core.view(bee.id); core.close();
+    let reader = new ReadOnlyStore(h.path);
+    assert.deepEqual(reader.view(bee.id).view.unansweredHumanMessage, expected.unansweredHumanMessage);
+    assert.equal(reader.view(bee.id).view.humanOutputMode, "explicit"); reader.close();
+    core = h.open(); core.tellHuman({ beeId: bee.id, text: "reply", idempotencyKey: "reply" }); core.close();
+    reader = new ReadOnlyStore(h.path);
+    try { assert.equal(reader.view(bee.id).view.unansweredHumanMessage, null); } finally { reader.close(); }
+  } finally { core.close(); h.cleanup(); }
 });

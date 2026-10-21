@@ -196,6 +196,10 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
     {
       "view": {
         "beeId": "BEE_ID",
+        "humanOutputMode": "legacy",
+        "humanAcknowledgementTrackingSince": null,
+        "lastHumanAcknowledgementAt": null,
+        "unansweredHumanMessage": null,
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -239,7 +243,11 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "cellId": null,
         "activeHandoffId": null,
         "lastTurnTrigger": null,
-        "lastHumanOutputAt": null
+        "lastHumanOutputAt": null,
+        "humanOutputMode": "legacy",
+        "humanAcknowledgementTrackingSince": null,
+        "lastHumanAcknowledgementAt": null,
+        "unansweredHumanMessage": null
       },
       "runtime": {
         "beeId": "BEE_ID",
