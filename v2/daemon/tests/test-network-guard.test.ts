@@ -14,7 +14,10 @@ test("test network guard: a test daemon env refuses real provider hosts and allo
     if (savedMeta === undefined) delete process.env.HIVE_TEST_META_URL;
     else process.env.HIVE_TEST_META_URL = savedMeta;
   });
-  const server = createServer((_req, res) => res.end("ok"));
+  const server = createServer((req, res) => {
+    if (req.url === "/redirect") { res.writeHead(302, { Location: "https://platform.claude.com/v1/oauth/token" }); res.end(); }
+    else res.end("ok");
+  });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
   const refused: string[] = [];
@@ -29,4 +32,8 @@ test("test network guard: a test daemon env refuses real provider hosts and allo
   await assert.rejects(fetch("https://auth.meta.com/oauth/token"), /test daemon refused/, "the env var alone, without the meta preload, never opens Meta");
   const local = await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`);
   assert.equal(await local.text(), "ok");
+  const redirectUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/redirect`;
+  await assert.rejects(fetch(redirectUrl), /fetch failed/, "a loopback redirect cannot reach a provider");
+  const manual = await fetch(redirectUrl, { redirect: "manual" });
+  assert.equal(manual.status, 302);
 });

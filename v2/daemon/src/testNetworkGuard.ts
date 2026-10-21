@@ -38,6 +38,9 @@ export function refuseNonLoopbackFetch(log: (op: string) => void = () => undefin
       log(`test.network.refused host=${target}`);
       throw new Error(`test daemon refused a non-loopback request to ${target}; point the test at a local stub`);
     }
-    return realFetch(input, init);
+    // A loopback stub must not redirect the underlying fetch to a provider.
+    // Manual redirects remain inspectable; automatic redirects fail closed.
+    const redirect = init?.redirect ?? (input instanceof Request ? input.redirect : "follow");
+    return realFetch(input, { ...init, redirect: redirect === "manual" ? "manual" : "error" });
   }) as typeof fetch;
 }
