@@ -218,3 +218,21 @@ test("I1 suspends intended human-first holds then measures a genuinely eligible 
     assert.equal(r.violations.length, 1);
   } finally { r.close(); }
 });
+
+
+test("trusted quota recovery delivery gate keeps precedence over pending human chat", () => {
+  const r = rig();
+  try {
+    const continuation = r.store.send(r.bee.id, "quota continuation", { origin: "quota.resume" }).message;
+    const human = r.human("human after recovery");
+    r.store.quotaDeliveryGate = () => ({ held: false, messageIds: r.store.getMessage(continuation.id)?.deliveredAt === null ? [continuation.id] : [] });
+    r.core.step();
+    assert.deepEqual(r.driver.deliveredIds, [continuation.id]);
+    assert.equal(r.store.getMessage(human.id)?.deliveredAt, null);
+    r.event("turn_started");
+    r.advance(100000);
+    assert.deepEqual(r.violations, []);
+    r.event("turn_ended");
+    assert.deepEqual(r.driver.deliveredIds, [continuation.id, human.id]);
+  } finally { r.close(); }
+});

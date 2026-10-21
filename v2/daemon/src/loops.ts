@@ -1788,7 +1788,9 @@ export class DaemonCore {
         const humanFirst = humanState.enabled;
         const humanHead = humanState.head;
         const humanPending = humanHead !== null;
-        const eligible = pending.filter(message => this.humanFirstEligible(message, trulyMidTurn, humanState));
+        const eligible = quotaGate.messageIds.length > 0
+          ? pending.filter(message => !trulyMidTurn || message.urgency !== "idle")
+          : pending.filter(message => this.humanFirstEligible(message, trulyMidTurn, humanState));
         const urgentHuman = humanFirst ? pending.find(message => message.humanChat !== undefined && message.urgency === "now" && !this.interruptRequested.has(message.id) && !this.store.getDeliveryConfirmationIntent(message.id)) : undefined;
 
         if (!humanFirst && eligible.length === 0) continue;
@@ -1835,7 +1837,7 @@ export class DaemonCore {
           }
         }
         const selected = seed ?? eligible[0];
-        if (!selected || humanFirst && humanPending && selected.humanChat !== undefined && selected.id !== humanHead && !seed) continue;
+        if (!selected || humanFirst && humanPending && selected.humanChat !== undefined && selected.id !== humanHead && !seed && quotaGate.messageIds.length === 0) continue;
         if (humanFirst && this.store.listDeliveryConfirmationIntents(rt.beeId).some(intent => intent.messageId !== selected.id && intent.wireLine !== null && !this.confirmationReady.has(intent.messageId))) continue;
         const msg = this.store.getMessage(selected.id);
         if (
@@ -2015,6 +2017,7 @@ export class DaemonCore {
       const humanState = this.humanFirstState(beeId);
       const midTurn = rt?.state === "running" && rt.bootEvidence === "real";
       const seedId = humanState.enabled ? this.store.pendingHandoffSeedMessageId(beeId) : null;
+      const quotaGate = humanState.enabled ? this.store.quotaDeliveryGate(beeId) : null;
       if (hasActiveFlag) {
         for (const message of pending) this.humanEligibilitySince.delete(message.id);
         continue;
@@ -2028,7 +2031,10 @@ export class DaemonCore {
         let base = m.enqueuedAt;
         if (humanState.enabled) {
           seenPolicyMessages.add(m.id);
-          if (m.id !== seedId && !this.humanFirstEligible(m, midTurn, humanState)) { this.humanEligibilitySince.delete(m.id); return; }
+          const quotaContinuation = quotaGate?.messageIds.includes(m.id) === true;
+          const heldByQuota = quotaGate?.held || quotaGate && quotaGate.messageIds.length > 0 && !quotaContinuation;
+          const heldByHuman = m.id !== seedId && !quotaContinuation && !this.humanFirstEligible(m, midTurn, humanState);
+          if (heldByQuota || heldByHuman) { this.humanEligibilitySince.delete(m.id); return; }
           const eligibleAt = this.humanEligibilitySince.get(m.id) ?? now;
           this.humanEligibilitySince.set(m.id, eligibleAt);
           base = Math.max(base, eligibleAt);
