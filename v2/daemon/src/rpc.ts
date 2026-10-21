@@ -1,6 +1,6 @@
 import { HumanOutputError } from "../../core/src/humanOutput.ts";
 import { createHash } from "node:crypto";
-import type { HumanChatAdmission } from "../../core/src/types.ts";
+import type { AutomationReference, AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
 import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
 import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
@@ -84,6 +84,8 @@ import {
 export interface RpcConn {
   readonly humanChat?: HumanChatAdmission;
   readonly humanPolicyAuthority?: true;
+  readonly automationAuthority?: true;
+  readonly automationReference?: AutomationReference;
   readonly phoneOrigin?: PhoneOriginRequest;
   readonly phoneCarrierDigest?: string;
   readonly phoneLane?: "envelope-v1" | "interim-v1";
@@ -99,6 +101,36 @@ export interface RpcConn {
   subscribeWatch(cursor: number): void;
   /** Re-align the watch cursor (after serving a snapshot to a watching client). */
   alignWatch(cursor: number): void;
+}
+
+const AUTOMATION_KINDS: readonly AutomationKind[] = [
+  "tell-reprompt", "tell-mode", "role-refresh", "obligation-notice", "proof-notice", "context-notice", "blocking_decision", "actionable_warning",
+];
+
+export function parseAutomationReference(raw: unknown): AutomationReference {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("automation_invalid","Missing live reference admission");
+  const ref = raw as Record<string,unknown>;
+  if (Object.keys(ref).some(key => !["version","workspaceId","beeId","kind","id","status"].includes(key)) || ref.version !== 1 || ref.status !== "open" || ref.kind !== "question" && ref.kind !== "proof" && ref.kind !== "obligation" || [ref.workspaceId,ref.beeId,ref.id].some(value => typeof value !== "string" || !value.trim() || value.length > 512 || value.includes("\0"))) throw new RpcError("automation_invalid","Invalid live same-workspace reference admission");
+  return { version:1, workspaceId:ref.workspaceId as string, beeId:ref.beeId as string, kind:ref.kind, id:ref.id as string, status:"open" };
+}
+
+export function assertAutomationSend(params: Record<string, unknown>, conn: RpcConn): void {
+  if (params.automationKind === undefined && params.automationRef === undefined) return;
+  if (!conn.automationAuthority || conn.ingress !== "local_unix" || conn.authenticatedBeeId !== undefined
+    || conn.humanChat !== undefined || conn.phoneOrigin !== undefined || conn.phoneLane !== undefined
+    || params.humanChat !== undefined || params.humanFirst !== undefined || params.provenance !== undefined || params.replayHumanChatMessageId !== undefined
+    || params.phoneOrigin !== undefined || params.phoneLane !== undefined || params.phoneInput !== undefined) {
+    throw new RpcError("automation_unauthorized", "Automation metadata requires the registered direct local Apiary authority");
+  }
+  if (typeof params.automationKind !== "string" || !(AUTOMATION_KINDS as readonly string[]).includes(params.automationKind)
+    || params.automationRef !== undefined && (typeof params.automationRef !== "string" || !params.automationRef.trim() || params.automationRef.length > 512 || params.automationRef.includes("\0"))
+    || ["blocking_decision", "actionable_warning"].includes(params.automationKind) && params.automationRef === undefined) {
+    throw new RpcError("automation_invalid", "Invalid automation kind or owner reference");
+  }
+  if (["blocking_decision","actionable_warning"].includes(params.automationKind) || conn.automationReference !== undefined) {
+    const ref = parseAutomationReference(conn.automationReference);
+    if (ref.beeId !== params.beeId || `${ref.kind}:${ref.id}` !== params.automationRef) throw new RpcError("automation_invalid","Reference admission target or identity differs");
+  }
 }
 
 const LOCAL_HANDOFF_VERBS = new Set<RpcVerb>([
@@ -201,6 +233,7 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string;
     return { code, message: err.message };
   }
   if (err instanceof AccountLeaseUnknownError) return { code: "account_unavailable", message: err.message, details: { reason: "lease_unknown" } };
+  if (err instanceof CoreError && err.message === "batch_frozen") return { code: "batch_frozen", message: err.message };
   if (err instanceof CoreError) return { code: "invalid_request", message: err.message };
   return { code: "invalid_request", message: err instanceof Error ? err.message : String(err) };
 }
@@ -295,7 +328,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => !(["question.withdraw.v1", "mail.humanFirst.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => !(["question.withdraw.v1", "mail.humanFirst.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
   }
 
   private onConnection(socket: Socket): void {
@@ -422,6 +455,29 @@ export class RpcServer {
       }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       const result = withRpcCaller(caller, () => {
+        const automationContext = frame.context as Record<string, unknown> | undefined;
+        if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
+        if (params.automationKind !== undefined || params.automationRef !== undefined || automationContext?.automationReference !== undefined) {
+          if (verb !== "send" || !peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null
+            || automationContext?.sessionPrincipal !== undefined || automationContext?.humanChat !== undefined
+            || automationContext?.phoneOrigin !== undefined || automationContext?.phoneLane !== undefined) {
+            throw new RpcError("automation_unauthorized", "Automation metadata requires the registered direct local Apiary authority");
+          }
+          try { this.trust.require(peer, conn.ingress); } catch { throw new RpcError("automation_unauthorized", "Automation metadata requires the registered direct local Apiary authority"); }
+          const reference = automationContext?.automationReference === undefined ? undefined : parseAutomationReference(automationContext.automationReference);
+          const authorized = { ...conn, automationAuthority: true as const, ...(reference ? {automationReference:reference} : {}) };
+          assertAutomationSend(params, authorized);
+          return this.opts.dispatch(verb, params, authorized);
+        }
+        if (verb === "mail.batching.set" || verb === "mail.batching.get" || verb === "mail.batch.resolve") {
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null
+            || automationContext?.sessionPrincipal !== undefined || automationContext?.humanChat !== undefined
+            || automationContext?.phoneOrigin !== undefined || automationContext?.phoneLane !== undefined) {
+            throw new RpcError("automation_unauthorized", "Batching policy requires the registered direct local Apiary authority");
+          }
+          try { this.trust.require(peer, conn.ingress); } catch { throw new RpcError("automation_unauthorized", "Batching policy requires the registered direct local Apiary authority"); }
+          return this.opts.dispatch(verb, params, { ...conn, automationAuthority: true });
+        }
         if (verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register") {
           if (!peer) throw new RpcError("caller_not_trusted", "Registration requires a local Unix connection.");
           if (verb === "rpc.localTrust.challenge") {

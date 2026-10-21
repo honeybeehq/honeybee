@@ -15,6 +15,8 @@ export const DELIVERY_CONFIRMATION_MAX_WIRE_BYTES = DELIVERY_CONFIRMATION_MAX_AU
 export const MAX_DELIVERY_CONFIRMATION_BYTES = DELIVERY_CONFIRMATION_MAX_AUDIT_BYTES;
 export type NeverWrittenDeliveryHoldReason = "host_auth_failed" | "message_too_large";
 export interface DeliveryConfirmationSettlement {
+  mailBatchId?: string;
+  batchMemberIds?: number[];
   multilineFallbackId?: string;
   reorderMessageIds: number[];
   placementMoveId: string | null;

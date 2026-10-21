@@ -1,6 +1,10 @@
 import type { RpcVerb } from "./protocol.ts";
 
 export const RPC_ACCESS = {
+  "mail.batching.set": "mutate",
+  "mail.batching.get": "read",
+  "mail.batch.read": "read",
+  "mail.batch.resolve": "mutate",
   "mail.humanFirst.set": "mutate",
   "mail.humanFirst.get": "read",
   "rpc.execution.coordinator.register": "mutate",

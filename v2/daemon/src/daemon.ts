@@ -1,5 +1,5 @@
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
-import type { HumanChatAdmission } from "../../core/src/types.ts";
+import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
@@ -8,6 +8,7 @@ import {inspectProcess, sameProcess} from "../../harness/src/processIdentity.ts"
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
 import { type PhoneOriginRequest, parsePhoneOrigin } from "../../core/src/phoneOrigin.ts";
+const AUTOMATION_REFERENCE = Symbol("automationReference");
 const PHONE_CONTEXT = Symbol("phoneOrigin");
 const PHONE_LANE = Symbol("phoneLane");
 const PHONE_DIGEST = Symbol("phoneDigest");
@@ -275,7 +276,7 @@ import {
   type PerformanceProfiler,
   type PerformanceSpan,
 } from "./performance.ts";
-import { RpcServer, assertLocalHandoffRpc, type RpcConn } from "./rpc.ts";
+import { RpcServer, assertAutomationSend, assertLocalHandoffRpc, type RpcConn } from "./rpc.ts";
 import { applyDaemonTmpPolicy, beeTmpPaths, describeBeeTmpPolicy, ensureBeeTmpEnv, removeBeeTmpDir, resolveBeeTmpPolicy, sweepBeeTmpDirs, type BeeTmpPolicy } from "./beeTmp.ts";
 import {
   DAEMON_VERSION,
@@ -1927,6 +1928,11 @@ export class HiveDaemon {
   }
 
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    if (params.automationKind !== undefined || params.automationRef !== undefined) {
+      if (verb !== "send") throw new RpcError("automation_unauthorized", "Automation metadata is only valid for send");
+      assertAutomationSend(params, conn);
+      if (conn.automationReference) params = { ...params, [AUTOMATION_REFERENCE]: conn.automationReference };
+    }
     if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: local coordinator installation is NOT_COVERED");
     if (verb === "send" || verb === "spawn") {
       if (conn.phoneOrigin) {
@@ -2163,6 +2169,33 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcAccountAdmissionConfirm(params));
       case "account.admission.release":
         return this.withIdempotency(verb, params, () => this.rpcAccountAdmissionRelease(params));
+      case "mail.batching.get":
+      case "mail.batching.set": {
+        if (!conn.automationAuthority || conn.ingress !== "local_unix" || conn.authenticatedBeeId !== undefined || conn.humanChat !== undefined || conn.phoneOrigin !== undefined || conn.phoneLane !== undefined) throw new RpcError("automation_unauthorized", "Batching policy requires the registered direct local Apiary authority");
+        const beeId = this.requireBee(params);
+        if (verb === "mail.batching.get") return this.mustStore().mailBatchingPolicy(beeId);
+        if (typeof params.enabled !== "boolean") throw new RpcError("invalid_request", "enabled must be boolean");
+        if (params.enabled && this.mustStore().getBee(beeId)?.substrate === "tmux") throw new RpcError("mail_batching_unsupported", "tmux cannot guarantee fresh digest turns");
+        return this.withIdempotency(verb, params, () => this.mustStore().setMailBatchingPolicy(beeId, params.enabled as boolean));
+      }
+      case "mail.batch.resolve": {
+        if (!conn.automationAuthority) throw new RpcError("automation_unauthorized","Batch resolution requires the registered authority");
+        const beeId = this.requireBee(params), batchId = this.param(params,"batchId"), generation = this.numberParam(params,"generation"), key = this.param(params,"idempotencyKey");
+        if (params.action !== "resend_anyway" && params.action !== "drop") throw new RpcError("invalid_request","Invalid group resolution action");
+        return this.withIdempotency(verb,params,() => this.mustStore().resolveMailBatch(beeId,batchId,generation,params.action as "resend_anyway" | "drop",key));
+      }
+      case "mail.batch.read": {
+        const beeId = this.requireBee(params);
+        const batchId = this.param(params, "batchId");
+        const messageId = this.numberParam(params, "messageId");
+        const offset = params.offset === undefined ? 0 : params.offset;
+        const limit = params.limit === undefined ? 16384 : params.limit;
+        if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0
+          || typeof limit !== "number" || !Number.isSafeInteger(limit) || limit <= 0 || limit > 16384) throw new RpcError("invalid_request", "Invalid UTF-8 page offset or limit");
+        const field = params.field ?? "body";
+        if (field !== "body" && field !== "sender") throw new RpcError("invalid_request","Invalid batch field");
+        return this.mustStore().readMailBatch(beeId, batchId, messageId, offset, limit, field);
+      }
       case "mail.humanFirst.get":
         return this.mustStore().humanFirstPolicy(this.requireBee(params));
       case "mail.humanFirst.set":
@@ -2182,7 +2215,7 @@ export class HiveDaemon {
             this.mailMutationBeeId(params, messageId, verb),
             messageId,
           );
-          if (!res.canceled) throw new RpcError("invalid_request", `mail.cancel: message ${res.reason}`);
+          if (!res.canceled) throw new RpcError(res.reason === "batch_frozen" ? "batch_frozen" : "invalid_request", `mail.cancel: message ${res.reason}`);
           return res;
         });
       }
@@ -2214,7 +2247,7 @@ export class HiveDaemon {
             messageId,
             urgency as Urgency,
           );
-          if (!res.applied) throw new RpcError("invalid_request", `mail.expedite: message ${res.reason}`);
+          if (!res.applied) throw new RpcError(res.reason === "batch_frozen" ? "batch_frozen" : "invalid_request", `mail.expedite: message ${res.reason}`);
           return res;
         });
       }
@@ -2558,7 +2591,7 @@ export class HiveDaemon {
 
   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
-    const storageSupported = ([48, 49, 50] as readonly number[]).includes(SCHEMA_VERSION) && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+    const storageSupported = ([48, 49, 50, 51] as readonly number[]).includes(SCHEMA_VERSION) && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
     if (verb === "update.apiarySwap.status") {
       let installedIdentity: ComponentIdentity | null = null;
       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
@@ -2624,7 +2657,7 @@ export class HiveDaemon {
 
   private phoneRequestBinding(params: Record<string, unknown>): { lane: string; digest: string } {
     const lane = String((params as Record<PropertyKey, unknown>)[PHONE_LANE] ?? "legacy");
-    if (lane === "legacy") return { lane, digest: canonicalDigest({ lane }) };
+    if (lane === "legacy") return { lane, digest: canonicalDigest(JSON.parse(JSON.stringify(typeof params.automationKind !== "string" ? { lane } : { lane, automationKind: params.automationKind, automationRef: typeof params.automationRef === "string" ? params.automationRef : null, automationReference: (params as Record<PropertyKey,unknown>)[AUTOMATION_REFERENCE] ?? null }))) };
     return { lane, digest: (params as Record<PropertyKey, unknown>)[PHONE_DIGEST] as string ?? canonicalDigest(JSON.parse(JSON.stringify({ params, lane, phoneOrigin: this.phoneOriginOf(params) ?? null, carrierDigest: (params as Record<PropertyKey, unknown>)[PHONE_CARRIER_DIGEST] ?? null }))) };
   }
 
@@ -5719,7 +5752,7 @@ export class HiveDaemon {
       }
     }
     if (this.phoneOriginOf(params)) { sender = `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone`; senderKind = undefined; }
-    const res = store.send(beeId, body, { sender, urgency, ...(humanChat ? { humanChat } : {}), ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
+    const res = store.send(beeId, body, { sender, urgency, ...(params.automationKind !== undefined ? { automationKind: params.automationKind as AutomationKind, ...(typeof params.automationRef === "string" ? { automationRef: params.automationRef } : {}) } : {}), ...((params as Record<PropertyKey,unknown>)[AUTOMATION_REFERENCE] ? {automationReference:(params as Record<PropertyKey,unknown>)[AUTOMATION_REFERENCE] as import("../../core/src/types.ts").AutomationReference} : {}), ...(humanChat ? { humanChat } : {}), ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
     this.forwardIfMailboxOnly(beeId, res.message);
     const held = this.authResume?.waitingForMaterial(beeId);
     return { messageId: res.message.id, commandId: res.wakeCommand?.id ?? null, unarchived: res.unarchived,
@@ -5979,6 +6012,8 @@ export class HiveDaemon {
     return {
       seq,
       humanFirstPolicies: store.listHumanFirstPolicies(),
+      mailBatchingPolicies: store.listMailBatchingPolicies(),
+      mailBatches: store.listMailBatches(),
       views: store.listBeeViewRows().map((row) => ({ ...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
       templates: store.listTemplates(),
       tracks: store.listTracks(),
