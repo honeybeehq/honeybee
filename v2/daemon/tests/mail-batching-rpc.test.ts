@@ -4,13 +4,14 @@ import { createHmac } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { RpcServer, assertAutomationSend, type RpcConn } from "../src/rpc.ts";
+import { RpcServer, assertAutomationSend, toRpcError, type RpcConn } from "../src/rpc.ts";
 import { RpcClient } from "../../cli/src/client.ts";
 import { PeerCredentials } from "../src/peerCredentials.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
 import { RpcError, type RpcVerb } from "../src/protocol.ts";
 import { HiveDaemon } from "../src/daemon.ts";
 import { loadNodeConfig } from "../src/config.ts";
+import { CoreError } from "../../core/src/index.ts";
 import { openCoreStore, type CoreStore } from "../../core/src/store.ts";
 
 const code = (expected: string) => (error: unknown) => error instanceof RpcError && error.code === expected;
@@ -144,4 +145,8 @@ test("frozen group mutation refusals remain typed at the RPC boundary", () => {
     assert.throws(() => r.call("mail.cancel", { beeId: r.bee.id, messageId: 1 }), code("batch_frozen"));
     assert.throws(() => r.call("mail.expedite", { beeId: r.bee.id, messageId: 1, urgency: "now" }), code("batch_frozen"));
   } finally { r.close(); }
+});
+
+test("frozen delivery resolution errors remain typed", () => {
+  assert.deepEqual(toRpcError(new CoreError("batch_frozen")), { code: "batch_frozen", message: "batch_frozen" });
 });

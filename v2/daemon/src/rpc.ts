@@ -218,6 +218,7 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string;
     return { code, message: err.message };
   }
   if (err instanceof AccountLeaseUnknownError) return { code: "account_unavailable", message: err.message, details: { reason: "lease_unknown" } };
+  if (err instanceof CoreError && err.message === "batch_frozen") return { code: "batch_frozen", message: err.message };
   if (err instanceof CoreError) return { code: "invalid_request", message: err.message };
   return { code: "invalid_request", message: err instanceof Error ? err.message : String(err) };
 }
