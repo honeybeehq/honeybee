@@ -5,6 +5,7 @@ if [[ "${1:-}" != isolated ]]; then
   mkdir -p .proof/B1/cli-state/home .proof/B1/cli-state/tmp
   exec env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="$PWD/.proof/B1/cli-state/home" TMPDIR="$PWD/.proof/B1/cli-state/tmp" bash .proof/B1/cli-gates.sh isolated
 fi
+node --check .proof/B1/cli-collect.mjs
 node --check .proof/B1/cli-fixture.mjs
 node --check .proof/B1/cli-claude.mjs
 node --check .proof/B1/cli-codex.mjs
