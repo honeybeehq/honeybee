@@ -1,11 +1,16 @@
+import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { ownerBoundEnv, waitFor } from "./helpers.ts";
 
 const running = (child: ChildProcess) => child.exitCode === null && child.signalCode === null;
 
-const birthOf = (pid: number) => execFileSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8", env: { ...process.env, LC_ALL: "C", TZ: "UTC" } }).trim().replace(/\s+/g, " ");
+const birthOf = (pid: number) => {
+  const birth = exactProcessBirth(pid);
+  if (!birth) throw new Error("native owner birth unavailable in fixture");
+  return birth;
+};
 
 function bound(t: { after: (fn: () => Promise<void> | void) => void }, birth: (owner: number) => string) {
   const owner = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });

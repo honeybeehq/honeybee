@@ -13,7 +13,7 @@ if (Number.isSafeInteger(owner) && owner > 1) {
   let ticks = 0;
   const watch = setInterval(() => {
     ticks += 1;
-    if (alive(owner) && (ownerBirth === "" || ticks % 8 !== 0 || exactProcessBirth(owner) === ownerBirth)) return;
+    if (alive(owner) && (ticks % 8 !== 0 || ownerBirth !== "" && exactProcessBirth(owner) === ownerBirth)) return;
     clearInterval(watch);
     setTimeout(() => process.kill(process.pid, "SIGKILL"), 5_000).unref();
     process.kill(process.pid, "SIGTERM");
