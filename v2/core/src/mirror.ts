@@ -609,3 +609,8 @@ export const MIRROR_REPLACEMENT_OPTIONAL_MESSAGE_KEYS = ["queueOrder", "replaces
 export const MIRROR_REPLACEMENT_OPTIONAL_HISTORY_KEYS = ["queueOrder", "replacesMessageId"] as const;
 
 export const MIRROR_HUMAN_FIRST_AUDIT_KINDS = ["mail.human_first.put"] as const;
+
+export const MIRROR_MESSAGE_OPTIONAL_HUMAN_CHAT_KEYS = ["humanChat"] as const;
+export interface HumanFirstPolicyEvent {
+  policy: import("./types.ts").HumanFirstPolicy;
+}

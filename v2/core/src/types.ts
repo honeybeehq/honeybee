@@ -320,6 +320,10 @@ export interface HumanChatAdmission {
   humanFirst?: boolean;
 }
 
+export interface HumanChatReceipt extends HumanChatAdmission {
+  messageId: number;
+}
+
 export interface MessageRow {
   humanChat?: HumanChatProvenance;
   queueOrder?: number;
@@ -1069,6 +1073,8 @@ export interface TrackRow {
 
 /** Deterministic full-store snapshot (audit excluded); comparison target for replay. */
 export interface StateDump {
+  humanFirstPolicies?: HumanFirstPolicy[];
+  humanChatAdmissions?: HumanChatReceipt[];
   deliveryConfirmationIntents?: DeliveryConfirmationIntent[];
   deliveryConfirmationDecisions?: DeliveryConfirmationDecision[];
   deliveryHolds?: MultilineDeliveryRow[];

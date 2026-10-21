@@ -447,7 +447,7 @@ export class RpcServer {
           if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal.");
           return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
         }
-        if (params.humanChat !== undefined || params.humanFirst !== undefined || params.provenance !== undefined) throw new RpcError("human_chat_unauthorized", "Human provenance belongs in protected RPC context");
+        if (verb === "send" && (params.humanChat !== undefined || params.humanFirst !== undefined || params.provenance !== undefined)) throw new RpcError("human_chat_unauthorized", "Human provenance belongs in protected RPC context");
         const humanContext = frame.context as Record<string, unknown> | undefined;
         if (verb === "mail.humanFirst.set" || humanContext?.humanChat !== undefined) {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("human_chat_unauthorized", "Human chat requires the registered local Apiary authority");

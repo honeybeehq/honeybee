@@ -1784,14 +1784,14 @@ export class DaemonCore {
         // budget.11's race; real claude would end mis-flagged spawn_failed).
         // Any real parsed output upgrades bootEvidence and re-engages the gate.
         const trulyMidTurn = rt.state === "running" && rt.bootEvidence === "real";
-        const humanFirst = this.store.humanFirstPolicy(rt.beeId).enabled;
-        const humanHead = humanFirst ? this.store.pendingHumanChatId(rt.beeId) : null;
+        const humanState = this.humanFirstState(rt.beeId, rt.generation);
+        const humanFirst = humanState.enabled;
+        const humanHead = humanState.head;
         const humanPending = humanHead !== null;
-        const humanActive = humanFirst && this.store.humanTurnActive(rt.beeId, rt.generation);
-        const eligible = humanFirst && (humanPending || humanActive)
-          ? trulyMidTurn || humanActive ? pending.filter(m => m.humanChat !== undefined && m.urgency === "now").slice(0, 1) : pending.filter(m => m.id === humanHead)
-          : trulyMidTurn ? pending.filter((m) => m.urgency !== "idle") : pending;
+        const eligible = pending.filter(message => this.humanFirstEligible(message, trulyMidTurn, humanState));
+        const urgentHuman = humanFirst ? pending.find(message => message.humanChat !== undefined && message.urgency === "now" && !this.interruptRequested.has(message.id) && !this.store.getDeliveryConfirmationIntent(message.id)) : undefined;
 
+        if (!humanFirst && eligible.length === 0) continue;
         const move = this.store.activeMoveOf(rt.beeId);
         if (move && move.phase !== "starting") continue;
         // v23: a quiescing source takes no new turn; the target runtime receives
@@ -1802,14 +1802,14 @@ export class DaemonCore {
         if (handoff && handoffFencesSource(handoff.phase)) continue;
         const seedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
         const seed = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
-        if (eligible.length === 0 && !seed) continue;
+        if (eligible.length === 0 && !seed && !urgentHuman) continue;
         if (!trulyMidTurn && this.beforeTurn && !this.beforeTurn(rt.beeId, rt.generation)) { this.deliveryRetries.delete(rt.beeId); continue; }
         if (rt.state === "running") {
           // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
           // interrupt per message; an eligible `now` behind an undelivered
           // `next` still interrupts — the accept point it creates serves the
           // whole FIFO, which keeps delivering in enqueue order.
-          const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
+          const urgent = urgentHuman ?? eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
           if (urgent) {
             // Give the driver the triggering mailbox id so an asynchronously
             // confirmed delivery cannot interrupt the turn it just opened.
@@ -1854,7 +1854,7 @@ export class DaemonCore {
         // delivery-time rendering only.
         if (msg.deliveryHold?.detail === "delivery_hold_state_unknown") {this.store.reconcileUnknownMultilineHold(msg.id); continue;}
         const freshTurn = humanFirst && msg.humanChat !== undefined && msg.urgency !== "now";
-        if (freshTurn && this.store.getBee(rt.beeId)?.substrate === "tmux") { this.log(`deliver.held bee=${rt.beeId} msg=${msg.id} reason=human_first_unsupported`); continue; }
+        if (freshTurn && this.store.getBee(rt.beeId)?.substrate === "tmux") continue;
         const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
         const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
         let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id), this.store.dismissedQuestionId(msg.id));
@@ -1991,12 +1991,34 @@ export class DaemonCore {
    * aware deadlines, and a suspended clock while a closed-list flag is active
    * (a visibly blocked bee is at an external boundary — I3/I6 territory).
    */
+  private readonly humanEligibilitySince = new Map<number, number>();
+
+  private humanFirstState(beeId: string, generation = this.store.currentRuntime(beeId)?.generation ?? -1) {
+    const policy = this.store.humanFirstPolicy(beeId);
+    return { enabled: policy.enabled, head: policy.enabled ? this.store.pendingHumanChatId(beeId) : null, active: policy.enabled && this.store.humanTurnActive(beeId, generation) };
+  }
+
+  private humanFirstEligible(message: Pick<MessageRow, "id" | "urgency" | "humanChat">, midTurn: boolean, state: ReturnType<DaemonCore["humanFirstState"]>): boolean {
+    if (state.enabled && (state.head !== null || state.active)) {
+      if (message.id !== state.head) return false;
+      return !(midTurn || state.active) || message.urgency === "now";
+    }
+    return !midTurn || message.urgency !== "idle";
+  }
+
   private i1Telemetry(rows: readonly I1PendingBee[]): void {
     const bound = this.policy.i1DeadlineSteps as number;
     const record = this.onI1Violation as (violation: I1ViolationEvent) => void;
     const now = this.now();
+    const seenPolicyMessages = new Set<number>();
     for (const { beeId, runtime: rt, hasActiveFlag, pending } of rows) {
-      if (hasActiveFlag) continue;
+      const humanState = this.humanFirstState(beeId);
+      const midTurn = rt?.state === "running" && rt.bootEvidence === "real";
+      const seedId = humanState.enabled ? this.store.pendingHandoffSeedMessageId(beeId) : null;
+      if (hasActiveFlag) {
+        for (const message of pending) this.humanEligibilitySince.delete(message.id);
+        continue;
+      }
       pending.forEach((m, pos) => {
         // v8 (Q2 amendment): an `idle` message's deadline clock starts when it
         // becomes ELIGIBLE (the runtime not `running`), not at enqueue — a
@@ -2004,6 +2026,13 @@ export class DaemonCore {
         // I1 violation. While the runtime is running the clock is suspended;
         // once out of `running`, the base is that transition (rt.updatedAt).
         let base = m.enqueuedAt;
+        if (humanState.enabled) {
+          seenPolicyMessages.add(m.id);
+          if (m.id !== seedId && !this.humanFirstEligible(m, midTurn, humanState)) { this.humanEligibilitySince.delete(m.id); return; }
+          const eligibleAt = this.humanEligibilitySince.get(m.id) ?? now;
+          this.humanEligibilitySince.set(m.id, eligibleAt);
+          base = Math.max(base, eligibleAt);
+        }
         if (m.urgency === "idle") {
           // Mirrors the delivery rule: synthetic-boot `running` is provisional
           // — idle mail is ELIGIBLE there, so its clock runs (else the churn
@@ -2019,6 +2048,7 @@ export class DaemonCore {
         this.log(`i1.violation bee=${beeId} msg=${m.id} deadline=${deadline}`);
       });
     }
+    for (const id of this.humanEligibilitySince.keys()) if (!seenPolicyMessages.has(id)) this.humanEligibilitySince.delete(id);
   }
 
   /**

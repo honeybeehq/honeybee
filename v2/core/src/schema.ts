@@ -1143,7 +1143,7 @@ CREATE TABLE IF NOT EXISTS human_chat_admissions (
  idempotency_key TEXT PRIMARY KEY,
  authority_id TEXT NOT NULL,
  admission_id TEXT NOT NULL,
- bee_id TEXT NOT NULL,
+ bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
  body_sha256 TEXT NOT NULL,
  policy_enabled INTEGER,
  message_id INTEGER NOT NULL,

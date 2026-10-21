@@ -1,4 +1,4 @@
-import type { HumanChatAdmission, HumanChatProvenance, HumanFirstPolicy } from "./types.ts";
+import type { HumanChatAdmission, HumanChatProvenance, HumanChatReceipt, HumanFirstPolicy } from "./types.ts";
 import { HUMAN_FIRST_SQL } from "./schema.ts";
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
@@ -4453,6 +4453,10 @@ export class CoreStore {
     return row ? { beeId, enabled: row.enabled === 1, updatedAt: row.updated_at == null ? null : Number(row.updated_at), lastHumanReceivedAt: row.last_human_received_at == null ? null : Number(row.last_human_received_at) } : { beeId, enabled: false, updatedAt: null, lastHumanReceivedAt: null };
   }
 
+  listHumanChatAdmissions(): HumanChatReceipt[] {
+    return (this.stmt("SELECT * FROM human_chat_admissions ORDER BY idempotency_key").all() as Row[]).map(row => ({ version: 1, authorityId: String(row.authority_id), admissionId: String(row.admission_id), beeId: String(row.bee_id), bodySha256: String(row.body_sha256), idempotencyKey: String(row.idempotency_key), messageId: Number(row.message_id), ...(row.policy_enabled == null ? {} : { humanFirst: row.policy_enabled === 1 }) }));
+  }
+
   listHumanFirstPolicies(): HumanFirstPolicy[] {
     return (this.stmt("SELECT bee_id FROM human_first_policies ORDER BY bee_id").all() as Row[]).map(row => this.humanFirstPolicy(String(row.bee_id)));
   }
@@ -4546,6 +4550,7 @@ export class CoreStore {
       };
       if (opts.humanChat) {
         this.stmt("INSERT INTO human_chat_admissions(idempotency_key,authority_id,admission_id,bee_id,body_sha256,policy_enabled,message_id) VALUES(?,?,?,?,?,?,?)").run(opts.humanChat.idempotencyKey, opts.humanChat.authorityId, opts.humanChat.admissionId, beeId, opts.humanChat.bodySha256, opts.humanChat.humanFirst === undefined ? null : Number(opts.humanChat.humanFirst), message.id);
+        this.audit("mail.human_chat.admitted", beeId, { admission: { ...opts.humanChat, messageId: message.id } });
         const policy = this.humanFirstPolicy(beeId);
         this.putHumanFirstPolicy({ ...policy, enabled: opts.humanChat.humanFirst ?? policy.enabled, updatedAt: at, lastHumanReceivedAt: at });
       }
@@ -10830,6 +10835,8 @@ export class CoreStore {
   /** Deterministic snapshot of all replayable state (meta and audit excluded). */
   dumpState(): StateDump {
     return {
+      ...(this.listHumanFirstPolicies().length ? { humanFirstPolicies: this.listHumanFirstPolicies() } : {}),
+      ...(this.listHumanChatAdmissions().length ? { humanChatAdmissions: this.listHumanChatAdmissions() } : {}),
       ...(this.listDeliveryConfirmationIntents().length ? { deliveryConfirmationIntents: this.listDeliveryConfirmationIntents() } : {}),
       ...((this.stmt("SELECT row_json FROM delivery_confirmation_decisions ORDER BY idempotency_key").all() as Row[]).length ? { deliveryConfirmationDecisions: (this.stmt("SELECT row_json FROM delivery_confirmation_decisions ORDER BY idempotency_key").all() as Row[]).map(row => JSON.parse(String(row.row_json)) as DeliveryConfirmationDecision) } : {}),
       bees: this.listBees(),
