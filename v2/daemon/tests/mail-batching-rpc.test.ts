@@ -145,10 +145,21 @@ test("batch reads validate paging before accessing the bee-scoped core reader", 
 test("frozen group mutation refusals remain typed at the RPC boundary", () => {
   const r = daemonFixture();
   try {
-    r.store.cancelMessage = () => ({ canceled: false, reason: "batch_frozen" });
-    r.store.expediteMessage = () => ({ applied: false, reason: "batch_frozen" });
-    assert.throws(() => r.call("mail.cancel", { beeId: r.bee.id, messageId: 1 }), code("batch_frozen"));
-    assert.throws(() => r.call("mail.expedite", { beeId: r.bee.id, messageId: 1, urgency: "now" }), code("batch_frozen"));
+    r.call("mail.batching.set", { beeId: r.bee.id, enabled: true });
+    const message = r.call("send", { beeId: r.bee.id, body: "hei🌻tail" }) as { messageId: number };
+    const batch = r.store.freezeMailBatch(r.bee.id)!;
+    assert.deepEqual(batch.memberIds, [message.messageId]);
+    assert.throws(() => r.call("mail.cancel", { beeId: r.bee.id, messageId: message.messageId }), code("batch_frozen"));
+    assert.throws(() => r.call("mail.expedite", { beeId: r.bee.id, messageId: message.messageId, urgency: "now" }), code("batch_frozen"));
+    const page = { beeId: r.bee.id, batchId: batch.id, messageId: message.messageId, limit: 4 };
+    assert.deepEqual(r.call("mail.batch.read", page), { batchId: batch.id, messageId: message.messageId, body: "hei", offset: 0, nextOffset: 3, totalBytes: 11 });
+    assert.deepEqual(r.call("mail.batch.read", { ...page, offset: 3 }), { batchId: batch.id, messageId: message.messageId, body: "🌻", offset: 3, nextOffset: 7, totalBytes: 11 });
+    assert.throws(() => r.call("mail.batch.read", { ...page, offset: 4 }), code("invalid_request"));
+    const other = r.store.createBee({ name: "other", agent: "stub", substrate: "hsr", cwd: r.bee.cwd }).bee;
+    assert.throws(() => r.call("mail.batch.read", { ...page, beeId: other.id }), code("invalid_request"));
+    assert.throws(() => r.call("mail.batch.read", { ...page, messageId: message.messageId + 1 }), code("invalid_request"));
+    const snapshot = r.call("snapshot", {}) as { mailBatches: unknown[] };
+    assert.deepEqual(snapshot.mailBatches, [batch]);
   } finally { r.close(); }
 });
 
