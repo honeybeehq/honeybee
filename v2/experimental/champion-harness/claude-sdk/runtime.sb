@@ -1,0 +1,7 @@
+(version 1)
+(allow default)
+(deny file-write*)
+(allow file-write*
+  (subpath (param "AUDIT_DIR"))
+  (subpath (param "PRIVATE_TMPDIR"))
+  (subpath "/Users/trmd/.hive/homes/claude-claude-trmd-trmd.me"))
