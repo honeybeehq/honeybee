@@ -89,8 +89,8 @@ try {
   for await (const message of session) {
     if (message.type === 'system' && message.subtype === 'init') {
       sessionId = message.session_id;
-      if (message.tools.length || message.mcp_servers.length || message.skills.length || message.plugins.length) throw new Error('UNEXPECTED_LOADED_CAPABILITY');
       await log({ event: 'session_init', sessionId, model: message.model, tools: message.tools, mcpServers: message.mcp_servers, configuredSettingSources: [], loadedSkills: message.skills, loadedPlugins: message.plugins.map(plugin => plugin.name) });
+      if (message.tools.length || message.mcp_servers.length || message.skills.length || message.plugins.length) throw new Error('UNEXPECTED_LOADED_CAPABILITY');
     }
     if (message.type === 'assistant' && message.error) {
       await log({ event: 'assistant_error', turn: turn + 1, error: message.error, text: message.message.content.filter(block => block.type === 'text').map(block => block.text).join('') });
@@ -127,8 +127,10 @@ try {
   }
   if (turn !== 3) throw new Error('INCOMPLETE_RUN');
   console.log(JSON.stringify({ outputDir, completedTurns: turn }));
-} catch {
-  await log({ event: 'stopped', reason: turn === 0 ? 'Authentication or startup failed; human login may be required. No credential details recorded.' : 'SDK run failed; inspect sanitized result events.' });
+} catch (error) {
+  const knownErrors = ['AUTH_REQUIRED', 'ASSISTANT_ERROR', 'RUN_FAILED', 'INCOMPLETE_RUN', 'UNEXPECTED_LOADED_CAPABILITY', 'SANDBOX_WRITE_ALLOWED'];
+  const errorCode = error instanceof Error && knownErrors.includes(error.message) ? error.message : 'SDK_OR_IO_FAILURE';
+  await log({ event: 'stopped', errorCode, reason: turn === 0 ? 'Authentication or startup failed; human login may be required. No credential details recorded.' : 'SDK run failed; inspect sanitized result events.' });
   console.error('Spike stopped. See sanitized run.jsonl. If authentication is missing, sign in to the pinned config directory.');
   process.exitCode = 1;
 } finally {
