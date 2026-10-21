@@ -1,3 +1,4 @@
+import { readMailBatchPage } from "../../core/src/mailBatch.ts";
 import { readAccountLease, presentAccountLease } from "../../core/src/accountLease.ts";
 /**
  * Read-only SQLite fallback for CLI reads when the daemon is down (spec 04
@@ -318,6 +319,10 @@ export interface StaleViewResult {
 }
 
 export class ReadOnlyStore {
+  readMailBatch(beeId: string, batchId: string, messageId: number, offset = 0, limit = 16384, field: "body" | "sender" = "body") {
+    return readMailBatchPage(this.db,beeId,batchId,messageId,offset,limit,field);
+  }
+
   private readonly db: DatabaseSync;
   private readonly stmts = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
 

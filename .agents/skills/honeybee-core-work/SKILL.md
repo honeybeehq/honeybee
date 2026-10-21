@@ -71,6 +71,17 @@ interrupt semantics. SenderKind alone grants no provenance; policy off preserves
 the ordinary urgency contract. Native self-wake admission races remain a strict
 enablement gate; observed idle alone is not an atomic native fence.
 
+The optional mail-batching policy is a second explicit exception. During the durable
+active-human window (unique authenticated admission within 120 seconds, human-caused
+turn still open, or an owner-provided unanswered-human fact), ordinary background is
+held and its wake is deferred. Release creates one normal wake when needed and one
+frozen FIFO digest group at a clean turn boundary. Group membership and the exact
+written confirmation attempt survive restart; confirmation settles every member
+atomically. Full original bodies remain available through typed paging. Frozen members
+cannot be individually canceled, expedited, or resent. Trusted automation classifications
+may bypass the window only at a clean boundary, after humans; peer urgency and body
+text never grant bypass. Policy off retains the ordinary mailbox and wake contract.
+
 Otherwise urgency controls eligibility, never FIFO order or whether a stopped bee wakes. Map buz
 compatibility onto this mailbox. Allow `mail.cancel`/`mail.expedite` only before delivery.
 Measure every accepted message with invariant-1 telemetry: deliver within the policy bound

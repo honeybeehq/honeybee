@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 48;
+export const SCHEMA_VERSION = 49;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -1132,6 +1132,18 @@ export const MAILBOX_PENDING_METADATA_INDEX_SQL =
  * Additive columns on `mailbox` since v7 — same add-iff-missing discipline as
  * BEES_ADDITIVE_COLUMNS. v8: urgency.
  */
+export const MAIL_BATCHING_SQL = `
+CREATE TABLE IF NOT EXISTS mail_batching_policies (
+ bee_id TEXT PRIMARY KEY REFERENCES bees(id) ON DELETE CASCADE,
+ enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), updated_at INTEGER
+) STRICT;
+CREATE TABLE IF NOT EXISTS mail_batches (
+ id TEXT PRIMARY KEY, bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+ row_json TEXT NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS mail_batches_bee ON mail_batches(bee_id,id);
+`;
+
 export const HUMAN_FIRST_SQL = `
 CREATE TABLE IF NOT EXISTS human_first_policies (
  bee_id TEXT PRIMARY KEY REFERENCES bees(id) ON DELETE CASCADE,
@@ -1154,6 +1166,10 @@ CREATE TABLE IF NOT EXISTS human_chat_admissions (
 export const MAILBOX_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
   ["urgency", "urgency TEXT NOT NULL DEFAULT 'next' CHECK (urgency IN ('now','next','idle'))"],
   ["human_chat", "human_chat TEXT"],
+  ["automation_kind", "automation_kind TEXT"],
+  ["automation_ref", "automation_ref TEXT"],
+  ["automation_reference", "automation_reference TEXT"],
+  ["mail_batch_id", "mail_batch_id TEXT"],
   ["sender_kind", "sender_kind TEXT CHECK (sender_kind IN ('human','automation'))"],
   ["queue_order", "queue_order INTEGER"],
   ["replaces_message_id", "replaces_message_id INTEGER"],

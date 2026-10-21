@@ -121,7 +121,7 @@ test("apiary RPC: released identity, acquire/release/abandon/recover lost replie
     try {
       assert.ok(f.api.DAEMON_CAPABILITIES.includes(APIARY_SWAP_CAPABILITY));
       const status = await f.client.request("update.apiarySwap.status");
-      assert.equal(status.schemaVersion, 48); assert.equal(status.storageSupported, true); assert.deepEqual(status.installedIdentity, identity);
+      assert.equal(status.schemaVersion, 49); assert.equal(status.storageSupported, true); assert.deepEqual(status.installedIdentity, identity);
       const request = acquire(root);
       await f.client.request("update.apiarySwap.acquire", request);
       const held = (await f.client.request("update.apiarySwap.status")).reservation;

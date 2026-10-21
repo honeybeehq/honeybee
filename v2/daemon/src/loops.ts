@@ -1,3 +1,5 @@
+import { automationDeliveryClass } from "../../core/src/types.ts";
+import { renderMailBatch } from "./mailBatch.ts";
 import type { QuotaBoundary } from "../../core/src/quota.ts";
 import { deliveryConfirmationIntentFits } from "../../core/src/deliveryConfirmationTypes.ts";
 import {ProcessIdentityUnavailableError} from "../../driver-hsr/src/psutil.ts";
@@ -455,6 +457,7 @@ export class DaemonCore {
       this.scaleToZeroPolicy(snapshot.work);
       this.degradedMailPolicy(snapshot.work);
     });
+    this.store.releaseBatchingWakes();
     this.performance.measureSync("core.step.commands", () => this.executeCommands());
     this.performance.measureSync("core.step.moves", () => this.reconcileMoves());
     this.performance.measureSync("core.step.handoffs", () => this.reconcileHandoffs());
@@ -1669,7 +1672,9 @@ export class DaemonCore {
         const peer = isPeerSender(message.sender, id => this.store.getBee(id) != null);
         const settlement = intent.wireLine === null ? undefined : intent.settlement;
         const fallback = this.store.multilineDelivery(intent.messageId)?.fallback;
-        const applied = settlement?.multilineFallbackId && fallback?.id === settlement.multilineFallbackId
+        const applied = settlement?.mailBatchId
+          ? this.store.markMailBatchDelivered(settlement.mailBatchId,intent.generation,settlement.reorderMessageIds).applied
+          : settlement?.multilineFallbackId && fallback?.id === settlement.multilineFallbackId
           ? this.store.completeMultilineFallback(intent.messageId, intent.generation, this.turnTriggerSourceOf(message, peer), true).applied
           : this.store.markDelivered(intent.messageId, intent.generation, this.turnTriggerSourceOf(message, peer), settlement?.reorderMessageIds ?? []).applied;
         if (applied) {
@@ -1763,7 +1768,7 @@ export class DaemonCore {
         const quotaGate = this.store.quotaDeliveryGate(rt.beeId);
         if (quotaGate.held) { this.deliveryRetries.delete(rt.beeId); continue; }
         const allPending = this.multilineFallback
-          ? [...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].sort((a, b) => (a.queueOrder ?? a.id) - (b.queueOrder ?? b.id) || a.id - b.id)
+          ? [...new Map([...ordinaryPending, ...(heldMail!.get(rt.beeId) ?? []).filter(message => this.multilineFallback!.eligible(rt.beeId, message.id, message.fallback))].map(message => [message.id,message])).values()].sort((a, b) => (a.queueOrder ?? a.id) - (b.queueOrder ?? b.id) || a.id - b.id)
           : ordinaryPending;
         const pending = quotaGate.messageIds.length > 0 ? allPending.filter(message => quotaGate.messageIds.includes(message.id)) : allPending;
         const authHead = pending[0];
@@ -1787,6 +1792,7 @@ export class DaemonCore {
         const trulyMidTurn = rt.state === "running" && rt.bootEvidence === "real";
         const humanState = this.humanFirstState(rt.beeId, rt.generation);
         const humanFirst = humanState.enabled;
+        const batching = this.store.mailBatchingPolicy(rt.beeId).enabled;
         const humanHead = humanState.head;
         const humanPending = humanHead !== null;
         const eligible = quotaGate.messageIds.length > 0
@@ -1814,7 +1820,7 @@ export class DaemonCore {
           // interrupt per message; an eligible `now` behind an undelivered
           // `next` still interrupts — the accept point it creates serves the
           // whole FIFO, which keeps delivering in enqueue order.
-          const urgent = urgentHuman ?? eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
+          const urgent = urgentHuman ?? eligible.find((m) => !batching && m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
           if (urgent) {
             // Give the driver the triggering mailbox id so an asynchronously
             // confirmed delivery cannot interrupt the turn it just opened.
@@ -1839,7 +1845,18 @@ export class DaemonCore {
             }
           }
         }
-        const selected = seed ?? eligible[0];
+        let selected = seed ?? eligible.find(message => !batching || this.batchingEligible(rt.beeId,message.id,trulyMidTurn));
+        if (batching && !seed && !trulyMidTurn && !humanState.active && humanState.head === null && quotaGate.messageIds.length === 0) {
+          const priority = eligible.find(message => this.store.getMessage(message.id)?.humanChat || automationDeliveryClass(this.store.getMessage(message.id)?.automationKind) !== "ordinary");
+          selected = priority ?? selected;
+        }
+        let batch = selected && quotaGate.messageIds.length === 0 ? this.store.mailBatchForMessage(selected.id) : null;
+        if (batching && selected && quotaGate.messageIds.length === 0 && !seed && !this.store.getMessage(selected.id)?.humanChat && automationDeliveryClass(this.store.getMessage(selected.id)?.automationKind) === "ordinary") {
+          batch = this.store.freezeMailBatch(rt.beeId);
+          if (!batch || batch.memberIds[0] !== selected.id) continue;
+        }
+        if (batch && batch.memberIds[0] !== selected?.id) continue;
+        if (batch) batch = this.store.noteMailBatchRelease(batch.id,this.confirmationReady.has(batch.memberIds[0]!));
         if (!selected || humanFirst && humanPending && selected.humanChat !== undefined && selected.id !== humanHead && !seed && quotaGate.messageIds.length === 0) continue;
         if (humanFirst && this.store.listDeliveryConfirmationIntents(rt.beeId).some(intent => intent.messageId !== selected.id && intent.wireLine !== null && intent.state === "awaiting_confirmation" && intent.generation === rt.generation && !this.confirmationReady.has(intent.messageId))) continue;
         const msg = this.store.getMessage(selected.id);
@@ -1858,11 +1875,16 @@ export class DaemonCore {
         // The mailbox row stays the durable truth — the envelope is
         // delivery-time rendering only.
         if (msg.deliveryHold?.detail === "delivery_hold_state_unknown") {this.store.reconcileUnknownMultilineHold(msg.id); continue;}
-        const freshTurn = humanFirst && msg.humanChat !== undefined && msg.urgency !== "now";
+        const freshTurn = (humanFirst || batching) && msg.humanChat !== undefined && msg.urgency !== "now" || batch !== null || batching && msg.automationKind !== undefined;
         if (freshTurn && this.store.getBee(rt.beeId)?.substrate === "tmux") continue;
         const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
         const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
         let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id), this.store.dismissedQuestionId(msg.id));
+        if (batch) {
+          const rendered = renderMailBatch(batch,batch.memberIds.map(id => this.store.getMessage(id)!));
+          if (rendered === null) continue;
+          body = rendered;
+        }
         if (!msg.phoneInput && msg.sender === "automation:delivery" && msg.senderKind === "automation" && this.store.multilineSenderNotice(msg.id)) body = msg.body;
         const reorderNotice = this.store.multilineReorderNotice(rt.beeId, msg.id);
         if (reorderNotice.text) body = reorderNotice.text + body;
@@ -1902,7 +1924,7 @@ export class DaemonCore {
           holdIssue(initialIssue);
           continue;
         }
-        const fallback = this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+        const fallback = batch ? undefined : this.multilineFallback?.deliver(msg, body, rt.generation, peer, this.store.answeredQuestionId(msg.id), this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
         if (fallback?.confirmationBody) body = fallback.confirmationBody;
         const issue = fallback?.confirmationBody ? this.driver.deliveryIssue?.(rt.beeId, rt.generation, msg.id, body) : null;
         if (issue && !this.store.inTransaction) {
@@ -1910,7 +1932,7 @@ export class DaemonCore {
           continue;
         }
         let confirmation: DeliveryConfirmationPlan | undefined;
-        const settlement = { reorderMessageIds: reorderNotice.messageIds, placementMoveId: instruction?.id ?? null,
+        const settlement = { ...(batch ? { mailBatchId: batch.id, batchMemberIds: batch.memberIds } : {}), reorderMessageIds: reorderNotice.messageIds, placementMoveId: instruction?.id ?? null,
           handoffId: handoff?.id ?? null, ...(fallback?.confirmationBody ? { multilineFallbackId: this.store.multilineDelivery(msg.id)?.fallback?.id } : {}) };
         const recordPointerAttempt = (): void => {
           let pointer = fallback?.confirmationBody ? this.store.multilineDelivery(msg.id)?.fallback : null;
@@ -1951,7 +1973,10 @@ export class DaemonCore {
         if (outcome.accepted) {
           this.deliveryRetries.delete(rt.beeId);
           if (fallback?.confirmationBody) this.store.completeMultilineFallback(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), true);
-          else if (!fallback?.handled) this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+          else if (!fallback?.handled) {
+            if (batch) this.store.markMailBatchDelivered(batch.id,rt.generation,reorderNotice.messageIds);
+            else this.store.markDelivered(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), reorderNotice.messageIds);
+          }
           const deliveredGeneration = fallback?.generation ?? rt.generation;
           this.interruptRequested.delete(msg.id);
           if (instruction && deliveredGeneration === rt.generation && rt.generation !== instruction.sourceGeneration) {
@@ -2002,7 +2027,8 @@ export class DaemonCore {
 
   private humanFirstState(beeId: string, generation = this.store.currentRuntime(beeId)?.generation ?? -1) {
     const policy = this.store.humanFirstPolicy(beeId);
-    return { enabled: policy.enabled, seed: policy.enabled ? this.store.pendingHumanFirstSeedMessageId(beeId) : null, head: policy.enabled ? this.store.pendingHumanChatId(beeId) : null, active: policy.enabled && this.store.humanTurnActive(beeId, generation) };
+    const enabled = policy.enabled || this.store.mailBatchingPolicy(beeId).enabled;
+    return { enabled, seed: enabled ? this.store.pendingHumanFirstSeedMessageId(beeId) : null, head: enabled ? this.store.pendingHumanChatId(beeId) : null, active: enabled && (this.store.humanTurnActive(beeId, generation) || this.store.mailBatchingPolicy(beeId).enabled && this.batchingTurnActive(beeId,generation)) };
   }
 
   private humanFirstEligible(message: Pick<MessageRow, "id" | "urgency" | "humanChat">, midTurn: boolean, state: ReturnType<DaemonCore["humanFirstState"]>): boolean {
@@ -2014,6 +2040,25 @@ export class DaemonCore {
     return !midTurn || message.urgency !== "idle";
   }
 
+  private batchingTurnActive(beeId: string, generation: number): boolean {
+    const trigger = this.store.getBee(beeId)?.lastTurnTrigger;
+    if (!trigger || trigger.generation !== generation || trigger.endedAt !== null || trigger.messageId === null) return false;
+    const message = this.store.getMessage(trigger.messageId);
+    return message?.mailBatchId !== undefined || message?.automationKind !== undefined;
+  }
+
+  private batchingEligible(beeId: string, messageId: number, midTurn: boolean): boolean {
+    if (!this.store.mailBatchingPolicy(beeId).enabled) return true;
+    const message = this.store.getMessage(messageId);
+    if (!message) return false;
+    if (message.humanChat) return true;
+    if (this.store.pendingHumanFirstSeedMessageId(beeId) === messageId || this.store.pendingHandoffSeedMessageId(beeId) === messageId) return true;
+    if (midTurn) return false;
+    if (automationDeliveryClass(message.automationKind) !== "ordinary") return true;
+    const batch = this.store.mailBatchForMessage(messageId);
+    return this.store.mailBatchReleaseReason(beeId) !== null && (batch ? batch.memberIds[0] === messageId : this.store.mailBatchCandidate(messageId));
+  }
+
   private i1Telemetry(rows: readonly I1PendingBee[]): void {
     const bound = this.policy.i1DeadlineSteps as number;
     const record = this.onI1Violation as (violation: I1ViolationEvent) => void;
@@ -2022,10 +2067,10 @@ export class DaemonCore {
     const seenHumanWait = new Set<number>();
     const monitored = [...rows];
     const present = new Set(rows.map(row => row.beeId));
-    for (const policy of this.store.listHumanFirstPolicies()) {
+    for (const policy of [...this.store.listHumanFirstPolicies(),...this.store.listMailBatchingPolicies()]) {
       if (!policy.enabled || present.has(policy.beeId)) continue;
       const runtime = this.store.currentRuntime(policy.beeId);
-      if (runtime && runtime.state !== "stopped" && this.store.humanTurnActive(policy.beeId,runtime.generation)) monitored.push({beeId:policy.beeId,runtime,hasActiveFlag:this.store.activeFlags(policy.beeId).length > 0,pending:[]});
+      if (runtime && runtime.state !== "stopped" && this.store.humanTurnActive(policy.beeId,runtime.generation)) { monitored.push({beeId:policy.beeId,runtime,hasActiveFlag:this.store.activeFlags(policy.beeId).length > 0,pending:[]}); present.add(policy.beeId); }
     }
     for (const { beeId, runtime: rt, hasActiveFlag, pending } of monitored) {
       const humanState = this.humanFirstState(beeId);
@@ -2064,7 +2109,7 @@ export class DaemonCore {
           seenPolicyMessages.add(m.id);
           const quotaContinuation = quotaGate?.messageIds.includes(m.id) === true;
           const heldByQuota = quotaGate?.held || quotaGate && quotaGate.messageIds.length > 0 && !quotaContinuation;
-          const heldByHuman = m.id !== seedId && !quotaContinuation && !this.humanFirstEligible(m, midTurn, humanState);
+          const heldByHuman = m.id !== seedId && !quotaContinuation && (!this.humanFirstEligible(m, midTurn, humanState) || !this.batchingEligible(beeId,m.id,midTurn));
           if (heldByQuota || heldByHuman) { this.humanEligibilitySince.delete(m.id); return; }
           const eligibleAt = this.humanEligibilitySince.get(m.id) ?? now;
           this.humanEligibilitySince.set(m.id, eligibleAt);

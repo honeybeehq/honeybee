@@ -614,3 +614,6 @@ export const MIRROR_MESSAGE_OPTIONAL_HUMAN_CHAT_KEYS = ["humanChat"] as const;
 export interface HumanFirstPolicyEvent {
   policy: import("./types.ts").HumanFirstPolicy;
 }
+
+export const MIRROR_MAIL_BATCHING_AUDIT_KINDS = ["mail.batching.put", "mail.batch.put"] as const;
+export const MIRROR_MESSAGE_OPTIONAL_BATCHING_KEYS = ["automationKind", "automationRef", "automationReference", "mailBatchId"] as const;
