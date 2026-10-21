@@ -163,7 +163,7 @@ export function parseRepackRecord(raw: string, target: string = hostTarget()): R
   const peercred = record.peercred;
   if (!peercred || typeof peercred !== "object" || Array.isArray(peercred)) throw new Error("repack peercred is not an object");
   const bridge = peercred as Record<string, unknown>;
-  if (!exactKeys(bridge, ["target", "sha256", "ciRun", "ciJob", "provenance"])) throw new Error("repack peercred keys are not exactly target, sha256, ciRun, ciJob");
+  if (!exactKeys(bridge, ["target", "sha256", "ciRun", "ciJob", "provenance"])) throw new Error("repack peercred keys are not exactly target, sha256, ciRun, ciJob, provenance");
   if (bridge.target !== target) throw new Error(`repack peercred target ${String(bridge.target)} is not this host's ${target}`);
   if (typeof bridge.sha256 !== "string" || !HEX64.test(bridge.sha256)) throw new Error("repack peercred sha256 is not a 64-hex digest");
   if (!positiveInteger(bridge.ciRun) || !positiveInteger(bridge.ciJob)) throw new Error("repack peercred ciRun and ciJob must be positive integers");
