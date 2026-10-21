@@ -951,7 +951,7 @@ test("verbs.xa: v1 shape is <agent> (not a bee name); refuses pane-less substrat
     assert.ok(attach.beeId.length > 0);
     assert.equal(attach.socket, join(dir, "tmux.sock"));
     assert.equal(attach.session, `hive-v2-${attach.beeId}-g1`);
-    assert.equal(attach.command, `tmux -S ${attach.socket} attach-session -t =${attach.session}`);
+    assert.equal(attach.command, `tmux -S '${attach.socket}' attach-session -t '=${attach.session}'`);
 
     const view = capture();
     assert.equal(await runV2Cli(["view", "screenful", "--data-dir", dir, "--json"], view.io), 0);
@@ -1011,7 +1011,7 @@ test("verbs.attach: refuses hsr/cell bees with the v2 guidance; tmux bees get th
     store.close();
     const p = capture();
     assert.equal(await runV2Cli(["attach", "screenful", "--print", "--data-dir", dir], p.io), 0);
-    assert.equal(p.out[0], `tmux -S ${join(dir, "tmux.sock")} attach-session -t =hive-v2-tm-1-g1`);
+    assert.equal(p.out[0], `tmux -S '${join(dir, "tmux.sock")}' attach-session -t '=hive-v2-tm-1-g1'`);
   } finally {
     await daemon?.stop().catch(() => {});
     cleanup();
