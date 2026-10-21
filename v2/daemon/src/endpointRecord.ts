@@ -12,6 +12,8 @@ export interface EndpointRecord {
   tmuxSocketPath?: string;
   pid: number;
   startedAt: number;
+  processBirth?: string;
+  bootId?: string;
 }
 
 export function canonicalPath(path: string): string {
@@ -73,6 +75,7 @@ export function readLiveEndpointRecord(dataDir: string, alive: (pid: number) => 
   return {
     schema: 1,
     instanceId: r.instanceId,
+    ...(typeof r.processBirth === "string" && typeof r.bootId === "string" ? { processBirth: r.processBirth, bootId: r.bootId } : {}),
     dataDir: r.dataDir,
     socketPath: r.socketPath,
     ...(typeof r.tmuxSocketPath === "string" ? { tmuxSocketPath: r.tmuxSocketPath } : {}),

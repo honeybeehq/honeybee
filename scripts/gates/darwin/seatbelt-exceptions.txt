@@ -1,1 +1,1 @@
-# fix d3ea6770 landed: runZombieCensus no longer throws when /bin/ps cannot exec under Seatbelt, so no file needs a trap-only exception
+# No trap-only exceptions: owner fences and process identity use the native peercred bridge, without /bin/ps.

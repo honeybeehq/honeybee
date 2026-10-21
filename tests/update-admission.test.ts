@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -133,10 +134,14 @@ test("status query follows a live endpoint record to a relocated socket and igno
   const f = await fixture();
   try {
     await writeFile(f.statusFile, `const fs=require('node:fs'); fs.writeFileSync(${JSON.stringify(join(f.dir, "args.json"))}, JSON.stringify(process.argv.slice(2))); console.log(${JSON.stringify(JSON.stringify(f.status))});`);
-    const record = { schema: 1, instanceId: "live", dataDir: join(f.dir, "v2"), socketPath: "/tmp/hived-abc123/hived.sock", startedAt: 1 };
+    const socketDir = join(f.dir, "socket");
+    await mkdir(socketDir, { mode: 0o700 });
+    const native = createRequire(import.meta.url)(join(process.cwd(), "dist", "v2", "peercred", `${process.platform}-${process.arch}`, "peercred.node")).inspectProcess(process.pid);
+    assert.equal(native.kind, "present");
+    const record = { schema: 1, instanceId: "live", dataDir: join(f.dir, "v2"), socketPath: join(socketDir, "hived.sock"), startedAt: 1, processBirth: native.birth, bootId: native.kind === "present" ? native.bootId : "" };
     await writeFile(join(f.dir, "v2", "hived.endpoint.json"), JSON.stringify({ ...record, pid: process.pid }));
     await assertUpdateAdmission(f.root, f.identity, f.admission);
-    assert.deepEqual(JSON.parse(await readFile(join(f.dir, "args.json"), "utf8")), ["update-owner", "status", "--data-dir", join(f.dir, "v2"), "--socket", "/tmp/hived-abc123/hived.sock"]);
+    assert.deepEqual(JSON.parse(await readFile(join(f.dir, "args.json"), "utf8")), ["update-owner", "status", "--data-dir", join(f.dir, "v2"), "--socket", record.socketPath]);
     await writeFile(join(f.dir, "v2", "hived.endpoint.json"), JSON.stringify({ ...record, pid: 2 ** 22 - 1 }));
     await assertUpdateAdmission(f.root, f.identity, f.admission);
     assert.deepEqual(JSON.parse(await readFile(join(f.dir, "args.json"), "utf8")), ["update-owner", "status", "--data-dir", join(f.dir, "v2"), "--socket", join(f.dir, "v2", "hived.sock")]);

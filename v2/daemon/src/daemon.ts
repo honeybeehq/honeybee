@@ -824,6 +824,12 @@ export class HiveDaemon {
     }
   }
 
+  private daemonProcessIdentity() {
+    const identity = inspectProcess(process.pid);
+    if (identity.kind !== "present") throw new Error("daemon identity unavailable for endpoint publication");
+    return identity;
+  }
+
   private async startProfiled(): Promise<void> {
     const storage = this.performance.startSpan("daemon.start.storage");
     this.activeStartupPhase = storage;
@@ -1082,7 +1088,7 @@ export class HiveDaemon {
       performance: this.performance,
     });
     try {
-      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), tmuxSocketPath: this.tmuxSocketPath, pid: process.pid, startedAt: this.startedAt }));
+      await this.rpc.listen(() => writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), tmuxSocketPath: this.tmuxSocketPath, pid: process.pid, startedAt: this.startedAt, processBirth: this.daemonProcessIdentity().birth, bootId: this.daemonProcessIdentity().bootId }));
     } catch (error) {
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       throw error;

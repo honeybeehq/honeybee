@@ -8,9 +8,12 @@ test("test network guard: a test daemon env refuses real provider hosts and allo
   assert.equal(isTestDaemonEnv({ HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1" }), true);
   assert.equal(isTestDaemonEnv({ HIVE_V2_DATA_DIR: "/x" }), false);
   const realFetch = globalThis.fetch;
+  const marker = globalThis as { __hiveMetaLoopback?: boolean };
+  const savedMarker = marker.__hiveMetaLoopback;
   const savedMeta = process.env.HIVE_TEST_META_URL;
   t.after(() => {
     globalThis.fetch = realFetch;
+    marker.__hiveMetaLoopback = savedMarker;
     if (savedMeta === undefined) delete process.env.HIVE_TEST_META_URL;
     else process.env.HIVE_TEST_META_URL = savedMeta;
   });
@@ -34,6 +37,11 @@ test("test network guard: a test daemon env refuses real provider hosts and allo
   assert.equal(await local.text(), "ok");
   const redirectUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/redirect`;
   await assert.rejects(fetch(redirectUrl), /fetch failed/, "a loopback redirect cannot reach a provider");
+  marker.__hiveMetaLoopback = true;
+  process.env.HIVE_TEST_META_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  for (const variant of ["https://AUTH.META.COM", "https://auth.meta.com:443/oauth/token", "https://auth.meta.com"]) {
+    assert.equal(await (await fetch(variant)).text(), "ok", "guard rewrites normalized Meta variants itself");
+  }
   const manual = await fetch(redirectUrl, { redirect: "manual" });
   assert.equal(manual.status, 302);
 });

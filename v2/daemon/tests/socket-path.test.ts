@@ -17,10 +17,10 @@ function deepDir(root: string): string {
 }
 
 test("socket placement: a data dir whose sockets fit keeps them in place", () => {
-  const root = mkdtempSync(join("/var/tmp", "hb-sp-"));
+  const root = mkdtempSync(join(tmpdir(), "hb-sp-"));
   try {
-    const placed = placeDaemonSockets(root, join(root, "hived.sock"), { runnerSocketDir: "/var/tmp" });
-    assert.deepEqual(placed, { socketPath: join(root, "hived.sock"), tmuxSocketPath: join(root, "tmux.sock"), runnerSocketDir: "/var/tmp", socketDir: null });
+    const placed = placeDaemonSockets(root, join(root, "hived.sock"), { runnerSocketDir: tmpdir() });
+    assert.deepEqual(placed, { socketPath: join(root, "hived.sock"), tmuxSocketPath: join(root, "tmux.sock"), runnerSocketDir: tmpdir(), socketDir: null });
     assert.equal(existsSync(join(root, SOCKET_DIR_RECORD_FILE)), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -32,7 +32,7 @@ test("socket placement: a deep data dir moves every socket into one short dir th
   try {
     const dir = deepDir(root);
     assert.equal(socketPathFits(join(dir, "hived.sock")), false);
-    const placed = placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir });
+    const placed = placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir, bases: [join(root, "s")] });
     assert.ok(placed.socketDir, "a short dir was created");
     assert.equal(dirname(placed.socketPath), placed.socketDir);
     assert.equal(dirname(placed.tmuxSocketPath), placed.socketDir);
@@ -40,13 +40,13 @@ test("socket placement: a deep data dir moves every socket into one short dir th
     for (const path of [placed.socketPath, placed.tmuxSocketPath, join(placed.runnerSocketDir, `hb-rh-${"0".repeat(16)}.sock`)]) {
       assert.ok(socketPathFits(path), `${path} fits`);
     }
-    assert.match(placed.socketDir!, /\/hived-[A-Za-z0-9]{6}$/);
+    assert.match(placed.socketDir!, /\/[a-f0-9]{12}$/);
     assert.equal(readFileSync(join(dir, SOCKET_DIR_RECORD_FILE), "utf8").trim(), placed.socketDir);
-    const again = placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir });
+    const again = placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir, bases: [join(root, "s")] });
     assert.deepEqual(again, placed, "the recorded short dir is reused");
     rmSync(placed.socketDir!, { recursive: true, force: true });
-    const replaced = placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir });
-    assert.notEqual(replaced.socketDir, placed.socketDir, "a vanished short dir is replaced");
+    const replaced = placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir, bases: [join(root, "s")] });
+    assert.equal(replaced.socketDir, placed.socketDir, "a vanished short dir is recreated at the stable private path");
     rmSync(replaced.socketDir!, { recursive: true, force: true });
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -57,47 +57,22 @@ test("socket placement: a recorded dir that is world-writable or a symlink to a 
   const root = mkdtempSync(join(tmpdir(), "hb-sp-trust-"));
   try {
     const dir = deepDir(root);
-    const place = () => placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir });
+    const place = () => placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir, bases: [join(root, "s")] });
     const first = place();
     assert.ok(first.socketDir && ownedPrivateDir(first.socketDir), "a freshly minted dir is private and owned");
 
     chmodSync(first.socketDir!, 0o777);
     assert.equal(ownedPrivateDir(first.socketDir!), false);
-    const afterLoose = place();
-    assert.notEqual(afterLoose.socketDir, first.socketDir, "a 0777 recorded dir is replaced");
-    assert.ok(ownedPrivateDir(afterLoose.socketDir!));
-    assert.equal(readFileSync(join(dir, SOCKET_DIR_RECORD_FILE), "utf8").trim(), afterLoose.socketDir);
+    assert.throws(place, /socket directory is not private/);
+    chmodSync(first.socketDir!, 0o700);
+    const foreign = mkdtempSync(join(root, "foreign-"));
+    const link = join(root, "link");
+    symlinkSync(foreign, link);
+    writeFileSync(join(dir, SOCKET_DIR_RECORD_FILE), `${link}\n`);
+    const afterLink = place();
+    assert.equal(afterLink.socketDir, first.socketDir, "untrusted recorded paths cannot change the designated private path");
+    assert.ok(ownedPrivateDir(afterLink.socketDir!));
 
-    const foreign = mkdtempSync(join("/var/tmp", "hb-sp-foreign-"));
-    const link = join("/var/tmp", `hb-sp-link-${process.pid}`);
-    const ancestorLink = join("/var/tmp", `hb-sp-ancestor-${process.pid}`);
-    const minted: string[] = [first.socketDir!, afterLoose.socketDir!];
-    try {
-      chmodSync(foreign, 0o777);
-      rmSync(link, { force: true });
-      symlinkSync(foreign, link);
-      writeFileSync(join(dir, SOCKET_DIR_RECORD_FILE), `${link}\n`);
-      assert.equal(ownedPrivateDir(link), false);
-      const afterLink = place();
-      minted.push(afterLink.socketDir!);
-      assert.notEqual(afterLink.socketDir, link, "a symlink to a foreign 0777 dir is replaced");
-      assert.ok(ownedPrivateDir(afterLink.socketDir!));
-      assert.equal(readFileSync(join(dir, SOCKET_DIR_RECORD_FILE), "utf8").trim(), afterLink.socketDir);
-
-      rmSync(ancestorLink, { force: true });
-      symlinkSync(dirname(afterLink.socketDir!), ancestorLink);
-      const throughAncestor = join(ancestorLink, basename(afterLink.socketDir!));
-      assert.equal(ownedPrivateDir(throughAncestor), false, "a path through a symlinked ancestor is not the recorded dir");
-      writeFileSync(join(dir, SOCKET_DIR_RECORD_FILE), `${throughAncestor}\n`);
-      const afterAncestor = place();
-      minted.push(afterAncestor.socketDir!);
-      assert.notEqual(afterAncestor.socketDir, throughAncestor);
-      assert.equal(afterAncestor.socketDir, realpathSync(afterAncestor.socketDir!), "the record holds a real path");
-    } finally {
-      for (const path of [...minted, foreign]) rmSync(path, { recursive: true, force: true });
-      rmSync(link, { force: true });
-      rmSync(ancestorLink, { force: true });
-    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -105,7 +80,7 @@ test("socket placement: a recorded dir that is world-writable or a symlink to a 
 
 test("socket placement: the fit check uses the real path of the base", () => {
   const root = mkdtempSync(join(tmpdir(), "hb-sp-real-"));
-  const link = join("/var/tmp", `hb-sp-base-${process.pid}`);
+  const link = join(tmpdir(), `hb-sp-base-${process.pid}`);
   try {
     let real = realpathSync(root);
     const name = "x.sock";
@@ -128,10 +103,10 @@ test("socket placement: the refusal names the path when no base can hold a short
     assert.throws(
       () => placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir, bases: [dir] }),
       (error: unknown) => error instanceof RpcError && error.code === "socket_path_too_long"
-        && error.message.includes(join(dir, "hived-XXXXXX")) && error.message.includes(String(UNIX_SOCKET_PATH_LIMIT)),
+        && error.message.includes(dir) && error.message.includes(String(UNIX_SOCKET_PATH_LIMIT)),
     );
     assert.throws(
-      () => placeDaemonSockets(dir, join(dir, "explicit.sock"), { runnerSocketDir: "/var/tmp" }),
+      () => placeDaemonSockets(dir, join(dir, "explicit.sock"), { runnerSocketDir: tmpdir() }),
       (error: unknown) => error instanceof RpcError && error.code === "socket_path_too_long"
         && error.message.includes(join(dir, "explicit.sock")) && error.details?.socketPath === join(dir, "explicit.sock"),
     );
@@ -147,7 +122,7 @@ test("a daemon on a deep data dir listens on a short socket that clients find th
   writeFileSync(join(dir, "config.json"), readFileSync(join(d.dir, "config.json")));
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir);
+    daemon = await startDaemon(dir, { env: { HOME: join(d.dir, "h") } });
     const record = readLiveEndpointRecord(dir);
     assert.ok(record, "endpoint record");
     assert.ok(socketPathFits(record.socketPath), `${record.socketPath} fits`);
@@ -163,7 +138,7 @@ test("a daemon on a deep data dir listens on a short socket that clients find th
     client.close();
     assert.equal(info.socketPath, record.socketPath);
     assert.equal(info.dataDir, dir);
-    assert.match(daemon.output(), /listening on .*hived-[A-Za-z0-9]{6}\/hived\.sock/);
+    assert.match(daemon.output(), /listening on .*\.hive\/s\/[a-f0-9]{12}\/hived\.sock/);
   } finally {
     const socketDir = daemon ? dirname(daemon.socketPath) : null;
     await daemon?.stop();

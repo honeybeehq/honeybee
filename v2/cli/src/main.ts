@@ -4556,7 +4556,8 @@ async function attachToBee(
   if (generation == null) throw new Error(`hive attach: ${bee.id} has no recorded runtime generation`);
   const session = sessionNameFor(bee.id, generation);
   const socket = readLiveEndpointRecord(ctx.cfg.dataDir)?.tmuxSocketPath ?? join(ctx.cfg.dataDir, "tmux.sock");
-  const command = `tmux -S ${socket} attach-session -t =${session}`;
+  const quote = (value: string) => "'" + value.replaceAll("'", "'\"'\"'") + "'";
+  const command = `tmux -S ${quote(socket)} attach-session -t ${quote(`=${session}`)}`;
   if (opts.print || parsed.flags.get("--print") === true || ctx.json) {
     emit(ctx, [command], { beeId: bee.id, session, socket, command }, false);
     return 0;

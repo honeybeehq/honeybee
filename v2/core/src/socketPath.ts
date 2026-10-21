@@ -1,4 +1,6 @@
-import { lstatSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const UNIX_SOCKET_PATH_LIMIT = process.platform === "darwin" ? 104 : 108;
@@ -32,7 +34,7 @@ export function requireSocketPathFits(path: string, what: string): string {
   );
 }
 
-export function shortSocketDir(prefix: string, name: string, bases: Array<string | undefined> = [process.env.TMPDIR, "/var/tmp", "/tmp"]): string {
+export function shortSocketDir(prefix: string, name: string, bases: Array<string | undefined> = [join(homedir(), ".hive", "s")]): string {
   const probes: string[] = [];
   for (const given of bases) {
     if (!given) continue;
@@ -68,14 +70,19 @@ export function ownedPrivateDir(path: string): boolean {
   }
 }
 
-export function persistentSocketDir(dataDir: string, name: string, bases?: Array<string | undefined>): string {
-  const recordPath = join(dataDir, "socket-dir");
-  try {
-    const recorded = readFileSync(recordPath, "utf8").trim();
-    if (recorded && ownedPrivateDir(recorded) && socketPathFits(join(recorded, name))) return recorded;
-  } catch {}
-  const dir = realpathSync(shortSocketDir("hived-", name, bases));
-  writeFileSync(recordPath, `${dir}\n`, { mode: 0o600 });
+/** Stable control sockets live outside the scratch/cache grants of Cell sandboxes. */
+export function persistentSocketDir(dataDir: string, name: string, bases: Array<string | undefined> = [join(homedir(), ".hive", "s")]): string {
+  const given = bases.find((path): path is string => !!path);
+  const digest = createHash("sha256").update(realpathSync(dataDir)).digest("hex").slice(0, 12);
+  if (!given) throw new SocketPathTooLongError("no private socket base", name);
+  requireSocketPathFits(join(given, digest, name), "private control");
+  mkdirSync(given, { recursive: true, mode: 0o700 });
+  const base = realpathSync(given);
+  if (!ownedPrivateDir(base)) throw new Error(`socket base is not a private real directory: ${base}`);
+  const dir = join(base, digest);
+  requireSocketPathFits(join(dir, name), "private control");
+  mkdirSync(dir, { mode: 0o700, recursive: true });
+  if (!ownedPrivateDir(dir)) throw new Error(`socket directory is not private: ${dir}`);
+  writeFileSync(join(dataDir, "socket-dir"), `${dir}\n`, { mode: 0o600 });
   return dir;
 }
-

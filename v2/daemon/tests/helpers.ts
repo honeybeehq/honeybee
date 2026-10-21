@@ -1,3 +1,4 @@
+import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
 /**
  * WP4 test helpers. SAFETY: everything runs against fresh OS temp dirs
  * (mkdtemp) — store, socket, logs, session logs. Never ~/.hive, never the
@@ -319,13 +320,8 @@ let ownerBirth: string | undefined;
 
 export function ownerBoundEnv(nodeOptions = ""): { HIVE_TEST_OWNER_PID: string; HIVE_TEST_OWNER_BIRTH: string; NODE_OPTIONS: string } {
   if (ownerBirth === undefined) {
-    let birth: string;
-    try {
-      birth = execFileSync("ps", ["-p", String(process.pid), "-o", "lstart="], { encoding: "utf8", env: { ...process.env, LC_ALL: "C", TZ: "UTC" } }).trim().replace(/\s+/g, " ");
-    } catch (error) {
-      throw new Error(`ownerBoundEnv: cannot read this test process's birth with ps, so test daemons could outlive a recycled owner pid: ${error instanceof Error ? error.message : String(error)}`);
-    }
-    if (birth.length === 0) throw new Error("ownerBoundEnv: ps printed no birth for this test process, so test daemons could outlive a recycled owner pid");
+    const birth = exactProcessBirth(process.pid);
+    if (!birth) throw new Error("ownerBoundEnv: native owner birth unavailable; refusing an unfenced test daemon");
     ownerBirth = birth;
   }
   return { HIVE_TEST_OWNER_PID: String(process.pid), HIVE_TEST_OWNER_BIRTH: ownerBirth, NODE_OPTIONS: `${nodeOptions} --import=${join(here, "fixtures", "owner-bound.mjs")}`.trim() };

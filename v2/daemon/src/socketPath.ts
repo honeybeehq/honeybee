@@ -1,5 +1,5 @@
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { persistentSocketDir, requireSocketPathFits, shortSocketDir as pickShortSocketDir, socketPathFits, SocketPathTooLongError, UNIX_SOCKET_PATH_LIMIT } from "../../core/src/socketPath.ts";
 import { RpcError } from "./protocol.ts";
 
@@ -39,7 +39,7 @@ export function placeDaemonSockets(
   options: { runnerSocketDir?: string; bases?: Array<string | undefined> } = {},
 ): SocketPlacement {
   const defaultSocket = join(dataDir, "hived.sock");
-  const explicit = configuredSocketPath !== defaultSocket;
+  const explicit = resolve(configuredSocketPath) !== resolve(defaultSocket);
   if (explicit) assertSocketPathFits(configuredSocketPath, "configured daemon");
   const tmuxDefault = join(dataDir, "tmux.sock");
   const runnerDefault = options.runnerSocketDir ?? tmpdir();
