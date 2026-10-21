@@ -8,13 +8,13 @@ import { RpcServer, assertAutomationSend, toRpcError, type RpcConn } from "../sr
 import { RpcClient } from "../../cli/src/client.ts";
 import { PeerCredentials } from "../src/peerCredentials.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
-import { RpcError, type RpcVerb } from "../src/protocol.ts";
+import type { RpcVerb } from "../src/protocol.ts";
 import { HiveDaemon } from "../src/daemon.ts";
 import { loadNodeConfig } from "../src/config.ts";
 import { CoreError } from "../../core/src/index.ts";
 import { openCoreStore, type CoreStore } from "../../core/src/store.ts";
 
-const code = (expected: string) => (error: unknown) => error instanceof RpcError && error.code === expected;
+const code = (expected: string) => (error: unknown) => toRpcError(error).code === expected;
 const kinds = ["tell-reprompt", "tell-mode", "role-refresh", "obligation-notice", "proof-notice", "context-notice", "blocking_decision", "actionable_warning"];
 const connection: RpcConn = { ingress: "local_unix", automationAuthority: true, send() {}, subscribeWatch() {}, alignWatch() {} };
 
@@ -99,6 +99,7 @@ test("daemon keeps policy off by default, protects policy, and rejects tmux enab
     assert.deepEqual(snapshot.mailBatchingPolicies, r.store.listMailBatchingPolicies());
     assert.deepEqual(snapshot.mailBatches, r.store.listMailBatches());
     assert.equal((r.call("mail.batching.set", { beeId: r.bee.id, enabled: true, idempotencyKey: "policy" }) as { deduped: boolean }).deduped, true);
+    assert.equal((r.call("mail.batching.set", { beeId: r.bee.id, enabled: false, idempotencyKey: "policy" }) as { enabled: boolean }).enabled, true);
     assert.throws(() => r.call("mail.batching.set", { beeId: r.bee.id, enabled: "true" }), code("invalid_request"));
     const tmux = r.store.createBee({ name: "legacy", agent: "stub", substrate: "tmux", cwd: r.bee.cwd }).bee;
     assert.throws(() => r.call("mail.batching.set", { beeId: tmux.id, enabled: true }), code("mail_batching_unsupported"));
@@ -121,6 +122,10 @@ test("daemon sends metadata once and rejects replay classification changes befor
     assert.throws(() => r.call("send", { ...plain, automationKind: "context-notice" }), code("idempotency_conflict"));
     assert.equal(r.store.listMessages(r.bee.id).length, 2);
     assert.equal(r.store.mailBatchingPolicy(r.bee.id).enabled, false);
+    r.store.deleteBee(r.bee.id);
+    assert.equal(r.store.getMessage(first.messageId), null);
+    assert.throws(() => r.call("send", { ...params, automationKind: undefined, automationRef: undefined }), code("idempotency_conflict"));
+    assert.throws(() => r.call("send", { ...params, automationRef: "question:other" }), code("idempotency_conflict"));
   } finally { r.close(); }
 });
 

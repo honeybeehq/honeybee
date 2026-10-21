@@ -2153,13 +2153,6 @@ export class HiveDaemon {
         return this.mustStore().setHumanFirstPolicy(this.requireBee(params), params.enabled);
       case "send":
         if (conn.humanChat?.humanFirst === true && this.mustStore().getBee(this.param(params, "beeId"))?.substrate === "tmux") throw new RpcError("human_first_unsupported", "tmux cannot guarantee fresh human turns");
-        {
-          const key = this.idempotencyKeyOf(params);
-          const prior = key ? this.mustStore().lookupRpcResult(key) : null;
-          const messageId = (prior?.result as SendRpcResult | undefined)?.messageId;
-          const original = prior?.verb === "send" && typeof messageId === "number" ? this.mustStore().getMessage(messageId) : null;
-          if (original && ((original.automationKind ?? undefined) !== params.automationKind || (original.automationRef ?? undefined) !== params.automationRef)) throw new RpcError("idempotency_conflict", "Send key is already bound to different automation metadata");
-        }
         this.mustStore().assertHumanChatBinding(conn.humanChat, this.param(params, "body"), this.param(params, "beeId"), this.idempotencyKeyOf(params) ?? undefined);
         return this.withIdempotency(verb, params, () => this.rpcSend(params, conn.humanChat));
       case "mail.cancel": {
@@ -2606,7 +2599,7 @@ export class HiveDaemon {
 
   private phoneRequestBinding(params: Record<string, unknown>): { lane: string; digest: string } {
     const lane = String((params as Record<PropertyKey, unknown>)[PHONE_LANE] ?? "legacy");
-    if (lane === "legacy") return { lane, digest: canonicalDigest({ lane }) };
+    if (lane === "legacy") return { lane, digest: canonicalDigest(params.automationKind === undefined ? { lane } : { lane, automationKind: params.automationKind, automationRef: params.automationRef ?? null }) };
     return { lane, digest: (params as Record<PropertyKey, unknown>)[PHONE_DIGEST] as string ?? canonicalDigest(JSON.parse(JSON.stringify({ params, lane, phoneOrigin: this.phoneOriginOf(params) ?? null, carrierDigest: (params as Record<PropertyKey, unknown>)[PHONE_CARRIER_DIGEST] ?? null }))) };
   }
 
