@@ -1,3 +1,4 @@
+import { recordedSocketPath } from "./daemonSocketPath.js";
 import { lstatSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -36,7 +37,7 @@ export async function readUpdateReservation(root: string): Promise<DurableUpdate
     }
   }
   if (!existsOrThrow(storePath)) return null;
-  const response = await readLiveUpdateOwner(socketPath, dataDir);
+  const response = await readLiveUpdateOwner(recordedSocketPath(dataDir), dataDir);
   if (response.kind === "live") {
     const live = response.owner;
     if (!live || typeof live !== "object" || Array.isArray(live)

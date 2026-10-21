@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync } from "node:fs";
+import { lstatSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const UNIX_SOCKET_PATH_LIMIT = process.platform === "darwin" ? 104 : 108;
@@ -32,7 +32,7 @@ export function requireSocketPathFits(path: string, what: string): string {
   );
 }
 
-export function shortSocketDir(prefix: string, name: string, bases: Array<string | undefined> = [process.env.TMPDIR, "/tmp"]): string {
+export function shortSocketDir(prefix: string, name: string, bases: Array<string | undefined> = [process.env.TMPDIR, "/var/tmp", "/tmp"]): string {
   const probes: string[] = [];
   for (const given of bases) {
     if (!given) continue;
@@ -57,3 +57,25 @@ export function shortSocketDir(prefix: string, name: string, bases: Array<string
     probes,
   );
 }
+
+export function ownedPrivateDir(path: string): boolean {
+  try {
+    const stat = lstatSync(path);
+    return stat.isDirectory() && !stat.isSymbolicLink() && stat.uid === process.geteuid?.() && (stat.mode & 0o777) === 0o700
+      && realpathSync(path) === path;
+  } catch {
+    return false;
+  }
+}
+
+export function persistentSocketDir(dataDir: string, name: string, bases?: Array<string | undefined>): string {
+  const recordPath = join(dataDir, "socket-dir");
+  try {
+    const recorded = readFileSync(recordPath, "utf8").trim();
+    if (recorded && ownedPrivateDir(recorded) && socketPathFits(join(recorded, name))) return recorded;
+  } catch {}
+  const dir = realpathSync(shortSocketDir("hived-", name, bases));
+  writeFileSync(recordPath, `${dir}\n`, { mode: 0o600 });
+  return dir;
+}
+
