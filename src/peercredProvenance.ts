@@ -71,7 +71,7 @@ export async function verifyPeercredCi(input: { sourceHead: string; target: stri
   const artifact = object(await api(`${prefix}/artifacts/${input.artifactId}`));
   const repository = object(run.repository), owner = object(artifact.workflow_run);
   if (run.id !== input.ciRun || repository.full_name !== "honeybeehq/honeybee" || run.event !== "push"
-    || run.head_branch !== "main" || run.head_sha !== input.sourceHead || run.path !== ".github/workflows/ci.yml"
+    || run.head_branch !== "main" || run.head_sha !== input.sourceHead || ![".github/workflows/ci.yml", ".github/workflows/ci.yml@main"].includes(String(run.path))
     || run.status !== "completed" || run.conclusion !== "success"
     || job.id !== input.ciJob || job.run_id !== input.ciRun || job.status !== "completed" || job.conclusion !== "success"
     || typeof job.name !== "string" || !job.name.startsWith("peercred (") || !job.name.includes(input.target)
