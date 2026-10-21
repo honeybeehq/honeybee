@@ -2599,7 +2599,7 @@ export class HiveDaemon {
 
   private phoneRequestBinding(params: Record<string, unknown>): { lane: string; digest: string } {
     const lane = String((params as Record<PropertyKey, unknown>)[PHONE_LANE] ?? "legacy");
-    if (lane === "legacy") return { lane, digest: canonicalDigest(params.automationKind === undefined ? { lane } : { lane, automationKind: params.automationKind, automationRef: params.automationRef ?? null }) };
+    if (lane === "legacy") return { lane, digest: canonicalDigest(typeof params.automationKind !== "string" ? { lane } : { lane, automationKind: params.automationKind, automationRef: typeof params.automationRef === "string" ? params.automationRef : null }) };
     return { lane, digest: (params as Record<PropertyKey, unknown>)[PHONE_DIGEST] as string ?? canonicalDigest(JSON.parse(JSON.stringify({ params, lane, phoneOrigin: this.phoneOriginOf(params) ?? null, carrierDigest: (params as Record<PropertyKey, unknown>)[PHONE_CARRIER_DIGEST] ?? null }))) };
   }
 
