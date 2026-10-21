@@ -2080,6 +2080,7 @@ export interface CellGcTrimOutcome {
 }
 
 export interface CellGcResult {
+  diagnostics?: CellGcPassDiagnostics;
   dryRun: boolean;
   plannedAt: number;
   policy: {
@@ -2119,7 +2120,25 @@ export type CellGcPassKind = (typeof CELL_GC_PASS_KINDS)[number];
 export const CELL_GC_PASS_OUTCOMES = ["ok", "nothing_to_do", "floor_met", "floor_unmet", "failed", "dry_run"] as const;
 export type CellGcPassOutcome = (typeof CELL_GC_PASS_OUTCOMES)[number];
 
+export interface CellGcPassDiagnostics {
+  errorCount: number;
+  inspectErrors: number;
+  applyErrors: number;
+  refused: number;
+  cellCount: number;
+  truncated: boolean;
+  byReason: Partial<Record<CellGcReason, number>>;
+  byCell: Array<{
+    cellId: string | null;
+    beeId: string;
+    reason: CellGcReason;
+    verdict: CellGcVerdict;
+    outcome: CellGcOutcome["status"] | CellGcTrimOutcome["status"] | null;
+  }>;
+}
+
 export interface CellGcPassSummary {
+  diagnostics?: CellGcPassDiagnostics;
   kind: CellGcPassKind;
   startedAt: number;
   endedAt: number;
