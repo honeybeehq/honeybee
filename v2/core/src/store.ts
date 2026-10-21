@@ -1,5 +1,6 @@
+import { automationDeliveryClass, type AutomationKind, type MailBatch, type MailBatchingPolicy } from "./types.ts";
 import type { HumanChatAdmission, HumanChatProvenance, HumanChatReceipt, HumanFirstPolicy } from "./types.ts";
-import { HUMAN_FIRST_SQL } from "./schema.ts";
+import { HUMAN_FIRST_SQL, MAIL_BATCHING_SQL } from "./schema.ts";
 import { createHash } from "node:crypto";
 import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
 import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
@@ -1447,6 +1448,9 @@ function mapMessage(r: Row): MessageRow {
     enqueuedAt: Number(r.enqueued_at),
     deliveredAt: r.delivered_at == null ? null : Number(r.delivered_at),
     deliveredGeneration: r.delivered_generation == null ? null : Number(r.delivered_generation),
+    ...(r.automation_kind == null ? {} : { automationKind: String(r.automation_kind) as AutomationKind }),
+    ...(r.automation_ref == null ? {} : { automationRef: String(r.automation_ref) }),
+    ...(r.mail_batch_id == null ? {} : { mailBatchId: String(r.mail_batch_id) }),
     ...(r.human_chat == null ? {} : { humanChat: JSON.parse(String(r.human_chat)) as HumanChatProvenance }),
     ...(r.sender_kind == null ? {} : { senderKind: r.sender_kind as SenderKind }),
   };
@@ -1867,6 +1871,7 @@ export class CoreStore {
       this.stmt("INSERT INTO meta(key, value) VALUES('human_ref_installation_id', ?)").run(randomUUID());
     }
     this.db.exec(HUMAN_FIRST_SQL);
+    this.db.exec(MAIL_BATCHING_SQL);
     this.humanRefInstallationId(); // Missing/corrupt completed-v30 identity never silently remints.
     if (stored < SCHEMA_VERSION) {
       // v1 → v2: additive idempotency_key column on commands. A FRESH database
@@ -3352,6 +3357,7 @@ export class CoreStore {
   private applyWakeIfNeeded(beeId: string): WakeResult {
     const bee = this.mustGetBee(beeId);
     if (isInboxAgent(bee.agent)) return { command: null, outcome: "mailbox_only" };
+    if (!this.batchingWakeEligible(beeId)) return { command: null, outcome: "no_mail" };
     const current = this.currentRuntime(beeId);
     const targetGeneration = current?.generation ?? 0;
     const thread = this.threadOperationForSuccessor(beeId);
@@ -4335,6 +4341,7 @@ export class CoreStore {
       if (this.currentRuntime(input.beeId)?.generation !== input.generation) throw new StaleGenerationError("delivery decision generation is stale");
       const message = this.getMessage(input.messageId), intent = this.getDeliveryConfirmationIntent(input.messageId);
       const confirmation = this.deliveryConfirmations(input.beeId).find(row => row.messageId === input.messageId);
+      if (message?.mailBatchId) throw new CoreError("batch_frozen");
       if (!message || message.beeId !== input.beeId || message.deliveredAt !== null || !intent || confirmation?.state !== "held") throw new DeliveryNotHeldError("delivery_not_held: message is not held");
       this.assertDeliveryAuditSize({ decision: input, prior: intent }, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES);
       if (input.action === "resend_anyway") this.assertDeliveryAuditSize({ replacement: message }, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES);
@@ -4450,6 +4457,105 @@ export class CoreStore {
     return { envelope: { ...this.makePhoneOrigin(raw, contentDigest, key, beeId), contentDigest }, originalContent };
   }
 
+  mailBatchingPolicy(beeId: string): MailBatchingPolicy {
+    const row = this.stmt("SELECT * FROM mail_batching_policies WHERE bee_id=?").get(beeId) as Row | undefined;
+    return { beeId, enabled: row?.enabled === 1, updatedAt: row?.updated_at == null ? null : Number(row.updated_at) };
+  }
+
+  listMailBatchingPolicies(): MailBatchingPolicy[] {
+    return (this.stmt("SELECT bee_id FROM mail_batching_policies ORDER BY bee_id").all() as Row[]).map(row => this.mailBatchingPolicy(String(row.bee_id)));
+  }
+
+  setMailBatchingPolicy(beeId: string, enabled: boolean): MailBatchingPolicy {
+    return this.tx(() => {
+      this.mustGetBee(beeId);
+      const previous = this.mailBatchingPolicy(beeId);
+      if (previous.enabled === enabled) return previous;
+      const policy = { beeId, enabled, updatedAt: this.now() };
+      this.stmt("INSERT INTO mail_batching_policies VALUES(?,?,?) ON CONFLICT(bee_id) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at").run(beeId, Number(enabled), policy.updatedAt);
+      this.audit("mail.batching.put", beeId, { policy });
+      if (!enabled) this.applyWakeIfNeeded(beeId);
+      return policy;
+    });
+  }
+
+  unansweredHumanOpen(_beeId: string): boolean { return false; }
+
+  activeHumanWindow(beeId: string): boolean {
+    const received = this.humanFirstPolicy(beeId).lastHumanReceivedAt;
+    const runtime = this.currentRuntime(beeId);
+    return received !== null && this.now() - received < 120_000 || runtime != null && runtime.state !== "stopped" && this.humanTurnActive(beeId, runtime.generation) || this.unansweredHumanOpen(beeId);
+  }
+
+  listMailBatches(beeId?: string): MailBatch[] {
+    return (this.stmt("SELECT row_json FROM mail_batches WHERE (? IS NULL OR bee_id=?) ORDER BY id").all(beeId ?? null, beeId ?? null) as Row[]).map(row => JSON.parse(String(row.row_json)) as MailBatch);
+  }
+
+  mailBatchForMessage(messageId: number): MailBatch | null {
+    const row = this.stmt("SELECT batch.row_json FROM mailbox AS message JOIN mail_batches AS batch ON batch.id=message.mail_batch_id WHERE message.id=?").get(messageId) as Row | undefined;
+    return row ? JSON.parse(String(row.row_json)) as MailBatch : null;
+  }
+
+  private putMailBatch(batch: MailBatch): MailBatch {
+    this.stmt("INSERT INTO mail_batches VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET row_json=excluded.row_json").run(batch.id, batch.beeId, JSON.stringify(batch));
+    this.audit("mail.batch.put", batch.beeId, { batch });
+    return batch;
+  }
+
+  freezeMailBatch(beeId: string): MailBatch | null {
+    return this.tx(() => {
+      const existing = this.listMailBatches(beeId).find(batch => batch.deliveredAt === null);
+      if (existing) return existing;
+      const policy = this.mailBatchingPolicy(beeId);
+      if (!policy.enabled || this.activeHumanWindow(beeId)) return null;
+      const members = this.undeliveredMessages(beeId).filter(message => !message.humanChat && automationDeliveryClass(message.automationKind) === "ordinary");
+      const seed = this.pendingHumanFirstSeedMessageId(beeId), handoff = this.pendingHandoffSeedMessageId(beeId);
+      const eligible = members.filter(message => message.id !== seed && message.id !== handoff && !message.deliveryHold && !message.deliveryConfirmation).slice(0,64);
+      if (!eligible.length) return null;
+      const at = this.now();
+      const batch: MailBatch = { id: `batch-${beeId}-${eligible[0]!.id}`, beeId, memberIds: eligible.map(message => message.id), cutoff: eligible.at(-1)!.id, policyRevision: policy.updatedAt ?? 0, frozenAt: at, deliveredAt: null, deliveredGeneration: null };
+      this.putMailBatch(batch);
+      for (const id of batch.memberIds) this.stmt("UPDATE mailbox SET mail_batch_id=? WHERE id=?").run(batch.id,id);
+      return batch;
+    });
+  }
+
+  readMailBatch(beeId: string, batchId: string, messageId: number, offset = 0, limit = 16384) {
+    const batch = this.listMailBatches(beeId).find(batch => batch.id === batchId);
+    if (!batch || !batch.memberIds.includes(messageId)) throw new CoreError("batch_member_not_found");
+    const message = this.getMessage(messageId);
+    if (!message || message.beeId !== beeId) throw new CoreError("batch_member_not_found");
+    const bytes = Buffer.from(message.body);
+    if (!Number.isSafeInteger(offset) || offset < 0 || offset > bytes.length || !Number.isSafeInteger(limit) || limit < 4 || limit > 16384 || offset < bytes.length && (bytes[offset]! & 192) === 128) throw new CoreError("batch_page_invalid");
+    let end = Math.min(bytes.length, offset + limit);
+    while (end < bytes.length && (bytes[end]! & 192) === 128) end--;
+    return { batchId, messageId, body: bytes.subarray(offset,end).toString(), offset, nextOffset: end === bytes.length ? null : end, totalBytes: bytes.length };
+  }
+
+  markMailBatchDelivered(batchId: string, generation: number, reorderMessageIds: number[] = []): { applied: boolean } {
+    return this.tx(() => {
+      const batch = this.listMailBatches().find(row => row.id === batchId);
+      if (!batch || batch.deliveredAt !== null) return { applied: false };
+      const current = this.currentRuntime(batch.beeId);
+      if (!current || current.generation !== generation || !LIVE_STATES.includes(current.state)) return { applied: false };
+      for (const id of batch.memberIds) {
+        const message = this.getMessage(id);
+        if (!message || message.deliveredAt !== null || message.mailBatchId !== batch.id) throw new CoreError("batch membership changed");
+      }
+      for (let index = 0; index < batch.memberIds.length; index++) {
+        if (!this.commitMessageDelivery(batch.memberIds[index]!,generation,index === 0 ? { kind: "mail", from: "automation:background-digest" } : undefined,false,index === 0 ? reorderMessageIds : [],true).applied) throw new CoreError("batch settlement failed");
+      }
+      this.putMailBatch({ ...batch, deliveredAt: this.now(), deliveredGeneration: generation });
+      return { applied: true };
+    });
+  }
+
+  private batchingWakeEligible(beeId: string): boolean {
+    if (!this.mailBatchingPolicy(beeId).enabled || !this.activeHumanWindow(beeId)) return true;
+    const seed = this.pendingHumanFirstSeedMessageId(beeId), handoff = this.pendingHandoffSeedMessageId(beeId);
+    return this.undeliveredMessages(beeId).some(message => message.humanChat || message.id === seed || message.id === handoff || automationDeliveryClass(message.automationKind) !== "ordinary");
+  }
+
   humanFirstPolicy(beeId: string): HumanFirstPolicy {
     const row = this.stmt("SELECT * FROM human_first_policies WHERE bee_id = ?").get(beeId) as Row | undefined;
     return row ? { beeId, enabled: row.enabled === 1, updatedAt: row.updated_at == null ? null : Number(row.updated_at), lastHumanReceivedAt: row.last_human_received_at == null ? null : Number(row.last_human_received_at) } : { beeId, enabled: false, updatedAt: null, lastHumanReceivedAt: null };
@@ -4508,7 +4614,7 @@ export class CoreStore {
   send(
     beeId: string,
     body: string,
-    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; humanChat?: HumanChatAdmission; replayHumanChatMessageId?: number; phone?: { origin: PhoneOriginRequest; key: string } } = {},
+    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; humanChat?: HumanChatAdmission; automationKind?: AutomationKind; automationRef?: string; replayHumanChatMessageId?: number; phone?: { origin: PhoneOriginRequest; key: string } } = {},
   ): SendResult {
     const urgency = opts.urgency ?? "next";
     if (opts.senderKind !== undefined && !(SENDER_KINDS as readonly string[]).includes(opts.senderKind)) throw new CoreError(`unknown sender kind: ${String(opts.senderKind)}`);
@@ -4542,8 +4648,8 @@ export class CoreStore {
       if (opts.replayHumanChatMessageId !== undefined && (!replaySource || replaySource.beeId !== beeId || replaySource.body !== normalizedBody || replaySource.sender !== sender || opts.humanChat)) throw new CoreError("Human chat replay must preserve the original target, sender and body");
       const humanChat: HumanChatProvenance | undefined = opts.humanChat ? { version: 1, authorityId: opts.humanChat.authorityId, admissionId: opts.humanChat.admissionId, receivedAt: at } : replaySource?.humanChat;
       const res = this.db
-        .prepare("INSERT INTO mailbox(bee_id, sender, body, priority, urgency, enqueued_at, sender_kind, human_chat) VALUES(?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(beeId, sender, normalizedBody, opts.priority ?? 0, urgency, at, opts.senderKind ?? null, humanChat ? JSON.stringify(humanChat) : null);
+        .prepare("INSERT INTO mailbox(bee_id, sender, body, priority, urgency, enqueued_at, sender_kind, human_chat,automation_kind,automation_ref) VALUES(?, ?, ?, ?, ?, ?, ?, ?,?,?)")
+        .run(beeId, sender, normalizedBody, opts.priority ?? 0, urgency, at, opts.senderKind ?? null, humanChat ? JSON.stringify(humanChat) : null, opts.automationKind ?? null, opts.automationRef ?? null);
       const message: MessageRow = {
         id: Number(res.lastInsertRowid),
         beeId,
@@ -4557,6 +4663,8 @@ export class CoreStore {
         ...(opts.senderKind === undefined ? {} : { senderKind: opts.senderKind }),
         ...(phoneInput ? { phoneInput, renderedBody: normalizedBody } : {}),
         ...(humanChat ? { humanChat } : {}),
+        ...(opts.automationKind ? { automationKind: opts.automationKind } : {}),
+        ...(opts.automationRef ? { automationRef: opts.automationRef } : {}),
       };
       if (opts.humanChat) {
         this.stmt("INSERT INTO human_chat_admissions(idempotency_key,authority_id,admission_id,bee_id,body_sha256,policy_enabled,message_id) VALUES(?,?,?,?,?,?,?)").run(opts.humanChat.idempotencyKey, opts.humanChat.authorityId, opts.humanChat.admissionId, beeId, opts.humanChat.bodySha256, opts.humanChat.humanFirst === undefined ? null : Number(opts.humanChat.humanFirst), message.id);
@@ -4856,7 +4964,7 @@ export class CoreStore {
   cancelMessage(
     beeId: string,
     messageId: number,
-  ): { canceled: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" | "confirmation_pending" } {
+  ): { canceled: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" | "confirmation_pending" | "batch_frozen" } {
     return this.cancelMessageInternal(beeId, messageId, false);
   }
 
@@ -4867,12 +4975,13 @@ export class CoreStore {
     this.auditMailCanceled(message, "requested", at, intent ? { owner, confirmation: publicDeliveryConfirmation(intent) } : undefined);
   }
 
-  private cancelMessageInternal(beeId: string, messageId: number, explicitDecision: boolean, owner = "mail.delivery.drop"): { canceled: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" | "confirmation_pending" } {
+  private cancelMessageInternal(beeId: string, messageId: number, explicitDecision: boolean, owner = "mail.delivery.drop"): { canceled: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" | "confirmation_pending" | "batch_frozen" } {
     return this.tx(() => {
       const message = this.getMessage(messageId);
       if (!message) return { canceled: false, reason: "not_found" };
       if (message.beeId !== beeId) return { canceled: false, reason: "bee_mismatch" };
       if (message.deliveredAt != null) return { canceled: false, reason: "delivered" };
+      if (message.mailBatchId) return { canceled: false, reason: "batch_frozen" };
       if (!explicitDecision && this.getDeliveryConfirmationIntent(messageId)) return { canceled: false, reason: "confirmation_pending" };
       const canceledAt = this.now();
       this.removeOwnedMessage(message, owner, canceledAt);
@@ -4891,13 +5000,14 @@ export class CoreStore {
     beeId: string,
     messageId: number,
     urgency: Urgency,
-  ): { applied: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" } {
+  ): { applied: boolean; reason?: "not_found" | "bee_mismatch" | "delivered" | "batch_frozen" } {
     if (!MESSAGE_URGENCIES.includes(urgency)) throw new UnknownUrgencyError(urgency);
     return this.tx(() => {
       const message = this.getMessage(messageId);
       if (!message) return { applied: false, reason: "not_found" };
       if (message.beeId !== beeId) return { applied: false, reason: "bee_mismatch" };
       if (message.deliveredAt != null) return { applied: false, reason: "delivered" };
+      if (message.mailBatchId) return { applied: false, reason: "batch_frozen" };
       this.stmt("UPDATE mailbox SET urgency = ? WHERE id = ?").run(urgency, messageId);
       this.audit("mail.expedited", message.beeId, { messageId, from: message.urgency, to: urgency });
       return { applied: true };
@@ -4924,7 +5034,7 @@ export class CoreStore {
     });
   }
 
-  private commitMessageDelivery(messageId: number, generation: number, source: TurnTriggerSource | undefined, recoveredFallback: boolean, reorderMessageIds?: unknown): { applied: boolean } {
+  private commitMessageDelivery(messageId: number, generation: number, source: TurnTriggerSource | undefined, recoveredFallback: boolean, reorderMessageIds?: unknown, batchSettlement = false): { applied: boolean } {
     return this.tx(() => {
       const message = this.getMessage(messageId);
       if (!message) throw new CoreError(`message not found: ${messageId}`);
@@ -4936,6 +5046,7 @@ export class CoreStore {
         });
         return { applied: false };
       }
+      if (message.mailBatchId && !batchSettlement) return { applied: false };
       const intent = this.getDeliveryConfirmationIntent(messageId);
       if (intent && intent.generation !== generation) return { applied: false };
       const current = this.currentRuntime(message.beeId);
@@ -10846,6 +10957,8 @@ export class CoreStore {
   /** Deterministic snapshot of all replayable state (meta and audit excluded). */
   dumpState(): StateDump {
     return {
+      ...(this.listMailBatchingPolicies().length ? { mailBatchingPolicies: this.listMailBatchingPolicies() } : {}),
+      ...(this.listMailBatches().length ? { mailBatches: this.listMailBatches() } : {}),
       ...(this.listHumanFirstPolicies().length ? { humanFirstPolicies: this.listHumanFirstPolicies() } : {}),
       ...(this.listHumanChatAdmissions().length ? { humanChatAdmissions: this.listHumanChatAdmissions() } : {}),
       ...(this.listDeliveryConfirmationIntents().length ? { deliveryConfirmationIntents: this.listDeliveryConfirmationIntents() } : {}),
