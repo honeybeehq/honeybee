@@ -1,3 +1,4 @@
+import assert from 'node:assert/strict'
 import { createCliFixture } from './cli-fixture.mjs'
 import http from 'node:http'
 import { spawn } from 'node:child_process'
@@ -18,7 +19,9 @@ const endOriginal=()=>fixture.turnEnded()
 const server=http.createServer(async(req,res)=>{
  let raw='';for await(const chunk of req)raw+=chunk
  if(!req.url.includes('responses')){res.writeHead(200,{'content-type':'application/json'});res.end('{}');return}
- const body=JSON.parse(raw);count++;log('provider-request',{count,body})
+ const body=JSON.parse(raw)
+ if(!Array.isArray(body.input)||!body.tools?.some(t=>['exec_command','shell_command','shell'].includes(t.name))){log('provider-aux-request',{url:req.url,body});res.writeHead(200,{'content-type':'application/json'});res.end('{}');return}
+ fixture.nativeRequest();count++;log('provider-request',{count,body})
  const first=count===1
  const tool=body.tools.find(x=>x.name==='exec_command')??body.tools.find(x=>x.name==='shell_command')??body.tools.find(x=>x.name==='shell')
  const args=tool?.name==='exec_command'?{cmd:'sleep 2; printf TOOL_RESULT_SENTINEL',yield_time_ms:10000}:tool?.name==='shell_command'?{command:'sleep 2; printf TOOL_RESULT_SENTINEL',timeout_ms:10000}:{command:['bash','-lc','sleep 2; printf TOOL_RESULT_SENTINEL'],timeout_ms:10000}
@@ -36,7 +39,9 @@ const server=http.createServer(async(req,res)=>{
 })
 await new Promise(r=>server.listen(0,'127.0.0.1',r))
 writeFileSync(`${root}/config/config.toml`,`model = "gpt-5.4"\nmodel_provider = "fixture"\n[model_providers.fixture]\nname = "Fixture"\nbase_url = "http://127.0.0.1:${server.address().port}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\n`)
-child=spawn(process.env.B1_CODEX_BIN ?? '/home/trmd/.local/share/apiary-satellite/bin/codex',['app-server'],{cwd:`${root}/cwd`,env:{HOME:`${root}/home`,TMPDIR:`${root}/tmp`,CODEX_HOME:`${root}/config`,PATH:'/usr/local/bin:/usr/bin:/bin'}})
+const binary=process.env.B1_CODEX_BIN ?? '/home/trmd/.local/share/apiary-satellite/bin/codex'
+fixture.recordBinary(binary)
+child=spawn(binary,['app-server'],{cwd:`${root}/cwd`,env:{HOME:`${root}/home`,TMPDIR:`${root}/tmp`,CODEX_HOME:`${root}/config`,PATH:'/usr/local/bin:/usr/bin:/bin'}})
 let rest=''
 child.stdout.on('data',chunk=>{rest+=chunk;const lines=rest.split('\n');rest=lines.pop();for(const line of lines){let obj;try{obj=JSON.parse(line)}catch{log('stdout-other',line);continue}log('stdout',obj)
  if(obj.error)throw Error(JSON.stringify(obj.error)); if(obj.id===1&&obj.result){child.stdin.write('{"method":"initialized"}\n');send('thread/start',{cwd:`${root}/cwd`,approvalPolicy:'never',sandbox:'danger-full-access',model:'gpt-5.4'})}
@@ -48,5 +53,5 @@ process.once('uncaughtException',error=>{log('failure',String(error.stack ?? err
 child.stderr.on('data',chunk=>log('stderr',String(chunk)))
 send('initialize',{clientInfo:{name:'fixture',version:'1'},capabilities:{}})
 const timeout=setTimeout(()=>{log('timeout',{});process.exitCode=1;child.kill('SIGTERM')},25000)
-await new Promise(r=>child.on('exit',(code,signal)=>{log('exit',{code,signal});r()}));clearTimeout(timeout);server.close();fixture.verify();log('final-mailbox',fixture.inspect());fixture.close();console.log(root)
+await new Promise(r=>child.on('exit',(code,signal)=>{log('exit',{code,signal});if(code!==0||signal)process.exitCode=1;r()}));clearTimeout(timeout);server.close();assert.ok(!process.exitCode,'native CLI must exit cleanly');try{fixture.verify();log('final-mailbox',fixture.inspect())}finally{fixture.close()}console.log(root)
 
