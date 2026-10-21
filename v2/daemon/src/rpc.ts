@@ -469,6 +469,19 @@ export class RpcServer {
           assertAutomationSend(params, authorized);
           return this.opts.dispatch(verb, params, authorized);
         }
+        if (verb === "mail.batch.read") {
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "Batch reads require the registered direct local Apiary authority or its authenticated owning bee.");
+          this.trust.require(peer, conn.ingress);
+          const context = frame.context;
+          if (context !== undefined && (!context || typeof context !== "object" || Array.isArray(context))) throw new RpcError("caller_not_trusted", "Invalid batch read context.");
+          if (automationContext?.humanChat !== undefined || automationContext?.phoneOrigin !== undefined || automationContext?.phoneLane !== undefined) throw new RpcError("caller_not_trusted", "Batch reads cannot use human or phone admission.");
+          const principal = automationContext?.sessionPrincipal;
+          if (principal === undefined) return this.opts.dispatch(verb, params, { ...conn, automationAuthority: true });
+          if (!principal || typeof principal !== "object" || Array.isArray(principal)) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal.");
+          const beeId = (principal as Record<string, unknown>).beeId;
+          if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256 || beeId.includes("\0") || beeId !== params.beeId) throw new RpcError("caller_not_trusted", "Batch reads require the authenticated owning bee.");
+          return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
+        }
         if (verb === "mail.batching.set" || verb === "mail.batching.get" || verb === "mail.batch.resolve") {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null
             || automationContext?.sessionPrincipal !== undefined || automationContext?.humanChat !== undefined
