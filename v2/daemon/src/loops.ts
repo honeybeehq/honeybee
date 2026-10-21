@@ -456,6 +456,7 @@ export class DaemonCore {
       this.scaleToZeroPolicy(snapshot.work);
       this.degradedMailPolicy(snapshot.work);
     });
+    this.store.releaseBatchingWakes();
     this.performance.measureSync("core.step.commands", () => this.executeCommands());
     this.performance.measureSync("core.step.moves", () => this.reconcileMoves());
     this.performance.measureSync("core.step.handoffs", () => this.reconcileHandoffs());
@@ -2023,7 +2024,7 @@ export class DaemonCore {
   private humanFirstState(beeId: string, generation = this.store.currentRuntime(beeId)?.generation ?? -1) {
     const policy = this.store.humanFirstPolicy(beeId);
     const enabled = policy.enabled || this.store.mailBatchingPolicy(beeId).enabled;
-    return { enabled, seed: enabled ? this.store.pendingHumanFirstSeedMessageId(beeId) : null, head: enabled ? this.store.pendingHumanChatId(beeId) : null, active: enabled && this.store.humanTurnActive(beeId, generation) };
+    return { enabled, seed: enabled ? this.store.pendingHumanFirstSeedMessageId(beeId) : null, head: enabled ? this.store.pendingHumanChatId(beeId) : null, active: enabled && (this.store.humanTurnActive(beeId, generation) || this.store.mailBatchingPolicy(beeId).enabled && this.batchingTurnActive(beeId,generation)) };
   }
 
   private humanFirstEligible(message: Pick<MessageRow, "id" | "urgency" | "humanChat">, midTurn: boolean, state: ReturnType<DaemonCore["humanFirstState"]>): boolean {
@@ -2033,6 +2034,13 @@ export class DaemonCore {
       return !(midTurn || state.active) || message.urgency === "now";
     }
     return !midTurn || message.urgency !== "idle";
+  }
+
+  private batchingTurnActive(beeId: string, generation: number): boolean {
+    const trigger = this.store.getBee(beeId)?.lastTurnTrigger;
+    if (!trigger || trigger.generation !== generation || trigger.endedAt !== null || trigger.messageId === null) return false;
+    const message = this.store.getMessage(trigger.messageId);
+    return message?.mailBatchId !== undefined || message?.automationKind !== undefined;
   }
 
   private batchingEligible(beeId: string, messageId: number, midTurn: boolean): boolean {

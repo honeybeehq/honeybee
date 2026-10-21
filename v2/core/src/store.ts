@@ -4471,10 +4471,11 @@ export class CoreStore {
       this.mustGetBee(beeId);
       const previous = this.mailBatchingPolicy(beeId);
       if (previous.enabled === enabled) return previous;
+      if (!enabled && this.listMailBatches(beeId).some(batch => batch.deliveredAt === null)) throw new CoreError("batch_frozen");
       const policy = { beeId, enabled, updatedAt: this.now() };
       this.stmt("INSERT INTO mail_batching_policies VALUES(?,?,?) ON CONFLICT(bee_id) DO UPDATE SET enabled=excluded.enabled,updated_at=excluded.updated_at").run(beeId, Number(enabled), policy.updatedAt);
       this.audit("mail.batching.put", beeId, { policy });
-      if (!enabled) this.applyWakeIfNeeded(beeId);
+      if (!enabled && this.hasUndeliveredMessage(beeId)) this.applyWakeIfNeeded(beeId);
       return policy;
     });
   }
@@ -4538,6 +4539,8 @@ export class CoreStore {
       if (!batch || batch.deliveredAt !== null) return { applied: false };
       const current = this.currentRuntime(batch.beeId);
       if (!current || current.generation !== generation || !LIVE_STATES.includes(current.state)) return { applied: false };
+      const anchorIntent = this.getDeliveryConfirmationIntent(batch.memberIds[0]!);
+      if (anchorIntent?.wireLine !== null && anchorIntent !== null && (anchorIntent.settlement?.mailBatchId !== batch.id || stableStringify(anchorIntent.settlement.batchMemberIds) !== stableStringify(batch.memberIds))) throw new CoreError("batch confirmation membership differs");
       for (const id of batch.memberIds) {
         const message = this.getMessage(id);
         if (!message || message.deliveredAt !== null || message.mailBatchId !== batch.id) throw new CoreError("batch membership changed");
@@ -4547,6 +4550,14 @@ export class CoreStore {
       }
       this.putMailBatch({ ...batch, deliveredAt: this.now(), deliveredGeneration: generation });
       return { applied: true };
+    });
+  }
+
+  releaseBatchingWakes(): void {
+    this.tx(() => {
+      for (const policy of this.listMailBatchingPolicies()) {
+        if (policy.enabled && this.hasUndeliveredMessage(policy.beeId) && this.batchingWakeEligible(policy.beeId)) this.applyWakeIfNeeded(policy.beeId);
+      }
     });
   }
 

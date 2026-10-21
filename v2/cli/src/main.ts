@@ -225,6 +225,7 @@ interface Parsed {
 const LIST_FLAGS = new Set(["--add", "--remove", "--option", "--ref", "--env", "--input", "--output", "--only-account"]);
 
 const VALUE_FLAGS = new Set([
+  "--offset",
   "--command-id",
   "--agent",
   "--cwd",
@@ -3154,6 +3155,19 @@ async function cmdList(ctx: CliContext, parsed: Parsed): Promise<number> {
   return 0;
 }
 
+async function cmdMailBatch(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const [,needle,batchId,rawId] = parsed.positional;
+  const messageId = Number(rawId), offset = Number(parsed.flags.get("--offset") ?? 0), limit = Number(parsed.flags.get("--limit") ?? 16384);
+  if (!needle || !batchId || !Number.isSafeInteger(messageId) || messageId < 1 || !Number.isSafeInteger(offset) || offset < 0 || !Number.isSafeInteger(limit) || limit < 4 || limit > 16384) throw new Error("usage: hive mail-batch <bee> <batch-id> <message-id> [--offset <bytes>] [--limit <bytes>] [--json]");
+  const {result,stale} = await readPath(ctx, async c => {
+    const list = await c.request<ListResult>("list");
+    const beeId = resolveBeeIn(list.views,needle);
+    return c.request<{body:string}>("mail.batch.read",{beeId,batchId,messageId,offset,limit});
+  }, store => store.readMailBatch(resolveBeeIn(store.list(null),needle),batchId,messageId,offset,limit));
+  emit(ctx,result.body,result,stale);
+  return 0;
+}
+
 const MAILBOX_USAGE = "usage: hive mailbox <bee> [--since <message-id>] [--unread]";
 
 async function cmdMailbox(ctx: CliContext, parsed: Parsed): Promise<number> {
@@ -4969,6 +4983,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       case "ls":
       case "ps":
         return await cmdList(ctx, parsed);
+      case "mail-batch":
+        return await cmdMailBatch(ctx, parsed);
       case "mailbox":
         return await cmdMailbox(ctx, parsed);
       case "ack":
