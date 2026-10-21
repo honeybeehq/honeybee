@@ -134,3 +134,14 @@ test("batch reads validate paging before accessing the bee-scoped core reader", 
     assert.deepEqual(reads, [[r.bee.id, "fixture", 1, 0, 16384]]);
   } finally { r.close(); }
 });
+
+
+test("frozen group mutation refusals remain typed at the RPC boundary", () => {
+  const r = daemonFixture();
+  try {
+    r.store.cancelMessage = () => ({ canceled: false, reason: "batch_frozen" });
+    r.store.expediteMessage = () => ({ applied: false, reason: "batch_frozen" });
+    assert.throws(() => r.call("mail.cancel", { beeId: r.bee.id, messageId: 1 }), code("batch_frozen"));
+    assert.throws(() => r.call("mail.expedite", { beeId: r.bee.id, messageId: 1, urgency: "now" }), code("batch_frozen"));
+  } finally { r.close(); }
+});

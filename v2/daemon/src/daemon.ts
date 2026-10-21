@@ -2170,7 +2170,7 @@ export class HiveDaemon {
             this.mailMutationBeeId(params, messageId, verb),
             messageId,
           );
-          if (!res.canceled) throw new RpcError("invalid_request", `mail.cancel: message ${res.reason}`);
+          if (!res.canceled) throw new RpcError(res.reason === "batch_frozen" ? "batch_frozen" : "invalid_request", `mail.cancel: message ${res.reason}`);
           return res;
         });
       }
@@ -2202,7 +2202,7 @@ export class HiveDaemon {
             messageId,
             urgency as Urgency,
           );
-          if (!res.applied) throw new RpcError("invalid_request", `mail.expedite: message ${res.reason}`);
+          if (!res.applied) throw new RpcError(res.reason === "batch_frozen" ? "batch_frozen" : "invalid_request", `mail.expedite: message ${res.reason}`);
           return res;
         });
       }
