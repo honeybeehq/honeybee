@@ -1,0 +1,185 @@
+{
+  "scope": "disposable Honeybee daemon, real RPC and stub HSR; not real data",
+  "passed": true,
+  "log": [
+    {
+      "phase": "during tool",
+      "rows": [
+        {
+          "id": 1,
+          "beeId": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+          "sender": "operator",
+          "body": "@hang original tool turn",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792578148392,
+          "deliveredAt": 1792578148411,
+          "deliveredGeneration": 1
+        },
+        {
+          "id": 2,
+          "beeId": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+          "sender": "operator",
+          "body": "BACKGROUND",
+          "priority": 0,
+          "urgency": "idle",
+          "enqueuedAt": 1792578148444,
+          "deliveredAt": null,
+          "deliveredGeneration": null,
+          "senderKind": "automation"
+        },
+        {
+          "id": 3,
+          "beeId": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+          "sender": "operator",
+          "body": "@hang HUMAN",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792578148445,
+          "deliveredAt": null,
+          "deliveredGeneration": null,
+          "humanChat": {
+            "version": 1,
+            "authorityId": "fixture-workstation",
+            "admissionId": "chat-1",
+            "receivedAt": 1792578148445
+          }
+        }
+      ]
+    },
+    {
+      "phase": "human next turn",
+      "rows": [
+        {
+          "id": 1,
+          "beeId": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+          "sender": "operator",
+          "body": "@hang original tool turn",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792578148392,
+          "deliveredAt": 1792578148411,
+          "deliveredGeneration": 1
+        },
+        {
+          "id": 2,
+          "beeId": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+          "sender": "operator",
+          "body": "BACKGROUND",
+          "priority": 0,
+          "urgency": "idle",
+          "enqueuedAt": 1792578148444,
+          "deliveredAt": null,
+          "deliveredGeneration": null,
+          "senderKind": "automation"
+        },
+        {
+          "id": 3,
+          "beeId": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+          "sender": "operator",
+          "body": "@hang HUMAN",
+          "priority": 0,
+          "urgency": "next",
+          "enqueuedAt": 1792578148445,
+          "deliveredAt": 1792578148585,
+          "deliveredGeneration": 1,
+          "humanChat": {
+            "version": 1,
+            "authorityId": "fixture-workstation",
+            "admissionId": "chat-1",
+            "receivedAt": 1792578148445
+          }
+        }
+      ],
+      "view": {
+        "view": {
+          "beeId": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+          "exists": true,
+          "lifecycle": "active",
+          "generation": 1,
+          "runtimeState": "idle",
+          "exitCause": null,
+          "working": false,
+          "waitingForYou": true,
+          "lastOutputAt": 1792578148584,
+          "reachable": true,
+          "blocked": false,
+          "flags": []
+        },
+        "bee": {
+          "id": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+          "name": "human-fixture",
+          "agent": "stub",
+          "substrate": "hsr",
+          "cwd": "/proc/1901184/cwd/.proof/H2B/tmp/hb-v2-daemon-MKeRow",
+          "title": null,
+          "tags": [],
+          "sessionLogPath": "/proc/1901184/cwd/.proof/H2B/tmp/hb-v2-daemon-MKeRow/session-logs/7c80cb64-9211-4801-85b5-a7e1210d8bec.jsonl",
+          "lifecycle": "active",
+          "createdAt": 1792578148030,
+          "archivedAt": null,
+          "lastOutputAt": 1792578148584,
+          "providerSessionId": "stub-1902371",
+          "env": {},
+          "importedFrom": null,
+          "spawnFailures": 0,
+          "args": null,
+          "parentId": null,
+          "parentExternal": false,
+          "forkedFrom": null,
+          "forkSeed": null,
+          "account": null,
+          "handle": "ST.0000",
+          "human_ref": null,
+          "issuing_namespace": null,
+          "placementVersion": 0,
+          "activeMoveId": null,
+          "cellId": null,
+          "activeHandoffId": null,
+          "lastTurnTrigger": {
+            "kind": "human",
+            "from": "operator",
+            "messageId": 3,
+            "generation": 1,
+            "startedAt": 1792578148585,
+            "humanAt": 1792578148585,
+            "endedAt": null
+          },
+          "lastHumanOutputAt": 1792578148584
+        },
+        "runtime": {
+          "beeId": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+          "generation": 1,
+          "state": "idle",
+          "exitCause": null,
+          "pid": 1902296,
+          "pidStartedAt": 1792578148228,
+          "bootEvidence": "real",
+          "startedAt": 1792578148030,
+          "updatedAt": 1792578148584
+        },
+        "move": null,
+        "cell": null,
+        "handoff": null
+      },
+      "policy": {
+        "beeId": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+        "enabled": true,
+        "updatedAt": 1792578148445,
+        "lastHumanReceivedAt": 1792578148445
+      }
+    },
+    {
+      "phase": "snapshot",
+      "policies": [
+        {
+          "beeId": "7c80cb64-9211-4801-85b5-a7e1210d8bec",
+          "enabled": true,
+          "updatedAt": 1792578148445,
+          "lastHumanReceivedAt": 1792578148445
+        }
+      ]
+    }
+  ],
+  "daemonOutput": "hived v2 listening on /proc/1901184/cwd/.proof/H2B/tmp/hb-v2-daemon-MKeRow/hived.sock (store /proc/1901184/cwd/.proof/H2B/tmp/hb-v2-daemon-MKeRow/core.sqlite3)\n"
+}

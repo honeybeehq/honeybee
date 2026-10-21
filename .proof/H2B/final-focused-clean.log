@@ -1,0 +1,182 @@
+forage: host trmd-metal-1 (linux/x86_64, 96 cores, load 7.28, 3 forage jobs)
+forage: synced honeybee-bf9ebc3f @ 31445904c7 in 1,847,903µs
+forage: lane honeybee-bf9ebc3f.1 · scratch /home/trmd/.cache/fj/vFQ1Yf · network shared · scope forage-vFQ1Yf-1999188
+npm warn using --force Recommended protections disabled.
+npm warn EBADDEVENGINES The developer of this package has specified the following through devEngines
+npm warn EBADDEVENGINES Invalid devEngines.packageManager
+npm warn EBADDEVENGINES Invalid semver version ">=11 <12" does not match "12.0.1" for "packageManager"
+npm warn EBADDEVENGINES {
+npm warn EBADDEVENGINES   current: { name: 'npm', version: '12.0.1' },
+npm warn EBADDEVENGINES   required: { name: 'npm', version: '>=11 <12', onFail: 'error' }
+npm warn EBADDEVENGINES }
+npm notice run honeybee@0.0.1 check
+npm notice run tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit
+npm notice
+npm notice New minor version of npm available! 12.0.1 -> 12.2.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+npm notice To update run: npm install -g npm@12.2.0
+npm notice
+npm warn using --force Recommended protections disabled.
+npm warn EBADDEVENGINES The developer of this package has specified the following through devEngines
+npm warn EBADDEVENGINES Invalid devEngines.packageManager
+npm warn EBADDEVENGINES Invalid semver version ">=11 <12" does not match "12.0.1" for "packageManager"
+npm warn EBADDEVENGINES {
+npm warn EBADDEVENGINES   current: { name: 'npm', version: '12.0.1' },
+npm warn EBADDEVENGINES   required: { name: 'npm', version: '>=11 <12', onFail: 'error' }
+npm warn EBADDEVENGINES }
+npm notice run honeybee@0.0.1 v2:check
+npm notice run tsc -p v2/core/tsconfig.json && tsc -p v2/harness/tsconfig.json && tsc -p v2/adapters/tsconfig.json && tsc -p v2/driver-hsr/tsconfig.json && tsc -p v2/daemon/tsconfig.json && tsc -p v2/cli/tsconfig.json && tsc -p v2/driver-cell/tsconfig.json && tsc -p v2/driver-tmux/tsconfig.json
+npm warn using --force Recommended protections disabled.
+npm warn EBADDEVENGINES The developer of this package has specified the following through devEngines
+npm warn EBADDEVENGINES Invalid devEngines.packageManager
+npm warn EBADDEVENGINES Invalid semver version ">=11 <12" does not match "12.0.1" for "packageManager"
+npm warn EBADDEVENGINES {
+npm warn EBADDEVENGINES   current: { name: 'npm', version: '12.0.1' },
+npm warn EBADDEVENGINES   required: { name: 'npm', version: '>=11 <12', onFail: 'error' }
+npm warn EBADDEVENGINES }
+npm notice run honeybee@0.0.1 build
+npm notice run tsc -p tsconfig.json && node scripts/build-runner-host-artifact.mjs && node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs && node scripts/build-cli-entry.mjs
+runner-host artifact 627f7e4c81d71227c0cf3ad993dabc06bd6e6cfc144691a26a4ccde367dbe95d (1630216 bytes) staged under /home/trmd/.forage/work/honeybee-bf9ebc3f.1/dist/hsr/artifacts
+peer credential bridge linux-x64 (145 C lines)
+{"passed":true,"target":"linux-x64","node":"v24.18.0","uid":1001,"pid":2007861,"processBirth":"linux:2048806591","pidfd":true}
+v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, and dist/v2/runner-host.js (21444 bytes)
+dependency-light cli entry staged at dist/cli.js
+npm notice run honeybee@0.0.1 postbuild
+npm notice run chmod +x dist/cli.js dist/cli-x.js
+✔ listMessages union returns identical rows across mailbox states and never mixes bees (27.339031ms)
+✔ listMessages union survives outer rollback of deliver and cancel with exact rows (12.462274ms)
+✔ listMessages union holds on same-bee heavy delivered history with a tiny pending tail (224.912841ms)
+✔ the union statement is production SQL, merges without a sort, and steals no plans; holds=false (27.602196ms)
+✔ the union statement is production SQL, merges without a sort, and steals no plans; holds=true (25.573013ms)
+✔ mailbox_delivered_by_bee installs on existing stores, pre-v8 stores, and tolerates downgrades (50.42325ms)
+✔ pending projections keep exact order, grouping, identity, and membership through every public transition (32.630749ms)
+✔ pending-metadata index is covering for the actual projection SQL and stays body/JSON-free; holds=false (16.871819ms)
+✔ pending-metadata index is covering for the actual projection SQL and stays body/JSON-free; holds=true (18.568204ms)
+✔ a pre-v8 store migrates urgency before the pending index installs and old mail projects unchanged (23.073673ms)
+✔ human provenance requires registered direct Apiary authority: trust=false (7.798458ms)
+✔ human provenance requires registered direct Apiary authority: trust=true (6.649595ms)
+✔ human-first holds tool-turn input, then runs humans FIFO one turn each before background (34.981345ms)
+✔ unique admission keeps one row and timestamp; conflicting key/body/authority refuses (17.667963ms)
+✔ daemon/store restart while waiting preserves pending order and policy (24.802947ms)
+✔ policy off retains native next accept point and eligible FIFO; senderKind grants no priority (18.707193ms)
+✔ explicit human now retains interrupt semantics under policy (17.052631ms)
+✔ held oldest human blocks younger human and ordinary background (16.428914ms)
+✔ a newer explicit now interrupts without overtaking the oldest human (18.614794ms)
+✔ a policy enabled before a substrate change holds fresh human delivery on tmux (15.184018ms)
+✔ schema 47 migration adds human policy without upgrading legacy senderKind provenance (20.306582ms)
+✔ human policy and admission receipts replay exactly and delete with their bee (18.000532ms)
+✔ I1 suspends intended human-first holds then measures a genuinely eligible delivery refusal (18.160132ms)
+✔ trusted quota recovery delivery gate keeps precedence over pending human chat (19.402757ms)
+✔ core-owned spawn.prompt context precedes human chat; forged sender/body does not (19.667313ms)
+✔ core-owned auth.resume context precedes human chat; forged sender/body does not (16.522796ms)
+✔ trusted auth.resume replay preserves human provenance and one-turn isolation without a new admission (19.132982ms)
+✔ trusted quota.resume replay preserves human provenance and one-turn isolation without a new admission (19.17165ms)
+✔ core next context waits for the active human turn to end (16.98524ms)
+✔ core idle context waits for the active human turn to end (15.953802ms)
+✔ an ineligible spawn.prompt seed holds younger next background mail (16.19903ms)
+✔ an ineligible auth.resume seed holds younger next background mail (16.269396ms)
+✔ observation RPC: local Unix trust, exact account, opaque data, restart and guarded CLI (2490.644719ms)
+✔ observation CLI refuses an old daemon before issuing any observation RPC (404.849824ms)
+✔ account readiness blocks only affected starts; unrelated stop and mail progress; a same-bee stop cancels the deferred start (33.580354ms)
+✔ account readiness failure uses the existing bounded command retry before launch (14.871248ms)
+✔ readiness sees an automatic revive enqueued inside the current core step (17.323727ms)
+✔ model change waits when idle becomes working before command execution (18.667343ms)
+✔ model change admitted during a turn waits for the turn to end, and a newer change replaces it (18.950058ms)
+✔ a runtime ended by stopped_by_user while a model change waits is not restarted, even after boot (19.629446ms)
+✔ a runtime ended by crashed while a model change waits is not restarted, even after boot (18.955145ms)
+✔ bee tmp is released on archive only once no live runtime holds it, and on delete (24.186862ms)
+✔ deferred model change does not block other commands and a stale generation does not restart again (18.695425ms)
+✔ model change recovers after executor crash before_effect (20.12597ms)
+✔ model change recovers after executor crash after_effect (19.461795ms)
+✔ model change resumes after daemon restart between settled stop and observed exit (18.834804ms)
+✔ model change defers across real HSR input admission before the turn observation is folded (386.168791ms)
+✔ unit.0: a tick uses bounded batch reads, independent of bee count, re-read only after a write (53.594487ms)
+✔ unit.0a: the empty proof skips full snapshots and returns fresh containers without skipping flag expiry (14.411819ms)
+✔ unit.0a-disabled: an I1-disabled empty proof carries null instead of an unused array (11.560793ms)
+✔ unit.0b: a revive command refreshes an initially empty snapshot in the same tick (13.706881ms)
+✔ unit.0c: an outer rollback and reused audit sequence cannot preserve an uncommitted snapshot (12.836596ms)
+✔ unit.0d: I1 sees stopped-runtime and absent-runtime mail (18.363467ms)
+✔ unit.0e: task supply refreshes the snapshot before I1 in the same tick (14.724218ms)
+✔ unit.0e.1: limit-tripped task supply stalls after its mail drains on a later tick (16.114443ms)
+✔ unit.0f: fresh final I1 re-ranks the queue after delivery (15.444668ms)
+✔ unit.0g: linear I1 metadata matches the full-snapshot oracle exactly (16.977908ms)
+✔ unit.0i: same-tick I1 reuse cannot cross an outer rollback and reused audit sequence (12.958499ms)
+✔ unit.1: scale-to-zero — idle past the window stops with stopped_by_system; send revives (Q4 + Q3) (17.698099ms)
+✔ unit.2: scale-to-zero never stops an idle bee with undelivered mail (16.370418ms)
+✔ unit.0h: delivery hydrates bodies only for the selected target (18.774464ms)
+✔ unit.time-boundaries: archived boot hang, idle stop, and I1 remain strict (41.502348ms)
+✔ unit.3: flag policy — adapter evidence sets flags and contrary evidence clears them (spec 03) (14.511649ms)
+✔ unit.4: pid-at-spawn recording — procOf lands on the booting runtime row (WP2 amendment) (12.680452ms)
+✔ unit.5: degraded-runtime policy — mail for a re-adopted runtime rotates the generation (17.740863ms)
+✔ unit.6: I1 telemetry — a message undelivered past the deadline is recorded exactly once (14.553602ms)
+✔ unit.7: I1 telemetry — the clock is suspended while a closed-list flag is active (15.275515ms)
+✔ unit.8: continuity (spec 07 §F) — a booted session id is recorded on the bee for the CURRENT generation only; stale/no-bee evidence is skipped (18.679751ms)
+✔ budget.5: immediate-exit runtime → bounded revives with backoff, spawn_failed at the budget, no further wakes (30.90401ms)
+✔ budget.5auth: pre-init agy auth exits consume the budget and suppress churn (31.675005ms)
+✔ budget.5a: prompt-less spawn boot failures still retry to the visible bounded terminal (21.383908ms)
+✔ budget.5b: a driver that THROWS from start (cell provisioning failed) is a spawn failure on the B5 table — retried with backoff, spawn_failed at the budget, never a wedged command or a loop error (24.975185ms)
+✔ budget.6: an explicit operator revive retries regardless of spawn_failed and clears it on success; the mail then flows (31.850148ms)
+✔ budget.7: a runtime that reached running/idle and then crashed is not a spawn failure — revive is immediate and uncounted (21.093512ms)
+✔ budget.7b: repeated boot hangs exhaust one budget and issue one stop per generation (21.440553ms)
+✔ budget.8 (soak regression): readyAtSpawn instant death — the synthetic booted must NOT reset the budget; exactly maxAttempts generations, backoff, spawn_failed, wakes suppressed (31.86465ms)
+✔ budget.9 (I1): a message that never reaches a real runtime violates while the loop retries, and the spawn_failed flag is the legal terminal that suspends the clock (23.893182ms)
+✔ budget.9b (I1, idle urgency): pre-fix the churn re-based the idle clock forever — post-fix the bee lands flagged (the 'or the bee is flagged' arm) (22.83775ms)
+✔ budget.10: real evidence (the late init a readyAtSpawn harness emits) resets the counter — a generation that spoke and then crashed is a normal post-running crash (60.400077ms)
+✔ budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine, emits zero output and dies after observed readiness — bounded generations; fixed harness + operator revive recovers (973.48396ms)
+✔ unit.9 (spec 08 swap): a `stop {thenRevive}` command revives the NEXT generation once the runtime is observed stopped — durable, once, and never while a wake is already pending; the account policy hook sees every applied evidence (47.851092ms)
+✔ D05 boot command probes avoid full history and keep strict thenRevive and future-wake behavior (17.763517ms)
+✔ D05 pending-stop probe treats a future retry as pending and remains a repeated-step no-op (14.610547ms)
+✔ unit.10 (spec 08): the onFlagEvidence hook fires after each applied evidence and a throwing hook never stalls the loop (14.62525ms)
+✔ sandbox tmp evidence owns only its own resource_blocked row and never reaches account policy (16.007332ms)
+✔ runtime policy: a running turn is never stopped because time elapsed (14.377177ms)
+✔ recovered completion checkpoints last, preserves output, and unlocks idle mail (15.846832ms)
+✔ recovery applies completion followed by a newer turn start in journal order (14.447552ms)
+✔ stale-generation recovery observations and cursors cannot touch the current runtime (14.093661ms)
+✔ urgency.d1: `idle` is not delivered while the runtime is running — it lands at turn end (15.976106ms)
+✔ urgency.d2: `now` mid-turn interrupts exactly once, then delivers at the resulting accept point (15.621654ms)
+✔ urgency.d3: `now` to an idle runtime is a plain delivery — no interrupt (14.237117ms)
+✔ urgency.d3a: a confirmed Codex `now` delivery never interrupts the turn it just started (15.198699ms)
+✔ urgency.d3b: a pending Codex `now` delivery never interrupts the turn it just started (14.303196ms)
+✔ urgency.d3c: a distinct later `now` message still interrupts an async-confirmed turn (14.324268ms)
+✔ urgency.d3d: the substrate router forwards the urgent delivery identity (0.155574ms)
+✔ urgency.d4: ordering — urgency governs WHEN a message is eligible; among eligible, enqueue order wins (17.063717ms)
+✔ urgency.d5: `idle` to a stopped bee still revives (revive-on-message unchanged) and delivers once idle (16.960813ms)
+✔ urgency.d6: I1 telemetry — an `idle` message's deadline clock starts at eligibility (turn end), not enqueue (15.549055ms)
+✔ envelope.d1: bee-sent mail is delivered ENVELOPED; operator mail is delivered bare (16.635695ms)
+✔ envelope.d2: a peer `now` that interrupted the turn is delivered with the interrupt notice (15.673953ms)
+✔ envelope.d3: the interrupt notice survives a daemon restart between interrupt and delivery (16.023446ms)
+✔ envelope.d4: operator `now` mail that interrupted the turn is delivered bare (15.289124ms)
+✔ envelope.d5: an operator interrupt delivers nothing and a later peer `now` to the idle bee carries no notice (15.545059ms)
+✔ envelope.d6: an operator interrupt after the delivery interrupt withdraws the notice (15.504167ms)
+✔ envelope.d7: a notice recorded for an earlier generation is not shown to a later one (13.668795ms)
+✔ urgency.d6: idle mail DELIVERS to a synthetic-running fresh revive — no generation churn (2026-08-19 budget.11 discovery) (17.196126ms)
+✔ obs.synthetic-turn_ended: a readyAtSpawn boot-to-ready edge idles the store without an output fact; evidence stays synthetic (2026-09-02 swap-revive stall) (18.343908ms)
+✔ obs.synthetic-turn_ended with mail waiting: the boot-to-ready edge is skipped (mail_pending) — no one-step idle under a turn about to start (17.293192ms)
+✔ unit.flag-expiry: a provider-declared reset lifts resource_blocked at the instant — never before, never by silence (15.747243ms)
+✔ move.claude: no-mail dest idle marks native overlay applied and completes (20.050628ms)
+✔ move.codex: no-mail dest idle completes without a mailbox prefix (17.861594ms)
+✔ move.claude: pending mail keeps overlay pending until prefixed dest deliver (18.995194ms)
+✔ move.stub: dest idle without mail does not auto-complete (18.915114ms)
+✔ move.codex: dest leaving booting (handshake ack) completes no-mail without idle (17.782756ms)
+✔ move.codex: dest crash while starting retries and then completes (19.27912ms)
+✔ move.crash: executor crash after durable admission resumes to complete (21.391059ms)
+✔ z01.a: an outer rollback never loses dedup state and a committed clear follows (17.710257ms)
+✔ z01.b: a live-runtime hive with zero pending still clears (mail-only probe) (15.2987ms)
+✔ z01.c: with I1 disabled an interrupted-then-canceled id is cleared without hydration (15.102225ms)
+✔ z01.d: stopped-target pending mail is retained until the bee is deleted (13.033081ms)
+✔ z01.e: a permanent >1024 backlog sweeps on growth or cadence only, retaining stopped and absent pending (483.35564ms)
+✔ z01.f: the I1-disabled sweep probes tracked ids in bounded chunks, never all pending (73.482451ms)
+✔ z01.g: an outer rollback never lets the sweep forget, and the terminal id prunes once committed (163.466656ms)
+✔ z01.h: retained now-mail stays deduped across revive and cadence sweeps (79.119447ms)
+✔ z01.i: a reentrant onI1Violation step cannot make the outer sweep erase live dedup ids (323.828354ms)
+✔ z01.j: huge pending metadata with a tiny tracked set probes O(tracked), never O(pending) (1990.057504ms)
+ℹ tests 127
+ℹ suites 0
+ℹ pass 127
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6415.651494
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 61,171,080µs · trmd-metal-1

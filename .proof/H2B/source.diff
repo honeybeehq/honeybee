@@ -1,0 +1,1751 @@
+diff --git a/.agents/skills/honeybee-core-work/SKILL.md b/.agents/skills/honeybee-core-work/SKILL.md
+index 4a97bd13..d0a12b6e 100644
+--- a/.agents/skills/honeybee-core-work/SKILL.md
++++ b/.agents/skills/honeybee-core-work/SKILL.md
+@@ -62,7 +62,16 @@ Silence and time passage never prove idle, completion, crash, or unreachability.
+ 
+ - `now`: interrupt, then deliver; `next`: next accept point/default; `idle`: runtime idle.
+ 
+-Urgency controls eligibility, never FIFO order or whether a stopped bee wakes. Map buz
++The optional human-first policy is an explicit eligibility exception: authenticated
++Apiary human next/idle chat waits for a genuine turn end, precedes ordinary pending
++background, and runs one human turn at a time. Background stays ineligible while
++a human is pending or its turn is active. Human-human and background-background
++FIFO and required system seed precedence remain intact. Explicit human now retains
++interrupt semantics. SenderKind alone grants no provenance; policy off preserves
++the ordinary urgency contract. Native self-wake admission races remain a strict
++enablement gate; observed idle alone is not an atomic native fence.
++
++Otherwise urgency controls eligibility, never FIFO order or whether a stopped bee wakes. Map buz
+ compatibility onto this mailbox. Allow `mail.cancel`/`mail.expedite` only before delivery.
+ Measure every accepted message with invariant-1 telemetry: deliver within the policy bound
+ or record a durable structured violation.
+diff --git a/tests/apiary-swap.lab.ts b/tests/apiary-swap.lab.ts
+index b5247fb7..d264765e 100644
+--- a/tests/apiary-swap.lab.ts
++++ b/tests/apiary-swap.lab.ts
+@@ -121,7 +121,7 @@ test("apiary RPC: released identity, acquire/release/abandon/recover lost replie
+     try {
+       assert.ok(f.api.DAEMON_CAPABILITIES.includes(APIARY_SWAP_CAPABILITY));
+       const status = await f.client.request("update.apiarySwap.status");
+-      assert.equal(status.schemaVersion, 47); assert.equal(status.storageSupported, true); assert.deepEqual(status.installedIdentity, identity);
++      assert.equal(status.schemaVersion, 48); assert.equal(status.storageSupported, true); assert.deepEqual(status.installedIdentity, identity);
+       const request = acquire(root);
+       await f.client.request("update.apiarySwap.acquire", request);
+       const held = (await f.client.request("update.apiarySwap.status")).reservation;
+diff --git a/v2/adapters/src/claude.ts b/v2/adapters/src/claude.ts
+index bcef82c1..d1c1e608 100644
+--- a/v2/adapters/src/claude.ts
++++ b/v2/adapters/src/claude.ts
+@@ -194,7 +194,8 @@ export const claudeAdapter: HarnessAdapter = {
+     return [];
+   },
+   parseLine: parseClaudeLine,
+-  encodeMessage(body: string, _ctx: EncodeContext): string | null {
++  encodeMessage(body: string, ctx: EncodeContext): string | null {
++    if (ctx.freshTurn && ctx.turnActive) return null;
+     return encodeClaudeMessage(body);
+   },
+   resumeArgs: claudeResumeArgs,
+diff --git a/v2/adapters/src/codex.ts b/v2/adapters/src/codex.ts
+index 2fee467e..f36918f4 100644
+--- a/v2/adapters/src/codex.ts
++++ b/v2/adapters/src/codex.ts
+@@ -305,6 +305,7 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
+       return JSON.stringify({ jsonrpc: "2.0", id: `hive-reconnect-tools-${commandId}`, method: "config/mcpServer/reload" });
+     },
+     encodeMessage(body: string, ctx: EncodeContext): string | null {
++      if (ctx.freshTurn && ctx.turnActive) return null;
+       if (!ctx.sessionId) return null; // thread id not learned yet → not_ready
+       if (ctx.turnActive && !ctx.turnId) return null; // cannot safely steer without the native precondition
+       return JSON.stringify({
+diff --git a/v2/adapters/src/types.ts b/v2/adapters/src/types.ts
+index 5ce96065..a9abc1f2 100644
+--- a/v2/adapters/src/types.ts
++++ b/v2/adapters/src/types.ts
+@@ -85,6 +85,7 @@ export type AdapterSignal =
+ 
+ /** Context the driver supplies when encoding a delivered mailbox message. */
+ export interface EncodeContext {
++  freshTurn?: boolean;
+   /** Provider session/thread id learned from the `booted` signal, if any. */
+   sessionId: string | null;
+   /** The mailbox message id being delivered (stable across retries). */
+diff --git a/v2/adapters/tests/claude.test.ts b/v2/adapters/tests/claude.test.ts
+index 772e1a0e..a749e887 100644
+--- a/v2/adapters/tests/claude.test.ts
++++ b/v2/adapters/tests/claude.test.ts
+@@ -154,3 +154,10 @@ test("claude: typed authentication failure and HTTP 401 work without provider pr
+   assert.ok(parseClaudeLine(JSON.stringify({ type: "result", is_error: true, api_error_status: 401, result: "Request refused" })).some(signal => signal.kind === "flag" && signal.flag === "auth_needed" && signal.action === "set"));
+   assert.ok(!parseClaudeLine(JSON.stringify({ type: "result", is_error: true, api_error_status: 429, result: "Rate limit exceeded" })).some(signal => signal.kind === "flag" && signal.flag === "auth_needed"));
+ });
++
++
++test("claude: fresh delivery refuses a known active turn and accepts idle", () => {
++  const context = { sessionId: "session", messageId: 1, turnId: null, freshTurn: true };
++  assert.equal(claudeAdapter.encodeMessage("fresh", { ...context, turnActive: true }), null);
++  assert.equal(claudeAdapter.encodeMessage("fresh", { ...context, turnActive: false }), encodeClaudeMessage("fresh"));
++});
+diff --git a/v2/adapters/tests/codex.test.ts b/v2/adapters/tests/codex.test.ts
+index f3a1f909..d0662ed7 100644
+--- a/v2/adapters/tests/codex.test.ts
++++ b/v2/adapters/tests/codex.test.ts
+@@ -394,3 +394,16 @@ test("codex: legacy usage-limit text and failed auth retain their boundaries", (
+     assert.ok(!signals.some(s => s.kind === "flag" && s.action === "clear"));
+   }
+ });
++
++
++test("codex: fresh delivery starts a turn and refuses every known active turn", () => {
++  for (const turnId of [null, "native-turn"]) {
++    assert.equal(adapter.encodeMessage("fresh", { sessionId: "thread", messageId: 41, turnActive: true, turnId, freshTurn: true }), null);
++  }
++  const wire = adapter.encodeMessage("fresh", { sessionId: "thread", messageId: 41, turnActive: false, turnId: "old-turn", freshTurn: true });
++  assert.ok(wire);
++  const request = JSON.parse(wire);
++  assert.equal(request.method, "turn/start");
++  assert.equal(request.params.expectedTurnId, undefined);
++  assert.ok(adapter.parseLine(JSON.stringify({id: request.id, error: {message: "active turn"}})).some(signal => signal.kind === "delivery_refused" && signal.messageId === 41));
++});
+diff --git a/v2/core/src/audit.ts b/v2/core/src/audit.ts
+index d1d6e79b..3c945b6c 100644
+--- a/v2/core/src/audit.ts
++++ b/v2/core/src/audit.ts
+@@ -1,3 +1,4 @@
++import type { HumanFirstPolicy, HumanChatReceipt } from "./types.ts";
+ import { publicDeliveryConfirmation } from "./deliveryConfirmation.ts";
+ import type { DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
+ import { deliveryHold, publicDeliveryFallback, type MultilineDeliveryRow } from "./multilineDelivery.ts";
+@@ -40,6 +41,8 @@ import type {
+ import type { LoginFlowRow } from "./loginFlow.ts";
+ 
+ export function replayAudit(rows: AuditRow[]): StateDump {
++  const humanFirstPolicies = new Map<string, HumanFirstPolicy>();
++  const humanChatAdmissions = new Map<string, HumanChatReceipt>();
+   const deliveryConfirmationIntents = new Map<number, DeliveryConfirmationIntent>();
+   const deliveryConfirmationDecisions = new Map<string, DeliveryConfirmationDecision>();
+   const threadOperations = new Map<string, ThreadOperationRow>();
+@@ -93,6 +96,16 @@ export function replayAudit(rows: AuditRow[]): StateDump {
+   for (const row of rows) {
+     const p = row.payload;
+     switch (row.kind) {
++      case "mail.human_first.put": {
++        const policy = structuredClone(p.policy as HumanFirstPolicy);
++        humanFirstPolicies.set(policy.beeId, policy);
++        break;
++      }
++      case "mail.human_chat.admitted": {
++        const admission = structuredClone(p.admission as HumanChatReceipt);
++        humanChatAdmissions.set(admission.idempotencyKey, admission);
++        break;
++      }
+       case "mail.confirmation_prepared":
+       case "mail.confirmation_held": {
+         const intent = structuredClone(p.row as DeliveryConfirmationIntent);
+@@ -302,6 +315,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
+         const beeId = p.beeId as string;
+         for (const [key, decision] of deliveryConfirmationDecisions) if (decision.receipt.beeId === beeId) deliveryConfirmationDecisions.delete(key);
+         bees.delete(beeId);
++        humanFirstPolicies.delete(beeId);
++        for (const [key, admission] of humanChatAdmissions) if (admission.beeId === beeId) humanChatAdmissions.delete(key);
+         for (const [k, i] of quotaRecoveries) if (i.beeId === beeId) quotaRecoveries.delete(k);
+         for (const [k, i] of authInterruptions) if (i.beeId === beeId) authInterruptions.delete(k);
+         for (const [k, rt] of runtimes) if (rt.beeId === beeId) runtimes.delete(k);
+@@ -677,6 +692,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
+     if (message) message.deliveryConfirmation = publicDeliveryConfirmation(current && current.generation !== intent.generation ? { ...intent, state: "held", reason: "generation_changed" } : intent);
+   }
+   return {
++    ...(humanFirstPolicies.size ? { humanFirstPolicies: [...humanFirstPolicies.values()].sort((a, b) => a.beeId < b.beeId ? -1 : a.beeId > b.beeId ? 1 : 0) } : {}),
++    ...(humanChatAdmissions.size ? { humanChatAdmissions: [...humanChatAdmissions.values()].sort((a, b) => a.idempotencyKey < b.idempotencyKey ? -1 : a.idempotencyKey > b.idempotencyKey ? 1 : 0) } : {}),
+     ...(deliveryConfirmationIntents.size ? { deliveryConfirmationIntents: [...deliveryConfirmationIntents.values()].sort((a, b) => a.messageId - b.messageId) } : {}),
+     ...(deliveryConfirmationDecisions.size ? { deliveryConfirmationDecisions: [...deliveryConfirmationDecisions.values()].sort((a, b) => a.idempotencyKey < b.idempotencyKey ? -1 : a.idempotencyKey > b.idempotencyKey ? 1 : 0) } : {}),
+     ...(deliveryHolds.size ? { deliveryHolds: [...deliveryHolds.values()].sort((a, b) => a.messageId - b.messageId) } : {}),
+diff --git a/v2/core/src/mirror.ts b/v2/core/src/mirror.ts
+index f2ce3a51..f615b188 100644
+--- a/v2/core/src/mirror.ts
++++ b/v2/core/src/mirror.ts
+@@ -100,6 +100,7 @@ export type MirrorLoginFlowRow = LoginFlowRow;
+  * unknown keys stays correct.
+  */
+ export interface MirrorSnapshot {
++  humanFirstPolicies?: import("./types.ts").HumanFirstPolicy[];
+   threadOperations: ThreadOperationView[];
+   seq: number;
+   bees: MirrorBeeRow[];
+@@ -606,3 +607,10 @@ export const MIRROR_CONFIRMATION_OPTIONAL_MESSAGE_KEYS = ["deliveryConfirmation"
+ export const MIRROR_CONFIRMATION_OPTIONAL_HISTORY_KEYS = ["deliveryConfirmation"] as const;
+ export const MIRROR_REPLACEMENT_OPTIONAL_MESSAGE_KEYS = ["queueOrder", "replacesMessageId"] as const;
+ export const MIRROR_REPLACEMENT_OPTIONAL_HISTORY_KEYS = ["queueOrder", "replacesMessageId"] as const;
++
++export const MIRROR_HUMAN_FIRST_AUDIT_KINDS = ["mail.human_first.put"] as const;
++
++export const MIRROR_MESSAGE_OPTIONAL_HUMAN_CHAT_KEYS = ["humanChat"] as const;
++export interface HumanFirstPolicyEvent {
++  policy: import("./types.ts").HumanFirstPolicy;
++}
+diff --git a/v2/core/src/schema.ts b/v2/core/src/schema.ts
+index 7b02c951..945a4731 100644
+--- a/v2/core/src/schema.ts
++++ b/v2/core/src/schema.ts
+@@ -159,7 +159,7 @@
+  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
+  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
+  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
+-export const SCHEMA_VERSION = 47;
++export const SCHEMA_VERSION = 48;
+ 
+ export const QUESTIONS_TABLE_SQL = `
+ CREATE TABLE IF NOT EXISTS questions (
+@@ -476,6 +476,7 @@ CREATE TABLE IF NOT EXISTS mailbox (
+   enqueued_at          INTEGER NOT NULL,
+   delivered_at         INTEGER,
+   delivered_generation INTEGER,
++  human_chat           TEXT,
+   sender_kind          TEXT CHECK (sender_kind IN ('human','automation'))
+ ) STRICT;
+ -- mailbox_undelivered (bee_id, id) was superseded by mailbox_pending_metadata
+@@ -1131,8 +1132,28 @@ export const MAILBOX_PENDING_METADATA_INDEX_SQL =
+  * Additive columns on `mailbox` since v7 — same add-iff-missing discipline as
+  * BEES_ADDITIVE_COLUMNS. v8: urgency.
+  */
++export const HUMAN_FIRST_SQL = `
++CREATE TABLE IF NOT EXISTS human_first_policies (
++ bee_id TEXT PRIMARY KEY REFERENCES bees(id) ON DELETE CASCADE,
++ enabled INTEGER NOT NULL CHECK(enabled IN (0,1)),
++ updated_at INTEGER,
++ last_human_received_at INTEGER
++) STRICT;
++CREATE TABLE IF NOT EXISTS human_chat_admissions (
++ idempotency_key TEXT PRIMARY KEY,
++ authority_id TEXT NOT NULL,
++ admission_id TEXT NOT NULL,
++ bee_id TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
++ body_sha256 TEXT NOT NULL,
++ policy_enabled INTEGER,
++ message_id INTEGER NOT NULL,
++ UNIQUE(authority_id, admission_id)
++) STRICT;
++`;
++
+ export const MAILBOX_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
+   ["urgency", "urgency TEXT NOT NULL DEFAULT 'next' CHECK (urgency IN ('now','next','idle'))"],
++  ["human_chat", "human_chat TEXT"],
+   ["sender_kind", "sender_kind TEXT CHECK (sender_kind IN ('human','automation'))"],
+   ["queue_order", "queue_order INTEGER"],
+   ["replaces_message_id", "replaces_message_id INTEGER"],
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index 31316790..23380af7 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -1,3 +1,5 @@
++import type { HumanChatAdmission, HumanChatProvenance, HumanChatReceipt, HumanFirstPolicy } from "./types.ts";
++import { HUMAN_FIRST_SQL } from "./schema.ts";
+ import { createHash } from "node:crypto";
+ import { DELIVERY_CONFIRMATION_SQL, publicDeliveryConfirmation, readDeliveryConfirmations } from "./deliveryConfirmation.ts";
+ import { DELIVERY_CONFIRMATION_MAX_WIRE_BYTES, DELIVERY_CONFIRMATION_AUDIT_RESERVE_BYTES, deliveryConfirmationIntentFits, MAX_DELIVERY_CONFIRMATION_BYTES, type NeverWrittenDeliveryHoldReason, DELIVERY_CONFIRMATION_REASONS, type DeliveryConfirmation, type DeliveryConfirmationIntent, type KnownDeliveryConfirmationIntent, type PrepareDeliveryConfirmationIntent, type PrepareUnknownDeliveryConfirmationIntent, type DeliveryConfirmationReason, type ResolveDeliveryConfirmation, type DeliveryConfirmationResolution, type DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
+@@ -352,7 +354,7 @@ export interface BeeViewRow {
+ 
+ /** Body-free mailbox facts shared by daemon work and I1 telemetry. */
+ export type DaemonPendingMessageMeta = Readonly<
+-  Pick<MessageRow, "id" | "urgency" | "enqueuedAt" | "queueOrder">
++  Pick<MessageRow, "id" | "urgency" | "enqueuedAt" | "queueOrder" | "humanChat">
+ >;
+ 
+ /** Runtime states that can affect daemon policy or delivery work. */
+@@ -1445,6 +1447,7 @@ function mapMessage(r: Row): MessageRow {
+     enqueuedAt: Number(r.enqueued_at),
+     deliveredAt: r.delivered_at == null ? null : Number(r.delivered_at),
+     deliveredGeneration: r.delivered_generation == null ? null : Number(r.delivered_generation),
++    ...(r.human_chat == null ? {} : { humanChat: JSON.parse(String(r.human_chat)) as HumanChatProvenance }),
+     ...(r.sender_kind == null ? {} : { senderKind: r.sender_kind as SenderKind }),
+   };
+ }
+@@ -1863,6 +1866,7 @@ export class CoreStore {
+     if (needsHumanRefMigration && !this.stmt("SELECT 1 FROM meta WHERE key = 'human_ref_installation_id'").get()) {
+       this.stmt("INSERT INTO meta(key, value) VALUES('human_ref_installation_id', ?)").run(randomUUID());
+     }
++    this.db.exec(HUMAN_FIRST_SQL);
+     this.humanRefInstallationId(); // Missing/corrupt completed-v30 identity never silently remints.
+     if (stored < SCHEMA_VERSION) {
+       // v1 → v2: additive idempotency_key column on commands. A FRESH database
+@@ -2162,7 +2166,8 @@ export class CoreStore {
+     }
+     this.db.exec("CREATE INDEX IF NOT EXISTS audit_confirmation_released_message ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER)) WHERE kind = 'mail.confirmation_released'");
+     if (!(this.stmt("SELECT name FROM pragma_index_info('mailbox_fifo_pending')").all() as Row[]).some(column => column.name === "replaces_message_id")) this.db.exec("DROP INDEX IF EXISTS mailbox_fifo_pending");
+-    this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_pending ON mailbox(bee_id, COALESCE(queue_order,id), id, urgency, enqueued_at, delivered_at, queue_order, replaces_message_id) WHERE delivered_at IS NULL");
++    if (stored < 48) this.db.exec("DROP INDEX IF EXISTS mailbox_fifo_pending");
++    this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_pending ON mailbox(bee_id, COALESCE(queue_order,id), id, urgency, enqueued_at, delivered_at, queue_order, replaces_message_id, human_chat) WHERE delivered_at IS NULL");
+     this.db.exec("CREATE INDEX IF NOT EXISTS mailbox_fifo_delivered ON mailbox(bee_id, COALESCE(queue_order,id), id) WHERE delivered_at IS NOT NULL");
+     this.db.exec("CREATE INDEX IF NOT EXISTS audit_mail_replacement_message ON audit(CAST(json_extract(payload, '$.replacementMessageId') AS INTEGER), seq DESC) WHERE kind = 'mail.replaced'");
+     this.db.exec("CREATE INDEX IF NOT EXISTS audit_mail_replaced_message ON audit(CAST(json_extract(payload, '$.messageId') AS INTEGER), seq DESC) WHERE kind = 'mail.replaced'");
+@@ -2442,6 +2447,7 @@ export class CoreStore {
+       const sent = !row.interrupted ? [] : replay ? originals.map(message => message!.replacesMessageId != null && message!.deliveredAt === null ? { message: message! } : this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
+         sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "quota.resume",
+         ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
++        ...(message!.humanChat ? { replayHumanChatMessageId: message!.id } : {}),
+         ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `quota-resume:${row.id}:${message!.id}` } } : {}),
+       })) : [this.send(row.beeId, "Continue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.", { sender: "hive:quota-resume", origin: "quota.resume" })];
+       return this.putQuotaRecovery({ ...row, state: row.interrupted && rt.bootEvidence !== "real" ? "rotating" : "resumed", successorGeneration: rt.generation, continuationKind: !row.interrupted ? "none" : replay ? "replay" : "continue", continuationMessageIds: sent.map(result => result.message.id) });
+@@ -3888,7 +3894,7 @@ export class CoreStore {
+ 
+   heldMultilineMail(): Map<string, (DaemonPendingMessageMeta & { fallback?: DeliveryFallback })[]> {
+     const result = new Map<string, (DaemonPendingMessageMeta & { fallback?: DeliveryFallback })[]>();
+-    const rows = this.stmt(`SELECT message.id, message.urgency, message.enqueued_at, message.queue_order, held.*
++    const rows = this.stmt(`SELECT message.id, message.urgency, message.enqueued_at, message.queue_order, message.human_chat, held.*
+       FROM multiline_delivery AS held JOIN mailbox AS message ON message.id = held.message_id AND message.bee_id = held.bee_id
+       WHERE held.held_since IS NOT NULL AND message.delivered_at IS NULL
+         AND CASE WHEN json_valid(held.row_json) THEN COALESCE(json_extract(held.row_json, '$.fallback.state'), '') NOT IN ('held', 'delivered', 'removed') ELSE 1 END
+@@ -4336,6 +4342,7 @@ export class CoreStore {
+       const replacement = input.action === "resend_anyway" ? this.send(input.beeId, message.phoneInput?.originalContent ?? message.body, {
+         sender: message.sender, urgency: message.urgency, priority: message.priority, origin: this.mailOrigin(message.id),
+         ...(message.senderKind === undefined ? {} : { senderKind: message.senderKind }),
++        ...(message.humanChat ? { replayHumanChatMessageId: message.id } : {}),
+         ...(message.phoneInput ? { phone: { origin: forwardPhoneOrigin(message.phoneInput, "forward"), key: `delivery-resend:${message.id}` } } : {}),
+       }).message : null;
+       if (replacement) {
+@@ -4443,10 +4450,65 @@ export class CoreStore {
+     return { envelope: { ...this.makePhoneOrigin(raw, contentDigest, key, beeId), contentDigest }, originalContent };
+   }
+ 
++  humanFirstPolicy(beeId: string): HumanFirstPolicy {
++    const row = this.stmt("SELECT * FROM human_first_policies WHERE bee_id = ?").get(beeId) as Row | undefined;
++    return row ? { beeId, enabled: row.enabled === 1, updatedAt: row.updated_at == null ? null : Number(row.updated_at), lastHumanReceivedAt: row.last_human_received_at == null ? null : Number(row.last_human_received_at) } : { beeId, enabled: false, updatedAt: null, lastHumanReceivedAt: null };
++  }
++
++  listHumanChatAdmissions(): HumanChatReceipt[] {
++    return (this.stmt("SELECT * FROM human_chat_admissions ORDER BY idempotency_key").all() as Row[]).map(row => ({ version: 1, authorityId: String(row.authority_id), admissionId: String(row.admission_id), beeId: String(row.bee_id), bodySha256: String(row.body_sha256), idempotencyKey: String(row.idempotency_key), messageId: Number(row.message_id), ...(row.policy_enabled == null ? {} : { humanFirst: row.policy_enabled === 1 }) }));
++  }
++
++  listHumanFirstPolicies(): HumanFirstPolicy[] {
++    return (this.stmt("SELECT bee_id FROM human_first_policies ORDER BY bee_id").all() as Row[]).map(row => this.humanFirstPolicy(String(row.bee_id)));
++  }
++
++  setHumanFirstPolicy(beeId: string, enabled: boolean): HumanFirstPolicy {
++    return this.tx(() => {
++      this.mustGetBee(beeId);
++      const policy = this.humanFirstPolicy(beeId);
++      if (policy.enabled === enabled) return policy;
++      return this.putHumanFirstPolicy({ ...policy, enabled, updatedAt: this.now() });
++    });
++  }
++
++  private putHumanFirstPolicy(policy: HumanFirstPolicy): HumanFirstPolicy {
++    this.stmt("INSERT INTO human_first_policies(bee_id,enabled,updated_at,last_human_received_at) VALUES(?,?,?,?) ON CONFLICT(bee_id) DO UPDATE SET enabled=excluded.enabled, updated_at=excluded.updated_at,last_human_received_at=excluded.last_human_received_at").run(policy.beeId, Number(policy.enabled), policy.updatedAt, policy.lastHumanReceivedAt);
++    this.audit("mail.human_first.put", policy.beeId, { policy });
++    return policy;
++  }
++
++  assertHumanChatBinding(admission: HumanChatAdmission | undefined, body: string, beeId: string, key?: string): void {
++    if (!admission) {
++      if (key && this.stmt("SELECT 1 FROM human_chat_admissions WHERE idempotency_key = ?").get(key)) throw new IdempotencyConflictError("Key belongs to authenticated human chat");
++      return;
++    }
++    if (admission.beeId !== beeId || admission.bodySha256 !== createHash("sha256").update(body).digest("hex") || (key !== undefined && key !== admission.idempotencyKey)) throw new CoreError("Human chat target, body or key binding differs");
++    const prior = this.stmt("SELECT * FROM human_chat_admissions WHERE idempotency_key = ? OR (authority_id = ? AND admission_id = ?)").get(admission.idempotencyKey, admission.authorityId, admission.admissionId) as Row | undefined;
++    if (prior && (prior.idempotency_key !== admission.idempotencyKey || prior.authority_id !== admission.authorityId || prior.admission_id !== admission.admissionId || prior.bee_id !== beeId || prior.body_sha256 !== admission.bodySha256 || prior.policy_enabled !== (admission.humanFirst === undefined ? null : Number(admission.humanFirst)))) throw new IdempotencyConflictError("Human chat admission is bound to another request");
++    if (!prior && this.lookupRpcResult(admission.idempotencyKey)) throw new IdempotencyConflictError("Key already belongs to a different request");
++  }
++
++  humanTurnActive(beeId: string, generation: number): boolean {
++    const trigger = this.getBee(beeId)?.lastTurnTrigger;
++    return trigger != null && trigger.generation === generation && trigger.endedAt === null && trigger.messageId !== null && this.getMessage(trigger.messageId)?.humanChat !== undefined;
++  }
++
++  pendingHumanFirstSeedMessageId(beeId: string): number | null {
++    this.tx(() => this.backfillMailHistoryEnqueues());
++    const row = this.stmt("SELECT message.id FROM mailbox AS message JOIN mail_history_enqueues AS history ON history.message_id = message.id WHERE message.bee_id = ? AND message.delivered_at IS NULL AND history.origin IN ('spawn.prompt','auth.resume') ORDER BY COALESCE(message.queue_order,message.id),message.id LIMIT 1").get(beeId) as Row | undefined;
++    return row ? Number(row.id) : null;
++  }
++
++  pendingHumanChatId(beeId: string): number | null {
++    const row = this.stmt("SELECT id FROM mailbox WHERE bee_id = ? AND delivered_at IS NULL AND human_chat IS NOT NULL ORDER BY COALESCE(queue_order,id),id LIMIT 1").get(beeId) as Row | undefined;
++    return row ? Number(row.id) : null;
++  }
++
+   send(
+     beeId: string,
+     body: string,
+-    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; phone?: { origin: PhoneOriginRequest; key: string } } = {},
++    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; humanChat?: HumanChatAdmission; replayHumanChatMessageId?: number; phone?: { origin: PhoneOriginRequest; key: string } } = {},
+   ): SendResult {
+     const urgency = opts.urgency ?? "next";
+     if (opts.senderKind !== undefined && !(SENDER_KINDS as readonly string[]).includes(opts.senderKind)) throw new CoreError(`unknown sender kind: ${String(opts.senderKind)}`);
+@@ -4460,6 +4522,15 @@ export class CoreStore {
+     const normalizedBody = phoneInput ? renderPhoneInput(body) : wellFormedUtf16(body);
+     const sender = wellFormedUtf16(rawSender);
+     return this.tx(() => {
++      if (opts.humanChat) {
++        this.assertHumanChatBinding(opts.humanChat, body, beeId);
++        const prior = this.stmt("SELECT message_id FROM human_chat_admissions WHERE idempotency_key = ?").get(opts.humanChat.idempotencyKey) as Row | undefined;
++        if (prior) {
++          const message = this.getMessage(Number(prior.message_id));
++          if (!message) throw new IdempotencyConflictError("Human admission has already settled without a mailbox row");
++          return { message, wakeCommand: null, unarchived: false };
++        }
++      }
+       const bee = this.mustGetBee(beeId);
+       let unarchived = false;
+       if (bee.lifecycle === "archived") {
+@@ -4467,9 +4538,12 @@ export class CoreStore {
+         unarchived = true;
+       }
+       const at = this.now();
++      const replaySource = opts.replayHumanChatMessageId === undefined ? undefined : this.getMessage(opts.replayHumanChatMessageId);
++      if (opts.replayHumanChatMessageId !== undefined && (!replaySource || replaySource.beeId !== beeId || replaySource.body !== normalizedBody || replaySource.sender !== sender || opts.humanChat)) throw new CoreError("Human chat replay must preserve the original target, sender and body");
++      const humanChat: HumanChatProvenance | undefined = opts.humanChat ? { version: 1, authorityId: opts.humanChat.authorityId, admissionId: opts.humanChat.admissionId, receivedAt: at } : replaySource?.humanChat;
+       const res = this.db
+-        .prepare("INSERT INTO mailbox(bee_id, sender, body, priority, urgency, enqueued_at, sender_kind) VALUES(?, ?, ?, ?, ?, ?, ?)")
+-        .run(beeId, sender, normalizedBody, opts.priority ?? 0, urgency, at, opts.senderKind ?? null);
++        .prepare("INSERT INTO mailbox(bee_id, sender, body, priority, urgency, enqueued_at, sender_kind, human_chat) VALUES(?, ?, ?, ?, ?, ?, ?, ?)")
++        .run(beeId, sender, normalizedBody, opts.priority ?? 0, urgency, at, opts.senderKind ?? null, humanChat ? JSON.stringify(humanChat) : null);
+       const message: MessageRow = {
+         id: Number(res.lastInsertRowid),
+         beeId,
+@@ -4482,7 +4556,14 @@ export class CoreStore {
+         deliveredGeneration: null,
+         ...(opts.senderKind === undefined ? {} : { senderKind: opts.senderKind }),
+         ...(phoneInput ? { phoneInput, renderedBody: normalizedBody } : {}),
++        ...(humanChat ? { humanChat } : {}),
+       };
++      if (opts.humanChat) {
++        this.stmt("INSERT INTO human_chat_admissions(idempotency_key,authority_id,admission_id,bee_id,body_sha256,policy_enabled,message_id) VALUES(?,?,?,?,?,?,?)").run(opts.humanChat.idempotencyKey, opts.humanChat.authorityId, opts.humanChat.admissionId, beeId, opts.humanChat.bodySha256, opts.humanChat.humanFirst === undefined ? null : Number(opts.humanChat.humanFirst), message.id);
++        this.audit("mail.human_chat.admitted", beeId, { admission: { ...opts.humanChat, messageId: message.id } });
++        const policy = this.humanFirstPolicy(beeId);
++        this.putHumanFirstPolicy({ ...policy, enabled: opts.humanChat.humanFirst ?? policy.enabled, updatedAt: at, lastHumanReceivedAt: at });
++      }
+       if (phoneInput) this.stmt("INSERT INTO phone_inputs(message_id, admission_id, input_json) VALUES(?, ?, ?)").run(message.id, phoneInput.envelope.admissionId, JSON.stringify(phoneInput));
+       const enqueueSeq = this.audit("mail.enqueued", beeId, { message, origin });
+       this.insertMailHistoryEnqueue(enqueueSeq, message, origin);
+@@ -5973,7 +6054,7 @@ export class CoreStore {
+       `SELECT message.id,
+               message.bee_id,
+               message.urgency,
+-              message.enqueued_at, message.queue_order
++              message.enqueued_at, message.queue_order, message.human_chat
+        FROM runtimes AS runtime
+        CROSS JOIN mailbox AS message
+        WHERE runtime.state != 'stopped'
+@@ -5991,7 +6072,7 @@ export class CoreStore {
+       const messageRows = daemonStatementArrayRows(messageStatement);
+       for (const raw of messageRows) {
+         const beeId = daemonText(raw[1], "pending bee_id");
+-        const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }) };
++        const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }), ...(raw[5] == null ? {} : { humanChat: JSON.parse(String(raw[5])) as HumanChatProvenance }) };
+         const row = workByBee.get(beeId);
+         if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
+         row.pending.push(message);
+@@ -6000,7 +6081,7 @@ export class CoreStore {
+       const messageRows: Row[] = messageStatement.all();
+       for (const raw of messageRows) {
+         const beeId = daemonText(raw.bee_id, "pending bee_id");
+-        const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }) };
++        const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }), ...(raw.human_chat == null ? {} : { humanChat: JSON.parse(String(raw.human_chat)) as HumanChatProvenance }) };
+         const row = workByBee.get(beeId);
+         if (!row) throw new CoreError(`daemon projection: pending live bee ${beeId} has no runtime`);
+         row.pending.push(message);
+@@ -6070,7 +6151,7 @@ export class CoreStore {
+     const groupByBee = new Map(groups.map((group) => [group.beeId, group]));
+ 
+     const messageStatement = this.stmt(
+-      `SELECT id, bee_id, urgency, enqueued_at, queue_order
++      `SELECT id, bee_id, urgency, enqueued_at, queue_order, human_chat
+        FROM mailbox
+        WHERE delivered_at IS NULL
+        ORDER BY bee_id, COALESCE(queue_order,id), id`,
+@@ -6079,7 +6160,7 @@ export class CoreStore {
+       const messageRows = daemonStatementArrayRows(messageStatement);
+       for (const raw of messageRows) {
+         const beeId = daemonText(raw[1], "pending bee_id");
+-        const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }) };
++        const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }), ...(raw[5] == null ? {} : { humanChat: JSON.parse(String(raw[5])) as HumanChatProvenance }) };
+         const group = groupByBee.get(beeId);
+         if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
+         group.pending.push(message);
+@@ -6088,7 +6169,7 @@ export class CoreStore {
+       const messageRows: Row[] = messageStatement.all();
+       for (const raw of messageRows) {
+         const beeId = daemonText(raw.bee_id, "pending bee_id");
+-        const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }) };
++        const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }), ...(raw.human_chat == null ? {} : { humanChat: JSON.parse(String(raw.human_chat)) as HumanChatProvenance }) };
+         const group = groupByBee.get(beeId);
+         if (!group) throw new CoreError(`daemon projection: pending bee ${beeId} has no I1 facts`);
+         group.pending.push(message);
+@@ -7685,6 +7766,7 @@ export class CoreStore {
+         ? [...notice, ...originals.map((message) => message!.replacesMessageId != null && message!.deliveredAt === null ? { message: message! } : this.send(row.beeId, message!.phoneInput?.originalContent ?? message!.body, {
+           sender: message!.sender, urgency: message!.urgency, priority: message!.priority, origin: "auth.resume",
+           ...(message!.senderKind === undefined ? {} : { senderKind: message!.senderKind }),
++        ...(message!.humanChat ? { replayHumanChatMessageId: message!.id } : {}),
+           ...(message!.phoneInput ? { phone: { origin: forwardPhoneOrigin(message!.phoneInput, "forward"), key: `auth-resume:${row.id}:${message!.id}` } } : {}),
+         }))]
+         : [this.send(row.beeId, (row.deathRecovery?.claimedAt != null ? "[Hive] Refreshed account material installed; conversation resumed automatically.\n\n" : "") + continueBody, { sender: AUTH_RESUME_SENDER, origin: "auth.resume" })];
+@@ -10764,6 +10846,8 @@ export class CoreStore {
+   /** Deterministic snapshot of all replayable state (meta and audit excluded). */
+   dumpState(): StateDump {
+     return {
++      ...(this.listHumanFirstPolicies().length ? { humanFirstPolicies: this.listHumanFirstPolicies() } : {}),
++      ...(this.listHumanChatAdmissions().length ? { humanChatAdmissions: this.listHumanChatAdmissions() } : {}),
+       ...(this.listDeliveryConfirmationIntents().length ? { deliveryConfirmationIntents: this.listDeliveryConfirmationIntents() } : {}),
+       ...((this.stmt("SELECT row_json FROM delivery_confirmation_decisions ORDER BY idempotency_key").all() as Row[]).length ? { deliveryConfirmationDecisions: (this.stmt("SELECT row_json FROM delivery_confirmation_decisions ORDER BY idempotency_key").all() as Row[]).map(row => JSON.parse(String(row.row_json)) as DeliveryConfirmationDecision) } : {}),
+       bees: this.listBees(),
+diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
+index 53c7c2e7..6b893280 100644
+--- a/v2/core/src/types.ts
++++ b/v2/core/src/types.ts
+@@ -296,7 +296,36 @@ export interface FlagRow {
+ export const MESSAGE_URGENCIES = ["now", "next", "idle"] as const;
+ export type Urgency = (typeof MESSAGE_URGENCIES)[number];
+ 
++export interface HumanChatProvenance {
++  version: 1;
++  authorityId: string;
++  admissionId: string;
++  receivedAt: number;
++}
++
++export interface HumanFirstPolicy {
++  beeId: string;
++  enabled: boolean;
++  updatedAt: number | null;
++  lastHumanReceivedAt: number | null;
++}
++
++export interface HumanChatAdmission {
++  version: 1;
++  authorityId: string;
++  admissionId: string;
++  beeId: string;
++  bodySha256: string;
++  idempotencyKey: string;
++  humanFirst?: boolean;
++}
++
++export interface HumanChatReceipt extends HumanChatAdmission {
++  messageId: number;
++}
++
+ export interface MessageRow {
++  humanChat?: HumanChatProvenance;
+   queueOrder?: number;
+   replacesMessageId?: number;
+   deliveryConfirmation?: DeliveryConfirmation;
+@@ -1044,6 +1073,8 @@ export interface TrackRow {
+ 
+ /** Deterministic full-store snapshot (audit excluded); comparison target for replay. */
+ export interface StateDump {
++  humanFirstPolicies?: HumanFirstPolicy[];
++  humanChatAdmissions?: HumanChatReceipt[];
+   deliveryConfirmationIntents?: DeliveryConfirmationIntent[];
+   deliveryConfirmationDecisions?: DeliveryConfirmationDecision[];
+   deliveryHolds?: MultilineDeliveryRow[];
+diff --git a/v2/core/tests/accounts.test.ts b/v2/core/tests/accounts.test.ts
+index 2297d5ce..5a5b58e1 100644
+--- a/v2/core/tests/accounts.test.ts
++++ b/v2/core/tests/accounts.test.ts
+@@ -540,7 +540,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 47);
++      assert.equal(SCHEMA_VERSION, 48);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("account"));
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/actions.test.ts b/v2/core/tests/actions.test.ts
+index 87747880..e4cccd0e 100644
+--- a/v2/core/tests/actions.test.ts
++++ b/v2/core/tests/actions.test.ts
+@@ -406,7 +406,7 @@ test("actions.8: audit replay reproduces the action tables; the store reopens at
+   const h = harness();
+   try {
+     let store = h.open();
+-    assert.equal(SCHEMA_VERSION, 47);
++    assert.equal(SCHEMA_VERSION, 48);
+     const bee = liveBee(store);
+     const { actions } = shipSequence(store, bee.id);
+     const { messageId } = store.dispatchAgentAction(actions[0]!.id);
+diff --git a/v2/core/tests/apiary-swap.test.ts b/v2/core/tests/apiary-swap.test.ts
+index 5e6bb3ea..6b3bd141 100644
+--- a/v2/core/tests/apiary-swap.test.ts
++++ b/v2/core/tests/apiary-swap.test.ts
+@@ -104,7 +104,7 @@ test("apiary schema: current version remains unchanged and newer storage refuses
+   await world(async root => {
+     await seed(root);
+     const db = new DatabaseSync(join(root, "v2", "core.sqlite3"));
+-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "47");
++    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "48");
+     db.exec("UPDATE meta SET value='999' WHERE key='schema_version'"); db.close();
+     assert.throws(() => openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true }), /newer store/);
+   });
+diff --git a/v2/core/tests/auth-interruption.test.ts b/v2/core/tests/auth-interruption.test.ts
+index 19ec367f..52984790 100644
+--- a/v2/core/tests/auth-interruption.test.ts
++++ b/v2/core/tests/auth-interruption.test.ts
+@@ -189,7 +189,7 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
+     raw.close();
+ 
+     store = h.open();
+-    assert.equal(SCHEMA_VERSION, 47);
++    assert.equal(SCHEMA_VERSION, 48);
+     const row = interrupt(store, bee.id);
+     store.restoreAuthInterruption(row.id, { revision: "rev-2", by: "credentials_restored" });
+     store.resumeAuthInterruption(row.id, AUTH_CONTINUE_BODY);
+diff --git a/v2/core/tests/bee-args.test.ts b/v2/core/tests/bee-args.test.ts
+index 2cc15faf..18b5d7e5 100644
+--- a/v2/core/tests/bee-args.test.ts
++++ b/v2/core/tests/bee-args.test.ts
+@@ -278,7 +278,7 @@ test("args.2: a v4-shaped store (spawn_failures, no args column) migrates additi
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 47);
++      assert.equal(SCHEMA_VERSION, 48);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("args"));
+       assert.ok(cols.includes("spawn_failures"));
+diff --git a/v2/core/tests/cell-move.test.ts b/v2/core/tests/cell-move.test.ts
+index 694bab5a..4b1041c4 100644
+--- a/v2/core/tests/cell-move.test.ts
++++ b/v2/core/tests/cell-move.test.ts
+@@ -336,7 +336,7 @@ test(`cell-move.schema v${previousVersion} store migrates to v22`, () => {
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 47);
++      assert.equal(SCHEMA_VERSION, 48);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("placement_version"));
+       assert.ok(cols.includes("active_move_id"));
+diff --git a/v2/core/tests/cell-retention.test.ts b/v2/core/tests/cell-retention.test.ts
+index 94d072a8..7611f150 100644
+--- a/v2/core/tests/cell-retention.test.ts
++++ b/v2/core/tests/cell-retention.test.ts
+@@ -139,7 +139,7 @@ test("cell-retention.schema: a v30 store's cells table is rebuilt with the evict
+     const check = new DatabaseSync(h.path, { readOnly: true });
+     try {
+       assert.equal(Number((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 47);
++      assert.equal(SCHEMA_VERSION, 48);
+       assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'cells_v30'").get(), undefined, "scratch table dropped");
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('cells')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("evicted_at") && cols.includes("evicted_head"));
+diff --git a/v2/core/tests/effect-resolve.test.ts b/v2/core/tests/effect-resolve.test.ts
+index 16ae5980..dcf2c945 100644
+--- a/v2/core/tests/effect-resolve.test.ts
++++ b/v2/core/tests/effect-resolve.test.ts
+@@ -90,7 +90,7 @@ test("effect additive tables preserve schema45 and retained legacy positives boo
+     assert.throws(() => store.resolveEffect("legacy-absent", "spawn"), error("rpc_effect_history_unknown"));
+   } finally { store.close(); }
+   const inspect = new DatabaseSync(h.path, { readOnly: true });
+-  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "47"); }
++  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "48"); }
+   finally { inspect.close(); h.cleanup(); }
+ });
+ 
+diff --git a/v2/core/tests/external-parent.test.ts b/v2/core/tests/external-parent.test.ts
+index 24af73ed..d0877b4a 100644
+--- a/v2/core/tests/external-parent.test.ts
++++ b/v2/core/tests/external-parent.test.ts
+@@ -193,7 +193,7 @@ test("a v20 store migrates existing parent edges to local lineage at the current
+         value: string;
+       };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 47);
++      assert.equal(SCHEMA_VERSION, 48);
+       const column = migrated.prepare(
+         "SELECT name FROM pragma_table_info('bees') WHERE name = 'parent_external'",
+       ).get() as { name: string } | undefined;
+diff --git a/v2/core/tests/handles.test.ts b/v2/core/tests/handles.test.ts
+index 061adf23..6d2815f7 100644
+--- a/v2/core/tests/handles.test.ts
++++ b/v2/core/tests/handles.test.ts
+@@ -96,7 +96,7 @@ test("handles.4: v9-shaped store backfills on open — an old pretty id becomes
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 47);
++      assert.equal(SCHEMA_VERSION, 48);
+       const idx = check.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='bees_handle'").get();
+       assert.ok(idx, "unique handle index exists");
+     } finally {
+diff --git a/v2/core/tests/import-frozen.test.ts b/v2/core/tests/import-frozen.test.ts
+index 322726d0..280272d8 100644
+--- a/v2/core/tests/import-frozen.test.ts
++++ b/v2/core/tests/import-frozen.test.ts
+@@ -430,7 +430,7 @@ test("import.9: store v3 — recordProviderSessionId is bee-scoped, idempotent,
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 47);
++      assert.equal(SCHEMA_VERSION, 48);
+     } finally {
+       check.close();
+     }
+diff --git a/v2/core/tests/list-messages-union.test.ts b/v2/core/tests/list-messages-union.test.ts
+index 43292cdd..517dc88e 100644
+--- a/v2/core/tests/list-messages-union.test.ts
++++ b/v2/core/tests/list-messages-union.test.ts
+@@ -60,7 +60,7 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
+     sql: `SELECT message.id,
+               message.bee_id,
+               message.urgency,
+-              message.enqueued_at, message.queue_order
++              message.enqueued_at, message.queue_order, message.human_chat
+        FROM runtimes AS runtime
+        CROSS JOIN mailbox AS message
+        WHERE runtime.state != 'stopped'
+@@ -105,7 +105,7 @@ const MATRIX: Array<{ name: string; sql: string; pin: RegExp }> = [
+   },
+   {
+     name: "i1 messages",
+-    sql: `SELECT id, bee_id, urgency, enqueued_at, queue_order
++    sql: `SELECT id, bee_id, urgency, enqueued_at, queue_order, human_chat
+        FROM mailbox
+        WHERE delivered_at IS NULL
+        ORDER BY bee_id, COALESCE(queue_order,id), id`,
+diff --git a/v2/core/tests/pending-covering-index.test.ts b/v2/core/tests/pending-covering-index.test.ts
+index 0c9b0c4e..976423d8 100644
+--- a/v2/core/tests/pending-covering-index.test.ts
++++ b/v2/core/tests/pending-covering-index.test.ts
+@@ -8,14 +8,14 @@ import { SCHEMA_VERSION } from "../src/schema.ts";
+ import { harness, makeBee } from "./helpers.ts";
+ 
+ // Verbatim production texts (asserted against store.ts so pins cannot drift).
+-const I1_MESSAGES_SQL = `SELECT id, bee_id, urgency, enqueued_at, queue_order
++const I1_MESSAGES_SQL = `SELECT id, bee_id, urgency, enqueued_at, queue_order, human_chat
+        FROM mailbox
+        WHERE delivered_at IS NULL
+        ORDER BY bee_id, COALESCE(queue_order,id), id`;
+ const WORK_MESSAGES_SQL = `SELECT message.id,
+               message.bee_id,
+               message.urgency,
+-              message.enqueued_at, message.queue_order
++              message.enqueued_at, message.queue_order, message.human_chat
+        FROM runtimes AS runtime
+        CROSS JOIN mailbox AS message
+        WHERE runtime.state != 'stopped'
+@@ -198,7 +198,7 @@ for (const withHold of [false, true]) test(`pending-metadata index is covering f
+     assert.doesNotMatch(indexSql.sql, /body|json/i, "no body column and no JSON expression in the index");
+ 
+     const fifoColumns = check.prepare("SELECT name FROM pragma_index_info('mailbox_fifo_pending') ORDER BY seqno").all().map(row => row.name);
+-    assert.deepEqual(fifoColumns, ["bee_id", null, "id", "urgency", "enqueued_at", "delivered_at", "queue_order", "replaces_message_id"]);
++    assert.deepEqual(fifoColumns, ["bee_id", null, "id", "urgency", "enqueued_at", "delivered_at", "queue_order", "replaces_message_id", "human_chat"]);
+     const fifoSql = String(check.prepare("SELECT sql FROM sqlite_master WHERE name = 'mailbox_fifo_pending'").get()?.sql);
+     assert.match(fifoSql, /COALESCE\(queue_order,id\)/);
+     assert.match(fifoSql, /WHERE delivered_at IS NULL/);
+diff --git a/v2/core/tests/phone-origin.test.ts b/v2/core/tests/phone-origin.test.ts
+index a15f3b48..c80ef4d7 100644
+--- a/v2/core/tests/phone-origin.test.ts
++++ b/v2/core/tests/phone-origin.test.ts
+@@ -38,7 +38,7 @@ test("phone data, shadow, history, audit replay and key bindings survive reopen
+       store.recordRpcResult("k", "send", sent.wakeCommand?.id ?? null, { commandId: sent.wakeCommand?.id ?? null, unarchived: sent.unarchived, messageId: sent.message.id });
+       return sent.message;
+     });
+-    assert.equal(SCHEMA_VERSION, 47);
++    assert.equal(SCHEMA_VERSION, 48);
+     assert.equal(message.body, renderPhoneInput(body));
+     assert.equal(message.phoneInput?.originalContent, body);
+     assert.equal(message.phoneInput?.envelope.contentDigest, phoneDigest(body));
+diff --git a/v2/core/tests/preflip-verbs.test.ts b/v2/core/tests/preflip-verbs.test.ts
+index 08b3f4b5..1a3c4d16 100644
+--- a/v2/core/tests/preflip-verbs.test.ts
++++ b/v2/core/tests/preflip-verbs.test.ts
+@@ -322,7 +322,7 @@ test("v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed a
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 47);
++      assert.equal(SCHEMA_VERSION, 48);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       for (const c of ["parent_id", "parent_external", "forked_from", "fork_seed", "args", "spawn_failures"]) assert.ok(cols.includes(c), c);
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/question-dismiss.test.ts b/v2/core/tests/question-dismiss.test.ts
+index bdbae345..4571edde 100644
+--- a/v2/core/tests/question-dismiss.test.ts
++++ b/v2/core/tests/question-dismiss.test.ts
+@@ -102,7 +102,7 @@ test("schema46 migration without a status CHECK gains dismissal columns additive
+     store = h.open(); assert.equal(store.dismissQuestionWithKey(q.id, "additive").question.status, "dismissed"); store.close();
+     const after = new DatabaseSync(h.path);
+     assert.equal(after.prepare("SELECT rootpage FROM sqlite_master WHERE name='questions'").get()!.rootpage, rootPage);
+-    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "47"); after.close();
++    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "48"); after.close();
+     store = h.open(); assert.equal(store.getQuestion(q.id)!.status, "dismissed");
+   } finally {store.close(); h.cleanup();}
+ });
+diff --git a/v2/core/tests/question-withdraw.test.ts b/v2/core/tests/question-withdraw.test.ts
+index 37b081cb..d6c7298e 100644
+--- a/v2/core/tests/question-withdraw.test.ts
++++ b/v2/core/tests/question-withdraw.test.ts
+@@ -84,8 +84,8 @@ test("schema 44 legacy questions migrate additively without extra-table refusal"
+     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+     store.close();
+     const check = new DatabaseSync(f.path);
+-    assert.equal(SCHEMA_VERSION, 47);
+-    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "47");
++    assert.equal(SCHEMA_VERSION, 48);
++    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "48");
+     assert.equal(check.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
+     assert.deepEqual(check.prepare("PRAGMA foreign_key_check").all(), []);
+     assert.equal(check.prepare("SELECT count(*) AS n FROM question_withdraw_receipts").get()!.n, 1);
+diff --git a/v2/core/tests/runtime-process-identity.test.ts b/v2/core/tests/runtime-process-identity.test.ts
+index 7c87c87c..c059f332 100644
+--- a/v2/core/tests/runtime-process-identity.test.ts
++++ b/v2/core/tests/runtime-process-identity.test.ts
+@@ -25,7 +25,7 @@ test("runtime identity migration is additive, once-only and ignores malformed co
+     (store as unknown as {db: DatabaseSync}).db.prepare("UPDATE runtimes SET process_identity=NULL WHERE bee_id=?").run(bee.id);
+     store.close();
+     const db = new DatabaseSync(h.path);
+-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "47");
++    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "48");
+     assert.equal(db.prepare("SELECT value FROM meta WHERE key='runtime_process_identity_schema'").get()!.value, "1");
+     installRuntimeProcessIdentity(db); installRuntimeProcessIdentity(db);
+     assert.equal(db.prepare("PRAGMA table_info(runtimes)").all().filter(r => r.name === "process_identity").length, 1);
+diff --git a/v2/core/tests/urgency.test.ts b/v2/core/tests/urgency.test.ts
+index 2bb27534..00469846 100644
+--- a/v2/core/tests/urgency.test.ts
++++ b/v2/core/tests/urgency.test.ts
+@@ -157,7 +157,7 @@ test("urgency.5: v8 migration — a v7 store opens as v8: mailbox.urgency added,
+   try {
+     const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+     assert.equal(Number(version.value), SCHEMA_VERSION);
+-    assert.equal(SCHEMA_VERSION, 47);
++    assert.equal(SCHEMA_VERSION, 48);
+     const cols = (check.prepare("SELECT name FROM pragma_table_info('mailbox')").all() as Array<{ name: string }>).map((c) => c.name);
+     assert.ok(cols.includes("urgency"));
+     assert.ok(cols.includes("priority"));
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 470d3abc..c1ff7088 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -1,3 +1,4 @@
++import type { HumanChatAdmission } from "../../core/src/types.ts";
+ import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
+ import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
+ export { autoswapDisabled } from "../../core/src/index.ts";
+@@ -2120,8 +2121,17 @@ export class HiveDaemon {
+         return this.withIdempotency(verb, params, () => this.rpcAccountAdmissionConfirm(params));
+       case "account.admission.release":
+         return this.withIdempotency(verb, params, () => this.rpcAccountAdmissionRelease(params));
++      case "mail.humanFirst.get":
++        return this.mustStore().humanFirstPolicy(this.requireBee(params));
++      case "mail.humanFirst.set":
++        if (!conn.humanPolicyAuthority) throw new RpcError("human_chat_unauthorized", "Policy changes require the registered Apiary authority");
++        if (typeof params.enabled !== "boolean") throw new RpcError("invalid_request", "enabled must be boolean");
++        if (params.enabled && this.mustStore().getBee(this.requireBee(params))?.substrate === "tmux") throw new RpcError("human_first_unsupported", "tmux cannot guarantee fresh human turns");
++        return this.mustStore().setHumanFirstPolicy(this.requireBee(params), params.enabled);
+       case "send":
+-        return this.withIdempotency(verb, params, () => this.rpcSend(params));
++        if (conn.humanChat?.humanFirst === true && this.mustStore().getBee(this.param(params, "beeId"))?.substrate === "tmux") throw new RpcError("human_first_unsupported", "tmux cannot guarantee fresh human turns");
++        this.mustStore().assertHumanChatBinding(conn.humanChat, this.param(params, "body"), this.param(params, "beeId"), this.idempotencyKeyOf(params) ?? undefined);
++        return this.withIdempotency(verb, params, () => this.rpcSend(params, conn.humanChat));
+       case "mail.cancel": {
+         const messageId = this.numberParam(params, "messageId");
+         return this.withIdempotency(verb, params, () => {
+@@ -2500,7 +2510,7 @@ export class HiveDaemon {
+ 
+   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
+     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
+-    const storageSupported = SCHEMA_VERSION === 47 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
++    const storageSupported = SCHEMA_VERSION === 48 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+     if (verb === "update.apiarySwap.status") {
+       let installedIdentity: ComponentIdentity | null = null;
+       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
+@@ -5602,7 +5612,7 @@ export class HiveDaemon {
+     return { supply };
+   }
+ 
+-  private rpcSend(params: Record<string, unknown>): SendRpcResult {
++  private rpcSend(params: Record<string, unknown>, humanChat?: HumanChatAdmission): SendRpcResult {
+     const store = this.mustStore();
+     const beeId = this.param(params, "beeId");
+     const body = this.param(params, "body");
+@@ -5644,7 +5654,7 @@ export class HiveDaemon {
+       }
+     }
+     if (this.phoneOriginOf(params)) { sender = `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone`; senderKind = undefined; }
+-    const res = store.send(beeId, body, { sender, urgency, ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
++    const res = store.send(beeId, body, { sender, urgency, ...(humanChat ? { humanChat } : {}), ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
+     this.forwardIfMailboxOnly(beeId, res.message);
+     const held = this.authResume?.waitingForMaterial(beeId);
+     return { messageId: res.message.id, commandId: res.wakeCommand?.id ?? null, unarchived: res.unarchived,
+@@ -5903,6 +5913,7 @@ export class HiveDaemon {
+     this.publishedSeq = seq;
+     return {
+       seq,
++      humanFirstPolicies: store.listHumanFirstPolicies(),
+       views: store.listBeeViewRows().map((row) => ({ ...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
+       templates: store.listTemplates(),
+       tracks: store.listTracks(),
+diff --git a/v2/daemon/src/loops.ts b/v2/daemon/src/loops.ts
+index 99dd1798..26e8f3a4 100644
+--- a/v2/daemon/src/loops.ts
++++ b/v2/daemon/src/loops.ts
+@@ -1784,8 +1784,16 @@ export class DaemonCore {
+         // budget.11's race; real claude would end mis-flagged spawn_failed).
+         // Any real parsed output upgrades bootEvidence and re-engages the gate.
+         const trulyMidTurn = rt.state === "running" && rt.bootEvidence === "real";
+-        const eligible = trulyMidTurn ? pending.filter((m) => m.urgency !== "idle") : pending;
+-        if (eligible.length === 0) continue;
++        const humanState = this.humanFirstState(rt.beeId, rt.generation);
++        const humanFirst = humanState.enabled;
++        const humanHead = humanState.head;
++        const humanPending = humanHead !== null;
++        const eligible = quotaGate.messageIds.length > 0
++          ? pending.filter(message => !trulyMidTurn || message.urgency !== "idle")
++          : pending.filter(message => this.humanFirstEligible(message, trulyMidTurn, humanState));
++        const urgentHuman = humanFirst ? pending.find(message => message.humanChat !== undefined && message.urgency === "now" && !this.interruptRequested.has(message.id) && !this.store.getDeliveryConfirmationIntent(message.id)) : undefined;
++
++        if (!humanFirst && eligible.length === 0) continue;
+         const move = this.store.activeMoveOf(rt.beeId);
+         if (move && move.phase !== "starting") continue;
+         // v23: a quiescing source takes no new turn; the target runtime receives
+@@ -1794,15 +1802,18 @@ export class DaemonCore {
+         // that jumped the queue).
+         const handoff = this.store.activeHandoffOf(rt.beeId);
+         if (handoff && handoffFencesSource(handoff.phase)) continue;
+-        const seedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
+-        const seed = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
++        const handoffSeedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
++        const seedId = handoffSeedId ?? humanState.seed;
++        const seedCandidate = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
++        const seed = seedCandidate && (handoffSeedId !== null || this.humanFirstEligible(seedCandidate, trulyMidTurn, humanState)) ? seedCandidate : null;
++        if (eligible.length === 0 && !seed && !urgentHuman) continue;
+         if (!trulyMidTurn && this.beforeTurn && !this.beforeTurn(rt.beeId, rt.generation)) { this.deliveryRetries.delete(rt.beeId); continue; }
+         if (rt.state === "running") {
+           // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
+           // interrupt per message; an eligible `now` behind an undelivered
+           // `next` still interrupts — the accept point it creates serves the
+           // whole FIFO, which keeps delivering in enqueue order.
+-          const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
++          const urgent = urgentHuman ?? eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
+           if (urgent) {
+             // Give the driver the triggering mailbox id so an asynchronously
+             // confirmed delivery cannot interrupt the turn it just opened.
+@@ -1828,7 +1839,8 @@ export class DaemonCore {
+           }
+         }
+         const selected = seed ?? eligible[0];
+-        if (!selected) continue;
++        if (!selected || humanFirst && humanPending && selected.humanChat !== undefined && selected.id !== humanHead && !seed && quotaGate.messageIds.length === 0) continue;
++        if (humanFirst && this.store.listDeliveryConfirmationIntents(rt.beeId).some(intent => intent.messageId !== selected.id && intent.wireLine !== null && !this.confirmationReady.has(intent.messageId))) continue;
+         const msg = this.store.getMessage(selected.id);
+         if (
+           !msg ||
+@@ -1845,6 +1857,8 @@ export class DaemonCore {
+         // The mailbox row stays the durable truth — the envelope is
+         // delivery-time rendering only.
+         if (msg.deliveryHold?.detail === "delivery_hold_state_unknown") {this.store.reconcileUnknownMultilineHold(msg.id); continue;}
++        const freshTurn = humanFirst && msg.humanChat !== undefined && msg.urgency !== "now";
++        if (freshTurn && this.store.getBee(rt.beeId)?.substrate === "tmux") continue;
+         const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
+         const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
+         let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id), this.store.dismissedQuestionId(msg.id));
+@@ -1906,7 +1920,7 @@ export class DaemonCore {
+           const existing = this.store.getDeliveryConfirmationIntent(msg.id);
+           if (existing) {
+             if (existing.generation !== rt.generation || existing.wireLine === null || existing.state !== "awaiting_confirmation" || !this.confirmationReady.has(msg.id)) continue;
+-            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
++            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
+             if (!plan || plan === "not_ready") { refusePlan(); continue; }
+             if (this.store.inTransaction) continue;
+             const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
+@@ -1914,7 +1928,7 @@ export class DaemonCore {
+             confirmation = this.store.transact(() => { const row = this.store.replanDeliveryConfirmationIntent(input, existing.digest); recordPointerAttempt(); return row; });
+             this.confirmationReady.delete(msg.id);
+           } else {
+-            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
++            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
+             if (plan === "not_ready") { refusePlan(); continue; }
+             if (plan) {
+               if (this.store.inTransaction) continue;
+@@ -1932,7 +1946,7 @@ export class DaemonCore {
+           }
+         }
+         const outcome = fallback?.handled ? { accepted: fallback.accepted, reason: "not_ready" as const, detail: undefined }
+-          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { confirmation, multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
++          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { confirmation, freshTurn, multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
+         if (outcome.accepted) {
+           this.deliveryRetries.delete(rt.beeId);
+           if (fallback?.confirmationBody) this.store.completeMultilineFallback(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), true);
+@@ -1981,12 +1995,36 @@ export class DaemonCore {
+    * aware deadlines, and a suspended clock while a closed-list flag is active
+    * (a visibly blocked bee is at an external boundary — I3/I6 territory).
+    */
++  private readonly humanEligibilitySince = new Map<number, number>();
++
++  private humanFirstState(beeId: string, generation = this.store.currentRuntime(beeId)?.generation ?? -1) {
++    const policy = this.store.humanFirstPolicy(beeId);
++    return { enabled: policy.enabled, seed: policy.enabled ? this.store.pendingHumanFirstSeedMessageId(beeId) : null, head: policy.enabled ? this.store.pendingHumanChatId(beeId) : null, active: policy.enabled && this.store.humanTurnActive(beeId, generation) };
++  }
++
++  private humanFirstEligible(message: Pick<MessageRow, "id" | "urgency" | "humanChat">, midTurn: boolean, state: ReturnType<DaemonCore["humanFirstState"]>): boolean {
++    if (state.enabled && state.seed !== null) return message.id === state.seed && !midTurn && !state.active;
++    if (state.enabled && (state.head !== null || state.active)) {
++      if (message.id !== state.head) return false;
++      return !(midTurn || state.active) || message.urgency === "now";
++    }
++    return !midTurn || message.urgency !== "idle";
++  }
++
+   private i1Telemetry(rows: readonly I1PendingBee[]): void {
+     const bound = this.policy.i1DeadlineSteps as number;
+     const record = this.onI1Violation as (violation: I1ViolationEvent) => void;
+     const now = this.now();
++    const seenPolicyMessages = new Set<number>();
+     for (const { beeId, runtime: rt, hasActiveFlag, pending } of rows) {
+-      if (hasActiveFlag) continue;
++      const humanState = this.humanFirstState(beeId);
++      const midTurn = rt?.state === "running" && rt.bootEvidence === "real";
++      const seedId = humanState.enabled ? this.store.pendingHandoffSeedMessageId(beeId) : null;
++      const quotaGate = humanState.enabled ? this.store.quotaDeliveryGate(beeId) : null;
++      if (hasActiveFlag) {
++        for (const message of pending) this.humanEligibilitySince.delete(message.id);
++        continue;
++      }
+       pending.forEach((m, pos) => {
+         // v8 (Q2 amendment): an `idle` message's deadline clock starts when it
+         // becomes ELIGIBLE (the runtime not `running`), not at enqueue — a
+@@ -1994,6 +2032,16 @@ export class DaemonCore {
+         // I1 violation. While the runtime is running the clock is suspended;
+         // once out of `running`, the base is that transition (rt.updatedAt).
+         let base = m.enqueuedAt;
++        if (humanState.enabled) {
++          seenPolicyMessages.add(m.id);
++          const quotaContinuation = quotaGate?.messageIds.includes(m.id) === true;
++          const heldByQuota = quotaGate?.held || quotaGate && quotaGate.messageIds.length > 0 && !quotaContinuation;
++          const heldByHuman = m.id !== seedId && !quotaContinuation && !this.humanFirstEligible(m, midTurn, humanState);
++          if (heldByQuota || heldByHuman) { this.humanEligibilitySince.delete(m.id); return; }
++          const eligibleAt = this.humanEligibilitySince.get(m.id) ?? now;
++          this.humanEligibilitySince.set(m.id, eligibleAt);
++          base = Math.max(base, eligibleAt);
++        }
+         if (m.urgency === "idle") {
+           // Mirrors the delivery rule: synthetic-boot `running` is provisional
+           // — idle mail is ELIGIBLE there, so its clock runs (else the churn
+@@ -2009,6 +2057,7 @@ export class DaemonCore {
+         this.log(`i1.violation bee=${beeId} msg=${m.id} deadline=${deadline}`);
+       });
+     }
++    for (const id of this.humanEligibilitySince.keys()) if (!seenPolicyMessages.has(id)) this.humanEligibilitySince.delete(id);
+   }
+ 
+   /**
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 29c23211..84cc2762 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -89,6 +89,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
+  * client ignores the extra key) and `deployInfo` repeats the list.
+  */
+ export const DAEMON_CAPABILITIES = [
++  "mail.humanFirst.v1",
+   "mail.delivery.confirmation.v1",
+   "rpc.local_trust.v1",
+   "rpc-effect-resolve.v1",
+@@ -273,6 +274,9 @@ export interface HelloFrame {
+ 
+ /** Closed-list, typed errors — never fuzzy (spec 04). */
+ export const RPC_ERROR_CODES = [
++  "human_chat_unauthorized",
++  "human_chat_invalid",
++  "human_first_unsupported",
+   "rpc_execution_stale", "rpc_execution_busy", "rpc_execution_history_unknown", "rpc_execution_fence_unsupported",
+   "rpc_effect_fenced", "rpc_effect_history_unknown", "rpc_effect_resolve_unsupported",
+   "socket_mismatch",
+@@ -460,6 +464,8 @@ export const RPC_ERROR_CODES = [
+ export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
+ 
+ export const RPC_VERBS = [
++  "mail.humanFirst.set",
++  "mail.humanFirst.get",
+   "rpc.execution.coordinator.register", "rpc.execution.claim.compareAndSet", "rpc.execution.execute", "rpc.execution.resolve",
+   "rpc.effect.resolve",
+   "rpc.effect.status",
+@@ -666,6 +672,7 @@ export type RpcVerb = (typeof RPC_VERBS)[number];
+ 
+ /** Service assertion, accepted only on a registered direct-local RPC connection. */
+ export interface RpcRequestContext {
++  humanChat?: import("../../core/src/types.ts").HumanChatAdmission;
+   sessionPrincipal?: { beeId: string };
+   phoneOrigin?: import("../../core/src/phoneOrigin.ts").PhoneOriginRequest;
+   phoneLane?: "envelope-v1" | "interim-v1";
+@@ -1744,6 +1751,7 @@ export interface HealthResult {
+ export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };
+ 
+ export interface SnapshotResult {
++  humanFirstPolicies?: import("../../core/src/types.ts").HumanFirstPolicy[];
+   threadOperations: ThreadOperationView[];
+   seq: number;
+   views: ViewResult[];
+diff --git a/v2/daemon/src/rpc.ts b/v2/daemon/src/rpc.ts
+index a62b2ded..717e2585 100644
+--- a/v2/daemon/src/rpc.ts
++++ b/v2/daemon/src/rpc.ts
+@@ -1,3 +1,5 @@
++import { createHash } from "node:crypto";
++import type { HumanChatAdmission } from "../../core/src/types.ts";
+ import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
+ import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
+ import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
+@@ -79,6 +81,8 @@ import {
+ } from "./protocol.ts";
+ 
+ export interface RpcConn {
++  readonly humanChat?: HumanChatAdmission;
++  readonly humanPolicyAuthority?: true;
+   readonly phoneOrigin?: PhoneOriginRequest;
+   readonly phoneCarrierDigest?: string;
+   readonly phoneLane?: "envelope-v1" | "interim-v1";
+@@ -288,7 +292,7 @@ export class RpcServer {
+   }
+ 
+   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
+-    return DAEMON_CAPABILITIES.filter(capability => capability !== "question.withdraw.v1" || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
++    return DAEMON_CAPABILITIES.filter(capability => (capability !== "question.withdraw.v1" && capability !== "mail.humanFirst.v1") || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+   }
+ 
+   private onConnection(socket: Socket): void {
+@@ -443,6 +447,24 @@ export class RpcServer {
+           if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal.");
+           return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
+         }
++        if (verb === "send" && (params.humanChat !== undefined || params.humanFirst !== undefined || params.provenance !== undefined || params.replayHumanChatMessageId !== undefined)) throw new RpcError("human_chat_unauthorized", "Human provenance belongs in protected RPC context");
++        const humanContext = frame.context as Record<string, unknown> | undefined;
++        if (verb === "mail.humanFirst.set" || humanContext?.humanChat !== undefined) {
++          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("human_chat_unauthorized", "Human chat requires the registered local Apiary authority");
++          try { this.trust.require(peer, conn.ingress); } catch { throw new RpcError("human_chat_unauthorized", "Human chat requires the registered local Apiary authority"); }
++          if (verb === "mail.humanFirst.set") return this.opts.dispatch(verb, params, { ...conn, humanPolicyAuthority: true });
++          if (verb !== "send" || humanContext?.phoneOrigin !== undefined || humanContext?.phoneLane !== undefined) throw new RpcError("human_chat_unauthorized", "Human chat context is only valid for send");
++          const raw = humanContext?.humanChat;
++          if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("human_chat_invalid", "Malformed human chat admission");
++          const chat = raw as Record<string, unknown>;
++          if (Object.keys(chat).some(key => !["version", "authorityId", "admissionId", "beeId", "bodySha256", "idempotencyKey", "humanFirst"].includes(key)) || chat.version !== 1
++            || [chat.authorityId, chat.admissionId, chat.beeId, chat.idempotencyKey].some(value => typeof value !== "string" || !value.length || value.length > 512 || value.includes("\0"))
++            || typeof chat.bodySha256 !== "string" || !/^[a-f0-9]{64}$/.test(chat.bodySha256)
++            || chat.humanFirst !== undefined && typeof chat.humanFirst !== "boolean"
++            || chat.beeId !== params.beeId || chat.idempotencyKey !== params.idempotencyKey || typeof params.body !== "string"
++            || chat.bodySha256 !== createHash("sha256").update(params.body).digest("hex")) throw new RpcError("human_chat_invalid", "Human chat destination, body or key binding is invalid");
++          return this.opts.dispatch(verb, params, { ...conn, humanChat: chat as unknown as HumanChatAdmission });
++        }
+         if (params.phoneOrigin !== undefined || params.phoneInput !== undefined || params.phoneLane !== undefined) throw new RpcError("invalid_request", "Phone carriers belong in RPC context, not args");
+         const context = frame.context as Record<string, unknown> | undefined;
+         if (context?.phoneOrigin !== undefined) {
+diff --git a/v2/daemon/src/rpcAccess.ts b/v2/daemon/src/rpcAccess.ts
+index c6049fcf..840faf2e 100644
+--- a/v2/daemon/src/rpcAccess.ts
++++ b/v2/daemon/src/rpcAccess.ts
+@@ -1,6 +1,8 @@
+ import type { RpcVerb } from "./protocol.ts";
+ 
+ export const RPC_ACCESS = {
++  "mail.humanFirst.set": "mutate",
++  "mail.humanFirst.get": "read",
+   "rpc.execution.coordinator.register": "mutate",
+   "rpc.execution.claim.compareAndSet": "mutate",
+   "rpc.execution.execute": "mutate",
+diff --git a/v2/daemon/src/substrates.ts b/v2/daemon/src/substrates.ts
+index 980dd499..e19dc214 100644
+--- a/v2/daemon/src/substrates.ts
++++ b/v2/daemon/src/substrates.ts
+@@ -124,9 +124,9 @@ export class SubstrateRouter implements RuntimeDriver {
+     return driver.consumeDeliveryConfirmation?.(beeId, generation, messageId) ?? false;
+   }
+ 
+-  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null {
++  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean }): DeliveryConfirmationPlan | "not_ready" | null {
+     const driver: RuntimeDriver = this.driverFor(beeId, generation);
+-    return driver.planDeliveryConfirmation?.(beeId, generation, messageId, body) ?? null;
++    return driver.planDeliveryConfirmation?.(beeId, generation, messageId, body, options) ?? null;
+   }
+ 
+   reconcileDeliveryConfirmation(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult {
+@@ -134,7 +134,7 @@ export class SubstrateRouter implements RuntimeDriver {
+     return driver.reconcileDeliveryConfirmation?.(beeId, generation, messageId, plan) ?? "unknown";
+   }
+ 
+-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
++  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; multilineWaitExpired?: boolean; singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
+     const driver = this.driverFor(beeId, generation);
+     return driver.deliver(beeId, generation, messageId, body, options);
+   }
+diff --git a/v2/daemon/tests/human-chat-rpc.test.ts b/v2/daemon/tests/human-chat-rpc.test.ts
+new file mode 100644
+index 00000000..9cf06c60
+--- /dev/null
++++ b/v2/daemon/tests/human-chat-rpc.test.ts
+@@ -0,0 +1,48 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { createHash, createHmac } from "node:crypto";
++import { mkdtempSync, readFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { RpcServer } from "../src/rpc.ts";
++import { RpcClient } from "../../cli/src/client.ts";
++import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
++import { RpcError } from "../src/protocol.ts";
++
++const code = (expected: string) => (error: unknown) => error instanceof RpcError && error.code === expected;
++for (const enabled of [false, true]) test(`human provenance requires registered direct Apiary authority: trust=${enabled}`, async () => {
++  const root = mkdtempSync(join(tmpdir(), "human-rpc-"));
++  const keyFile = join(root, "private", "key");
++  const seen: unknown[] = [];
++  const server = new RpcServer({ socketPath: join(root, "rpc.sock"), dataDir: root,
++    localTrust: { requireObservationCaller: enabled, registrationKeyFile: keyFile }, log: () => {},
++    dispatch: (verb, params, conn) => { const result = { verb, params, humanChat: conn.humanChat ?? null, authority: conn.humanPolicyAuthority ?? false }; seen.push(result); return result; } });
++  const clients: RpcClient[] = [];
++  try {
++    await server.listen();
++    const c = await RpcClient.connect(join(root, "rpc.sock")); clients.push(c);
++    assert.equal(c.capabilities.includes("mail.humanFirst.v1"), enabled);
++    const params = { beeId: "fixture", body: "hello", idempotencyKey: "key" };
++    const humanChat = { version: 1 as const, authorityId: "paired-workstation", admissionId: "admission", beeId: params.beeId, bodySha256: createHash("sha256").update(params.body).digest("hex"), idempotencyKey: params.idempotencyKey, humanFirst: true };
++    await assert.rejects(c.request("send", params, 1000, { humanChat }), code("human_chat_unauthorized"));
++    await assert.rejects(c.request("mail.humanFirst.set", { beeId: "fixture", enabled: true }), code("human_chat_unauthorized"));
++    await assert.rejects(c.request("send", { ...params, humanChat }), code("human_chat_unauthorized"));
++    if (!enabled) return;
++    const challenge = await c.request<LocalTrustChallenge>("rpc.localTrust.challenge");
++    const key = readFileSync(keyFile);
++    const token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex"); key.fill(0);
++    await c.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge.challengeId, token });
++    const result = await c.request<{ humanChat: unknown }>("send", params, 1000, { humanChat });
++    assert.deepEqual(result.humanChat, humanChat);
++    for (const change of [{ body: "tampered" }, { beeId: "other" }, { idempotencyKey: "other" }]) await assert.rejects(c.request("send", { ...params, ...change }, 1000, { humanChat }), code("human_chat_invalid"));
++    const policy = await c.request<{ authority: boolean }>("mail.humanFirst.set", { beeId: "fixture", enabled: true });
++    assert.equal(policy.authority, true);
++    for (const lane of ["remote", "node_relay"] as const) {
++      const relay = await RpcClient.connect(join(root, "rpc.sock"), 1000, lane); clients.push(relay);
++      await assert.rejects(relay.request("send", params, 1000, { humanChat }), code("human_chat_unauthorized"));
++    }
++    const ordinary = await c.request<{ humanChat: unknown }>("send", { ...params, senderKind: "human" });
++    assert.equal(ordinary.humanChat, null);
++    assert.equal(seen.length, 3);
++  } finally { for (const c of clients) c.close(); await server.close(); }
++});
+diff --git a/v2/daemon/tests/human-first.test.ts b/v2/daemon/tests/human-first.test.ts
+new file mode 100644
+index 00000000..a9ed1abc
+--- /dev/null
++++ b/v2/daemon/tests/human-first.test.ts
+@@ -0,0 +1,307 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { createHash } from "node:crypto";
++import { mkdtempSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { DatabaseSync } from "node:sqlite";
++import { replayAudit } from "../../core/src/audit.ts";
++import { openCoreStore } from "../../core/src/store.ts";
++import type { HumanChatAdmission } from "../../core/src/types.ts";
++import { DaemonCore } from "../src/loops.ts";
++import { FakeDriver } from "./helpers.ts";
++
++function rig() {
++  const root = mkdtempSync(join(tmpdir(), "human-first-"));
++  let time = 1000;
++  const now = () => ++time;
++  let store = openCoreStore(join(root, "core.sqlite"), { now, ephemeral: true });
++  const driver = new FakeDriver(now);
++  const violations: unknown[] = [];
++  const options = () => ({ store, driver, now, log: () => {}, onI1Violation: (event: unknown) => violations.push(event), policy: { idleWindowSteps: null, commandsPerStep: 8, i1DeadlineSteps: 50, bootHangTimeoutSteps: 100000 } });
++  let core = new DaemonCore(options());
++  core.boot();
++  const bee = store.createBee({ name: "fixture", agent: "stub", substrate: "hsr", cwd: root }).bee;
++  store.enqueueCommand("spawn", bee.id);
++  for (let i = 0; i < 4; i++) core.step();
++  const event = (kind: "turn_started" | "turn_ended") => { driver.events.push({ beeId: bee.id, generation: 1, kind }); core.step(); };
++  return {
++    get store() { return store; }, get core() { return core; }, driver, bee,
++    event, violations,
++    advance(amount: number) { time += amount; core.step(); },
++    human(body: string, key = body, humanFirst: boolean | undefined = true, urgency: "next" | "idle" | "now" = "next") {
++      const humanChat: HumanChatAdmission = { version: 1, authorityId: "fixture-apiary", admissionId: key, beeId: bee.id, bodySha256: createHash("sha256").update(body).digest("hex"), idempotencyKey: key, ...(humanFirst === undefined ? {} : { humanFirst }) };
++      return store.send(bee.id, body, { humanChat, urgency }).message;
++    },
++    restart() { store.close(); store = openCoreStore(join(root, "core.sqlite"), { now, ephemeral: true }); core = new DaemonCore(options()); core.boot(); },
++    close() { store.close(); },
++  };
++}
++
++test("human-first holds tool-turn input, then runs humans FIFO one turn each before background", () => {
++  const r = rig();
++  try {
++    r.event("turn_started");
++    const background = r.store.send(r.bee.id, "older background", { urgency: "idle", senderKind: "automation" }).message;
++    const human1 = r.human("human 1");
++    const human2 = r.human("human 2");
++    r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, []);
++    assert.equal(r.store.getBee(r.bee.id)?.lastTurnTrigger?.humanAt, null);
++    r.event("turn_ended");
++    assert.deepEqual(r.driver.deliveredIds, [human1.id]);
++    r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, [human1.id]);
++    r.event("turn_started");
++    assert.deepEqual(r.driver.deliveredIds, [human1.id]);
++    r.event("turn_ended");
++    assert.deepEqual(r.driver.deliveredIds, [human1.id, human2.id]);
++    assert.equal(r.store.getMessage(background.id)?.deliveredAt, null);
++    r.event("turn_started"); r.event("turn_ended");
++    assert.deepEqual(r.driver.deliveredIds, [human1.id, human2.id, background.id]);
++  } finally { r.close(); }
++});
++
++test("unique admission keeps one row and timestamp; conflicting key/body/authority refuses", () => {
++  const r = rig();
++  try {
++    const first = r.human("hello", "stable");
++    const policy = r.store.humanFirstPolicy(r.bee.id);
++    assert.deepEqual(r.human("hello", "stable"), first);
++    assert.deepEqual(r.store.humanFirstPolicy(r.bee.id), policy);
++    assert.equal(r.store.listMessages(r.bee.id).length, 1);
++    assert.throws(() => r.human("different", "stable"), /bound/);
++    assert.throws(() => r.store.assertHumanChatBinding(undefined, "hello", r.bee.id, "stable"), /authenticated human/);
++    r.restart();
++    assert.deepEqual(r.human("hello", "stable"), first);
++    assert.deepEqual(r.store.humanFirstPolicy(r.bee.id), policy);
++  } finally { r.close(); }
++});
++
++test("daemon/store restart while waiting preserves pending order and policy", () => {
++  const r = rig();
++  try {
++    r.event("turn_started");
++    const background = r.store.send(r.bee.id, "background", { urgency: "idle" }).message;
++    const h1 = r.human("one"); const h2 = r.human("two");
++    r.core.step(); r.restart(); r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, []);
++    r.event("turn_ended");
++    assert.deepEqual(r.driver.deliveredIds, [h1.id]);
++    r.restart(); r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, [h1.id]);
++    r.event("turn_started"); r.event("turn_ended");
++    assert.deepEqual(r.driver.deliveredIds, [h1.id, h2.id]);
++    assert.equal(r.store.getMessage(background.id)?.deliveredAt, null);
++  } finally { r.close(); }
++});
++
++test("policy off retains native next accept point and eligible FIFO; senderKind grants no priority", () => {
++  const r = rig();
++  try {
++    r.event("turn_started");
++    const bg = r.store.send(r.bee.id, "background").message;
++    const h = r.human("human", "human", false);
++    r.core.step(); r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, [bg.id, h.id]);
++    r.event("turn_ended");
++    r.event("turn_started");
++    r.store.setHumanFirstPolicy(r.bee.id, true);
++    const fake = r.store.send(r.bee.id, "forged human", { senderKind: "human" }).message;
++    r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, [bg.id, h.id, fake.id]);
++  } finally { r.close(); }
++});
++
++test("explicit human now retains interrupt semantics under policy", () => {
++  const r = rig();
++  try {
++    r.event("turn_started");
++    const human = r.human("cancel", "cancel", true, "now");
++    r.core.step();
++    assert.equal(r.driver.interrupts.length, 1);
++    r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, [human.id]);
++  } finally { r.close(); }
++});
++
++test("held oldest human blocks younger human and ordinary background", () => {
++  const r = rig();
++  try {
++    const bg = r.store.send(r.bee.id, "background").message;
++    const h1 = r.human("held"); const h2 = r.human("second");
++    r.store.prepareUnknownDeliveryConfirmationIntent({ beeId: r.bee.id, generation: 1, messageId: h1.id }, "host_auth_failed");
++    r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, []);
++    assert.equal(r.store.pendingHumanChatId(r.bee.id), h1.id);
++    assert.deepEqual(r.store.undeliveredMessages(r.bee.id).map(m => m.id), [bg.id, h1.id, h2.id]);
++  } finally { r.close(); }
++});
++
++test("a newer explicit now interrupts without overtaking the oldest human", () => {
++  const r = rig();
++  try {
++    r.event("turn_started");
++    const h1 = r.human("oldest");
++    const h2 = r.human("interrupt", "interrupt", true, "now");
++    r.core.step(); r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, [h1.id]);
++    r.event("turn_started"); r.event("turn_ended");
++    assert.deepEqual(r.driver.deliveredIds, [h1.id, h2.id]);
++  } finally { r.close(); }
++});
++
++test("a policy enabled before a substrate change holds fresh human delivery on tmux", () => {
++  const r = rig();
++  try {
++    const human = r.human("fresh");
++    const actual = r.store.getBee.bind(r.store);
++    r.store.getBee = id => { const bee = actual(id); return bee ? { ...bee, substrate: "tmux" } : null; };
++    r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, []);
++    assert.equal(r.store.getMessage(human.id)?.deliveredAt, null);
++  } finally { r.close(); }
++});
++
++
++test("schema 47 migration adds human policy without upgrading legacy senderKind provenance", () => {
++  const root = mkdtempSync(join(tmpdir(), "human-migration-"));
++  const path = join(root, "core.sqlite");
++  let store = openCoreStore(path, { ephemeral: true });
++  const bee = store.createBee({ name: "legacy", agent: "stub", substrate: "hsr", cwd: root }).bee;
++  const old = store.send(bee.id, "legacy operator relay", { senderKind: "human" }).message;
++  store.close();
++  const db = new DatabaseSync(path);
++  db.exec("DROP INDEX mailbox_fifo_pending; ALTER TABLE mailbox DROP COLUMN human_chat; DROP TABLE human_first_policies; DROP TABLE human_chat_admissions; UPDATE meta SET value='47' WHERE key='schema_version'");
++  db.close();
++  store = openCoreStore(path, { ephemeral: true });
++  try {
++    assert.equal(store.getMessage(old.id)?.humanChat, undefined);
++    assert.equal(store.humanFirstPolicy(bee.id).enabled, false);
++    assert.deepEqual(store.readDaemonWork()[0]?.pending.map(m => m.id), [old.id]);
++    assert.deepEqual(store.listHumanFirstPolicies(), []);
++  } finally { store.close(); }
++});
++
++
++test("human policy and admission receipts replay exactly and delete with their bee", () => {
++  const r = rig();
++  try {
++    r.human("human", "key");
++    r.store.setHumanFirstPolicy(r.bee.id, false);
++    r.store.setHumanFirstPolicy(r.bee.id, true);
++    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
++    r.store.deleteBee(r.bee.id);
++    assert.deepEqual(r.store.listHumanFirstPolicies(), []);
++    assert.deepEqual(r.store.listHumanChatAdmissions(), []);
++    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
++    assert.throws(() => r.human("human", "key"), /not found/);
++  } finally { r.close(); }
++});
++
++test("I1 suspends intended human-first holds then measures a genuinely eligible delivery refusal", () => {
++  const r = rig();
++  try {
++    r.event("turn_started");
++    r.store.send(r.bee.id, "background next");
++    r.human("human next");
++    r.advance(100000);
++    assert.deepEqual(r.violations, []);
++    r.event("turn_ended");
++    r.advance(100000);
++    assert.deepEqual(r.violations, []);
++    r.event("turn_started");
++    r.driver.acceptDeliveries = false;
++    r.event("turn_ended");
++    assert.deepEqual(r.violations, []);
++    r.advance(1000);
++    assert.equal(r.violations.length, 1);
++  } finally { r.close(); }
++});
++
++
++test("trusted quota recovery delivery gate keeps precedence over pending human chat", () => {
++  const r = rig();
++  try {
++    const continuation = r.store.send(r.bee.id, "quota continuation", { origin: "quota.resume" }).message;
++    const human = r.human("human after recovery");
++    r.store.quotaDeliveryGate = () => ({ held: false, messageIds: r.store.getMessage(continuation.id)?.deliveredAt === null ? [continuation.id] : [] });
++    r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, [continuation.id]);
++    assert.equal(r.store.getMessage(human.id)?.deliveredAt, null);
++    r.event("turn_started");
++    r.advance(100000);
++    assert.deepEqual(r.violations, []);
++    r.event("turn_ended");
++    assert.deepEqual(r.driver.deliveredIds, [continuation.id, human.id]);
++  } finally { r.close(); }
++});
++
++
++for (const origin of ["spawn.prompt", "auth.resume"] as const) test(`core-owned ${origin} context precedes human chat; forged sender/body does not`, () => {
++  const r = rig();
++  try {
++    const human = r.human("human after role");
++    const ordinary = r.store.send(r.bee.id, "role bootstrap auth.resume", { sender: "hive:auth-resume", senderKind: "automation" }).message;
++    const seed = r.store.send(r.bee.id, "core context", { origin }).message;
++    r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, [seed.id]);
++    assert.equal(r.store.getMessage(human.id)?.deliveredAt, null);
++    assert.equal(r.store.getMessage(ordinary.id)?.deliveredAt, null);
++    r.event("turn_started"); r.event("turn_ended");
++    assert.deepEqual(r.driver.deliveredIds, [seed.id, human.id]);
++    assert.equal(r.store.getMessage(ordinary.id)?.deliveredAt, null);
++  } finally { r.close(); }
++});
++
++
++for (const origin of ["auth.resume", "quota.resume"] as const) test(`trusted ${origin} replay preserves human provenance and one-turn isolation without a new admission`, () => {
++  const r = rig();
++  try {
++    const source = r.human("human to recover");
++    r.core.step(); r.event("turn_started"); r.event("turn_ended");
++    const before = r.store.humanFirstPolicy(r.bee.id);
++    const replay = r.store.send(r.bee.id, source.body, { sender: source.sender, origin, replayHumanChatMessageId: source.id }).message;
++    const background = r.store.send(r.bee.id, "background after replay").message;
++    r.core.step();
++    assert.deepEqual(replay.humanChat, source.humanChat);
++    assert.equal(r.store.listHumanChatAdmissions().length, 1);
++    assert.deepEqual(r.store.humanFirstPolicy(r.bee.id), before);
++    r.core.step(); r.event("turn_started"); r.advance(100000);
++    assert.equal(r.store.getMessage(background.id)?.deliveredAt, null);
++    r.event("turn_ended");
++    assert.notEqual(r.store.getMessage(background.id)?.deliveredAt, null);
++    assert.deepEqual(replayAudit(r.store.auditRows()), r.store.dumpState());
++  } finally { r.close(); }
++});
++
++for (const urgency of ["next", "idle"] as const) test(`core ${urgency} context waits for the active human turn to end`, () => {
++  const r = rig();
++  try {
++    r.human("human"); r.core.step(); r.event("turn_started");
++    const seed = r.store.send(r.bee.id, "context", { origin: "auth.resume", urgency }).message;
++    r.advance(100000);
++    assert.equal(r.store.getMessage(seed.id)?.deliveredAt, null);
++    assert.deepEqual(r.violations, []);
++    r.event("turn_ended");
++    assert.notEqual(r.store.getMessage(seed.id)?.deliveredAt, null);
++  } finally { r.close(); }
++});
++
++
++for (const origin of ["spawn.prompt", "auth.resume"] as const) test(`an ineligible ${origin} seed holds younger next background mail`, () => {
++  const r = rig();
++  try {
++    r.store.setHumanFirstPolicy(r.bee.id, true);
++    r.event("turn_started");
++    const seed = r.store.send(r.bee.id, "required context", { origin }).message;
++    const background = r.store.send(r.bee.id, "younger background next").message;
++    r.advance(100000);
++    assert.deepEqual(r.driver.deliveredIds, []);
++    assert.deepEqual(r.violations, []);
++    r.event("turn_ended");
++    assert.deepEqual(r.driver.deliveredIds, [seed.id]);
++    r.core.step();
++    assert.deepEqual(r.driver.deliveredIds, [seed.id, background.id]);
++  } finally { r.close(); }
++});
+diff --git a/v2/driver-cell/src/driver.ts b/v2/driver-cell/src/driver.ts
+index f8f6fc40..393a3822 100644
+--- a/v2/driver-cell/src/driver.ts
++++ b/v2/driver-cell/src/driver.ts
+@@ -273,8 +273,8 @@ export class CellDriver implements RuntimeDriver {
+     return this.inner.deliveryLaneReady(beeId, generation);
+   }
+ 
+-  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string) {
+-    return this.inner.planDeliveryConfirmation(beeId, generation, messageId, body);
++  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean }) {
++    return this.inner.planDeliveryConfirmation(beeId, generation, messageId, body, options);
+   }
+ 
+   adoptedDeliveryUncertain(beeId: string, generation: number): boolean {
+@@ -289,7 +289,7 @@ export class CellDriver implements RuntimeDriver {
+     return this.inner.reconcileDeliveryConfirmation(beeId, generation, messageId, plan);
+   }
+ 
+-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
++  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
+     return this.inner.deliver(beeId, generation, messageId, body, options);
+   }
+ 
+diff --git a/v2/driver-cell/tests/fresh-turn.test.ts b/v2/driver-cell/tests/fresh-turn.test.ts
+new file mode 100644
+index 00000000..d0f3777f
+--- /dev/null
++++ b/v2/driver-cell/tests/fresh-turn.test.ts
+@@ -0,0 +1,20 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { CellDriver } from "../src/driver.ts";
++import type { HsrDriver } from "../../driver-hsr/src/driver.ts";
++
++test("Cell delegates fresh delivery and confirmation planning options intact", () => {
++  const calls: unknown[][] = [];
++  const driver = Object.create(CellDriver.prototype) as CellDriver;
++  const options = { freshTurn: true, singleAttempt: true };
++  const inner = {
++    deliver(...args: unknown[]) { calls.push(args); return { accepted: false, reason: "not_ready" as const }; },
++    planDeliveryConfirmation(...args: unknown[]) { calls.push(args); return "not_ready" as const; },
++  };
++  (driver as unknown as { inner: Pick<HsrDriver, "deliver" | "planDeliveryConfirmation"> }).inner = inner;
++  assert.deepEqual(driver.deliver("bee", 4, 7, "fresh", options), { accepted: false, reason: "not_ready" });
++  assert.equal(driver.planDeliveryConfirmation("bee", 4, 7, "fresh", options), "not_ready");
++  assert.deepEqual(calls, [["bee", 4, 7, "fresh", options], ["bee", 4, 7, "fresh", options]]);
++  assert.equal(calls[0]![4], options);
++  assert.equal(calls[1]![4], options);
++});
+diff --git a/v2/driver-hsr/src/driver.ts b/v2/driver-hsr/src/driver.ts
+index b62826f7..5902bc66 100644
+--- a/v2/driver-hsr/src/driver.ts
++++ b/v2/driver-hsr/src/driver.ts
+@@ -852,14 +852,15 @@ export class HsrDriver implements RuntimeDriver {
+     protocol.legacy = !protocol.supported;
+   }
+ 
+-  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null {
++  planDeliveryConfirmation(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean }): DeliveryConfirmationPlan | "not_ready" | null {
+     const p = this.procs.get(beeId);
+     if (!p || p.generation !== generation || !p.adapter?.confirmsDelivery) return null;
++    if (options?.freshTurn && p.phase === "running") return "not_ready";
+     this.refreshDeliveryProtocol(p);
+     if (p.exited || !p.hostStyle || !p.processIdentity || !p.deliveryProtocol?.authenticated || p.socketBroken
+       || !p.socket || p.socket.destroyed || !p.socket.writable || !p.deliveryProtocol.supported && !p.deliveryProtocol.legacy
+       || p.phase === "booting" || p.stopCause || p.phase === "running" && !p.adapter.acceptsMidTurn) return "not_ready";
+-    const wireLine = p.adapter.encodeMessage(body, { sessionId: p.sessionId, messageId, turnActive: p.phase === "running", turnId: p.turnId });
++    const wireLine = p.adapter.encodeMessage(body, { sessionId: p.sessionId, messageId, turnActive: p.phase === "running", turnId: p.turnId, freshTurn: options?.freshTurn });
+     if (wireLine == null) return "not_ready";
+     return { wireLine, digest: createHash("sha256").update(wireLine).digest("hex"), host: p.processIdentity,
+       supported: p.deliveryProtocol?.authenticated === true && p.deliveryProtocol.supported,
+@@ -894,7 +895,7 @@ export class HsrDriver implements RuntimeDriver {
+     return "pending_ack";
+   }
+ 
+-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
++  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; singleAttempt?: boolean; confirmation?: DeliveryConfirmationPlan }): DeliverOutcome {
+     const refused = (reason: "no_process" | "not_ready"): DeliverOutcome => ({ accepted: false, reason, ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) });
+     const p = this.procs.get(beeId);
+     if (!p || p.generation !== generation || p.exited) {
+@@ -932,12 +933,16 @@ export class HsrDriver implements RuntimeDriver {
+       // stdin gone means the process is dying; its exit observation follows.
+       return refused("no_process");
+     }
+-    const encoded = options?.confirmation?.wireLine ?? p.adapter.encodeMessage(body, {
++    if (options?.freshTurn && p.phase === "running") return refused("not_ready");
++    const currentEncoding = options?.confirmation && !options.freshTurn ? options.confirmation.wireLine : p.adapter.encodeMessage(body, {
+       sessionId: p.sessionId,
+       messageId,
+       turnActive: p.phase === "running",
+       turnId: p.turnId,
++      freshTurn: options?.freshTurn,
+     });
++    if (options?.freshTurn && options.confirmation && options.confirmation.wireLine !== currentEncoding) return refused("not_ready");
++    const encoded = options?.confirmation?.wireLine ?? currentEncoding;
+     if (encoded == null) return refused("not_ready");
+     if (this.deliveryFrameOversized(p, messageId, encoded)) return { accepted: false, reason: "not_ready", detail: "message_too_large" };
+     // Host-style reaches here only with a connected write lane. Node's
+diff --git a/v2/driver-hsr/tests/fresh-turn.test.ts b/v2/driver-hsr/tests/fresh-turn.test.ts
+new file mode 100644
+index 00000000..e98416e6
+--- /dev/null
++++ b/v2/driver-hsr/tests/fresh-turn.test.ts
+@@ -0,0 +1,78 @@
++import { createHash } from "node:crypto";
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { DeliveryReceipts, type DeliveryStatus } from "../src/delivery-receipts.ts";
++import { HsrDriver } from "../src/driver.ts";
++import { claudeAdapter, codexAdapter } from "../../adapters/src/index.ts";
++
++for (const adapter of [claudeAdapter, codexAdapter({ cwd: "/fixture" })]) {
++  test(`${adapter.harness}: fresh delivery refuses known active without writing`, t => {
++    const dir = mkdtempSync(join(tmpdir(), "fresh-turn-"));
++    t.after(() => rmSync(dir, { recursive: true, force: true }));
++    const driver = new HsrDriver({ sessionLogDir: join(dir, "logs"), resolve: () => { throw new Error("no spawn"); } });
++    const writes: string[] = [];
++    const proc = {
++      generation: 1, phase: "running", adapter, sessionId: "thread", turnId: "turn",
++      confirmedDeliveries: new Set(), pendingDeliveries: new Set(),
++      child: { stdin: { writable: true, destroyed: false, write: (line: string) => writes.push(line) } },
++    };
++    const internals = driver as unknown as { procs: Map<string, unknown> };
++    internals.procs.set("bee", proc);
++    assert.deepEqual(driver.deliver("bee", 1, 31, "fresh", { freshTurn: true }), {accepted: false, reason: "not_ready"});
++    assert.equal(driver.consumedGeneration(31), undefined);
++    assert.deepEqual(writes, []);
++    if (adapter.confirmsDelivery) assert.equal(driver.planDeliveryConfirmation("bee", 1, 31, "fresh", { freshTurn: true }), "not_ready");
++  });
++}
++
++
++test("codex: fresh start refusal remains unconsumed and a stale steer plan cannot write", t => {
++  const dir = mkdtempSync(join(tmpdir(), "fresh-refusal-"));
++  t.after(() => rmSync(dir, { recursive: true, force: true }));
++  const driver = new HsrDriver({ sessionLogDir: join(dir, "logs"), resolve: () => { throw new Error("no spawn"); } });
++  const adapter = codexAdapter({ cwd: dir });
++  const frames: string[] = [];
++  const proc = {
++    beeId: "bee", pid: 1, generation: 1, phase: "idle", adapter, sessionId: "thread", turnId: null,
++    realEvidence: true, hostStyle: true, outboundPending: [], pendingWrites: [],
++    processIdentity: { pid: 1, birth: "fixture", bootId: "fixture" },
++    deliveryProtocol: { authenticated: true, supported: true, legacy: false, replies: new Map<number, DeliveryStatus>(), pending: new Set<number>() },
++    turn: { messageIds: [] as number[] },
++    confirmedDeliveries: new Set<number>(), pendingDeliveries: new Set<number>(),
++    socket: { writable: true, destroyed: false, write: (line: string) => frames.push(line) },
++  };
++  const internals = driver as unknown as { procs: Map<string, unknown>; onSignal(proc: unknown, signal: unknown, raw: string): void };
++  internals.procs.set("bee", proc);
++  const plan = driver.planDeliveryConfirmation("bee", 1, 32, "fresh", { freshTurn: true });
++  assert.ok(plan && plan !== "not_ready");
++  assert.equal(JSON.parse(plan.wireLine).method, "turn/start");
++  const staleWire = adapter.encodeMessage("fresh", { sessionId: "thread", messageId: 32, turnActive: true, turnId: "old" })!;
++  assert.deepEqual(driver.deliver("bee", 1, 32, "fresh", { freshTurn: true, confirmation: { wireLine: staleWire, digest: createHash("sha256").update(staleWire).digest("hex"), host: proc.processIdentity } }), { accepted: false, reason: "not_ready" });
++  assert.deepEqual(frames, []);
++  assert.deepEqual(driver.deliver("bee", 1, 32, "fresh", { freshTurn: true, confirmation: plan }), { accepted: false, reason: "not_ready" });
++  assert.equal(proc.pendingDeliveries.has(32), true);
++  const frame = JSON.parse(frames[0]!);
++  assert.deepEqual(frame.delivery, { id: 32, digest: plan.digest, beeId: "bee", generation: 1 });
++  assert.equal(frame.line, plan.wireLine);
++  const request = JSON.parse(frame.line);
++  assert.equal(request.method, "turn/start");
++  assert.equal(driver.consumedGeneration(32), undefined);
++  const receipts = new DeliveryReceipts("bee", 1);
++  const tag = frame.delivery;
++  assert.equal(receipts.begin(tag, frame.line), true);
++  proc.deliveryProtocol.replies.set(32, receipts.status(tag));
++  assert.equal(driver.reconcileDeliveryConfirmation("bee", 1, 32, plan), "pending_ack");
++  assert.equal(driver.consumedGeneration(32), undefined);
++  const raw = JSON.stringify({ id: request.id, error: { message: "active turn" } });
++  receipts.observe(raw);
++  proc.deliveryProtocol.replies.set(32, receipts.status(tag));
++  assert.equal(driver.reconcileDeliveryConfirmation("bee", 1, 32, plan), "refused");
++  for (const signal of adapter.parseLine(raw)) internals.onSignal(proc, signal, raw);
++  assert.equal(proc.pendingDeliveries.has(32), false);
++  assert.equal(proc.confirmedDeliveries.has(32), false);
++  assert.equal(driver.consumedGeneration(32), undefined);
++  assert.equal(frames.length, 1);
++});
+diff --git a/v2/driver-tmux/src/driver.ts b/v2/driver-tmux/src/driver.ts
+index 43924a62..3f1cc610 100644
+--- a/v2/driver-tmux/src/driver.ts
++++ b/v2/driver-tmux/src/driver.ts
+@@ -407,7 +407,8 @@ export class TmuxDriver implements RuntimeDriver {
+     return receipt?.beeId === beeId && receipt.generation === generation && receipt.digest === createHash("sha256").update(body).digest("hex") ? "accepted" : "unknown";
+   }
+ 
+-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome {
++  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome {
++    if (options?.freshTurn) return { accepted: false, reason: "not_ready", detail: "fresh_turn_unsupported" };
+     const p = this.procs.get(beeId);
+     if (!p || p.generation !== generation || p.exited) return { accepted: false, reason: "no_process", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };
+     if (p.stopCause != null || !verifyProcessIdentity(p.pid, p.processIdentity)) return { accepted: false, reason: "not_ready", ...(options?.singleAttempt ? { detail: "delivery_not_attempted" } : {}) };
+diff --git a/v2/harness/src/driver.ts b/v2/harness/src/driver.ts
+index bb7a98e4..7c9f10d2 100644
+--- a/v2/harness/src/driver.ts
++++ b/v2/harness/src/driver.ts
+@@ -132,11 +132,11 @@ export interface RuntimeDriver {
+   deliveryReadiness?(beeId: string, generation: number, messageId: number): string;
+   adoptedDeliveryUncertain?(beeId: string, generation: number): boolean;
+   consumeDeliveryConfirmation?(beeId: string, generation: number, messageId: number): boolean;
+-  planDeliveryConfirmation?(beeId: string, generation: number, messageId: number, body: string): DeliveryConfirmationPlan | "not_ready" | null;
++  planDeliveryConfirmation?(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean }): DeliveryConfirmationPlan | "not_ready" | null;
+   deliveryIssue?(beeId: string, generation: number, messageId: number, body?: string): "host_auth_failed" | "message_too_large" | null;
+   deliveryLaneReady?(beeId: string, generation: number): boolean;
+   reconcileDeliveryConfirmation?(beeId: string, generation: number, messageId: number, plan: DeliveryConfirmationPlan): DeliveryConfirmationResult;
+-  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { confirmation?: DeliveryConfirmationPlan; multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome;
++  deliver(beeId: string, generation: number, messageId: number, body: string, options?: { freshTurn?: boolean; confirmation?: DeliveryConfirmationPlan; multilineWaitExpired?: boolean; singleAttempt?: boolean; expectedPane?: {socketPath: string; paneId: string; serverIdentity: string} }): DeliverOutcome;
+   deliveryPaneClear?(beeId: string, generation: number): boolean;
+   reconcileDeliveryPane?(beeId: string, generation: number, messageId: number, body: string): boolean;
+   deliveryPane?(beeId: string, generation: number): {socketPath: string; paneId: string; serverIdentity: string} | null;

@@ -1,0 +1,331 @@
+{
+  "notCheckedOnRealData": true,
+  "versions": {
+    "claude": "2.1.305",
+    "codex": "0.163.0",
+    "node": "24.18.0"
+  },
+  "strictNativeFreshTurnFence": "UNPROVEN: Claude self-wake and Codex turn/start steering active-turn race; do not enable strict guarantee",
+  "actualDaemon": {
+    "evidence": ".proof/H2B/daemon-run.json",
+    "passed": true,
+    "scope": "disposable actual Honeybee RPC server + stub HSR; separate from stock CLI/FakeDriver provider-context fixtures"
+  },
+  "independentReview": {
+    "model": "claude-opus-5-5",
+    "sessionId": "60df3153-1702-45ab-a467-ec6395e413cb",
+    "sourceHead": "ca9d21d9",
+    "mediumOrHigherFindingsRemaining": 0
+  },
+  "attention": [
+    "Native admission is not atomically fenced; DP3 is still open.",
+    "The in-memory human-policy I1 eligibility clock resets across daemon restart, undercounting an already overdue eligible row.",
+    "Policy-off keeps the legacy I1 quota clock; policy-enabled holds use the new suspension.",
+    "Schema48 draft fixtures made before the review FK fix should be recreated; no production rollout occurred.",
+    "The repository has no verification skill; existing daemon/driver footholds were used.",
+    "A held core seed blocks all other mail until its hold resolves.",
+    "Recovery copies share the original authorityId/admissionId without a new admission or receivedAt.",
+    "Seed lookup runs an incremental history backfill transaction on the policy-enabled read path.",
+    "Perf-map drift contains unaccounted entries and stale owners; no latency or performance improvement is claimed."
+  ],
+  "gateReceipt": {
+    "passed": true,
+    "scope": "All core tests and daemon/CLI files covered across full-prefix, short-namespace socket rerun and remaining-file sweep; latest policy changes checked separately.",
+    "latestFocusedSource": "ca9d21d9",
+    "fullSweepSource": "cdc8ff11",
+    "fullPrefixExit": 1,
+    "fullPrefixOnlyFailures": "Three socket-path fixture assertions caused by the forensic checkout path length; not labelled a green original command.",
+    "socketRerunTests": 7,
+    "remainingFiles": 30,
+    "evidence": [
+      ".proof/H2B/final-focused-clean.log",
+      ".proof/H2B/linux-gates-canonical.log",
+      ".proof/H2B/socket-fixture.log",
+      ".proof/H2B/daemon-tail.log"
+    ],
+    "notCheckedOnRealData": true
+  },
+  "verification": [
+    {
+      "evidence": ".proof/H2B/linux-gates-canonical.log",
+      "exit0": false
+    },
+    {
+      "evidence": ".proof/H2B/final-focused-clean.log",
+      "exit0": true
+    }
+  ],
+  "runs": [
+    {
+      "fixture": "claude-idle-1792576194830",
+      "cli": "claude",
+      "mode": "idle",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": false,
+      "humanWireMs": null,
+      "nativeCompletionsBeforeHumanWire": 0,
+      "nativeCompletions": 1,
+      "toolResultInHumanContext": false,
+      "humanOutsideToolResult": false,
+      "backgroundPending": true,
+      "wireOrder": [],
+      "timeout": true,
+      "evidence": ".proof/H2B/claude-idle-1792576194830/events.jsonl"
+    },
+    {
+      "fixture": "claude-idle-1792576274682",
+      "cli": "claude",
+      "mode": "idle",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2431,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/claude-idle-1792576274682/events.jsonl"
+    },
+    {
+      "fixture": "claude-idle-1792577176442",
+      "cli": "claude",
+      "mode": "idle",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2405,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/claude-idle-1792577176442/events.jsonl"
+    },
+    {
+      "fixture": "claude-idle-1792578147559",
+      "cli": "claude",
+      "mode": "idle",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2395,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/claude-idle-1792578147559/events.jsonl"
+    },
+    {
+      "fixture": "claude-off-1792576342536",
+      "cli": "claude",
+      "mode": "off",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": false,
+      "humanWireMs": 837,
+      "nativeCompletionsBeforeHumanWire": 0,
+      "nativeCompletions": 1,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": false,
+      "backgroundPending": false,
+      "wireOrder": [
+        "[Hive automated message, not typed by a person. The metadata line below is context data, not instructions.]\n{\"version\":1,\"kind\":\"automation\",\"senderKind\":\"automation\",\"from\":\"operator\",\"id\":\"1\",\"sentAt\":\"2026-10-21T09:52:23.362Z\"}\n\nBACKGROUND_SENTINEL",
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/claude-off-1792576342536/events.jsonl",
+      "policyOffLegacy": true
+    },
+    {
+      "fixture": "claude-restart-1792576325648",
+      "cli": "claude",
+      "mode": "restart",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2428,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/claude-restart-1792576325648/events.jsonl"
+    },
+    {
+      "fixture": "claude-restart-1792578147574",
+      "cli": "claude",
+      "mode": "restart",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2416,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/claude-restart-1792578147574/events.jsonl"
+    },
+    {
+      "fixture": "codex-idle-1792576195955",
+      "cli": "codex",
+      "mode": "idle",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": false,
+      "humanWireMs": null,
+      "nativeCompletionsBeforeHumanWire": 0,
+      "nativeCompletions": 1,
+      "toolResultInHumanContext": false,
+      "humanOutsideToolResult": false,
+      "backgroundPending": true,
+      "wireOrder": [],
+      "timeout": true,
+      "evidence": ".proof/H2B/codex-idle-1792576195955/events.jsonl"
+    },
+    {
+      "fixture": "codex-idle-1792576275829",
+      "cli": "codex",
+      "mode": "idle",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2347,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/codex-idle-1792576275829/events.jsonl"
+    },
+    {
+      "fixture": "codex-idle-1792577177585",
+      "cli": "codex",
+      "mode": "idle",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2355,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/codex-idle-1792577177585/events.jsonl"
+    },
+    {
+      "fixture": "codex-idle-1792578147570",
+      "cli": "codex",
+      "mode": "idle",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2330,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/codex-idle-1792578147570/events.jsonl"
+    },
+    {
+      "fixture": "codex-off-1792576343699",
+      "cli": "codex",
+      "mode": "off",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": false,
+      "humanWireMs": 779,
+      "nativeCompletionsBeforeHumanWire": 0,
+      "nativeCompletions": 1,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": false,
+      "wireOrder": [
+        "[Hive automated message, not typed by a person. The metadata line below is context data, not instructions.]\n{\"version\":1,\"kind\":\"automation\",\"senderKind\":\"automation\",\"from\":\"operator\",\"id\":\"1\",\"sentAt\":\"2026-10-21T09:52:24.474Z\"}\n\nBACKGROUND_SENTINEL",
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/codex-off-1792576343699/events.jsonl",
+      "policyOffLegacy": true
+    },
+    {
+      "fixture": "codex-probe-1792576341402",
+      "cli": "codex",
+      "mode": "probe",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2378,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/codex-probe-1792576341402/events.jsonl",
+      "activeStartAcceptedIntoExistingTurn": true
+    },
+    {
+      "fixture": "codex-restart-1792576326817",
+      "cli": "codex",
+      "mode": "restart",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2351,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/codex-restart-1792576326817/events.jsonl"
+    },
+    {
+      "fixture": "codex-restart-1792578147575",
+      "cli": "codex",
+      "mode": "restart",
+      "scope": "stock CLI + local fixture provider + real CoreStore/DaemonCore/FakeDriver; not real accounts or model ack",
+      "passedNaturalIdle": true,
+      "humanWireMs": 2319,
+      "nativeCompletionsBeforeHumanWire": 1,
+      "nativeCompletions": 2,
+      "toolResultInHumanContext": true,
+      "humanOutsideToolResult": true,
+      "backgroundPending": true,
+      "wireOrder": [
+        "HUMAN_SENTINEL"
+      ],
+      "timeout": false,
+      "evidence": ".proof/H2B/codex-restart-1792578147575/events.jsonl"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+forage: host trmd-metal-1 (linux/x86_64, 96 cores, load 5.08, 1 forage jobs)
+forage: synced honeybee-bf9ebc3f @ c82e1a4462 in 1,990,233µs
+forage: lane honeybee-bf9ebc3f · scratch /home/trmd/.cache/fj/yTefSM · network shared · scope forage-yTefSM-2132031
+✔ socket placement: a data dir whose sockets fit keeps them in place (1.453761ms)
+✔ socket placement: a deep data dir moves every socket into one short dir that survives a restart (4.154912ms)
+✔ socket placement: a recorded dir that is world-writable or a symlink to a foreign dir is never reused (1.817146ms)
+✔ socket placement: the fit check uses the real path of the base (1.573249ms)
+✔ socket placement: the refusal names the path when no base can hold a short socket (0.841052ms)
+✔ a daemon on a deep data dir listens on a short socket that clients find through the endpoint record (642.117047ms)
+✔ a daemon refuses an explicit socket path past the platform limit and names it (556.515969ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1442.317335
+forage: reaped 0 leftover job processes
+forage: exit 0 · run 2,794,599µs · trmd-metal-1

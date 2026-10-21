@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "scope": "All core tests and daemon/CLI files covered across full-prefix, short-namespace socket rerun and remaining-file sweep; latest policy changes checked separately.",
+  "latestFocusedSource": "ca9d21d9",
+  "fullSweepSource": "cdc8ff11",
+  "fullPrefixExit": 1,
+  "fullPrefixOnlyFailures": "Three socket-path fixture assertions caused by the forensic checkout path length; not labelled a green original command.",
+  "socketRerunTests": 7,
+  "remainingFiles": 30,
+  "evidence": [
+    ".proof/H2B/final-focused-clean.log",
+    ".proof/H2B/linux-gates-canonical.log",
+    ".proof/H2B/socket-fixture.log",
+    ".proof/H2B/daemon-tail.log"
+  ],
+  "notCheckedOnRealData": true
+}

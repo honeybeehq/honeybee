@@ -1,0 +1,28 @@
+✔ human-first holds tool-turn input, then runs humans FIFO one turn each before background (36.016546ms)
+✔ unique admission keeps one row and timestamp; conflicting key/body/authority refuses (18.787698ms)
+✔ daemon/store restart while waiting preserves pending order and policy (27.179248ms)
+✔ policy off retains native next accept point and eligible FIFO; senderKind grants no priority (20.865685ms)
+✔ explicit human now retains interrupt semantics under policy (17.34326ms)
+✔ held oldest human blocks younger human and ordinary background (16.871292ms)
+✔ a newer explicit now interrupts without overtaking the oldest human (19.284993ms)
+✔ a policy enabled before a substrate change holds fresh human delivery on tmux (15.179584ms)
+✔ schema 47 migration adds human policy without upgrading legacy senderKind provenance (21.856592ms)
+✔ human policy and admission receipts replay exactly and delete with their bee (20.336821ms)
+✔ I1 suspends intended human-first holds then measures a genuinely eligible delivery refusal (21.187919ms)
+✔ trusted quota recovery delivery gate keeps precedence over pending human chat (20.616351ms)
+✔ core-owned spawn.prompt context precedes human chat; forged sender/body does not (18.517592ms)
+✔ core-owned auth.resume context precedes human chat; forged sender/body does not (16.986245ms)
+✔ trusted auth.resume replay preserves human provenance and one-turn isolation without a new admission (21.280277ms)
+✔ trusted quota.resume replay preserves human provenance and one-turn isolation without a new admission (19.703081ms)
+✔ core next context waits for the active human turn to end (16.65654ms)
+✔ core idle context waits for the active human turn to end (16.460015ms)
+✔ an ineligible spawn.prompt seed holds younger next background mail (17.212965ms)
+✔ an ineligible auth.resume seed holds younger next background mail (16.375318ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 639.866518
