@@ -70,7 +70,7 @@ const PHASES: Record<string, PhaseKind[]> = {
 };
 
 const runDir = mkdtempSync(join(tmpdir(), "hive-tmux-smoke-"));
-const socketPath = socketPathFits(join(runDir, "tmux.sock")) ? join(runDir, "tmux.sock") : join(shortSocketDir("hive-tmux-smoke-", "tmux.sock"), "tmux.sock");
+const socketPath = socketPathFits(join(runDir, "tmux.sock")) ? join(runDir, "tmux.sock") : join(shortSocketDir("hive-tmux-smoke-", "tmux.sock", [tmpdir()]), "tmux.sock");
 /** Read-only pane peeking + final server teardown (same private socket). */
 const server = new TmuxServer({ socketPath, allowKillServer: true });
 

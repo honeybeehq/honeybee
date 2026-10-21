@@ -107,7 +107,7 @@ test("target resolution: flag > env > live record > config, empty env is unset, 
 });
 
 test("socket_in_use probe is a bare connect: no bytes reach the listener", async () => {
-  const root = shortSocketDir("hb-p8-probe-", "absent.sock");
+  const root = shortSocketDir("hb-p8-probe-", "absent.sock", [tmpdir()]);
   const path = join(root, "live.sock");
   let received = "";
   const server = createServer((socket) => { socket.setEncoding("utf8"); socket.on("data", (chunk: string) => { received += chunk; }); });
@@ -125,7 +125,7 @@ test("socket_in_use probe is a bare connect: no bytes reach the listener", async
 });
 
 test("the endpoint record is written after the socket_in_use probe and before the socket accepts", async () => {
-  const root = shortSocketDir("hb-p8f-bind-", "rpc.sock");
+  const root = shortSocketDir("hb-p8f-bind-", "rpc.sock", [tmpdir()]);
   const path = join(root, "rpc.sock");
   const server = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
   const second = new RpcServer({ socketPath: path, log: () => undefined, dispatch: () => ({ ok: true }) });
@@ -190,7 +190,7 @@ test("socket isolation against throwaway daemons", async (t) => {
   const argvLogB = join(c.dir, "argv-b.jsonl");
   const a = makeDaemonDir({ agents: claudeAgent(argvLogA) });
   const b = makeDaemonDir({ agents: claudeAgent(argvLogB) });
-  const sockDir = shortSocketDir("hb-p8-iso-", "inherited.sock");
+  const sockDir = shortSocketDir("hb-p8-iso-", "inherited.sock", [tmpdir()]);
   const aSock = join(sockDir, "a-custom.sock");
   const home = join(c.dir, "home");
   mkdirSync(home, { recursive: true });
