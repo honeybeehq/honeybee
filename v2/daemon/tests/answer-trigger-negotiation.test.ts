@@ -125,13 +125,17 @@ test("answer egress projection preserves canonical objects and arbitrary outputs
   const trigger = Object.freeze({ kind: "answer", from: "rpc", messageId: 7, generation: 1, startedAt: 10, humanAt: 10, endedAt: 20 });
   const bee = Object.freeze({ lastTurnTrigger: trigger });
   const business = Object.freeze({ lastTurnTrigger: trigger, turnTrigger: trigger });
+  const tell = Object.freeze({ turnTrigger: trigger });
+  const reaction = Object.freeze({ turnTrigger: trigger });
   const events = Object.freeze([
     Object.freeze({ kind: "bee.created", payload: Object.freeze({ bee }) }),
     Object.freeze({ kind: "runtime.updated", payload: Object.freeze({ turnTrigger: trigger }) }),
     Object.freeze({ kind: "mail.delivered", payload: Object.freeze({ turnTrigger: trigger }) }),
     Object.freeze({ kind: "action.put", payload: Object.freeze({ action: Object.freeze({ outputs: business }) }) }),
+    Object.freeze({ kind: "bee.told", payload: Object.freeze({ tell }) }),
+    Object.freeze({ kind: "bee.reacted", payload: Object.freeze({ reaction }) }),
   ]);
-  const result = Object.freeze({ bee, views: Object.freeze([{ bee }]), children: Object.freeze([{ bee }]), rows: events, outputs: business });
+  const result = Object.freeze({ bee, views: Object.freeze([{ bee }]), children: Object.freeze([{ bee }]), rows: events, outputs: business, tell, reaction, tells: Object.freeze([tell]), reactions: Object.freeze([reaction]) });
   for (const coverage of Object.values(ANSWER_TRIGGER_RESULTS)) for (const verb of coverage.verbs) {
     const projected = projectAnswerTriggerResult(verb, result, []);
     assert.equal(projectAnswerTriggerResult(verb, result, ["turn-trigger.answer.v1"]), result);
@@ -143,6 +147,18 @@ test("answer egress projection preserves canonical objects and arbitrary outputs
   assert.equal(projectAnswerTriggerDelta(delta, ["turn-trigger.answer.v1"]), delta);
   const old = projectAnswerTriggerDelta(delta, []) as typeof delta;
   assert.equal(old.events[3], events[3]);
+  for (const event of old.events.slice(4)) assert.match(JSON.stringify(event), /"kind":"human"/);
+  for (const [verb, field] of [["bee.tell", "tell"], ["bee.react", "reaction"]] as const) {
+    const projected = projectAnswerTriggerResult(verb, result, []) as typeof result;
+    assert.equal(projected[field].turnTrigger.kind, "human");
+    assert.equal(projected.bee, bee, "unrelated bee data is outside this verb's projection");
+    assert.equal(result[field].turnTrigger.kind, "answer");
+  }
+  const snapshot = projectAnswerTriggerResult("snapshot", result, []) as typeof result;
+  assert.equal(snapshot.tells[0]!.turnTrigger.kind, "human");
+  assert.equal(snapshot.reactions[0]!.turnTrigger.kind, "human");
+  assert.equal(result.tells[0]!.turnTrigger, trigger);
+  assert.equal(result.reactions[0]!.turnTrigger, trigger);
   assert.equal(trigger.kind, "answer");
   assert.equal(bee.lastTurnTrigger, trigger);
   assert.equal(projectAnswerTriggerResult("action.complete", result, []), result);
