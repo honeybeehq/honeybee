@@ -90,7 +90,6 @@ export async function externalRunner(): Promise<void> {
     let previous = "";
     for (let pass = 0; pass < EXTERNAL_DRAIN_PASSES && previous !== JSON.stringify([...offsets]); pass++) { previous = JSON.stringify([...offsets]); raw(); }
     if (previous !== JSON.stringify([...offsets])) captureFailed = true;
-    if (capture.truncated) captureFailed = true;
     if (captureFailed) throw new Error("external_exec_raw_capture_failed");
   };
   await new Promise<void>(resolve => {
@@ -108,7 +107,7 @@ export async function externalRunner(): Promise<void> {
           if (timer) {clearInterval(timer); timer = null;}
           const fd = openExternalFile(outputDirectory!, "capture.json", true);
           try {writeSync(fd, JSON.stringify({...capture.snapshot(), drainIncomplete: false}));} finally {closeSync(fd);}
-          emit({schema: "honeybee.external.observation.v1", event: terminalEvent});
+          emit({schema: "honeybee.external.observation.v1", event: terminalEvent, captureTruncated: capture.truncated});
           process.exitCode = 0;
         }).catch(() => {
           emit({ schema: "honeybee.external.error.v1", code: "reconcile_required" }); process.exitCode = 75;

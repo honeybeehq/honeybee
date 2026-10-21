@@ -97,3 +97,19 @@ test("plaintext prototype bindings cannot be read or dispatched", () => {
     assert.equal(db.prepare("SELECT dispatched FROM external_exec").get()!.dispatched, 0);
   } finally {db.close();}
 });
+
+test("truncated capture settles a bound model receipt and stays truncated on replay", () => {
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec("CREATE TABLE bees(id TEXT PRIMARY KEY); INSERT INTO bees VALUES('external-test')"); db.exec(EXTERNAL_EXEC_SQL);
+    const binding = externalFixture(), owner = new ExternalExecutions(db); owner.admit(binding);
+    owner.settle(binding.beeId, externalReceipt(binding), true);
+    assert.equal(owner.view(binding.beeId)?.observation, "terminal");
+    assert.equal(owner.view(binding.beeId)?.status, "failed");
+    assert.equal(owner.view(binding.beeId)?.capture, "truncated");
+    owner.settle(binding.beeId, externalReceipt(binding));
+    assert.equal(owner.view(binding.beeId)?.capture, "truncated");
+    db.prepare("UPDATE external_exec SET failure='unknown' WHERE bee_id=?").run(binding.beeId);
+    assert.throws(() => owner.view(binding.beeId), /corrupt_capture_state/);
+  } finally {db.close();}
+});

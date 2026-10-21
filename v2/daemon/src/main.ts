@@ -44,7 +44,7 @@ function resolveDaemonDataDir(args: DaemonRunArgs): string {
 }
 
 function loadDaemonConfig(args: DaemonRunArgs, dataDir: string): ResolvedNodeConfig {
-  const cfg = loadNodeConfig(dataDir, args.configPath);
+  const cfg = loadNodeConfig(dataDir, args.configPath, "daemon");
   return args.socketPath ? { ...cfg, socketPath: resolve(args.socketPath) } : cfg;
 }
 

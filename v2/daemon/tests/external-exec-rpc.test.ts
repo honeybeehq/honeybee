@@ -57,3 +57,29 @@ test("unconfigured RPC owner never advertises external execution", () => {
   const server = new RpcServer({ socketPath: "/not-listening", log: () => {}, dispatch: () => null });
   assert.equal(server.capabilities.includes("external-exec.v1"), false);
 });
+
+test("daemon keeps public RPC usable while management uses its own protected listener", async () => {
+  const {makeDaemonDir, startDaemon, forceStopTestDaemon} = await import("./helpers.ts");
+  const {loadNodeConfig} = await import("../src/config.ts");
+  const {chmodSync} = await import("node:fs");
+  const owner = mkdtempSync(join(tmpdir(), "hb-listener-owner-")), ownerFile = join(owner, "owner.json");
+  writeFileSync(ownerFile, JSON.stringify({schema: "honeybee.external-owner.v1", externalExec: {bridges: {}, workspaces: {ur: {capabilities: ["external-exec.v1"], bridges: []}}}}), {mode: 0o600});
+  writeFileSync(join(owner, "management.key"), Buffer.alloc(32, 8), {mode: 0o600});
+  const node = makeDaemonDir({externalOwnerFile: ownerFile, naming: {auto: false}});
+  const daemon = await startDaemon(node.dir);
+  const clients: RpcClient[] = [];
+  try {
+    const publicClient = await daemon.client(); clients.push(publicClient);
+    const management = await RpcClient.connect(join(owner, "hived.sock")); clients.push(management);
+    assert.equal(publicClient.capabilities.includes("external-exec.v1"), false);
+    assert.equal(management.capabilities.includes("external-exec.v1"), true);
+    await assert.rejects(publicClient.request("rpc.externalManagement.challenge", {workspace: "ur"}), refused);
+    const challenge = await management.request<LocalTrustChallenge>("rpc.externalManagement.challenge", {workspace: "ur"});
+    assert.equal(challenge.daemonInstanceId, publicClient.instance?.id);
+    chmodSync(join(owner, "management.key"), 0o000);
+    assert.equal(loadNodeConfig(node.dir).socketPath, join(node.dir, "hived.sock"));
+    assert.ok(await publicClient.request("health"));
+    assert.throws(() => loadNodeConfig(node.dir, undefined, "management"));
+    await assert.rejects(management.request("list"), refused);
+  } finally {clients.forEach(client => client.close()); await forceStopTestDaemon(daemon);}
+});

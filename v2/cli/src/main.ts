@@ -26,7 +26,7 @@ import { homedir } from "node:os";
 import { createInterface } from "node:readline";
 import { closeSync, existsSync, openSync, readSync, statSync, fsyncSync, unlinkSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { type ResolvedNodeConfig } from "../../daemon/src/config.ts";
+import { loadNodeConfig, type ResolvedNodeConfig } from "../../daemon/src/config.ts";
 import { runDaemon } from "../../daemon/src/main.ts";
 import { runRunnerHost } from "../../driver-hsr/src/runner-host.ts";
 import {
@@ -829,8 +829,9 @@ function envFrom(entries: readonly string[]): Record<string, string> {
 async function cmdExternalExec(ctx: CliContext, parsed: Parsed): Promise<number> {
   const name = parsed.positional[1], file = parsed.flags.get("--file"), workspace = parsed.flags.get("--workspace"), bridgeId = parsed.flags.get("--bridge");
   if (!name || typeof file !== "string" || typeof workspace !== "string" || typeof bridgeId !== "string") throw new Error("usage: hive external-exec <name> --bridge <registered-id> --workspace <id> --file <private-dispatch> --idempotency-key <key>");
-  const management = ctx.cfg.externalManagement;
-  if (!management || ctx.cfg.socketPath !== management.socketPath) throw new Error("External execution requires protected owner-side management configuration");
+  const owner = loadNodeConfig(ctx.cfg.dataDir, ctx.cfg.configPath, "management");
+  const management = owner.externalManagement;
+  if (!management) throw new Error("External execution requires protected owner-side management configuration");
   const endpoint = JSON.parse(privateManagementFile(management.endpointFile, management.root).toString("utf8"));
   if (typeof endpoint.daemonInstanceId !== "string") throw new Error("Protected daemon identity unavailable");
   const path = resolve(file), fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -840,7 +841,9 @@ async function cmdExternalExec(ctx: CliContext, parsed: Parsed): Promise<number>
     if (!stat.isFile() || stat.uid !== process.getuid!() || (stat.mode & 0o077) !== 0 || stat.size > 2 * 1024 * 1024) throw new Error("Dispatch must be a private bounded regular file");
     dispatch = dispatchValue(JSON.parse(readFileSync(fd, "utf8")));
   } finally { closeSync(fd); }
-  const result = await withClient(ctx, async client => {
+  const client = await RpcClient.connect(management.socketPath);
+  let result: SpawnResult;
+  try {
     if (!client.capabilities.includes("external-exec.v1")) throw new Error("external-exec.v1 is not enabled by this owner");
     if (client.instance?.id !== endpoint.daemonInstanceId) throw new Error("Unexpected external management daemon");
     const challenge = await client.request<LocalTrustChallenge>("rpc.externalManagement.challenge", {workspace});
@@ -852,8 +855,8 @@ async function cmdExternalExec(ctx: CliContext, parsed: Parsed): Promise<number>
       const token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex");
       await client.request("rpc.externalManagement.register", { workspace, pid: process.pid, challengeId: challenge.challengeId, token });
     } finally { key.fill(0); }
-    return await client.request<SpawnResult>("spawn", { name, agent: "external-exec-v1", bridgeId, dispatch, idempotencyKey: parsed.flags.get("--idempotency-key") }, 10_000, { externalExecWorkspace: workspace });
-  });
+    result = await client.request<SpawnResult>("spawn", { name, agent: "external-exec-v1", bridgeId, dispatch, idempotencyKey: parsed.flags.get("--idempotency-key") }, 10_000, { externalExecWorkspace: workspace });
+  } finally { client.close(); }
   emit(ctx, [confirm("ok", "spawned external execution", result.beeId)], result, false);
   return 0;
 }

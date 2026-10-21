@@ -5765,13 +5765,13 @@ export class CoreStore {
       return operation;
     });
   }
-  settleExternal(beeId: string, generation: number, receipt: unknown): void {
+  settleExternal(beeId: string, generation: number, receipt: unknown, truncated = false): void {
     this.tx(() => {
       if (this.currentRuntime(beeId)?.generation !== generation) return;
       const before = this.externalExecutions.view(beeId);
-      const settled = this.externalExecutions.settle(beeId, receipt);
+      const settled = this.externalExecutions.settle(beeId, receipt, truncated);
       if (before?.status !== "pending") return;
-      this.audit("external_exec.terminal", beeId, { attemptId: settled.attemptId, status: settled.status });
+      this.audit("external_exec.terminal", beeId, { attemptId: settled.attemptId, status: settled.status, capture: truncated ? "truncated" : "complete" });
     });
   }
 

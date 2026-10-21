@@ -1,3 +1,4 @@
+import { externalGroupStop } from "./externalGroup.ts";
 import { quotaSourceId } from "../../adapters/src/quota.ts";
 import type { QuotaBoundary } from "../../core/src/quota.ts";
 import type {RuntimeIdentityHooks} from "../../core/src/runtimeProcessIdentity.ts";
@@ -105,7 +106,7 @@ export interface SpawnSpec {
 export interface HsrDriverConfig {
   isExternal?(beeId: string): boolean;
   onExternalError?(beeId: string, generation: number): void;
-  onExternalReceipt?(beeId: string, generation: number, receipt: import("../../core/src/externalExec.ts").BridgeReceipt): void;
+  onExternalReceipt?(beeId: string, generation: number, receipt: import("../../core/src/externalExec.ts").BridgeReceipt, truncated?: boolean): void;
   runtimeIdentity?: RuntimeIdentityHooks;
   execution?: ExecutionRuntimeHooks;
   executionStartFor?(beeId: string, generation: number): ExecutionStart | null;
@@ -394,6 +395,7 @@ export class ReconnectToolsControlError extends Error {
 }
 
 export class HsrDriver implements RuntimeDriver {
+  private readonly externalStops = new Map<ManagedProcess, ReturnType<typeof externalGroupStop>>();
   private readonly reconnecting = new Set<string>();
   private detached = false;
   private readonly cfg: HsrDriverConfig;
@@ -1064,23 +1066,11 @@ export class HsrDriver implements RuntimeDriver {
     if (processDisposition(p.processIdentity ?? null, inspectProcess(p.pid)) === "exited") { this.finishHost(p); return {hadProcess: false}; }
     if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) throw new ProcessIdentityUnavailableError();
     if (this.cfg.isExternal?.(beeId) || p.adapter?.harness === "external-exec-v1") {
+      if (!this.externalStops.has(p)) this.externalStops.set(p, externalGroupStop(p.processIdentity!, this.graceMs,
+        () => this.cfg.onExternalError?.(p.beeId, p.generation), () => this.externalStops.delete(p)));
+      if (p.stopCause == null) p.stopCause = cause;
       if (p.degraded || p.adapter?.harness !== "external-exec-v1") this.cfg.onExternalError?.(p.beeId, p.generation);
       else this.writeLine(p, JSON.stringify({ operation: "stop" }));
-      if (p.stopCause == null) p.stopCause = cause;
-      if (p.killTimer == null) {
-        p.killTimer = setTimeout(() => {
-          p.killTimer = null;
-          if (p.exited) return;
-          this.signalGroup(p, "SIGTERM");
-          this.cfg.onExternalError?.(p.beeId, p.generation);
-          p.killTimer = setTimeout(() => {
-            p.killTimer = null;
-            if (!p.exited) this.signalGroup(p, "SIGKILL");
-          }, this.graceMs);
-          p.killTimer.unref();
-        }, this.graceMs);
-        p.killTimer.unref();
-      }
       return { hadProcess: true };
     }
     if (p.stopCause == null) p.stopCause = cause;
@@ -1706,6 +1696,8 @@ export class HsrDriver implements RuntimeDriver {
 
   /** Test/teardown only: SIGKILL every child group and drop pending events. */
   disposeAll(): void {
+    for (const stop of [...this.externalStops.values()]) stop.kill();
+    this.externalStops.clear();
     this.pendingStarts.clear();
     for (const p of this.procs.values()) {
       if (p.killTimer) clearTimeout(p.killTimer);
@@ -1838,7 +1830,7 @@ export class HsrDriver implements RuntimeDriver {
         this.cfg.onExternalError?.(p.beeId, p.generation);
         return;
       case "external_receipt":
-        this.cfg.onExternalReceipt?.(p.beeId, p.generation, signal.receipt);
+        this.cfg.onExternalReceipt?.(p.beeId, p.generation, signal.receipt, signal.captureTruncated);
         return;
       case "tools_control_result":
         p.reconnectReplies.set(signal.requestId, signal.error ?? null);

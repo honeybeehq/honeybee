@@ -713,6 +713,7 @@ export class HiveDaemon {
   private core: DaemonCore | null = null;
   private telemetry: TelemetryStore | null = null;
   private rpc: RpcServer | null = null;
+  private managementRpc: RpcServer | null = null;
   private tickTimer: NodeJS.Timeout | null = null;
   /** Event-loop delay histogram: stalls anywhere (tick, RPC handler, fs) starve the accept loop. */
   private loopDelay: IntervalHistogram | null = null;
@@ -911,8 +912,8 @@ export class HiveDaemon {
     const sessionLogPathFor = (beeId: string): string | null => this.ownedSessionLogPath(store.getBee(beeId)?.sessionLogPath ?? null);
     const hsrConfig = {
       isExternal: (beeId: string) => store.externalBinding(beeId) !== null,
-      onExternalError: (beeId: string, generation: number) => store.externalFailed(beeId, generation),
-      onExternalReceipt: (beeId: string, generation: number, receipt: unknown) => store.settleExternal(beeId, generation, receipt),
+      onExternalError: (beeId: string, generation: number) => { if (!this.stopping) store.externalFailed(beeId, generation); },
+      onExternalReceipt: (beeId: string, generation: number, receipt: unknown, truncated = false) => this.settleExternal(beeId, generation, receipt, truncated),
       sessionLogDir: this.cfg.sessionLogDir,
       sessionLogPathFor,
       stopKillGraceMs: this.cfg.stopKillGraceMs,
@@ -1089,28 +1090,40 @@ export class HiveDaemon {
       socketPath: this.cfg.socketPath,
       dataDir: this.cfg.dataDir,
       instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
-      externalExecEnabled: Object.values(this.cfg.externalExec?.workspaces ?? {}).some(w => w.capabilities.includes(EXTERNAL_EXEC_CAPABILITY)),
       localTrust: this.cfg.rpcLocalTrust,
-      externalManagement: this.cfg.externalManagement,
-      externalWorkspaces: Object.entries(this.cfg.externalExec?.workspaces ?? {}).filter(([,w]) => w.capabilities.includes(EXTERNAL_EXEC_CAPABILITY)).map(([id]) => id),
       securityAudit: (kind, payload) => store.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
       log: (op) => this.log(op),
       dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
       performance: this.performance,
     });
     try {
-      await this.rpc.listen(() => {
-        if (this.cfg.externalManagement) {
-          const fd = openSync(this.cfg.externalManagement.endpointFile, constants.O_WRONLY | constants.O_CREAT | constants.O_NONBLOCK | constants.O_NOFOLLOW, 0o600);
+      if (this.cfg.externalManagement) {
+        const management = this.cfg.externalManagement;
+        this.managementRpc = new RpcServer({socketPath: management.socketPath, dataDir: this.cfg.dataDir,
+          instance: {id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir)}, externalExecEnabled: true,
+          externalManagement: management,
+          externalWorkspaces: Object.entries(this.cfg.externalExec?.workspaces ?? {}).filter(([,w]) => w.capabilities.includes(EXTERNAL_EXEC_CAPABILITY)).map(([id]) => id),
+          log: op => this.log(op),
+          securityAudit: (kind, payload) => store.recordLocalRpcEvent(kind as "rpc.local_registered", payload),
+          dispatch: (verb, params, conn) => {
+            if (verb !== "spawn" || params.agent !== EXTERNAL_EXEC) throw new RpcError("caller_not_trusted", "Management socket accepts only external execution admission");
+            return this.dispatch(verb, params, conn);
+          },
+        });
+        await this.managementRpc.listen(() => {
+          const fd = openSync(management.endpointFile, constants.O_WRONLY | constants.O_CREAT | constants.O_NONBLOCK | constants.O_NOFOLLOW, 0o600);
           try {
             const stat = fstatSync(fd);
             if (!stat.isFile() || stat.nlink !== 1 || stat.uid !== process.geteuid!()) throw new Error("Invalid protected endpoint file");
             fchmodSync(fd, 0o600); ftruncateSync(fd, 0); writeFileSync(fd, JSON.stringify({daemonInstanceId: this.instanceId}));
           } finally { closeSync(fd); }
-        }
+        });
+      }
+      await this.rpc.listen(() => {
         writeEndpointRecord(this.cfg.dataDir, { instanceId: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir), socketPath: resolve(this.cfg.socketPath), tmuxSocketPath: this.tmuxSocketPath, pid: process.pid, startedAt: this.startedAt, ...this.daemonProcessIdentity() });
       });
     } catch (error) {
+      await this.managementRpc?.close();
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       throw error;
     }
@@ -1155,6 +1168,7 @@ export class HiveDaemon {
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
       await this.rpc?.close();
+      await this.managementRpc?.close();
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       this.core?.detachReconnectOwner();
       if (options.preserveRuntimes === false) {
@@ -3350,6 +3364,13 @@ export class HiveDaemon {
   }
 
   private externalDispatches = new Map<string, ExternalDispatch>();
+  private settleExternal(beeId: string, generation: number, receipt: unknown, truncated = false): void {
+    if (this.stopping) return;
+    const store = this.mustStore();
+    store.settleExternal(beeId, generation, receipt, truncated);
+    if (store.externalView(beeId)?.observation === "terminal") this.externalDispatches?.delete(beeId);
+  }
+
 
   private rpcSpawnExternal(params: Record<string, unknown>, conn: RpcConn): SpawnResult {
     const allowed = ["name", "agent", "bridgeId", "dispatch", "substrate", "cwd", "title", "tags", "parentId", "parentExternal", "id", "idempotencyKey"];
@@ -3371,7 +3392,7 @@ export class HiveDaemon {
       const previous = store.externalBinding((prior.result as SpawnResult).beeId);
       if (prior.verb !== "spawn" || !previous || previous.bridgeId !== bridgeId || previous.workspace !== workspace || previous.admissionDigest !== admissionDigest || previous.dispatchManifestSha256 !== sha256(dispatchBytes(dispatch))) throw new RpcError("idempotency_conflict", "External spawn key differs from its original binding");
       this.externalDispatches ??= new Map();
-      this.externalDispatches.set(previous.beeId, dispatch);
+      if (store.externalView(previous.beeId)?.status === "pending") this.externalDispatches.set(previous.beeId, dispatch);
       return { ...(prior.result as SpawnResult), deduped: true };
     }
     return this.withIdempotency("spawn", params, () => {
@@ -4979,7 +5000,7 @@ export class HiveDaemon {
 
   private rpcConfigGet(): ConfigGetResult {
     try {
-      this.naming = loadNodeConfig(this.cfg.dataDir, this.cfg.configPath).naming;
+      this.naming = loadNodeConfig(this.cfg.dataDir, this.cfg.configPath, "daemon").naming;
     } catch (err) {
       if (!(err instanceof ConfigError)) throw err;
       throw new RpcError("invalid_request", err.message);

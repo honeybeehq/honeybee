@@ -1,0 +1,54 @@
+{
+  "schema": "honeybee.external.pin-check.v1",
+  "bridgeId": "urbench-v2",
+  "source": "14de2f119af5a822c12e8910339666c311dace27",
+  "executed": false,
+  "registered": false,
+  "liveChanges": false,
+  "result": "verified-read-only",
+  "pins": [
+    {
+      "path": "/opt/urbench-v2/bridge/14de2f119af5a822c12e8910339666c311dace27/bin/urbench-bridge",
+      "expected": "7157b41da3845b273f1208e0c9d14e53ec0ff7c56c9d5c7950d1ccf4e1c4d946",
+      "actual": "7157b41da3845b273f1208e0c9d14e53ec0ff7c56c9d5c7950d1ccf4e1c4d946",
+      "uid": 0,
+      "mode": "0555"
+    },
+    {
+      "path": "/opt/urbench-v2/bridge/14de2f119af5a822c12e8910339666c311dace27/files.json",
+      "expected": "2b25875bc9bc5b7808b614b022497febc4bd0afd2a8a6fcd7fb16ae8ec5607cf",
+      "actual": "2b25875bc9bc5b7808b614b022497febc4bd0afd2a8a6fcd7fb16ae8ec5607cf",
+      "uid": 0,
+      "mode": "0444"
+    },
+    {
+      "path": "/opt/urbench-v2/bridge/14de2f119af5a822c12e8910339666c311dace27/payload.sha256",
+      "expected": "89ba8f60ce2638d89533ce97cb2a8623c0db8ca067cf47d0b73fdc2395ebed2d",
+      "actual": "89ba8f60ce2638d89533ce97cb2a8623c0db8ca067cf47d0b73fdc2395ebed2d",
+      "uid": 0,
+      "mode": "0444"
+    }
+  ],
+  "inventoryFiles": 1913,
+  "components": 2038,
+  "inventoryComponents": 2033,
+  "componentDefinition": "unique symlink-expanded traversal components for inventory, pin files, payload paths and registration.json",
+  "installChain": "pass",
+  "mismatches": [
+    {
+      "pin": "executableSha256",
+      "result": "refused",
+      "reason": "external_exec_install_mismatch"
+    },
+    {
+      "pin": "filesManifestSha256",
+      "result": "refused",
+      "reason": "external_exec_install_mismatch"
+    },
+    {
+      "pin": "payloadManifestSha256",
+      "result": "refused",
+      "reason": "external_exec_install_mismatch"
+    }
+  ]
+}

@@ -16,7 +16,10 @@ export function externalExecAdapter(binding: ExternalIdentity): HarnessAdapter {
         const raw = record(frame.event);
         const event = bridgeEvent(raw, binding, Number(raw.seq));
         if (event.type === "started") return [{ kind: "booted" }];
-        if (event.type === "terminal") return [{ kind: "external_receipt", receipt: validateReceipt(event.data, binding) }];
+        if (event.type === "terminal") {
+          if (frame.captureTruncated !== undefined && typeof frame.captureTruncated !== "boolean") return [];
+          return [{ kind: "external_receipt", receipt: validateReceipt(event.data, binding), captureTruncated: frame.captureTruncated === true }];
+        }
       } catch {}
       return [];
     },

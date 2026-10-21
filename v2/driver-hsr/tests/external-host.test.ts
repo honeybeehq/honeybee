@@ -1,3 +1,4 @@
+import { inspectProcess } from "../src/psutil.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, statSync, readFileSync, chmodSync, writeFileSync } from "node:fs";
@@ -94,6 +95,41 @@ test("an external owner with no usable adapter can still stop its verified proce
     await drainUntil(driver, events => events.some(e => e.kind === "booted"));
     assert.equal(driver.stop("degraded-external", 1, "stopped_by_user").hadProcess, true);
     await drainUntil(driver, events => events.some(e => e.kind === "exited"));
+    assert.ok(uncertain >= 1);
+  } finally {driver.disposeAll();}
+});
+
+test("external KILL remains armed after the host leader exits with a survivor", async () => {
+  const base = join(process.cwd(), ".local", "external-exec-tests"); mkdirSync(base, {recursive: true, mode: 0o700});
+  const root = mkdtempSync(join(base, "group-survivor-"));
+  const binding = externalFixture();
+  const event = {schema: "honeybee.external.observation.v1", event: {schema: "urbench.bridge.event.v1", type: "started", seq: 1, attemptId: binding.dispatch.attemptId, fencingTokenSha256: sha256(binding.dispatch.fencingToken), data: {}}};
+  const survivorFile = join(root, "survivor.pid");
+  const script = `const cp=require('node:child_process');
+const survivor=cp.spawn(process.execPath,['-e',"process.on('SIGTERM',()=>{}); console.log('ready'); setInterval(()=>{},1000)"],{stdio:['ignore','pipe','ignore']});
+survivor.stdout.once('data',()=>{ require('node:fs').writeFileSync(${JSON.stringify(survivorFile)}, String(survivor.pid)); console.log(${JSON.stringify(JSON.stringify(event))}); });
+process.on('SIGTERM',()=>process.exit(0)); setInterval(()=>{},1000);`;
+  let uncertain = 0;
+  const driver = new HsrDriver({sessionLogDir: join(root, "logs"), socketDir: `/proc/self/cwd/.local/external-exec-tests/${basename(root)}`, stopKillGraceMs: 150, isExternal: () => true,
+    onExternalError: () => {uncertain++;},
+    resolve: () => ({adapter: externalExecAdapter(externalIdentity(binding)), command: process.execPath, args: ["-e", script], env: {...BRIDGE_ENV}})});
+  try {
+    driver.start("leader-exits", 1);
+    await drainUntil(driver, events => events.some(e => e.kind === "booted"));
+    const survivor = Number(readFileSync(survivorFile, "utf8"));
+    const identity = inspectProcess(survivor);
+    assert.equal(identity.kind, "present");
+    driver.stop("leader-exits", 1, "stopped_by_user");
+    await drainUntil(driver, events => events.some(e => e.kind === "exited"));
+    driver.detachAll();
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const value = inspectProcess(survivor);
+      if (value.kind === "gone" || value.kind === "present" && value.state === "zombie") break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const value = inspectProcess(survivor);
+    assert.ok(value.kind === "gone" || value.kind === "present" && value.state === "zombie");
     assert.ok(uncertain >= 1);
   } finally {driver.disposeAll();}
 });

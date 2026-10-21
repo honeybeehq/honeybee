@@ -1,5 +1,6 @@
+import { resolveDaemonTarget } from "../../cli/src/target.ts";
 import { verifyManagementChallenge, localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
@@ -34,13 +35,32 @@ test("only a protected external owner file can supply workspace grants", () => {
   const externalExec = {bridges: {}, workspaces: {ur: {capabilities: ["external-exec.v1"], bridges: []}}};
   writeFileSync(ownerFile, JSON.stringify({schema: "honeybee.external-owner.v1", externalExec}), {mode: 0o600});
   writeFileSync(join(root, "management.key"), Buffer.alloc(32, 7), {mode: 0o600});
-  const loaded = externalOwner(ownerFile, join(root, "cells"));
+  const node = mkdtempSync(join(tmpdir(), "hb-external-node-"));
+  const loaded = externalOwner(ownerFile, join(node, "cells"), node);
   assert.deepEqual(loaded.externalExec, externalExec);
   assert.equal(loaded.externalManagement?.socketPath, join(root, "hived.sock"));
-  writeFileSync(join(root, "config.json"), JSON.stringify({externalOwnerFile: ownerFile}));
-  assert.equal(loadNodeConfig(root).socketPath, join(root, "hived.sock"));
-  writeFileSync(join(root, "config.json"), JSON.stringify({externalExec}));
-  assert.throws(() => loadNodeConfig(root), /Inline externalExec is forbidden/);
+  writeFileSync(join(node, "config.json"), JSON.stringify({externalOwnerFile: ownerFile}));
+  assert.equal(loadNodeConfig(node, undefined, "management").externalManagement?.socketPath, join(root, "hived.sock"));
+  assert.equal(loadNodeConfig(node).socketPath, join(node, "hived.sock"));
+  assert.equal(loadNodeConfig(node).externalManagement, undefined);
+  writeFileSync(join(node, "config.json"), JSON.stringify({externalExec}));
+  assert.throws(() => loadNodeConfig(node), /Inline externalExec is forbidden/);
   chmodSync(join(root, "management.key"), 0o644);
-  assert.throws(() => externalOwner(ownerFile, join(root, "cells")), /unprotected/);
+  assert.throws(() => externalOwner(ownerFile, join(node, "cells"), node), /unprotected/);
+});
+
+test("public configuration never probes inaccessible management files", () => {
+  const node = mkdtempSync(join(tmpdir(), "hb-public-config-"));
+  writeFileSync(join(node, "config.json"), JSON.stringify({externalOwnerFile: "/no-management-access/owner.json"}));
+  const cfg = resolveDaemonTarget({dataDirFlag: node}, {}).cfg;
+  assert.equal(cfg.externalManagement, undefined);
+  assert.equal(cfg.socketPath, join(node, "hived.sock"));
+  assert.deepEqual(cfg.externalExec, {bridges: {}, workspaces: {}});
+  assert.throws(() => loadNodeConfig(node, undefined, "daemon"));
+  assert.throws(() => loadNodeConfig(node, undefined, "management"));
+});
+
+test("management authority refuses the hive v2 root and every ancestor", () => {
+  const v2 = join(homedir(), ".hive", "v2");
+  for (const root of [v2, join(homedir(), ".hive"), homedir(), "/"]) assert.throws(() => externalOwner(join(root, "owner.json"), join(v2, "cells")), /outside_cell/);
 });

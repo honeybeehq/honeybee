@@ -1,4 +1,5 @@
 import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { externalConfig, record, type ExternalExecConfig } from "../../core/src/externalExec.ts";
 
@@ -29,11 +30,11 @@ export function privateManagementFile(path: string, root: string): Buffer {
     return readFileSync(fd);
   } finally { closeSync(fd); }
 }
-export function externalOwner(value: unknown, cellsRoot: string): { externalExec: ExternalExecConfig; externalManagement?: ExternalManagement } {
+export function externalOwner(value: unknown, cellsRoot: string, dataDir = join(homedir(), ".hive", "v2")): { externalExec: ExternalExecConfig; externalManagement?: ExternalManagement } {
   if (value === undefined) return {externalExec: externalConfig(undefined)};
   if (typeof value !== "string" || !isAbsolute(value)) throw new Error("external_management_owner_file_required");
   const root = dirname(value);
-  if (below(cellsRoot, root) || /\/\.hive\/v2\/cells(?:\/|$)/.test(root)) throw new Error("external_management_must_be_outside_cell");
+  if (below(root, join(homedir(), ".hive", "v2")) || below(root, dataDir) || below(root, cellsRoot) || below(cellsRoot, root) || /\/\.hive\/v2\/cells(?:\/|$)/.test(root)) throw new Error("external_management_must_be_outside_cell");
   const owner = record(JSON.parse(privateManagementFile(value, root).toString("utf8")));
   if (Object.keys(owner).sort().join(",") !== "externalExec,schema" || owner.schema !== "honeybee.external-owner.v1") throw new Error("external_management_config_invalid");
   const externalManagement = {root, keyFile: join(root, "management.key"), endpointFile: join(root, "endpoint.json"), socketPath: join(root, "hived.sock")};

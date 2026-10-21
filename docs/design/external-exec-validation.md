@@ -6,7 +6,12 @@ Satellite Cell only. No merge, deploy, live configuration change, real bridge
 lifecycle invocation, guest start, provider request or guest credential delivery.
 This is review code; the Cell registration is now disabled.
 
-## Review-fix checks
+Latest second-review results: see external-exec-review2.md. All 91 previously
+unreached serial files have now completed: 709 pass, zero fail, four skips. The
+new /opt pin row passes read-only verification and all mismatch probes; no bridge
+was executed or registered.
+
+## First review-fix checks (95449d51)
 
 - `git diff --check`.
 - `npm run check`, `npm run v2:check`, and `npm run build`.
@@ -19,7 +24,7 @@ This is review code; the Cell registration is now disabled.
   relay refusal, owner-file policy, default-off capability, path safety, fd exec,
   per-stream caps, owner stop, escalation, and a missing-adapter stop fallback.
 - Targeted config/local RPC regression run: 41 passing tests (overlaps the above).
-- Current FINAL install check: `external_exec_install_chain_writable`, before
+- Superseded home-layout install check: `external_exec_install_chain_writable`, before
   any exec. The exact candidate pins remain in external-exec-owner-candidate.json.
   This is a refusal row, not evidence that the package is executable under policy.
 
@@ -45,7 +50,7 @@ The review-fix full daemon run reproduced exactly those two fixture refusals:
 Its log is fix-daemon-tests.log; no unrelated fixture code was changed.
 
 No KVM round trip or real bridge start/wait/stop/reconcile has been exercised.
-The current home-directory install is refused even when all three hashes match.
+The superseded home-directory install is refused even when all three hashes match.
 Trusted management must arrange an immutable root-owned install chain and protected
 management filesystem/socket authority. An unrestricted same-uid bee can read
 0600 management files; mode checks alone do not isolate it. Likewise, omitting HOME

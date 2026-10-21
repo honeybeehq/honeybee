@@ -142,6 +142,7 @@ export interface ExternalExecutionView {
   attemptId: string;
   dispatched: boolean;
   status: BridgeStatus | "pending";
+  capture: "complete" | "truncated" | null;
   observation: "pending" | "terminal" | "reconcile_required";
 }
 export class ExternalExecutions {
@@ -162,8 +163,9 @@ export class ExternalExecutions {
     const binding = this.get(beeId);
     if (!binding) return null;
     const row = this.db.prepare("SELECT dispatched,receipt,failure FROM external_exec WHERE bee_id=?").get(beeId)!;
+    if (row.failure !== null && row.failure !== "reconcile_required" && row.failure !== "truncated") throw new Error("external_exec_corrupt_capture_state");
     const receipt = row.receipt ? validateReceipt(JSON.parse(String(row.receipt)), binding) : null;
-    return { bridgeId: binding.bridgeId, workspace: binding.workspace, attemptId: binding.dispatch.attemptId, dispatched: row.dispatched === 1, status: receipt?.status ?? "pending", observation: row.failure ? "reconcile_required" : receipt ? "terminal" : "pending" };
+    return { bridgeId: binding.bridgeId, workspace: binding.workspace, attemptId: binding.dispatch.attemptId, dispatched: row.dispatched === 1, status: receipt?.status ?? "pending", capture: receipt ? row.failure === "truncated" ? "truncated" : "complete" : null, observation: row.failure === "reconcile_required" ? "reconcile_required" : receipt ? "terminal" : "pending" };
   }
   admit(binding: ExternalBinding): void {
     this.db.prepare("INSERT INTO external_exec(bee_id,attempt_id,binding,receipt_path) VALUES(?,?,?,?)").run(binding.beeId, binding.dispatch.attemptId, JSON.stringify(externalIdentity(binding)), posix.join(binding.dispatch.stateDir, "control", binding.dispatch.attemptId, "receipt.json"));
@@ -179,13 +181,13 @@ export class ExternalExecutions {
   fail(beeId: string): boolean {
     return this.db.prepare("UPDATE external_exec SET failure='reconcile_required' WHERE bee_id=? AND failure IS NULL").run(beeId).changes > 0;
   }
-  settle(beeId: string, value: unknown): BridgeReceipt {
+  settle(beeId: string, value: unknown, truncated = false): BridgeReceipt {
     const binding = this.get(beeId);
     if (!binding) throw new Error("external_exec_missing_binding");
     const receipt = validateReceipt(value, binding);
     const old = this.db.prepare("SELECT receipt FROM external_exec WHERE bee_id=?").get(beeId);
     if (old?.receipt && canonicalJson(JSON.parse(String(old.receipt))) !== canonicalJson(receipt)) throw new Error("external_exec_terminal_conflict");
-    this.db.prepare("UPDATE external_exec SET receipt=?,failure=NULL WHERE bee_id=?").run(JSON.stringify(receipt), beeId);
+    this.db.prepare("UPDATE external_exec SET receipt=?,failure=CASE WHEN ? OR failure='truncated' THEN 'truncated' ELSE NULL END WHERE bee_id=?").run(JSON.stringify(receipt), truncated ? 1 : 0, beeId);
     return receipt;
   }
 }

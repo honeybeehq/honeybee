@@ -1,3 +1,4 @@
+import { decodePrivateBoot } from "./privateBoot.ts";
 import { runGatedRunnerHost } from "./gated-runner-host.ts";
 import { DeliveryReceipts, DELIVERY_FRAME_MAX_BYTES, DELIVERY_STATUS_CAPABILITY, type TaggedDelivery } from "./delivery-receipts.ts";
 import { stateFile, runnerStateFiles } from "../../harness/src/statePath.ts";
@@ -176,11 +177,7 @@ export function runRunnerHost(configPath: string): void {
   const cfg = JSON.parse(readFileSync(configPath, "utf8")) as RunnerHostConfig;
   let privateBootLines: string[] = [];
   if (cfg.privateBoot) {
-    const bytes = readFileSync(0);
-    if (bytes.length > 2 * 1024 * 1024 + 16384) throw new Error("Private boot too large");
-    const value: unknown = JSON.parse(bytes.toString("utf8")); bytes.fill(0);
-    if (!Array.isArray(value) || value.length !== 1 || typeof value[0] !== "string") throw new Error("Invalid private boot");
-    privateBootLines = value;
+    privateBootLines = decodePrivateBoot(readFileSync(0));
   }
   runnerStateFiles(cfg);
   mkdirSync(dirname(cfg.socketPath), { recursive: true, mode: 0o700 });

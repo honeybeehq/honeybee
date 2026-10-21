@@ -980,7 +980,7 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
  * Load and resolve the node config. `configPath` defaults to
  * `<dataDir>/config.json`; an absent file resolves to pure defaults.
  */
-export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNodeConfig {
+export function loadNodeConfig(dataDir: string, configPath?: string, purpose: "public" | "daemon" | "management" = "public"): ResolvedNodeConfig {
   stateDirectory(dataDir, "dataDir");
   const path = configPath ?? join(dataDir, "config.json");
   let raw: Record<string, unknown> = {};
@@ -1018,7 +1018,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
   const nodeKind = nodeKindOf(raw);
   const cells = cellsOf(raw, nodeKind);
   if (raw.externalExec !== undefined) throw new Error("Inline externalExec is forbidden; trusted management must provision externalOwnerFile outside the Cell");
-  const owner = externalOwner(raw.externalOwnerFile, cells.root ?? join(dataDir, "cells"));
+  const owner = externalOwner(purpose === "public" ? undefined : raw.externalOwnerFile, cells.root ?? join(dataDir, "cells"), dataDir);
   const resolved: ResolvedNodeConfig = {
     dataDir,
     configPath: path,
@@ -1043,11 +1043,12 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     stopKillGraceMs: num(raw, "stopKillGraceMs", DEFAULTS.stopKillGraceMs),
     adoptToleranceMs: num(raw, "adoptToleranceMs", DEFAULTS.adoptToleranceMs),
     watchMaxBatch: num(raw, "watchMaxBatch", DEFAULTS.watchMaxBatch),
-    socketPath: owner.externalManagement?.socketPath ?? str(raw, "socketPath", join(dataDir, "hived.sock")),
+    socketPath: str(raw, "socketPath", join(dataDir, "hived.sock")),
     logPath: str(raw, "logPath", join(dataDir, "hived.log")),
     storePath: str(raw, "storePath", join(dataDir, "core.sqlite3")),
     telemetryPath: str(raw, "telemetryPath", join(dataDir, "telemetry.sqlite3")),
     sessionLogDir: str(raw, "sessionLogDir", join(dataDir, "session-logs")),
+    externalOwnerFile: typeof raw.externalOwnerFile === "string" ? raw.externalOwnerFile : undefined,
     ...owner,
     agents: { ...BUILTIN_AGENTS, ...agentsOf(raw) },
     accounts: accountsOf(raw),
