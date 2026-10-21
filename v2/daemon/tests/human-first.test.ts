@@ -287,3 +287,21 @@ for (const urgency of ["next", "idle"] as const) test(`core ${urgency} context w
     assert.notEqual(r.store.getMessage(seed.id)?.deliveredAt, null);
   } finally { r.close(); }
 });
+
+
+for (const origin of ["spawn.prompt", "auth.resume"] as const) test(`an ineligible ${origin} seed holds younger next background mail`, () => {
+  const r = rig();
+  try {
+    r.store.setHumanFirstPolicy(r.bee.id, true);
+    r.event("turn_started");
+    const seed = r.store.send(r.bee.id, "required context", { origin }).message;
+    const background = r.store.send(r.bee.id, "younger background next").message;
+    r.advance(100000);
+    assert.deepEqual(r.driver.deliveredIds, []);
+    assert.deepEqual(r.violations, []);
+    r.event("turn_ended");
+    assert.deepEqual(r.driver.deliveredIds, [seed.id]);
+    r.core.step();
+    assert.deepEqual(r.driver.deliveredIds, [seed.id, background.id]);
+  } finally { r.close(); }
+});

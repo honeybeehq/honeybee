@@ -2003,7 +2003,7 @@ export class DaemonCore {
   }
 
   private humanFirstEligible(message: Pick<MessageRow, "id" | "urgency" | "humanChat">, midTurn: boolean, state: ReturnType<DaemonCore["humanFirstState"]>): boolean {
-    if (state.enabled && message.id === state.seed) return !midTurn && !state.active;
+    if (state.enabled && state.seed !== null) return message.id === state.seed && !midTurn && !state.active;
     if (state.enabled && (state.head !== null || state.active)) {
       if (message.id !== state.head) return false;
       return !(midTurn || state.active) || message.urgency === "now";
