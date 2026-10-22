@@ -208,7 +208,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
-import { QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -2178,6 +2178,7 @@ export class CoreStore {
       this.stmt("INSERT INTO meta(key,value) VALUES('confirmation_legacy_heads', ?)").run(JSON.stringify(cohorts.map(row => ({ ...row, messageIds: this.legacyConfirmationHeads(row.bee_id, watermark) }))));
     }
     if (stored < 40) this.redactRpcIdempotencyEnv();
+    this.db.exec(ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL);
     installRuntimeProcessIdentity(this.db);
     this.db
       .prepare(
@@ -7172,6 +7173,28 @@ export class CoreStore {
   setAccountWeeklyCeiling(id: string, ceiling: number | null): { account: AccountRow; applied: boolean } {
     const value = normalizeWeeklyCeiling(ceiling, "setAccountWeeklyCeiling");
     return this.tx(() => this.applyAccountUpdate(id, { weeklyCeiling: value }, "operator"));
+  }
+
+  accountCredentialAttention(id: string): "live_chain_ambiguous" | "keychain_publication_failed" | null {
+    const row = this.stmt("SELECT cause FROM account_credential_attention WHERE account = ?").get(id) as Row | undefined;
+    return row ? String(row.cause) as "live_chain_ambiguous" | "keychain_publication_failed" : null;
+  }
+
+  accountCredentialPublication(id: string): { hash: string; expiresAt: number } | null {
+    const row = this.stmt("SELECT intended_hash,intended_expires_at FROM account_credential_attention WHERE account = ? AND cause = 'keychain_publication_failed'").get(id) as Row | undefined;
+    return row ? { hash: String(row.intended_hash), expiresAt: Number(row.intended_expires_at) } : null;
+  }
+
+  setAccountCredentialAttention(id: string, cause: "live_chain_ambiguous" | "keychain_publication_failed" | null, publication?: { hash: string; expiresAt: number }): void {
+    if (cause === "keychain_publication_failed" && (!publication || !/^[a-f0-9]{64}$/.test(publication.hash) || !Number.isSafeInteger(publication.expiresAt))) throw new CoreError("Publication fence requires an intended material digest and expiry");
+    this.tx(() => {
+      this.mustGetAccount(id);
+      const intended = cause === "keychain_publication_failed" ? publication! : null;
+      if (this.accountCredentialAttention(id) === cause && JSON.stringify(this.accountCredentialPublication(id)) === JSON.stringify(intended)) return;
+      if (cause === null) this.stmt("DELETE FROM account_credential_attention WHERE account = ?").run(id);
+      else this.stmt("INSERT INTO account_credential_attention(account,cause,intended_hash,intended_expires_at) VALUES(?,?,?,?) ON CONFLICT(account) DO UPDATE SET cause=excluded.cause,intended_hash=excluded.intended_hash,intended_expires_at=excluded.intended_expires_at").run(id, cause, intended?.hash ?? null, intended?.expiresAt ?? null);
+      this.touchAccount(id, cause ? `credential_file_damaged: ${cause}` : "credential source confirmed");
+    });
   }
 
   /** v7 — a completed login: status ok + last_login_at (contrary evidence for auth_needed). */

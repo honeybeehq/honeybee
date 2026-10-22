@@ -1,0 +1,26 @@
+
+> honeybee@0.0.1 v2:harness
+> NODE_COMPILE_CACHE=.cache/node-compile node scripts/with-fixture-warden.mjs node --test --test-isolation=none "v2/harness/tests/*.test.ts"
+
+✔ prng: same seed yields the same stream; different seeds diverge (1.616886ms)
+✔ config: Q1 default I1 bound is 2 x (max boot delay + max turn duration), configurable (0.197276ms)
+✔ sim driver: boot/deliver/turn/stop cycle emits normalized observations (0.657627ms)
+✔ sim driver: killAll drops every pid and pending events (machine reboot) (0.147431ms)
+✔ violation ledger: structured one-liner with seed, step, bee, invariant, op tail (0.162323ms)
+✔ retry exhaustion under permanent driver timeouts surfaces spawn_failed, never a zombie (207.635751ms)
+✔ sim driver v6: interrupt — booting not_ready, idle no-op, mid-turn ends the turn early (turn_ended, process live), gone no_process (0.294482ms)
+✔ spec02.1: quiet workload (no faults) — all invariants hold over long runs (1969.286417ms)
+✔ spec02.2: crash-storm workload — daemon crash every K steps, I1 still holds (1704.844606ms)
+✔ spec02.3: reboot-storm workload — repeated reboots mid-turn, zero failed states, I1 holds (1500.829132ms)
+✔ spec02.4: executor crash mid-command — replay settles idempotently, no double effects (1418.821263ms)
+✔ spec02.5: long-running turns remain live and are not mistaken for zombies (156.517554ms)
+✔ spec02.6: adversarial mix — observable faults at high rates; invariants hold; replayable from seed (3082.270357ms)
+✔ spec02.7: meta — a deliberately broken driver (drops deliveries) makes the harness FAIL (189.521485ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10318.703998

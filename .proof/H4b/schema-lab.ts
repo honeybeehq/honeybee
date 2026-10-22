@@ -1,0 +1,28 @@
+import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { openCoreStore } from "../../v2/core/src/index.ts";
+
+const root = process.env.HOME!;
+if (!root || root !== process.env.TMPDIR || !/^\/(?:private\/)?var\/tmp\//.test(root)) throw new Error("Isolated HOME == TMPDIR under /var/tmp required");
+if (!process.env.H4B_BASE_STORE) throw new Error("Export the H4 v48 core source into this Cell and supply H4B_BASE_STORE");
+const { openCoreStore: oldOpen } = await import(pathToFileURL(resolve(process.env.H4B_BASE_STORE)).href);
+const dir = join(root, process.env.H4B_RUN ?? "schema-lab"); mkdirSync(dir, { recursive: true });
+const path = join(dir, "core.sqlite3");
+let old = oldOpen(path);
+old.createAccount({ id: "claude-schema", harness: "claude", label: "fixture", homePath: join(dir, "home"), status: "ok" });
+old.close();
+let store = openCoreStore(path);
+store.setAccountCredentialAttention("claude-schema", "keychain_publication_failed", { hash: "a".repeat(64), expiresAt: 900000 });
+store.close();
+assert.throws(() => oldOpen(path), /newer store/);
+store = openCoreStore(path);
+assert.equal(store.accountCredentialAttention("claude-schema"), "keychain_publication_failed");
+store.removeAccount("claude-schema");
+assert.equal(store.accountCredentialAttention("claude-schema"), null);
+store.close();
+store = openCoreStore(path);
+assert.equal(store.accountCredentialAttention("claude-schema"), null);
+store.close();
+console.log(JSON.stringify({ migration: "48-to-49", repeatedOpen: true, attentionSurvivesReopen: true, foreignKeyCascade: true, previousRuntime: "schema_newer refusal", rollback: "requires explicit backup restore; post-backup writes would be lost" }));

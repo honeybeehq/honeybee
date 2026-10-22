@@ -928,6 +928,7 @@ test("rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit 
       const warm = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "warm up" });
       await waitDelivered(client, bee.beeId, warm.messageId, "warm up delivered");
       await waitState(client, bee.beeId, "idle", "idle after warm up");
+      await waitFor(async () => (await client.request<ViewResult>("view", { beeId: bee.beeId })).bee?.providerSessionId, "warm up session recorded");
     }
     await client.request("stop", { beeId: parked.beeId });
     await waitState(client, parked.beeId, "stopped", "parked stopped");

@@ -1,0 +1,49 @@
+auth death exit/restart: provider revocation → held accepted FIFO mail → higher lease generation → one same-id/session recovery; duplicate and operator stop fenced
+✔ auth death isolated daemons: revoked provider access, process exit, newer lease revives once; restart, mail FIFO and operator stop (8462.256145ms)
+auth death system-stop: provider revocation → held accepted FIFO mail → higher lease generation → one same-id/session recovery; duplicate and operator stop fenced
+✖ auth death isolated daemons: revoked provider access, system idle stop, newer lease revives once; restart, mail FIFO and operator stop (8582.258455ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17195.95972
+
+✖ failing tests:
+
+test at .audit/h4b-base/v2/daemon/tests/auth-death-rpc.test.ts:29:40
+✖ auth death isolated daemons: revoked provider access, system idle stop, newer lease revives once; restart, mail FIFO and operator stop (8582.258455ms)
+  Error: spawnSync ps ENOBUFS
+      at Object.spawnSync (node:internal/child_process:1143:20)
+      at spawnSync (node:child_process:911:24)
+      at execFileSync (node:child_process:954:15)
+      at forceStopTestDaemon (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/helpers.ts:459:16)
+      at file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/auth-death-rpc.test.ts:54:53
+      at cleanup (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/auth-death-rpc.test.ts:59:5)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/auth-death-rpc.test.ts:117:21)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7) {
+    errno: -105,
+    code: 'ENOBUFS',
+    syscall: 'spawnSync ps',
+    path: 'ps',
+    spawnargs: [ '-axo', 'pid=,ppid=,lstart=,args=' ],
+    error: Error: spawnSync ps ENOBUFS
+        at Object.spawnSync (node:internal/child_process:1143:20)
+        at spawnSync (node:child_process:911:24)
+        at execFileSync (node:child_process:954:15)
+        at forceStopTestDaemon (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/helpers.ts:459:16)
+        at file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/auth-death-rpc.test.ts:54:53
+        at cleanup (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/auth-death-rpc.test.ts:59:5)
+        at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/auth-death-rpc.test.ts:117:21)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async Test.run (node:internal/test_runner/test:1332:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:911:7),
+    status: null,
+    signal: 'SIGTERM',
+    pid: 3456748,
+  }
+[Process-list stdout omitted; original error: spawnSync ps ENOBUFS at helpers.ts:459.]

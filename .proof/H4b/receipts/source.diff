@@ -1,0 +1,517 @@
+diff --git a/v2/core/src/schema.ts b/v2/core/src/schema.ts
+index f22852d2..18c064a9 100644
+--- a/v2/core/src/schema.ts
++++ b/v2/core/src/schema.ts
+@@ -159,7 +159,7 @@
+  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
+  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
+  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
+-export const SCHEMA_VERSION = 48;
++export const SCHEMA_VERSION = 49;
+ 
+ export const QUESTIONS_TABLE_SQL = `
+ CREATE TABLE IF NOT EXISTS questions (
+@@ -220,6 +220,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS auth_interruptions_live
+ CREATE INDEX IF NOT EXISTS auth_interruptions_by_bee ON auth_interruptions(bee_id, id);
+ `;
+ 
++export const ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL = `
++CREATE TABLE IF NOT EXISTS account_credential_attention (
++  account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
++  cause TEXT NOT NULL CHECK (cause IN ('live_chain_ambiguous','keychain_publication_failed')),
++  intended_hash TEXT,
++  intended_expires_at INTEGER,
++  CHECK (cause != 'keychain_publication_failed' OR (intended_hash IS NOT NULL AND intended_expires_at IS NOT NULL))
++) STRICT;
++`;
++
+ export const ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL = `
+ CREATE TABLE IF NOT EXISTS account_credential_authorities (
+   account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+@@ -614,6 +624,7 @@ CREATE INDEX IF NOT EXISTS accounts_harness ON accounts(harness, added_at, id);
+ 
+ -- v27: opt-in Claude credential authority. Secrets remain in the private vault.
+ ${ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL}
++${ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL}
+ CREATE TABLE IF NOT EXISTS credential_handoffs (
+   handoff_id TEXT NOT NULL,
+   role TEXT NOT NULL CHECK (role IN ('source','destination')),
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index bef8aeb7..65a9b93c 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -208,7 +208,7 @@ import {
+   TASK_TRANSITIONS,
+ } from "./tasks.ts";
+ import { deliveredSenderKind } from "./automation.ts";
+-import { QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
++import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+ import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
+ import {
+   ACTION_DISPATCH_SENDER,
+@@ -2178,6 +2178,7 @@ export class CoreStore {
+       this.stmt("INSERT INTO meta(key,value) VALUES('confirmation_legacy_heads', ?)").run(JSON.stringify(cohorts.map(row => ({ ...row, messageIds: this.legacyConfirmationHeads(row.bee_id, watermark) }))));
+     }
+     if (stored < 40) this.redactRpcIdempotencyEnv();
++    this.db.exec(ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL);
+     installRuntimeProcessIdentity(this.db);
+     this.db
+       .prepare(
+@@ -7174,6 +7175,28 @@ export class CoreStore {
+     return this.tx(() => this.applyAccountUpdate(id, { weeklyCeiling: value }, "operator"));
+   }
+ 
++  accountCredentialAttention(id: string): "live_chain_ambiguous" | "keychain_publication_failed" | null {
++    const row = this.stmt("SELECT cause FROM account_credential_attention WHERE account = ?").get(id) as Row | undefined;
++    return row ? String(row.cause) as "live_chain_ambiguous" | "keychain_publication_failed" : null;
++  }
++
++  accountCredentialPublication(id: string): { hash: string; expiresAt: number } | null {
++    const row = this.stmt("SELECT intended_hash,intended_expires_at FROM account_credential_attention WHERE account = ? AND cause = 'keychain_publication_failed'").get(id) as Row | undefined;
++    return row ? { hash: String(row.intended_hash), expiresAt: Number(row.intended_expires_at) } : null;
++  }
++
++  setAccountCredentialAttention(id: string, cause: "live_chain_ambiguous" | "keychain_publication_failed" | null, publication?: { hash: string; expiresAt: number }): void {
++    if (cause === "keychain_publication_failed" && (!publication || !/^[a-f0-9]{64}$/.test(publication.hash) || !Number.isSafeInteger(publication.expiresAt))) throw new CoreError("Publication fence requires an intended material digest and expiry");
++    this.tx(() => {
++      this.mustGetAccount(id);
++      const intended = cause === "keychain_publication_failed" ? publication! : null;
++      if (this.accountCredentialAttention(id) === cause && JSON.stringify(this.accountCredentialPublication(id)) === JSON.stringify(intended)) return;
++      if (cause === null) this.stmt("DELETE FROM account_credential_attention WHERE account = ?").run(id);
++      else this.stmt("INSERT INTO account_credential_attention(account,cause,intended_hash,intended_expires_at) VALUES(?,?,?,?) ON CONFLICT(account) DO UPDATE SET cause=excluded.cause,intended_hash=excluded.intended_hash,intended_expires_at=excluded.intended_expires_at").run(id, cause, intended?.hash ?? null, intended?.expiresAt ?? null);
++      this.touchAccount(id, cause ? `credential_file_damaged: ${cause}` : "credential source confirmed");
++    });
++  }
++
+   /** v7 — a completed login: status ok + last_login_at (contrary evidence for auth_needed). */
+   recordAccountLogin(id: string, at?: number): { account: AccountRow; applied: boolean } {
+     return this.tx(() => {
+diff --git a/v2/core/tests/accounts.test.ts b/v2/core/tests/accounts.test.ts
+index 5a5b58e1..16383532 100644
+--- a/v2/core/tests/accounts.test.ts
++++ b/v2/core/tests/accounts.test.ts
+@@ -540,7 +540,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 48);
++      assert.equal(SCHEMA_VERSION, 49);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("account"));
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/actions.test.ts b/v2/core/tests/actions.test.ts
+index e4cccd0e..46bb5bca 100644
+--- a/v2/core/tests/actions.test.ts
++++ b/v2/core/tests/actions.test.ts
+@@ -406,7 +406,7 @@ test("actions.8: audit replay reproduces the action tables; the store reopens at
+   const h = harness();
+   try {
+     let store = h.open();
+-    assert.equal(SCHEMA_VERSION, 48);
++    assert.equal(SCHEMA_VERSION, 49);
+     const bee = liveBee(store);
+     const { actions } = shipSequence(store, bee.id);
+     const { messageId } = store.dispatchAgentAction(actions[0]!.id);
+diff --git a/v2/core/tests/apiary-swap.test.ts b/v2/core/tests/apiary-swap.test.ts
+index 6b3bd141..e7b92219 100644
+--- a/v2/core/tests/apiary-swap.test.ts
++++ b/v2/core/tests/apiary-swap.test.ts
+@@ -104,7 +104,7 @@ test("apiary schema: current version remains unchanged and newer storage refuses
+   await world(async root => {
+     await seed(root);
+     const db = new DatabaseSync(join(root, "v2", "core.sqlite3"));
+-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "48");
++    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "49");
+     db.exec("UPDATE meta SET value='999' WHERE key='schema_version'"); db.close();
+     assert.throws(() => openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true }), /newer store/);
+   });
+diff --git a/v2/core/tests/auth-interruption.test.ts b/v2/core/tests/auth-interruption.test.ts
+index 52984790..2a76663d 100644
+--- a/v2/core/tests/auth-interruption.test.ts
++++ b/v2/core/tests/auth-interruption.test.ts
+@@ -189,7 +189,7 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
+     raw.close();
+ 
+     store = h.open();
+-    assert.equal(SCHEMA_VERSION, 48);
++    assert.equal(SCHEMA_VERSION, 49);
+     const row = interrupt(store, bee.id);
+     store.restoreAuthInterruption(row.id, { revision: "rev-2", by: "credentials_restored" });
+     store.resumeAuthInterruption(row.id, AUTH_CONTINUE_BODY);
+diff --git a/v2/core/tests/bee-args.test.ts b/v2/core/tests/bee-args.test.ts
+index 18b5d7e5..ce811ec2 100644
+--- a/v2/core/tests/bee-args.test.ts
++++ b/v2/core/tests/bee-args.test.ts
+@@ -278,7 +278,7 @@ test("args.2: a v4-shaped store (spawn_failures, no args column) migrates additi
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 48);
++      assert.equal(SCHEMA_VERSION, 49);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("args"));
+       assert.ok(cols.includes("spawn_failures"));
+diff --git a/v2/core/tests/cell-move.test.ts b/v2/core/tests/cell-move.test.ts
+index 4b1041c4..795180ed 100644
+--- a/v2/core/tests/cell-move.test.ts
++++ b/v2/core/tests/cell-move.test.ts
+@@ -336,7 +336,7 @@ test(`cell-move.schema v${previousVersion} store migrates to v22`, () => {
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 48);
++      assert.equal(SCHEMA_VERSION, 49);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("placement_version"));
+       assert.ok(cols.includes("active_move_id"));
+diff --git a/v2/core/tests/cell-retention.test.ts b/v2/core/tests/cell-retention.test.ts
+index 7611f150..a9fc69ae 100644
+--- a/v2/core/tests/cell-retention.test.ts
++++ b/v2/core/tests/cell-retention.test.ts
+@@ -139,7 +139,7 @@ test("cell-retention.schema: a v30 store's cells table is rebuilt with the evict
+     const check = new DatabaseSync(h.path, { readOnly: true });
+     try {
+       assert.equal(Number((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 48);
++      assert.equal(SCHEMA_VERSION, 49);
+       assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'cells_v30'").get(), undefined, "scratch table dropped");
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('cells')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("evicted_at") && cols.includes("evicted_head"));
+diff --git a/v2/core/tests/effect-resolve.test.ts b/v2/core/tests/effect-resolve.test.ts
+index dcf2c945..fc7eb9d8 100644
+--- a/v2/core/tests/effect-resolve.test.ts
++++ b/v2/core/tests/effect-resolve.test.ts
+@@ -90,7 +90,7 @@ test("effect additive tables preserve schema45 and retained legacy positives boo
+     assert.throws(() => store.resolveEffect("legacy-absent", "spawn"), error("rpc_effect_history_unknown"));
+   } finally { store.close(); }
+   const inspect = new DatabaseSync(h.path, { readOnly: true });
+-  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "48"); }
++  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "49"); }
+   finally { inspect.close(); h.cleanup(); }
+ });
+ 
+diff --git a/v2/core/tests/external-parent.test.ts b/v2/core/tests/external-parent.test.ts
+index d0877b4a..485d7abb 100644
+--- a/v2/core/tests/external-parent.test.ts
++++ b/v2/core/tests/external-parent.test.ts
+@@ -193,7 +193,7 @@ test("a v20 store migrates existing parent edges to local lineage at the current
+         value: string;
+       };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 48);
++      assert.equal(SCHEMA_VERSION, 49);
+       const column = migrated.prepare(
+         "SELECT name FROM pragma_table_info('bees') WHERE name = 'parent_external'",
+       ).get() as { name: string } | undefined;
+diff --git a/v2/core/tests/handles.test.ts b/v2/core/tests/handles.test.ts
+index 6d2815f7..aaba09ad 100644
+--- a/v2/core/tests/handles.test.ts
++++ b/v2/core/tests/handles.test.ts
+@@ -96,7 +96,7 @@ test("handles.4: v9-shaped store backfills on open — an old pretty id becomes
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 48);
++      assert.equal(SCHEMA_VERSION, 49);
+       const idx = check.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='bees_handle'").get();
+       assert.ok(idx, "unique handle index exists");
+     } finally {
+diff --git a/v2/core/tests/import-frozen.test.ts b/v2/core/tests/import-frozen.test.ts
+index 280272d8..f2906a51 100644
+--- a/v2/core/tests/import-frozen.test.ts
++++ b/v2/core/tests/import-frozen.test.ts
+@@ -430,7 +430,7 @@ test("import.9: store v3 — recordProviderSessionId is bee-scoped, idempotent,
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 48);
++      assert.equal(SCHEMA_VERSION, 49);
+     } finally {
+       check.close();
+     }
+diff --git a/v2/core/tests/phone-origin.test.ts b/v2/core/tests/phone-origin.test.ts
+index c80ef4d7..c39e923b 100644
+--- a/v2/core/tests/phone-origin.test.ts
++++ b/v2/core/tests/phone-origin.test.ts
+@@ -38,7 +38,7 @@ test("phone data, shadow, history, audit replay and key bindings survive reopen
+       store.recordRpcResult("k", "send", sent.wakeCommand?.id ?? null, { commandId: sent.wakeCommand?.id ?? null, unarchived: sent.unarchived, messageId: sent.message.id });
+       return sent.message;
+     });
+-    assert.equal(SCHEMA_VERSION, 48);
++    assert.equal(SCHEMA_VERSION, 49);
+     assert.equal(message.body, renderPhoneInput(body));
+     assert.equal(message.phoneInput?.originalContent, body);
+     assert.equal(message.phoneInput?.envelope.contentDigest, phoneDigest(body));
+diff --git a/v2/core/tests/preflip-verbs.test.ts b/v2/core/tests/preflip-verbs.test.ts
+index 1a3c4d16..171b7b73 100644
+--- a/v2/core/tests/preflip-verbs.test.ts
++++ b/v2/core/tests/preflip-verbs.test.ts
+@@ -322,7 +322,7 @@ test("v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed a
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 48);
++      assert.equal(SCHEMA_VERSION, 49);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       for (const c of ["parent_id", "parent_external", "forked_from", "fork_seed", "args", "spawn_failures"]) assert.ok(cols.includes(c), c);
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/question-dismiss.test.ts b/v2/core/tests/question-dismiss.test.ts
+index 4571edde..bdc5f744 100644
+--- a/v2/core/tests/question-dismiss.test.ts
++++ b/v2/core/tests/question-dismiss.test.ts
+@@ -102,7 +102,7 @@ test("schema46 migration without a status CHECK gains dismissal columns additive
+     store = h.open(); assert.equal(store.dismissQuestionWithKey(q.id, "additive").question.status, "dismissed"); store.close();
+     const after = new DatabaseSync(h.path);
+     assert.equal(after.prepare("SELECT rootpage FROM sqlite_master WHERE name='questions'").get()!.rootpage, rootPage);
+-    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "48"); after.close();
++    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "49"); after.close();
+     store = h.open(); assert.equal(store.getQuestion(q.id)!.status, "dismissed");
+   } finally {store.close(); h.cleanup();}
+ });
+diff --git a/v2/core/tests/question-withdraw.test.ts b/v2/core/tests/question-withdraw.test.ts
+index d6c7298e..a471483e 100644
+--- a/v2/core/tests/question-withdraw.test.ts
++++ b/v2/core/tests/question-withdraw.test.ts
+@@ -84,8 +84,8 @@ test("schema 44 legacy questions migrate additively without extra-table refusal"
+     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+     store.close();
+     const check = new DatabaseSync(f.path);
+-    assert.equal(SCHEMA_VERSION, 48);
+-    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "48");
++    assert.equal(SCHEMA_VERSION, 49);
++    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "49");
+     assert.equal(check.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
+     assert.deepEqual(check.prepare("PRAGMA foreign_key_check").all(), []);
+     assert.equal(check.prepare("SELECT count(*) AS n FROM question_withdraw_receipts").get()!.n, 1);
+diff --git a/v2/core/tests/runtime-process-identity.test.ts b/v2/core/tests/runtime-process-identity.test.ts
+index c059f332..960d1623 100644
+--- a/v2/core/tests/runtime-process-identity.test.ts
++++ b/v2/core/tests/runtime-process-identity.test.ts
+@@ -25,7 +25,7 @@ test("runtime identity migration is additive, once-only and ignores malformed co
+     (store as unknown as {db: DatabaseSync}).db.prepare("UPDATE runtimes SET process_identity=NULL WHERE bee_id=?").run(bee.id);
+     store.close();
+     const db = new DatabaseSync(h.path);
+-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "48");
++    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "49");
+     assert.equal(db.prepare("SELECT value FROM meta WHERE key='runtime_process_identity_schema'").get()!.value, "1");
+     installRuntimeProcessIdentity(db); installRuntimeProcessIdentity(db);
+     assert.equal(db.prepare("PRAGMA table_info(runtimes)").all().filter(r => r.name === "process_identity").length, 1);
+diff --git a/v2/core/tests/urgency.test.ts b/v2/core/tests/urgency.test.ts
+index 00469846..9d769a05 100644
+--- a/v2/core/tests/urgency.test.ts
++++ b/v2/core/tests/urgency.test.ts
+@@ -157,7 +157,7 @@ test("urgency.5: v8 migration — a v7 store opens as v8: mailbox.urgency added,
+   try {
+     const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+     assert.equal(Number(version.value), SCHEMA_VERSION);
+-    assert.equal(SCHEMA_VERSION, 48);
++    assert.equal(SCHEMA_VERSION, 49);
+     const cols = (check.prepare("SELECT name FROM pragma_table_info('mailbox')").all() as Array<{ name: string }>).map((c) => c.name);
+     assert.ok(cols.includes("urgency"));
+     assert.ok(cols.includes("priority"));
+diff --git a/v2/daemon/src/accountsService.ts b/v2/daemon/src/accountsService.ts
+index 2b6a303d..3f0c8d3d 100644
+--- a/v2/daemon/src/accountsService.ts
++++ b/v2/daemon/src/accountsService.ts
+@@ -958,6 +958,9 @@ export class AccountsService {
+     this.log = opts.log;
+     this.onCredentialValidated = opts.onCredentialValidated ?? (() => undefined);
+     this.now = opts.now ?? Date.now;
++    for (const account of this.store.listAccounts({ harness: "claude" })) {
++      if (this.store.accountCredentialAttention(account.id) === "keychain_publication_failed") this.claudeKeychainRepairs.set(account.id, this.now());
++    }
+     this.platform = opts.platform ?? process.platform;
+     this.env = opts.env ?? process.env;
+     this.home = opts.home ?? homedir();
+@@ -2046,6 +2049,7 @@ export class AccountsService {
+     if (account.source === "leased" && knownAccountLease(account)?.expiresAt != null && knownAccountLease(account)!.expiresAt! * 1000 <= this.now()) return "expired";
+     if (!recipe) return "present";
+     if (this.authorityFor(account)?.enabled(account)) return this.centralCredentialState(account);
++    if (account.harness === "claude" && this.store.accountCredentialAttention(account.id)) return "damaged";
+     const primary = primaryCredentialFile(recipe);
+     const source = dirHasCredentials(account.homePath, recipe)
+       ? account.homePath
+@@ -2122,6 +2126,8 @@ export class AccountsService {
+       if (native) return { ready: false, code: "account_auth_needed", message: this.nativeSignInMessage(account, "needs its sign-in") };
+       return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };
+     }
++    const attention = account.harness === "claude" ? this.store.accountCredentialAttention(account.id) : null;
++    if (attention) return { ready: false, code: "credential_file_damaged", message: `account ${account.id}: ${attention}; credential publication requires recovery; retry republish or run hive account login ${account.id}` };
+     switch (this.credentialState(account)) {
+       case "damaged": {
+         const error = this.store.getAccountLimits(account.id)?.error;
+@@ -3351,13 +3357,17 @@ export class AccountsService {
+     return account.source !== "leased" && !this.isNative(account) && !this.authorityFor(account)?.enabled(account) && !this.authorityFor(account)?.busy(account) && !this.store.credentialAuthorityIsDemoted(account.id) && !this.store.credentialRecoveryPending(account.id) && !this.leaseWrites.has(account.id) && !this.store.activeLoginFlow(account.id) && !this.refreshBusy(account) && !this.nativeKeychainSeeds.has(account.id) && !this.ownedHomeRefusal(account, "writes into");
+   }
+ 
+-  private async freshestClaudeCredential(account: AccountRow, strictKeychain?: KeychainState, onRefusal?: (reason: "live_chain_ambiguous" | "snapshot_refresh_unproven") => void): Promise<ClaudeCredential | null> {
++  private async freshestClaudeCredential(account: AccountRow, strictKeychain?: KeychainState, onRefusal?: (reason: "live_chain_ambiguous" | "snapshot_refresh_unproven" | "keychain_publication_failed") => void): Promise<ClaudeCredential | null> {
+     if (this.authorityFor(account)?.enabled(account)) {
+       const document = this.authorityFor(account)!.document(account);
+       const credential = parseClaudeCredentials(JSON.stringify(document));
+       if (!credential) return null;
+       return { ...credential, document, oauth: document.claudeAiOauth as Record<string, unknown> };
+     }
++    if (this.store.accountCredentialAttention(account.id) === "keychain_publication_failed") {
++      onRefusal?.("keychain_publication_failed");
++      return null;
++    }
+     const candidates: Array<ClaudeCredential & { source: "home" | "keychain" | "vault" }> = [];
+     const push = (raw: string | null, source: "home" | "keychain" | "vault") => {
+       if (!raw) return;
+@@ -3388,9 +3398,11 @@ export class AccountsService {
+     const home = liveChains.find(candidate => candidate.source === "home");
+     if (keychain && home && keychain.refreshToken !== home.refreshToken && (keychain.accessToken.trim().length === 0 || keychain.expiresAt <= 0)) {
+       this.log(`account.credential_file_damaged account=${account.id} outcome=held reason=live_chain_ambiguous`);
++      this.store.setAccountCredentialAttention(account.id, "live_chain_ambiguous");
+       onRefusal?.("live_chain_ambiguous");
+       return null;
+     }
++    if (this.store.accountCredentialAttention(account.id) === "live_chain_ambiguous") this.store.setAccountCredentialAttention(account.id, null);
+     const newestLive = keychain ?? home;
+     const eligible = candidates.filter(candidate => !newestLive || candidate.refreshToken === newestLive.refreshToken || candidate.source !== "vault" && !hasRefreshToken(candidate) && candidate.accessToken.trim().length > 0 && candidate.expiresAt > this.now());
+     const effectiveExpiry = (credential: ClaudeCredential) => credential.accessToken.trim().length > 0 ? credential.expiresAt : 0;
+@@ -3581,16 +3593,15 @@ export class AccountsService {
+     const document = { ...credential.document, claudeAiOauth: oauth };
+     const raw = JSON.stringify(document);
+     const keychainRaw = JSON.stringify({ ...document, ...keychainDocument(keychain), claudeAiOauth: oauth });
+-    // The home file's mtime is what tells a running Claude to drop its cached
+-    // credential, so it is written last, after the stores it will re-read.
+-    mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
+-    atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
+     let keychainWritten = false;
+     const keychainAttempts = keychain.status === "present" ? CLAUDE_KEYCHAIN_PUBLISH_ATTEMPTS : 1;
+     for (let attempt = 0; attempt < keychainAttempts && !keychainWritten; attempt += 1) {
+       keychainWritten = await this.keychainWriter(account.homePath, keychainRaw).catch(() => false);
+     }
++    if (!keychainWritten && keychain.status === "present") this.store.setAccountCredentialAttention(account.id, "keychain_publication_failed", { hash: this.claudePublicationHash(refreshed), expiresAt: refreshed.expiresAt });
+     atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw);
++    mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
++    atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
+     if (keychainWritten) this.claudeKeychainRepairs.delete(account.id);
+     else {
+       this.claudeKeychainRepairs.set(account.id, this.now() + CLAUDE_KEYCHAIN_REPAIR_RETRY_MS);
+@@ -3633,22 +3644,49 @@ export class AccountsService {
+     return this.claudeKeychainRepairFlight;
+   }
+ 
++  private claudePublicationHash(credential: Pick<ClaudeCredential, "accessToken" | "refreshToken" | "expiresAt">): string {
++    return createHash("sha256").update(JSON.stringify([credential.accessToken, credential.refreshToken ?? null, credential.expiresAt])).digest("hex");
++  }
++
+   private async republishClaudeKeychain(account: AccountRow): Promise<"repaired" | "current" | "retry"> {
+     if (this.authorityFor(account)?.enabled(account) || this.authorityFor(account)?.busy(account)) return "current";
+     const homeFile = join(account.homePath, ".credentials.json");
+     const locked = await withClaudeRefreshLock(account.homePath, async () => {
+-      const raw = readIfFile(homeFile);
+-      if (raw === null || raw !== readIfFile(join(this.vaultDirOf(account), ".credentials.json"))) return "current" as const;
+-      const rotated = parseClaudeCredentials(raw);
++      let raw = readIfFile(homeFile);
++      const fenced = this.store.accountCredentialAttention(account.id) === "keychain_publication_failed";
++      if (raw === null || !fenced && raw !== readIfFile(join(this.vaultDirOf(account), ".credentials.json"))) return fenced ? "retry" as const : "current" as const;
++      let rotated = parseClaudeCredentials(raw);
+       const keychain = await this.keychainStateReader(account.homePath);
+       if (keychain.status === "unreadable") return "retry" as const;
+-      if (!rotated || keychain.status !== "present") return "current" as const;
++      if (!rotated || keychain.status !== "present") return fenced ? "retry" as const : "current" as const;
+       const published = parseClaudeCredentials(keychain.raw);
+-      if (published && published.expiresAt >= rotated.expiresAt) return "current" as const;
++      const intended = this.store.accountCredentialPublication(account.id);
++      if (fenced && (!intended || this.claudePublicationHash(rotated) !== intended.hash)) return "retry" as const;
++      if (fenced && published && published.accessToken.trim().length > 0 && published.expiresAt > intended!.expiresAt) {
++        raw = keychain.raw;
++        rotated = published;
++      }
++      const sameChain = published && published.accessToken === rotated.accessToken && published.refreshToken === rotated.refreshToken && published.expiresAt === rotated.expiresAt;
++      if (fenced && (!published || rotated.accessToken.trim().length === 0 || !sameChain && rotated.expiresAt <= published.expiresAt)) return "retry" as const;
++      if (!fenced && published && published.expiresAt >= rotated.expiresAt) return "current" as const;
+       const document = JSON.parse(raw) as Record<string, unknown>;
+       const keychainRaw = JSON.stringify({ ...document, ...keychainDocument(keychain), claudeAiOauth: document.claudeAiOauth });
+-      if (!(await this.keychainWriter(account.homePath, keychainRaw).catch(() => false))) return "retry" as const;
++      if (!fenced || !sameChain) {
++        if (fenced) {
++          const current = await this.keychainStateReader(account.homePath);
++          if (current.status !== "present" || current.raw !== keychain.raw) return "retry" as const;
++        }
++        if (!(await this.keychainWriter(account.homePath, keychainRaw).catch(() => false))) return "retry" as const;
++      }
+       atomicWriteFileSync(homeFile, raw);
++      mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
++      atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
++      if (fenced) {
++        const confirmed = await this.keychainStateReader(account.homePath);
++        const material = confirmed.status === "present" ? parseClaudeCredentials(confirmed.raw) : null;
++        if (!material || material.accessToken !== rotated.accessToken || material.refreshToken !== rotated.refreshToken || material.expiresAt !== rotated.expiresAt) return "retry" as const;
++        this.store.setAccountCredentialAttention(account.id, null);
++      }
+       return "repaired" as const;
+     });
+     const outcome = locked.acquired ? locked.value : "retry";
+@@ -4335,6 +4373,18 @@ export class AccountsService {
+   }
+ 
+   /** Claude on macOS: seed the home's Keychain item with the credential JSON (false when unavailable/rejected). */
++  async confirmClaudeLoginPublication(account: AccountRow, raw: string): Promise<void> {
++    if (account.harness !== "claude") return;
++    const state = await this.keychainStateReader(account.homePath);
++    const credential = parseClaudeCredentials(raw);
++    const published = state.status === "present" ? parseClaudeCredentials(state.raw) : null;
++    if (!credential || credential.accessToken.trim().length === 0) return;
++    if (state.status === "present" && (!published || published.accessToken !== credential.accessToken || published.refreshToken !== credential.refreshToken || published.expiresAt !== credential.expiresAt)) return;
++    if (state.status === "unreadable" || state.status !== "present" && readIfFile(join(account.homePath, ".credentials.json")) !== raw) return;
++    this.store.setAccountCredentialAttention(account.id, null);
++    this.claudeKeychainRepairs.delete(account.id);
++  }
++
+   writeClaudeKeychain(account: AccountRow, credentials: string): Promise<boolean> {
+     if (account.harness !== "claude") return Promise.resolve(false);
+     return this.keychainWriter(account.homePath, credentials).catch(() => false);
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index d058c112..6b51332c 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -2548,7 +2548,7 @@ export class HiveDaemon {
+ 
+   private async rpcApiarySwap(verb: "update.apiarySwap.status" | "update.apiarySwap.acquire" | "update.apiarySwap.release" | "update.apiarySwap.abandon" | "update.apiarySwap.recover", params: Record<string, unknown>): Promise<unknown> {
+     const runtimeRoot = resolve(dirname(this.cfg.dataDir), "runtime"), storePath = resolve(this.cfg.storePath);
+-    const storageSupported = SCHEMA_VERSION === 48 && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
++    const storageSupported = ([48, 49] as readonly number[]).includes(SCHEMA_VERSION) && storePath === resolve(this.cfg.dataDir, "core.sqlite3");
+     if (verb === "update.apiarySwap.status") {
+       let installedIdentity: ComponentIdentity | null = null;
+       try { installedIdentity = this.apiarySwapInstalledIdentity(); } catch {}
+diff --git a/v2/daemon/src/login/claudeOauth.ts b/v2/daemon/src/login/claudeOauth.ts
+index 4ee8aa04..6b6aa3b6 100644
+--- a/v2/daemon/src/login/claudeOauth.ts
++++ b/v2/daemon/src/login/claudeOauth.ts
+@@ -109,6 +109,7 @@ export class ClaudeOauthRunner implements LoginRunner {
+     const captured = host.accounts.persistCredentialCapture(account, ".credentials.json", raw, { ".credentials.json": raw });
+     if (!captured.ok) return host.fail(err("capture_failed", "The credential could not be saved into the account's vault."), true);
+     host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=claude_oauth keychain=${keychainWritten} files=${captured.captured.join(",")}`);
++    await host.accounts.confirmClaudeLoginPublication(account, raw);
+     return host.succeed();
+   }
+ 
+diff --git a/v2/daemon/src/login/cliRunner.ts b/v2/daemon/src/login/cliRunner.ts
+index 843ee933..37ae67e8 100644
+--- a/v2/daemon/src/login/cliRunner.ts
++++ b/v2/daemon/src/login/cliRunner.ts
+@@ -257,6 +257,7 @@ export class CliRunner implements LoginRunner {
+         return false;
+       }
+       host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=${detectedBy} files=${captured.captured.join(",")}`);
++      if (primaryRaw !== null) await host.accounts.confirmClaudeLoginPublication(account, primaryRaw);
+       host.succeed();
+       return true;
+     } finally {
+diff --git a/v2/daemon/tests/accounts-rpc.test.ts b/v2/daemon/tests/accounts-rpc.test.ts
+index 184484e2..7dcc4abb 100644
+--- a/v2/daemon/tests/accounts-rpc.test.ts
++++ b/v2/daemon/tests/accounts-rpc.test.ts
+@@ -928,6 +928,7 @@ test("rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit
+       const warm = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "warm up" });
+       await waitDelivered(client, bee.beeId, warm.messageId, "warm up delivered");
+       await waitState(client, bee.beeId, "idle", "idle after warm up");
++      await waitFor(async () => (await client.request<ViewResult>("view", { beeId: bee.beeId })).bee?.providerSessionId, "warm up session recorded");
+     }
+     await client.request("stop", { beeId: parked.beeId });
+     await waitState(client, parked.beeId, "stopped", "parked stopped");
