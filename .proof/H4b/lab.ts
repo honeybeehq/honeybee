@@ -11,14 +11,18 @@ const doc = (chain: string, expiresAt: number) => JSON.stringify({ claudeAiOauth
 const [mode, scenario] = process.argv.slice(2);
 const dir = join(root, process.env.H4B_RUN ?? "run", scenario ?? "none"), home = join(dir, "homes", "claude-lab"), vault = join(dir, "vault", "claude", "claude-lab");
 const keychainFile = join(dir, "keychain-fixture.json"), ledger = join(dir, "calls.json");
-const now = 200000;
+let now = 200000;
 let injected = false;
-if (mode === "worker") {
+if (mode === "worker" || mode === "restart") {
   const rename = fs.renameSync;
   fs.renameSync = ((from, to) => {
     rename(from, to);
     const target = String(to);
-    if (!injected && ((scenario === "linux-crash" || scenario === "mac-home-crash" || scenario === "failed-home-crash") && target === join(home, ".credentials.json"))) {
+    if (mode === "restart" && scenario === "failed-publication-race" && !injected && target === join(home, ".credentials.json")) {
+      injected = true;
+      writeFileSync(keychainFile, doc("SIBLING", 1000000));
+    }
+    if (mode === "worker" && !injected && ((scenario === "linux-crash" || scenario === "mac-home-crash" || scenario === "failed-home-crash") && target === join(home, ".credentials.json"))) {
       injected = true;
       process.exit(86);
     }
@@ -36,6 +40,7 @@ const setupService = (failing = false) => {
     keychainWriter: async (_, raw) => {
       if (failing) return false;
       if (!existsSync(keychainFile)) return false;
+      assert.ok(JSON.parse(raw).claudeAiOauth.expiresAt >= JSON.parse(readFileSync(keychainFile, "utf8")).claudeAiOauth.expiresAt, "Never revert a newer Keychain fixture");
       writeFileSync(keychainFile, raw);
       if (mode === "worker" && scenario === "mac-keychain-crash") process.exit(86);
       return true;
@@ -58,7 +63,7 @@ if (mode === "worker") {
   const { store, account, service } = setupService(scenario.startsWith("failed"));
   try { await service.verifyCredentials(account); } finally { store.close(); }
 } else if (mode !== "restart") {
-  const scenarios = ["linux-normal", "linux-crash", "mac-keychain-crash", "mac-home-crash", "failed-restart", "failed-home-crash", "failed-login", "ambiguous-last-good"];
+  const scenarios = ["linux-normal", "linux-crash", "mac-keychain-crash", "mac-home-crash", "failed-restart", "failed-home-crash", "failed-login", "failed-newer-keychain", "failed-same-chain", "failed-publication-race", "ambiguous-last-good"];
   for (const name of scenarios) {
     const caseDir = join(root, process.env.H4B_RUN ?? "run", name), caseHome = join(caseDir, "homes", "claude-lab"), caseVault = join(caseDir, "vault", "claude", "claude-lab");
     mkdirSync(caseHome, { recursive: true }); mkdirSync(caseVault, { recursive: true });
@@ -90,6 +95,8 @@ if (mode === "worker") {
 if (mode === "restart") {
   const { store, account, service } = setupService();
   try {
+    if (scenario === "failed-newer-keychain") writeFileSync(keychainFile, doc("SIBLING", 1000000));
+    if (scenario === "failed-same-chain") writeFileSync(keychainFile, doc("NEW", 900000));
     const fenced = scenario.startsWith("failed");
     const ambiguous = scenario === "ambiguous-last-good";
     if (fenced || ambiguous) {
@@ -97,6 +104,8 @@ if (mode === "restart") {
       assert.equal(service.credentialReadiness(account).ready, false);
       assert.equal(service.mirrorRow(account).attention?.code, "credential_file_damaged");
       assert.equal(account.status, "ok");
+      assert.ok(store.auditTail(0, 1000).some(row => row.kind === "account.put" && JSON.stringify(row.payload).includes(fenced ? "keychain_publication_failed" : "live_chain_ambiguous")));
+      console.log(JSON.stringify({ scenario, beforeRecovery: true, typedAttention: "credential_file_damaged", readinessHeld: true, accountStatus: account.status, publishedAccountDelta: true }));
       const before = JSON.parse(readFileSync(ledger, "utf8")).refreshes;
       await service.verifyCredentials(account);
       assert.equal(JSON.parse(readFileSync(ledger, "utf8")).refreshes, before);
@@ -113,6 +122,13 @@ if (mode === "restart") {
         assert.equal(service.credentialReadiness(store.getAccount(account.id)!).ready, true);
       } else {
         await service.claudeKeychainRepairTick();
+        if (scenario === "failed-publication-race") {
+          assert.equal(store.accountCredentialAttention(account.id), "keychain_publication_failed");
+          assert.equal(JSON.parse(readFileSync(keychainFile, "utf8")).claudeAiOauth.expiresAt, 1000000);
+          console.log(JSON.stringify({ scenario, concurrentAdvancePreserved: true, fenceRetainedUntilConfirmed: true }));
+          now += 15000;
+          await service.claudeKeychainRepairTick();
+        }
         assert.equal(store.accountCredentialAttention(account.id), null);
         assert.equal(service.credentialReadiness(store.getAccount(account.id)!).ready, true);
         assert.equal(readFileSync(keychainFile, "utf8"), readFileSync(join(home, ".credentials.json"), "utf8"));

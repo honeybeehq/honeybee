@@ -3648,23 +3648,39 @@ export class AccountsService {
     if (this.authorityFor(account)?.enabled(account) || this.authorityFor(account)?.busy(account)) return "current";
     const homeFile = join(account.homePath, ".credentials.json");
     const locked = await withClaudeRefreshLock(account.homePath, async () => {
-      const raw = readIfFile(homeFile);
+      let raw = readIfFile(homeFile);
       const fenced = this.store.accountCredentialAttention(account.id) === "keychain_publication_failed";
       if (raw === null || !fenced && raw !== readIfFile(join(this.vaultDirOf(account), ".credentials.json"))) return fenced ? "retry" as const : "current" as const;
-      const rotated = parseClaudeCredentials(raw);
+      let rotated = parseClaudeCredentials(raw);
       const keychain = await this.keychainStateReader(account.homePath);
       if (keychain.status === "unreadable") return "retry" as const;
       if (!rotated || keychain.status !== "present") return fenced ? "retry" as const : "current" as const;
       const published = parseClaudeCredentials(keychain.raw);
-      if (fenced && (!published || rotated.accessToken.trim().length === 0 || rotated.expiresAt <= published.expiresAt)) return "retry" as const;
+      if (fenced && published && published.accessToken.trim().length > 0 && published.expiresAt > rotated.expiresAt) {
+        raw = keychain.raw;
+        rotated = published;
+      }
+      const sameChain = published && published.accessToken === rotated.accessToken && published.refreshToken === rotated.refreshToken && published.expiresAt === rotated.expiresAt;
+      if (fenced && (!published || rotated.accessToken.trim().length === 0 || !sameChain && rotated.expiresAt <= published.expiresAt)) return "retry" as const;
       if (!fenced && published && published.expiresAt >= rotated.expiresAt) return "current" as const;
       const document = JSON.parse(raw) as Record<string, unknown>;
       const keychainRaw = JSON.stringify({ ...document, ...keychainDocument(keychain), claudeAiOauth: document.claudeAiOauth });
-      if (!(await this.keychainWriter(account.homePath, keychainRaw).catch(() => false))) return "retry" as const;
+      if (!fenced || !sameChain) {
+        if (fenced) {
+          const current = await this.keychainStateReader(account.homePath);
+          if (current.status !== "present" || current.raw !== keychain.raw) return "retry" as const;
+        }
+        if (!(await this.keychainWriter(account.homePath, keychainRaw).catch(() => false))) return "retry" as const;
+      }
       atomicWriteFileSync(homeFile, raw);
       mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
       atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
-      if (fenced) this.store.setAccountCredentialAttention(account.id, null);
+      if (fenced) {
+        const confirmed = await this.keychainStateReader(account.homePath);
+        const material = confirmed.status === "present" ? parseClaudeCredentials(confirmed.raw) : null;
+        if (!material || material.accessToken !== rotated.accessToken || material.refreshToken !== rotated.refreshToken || material.expiresAt !== rotated.expiresAt) return "retry" as const;
+        this.store.setAccountCredentialAttention(account.id, null);
+      }
       return "repaired" as const;
     });
     const outcome = locked.acquired ? locked.value : "retry";
