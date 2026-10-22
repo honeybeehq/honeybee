@@ -36,21 +36,7 @@ export async function unpackDeployArtifact(archive: string, expected: ComponentI
   // Lexical link checks alone miss chains such as x -> '.' and escape ->
   // 'x/..'. Resolve every retained link before any manifest or executable read.
   // Dangling links and cycles cannot prove containment and are refused too.
-  const extractedRoot = await realpath(artifactDir);
-  const validateLinks = async (dir: string): Promise<void> => {
-    for (const entry of await readdir(dir, { withFileTypes: true })) {
-      const path = join(dir, entry.name);
-      if (entry.isDirectory()) await validateLinks(path);
-      else if (entry.isSymbolicLink()) {
-        let target: string;
-        try { target = await realpath(path); }
-        catch { throw new Error("deploy: unsafe archive link (unresolved target)"); }
-        const rel = relative(extractedRoot, target);
-        if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("deploy: unsafe archive link (outside artifact)");
-      }
-    }
-  };
-  await validateLinks(artifactDir);
+  await assertArtifactLinksContained(artifactDir);
   const manifest = parseRuntimeArtifactManifest(await readFile(join(artifactDir, "manifest.json"), "utf8"));
   const build = readBuildIdentity(join(artifactDir, "dist", "build-identity.json"));
   if (manifest.gate !== "full" || !build.release || build.dirty !== false
@@ -84,4 +70,22 @@ export async function artifactTreeDigest(root: string): Promise<string> {
   };
   await walk("");
   return hash.digest("hex");
+}
+
+export async function assertArtifactLinksContained(artifactDir: string): Promise<void> {
+  const extractedRoot = await realpath(artifactDir);
+  const validateLinks = async (dir: string): Promise<void> => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) await validateLinks(path);
+      else if (entry.isSymbolicLink()) {
+        let target: string;
+        try { target = await realpath(path); }
+        catch { throw new Error("deploy: unsafe archive link (unresolved target)"); }
+        const rel = relative(extractedRoot, target);
+        if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("deploy: unsafe archive link (outside artifact)");
+      }
+    }
+  };
+  await validateLinks(artifactDir);
 }

@@ -286,11 +286,15 @@ async function restartAdmittedDaemon({ root, log, runtime, restorePrevious }: Re
       await waitAbsent();
       stopped = true;
     } else if (stopped) await run("stop").catch(() => undefined);
-    const restored = await restorePrevious?.();
+    let restored = false;
+    let recoveryError: unknown;
+    try { restored = await restorePrevious?.() ?? false; }
+    catch (failure) { recoveryError = failure; if (failure instanceof Error) failure.cause ??= error; }
     if (restorePrevious) {
       for (const snapshot of files) await restoreServiceFile(snapshot.file, snapshot.data, snapshot.mode);
       if (process.platform === "linux") await execFileAsync("systemctl", ["--user", "daemon-reload"], { env: nativeNodeEnv() });
     }
+    if (recoveryError) throw recoveryError;
     if (stopped && restored && previousIdentity) {
       const priorPin = resolveNodePin(dataDir, { ...process.env, HIVE_NODE_PATH: undefined, HIVE_NODE_VERSION: undefined, HIVE_NODE_SHA256: undefined });
       await run("start", priorPin);

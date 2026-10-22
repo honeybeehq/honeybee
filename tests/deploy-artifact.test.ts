@@ -37,7 +37,7 @@ async function release(dir: string, sha = "a".repeat(40), gate: "full" | "tests-
   const stage = join(dir, `stage-${sha}`);
   await mkdir(join(stage, "dist", "v2"), { recursive: true });
   await writeFile(join(stage, "dist", "cli.js"), cli);
-  await writeFile(join(stage, "dist", "v2", "cli.js"), `var PROTOCOL = "v2/1";\nvar UPDATE_RECOVERY_CONTRACT = "${UPDATE_RECOVERY_CONTRACT}";\nprocess.exit(1);\n`);
+  await writeFile(join(stage, "dist", "v2", "cli.js"), `var SCHEMA_VERSION = 48;\nvar PROTOCOL = "v2/1";\nvar UPDATE_RECOVERY_CONTRACT = "${UPDATE_RECOVERY_CONTRACT}";\nprocess.exit(1);\n`);
   await writeFile(join(stage, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1,
     component: "honeybee", version: "0.1.0", packageVersion: "0.1.0", sourceRevision: sha,
     dirty: false, release: true, target: `${process.platform}-${process.arch}` }));
@@ -426,5 +426,23 @@ test("reserved artifact restart receives structural admission that expires after
     assert.equal(await currentDeployTarget(root), fixture.identity.sourceRevision);
     assert.equal(hasDeployRestartAdmission(captured!), false);
     await assert.rejects(restartDeployedDaemon(captured!), DeployReservationHeldError);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+for (const invalid of ["target", "stamp"] as const) test(`artifact admission refuses an unverified external current ${invalid}`, async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hb-artifact-external-"));
+  try {
+    const root = join(dir, "runtime"), previous = await release(dir, "b".repeat(40)), next = await release(dir);
+    await mkdir(root);
+    await symlink(previous.stage, join(root, "current"));
+    if (invalid === "target") {
+      const path = join(previous.stage, "dist", "build-identity.json");
+      const build = JSON.parse(await readFile(path, "utf8"));
+      build.target = "wrong-target";
+      await writeFile(path, JSON.stringify(build));
+    } else await rm(join(previous.stage, "dist", ".build-stamp.json"));
+    await assert.rejects(deployArtifact({ ...next, root, expectedCurrent: previous.identity.sourceRevision, admission: { fresh: true }, hooks: { async restartDaemon() { assert.fail(); } } }), /external current lacks a native build target or verified dist build stamp/);
+    assert.equal(await readlink(join(root, "current")), previous.stage);
+    assert.equal(existsSync(join(root, next.identity.sourceRevision)), false);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
