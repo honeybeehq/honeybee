@@ -22,6 +22,7 @@ if (mode === "worker" || mode === "restart") {
       injected = true;
       writeFileSync(keychainFile, doc("SIBLING", 1000000));
     }
+    if (mode === "worker" && !injected && ((scenario === "linux-first-write-crash" || scenario === "mac-first-write-crash") && target.endsWith("/.credentials.json"))) process.exit(86);
     if (mode === "worker" && !injected && ((scenario === "linux-crash" || scenario === "mac-home-crash" || scenario === "failed-home-crash") && target === join(home, ".credentials.json"))) {
       injected = true;
       process.exit(86);
@@ -30,11 +31,15 @@ if (mode === "worker" || mode === "restart") {
   syncBuiltinESMExports();
 }
 const { openCoreStore } = await import("../../v2/core/src/index.ts");
-const { AccountsService } = await import("../../v2/daemon/src/accountsService.ts");
+const { AccountsService } = await import(process.env.H4B_ACCOUNTS_SOURCE ?? "../../v2/daemon/src/accountsService.ts");
 const { loadNodeConfig } = await import("../../v2/daemon/src/config.ts");
 const setupService = (failing = false) => {
   const store = openCoreStore(join(dir, "core.sqlite3"));
   const account = store.getAccount("claude-lab")!;
+  if (mode === "worker" && scenario === "failed-fence-crash") {
+    const set = store.setAccountCredentialAttention.bind(store);
+    store.setAccountCredentialAttention = (id, cause, publication) => { set(id, cause, publication); if (cause === "keychain_publication_failed") process.exit(86); };
+  }
   const service = new AccountsService({ store, cfg: loadNodeConfig(dir), now: () => now, platform: scenario.startsWith("linux") ? "linux" : "darwin", log: () => {},
     keychainReader: async () => existsSync(keychainFile) ? readFileSync(keychainFile, "utf8") : null,
     keychainWriter: async (_, raw) => {
@@ -63,8 +68,8 @@ if (mode === "worker") {
   const { store, account, service } = setupService(scenario.startsWith("failed"));
   try { await service.verifyCredentials(account); } finally { store.close(); }
 } else if (mode !== "restart") {
-  const scenarios = ["linux-normal", "linux-crash", "mac-keychain-crash", "mac-home-crash", "failed-restart", "failed-home-crash", "failed-login", "failed-newer-keychain", "failed-same-chain", "failed-publication-race", "ambiguous-last-good"];
-  for (const name of scenarios) {
+  const scenarios = ["linux-normal", "linux-first-write-crash", "mac-first-write-crash", "failed-fence-crash", "linux-crash", "mac-keychain-crash", "mac-home-crash", "failed-restart", "failed-home-crash", "failed-login", "failed-newer-keychain", "failed-same-chain", "failed-publication-race", "ambiguous-last-good"];
+  for (const name of scenarios.filter(name => !process.env.H4B_SCENARIO || name === process.env.H4B_SCENARIO)) {
     const caseDir = join(root, process.env.H4B_RUN ?? "run", name), caseHome = join(caseDir, "homes", "claude-lab"), caseVault = join(caseDir, "vault", "claude", "claude-lab");
     mkdirSync(caseHome, { recursive: true }); mkdirSync(caseVault, { recursive: true });
     writeFileSync(join(caseDir, "config.json"), JSON.stringify({ accounts: { homesDir: join(caseDir, "homes"), vaultDir: join(caseDir, "vault"), limitsRefreshMs: 0 } }));
@@ -110,7 +115,11 @@ if (mode === "restart") {
       await service.verifyCredentials(account);
       assert.equal(JSON.parse(readFileSync(ledger, "utf8")).refreshes, before);
       if (ambiguous) assert.equal(store.getAccountLimits(account.id)?.readable, true);
-      else if (scenario === "failed-login") {
+      else if (scenario === "failed-fence-crash") {
+        await service.claudeKeychainRepairTick();
+        assert.equal(store.accountCredentialAttention(account.id), "keychain_publication_failed");
+        assert.equal(service.credentialReadiness(store.getAccount(account.id)!).ready, false);
+      } else if (scenario === "failed-login") {
         await service.confirmClaudeLoginPublication(account, doc("NEW", 900000));
         assert.equal(store.accountCredentialAttention(account.id), "keychain_publication_failed");
         writeFileSync(keychainFile, doc("LOGIN", 1000000));

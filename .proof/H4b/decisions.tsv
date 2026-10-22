@@ -1,2 +1,8 @@
 time	decision	why	evidence	result
 2026-10-22T05:16:00Z	SQLite source attention and publication fence	Preserve Keychain authority and prevent spent refresh reuse after publication failure	orchestrator message 29597; reviewer 29640	implementation underway
+2026-10-22T05:26:43.458238+00:00	Schema49 and exact swap support48/49	Older daemons must refuse a fence-bearing DB; swap must stay supported	orchestrator29736; schema-lab; context-lab	Migrates transactionally; v49 context survives account swap
+2026-10-22T05:26:43.458254+00:00	Rollback requires coordinated backup restore	No unsafe down-migration; backup restore loses all mail commands audit since backup	orchestrator29758; reviewer29754	Queen decides backup/rollback cost at deploy; DEPLOY HOLD
+2026-10-22T05:26:43.458257+00:00	Rebase then preserve pushed ancestry	Main0f9dbe19 merged H4; no force push	789228c1 and2f77e3fb	Published feac remains ancestor
+2026-10-22T05:26:43.458259+00:00	Confirm newer Keychain without rewriting it	Existing lease8 exposed stuck repair after sibling advances; avoid reverting concurrent native publication	4216d64a; lease71pass;11-case lab	Copies HOME then vault; postread must match or keep fence
+2026-10-22T05:26:43.458261+00:00	No new unit tests or code comments	Human brief overrides AGENTS new-test default	H4b explicit instruction	Existing schema assertions only; lab scripts cover new logic
+2026-10-22T05:26:43.458263+00:00	Legacy suite failure retained	Inherited-stdout-descendant timeout matches clean-main baseline already proven by H4	legacy.log6348ms; .proof/H4/receipts/baseline-hsr.log5797ms	Not called green; final source rerun underway

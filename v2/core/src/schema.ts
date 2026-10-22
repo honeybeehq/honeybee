@@ -223,7 +223,10 @@ CREATE INDEX IF NOT EXISTS auth_interruptions_by_bee ON auth_interruptions(bee_i
 export const ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS account_credential_attention (
   account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
-  cause TEXT NOT NULL CHECK (cause IN ('live_chain_ambiguous','keychain_publication_failed'))
+  cause TEXT NOT NULL CHECK (cause IN ('live_chain_ambiguous','keychain_publication_failed')),
+  intended_hash TEXT,
+  intended_expires_at INTEGER,
+  CHECK (cause != 'keychain_publication_failed' OR (intended_hash IS NOT NULL AND intended_expires_at IS NOT NULL))
 ) STRICT;
 `;
 

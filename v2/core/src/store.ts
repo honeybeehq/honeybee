@@ -7180,12 +7180,19 @@ export class CoreStore {
     return row ? String(row.cause) as "live_chain_ambiguous" | "keychain_publication_failed" : null;
   }
 
-  setAccountCredentialAttention(id: string, cause: "live_chain_ambiguous" | "keychain_publication_failed" | null): void {
+  accountCredentialPublication(id: string): { hash: string; expiresAt: number } | null {
+    const row = this.stmt("SELECT intended_hash,intended_expires_at FROM account_credential_attention WHERE account = ? AND cause = 'keychain_publication_failed'").get(id) as Row | undefined;
+    return row ? { hash: String(row.intended_hash), expiresAt: Number(row.intended_expires_at) } : null;
+  }
+
+  setAccountCredentialAttention(id: string, cause: "live_chain_ambiguous" | "keychain_publication_failed" | null, publication?: { hash: string; expiresAt: number }): void {
+    if (cause === "keychain_publication_failed" && (!publication || !/^[a-f0-9]{64}$/.test(publication.hash) || !Number.isSafeInteger(publication.expiresAt))) throw new CoreError("Publication fence requires an intended material digest and expiry");
     this.tx(() => {
       this.mustGetAccount(id);
-      if (this.accountCredentialAttention(id) === cause) return;
+      const intended = cause === "keychain_publication_failed" ? publication! : null;
+      if (this.accountCredentialAttention(id) === cause && JSON.stringify(this.accountCredentialPublication(id)) === JSON.stringify(intended)) return;
       if (cause === null) this.stmt("DELETE FROM account_credential_attention WHERE account = ?").run(id);
-      else this.stmt("INSERT INTO account_credential_attention(account,cause) VALUES(?,?) ON CONFLICT(account) DO UPDATE SET cause=excluded.cause").run(id, cause);
+      else this.stmt("INSERT INTO account_credential_attention(account,cause,intended_hash,intended_expires_at) VALUES(?,?,?,?) ON CONFLICT(account) DO UPDATE SET cause=excluded.cause,intended_hash=excluded.intended_hash,intended_expires_at=excluded.intended_expires_at").run(id, cause, intended?.hash ?? null, intended?.expiresAt ?? null);
       this.touchAccount(id, cause ? `credential_file_damaged: ${cause}` : "credential source confirmed");
     });
   }

@@ -3598,7 +3598,7 @@ export class AccountsService {
     for (let attempt = 0; attempt < keychainAttempts && !keychainWritten; attempt += 1) {
       keychainWritten = await this.keychainWriter(account.homePath, keychainRaw).catch(() => false);
     }
-    if (!keychainWritten && keychain.status === "present") this.store.setAccountCredentialAttention(account.id, "keychain_publication_failed");
+    if (!keychainWritten && keychain.status === "present") this.store.setAccountCredentialAttention(account.id, "keychain_publication_failed", { hash: this.claudePublicationHash(refreshed), expiresAt: refreshed.expiresAt });
     atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw);
     mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
     atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
@@ -3644,6 +3644,10 @@ export class AccountsService {
     return this.claudeKeychainRepairFlight;
   }
 
+  private claudePublicationHash(credential: Pick<ClaudeCredential, "accessToken" | "refreshToken" | "expiresAt">): string {
+    return createHash("sha256").update(JSON.stringify([credential.accessToken, credential.refreshToken ?? null, credential.expiresAt])).digest("hex");
+  }
+
   private async republishClaudeKeychain(account: AccountRow): Promise<"repaired" | "current" | "retry"> {
     if (this.authorityFor(account)?.enabled(account) || this.authorityFor(account)?.busy(account)) return "current";
     const homeFile = join(account.homePath, ".credentials.json");
@@ -3656,7 +3660,9 @@ export class AccountsService {
       if (keychain.status === "unreadable") return "retry" as const;
       if (!rotated || keychain.status !== "present") return fenced ? "retry" as const : "current" as const;
       const published = parseClaudeCredentials(keychain.raw);
-      if (fenced && published && published.accessToken.trim().length > 0 && published.expiresAt > rotated.expiresAt) {
+      const intended = this.store.accountCredentialPublication(account.id);
+      if (fenced && (!intended || this.claudePublicationHash(rotated) !== intended.hash)) return "retry" as const;
+      if (fenced && published && published.accessToken.trim().length > 0 && published.expiresAt > intended!.expiresAt) {
         raw = keychain.raw;
         rotated = published;
       }
