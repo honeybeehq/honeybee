@@ -93,6 +93,7 @@ export interface RpcConn {
   readonly executionCoordinatorUid?: number;
   readonly authenticatedBeeId?: string;
   readonly humanOutputManagement?: boolean;
+  readonly buildPinAdministration?: true;
   readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
   readonly ingress?: "local_unix" | "node_relay" | "remote";
   readonly caller?: Readonly<HelloCaller>;
@@ -248,6 +249,7 @@ export class RpcServer {
   private listening = false;
   private readonly credentials: PeerCredentials;
   private readonly trust: LocalRpcTrust;
+  private readonly buildPinTrust: LocalRpcTrust;
   private readonly refusals: LocalRpcRefusals;
 
   get localSecurity() { return {peerCredentials: {...this.credentials.status}, localTrust: this.trust.state}; }
@@ -257,6 +259,7 @@ export class RpcServer {
     const audit = opts.securityAudit ?? (() => {});
     this.credentials = opts.peerCredentials ?? new PeerCredentials({degraded: status => audit("rpc.peer_credentials_unavailable", {...status})});
     this.trust = new LocalRpcTrust(opts.localTrust ?? {requireObservationCaller: false, registrationKeyFile: ""}, opts.dataDir ?? "/", audit);
+    this.buildPinTrust = new LocalRpcTrust(opts.localTrust ?? {requireObservationCaller: false, registrationKeyFile: ""}, opts.dataDir ?? "/", (kind, data) => audit(kind, { ...data, scope: "build_pin" }));
     this.refusals = new LocalRpcRefusals(audit);
     this.performance = opts.performance ?? NOOP_PERFORMANCE;
     this.server = createServer((socket) => this.onConnection(socket));
@@ -285,6 +288,7 @@ export class RpcServer {
     this.conns.clear();
     this.credentials.close();
     this.trust.close();
+    this.buildPinTrust.close();
     this.refusals.close();
     return new Promise((resolve) => {
       if (!this.listening) {
@@ -365,7 +369,7 @@ export class RpcServer {
     conn.send({ protocol: PROTOCOL, capabilities: this.capabilities, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}) } satisfies HelloFrame);
     socket.on("data", (chunk: string) => this.onData(conn, chunk));
     socket.on("error", () => socket.destroy());
-    socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.conns.delete(conn); });
+    socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.buildPinTrust.disconnect(conn); this.conns.delete(conn); });
   }
 
   private onData(conn: Connection, chunk: string): void {
@@ -495,11 +499,15 @@ export class RpcServer {
         }
         if (verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register") {
           if (!peer) throw new RpcError("caller_not_trusted", "Registration requires a local Unix connection.");
+          const { scope, ...registration } = params;
+          if (scope !== undefined && scope !== "build_pin") throw new RpcError("invalid_request", "Unknown local trust scope.");
+          if (scope === "build_pin" && (conn.ingress !== "local_unix" || conn.relayLane !== null)) throw new RpcError("caller_not_trusted", "Build pin registration requires a direct local connection.");
+          const trust = scope === "build_pin" ? this.buildPinTrust : this.trust;
           if (verb === "rpc.localTrust.challenge") {
-            if (Object.keys(params).length) throw new RpcError("invalid_request", "Challenge takes no parameters.");
-            return this.trust.challenge(peer, conn, conn.ingress);
+            if (Object.keys(registration).length) throw new RpcError("invalid_request", "Challenge takes only an optional build_pin scope.");
+            return trust.challenge(peer, conn, conn.ingress);
           }
-          return this.trust.register(params, peer, conn, conn.ingress);
+          return trust.register(registration, peer, conn, conn.ingress);
         }
         if (verb === "account.limits.observe" || verb === "account.limits.observation.discard" || (verb === "account.limits.observation" && params.id !== undefined)) {
           if (!peer && this.trust.enabled) throw new RpcError("caller_not_trusted", "Observation trust requires a local Unix connection.");
@@ -508,6 +516,15 @@ export class RpcServer {
         if (verb === "mail.delivery.resend_anyway" || verb === "mail.delivery.drop") {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Delivery resolution requires a registered local service.");
           this.trust.require(peer, conn.ingress);
+        }
+        if (verb === "build.pin.set" || verb === "build.pin.clear") {
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "Build pin changes require a registered direct local service.");
+          try { this.trust.require(peer, conn.ingress); }
+          catch (error) {
+            if (!(error instanceof RpcError) || error.code !== "caller_not_trusted") throw error;
+            this.buildPinTrust.require(peer, conn.ingress);
+          }
+          return this.opts.dispatch(verb, params, { ...conn, buildPinAdministration: true });
         }
         if (verb === "bee.tell" || verb === "bee.react" || verb === "bee.setHumanOutputMode") {
           const capability = verb === "bee.tell" ? "bee.tell.v1" : verb === "bee.react" ? "bee.react.v1" : "bee.human_output_mode.v1";

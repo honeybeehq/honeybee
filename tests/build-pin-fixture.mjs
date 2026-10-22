@@ -6,17 +6,20 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { deployVersion, currentDeployTarget } from '../dist/deployRuntime.js';
 import { buildReport } from '../dist/buildPin.js';
+import { backupBeforeSwap } from '../dist/commands/deploy.js';
 import { persistNodePin, probeNativeNode } from '../dist/nodeRuntime.js';
 
 const exec = promisify(execFile);
 const dir = await mkdtemp(join(tmpdir(), 'hb-build-pin-proof-'));
 const root = join(dir, 'runtime'), dataDir = join(dir, 'v2'), repoRoot = join(dir, 'repo');
+process.env.HIVE_V2_DATA_DIR = dataDir;
+delete process.env.HIVE_V2_SOCKET_PATH;
 const transcript = join(dir, 'cli-output.log'), daemonLog = join(dir, 'daemon.log');
 await mkdir(repoRoot, { recursive: true });
-await mkdir(dataDir, { recursive: true });
+await mkdir(dataDir, { recursive: true, mode: 0o700 });
 await mkdir(join(dir, 'home'), { recursive: true });
 persistNodePin(dataDir, probeNativeNode(process.execPath));
-await writeFile(join(dataDir, 'config.json'), JSON.stringify({ accounts: { discover: false, limitsRefreshMs: 0 }, naming: { auto: false }, cells: { root: join(dir, 'cells') } }));
+await writeFile(join(dataDir, 'config.json'), JSON.stringify({ rpcLocalTrust: { requireObservationCaller: true }, accounts: { discover: false, limitsRefreshMs: 0 }, naming: { auto: false }, cells: { root: join(dir, 'cells') } }));
 const env = { ...process.env, HOME: join(dir, 'home'), HIVE_STORE_ROOT: dir, HIVE_V2_DATA_DIR: dataDir, HIVE_NODE_PATH: process.execPath, HIVE_NO_KEYCHAIN: '1', HIVE_GATEWAYS_DISABLE: '1' };
 for (const key of ['HIVE_BEE_ID', 'HIVE_CALLER_BEE_ID', 'HIVE_CALLER_DATA_DIR', 'HIVE_EXPECTED_INSTANCE_ID', 'HIVE_RPC_TOKEN', 'NODE_OPTIONS']) delete env[key];
 const log = async line => { console.log(line); await appendFile(transcript, line + '\n'); };
@@ -41,12 +44,17 @@ async function stop() {
   });
 }
 async function cli(...args) {
-  const argv = [join(root, 'current', 'dist', 'cli.js'), 'v2', ...args, '--data-dir', dataDir, '--json'];
+  const argv = [join(root, 'current', 'dist', 'cli.js'), 'v2', ...args, ...(args[0] === 'build-pin' && args[1] !== 'show' ? ['--trust-key-file', join(dataDir, 'rpc-private', 'registration.key')] : []), '--data-dir', dataDir, '--json'];
   const { stdout } = await exec(process.execPath, argv, { env, timeout: 4000 });
   await log(`$ hive v2 ${args.join(' ')} --data-dir <fixture>/v2 --json\n${stdout.trim()}`);
   return JSON.parse(stdout);
 }
 const hooks = {
+  async backupStore(context) {
+    const receipt = await backupBeforeSwap(context);
+    await log(`store backup receipt: ${receipt.receiptPath}`);
+    return receipt;
+  },
   async buildArtifact({ sha, workDir }) {
     const artifactDir = join(workDir, 'stage');
     await mkdir(artifactDir, { recursive: true });
@@ -82,6 +90,15 @@ const hooks = {
 try {
   await log(`Fixture root: ${dir}`);
   await deployVersion({ root, repoRoot, ref: first, hooks });
+  for (const flags of [[], ['--offline']]) {
+    try {
+      await exec(process.execPath, [join(root, 'current', 'dist', 'cli.js'), 'v2', 'build-pin', 'clear', ...flags, '--data-dir', dataDir, '--json'], { env, timeout: 4000 });
+      assert.fail('untrusted pin clear accepted');
+    } catch (error) {
+      assert.equal(error.code, 1);
+      await log(`$ hive v2 build-pin clear ${flags.join(' ')} (untrusted fixture caller)\n${error.stdout.trim()}`);
+    }
+  }
   await cli('build-pin', 'set', first, `${process.platform}-${process.arch}`);
   const agrees = await cli('build-report');
   assert.equal(agrees.verdict, 'agrees');

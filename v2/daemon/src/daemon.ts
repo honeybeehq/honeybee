@@ -1,5 +1,4 @@
-import { buildReport, buildPinFile, captureRunningBuild, parseBuildPin, readBuildPin, type ObservedBuild } from "../../../src/buildPin.ts";
-import { writeNodeRuntimeState } from "../../../src/nodeRuntime.ts";
+import { buildReport, captureRunningBuild, changeBuildPin, parseBuildPin, type ObservedBuild } from "../../../src/buildPin.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
@@ -2455,10 +2454,12 @@ export class HiveDaemon {
         return buildReport(join(dirname(this.cfg.dataDir), "runtime"), this.runningBuild, SCHEMA_VERSION);
       case "build.pin.set":
       case "build.pin.clear": {
+        if (conn.buildPinAdministration !== true || conn.ingress !== "local_unix" || !conn.localPeer) throw new RpcError("caller_not_trusted", "Build pin changes require a registered direct local service.");
+        const caller = conn.localPeer;
         const root = join(dirname(this.cfg.dataDir), "runtime");
         const pin = verb === "build.pin.set" ? parseBuildPin(params.pin) : null;
         return withFileLock(join(root, ".deploy.lock"), async () => {
-          if (JSON.stringify(readBuildPin(root)) !== JSON.stringify(pin)) writeNodeRuntimeState(buildPinFile(root), pin);
+          changeBuildPin(root, pin, caller);
           return buildReport(root, this.runningBuild, SCHEMA_VERSION);
         });
       }

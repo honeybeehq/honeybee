@@ -727,9 +727,9 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
   if (!target) throw new DeployRollbackError("ROLLBACK_PREVIOUS_INSTALL_MISSING", `no previous installed version to roll back to; deploy history ${join(root, DEPLOY_HISTORY_FILENAME)} must name a distinct build with installed dist/cli.js`);
   log(`deploy: rollback planned ${currentSha} → ${target.sha}`);
   await assertRollbackStoreCompatible(root, join(root, target.sha));
+  assertBuildPin(root, await observeBuild(join(root, target.sha)), options.buildPinOverride);
   if (currentLink && currentLink !== currentSha) await retainExternalCurrent(root, currentLink, currentSha, now, by);
 
-  assertBuildPin(root, await observeBuild(join(root, target.sha)), options.buildPinOverride);
   await backupBeforeRuntimeSwap(root, options.hooks, join(root, currentSha), currentSha, log);
   const v2 = runtimeUsesV2(root);
   if (v2) await persistV2RuntimeMode(root);

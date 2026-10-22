@@ -1,10 +1,8 @@
-import { createConnection } from "node:net";
-import { withFileLock } from "./lock.ts";
-import { appendFileSync, existsSync, readFileSync, realpathSync } from "node:fs";
+import { appendFileSync, closeSync, fsyncSync, openSync, existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { writeNodeRuntimeState, nodePinFile } from "./nodeRuntime.ts";
 import { readBuildIdentity, type BuildIdentity } from "./release/buildIdentity.ts";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 
 export interface BuildPin {
@@ -92,7 +90,7 @@ export function assertBuildPin(root: string, build: ObservedBuild | null, overri
   if (!overrideReason?.trim()) throw new BuildPinMismatchError(mismatches);
   if (!build) throw new BuildPinMismatchError(mismatches);
   const receipt = { schemaVersion: 1, at: new Date().toISOString(), reason: overrideReason.trim(), desired, build };
-  appendFileSync(join(root, "build-pin-overrides.jsonl"), JSON.stringify(receipt) + "\n", { mode: 0o600, flush: true });
+  appendBuildReceipt(root, "build-pin-overrides.jsonl", receipt);
   writeNodeRuntimeState(join(root, "build-pin-override.json"), receipt);
 }
 
@@ -125,20 +123,14 @@ export async function buildReport(root: string, running: ObservedBuild | null, s
     verdict: drift.length ? "drift" : stale || !running || !staged ? "unknown" : desired ? "agrees" : "unpinned" };
 }
 
-export async function setOfflineBuildPin(root: string, pin: BuildPin | null, socketPath: string): Promise<void> {
-  await withFileLock(join(root, ".deploy.lock"), async () => {
-    await new Promise<void>((accept, reject) => {
-      const socket = createConnection(socketPath);
-      socket.setTimeout(1000);
-      socket.once("connect", () => { socket.destroy(); reject(new Error("build-pin: daemon is reachable; use authenticated RPC without --offline")); });
-      socket.once("timeout", () => { socket.destroy(); reject(new Error("build-pin: daemon absence is unconfirmed")); });
-      socket.once("error", (error: NodeJS.ErrnoException) => {
-        if (error.code === "ENOENT" || error.code === "ECONNREFUSED") accept();
-        else reject(error);
-      });
-    });
-    writeNodeRuntimeState(buildPinFile(root), pin === null ? null : parseBuildPin(pin));
-  });
+export function changeBuildPin(root: string, pin: BuildPin | null, caller: { uid: number; pid: number; processBirth: string | null }): void {
+  const desired = pin === null ? null : parseBuildPin(pin);
+  const previous = readBuildPin(root);
+  if (JSON.stringify(previous) === JSON.stringify(desired)) return;
+  const receipt = { schemaVersion: 1, id: randomUUID(), at: new Date().toISOString(), previous, desired, caller: { transport: "local_unix", ...caller } };
+  appendBuildReceipt(root, "build-pin-changes.jsonl", { ...receipt, phase: "requested" });
+  writeNodeRuntimeState(buildPinFile(root), desired);
+  appendBuildReceipt(root, "build-pin-changes.jsonl", { ...receipt, phase: "applied" });
 }
 
 export async function measureBuildDistHash(dist: string): Promise<string> {
@@ -154,4 +146,10 @@ export async function measureBuildDistHash(dist: string): Promise<string> {
   const hash = createHash("sha256");
   for (const path of files) hash.update(path).update("\0").update(await readFile(join(dist, path))).update("\0");
   return hash.digest("hex");
+}
+
+function appendBuildReceipt(root: string, name: string, receipt: unknown): void {
+  appendFileSync(join(root, name), JSON.stringify(receipt) + "\n", { mode: 0o600, flush: true });
+  const fd = openSync(root, "r");
+  try { fsyncSync(fd); } finally { closeSync(fd); }
 }

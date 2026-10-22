@@ -37,6 +37,9 @@ for (const mode of ["foreign_uid", "lookup_failed", "load_failed"] as const) tes
       assert.deepEqual(await client.request("spawn", {}), {ok: true});
       assert.equal(events.filter(row => row.kind === "degraded").length, 1);
     }
+    for (const verb of ["build.pin.set", "build.pin.clear"] as const) {
+      await assert.rejects(client.request(verb, {}), code(mode === "foreign_uid" ? "local_peer_uid_mismatch" : mode === "lookup_failed" ? "local_peer_credentials_unavailable" : "caller_not_trusted"));
+    }
   } finally { client?.close(); await server.close(); rmSync(root, {recursive: true, force: true}); }
 });
 
@@ -105,4 +108,67 @@ for (const present of [true, false]) test(`RPC doctor reports delivery native he
   assert.equal(health.deliveryFileHelper.target, `${platform}-${process.arch}`);
   assert.equal(existsSync(health.deliveryFileHelper.artifactPath), present);
   assert.equal(health.deliveryFileHelper.state, present ? "ready" : "delivery_file_helper_unavailable");
+});
+
+test("build pin administration refuses unregistered, relayed, remote and trust-disabled callers", async () => {
+  for (const enabled of [false, true]) {
+    const root = mkdtempSync(join(tmpdir(), "rpc-pin-admin-")), keyFile = join(root, "private", "key");
+    const dispatched: string[] = [];
+    const server = new RpcServer({socketPath: join(root, "rpc.sock"), dataDir: root,
+      localTrust: {requireObservationCaller: enabled, registrationKeyFile: keyFile}, log: () => {},
+      dispatch: (verb, _params, conn) => { if (verb.startsWith("build.pin.")) assert.equal(conn.buildPinAdministration, true); dispatched.push(verb); return {ok: true}; }});
+    const clients: RpcClient[] = [];
+    try {
+      await server.listen();
+      const direct = await RpcClient.connect(join(root, "rpc.sock")); clients.push(direct);
+      for (const verb of ["build.pin.set", "build.pin.clear"] as const) await assert.rejects(direct.request(verb, {}), code("caller_not_trusted"));
+      assert.deepEqual(await direct.request("build.report"), {ok: true});
+      if (enabled) {
+        const challenge = await direct.request<LocalTrustChallenge>("rpc.localTrust.challenge");
+        const key = readFileSync(keyFile);
+        const token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex"); key.fill(0);
+        await direct.request("rpc.localTrust.register", {pid: process.pid, challengeId: challenge.challengeId, token});
+        for (const lane of ["node_relay", "remote"] as const) {
+          const relay = await RpcClient.connect(join(root, "rpc.sock"), 3000, lane); clients.push(relay);
+          for (const verb of ["build.pin.set", "build.pin.clear"] as const) await assert.rejects(relay.request(verb, {}), code("caller_not_trusted"));
+          assert.deepEqual(await relay.request("build.report"), {ok: true});
+        }
+        assert.deepEqual(await direct.request("build.pin.set", {}), {ok: true});
+        assert.deepEqual(await direct.request("build.pin.clear", {}), {ok: true});
+      }
+      assert.equal(dispatched.filter(verb => verb.startsWith("build.pin.")).length, enabled ? 2 : 0);
+    } finally { clients.forEach(client => client.close()); await server.close(); }
+  }
+});
+
+test("pin admin scope cannot authorize trusted sends or evict the service registration, and service cannot evict pin admin", async () => {
+  const root = mkdtempSync(join(tmpdir(), "rpc-pin-scope-")), keyFile = join(root, "private", "key");
+  let nextPid = 100;
+  const identities = new Map<number, number>();
+  const peers = new PeerCredentials({load: () => ({inspect: fd => { let pid = identities.get(fd); if (pid === undefined) { pid = nextPid++; identities.set(fd, pid); } return {uid: process.geteuid!(), pid, birth: `birth-${pid}`}; }, pin: () => -1, alive: () => true})});
+  const server = new RpcServer({socketPath: join(root, "rpc.sock"), dataDir: root, peerCredentials: peers,
+    localTrust: {requireObservationCaller: true, registrationKeyFile: keyFile}, log: () => {}, dispatch: () => ({ok: true})});
+  const clients: RpcClient[] = [];
+  const register = async (client: RpcClient, scope?: "build_pin") => {
+    const challenge = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge", scope ? {scope} : {});
+    const key = readFileSync(keyFile), token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex"); key.fill(0);
+    if (scope) await assert.rejects(client.request("rpc.localTrust.register", { pid: challenge.pid, challengeId: challenge.challengeId, token }), code("caller_not_trusted"));
+    await client.request("rpc.localTrust.register", { ...(scope ? {scope} : {}), pid: challenge.pid, challengeId: challenge.challengeId, token });
+  };
+  try {
+    await server.listen();
+    const service = await RpcClient.connect(join(root, "rpc.sock")); clients.push(service);
+    const admin = await RpcClient.connect(join(root, "rpc.sock")); clients.push(admin);
+    const bee = await RpcClient.connect(join(root, "rpc.sock")); clients.push(bee);
+    await register(service);
+    await register(admin, "build_pin");
+    assert.deepEqual(await admin.request("build.pin.set", {}), {ok: true});
+    await assert.rejects(bee.request("build.pin.clear", {}), code("caller_not_trusted"));
+    await assert.rejects(admin.request("bee.tell", {beeId: "fixture", text: "trusted send"}), code("caller_not_trusted"));
+    await assert.rejects(admin.request("mail.delivery.drop", {}), code("caller_not_trusted"));
+    assert.deepEqual(await service.request("mail.delivery.drop", {}), {ok: true});
+    await register(service);
+    assert.deepEqual(await admin.request("build.pin.clear", {}), {ok: true});
+    assert.deepEqual(await service.request("mail.delivery.drop", {}), {ok: true});
+  } finally { clients.forEach(client => client.close()); await server.close(); }
 });
