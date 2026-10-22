@@ -64,21 +64,21 @@ test("an archive checksum pin refuses source builds with no archive evidence", a
   assert.throws(() => assertBuildPin(f.root, f.build), /artifactSha256/);
 });
 
-import { createServer } from "node:net";
-import { setOfflineBuildPin } from "../src/buildPin.ts";
+import { changeBuildPin } from "../src/buildPin.ts";
 
-test("offline pin bootstrap serializes ownership writes and refuses a reachable daemon socket", async () => {
-  const f = await fixture(), socketPath = join(f.dir, "daemon.sock");
-  await setOfflineBuildPin(f.root, { ...f.pin, sourceRevision: "b".repeat(40) }, socketPath);
-  assert.equal(readBuildPin(f.root)?.sourceRevision, "b".repeat(40));
-  const server = createServer(socket => socket.end());
-  await new Promise<void>(done => server.listen(socketPath, done));
-  try {
-    await assert.rejects(setOfflineBuildPin(f.root, null, socketPath), /daemon is reachable/);
-    assert.equal(readBuildPin(f.root)?.sourceRevision, "b".repeat(40));
-  } finally { await new Promise<void>(done => server.close(() => done())); }
-  await writeFile(buildPinFile(f.root), "corrupt");
-  await setOfflineBuildPin(f.root, null, socketPath);
+test("pin change receipts preserve previous and desired identities, verified actor and quiet no-ops", async () => {
+  const f = await fixture(), caller = { uid: 1001, pid: 123, processBirth: "fixture-birth" };
+  const desired = { ...f.pin, sourceRevision: "b".repeat(40) };
+  changeBuildPin(f.root, desired, caller);
+  changeBuildPin(f.root, desired, caller);
+  changeBuildPin(f.root, null, caller);
+  const rows = (await readFile(join(f.root, "build-pin-changes.jsonl"), "utf8")).trim().split("\n").map(line => JSON.parse(line));
+  assert.equal(rows.length, 4);
+  assert.deepEqual(rows.map(row => row.phase), ["requested", "applied", "requested", "applied"]);
+  assert.deepEqual(rows[0].previous, f.pin);
+  assert.deepEqual(rows[0].desired, desired);
+  assert.deepEqual(rows[0].caller, { transport: "local_unix", ...caller });
+  assert.equal(rows[2].desired, null);
   assert.equal(readBuildPin(f.root), null);
 });
 
