@@ -336,6 +336,7 @@ const OPTIONAL_VALUE_FLAGS = new Set(["--warm"]);
  */
 const BOOL_FLAGS = new Set([
   "--json",
+  "--offline",
   "--allow-foreign-daemon",
   "--unread",
   "--all",
