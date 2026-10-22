@@ -182,7 +182,7 @@ test("production restart checks the authenticated running report and accepts onl
     if (override) assertBuildPin(root, running, "fixture activation override");
     const attempt = restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: running.sourceRevision, runtime: "v2", log() {} });
     if (override) await attempt;
-    else await assert.rejects(attempt, BuildPinMismatchError);
+    else await assert.rejects(attempt, error => error instanceof DeployActivationHeldError && error.cause instanceof BuildPinMismatchError);
   }
   } finally {
     if (previousServiceDir === undefined) delete process.env.HIVE_V2_SERVICE_DIR;

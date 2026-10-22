@@ -1,6 +1,5 @@
 import { backupStoreOffline, restoreStoreOffline, StoreRestoreError, StoreBackupError } from "../../core/src/storeBackup.ts";
-
-import { buildReport, parseBuildPin, setOfflineBuildPin } from "../../../src/buildPin.ts";
+import { buildReport, parseBuildPin } from "../../../src/buildPin.ts";
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
@@ -17,7 +16,9 @@ import { readLiveEndpointRecord } from "../../daemon/src/endpointRecord.ts";
  *   immediately by default; --wait blocks until the delivery mark.
  * - `daemon install|start|stop|restart|status` wraps the platform service layer.
  */
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHmac } from "node:crypto";
+import { constants, fstatSync } from "node:fs";
+import { localTrustMessage, type LocalTrustChallenge } from "../../daemon/src/localRpcTrust.ts";
 import { execFile, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline";
@@ -318,6 +319,7 @@ const VALUE_FLAGS = new Set([
   "--limit",
   "--status",
   "--reason",
+  "--trust-key-file",
   "--template",
   "--preamble",
   ...LIST_FLAGS,
@@ -5049,15 +5051,27 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         if (action !== "clear" && action !== "set") throw new Error("usage: hive v2 build-pin set <revision> <os-arch> [artifact-sha256] | show | clear");
         if (action === "clear" && parsed.positional.length !== 2 || action === "set" && (parsed.positional.length < 4 || parsed.positional.length > 5)) throw new Error("build-pin: invalid arguments");
         const params = action === "set" ? { pin: parseBuildPin({ schemaVersion: 1, sourceRevision: revision, target, ...(artifactSha256 ? { artifactSha256 } : {}) }) } : {};
-        if (parsed.flags.get("--offline") === true) {
-          if (readLiveEndpointRecord(ctx.cfg.dataDir)) throw new Error("build-pin: daemon process is live; use authenticated RPC without --offline");
-          const root = resolve(ctx.cfg.dataDir, "..", "runtime");
-          await setOfflineBuildPin(root, "pin" in params ? params.pin! : null, ctx.cfg.socketPath);
-          const result = await buildReport(root, null, null, true);
-          emit(ctx, [JSON.stringify(result, null, 2)], result, true);
-          return 0;
-        }
-        const result = await withClient(ctx, c => c.request(action === "set" ? "build.pin.set" : "build.pin.clear", params));
+        if (parsed.flags.get("--offline") === true) throw new Error("build-pin: offline writes are refused; use registered direct local-service RPC");
+        const result = await withClient(ctx, async c => {
+          const keyFile = parsed.flags.get("--trust-key-file");
+          if (keyFile !== undefined) {
+            if (typeof keyFile !== "string") throw new Error("build-pin: --trust-key-file requires an existing local-service registration key");
+            const challenge = await c.request<LocalTrustChallenge>("rpc.localTrust.challenge", { scope: "build_pin" });
+            if (challenge.pid !== process.pid || challenge.uid !== process.geteuid?.()) throw new Error("build-pin: local-service peer identity differs");
+            const fd = openSync(keyFile, constants.O_RDONLY | constants.O_NOFOLLOW);
+            let key: Buffer;
+            try {
+              const stat = fstatSync(fd);
+              if (!stat.isFile() || stat.uid !== process.geteuid?.() || (stat.mode & 0o777) !== 0o600 || stat.size !== 32) throw new Error("build-pin: local-service registration key is unavailable");
+              key = readFileSync(fd);
+            } finally { closeSync(fd); }
+            let token: string;
+            try { token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex"); }
+            finally { key.fill(0); }
+            await c.request("rpc.localTrust.register", { scope: "build_pin", pid: process.pid, challengeId: challenge.challengeId, token });
+          }
+          return c.request(action === "set" ? "build.pin.set" : "build.pin.clear", params);
+        });
         emit(ctx, [JSON.stringify(result, null, 2)], result, false);
         return 0;
       }

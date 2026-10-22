@@ -779,9 +779,9 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
   log(`deploy: rollback planned ${currentSha} → ${target.sha}`);
   if (target.activation) log(`deploy: rollback target activation unconfirmed (${target.activation})`);
   await assertRollbackStoreCompatible(root, join(root, target.sha));
+  assertBuildPin(root, await observeBuild(join(root, target.sha)), options.buildPinOverride);
   if (currentLink && currentLink !== currentSha) await retainExternalCurrent(root, currentLink, currentSha, now, by);
 
-  assertBuildPin(root, await observeBuild(join(root, target.sha)), options.buildPinOverride);
   await backupBeforeRuntimeSwap(root, options.hooks, join(root, currentSha), currentSha, log);
   const v2 = runtimeUsesV2(root);
   if (v2) await persistV2RuntimeMode(root);
