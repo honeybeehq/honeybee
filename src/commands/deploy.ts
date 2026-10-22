@@ -91,7 +91,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
   if (modes > 1 || (modes === 1 && parsed.args.length > 0)) throw new Error(USAGE);
   if (wantsList) return deployList(parsed);
   if (wantsInit) return deployInit();
-  if (wantsRollback) return deployRollback();
+  if (wantsRollback) return deployRollback(parsed);
   if (parsed.args.length > 1) throw new Error(USAGE);
   return deployRun(parsed);
 }
@@ -370,9 +370,10 @@ async function deployRun(parsed: Parsed): Promise<void> {
   }
 }
 
-async function deployRollback(): Promise<void> {
+async function deployRollback(parsed: Parsed): Promise<void> {
   const log = (line: string) => console.log(isPretty() ? dim(line) : line);
   const outcome = await rollbackDeploy({
+    buildPinOverride: flag(parsed, "override-build-pin") as string | undefined,
     log,
     hooks: { backupStore: backupBeforeSwap, restartDaemon: restartDeployedDaemon },
   });
