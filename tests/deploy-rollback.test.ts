@@ -1,3 +1,4 @@
+import { backupStoreOffline } from "../v2/core/src/storeBackup.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
@@ -62,11 +63,20 @@ for (const schema of [44, 48]) test(`rollback checks store schema ${schema} befo
     db.close();
     const history = await readFile(join(f.root, "deploys.json"));
     let restarted = false;
-    const operation = rollbackDeploy({ root: f.root, hooks: { async restartDaemon() { restarted = true; } } });
-    if (schema === 44) { await operation; assert.equal(restarted, true); }
+    let backedUp = false;
+    const operation = rollbackDeploy({ root: f.root, hooks: {
+      async backupStore() {
+        assert.equal(await readlink(join(f.root, "current")), f.external);
+        backedUp = true;
+        return backupStoreOffline(join(f.dir, "v2", "core.sqlite3"), "rollback-fixture");
+      },
+      async restartDaemon() { restarted = true; },
+    } });
+    if (schema === 44) { await operation; assert.equal(restarted, true); assert.equal(backedUp, true); }
     else {
       await assert.rejects(operation, error => error instanceof DeployRollbackError && error.code === "ROLLBACK_STORE_RESTORE_REQUIRED" && /store restore --from/.test(error.message));
       assert.equal(restarted, false);
+      assert.equal(backedUp, false);
       assert.equal(await readlink(join(f.root, "current")), f.external);
       assert.deepEqual(await readFile(join(f.root, "deploys.json")), history);
     }
