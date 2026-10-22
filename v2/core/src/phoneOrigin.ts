@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { EffectKeyError } from "./effectResolve.ts";
 
 export const PHONE_PROVENANCE_CAPABILITY = "mail.phone_provenance.v1";
+export const PHONE_ENVELOPE_CAPABILITY = "phone.envelope.v1";
 export const PHONE_LABEL = "Paired-phone message — human approval not verified";
 export const PHONE_FORMAT = "honeybee.phone-origin/1";
 type PhoneFormatEquality<Runtime extends PhoneOriginRequest["format"] = typeof PHONE_FORMAT, Contract extends typeof PHONE_FORMAT = PhoneOriginRequest["format"]> = [Runtime, Contract];
@@ -83,4 +84,15 @@ export function forwardPhoneOrigin(input: PhoneInput, relation: PhoneSource["rel
     parentSources: [{ ownerStoreId: source.ownerStoreId, admissionId: source.admissionId, contentDigest: source.contentDigest, relation }],
     rootSources: source.rootSources,
   };
+}
+
+export function derivePhoneOrigin(source: PhoneOperationOrigin, target: PhoneOriginRequest["target"], contentKind: PhoneOriginRequest["contentKind"], snapshot?: PhoneOriginRequest): PhoneOriginRequest {
+  return parsePhoneOrigin({
+    format: PHONE_FORMAT, channel: "phone", issuerNodeId: source.issuerNodeId,
+    assigner: source.assigner, credentialRef: source.credentialRef, target, contentKind,
+    assurance: "credential-possession-only", humanApproval: "not-verified", lane: "envelope-v1",
+    parentSources: [...source.parentSources, ...(snapshot?.parentSources ?? [])],
+    rootSources: [...source.rootSources, ...(snapshot?.rootSources ?? [])],
+    ancestry: source.ancestry === "unknown-overflow" || snapshot?.ancestry === "unknown-overflow" ? "unknown-overflow" : "complete",
+  });
 }

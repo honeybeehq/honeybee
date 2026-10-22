@@ -8,6 +8,7 @@ import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
 import { type PhoneOriginRequest, parsePhoneOrigin } from "../../core/src/phoneOrigin.ts";
 const PHONE_CONTEXT = Symbol("phoneOrigin");
+const PHONE_PRINCIPAL = Symbol("phonePrincipal");
 const PHONE_LANE = Symbol("phoneLane");
 const PHONE_DIGEST = Symbol("phoneDigest");
 const PHONE_CARRIER_DIGEST = Symbol("phoneCarrierDigest");
@@ -1928,6 +1929,11 @@ export class HiveDaemon {
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
     if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: local coordinator installation is NOT_COVERED");
     if (verb === "send" || verb === "spawn") {
+      if (conn.authenticatedBeeId) {
+        if (!this.mustStore().getBee(conn.authenticatedBeeId)) throw new RpcError("caller_not_trusted", "Authenticated session principal is not owned by this node");
+        params = {...params, [PHONE_PRINCIPAL]: conn.authenticatedBeeId};
+        if (verb === "spawn") params = {...params, parentId: conn.authenticatedBeeId, parentExternal: false};
+      }
       if (conn.phoneOrigin) {
         if (typeof params.idempotencyKey !== "string" || !params.idempotencyKey.length) throw new RpcError("invalid_request", "Phone admission requires idempotencyKey");
         const origin = parsePhoneOrigin(conn.phoneOrigin);
@@ -1935,7 +1941,7 @@ export class HiveDaemon {
         if (verb === "spawn" && params.prompt === "") throw new RpcError("invalid_request", "An explicit empty phone prompt is invalid; omit prompt for a promptless operation");
         if (verb === "spawn" && origin.contentKind !== "initial-prompt" && origin.contentKind !== "crew-bio" || verb === "send" && origin.contentKind === "initial-prompt") throw new RpcError("invalid_request", "Phone content kind differs from operation");
         params = { ...params, [PHONE_CONTEXT]: origin, [PHONE_LANE]: "envelope-v1", [PHONE_CARRIER_DIGEST]: conn.phoneCarrierDigest };
-      } else params = { ...params, [PHONE_LANE]: conn.phoneLane ?? "legacy" };
+      } else params = { ...params, [PHONE_LANE]: conn.phoneLane ?? (conn.authenticatedBeeId ? "envelope-v1" : "legacy") };
       (params as Record<PropertyKey, unknown>)[PHONE_DIGEST] = this.phoneRequestBinding(params).digest;
       this.checkPhoneRequestBinding(verb, params);
     }
@@ -1961,6 +1967,13 @@ export class HiveDaemon {
       if (operation && ((operation.phase !== "ready" && operation.phase !== "failed") || (operation.worker && pidAlive(operation.worker.pid)))) throw new RpcError("thread_busy", "Thread operation still owns execution; wait for settlement before deletion");
     }
     switch (verb) {
+      case "bee.phoneOrigin.reset":
+        throw new RpcError("caller_not_trusted", "Phone origin reset is disabled pending approval of an authenticated issuer");
+      case "phone.origin.admit": {
+        if (!conn.phoneOrigin) throw new RpcError("caller_not_trusted", "Crew admission requires registered phone origin");
+        if (Object.keys(params).some(key => !["content", "idempotencyKey"].includes(key))) throw new RpcError("invalid_request", "Unexpected crew admission parameter");
+        return this.mustStore().admitPhoneContent(this.param(params, "content"), this.param(params, "idempotencyKey"), conn.phoneOrigin);
+      }
       case "rpc.effect.status":
         if (Object.keys(params).length) throw new RpcError("invalid_request", "Effect status takes no parameters");
         return this.mustStore().effectCoverage();
@@ -2615,7 +2628,7 @@ export class HiveDaemon {
   private phoneRequestBinding(params: Record<string, unknown>): { lane: string; digest: string } {
     const lane = String((params as Record<PropertyKey, unknown>)[PHONE_LANE] ?? "legacy");
     if (lane === "legacy") return { lane, digest: canonicalDigest({ lane }) };
-    return { lane, digest: (params as Record<PropertyKey, unknown>)[PHONE_DIGEST] as string ?? canonicalDigest(JSON.parse(JSON.stringify({ params, lane, phoneOrigin: this.phoneOriginOf(params) ?? null, carrierDigest: (params as Record<PropertyKey, unknown>)[PHONE_CARRIER_DIGEST] ?? null }))) };
+    return { lane, digest: (params as Record<PropertyKey, unknown>)[PHONE_DIGEST] as string ?? canonicalDigest(JSON.parse(JSON.stringify({ params, lane, phoneOrigin: this.phoneOriginOf(params) ?? null, principal: (params as Record<PropertyKey, unknown>)[PHONE_PRINCIPAL] ?? null, carrierDigest: (params as Record<PropertyKey, unknown>)[PHONE_CARRIER_DIGEST] ?? null }))) };
   }
 
   private checkPhoneRequestBinding(verb: string, params: Record<string, unknown>): void {
@@ -2626,9 +2639,10 @@ export class HiveDaemon {
     }
   }
 
-  private phoneSendOptions(params: Record<string, unknown>): { phone?: { origin: PhoneOriginRequest; key: string } } {
+  private phoneSendOptions(params: Record<string, unknown>): { phone?: { origin: PhoneOriginRequest; key: string }; phonePrincipal?: string; phoneKey?: string } {
     const origin = this.phoneOriginOf(params);
-    return origin ? { phone: { origin, key: this.idempotencyKeyOf(params)! } } : {};
+    const principal = (params as Record<PropertyKey, unknown>)[PHONE_PRINCIPAL] as string | undefined;
+    return { ...(origin ? { phone: { origin, key: this.idempotencyKeyOf(params)! } } : {}), ...(principal ? {phonePrincipal: principal, phoneKey: this.idempotencyKeyOf(params) ?? undefined} : {}) };
   }
 
   private withIdempotency<T extends object>(
@@ -3214,7 +3228,8 @@ export class HiveDaemon {
     const parent = this.parentParam(params);
     const id = typeof params.id === "string" && params.id.length > 0 ? params.id : randomUUID();
     const { bee } = store.createBee({
-      ...(this.phoneOriginOf(params) && params.prompt == null ? { phoneOperation: this.phoneSendOptions(params).phone } : {}),
+      phoneOperation: this.phoneSendOptions(params).phone,
+      phonePrincipal: this.phoneSendOptions(params).phonePrincipal,
       id,
       name,
       agent: INBOX_AGENT,
@@ -3406,7 +3421,8 @@ export class HiveDaemon {
     const cell = substrate === "cell" ? this.planCell(id, name, this.cellParam(params)) : null;
     if (execution) store.checkSpawnPreparation(execution, "create_bee");
     const { bee: created } = store.createBee({
-      ...(this.phoneOriginOf(params) && params.prompt == null ? { phoneOperation: this.phoneSendOptions(params).phone } : {}),
+      phoneOperation: this.phoneSendOptions(params).phone,
+      phonePrincipal: this.phoneSendOptions(params).phonePrincipal,
       id,
       name,
       agent,
@@ -5707,6 +5723,7 @@ export class HiveDaemon {
         throw new RpcError("invalid_request", "send: senderKind is only for operator and human senders; an agent's mail is always mail");
       }
     }
+    if ((params as Record<PropertyKey, unknown>)[PHONE_PRINCIPAL]) { sender = String((params as Record<PropertyKey, unknown>)[PHONE_PRINCIPAL]); senderKind = undefined; }
     if (this.phoneOriginOf(params)) { sender = `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone`; senderKind = undefined; }
     const res = store.send(beeId, body, { sender, urgency, ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
     this.forwardIfMailboxOnly(beeId, res.message);
@@ -5849,7 +5866,7 @@ export class HiveDaemon {
   private rpcDeployInfo(): DeployInfoResult {
     return {
       protocol: PROTOCOL,
-      capabilities: this.rpc?.capabilities ?? DAEMON_CAPABILITIES.filter(c => !(["question.withdraw.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(c)),
+      capabilities: this.rpc?.capabilities ?? DAEMON_CAPABILITIES.filter(c => !(["phone.envelope.v1", "question.withdraw.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(c)),
       daemonVersion: DAEMON_VERSION,
       identity: BUILD_IDENTITY,
       nodeVersion: process.version,
