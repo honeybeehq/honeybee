@@ -1,6 +1,6 @@
 import { persistNodePin, probeNativeNode } from "../../../src/nodeRuntime.ts";
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -52,6 +52,13 @@ try {
     await new Promise(resolve => setTimeout(resolve, 30));
   }
   assert.ok(receiptPath, `No migration receipt: ${readFileSync(logPath, "utf8")}`);
+  const liveBackup = execFileSync(process.execPath, [cli, "v2", "store", "backup", "--data-dir", data, "--json"], { encoding: "utf8" });
+  assert.equal(JSON.parse(liveBackup).schemaVersion, SCHEMA_VERSION);
+  console.log(`Running-owner CLI backup: ${liveBackup.trim()}`);
+  const refused = spawnSync(process.execPath, [cli, "v2", "store", "restore", "--from", receiptPath, "--data-dir", data, "--json"], { encoding: "utf8" });
+  assert.equal(refused.status, 1);
+  assert.equal(JSON.parse(refused.stdout).error.code, "store_restore_refused");
+  console.log(`Live-owner restore refusal: ${refused.stdout.trim()}`);
 } finally {
   if (child.exitCode === null) child.kill("SIGTERM");
   await exited;
