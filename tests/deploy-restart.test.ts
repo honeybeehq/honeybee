@@ -109,8 +109,11 @@ import { assertBuildPin, buildPinFile, BuildPinMismatchError } from "../src/buil
 import { writeNodeRuntimeState } from "../src/nodeRuntime.ts";
 
 test("production restart checks the authenticated running report and accepts only an exact recorded override", async () => {
+  const previousServiceDir = process.env.HIVE_V2_SERVICE_DIR;
+  try {
   for (const override of [false, true]) {
     const dir = await mkdtemp(join(tmpdir(), "hb-post-pin-")), root = join(dir, "runtime"), cli = join(root, "current", "dist", "cli.js");
+    process.env.HIVE_V2_SERVICE_DIR = join(dir, "units");
     await mkdir(join(root, "current", "dist"), { recursive: true });
     const expected = { schemaVersion: 1, sourceRevision: "a".repeat(40), target: `${process.platform}-${process.arch}` };
     const running = { sourceRevision: "b".repeat(40), target: expected.target, distHash: "c".repeat(64), artifactSha256: null };
@@ -121,5 +124,9 @@ test("production restart checks the authenticated running report and accepts onl
     const attempt = restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: running.sourceRevision, runtime: "v2", log() {} });
     if (override) await attempt;
     else await assert.rejects(attempt, BuildPinMismatchError);
+  }
+  } finally {
+    if (previousServiceDir === undefined) delete process.env.HIVE_V2_SERVICE_DIR;
+    else process.env.HIVE_V2_SERVICE_DIR = previousServiceDir;
   }
 });
