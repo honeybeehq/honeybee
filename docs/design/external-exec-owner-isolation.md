@@ -34,9 +34,13 @@ labels the proposal's claimed source separately. Approval authorizes the selecte
 actor's exact attempt, not a claim that the proposer actually was that actor.
 No automatic attestor is included. Unapproved requests can only create proposals.
 
-### Selected mechanism and its limits
+### Selected approval mechanism; host topology pending
 
-Retain the Studio-local option: a separate standard macOS management account
+Select a protected native Apiary full-job UI/helper with a hardware-backed,
+fresh-biometric approval signature per start. The approval station topology is
+not approved: Tormod must choose shared Studio versus dedicated human-only Mac
+with Queen after Phase 0 and the revised cost assessment. The Studio-local
+candidate described below uses a separate standard macOS management account
 `apiary-approve`, a protected native Apiary approval window in that account's own
 login session, and a per-workspace Secure Enclave P-256 approval key. A signed,
 hardened native helper owns the key. Secure Enclave/keychain access control
@@ -143,7 +147,10 @@ Recording and Automation lists, Touch ID keyboard availability/pairing, existing
 login/autostart paths and console-session behavior. Do not have an agent perform
 this privileged assessment. Exercise one week of real fast-user switching before
 committing to the Studio topology; record lock/reboot/password-required cases and
-whether the workflow invites hurried or spoofed approvals. No approval feature
+whether the workflow invites hurried or spoofed approvals. Record every macOS
+password-required event, including periodic requirements unrelated to reboot,
+and the disruption from logging `trmd` out/stopping its processes each time.
+No approval feature
 code begins before this gate and the topology/cost decision. The Phase-0 record
 contains facts and redacted outcomes, never passwords or private keys.
 
@@ -643,8 +650,9 @@ exercised on live services. No provisioning, sudo, registration or bridge exec.
 ## T1 decision amendment and verification boundary
 
 This document supersedes the pending-choice text in 59be42e5. It retains that
-head's sandbox and source-PASS history (including ancestor 4fe7e4b5) without
-cherry-picking product code. The handoff's ea215807 and 7a0b4e6b are Apiary question
+head's sandbox requirements and earlier source-PASS validation sections
+(including ancestor 4fe7e4b5) without cherry-picking product code. Its historical
+Second boundary amendment pending-choice paragraph is superseded here. The handoff's ea215807 and 7a0b4e6b are Apiary question
 IDs, not git commits. The selected per-run path is the only approval authority.
 
 Tormod's human-only procedure is in

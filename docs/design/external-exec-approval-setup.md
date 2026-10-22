@@ -12,7 +12,8 @@ Before any approval feature code, complete **Phase 0** from a human-only admin
 account: record Studio `trmd` admin/sudoers/cached authorization; TCC Accessibility,
 Screen Recording and Automation lists; Touch ID keyboard presence/pairing; login
 and autostart behavior. Tormod exercises one week of actual fast-user switching,
-including lock/reboot/password-required cases, and records whether this is usable
+including lock/reboot and periodic password-required cases, and records how often
+the required logout/process-stop ceremony disrupts work and whether this is usable
 without rushed approvals or password prompts in the agent session. Correlate this
 with T2 worker `748eb6d2-61c3-480d-bc87-d11556f46b0c`'s privilege matrix on branch
 `review/external-exec-metal3-provisioning`. Current metal-3 `trmd` sudo and Cell
