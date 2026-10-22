@@ -26,7 +26,7 @@ import { execFile } from "node:child_process";
 import { existsSync, type Dirent } from "node:fs";
 import { cp, lstat, mkdir, mkdtemp, open, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { withFileLock } from "./lock.js";
 import { configuredV2Runtime, installedV2Identity, runtimeUsesV2, RUNTIME_MODE_CONFIG, V2_DEPLOY_MARKER } from "./cliRoute.js";
@@ -555,7 +555,6 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
     await cp(artifactDir, staging, { recursive: true, verbatimSymlinks: true });
     if (immutable) await syncDeployTree(staging);
 
-    const previousSha = await currentDeployTarget(root);
     await backupBeforeRuntimeSwap(root, hooks, staging, previousSha, log);
 
     // Publish runtime/<sha>. A redeploy of an existing sha swaps the old dir

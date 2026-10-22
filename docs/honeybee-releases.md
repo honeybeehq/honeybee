@@ -234,7 +234,8 @@ bytes points current at runtime/<revision>, so Apiary must reconcile its raw-lin
 CAS after a Honeybee rollback. Manual rollback must retain T3 desired-build pin
 checks and explicit override receipts when these branches are combined. There is
 no crash journal to resume recovery after a process crash midway through it.
-### Store backups and offline restore
+
+## Store backups and offline restore
 
 Source and artifact deploys (including rollback) require a durable store backup
 receipt before changing the selected runtime. The live store owner takes a
