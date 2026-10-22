@@ -192,3 +192,45 @@ node --import tsx --test tests/release-pipeline.test.ts tests/release-publicatio
 They use isolated bare Git remotes, generated tarballs and an HTTP boundary fake;
 no published releases, credentials, installed runtime or external evaluation are
 used. There is no repository lint script. Review workflow YAML with actionlint.
+
+### Rollback and store schemas
+
+`hive deploy --list --json` identifies an Apiary content-addressed `current`
+installation from its `dist/build-identity.json`. `hive deploy --rollback`
+selects the newest distinct history entry whose installed CLI still exists and
+prints the exact from/to revisions. Missing identity or installed history has a
+typed refusal. Deploy and explicit rollback preserve a departing external native
+build under `runtime/<revision>` and record its actual dist hash and adoption
+provenance in history, so a later rollback can return to it. Conflicting installed
+bytes, escaping symlinks or a non-native prior build refuse before activation.
+Failed activation restores the original link text, service file and Node pin,
+then verifies the old daemon's identity, new PID and RPC readiness.
+
+Rollback checks the target bundle's schema capability against the live owner's
+schema (or read-only offline store). Unknown capability refuses. A newer store
+or schema 29 returns `ROLLBACK_STORE_RESTORE_REQUIRED`; stop and restore the
+matching pre-deploy backup using `hive v2 store restore --from <absolute
+receipt.json> --data-dir <dir>` before retrying. Restore discards subsequent
+writes; rollback never restores a store automatically. If a candidate migrates
+and then fails, recovery restores the service and Node-pin snapshots but leaves
+`current` on the stopped candidate, refusing to start the incompatible old binary.
+The typed error retains the boot failure as its cause. Same-revision recovery
+checks displaced old bytes before swapping them back, and retains them on refusal. A compatible backup may
+not exist for an arbitrary historical target; select a compatible runtime then.
+
+Linux fixture: after `npm run build`, run
+`node scripts/gates/rollback-lab.mjs`. CLI transcripts, daemon logs and receipts
+are saved under `.audit/t4/rollback-lab`. It uses a fixture systemctl process
+adapter, real bundled daemon processes and production restart ownership. The
+artifact scenario uses a synthetic schema-27 build with an executable standalone
+v2 CLI entry to satisfy the current admission contract. Shipped bundles export
+that CLI without invoking it; admission also rejects a Node-pin migration before
+the restart owner. Those admission issues belong to T7. This lab does not prove
+current-schema updater admission; the source scenario proves Node-pin recovery. The
+schema refusal scenario migrates a real fixture store from 48 to synthetic 49.
+Apiary's updater `start()` catch path and satellite bundler still need their own
+Apiary-side failure lab; this fixture does not exercise them. Returning to retained
+bytes points current at runtime/<revision>, so Apiary must reconcile its raw-link
+CAS after a Honeybee rollback. Manual rollback must retain T3 desired-build pin
+checks and explicit override receipts when these branches are combined. There is
+no crash journal to resume recovery after a process crash midway through it.
