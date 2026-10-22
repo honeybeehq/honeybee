@@ -11,3 +11,11 @@ The real-bound lab's earlier SQLite-lock and wrong-RPC-shape failures were super
 Final verdict: ready to propose under DEPLOY HOLD once final gates complete. Final check, v2:check and build completed successfully; focused account/auth/admission tests passed. Known base failures are recorded in the gate receipts.
 
 Attention: source selection can still prefer an expired nonblank vault chain over a blank HOME carrying a newer refresh token. This unproven residual edge is documented for Queen; alternate-chain retries require separate authority analysis. Other limits are the wall-clock bound, per-snapshot readiness reads, one-second hold scheduling cap, delayed mirror attention without account events, and dedicated unit-test debt under the brief's no-new-tests restriction.
+
+## Queen-requested additive revision
+
+The preceding verdict and residual edge describe f5427450 only. Queen requested changes; the additive revision fixes the stale-vault chain selection, requires a bounded provider identity match before repair, classifies all reported blank shapes as damaged, guards active credential operations, preserves true non-auth hold causes and backs off verification. The R2 reviewer read the updated exact source hunks and accepted the narrow prefix-derived needs-you behavior, matching across direct/list/read-only views. Ordinary quota behavior is explicitly covered.
+
+The reviewer accepted a conservative trade-off: an expired-vault-only refresh chain now requires login or renewed live material while live material exists, even for an undamaged expired HOME. Its error is source-unconfirmed rather than damaged. No alternate-chain refresh retry is attempted. The old unsafe vault-over-live-chain ordering gap is closed. Final exact-commit check attaches to the superseding proof; author ran labs and gates, reviewer checked source and receipts.
+
+The existing empty-file admission assertion changed to the damaged code. Dedicated unit-test debt remains; no new unit tests or code comments were added. Twenty Queen scenarios, controlled-clock backoff/typed-hold/read-only parity, the real 60-second watch/recovery run, E2 and C4 are recorded with R2 receipts. Final gate outcomes are in `receipts/gates-r2.json`.

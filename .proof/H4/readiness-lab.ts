@@ -24,13 +24,14 @@ for (const source of ['keychain', 'live-keychain', 'vault', 'refresh', 'live-ref
       mkdirSync(vault,{recursive:true});
       writeFileSync(join(vault,'.credentials.json'),good);
     }
+    writeFileSync(join(home,".claude.json"),JSON.stringify({oauthAccount:{accountUuid:"lab-account",organizationUuid:"lab-org"}}));
     const account = store.createAccount({id:'claude-lab',harness:'claude',label:'lab',homePath:home,status:'ok'});
     if(source.startsWith('live-')) {
       const {bee}=store.createBee({name:'live-sibling',agent:'claude',substrate:'hsr',cwd:dir,account:account.id});
       store.updateRuntimeState(bee.id,1,'running',{pid:101,pidStartedAt:1});
     }
     let refreshCalls=0;
-    const service = new AccountsService({store,cfg,platform:source.includes('keychain')?'darwin':'linux',keychainReader:async()=>source.includes('keychain')?good:null,keychainWriter:async()=>false,log:()=>{},fetchers:{claudeRefresh:async()=>{refreshCalls++;return {kind:'success',token:{accessToken:'LAB-FAKE-ROTATED',refreshToken:'LAB-FAKE-ROTATED-REFRESH',expiresAt:4102444800000}};},claudeUsage:async(token)=>{assert.ok(token.length>0);return {five_hour:{utilization:1,resets_at:'2099-01-01T00:00:00Z'},seven_day:{utilization:1,resets_at:'2099-01-01T00:00:00Z'}};}}});
+    const service = new AccountsService({store,cfg,platform:source.includes('keychain')?'darwin':'linux',keychainReader:async()=>source.includes('keychain')?good:null,keychainWriter:async()=>false,log:()=>{},fetchers:{claudeIdentity:async()=>({accountUuid:"lab-account",organizationUuid:"lab-org"}),claudeRefresh:async()=>{refreshCalls++;return {kind:'success',token:{accessToken:'LAB-FAKE-ROTATED',refreshToken:'LAB-FAKE-ROTATED-REFRESH',expiresAt:4102444800000}};},claudeUsage:async(token)=>{assert.ok(token.length>0);return {five_hour:{utilization:1,resets_at:'2099-01-01T00:00:00Z'},seven_day:{utilization:1,resets_at:'2099-01-01T00:00:00Z'}};}}});
     const result = await service.verifyCredentials(account);
     if(source.includes('refresh')) assert.equal(refreshCalls,1);
     const readiness = service.credentialReadiness(store.getAccount(account.id)!);

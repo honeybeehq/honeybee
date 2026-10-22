@@ -1,0 +1,6 @@
+{"scenario":"backoff","intervals":[30000,60000,120000],"ceiling":900000,"revisionReset":true,"loginReset":true}
+{"scenario":"typed-hold","code":"account_lease_revoked","flag":"resource_blocked","needsYou":true,"releaseCleared":true}
+{"scenario":"typed-hold","code":"account_unavailable","flag":"resource_blocked","needsYou":true,"releaseCleared":true}
+{"scenario":"typed-hold","code":"account_paused","flag":"resource_blocked","needsYou":true,"releaseCleared":true}
+{"scenario":"ordinary-quota","resetsAtPresent":true,"needsYou":false}
+{"scenario":"readonly-parity","ownedHoldNeedsYou":true,"ordinaryQuotaNeedsYou":false}

@@ -6188,12 +6188,13 @@ export class CoreStore {
   view(beeId: string, opts: { readCursor?: number } = {}): BeeView {
     const bee = this.getBee(beeId);
     const runtime = bee ? this.currentRuntime(beeId) : null;
+    const flags = bee ? this.activeFlags(beeId) : [];
     return deriveBeeView(
       beeId,
       bee,
       runtime,
-      bee ? this.activeFlags(beeId).map((f) => f.flag) : [],
-      { ...opts, deliveryConfirmations: this.deliveryConfirmations(beeId), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, this.liveQuotaRecoveries(beeId)) },
+      flags.map((f) => f.flag),
+      { ...opts, runtimeStartHeld: flags.some(row => row.flag === "resource_blocked" && row.detail.startsWith("runtime_start_held:")), deliveryConfirmations: this.deliveryConfirmations(beeId), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, this.liveQuotaRecoveries(beeId)) },
     );
   }
 
@@ -6234,6 +6235,7 @@ export class CoreStore {
     );
 
     const flagsByBee = new Map<string, Flag[]>();
+    const runtimeStartHeld = new Set<string>();
     const activeFlagRows = this.stmt(
       "SELECT * FROM flags WHERE cleared_at IS NULL ORDER BY bee_id, id",
     ).all() as Row[];
@@ -6241,6 +6243,7 @@ export class CoreStore {
       const row = mapFlag(raw);
       if (!selected.has(row.beeId)) continue;
       flagsByBee.set(row.beeId, [...(flagsByBee.get(row.beeId) ?? []), row.flag]);
+      if (row.flag === "resource_blocked" && row.detail.startsWith("runtime_start_held:")) runtimeStartHeld.add(row.beeId);
     }
 
     const recoveriesByBee = new Map<string, QuotaRecoveryRow[]>();
@@ -6287,7 +6290,7 @@ export class CoreStore {
       return {
         bee,
         runtime,
-        view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? [], { deliveryConfirmations: confirmationsByBee.get(bee.id), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveriesByBee.get(bee.id) ?? []) }),
+        view: deriveBeeView(bee.id, bee, runtime, flagsByBee.get(bee.id) ?? [], { runtimeStartHeld: runtimeStartHeld.has(bee.id), deliveryConfirmations: confirmationsByBee.get(bee.id), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveriesByBee.get(bee.id) ?? []) }),
         move: move ? toBeeMoveView(mapBeeMove(move)) : null,
         cell: bee.cellId ? (cellsById.get(bee.cellId) ?? null) : null,
         handoff: handoff ? toBeeHandoffView(handoff) : null,

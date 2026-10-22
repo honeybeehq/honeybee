@@ -17,13 +17,14 @@ for(const source of ['keychain','vault','none']) {
   writeFileSync(join(home,'.credentials.json'),stub);
   writeFileSync(join(vault,'.credentials.json'),source==='vault'?good:stub);
   const cfg=loadNodeConfig(dir);
-  const daemon=new HiveDaemon(cfg,{keychainReader:async()=>source==='keychain'?good:null,keychainWriter:async()=>false,gatewayMcpSeeder:async()=>({status:'seeded',written:[]}),fetchers:{claudeUsage:async()=>({five_hour:{utilization:1,resets_at:'2099-01-01T00:00:00Z'},seven_day:{utilization:1,resets_at:'2099-01-01T00:00:00Z'}})}});
+  const daemon=new HiveDaemon(cfg,{keychainReader:async()=>source==='keychain'?good:null,keychainWriter:async()=>false,gatewayMcpSeeder:async()=>({status:'seeded',written:[]}),fetchers:{claudeIdentity:async()=>({accountUuid:"lab-account",organizationUuid:"lab-org"}),claudeUsage:async()=>({five_hour:{utilization:1,resets_at:'2099-01-01T00:00:00Z'},seven_day:{utilization:1,resets_at:'2099-01-01T00:00:00Z'}})}});
   await daemon.start();
   const client=await RpcClient.connect(cfg.socketPath);
   try {
     await client.request('account.add',{harness:'claude',label:'lab',importExisting:true});
     writeFileSync(join(home,'.credentials.json'),stub);
     writeFileSync(join(vault,'.credentials.json'),source==='vault'?good:stub);
+    writeFileSync(join(home,".claude.json"),JSON.stringify({oauthAccount:{accountUuid:"lab-account",organizationUuid:"lab-org"}}));
     const result:any=await client.request('account.verify',{id:'claude-lab'});
     const after:any=await client.request('account.get',{id:'claude-lab'});
     console.log(JSON.stringify({case:'disposable-daemon-verify',source,outcome:result.outcome,attention:after.account.attention}));
