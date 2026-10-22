@@ -104,3 +104,22 @@ test("legacy deployment refuses activation before selecting a service", async ()
     await assert.rejects(restartDeployedDaemon({ root: dir, installedDir: dir, sha: "a".repeat(40), log() {} }), /legacy service activation is refused/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+import { assertBuildPin, buildPinFile, BuildPinMismatchError } from "../src/buildPin.ts";
+import { writeNodeRuntimeState } from "../src/nodeRuntime.ts";
+
+test("production restart checks the authenticated running report and accepts only an exact recorded override", async () => {
+  for (const override of [false, true]) {
+    const dir = await mkdtemp(join(tmpdir(), "hb-post-pin-")), root = join(dir, "runtime"), cli = join(root, "current", "dist", "cli.js");
+    await mkdir(join(root, "current", "dist"), { recursive: true });
+    const expected = { schemaVersion: 1, sourceRevision: "a".repeat(40), target: `${process.platform}-${process.arch}` };
+    const running = { sourceRevision: "b".repeat(40), target: expected.target, distHash: "c".repeat(64), artifactSha256: null };
+    writeNodeRuntimeState(buildPinFile(root), expected);
+    persistNodePin(join(dir, "v2"), probeNativeNode(process.execPath));
+    await writeFile(cli, `if(process.argv[3] === 'build-report') console.log(JSON.stringify({running:${JSON.stringify(running)}})); else if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`);
+    if (override) assertBuildPin(root, running, "fixture activation override");
+    const attempt = restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: running.sourceRevision, runtime: "v2", log() {} });
+    if (override) await attempt;
+    else await assert.rejects(attempt, BuildPinMismatchError);
+  }
+});
