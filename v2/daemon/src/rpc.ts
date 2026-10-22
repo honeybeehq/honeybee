@@ -291,7 +291,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => !(["question.withdraw.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => !(["phone.envelope.v1", "question.withdraw.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
   }
 
   private onConnection(socket: Socket): void {
@@ -463,20 +463,40 @@ export class RpcServer {
           if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal.");
           return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
         }
-        if (params.phoneOrigin !== undefined || params.phoneInput !== undefined || params.phoneLane !== undefined) throw new RpcError("invalid_request", "Phone carriers belong in RPC context, not args");
+        if (verb === "bee.phoneOrigin.reset") throw new RpcError("caller_not_trusted", "Phone origin reset is disabled pending approval of an authenticated issuer");
+        if (params.phoneOrigin !== undefined || params.phoneInput !== undefined || params.phoneLane !== undefined || params.phoneOperationOrigin !== undefined || params.sessionPrincipal !== undefined || params.humanAdmission !== undefined) throw new RpcError("invalid_request", "Phone carriers belong in RPC context, not args");
         const context = frame.context as Record<string, unknown> | undefined;
+        if (context !== undefined && (!context || typeof context !== "object" || Array.isArray(context))) throw new RpcError("invalid_request", "Invalid RPC context");
+        if (context?.humanAdmission !== undefined) throw new RpcError("caller_not_trusted", "Human admission issuer is not enabled");
+        if ((context?.phoneOrigin !== undefined || context?.sessionPrincipal !== undefined) && Object.keys(context).some(key => !["phoneOrigin", "phoneLane", "sessionPrincipal"].includes(key))) throw new RpcError("invalid_request", "Unknown phone admission context field");
+        let authenticatedBeeId: string | undefined;
+        if (context?.sessionPrincipal !== undefined) {
+          if (verb !== "send" && verb !== "spawn") throw new RpcError("invalid_request", "Session principal is not valid for this operation");
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Session principal requires a registered local service");
+          this.trust.require(peer, conn.ingress);
+          const principal = context.sessionPrincipal;
+          if (!principal || typeof principal !== "object" || Array.isArray(principal) || Object.keys(principal).some(key => key !== "beeId")) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal");
+          const beeId = (principal as Record<string, unknown>).beeId;
+          if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal");
+          authenticatedBeeId = beeId;
+        }
         if (context?.phoneOrigin !== undefined) {
-          if (verb !== "send" && verb !== "spawn") throw new RpcError("invalid_request", "Phone envelope is only valid for send or spawn");
+          if (verb !== "send" && verb !== "spawn" && verb !== "phone.origin.admit") throw new RpcError("invalid_request", "Phone envelope is only valid for send, spawn or crew admission");
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Phone envelope requires a LocalRpcTrust-authenticated local caller");
           this.trust.require(peer, conn.ingress);
           if (context.phoneLane !== undefined && context.phoneLane !== "envelope-v1") throw new RpcError("invalid_request", "Phone envelope lane mismatch");
-          return this.opts.dispatch(verb, params, { ...conn, phoneOrigin: parsePhoneOrigin(context.phoneOrigin), phoneCarrierDigest: canonicalDigest(JSON.parse(JSON.stringify(context.phoneOrigin))), phoneLane: "envelope-v1" });
+          return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId, phoneOrigin: parsePhoneOrigin(context.phoneOrigin), phoneCarrierDigest: canonicalDigest(JSON.parse(JSON.stringify(context.phoneOrigin))), phoneLane: "envelope-v1" });
         }
+        if (verb === "phone.origin.admit") throw new RpcError("caller_not_trusted", "Crew admission requires registered phone origin");
         if (context?.phoneLane !== undefined) {
+          if (authenticatedBeeId) {
+            if (context.phoneLane !== "envelope-v1") throw new RpcError("invalid_request", "Session principal cannot downgrade to the interim lane");
+            return this.opts.dispatch(verb, params, {...conn, authenticatedBeeId, phoneLane: "envelope-v1"});
+          }
           if (context.phoneLane !== "interim-v1" || (verb !== "send" && verb !== "spawn")) throw new RpcError("invalid_request", "Invalid phone lane");
           return this.opts.dispatch(verb, params, { ...conn, phoneLane: "interim-v1" });
         }
-        return this.opts.dispatch(verb, params, conn);
+        return this.opts.dispatch(verb, params, authenticatedBeeId ? {...conn, authenticatedBeeId} : conn);
       });
       // v7: verbs with a bounded async leg (limits fetch before an auto pick,
       // the login seat's keychain baseline) return a promise; sync verbs are

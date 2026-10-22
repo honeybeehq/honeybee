@@ -136,6 +136,10 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         threadOperations.set(operation.id, operation);
         break;
       }
+      case "bee.phone_origin": {
+        mustBee(row.beeId!).phoneOperationOrigin = structuredClone(p.origin as BeeRow["phoneOperationOrigin"]);
+        break;
+      }
       case "bee.created": {
         const bee = p.bee as BeeRow;
         bees.set(bee.id, {
@@ -689,6 +693,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "rpc.local_registered":
       case "account.lease.exported":
       case "account.credentials.instance":
+      case "phone.content_admitted":
       case "auth_death.released":
       case "auth_death.released_legacy":
       case "auth_death.resumed":

@@ -11,7 +11,7 @@ import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from
 import {installRuntimeProcessIdentity, processIdentityValue, readRuntimeProcessIdentity, type RuntimeIdentityHooks, type RuntimeProcessIdentity} from "./runtimeProcessIdentity.ts";
 import {cleanupLocator, readTmuxCleanup, type TmuxCleanupHooks, type TmuxCleanupLocator, type TmuxCleanupState} from "./runtimeCleanup.ts";
 import { PHONE_PROVENANCE_SQL } from "./schema.ts";
-import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin } from "./phoneOrigin.ts";
+import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, type PhoneSource, parsePhoneOrigin, phoneDigest, renderPhoneInput, forwardPhoneOrigin, derivePhoneOrigin } from "./phoneOrigin.ts";
 import { readAccountLease, accountLeaseUnknown, knownAccountLease } from "./accountLease.ts";
 import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
@@ -293,6 +293,7 @@ export interface CoreStoreOptions {
 }
 
 export interface CreateBeeInput {
+  phonePrincipal?: string;
   phoneOperation?: { origin: PhoneOriginRequest; key: string };
   /** Known process identity at spawn time, so a daemon restart mid-boot can re-adopt (WP2 finding). */
   proc?: { pid: number; pidStartedAt: number };
@@ -2838,7 +2839,9 @@ export class CoreStore {
           humanRef,
           namespace,
         );
-      if (input.phoneOperation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(input.phoneOperation.origin, null, input.phoneOperation.key, id)));
+      const inherited = input.phonePrincipal ? this.mustGetBee(input.phonePrincipal).phoneOperationOrigin : !parentExternal && input.parentId ? this.getBee(input.parentId)?.phoneOperationOrigin : undefined;
+      const operation = inherited ? { origin: derivePhoneOrigin(inherited, {kind: "bee", id}, "initial-prompt", input.phoneOperation?.origin), key: input.phoneOperation?.key ?? `spawn:${id}` } : input.phoneOperation;
+      if (operation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(operation.origin, null, operation.key, id)));
       const bee = this.mustGetBee(id);
       this.audit("bee.created", id, { bee });
       // v23: segment 0 — the spawn harness owns the session log from generation 1.
@@ -4458,7 +4461,7 @@ export class CoreStore {
     let unknown = request.ancestry === "unknown-overflow", ancestryDepth = 0;
     const knownRoots: PhoneSource[] = [];
     for (const parent of [...request.parentSources, ...request.rootSources]) {
-      const row = parent.ownerStoreId === ownerStoreId ? this.stmt("SELECT input_json FROM phone_inputs WHERE admission_id = ?").get(parent.admissionId) as Row | undefined : undefined;
+      const row = parent.ownerStoreId === ownerStoreId ? this.stmt("SELECT input_json FROM phone_inputs WHERE admission_id = ? UNION ALL SELECT input_json FROM phone_content_admissions WHERE admission_id = ?").get(parent.admissionId, parent.admissionId) as Row | undefined : undefined;
       if (!row) { unknown = true; continue; }
       const prior = JSON.parse(String(row.input_json)) as PhoneInput;
       if (prior.envelope.contentDigest !== parent.contentDigest) throw new EffectKeyError("invalid_request", "Phone parent digest differs from durable source");
@@ -4480,23 +4483,50 @@ export class CoreStore {
     return { envelope: { ...this.makePhoneOrigin(raw, contentDigest, key, beeId), contentDigest }, originalContent };
   }
 
+  admitPhoneContent(content: string, key: string, origin: PhoneOriginRequest): { phoneInput: PhoneInput; deduped: boolean } {
+    if (origin.contentKind !== "crew-bio" || origin.target.kind !== "crew") throw new EffectKeyError("invalid_request", "Standalone admission requires a crew biography");
+    const digest = phoneDigest(JSON.stringify({content, origin}));
+    return this.tx(() => {
+      const previous = this.stmt("SELECT * FROM phone_content_admissions WHERE key = ?").get(key) as Row | undefined;
+      if (previous) {
+        if (previous.request_digest !== digest) throw new EffectKeyError("idempotency_conflict", "Crew admission key differs from original content or origin");
+        return {phoneInput: JSON.parse(String(previous.input_json)) as PhoneInput, deduped: true};
+      }
+      if (this.lookupRpcResult(key) || this.stmt("SELECT 1 FROM phone_admission_bindings WHERE key = ?").get(key)) throw new EffectKeyError("idempotency_conflict", "Key belongs to another operation");
+      this.bindPhoneAdmission(key, "phone.origin.admit", "envelope-v1", digest);
+      const phoneInput = this.makePhoneInput(origin, content, key, "");
+      this.stmt("INSERT INTO phone_content_admissions(key, request_digest, admission_id, input_json) VALUES(?, ?, ?, ?)").run(key, digest, phoneInput.envelope.admissionId, JSON.stringify(phoneInput));
+      this.audit("phone.content_admitted", null, {phoneInput});
+      return {phoneInput, deduped: false};
+    });
+  }
+
+  private applyPhoneTaint(beeId: string, input: PhoneInput): void {
+    const existing = this.mustGetBee(beeId).phoneOperationOrigin;
+    const origin = existing ? this.makePhoneOrigin(derivePhoneOrigin(existing, {kind: "bee", id: beeId}, "message", forwardPhoneOrigin(input, "forward")), null, input.envelope.idempotencyKey, beeId) : {...input.envelope, contentDigest: null};
+    this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?) ON CONFLICT(bee_id) DO UPDATE SET origin_json=excluded.origin_json").run(beeId, JSON.stringify(origin));
+    this.audit("bee.phone_origin", beeId, {origin});
+  }
+
   send(
     beeId: string,
     body: string,
-    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; phone?: { origin: PhoneOriginRequest; key: string } } = {},
+    opts: { sender?: string; priority?: number; urgency?: Urgency; origin?: MailOrigin; senderKind?: SenderKind; phone?: { origin: PhoneOriginRequest; key: string }; phonePrincipal?: string; phoneKey?: string } = {},
   ): SendResult {
     const urgency = opts.urgency ?? "next";
     if (opts.senderKind !== undefined && !(SENDER_KINDS as readonly string[]).includes(opts.senderKind)) throw new CoreError(`unknown sender kind: ${String(opts.senderKind)}`);
     if (!(MESSAGE_URGENCIES as readonly string[]).includes(urgency)) throw new UnknownUrgencyError(urgency);
     const origin = opts.origin ?? "mail.send";
     if (!(MAIL_ORIGINS as readonly string[]).includes(origin)) throw new CoreError(`unknown mail origin: ${origin}`);
-    const phoneInput = opts.phone ? this.makePhoneInput(opts.phone.origin, body, opts.phone.key, beeId) : undefined;
-    if (!phoneInput && body.includes("\0")) throw new CoreError("send: body must not contain U+0000");
     const rawSender = opts.sender ?? "operator";
     if (rawSender.includes("\0")) throw new CoreError("send: sender must not contain U+0000");
-    const normalizedBody = phoneInput ? renderPhoneInput(body) : wellFormedUtf16(body);
     const sender = wellFormedUtf16(rawSender);
     return this.tx(() => {
+      const inherited = opts.phonePrincipal ? this.mustGetBee(opts.phonePrincipal).phoneOperationOrigin : undefined;
+      const phone = inherited ? {origin: derivePhoneOrigin(inherited, {kind: "bee", id: beeId}, "message", opts.phone?.origin), key: opts.phone?.key ?? opts.phoneKey ?? randomUUID()} : opts.phone;
+      const phoneInput = phone ? this.makePhoneInput(phone.origin, body, phone.key, beeId) : undefined;
+      if (!phoneInput && body.includes("\0")) throw new CoreError("send: body must not contain U+0000");
+      const normalizedBody = phoneInput ? renderPhoneInput(body) : wellFormedUtf16(body);
       const bee = this.mustGetBee(beeId);
       let unarchived = false;
       if (bee.lifecycle === "archived") {
@@ -4523,6 +4553,7 @@ export class CoreStore {
       if (phoneInput) this.stmt("INSERT INTO phone_inputs(message_id, admission_id, input_json) VALUES(?, ?, ?)").run(message.id, phoneInput.envelope.admissionId, JSON.stringify(phoneInput));
       const enqueueSeq = this.audit("mail.enqueued", beeId, { message, origin });
       this.insertMailHistoryEnqueue(enqueueSeq, message, origin);
+      if (phoneInput && origin === "spawn.prompt") this.applyPhoneTaint(beeId, phoneInput);
       // Human (and bee) interaction resets the consecutive-feed counter; the
       // supply loop's own sends are excluded by sender name.
       if (sender !== TASK_SUPPLY_SENDER_NAME) {
@@ -4913,6 +4944,7 @@ export class CoreStore {
       this.db
         .prepare("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?")
         .run(at, generation, messageId);
+      if (message.phoneInput) this.applyPhoneTaint(message.beeId, message.phoneInput);
       const turnTrigger = source && currentMatches ? this.applyDeliveryTurnTrigger(message.beeId, current!, messageId, source, at) : null;
       const questionId = this.answeredQuestionId(messageId);
       const senderKind = deliveredSenderKind(message);
@@ -4966,6 +4998,8 @@ export class CoreStore {
       for (const row of rows) {
         const messageId = Number(row.id);
         this.stmt("UPDATE mailbox SET delivered_at = ?, delivered_generation = ? WHERE id = ?").run(at, generation, messageId);
+        const phoneInput = this.phoneInput(messageId);
+        if (phoneInput) this.applyPhoneTaint(beeId, phoneInput);
         const questionId = this.answeredQuestionId(messageId);
         const senderKind = deliveredSenderKind({ sender: String(row.sender), ...(row.sender_kind != null ? { senderKind: row.sender_kind as SenderKind } : {}) });
         const humanDelivery = this.prepareHumanDelivery(beeId, messageId, generation, at);

@@ -1,6 +1,8 @@
 import type { RpcVerb } from "./protocol.ts";
 
 export const RPC_ACCESS = {
+  "phone.origin.admit": "mutate",
+  "bee.phoneOrigin.reset": "mutate",
   "rpc.execution.coordinator.register": "mutate",
   "rpc.execution.claim.compareAndSet": "mutate",
   "rpc.execution.execute": "mutate",

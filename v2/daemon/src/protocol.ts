@@ -90,6 +90,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "phone.envelope.v1",
   "mail.delivery.confirmation.v1",
   "rpc.local_trust.v1",
   "rpc-effect-resolve.v1",
@@ -468,6 +469,7 @@ export const RPC_ERROR_CODES = [
 export type RpcErrorCode = (typeof RPC_ERROR_CODES)[number];
 
 export const RPC_VERBS = [
+  "phone.origin.admit", "bee.phoneOrigin.reset",
   "rpc.execution.coordinator.register", "rpc.execution.claim.compareAndSet", "rpc.execution.execute", "rpc.execution.resolve",
   "rpc.effect.resolve",
   "rpc.effect.status",
