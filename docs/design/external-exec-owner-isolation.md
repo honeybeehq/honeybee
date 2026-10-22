@@ -107,11 +107,12 @@ login flow and Touch-ID-only routine unlock, checks its account identity, opens
 the installed native UI there,
 reviews the job and approves with a fresh biometric gesture. Do not approve a
 prompt in response to an agent message, ordinary Apiary window or browser page.
-Keep that session locked otherwise. After reboot or when macOS requires a
-password, stop approvals: a human-only physical-console startup ceremony is
-required with `trmd` logged out and its processes stopped by the human admin.
-Never type the management password into the agent session or a routine switch
-prompt. If this operational rule or console binding cannot be enforced, choose
+Keep that session locked otherwise. After reboot or when macOS requires a password, stop approvals. Use this
+human-only boot ceremony: boot/reboot the Mac, log in `apiary-approve` first at
+FileVault/loginwindow, lock that session, then log in `trmd`. Routine return to
+the management session uses Touch ID. Never type its password into an agent
+session or routine switch prompt. GUI logout is not proof that SSH sessions or
+launchd jobs stopped, and is not a substitute for this sequence. If this operational rule or console binding cannot be enforced, choose
 the separate approval station. Disable screen sharing, remote management,
 remote login, automation grants and cross-user control into that account. Audit and revoke existing `trmd` app TCC
 grants where necessary; TCC grants are per app/user, not target-session ACLs. No
@@ -149,7 +150,7 @@ this privileged assessment. Exercise one week of real fast-user switching before
 committing to the Studio topology; record lock/reboot/password-required cases and
 whether the workflow invites hurried or spoofed approvals. Record every macOS
 password-required event, including periodic requirements unrelated to reboot,
-and the disruption from logging `trmd` out/stopping its processes each time.
+and the disruption from repeating the first-login boot ceremony each time.
 No approval feature
 code begins before this gate and the topology/cost decision. The Phase-0 record
 contains facts and redacted outcomes, never passwords or private keys.
@@ -181,6 +182,22 @@ existing agent/admin workflows on both machines. This operational change and the
 new 6–8-week estimate require Tormod's explicit topology/cost decision, routed
 by Queen together with T2, before implementation. No automatic privilege removal
 or extra hardware purchase follows from selecting a design in this document.
+
+Human topology question `a0c2b850` gates code. The alternatives are security
+choices, not equivalent deployments: (1) separate service UIDs on metal-3 require
+removing every agent-accessible root/control path there; (2) an isolated verifier
+VM/host requires a physical VM host agents cannot root or control, protected VM
+disks/consoles and nested KVM for the bridge's QEMU; a VM on sudo-accessible
+metal-3 does not isolate the verifier. If agents retain host KVM access, establish
+that it grants no management access to this verifier VM and review the host
+attack surface; otherwise choose a host outside agent reach. Prove nested KVM
+availability, device policy and sandbox/teardown in the actual VM before selecting
+it; no software-emulation or weaker sandbox fallback is implied. (3) retaining
+current broad `trmd` privileges makes approval **advisory only**: it offers no
+security claim that agents cannot forge/bypass approval or run the bridge.
+That option does not satisfy this document's isolation acceptance gate and cannot
+be labeled secure external execution. Queen routes the choice; code still waits
+for Tormod's answer.
 
 ### Alternatives and estimated cost
 
@@ -216,7 +233,19 @@ has no inbound TCP/abstract socket listener; its management Unix socket stays
 inside its service UID's 0700 directory. The management service is part of the trusted computing base. Its sole
 unprivileged proposal intake is a filesystem Unix socket with a defined closed
 `proposal.v1` message schema, 16 KiB maximum, bounded queue (20 per workspace),
-10 proposals/minute/workspace and a 1-second parse deadline. It authenticates no
+10 proposals/minute/workspace and a 1-second frame-parse deadline. Protected
+management local control also accepts separate closed schemas:
+`status.v1 {handle}`, `wait.v1 {handle, timeoutMs}` (1..30000), and
+`stop.v1 {handle}`. Handle is a 43-character unpadded base64url encoding of the
+32 random bytes; unknown fields, invalid encodings and extra operation selectors
+refuse. Broker resolves actor/workspace/bee/generation exclusively from its
+protected handle record, not from request claims. Status/wait return only the
+scoped operation result. Stop targets that recorded generation idempotently.
+Control intake is at most 1 KiB/frame, 60 status/wait calls/minute/recorded actor,
+10 stops/minute/actor and one outstanding wait/handle; duplicate stop returns its
+existing stop receipt. The 1-second limit applies only to reading/parsing a frame,
+not an authorized wait's bounded 30-second response. The 10/minute proposal rate
+is separate from these control limits. It authenticates no
 agent identity there and grants no authority. XPC approval/key operations are
 separate endpoints with the checks above. Peer credentials, strict framing,
 unknown-field/duplicate-key rejection and bounded parsing prevent the intake
@@ -229,7 +258,7 @@ Use three independent keys, not one multipurpose key:
 
 | Key | Private owner and use | Verifier pin |
 | --- | --- | --- |
-| Studio TLS server key | `apiary-approve` private keychain; only protected per-user launchd LaunchAgent may use it after human login/keychain unlock; no biometric for transport | Broker root-owned config: SHA-256 of server SPKI plus exact server name and certificate validity/chain policy |
+| Studio TLS server key | `apiary-approve` data-protection keychain with `AfterFirstUnlockThisDeviceOnly`; protected per-user LaunchAgent only, after first login/unlock; no biometric for transport | Broker root-owned config: SHA-256 of server SPKI plus exact server name and certificate validity/chain policy |
 | Broker TLS client key | metal-3 broker service UID through systemd credential, never `trmd`, bridge or guest | Studio root-owned config: SHA-256 of client SPKI plus exact broker identity and certificate validity/chain policy |
 | ur approval key | Studio Secure Enclave, `apiary-approve` helper only, fresh biometric for each approval | Broker root-owned config: P-256 SPKI, key ID, human approver ID, ur workspace ID, allowed operation/schema and policy epoch |
 
@@ -247,13 +276,21 @@ network peer or an agent-supplied file. Rotation uses manually authenticated,
 root-owned config updates with at most 24-hour dual-pin overlap, then removal of
 the old pin. A compromise revokes immediately, closes channels, cancels pending
 preparations and suspends admission. Pin/policy changes invalidate the old epoch.
-The transport is deliberately unavailable after reboot/logout until Tormod logs
-into the management account and unlocks its private keychain. Use a per-user
-LaunchAgent in that account's GUI bootstrap domain, not a root LaunchDaemon
-pretending to access a login keychain. Locking may leave the established service
-available only if tested keychain policy permits; otherwise pause until human
-unlock. Never store the password or switch to a trmd-accessible/system-wide key
-to gain unattended availability. Approval always needs the active physical session.
+The TLS key uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` in the
+management user's data-protection keychain, separate from the biometric approval
+key. Verify that screen lock permits status/stop transport on the deployed OS.
+Transport is unavailable after reboot before that user's first login/unlock or
+when its GUI session/LaunchAgent is down. Install its plist only in the
+management user's protected `~/Library/LaunchAgents` with protected ancestors;
+never an unrestricted `/Library/LaunchAgents` entry. The binary checks its exact
+expected UID before reading a key or binding the listener, and exits in every
+other user's session. A root LaunchDaemon cannot assume login-keychain access.
+If the platform cannot provide this tested key accessibility, pause transport
+rather than storing a password or exposing a system-wide/trmd key. Approval
+always requires the active physical management session. While management is
+down, agent status/wait/stop are unavailable; broker-owned monitoring and the
+absolute approved deadline still end the run, holding teardown uncertainty when
+necessary. Human-only emergency administration remains outside agent control.
 Disable TLS resumption and 0-RTT. Every reconnect checks current pins, certificate
 time and policy; failure never falls back to bearer auth or unpinned transport.
 
@@ -530,12 +567,17 @@ Neither daemon nor broker accepts configuration, executable, recovery or workloa
 paths writable by Cells. No account homes or provider credentials are mounted.
 
 No login shell (nologin), password login, sudoers or polkit grant for service UIDs.
-No supplementary group shared with trmd, including kvm: do not add the daemon or
-broker to kvm. For the approved dev KVM path, provision a device ACL granting only
-the service UID access to /dev/kvm; verify effective device permissions and systemd
-DeviceAllow. No trmd membership, owner permission, group permission or ACL may
-permit KVM access. If the host currently grants it, that is a provisioning blocker requiring
-explicit operator remediation, not a condition already proven.
+No management supplementary group shared with `trmd`. For topology (1),
+`/dev/kvm` availability to ordinary `trmd` processes is an explicit independent
+host policy choice, not inherently a route to service UID files/processes.
+Retained KVM access must grant no broker credentials, VM management or owner
+control and must be assessed for host-kernel risk; do not remove it solely on the
+claim that device access authenticates management. Give service UIDs only the
+device ACLs required by their sandbox and verify systemd DeviceAllow. For topology
+(2), perform the equivalent device policy inside the isolated verifier VM, with
+nested KVM available to its bridge and no agent ability to manage that VM or root
+its physical host. T8 checks effective permissions for the selected topology;
+blanket denial of `trmd` KVM is not an unconditional acceptance requirement.
 Operator privilege stays outside Cells; a Cell able to sudo invalidates isolation.
 
 Systemd units require NoNewPrivileges=yes, ProtectHome=yes, PrivateTmp=yes,
@@ -560,7 +602,10 @@ design only and require Tormod authorization before implementation/provisioning.
 The owner CLI alone is not an Ur Bench agent integration. Current source remains
 disabled and not usable; no claim of isolation proofs having run is made.
 
-Acceptance must include all of the following on metal-3 after authorization:
+Acceptance must include all of the following on the selected protected executor
+host (metal-3 for topology 1, or the isolated verifier VM/host for topology 2)
+and its approval station after authorization. Re-prove VM host/nested-KVM
+boundaries for topology 2; topology 3 cannot pass security acceptance:
 
 - Inspect uid, nologin, password lock, sudoers/polkit, groups, device ACL and kvm.
 - Inspect systemd hardening and actual effective identity/capabilities/umask.
@@ -583,8 +628,10 @@ Acceptance must include all of the following on metal-3 after authorization:
 - Real sandboxed bridge and QEMU cannot read owner/key/data/recovery roots,
   including /proc/fd/root and path aliases; enumerate all mounts and open FDs.
   Verify neither opens abstract sockets and AF_UNIX creation is denied.
-- Inspect effective /dev/kvm owner/mode/groups/ACL: no trmd access path; actual
-  Cell open fails while the sandbox service's intended KVM access succeeds.
+- Inspect effective /dev/kvm owner/mode/groups/ACL for the selected topology:
+  intended sandbox KVM access succeeds, and retained ordinary device access grants
+  no management/VM-control path. Verify nested KVM and physical-host isolation
+  for topology 2; document optional trmd device access separately from UID authority.
 - Simulate loss of time synchronization/time steps: admission suspends before
   any effect and resumes only after trusted health recovery.
 - Crash after durable nonce/request persist but before Honeybee effect: restart

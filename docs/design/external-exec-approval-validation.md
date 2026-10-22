@@ -31,3 +31,9 @@ binding, signing-key protection, runtime/sandbox digest binding and broker-only
 time (messages 16620 and 16623). Follow-up documents address those findings;
 reviewer verification and Queen design verdict are recorded separately in Apiary.
 A document review PASS is not implementation, provisioning or enablement PASS.
+
+Queen's next review (16662) said all nine earlier items were closed and requested
+small topology/KVM, boot-ceremony, keychain availability and control-schema
+amendments. They are reflected in the follow-up documents. Opus's narrow review
+(16661) closed H1–H4/M1–M4; its remaining topology wording, historical validation
+wording and password-required usability note were amended. No code changed.

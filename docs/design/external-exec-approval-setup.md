@@ -13,13 +13,16 @@ account: record Studio `trmd` admin/sudoers/cached authorization; TCC Accessibil
 Screen Recording and Automation lists; Touch ID keyboard presence/pairing; login
 and autostart behavior. Tormod exercises one week of actual fast-user switching,
 including lock/reboot and periodic password-required cases, and records how often
-the required logout/process-stop ceremony disrupts work and whether this is usable
+the required first-login boot ceremony disrupts work and whether this is usable
 without rushed approvals or password prompts in the agent session. Correlate this
 with T2 worker `748eb6d2-61c3-480d-bc87-d11556f46b0c`'s privilege matrix on branch
 `review/external-exec-metal3-provisioning`. Current metal-3 `trmd` sudo and Cell
 NNP=0 are blockers. Queen takes the Studio 6–8-week option versus a dedicated
 human-only mini+Touch ID keyboard/Air at 4–6 weeks plus hardware to Tormod.
-His explicit cost/topology decision and acceptable admin separation precede code.
+His explicit cost/topology decision (`a0c2b850`) and acceptable admin separation
+precede code. A verifier VM requires a host agents cannot root/control, protected
+VM management/disks and nested KVM; a VM on sudo-accessible metal-3 does not help.
+An advisory-only choice retains no unforgeability/bypass security claim.
 No agent performs this privileged audit or removes user rights autonomously.
 
 Read the [mechanism and threat model](external-exec-owner-isolation.md) first.
@@ -45,8 +48,10 @@ receipt. All paths below are proposed T2 contract names, not installed facts.
    Through the reviewed human installer, deny PAM `su` and terminal `login` into
    it. Restrict it to a physical console GUI session. Require routine Touch-ID-only
    unlock; never type its password from a `trmd` session. For macOS-required
-   post-reboot password entry, disable approvals and use a physical human startup
-   ceremony with `trmd` logged out and its processes stopped by the human admin.
+   post-reboot or periodic password entry, disable approvals and use the human
+   boot ceremony: boot/reboot, log in `apiary-approve` first at FileVault or
+   loginwindow, lock it, then log in `trmd`. GUI logout cannot establish that
+   SSH sessions or launchd jobs stopped; never use it as a substitute.
    If these controls cannot be enforced, stop and select a separate station.
    Remove `trmd` from administrators and all sudo/privileged service paths,
    invalidate cached privilege authorization and remove reachable admin secrets.
@@ -79,12 +84,17 @@ receipt. All paths below are proposed T2 contract names, not installed facts.
    stop; do not substitute a software key.
 5. **Create transport keys separately.** Use the reviewed human-run enrollment
    installer to generate a Studio TLS server key inside the management user's
-   private keychain, ACL restricted to the management service. Use a per-user
-   launchd LaunchAgent after human login/keychain unlock, not a root LaunchDaemon
-   assuming login-keychain access. Test lock behavior; if keychain policy locks
-   transport, pause until human unlock. Reboot/logout requires human login before
-   transport resumes; never store a password for unattended startup. Transport
-   cannot sign approval envelopes.
+   data-protection keychain, ACL restricted to the management service and
+   accessibility `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`. Use a per-user
+   launchd LaunchAgent after first human login/unlock, not a root LaunchDaemon.
+   Install its plist only in that user's protected ~/Library/LaunchAgents, with
+   protected ancestors, and check exact UID before key use or listener binding.
+   No unrestricted global /Library/LaunchAgents entry. Test screen lock preserves
+   transport for status/stop. Before first unlock or while the session/agent is
+   down, those controls are unavailable; the broker's absolute run deadline still
+   terminates the attempt. Never store a password for unattended startup. If the
+   tested accessibility class is unsupported, pause rather than weaken key
+   isolation. Transport cannot sign approval envelopes.
    Before metal-3 provisioning, remove `trmd` sudo/polkit/service-control rights
    and invalidate cached authorization under Queen's exact T2 plan. Enforce Cell
    NNP and independently prove denial; NNP alone does not fix sudo. If this is
