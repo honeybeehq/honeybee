@@ -958,6 +958,9 @@ export class AccountsService {
     this.log = opts.log;
     this.onCredentialValidated = opts.onCredentialValidated ?? (() => undefined);
     this.now = opts.now ?? Date.now;
+    for (const account of this.store.listAccounts({ harness: "claude" })) {
+      if (this.store.accountCredentialAttention(account.id) === "keychain_publication_failed") this.claudeKeychainRepairs.set(account.id, this.now());
+    }
     this.platform = opts.platform ?? process.platform;
     this.env = opts.env ?? process.env;
     this.home = opts.home ?? homedir();
@@ -2046,6 +2049,7 @@ export class AccountsService {
     if (account.source === "leased" && knownAccountLease(account)?.expiresAt != null && knownAccountLease(account)!.expiresAt! * 1000 <= this.now()) return "expired";
     if (!recipe) return "present";
     if (this.authorityFor(account)?.enabled(account)) return this.centralCredentialState(account);
+    if (account.harness === "claude" && this.store.accountCredentialAttention(account.id)) return "damaged";
     const primary = primaryCredentialFile(recipe);
     const source = dirHasCredentials(account.homePath, recipe)
       ? account.homePath
@@ -2122,6 +2126,8 @@ export class AccountsService {
       if (native) return { ready: false, code: "account_auth_needed", message: this.nativeSignInMessage(account, "needs its sign-in") };
       return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };
     }
+    const attention = account.harness === "claude" ? this.store.accountCredentialAttention(account.id) : null;
+    if (attention) return { ready: false, code: "credential_file_damaged", message: `account ${account.id}: ${attention}; credential publication requires recovery; retry republish or run hive account login ${account.id}` };
     switch (this.credentialState(account)) {
       case "damaged": {
         const error = this.store.getAccountLimits(account.id)?.error;
@@ -3351,12 +3357,16 @@ export class AccountsService {
     return account.source !== "leased" && !this.isNative(account) && !this.authorityFor(account)?.enabled(account) && !this.authorityFor(account)?.busy(account) && !this.store.credentialAuthorityIsDemoted(account.id) && !this.store.credentialRecoveryPending(account.id) && !this.leaseWrites.has(account.id) && !this.store.activeLoginFlow(account.id) && !this.refreshBusy(account) && !this.nativeKeychainSeeds.has(account.id) && !this.ownedHomeRefusal(account, "writes into");
   }
 
-  private async freshestClaudeCredential(account: AccountRow, strictKeychain?: KeychainState, onRefusal?: (reason: "live_chain_ambiguous" | "snapshot_refresh_unproven") => void): Promise<ClaudeCredential | null> {
+  private async freshestClaudeCredential(account: AccountRow, strictKeychain?: KeychainState, onRefusal?: (reason: "live_chain_ambiguous" | "snapshot_refresh_unproven" | "keychain_publication_failed") => void): Promise<ClaudeCredential | null> {
     if (this.authorityFor(account)?.enabled(account)) {
       const document = this.authorityFor(account)!.document(account);
       const credential = parseClaudeCredentials(JSON.stringify(document));
       if (!credential) return null;
       return { ...credential, document, oauth: document.claudeAiOauth as Record<string, unknown> };
+    }
+    if (this.store.accountCredentialAttention(account.id) === "keychain_publication_failed") {
+      onRefusal?.("keychain_publication_failed");
+      return null;
     }
     const candidates: Array<ClaudeCredential & { source: "home" | "keychain" | "vault" }> = [];
     const push = (raw: string | null, source: "home" | "keychain" | "vault") => {
@@ -3388,9 +3398,11 @@ export class AccountsService {
     const home = liveChains.find(candidate => candidate.source === "home");
     if (keychain && home && keychain.refreshToken !== home.refreshToken && (keychain.accessToken.trim().length === 0 || keychain.expiresAt <= 0)) {
       this.log(`account.credential_file_damaged account=${account.id} outcome=held reason=live_chain_ambiguous`);
+      this.store.setAccountCredentialAttention(account.id, "live_chain_ambiguous");
       onRefusal?.("live_chain_ambiguous");
       return null;
     }
+    if (this.store.accountCredentialAttention(account.id) === "live_chain_ambiguous") this.store.setAccountCredentialAttention(account.id, null);
     const newestLive = keychain ?? home;
     const eligible = candidates.filter(candidate => !newestLive || candidate.refreshToken === newestLive.refreshToken || candidate.source !== "vault" && !hasRefreshToken(candidate) && candidate.accessToken.trim().length > 0 && candidate.expiresAt > this.now());
     const effectiveExpiry = (credential: ClaudeCredential) => credential.accessToken.trim().length > 0 ? credential.expiresAt : 0;
@@ -3581,16 +3593,15 @@ export class AccountsService {
     const document = { ...credential.document, claudeAiOauth: oauth };
     const raw = JSON.stringify(document);
     const keychainRaw = JSON.stringify({ ...document, ...keychainDocument(keychain), claudeAiOauth: oauth });
-    // The home file's mtime is what tells a running Claude to drop its cached
-    // credential, so it is written last, after the stores it will re-read.
-    mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
-    atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
     let keychainWritten = false;
     const keychainAttempts = keychain.status === "present" ? CLAUDE_KEYCHAIN_PUBLISH_ATTEMPTS : 1;
     for (let attempt = 0; attempt < keychainAttempts && !keychainWritten; attempt += 1) {
       keychainWritten = await this.keychainWriter(account.homePath, keychainRaw).catch(() => false);
     }
+    if (!keychainWritten && keychain.status === "present") this.store.setAccountCredentialAttention(account.id, "keychain_publication_failed");
     atomicWriteFileSync(join(account.homePath, ".credentials.json"), raw);
+    mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
+    atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
     if (keychainWritten) this.claudeKeychainRepairs.delete(account.id);
     else {
       this.claudeKeychainRepairs.set(account.id, this.now() + CLAUDE_KEYCHAIN_REPAIR_RETRY_MS);
@@ -3638,17 +3649,22 @@ export class AccountsService {
     const homeFile = join(account.homePath, ".credentials.json");
     const locked = await withClaudeRefreshLock(account.homePath, async () => {
       const raw = readIfFile(homeFile);
-      if (raw === null || raw !== readIfFile(join(this.vaultDirOf(account), ".credentials.json"))) return "current" as const;
+      const fenced = this.store.accountCredentialAttention(account.id) === "keychain_publication_failed";
+      if (raw === null || !fenced && raw !== readIfFile(join(this.vaultDirOf(account), ".credentials.json"))) return fenced ? "retry" as const : "current" as const;
       const rotated = parseClaudeCredentials(raw);
       const keychain = await this.keychainStateReader(account.homePath);
       if (keychain.status === "unreadable") return "retry" as const;
-      if (!rotated || keychain.status !== "present") return "current" as const;
+      if (!rotated || keychain.status !== "present") return fenced ? "retry" as const : "current" as const;
       const published = parseClaudeCredentials(keychain.raw);
-      if (published && published.expiresAt >= rotated.expiresAt) return "current" as const;
+      if (fenced && (!published || rotated.accessToken.trim().length === 0 || rotated.expiresAt <= published.expiresAt)) return "retry" as const;
+      if (!fenced && published && published.expiresAt >= rotated.expiresAt) return "current" as const;
       const document = JSON.parse(raw) as Record<string, unknown>;
       const keychainRaw = JSON.stringify({ ...document, ...keychainDocument(keychain), claudeAiOauth: document.claudeAiOauth });
       if (!(await this.keychainWriter(account.homePath, keychainRaw).catch(() => false))) return "retry" as const;
       atomicWriteFileSync(homeFile, raw);
+      mkdirSync(this.vaultDirOf(account), { recursive: true, mode: 0o700 });
+      atomicWriteFileSync(join(this.vaultDirOf(account), ".credentials.json"), raw);
+      if (fenced) this.store.setAccountCredentialAttention(account.id, null);
       return "repaired" as const;
     });
     const outcome = locked.acquired ? locked.value : "retry";
@@ -4335,6 +4351,18 @@ export class AccountsService {
   }
 
   /** Claude on macOS: seed the home's Keychain item with the credential JSON (false when unavailable/rejected). */
+  async confirmClaudeLoginPublication(account: AccountRow, raw: string): Promise<void> {
+    if (account.harness !== "claude") return;
+    const state = await this.keychainStateReader(account.homePath);
+    const credential = parseClaudeCredentials(raw);
+    const published = state.status === "present" ? parseClaudeCredentials(state.raw) : null;
+    if (!credential || credential.accessToken.trim().length === 0) return;
+    if (state.status === "present" && (!published || published.accessToken !== credential.accessToken || published.refreshToken !== credential.refreshToken || published.expiresAt !== credential.expiresAt)) return;
+    if (state.status === "unreadable" || state.status !== "present" && readIfFile(join(account.homePath, ".credentials.json")) !== raw) return;
+    this.store.setAccountCredentialAttention(account.id, null);
+    this.claudeKeychainRepairs.delete(account.id);
+  }
+
   writeClaudeKeychain(account: AccountRow, credentials: string): Promise<boolean> {
     if (account.harness !== "claude") return Promise.resolve(false);
     return this.keychainWriter(account.homePath, credentials).catch(() => false);
