@@ -16,88 +16,247 @@ package and three full hashes in external-exec-owner-candidate.json. That Cell
 file is non-authoritative. Copy/review it owner-side only after approval, initially
 without the workspace capability grant.
 
-## Decision pending: authority path
+## Decision: per-attempt human approval
 
-Tormod chooses one path: per-attempt human approval for no-inference phases 1–2,
-the full protected executor/attestor, or pause. None is selected or authorized by
-this revision. Human approval does not authorize inference, account leasing,
-guest credentials or phase-3 code. The owner CLI alone is not agent authority.
+Tormod selected per-run human approval (Apiary question ea215807). This revision
+completes that design; it does not enable it. The separate phase-3 acceptance
+(question 7a0b4e6b, maximum lease 12 hours) does not authorize phase-3 code,
+inference, account leasing or guest credentials in this phase-1–2 path.
+Queen must approve this design before implementation. DEPLOY HOLD stands.
 
-The near-term alternative has no attestor. Treat agent proposals, bearer tokens
-and claimed session identities as untrusted. In a protected Apiary approval UI,
-the human explicitly chooses actor and ur workspace and reviews the complete
-canonical job, immutable input digests, bridge/install identity, no-inference
-mode, deadline and resource limits. The management service binds a one-use
-approval id to that exact body digest, actor, workspace and expiry (60 seconds).
-Any change or retry with changed content requires new approval. Copied session
-tokens may submit an untrusted proposal but cannot authorize or change a run.
-Status/stop requests without an attested actor likewise require human authority;
-no agent bearer token becomes authority just because a start was approved.
-An approval authorizes one no-inference attempt, not a session or standing grant.
+All agents run as `trmd` on both hosts. Everything reachable by that user is
+agent-reachable, including Apiary RPC, browser surfaces, bearer tokens, sockets,
+Keychain items and Accessibility, AppleScript or CGEvent automation. Proposal
+identity is therefore a claim, not authenticated agent provenance. The human
+selects an actor and workspace from the protected management registry; the screen
+labels the proposal's claimed source separately. Approval authorizes the selected
+actor's exact attempt, not a claim that the proposer actually was that actor.
+No automatic attestor is included. Unapproved requests can only create proposals.
 
-The full automatic alternative requires direct harness integration with a
-separate-UID tool executor, SO_PEERCRED plus PID birth/boot binding and protected
-launch registration. The harness must connect directly to that executor; today's
-same-UID MCP child cannot be promoted by declaring it trusted. Enforce
-ptrace_scope >= 1 (with no agent parent/debug privilege over the executor), or
-separate PID namespaces, in addition to separate UID and no privilege escalation.
-A trusted attestor binds the canonical request digest, actor/workspace, nonce,
-expiry and destination to the kernel peer identity; Apiary checks its registry.
-No caller PID, parentage, copied token or unprotected registration is accepted.
-Agent processes cannot signal, ptrace or inject into executor/attestor. Queen
-estimates 3–5 weeks including harness work; this is not a small broker-only change.
-Implementation and end-to-end proof remain gated on Tormod choosing this path.
+### Selected mechanism and its limits
 
-## Protected Mac service and direct channel
+Retain the Studio-local option: a separate standard macOS management account
+`apiary-approve`, a protected native Apiary approval window in that account's own
+login session, and a per-workspace Secure Enclave P-256 approval key. A signed,
+hardened native helper owns the key. The key requires `privateKeyUsage` AND
+`biometryCurrentSet` on every signing operation, with no password fallback,
+no cached LocalAuthentication context and no authentication reuse interval.
+Only Tormod's enrolled biometric set is allowed; changing it invalidates the key
+and requires manual reenrollment. An unlocked login keychain is insufficient.
+Apple documents hardware key protection and biometric access constraints in
+[Secure Enclave keys](https://developer.apple.com/documentation/security/protecting-keys-with-the-secure-enclave)
+and [biometryCurrentSet](https://developer.apple.com/documentation/security/secaccesscontrolcreateflags/biometrycurrentset).
+Those controls protect key use; they do not attest what the person saw.
 
-Choose a separate macOS management user running a launchd management service,
-with its key in that user's private keychain. The normal Apiary process and all
-Studio Cell agents running as trmd have neither read nor signing access. Keychain
-non-exportability alone is insufficient: no signing oracle is exposed to trmd.
-The management user has its own protected approval UI/login session; ordinary
-trmd Apiary can only submit untrusted proposals for display there. If Apiary
-cannot provide that separate protected UI, the human path is blocked.
+The helper accepts only the exact prepared job through XPC from the root-owned,
+signed approval UI, checking the kernel-supplied audit token's effective UID and
+pinned code-signing designated requirement on each connection. Reject `trmd`,
+forwarded audit tokens, PID strings, alternate binaries and generic sign-bytes
+requests. Both binaries have hardened runtime and library validation, no debugger
+entitlement, no writable plugins, scripts, WebViews, remote content or URL-based
+approve command. The helper independently fetches the broker's frozen preparation
+through the protected channel, computes its digest, and returns the complete
+validated body to the UI. The UI and helper bind one immutable review instance to
+one click and one fresh biometric prompt; changing actor, job or selection destroys
+that instance. A prompt cannot be preauthorized for a later job. Disconnect,
+expiry, lock or session switch cancels the review and its authentication context.
 
-Attest the helper caller with XPC audit-token effective UID AND a pinned
-code-signing designated requirement for the root-owned, signed, hardened approval
-UI (library validation, no debugger/get-task-allow entitlement or user-writable
-plugins). The service checks both on each request; PID strings, same binary run
-as trmd, bearer tokens and a forwarded audit token do not count. Only this UI under
-the management UID can approve an exact job for signing. Automatic attestor-mode
-requests would instead require the independently pinned attestor identity and
-validated process-bound attestation; that route is disabled in human-only mode.
-No generic sign-bytes/key-use RPC exists. Root-owned launchd/config/binaries and
-the private keychain are not writable/readable by trmd. A human or trusted root
-management provisions them only after authorization. Prove that trmd has no
-sudo, task-port, UI-automation or cross-user control route to this service/UI.
-An unrestricted admin/root path from a Cell invalidates the boundary.
+The protected screen shows **actor ID and name, workspace ID and name, broker,
+operation, full canonical job, every input digest, all install pins, no-inference
+mode, resource limits, deadline, policy version, approval expiry and body digest**.
+No ellipsis, hidden defaults or summary-only approval. Scrollable escaped plain
+text shows every field, including controls and bidirectional characters as escapes;
+show stable ASCII IDs alongside names to resist misleading labels. Disable
+Approve until the complete validated document is available and has been visited.
+This reduces accidental omission; software cannot prove human comprehension.
+No approval in ordinary `trmd` Apiary counts. It can display pending/refused/result
+state only, and cannot read back the signed token.
 
-Drop the relay and TLS-in-TLS entirely. The metal-3 broker itself dials a direct
-TLS 1.3 mutually authenticated connection to the separate Mac management service.
-Use SHA-256 SPKI pins both ways plus certificate validity checks. On metal-3,
-the management server pin is root-owned config; on the Mac the expected broker
-client pin is root-owned management config. The broker's private key is a
-systemd credential; the Mac service's private key stays in its own keychain.
-No key lives in a trmd process, environment or file on either machine.
+Tormod physically switches to the management login session using macOS's trusted
+login flow, checks its account identity, opens the installed native UI there,
+reviews the job and approves with a fresh biometric gesture. Do not approve a
+prompt in response to an agent message, ordinary Apiary window or browser page.
+Keep that session locked otherwise. Disable screen sharing, remote management,
+remote login, automation grants and cross-user control into that account; no
+agents, harnesses, terminal automation or shared clipboard tooling run there.
 
-The broker has no inbound TCP or abstract socket listener; owner-local control
-uses only a filesystem Unix socket in its 0700 service-UID root. The management
-service queues authorized requests and sends them on the authenticated outbound
-broker connection. Only that service's pinned identity is accepted. The Mac
-management listener requires the pinned broker client; tailnet membership and
-the shared host identity grant no authority. There is no outer TLS layer or
-second set of undefined transport pins.
+This is a conditional security design, not a claim about current Studio settings.
+The current `trmd` admin membership, sudo rights/cached credentials, TCC grants and
+cross-session automation reach have **not been measured by T1**. Tormod and T8 must
+record them. `trmd` must have no effective privilege-escalation path, including
+cached sudo, passwordless rules, admin credentials in reachable stores, writable
+privileged launch/config paths or service-install RPC. Admin membership alone
+does not prove immediate root, but this design requires removing it from the
+agent account rather than relying on a password prompt. A separate human-only
+admin account performs setup and keeps its credentials outside agent reach.
 
-Rotate through trusted root-owned pin updates with at most 24 hours dual-pin
-overlap, verify new identity, then remove old. Compromise immediately removes the
-old pin, closes existing channels and suspends admission. Disable TLS resumption;
-every reconnect validates pins, time and current policy. No unpinned fallback.
+Without elevation, separate UIDs plus signed hardened binaries are intended to
+block memory/task-port access, key use, helper impersonation and cross-user UI
+control. Do not infer that from file modes: T8 must attempt each actual path with
+the Studio's existing Accessibility and Screen Recording grants. If `trmd` can
+inject input, draw an overlay in the management session, capture/control its
+approval window, replace its binaries, use the key as an oracle or escalate,
+this option fails. A Secure Enclave key alone does not fix that failure. Root,
+OS compromise, malicious approved helper/update, physical coercion and deliberate
+human approval of a harmful displayed job remain outside the guarantee. An agent
+can spam or socially engineer proposals; rate limits and explicit physical
+session switching reduce this risk but cannot eliminate human error.
+
+### Alternatives and estimated cost
+
+Estimates are design estimates in engineer-weeks for review-ready implementation
+and negative proofs, not measured delivery commitments. They exclude phase 3 and
+are compared with the accepted roughly 3–5-week envelope.
+
+| Option | Estimate | Decision and principal risk |
+| --- | --- | --- |
+| Selected separate Studio user, native hardened UI/helper, per-use biometric key | 3–5 total (approval UI/helper 1–2, channel/broker 1–2, setup/T8/review about 1, some overlap) | Fits only if Studio privilege and UI isolation can be proved; otherwise stop rather than weaken it. |
+| Ordinary `trmd` Apiary plus private file/keychain or non-exportable key | 1–2 | Reject: same-user automation or signing oracle can authorize without exact-job consent. |
+| Management user plus Touch ID prompt, without protected full-job UI | 2–3 | Reject: biometric presence does not bind the human's view to the signed body. |
+| WebAuthn hardware key attached to agent-controlled Studio browser | 3–5 | Reject for this path: touch/UV binds an RP challenge, not a trusted full-job display; malicious client can swap the job. A display-capable transaction signer needs a separate protocol/review. |
+| Dedicated human-held iPhone, native Apiary approval app and Secure Enclave per-use Face ID key, no agent/remote-control pairing | 6–9 total | Stronger display separation; exceeds envelope. Requires human-installed signed app, physical public-key enrollment, broker-authenticated full-body display, lost-device revocation and reenrollment. No phone chat/message is approval. |
+| Separate human-only Mac/device running the protected Apiary UI | 4–7 total plus hardware/setup | Removes shared Studio session risk but adds a managed endpoint. Keep as a new decision if Studio isolation fails. |
+| Full separate-UID harness executor and process-bound attestor | 3–5 for that integration, approval work excluded | Reject for this task: automatic authority is outside the selected per-attempt path. |
+
+No silent fallback. If Studio preconditions fail or effort exceeds the envelope,
+Queen takes one concrete scope/device decision to Tormod. A replacement device
+would enroll a new public key physically; revoke old key, close channels, discard
+pending approvals and fail closed until new enrollment. Do not restore a signing
+key from an agent-accessible backup. Remote phone messages and anything inside
+an `apiary-phone-unverified` fence are always unverified.
+
+## Direct pinned channel and key ownership
+
+The metal-3 broker dials the protected Apiary management listener on the Studio
+over direct TLS 1.3 mTLS. No relay, browser proxy, ordinary Apiary RPC forwarding
+or TLS-in-TLS. The management listener accepts only this broker's pinned client
+certificate. Tailnet routing supplies reachability, never identity. The broker
+has no inbound TCP/abstract socket listener; its management Unix socket stays
+inside its service UID's 0700 directory. Proposals reach Apiary as untrusted data;
+protected management sends them over the existing outbound broker connection for
+preparation. Only protected management receives preparations and signed approvals.
+
+Use three independent keys, not one multipurpose key:
+
+| Key | Private owner and use | Verifier pin |
+| --- | --- | --- |
+| Studio TLS server key | `apiary-approve` private keychain; only protected launchd management service may use it, no interactive biometric needed for transport | Broker root-owned config: SHA-256 of server SPKI plus exact server name and certificate validity/chain policy |
+| Broker TLS client key | metal-3 broker service UID through systemd credential, never `trmd`, bridge or guest | Studio root-owned config: SHA-256 of client SPKI plus exact broker identity and certificate validity/chain policy |
+| ur approval key | Studio Secure Enclave, `apiary-approve` helper only, fresh biometric for each approval | Broker root-owned config: P-256 SPKI, key ID, human approver ID, ur workspace ID, allowed operation/schema and policy epoch |
+
+Use a dedicated manually installed private trust anchor/certificate chain; validate
+chain, EKU, names, validity AND exact SPKI pins. A public CA alone is insufficient.
+No private key, TLS secret or signed approval enters `trmd` memory, environment,
+logs, Cell files or tool responses. Transport authentication cannot substitute
+for the separate approval signature. Owner Unix access cannot bypass approval for
+an external run. Only ur is registered; another workspace needs separate key,
+service root and dedicated daemon rather than expanding this key's authority.
+
+Tormod installs public fingerprints out of band at both hosts as described in the
+[setup procedure](external-exec-approval-setup.md). Never learn a pin from the first
+network peer or an agent-supplied file. Rotation uses manually authenticated,
+root-owned config updates with at most 24-hour dual-pin overlap, then removal of
+the old pin. A compromise revokes immediately, closes channels, cancels pending
+preparations and suspends admission. Pin/policy changes invalidate the old epoch.
+Disable TLS resumption and 0-RTT. Every reconnect checks current pins, certificate
+time and policy; failure never falls back to bearer auth or unpinned transport.
+
+## Canonical job and one-use approval protocol
+
+### Body bytes
+
+The broker owns normalization. It validates a closed, versioned job schema,
+resolves immutable content IDs in protected storage, fills every policy default
+and computes the exact executable operation before asking for approval. Reject
+unknown/missing fields, duplicate JSON property names at parse time, invalid UTF-8,
+lone surrogates, floats, negative zero and integers outside 0..2^53-1. IDs and
+hashes use schema-constrained ASCII; names are display data only. No caller argv,
+environment, executable, host paths, fence, account or auth slot is accepted.
+
+Canonical bytes `B` are UTF-8 JSON Canonicalization Scheme (RFC 8785) of this
+validated, explicit-default body. JCS sorts object properties recursively,
+preserves array order, emits no whitespace and preserves string code points
+without Unicode normalization. Numeric values here are bounded integers only.
+A reordered object has the same digest; reordering an input array changes it.
+These rules follow [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785).
+
+The closed body includes schema `honeybee.external-exec.approval-body.v1`,
+operation (`start`, `status`, `wait`, `stop` or `reconcile`), human-selected actor ID,
+ur workspace ID, target broker ID, broker-generated request ID and preparation ID,
+policy epoch/version, and the entire validated job. The job includes immutable
+input ID/digest pairs, exact bridge commit/executable path and all three inventory
+pins below, no-inference mode, absolute run deadline and every resource/capture
+limit. Non-start bodies instead include the scoped attempt handle and exact
+operation parameters, without silently authorizing another start. No secrets in
+this body; fences and private dispatch paths are broker-generated later.
+
+The fixed bridge identity is:
+
+- Commit: `14de2f119af5a822c12e8910339666c311dace27`.
+- Executable: `/opt/urbench-v2/bridge/14de2f119af5a822c12e8910339666c311dace27/bin/urbench-bridge`.
+- Executable SHA-256: `7157b41da3845b273f1208e0c9d14e53ec0ff7c56c9d5c7950d1ccf4e1c4d946`.
+- `files.json` SHA-256: `2b25875bc9bc5b7808b614b022497febc4bd0afd2a8a6fcd7fb16ae8ec5607cf`.
+- `payload.sha256` SHA-256: `89ba8f60ce2638d89533ce97cb2a8623c0db8ca067cf47d0b73fdc2395ebed2d`.
+
+`bodyDigest = SHA-256(UTF8("honeybee.external-exec.body.v1\0") || B)`,
+encoded as 64 lowercase hex characters. The helper independently parses,
+validates and canonicalizes the broker's body and checks this digest. It never
+signs the digest supplied by a proposer. Golden vectors must match across broker,
+helper and UI, including malformed-input rejection and displayed-field coverage.
+
+### Preparation, display, signature and admission
+
+1. Broker receives an untrusted proposal through pinned management, validates it,
+   and freezes `B` in its protected journal. Broker generates random 256-bit
+   request ID, preparation ID and nonce. Client retry correlation is only a
+   lookup hint in the proposal queue, never a chosen authoritative request ID.
+2. Broker records `issuedAt` and `expiresAt = issuedAt + 60 seconds` as integer
+   Unix milliseconds and a same-boot monotonic deadline. It sends the frozen body,
+   digest and envelope fields to protected management. This 60-second window
+   includes review and signing; slow review expires and requires a fresh review.
+3. Helper verifies the frozen preparation and renders the exact body in the
+   protected UI. The human selects/reviews actor and workspace; any selection
+   change requires a new broker preparation, not a local edit of the frozen body.
+   On explicit Approve, the helper requires one fresh biometric operation.
+4. Helper signs `UTF8("honeybee.external-exec.approval.v1\0") || JCS(E)` using
+   ECDSA P-256 with SHA-256 (fixed 64-byte IEEE-P1363 `r || s` signature encoding).
+   Envelope `E` has exactly: schema `honeybee.external-exec.approval.v1`, keyId,
+   approverId, actorId, workspaceId, brokerId, policyEpoch, requestId,
+   preparationId, nonce, issuedAt, expiresAt, bodyDigest and complete body object.
+   Signature travels separately as unpadded base64url. Reject unknown fields or
+   algorithms; do not deduplicate by signature bytes (ECDSA can vary). The token
+   carries actor, workspace and full job, not merely a human-readable summary.
+5. Protected management submits the token over pinned mTLS. Broker checks pinned
+   approval key/approver/workspace/epoch, exact signature encoding, own broker ID,
+   time health, nonce and preparation existence, equality of every envelope field
+   to the persisted preparation, recomputed `B`/digest, actor grant and current
+   policy. Revalidate protected input and bridge identity at execution. A changed
+   policy or job fails closed and requires a new preparation and review.
+6. In one durable SQLite transaction, mark the preparation consumed and reserve
+   the nonce, request mapping, random 256-bit handle and operation intent before
+   any external effect. Only then may the broker mint a private random 256-bit
+   fence, persist encrypted recovery dispatch and invoke the existing owner path.
+   A start approval is one attempt only. It cannot approve an automatic retry.
+7. Return only scoped status/handle to ordinary Apiary. Non-start operations use
+   fresh exact-operation approval too, because handles and claimed actors are
+   not caller authentication. Owner revocation/mandatory teardown remains an
+   independently protected safety policy, not an agent stop bypass.
+
+An agent cannot forge a signature without the helper key/use boundary; cannot
+obtain one through a trmd API or automated prompt if the isolation assumptions
+hold; and cannot turn an observed token into another effect because body, target,
+policy, nonce and durable consumed state are checked. An identical authenticated
+transport retry returns the original acknowledgement only while the token is
+valid, without executing again. Expired retries return expired without releasing
+status. A lost result is recovered through protected exact-operation approval,
+not an unauthenticated handle lookup. No claim is made against human deception,
+root or a broken OS isolation boundary.
 
 ## Exact agent caller path
 
-1. An agent proposes a job. Admission requires the authority path Tormod chooses:
-   exact per-attempt human approval in the protected Mac UI, or a proven protected
-   executor/attestor plus Apiary registry/role check. No path is enabled today.
+1. An agent proposes a job. The selected per-attempt protocol above requires
+   explicit approval in the protected Mac UI. No automatic attestor or ordinary
+   bearer identity can authorize it. This path remains disabled pending proof.
 2. Apiary sends only the approved job specification over pinned mTLS. The broker
    independently authorizes actor, ur workspace, operation and policy. Only
    urbench-v2 is allowed. No generic RPC, exec or file operations are exposed.
@@ -119,28 +278,47 @@ every reconnect validates pins, time and current policy. No unpinned fallback.
 
 ## Replay, recovery and policy
 
-Each authenticated envelope has a 256-bit nonce, issuedAt and expiresAt, with
-maximum lifetime 60 seconds and at most 5 seconds future skew. Apiary and broker
-use host CLOCK_REALTIME synchronized by trusted host time service; a time step,
-unhealthy synchronization or uncertainty exceeding 5 seconds suspends admission.
-Within a boot, monotonic time also bounds envelope age. Approvals and any future
-attestations use the same limits and bind the full canonical body digest and target broker identity.
+The broker refuses preparation, admission and dispatch whenever trusted time is
+unhealthy. Require an operator-configured authenticated time source and a protected
+host time-health provider reporting synchronized state, bounded uncertainty at
+most 5 seconds, no leap-unsynchronized indication and a fresh sample at most
+5 seconds old. Missing provider/sample, excessive offset, time step or backward
+jump suspends admission immediately and invalidates pending preparations. A
+root-owned health assertion, not a boolean from Apiary or a Cell, feeds the broker.
+Apiary/helper must also have healthy time. If the Studio cannot establish bounded
+health, approval is disabled; ordinary NTP being configured is not evidence.
 
-Atomically persist accepted nonces before effects in a protected request journal.
-Keep them at least until expiresAt + 5 seconds and never less than 65 seconds
-after acceptance; crash/restart does not clear them. An identical replay performs
-only an idempotency lookup, never a second operation; conflicting replay refuses.
-The broker derives Honeybee idempotency keys as SHA-256 of a domain-separated,
-length-framed workspace and request id. Caller-supplied idempotency keys refuse.
-A request id is opaque input, not authority: same workspace/id and same canonical
-job digest plus actor returns the existing handle; a changed body or actor refuses.
-Handles are independently random 256-bit values checked against workspace AND
-actor on every operation. They do not grant authority by possession alone.
+At receipt and immediately before durable consumption/dispatch require
+`issuedAt <= now + 5000`, `now < expiresAt`, and `expiresAt - issuedAt == 60000`.
+There is no expiry grace. Also require age below the persisted same-boot monotonic
+deadline (use a clock including sleep). Loss of sync closes the admission lane;
+existing attempts remain observed/stoppable under protected safety policy. After
+reboot or time-health recovery discard every unconsumed preparation and require
+fresh approval after three consecutive healthy samples at least 5 seconds apart.
+Do not revive old tokens by moving the clock backward.
 
-Choose a per-workspace management key: this dedicated daemon serves only ur and
-has one ur-only key/management registration. No multi-workspace shared key.
-Another workspace requires its own isolated service/root/key/daemon, rather than
-extending this key's authority.
+The replay store is protected SQLite with a single broker writer, WAL mode,
+`synchronous=FULL` and successful durable commit
+before acknowledging consumption. A unique `(approvalKeyId, nonce)` plus unique
+preparation ID and `(workspaceId, requestId)` enforce concurrent one-use handling.
+Power loss/crash never empties it. Keep consumed nonce rows until both
+`expiresAt + 5 seconds` and `acceptedAt + 65 seconds` have passed under healthy
+time; request-ID/preparation tombstones remain for the lifetime of this broker
+identity. Nonce pruning cannot make a token valid because the preparation remains
+consumed. Never restore an older journal and resume admission: corrupt/missing DB,
+WAL, encryption key or rollback/restore puts admission in suspended recovery.
+Recovery revokes the old approval/policy epoch, cancels outstanding preparations,
+reconciles daemon effects and requires manual fresh enrollment/approval before use.
+Backups cannot reset one-use state under the old epoch.
+
+Derive Honeybee idempotency keys as lowercase hex SHA-256 over
+`UTF8("honeybee.external-exec.idempotency.v1\0") || L(workspaceId) || L(requestId)`,
+where `L(x)` is unsigned 32-bit big-endian UTF-8 byte length followed by those bytes.
+Request IDs are broker-generated. The request record additionally fixes actor,
+operation and bodyDigest; any mismatch refuses. A duplicate consumed operation
+uses only its original effect mapping. Independent 256-bit random handles bind
+workspace AND human-approved actor on every operation; possession and a claimed
+actor never grant authority. They are absent from URLs and general logs.
 
 The broker journal is service-owned SQLite under protected
 /var/lib/honeybee-exec-dev-broker, with 0700 parent and 0600 database/WAL.
@@ -249,7 +427,7 @@ The required inventory-FD mappings are intentional, not leaked authority.
 
 ## Acceptance and enable gate
 
-Both authority alternatives, the channel, sandbox launcher, broker and policy are
+The selected human-approval mechanism, channel, sandbox launcher, broker and policy are
 design only and require Tormod authorization before implementation/provisioning.
 The owner CLI alone is not an Ur Bench agent integration. Current source remains
 disabled and not usable; no claim of isolation proofs having run is made.
@@ -267,15 +445,13 @@ Acceptance must include all of the following on metal-3 after authorization:
 - A Cell using copied bearer tokens, another actor's handle, fake PID/workspace,
   a relayed challenge or host tailnet identity cannot obtain an accepted request.
   Prove rejection end to end at the real Apiary entry and broker audit, not only
-  with unit mocks. A chosen human-approval path must reject every unapproved
-  request regardless of bearer identity; test the full attestor only if selected.
+  with unit mocks. The selected human-approval path must reject every unapproved
+  request regardless of bearer identity. No automatic attestor is enabled.
 - Test pin rotation/revocation, expiry/skew, nonce replay across restart,
   body/id conflict, actor/workspace isolation, quota and revocation teardown.
 - On the Studio, trmd agent processes cannot read or use the management key,
   invoke approval/signing through the helper, fake XPC audit identity, inject a
   library/debugger, or automate/control the protected user's UI.
-- Under the full attestor option, a Cell cannot ptrace/inject into the direct
-  harness executor or attestor; verify effective ptrace_scope/namespace policy.
 - Real sandboxed bridge and QEMU cannot read owner/key/data/recovery roots,
   including /proc/fd/root and path aliases; enumerate all mounts and open FDs.
   Verify neither opens abstract sockets and AF_UNIX creation is denied.
@@ -343,11 +519,20 @@ after build with no overlap. Logs: .local/external-exec-dev/r4-*.
 The revised boundary design and acceptance checks have not been implemented or
 exercised on live services. No provisioning, sudo, registration or bridge exec.
 
-## Second boundary amendment
+## T1 decision amendment and verification boundary
 
-Documentation only against source-PASS 4fe7e4b501563f7a5c23a25ad908bc96177ae7e6.
-No authority alternative has been chosen, and no provisioning, sudo, broker,
-Apiary, attestor or sandbox-launcher code is authorized until Tormod answers.
-This revision specifies future proofs; none was run. Validation is document
-review and git diff --check. No runtime change, build or execution was needed.
-Stop after submitting this revision. DEPLOY HOLD and the phase-3 gate stand.
+This document supersedes the pending-choice text in 59be42e5. It retains that
+head's sandbox and source-PASS history (including ancestor 4fe7e4b5) without
+cherry-picking product code. The handoff's ea215807 and 7a0b4e6b are Apiary question
+IDs, not git commits. The selected per-run path is the only approval authority.
+
+Tormod's human-only procedure is in
+[approval setup](external-exec-approval-setup.md). T8 must run the mechanism-linked
+[negative-proof checklist](external-exec-approval-t8.md) in addition to the host and
+sandbox acceptance checks above. These are future checks, not results of T1.
+Current keys, Mac privilege state, time-health integration, protected UI and broker
+implementation remain unproven. The absence of a repository verification skill
+is a setup gap; T1 uses the documented check/build/test commands instead.
+Queen design PASS is required before code; separate implementation review and T8
+PASS are required before enablement. This document grants no provisioning,
+security/keychain commands, sudo, bridge execution, deploy or credential access.
