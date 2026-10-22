@@ -42,6 +42,59 @@ bundled here. Cross-UID proc/ptrace protections do not rely on ptrace_scope >=1:
 ordinary UID/capability checks apply even at 0. Prove against the actual service
 later. An available root route invalidates those checks.
 
+## Queen review packet: claims, open items and safe subset
+
+As of review c66f0136, Queen explicitly withheld GO because this draft cannot
+execute end to end. The next review must resolve these choices, not interpret
+review of this document as provisioning permission.
+
+| Option | What breaks / who bears the cost | Isolation claim supported |
+| --- | --- | --- |
+| Isolated VM/host without trmd admin | Operator provisions infrastructure; Ur Bench proves KVM performance/passthrough and fresh host pins; agents lose direct privileged host maintenance there. | Separate service UID and host admin boundary; strict no Cell sudo/KVM access possible with device assigned only to service. |
+| Separate unprivileged Cell UID | Requires Honeybee harness/runner ownership, checkout/network credentials and IPC migration; existing same-euid LIVE RPC refuses the new UID. Existing trmd agents remain outside the guarantee until retired or confined. LIVE daemon UID/unit stay unchanged, but ordinary workflow needs an authorized cross-UID broker or separate daemon. | DP5 no Cell sudo/KVM and cross-UID owner isolation can be proved for migrated Cells only; operator trmd retains privileges. Requires code/security review and full native-tool launch coverage. |
+| Narrow trmd sudo allowlist | Agents lose unrestricted maintenance; operator owns all non-allowlisted work and audits writable dependencies/escape routes. | Service isolation only if no allowed path can become root, act as service, change units/ACLs or read keys. KVM remains an independent choice. |
+| Universal Cell NNP | Harness/launcher owners must change every execution path and retire old unconfined sessions; host operator retains sudo outside Cells. | Cell descendants cannot elevate via setuid/file caps; does not by itself block privileged daemons, existing root sessions, polkit, service-control sockets or KVM. Must prove those absent. |
+| Remove trmd sudo | Breaks broad metal-host maintenance for operators/agents using trmd; needs a separate operator admin account and migration. | Helps strict service boundary only after all alternate grants and existing privileged access are closed. Does not remove KVM. |
+| Keep trmd KVM | Existing Ur Bench trmd labs continue. | Reduced claim only: Cells may use KVM but cannot access service roots/broker/keys, assuming kernel/KVM boundary holds. Changes Project's strict no-KVM claim; requires Tormod + Queen acceptance. |
+| Remove trmd KVM | trmd Ur Bench KVM labs stop; fresh sessions and retained FDs must be audited; move those labs to approved service flow. | Strict no Cell KVM grant possible after group/ACL/FD and root-route closure proof. |
+
+These options preserve LIVE daemon UID/unit/artifact, but removing sudo/KVM changes
+what that uid and new descendants can do. Existing LIVE process groups and open
+FDs survive group edits; no LIVE restart is authorized to clear them. NNP on new
+Cells cannot retroactively restrict the LIVE daemon or old sessions. A separate
+Cell UID breaks same-euid RPC by design, so it needs a reviewed workflow rather
+than a quick useradd. Strict DP5 requires all Cells covered, not just new ones.
+
+Final GO open-item checklist:
+
+1. Tormod's privilege/KVM choice and exact remediation/verification commands, with
+   impact accepted; no automatic sudo/group changes.
+2. Queen-approved T1 authority/channel contract and exact broker config schema,
+   mTLS endpoint/pin formats, time-health interface, trusted key provisioning and
+   revocation steps. T2 names are placeholders until T1 confirms.
+3. Implemented/reviewed broker entry point and exact argv; current CLI owner
+   command is diagnostic, not agent authorization.
+4. Implemented/reviewed pinned bwrap FD launcher, seccomp artifact, immutable
+   inventory expansion, state/input mapping and per-attempt cgroup helper with
+   no arbitrary command capability. Required re-proofs must pass before enable.
+5. Root-owned immutable Node/daemon/broker/launcher artifact with full hashes and
+   DEV-only deploy/install command; neither mutable Cell nor LIVE tree is source.
+6. Resolve pinned bridge AF_UNIX/control and detached-worker/PID-namespace
+   incompatibilities; prove the long-lived attempt supervisor or obtain reviewed
+   new bridge pins. Resolve logind/uaccess's interference with service KVM ACL.
+7. Exact final unit install commands, daemon bootstrap/config/key steps, private
+   bridge state bootstrap/import, all runtime acceptance commands and expected
+   outputs. Replace templates before a startup GO.
+
+Infrastructure-only subset that could be authorized separately: read-only step0
+may run now; steps1–3 create an unused locked UID, empty private roots and pinned
+bwrap copy. These contain no authority key, no device grant, no unit activation
+and do not affect existing groups/LIVE. They still require Queen's **separate GO
+on that exact subset**, trustworthy root execution, path-absence preflight and
+per-step rollback. Without closing root access from Cells, these are preparation,
+not a proven security boundary. Nothing has been authorized or executed yet.
+Step4 KVM ACL, step5 credentials/artifact/units and all starts remain excluded.
+
 ## Observed read-only evidence
 
 Commands below ran as trmd in this Cell on `trmd-metal-3`; date 2026-10-22.
@@ -127,10 +180,13 @@ the owner root: externalAuthority.ts forbids overlapping owner/data/Cell roots.
     management.key                         S 0600 (32 bytes, trusted provisioner)
     endpoint.json                          S 0600 (daemon creates)
     hived.sock                             S 0600 (daemon creates)
-  honeybee-exec-dev-data/                   S 0700 DATA ROOT
-    config.json                            S 0600
-    [daemon SQLite/WAL, endpoint/socket,
-     runner hosts, captures, logs, cells]   S dirs0700/files0600
+  honeybee-exec-dev-store/                  S 0700 STORE ROOT
+    node-runtime.json                      S 0600 (pinned Node identity)
+    node-runtime-held.json                 S 0600 (failure/repair evidence)
+    v2/                                    S 0700 DATA ROOT
+      config.json                          S 0600
+      [daemon SQLite/WAL, endpoint/socket,
+       runner hosts, captures, logs, cells]   S dirs0700/files0600
   honeybee-exec-dev-broker/                 S 0700 RECOVERY ROOT
     [journal SQLite/WAL, request tombstones] S 0600
   honeybee-exec-dev-state/                  S 0700 STATE ROOT
@@ -184,9 +240,12 @@ readlink -f /proc/876498/exe
 systemctl list-unit-files '*honeybee*'
 getent passwd honeybee-exec-dev
 getent group honeybee-exec-dev
-stat /var/lib/honeybee-exec-dev /var/lib/honeybee-exec-dev-data /var/lib/honeybee-exec-dev-broker /var/lib/honeybee-exec-dev-state /var/lib/honeybee-exec-dev-home /etc/honeybee-exec-dev /opt/honeybee-exec-dev
+stat /var/lib/honeybee-exec-dev /var/lib/honeybee-exec-dev-store /var/lib/honeybee-exec-dev-store/v2 /var/lib/honeybee-exec-dev-broker /var/lib/honeybee-exec-dev-state /var/lib/honeybee-exec-dev-home /etc/honeybee-exec-dev /opt/honeybee-exec-dev
 getfacl -p /dev/kvm
 getent group kvm
+udevadm info /dev/kvm
+rg -n kvm /usr/lib/udev/rules.d /etc/udev/rules.d
+command -v setfacl
 ```
 
 Expected new names/paths absent (getent exit2/stat exit1). Other commands exit0.
@@ -223,23 +282,34 @@ account/group deletion is not part of this rollback.
 ### 2. Protected roots
 
 ```sh
-install -d -o honeybee-exec-dev -g honeybee-exec-dev -m 0700 /var/lib/honeybee-exec-dev /var/lib/honeybee-exec-dev-data /var/lib/honeybee-exec-dev-broker /var/lib/honeybee-exec-dev-state /var/lib/honeybee-exec-dev-home /var/lib/honeybee-exec-dev-state/attempts /var/lib/honeybee-exec-dev-state/inputs
-stat -c '%a %U:%G %n' /var/lib/honeybee-exec-dev /var/lib/honeybee-exec-dev-data /var/lib/honeybee-exec-dev-broker /var/lib/honeybee-exec-dev-state /var/lib/honeybee-exec-dev-home /var/lib/honeybee-exec-dev-state/attempts /var/lib/honeybee-exec-dev-state/inputs
-install -d -o root -g root -m 0755 /etc/honeybee-exec-dev /opt/honeybee-exec-dev /opt/honeybee-exec-dev/bwrap /opt/honeybee-exec-dev/bwrap/0.12.0
-stat -c '%a %U:%G %n' /etc/honeybee-exec-dev /opt/honeybee-exec-dev /opt/honeybee-exec-dev/bwrap /opt/honeybee-exec-dev/bwrap/0.12.0
-install -d -o root -g root -m 0700 /etc/honeybee-exec-dev/credentials
+for root_path in /var/lib/honeybee-exec-dev /var/lib/honeybee-exec-dev-store /var/lib/honeybee-exec-dev-store/v2 /var/lib/honeybee-exec-dev-broker /var/lib/honeybee-exec-dev-state /var/lib/honeybee-exec-dev-home /var/lib/honeybee-exec-dev-state/attempts /var/lib/honeybee-exec-dev-state/inputs; do
+  test ! -e "$root_path" && test ! -L "$root_path" || exit 1
+  mkdir -m 0700 -- "$root_path" || exit 1
+  chown honeybee-exec-dev:honeybee-exec-dev -- "$root_path" || exit 1
+  stat -c '%a %U:%G %n' -- "$root_path" || exit 1
+done
+for root_path in /etc/honeybee-exec-dev /opt/honeybee-exec-dev /opt/honeybee-exec-dev/bwrap /opt/honeybee-exec-dev/bwrap/0.12.0; do
+  test ! -e "$root_path" && test ! -L "$root_path" || exit 1
+  mkdir -m 0755 -- "$root_path" || exit 1
+  chown root:root -- "$root_path" || exit 1
+  stat -c '%a %U:%G %n' -- "$root_path" || exit 1
+done
+test ! -e /etc/honeybee-exec-dev/credentials && test ! -L /etc/honeybee-exec-dev/credentials || exit 1
+mkdir -m 0700 /etc/honeybee-exec-dev/credentials
+chown root:root /etc/honeybee-exec-dev/credentials
 stat -c '%a %U:%G %n' /etc/honeybee-exec-dev/credentials
 ```
 
 Expected silent mutation success, then exact modes/owners from layout. Verify no
 ACL grants using `getfacl -p` on every created root; expected only owner rwx,
-group/other --- on 0700 roots. Rollback after units stopped: quarantine each root
+group/other --- on 0700 roots. Rollback after units stopped and all DEV attempt descendants reconciled: quarantine each root
 using the exact rollback block below. Do not recursively change ownership.
 
 ### 3. Pin bwrap without changing installed package
 
 ```sh
 printf '%s  %s\n' 573236e5328ac2ebb08f59ae3a9805b4f8d12bdef14be8af4450d5463294985f /usr/bin/bwrap | sha256sum --check
+test ! -e /opt/honeybee-exec-dev/bwrap/0.12.0/bwrap && test ! -L /opt/honeybee-exec-dev/bwrap/0.12.0/bwrap || exit 1
 install -o root -g root -m 0755 /usr/bin/bwrap /opt/honeybee-exec-dev/bwrap/0.12.0/bwrap
 printf '%s  %s\n' 573236e5328ac2ebb08f59ae3a9805b4f8d12bdef14be8af4450d5463294985f /opt/honeybee-exec-dev/bwrap/0.12.0/bwrap | sha256sum --check
 /opt/honeybee-exec-dev/bwrap/0.12.0/bwrap --version
@@ -256,12 +326,20 @@ quarantine `/opt/honeybee-exec-dev` after stopping DEV units; system bwrap untou
 Never add service to kvm. This grants a named-UID ACL and the systemd device policy
 narrows devices separately. It does not revoke existing trmd KVM access and thus
 cannot satisfy the original stricter claim without the operator's separate decision.
-Do not add a trmd ACL. No uaccess TAG is added. Record the pre-change ACL as step0.
+Do not add a trmd ACL. The existing device **already has seat/uaccess tags** from stock 70-uaccess.rules.
+logind may flush named ACLs or grant the active seat user KVM access. The commands
+below therefore demonstrate a one-time grant only, **not durable provisioning**.
+Do not execute step4 until a new reviewed revision supplies either a durable
+service-only mechanism or an explicitly accepted reduced policy. Removing uaccess
+affects interactive users and is Tormod's decision. Record baseline ACL/tags first.
 
 ```sh
+test ! -e /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules && test ! -L /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules || exit 1
+set -C
 cat > /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules <<'RULE'
 ACTION=="add|change", SUBSYSTEM=="misc", KERNEL=="kvm", RUN+="/usr/bin/setfacl -m u:honeybee-exec-dev:rw- /dev/kvm"
 RULE
+set +C
 chown root:root /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules
 chmod 0644 /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules
 cat /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules
@@ -274,7 +352,8 @@ id honeybee-exec-dev
 
 Expected named user honeybee-exec-dev:rw-, original base entries preserved; service
 only primary group. Reload silent exit0; does not trigger/recreate other devices.
-On an approved reboot/device recreation, verify ACL persists before enabling runs.
+The proposed udev RUN alone cannot guarantee ACL persistence across seat/session
+changes. Final acceptance must exercise those plus device recreation/reboot.
 Verify both actual service device open and actual Cell denied open under strict
 policy; reduced policy records Cell success as accepted residual access. Exact
 harness test and root-route closure must accompany the final GO revision.
@@ -298,10 +377,21 @@ receipt and unit-install heredocs. T1 placeholder contract:
   `/var/lib/honeybee-exec-dev/owner.json`; approved owner bridge pins above,
   `workspaces: {}` until all proofs pass. Never load the candidate file directly;
 - daemon argv supported by source: pinned Node, immutable `dist/cli.js`, `v2`,
-  `daemon`, `run`, `--data-dir`, `/var/lib/honeybee-exec-dev-data`.
+  `daemon`, `run`, `--data-dir`, `/var/lib/honeybee-exec-dev-store/v2`.
   `loadNodeConfig` reads that root's config.json. The existing CLI cmdDaemon drops
   arbitrary --config when forwarding, so use the default data-root config path.
 - broker argv: **UNDEFINED; implementation absent**. No fake `hive broker` command.
+
+T1 confirmed the proposed names in message16590. `management-spki.sha256` pins
+Studio server TLS only. `broker.json` additionally binds the separate approval
+SPKI/keyId/approver/workspace/broker/schema/policy epoch and trust policy. Approval
+key, Studio server TLS key and metal-3 broker client TLS key are distinct. Exact
+schema, provisioning and revocation commands still block the startup revision.
+
+Before boot, persist the reviewed Node pin in service-owned store/node-runtime.json
+and set HIVE_NODE_PATH/VERSION/SHA256 in the unit. Child launches need the same
+pin; the daemon repair file is in the store parent. Exact provisioning is still
+part of the missing artifact contract. No node-runtime file goes into /var/lib.
 
 Only after these exact commands are reviewed may units be installed, verified with
 `systemd-analyze verify`, then started. Activation must remain disabled. No start,
@@ -328,9 +418,13 @@ SupplementaryGroups=
 UMask=0077
 Environment=HOME=/var/lib/honeybee-exec-dev-home
 Environment=PATH=/usr/bin:/bin
-Environment=HIVE_V2_DATA_DIR=/var/lib/honeybee-exec-dev-data
-WorkingDirectory=/var/lib/honeybee-exec-dev-data
-ExecStart=/opt/honeybee-exec-dev/releases/REQUIRES_DIGEST/node /opt/honeybee-exec-dev/releases/REQUIRES_DIGEST/dist/cli.js v2 daemon run --data-dir /var/lib/honeybee-exec-dev-data
+Environment=HIVE_V2_DATA_DIR=/var/lib/honeybee-exec-dev-store/v2
+Environment=HIVE_NODE_PATH=/opt/honeybee-exec-dev/releases/REQUIRES_DIGEST/node
+Environment=HIVE_NODE_VERSION=REQUIRES_VERSION
+Environment=HIVE_NODE_SHA256=REQUIRES_SHA256
+UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
+WorkingDirectory=/var/lib/honeybee-exec-dev-store/v2
+ExecStart=/opt/honeybee-exec-dev/releases/REQUIRES_DIGEST/node /opt/honeybee-exec-dev/releases/REQUIRES_DIGEST/dist/cli.js v2 daemon run --data-dir /var/lib/honeybee-exec-dev-store/v2
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 AmbientCapabilities=
@@ -340,21 +434,16 @@ PrivateTmp=yes
 PrivateDevices=no
 DevicePolicy=closed
 DeviceAllow=/dev/kvm rw
-ReadWritePaths=/var/lib/honeybee-exec-dev /var/lib/honeybee-exec-dev-data /var/lib/honeybee-exec-dev-state
+ReadWritePaths=/var/lib/honeybee-exec-dev /var/lib/honeybee-exec-dev-store /var/lib/honeybee-exec-dev-state /var/lib/honeybee-exec-dev-home
 InaccessiblePaths=/etc/honeybee-exec-dev/credentials /var/lib/honeybee-exec-dev-broker
-ProtectKernelTunables=yes
-ProtectKernelModules=yes
-ProtectKernelLogs=yes
 ProtectClock=yes
 ProtectControlGroups=yes
-ProtectProc=invisible
-ProcSubset=pid
 RestrictSUIDSGID=yes
 LockPersonality=yes
 RestrictRealtime=yes
 RestrictAddressFamilies=AF_UNIX
 Delegate=no
-KillMode=control-group
+KillMode=process
 TimeoutStopSec=60
 SendSIGKILL=yes
 Restart=on-failure
@@ -367,7 +456,7 @@ WantedBy=multi-user.target
 ```
 
 Broker uses the same User/Group, umask, filesystem/kernel/capability protections,
-ProtectProc and process limits, with these replacements/additions:
+process limits, with these replacements/additions:
 
 ```ini
 [Unit]
@@ -379,7 +468,7 @@ Requires=honeybee-exec-dev-daemon.service
 WorkingDirectory=/var/lib/honeybee-exec-dev-broker
 ExecStart=REQUIRES_REVIEWED_BROKER_ARGV
 ReadWritePaths=/var/lib/honeybee-exec-dev-broker
-InaccessiblePaths=/etc/honeybee-exec-dev/credentials /var/lib/honeybee-exec-dev-state /var/lib/honeybee-exec-dev-data
+InaccessiblePaths=/etc/honeybee-exec-dev/credentials /var/lib/honeybee-exec-dev-state /var/lib/honeybee-exec-dev-store
 PrivateDevices=yes
 DevicePolicy=closed
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
@@ -390,7 +479,11 @@ LoadCredential=recovery.key:/etc/honeybee-exec-dev/credentials/recovery.key
 
 Broker reads owner root and uses management socket; it never needs public data or
 bridge state. Systemd credential source is hidden while systemd supplies private
-credential copies. Current same-UID daemon/broker share a trust domain; do not claim
+credential copies. Current same-UID daemon/broker share a trust domain and can rewrite service-owned
+owner.json/management.key; a compromised owner process is outside this boundary.
+Root-owned deployment/config do not make owner authority immutable to that UID.
+The GO revision must render full independent literal unit files, not rely on this
+prose merge for list-valued replacements. Current same-UID daemon/broker share a trust domain; do not claim
 separation between those two. Sandbox separation from both is mandatory.
 
 | Setting | Purpose / compatibility condition |
@@ -402,12 +495,17 @@ separation between those two. Sandbox separation from both is mandatory.
 | ProtectHome=yes/PrivateTmp | Hide account homes and isolate temporary namespace; no bind of trmd home. |
 | DevicePolicy/DeviceAllow | Daemon may use KVM only alongside ACL; cgroup device policy is a second check, not a substitute for ACL. Broker PrivateDevices hides host devices entirely. |
 | PrivateDevices=no on daemon | Required for actual /dev/kvm; bridge receives only this host device via its sandbox. |
-| RestrictAddressFamilies | Daemon local RPC only. Broker filesystem Unix RPC plus direct outbound mTLS. AF_UNIX must be denied in bridge seccomp, not in daemon. No TCP/abstract listener allowed by broker policy. |
-| ProtectKernel*/ProtectClock/ControlGroups | No global sysctl/module/log/time/cgroup changes. No privileged bypass. |
-| ProtectProc/ProcSubset | Reduce cross-UID proc exposure inside service; not a host-wide hidepid change. Verify Node/process identity introspection works. |
+| RestrictAddressFamilies | Daemon local RPC only. Broker filesystem Unix RPC plus direct outbound mTLS. Bridge AF_UNIX target policy is unresolved against the pinned control implementation; no deny profile is runnable yet. No TCP/abstract listener allowed by broker policy. |
+| ProtectClock/ControlGroups | No time/cgroup changes; no capabilities. Kernel-module restriction is provided by no CAP_SYS_MODULE; mount-producing ProtectKernelModules also needs nested bwrap compatibility proof before addition. |
+| Proc visibility | No ProtectProc/ProcSubset/ProtectKernelTunables/ProtectKernelLogs/ProtectKernelModules in launcher ancestry until proved compatible: locked proc overmounts can prevent userns private proc mounting. Cross-UID DAC/capability checks still apply; bridge requires private PID/proc. |
 | RestrictRealtime/LockPersonality | Prevent RT abuse and ABI switching; verify compatibility. |
-| KillMode=control-group | DEV unit stop must reap its descendants, never LIVE; service shutdown may be destructive to DEV attempts and must record uncertainty first. |
+| KillMode=process on daemon | Preserve detached runner hosts across daemon restart, as required by core contract. Reconcile surviving sandbox/cgroup identities; do not claim unit stop tears them down. Broker may use control-group after proving it owns no guest descendants. |
 | Delegate=no | Service cannot write arbitrary host cgroups. Per-attempt cgroup ownership needs a separately reviewed constrained root/systemd helper; unavailable today. |
+
+After=systemd-timesyncd.service is ordering only, not a sync/5-second guarantee.
+Broker must continuously verify trusted time health and suspend on uncertainty or
+steps; if startup ordering uses time-sync.target/systemd-time-wait-sync it still
+needs runtime monitoring. That exact implementation is a GO blocker.
 
 Do NOT add MemoryDenyWriteExecute (Node/V8 JIT), RestrictNamespaces=yes or a broad
 SystemCallFilter that breaks bwrap/QEMU before compatibility proof. NNP does not
@@ -422,7 +520,7 @@ start/wait/stop/reconcile. This is the required shape, not a claim it exists:
 
 ```text
 /opt/honeybee-exec-dev/bwrap/0.12.0/bwrap
- --unshare-all --die-with-parent --new-session --cap-drop ALL
+ --unshare-all --unshare-user --unshare-cgroup --die-with-parent --new-session --cap-drop ALL
  --disable-userns --assert-userns-disabled
  --clearenv
  --setenv PATH /usr/sbin:/usr/bin:/sbin:/bin
@@ -433,7 +531,7 @@ start/wait/stop/reconcile. This is the required shape, not a claim it exists:
  --proc /proc --dev /dev --dev-bind /dev/kvm /dev/kvm
  --tmpfs /tmp --tmpfs /run --tmpfs /home
  --tmpfs /var/lib/honeybee-exec-dev
- --tmpfs /var/lib/honeybee-exec-dev-data
+ --tmpfs /var/lib/honeybee-exec-dev-store
  --tmpfs /var/lib/honeybee-exec-dev-broker
  --tmpfs /etc/honeybee-exec-dev/credentials
  --tmpfs /run/credentials
@@ -457,7 +555,9 @@ install paths unchanged. Dispatch stateDir is `/state`; its host mapping is the
 owner-created private attempt directory, not the management root. Existing base
 state/input population and repeat wait/stop/reconcile mapping need reviewed code.
 
-`--unshare-all` includes network, PID, user, IPC, UTS and cgroup namespaces; no
+`--unshare-all` requests network/PID/IPC/UTS and only tries user/cgroup namespaces.
+Explicit `--unshare-user --unshare-cgroup` make those mandatory; unsupported means
+refuse, never fall back. `--disable-userns` requires explicit --unshare-user. No
 `--share-net` fallback. Private `/proc` must enumerate only sandbox processes.
 `--dev` creates synthetic devices; `/dev/kvm` is the only real host device. No
 host /dev, /sys, cgroup, socket or account mount. Bridge seccomp must deny AF_UNIX
@@ -471,6 +571,28 @@ all alternate paths to secrets, credential copies, owner/data/recovery and homes
 No service HOME, management FD, recovery FD, key FD or socket may cross. Close all
 non-allowlisted FDs at broker -> daemon -> runner -> bwrap -> bridge boundaries;
 private stdin carries dispatch/fence. Verify FD listings and CLOEXEC exclusions.
+
+### Pinned bridge incompatibilities: additional STOP gates
+
+Read-only inspection after audit confirms `packages/runner/bridge.py` uses
+AF_UNIX for run-control.sock and `ops/guest/guest.py` uses QMP unix:qmp.sock.
+The stop socket creation precedes its OSError handler. Denying AF_UNIX currently
+breaks stop. A path-only exception requires a new approved policy and enforcement
+mechanism (seccomp alone cannot inspect pathname memory safely); changing to pipes
+requires Ur Bench changes and new pins. No exception is granted here.
+
+The pinned start spawns a detached `_worker` and returns; wait/stop read saved
+PID/birth and inspect /proc/pid plus pidfd. A fresh private PID namespace per
+subcommand cannot work: start's namespace dies and kills its worker; later
+namespaces cannot resolve the saved identities. The argv shape above is only the
+filesystem/isolation target and **must not be used once per subcommand**. Required
+resolution: one long-lived per-attempt sandbox/supervisor owning worker/QEMU,
+with later control operations entering the same validated user/PID namespace and
+private proc (or a revised pinned bridge). Hold namespace FDs and lifecycle
+identity in trusted supervision, not caller paths. Re-prove --die-with-parent
+against the long-lived owner, start return, leader exits and daemon re-adoption.
+Do not implement a shortcut that sees missing PIDs and calls teardown complete.
+Exact supervisor and enter argv, FD mapping and API are absent and block GO.
 
 Each attempt needs its own protected systemd/cgroup-v2 identity binding. Existing
 pgid stop tests are insufficient after --new-session/PID namespaces. Stop protocol,
@@ -523,25 +645,56 @@ Expected inactive (is-active exit3), disabled (is-enabled exit1); absent units m
 report not-found, record explicitly. Verify `systemctl show` ControlGroup and
 trusted process inventory find no DEV survivors. Never signal guessed PIDs or
 unrelated sessions. Units did not exist initially; quarantine only newly created
-unit files, never an existing file. Commands below require destinations absent:
+unit files, never an existing file. Commands below require destinations absent. `-n` prevents overwriting a prior
+quarantine; if ORIGINAL still exists afterward, stop (a skipped move is not success):
 
 ```sh
-mv -T /etc/systemd/system/honeybee-exec-dev-broker.service /etc/systemd/system/honeybee-exec-dev-broker.service.T2-rollback
-mv -T /etc/systemd/system/honeybee-exec-dev-daemon.service /etc/systemd/system/honeybee-exec-dev-daemon.service.T2-rollback
+test ! -e /etc/systemd/system/honeybee-exec-dev-broker.service.T2-rollback && test ! -L /etc/systemd/system/honeybee-exec-dev-broker.service.T2-rollback || exit 1
+mv -nT /etc/systemd/system/honeybee-exec-dev-broker.service /etc/systemd/system/honeybee-exec-dev-broker.service.T2-rollback
+test ! -e /etc/systemd/system/honeybee-exec-dev-broker.service && test ! -L /etc/systemd/system/honeybee-exec-dev-broker.service || exit 1
+stat /etc/systemd/system/honeybee-exec-dev-broker.service.T2-rollback
+test ! -e /etc/systemd/system/honeybee-exec-dev-daemon.service.T2-rollback && test ! -L /etc/systemd/system/honeybee-exec-dev-daemon.service.T2-rollback || exit 1
+mv -nT /etc/systemd/system/honeybee-exec-dev-daemon.service /etc/systemd/system/honeybee-exec-dev-daemon.service.T2-rollback
+test ! -e /etc/systemd/system/honeybee-exec-dev-daemon.service && test ! -L /etc/systemd/system/honeybee-exec-dev-daemon.service || exit 1
+stat /etc/systemd/system/honeybee-exec-dev-daemon.service.T2-rollback
 systemctl daemon-reload
 systemctl list-unit-files 'honeybee-exec-dev-*.service'
 setfacl -x u:honeybee-exec-dev /dev/kvm
 getfacl -p /dev/kvm
-mv -T /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules.T2-rollback
+test ! -e /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules.T2-rollback && test ! -L /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules.T2-rollback || exit 1
+mv -nT /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules.T2-rollback
+test ! -e /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules && test ! -L /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules || exit 1
+stat /etc/udev/rules.d/70-honeybee-exec-dev-kvm.rules.T2-rollback
 udevadm control --reload-rules
-mv -T /var/lib/honeybee-exec-dev /var/lib/honeybee-exec-dev.T2-rollback
-mv -T /var/lib/honeybee-exec-dev-data /var/lib/honeybee-exec-dev-data.T2-rollback
-mv -T /var/lib/honeybee-exec-dev-broker /var/lib/honeybee-exec-dev-broker.T2-rollback
-mv -T /var/lib/honeybee-exec-dev-state /var/lib/honeybee-exec-dev-state.T2-rollback
-mv -T /var/lib/honeybee-exec-dev-home /var/lib/honeybee-exec-dev-home.T2-rollback
-mv -T /etc/honeybee-exec-dev /etc/honeybee-exec-dev.T2-rollback
-mv -T /opt/honeybee-exec-dev /opt/honeybee-exec-dev.T2-rollback
-stat -c '%a %U:%G %n' /var/lib/honeybee-exec-dev.T2-rollback /var/lib/honeybee-exec-dev-data.T2-rollback /var/lib/honeybee-exec-dev-broker.T2-rollback /var/lib/honeybee-exec-dev-state.T2-rollback /var/lib/honeybee-exec-dev-home.T2-rollback /etc/honeybee-exec-dev.T2-rollback /opt/honeybee-exec-dev.T2-rollback
+test ! -e /var/lib/honeybee-exec-dev.T2-rollback && test ! -L /var/lib/honeybee-exec-dev.T2-rollback || exit 1
+mv -nT /var/lib/honeybee-exec-dev /var/lib/honeybee-exec-dev.T2-rollback
+test ! -e /var/lib/honeybee-exec-dev && test ! -L /var/lib/honeybee-exec-dev || exit 1
+stat /var/lib/honeybee-exec-dev.T2-rollback
+test ! -e /var/lib/honeybee-exec-dev-store.T2-rollback && test ! -L /var/lib/honeybee-exec-dev-store.T2-rollback || exit 1
+mv -nT /var/lib/honeybee-exec-dev-store /var/lib/honeybee-exec-dev-store.T2-rollback
+test ! -e /var/lib/honeybee-exec-dev-store && test ! -L /var/lib/honeybee-exec-dev-store || exit 1
+stat /var/lib/honeybee-exec-dev-store.T2-rollback
+test ! -e /var/lib/honeybee-exec-dev-broker.T2-rollback && test ! -L /var/lib/honeybee-exec-dev-broker.T2-rollback || exit 1
+mv -nT /var/lib/honeybee-exec-dev-broker /var/lib/honeybee-exec-dev-broker.T2-rollback
+test ! -e /var/lib/honeybee-exec-dev-broker && test ! -L /var/lib/honeybee-exec-dev-broker || exit 1
+stat /var/lib/honeybee-exec-dev-broker.T2-rollback
+test ! -e /var/lib/honeybee-exec-dev-state.T2-rollback && test ! -L /var/lib/honeybee-exec-dev-state.T2-rollback || exit 1
+mv -nT /var/lib/honeybee-exec-dev-state /var/lib/honeybee-exec-dev-state.T2-rollback
+test ! -e /var/lib/honeybee-exec-dev-state && test ! -L /var/lib/honeybee-exec-dev-state || exit 1
+stat /var/lib/honeybee-exec-dev-state.T2-rollback
+test ! -e /var/lib/honeybee-exec-dev-home.T2-rollback && test ! -L /var/lib/honeybee-exec-dev-home.T2-rollback || exit 1
+mv -nT /var/lib/honeybee-exec-dev-home /var/lib/honeybee-exec-dev-home.T2-rollback
+test ! -e /var/lib/honeybee-exec-dev-home && test ! -L /var/lib/honeybee-exec-dev-home || exit 1
+stat /var/lib/honeybee-exec-dev-home.T2-rollback
+test ! -e /etc/honeybee-exec-dev.T2-rollback && test ! -L /etc/honeybee-exec-dev.T2-rollback || exit 1
+mv -nT /etc/honeybee-exec-dev /etc/honeybee-exec-dev.T2-rollback
+test ! -e /etc/honeybee-exec-dev && test ! -L /etc/honeybee-exec-dev || exit 1
+stat /etc/honeybee-exec-dev.T2-rollback
+test ! -e /opt/honeybee-exec-dev.T2-rollback && test ! -L /opt/honeybee-exec-dev.T2-rollback || exit 1
+mv -nT /opt/honeybee-exec-dev /opt/honeybee-exec-dev.T2-rollback
+test ! -e /opt/honeybee-exec-dev && test ! -L /opt/honeybee-exec-dev || exit 1
+stat /opt/honeybee-exec-dev.T2-rollback
+stat -c '%a %U:%G %n' /var/lib/honeybee-exec-dev.T2-rollback /var/lib/honeybee-exec-dev-store.T2-rollback /var/lib/honeybee-exec-dev-broker.T2-rollback /var/lib/honeybee-exec-dev-state.T2-rollback /var/lib/honeybee-exec-dev-home.T2-rollback /etc/honeybee-exec-dev.T2-rollback /opt/honeybee-exec-dev.T2-rollback
 usermod --lock honeybee-exec-dev
 usermod --expiredate 1 honeybee-exec-dev
 passwd --status honeybee-exec-dev
@@ -573,3 +726,14 @@ driver-cell sandbox.ts; Project handoff/65313bbb.md and prior session response.
 Queen's early review requires the privilege/KVM choices above remain Tormod's call.
 The handoff says human per-run approval was selected; stale design text saying
 choice pending is not new authority for implementation. T1 owns that layer.
+
+T2 validation: npm run check, npm run build, npm run v2:check and 18 targeted
+core/bridge/files/capture/owner-authority tests passed; git diff --check passed.
+An initial mistyped test filename was corrected to the existing focused targets.
+
+Independent audit: Claude Opus 5.5 session a4efa8fd reviewed c66f0136 and found
+12 issues. This revision fixes the argv flag, store/Node pin/HOME paths,
+proc-overmount template, runner survival and overwrite safety; it records KVM
+uaccess, AF_UNIX and long-lived PID/supervisor incompatibilities as explicit STOP
+gates. That audit is not approval of this revised SHA. Queen must review it.
+No executable startup plan or sandbox acceptance is claimed.
