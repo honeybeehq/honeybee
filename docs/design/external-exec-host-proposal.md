@@ -301,3 +301,132 @@ Current validation is source/price review, cost/budget arithmetic and diff check
 Proposal check: Claude Opus5.5 session a4efa8fd independently passed58667a57
 as proposal-only (report15133b82); follow-up clarifies service mount/quota/log
 accounting, CPU/RAM/tmpfs limits and OS-image verification. No host was touched.
+
+## Netcup-4 consideration and partial inventory (2026-10-22 04:21UTC)
+
+Tormod selected netcup-4 for consideration and requested rolling it out of the
+satellite pool; subsequent read-only investigation found a **nested-KVM blocker**.
+[netcup's official FAQ](https://www.netcup.com/en/helpcenter/documentation/server)
+says SVM is disabled and cannot be activated. The KVM guest exposes16CPU flag rows
+with svm0/vmx0. Private Cell /dev means host device/ACLs remain unknown; it does
+not negate the independent CPU/provider blocker. Stop before drain/account work;
+see [the blocked netcup4 plan](external-exec-netcup4-plan.md).
+
+Netcup-4:16guestvCPU EPYC9645,62GiB RAM/43GiB available;2.0Troot/1.6Tfree,
+10%inodeuse;167Cell directories;49active/229all-history bee records including
+one transient probe (now stopped). Userapiaryd/hive/nectard enabled;21Nectar envs,
+12serving; other app/database listeners and pool/trigger routing need owner
+manifests. No purchase or provisioning. Project `provisioning/server-inventory.md`
+retains partial metal-1/3 evidence; full seven-host scan was cancelled on redirect.
+
+The following current three-metal comparison supersedes the earlier partial
+metal-1/3 ordering. No new host choice or mutation follows from it.
+
+## Three-metal comparison — read-only, 2026-10-22 04:25–04:27UTC
+
+**Candidate ranking only; no drain or provisioning authority.** Tormod chose an
+executor outside agent-controlled administration. All three metals currently host
+agents and fail that bar. Reusing one is conditional on a new explicit host choice,
+complete owner-approved evacuation and removal of every agent/mesh/provider/admin
+route, trusted reimage and human-only FIDO2 administration, then independent
+negative proofs. Sharing an admin-controlled mesh host is not an equivalent cheap
+option. No requirement is weakened by the capacity ranking below. Metal-3 LIVE
+and DEPLOY HOLD remain unchanged; no cleanup, key, user, service or pool change.
+
+Source S1: existing strict SSH to trmd@100.116.212.82 (metal-1),04:25:18/32UTC;
+S2: authenticated fresh Cell probe9e31f894-91e4-45d5-8d0f-6a98bfe6fe8a on
+metal-2,04:26:18UTC; S3: this run's metal-3 native shell,04:25:17/31UTC. CPU
+model/topology for S1/S3 was also sampled04:17UTC. All source outputs are preserved
+with the proof. No other Cell contents were opened; direct directory counts only.
+Nectar counts came from parent read-only `ls` at04:25:31–43UTC (no TTL extension).
+
+| Host / source | CPU / RAM total,free,available | Disk/inode headroom | Agent load (counts, not content) | KVM in actual probe context |
+| --- | --- | --- | --- | --- |
+| metal-1 /S1 |EPYC9454P48cores/96threads;251GiB,41GiB,212GiB |root1.8T/300Gfree83%used;54028039freeinodes/116858880,54%used. /boot735Mfree/64806freeinodes; EFI256M. /tmp is on root, with overlay mounts sharing that same capacity, not extra disks. |478Cell dirs;443active lifecycle records=430stopped+9idle+4running (13live). `--all` hit1000rows, so historical totals are capped/incomplete. |Identity uid/gid maps0→0fullrange,hostdevtmpfs /dev; /dev/kvm root:kvm0660,ACL rw/rw/---;SVM96/96,vmx0;kvm/kvm_amd loaded,nested1;detect-virt reportsnone(exit1),ASUSK14PA-U12. |
+| metal-2 /S2 |EPYC7401P24cores/48threads;251GiB,37GiB,193GiB |root1.8T/1.1Tfree35%used;96281536freeinodes/116539392,18%used. /tmp109Gfree but only125202/1048576inodesfree (89%used). /boot856Mfree/64768freeinodes. |472Cell dirs;215active+381archived=596records;581stopped+10idle+5running (15live including1transientprobe,nowstopped). |Identity maps0→0fullrange,hostdevtmpfs /dev; /dev/kvm root:kvm0660,ACL rw/rw/---;SVM48/48,vmx0;kvm/kvm_amd loaded,nested1;detect-virt none(exit1),GIGABYTEMZ31-AR0-00. |
+| metal-3 /S3 |EPYC7502P32cores/64threads;251GiB,11GiB,197GiB |root875G/22Gfree98%used;33285238freeinodes/58383504,43%used. /tmp111Gfree,398448/1048576inodesfree (63%used). /boot856Mfree/64768freeinodes. |464Cell dirs;238active=211stopped+19idle+8running (27live). `--all`575records=337archived+238active,548stopped+20idle+7running at adjacent sample. |Identity maps0→0fullrange,hostdevtmpfs /dev; /dev/kvm root:kvm0660+ACLmaskrw,no nameduser;SVM64/64,vmx0;kvm/kvm_amd loaded,nested1;detect-virt none(exit1),ASUSKRPA-U16. |
+
+Identity UID maps, unovermounted devtmpfs and NNP0 establish that these commands
+were not in the earlier remapped/synthetic-/dev Cell view. They establish probe
+context, not a secure host. systemd-detect-virt reported bare metal; DMI identifies
+boards, **not provider/billing owner**. Both remain unknown. This is real host
+KVM device/CPU/module evidence on all three; no KVM ioctl, VM creation or guest
+boot was performed. Final service UID access and a real no-inference guest boot
+under its final sandbox remain mandatory. `nested=1` is a module setting, not a
+claim that an arbitrary nested guest or bridge is accepted.
+
+Counts fluctuate under concurrent work. Cell directory counts are not migration
+sizes; archived/stopped bees remain durable and may still be addressed. Running
+and idle both count as live runtimes; neither silence nor lifecycle-active means
+work has finished. S2includes the probe it then stopped; do not subtract a Cell
+or history record because its runtime ended. S1`--all` capped1000 is not an
+exhaustive evacuation ledger; owner needs a complete supported export/pagination.
+
+| Host | Nectar sample | Other observed dependencies | trmd reach / limitations |
+| --- | --- | --- | --- |
+| metal-1 |18envs:12serving,2stopped,2crashed,2expired |Userapiaryd/nectard enabled; hiveunit disabled despite connected live daemon. Two enabled GitHub runners `honeybeehq-apiary.metal-1-a/b`; systemPollinate,Docker,PostgreSQL,LXD,sockets/bridges and cron; many app/database listeners. Unit enablement is not a per-process inventory. |SSHid trmd1001 onlytrmdgroup; getentsudo listsdigitech,kvmgroup empty; trmdsudoers file missing. NNP0/CapEff0. No effective sudo/polkit/other-user/SSH/provider/Docker/socket audit, so **not proven unprivileged**. |
+| metal-2 |17envs:12serving,5stopped |Userapiaryd,hive.v2,nectard running; cron/tailscaled running; loopback5432 and many app listeners. Probe's narrow unit filter does not establish absence of CI,Docker,LXD,other users or Pollinate elsewhere; polCLI unavailable. |id trmd1001 includes sudo,kvm,docker; sudoers file28bytes0440root:root(contents not read). NNP0/CapEff0. Membership+metadata are reach indicators, not an executed privilege test. |
+| metal-3 |36envs:12serving,4warmdev,18stopped,2crashed |Userapiaryd,hive,nectard/sweep; Docker,PostgreSQL,cron,tailscale enabled; many app listeners and Android-like5037 port (ownership unverified); existing Ur Bench pinned install/labs. Six old labunit entriesbad, not repaired. |Accountdb id trmd1001 includes sudo,kvm,docker; current long-lived tool process groups27/1001. sudoers28bytes0440root:root(contents not read). NNP0/CapEff0. Old group/FD/cache state may differ; no privilege actions performed. |
+
+Nectar `ls` showed real port-backed serving status, not ownership/data manifests.
+Names/URLs are in the evidence for owners; database contents, private configs and
+Cell files were not read. Global placement groups, Pollinate triggers/cursors,
+external clients, shared provider/tailnet administration, app data sizes and
+existing invoices remain unknown on every node. No secret-bearing configs were
+opened. Nectar aliases are `trmd-metal-1/2`; short `metal-1/2` returned E_NOT_FOUND,
+then the actual host aliases resolved. Do not interpret lookup failure as no envs.
+
+### Cost to clear and recommendation
+
+1. **Metal-2 is the provisional lowest-disruption existing candidate**, because it
+   has1.1Tfree and fewer active records than metal-1 without the latter's positively
+   observed CI/LXD/Pollinate dependencies. That is not proof those workloads are
+   absent onmetal-2. Its472Cells,215active records,15sampled live runtimes,12serving
+   previews and database/app listeners all need owner-approved disposition. Its
+   /tmp89%inode use is an operational warning, not permission for agent cleanup.
+   No reliable labor/€quote is possible before full owner/data/trigger manifests.
+2. **Metal-1 is next by capacity but has the clearest extra migration burden**:
+  478Cells,443active records,13live,12serving previews plus two CI runners, LXD,
+   Pollinate, Docker and PostgreSQL. Those are shared production/developer duties,
+   not disposable background load. Its300Gfree is capacity, not reserved space
+   for preserving1.4T of existing data or a fresh256GiB service volume in place.
+3. **Metal-3 is last**:98%rootused,27live runtimes,464Cells,12serving+4warm envs,
+   databases/containers and existing KVM labs. It is a poor migration destination
+   and retains the explicit LIVE/DEPLOY HOLD. Host conversion would need a new
+   human scope decision, not an inferred authorization from this inventory.
+
+What would move, and where: owners could place non-KVM agent/preview work on
+reserved netcup-1/2/3/4capacity (netcup-4 **stays in pool**) and update preview
+links; KVM-dependent work/CI needing it requires a remaining metal or a separately
+approved KVM host, never a netcup nested-KVM workaround. Databases, volumes, queued
+jobs/cursors and CI/LXD users need exact sized destinations and recovery proof
+before any source is cleared. Proposed destinations are not allocations, capacity
+promises or migration instructions. No move, drain or host setting change occurred.
+
+A fresh AX42 avoids clearing these shared services at the previously sourced
+€99/month+€49setup beforetax. Existing invoice/sunk-contract costs and migration
+labor are unknown, so **metal-2 is not established as cheapest in money**. Queen
+should ask Tormod whether to investigate dedicating metal-2 under the full
+privilege/reimage gates, or buy the independent AX42 to avoid that disruption.
+This inventory alone selects neither and cannot make a shared metal meet the
+outside-agent-administration bar. Full source/T8/fresh FINAL Ur Bench pins still
+apply on whichever host is chosen.
+
+### Read-only method and probe wind-down
+
+S1 used existing SSH with BatchMode=yes,StrictHostKeyChecking=yes,ForwardAgent=no;
+no keys changed. Metal-2's unknown SSH host key was not bypassed: one authenticated
+agent_spawn used harnesscodex/modelgpt-6.1-sol and a fresh Cell. It ran only reads,
+reported counts and stopped its exact own session9e31f894-91e4-45d5-8d0f-6a98bfe6fe8a;
+parent agent_get verified runtime=stopped. Four earlier netcup probes likewise
+stopped; no other process was stopped/archived. Fresh probe Cells/history remain,
+so “read-only” excludes the explicitly requested spawn/own-stop control effects.
+
+Commands: `lscpu`, `free -h`, `df -h -l`, `df -i -l`, `systemd-detect-virt`,
+`cat /proc/self/{uid_map,gid_map}`, own status/mountinfo, CPUflag count,
+`ls -l /dev/kvm`, `getfacl`, module presence/nested read, DMIstrings,
+`id trmd`, `getent group sudo kvm`, sudoers **stat metadata only**, direct Cell-dir
+count, `hive list [--all] --json` piped to counts-only parser, filtered system/user
+unit names, `ss -lntu` without process arguments, and `nectar ls` local/remote.
+No sudo, guest boot, service restart, cleanup, credential/account creation or
+other Cell-content inspection. Real stdout/command receipts accompany the proof.
