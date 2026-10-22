@@ -122,8 +122,8 @@ metal-3 measured875G root,807G used,24G free (98%); /tmp638250/1048576 inodes us
 (61%). Those are host pressure readings, **not a measurement of Ur Bench guest
 size**. Its1913-file bridge/runtime inventory is not a whole VM-disk capacity
 estimate. Leave that host alone. Both options reserve a **256GiB dedicated ext4
-service filesystem mounted at /var/lib**, with all owner/store/broker/state roots
-as siblings there; OS has at least40GiB separately. For A, mirrored512GB disks
+service filesystem mounted at /srv/honeybee-exec**, with all owner/store/broker/state roots
+as siblings there (parent0700, owner0700, store/v2 separate from owner); OS has at least40GiB separately. For A, mirrored512GB disks
 provide roughly476GiB before partition overhead; for B use44GiB OS+256GiB service
 within the quoted300GiB. These allocations are proposed, not measured/installed.
 
@@ -137,6 +137,16 @@ within the quoted300GiB. These allocations are proposed, not measured/installed.
 | **Aggregate hard service quota** |**192GiB** |**1200000** |
 | Filesystem reserve, inaccessible to service quota growth |64GiB |At least20% free |
 
+Use ext4's on-disk user/project quota features from initial format
+(`mkfs.ext4 -O quota,project`, with user and project quota accounting enabled and
+at least2000000 inodes). This is an option specification, not a command to run on
+an unknown device. Final human plan names the verified empty partition/LV, exact
+quota-type settings and mount flags for the installed e2fsprogs version. Set the
+service UID hard aggregate quota to192GiB/1200000inodes; each attempt subtree has
+an inherited project ID and32GiB/200000inode hard project quota. Prove writes
+fail at both levels and no uncharged sibling/bind target exists. OS /var/lib
+stays on the OS filesystem, never this volume.
+
 Human sets kernel-enforced UID/project quotas (including runner/state/journal writes),
 per-attempt byte/inode limits and bounded tmpfs/cgroup memory; verify exhaustion
 fails closed. Never treat sparse qcow virtual capacity as reserved physical space.
@@ -145,6 +155,22 @@ admission; otherwise resize/reprice or lower concurrency, never silently borrow
 reserve. Halt admission below64GiB filesystem free or20% free inodes, on quota
 exhaustion or on missing measurements. OS stops admission below20GiB free. Fresh
 format needs at least2million inodes; verify `df -i`, not just a format default.
+
+Per attempt use cgroup-v2 CPUQuota=200% (two CPUs), MemoryHigh=3GiB,
+MemoryMax=4GiB, MemorySwapMax=0 and TasksMax=256; maximum2 attempts. These are
+initial proposed limits to validate with the rebuilt base, not measured needs.
+Broker/daemon combined budget2GiB RAM and1CPU; reserve at least8GiB RAM for OS
+and page cache even on B's32GiB. Each sandbox gets at most256MiB combined tmpfs
+and10000tmpfs inodes, included in its memory limit; bound mount size/nr_inodes
+and memory together, never trust mount capacity alone. If bwrap cannot express
+the inode bound, the reviewed supervisor must create the bounded mount; missing
+enforcement blocks admission. OOM/CPU throttling must settle uncertainty safely.
+DEV journald namespace has SystemMaxUse=1GiB and RuntimeMaxUse=256MiB, within the
+8GiB logging/recovery budget; the namespace's persistent files are on the service
+volume via an explicit reviewed mapping and accounting project. No host journald
+change. Separate30day security audit cannot silently rotate away on namespace cap;
+suspend admission before required retention exceeds its budget. Final installer
+must prove byte/inode/tmpfs/log exhaustion without affecting OS logs.
 
 A32GiB per-run cap includes disk growth, artifacts and1GiB evidence (raw capture
 16MiB/stream); no run exceeds30minutes, maximum2 active globally. Retain security
@@ -217,7 +243,12 @@ root script**: missing signed artifacts/installer mean STOP, never invent a comm
 3. On the human-only device, enrol/verify the physical FIDO2 SSH key with UV+touch
    and offline human-held recovery. Use provider trusted console/rescue access to
    verify initial host SSH fingerprint out of band and install Debian13 x86-64.
-   Mirror the two disks, allocate >=40GiB OS and256GiB /var/lib with quotas and
+   Before installation, verify the Debian13 amd64 ISO's SHA512 against its signed
+   SHA512SUMS and verify SHA512SUMS.sign with an independently trusted Debian CD
+   signing key; record image version/hash and signing fingerprint. Follow
+   [Debian image verification](https://www.debian.org/CD/verify). Do not trust a
+   filename, provider image label or checksum downloaded without signature trust.
+   Mirror the two disks, allocate >=40GiB OS and256GiB /srv/honeybee-exec with quotas and
    >=2million inodes; keep remaining capacity unallocated/reserved. No shared
    home, mount, backup key or control-plane token from metal-3/Studio is imported.
 4. Create the human admin account using console, install only its verified public
@@ -252,3 +283,7 @@ root script**: missing signed artifacts/installer mean STOP, never invent a comm
 No steps above were executed. The historical check/build/v2check/18 targeted tests
 passed before this document-only retarget; they prove none of this future host.
 Current validation is source/price review, cost/budget arithmetic and diff check.
+
+Proposal check: Claude Opus5.5 session a4efa8fd independently passed58667a57
+as proposal-only (report15133b82); follow-up clarifies service mount/quota/log
+accounting, CPU/RAM/tmpfs limits and OS-image verification. No host was touched.

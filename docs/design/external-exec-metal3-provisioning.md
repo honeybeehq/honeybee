@@ -1,3 +1,10 @@
+> **SUPERSEDED — DO NOT PROVISION METAL-3.** Tormod chose a dedicated executor
+> host/VM outside agent administration at04:05Z on2026-10-22. All metal-3
+> preparation steps1–3 are DROPPED. This file is historical inspection evidence;
+> its earlier GO/WAIT language does not authorize any host action. See
+> [the current host proposal](external-exec-host-proposal.md). Metal-3 and LIVE
+> remain unchanged. No purchase/account/provisioning follows from the proposal.
+
 # metal-3 DEV external-exec provisioning plan
 
 Review target: T2, 2026-10-22. **STARTUP NOT EXECUTABLE; READ-ONLY STEP0 GO ONLY.** This document
