@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
-import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, copyFileSync, existsSync, fsyncSync, linkSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { CoreError } from "./types.ts";
 
@@ -137,7 +137,9 @@ function restoreStore(storePath: string, receiptPath: string): { preservedPath: 
     const copied = facts(replacement);
     if (digest(readFileSync(temporary)) !== receipt.sha256 || copied.schemaVersion !== receipt.schemaVersion || copied.ddlDigest !== receipt.ddlDigest) throw new StoreBackupError("Copied backup differs from receipt");
     sync(temporary);
-    renameSync(storePath, preservedPath);
+    sync(storePath);
+    linkSync(storePath, preservedPath);
+    sync(dirname(resolve(storePath)));
     for (const suffix of ["-wal", "-shm"]) if (existsSync(`${storePath}${suffix}`)) renameSync(`${storePath}${suffix}`, `${preservedPath}${suffix}`);
     renameSync(temporary, storePath);
     sync(dirname(resolve(storePath)));
