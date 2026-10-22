@@ -198,6 +198,7 @@ export type DeployOutcome = {
 };
 
 export type RollbackOptions = {
+  buildPinOverride?: string;
   hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">;
   root?: string;
   by?: string;
@@ -780,6 +781,7 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
   await assertRollbackStoreCompatible(root, join(root, target.sha));
   if (currentLink && currentLink !== currentSha) await retainExternalCurrent(root, currentLink, currentSha, now, by);
 
+  assertBuildPin(root, await observeBuild(join(root, target.sha)), options.buildPinOverride);
   await backupBeforeRuntimeSwap(root, options.hooks, join(root, currentSha), currentSha, log);
   const v2 = runtimeUsesV2(root);
   if (v2) await persistV2RuntimeMode(root);
@@ -789,6 +791,7 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
     at: now().toISOString(),
     artifactHash: target.artifactHash,
     by,
+    ...(options.buildPinOverride ? { buildPinOverride: options.buildPinOverride } : {}),
   };
   log(`deploy: rolled back ${currentSha.slice(0, 12)} → ${target.sha.slice(0, 12)}`);
   try {

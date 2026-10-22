@@ -884,5 +884,11 @@ test("source deploy enforces desired revision before staging and binds override 
     assert.equal(result.entry.buildPinOverride, "fixture source exception");
     assert.equal(await currentDeployTarget(root), second);
     assert.equal(log.restarts.length, 0);
+    writeNodeRuntimeState(buildPinFile(root), { schemaVersion: 1, sourceRevision: second, target: native });
+    await assert.rejects(rollbackDeploy({ root, hooks }), BuildPinMismatchError);
+    assert.equal(await currentDeployTarget(root), second);
+    const rolled = await rollbackDeploy({ root, hooks, buildPinOverride: "fixture rollback exception" });
+    assert.equal(rolled.entry.buildPinOverride, "fixture rollback exception");
+    assert.equal(await currentDeployTarget(root), first);
   });
 });

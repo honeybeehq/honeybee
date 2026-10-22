@@ -4,7 +4,8 @@ import { appendFileSync, existsSync, readFileSync, realpathSync } from "node:fs"
 import { dirname, join, resolve } from "node:path";
 import { writeNodeRuntimeState, nodePinFile } from "./nodeRuntime.ts";
 import { readBuildIdentity, type BuildIdentity } from "./release/buildIdentity.ts";
-import { hashDirectoryTree } from "./deploySettle.ts";
+import { createHash } from "node:crypto";
+import { readdir, readFile } from "node:fs/promises";
 
 export interface BuildPin {
   schemaVersion: 1;
@@ -66,7 +67,7 @@ export async function observeBuild(installation: string): Promise<ObservedBuild 
   const identity = readBuildIdentity(join(installation, "dist", "build-identity.json"));
   const marker = readOptionalJson(join(installation, ".honeybee-deployment.json")) as { identity?: { artifact?: { sha256?: string } } } | null;
   return { sourceRevision: identity.sourceRevision, target: identity.target,
-    distHash: await hashDirectoryTree(join(installation, "dist")),
+    distHash: await measureBuildDistHash(join(installation, "dist")),
     artifactSha256: marker?.identity?.artifact?.sha256?.replace(/^sha256:/, "") ?? null };
 }
 
@@ -138,4 +139,19 @@ export async function setOfflineBuildPin(root: string, pin: BuildPin | null, soc
     });
     writeNodeRuntimeState(buildPinFile(root), pin === null ? null : parseBuildPin(pin));
   });
+}
+
+export async function measureBuildDistHash(dist: string): Promise<string> {
+  const files: string[] = [];
+  const walk = async (relative: string): Promise<void> => {
+    for (const entry of (await readdir(join(dist, relative), { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+      const path = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await walk(path);
+      else if (entry.isFile() && path !== ".build-stamp.json" && path !== ".build-repack.json") files.push(path);
+    }
+  };
+  await walk("");
+  const hash = createHash("sha256");
+  for (const path of files) hash.update(path).update("\0").update(await readFile(join(dist, path))).update("\0");
+  return hash.digest("hex");
 }

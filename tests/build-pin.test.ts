@@ -81,3 +81,15 @@ test("offline pin bootstrap serializes ownership writes and refuses a reachable 
   await setOfflineBuildPin(f.root, null, socketPath);
   assert.equal(readBuildPin(f.root), null);
 });
+
+import { measureBuildDistHash } from "../src/buildPin.ts";
+import { hashDirectoryTree } from "../src/deploySettle.ts";
+
+test("daemon-safe dist measurement retains the deploy owner's hash format", async () => {
+  const f = await fixture(), dist = join(f.stage, "dist");
+  await writeFile(join(dist, ".build-stamp.json"), "excluded metadata");
+  await writeFile(join(dist, ".build-repack.json"), "excluded metadata");
+  await mkdir(join(dist, "nested"));
+  await writeFile(join(dist, "nested", "payload"), "nested bytes");
+  assert.equal(await measureBuildDistHash(dist), await hashDirectoryTree(dist));
+});
