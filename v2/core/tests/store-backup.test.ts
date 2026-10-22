@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -97,4 +99,23 @@ test("owning connection includes committed WAL rows in the backup without releas
   snapshot.close();
   assert.throws(() => restoreStoreOffline(path, receipt.receiptPath), /locked/);
   store.close();
+});
+
+test("restore installs by atomic replacement while current path still names the preserved inode", (t) => {
+  const { path } = fixture();
+  const receipt = backupStoreOffline(path, "fixture");
+  const rename = fs.renameSync;
+  let observed = false;
+  t.mock.method(fs, "renameSync", (from: fs.PathLike, to: fs.PathLike) => {
+    if (String(to) === path) {
+      assert.ok(fs.existsSync(path), "current path must never disappear during restore");
+      assert.equal(fs.statSync(path).nlink, 2, "current inode must already be preserved");
+      observed = true;
+    }
+    return rename(from, to);
+  });
+  syncBuiltinESMExports();
+  try { restoreStoreOffline(path, receipt.receiptPath); }
+  finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+  assert.equal(observed, true);
 });
