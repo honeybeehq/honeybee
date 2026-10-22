@@ -1,4 +1,4 @@
-import { assertRunningBuildPin, buildReport, buildPinFile, captureRunningBuild, parseBuildPin, readBuildPin, type ObservedBuild } from "../../../src/buildPin.ts";
+import { buildReport, buildPinFile, captureRunningBuild, parseBuildPin, readBuildPin, type ObservedBuild } from "../../../src/buildPin.ts";
 import { writeNodeRuntimeState } from "../../../src/nodeRuntime.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
@@ -801,7 +801,6 @@ export class HiveDaemon {
     const runtimeTarget = `${process.platform}-${process.arch}`;
     if (BUILD_IDENTITY.target !== runtimeTarget) throw new Error(`daemon: build target ${BUILD_IDENTITY.target} differs from runtime target ${runtimeTarget}; install an artifact built for this node`);
     this.runningBuild = await captureRunningBuild(process.argv[1]!, BUILD_IDENTITY);
-    assertRunningBuildPin(join(dirname(this.cfg.dataDir), "runtime"), this.runningBuild);
     mkdirSync(this.cfg.dataDir, { recursive: true, mode: 0o700 });
     const sockets = placeDaemonSockets(this.cfg.dataDir, this.cfg.socketPath, { runnerSocketDir: this.runnerSocketDir });
     this.cfg = { ...this.cfg, socketPath: sockets.socketPath };

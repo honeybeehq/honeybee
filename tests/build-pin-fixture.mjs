@@ -30,6 +30,7 @@ async function commit(marker) {
 }
 const first = await commit('pinned build'), second = await commit('different build');
 let daemon = null;
+let failNextActivation = false;
 async function stop() {
   if (!daemon || daemon.exitCode !== null || daemon.signalCode !== null) return;
   const child = daemon;
@@ -54,8 +55,13 @@ const hooks = {
     await writeFile(join(artifactDir, 'dist', 'build-identity.json'), JSON.stringify({ schemaVersion: 1, component: 'honeybee', version: '0.0.1', packageVersion: '0.0.1', sourceRevision: sha, target: `${process.platform}-${process.arch}`, dirty: false, release: false }));
     return { artifactDir };
   },
-  async restartDaemon() {
+  async restartDaemon(context) {
     await stop();
+    const failed = failNextActivation;
+    if (failed) {
+      failNextActivation = false;
+      await context.restorePrevious();
+    }
     daemon = spawn(process.execPath, [join(root, 'current', 'dist', 'cli.js'), 'v2', 'daemon', 'run', '--data-dir', dataDir], { env, stdio: ['ignore', 'pipe', 'pipe'] });
     daemon.stdout.on('data', chunk => { void appendFile(daemonLog, chunk); });
     daemon.stderr.on('data', chunk => { void appendFile(daemonLog, chunk); });
@@ -63,8 +69,11 @@ const hooks = {
       if (daemon.exitCode !== null) throw new Error(`fixture daemon exited ${daemon.exitCode}; see ${daemonLog}`);
       try {
         const { stdout } = await exec(process.execPath, [join(root, 'current', 'dist', 'cli.js'), 'v2', 'build-report', '--data-dir', dataDir, '--json'], { env, timeout: 2000 });
-        if (JSON.parse(stdout).running) return;
-      } catch {}
+        if (JSON.parse(stdout).running) {
+          if (failed) throw Object.assign(new Error("fixture injected activation failure after restoring previous daemon"), { fixtureFailure: true });
+          return;
+        }
+      } catch (error) { if (error.fixtureFailure) throw error; }
       await new Promise(r => setTimeout(r, 40));
     }
     throw new Error(`fixture readiness timed out; see ${daemonLog}`);
@@ -76,6 +85,15 @@ try {
   await cli('build-pin', 'set', first, `${process.platform}-${process.arch}`);
   const agrees = await cli('build-report');
   assert.equal(agrees.verdict, 'agrees');
+  await cli('build-pin', 'set', second, `${process.platform}-${process.arch}`);
+  failNextActivation = true;
+  await assert.rejects(deployVersion({ root, repoRoot, ref: second, hooks }), /fixture injected activation failure/);
+  const recovered = await cli('build-report');
+  assert.equal(recovered.running.sourceRevision, first);
+  assert.equal(recovered.desired.sourceRevision, second);
+  assert.equal(recovered.verdict, 'drift');
+  await log('PASS: failed pinned activation restored the previous daemon; desired future pin reports drift without preventing recovery.');
+  await cli('build-pin', 'set', first, `${process.platform}-${process.arch}`);
   try {
     await deployVersion({ root, repoRoot, ref: second, hooks });
     assert.fail('mismatched build accepted');
