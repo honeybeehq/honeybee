@@ -754,3 +754,19 @@ test("a custom environment data directory refuses deploy before the no-store sho
     }
   });
 });
+
+test("custom config store paths refuse before recording a store-absence receipt", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    await commit("custom-config-store");
+    const dataDir = join(root, "..", "v2");
+    const guarded = { ...hooks, async buildArtifact(context: BuildArtifactContext) {
+      await mkdir(dataDir, { recursive: true });
+      await writeFile(join(dataDir, "config.json"), JSON.stringify({ storePath: join(dataDir, "other.sqlite3") }));
+      return hooks.buildArtifact(context);
+    } };
+    await assert.rejects(deployVersion({ root, repoRoot, hooks: guarded }), /custom store\/socket configuration.*refusing swap/);
+    assert.equal(await currentDeployTarget(root), null);
+    assert.equal(existsSync(join(root, ".store-absence")), false);
+    assert.deepEqual(log.restarts, []);
+  });
+});

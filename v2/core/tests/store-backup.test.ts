@@ -152,3 +152,18 @@ test("VACUUM failure removes its partial snapshot and returns a typed backup fai
   finally { db.close(); }
   assert.deepEqual(readdirSync(`${path}.backups`), []);
 });
+
+test("a failed install keeps the current database and removes the restore temporary file", (t) => {
+  const { path, dir } = fixture();
+  const receipt = backupStoreOffline(path, "fixture");
+  t.mock.method(fs, "renameSync", () => { throw new Error("fixture install refused"); });
+  syncBuiltinESMExports();
+  try { assert.throws(() => restoreStoreOffline(path, receipt.receiptPath), /fixture install refused/); }
+  finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
+  assert.ok(fs.existsSync(path));
+  assert.equal(readdirSync(dir).some(name => name.includes(".restore-")), false);
+  const db = new DatabaseSync(path);
+  assert.equal(db.prepare("SELECT value FROM proof").get()?.value, "before");
+  assert.equal(db.prepare("PRAGMA journal_mode").get()?.journal_mode, "delete");
+  db.close();
+});

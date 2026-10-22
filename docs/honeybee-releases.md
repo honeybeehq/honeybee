@@ -263,3 +263,8 @@ A Linux fixture proof (after building) is
 archived old source, migrates with the candidate binary, restores through the CLI,
 and reopens with the old core to compare logical rows. It starts and stops only
 its own fixture daemon by PID, and retains its receipt and daemon log under `/tmp`.
+
+This backup/restore change must ship with T4's rollback schema guard
+(commit `b9721c1a05248b839695b28bd19e3db56c2d4553`), which refuses both manual
+and automatic rollback to an older schema. T5 alone does not make rollback safe.
+DEPLOY HOLD remains until the combined candidate passes Queen's release gate.

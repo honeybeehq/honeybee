@@ -83,6 +83,11 @@ export function backupStore(db: DatabaseSync, storePath: string, sourceBuild: st
   }
 }
 
+function unlinkIfPresent(path: string): void {
+  try { unlinkSync(path); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+}
+
 function prune(directory: string): void {
   const receipts: Array<{ path: string; receipt: StoreBackupReceipt }> = [];
   for (const name of readdirSync(directory).filter(name => name.endsWith(".json"))) {
@@ -102,13 +107,13 @@ function prune(directory: string): void {
     const newest = !schemas.has(item.receipt.schemaVersion);
     schemas.add(item.receipt.schemaVersion);
     if (index < 10 || newest) continue;
-    unlinkSync(item.path);
-    unlinkSync(item.receipt.backupPath);
+    unlinkIfPresent(item.path);
+    unlinkIfPresent(item.receipt.backupPath);
   }
   for (const name of readdirSync(directory)) {
     if (!/^\d+-[0-9a-f-]{36}\.(sqlite3|partial|json\.partial)$/.test(name)) continue;
     const base = name.replace(/\.(sqlite3|partial|json\.partial)$/, "");
-    if (!existsSync(join(directory, `${base}.json`))) unlinkSync(join(directory, name));
+    if (!existsSync(join(directory, `${base}.json`))) unlinkIfPresent(join(directory, name));
   }
   sync(directory);
 }
@@ -143,13 +148,16 @@ function restoreStore(storePath: string, receiptPath: string): { preservedPath: 
   const temporary = `${storePath}.restore-${randomUUID()}`;
   let replacement: DatabaseSync | undefined;
   try {
-    db.exec("PRAGMA busy_timeout=0; PRAGMA synchronous=FULL; PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT; PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE");
+    db.exec("PRAGMA busy_timeout=0; PRAGMA synchronous=FULL; PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT");
+    if (db.prepare("PRAGMA wal_checkpoint(TRUNCATE)").get()?.busy !== 0) throw new StoreRestoreError("Store checkpoint is busy");
+    if (db.prepare("PRAGMA journal_mode=DELETE").get()?.journal_mode !== "delete") throw new StoreRestoreError("Store could not leave WAL mode");
     copyFileSync(receipt.backupPath, temporary);
     chmodSync(temporary, 0o600);
     if (digest(readFileSync(temporary)) !== receipt.sha256) throw new StoreBackupError("Copied backup differs from receipt");
     sync(temporary);
     replacement = new DatabaseSync(temporary);
-    replacement.exec("PRAGMA journal_mode=DELETE; PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT");
+    if (replacement.prepare("PRAGMA journal_mode=DELETE").get()?.journal_mode !== "delete") throw new StoreRestoreError("Replacement must use DELETE journal mode");
+    replacement.exec("PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT");
     const copied = facts(replacement);
     if (copied.schemaVersion !== receipt.schemaVersion || copied.ddlDigest !== receipt.ddlDigest) throw new StoreBackupError("Copied backup differs from receipt");
     linkSync(storePath, preservedPath);
@@ -158,7 +166,11 @@ function restoreStore(storePath: string, receiptPath: string): { preservedPath: 
     renameSync(temporary, storePath);
     sync(dirname(resolve(storePath)));
     return { preservedPath, schemaVersion: receipt.schemaVersion, lossWindow: "Writes made after the backup are discarded." };
-  } finally { try { db.close(); } finally { replacement?.close(); } }
+  } finally {
+    try { db.close(); } finally {
+      try { replacement?.close(); } finally { unlinkIfPresent(temporary); }
+    }
+  }
 }
 
 export function restoreStoreOffline(storePath: string, receiptPath: string): { preservedPath: string; schemaVersion: number; lossWindow: string } {

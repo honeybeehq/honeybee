@@ -502,6 +502,13 @@ async function backupBeforeRuntimeSwap(root: string, hooks: Pick<DeployHooks, "b
   const dataDir = resolve(root, "..", "v2");
   if (process.env.HIVE_V2_DATA_DIR?.trim() && resolve(process.env.HIVE_V2_DATA_DIR) !== dataDir) throw new Error("deploy: custom HIVE_V2_DATA_DIR requires an explicit coordinated store backup owner; refusing swap");
   const storePath = join(dataDir, "core.sqlite3");
+  const configPath = join(dataDir, "config.json");
+  if (existsSync(configPath)) {
+    const config: unknown = JSON.parse(await readFile(configPath, "utf8"));
+    if (!config || typeof config !== "object" || Array.isArray(config)
+      || ("storePath" in config && config.storePath !== storePath)
+      || ("socketPath" in config && config.socketPath !== join(dataDir, "hived.sock"))) throw new Error("deploy: custom store/socket configuration requires a coordinated backup owner; refusing swap");
+  }
   if (!existsSync(storePath)) {
     const directory = join(root, ".store-absence");
     await mkdir(directory, { recursive: true, mode: 0o700 });
