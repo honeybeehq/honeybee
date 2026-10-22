@@ -142,7 +142,10 @@ Use ext4's on-disk user/project quota features from initial format
 at least2000000 inodes). This is an option specification, not a command to run on
 an unknown device. Final human plan names the verified empty partition/LV, exact
 quota-type settings and mount flags for the installed e2fsprogs version. Set the
-service UID hard aggregate quota to192GiB/1200000inodes; each attempt subtree has
+service UID hard quota to191GiB/1150000inodes, plus a separate root-journald
+project quota of1GiB/50000inodes (aggregate192GiB/1200000inodes). Do not claim
+project quotas are hierarchical: the shared service UID bounds all per-attempt
+projects, while root-journald has its separate disjoint allowance. Each attempt subtree has
 an inherited project ID and32GiB/200000inode hard project quota. Prove writes
 fail at both levels and no uncharged sibling/bind target exists. OS /var/lib
 stays on the OS filesystem, never this volume.
