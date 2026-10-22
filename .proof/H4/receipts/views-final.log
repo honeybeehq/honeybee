@@ -1,0 +1,28 @@
+✔ listBeeViewRows batches the same authoritative view, runtime, flags, and lifecycle filtering (18.896981ms)
+✔ list views preserve latest generations, flags, ordering and replay across long histories (110.162571ms)
+✔ mirror.1: live rows carry exactly the declared keys — bees (view/bee/runtime), templates, tracks (22.707193ms)
+✔ mirror.2: value-level snapshot — a deterministic store serializes to the frozen mirror document (12.406801ms)
+✔ mirror.3: template/track audit kinds are exactly the declared mirror kinds with the declared payloads (13.648342ms)
+✔ mirror limits invalidates a discarded remote observation with no local baseline (10.479151ms)
+✔ mirror dismissal formats freeze a real terminal row for both reader capabilities (10.803868ms)
+✔ spec01.1: send to a bee with no live runtime enqueues send_wake in the same transaction (19.96332ms)
+✔ spec01.2: send to a deleted bee fails bee-not-found; archived bee auto-unarchives (Q3) (12.755794ms)
+✔ spec01.3: a message undelivered at crash is delivered exactly once to the next generation (14.205357ms)
+✔ spec01.4: stop for generation 1 no-ops after revival to generation 2 (12.260522ms)
+✔ spec01.5: crash mid-command — on boot the command replays and settles idempotently (13.535713ms)
+✔ spec01.6: reboot reconciliation marks every stale runtime stopped(machine_restart), never failed (15.262873ms)
+✔ spec01.7: state update for a stale generation is audited and ignored (10.897178ms)
+✔ spec01.8: lifecycle transitions outside B1's graph throw (12.189405ms)
+✔ spec01.9: unknown flag write throws; the four known flags set/clear with causes (12.359219ms)
+✔ spec01.10: retry exhaustion on spawn sets spawn_failed and stops retrying (12.329706ms)
+✔ spec01.11: derived reads — stopped bee is reachable and waiting-for-you iff unread output exists (12.244918ms)
+✔ spec01.12: two writer connections — second fails loudly, store stays consistent (12.424637ms)
+✔ spec01.13: audit rows exist for every write — replaying audit reproduces state (20.865242ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 409.874964

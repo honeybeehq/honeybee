@@ -360,6 +360,7 @@ export const RPC_ERROR_CODES = [
   "account_credential_invalid",
   /** The account's credential is past expiry with no refresh path on this node (a leased copy, or a central chain the daemon cannot rotate). */
   "account_credential_expired",
+  "credential_file_damaged",
   /** `account.unpause` by a caller that does not hold the pause (`details.heldBy` names the holder); pass `force` to take it over. */
   "account_pause_owned",
   /** The account's harness differs from the bee's agent (spawn / swap). */

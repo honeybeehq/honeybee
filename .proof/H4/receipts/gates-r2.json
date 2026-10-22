@@ -1,0 +1,64 @@
+{
+  "base": "f542745066bff7c7864738cf9fd0195cdf55e692",
+  "check": 0,
+  "v2:check": 0,
+  "build": 0,
+  "npm test": 1,
+  "daemon initial": 1,
+  "daemon remaining90": 0,
+  "counts": {
+    "core-r2": {
+      "tests": 617,
+      "pass": 617,
+      "fail": 0,
+      "skipped": 0
+    },
+    "harness-r2": {
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "skipped": 0
+    },
+    "driver-r2": {
+      "tests": 163,
+      "pass": 163,
+      "fail": 0,
+      "skipped": 0
+    },
+    "driver2-r2": {
+      "tests": 309,
+      "pass": 287,
+      "fail": 0,
+      "skipped": 22
+    },
+    "accounts-r2": {
+      "tests": 76,
+      "pass": 75,
+      "fail": 0,
+      "skipped": 1
+    },
+    "daemon-r2-suite": {
+      "tests": 773,
+      "pass": 770,
+      "fail": 2,
+      "skipped": 1
+    },
+    "daemon-r2-remaining": {
+      "tests": 710,
+      "pass": 706,
+      "fail": 0,
+      "skipped": 4
+    }
+  },
+  "newLabs": {
+    "queenScenarios": 20,
+    "holdPolicy": true,
+    "real60secondWakeWatch": true,
+    "readOnlyParity": true
+  },
+  "baselineFailures": [
+    "legacy descendant reaping timeout",
+    "two sandbox delivery fixture path constraints"
+  ],
+  "deploy": "HOLD"
+}

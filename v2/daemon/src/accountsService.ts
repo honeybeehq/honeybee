@@ -241,10 +241,10 @@ export type PickOutcome =
  * token was blanked, or a central chain the daemon cannot rotate), `present`
  * (valid now or refreshable).
  */
-export type CredentialState = "present" | "absent" | "invalid" | "expired";
+export type CredentialState = "present" | "absent" | "invalid" | "expired" | "damaged";
 
 /** Typed refusal codes shared by explicit spawn, allocator claims, swap and the runtime-start hold. */
-export type AccountRefusalCode = "account_lease_revoked" | "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired" | "account_unavailable";
+export type AccountRefusalCode = NonNullable<MirrorAccountRow["attention"]>["code"];
 
 export type AccountReadiness =
   | { ready: true }
@@ -2088,8 +2088,16 @@ export class AccountsService {
 
   private claudeDocumentState(raw: string | null): CredentialState {
     if (raw === null) return "absent";
+    if (raw.trim().length === 0) return "damaged";
     const parsed = parseClaudeCredentials(raw);
-    if (!parsed) return "invalid";
+    if (!parsed) {
+      try {
+        const document: unknown = JSON.parse(raw);
+        if (document !== null && typeof document === "object" && !Array.isArray(document) && (Object.keys(document).length === 0 || "claudeAiOauth" in document)) return "damaged";
+      } catch {}
+      return "invalid";
+    }
+    if (parsed.accessToken.trim().length === 0 || !Number.isFinite(parsed.expiresAt) || parsed.expiresAt <= 0) return "damaged";
     return parsed.expiresAt > this.now() || hasRefreshToken(parsed) ? "present" : "expired";
   }
 
@@ -2115,6 +2123,10 @@ export class AccountsService {
       return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };
     }
     switch (this.credentialState(account)) {
+      case "damaged": {
+        const error = this.store.getAccountLimits(account.id)?.error;
+        return { ready: false, code: "credential_file_damaged", message: `account ${account.id}: credential file damaged; run hive account login ${account.id}${error?.startsWith("credential_file_damaged:") ? ` (${error})` : ""}` };
+      }
       case "absent":
         if (native) return { ready: false, code: "account_credential_missing", message: this.nativeSignInMessage(account, "has no sign-in on this computer") };
         return { ready: false, code: "account_credential_missing", message: `account ${account.id} has no credential; log in with: hive account login ${account.id}` };
@@ -2218,7 +2230,8 @@ export class AccountsService {
   /** The mirror shape of an account row: the store row plus the derived health (never stored). */
   mirrorRow(account: AccountRow): MirrorAccountRow {
     const { native: _native, ...row } = presentAccountLease(account);
-    return { ...row, credentialHealth: this.credentialHealthOf(account), loginDueAt: loginDueAtOf(account), nativeLogin: this.nativeDescription(account) };
+    const readiness = this.credentialReadiness(account);
+    return { ...row, credentialHealth: this.credentialHealthOf(account), loginDueAt: loginDueAtOf(account), nativeLogin: this.nativeDescription(account), attention: readiness.ready ? null : { code: readiness.code, message: readiness.message } };
   }
 
   /**
@@ -2274,7 +2287,7 @@ export class AccountsService {
     if (readiness.some(row => row.ready)) return null;
     const refusals = readiness.filter((row): row is Extract<AccountReadiness, { ready: false }> => !row.ready);
     if (refusals.some(row => row.code === "account_lease_revoked" || row.reason === "lease_unknown")) return "lease_needs_operator";
-    if (refusals.some(row => ["account_auth_needed", "account_credential_missing", "account_credential_invalid", "account_credential_expired"].includes(row.code))) return "credential_login_required";
+    if (refusals.some(row => ["account_auth_needed", "account_credential_missing", "account_credential_invalid", "account_credential_expired", "credential_file_damaged"].includes(row.code))) return "credential_login_required";
     if (refusals.some(row => row.code === "account_paused")) return "paused";
     return "unavailable";
   }
@@ -3195,13 +3208,19 @@ export class AccountsService {
             return { readable: false, unreadableReason: settled && !usable ? "auth_failed" : "provider_error", error: error.message };
           }
         }
-        let credential = await this.freshestClaudeCredential(account);
+        let refusal: string | null = null;
+        let credential = await this.freshestClaudeCredential(account, undefined, reason => { refusal = reason; });
         if (!credential) {
+          if (refusal) {
+            const damaged = this.claudeDocumentState(readIfFile(join(account.homePath, ".credentials.json"))) === "damaged";
+            return { readable: false, unreadableReason: "provider_error", error: `${damaged ? "credential_file_damaged" : "credential_source_unconfirmed"}: ${refusal}; current live chain must be recovered before refreshing` };
+          }
           return { readable: false, unreadableReason: "auth_expired", error: "no OAuth token found in home, keychain, or vault" };
         }
-        if (credential.expiresAt <= this.now()) {
+        if (credential.expiresAt <= this.now() || credential.accessToken.trim().length === 0) {
           if (account.source === "leased") return { readable: false, unreadableReason: "auth_expired", error: "Leased access expired; request renewal from its authority." };
-          const refreshed = await this.refreshClaudeCredential(account);
+          const damagedHome = this.claudeDocumentState(readIfFile(join(account.homePath, ".credentials.json"))) === "damaged";
+          const refreshed = await this.refreshClaudeCredential(account, 0, damagedHome ? 0 : undefined);
           if (refreshed.kind === "ok") credential = refreshed.credential;
           else if (refreshed.kind === "live_runtime") {
             return { readable: false, unreadableReason: "refresh_deferred", error: "OAuth token expired; a healthy running Claude owns refresh for this account" };
@@ -3216,7 +3235,9 @@ export class AccountsService {
           }
         }
         const usage = await this.fetchers.claudeUsage(credential.accessToken);
-        return parseClaudeUsage(usage, credential.subscriptionType ?? null);
+        const result = parseClaudeUsage(usage, credential.subscriptionType ?? null);
+        if (result.readable) await this.repairDamagedClaudeHome(account, credential);
+        return result;
       }
       case "codex": {
         if (this.codexCredentials.enabled(account)) {
@@ -3287,40 +3308,99 @@ export class AccountsService {
     }
   }
 
-  /**
-   * The freshest claude OAuth credential for the account: the HOME's
-   * .credentials.json and Keychain item (the live chain, refreshed on use)
-   * and the vault snapshot, by expiresAt. Location is the account's own home
-   * — no cross-home candidate pool, no identity arbitration (one account =
-   * one home in v2).
-   */
-  private async freshestClaudeCredential(account: AccountRow, strictKeychain?: KeychainState): Promise<ClaudeCredential | null> {
+  private async repairDamagedClaudeHome(account: AccountRow, verified: ClaudeCredential): Promise<void> {
+    if (!this.mayRepairClaudeHome(account)) return;
+    const path = join(account.homePath, ".credentials.json");
+    if (this.claudeDocumentState(readIfFile(path)) !== "damaged") return;
+    const recorded = claudeHomeIdentity(account.homePath);
+    if (!recorded) {
+      this.log(`account.credential_file_damaged account=${account.id} outcome=held reason=identity_unrecorded`);
+      return;
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const identity = await Promise.race([
+      this.fetchers.claudeIdentity(verified.accessToken).catch(() => null),
+      new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), this.cfg.accounts.limitsFetchTimeoutMs); }),
+    ]).finally(() => { if (timer) clearTimeout(timer); });
+    if (!identity || identity.accountUuid !== recorded.accountUuid || recorded.organizationUuid !== null && identity.organizationUuid !== recorded.organizationUuid) {
+      this.log(`account.credential_file_damaged account=${account.id} outcome=held reason=identity_unconfirmed`);
+      return;
+    }
+    await withClaudeRefreshLock(account.homePath, async () => {
+      const current = this.store.getAccount(account.id);
+      if (!current || current.homePath !== account.homePath || !this.mayRepairClaudeHome(current)) return;
+      if (this.claudeDocumentState(readIfFile(path)) !== "damaged") return;
+      const material = await this.freshestClaudeCredential(current);
+      if (!material || material.accessToken !== verified.accessToken || material.refreshToken !== verified.refreshToken || material.expiresAt !== verified.expiresAt || material.expiresAt <= this.now() || material.accessToken.trim().length === 0) return;
+      const after = this.store.getAccount(current.id);
+      if (!after || after.updatedAt !== current.updatedAt || after.homePath !== current.homePath || !this.mayRepairClaudeHome(after) || this.claudeDocumentState(readIfFile(path)) !== "damaged") return;
+      const recordedAfter = claudeHomeIdentity(after.homePath);
+      if (!recordedAfter || recordedAfter.accountUuid !== recorded.accountUuid || recordedAfter.organizationUuid !== recorded.organizationUuid) return;
+      const latest = await this.freshestClaudeCredential(after);
+      if (!latest || latest.accessToken !== material.accessToken || latest.refreshToken !== material.refreshToken || latest.expiresAt !== material.expiresAt || !this.mayRepairClaudeHome(after) || this.claudeDocumentState(readIfFile(path)) !== "damaged") return;
+      const final = this.store.getAccount(after.id);
+      const finalIdentity = claudeHomeIdentity(after.homePath);
+      if (!final || final.updatedAt !== after.updatedAt || final.homePath !== after.homePath || !this.mayRepairClaudeHome(final) || finalIdentity?.accountUuid !== recorded.accountUuid || finalIdentity.organizationUuid !== recorded.organizationUuid) return;
+      atomicWriteFileSync(path, JSON.stringify(material.document));
+      this.store.touchAccount(current.id, "credential_file_damaged: repaired from verified account material");
+      this.log(`account.credential_file_damaged account=${current.id} outcome=repaired live_runtime=${this.hasLiveRuntime(current.id)}`);
+    });
+  }
+
+  private mayRepairClaudeHome(account: AccountRow): boolean {
+    return account.source !== "leased" && !this.isNative(account) && !this.authorityFor(account)?.enabled(account) && !this.authorityFor(account)?.busy(account) && !this.store.credentialAuthorityIsDemoted(account.id) && !this.store.credentialRecoveryPending(account.id) && !this.leaseWrites.has(account.id) && !this.store.activeLoginFlow(account.id) && !this.refreshBusy(account) && !this.nativeKeychainSeeds.has(account.id) && !this.ownedHomeRefusal(account, "writes into");
+  }
+
+  private async freshestClaudeCredential(account: AccountRow, strictKeychain?: KeychainState, onRefusal?: (reason: "live_chain_ambiguous" | "snapshot_refresh_unproven") => void): Promise<ClaudeCredential | null> {
     if (this.authorityFor(account)?.enabled(account)) {
       const document = this.authorityFor(account)!.document(account);
       const credential = parseClaudeCredentials(JSON.stringify(document));
       if (!credential) return null;
       return { ...credential, document, oauth: document.claudeAiOauth as Record<string, unknown> };
     }
-    const candidates: ClaudeCredential[] = [];
-    const push = (raw: string | null) => {
-      const parsed = parseClaudeCredentials(raw);
-      if (!parsed || !raw) return;
+    const candidates: Array<ClaudeCredential & { source: "home" | "keychain" | "vault" }> = [];
+    const push = (raw: string | null, source: "home" | "keychain" | "vault") => {
+      if (!raw) return;
       try {
         const document = JSON.parse(raw) as Record<string, unknown>;
         const oauth = document.claudeAiOauth;
         if (!oauth || typeof oauth !== "object" || Array.isArray(oauth)) return;
-        candidates.push({ ...parsed, document, oauth: oauth as Record<string, unknown> });
+        const fields = oauth as Record<string, unknown>;
+        const parsed = parseClaudeCredentials(raw) ?? (source !== "vault" && typeof fields.refreshToken === "string" && fields.refreshToken.trim().length > 0 ? {
+          accessToken: typeof fields.accessToken === "string" ? fields.accessToken : "",
+          refreshToken: fields.refreshToken,
+          expiresAt: typeof fields.expiresAt === "number" && Number.isFinite(fields.expiresAt) ? fields.expiresAt : 0,
+        } : null);
+        if (!parsed || (parsed.accessToken.trim().length === 0 || !Number.isFinite(parsed.expiresAt) || parsed.expiresAt <= 0) && !hasRefreshToken(parsed)) return;
+        candidates.push({ ...parsed, document, oauth: oauth as Record<string, unknown>, source });
       } catch {
-        // parseClaudeCredentials already rejects malformed documents; defensive only.
       }
     };
-    push(readIfFile(join(account.homePath, ".credentials.json")));
-    push(strictKeychain
+    const homeRaw = readIfFile(join(account.homePath, ".credentials.json"));
+    const keychainRaw = strictKeychain
       ? strictKeychain.status === "present" ? strictKeychain.raw : null
-      : await this.keychainReader(account.homePath).catch(() => null));
-    push(readIfFile(join(this.vaultDirOf(account), ".credentials.json")));
-    candidates.sort((a, b) => b.expiresAt - a.expiresAt);
-    return candidates[0] ?? null;
+      : await this.keychainReader(account.homePath).catch(() => null);
+    push(homeRaw, "home");
+    push(keychainRaw, "keychain");
+    push(readIfFile(join(this.vaultDirOf(account), ".credentials.json")), "vault");
+    const liveChains = candidates.filter(candidate => candidate.source !== "vault" && hasRefreshToken(candidate));
+    const keychain = liveChains.find(candidate => candidate.source === "keychain");
+    const home = liveChains.find(candidate => candidate.source === "home");
+    if (keychain && home && keychain.refreshToken !== home.refreshToken && (keychain.accessToken.trim().length === 0 || keychain.expiresAt <= 0)) {
+      this.log(`account.credential_file_damaged account=${account.id} outcome=held reason=live_chain_ambiguous`);
+      onRefusal?.("live_chain_ambiguous");
+      return null;
+    }
+    const newestLive = keychain ?? home;
+    const eligible = candidates.filter(candidate => !newestLive || candidate.refreshToken === newestLive.refreshToken || candidate.source !== "vault" && !hasRefreshToken(candidate) && candidate.accessToken.trim().length > 0 && candidate.expiresAt > this.now());
+    const effectiveExpiry = (credential: ClaudeCredential) => credential.accessToken.trim().length > 0 ? credential.expiresAt : 0;
+    eligible.sort((a, b) => effectiveExpiry(b) - effectiveExpiry(a));
+    if (eligible[0]?.source === "vault" && (homeRaw !== null || keychainRaw !== null) && eligible[0].expiresAt <= this.now()) {
+      this.log(`account.credential_source_unconfirmed account=${account.id} outcome=held reason=snapshot_refresh_unproven`);
+      onRefusal?.("snapshot_refresh_unproven");
+      return null;
+    }
+    return eligible[0] ?? null;
   }
 
   private hasLiveRuntime(accountId: string): boolean {
@@ -3442,8 +3522,8 @@ export class AccountsService {
     if (runningClaude) {
       if (deferralDeadlineMs === undefined) return { kind: "live_runtime" };
       const visible = await this.freshestClaudeCredential(account);
-      if (visible && visible.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential: visible };
-      if (!visible || visible.expiresAt - this.now() > deferralDeadlineMs) return { kind: "live_runtime" };
+      if (visible && visible.accessToken.trim().length > 0 && visible.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential: visible };
+      if (!visible || visible.accessToken.trim().length > 0 && visible.expiresAt - this.now() > deferralDeadlineMs) return { kind: "live_runtime" };
     }
     let locked;
     try {
@@ -3469,8 +3549,10 @@ export class AccountsService {
     // Check for newer credentials first: re-read inside the lock — another
     // limits caller or a running Claude may have advanced the chain after
     // the first read.
-    const credential = await this.freshestClaudeCredential(account, keychain);
-    if (credential && credential.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential };
+    let refusal: string | null = null;
+    const credential = await this.freshestClaudeCredential(account, keychain, reason => { refusal = reason; });
+    if (refusal) return { kind: "temporary", detail: `credential_source_unconfirmed: ${refusal}` };
+    if (credential && credential.accessToken.trim().length > 0 && credential.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential };
     if (!credential?.refreshToken) return { kind: "no_refresh_token" };
     let result: ClaudeRefreshResult;
     try {

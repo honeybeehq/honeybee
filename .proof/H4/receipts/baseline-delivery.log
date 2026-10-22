@@ -1,0 +1,42 @@
+✔ OS-level file read outside cwd: hsr; tool-policy read UNVERIFIED (OS-level only) (147.518206ms)
+ℹ fixture max socket path bytes: 60
+ℹ SCG_READ_RESULT={"substrate":"hsr","expectedDigest":"a69476731b6bbe4a276c8b012fc2e88f532fd80be97b89c3c2af5c2870341502","observedDigest":"a69476731b6bbe4a276c8b012fc2e88f532fd80be97b89c3c2af5c2870341502","expectedHeaderSha256":"eae6f733fc479aaee6c0c6aa286b9f0993435825998e8ee267d12d79e42cdfcc","observedHeaderSha256":"eae6f733fc479aaee6c0c6aa286b9f0993435825998e8ee267d12d79e42cdfcc","readClass":"read","writeDenied":null}
+ℹ write denied: NOT APPLICABLE (unsandboxed by design)
+ℹ Claude: tool-policy read UNVERIFIED (OS-level only)
+ℹ Codex: tool-policy read UNVERIFIED (OS-level only)
+ℹ Grok: tool-policy read UNVERIFIED (OS-level only)
+ℹ Kimi: tool-policy read UNVERIFIED (OS-level only)
+ℹ Muse: tool-policy read UNVERIFIED (OS-level only)
+ℹ Agy: tool-policy read UNVERIFIED (OS-level only)
+✖ OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (0.920169ms)
+✖ OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (0.347041ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 1
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 611.24026
+
+✖ failing tests:
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (0.920169ms)
+  Error: Sandboxed Linux delivery read fixture requires a base outside private mounts with socket paths at most 103 bytes; candidate lengths: 60, 192
+      at deliveryReadFixtureBase (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/v2/daemon/tests/delivery-file-read-root.ts:13:20)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/v2/daemon/tests/delivery-file-read.test.ts:25:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (0.347041ms)
+  Error: Sandboxed Linux delivery read fixture requires a base outside private mounts with socket paths at most 103 bytes; candidate lengths: 60, 192
+      at deliveryReadFixtureBase (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/v2/daemon/tests/delivery-file-read-root.ts:13:20)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/v2/daemon/tests/delivery-file-read.test.ts:25:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)

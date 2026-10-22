@@ -315,11 +315,11 @@ test("admission.material: the credential a runtime would read is judged — a po
     seedVault(dir, "claude", "claude-b", ".credentials.json", EXPIRED_LEASED("b-vault"));
     assert.equal((await client.request<SpawnResult>("spawn", { name: "b", agent: "claude", cwd: dir, account: "claude-b" })).account, "claude-b");
     // Empty and truncated documents are invalid, not "present".
-    const empty = await rejects(() => client.request("spawn", { name: "c", agent: "claude", cwd: dir, account: "claude-c" }), "account_credential_invalid");
-    assert.match(empty.message, /not a usable claude credential/);
+    const empty = await rejects(() => client.request("spawn", { name: "c", agent: "claude", cwd: dir, account: "claude-c" }), "credential_file_damaged");
+    assert.match(empty.message, /credential file damaged/);
     await rejects(() => client.request("spawn", { name: "d", agent: "claude", cwd: dir, account: "claude-d" }), "account_credential_invalid");
     const auto = await rejects(() => client.request("spawn", { name: "auto", agent: "claude", cwd: dir, onlyAccountIds: ["claude-c", "claude-d"] }), "account_auth_needed");
-    assert.match(auto.message, /claude-c: invalid credential, claude-d: invalid credential/);
+    assert.match(auto.message, /claude-c: damaged credential, claude-d: invalid credential/);
     client.close();
   } finally {
     if (daemon) await daemon.stop();

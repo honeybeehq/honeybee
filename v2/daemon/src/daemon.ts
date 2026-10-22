@@ -735,9 +735,10 @@ export class HiveDaemon {
   private retention: CellRetentionService | null = null;
   /** Tracked filesystem readiness; no lock wait runs inside the core/store writer. */
   private readonly accountActivations = new Map<string, AccountActivationState>();
-  private accountActivationCandidates = new Map<string, { commandId: number; attempts: number }>();
+  private accountActivationCandidates = new Map<string, { commandId: number; attempts: number; enqueuedAt: number }>();
   /** Due start commands held because their account cannot authenticate here; value = the refusal code last logged. */
   private readonly runtimeStartHolds = new Map<string, string>();
+  private readonly runtimeStartProbeAt = new Map<string, { at: number; attempts: number; revision: string }>();
   /** Allocator claims refused for account readiness inside a transaction, awaiting their post-rollback fence + release. */
   private readonly refusedClaims = new Map<string, AccountAdmissionClaim>();
   private gatewayActivationRevision = "";
@@ -1058,6 +1059,12 @@ export class HiveDaemon {
     const unresolved = this.adoptSurvivors(store, driver);
     for (const row of unresolved) this.identityRecovery.retain({...row, since: store.runtimeIdentityUnresolvedSince(row.beeId, row.generation)});
     this.lastBoot = this.core.boot(unresolved);
+    for (const { view } of store.listBeeViewRows()) {
+      const flags = store.activeFlags(view.beeId).filter(row => row.detail.startsWith("account_credentials_unusable:") || row.detail.startsWith("runtime_start_held:"));
+      if (flags.length === 0) continue;
+      const pending = store.listCommands({ beeId: view.beeId }).some(command => command.status === "queued" && ["spawn", "revive", "send_wake"].includes(command.verb));
+      if (!pending) this.clearRuntimeStartAttention(view.beeId);
+    }
     this.identityRecoveryTimer = setInterval(() => this.retryProcessIdentities(), 1000);
     this.identityRecoveryTimer.unref();
     this.sweepBeeTmpAtBoot(store);
@@ -1178,7 +1185,7 @@ export class HiveDaemon {
       if (this.stopping) return;
       this.tick();
       if (!this.stopping) {
-        this.scheduleTick(nextTickDelayMs(this.store?.hasBootingRuntime() ? Math.min(BOOTING_TICK_MS, this.cfg.tickMs) : this.cfg.tickMs));
+        this.scheduleTick(nextTickDelayMs(this.runtimeStartHolds.size > 0 ? Math.min(1000, this.cfg.tickMs) : this.store?.hasBootingRuntime() ? Math.min(BOOTING_TICK_MS, this.cfg.tickMs) : this.cfg.tickMs));
       }
     }, delayMs));
   }
@@ -1220,15 +1227,21 @@ export class HiveDaemon {
     const store = this.store;
     const accounts = this.accounts;
     if (!store || !accounts) return;
-    const candidates = new Map<string, { commandId: number; attempts: number }>();
+    const candidates = new Map<string, { commandId: number; attempts: number; enqueuedAt: number }>();
     for (const command of store.listDueRuntimeStartCommands()) {
       if (!candidates.has(command.beeId)) {
-        candidates.set(command.beeId, { commandId: command.id, attempts: command.attempts });
+        candidates.set(command.beeId, { commandId: command.id, attempts: command.attempts, enqueuedAt: command.enqueuedAt });
       }
     }
     this.accountActivationCandidates = candidates;
+    for (const accountId of this.runtimeStartProbeAt.keys()) if (!store.getAccount(accountId)) this.runtimeStartProbeAt.delete(accountId);
     for (const beeId of this.runtimeStartHolds.keys()) {
-      if (!candidates.has(beeId)) this.runtimeStartHolds.delete(beeId);
+      if (!candidates.has(beeId)) {
+        this.runtimeStartHolds.delete(beeId);
+        if (store.getBee(beeId)) {
+          this.clearRuntimeStartAttention(beeId);
+        }
+      }
     }
     if (candidates.size === 0) {
       for (const [beeId, state] of this.accountActivations) {
@@ -1337,6 +1350,8 @@ export class HiveDaemon {
     const readiness = this.runtimeStartReadiness(account);
     const previous = this.runtimeStartHolds.get(bee.id);
     if (readiness.ready) {
+      this.clearRuntimeStartAttention(bee.id);
+      this.runtimeStartProbeAt.delete(account.id);
       if (previous !== undefined) {
         this.runtimeStartHolds.delete(bee.id);
         this.log(`runtime.start.released bee=${bee.id} account=${account.id} command=${commandId}`);
@@ -1345,9 +1360,35 @@ export class HiveDaemon {
     }
     if (previous !== readiness.code) {
       this.runtimeStartHolds.set(bee.id, readiness.code);
+      this.mustStore().touchAccount(account.id, `runtime start held: ${readiness.code}`);
       this.log(`runtime.start.held bee=${bee.id} account=${account.id} command=${commandId} code=${readiness.code} — ${readiness.message}`);
     }
+    const now = Date.now();
+    if (readiness.code === "credential_file_damaged") {
+      const revision = this.mustAccounts().credentialRevision(account);
+      const prior = this.runtimeStartProbeAt.get(account.id);
+      if (!prior || prior.revision !== revision || now >= prior.at) {
+        const attempts = prior?.revision === revision ? prior.attempts + 1 : 1;
+        this.runtimeStartProbeAt.set(account.id, { at: now + Math.min(30_000 * 2 ** Math.min(attempts - 1, 5), 15 * 60_000), attempts, revision });
+        this.log(`runtime.start.verify account=${account.id} attempt=${attempts} nextAttemptAt=${this.runtimeStartProbeAt.get(account.id)!.at}`);
+        this.mustAccounts().scheduleVerification([account.id]);
+      }
+    }
+    const command = this.accountActivationCandidates.get(bee.id);
+    if (command && now - command.enqueuedAt >= 60_000) {
+      const credential = ["credential_file_damaged", "account_auth_needed", "account_credential_missing", "account_credential_invalid", "account_credential_expired"].includes(readiness.code);
+      const kind = credential ? "auth_needed" : "resource_blocked";
+      const detail = `${credential ? "account_credentials_unusable" : "runtime_start_held"}: ${readiness.code}: ${readiness.message}`;
+      const flags = this.mustStore().activeFlags(bee.id);
+      for (const owned of flags) if (owned.flag !== kind && (owned.detail.startsWith("account_credentials_unusable:") || owned.detail.startsWith("runtime_start_held:"))) this.mustStore().clearFlag(bee.id, owned.flag, "Runtime-start refusal changed");
+      const flag = flags.find(row => row.flag === kind);
+      if (!flag || (flag.detail.startsWith("account_credentials_unusable:") || flag.detail.startsWith("runtime_start_held:")) && flag.detail !== detail) this.mustStore().setFlag(bee.id, kind, detail);
+    }
     return true;
+  }
+
+  private clearRuntimeStartAttention(beeId: string): void {
+    for (const flag of this.mustStore().activeFlags(beeId)) if (flag.detail.startsWith("account_credentials_unusable:") || flag.detail.startsWith("runtime_start_held:")) this.mustStore().clearFlag(beeId, flag.flag, "Runtime-start hold released");
   }
 
   /** A pause is placement policy, not an auth fact: a restart on a paused account is judged on its credential alone. */
@@ -6377,6 +6418,7 @@ export class HiveDaemon {
    * clears the bees' `auth_needed` flags and resumes the turns it cut off.
    */
   private credentialValidated(accountId: string, by: AuthRestoreSource): CredentialValidatedReceipt | null {
+    if (by !== "limits_probe") this.runtimeStartProbeAt.delete(accountId);
     const store = this.mustStore();
     const account = store.getAccount(accountId);
     if (!account || !this.authResume) return null;
@@ -6397,6 +6439,7 @@ export class HiveDaemon {
     } catch (err) {
       this.log(`auth.resume.error account=${accountId} by=${by} err=${err instanceof Error ? err.message : String(err)}`);
     }
+    this.requestTick();
   }
 
   /**
@@ -7101,7 +7144,7 @@ export class HiveDaemon {
       const allocation = data?.allocation as { retryAt?: number | null } | undefined;
       const retry = typeof data?.retryAt === "number" ? data.retryAt : allocation?.retryAt ?? null;
       const code = error instanceof RpcError || error instanceof LeaseRefusal ? error.code : null;
-      const detail = code === "credential_login_required" || code === "account_auth_needed" || code === "account_credential_missing" || code === "account_credential_invalid" || code === "account_credential_expired"
+      const detail = code === "credential_login_required" || code === "account_auth_needed" || code === "account_credential_missing" || code === "account_credential_invalid" || code === "account_credential_expired" || code === "credential_file_damaged"
         ? "credential_login_required" : code === "account_paused" ? "paused" : code === "account_lease_revoked" || code === "lease_unavailable" || code === "lease_unsupported"
           ? "lease_needs_operator" : code === "account_wait" ? null : code === "account_unavailable" ? accounts.recoveryWaitDetail(bee.agent) : "unavailable";
       store.waitQuotaRecovery(id, this.quotaRetryAt(row.beeId, retry), detail === null ? "account_wait" : "account_unavailable", detail);

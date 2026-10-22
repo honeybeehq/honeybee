@@ -12,7 +12,7 @@ export function deriveBeeView(
   bee: Pick<BeeRow, "lifecycle" | "lastOutputAt" | "humanOutputMode" | "humanAcknowledgementTrackingSince" | "lastHumanAcknowledgementAt" | "unansweredHumanMessage"> | null,
   runtime: RuntimeRow | null,
   flags: Flag[],
-  opts: { readCursor?: number; automaticQuotaRecovery?: boolean; deliveryConfirmations?: DeliveryConfirmation[] } = {},
+  opts: { readCursor?: number; automaticQuotaRecovery?: boolean; deliveryConfirmations?: DeliveryConfirmation[]; runtimeStartHeld?: boolean } = {},
 ): BeeView {
   if (!bee) {
     // Deleted (or never-existed) bee: unreachable — the one lifecycle that is.
@@ -36,7 +36,7 @@ export function deriveBeeView(
   const unreadOutput =
     bee.lastOutputAt != null && (opts.readCursor == null || opts.readCursor < bee.lastOutputAt);
   const stalledQuotaRecovery = opts.automaticQuotaRecovery === true && state === "stopped" && flags.includes("spawn_failed");
-  const waitingForYou = opts.deliveryConfirmations?.some(row => row.state === "held") === true || stalledQuotaRecovery || !opts.automaticQuotaRecovery && (state === "idle" || (state === "stopped" && unreadOutput));
+  const waitingForYou = !working && (flags.includes("auth_needed") || opts.runtimeStartHeld === true) || opts.deliveryConfirmations?.some(row => row.state === "held") === true || stalledQuotaRecovery || !opts.automaticQuotaRecovery && (state === "idle" || (state === "stopped" && unreadOutput));
   return {
     beeId,
     ...(opts.deliveryConfirmations?.length ? { deliveryConfirmations: opts.deliveryConfirmations } : {}),

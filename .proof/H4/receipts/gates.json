@@ -1,0 +1,67 @@
+{
+  "base": "d532471e50a7ddd82d075f1cc7afb9b3285f2123",
+  "gates": {
+    "check": 0,
+    "v2:check": 0,
+    "build": 0,
+    "npm test": 1,
+    "v2:daemon initial": 1,
+    "v2:daemon remaining90": 0
+  },
+  "counts": {
+    "v2-test": {
+      "tests": 617,
+      "pass": 617,
+      "fail": 0,
+      "skipped": 0
+    },
+    "v2-harness": {
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "skipped": 0
+    },
+    "v2-driver": {
+      "tests": 163,
+      "pass": 163,
+      "fail": 0,
+      "skipped": 0
+    },
+    "v2-driver2": {
+      "tests": 309,
+      "pass": 287,
+      "fail": 0,
+      "skipped": 22
+    },
+    "accounts-targeted": {
+      "tests": 74,
+      "pass": 73,
+      "fail": 0,
+      "skipped": 1
+    },
+    "views-final": {
+      "tests": 20,
+      "pass": 20,
+      "fail": 0,
+      "skipped": 0
+    },
+    "v2-daemon": {
+      "tests": 773,
+      "pass": 770,
+      "fail": 2,
+      "skipped": 1
+    },
+    "v2-daemon-remaining": {
+      "tests": 710,
+      "pass": 706,
+      "fail": 0,
+      "skipped": 4
+    }
+  },
+  "baselineFailures": [
+    "legacy inherited-stdout descendant-reaping timeout, same on d532",
+    "two sandbox delivery-read fixture path refusals, same on d532"
+  ],
+  "deploy": "HOLD",
+  "reviewer": "claude-opus-5-5"
+}
