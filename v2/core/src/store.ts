@@ -1,3 +1,4 @@
+import { backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
 import { HUMAN_OUTPUT_SQL, HumanOutputLedger, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
 import { automationDeliveryClass, type AutomationKind, type AutomationReference, type MailBatch, type MailBatchingPolicy } from "./types.ts";
@@ -294,6 +295,7 @@ export interface CoreStoreOptions {
    * an OS crash is allowed to lose the file. Production never sets this.
    */
   ephemeral?: boolean;
+  buildIdentity?: string;
 }
 
 export interface CreateBeeInput {
@@ -1682,6 +1684,17 @@ export class CoreStore {
         this.db.exec("PRAGMA cache_size = -8000");
       }
       this.db.exec("PRAGMA foreign_keys = ON");
+      const hasMeta = this.db.prepare("SELECT 1 FROM sqlite_master WHERE name='meta' AND type='table'").get();
+      const version = hasMeta ? this.db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value : undefined;
+      const stored = version === undefined ? 1 : Number(version);
+      if (!Number.isSafeInteger(stored) || stored < 1) throw new SchemaVersionError("schema_migration_required", "Invalid stored schema_version");
+      if (stored > SCHEMA_VERSION) throw new SchemaVersionError("schema_newer", `core store at ${this.path} is schema v${stored}; this build speaks v${SCHEMA_VERSION} — refusing to open a newer store (downgrade). Update the daemon or roll the store back.`);
+      if (stored === 29) throw new SchemaVersionError("schema_newer", "core store is schema v29 from reverted build 7374447d; restore from backup before opening with this build.");
+      const existing = this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1").get();
+      if (existing && path !== ":memory:" && stored < SCHEMA_VERSION) {
+        const sourceBuild = hasMeta ? this.db.prepare("SELECT value FROM meta WHERE key='store_build_identity'").get()?.value : undefined;
+        this.backup(String(sourceBuild ?? "unknown: legacy store has no recorded build identity"));
+      }
       this.db.exec(SCHEMA_SQL);
       const questionsDdl = String((this.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'questions'").get() as Row).sql);
       const rebuildQuestions = !questionsDdl.includes("'dismissed'") && /CHECK\s*\(\s*status\s+IN/i.test(questionsDdl);
@@ -1690,6 +1703,7 @@ export class CoreStore {
         // Version gate + explicit migrations FIRST (before any other write
         // touches possibly-old tables), atomically with the stamp.
         this.ensureSchemaVersion();
+        if (opts.buildIdentity) this.db.prepare("INSERT INTO meta(key,value) VALUES('store_build_identity',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(opts.buildIdentity);
         try { this.effectLedger.open(); this.executionLedger.open(); this.executionStarts.open(); }
         catch (error) {
           if (error instanceof CoreError) throw error;
@@ -1712,6 +1726,10 @@ export class CoreStore {
       if (err instanceof CoreError) throw err;
       throw new SecondWriterError(path, err);
     }
+  }
+
+  backup(sourceBuild: string): StoreBackupReceipt {
+    return backupStore(this.db, this.path, sourceBuild);
   }
 
   private assertQuestionMigrationForeignKeys(): void {

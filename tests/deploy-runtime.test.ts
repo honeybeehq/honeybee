@@ -1,3 +1,4 @@
+import { backupStoreOffline } from "../v2/core/src/storeBackup.ts";
 // Spec 00 (reset WP0) — versioned deploys. Exercises the full deploy state
 // machine (src/deployRuntime.ts) against a temp runtime root and a real
 // fixture git repo, with the build and daemon-restart hooks injected so no
@@ -68,6 +69,7 @@ type HookLog = {
 function fakeHooks(root: string): { hooks: DeployHooks; log: HookLog } {
   const log: HookLog = { builds: [], restarts: [] };
   const hooks: DeployHooks = {
+    async backupStore() { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); },
     async buildArtifact({ repoRoot, sha, workDir }: BuildArtifactContext) {
       log.builds.push(sha);
       const marker = (await git(repoRoot, "show", `${sha}:marker.txt`)).trim();
@@ -283,9 +285,10 @@ test("deploy from clean HEAD installs the version, retargets current, records hi
     // The daemon restart is the separate final step and already saw the new target.
     assert.equal(log.restarts.length, 1);
     assert.deepEqual(log.restarts[0], { sha, currentAtRestart: sha });
-    // No temp debris: only the version dir, the link, and the history file remain.
     const leftovers = (await readdir(root)).filter((name) => name.startsWith("."));
-    assert.deepEqual(leftovers, []);
+    assert.deepEqual(leftovers, [".store-absence"]);
+    const absence = (await readdir(join(root, ".store-absence")))[0]!;
+    assert.equal(JSON.parse(await readFile(join(root, ".store-absence", absence), "utf8")).kind, "store_absent");
   });
 });
 
@@ -689,5 +692,48 @@ test("same-sha failed activation checks displaced schema before restoring bytes 
     assert.ok(displaced);
     assert.equal(await readFile(join(root, displaced, "dist", "v2", "cli.js"), "utf8"), "var SCHEMA_VERSION = 44;\n");
     assert.deepEqual(await readDeployHistory(root), history);
+  });
+});
+
+test("backup refusal leaves current and same-revision runtime bytes untouched", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    const sha = await commit("v1");
+    await deployVersion({ root, repoRoot, hooks });
+    const before = await readFile(join(root, sha, "dist", "cli.js"), "utf8");
+    await seedReservation(root, false);
+    const originalBuild = hooks.buildArtifact;
+    const refused = { ...hooks,
+      async buildArtifact(context: BuildArtifactContext) {
+        const artifact = await originalBuild(context);
+        await writeFile(join(artifact.artifactDir, "dist", "cli.js"), "changed");
+        return artifact;
+      },
+      async backupStore() { throw new Error("backup finalization failed"); },
+    };
+    await assert.rejects(deployVersion({ root, repoRoot, hooks: refused }), /backup finalization failed/);
+    assert.equal(await currentDeployTarget(root), sha);
+    assert.equal(await readFile(join(root, sha, "dist", "cli.js"), "utf8"), before);
+    assert.equal((await readDeployHistory(root)).length, 1);
+  });
+});
+
+test("existing store requires a durable validated backup before source deploy activation", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    await commit("backup");
+    await seedReservation(root, false);
+    const missing = { ...hooks, backupStore: undefined };
+    await assert.rejects(deployVersion({ root, repoRoot, hooks: missing }), /backup owner is required/);
+    const invalid = { ...hooks, async backupStore() { const path = join(root, "receipt.json"); await writeFile(path, '{}'); return { receiptPath: path }; } };
+    await assert.rejects(deployVersion({ root, repoRoot, hooks: invalid }), /invalid store backup receipt/);
+    assert.equal(await currentDeployTarget(root), null);
+    assert.deepEqual(log.restarts, []);
+    let backupCurrent: string | null | undefined;
+    const valid = { ...hooks, async backupStore() {
+      backupCurrent = await currentDeployTarget(root);
+      return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture");
+    } };
+    await deployVersion({ root, repoRoot, hooks: valid });
+    assert.equal(backupCurrent, null);
+    assert.equal(log.restarts.length, 1);
   });
 });

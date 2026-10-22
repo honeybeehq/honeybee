@@ -842,6 +842,7 @@ export class HiveDaemon {
     // Opening the store IS the single-daemon lock (B9): a second daemon on
     // this node dies right here with SecondWriterError.
     const store = openCoreStore(this.cfg.storePath, {
+      buildIdentity: JSON.stringify(BUILD_IDENTITY),
       maxAttempts: this.cfg.maxAttempts,
       backoffBaseMs: this.cfg.backoffBaseMs,
     });
@@ -2453,6 +2454,8 @@ export class HiveDaemon {
       case "update.apiarySwap.abandon":
       case "update.apiarySwap.recover":
         return this.rpcApiarySwap(verb, params);
+      case "store.backup":
+        return this.mustStore().backup(JSON.stringify(BUILD_IDENTITY));
       case "update.status":
         return { contract: UPDATE_RECOVERY_CONTRACT, schemaVersion: SCHEMA_VERSION,
           runtimeRoot: join(dirname(this.cfg.dataDir), "runtime"), storePath: this.cfg.storePath,
