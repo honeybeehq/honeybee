@@ -257,8 +257,9 @@ root or a broken OS isolation boundary.
 1. An agent proposes a job. The selected per-attempt protocol above requires
    explicit approval in the protected Mac UI. No automatic attestor or ordinary
    bearer identity can authorize it. This path remains disabled pending proof.
-2. Apiary sends only the approved job specification over pinned mTLS. The broker
-   independently authorizes actor, ur workspace, operation and policy. Only
+2. Protected Apiary submits the signed approval and complete approved body over
+   pinned mTLS. Preparation messages are untrusted until approval is consumed.
+   The broker independently authorizes actor, ur workspace, operation and policy. Only
    urbench-v2 is allowed. No generic RPC, exec or file operations are exposed.
 3. Choose broker-built dispatch: the agent supplies no dispatch and never supplies
    or sees a fence. The broker mints a 256-bit random fence and attempt id, builds
@@ -271,8 +272,8 @@ root or a broken OS isolation boundary.
    challenge, and registers that connection. It invokes existing spawn with named
    bridge and broker-built dispatch. LocalRpcTrust, same-euid, capability, pin and
    receipt checks remain unchanged.
-5. Status/wait/stop/reconcile accept only actor/workspace-bound attempt handles.
-   They call existing authorized Honeybee operations for the recorded bee and
+5. Status/wait/stop/reconcile require fresh exact-operation approval and an
+   actor/workspace-bound attempt handle. They call existing authorized Honeybee operations for the recorded bee and
    generation; no direct guest signaling or blind retry/start. Return scoped
    status and untrusted evidence references, never fences, private paths or keys.
 
@@ -282,7 +283,18 @@ The broker refuses preparation, admission and dispatch whenever trusted time is
 unhealthy. Require an operator-configured authenticated time source and a protected
 host time-health provider reporting synchronized state, bounded uncertainty at
 most 5 seconds, no leap-unsynchronized indication and a fresh sample at most
-5 seconds old. Missing provider/sample, excessive offset, time step or backward
+5 seconds old. Use a reviewed chrony/NTS installation on both hosts, with two
+independent authenticated sources, a protected health adapter reading source
+selection, leap state, last update age and conservative root-distance/error bound
+from the time daemon. Configure polling to meet the 5-second freshness rule;
+no unauthenticated fallback. The adapter rejects disagreeing sources or an error
+bound over 5 seconds and publishes timestamped, sequence-numbered samples over a
+UID-protected local endpoint. The broker checks sample freshness with its own
+monotonic clock and compares realtime progress against it. The helper performs
+the equivalent check on the Studio. This additional Studio integration is part
+of the estimate and must pass on the installed macOS version; unsupported NTS or
+health reporting is a blocker, not permission to trust an unchecked system clock.
+Missing provider/sample, excessive offset, time step or backward
 jump suspends admission immediately and invalidates pending preparations. A
 root-owned health assertion, not a boolean from Apiary or a Cell, feeds the broker.
 Apiary/helper must also have healthy time. If the Studio cannot establish bounded
@@ -299,7 +311,7 @@ Do not revive old tokens by moving the clock backward.
 
 The replay store is protected SQLite with a single broker writer, WAL mode,
 `synchronous=FULL` and successful durable commit
-before acknowledging consumption. A unique `(approvalKeyId, nonce)` plus unique
+before acknowledging consumption. A unique `(keyId, nonce)` plus unique
 preparation ID and `(workspaceId, requestId)` enforce concurrent one-use handling.
 Power loss/crash never empties it. Keep consumed nonce rows until both
 `expiresAt + 5 seconds` and `acceptedAt + 65 seconds` have passed under healthy
@@ -536,3 +548,10 @@ is a setup gap; T1 uses the documented check/build/test commands instead.
 Queen design PASS is required before code; separate implementation review and T8
 PASS are required before enablement. This document grants no provisioning,
 security/keychain commands, sudo, bridge execution, deploy or credential access.
+
+T1 author verification on the document branch: `npm run check`, `npm run v2:check`,
+`npm run build`, `npm run v2:driver` (175 passing) and the four focused daemon
+suites (15 passing: external-authority, external-exec-rpc, external-exec-admission,
+daemon-shutdown) passed in this metal-3 Cell. `git diff --check` passed. These
+validate the unchanged source baseline and document formatting; they do not
+implement or prove the proposed approval/UI/time/isolation mechanisms.
