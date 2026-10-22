@@ -1,11 +1,28 @@
 # metal-3 DEV external-exec provisioning plan
 
-Review target: T2, 2026-10-22. **NOT EXECUTABLE / NO GO YET.** This document
+Review target: T2, 2026-10-22. **STARTUP NOT EXECUTABLE; READ-ONLY STEP0 GO ONLY.** This document
 records exact infrastructure commands for T3 and the unresolved inputs that must
 be replaced in a follow-up reviewed commit before execution. T2 ran no sudo,
 bridge, guest, service-control, credential-generation or host-change command.
-Queen GO must name the final commit; GO on this draft cannot authorize the missing
-broker, launcher, credentials or privilege-policy work. DEPLOY HOLD remains.
+Queen's review of ac3c426e grants **step0 GO (read-only) only**. Steps1–3 WAIT
+until Tormod's matrix choice explicitly names metal-3. Step4 and startup remain
+blocked on the completed plan/code proofs. Do not create even a dormant UID or
+bwrap copy before that choice; a VM choice would make host preparation waste.
+
+**Current host is not an isolation boundary.** Read-only stat shows
+`/etc/sudoers.d/trmd` is 28 bytes, root:root0440, consistent with
+`trmd ALL=(ALL) NOPASSWD:ALL` (inference from size and Queen context; contents
+were not read and sudo was not invoked). Treat unrestricted Cell root access as
+available today: Cell NNP=0 means a Cell can become root under that apparent rule.
+A service UID on this host protects nothing against that route until it closes.
+With ptrace_scope=0 a Cell also has a same-UID ptrace route into trmd shells/SSH
+sessions, including admin credentials/cached sudo and LIVE process authority.
+Any real-boundary option on this host needs ptrace_scope>=1 with no attacker-parent
+relationship **or** a separate human admin account, plus proof of the resulting
+boundary. NNP alone does not stop that lateral route. No such fix was executed.
+
+Queen GO must name the final commit and scope; no missing broker, launcher,
+credentials or privilege-policy work is authorized by this document. DEPLOY HOLD remains.
 
 ## Scope and blocking decisions
 
@@ -27,7 +44,7 @@ Before T3 executes even infrastructure changes, Tormod and Queen must settle:
 
 | Decision | Observation and cost | Required outcome |
 | --- | --- | --- |
-| Cell privilege escalation | Current native Cell tool and harness have NoNewPrivs=0, CapEff=0, uid 1001, supplementary groups 27/1001. trmd belongs to sudo. No sudo probe was run; membership alone does not prove a usable rule. | Trusted operator audits sudoers/polkit and all agent/harness-native execution paths. No available root/service-control route from Cells. |
+| Cell privilege escalation | Current native Cell tool/harness have NNP=0; trmd sudoers file is28bytes consistent with broad NOPASSWD (not read). Assume root route open. ptrace_scope=0 also permits same-UID admin/LIVE injection. | Trusted operator audits actual rules and every execution path. Close root/service-control and same-UID admin ptrace routes; ptrace_scope>=1 without attacker-parent access or separate admin account. |
 | Dedicated VM/host | Best independent boundary if trmd keeps broad sudo on metal-3; costs another isolated machine/VM, networking, KVM passthrough/nested virtualization proof and re-pinning inventory there. | New host requires a new plan; do not silently substitute it. |
 | Narrow sudo | Retains selected operational tasks, but every allowed executable, argument, writable dependency and service-control route needs review. | Exact allowlist and root-owned dependencies; separate operator-reviewed plan. |
 | Enforce NNP for every Cell | Preserves operator sudo outside Cells; must cover harness, native tools, children, alternate launchers and existing sessions. Existing sandbox.ts does not provide this universal guarantee. | A reviewed launcher change and real tests; never infer from one bwrap child. |
@@ -65,6 +82,14 @@ Cells cannot retroactively restrict the LIVE daemon or old sessions. A separate
 Cell UID breaks same-euid RPC by design, so it needs a reviewed workflow rather
 than a quick useradd. Strict DP5 requires all Cells covered, not just new ones.
 
+For every metal-3 privilege option, add the same-UID ptrace condition explicitly:
+`ptrace_scope>=1` (no Cell is an ancestor/debugger of human admin/LIVE) or move
+human administration to a separate UID with no Cell-accessible signing/exec oracle.
+Narrow sudo alone can leak cached authority/passwords through trmd sessions; NNP
+alone can be bypassed laterally by controlling an unconfined same-UID process.
+This affects LIVE authority as well as the new DEV owner. Any sysctl/admin-account
+change needs Tormod's accepted impact and an exact separately reviewed procedure.
+
 Final GO open-item checklist:
 
 1. Tormod's privilege/KVM choice and exact remediation/verification commands, with
@@ -79,9 +104,10 @@ Final GO open-item checklist:
    no arbitrary command capability. Required re-proofs must pass before enable.
 5. Root-owned immutable Node/daemon/broker/launcher artifact with full hashes and
    DEV-only deploy/install command; neither mutable Cell nor LIVE tree is source.
-6. Resolve pinned bridge AF_UNIX/control and detached-worker/PID-namespace
-   incompatibilities; prove the long-lived attempt supervisor or obtain reviewed
-   new bridge pins. Resolve logind/uaccess's interference with service KVM ACL.
+6. Implement/prove one long-lived per-attempt sandbox (later commands enter its
+   namespaces); preserve the existing pins. AF_UNIX is permitted only inside the
+   private netns/minimal mount view under Queen's revised policy. Resolve KVM ACL
+   persistence and uaccess only if an active seat can occur.
 7. Exact final unit install commands, daemon bootstrap/config/key steps, private
    bridge state bootstrap/import, all runtime acceptance commands and expected
    outputs. Replace templates before a startup GO.
@@ -89,9 +115,10 @@ Final GO open-item checklist:
 Infrastructure-only subset that could be authorized separately: read-only step0
 may run now; steps1–3 create an unused locked UID, empty private roots and pinned
 bwrap copy. These contain no authority key, no device grant, no unit activation
-and do not affect existing groups/LIVE. They still require Queen's **separate GO
-on that exact subset**, trustworthy root execution, path-absence preflight and
-per-step rollback. Without closing root access from Cells, these are preparation,
+and do not affect existing groups/LIVE. They WAIT until Tormod chooses metal-3 and Queen explicitly authorizes
+that exact subset, with trustworthy root execution, path-absence preflight and
+per-step rollback. Queen has approved only read-only step0. Without closing root access from Cells,
+these are preparation,
 not a proven security boundary. Nothing has been authorized or executed yet.
 Step4 KVM ACL, step5 credentials/artifact/units and all starts remain excluded.
 
@@ -220,7 +247,7 @@ design. Bridge state never uses `/home/trmd/.local/state/urbench-v2`. No existin
 trmd state is copied; approved immutable base/input objects need a separately
 reviewed import and bootstrap recipe. No guest credentials, inference or lease code.
 
-## Ordered T3 procedure (STOP at every failed verification)
+## Ordered T3 procedure (step0 GO only; steps1–3 WAIT; rest blocked)
 
 These are proposed commands, not commands executed by T2. Run as trusted root
 operator on metal-3 only after Queen GO and all gates above are closed. T3 must
@@ -327,10 +354,12 @@ Never add service to kvm. This grants a named-UID ACL and the systemd device pol
 narrows devices separately. It does not revoke existing trmd KVM access and thus
 cannot satisfy the original stricter claim without the operator's separate decision.
 Do not add a trmd ACL. The existing device **already has seat/uaccess tags** from stock 70-uaccess.rules.
-logind may flush named ACLs or grant the active seat user KVM access. The commands
+This host is headless: loginctl shows no active seat sessions. If a local seat
+becomes active, logind may flush named ACLs or grant its active user KVM access. The commands
 below therefore demonstrate a one-time grant only, **not durable provisioning**.
-Do not execute step4 until a new reviewed revision supplies either a durable
-service-only mechanism or an explicitly accepted reduced policy. Removing uaccess
+Do not execute step4 until a new reviewed revision supplies a durable
+service-only mechanism or an accepted headless/no-seat operating condition and
+monitoring that suspends admission on a seat appearing. Removing uaccess
 affects interactive users and is Tormod's decision. Record baseline ACL/tags first.
 
 ```sh
@@ -495,7 +524,7 @@ separation between those two. Sandbox separation from both is mandatory.
 | ProtectHome=yes/PrivateTmp | Hide account homes and isolate temporary namespace; no bind of trmd home. |
 | DevicePolicy/DeviceAllow | Daemon may use KVM only alongside ACL; cgroup device policy is a second check, not a substitute for ACL. Broker PrivateDevices hides host devices entirely. |
 | PrivateDevices=no on daemon | Required for actual /dev/kvm; bridge receives only this host device via its sandbox. |
-| RestrictAddressFamilies | Daemon local RPC only. Broker filesystem Unix RPC plus direct outbound mTLS. Bridge AF_UNIX target policy is unresolved against the pinned control implementation; no deny profile is runnable yet. No TCP/abstract listener allowed by broker policy. |
+| RestrictAddressFamilies | Daemon local RPC only. Broker filesystem Unix RPC plus direct outbound mTLS. Bridge AF_UNIX allowed only inside private netns/minimal root per Queen amendment; host Unix sockets remain unreachable. No TCP/abstract listener allowed by broker policy. |
 | ProtectClock/ControlGroups | No time/cgroup changes; no capabilities. Kernel-module restriction is provided by no CAP_SYS_MODULE; mount-producing ProtectKernelModules also needs nested bwrap compatibility proof before addition. |
 | Proc visibility | No ProtectProc/ProcSubset/ProtectKernelTunables/ProtectKernelLogs/ProtectKernelModules in launcher ancestry until proved compatible: locked proc overmounts can prevent userns private proc mounting. Cross-UID DAC/capability checks still apply; bridge requires private PID/proc. |
 | RestrictRealtime/LockPersonality | Prevent RT abuse and ABI switching; verify compatibility. |
@@ -560,9 +589,11 @@ Explicit `--unshare-user --unshare-cgroup` make those mandatory; unsupported mea
 refuse, never fall back. `--disable-userns` requires explicit --unshare-user. No
 `--share-net` fallback. Private `/proc` must enumerate only sandbox processes.
 `--dev` creates synthetic devices; `/dev/kvm` is the only real host device. No
-host /dev, /sys, cgroup, socket or account mount. Bridge seccomp must deny AF_UNIX
-socket and socketpair creation (including abstract sockets), preserve inherited
-pipes, deny network use in no-inference mode, and cover compat ABIs. A namespace
+host /dev, /sys, cgroup, socket or account mount. AF_UNIX socket/socketpair creation is permitted inside the private network
+namespace; abstract sockets are namespace-scoped and pathname sockets are confined
+to the minimal filesystem view. No host socket mount/FD crosses. Seccomp must
+preserve this control path, deny external network use in no-inference mode and
+cover compat ABIs. A namespace
 alone does not enforce socket prohibition. Filter bytecode/hash and required
 QEMU compatibility tests are absent and block startup.
 
@@ -572,26 +603,39 @@ No service HOME, management FD, recovery FD, key FD or socket may cross. Close a
 non-allowlisted FDs at broker -> daemon -> runner -> bwrap -> bridge boundaries;
 private stdin carries dispatch/fence. Verify FD listings and CLOEXEC exclusions.
 
-### Pinned bridge incompatibilities: additional STOP gates
+### Resolved policy and required persistent attempt sandbox
 
 Read-only inspection after audit confirms `packages/runner/bridge.py` uses
 AF_UNIX for run-control.sock and `ops/guest/guest.py` uses QMP unix:qmp.sock.
-The stop socket creation precedes its OSError handler. Denying AF_UNIX currently
-breaks stop. A path-only exception requires a new approved policy and enforcement
-mechanism (seccomp alone cannot inspect pathname memory safely); changing to pipes
-requires Ur Bench changes and new pins. No exception is granted here.
+Queen explicitly drops blanket AF_UNIX denial: private netns isolates abstract
+socket names and the empty root excludes host pathname sockets. Allow pinned
+run-control/QMP sockets; do not bind hived.sock, owner files, /run, or host socket
+FDs. Inventory every host mount/FD and prove no host-socket access. This needs no
+Ur Bench pin change; it changes the earlier design's overbroad socket prohibition.
+Require zero abstract listeners in actual pinned bridge/QEMU evidence (their
+control sockets are pathname sockets), while namespace isolation is the boundary.
 
 The pinned start spawns a detached `_worker` and returns; wait/stop read saved
 PID/birth and inspect /proc/pid plus pidfd. A fresh private PID namespace per
 subcommand cannot work: start's namespace dies and kills its worker; later
 namespaces cannot resolve the saved identities. The argv shape above is only the
-filesystem/isolation target and **must not be used once per subcommand**. Required
+filesystem/isolation target and **must not be used once per subcommand**. Chosen
 resolution: one long-lived per-attempt sandbox/supervisor owning worker/QEMU,
 with later control operations entering the same validated user/PID namespace and
-private proc (or a revised pinned bridge). Hold namespace FDs and lifecycle
+private proc. No bridge pin change is needed for this topology. Hold namespace FDs and lifecycle
 identity in trusted supervision, not caller paths. Re-prove --die-with-parent
 against the long-lived owner, start return, leader exits and daemon re-adoption.
 Do not implement a shortcut that sees missing PIDs and calls teardown complete.
+The detached runner host, not the daemon or short-lived start command, is the
+long-lived parent of bwrap. It survives daemon restart under KillMode=process.
+--die-with-parent binds bwrap/guest death to that runner host; normal start return
+does not close the sandbox supervisor. Successor daemon verifies runner PID/birth,
+boot identity and attempt binding before re-adopting and entering its namespaces.
+Explicit stop first invokes the bridge inside that same namespace, then escalates
+only through verified attempt cgroup identities. Runner/bwrap death, lost namespace
+FDs or ambiguous teardown becomes durable reconcile_required; no replacement start
+or false terminal from a PID absent in a fresh namespace. Persist ownership and
+uncertainty before effects/teardown; lost recovery evidence holds quota.
 Exact supervisor and enter argv, FD mapping and API are absent and block GO.
 
 Each attempt needs its own protected systemd/cgroup-v2 identity binding. Existing
@@ -614,7 +658,7 @@ changed actor/body, unauthorized operation and fake/copied caller claims refuse
 before effects. Test actual approval path, no guest credentials or inference.
 
 Sandbox positive/negative tests must enumerate mounts, devices, FDs and PID view,
-try all secret path aliases and AF_UNIX socket creation, re-prove FD replacement
+try all secret aliases and host Unix-socket denial while private QMP/control works, re-prove FD replacement
 and interpreter closure, kill/restart/reconcile through real QEMU with all session
 and cgroup descendants accounted for. No such result is claimed here.
 
@@ -734,6 +778,65 @@ An initial mistyped test filename was corrected to the existing focused targets.
 Independent audit: Claude Opus 5.5 session a4efa8fd reviewed c66f0136 and found
 12 issues. This revision fixes the argv flag, store/Node pin/HOME paths,
 proc-overmount template, runner survival and overwrite safety; it records KVM
-uaccess, AF_UNIX and long-lived PID/supervisor incompatibilities as explicit STOP
-gates. That audit is not approval of this revised SHA. Queen must review it.
+uaccess and long-lived PID/supervisor implementation as explicit startup gates.
+The subsequent Queen amendment below resolves blanket AF_UNIX policy and selects
+the persistent supervisor topology, with implementation/proofs still required. That audit is not approval of this revised SHA. Queen must review it.
 No executable startup plan or sandbox acceptance is claimed.
+
+## Capacity, retention and coordination (Queen amendment)
+
+Read-only `df -h / /tmp` now: root875G total,807G used,24G available,98% used;
+/tmp tmpfs126G total,16G used,111G available. `df -i / /tmp`: root43% and
+/tmp61% inode use (638250/1048576). No cleanup was run. `loginctl list-sessions`
+shows trmd user/manager sessions with no seat; uaccess is a conditional risk,
+not evidence an active seat currently holds a KVM ACL. Keep a seat-change check.
+
+With only24G root free, no state bootstrap/import or run is admitted yet. Reserve
+at least20GiB free on root and at least20% free inodes on every backing filesystem;
+fail before effects if current free minus reserved worst-case work falls below
+that. Initial service aggregate cap4GiB includes all run state, inputs, captures,
+quarantine and journals. Maximum2 admitted attempts, each at most1GiB total
+writable state/evidence; raw stdout/stderr16MiB each within that cap; immutable
+inputs512MiB aggregate; quarantine512MiB; broker+security journal256MiB; remaining
+budget is metadata/headroom. No sparse qcow2 virtual size is treated as a disk
+reservation. If pinned guest assets/base disks exceed these caps, no run: relocate
+to an approved dedicated filesystem or change budgets with Queen review.
+
+T3 must provision a filesystem/project quota or dedicated size-limited volume
+covering **all** these roots before enabling writes, plus an inode budget (100000
+per attempt,250000 aggregate). Polling/du alone cannot prevent fill. Exact backing
+filesystem/quota commands are not supplied until the target host/storage decision;
+this is an additional startup GO blocker. Every attempt reserves its worst-case
+bytes/inodes transactionally before start, unknown/reconcile_required attempts
+retain reservation. tmpfs sizes must be bounded, charge memory cgroup limits, and
+must not move large state to host /tmp to avoid disk quotas. Admission cap never
+means permission to consume the host's20GiB reserve.
+
+Retention: remove nothing uncertain, active or unreviewed. Completed state/evidence
+retains7days if capacity permits; quarantine retains at most7days,512MiB cap and
+fails closed on overflow. Trusted owner requests trash/quarantine moves by exact
+attempt id only after terminal receipt+teardown and retention approval. Moving to
+trash does not free space or quota; final disposal is a separate authorized storage
+operation. If retention cannot fit the reserved capacity, refuse new jobs rather
+than silently delete evidence. Broker mappings persist for attempt retention;
+request-id tombstones remain for the owner-approved lifetime so IDs cannot be
+reused. Nonces persist at least max(expiresAt+5s, acceptance+65s) across restart.
+
+Security audit retains30days within128MiB of the256MiB journal budget; operational
+service logs retain7days within64MiB. Use a DEV-only journald namespace/dedicated
+log sink with those caps; do not change host journald policy. Root-owned config
+and exact unit/log-rotation commands belong in final artifact revision. Logs contain
+no fence/full dispatch/secret/env/raw output. At audit-capacity exhaustion suspend
+admission, preserve audit and alert trusted operator; never silently wrap required
+30day records. Cleanup itself appends an audit with object id, policy and result.
+
+Before T3 actions, orchestrator broadcasts the exact host, paths, budget and window
+to active metal-3 agents; obtains acknowledgement that no one is changing shared
+sudo/KVM/udev/storage policy or uses proposed names. Hold a trusted operator-owned
+provisioning lock for this plan's writes; do not rely solely on chat coordination.
+Re-read free bytes/inodes, current units/ACL/tags and LIVE baseline after acquiring
+the lock. Stage changes stepwise, publish receipts after each, and stop on drift.
+Do not stop others' processes, clean others' files, rotate host journals, trigger
+udev globally or restart LIVE. Existing Ur Bench trmd labs need an agreed migration
+window if privilege/KVM policy changes. T2 has sent only authorized team review
+messages, no maintenance announcement or host mutation.
