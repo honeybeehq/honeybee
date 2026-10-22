@@ -145,8 +145,15 @@ quota-type settings and mount flags for the installed e2fsprogs version. Set the
 service UID hard quota to191GiB/1150000inodes, plus a separate root-journald
 project quota of1GiB/50000inodes (aggregate192GiB/1200000inodes). Do not claim
 project quotas are hierarchical: the shared service UID bounds all per-attempt
-projects, while root-journald has its separate disjoint allowance. Each attempt subtree has
-an inherited project ID and32GiB/200000inode hard project quota. Prove writes
+projects, while root-journald has its separate disjoint allowance. Root with
+CAP_SYS_RESOURCE can bypass ext4 quotas: the reviewed namespace writer must drop
+that capability and prove its project limit actually refuses writes; otherwise
+that project quota is accounting only and startup stays blocked pending a hard
+storage bound. SystemMaxUse/RuntimeMaxUse alone are retention limits, not proof
+of the aggregate kernel hard cap. Each attempt subtree has
+an inherited project ID and32GiB/200000inode hard project quota. The reviewed constrained root helper
+sets/inherits project IDs before service writes (FS_IOC_FSSETXATTR); the service
+UID has no authority to choose or reassign them. Prove writes
 fail at both levels and no uncharged sibling/bind target exists. OS /var/lib
 stays on the OS filesystem, never this volume.
 
@@ -180,8 +187,10 @@ A32GiB per-run cap includes disk growth, artifacts and1GiB evidence (raw capture
 audit30days and operational logs7days within8GiB; suspend if retention cannot fit.
 Keep request-ID tombstones for the broker identity's lifetime (T1), not just7days.
 Uncertain teardown retains state/quota. Cleanup is human-authorized, exact attempt
-IDs with terminal receipt+verified no survivors; move to protected trash first,
-then separately authorized disposal. Trash still counts against quota. No silent
+IDs with terminal receipt+verified no survivors; move to protected trash **inside the same attempt project** first,
+then separately authorized disposal. Cross-project rename may fail EXDEV: do not
+copy-and-delete into another project or temporarily double storage. Trash still
+counts against that attempt and aggregate quota. No silent
 FIFO deletion, host-wide cleanup or shared journald policy change. Optional off-host
 sealed backups require human-only storage identity, a priced retention policy and
 recovery proof; no backup service is purchased here.
