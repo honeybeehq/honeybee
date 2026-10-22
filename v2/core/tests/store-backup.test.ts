@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { test } from "node:test";
@@ -6,7 +7,7 @@ import { mkdtempSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { backupStoreOffline, restoreStoreOffline, StoreBackupError, type StoreBackupReceipt } from "../src/storeBackup.ts";
+import { backupStore, backupStoreOffline, restoreStoreOffline, StoreBackupError, type StoreBackupReceipt } from "../src/storeBackup.ts";
 import { openCoreStore, SCHEMA_VERSION } from "../src/index.ts";
 
 function fixture() {
@@ -110,7 +111,13 @@ test("restore installs by atomic replacement while current path still names the 
     if (String(to) === path) {
       assert.ok(fs.existsSync(path), "current path must never disappear during restore");
       assert.equal(fs.statSync(path).nlink, 2, "current inode must already be preserved");
+      const probe = `const {DatabaseSync}=require('node:sqlite'); const db=new DatabaseSync(process.argv[1]); try { db.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE'); throw new Error('writer acquired lock'); } catch(e) { if (!/locked/.test(e.message)) throw e; process.stdout.write('locked'); } finally { db.close(); }`;
+      assert.equal(execFileSync(process.execPath, ["-e", probe, path], { encoding: "utf8" }), "locked");
+      assert.equal(execFileSync(process.execPath, ["-e", probe, String(from)], { encoding: "utf8" }), "locked");
+      rename(from, to);
+      assert.equal(execFileSync(process.execPath, ["-e", probe, path], { encoding: "utf8" }), "locked");
       observed = true;
+      return;
     }
     return rename(from, to);
   });
@@ -118,4 +125,30 @@ test("restore installs by atomic replacement while current path still names the 
   try { restoreStoreOffline(path, receipt.receiptPath); }
   finally { t.mock.restoreAll(); syncBuiltinESMExports(); }
   assert.equal(observed, true);
+});
+
+test("foreign receipts are reported and skipped without blocking a later backup", (t) => {
+  const { path } = fixture();
+  const first = backupStoreOffline(path, "fixture");
+  writeFileSync(join(`${path}.backups`, "foreign.json"), "broken");
+  writeFileSync(join(`${path}.backups`, "moved.json"), JSON.stringify({ ...first, receiptPath: "/old/moved.json" }));
+  const warnings: string[] = [];
+  t.mock.method(process, "emitWarning", (warning: string) => { warnings.push(String(warning)); });
+  const next = backupStoreOffline(path, "fixture");
+  assert.ok(fs.existsSync(next.receiptPath));
+  assert.equal(warnings.length, 2);
+  assert.ok(warnings.every(warning => warning.includes("retention skipped")));
+});
+
+test("VACUUM failure removes its partial snapshot and returns a typed backup failure", (t) => {
+  const { path } = fixture();
+  const db = new DatabaseSync(path);
+  const execute = db.exec.bind(db);
+  t.mock.method(db, "exec", (sql: string) => {
+    execute(sql);
+    if (sql.startsWith("VACUUM INTO")) throw new Error("fixture vacuum failure");
+  });
+  try { assert.throws(() => backupStore(db, path, "fixture"), StoreBackupError); }
+  finally { db.close(); }
+  assert.deepEqual(readdirSync(`${path}.backups`), []);
 });

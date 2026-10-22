@@ -737,3 +737,20 @@ test("existing store requires a durable validated backup before source deploy ac
     assert.equal(log.restarts.length, 1);
   });
 });
+
+test("a custom environment data directory refuses deploy before the no-store shortcut", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    await commit("custom-data");
+    const previous = process.env.HIVE_V2_DATA_DIR;
+    process.env.HIVE_V2_DATA_DIR = join(root, "other-data");
+    try {
+      await assert.rejects(deployVersion({ root, repoRoot, hooks }), /custom HIVE_V2_DATA_DIR.*refusing swap/);
+      assert.equal(await currentDeployTarget(root), null);
+      assert.deepEqual(log.restarts, []);
+      assert.equal(existsSync(join(root, ".store-absence")), false);
+    } finally {
+      if (previous === undefined) delete process.env.HIVE_V2_DATA_DIR;
+      else process.env.HIVE_V2_DATA_DIR = previous;
+    }
+  });
+});

@@ -43,6 +43,10 @@ function facts(db: DatabaseSync): { schemaVersion: number; ddlDigest: string; in
 }
 
 export function backupStore(db: DatabaseSync, storePath: string, sourceBuild: string): StoreBackupReceipt {
+  let temporary: string | undefined;
+  let receiptTemporary: string | undefined;
+  let backupPath: string | undefined;
+  let receiptPath: string | undefined;
   try {
     if (storePath === ":memory:") throw new StoreBackupError("An in-memory store has no durable backup");
     const directory = `${resolve(storePath)}.backups`;
@@ -50,8 +54,8 @@ export function backupStore(db: DatabaseSync, storePath: string, sourceBuild: st
     chmodSync(directory, 0o700);
     sync(dirname(directory));
     const base = join(directory, `${Date.now()}-${randomUUID()}`);
-    const backupPath = `${base}.sqlite3`;
-    const temporary = `${base}.partial`;
+    backupPath = `${base}.sqlite3`;
+    temporary = `${base}.partial`;
     db.exec(`VACUUM INTO ${quote(temporary)}`);
     chmodSync(temporary, 0o600);
     const snapshot = new DatabaseSync(temporary, { readOnly: true });
@@ -60,7 +64,8 @@ export function backupStore(db: DatabaseSync, storePath: string, sourceBuild: st
     sync(temporary);
     renameSync(temporary, backupPath);
     sync(directory);
-    const receiptPath = `${base}.json`;
+    receiptPath = `${base}.json`;
+    receiptTemporary = `${receiptPath}.partial`;
     const receipt: StoreBackupReceipt = { format: 1, sourceBuild, storePath: resolve(storePath), ...verified,
       createdAt: new Date().toISOString(), sha256: digest(readFileSync(backupPath)), backupPath, receiptPath };
     writeFileSync(`${receiptPath}.partial`, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600, flag: "wx" });
@@ -70,19 +75,28 @@ export function backupStore(db: DatabaseSync, storePath: string, sourceBuild: st
     prune(directory);
     return receipt;
   } catch (error) {
+    for (const path of [temporary, receiptTemporary, receiptPath && !existsSync(receiptPath) ? backupPath : undefined]) {
+      if (path && existsSync(path)) try { unlinkSync(path); } catch {}
+    }
     if (error instanceof StoreBackupError) throw error;
     throw new StoreBackupError(`Backup refused: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 function prune(directory: string): void {
-  const receipts = readdirSync(directory).filter(name => name.endsWith(".json")).map(name => {
+  const receipts: Array<{ path: string; receipt: StoreBackupReceipt }> = [];
+  for (const name of readdirSync(directory).filter(name => name.endsWith(".json"))) {
     const path = join(directory, name);
-    const receipt = JSON.parse(readFileSync(path, "utf8")) as StoreBackupReceipt;
-    if (receipt.format !== 1 || receipt.receiptPath !== path || receipt.backupPath !== path.replace(/\.json$/, ".sqlite3")
-      || !Number.isSafeInteger(receipt.schemaVersion) || typeof receipt.createdAt !== "string") throw new StoreBackupError("Invalid retained receipt");
-    return { path, receipt };
-  }).sort((a, b) => b.receipt.createdAt.localeCompare(a.receipt.createdAt) || b.path.localeCompare(a.path));
+    try {
+      const receipt = JSON.parse(readFileSync(path, "utf8")) as StoreBackupReceipt;
+      if (receipt.format !== 1 || receipt.receiptPath !== path || receipt.backupPath !== path.replace(/\.json$/, ".sqlite3")
+        || !Number.isSafeInteger(receipt.schemaVersion) || typeof receipt.createdAt !== "string") throw new Error("Foreign or moved receipt");
+      receipts.push({ path, receipt });
+    } catch {
+      process.emitWarning(`Store backup retention skipped unrecognized receipt ${path}`);
+    }
+  }
+  receipts.sort((a, b) => b.receipt.createdAt.localeCompare(a.receipt.createdAt) || b.path.localeCompare(a.path));
   const schemas = new Set<number>();
   for (const [index, item] of receipts.entries()) {
     const newest = !schemas.has(item.receipt.schemaVersion);
@@ -129,22 +143,22 @@ function restoreStore(storePath: string, receiptPath: string): { preservedPath: 
   const temporary = `${storePath}.restore-${randomUUID()}`;
   let replacement: DatabaseSync | undefined;
   try {
-    db.exec("PRAGMA busy_timeout=0; PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT; PRAGMA wal_checkpoint(TRUNCATE)");
+    db.exec("PRAGMA busy_timeout=0; PRAGMA synchronous=FULL; PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT; PRAGMA wal_checkpoint(TRUNCATE); PRAGMA journal_mode=DELETE");
     copyFileSync(receipt.backupPath, temporary);
     chmodSync(temporary, 0o600);
+    if (digest(readFileSync(temporary)) !== receipt.sha256) throw new StoreBackupError("Copied backup differs from receipt");
+    sync(temporary);
     replacement = new DatabaseSync(temporary);
     replacement.exec("PRAGMA journal_mode=DELETE; PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE; COMMIT");
     const copied = facts(replacement);
-    if (digest(readFileSync(temporary)) !== receipt.sha256 || copied.schemaVersion !== receipt.schemaVersion || copied.ddlDigest !== receipt.ddlDigest) throw new StoreBackupError("Copied backup differs from receipt");
-    sync(temporary);
-    sync(storePath);
+    if (copied.schemaVersion !== receipt.schemaVersion || copied.ddlDigest !== receipt.ddlDigest) throw new StoreBackupError("Copied backup differs from receipt");
     linkSync(storePath, preservedPath);
     sync(dirname(resolve(storePath)));
     for (const suffix of ["-wal", "-shm"]) if (existsSync(`${storePath}${suffix}`)) renameSync(`${storePath}${suffix}`, `${preservedPath}${suffix}`);
     renameSync(temporary, storePath);
     sync(dirname(resolve(storePath)));
     return { preservedPath, schemaVersion: receipt.schemaVersion, lossWindow: "Writes made after the backup are discarded." };
-  } finally { replacement?.close(); db.close(); }
+  } finally { try { db.close(); } finally { replacement?.close(); } }
 }
 
 export function restoreStoreOffline(storePath: string, receiptPath: string): { preservedPath: string; schemaVersion: number; lossWindow: string } {

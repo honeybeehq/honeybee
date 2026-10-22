@@ -499,7 +499,9 @@ async function retainExternalCurrent(root: string, link: string, sha: string, no
 }
 
 async function backupBeforeRuntimeSwap(root: string, hooks: Pick<DeployHooks, "backupStore">, installedDir: string, previousSha: string | null, log: (line: string) => void): Promise<void> {
-  const storePath = resolve(root, "..", "v2", "core.sqlite3");
+  const dataDir = resolve(root, "..", "v2");
+  if (process.env.HIVE_V2_DATA_DIR?.trim() && resolve(process.env.HIVE_V2_DATA_DIR) !== dataDir) throw new Error("deploy: custom HIVE_V2_DATA_DIR requires an explicit coordinated store backup owner; refusing swap");
+  const storePath = join(dataDir, "core.sqlite3");
   if (!existsSync(storePath)) {
     const directory = join(root, ".store-absence");
     await mkdir(directory, { recursive: true, mode: 0o700 });

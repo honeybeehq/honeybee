@@ -18,6 +18,7 @@ assert.equal(old.SCHEMA_VERSION, 44);
 const fixture = mkdtempSync("/tmp/hb-t5-");
 const data = join(fixture, "v2");
 mkdirSync(data, { mode: 0o700 });
+process.env.HIVE_V2_DATA_DIR = data;
 const storePath = join(data, "core.sqlite3");
 persistNodePin(data, probeNativeNode(process.execPath));
 const prior = old.openCoreStore(storePath);
