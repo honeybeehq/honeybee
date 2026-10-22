@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 48;
+export const SCHEMA_VERSION = 49;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -218,6 +218,13 @@ CREATE TABLE IF NOT EXISTS auth_interruptions (
 CREATE UNIQUE INDEX IF NOT EXISTS auth_interruptions_live
   ON auth_interruptions(bee_id) WHERE state IN ('open','restored','resumed');
 CREATE INDEX IF NOT EXISTS auth_interruptions_by_bee ON auth_interruptions(bee_id, id);
+`;
+
+export const ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS account_credential_attention (
+  account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  cause TEXT NOT NULL CHECK (cause IN ('live_chain_ambiguous','keychain_publication_failed'))
+) STRICT;
 `;
 
 export const ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL = `
@@ -614,6 +621,7 @@ CREATE INDEX IF NOT EXISTS accounts_harness ON accounts(harness, added_at, id);
 
 -- v27: opt-in Claude credential authority. Secrets remain in the private vault.
 ${ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL}
+${ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL}
 CREATE TABLE IF NOT EXISTS credential_handoffs (
   handoff_id TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('source','destination')),

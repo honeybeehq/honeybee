@@ -257,6 +257,7 @@ export class CliRunner implements LoginRunner {
         return false;
       }
       host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=${detectedBy} files=${captured.captured.join(",")}`);
+      if (primaryRaw !== null) await host.accounts.confirmClaudeLoginPublication(account, primaryRaw);
       host.succeed();
       return true;
     } finally {

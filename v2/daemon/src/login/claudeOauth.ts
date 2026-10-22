@@ -109,6 +109,7 @@ export class ClaudeOauthRunner implements LoginRunner {
     const captured = host.accounts.persistCredentialCapture(account, ".credentials.json", raw, { ".credentials.json": raw });
     if (!captured.ok) return host.fail(err("capture_failed", "The credential could not be saved into the account's vault."), true);
     host.log(`account.login.captured flow=${host.flowId} account=${account.id} by=claude_oauth keychain=${keychainWritten} files=${captured.captured.join(",")}`);
+    await host.accounts.confirmClaudeLoginPublication(account, raw);
     return host.succeed();
   }
 
