@@ -37,3 +37,9 @@ small topology/KVM, boot-ceremony, keychain availability and control-schema
 amendments. They are reflected in the follow-up documents. Opus's narrow review
 (16661) closed H1–H4/M1–M4; its remaining topology wording, historical validation
 wording and password-required usability note were amended. No code changed.
+
+Queen approved the design at `74939e8d27798b31772dbe664cec0ed5bdd94ebc` in
+Apiary message 16673. Code remains blocked on human question `a0c2b850` and the
+Phase-0 host-facts gate. The subsequent trail-only amendment clarifies the Review
+click timing, start-only choice and narrowed time scope, adds missing Phase-0/admin
+provenance, and records that verdict; it changes no security mechanism or source.
