@@ -99,7 +99,7 @@ try {
     assert.fail('mismatched build accepted');
   } catch (error) {
     assert.equal(error.code, 'build_pin_mismatch');
-    await log(`deployVersion fixture refused: ${error.code}: ${error.message}`);
+    await log(`deployVersion fixture refused: ${error.message}`);
   }
   assert.equal(await currentDeployTarget(root), first);
   await deployVersion({ root, repoRoot, ref: second, hooks, buildPinOverride: 'isolated fixture proof' });
