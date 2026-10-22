@@ -1,4 +1,6 @@
 import { backupStoreOffline, restoreStoreOffline, StoreRestoreError, StoreBackupError } from "../../core/src/storeBackup.ts";
+
+import { buildReport, parseBuildPin, setOfflineBuildPin } from "../../../src/buildPin.ts";
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
@@ -5017,6 +5019,36 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
           result = backupStoreOffline(ctx.cfg.storePath, String(parsed.flags.get("--source-build") ?? "unknown: offline store; supply --source-build with the previous build identity"));
         }
         emit(ctx, [JSON.stringify(result)], result, false);
+        return 0;
+      }
+      case "build-report": {
+        const result = parsed.flags.get("--offline") === true
+          ? await buildReport(resolve(ctx.cfg.dataDir, "..", "runtime"), null, null, true)
+          : await withClient(ctx, c => c.request("build.report"));
+        emit(ctx, [JSON.stringify(result, null, 2)], result, parsed.flags.get("--offline") === true);
+        return 0;
+      }
+      case "build-pin": {
+        const [, action, revision, target, artifactSha256] = parsed.positional;
+        if (action === "show" && parsed.positional.length === 2) {
+          const offline = parsed.flags.get("--offline") === true;
+          const result = offline ? await buildReport(resolve(ctx.cfg.dataDir, "..", "runtime"), null, null, true) : await withClient(ctx, c => c.request("build.report"));
+          emit(ctx, [JSON.stringify(result, null, 2)], result, offline);
+          return 0;
+        }
+        if (action !== "clear" && action !== "set") throw new Error("usage: hive v2 build-pin set <revision> <os-arch> [artifact-sha256] | show | clear");
+        if (action === "clear" && parsed.positional.length !== 2 || action === "set" && (parsed.positional.length < 4 || parsed.positional.length > 5)) throw new Error("build-pin: invalid arguments");
+        const params = action === "set" ? { pin: parseBuildPin({ schemaVersion: 1, sourceRevision: revision, target, ...(artifactSha256 ? { artifactSha256 } : {}) }) } : {};
+        if (parsed.flags.get("--offline") === true) {
+          if (readLiveEndpointRecord(ctx.cfg.dataDir)) throw new Error("build-pin: daemon process is live; use authenticated RPC without --offline");
+          const root = resolve(ctx.cfg.dataDir, "..", "runtime");
+          await setOfflineBuildPin(root, "pin" in params ? params.pin! : null, ctx.cfg.socketPath);
+          const result = await buildReport(root, null, null, true);
+          emit(ctx, [JSON.stringify(result, null, 2)], result, true);
+          return 0;
+        }
+        const result = await withClient(ctx, c => c.request(action === "set" ? "build.pin.set" : "build.pin.clear", params));
+        emit(ctx, [JSON.stringify(result, null, 2)], result, false);
         return 0;
       }
       case "deploy-info":

@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { readBuildIdentity } from "./release/buildIdentity.js";
 import { recordedSocketPath, readLiveUpdateOwner } from "./v2/updateOwnerClient.mjs";
+
+import { assertBuildPin, observeBuild } from "./buildPin.ts";
 import { resolveNodePin } from "./nodeRuntime.js";
 /**
  * Versioned runtime deploys (reset WP0 — docs/design/specs/reset-00-deploy.md).
@@ -65,6 +67,7 @@ export type DeployHistoryEntry = {
   artifactHash: string;
   by: string;
   gate?: "full" | "tests-skipped";
+  buildPinOverride?: string;
 };
 
 export type BuildArtifactContext = {
@@ -91,6 +94,7 @@ export type RestartDaemonContext = {
   sha: string;
   log: (line: string) => void;
   restorePrevious?: () => Promise<boolean>;
+  buildPinOverride?: string;
 };
 
 export type DeployHooks = {
@@ -157,6 +161,7 @@ export type DeployOptions = {
    */
   allowNonDescendant?: boolean;
   skipTests?: boolean;
+  buildPinOverride?: string;
 };
 
 export type DeployOutcome = {
@@ -442,7 +447,7 @@ async function deployVersionLocked(options: DeployOptions): Promise<DeployOutcom
     // that get installed (deploySettle's tree digest, stamp excluded).
     const stamp = await writeBuildStamp(join(artifactDir, "dist"));
 
-    return await publishDeploy({ root, sha, artifactDir, artifactHash: stamp.hash, keep, by, now, log, hooks: options.hooks, gate: options.skipTests ? "tests-skipped" : "full" });
+    return await publishDeploy({ root, sha, artifactDir, artifactHash: stamp.hash, keep, by, now, log, hooks: options.hooks, gate: options.skipTests ? "tests-skipped" : "full", buildPinOverride: options.buildPinOverride });
   } finally {
     await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -537,10 +542,11 @@ async function backupBeforeRuntimeSwap(root: string, hooks: Pick<DeployHooks, "b
   log(`deploy: store backup receipt ${receipt.receiptPath}`);
 }
 
-async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, immutable = false, gate, reservation }: {
+async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, immutable = false, gate, reservation, buildPinOverride }: {
   root: string; sha: string; artifactDir: string; artifactHash: string; keep: number; by: string;
-  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">; immutable?: boolean; gate?: "full" | "tests-skipped"; reservation?: UpdateReservation;
+  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">; immutable?: boolean; gate?: "full" | "tests-skipped"; reservation?: UpdateReservation; buildPinOverride?: string;
 }): Promise<DeployOutcome> {
+  assertBuildPin(root, await observeBuild(artifactDir), buildPinOverride);
   const previousLink = await readlink(join(root, CURRENT_LINK_NAME)).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
   const previousSha = await currentDeployTarget(root);
   if (previousLink && !previousSha) throw new DeployRollbackError("ROLLBACK_CURRENT_IDENTITY_MISSING", `runtime/current points to ${previousLink}, which has no valid Honeybee build identity`);
@@ -586,7 +592,7 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
     await retargetCurrent(root, sha);
     const last = immutable && previousSha === sha ? (await readDeployHistory(root)).at(-1) : undefined;
     const entry: DeployHistoryEntry = last?.sha === sha && last.artifactHash === artifactHash
-      ? last : { sha, at: now().toISOString(), artifactHash, by, ...(gate ? { gate } : {}) };
+      ? last : { sha, at: now().toISOString(), artifactHash, by, ...(gate ? { gate } : {}), ...(buildPinOverride ? { buildPinOverride } : {}) };
     let restored = false;
     const restorePrevious = async (): Promise<boolean> => {
       if (!previousLink) return false;
@@ -604,7 +610,7 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
     };
     let activated = false;
     try {
-      await restartWithAdmission(hooks, { root, installedDir: versionDir, sha, log, restorePrevious, ...(v2 ? { runtime: "v2" as const } : {}) }, reservation);
+      await restartWithAdmission(hooks, { root, installedDir: versionDir, sha, log, restorePrevious, buildPinOverride, ...(v2 ? { runtime: "v2" as const } : {}) }, reservation);
       if (restored) throw new Error("deploy: activation rolled back");
       activated = true;
     } catch (error) {
@@ -627,6 +633,7 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
 }
 
 export type DeployArtifactOptions = {
+  buildPinOverride?: string;
   archive: string;
   identity: ComponentIdentity;
   /** Compare-and-swap fence supplied by the coordinated update owner. */
@@ -681,7 +688,7 @@ export async function deployArtifact(options: DeployArtifactOptions): Promise<De
       } else await assertUpdateAdmission(root, prepared.identity, { ...options.admission, reservation: reservation! });
       const outcome = await publishDeploy({ root, sha: prepared.identity.sourceRevision, ...prepared,
         keep: DEFAULT_KEEP_VERSIONS, by: deployedBy(), now: () => new Date(), log: () => undefined,
-        hooks: options.hooks, immutable: true, reservation });
+        hooks: options.hooks, immutable: true, reservation, buildPinOverride: options.buildPinOverride });
       if (options.cliBinDirectory !== undefined) await exposeDeployedCli(root, options.cliBinDirectory, resolveNodePin(join(root, "..", "v2")).path);
       return outcome;
     });

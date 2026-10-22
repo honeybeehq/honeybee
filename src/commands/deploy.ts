@@ -1,3 +1,4 @@
+import { assertRunningBuildPin, readBuildPin, type ObservedBuild } from "../buildPin.ts";
 import { parseNpmPackResult } from "../npmPack.js";
 import { serviceDirectory } from "../servicePaths.js";
 import { randomUUID } from "node:crypto";
@@ -41,6 +42,7 @@ const execFileAsync = promisify(execFile);
 
 const USAGE = [
   "Usage: hive deploy [<sha>] [--keep <n>] [--skip-tests]   build+verify <sha> (default HEAD) in a temp checkout, install to ~/.hive/runtime/<sha>, retarget current, restart daemon",
+  "       --override-build-pin <reason> records an explicit desired-build policy override",
   "       --skip-tests skips tests with a not release-grade warning; release artifacts cannot skip tests",
   "       refuses a <sha> that does not contain the deployed commit (silent-revert guard); --allow-non-descendant overrides",
   "       hive deploy --rollback             retarget current to the previous deploy and restart the daemon",
@@ -49,7 +51,7 @@ const USAGE = [
   "       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current",
 ].join("\n");
 
-const KNOWN_FLAGS = new Set(["skip-tests", "keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
+const KNOWN_FLAGS = new Set(["override-build-pin", "skip-tests", "keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
 
 export async function cmdDeploy(parsed: Parsed): Promise<void> {
   // Help and unknown flags must never fall through to a real deploy: a bare
@@ -60,6 +62,8 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
   }
   const unknown = [...parsed.flags.keys()].filter((key) => !KNOWN_FLAGS.has(key));
   if (unknown.length > 0) throw new Error(`deploy: unknown flag ${unknown.map((key) => `--${key}`).join(", ")}\n${USAGE}`);
+  const pinOverride = flag(parsed, "override-build-pin");
+  if (pinOverride !== undefined && (typeof pinOverride !== "string" || !pinOverride.trim())) throw new Error("deploy: --override-build-pin requires a reason");
   const skipTests = flag(parsed, "skip-tests");
   if (skipTests !== undefined && skipTests !== true && !["true", "1", "yes", "false", "0", "no"].includes(String(skipTests))) {
     throw new Error("deploy: --skip-tests requires a boolean value");
@@ -72,7 +76,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
       || (binDirectory !== undefined && (typeof binDirectory !== "string" || binDirectory.length === 0))
       || (expected !== "none" && !/^[a-f0-9]{40}$/.test(expected)) || parsed.args.length
       || ["list", "init", "rollback"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
-    const result = await deployArtifact({ archive, identity: JSON.parse(await readFile(identity, "utf8")),
+    const result = await deployArtifact({ buildPinOverride: pinOverride as string | undefined, archive, identity: JSON.parse(await readFile(identity, "utf8")),
       admission: JSON.parse(await readFile(admission, "utf8")),
       ...(typeof binDirectory === "string" ? { cliBinDirectory: binDirectory } : {}),
       expectedCurrent: expected === "none" ? null : expected, hooks: { backupStore: backupBeforeSwap, restartDaemon: restartDeployedDaemon } });
@@ -280,6 +284,12 @@ async function restartAdmittedDaemon({ root, log, runtime, restorePrevious }: Re
     }
     await run("start");
     await ready(pin);
+    if (readBuildPin(root)) {
+      const { stdout } = await execFileAsync(pin.path, [cli, "v2", "build-report", "--data-dir", dataDir, "--json"], { timeout: 5000, env: { ...nativeNodeEnv(), ...nodePinEnv(pin) } });
+      const report = JSON.parse(stdout) as { running: ObservedBuild | null };
+      if (!report.running) throw new Error("deploy: running build identity unavailable after activation");
+      assertRunningBuildPin(root, report.running);
+    }
   } catch (error) {
     if (stopInitiated && restorePrevious) {
       await run("stop").catch(() => undefined);
@@ -344,6 +354,7 @@ async function deployRun(parsed: Parsed): Promise<void> {
     ...(ref !== undefined ? { ref } : {}),
     keep,
     skipTests: truthy(flag(parsed, "skip-tests")),
+    buildPinOverride: flag(parsed, "override-build-pin") as string | undefined,
     log,
     ...(parsed.flags.has("allow-non-descendant") ? { allowNonDescendant: true } : {}),
     hooks: { buildArtifact: buildDeployArtifact, backupStore: backupBeforeSwap, restartDaemon: restartDeployedDaemon },
