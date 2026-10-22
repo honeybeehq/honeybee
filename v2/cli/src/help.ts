@@ -58,6 +58,8 @@ const GROUPS: Group[] = [
       ["watch", "[--bee id]", "whole-node change stream (snapshot + seq deltas)"],
       ["health", "", "daemon liveness + i1 violations"],
       ["harnesses", "", "per-harness executable facts (path/source/version) as the daemon resolves them"],
+      ["build-report", "[--offline]", "desired, staged and running builds; drift verdict"],
+      ["build-pin", "set <revision> <os-arch> [artifact-sha256] | show | clear", "node desired Honeybee build policy"],
       ["deploy-info", "", "protocol / versions / paths"],
       ["human-ref", "status|enroll <receipt.json>", "installation identity and permanent reference enrollment"],
       ["human-ref", "registry init|status|reserve <installation-id>", "explicit fleet namespace registry (one per fleet)"],

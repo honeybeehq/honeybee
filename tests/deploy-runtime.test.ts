@@ -860,3 +860,29 @@ test("custom config store paths refuse before recording a store-absence receipt"
     assert.deepEqual(log.restarts, []);
   });
 });
+
+import { buildPinFile, BuildPinMismatchError, observeBuild, assertRunningBuildPin } from "../src/buildPin.ts";
+import { writeNodeRuntimeState } from "../src/nodeRuntime.ts";
+
+test("source deploy enforces desired revision before staging and binds override to running bytes", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    const first = await commit("pinned"), second = await commit("different");
+    const native = `${process.platform}-${process.arch}`;
+    const build = hooks.buildArtifact;
+    hooks.buildArtifact = async context => {
+      const result = await build(context);
+      await writeFile(join(result.artifactDir, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1, component: "honeybee", version: "0.0.1", packageVersion: "0.0.1", sourceRevision: context.sha, dirty: false, release: false, target: native }));
+      return result;
+    };
+    hooks.restartDaemon = async () => assertRunningBuildPin(root, (await observeBuild(join(root, "current")))!);
+    writeNodeRuntimeState(buildPinFile(root), { schemaVersion: 1, sourceRevision: first, target: native });
+    await deployVersion({ root, repoRoot, ref: first, hooks });
+    await assert.rejects(deployVersion({ root, repoRoot, ref: second, hooks }), BuildPinMismatchError);
+    assert.equal(await currentDeployTarget(root), first);
+    assert.equal(existsSync(join(root, second)), false);
+    const result = await deployVersion({ root, repoRoot, ref: second, hooks, buildPinOverride: "fixture source exception" });
+    assert.equal(result.entry.buildPinOverride, "fixture source exception");
+    assert.equal(await currentDeployTarget(root), second);
+    assert.equal(log.restarts.length, 0);
+  });
+});

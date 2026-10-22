@@ -465,3 +465,27 @@ test("artifact backup refusal preserves current and never activates the candidat
     assert.equal(await currentDeployTarget(root), previous.identity.sourceRevision);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+import { buildPinFile, BuildPinMismatchError, readBuildPin, observeBuild, buildReport, assertRunningBuildPin } from "../src/buildPin.ts";
+import { writeNodeRuntimeState } from "../src/nodeRuntime.ts";
+
+test("artifact pin refuses before staging, checksum pin agrees, and recorded override reports drift", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hb-artifact-pin-")), root = join(dir, "runtime");
+  const candidate = await release(dir);
+  const pin = { schemaVersion: 1, sourceRevision: "b".repeat(40), target: candidate.identity.target, artifactSha256: candidate.identity.artifact.sha256.replace("sha256:", "") };
+  writeNodeRuntimeState(buildPinFile(root), pin);
+  let restarts = 0;
+  const options = { ...candidate, root, expectedCurrent: null, admission: { fresh: true } as const,
+    hooks: { async restartDaemon() { restarts++; assertRunningBuildPin(root, (await observeBuild(join(root, "current")))!); } } };
+  await assert.rejects(deployArtifact(options), BuildPinMismatchError);
+  assert.equal(await currentDeployTarget(root), null);
+  assert.equal(existsSync(join(root, candidate.identity.sourceRevision)), false);
+  assert.equal(restarts, 0);
+  const outcome = await deployArtifact({ ...options, buildPinOverride: "fixture mismatch accepted" });
+  assert.equal(outcome.entry.buildPinOverride, "fixture mismatch accepted");
+  assert.equal(readBuildPin(root)?.sourceRevision, pin.sourceRevision);
+  const running = (await observeBuild(join(root, "current")))!;
+  assert.equal((await buildReport(root, running, 48)).verdict, "drift");
+  writeNodeRuntimeState(buildPinFile(root), { ...pin, sourceRevision: candidate.identity.sourceRevision });
+  assert.equal((await buildReport(root, running, 48)).verdict, "agrees");
+});

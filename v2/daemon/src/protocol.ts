@@ -94,6 +94,7 @@ export const DAEMON_CAPABILITIES = [
   "mirror.local.homes.v1",
   "mail.humanFirst.v1",
   "mail.batching.v1",
+  "build.pin.v1",
   "mail.delivery.confirmation.v1",
   "rpc.local_trust.v1",
   "rpc-effect-resolve.v1",
@@ -516,6 +517,9 @@ export const RPC_VERBS = [
   "mail.pending",
   "commands",
   "deployInfo",
+  "build.report",
+  "build.pin.set",
+  "build.pin.clear",
   "health",
   "doctor.integrity",
   // F8 (additive read): per-harness executable facts — present/path/source/
