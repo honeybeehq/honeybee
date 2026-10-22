@@ -1,3 +1,4 @@
+import { backupStoreOffline } from "../v2/core/src/storeBackup.ts";
 import { persistNodePin, probeNativeNode, nodePinFile, nodeRepairFile } from "../src/nodeRuntime.js";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -22,7 +23,7 @@ test("artifact deploy refuses unchecked bytes before switching or restarting", a
         artifact: { url: "https://example.test/runtime.tgz", sha256: `sha256:${"0".repeat(64)}` } },
       expectedCurrent: null,
       admission: { fresh: true },
-      hooks: { async restartDaemon() { assert.fail("must not restart"); } },
+      hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() { assert.fail("must not restart"); } },
     }), /checksum/);
     assert.equal(await currentDeployTarget(root), null);
     assert.equal((await import("node:fs")).existsSync(join(root, RUNTIME_MODE_CONFIG)), false);
@@ -72,14 +73,14 @@ for (const state of ["apiary-swap", "absent", "own-paired", "different-id", "dif
     process.env.HIVE_V2_SERVICE_DIR = units;
     try {
       const previous = await release(dir, "b".repeat(40));
-      await deployArtifact({ ...previous, root, expectedCurrent: null, admission: { fresh: true }, hooks: { async restartDaemon() {} } });
+      await deployArtifact({ ...previous, root, expectedCurrent: null, admission: { fresh: true }, hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() {} } });
       const cli = `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify(process.argv.slice(2))+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`;
       const next = await release(dir, "a".repeat(40), "full", cli), admission = await reserve(dir, next.identity);
       const data = join(dir, "v2");
       persistNodePin(data, probeNativeNode(process.execPath));
       const pin = await readFile(nodePinFile(data)), pinStat = await lstat(nodePinFile(data));
       const proceeds = state === "absent" || state === "own-paired";
-      const operation = deployArtifact({ ...next, root, expectedCurrent: previous.identity.sourceRevision, admission, hooks: {
+      const operation = deployArtifact({ ...next, root, expectedCurrent: previous.identity.sourceRevision, admission, hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); },
         async restartDaemon(context) {
           assert.equal(hasDeployRestartAdmission(context), true);
           const db = new DatabaseSync(join(data, "core.sqlite3"));
@@ -127,7 +128,7 @@ test("v2 recovery admits artifact deployment and rollback while preserving the f
     const previous = await release(dir, "b".repeat(40)), next = await release(dir);
     const root = join(dir, "runtime");
     const activations: string[] = [];
-    const hooks = { async restartDaemon() { activations.push((await currentDeployTarget(root))!); } };
+    const hooks = { async backupStore() { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() { activations.push((await currentDeployTarget(root))!); } };
     await deployArtifact({ ...previous, root, admission: { fresh: true }, expectedCurrent: null, hooks });
     const { reservation } = await reserve(dir, next.identity);
     const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
@@ -159,7 +160,7 @@ for (const scenario of ["install", "identity", "gate", "fence", "conflict", "res
       const admission = await reserve(dir, fixture.identity);
       let restarts = 0;
       const options = { ...fixture, root, admission, expectedCurrent: null as string | null,
-        hooks: { async restartDaemon() { restarts++; if (scenario === "restart") throw new Error("restart failed"); } } };
+        hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() { restarts++; if (scenario === "restart") throw new Error("restart failed"); } } };
       if (scenario === "identity") options.identity = { ...fixture.identity, version: "0.2.0" };
       if (scenario === "fence") options.expectedCurrent = "b".repeat(40);
       if (["identity", "gate", "fence"].includes(scenario)) {
@@ -199,7 +200,7 @@ test("reserved artifact publication retains all recovery artifacts", async () =>
     const fixture = await release(dir), root = join(dir, "runtime"), admission = await reserve(dir, fixture.identity);
     const old = "c".repeat(40);
     await mkdir(join(root, old), { recursive: true });
-    await deployArtifact({ ...fixture, root, admission, expectedCurrent: null, hooks: { async restartDaemon() {} } });
+    await deployArtifact({ ...fixture, root, admission, expectedCurrent: null, hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() {} } });
     assert.ok(await readFile(join(root, fixture.identity.sourceRevision, "dist", "cli.js")));
     assert.ok((await import("node:fs")).existsSync(join(root, old)), "pending recovery files survive publication");
   } finally { await rm(dir, { recursive: true, force: true }); }
@@ -212,7 +213,7 @@ test("deploy queued behind reservation release cannot switch current", async () 
     await mkdir(root);
     let deployment!: Promise<unknown>;
     await withFileLock(join(root, ".deploy.lock"), async () => {
-      deployment = deployArtifact({ ...fixture, root, admission, expectedCurrent: null, hooks: { async restartDaemon() { assert.fail("restart"); } } });
+      deployment = deployArtifact({ ...fixture, root, admission, expectedCurrent: null, hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() { assert.fail("restart"); } } });
       const db = new DatabaseSync(join(dir, "v2", "core.sqlite3"));
       db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify({ ...admission.reservation, active: false }));
       db.close();
@@ -228,7 +229,7 @@ test("fresh verified artifact uses v2 activation without a freeze marker", async
   try {
     const fixture = await release(dir), root = join(dir, "runtime");
     await deployArtifact({ ...fixture, root, admission: { fresh: true }, expectedCurrent: null,
-      hooks: { async restartDaemon(context) { assert.equal(context.runtime, "v2"); } } });
+      hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon(context) { assert.equal(context.runtime, "v2"); } } });
     assert.equal((await import("node:fs")).existsSync(join(dir, "FROZEN")), false);
     assert.equal(installedV2Runtime(root), true);
     const saved = process.env.HIVE_STORE_ROOT;
@@ -281,7 +282,7 @@ for (const fresh of [false, true]) {
       const admission = fresh ? { fresh: true as const } : await reserve(dir, fixture.identity);
       let restarts = 0;
       const options = { ...fixture, root, admission, expectedCurrent: null,
-        hooks: { async restartDaemon() {
+        hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() {
           restarts++;
           if (fresh && restarts === 1) await mkdir(join(dir, "v2"));
           if (restarts === 1) throw new Error("restart acknowledgement lost");
@@ -337,7 +338,7 @@ for (const receiptOnly of [false, true]) {
       const initial = await commit("initial");
       const fixture = await release(dir, initial);
       const restarts: Array<string | undefined> = [];
-      const hooks = {
+      const hooks = { async backupStore() { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); },
         async restartDaemon(context: { runtime?: "v2" }) { restarts.push(context.runtime); },
         async buildArtifact({ workDir }: { workDir: string }) {
           const artifactDir = join(workDir, "stage");
@@ -390,7 +391,7 @@ test("fresh artifact exposes its owner CLI only after restart succeeds and retri
     let restartFailed = false;
     persistNodePin(join(root, "..", "v2"), probeNativeNode(process.execPath));
     const options = { ...fixture, root, admission: { fresh: true as const }, expectedCurrent: null,
-      cliBinDirectory: bin, hooks: { async restartDaemon() { if (!restartFailed) { restartFailed = true; throw new Error("restart interrupted"); } } } };
+      cliBinDirectory: bin, hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() { if (!restartFailed) { restartFailed = true; throw new Error("restart interrupted"); } } } };
     await assert.rejects(deployArtifact(options), /restart interrupted/);
     assert.equal((await import("node:fs")).existsSync(join(bin, "hive")), false);
     await deployArtifact(options);
@@ -408,7 +409,7 @@ test("reserved artifact restart receives structural admission that expires after
     const { restartDeployedDaemon } = await import("../src/commands/deploy.js");
     const { hasDeployRestartAdmission, DeployReservationHeldError } = await import("../src/deployRuntime.js");
     let captured: import("../src/deployRuntime.js").RestartDaemonContext | undefined;
-    await deployArtifact({ ...fixture, root, admission, expectedCurrent: null, hooks: {
+    await deployArtifact({ ...fixture, root, admission, expectedCurrent: null, hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); },
       async restartDaemon(context) {
         captured = context;
         assert.equal(hasDeployRestartAdmission(context), true);
@@ -444,5 +445,23 @@ for (const invalid of ["target", "stamp"] as const) test(`artifact admission ref
     await assert.rejects(deployArtifact({ ...next, root, expectedCurrent: previous.identity.sourceRevision, admission: { fresh: true }, hooks: { async restartDaemon() { assert.fail(); } } }), /external current lacks a native build target or verified dist build stamp/);
     assert.equal(await readlink(join(root, "current")), previous.stage);
     assert.equal(existsSync(join(root, next.identity.sourceRevision)), false);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("artifact backup refusal preserves current and never activates the candidate", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hb-artifact-backup-"));
+  try {
+    const root = join(dir, "runtime");
+    const previous = await release(dir, "b".repeat(40)), next = await release(dir);
+    await deployArtifact({ ...previous, root, expectedCurrent: null, admission: { fresh: true }, hooks: { async restartDaemon() {} } });
+    const admission = await reserve(dir, next.identity);
+    await assert.rejects(deployArtifact({ ...next, root, expectedCurrent: previous.identity.sourceRevision, admission, hooks: {
+      async backupStore() {
+        assert.equal(await currentDeployTarget(root), previous.identity.sourceRevision);
+        throw new Error("fixture backup receipt failure");
+      },
+      async restartDaemon() { assert.fail("backup failure must not activate"); },
+    } }), /fixture backup receipt failure/);
+    assert.equal(await currentDeployTarget(root), previous.identity.sourceRevision);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

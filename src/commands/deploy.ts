@@ -75,7 +75,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
     const result = await deployArtifact({ archive, identity: JSON.parse(await readFile(identity, "utf8")),
       admission: JSON.parse(await readFile(admission, "utf8")),
       ...(typeof binDirectory === "string" ? { cliBinDirectory: binDirectory } : {}),
-      expectedCurrent: expected === "none" ? null : expected, hooks: { restartDaemon: restartDeployedDaemon } });
+      expectedCurrent: expected === "none" ? null : expected, hooks: { backupStore: backupBeforeSwap, restartDaemon: restartDeployedDaemon } });
     console.log(JSON.stringify(result));
     return;
   }
@@ -346,7 +346,7 @@ async function deployRun(parsed: Parsed): Promise<void> {
     skipTests: truthy(flag(parsed, "skip-tests")),
     log,
     ...(parsed.flags.has("allow-non-descendant") ? { allowNonDescendant: true } : {}),
-    hooks: { buildArtifact: buildDeployArtifact, restartDaemon: restartDeployedDaemon },
+    hooks: { buildArtifact: buildDeployArtifact, backupStore: backupBeforeSwap, restartDaemon: restartDeployedDaemon },
   });
   if (isPretty()) {
     console.log(actionLine("ok", "deploy", [
@@ -363,7 +363,7 @@ async function deployRollback(): Promise<void> {
   const log = (line: string) => console.log(isPretty() ? dim(line) : line);
   const outcome = await rollbackDeploy({
     log,
-    hooks: { restartDaemon: restartDeployedDaemon },
+    hooks: { backupStore: backupBeforeSwap, restartDaemon: restartDeployedDaemon },
   });
   if (isPretty()) {
     console.log(actionLine("ok", "deploy", [
@@ -482,4 +482,16 @@ async function deployInit(): Promise<void> {
   console.log("     # verify: the package resolves through runtime/current and history shows the active sha");
   console.log("");
   console.log(note("warning: any future `npm i -g honeybee` / `npm update -g` will clobber the symlink — redo the ln/mv step after such commands (or simply never run them again; `hive deploy` replaces them)."));
+}
+
+export async function backupBeforeSwap({ root, installedDir, sourceRevision }: { root: string; installedDir: string; sourceRevision: string | null }): Promise<{ receiptPath: string }> {
+  const dataDir = join(root, "..", "v2");
+  const pin = resolveNodePin(dataDir, process.env);
+  const sourceBuild = sourceRevision ? await readFile(join(root, sourceRevision, "dist", "build-identity.json"), "utf8") : "unknown: no previous runtime";
+  const { stdout } = await execFileAsync(pin.path, [join(installedDir, "dist", "cli.js"), "v2", "store", "backup", "--data-dir", dataDir, "--source-build", sourceBuild, "--json"],
+    { timeout: 120_000, env: { ...nativeNodeEnv(), ...nodePinEnv(pin) } });
+  const receipt = JSON.parse(stdout.trim());
+  if (receipt.format !== 1 || typeof receipt.receiptPath !== "string" || receipt.integrityCheck !== "ok") throw new Error("deploy: backup receipt was not finalized");
+  if (sourceRevision && JSON.parse(receipt.sourceBuild).sourceRevision !== sourceRevision) throw new Error("deploy: backup source build differs from the selected runtime");
+  return receipt;
 }

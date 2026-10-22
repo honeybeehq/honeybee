@@ -234,3 +234,32 @@ bytes points current at runtime/<revision>, so Apiary must reconcile its raw-lin
 CAS after a Honeybee rollback. Manual rollback must retain T3 desired-build pin
 checks and explicit override receipts when these branches are combined. There is
 no crash journal to resume recovery after a process crash midway through it.
+### Store backups and offline restore
+
+Source and artifact deploys (including rollback) require a durable store backup
+receipt before changing the selected runtime. The live store owner takes a
+`VACUUM INTO` snapshot; an offline owner takes the same snapshot under SQLite's
+exclusive lock. An older daemon without the backup RPC must be stopped before
+upgrading through this boundary. A first install without a store records a
+store-absence receipt instead. Independently, opening an older schema backs it up
+before any schema DDL. Backup or receipt failure refuses migration/deployment.
+
+Backups and manifests live next to the store in `core.sqlite3.backups/`, with
+private permissions, checksums, schema/DDL identity, integrity result, source build
+and time. Retention keeps ten recent snapshots plus the newest for every schema.
+Legacy stores without recorded build provenance say so explicitly in migration
+receipts; deploy receipts use the running or previously installed build identity.
+
+After stopping the daemon, restore with
+`hive v2 store restore --from /absolute/path/to/receipt.json --data-dir /path/to/v2`.
+This refuses an active owner, verifies the receipt/checksum/schema/integrity,
+preserves the current database as `core.sqlite3.before-restore-<uuid>` with its
+WAL/SHM, and restores the snapshot. **Writes made after the backup are discarded.**
+Select the matching old runtime only after restoring its schema. Restore is an
+explicit operator action; deployment recovery does not silently discard writes.
+
+A Linux fixture proof (after building) is
+`node v2/cli/tests/store-backup-smoke.mjs`: it creates a real schema44 store using
+archived old source, migrates with the candidate binary, restores through the CLI,
+and reopens with the old core to compare logical rows. It starts and stops only
+its own fixture daemon by PID, and retains its receipt and daemon log under `/tmp`.

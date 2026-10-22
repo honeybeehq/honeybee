@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { readBuildIdentity } from "./release/buildIdentity.js";
 import { recordedSocketPath, readLiveUpdateOwner } from "./v2/updateOwnerClient.mjs";
@@ -26,7 +26,7 @@ import { execFile } from "node:child_process";
 import { existsSync, type Dirent } from "node:fs";
 import { cp, lstat, mkdir, mkdtemp, open, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { withFileLock } from "./lock.js";
 import { configuredV2Runtime, installedV2Identity, runtimeUsesV2, RUNTIME_MODE_CONFIG, V2_DEPLOY_MARKER } from "./cliRoute.js";
@@ -100,6 +100,7 @@ export type DeployHooks = {
    * be self-sufficient: dist/, contracts/, package.json and production
    * node_modules — nothing in it may resolve back into the repo tree.
    */
+  backupStore?: (context: { root: string; installedDir: string; sourceRevision: string | null }) => Promise<{ receiptPath: string }>;
   buildArtifact: (context: BuildArtifactContext) => Promise<{ artifactDir: string }>;
   /** Separate final step so tests (and --no-restart futures) never touch a real daemon. */
   restartDaemon: (context: RestartDaemonContext) => Promise<void>;
@@ -125,7 +126,7 @@ export async function assertDeployRestartAdmission(context: RestartDaemonContext
     || reservation.recoverySubjectDigest !== expected.recoverySubjectDigest) throw new DeployReservationHeldError(reservation.id, reservation.epoch);
 }
 
-async function restartWithAdmission(hooks: Pick<DeployHooks, "restartDaemon">, context: RestartDaemonContext, reservation?: UpdateReservation): Promise<void> {
+async function restartWithAdmission(hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">, context: RestartDaemonContext, reservation?: UpdateReservation): Promise<void> {
   const restore = context.restorePrevious;
   if (restore) context.restorePrevious = async () => {
     if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
@@ -168,7 +169,7 @@ export type DeployOutcome = {
 };
 
 export type RollbackOptions = {
-  hooks: Pick<DeployHooks, "restartDaemon">;
+  hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">;
   root?: string;
   by?: string;
   now?: () => Date;
@@ -497,9 +498,39 @@ async function retainExternalCurrent(root: string, link: string, sha: string, no
   return digest;
 }
 
+async function backupBeforeRuntimeSwap(root: string, hooks: Pick<DeployHooks, "backupStore">, installedDir: string, previousSha: string | null, log: (line: string) => void): Promise<void> {
+  const storePath = resolve(root, "..", "v2", "core.sqlite3");
+  if (!existsSync(storePath)) {
+    const directory = join(root, ".store-absence");
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const receiptPath = join(directory, `${Date.now()}-${process.pid}.json`);
+    const file = await open(`${receiptPath}.partial`, "wx", 0o600);
+    try {
+      await file.writeFile(JSON.stringify({ format: 1, kind: "store_absent", storePath, sourceBuild: previousSha, createdAt: new Date().toISOString() }));
+      await file.sync();
+    } finally { await file.close(); }
+    await rename(`${receiptPath}.partial`, receiptPath);
+    await syncDeployPath(directory);
+    await syncDeployPath(root);
+    for (const name of (await readdir(directory)).filter(name => name.endsWith(".json")).sort().reverse().slice(10)) await rm(join(directory, name));
+    await syncDeployPath(directory);
+    log(`deploy: no prior store; absence receipt ${receiptPath}`);
+    return;
+  }
+  if (!hooks.backupStore) throw new Error("deploy: store backup owner is required before swap");
+  const receipt = await hooks.backupStore({ root, installedDir, sourceRevision: previousSha });
+  if (!receipt.receiptPath || !existsSync(receipt.receiptPath)) throw new Error("deploy: durable store backup receipt missing");
+  const manifest = JSON.parse(await readFile(receipt.receiptPath, "utf8"));
+  if (manifest.format !== 1 || manifest.integrityCheck !== "ok" || manifest.storePath !== storePath
+    || manifest.receiptPath !== resolve(receipt.receiptPath) || typeof manifest.backupPath !== "string"
+    || dirname(manifest.backupPath) !== dirname(resolve(receipt.receiptPath))
+    || manifest.sha256 !== createHash("sha256").update(await readFile(manifest.backupPath)).digest("hex")) throw new Error("deploy: invalid store backup receipt");
+  log(`deploy: store backup receipt ${receipt.receiptPath}`);
+}
+
 async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, immutable = false, gate, reservation }: {
   root: string; sha: string; artifactDir: string; artifactHash: string; keep: number; by: string;
-  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon">; immutable?: boolean; gate?: "full" | "tests-skipped"; reservation?: UpdateReservation;
+  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">; immutable?: boolean; gate?: "full" | "tests-skipped"; reservation?: UpdateReservation;
 }): Promise<DeployOutcome> {
   const previousLink = await readlink(join(root, CURRENT_LINK_NAME)).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
   const previousSha = await currentDeployTarget(root);
@@ -514,6 +545,9 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
     staging = join(root, `.staging.${sha}.${process.pid}.${Date.now()}`);
     await cp(artifactDir, staging, { recursive: true, verbatimSymlinks: true });
     if (immutable) await syncDeployTree(staging);
+
+    const previousSha = await currentDeployTarget(root);
+    await backupBeforeRuntimeSwap(root, hooks, staging, previousSha, log);
 
     // Publish runtime/<sha>. A redeploy of an existing sha swaps the old dir
     // aside first; the rename pair keeps a complete install in place at every
@@ -593,7 +627,7 @@ export type DeployArtifactOptions = {
   /** Optional owner-managed CLI exposure after successful activation. */
   cliBinDirectory?: string;
   root?: string;
-  hooks: Pick<DeployHooks, "restartDaemon">;
+  hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">;
 };
 
 export async function deployArtifact(options: DeployArtifactOptions): Promise<DeployOutcome> {
@@ -679,6 +713,7 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
   await assertRollbackStoreCompatible(root, join(root, target.sha));
   if (currentLink && currentLink !== currentSha) await retainExternalCurrent(root, currentLink, currentSha, now, by);
 
+  await backupBeforeRuntimeSwap(root, options.hooks, join(root, currentSha), currentSha, log);
   const v2 = runtimeUsesV2(root);
   if (v2) await persistV2RuntimeMode(root);
   await retargetCurrent(root, target.sha);

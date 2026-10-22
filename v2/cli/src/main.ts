@@ -1,3 +1,4 @@
+import { backupStoreOffline, restoreStoreOffline, StoreRestoreError, StoreBackupError } from "../../core/src/storeBackup.ts";
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
@@ -225,6 +226,8 @@ interface Parsed {
 const LIST_FLAGS = new Set(["--add", "--remove", "--option", "--ref", "--env", "--input", "--output", "--only-account"]);
 
 const VALUE_FLAGS = new Set([
+  "--from",
+  "--source-build",
   "--command-id",
   "--agent",
   "--cwd",
@@ -4847,6 +4850,8 @@ function jsonErrorLine(err: unknown, ctx: CliContext | undefined): Record<string
     ? { code: err.code, message: err.message, details: { socketPath: err.socketPath, socketSource: ctx?.target.socketSource ?? null, cause: err.reason } }
     : err instanceof RpcError
       ? { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) }
+      : err instanceof StoreRestoreError || err instanceof StoreBackupError
+        ? { code: err.code, message: err.message }
       : { code: "cli_error", message: err instanceof Error ? err.message : String(err) };
   return { error, daemonTarget: ctx ? daemonTargetJson(ctx.target, ctx.daemon.instance, ctx.daemon.connected) : null };
 }
@@ -4993,6 +4998,26 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         const paneInputUnknown = health.paneInputUnknown ?? 0, deliveryHoldUnknown = health.deliveryHoldUnknown ?? 0, deliveryPrepareAuditUnknown = health.deliveryPrepareAuditUnknown ?? 0;
         emit(ctx, [confirm(degraded ? "warn" : "ok", "local RPC peer credentials:", security ? `${security.peerCredentials.state} (${security.peerCredentials.target}; ${security.peerCredentials.artifactPath})` : "not reported by this daemon"), confirm(helperUnavailable ? "warn" : "ok", "delivery file native helper:", helper ? `${helper.state} (${helper.target}; ${helper.artifactPath})` : "not reported by this daemon"), confirm(paneInputUnknown ? "warn" : "ok", "pane_input_unknown:", String(paneInputUnknown)), confirm(deliveryHoldUnknown ? "warn" : "ok", "delivery_hold_state_unknown:", String(deliveryHoldUnknown)), confirm(deliveryPrepareAuditUnknown ? "warn" : "ok", "delivery_prepare_audit_unknown:", String(deliveryPrepareAuditUnknown))], {localSecurity: security ?? null, deliveryFileHelper: helper ?? null, paneInputUnknown, deliveryHoldUnknown, deliveryPrepareAuditUnknown, ...(health.identityDiagnostic ? {identityDiagnostic: health.identityDiagnostic} : {}), ...(health.tmuxCleanupRetained ? {tmuxCleanupRetained: health.tmuxCleanupRetained} : {}), ...(health.tmuxCleanupInformational ? {tmuxCleanupInformational: health.tmuxCleanupInformational} : {})}, false);
         return degraded || helperUnavailable || paneInputUnknown || deliveryHoldUnknown || deliveryPrepareAuditUnknown || health.identityDiagnostic?.warning || cleanup.failed ? 1 : 0;
+      }
+      case "store": {
+        const operation = parsed.positional[1];
+        if (parsed.positional.length !== 2 || !["backup", "restore"].includes(operation ?? "")) throw new Error("Usage: hive v2 store backup | restore --from <receipt> --data-dir <dir>");
+        if (operation === "restore") {
+          const from = parsed.flags.get("--from");
+          if (typeof from !== "string") throw new Error("store restore requires --from <receipt>");
+          if (readLiveEndpointRecord(ctx.cfg.dataDir)) throw new StoreRestoreError("Daemon is running; stop it before restoring the store");
+          const result = restoreStoreOffline(ctx.cfg.storePath, from);
+          emit(ctx, [`Restored schema ${result.schemaVersion}; preserved current store at ${result.preservedPath}`, result.lossWindow], result, false);
+          return 0;
+        }
+        let result;
+        try { result = await withClient(ctx, client => client.request("store.backup", {})); }
+        catch (error) {
+          if (!(error instanceof DaemonDownError) || socketConfigured(ctx.target)) throw error;
+          result = backupStoreOffline(ctx.cfg.storePath, String(parsed.flags.get("--source-build") ?? "unknown: offline store; supply --source-build with the previous build identity"));
+        }
+        emit(ctx, [JSON.stringify(result)], result, false);
+        return 0;
       }
       case "deploy-info":
         return await cmdDeployInfo(ctx);

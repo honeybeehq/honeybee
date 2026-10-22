@@ -277,6 +277,7 @@ export interface HelloFrame {
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
 export const RPC_ERROR_CODES = [
+  "store_backup_failed",
   "rpc_execution_stale", "rpc_execution_busy", "rpc_execution_history_unknown", "rpc_execution_fence_unsupported",
   "rpc_effect_fenced", "rpc_effect_history_unknown", "rpc_effect_resolve_unsupported",
   "socket_mismatch",
@@ -615,6 +616,7 @@ export const RPC_VERBS = [
   "update.apiarySwap.release",
   "update.apiarySwap.abandon",
   "update.apiarySwap.recover",
+  "store.backup",
   "update.status",
   "update.reserve",
   "update.release",

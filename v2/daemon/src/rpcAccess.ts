@@ -129,6 +129,7 @@ export const RPC_ACCESS = {
   "update.apiarySwap.release": "mutate",
   "update.apiarySwap.abandon": "mutate",
   "update.apiarySwap.recover": "mutate",
+  "store.backup": "mutate",
   "update.status": "read",
   "update.reserve": "mutate",
   "update.release": "mutate",
