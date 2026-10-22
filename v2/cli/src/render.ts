@@ -299,7 +299,8 @@ export function accountLine(
   const lease = a.statusReason === LEASE_UNKNOWN_MESSAGE ? `  ${LEASE_UNKNOWN_MESSAGE}` : a.source === "leased" && a.leasedFrom ? `  leased authority=${a.leasedFrom.authorityNodeId} expires=${a.leasedFrom.expiresAt === null ? "none" : new Date(a.leasedFrom.expiresAt * 1000).toISOString()}` : "";
   const why = a.status === "auth_needed" && a.statusReason ? `\n  ${dim("reason:")} ${a.statusReason}` : "";
   const native = a.nativeLogin ? `\n  ${dim("native:")} ${a.nativeLogin}` : "";
-  return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}${pausedBy}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}${loginExpiry}${lease}${why}${native}`;
+  const attention = a.attention ? `\n  ${red(a.attention.code)}: ${a.attention.message}` : "";
+  return `${stalePrefix(stale)}${bold(a.id)}  ${blue(a.harness)}  ${colorAccountStatus(a.status)}${pausedBy}  ${dim("creds=")}${colorCredentialHealth(a.credentialHealth)}  ${dim(tildify(a.homePath))}${penalty}${usage}${login}${loginExpiry}${lease}${why}${native}${attention}`;
 }
 
 /** "login expires 10-18 19:38" (UTC): when the provider login itself ends and a new login is needed. */

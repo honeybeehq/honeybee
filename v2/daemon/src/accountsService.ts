@@ -241,10 +241,10 @@ export type PickOutcome =
  * token was blanked, or a central chain the daemon cannot rotate), `present`
  * (valid now or refreshable).
  */
-export type CredentialState = "present" | "absent" | "invalid" | "expired";
+export type CredentialState = "present" | "absent" | "invalid" | "expired" | "damaged";
 
 /** Typed refusal codes shared by explicit spawn, allocator claims, swap and the runtime-start hold. */
-export type AccountRefusalCode = "account_lease_revoked" | "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired" | "account_unavailable";
+export type AccountRefusalCode = NonNullable<MirrorAccountRow["attention"]>["code"];
 
 export type AccountReadiness =
   | { ready: true }
@@ -2090,6 +2090,7 @@ export class AccountsService {
     if (raw === null) return "absent";
     const parsed = parseClaudeCredentials(raw);
     if (!parsed) return "invalid";
+    if (parsed.accessToken.trim().length === 0 || !Number.isFinite(parsed.expiresAt) || parsed.expiresAt <= 0) return "damaged";
     return parsed.expiresAt > this.now() || hasRefreshToken(parsed) ? "present" : "expired";
   }
 
@@ -2115,6 +2116,8 @@ export class AccountsService {
       return { ready: false, code: "account_auth_needed", message: this.authNeededReason(account) ?? `account ${account.id} needs login; log in with: hive account login ${account.id}` };
     }
     switch (this.credentialState(account)) {
+      case "damaged":
+        return { ready: false, code: "credential_file_damaged", message: `account ${account.id}: credential file damaged; run hive account login ${account.id}` };
       case "absent":
         if (native) return { ready: false, code: "account_credential_missing", message: this.nativeSignInMessage(account, "has no sign-in on this computer") };
         return { ready: false, code: "account_credential_missing", message: `account ${account.id} has no credential; log in with: hive account login ${account.id}` };
@@ -2218,7 +2221,8 @@ export class AccountsService {
   /** The mirror shape of an account row: the store row plus the derived health (never stored). */
   mirrorRow(account: AccountRow): MirrorAccountRow {
     const { native: _native, ...row } = presentAccountLease(account);
-    return { ...row, credentialHealth: this.credentialHealthOf(account), loginDueAt: loginDueAtOf(account), nativeLogin: this.nativeDescription(account) };
+    const readiness = this.credentialReadiness(account);
+    return { ...row, credentialHealth: this.credentialHealthOf(account), loginDueAt: loginDueAtOf(account), nativeLogin: this.nativeDescription(account), attention: readiness.ready ? null : { code: readiness.code, message: readiness.message } };
   }
 
   /**
@@ -2274,7 +2278,7 @@ export class AccountsService {
     if (readiness.some(row => row.ready)) return null;
     const refusals = readiness.filter((row): row is Extract<AccountReadiness, { ready: false }> => !row.ready);
     if (refusals.some(row => row.code === "account_lease_revoked" || row.reason === "lease_unknown")) return "lease_needs_operator";
-    if (refusals.some(row => ["account_auth_needed", "account_credential_missing", "account_credential_invalid", "account_credential_expired"].includes(row.code))) return "credential_login_required";
+    if (refusals.some(row => ["account_auth_needed", "account_credential_missing", "account_credential_invalid", "account_credential_expired", "credential_file_damaged"].includes(row.code))) return "credential_login_required";
     if (refusals.some(row => row.code === "account_paused")) return "paused";
     return "unavailable";
   }
@@ -3199,9 +3203,10 @@ export class AccountsService {
         if (!credential) {
           return { readable: false, unreadableReason: "auth_expired", error: "no OAuth token found in home, keychain, or vault" };
         }
-        if (credential.expiresAt <= this.now()) {
+        if (credential.expiresAt <= this.now() || credential.accessToken.trim().length === 0) {
           if (account.source === "leased") return { readable: false, unreadableReason: "auth_expired", error: "Leased access expired; request renewal from its authority." };
-          const refreshed = await this.refreshClaudeCredential(account);
+          const damagedHome = this.claudeDocumentState(readIfFile(join(account.homePath, ".credentials.json"))) === "damaged";
+          const refreshed = await this.refreshClaudeCredential(account, 0, damagedHome ? 0 : undefined);
           if (refreshed.kind === "ok") credential = refreshed.credential;
           else if (refreshed.kind === "live_runtime") {
             return { readable: false, unreadableReason: "refresh_deferred", error: "OAuth token expired; a healthy running Claude owns refresh for this account" };
@@ -3216,7 +3221,9 @@ export class AccountsService {
           }
         }
         const usage = await this.fetchers.claudeUsage(credential.accessToken);
-        return parseClaudeUsage(usage, credential.subscriptionType ?? null);
+        const result = parseClaudeUsage(usage, credential.subscriptionType ?? null);
+        if (result.readable) await this.repairDamagedClaudeHome(account, credential);
+        return result;
       }
       case "codex": {
         if (this.codexCredentials.enabled(account)) {
@@ -3287,6 +3294,28 @@ export class AccountsService {
     }
   }
 
+  private async repairDamagedClaudeHome(account: AccountRow, verified: ClaudeCredential): Promise<void> {
+    if (!this.mayRepairClaudeHome(account)) return;
+    const path = join(account.homePath, ".credentials.json");
+    if (this.claudeDocumentState(readIfFile(path)) !== "damaged") return;
+    await withClaudeRefreshLock(account.homePath, async () => {
+      const current = this.store.getAccount(account.id);
+      if (!current || current.homePath !== account.homePath || !this.mayRepairClaudeHome(current)) return;
+      if (this.claudeDocumentState(readIfFile(path)) !== "damaged") return;
+      const material = await this.freshestClaudeCredential(current);
+      if (!material || material.accessToken !== verified.accessToken || material.refreshToken !== verified.refreshToken || material.expiresAt !== verified.expiresAt || material.expiresAt <= this.now() || material.accessToken.trim().length === 0) return;
+      const after = this.store.getAccount(current.id);
+      if (!after || after.updatedAt !== current.updatedAt || after.homePath !== current.homePath || !this.mayRepairClaudeHome(after) || this.claudeDocumentState(readIfFile(path)) !== "damaged") return;
+      atomicWriteFileSync(path, JSON.stringify(material.document));
+      this.store.touchAccount(current.id, "credential_file_damaged: repaired from verified account material");
+      this.log(`account.credential_file_damaged account=${current.id} outcome=repaired live_runtime=${this.hasLiveRuntime(current.id)}`);
+    });
+  }
+
+  private mayRepairClaudeHome(account: AccountRow): boolean {
+    return account.source !== "leased" && !this.isNative(account) && !this.authorityFor(account)?.enabled(account) && !this.authorityFor(account)?.busy(account) && !this.store.credentialAuthorityIsDemoted(account.id) && !this.store.credentialRecoveryPending(account.id) && !this.leaseWrites.has(account.id) && !this.ownedHomeRefusal(account, "writes into");
+  }
+
   /**
    * The freshest claude OAuth credential for the account: the HOME's
    * .credentials.json and Keychain item (the live chain, refreshed on use)
@@ -3304,7 +3333,7 @@ export class AccountsService {
     const candidates: ClaudeCredential[] = [];
     const push = (raw: string | null) => {
       const parsed = parseClaudeCredentials(raw);
-      if (!parsed || !raw) return;
+      if (!parsed || !raw || (parsed.accessToken.trim().length === 0 || !Number.isFinite(parsed.expiresAt) || parsed.expiresAt <= 0) && !hasRefreshToken(parsed)) return;
       try {
         const document = JSON.parse(raw) as Record<string, unknown>;
         const oauth = document.claudeAiOauth;
@@ -3319,7 +3348,8 @@ export class AccountsService {
       ? strictKeychain.status === "present" ? strictKeychain.raw : null
       : await this.keychainReader(account.homePath).catch(() => null));
     push(readIfFile(join(this.vaultDirOf(account), ".credentials.json")));
-    candidates.sort((a, b) => b.expiresAt - a.expiresAt);
+    const effectiveExpiry = (credential: ClaudeCredential) => credential.accessToken.trim().length > 0 ? credential.expiresAt : 0;
+    candidates.sort((a, b) => effectiveExpiry(b) - effectiveExpiry(a));
     return candidates[0] ?? null;
   }
 
@@ -3442,8 +3472,8 @@ export class AccountsService {
     if (runningClaude) {
       if (deferralDeadlineMs === undefined) return { kind: "live_runtime" };
       const visible = await this.freshestClaudeCredential(account);
-      if (visible && visible.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential: visible };
-      if (!visible || visible.expiresAt - this.now() > deferralDeadlineMs) return { kind: "live_runtime" };
+      if (visible && visible.accessToken.trim().length > 0 && visible.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential: visible };
+      if (!visible || visible.accessToken.trim().length > 0 && visible.expiresAt - this.now() > deferralDeadlineMs) return { kind: "live_runtime" };
     }
     let locked;
     try {
@@ -3470,7 +3500,7 @@ export class AccountsService {
     // limits caller or a running Claude may have advanced the chain after
     // the first read.
     const credential = await this.freshestClaudeCredential(account, keychain);
-    if (credential && credential.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential };
+    if (credential && credential.accessToken.trim().length > 0 && credential.expiresAt - this.now() > minTtlMs) return { kind: "ok", credential };
     if (!credential?.refreshToken) return { kind: "no_refresh_token" };
     let result: ClaudeRefreshResult;
     try {

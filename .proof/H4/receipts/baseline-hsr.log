@@ -1,0 +1,37 @@
+{"scenario":"inherited-stdout-descendants","descendants":[{"retainedOwnership":"no","nativeState":"live","diagnosticError":null},{"retainedOwnership":"no","nativeState":"live","diagnosticError":null}]}
+✖ turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants (5797.701832ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5937.532542
+
+✖ failing tests:
+
+test at .test-dist/tests/hsr-turn-runner.test.js:331:1
+✖ turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants (5797.701832ms)
+  AssertionError [ERR_ASSERTION]: Got unwanted rejection.
+  Actual message: "timed out waiting for inherited-pipe descendants to stop with session"
+      at async file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/.test-dist/tests/hsr-turn-runner.test.js:365:7
+      at async withTempStore (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/.test-dist/tests/hsr-turn-runner.test.js:119:12)
+      at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/.test-dist/tests/hsr-turn-runner.test.js:332:3)
+      at async Test.run (node:internal/test_runner/test:1332:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: Error: timed out waiting for inherited-pipe descendants to stop with session
+        at waitFor (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/.test-dist/tests/hsr-turn-runner.test.js:154:9)
+        at async waitForActual (node:assert:646:5)
+        at async strict.doesNotReject (node:assert:789:33)
+        at async file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/.test-dist/tests/hsr-turn-runner.test.js:365:7
+        at async withTempStore (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/.test-dist/tests/hsr-turn-runner.test.js:119:12)
+        at async TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4/base-main/.test-dist/tests/hsr-turn-runner.test.js:332:3)
+        at async Test.run (node:internal/test_runner/test:1332:7)
+        at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3),
+    expected: undefined,
+    operator: 'doesNotReject',
+    diff: 'simple'
+  }

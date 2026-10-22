@@ -65,7 +65,8 @@ export type MirrorSealRow = SealRow;
  * (the machine's own login, recipe `nativeOn`) the plain text that says what
  * it is, shown as is; null for every other account.
  */
-export type MirrorAccountRow = Omit<AccountRow, "native" | "leasedFrom"> & { leasedFrom: import("./types.ts").AccountLeaseOrigin | null; credentialHealth: CredentialHealth; loginDueAt: number | null; nativeLogin: string | null };
+export type AccountAttentionCode = "account_lease_revoked" | "account_paused" | "account_auth_needed" | "account_credential_missing" | "account_credential_invalid" | "account_credential_expired" | "account_unavailable" | "credential_file_damaged";
+export type MirrorAccountRow = Omit<AccountRow, "native" | "leasedFrom"> & { leasedFrom: import("./types.ts").AccountLeaseOrigin | null; credentialHealth: CredentialHealth; loginDueAt: number | null; nativeLogin: string | null; attention?: { code: AccountAttentionCode; message: string } | null };
 
 /** Three days before a Claude provider login ends, a new login is due. */
 export const CLAUDE_LOGIN_DUE_MS = 3 * 24 * 60 * 60_000;
