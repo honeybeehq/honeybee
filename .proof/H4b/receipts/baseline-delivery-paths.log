@@ -1,0 +1,50 @@
+✔ OS-level file read outside cwd: hsr; tool-policy read UNVERIFIED (OS-level only) (146.068453ms)
+ℹ fixture max socket path bytes: 61
+ℹ SCG_READ_RESULT={"substrate":"hsr","expectedDigest":"40f26f0e684d4f7ad7b2b7ec4b4eb8425ef6f5ab658bba5be05fedeb73854597","observedDigest":"40f26f0e684d4f7ad7b2b7ec4b4eb8425ef6f5ab658bba5be05fedeb73854597","expectedHeaderSha256":"6420731329aad2d1799ee937177b632e9f11a515c692c9032a6a54650ef3f7d0","observedHeaderSha256":"6420731329aad2d1799ee937177b632e9f11a515c692c9032a6a54650ef3f7d0","readClass":"read","writeDenied":null}
+ℹ write denied: NOT APPLICABLE (unsandboxed by design)
+ℹ Claude: tool-policy read UNVERIFIED (OS-level only)
+ℹ Codex: tool-policy read UNVERIFIED (OS-level only)
+ℹ Grok: tool-policy read UNVERIFIED (OS-level only)
+ℹ Kimi: tool-policy read UNVERIFIED (OS-level only)
+ℹ Muse: tool-policy read UNVERIFIED (OS-level only)
+ℹ Agy: tool-policy read UNVERIFIED (OS-level only)
+✖ OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (0.446319ms)
+✖ OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (0.162244ms)
+✔ default Darwin dataDir and delivery-content for a /Users home are outside default scratch paths and TMPDIR (0.935133ms)
+✔ real HSR asynchronous confirmation settles from durable confirmation (264.316405ms)
+✔ real HSR asynchronous confirmation with lost outbound-attempt state settles from durable intent (323.636116ms)
+✔ real codex pointer confirmation stays pending without UNKNOWN notices (226.895144ms)
+✔ real codex pointer confirmation refusal retries the saved publication (319.248686ms)
+✔ real muse pointer confirmation stays pending without UNKNOWN notices (199.654453ms)
+✔ real muse pointer confirmation refusal retries the saved publication (247.870147ms)
+✔ SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and later mail flows (605.426466ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 9
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2634.730274
+
+✖ failing tests:
+
+test at .audit/h4b-base/v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (0.446319ms)
+  Error: Sandboxed Linux delivery read fixture requires a base outside private mounts with socket paths at most 103 bytes; candidate lengths: 61, 172
+      at deliveryReadFixtureBase (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/delivery-file-read-root.ts:13:20)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/delivery-file-read.test.ts:25:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)
+
+test at .audit/h4b-base/v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (0.162244ms)
+  Error: Sandboxed Linux delivery read fixture requires a base outside private mounts with socket paths at most 103 bytes; candidate lengths: 61, 172
+      at deliveryReadFixtureBase (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/delivery-file-read-root.ts:13:20)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/sar-h4-held-wake-readiness-c80bda5ae50a/github-com-honeybeehq-honeybee-a9015b303498-space-c80bda5ae50a/.audit/h4b-base/v2/daemon/tests/delivery-file-read.test.ts:25:16)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:911:7)

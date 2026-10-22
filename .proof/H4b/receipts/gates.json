@@ -1,0 +1,126 @@
+{
+  "productionSource": "25af863a5b51f430ee2a196ee406f61ef5a767de",
+  "baseMain": "0f9dbe19",
+  "schema": 49,
+  "swapSupportedSchemas": [
+    48,
+    49
+  ],
+  "deployHold": true,
+  "gates": {
+    "check": 0,
+    "v2:check": 0,
+    "build": 0
+  },
+  "suites": {
+    "core-final": {
+      "tests": 617,
+      "pass": 617,
+      "fail": 0,
+      "skipped": 0
+    },
+    "harness-final": {
+      "tests": 14,
+      "pass": 14,
+      "fail": 0,
+      "skipped": 0
+    },
+    "driver-final": {
+      "tests": 163,
+      "pass": 163,
+      "fail": 0,
+      "skipped": 0
+    },
+    "driver2-final": {
+      "tests": 309,
+      "pass": 287,
+      "fail": 0,
+      "skipped": 22
+    },
+    "daemon-buffered": {
+      "tests": 773,
+      "pass": 770,
+      "fail": 2,
+      "skipped": 1,
+      "exitCode": 1
+    },
+    "daemon-remaining": {
+      "tests": 710,
+      "pass": 706,
+      "fail": 0,
+      "skipped": 4,
+      "exitCode": 0,
+      "files": 90
+    },
+    "legacy-delivery": {
+      "exitCode": 1,
+      "failure": "inherited stdout descendant reaping",
+      "durationMs": 6523.714401,
+      "baseline": "d532471e"
+    }
+  },
+  "labs": {
+    "crashRestart": {
+      "exitCode": 0,
+      "scenarios": 14,
+      "spentRefreshSends": 0
+    },
+    "schema": {
+      "exitCode": 0,
+      "downgrade": "schema_newer refusal",
+      "cascade": true
+    },
+    "context": {
+      "exitCode": 0,
+      "schema": 49,
+      "storageSupported": true,
+      "contextSurvived": true
+    }
+  },
+  "retainedFailures": [
+    {
+      "suite": "npm test",
+      "test": "turn runner: exact turn_end advances past an inherited stdout pipe and session stop reaps descendants",
+      "baseline": "d532471e",
+      "baselineReceipt": "../H4/receipts/baseline-hsr.log"
+    },
+    {
+      "suite": "v2:daemon",
+      "tests": [
+        "OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only)",
+        "OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only)"
+      ],
+      "baseline": "29597c41",
+      "baselineReceipt": "baseline-delivery-paths.log"
+    },
+    {
+      "suite": "unbuffered auth-death cleanup",
+      "error": "spawnSync ps ENOBUFS",
+      "baseline": "29597c41",
+      "baselineReceipt": "baseline-ps-buffer.log",
+      "localOverride": "32MB maxBuffer for execFileSync(ps), absent from final tracked diff",
+      "isolatedBufferedPasses": 2
+    }
+  ],
+  "originalParallelComparison": {
+    "baseline": {
+      "runs": 10,
+      "ceilingFailures": 3,
+      "nonzeroRuns": 3
+    },
+    "h4b": {
+      "runs": 10,
+      "ceilingFailures": 4,
+      "nonzeroRuns": 4
+    }
+  },
+  "fixedParallelComparison": {
+    "runs": 10,
+    "nonzeroRuns": 0,
+    "perRunPasses": 161,
+    "perRunSkips": 1,
+    "barrier": "wait for providerSessionId after warm-up, before stop"
+  },
+  "noNewUnitTests": true,
+  "missingVerificationSkill": true
+}

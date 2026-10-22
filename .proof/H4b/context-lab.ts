@@ -6,7 +6,7 @@ import { makeDaemonDir, startDaemon, waitFor } from "../../v2/daemon/tests/helpe
 const root = process.env.HOME!;
 if (!root || root !== process.env.TMPDIR || !/^\/(?:private\/)?var\/tmp\//.test(root)) throw new Error("Isolated HOME == TMPDIR under /var/tmp required");
 const fake = resolve("v2/driver-hsr/test-agent/fake-claude.mjs");
-const argvLog = join(root, "context-argv.jsonl");
+const argvLog = join(root, `context-argv-${Date.now()}.jsonl`);
 const { dir } = makeDaemonDir({ agents: { claude: { command: process.execPath, args: [fake, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"], adapter: "claude", env: { FAKE_CLAUDE_ARGV_LOG: argvLog } } } });
 for (const label of ["a", "b"]) {
   const vault = join(dir, "vault", "claude", `claude-${label}`);
