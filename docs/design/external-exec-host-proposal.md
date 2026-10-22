@@ -152,8 +152,10 @@ that project quota is accounting only and startup stays blocked pending a hard
 storage bound. SystemMaxUse/RuntimeMaxUse alone are retention limits, not proof
 of the aggregate kernel hard cap. Each attempt subtree has
 an inherited project ID and32GiB/200000inode hard project quota. The reviewed constrained root helper
-sets/inherits project IDs before service writes (FS_IOC_FSSETXATTR); the service
-UID has no authority to choose or reassign them. Prove writes
+sets/inherits project IDs before service writes (FS_IOC_FSSETXATTR). Per-attempt
+project quotas bound sandboxed writers in the bwrap user namespace. The trusted
+same-UID daemon/runner in the initial user namespace can reassign its own files'
+project IDs; the UID hard quota is therefore the aggregate security bound. Prove writes
 fail at both levels and no uncharged sibling/bind target exists. OS /var/lib
 stays on the OS filesystem, never this volume.
 
