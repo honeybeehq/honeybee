@@ -5,6 +5,8 @@ import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promi
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { restartDeployedDaemon } from "../src/commands/deploy.js";
+import { DeployActivationHeldError, DeployRollbackError } from "../src/deployRuntime.js";
+import { chmod } from "node:fs/promises";
 
 test("fresh verified activation executes installed current v2 CLI with scoped data directory", { skip: process.platform !== "darwin" && process.platform !== "linux" }, async () => {
   const dir = await mkdtemp(join(tmpdir(), "hon8-restart-"));
@@ -104,3 +106,61 @@ test("legacy deployment refuses activation before selecting a service", async ()
     await assert.rejects(restartDeployedDaemon({ root: dir, installedDir: dir, sha: "a".repeat(40), log() {} }), /legacy service activation is refused/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+for (const scenario of ["after-start", "after-stop", "compatible"] as const) {
+  test(`restart recovery preserves a safe service and pin boundary: ${scenario}`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hb-recovery-order-"));
+    const names = ["HOME", "PATH", "HIVE_V2_SERVICE_DIR", "HIVE_V2_SERVICE_LABEL"];
+    const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+    const home = join(dir, "home"), units = join(home, "units"), root = join(home, "runtime"), bin = join(home, "bin");
+    const label = "dev.honeybee.scratch-recovery", service = join(units, label + (process.platform === "darwin" ? ".plist" : ".service"));
+    const marker = join(dir, "store-schema"), calls = join(dir, "calls.jsonl");
+    await mkdir(join(root, "current", "dist"), { recursive: true });
+    await mkdir(units, { recursive: true });
+    await mkdir(bin, { recursive: true });
+    await writeFile(service, "previous-service");
+    await writeFile(marker, "44");
+    for (const command of ["launchctl", "systemctl"]) {
+      const file = join(bin, command);
+      await writeFile(file, command === "launchctl" ? "#!/bin/sh\necho 'Could not find service' >&2\nexit 113\n" : "#!/bin/sh\necho 'ActiveState=inactive'\necho 'MainPID=0'\n");
+      await chmod(file, 0o700);
+    }
+    process.env.HOME = home;
+    process.env.PATH = bin + ":" + previous.PATH;
+    process.env.HIVE_V2_SERVICE_DIR = units;
+    process.env.HIVE_V2_SERVICE_LABEL = label;
+    const pinFile = join(home, "node-runtime.json");
+    persistNodePin(join(home, "v2"), probeNativeNode(process.execPath));
+    const pin = await readFile(pinFile, "utf8");
+    await writeFile(join(root, "current", "dist", "cli.js"), `
+      const fs = require('node:fs'), verb = process.argv[3] === 'deploy-info' ? 'deploy-info' : process.argv[4];
+      fs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify(verb)+'\\n');
+      if(verb==='deploy-info') { if(fs.existsSync(${JSON.stringify(join(dir, "recovered"))}))console.log(JSON.stringify({pid:process.ppid,startedAt:1,nodeVersion:${JSON.stringify(process.version)},identity:{sourceRevision:'a'.repeat(40)}}));else process.exit(1); }
+      if(verb==='install') { fs.writeFileSync(${JSON.stringify(service)},'candidate-service'); fs.writeFileSync(${JSON.stringify(pinFile)},'candidate-pin'); }
+      if(verb==='start') { if(fs.readFileSync(${JSON.stringify(marker)},'utf8')==='51')fs.writeFileSync(${JSON.stringify(join(dir, "recovered"))},'yes');else fs.writeFileSync(${JSON.stringify(marker)},${JSON.stringify(scenario === "after-start" ? "51" : "started44")}); }
+      if(verb==='stop'&&${JSON.stringify(scenario)}==='after-stop'&&fs.readFileSync(${JSON.stringify(marker)},'utf8')==='started44')fs.writeFileSync(${JSON.stringify(marker)},'51');
+      if(verb==='status')console.log(JSON.stringify(fs.existsSync(${JSON.stringify(join(dir, "recovered"))})?{running:true}:{running:false,repair:{reason:'fixture refusal'}}));
+    `);
+    await mkdir(join(root, "current", "dist", "v2"));
+    await writeFile(join(root, "current", "dist", "v2", "cli.js"), "var SCHEMA_VERSION = 51;\n");
+    const assertRollbackSafe = async () => {
+      if ((await readFile(marker, "utf8")) === "51") throw new DeployRollbackError("ROLLBACK_STORE_RESTORE_REQUIRED", "store51 cannot be opened by previous44");
+    };
+    const context = { root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2" as const, log() {}, assertRollbackSafe,
+      restorePrevious: async () => { await assertRollbackSafe(); return true; } };
+    try {
+      const outcome = restartDeployedDaemon(context);
+      if (scenario === "compatible") await assert.rejects(outcome, /needs Node pin repair/);
+      else await assert.rejects(outcome, error => error instanceof DeployActivationHeldError && error.serviceFilesRetained && (scenario !== "after-stop" || error.candidateReadiness === "ready"));
+      const verbs = (await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+      assert.equal(verbs.filter(verb => verb === "stop").length, scenario === "after-start" ? 1 : 2);
+      assert.equal(verbs.filter(verb => verb === "start").length, scenario === "after-stop" ? 2 : 1);
+      assert.equal(await readFile(service, "utf8"), scenario === "compatible" ? "previous-service" : "candidate-service");
+      assert.equal(await readFile(pinFile, "utf8"), scenario === "compatible" ? pin : "candidate-pin");
+      if (scenario === "after-stop") assert.equal(await readFile(join(dir, "recovered"), "utf8"), "yes");
+    } finally {
+      for (const name of names) { if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name]; }
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+}

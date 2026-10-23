@@ -203,20 +203,42 @@ typed refusal. Deploy and explicit rollback preserve a departing external native
 build under `runtime/<revision>` and record its actual dist hash and adoption
 provenance in history, so a later rollback can return to it. Conflicting installed
 bytes, escaping symlinks or a non-native prior build refuse before activation.
-Failed activation restores the original link text, service file and Node pin,
-then verifies the old daemon's identity, new PID and RPC readiness.
+Compatible recovery restores the original link text, service file and Node pin.
+When the previous daemon was observed, it then verifies that daemon's identity,
+new PID and RPC readiness.
+
+Startup waits while the same native PID/birth identity makes progress in the
+database, WAL, schema or daemon log. It has a 60-second stall limit and a
+15-minute total limit; process exit, replacement and Node repair refuse early.
+Schema observations are read-only and a busy store is unknown, never compatible.
 
 Rollback checks the target bundle's schema capability against the live owner's
 schema (or read-only offline store). Unknown capability refuses. A newer store
 or schema 29 returns `ROLLBACK_STORE_RESTORE_REQUIRED`; stop and restore the
 matching pre-deploy backup using `hive v2 store restore --from <absolute
 receipt.json> --data-dir <dir>` before retrying. Restore discards subsequent
-writes; rollback never restores a store automatically. If a candidate migrates
-and then fails, recovery restores the service and Node-pin snapshots but leaves
-`current` on the stopped candidate, refusing to start the incompatible old binary.
-The typed error retains the boot failure as its cause. Same-revision recovery
+writes; rollback never restores a store automatically. Before selecting a
+candidate, an unsafe or unknown previous-build compatibility result refuses
+activation without switching current or the service. Before stopping a failed
+candidate, recovery probes compatibility again; refusal retains that candidate
+and its configuration. After stopping, the rollback guard rechecks compatibility
+before changing the link or restoring service and pin snapshots. A migration
+that commits between the first probe and the stop therefore also retains the
+candidate configuration and attempts to restart that schema-compatible candidate
+with its preserved pin and progress-aware readiness. `DEPLOY_ACTIVATION_HELD`
+records the resulting readiness and that operator recovery
+is required; callers must not treat it as permission to retry rollback. The error
+retains the readiness failure and rollback refusal. Same-revision recovery
 checks displaced old bytes before swapping them back, and retains them on refusal. A compatible backup may
 not exist for an arbitrary historical target; select a compatible runtime then.
+
+Held activations are appended to deploy history. A missing normal SHA entry is
+reconciled under the deploy lock only after verifying the clean native build
+identity and hashing its installed dist; it is marked `unconfirmed`. List output
+shows both markers. These entries remain installed rollback candidates, with an
+explicit uncertainty notice and the same schema guard; neither marker claims
+that the runtime booted healthy. External content-address reconciliation keeps
+its existing validation and byte-preservation path.
 
 Linux fixture: after `npm run build`, run
 `node scripts/gates/rollback-lab.mjs`. CLI transcripts, daemon logs and receipts

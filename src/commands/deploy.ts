@@ -10,10 +10,12 @@ import { probeNativeNode, resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import {
   assertDeployRestartAdmission,
+  DeployActivationHeldError,
+  assertRollbackStoreCompatible,
   hasDeployRestartAdmission,
   CURRENT_LINK_NAME,
   DEFAULT_KEEP_VERSIONS,
@@ -36,6 +38,9 @@ import { flag, numberFlag, truthy, type Parsed } from "../parse.js";
 import { collectBuildProvenance } from "../release/buildIdentityProducer.js";
 import { hostGitEnv } from "../hostGit.js";
 import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../release/runtimeTarget.js";
+import { waitForDeployReadiness, type DeployProcessIdentity } from "../deployReadiness.js";
+import { inspectProcess } from "../v2/updateOwnerClient.mjs";
+import { DatabaseSync } from "node:sqlite";
 
 const execFileAsync = promisify(execFile);
 
@@ -206,10 +211,15 @@ export async function restartDeployedDaemon(context: RestartDaemonContext): Prom
   });
 }
 
-async function restartAdmittedDaemon({ root, log, runtime, restorePrevious }: RestartDaemonContext): Promise<void> {
+async function restartAdmittedDaemon({ root, installedDir, sha, log, runtime, restorePrevious, assertRollbackSafe }: RestartDaemonContext): Promise<void> {
   const v2 = runtime === "v2" || runtimeUsesV2(root);
   if (!v2) throw new Error("deploy: legacy service activation is refused; install the pinned v2 service first");
   const dataDir = join(root, "..", "v2");
+  let daemonLogPath = join(dataDir, "hived.log");
+  try {
+    const configured = JSON.parse(await readFile(join(dataDir, "config.json"), "utf8")).logPath;
+    if (typeof configured === "string" && isAbsolute(configured)) daemonLogPath = configured;
+  } catch {}
   const pin = resolveNodePin(dataDir, process.env, undefined, true);
   if (process.platform !== "darwin" && process.platform !== "linux") throw new Error("deploy: unsupported service platform");
   const directory = serviceDirectory();
@@ -224,6 +234,13 @@ async function restartAdmittedDaemon({ root, log, runtime, restorePrevious }: Re
   const deployedIdentity = async (selected: NodePin) => {
     const { stdout } = await execFileAsync(selected.path, [cli, "v2", "deploy-info", "--data-dir", dataDir, "--json"], { timeout: 2000, env: { ...nativeNodeEnv(), ...nodePinEnv(selected) } });
     return JSON.parse(stdout) as { pid: number; startedAt: number; nodeVersion: string; identity?: { sourceRevision?: string } };
+  };
+  const verifyRunningPin = async (selected: NodePin, expected: Awaited<ReturnType<typeof deployedIdentity>>) => {
+    const executable = process.platform === "linux" ? await realpath(`/proc/${expected.pid}/exe`)
+      : (await execFileAsync("ps", ["-p", String(expected.pid), "-o", "comm="], { env: nativeNodeEnv(), timeout: 2000 })).stdout.trim();
+    const running = probeNativeNode(executable), confirmed = await deployedIdentity(selected);
+    if (running.path !== selected.path || running.version !== selected.version || running.sha256 !== selected.sha256
+      || confirmed.pid !== expected.pid || confirmed.startedAt !== expected.startedAt) throw new Error("deploy: recovered daemon executable identity differs from its pin");
   };
   const label = process.env.HIVE_V2_SERVICE_LABEL ?? "dev.honeybee.hive.v2";
   const absent = async () => {
@@ -244,22 +261,59 @@ async function restartAdmittedDaemon({ root, log, runtime, restorePrevious }: Re
   };
   const status = async (selected: NodePin) => {
     const { stdout } = await execFileAsync(selected.path, [...args("status"), "--json"], { timeout: 2000, env: { ...nativeNodeEnv(), ...nodePinEnv(selected) } });
-    return JSON.parse(stdout) as { running?: boolean; repair?: unknown; service?: { installed?: boolean } };
+    return JSON.parse(stdout) as { running?: boolean; repair?: unknown; health?: { pid?: number }; service?: { installed?: boolean } };
   };
-  const ready = async (selected: NodePin) => {
-    const deadline = Date.now() + 10_000;
-    while (true) {
-      try {
-        const state = await status(selected);
-        if (state.running === true) return;
-        if (state.repair) throw new Error("deploy: daemon held, needs Node pin repair");
-      } catch (error) {
-        if (error instanceof Error && error.message.includes("needs Node pin repair")) throw error;
+  let candidateProcess: DeployProcessIdentity | undefined;
+  let lastProgressLog = -Infinity;
+  const ready = async (selected: NodePin) => waitForDeployReadiness({
+    onProgress: (identity, elapsed) => {
+      if (elapsed - lastProgressLog >= 5000) {
+        log(`deploy: daemon startup progressing (pid ${identity.pid}, ${Math.round(elapsed / 1000)}s)`);
+        lastProgressLog = elapsed;
       }
-      if (Date.now() >= deadline) throw new Error("deploy: daemon failed readiness after start");
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
+    },
+    observe: async () => {
+      const state = await status(selected).catch(() => ({ running: false }));
+      if (state.running && !("health" in state)) return { ready: true, progress: "ready" };
+      if ("repair" in state && state.repair) return { ready: false, repair: true, progress: "repair" };
+      let pid = "health" in state ? state.health?.pid : undefined;
+      try { if (!pid) {
+        const output = process.platform === "darwin"
+          ? (await execFileAsync("launchctl", ["print", `gui/${process.getuid!()}/${label}`], { env: nativeNodeEnv(), timeout: 2000 })).stdout
+          : (await execFileAsync("systemctl", ["--user", "show", `${label}.service`, "--property=MainPID", "--value"], { env: nativeNodeEnv(), timeout: 2000 })).stdout;
+        pid = Number(process.platform === "darwin" ? /\bpid = (\d+)/.exec(output)?.[1] : output.trim());
+      }
+      } catch { pid = undefined; }
+      const observed = pid && Number.isSafeInteger(pid) ? inspectProcess(pid) : null;
+      const live = observed?.kind === "present" && observed.state === "live"
+        ? { pid: observed.pid, birth: observed.birth, bootId: observed.bootId } : undefined;
+      candidateProcess = live ?? candidateProcess;
+      if (state.running && live) return { ready: true, process: live, progress: "ready" };
+      const paths = [join(dataDir, "core.sqlite3"), join(dataDir, "core.sqlite3-wal"), daemonLogPath];
+      const metrics = await Promise.all(paths.map(async path => {
+        try {
+          const value = await lstat(path, { bigint: true });
+          return [value.dev, value.ino, value.size, value.mtimeNs].map(String);
+        } catch { return null; }
+      }));
+      let schema: string | null = null;
+      if (existsSync(join(dataDir, "core.sqlite3"))) {
+        try {
+          const db = new DatabaseSync(join(dataDir, "core.sqlite3"), { readOnly: true });
+          try { db.exec("PRAGMA busy_timeout=50"); schema = String(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value); }
+          finally { db.close(); }
+        } catch { schema = null; }
+      }
+      return { ready: false, process: live, processGone: observed?.kind === "gone" || observed?.kind === "present" && observed.state === "zombie", progress: JSON.stringify({ metrics, schema }) };
+    },
+  });
+  const checkRollback = async () => {
+    if (!assertRollbackSafe) throw new Error("read-only rollback compatibility probe unavailable");
+    await assertRollbackSafe();
   };
+  const held = (error: unknown, refusal: unknown, readiness: DeployActivationHeldError["candidateReadiness"] = "unknown") => new DeployActivationHeldError(sha,
+    `${error instanceof Error ? error.message : String(error)}; recovery held: ${refusal instanceof Error ? refusal.message : String(refusal)}${candidateProcess ? `; candidate pid ${candidateProcess.pid} birth ${candidateProcess.birth}` : ""}`,
+    { cause: error }, readiness);
   let previousIdentity: Awaited<ReturnType<typeof deployedIdentity>> | undefined;
   if (restorePrevious) {
     try { previousIdentity = await deployedIdentity(pin); }
@@ -282,19 +336,50 @@ async function restartAdmittedDaemon({ root, log, runtime, restorePrevious }: Re
     await ready(pin);
   } catch (error) {
     if (stopInitiated && restorePrevious) {
+      try { await checkRollback(); }
+      catch (refusal) {
+        let readiness: DeployActivationHeldError["candidateReadiness"] = "unavailable";
+        try {
+          const info = await deployedIdentity(pin);
+          if (info.identity?.sourceRevision === sha && info.nodeVersion === `v${pin.version}` && Number.isSafeInteger(info.pid) && info.pid > 0) {
+            await verifyRunningPin(pin, info);
+            readiness = "ready";
+          }
+        } catch {}
+        throw held(error, refusal, readiness);
+      }
       await run("stop").catch(() => undefined);
       await waitAbsent();
       stopped = true;
-    } else if (stopped) await run("stop").catch(() => undefined);
+    } else if (stopped) throw held(error, "no previous runtime is available");
     let restored = false;
     let recoveryError: unknown;
     try { restored = await restorePrevious?.() ?? false; }
     catch (failure) { recoveryError = failure; if (failure instanceof Error) failure.cause ??= error; }
-    if (restorePrevious) {
+    if (recoveryError) {
+      if (stopped) {
+        try {
+          await assertRollbackStoreCompatible(root, installedDir);
+          candidateProcess = undefined;
+          lastProgressLog = -Infinity;
+          await run("start");
+          await ready(pin);
+          const recovered = await deployedIdentity(pin);
+          if (recovered.identity?.sourceRevision !== sha || recovered.nodeVersion !== `v${pin.version}` || !Number.isSafeInteger(recovered.pid) || recovered.pid <= 0) throw new Error("candidate recovery identity differs");
+          await verifyRunningPin(pin, recovered);
+          throw held(error, `rollback refused after stop; candidate restarted and ready (pid ${recovered.pid}); ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`, "ready");
+        } catch (candidateError) {
+          if (candidateError instanceof DeployActivationHeldError) throw candidateError;
+          throw held(error, `rollback refused after stop; candidate recovery unavailable: ${candidateError instanceof Error ? candidateError.message : String(candidateError)}; ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`, "unavailable");
+        }
+      }
+      throw held(error, recoveryError);
+    }
+    if (restorePrevious && !restored) throw held(error, "previous runtime was not restored");
+    if (restored) {
       for (const snapshot of files) await restoreServiceFile(snapshot.file, snapshot.data, snapshot.mode);
       if (process.platform === "linux") await execFileAsync("systemctl", ["--user", "daemon-reload"], { env: nativeNodeEnv() });
     }
-    if (recoveryError) throw recoveryError;
     if (stopped && restored && previousIdentity) {
       const priorPin = resolveNodePin(dataDir, { ...process.env, HIVE_NODE_PATH: undefined, HIVE_NODE_VERSION: undefined, HIVE_NODE_SHA256: undefined });
       await run("start", priorPin);
@@ -302,12 +387,7 @@ async function restartAdmittedDaemon({ root, log, runtime, restorePrevious }: Re
       const recovered = await deployedIdentity(priorPin);
       if (JSON.stringify(recovered.identity) !== JSON.stringify(previousIdentity.identity) || recovered.pid === previousIdentity.pid
         || recovered.nodeVersion !== `v${priorPin.version}` || !Number.isSafeInteger(recovered.pid)) throw new Error("deploy: recovered daemon build or interpreter identity differs from the previous runtime");
-      const executable = process.platform === "linux" ? await realpath(`/proc/${recovered.pid}/exe`)
-        : (await execFileAsync("ps", ["-p", String(recovered.pid), "-o", "comm="], { env: nativeNodeEnv(), timeout: 2000 })).stdout.trim();
-      const runningPin = probeNativeNode(executable);
-      const confirmed = await deployedIdentity(priorPin);
-      if (runningPin.path !== priorPin.path || runningPin.version !== priorPin.version || runningPin.sha256 !== priorPin.sha256
-        || confirmed.pid !== recovered.pid || confirmed.startedAt !== recovered.startedAt) throw new Error("deploy: recovered daemon executable identity differs from the previous pin");
+      await verifyRunningPin(priorPin, recovered);
       log("deploy: previous runtime and service recovered after failed activation");
     }
     throw error;
@@ -392,11 +472,11 @@ async function deployList(parsed: Parsed): Promise<void> {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index]!;
     const isCurrent = entry.sha === currentSha && !entries.slice(index + 1).some((later) => later.sha === currentSha);
-    const marker = isCurrent ? "current" : "";
+    const marker = [isCurrent ? "current" : "", entry.activation ? `activation ${entry.activation}` : ""].filter(Boolean).join("; ");
     if (pretty) {
       const sha = isCurrent ? bold(entry.sha.slice(0, 12)) : entry.sha.slice(0, 12);
       const when = formatRelativeTime(entry.at);
-      const badge = isCurrent ? ` ${yellow("← current")}` : "";
+      const badge = `${isCurrent ? ` ${yellow("← current")}` : ""}${entry.activation ? ` ${yellow(`activation ${entry.activation}`)}` : ""}`;
       console.log(`${sha}  ${dim(entry.artifactHash.slice(0, 12))}  ${dim(when)}  ${dim(entry.by)}${badge}`);
     } else {
       console.log(`${entry.sha}\t${entry.at}\t${entry.artifactHash}\t${entry.by}\t${marker}`);

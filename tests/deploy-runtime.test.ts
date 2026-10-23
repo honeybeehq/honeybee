@@ -25,6 +25,10 @@ import {
   pruneRuntimeVersions,
   readDeployHistory,
   rollbackDeploy,
+  rollbackTargetEntry,
+  DeployActivationHeldError,
+  DeployActivationRefusedError,
+  DeployRollbackError,
   type BuildArtifactContext,
   type DeployHooks,
   type RestartDaemonContext,
@@ -114,6 +118,91 @@ async function runInstalledCli(root: string): Promise<string> {
   );
   return stdout.trim();
 }
+
+test("missing current history is reconciled once with a verified native committed identity", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    const sha = await commit("current-with-lost-ack");
+    await deployVersion({ root, repoRoot, hooks });
+    await writeFile(join(root, sha, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1, component: "honeybee", version: "0.0.1", packageVersion: "0.0.1", sourceRevision: sha, dirty: false, release: false, target: `${process.platform}-${process.arch}` }));
+    await rm(join(root, DEPLOY_HISTORY_FILENAME));
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await assert.rejects(rollbackDeploy({ root, hooks }), error => error instanceof DeployRollbackError && error.code === "ROLLBACK_PREVIOUS_INSTALL_MISSING");
+      const entries = await readDeployHistory(root);
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0]?.sha, sha);
+      assert.equal(entries[0]?.activation, "unconfirmed");
+      assert.equal(rollbackTargetEntry(entries, "b".repeat(40))?.sha, sha);
+    }
+  });
+});
+
+test("an already incompatible store refuses before current or service activation changes", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    const previous = await commit("previous");
+    await deployVersion({ root, repoRoot, hooks });
+    const history = await readDeployHistory(root);
+    const candidate = await commit("candidate");
+    const dataDir = join(root, "..", "v2");
+    await mkdir(dataDir, { recursive: true });
+    const db = new DatabaseSync(join(dataDir, "core.sqlite3"));
+    db.exec("CREATE TABLE meta(key TEXT PRIMARY KEY,value TEXT NOT NULL) STRICT; INSERT INTO meta VALUES('schema_version','51')");
+    db.close();
+    await assert.rejects(deployVersion({ root, repoRoot, hooks }), DeployActivationRefusedError);
+    assert.equal(await currentDeployTarget(root), previous);
+    assert.deepEqual(await readDeployHistory(root), history);
+    assert.equal(log.restarts.length, 1);
+    assert.equal(existsSync(join(root, candidate)), false);
+  });
+});
+
+for (const invalid of ["revision", "dirty", "target"] as const) {
+  test(`history reconciliation refuses an unverified current identity: ${invalid}`, async () => {
+    await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+      const sha = await commit("unverified-current");
+      await deployVersion({ root, repoRoot, hooks });
+      await writeFile(join(root, sha, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1, component: "honeybee", version: "0.0.1", packageVersion: "0.0.1", sourceRevision: invalid === "revision" ? "b".repeat(40) : sha, dirty: invalid === "dirty", release: false, target: invalid === "target" ? "foreign-target" : `${process.platform}-${process.arch}` }));
+      await rm(join(root, DEPLOY_HISTORY_FILENAME));
+      await assert.rejects(rollbackDeploy({ root, hooks }), error => error instanceof DeployRollbackError && error.code === "ROLLBACK_CURRENT_IDENTITY_MISSING");
+      assert.deepEqual(await readDeployHistory(root), []);
+      assert.equal(await currentDeployTarget(root), sha);
+    });
+  });
+}
+
+test("a held activation records current without attempting another restore", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    const previous = await commit("previous");
+    await deployVersion({ root, repoRoot, hooks });
+    const candidate = await commit("migrating");
+    await assert.rejects(deployVersion({ root, repoRoot, hooks: { ...hooks, async restartDaemon() { throw new DeployActivationHeldError(candidate, "migrated candidate retained"); } } }), DeployActivationHeldError);
+    assert.equal(await currentDeployTarget(root), candidate);
+    const entries = await readDeployHistory(root);
+    assert.equal(entries.at(-1)?.activation, "held");
+    assert.equal(entries.at(-1)?.sha, candidate);
+    assert.equal(rollbackTargetEntry(entries, previous)?.sha, candidate);
+  });
+});
+
+test("failed rollback to an unconfirmed activation recovers current and reports its uncertainty", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    const previous = await commit("unconfirmed");
+    await deployVersion({ root, repoRoot, hooks });
+    const current = await commit("current");
+    await deployVersion({ root, repoRoot, hooks });
+    const entries = await readDeployHistory(root);
+    entries[0]!.activation = "unconfirmed";
+    await writeFile(join(root, DEPLOY_HISTORY_FILENAME), JSON.stringify({ schemaVersion: 1, entries }));
+    const lines: string[] = [];
+    await assert.rejects(rollbackDeploy({ root, log: line => lines.push(line), hooks: { ...hooks, async restartDaemon(context) {
+      assert.equal(await currentDeployTarget(root), previous);
+      await context.restorePrevious?.();
+      throw new Error("fixture boot failure after safe recovery");
+    } } }), /fixture boot failure/);
+    assert.equal(await currentDeployTarget(root), current);
+    assert.deepEqual(await readDeployHistory(root), entries);
+    assert.ok(lines.some(line => line.includes("target activation unconfirmed")));
+  });
+});
 
 async function seedReservation(root: string, active: boolean): Promise<void> {
   const data = join(root, "..", "v2");
@@ -621,6 +710,7 @@ test("restart recovery capability expires when its admitted hook returns", async
     let captured: RestartDaemonContext | undefined;
     await deployVersion({ root, repoRoot, hooks: { ...hooks, async restartDaemon(context) { captured = context; } } });
     await assert.rejects(captured!.restorePrevious!(), /admission expired/);
+    await assert.rejects(captured!.assertRollbackSafe!(), /admission expired/);
     assert.equal(await currentDeployTarget(root), next);
   });
 });
