@@ -319,8 +319,16 @@ export async function runCellExec(
   const values = Object.values(spec.secretEnv ?? {});
   const stdout = new SecretOutput(values, chunk => stdoutCap.push(chunk));
   const stderr = new SecretOutput(values, chunk => stderrCap.push(chunk));
-  child.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk));
-  child.stderr?.on("data", (chunk: Buffer) => stderr.push(chunk));
+  const intake = (redactor: SecretOutput, chunk: Buffer) => {
+    if (outputBudget.rawUsed >= CELL_EXEC_MAX_OUTPUT_BYTES || outputBudget.encodedUsed >= CELL_EXEC_MAX_OUTPUT_BYTES) {
+      if (chunk.length) outputBudget.truncated = true;
+      redactor.dispose();
+      return;
+    }
+    redactor.push(chunk);
+  };
+  child.stdout?.on("data", (chunk: Buffer) => intake(stdout, chunk));
+  child.stderr?.on("data", (chunk: Buffer) => intake(stderr, chunk));
   child.stdout?.on("error", () => stdout.finish());
   child.stderr?.on("error", () => stderr.finish());
   let abortKill: ReturnType<typeof setTimeout> | undefined;

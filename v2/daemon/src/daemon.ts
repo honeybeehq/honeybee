@@ -2438,10 +2438,11 @@ export class HiveDaemon {
       case "task.supply.set":
         return this.withIdempotency(verb, params, () => this.rpcTaskSupplySet(params));
       case "archive":
-        for (const execution of this.secretExecutions.values()) if (execution.beeId === params.beeId) execution.controller.abort();
-        return this.withIdempotency(verb, params, () =>
-          this.rpcEnqueue("archive", this.param(params, "beeId"), {}, params),
-        );
+        return this.withIdempotency(verb, params, () => {
+          const result = this.rpcEnqueue("archive", this.param(params, "beeId"), {}, params);
+          for (const execution of this.secretExecutions.values()) if (execution.beeId === params.beeId) execution.controller.abort();
+          return result;
+        });
       case "unarchive":
         return this.withIdempotency(verb, params, () =>
           this.rpcEnqueue("unarchive", this.param(params, "beeId"), {}, params),

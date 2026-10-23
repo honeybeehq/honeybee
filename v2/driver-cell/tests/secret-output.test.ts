@@ -49,6 +49,10 @@ test("child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure a
     const truncated = await runCellExec(paths, { ...spec, argv: [process.execPath, "-e", "process.stdout.write('x'.repeat(1048570)+process.env.SYNTHETIC_TOKEN);process.stderr.write(process.env.SYNTHETIC_TOKEN)"] });
     assert.equal(truncated.truncated, true);
     assert.equal(JSON.stringify(truncated).includes(material[1]!), false);
+    const flood = await runCellExec(paths, { ...spec, argv: [process.execPath, "-e", "const b=Buffer.alloc(1048576,120);for(let i=0;i<100;i++)process.stdout.write(b);process.stderr.write(process.env.SYNTHETIC_TOKEN)"] });
+    assert.equal(flood.truncated, true);
+    assert.equal(JSON.stringify(flood).includes(material[1]!), false);
+    assert.ok(Buffer.byteLength(flood.stdout) + Buffer.byteLength(flood.stderr) <= 1048576);
     const controller = new AbortController();
     const pending = runCellExec(paths, { ...spec, signal: controller.signal, argv: [process.execPath, "-e", "process.stdout.write(process.env.SYNTHETIC_TOKEN);setInterval(()=>{},1000)"] }, () => { setTimeout(() => controller.abort(), 60); });
     const cancelled = await pending;

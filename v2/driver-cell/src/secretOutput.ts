@@ -2,11 +2,17 @@ export class SecretOutput {
   private pending = Buffer.alloc(0);
   private readonly values: Buffer[];
   private readonly overlap: number;
+  private readonly firstByte = new Map<number, Buffer[]>();
   private readonly capture: (chunk: Buffer) => void;
   constructor(values: readonly string[], capture: (chunk: Buffer) => void) {
     this.capture = capture;
     this.values = [...new Set(values)].map(value => Buffer.from(value)).filter(value => value.length > 0).sort((a, b) => b.length - a.length);
     this.overlap = Math.max(0, ...this.values.map(value => value.length - 1));
+    for (const value of this.values) {
+      const candidates = this.firstByte.get(value[0]!) ?? [];
+      candidates.push(value);
+      this.firstByte.set(value[0]!, candidates);
+    }
   }
   push(chunk: Buffer): void {
     this.pending = Buffer.concat([this.pending, chunk]);
@@ -18,7 +24,7 @@ export class SecretOutput {
     let cursor = 0;
     let plain = 0;
     while (cursor < limit) {
-      const value = this.values.find(value => cursor + value.length <= this.pending.length && this.pending.subarray(cursor, cursor + value.length).equals(value));
+      const value = this.firstByte.get(this.pending[cursor]!)?.find(value => cursor + value.length <= this.pending.length && this.pending.compare(value, 0, value.length, cursor, cursor + value.length) === 0);
       if (value) {
         if (cursor > plain) this.capture(this.pending.subarray(plain, cursor));
         this.capture(Buffer.from("[REDACTED]"));
