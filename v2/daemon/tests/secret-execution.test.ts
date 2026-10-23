@@ -85,13 +85,27 @@ test("daemon executes active owned Cell, keeps durable bytes clean, deduplicates
   const cell = store.putCell({ id: "cell-fixture", sourceBeeId: bee.id, originRepo: root, sha: "a".repeat(40), wrapper: "wrap", spaceName: paths.spaceName, spaceDir: paths.spaceDir, gitCommonDirRealpath: root, objectFormat: "sha1", sandbox: false });
   const token = "synthetic-" + "durable-sentinel-92781";
   const base = { nodeId: "node-1", beeId: bee.id, cellId: cell.id };
+  const absoluteSocket = join(root, "rpc.sock");
+  const socketPath = Buffer.byteLength(absoluteSocket) < 100 ? absoluteSocket : relative(process.cwd(), absoluteSocket);
+  const keyFile = join(root, "private", "key");
+  const logs: string[] = [];
+  const server = new RpcServer({ socketPath, dataDir: root, localTrust: { requireObservationCaller: true, registrationKeyFile: keyFile }, log: line => logs.push(line), securityAudit: (kind, data) => logs.push(JSON.stringify({ kind, data })), dispatch: (verb, params, conn) => internal.dispatch(verb, params, conn) });
+  await server.listen();
+  const client = await RpcClient.connect(socketPath);
+  const challenge = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge");
+  const key = readFileSync(keyFile);
+  const registrationToken = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex");
+  key.fill(0);
+  await client.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge.challengeId, token: registrationToken, nodeId: "node-1" });
   const run = async (executionId: string, argv: string[]) => {
     const binding = { ...base, executionId, argvDigest: secretArgvDigest(argv), expiresAt: Date.now() + 30000 };
-    return internal.dispatch("cell.execSecret", { ...binding, argv, idempotencyKey: executionId }, { secretExecutionNodeId: "node-1", secretExecution: { ...binding, env: { TOKEN: token } } } as import("../src/rpc.ts").RpcConn) as Promise<import("../src/protocol.ts").CellExecResult>;
+    return client.request<import("../src/protocol.ts").CellExecResult>("cell.execSecret", { ...binding, argv, idempotencyKey: executionId }, 10000, { secretExecution: { ...binding, env: { TOKEN: token } } });
   };
+  let scannedFiles = 0;
   const scan = (dir: string): number => readdirSync(dir, { withFileTypes: true }).reduce((n, entry) => {
     const path = join(dir, entry.name);
-    return n + (entry.isDirectory() ? scan(path) : readFileSync(path).includes(Buffer.from(token)) ? 1 : 0);
+    if (entry.isFile()) scannedFiles++;
+    return n + (entry.isDirectory() ? scan(path) : entry.isFile() && readFileSync(path).includes(Buffer.from(token)) ? 1 : 0);
   }, 0);
   try {
     const argv = [process.execPath, "-e", "const fs=require('node:fs');fs.appendFileSync('runs','1');process.stdout.write(process.env.TOKEN);process.stderr.write(process.env.TOKEN)"];
@@ -108,18 +122,21 @@ test("daemon executes active owned Cell, keeps durable bytes clean, deduplicates
     assert.equal(readFileSync(join(paths.spaceDir, "runs"), "utf8"), "1");
     const foreign = store.createBee({ name: "foreign", agent: "stub", substrate: "hsr", cwd: root }).bee;
     const binding = { ...base, beeId: foreign.id, executionId: "foreign", argvDigest: secretArgvDigest(argv), expiresAt: Date.now() + 30000 };
-    await assert.rejects(Promise.resolve(internal.dispatch("cell.execSecret", { ...binding, argv, idempotencyKey: "foreign" }, { secretExecutionNodeId: "node-1", secretExecution: { ...binding, env: { TOKEN: token } } } as import("../src/rpc.ts").RpcConn)), /secret_execution_refused/);
+    await assert.rejects(client.request("cell.execSecret", { ...binding, argv, idempotencyKey: "foreign" }, 3000, { secretExecution: { ...binding, env: { TOKEN: token } } }), /secret_execution_refused/);
     const pending = run("exec-cancel", [process.execPath, "-e", "process.stdout.write(process.env.TOKEN);setInterval(()=>{},1000)"]);
     await new Promise(resolve => setTimeout(resolve, 100));
-    assert.deepEqual(internal.dispatch("cell.execSecret.cancel", { ...base, executionId: "exec-cancel" }, { secretExecutionNodeId: "node-1" } as import("../src/rpc.ts").RpcConn), { cancelled: true });
+    assert.deepEqual(await client.request("cell.execSecret.cancel", { ...base, executionId: "exec-cancel" }, 3000, {}), { cancelled: true });
     const cancelled = await pending;
     assert.equal(cancelled.status, "failed");
     assert.equal(store.getCellOpByKey("exec-cancel")?.failure, "interrupted");
-    assert.deepEqual(internal.dispatch("cell.execSecret.cancel", { ...base, executionId: "cancel-before-spawn" }, { secretExecutionNodeId: "node-1" } as import("../src/rpc.ts").RpcConn), { cancelled: true });
+    assert.deepEqual(await client.request("cell.execSecret.cancel", { ...base, executionId: "cancel-before-spawn" }, 3000, {}), { cancelled: true });
+    store.close(); store = openCoreStore(storePath); internal.store = store;
     await assert.rejects(run("cancel-before-spawn", argv), /idempotency key/);
     await assert.rejects(run("exec-durable", [process.execPath, "-e", "0"]), /idempotency key/);
     assert.equal(JSON.stringify(cancelled).includes(token), false);
     assert.equal(scan(root), 0);
-    console.log("synthetic scan: durable fixture files=0 matches; output=0 matches; repeated executions=1");
-  } finally { store.close(); rmSync(root, { recursive: true, force: true }); }
+    assert.equal(logs.join("\n").includes(token), false);
+    assert.equal(JSON.stringify(first).includes(token), false);
+    console.log(`synthetic scan: ${scannedFiles} raw fixture file reads, 0 matches; ${logs.length} log records, 0 matches; 2 output results, 0 matches; duplicate command runs=1`);
+  } finally { client.close(); await server.close(); store.close(); rmSync(root, { recursive: true, force: true }); }
 });
