@@ -56,7 +56,9 @@ export function decodeProcessInspection(value: unknown, pid: number): ProcessIns
   if (!processIdentityValue({pid, birth: v.birth, bootId: v.bootId})) return unavailable;
   if (![v.uid, v.ppid, v.pgid].every(n => typeof n === "number" && Number.isSafeInteger(n) && n >= 0) || typeof v.startedAtMs !== "number" || !Number.isFinite(v.startedAtMs) || v.startedAtMs <= 0 || v.state !== "live" && v.state !== "zombie") return unavailable;
   if (typeof v.waitStatus !== "number" || !Number.isSafeInteger(v.waitStatus) || v.waitStatus < -1) return unavailable;
-  return {kind: "present", pid, birth: v.birth, bootId: v.bootId, uid: Number(v.uid), ppid: Number(v.ppid), pgid: Number(v.pgid), state: v.state, startedAtMs: v.startedAtMs, waitStatus: v.waitStatus < 0 ? null : v.waitStatus};
+  const startedAtMs = Math.trunc(v.startedAtMs);
+  if (!Number.isSafeInteger(startedAtMs) || startedAtMs <= 0) return unavailable;
+  return {kind: "present", pid, birth: v.birth, bootId: v.bootId, uid: Number(v.uid), ppid: Number(v.ppid), pgid: Number(v.pgid), state: v.state, startedAtMs, waitStatus: v.waitStatus < 0 ? null : v.waitStatus};
 }
 export function inspectProcess(pid: number): ProcessInspection {
   if (!Number.isSafeInteger(pid) || pid <= 0) return {kind: "unavailable", reason: "invalid_result"};

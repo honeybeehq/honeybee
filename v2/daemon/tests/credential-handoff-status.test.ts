@@ -199,7 +199,7 @@ test("handoff status: isolated daemon capability, CLI list, missing/relay refusa
   let daemon: Awaited<ReturnType<typeof startDaemon>> | undefined;
   let client: RpcClient | undefined;
   try {
-    daemon = await startDaemon(f.rig.dir, { env: { NODE_OPTIONS: `--import=${preload}`, HIVE_NO_KEYCHAIN: "1" } });
+    daemon = await startDaemon(f.rig.dir, { platform: process.platform, env: { NODE_OPTIONS: `--import=${preload}`, HIVE_NO_KEYCHAIN: "1" } });
     client = await daemon.client();
     await waitFor(() => existsSync(exportMarker), "expired export held at boot while RPC listens");
     await new Promise(resolve => setTimeout(resolve, 1300));
@@ -226,7 +226,7 @@ test("handoff status: isolated daemon capability, CLI list, missing/relay refusa
     const { daemonTarget, ...printed } = JSON.parse(stdout);
     assert.equal(daemonTarget.connected, true);
     assert.deepEqual(printed, before);
-    await daemon.kill(); client.close(); daemon = await startDaemon(f.rig.dir); client = await daemon.client();
+    await daemon.kill(); client.close(); daemon = await startDaemon(f.rig.dir, { platform: process.platform }); client = await daemon.client();
     const after = await waitFor(async () => { const result = await client!.request<CredentialHandoffLocalSnapshot>("account.credentials.handoffStatus", {}); return result.reconciled ? result : null; }, "restarted handoffs reconciled");
     assert.deepEqual(after, before);
     const summary = await client.request<CredentialHandoffLocalFact>("account.credentials.handoffStatus", { handoffId: "durable-claim", summary: true });

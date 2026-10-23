@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
+import {DatabaseSync} from "node:sqlite";
 import {spawn, spawnSync} from "node:child_process";
 import {mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync} from "node:fs";
 import {dirname, join} from "node:path";
@@ -61,11 +62,27 @@ test("native process union validates live, zombie, gone and unavailable without 
   assert.equal(processDisposition(identity, present), "live");
   assert.equal(processDisposition(identity, decodeProcessInspection({...live, state: "zombie", waitStatus: 7}, 123)), "exited");
   assert.equal(processDisposition(identity, decodeProcessInspection({kind: "gone"}, 123)), "exited");
-  for (const v of [null, {kind: "unavailable", reason: "native_observation_failed"}, {...live, pid: 124}, {...live, birth: "bad"}, {...live, startedAtMs: NaN}]) {
+  for (const v of [null, {kind: "unavailable", reason: "native_observation_failed"}, {...live, pid: 124}, {...live, birth: "bad"}, {...live, startedAtMs: NaN}, {...live, startedAtMs: 0.999}, {...live, startedAtMs: Number.MAX_SAFE_INTEGER + 1}]) {
     assert.equal(processDisposition(identity, decodeProcessInspection(v, 123)), "unavailable");
   }
   assert.equal(processDisposition(null, {kind: "gone"}), "unavailable");
   assert.equal(processDisposition({...identity, birth: "darwin:999:1"}, present), "unavailable");
+});
+test("native birth milliseconds fit STRICT storage without weakening exact process identity", () => {
+  const birth = "darwin:1000:123999";
+  const observed = decodeProcessInspection({...live, birth, startedAtMs: 1000123.999}, 123);
+  assert.equal(observed.kind, "present");
+  if (observed.kind !== "present") return;
+  const db = new DatabaseSync(":memory:");
+  try {
+    db.exec("CREATE TABLE observations (pid_started_at INTEGER) STRICT");
+    db.prepare("INSERT INTO observations VALUES (?)").run(observed.startedAtMs);
+    assert.equal(db.prepare("SELECT pid_started_at FROM observations").get()!.pid_started_at, 1000123);
+    assert.equal(observed.birth, birth);
+    assert.equal(sameProcess({pid: 123, birth, bootId: ""}, observed), true);
+    assert.equal(sameProcess({pid: 123, birth: "darwin:1000:123998", bootId: ""}, observed), false);
+    assert.ok(legacyProcessCandidate(123, 1000123, observed));
+  } finally {db.close();}
 });
 test("legacy timestamp is discovery only and bounded to five seconds", () => {
   const present = decodeProcessInspection(live, 123);

@@ -2,7 +2,7 @@
 
 The existing Node-API peer credential bridge also inspects one requested process. No shell, `ps`, full process census, or PID-only zombie cache participates. Darwin uses public-SDK `proc_pidinfo(PROC_PIDTBSDINFO)` with an exact structure-length check, `pbi_status == SZOMB`, and the full second/microsecond start token. Linux parses bounded `/proc/<pid>/stat` records, including state, start ticks and wait status; its identity also includes the boot UUID. Both platforms read the birth twice and refuse a changed incarnation.
 
-Inspection returns `present`, `gone`, or `unavailable`. Present observations distinguish live processes from zombies. Permission errors, short reads, invalid artifacts and malformed persisted identities are unavailable, never exit evidence or signal permission. Epoch milliseconds exist only for legacy discovery; exact tokens govern subsequent effects. A successful read does not make inspection and a later signal atomic.
+Inspection returns `present`, `gone`, or `unavailable`. Present observations distinguish live processes from zombies. Permission errors, short reads, invalid artifacts and malformed persisted identities are unavailable, never exit evidence or signal permission. Epoch milliseconds exist only for legacy discovery; the shared inspection boundary truncates them to safe positive integer milliseconds before storage. Exact birth tokens keep their full precision and govern subsequent effects. A successful read does not make inspection and a later signal atomic.
 
 ## Durable authority and upgrade
 

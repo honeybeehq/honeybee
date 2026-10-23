@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mock, test } from "node:test";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { nodePinFile, nodeRepairFile, persistNodePin, probeNativeNode, validateDaemonNode } from "../../../src/nodeRuntime.ts";
@@ -10,7 +10,7 @@ import { ConfigError, defaultDataDir } from "../src/config.ts";
 import { resolveDaemonConfig, runDaemon } from "../src/main.ts";
 
 async function withEntryDir(fn: (root: string) => void | Promise<void>): Promise<void> {
-  const root = mkdtempSync(join(tmpdir(), "hb-entry-path-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hb-entry-path-")));
   const previousCwd = process.cwd(), previousDataDir = process.env.HIVE_V2_DATA_DIR;
   process.chdir(root);
   process.env.HIVE_V2_DATA_DIR = join(root, "default");
