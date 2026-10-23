@@ -213,7 +213,10 @@ export class LaunchdServiceManager implements ServiceManager {
 
   async stop(): Promise<void> {
     const target = `${this.domainTarget}/${this.spec.label}`;
-    await must(this.deps.exec, "launchctl", ["bootout", target]);
+    const bootout = await this.deps.exec("launchctl", ["bootout", target]);
+    if (bootout.code !== 0 && !(bootout.code === 3 && /no such process/i.test(`${bootout.stderr} ${bootout.stdout}`))) {
+      throw new ServiceError(`launchctl bootout ${target} exited ${bootout.code}: ${bootout.stderr.trim() || bootout.stdout.trim()}`);
+    }
     // bootout may return after requesting termination but before launchd has
     // actually removed the job. A deploy that bootstraps immediately can then
     // kick the dying job and report success, only for the pending bootout to

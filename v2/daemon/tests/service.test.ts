@@ -188,6 +188,44 @@ test("service.4b: launchd stop waits through the asynchronous bootout window", a
   }
 });
 
+test("service.4c: launchd stop accepts an already-stopped service and confirms absence", async () => {
+  for (const output of [{ stdout: "", stderr: "Boot-out failed: 3: No such process" }, { stdout: "No such process", stderr: "" }]) {
+    const rec = recordingExec([
+      { code: 3, ...output },
+      { code: 3, stdout: "", stderr: "Could not find service" },
+    ]);
+    const mgr = new LaunchdServiceManager(SPEC, { exec: rec.exec, agentsDir: "/tmp/unused", uid: 501 });
+    await mgr.stop();
+    assert.deepEqual(rec.calls.map(call => call.args[0]), ["bootout", "print"]);
+  }
+});
+
+test("service.4d: an already-stopped response still waits until launchd confirms absence", async () => {
+  const rec = recordingExec([
+    { code: 3, stdout: "", stderr: "Boot-out failed: 3: No such process" },
+    { code: 0, stdout: "state = running\n", stderr: "" },
+    { code: 3, stdout: "", stderr: "Could not find service" },
+  ]);
+  const sleeps: number[] = [];
+  const mgr = new LaunchdServiceManager(SPEC, { exec: rec.exec, agentsDir: "/tmp/unused", uid: 501, sleep: async ms => { sleeps.push(ms); } });
+  await mgr.stop();
+  assert.deepEqual(rec.calls.map(call => call.args[0]), ["bootout", "print", "print"]);
+  assert.deepEqual(sleeps, [25]);
+});
+
+test("service.4e: launchd stop preserves other bootout failures", async () => {
+  for (const result of [
+    { code: 3, stdout: "", stderr: "Operation not permitted" },
+    { code: 5, stdout: "", stderr: "Input/output error" },
+    { code: 1, stdout: "", stderr: "No such process" },
+  ]) {
+    const rec = recordingExec([result]);
+    const mgr = new LaunchdServiceManager(SPEC, { exec: rec.exec, agentsDir: "/tmp/unused", uid: 501 });
+    await assert.rejects(mgr.stop(), error => error instanceof ServiceError && error.message.includes(result.stderr));
+    assert.deepEqual(rec.calls.map(call => call.args[0]), ["bootout"]);
+  }
+});
+
 test("service.5: systemd manager — install writes unit + daemon-reload; start/stop/status; uninstall removes", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-svc-"));
   try {
