@@ -192,3 +192,80 @@ node --import tsx --test tests/release-pipeline.test.ts tests/release-publicatio
 They use isolated bare Git remotes, generated tarballs and an HTTP boundary fake;
 no published releases, credentials, installed runtime or external evaluation are
 used. There is no repository lint script. Review workflow YAML with actionlint.
+
+### Rollback and store schemas
+
+`hive deploy --list --json` identifies an Apiary content-addressed `current`
+installation from its `dist/build-identity.json`. `hive deploy --rollback`
+selects the newest distinct history entry whose installed CLI still exists and
+prints the exact from/to revisions. Missing identity or installed history has a
+typed refusal. Deploy and explicit rollback preserve a departing external native
+build under `runtime/<revision>` and record its actual dist hash and adoption
+provenance in history, so a later rollback can return to it. Conflicting installed
+bytes, escaping symlinks or a non-native prior build refuse before activation.
+Failed activation restores the original link text, service file and Node pin,
+then verifies the old daemon's identity, new PID and RPC readiness.
+
+Rollback checks the target bundle's schema capability against the live owner's
+schema (or read-only offline store). Unknown capability refuses. A newer store
+or schema 29 returns `ROLLBACK_STORE_RESTORE_REQUIRED`; stop and restore the
+matching pre-deploy backup using `hive v2 store restore --from <absolute
+receipt.json> --data-dir <dir>` before retrying. Restore discards subsequent
+writes; rollback never restores a store automatically. If a candidate migrates
+and then fails, recovery restores the service and Node-pin snapshots but leaves
+`current` on the stopped candidate, refusing to start the incompatible old binary.
+The typed error retains the boot failure as its cause. Same-revision recovery
+checks displaced old bytes before swapping them back, and retains them on refusal. A compatible backup may
+not exist for an arbitrary historical target; select a compatible runtime then.
+
+Linux fixture: after `npm run build`, run
+`node scripts/gates/rollback-lab.mjs`. CLI transcripts, daemon logs and receipts
+are saved under `.audit/t4/rollback-lab`. It uses a fixture systemctl process
+adapter, real bundled daemon processes and production restart ownership. The
+artifact scenario uses a synthetic schema-27 build with an executable standalone
+v2 CLI entry to satisfy the current admission contract. Shipped bundles export
+that CLI without invoking it; admission also rejects a Node-pin migration before
+the restart owner. Those admission issues belong to T7. This lab does not prove
+current-schema updater admission; the source scenario proves Node-pin recovery. The
+schema refusal scenario migrates a real fixture store from 48 to synthetic 49.
+Apiary's updater `start()` catch path and satellite bundler still need their own
+Apiary-side failure lab; this fixture does not exercise them. Returning to retained
+bytes points current at runtime/<revision>, so Apiary must reconcile its raw-link
+CAS after a Honeybee rollback. Manual rollback must retain T3 desired-build pin
+checks and explicit override receipts when these branches are combined. There is
+no crash journal to resume recovery after a process crash midway through it.
+
+## Store backups and offline restore
+
+Source and artifact deploys (including rollback) require a durable store backup
+receipt before changing the selected runtime. The live store owner takes a
+`VACUUM INTO` snapshot; an offline owner takes the same snapshot under SQLite's
+exclusive lock. An older daemon without the backup RPC must be stopped before
+upgrading through this boundary. A first install without a store records a
+store-absence receipt instead. Independently, opening an older schema backs it up
+before any schema DDL. Backup or receipt failure refuses migration/deployment.
+
+Backups and manifests live next to the store in `core.sqlite3.backups/`, with
+private permissions, checksums, schema/DDL identity, integrity result, source build
+and time. Retention keeps ten recent snapshots plus the newest for every schema.
+Legacy stores without recorded build provenance say so explicitly in migration
+receipts; deploy receipts use the running or previously installed build identity.
+
+After stopping the daemon, restore with
+`hive v2 store restore --from /absolute/path/to/receipt.json --data-dir /path/to/v2`.
+This refuses an active owner, verifies the receipt/checksum/schema/integrity,
+preserves the current database as `core.sqlite3.before-restore-<uuid>` with its
+WAL/SHM, and restores the snapshot. **Writes made after the backup are discarded.**
+Select the matching old runtime only after restoring its schema. Restore is an
+explicit operator action; deployment recovery does not silently discard writes.
+
+A Linux fixture proof (after building) is
+`node v2/cli/tests/store-backup-smoke.mjs`: it creates a real schema44 store using
+archived old source, migrates with the candidate binary, restores through the CLI,
+and reopens with the old core to compare logical rows. It starts and stops only
+its own fixture daemon by PID, and retains its receipt and daemon log under `/tmp`.
+
+This backup/restore change must ship with T4's rollback schema guard
+(commit `b9721c1a05248b839695b28bd19e3db56c2d4553`), which refuses both manual
+and automatic rollback to an older schema. T5 alone does not make rollback safe.
+DEPLOY HOLD remains until the combined candidate passes Queen's release gate.

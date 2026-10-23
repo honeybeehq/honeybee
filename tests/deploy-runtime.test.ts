@@ -1,3 +1,4 @@
+import { backupStoreOffline } from "../v2/core/src/storeBackup.ts";
 // Spec 00 (reset WP0) — versioned deploys. Exercises the full deploy state
 // machine (src/deployRuntime.ts) against a temp runtime root and a real
 // fixture git repo, with the build and daemon-restart hooks injected so no
@@ -5,7 +6,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, readlink, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
 import { join } from "node:path";
@@ -68,11 +69,13 @@ type HookLog = {
 function fakeHooks(root: string): { hooks: DeployHooks; log: HookLog } {
   const log: HookLog = { builds: [], restarts: [] };
   const hooks: DeployHooks = {
+    async backupStore() { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); },
     async buildArtifact({ repoRoot, sha, workDir }: BuildArtifactContext) {
       log.builds.push(sha);
       const marker = (await git(repoRoot, "show", `${sha}:marker.txt`)).trim();
       const stage = join(workDir, "stage");
-      await mkdir(join(stage, "dist"), { recursive: true });
+      await mkdir(join(stage, "dist", "v2"), { recursive: true });
+      await writeFile(join(stage, "dist", "v2", "cli.js"), "var SCHEMA_VERSION = 48;\n");
       await writeFile(join(stage, "dist", "cli.js"), `console.log(${JSON.stringify(marker)});\n`);
       await writeFile(join(stage, "package.json"), `${JSON.stringify({ name: "honeybee", version: "0.0.1" })}\n`);
       return { artifactDir: stage };
@@ -282,9 +285,10 @@ test("deploy from clean HEAD installs the version, retargets current, records hi
     // The daemon restart is the separate final step and already saw the new target.
     assert.equal(log.restarts.length, 1);
     assert.deepEqual(log.restarts[0], { sha, currentAtRestart: sha });
-    // No temp debris: only the version dir, the link, and the history file remain.
     const leftovers = (await readdir(root)).filter((name) => name.startsWith("."));
-    assert.deepEqual(leftovers, []);
+    assert.deepEqual(leftovers, [".store-absence"]);
+    const absence = (await readdir(join(root, ".store-absence")))[0]!;
+    assert.equal(JSON.parse(await readFile(join(root, ".store-absence", absence), "utf8")).kind, "store_absent");
   });
 });
 
@@ -618,5 +622,151 @@ test("restart recovery capability expires when its admitted hook returns", async
     await deployVersion({ root, repoRoot, hooks: { ...hooks, async restartDaemon(context) { captured = context; } } });
     await assert.rejects(captured!.restorePrevious!(), /admission expired/);
     assert.equal(await currentDeployTarget(root), next);
+  });
+});
+
+test("successful deploy retains an external current absent from history as the next rollback target", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    const first = await commit("apiary current");
+    await deployVersion({ root, repoRoot, ref: first, hooks });
+    await writeFile(join(root, first, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1, component: "honeybee", version: "0.0.1", packageVersion: "0.0.1", sourceRevision: first, dirty: false, release: true, target: `${process.platform}-${process.arch}` }));
+    const external = join(root, "apiary-content-address");
+    await rename(join(root, first), external);
+    await rm(join(root, "current"));
+    await symlink(external, join(root, "current"));
+    await writeFile(join(root, DEPLOY_HISTORY_FILENAME), JSON.stringify({ schemaVersion: 1, entries: [] }));
+    const second = await commit("candidate");
+    await deployVersion({ root, repoRoot, ref: second, keep: 1, hooks });
+    assert.ok(existsSync(join(root, first, "dist", "cli.js")));
+    assert.deepEqual((await readDeployHistory(root)).map(entry => entry.sha), [first, second]);
+    assert.equal((await rollbackDeploy({ root, hooks })).sha, first);
+    assert.equal(await runInstalledCli(root), "apiary current");
+  });
+});
+
+for (const invalid of ["target", "conflicting-install", "escaping-link"] as const) test(`external preservation refuses ${invalid} before installing the candidate`, async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    const first = await commit("apiary current");
+    await deployVersion({ root, repoRoot, ref: first, hooks });
+    await writeFile(join(root, first, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1, component: "honeybee", version: "0.0.1", packageVersion: "0.0.1", sourceRevision: first, dirty: false, release: true, target: invalid === "target" ? "wrong-target" : `${process.platform}-${process.arch}` }));
+    const external = join(root, "apiary-content-address");
+    await rename(join(root, first), external);
+    await rm(join(root, "current"));
+    await symlink(external, join(root, "current"));
+    if (invalid === "conflicting-install") { await mkdir(join(root, first)); await writeFile(join(root, first, "different"), "conflict"); }
+    if (invalid === "escaping-link") await symlink(join(repoRoot, "marker.txt"), join(external, "escape"));
+    const second = await commit("candidate");
+    await assert.rejects(deployVersion({ root, repoRoot, ref: second, hooks }), invalid === "target" ? /ROLLBACK_CURRENT_IDENTITY_MISSING/ : invalid === "conflicting-install" ? /ROLLBACK_PREVIOUS_INSTALL_CONFLICT/ : /unsafe archive link/);
+    assert.equal(await readlink(join(root, "current")), external);
+    assert.equal(existsSync(join(root, second)), false);
+    assert.equal((await readdir(root)).some(name => name.startsWith(".previous.") || name.startsWith(".displaced.")), false);
+  });
+});
+
+test("same-sha failed activation checks displaced schema before restoring bytes and preserves the previous build", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    const sha = await commit("same revision");
+    let builds = 0;
+    const selected: DeployHooks = {
+      async buildArtifact(context) {
+        const artifact = await hooks.buildArtifact(context);
+        builds += 1;
+        await writeFile(join(artifact.artifactDir, "dist", "v2", "cli.js"), `var SCHEMA_VERSION = ${builds === 1 ? 44 : 48};\n`);
+        return artifact;
+      },
+      async restartDaemon() {
+        if (builds < 2) return;
+        const data = join(root, "..", "v2");
+        await mkdir(data);
+        const db = new DatabaseSync(join(data, "core.sqlite3"));
+        db.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES('schema_version','48')");
+        db.close();
+        throw new Error("candidate boot failed after migration");
+      },
+    };
+    await deployVersion({ root, repoRoot, ref: sha, hooks: selected });
+    const history = await readDeployHistory(root);
+    await assert.rejects(deployVersion({ root, repoRoot, ref: sha, hooks: selected }), /ROLLBACK_STORE_RESTORE_REQUIRED/);
+    assert.equal(await readFile(join(root, sha, "dist", "v2", "cli.js"), "utf8"), "var SCHEMA_VERSION = 48;\n");
+    const displaced = (await readdir(root)).find(name => name.startsWith(`.displaced.${sha}.`));
+    assert.ok(displaced);
+    assert.equal(await readFile(join(root, displaced, "dist", "v2", "cli.js"), "utf8"), "var SCHEMA_VERSION = 44;\n");
+    assert.deepEqual(await readDeployHistory(root), history);
+  });
+});
+
+test("backup refusal leaves current and same-revision runtime bytes untouched", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks }) => {
+    const sha = await commit("v1");
+    await deployVersion({ root, repoRoot, hooks });
+    const before = await readFile(join(root, sha, "dist", "cli.js"), "utf8");
+    await seedReservation(root, false);
+    const originalBuild = hooks.buildArtifact;
+    const refused = { ...hooks,
+      async buildArtifact(context: BuildArtifactContext) {
+        const artifact = await originalBuild(context);
+        await writeFile(join(artifact.artifactDir, "dist", "cli.js"), "changed");
+        return artifact;
+      },
+      async backupStore() { throw new Error("backup finalization failed"); },
+    };
+    await assert.rejects(deployVersion({ root, repoRoot, hooks: refused }), /backup finalization failed/);
+    assert.equal(await currentDeployTarget(root), sha);
+    assert.equal(await readFile(join(root, sha, "dist", "cli.js"), "utf8"), before);
+    assert.equal((await readDeployHistory(root)).length, 1);
+  });
+});
+
+test("existing store requires a durable validated backup before source deploy activation", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    await commit("backup");
+    await seedReservation(root, false);
+    const missing = { ...hooks, backupStore: undefined };
+    await assert.rejects(deployVersion({ root, repoRoot, hooks: missing }), /backup owner is required/);
+    const invalid = { ...hooks, async backupStore() { const path = join(root, "receipt.json"); await writeFile(path, '{}'); return { receiptPath: path }; } };
+    await assert.rejects(deployVersion({ root, repoRoot, hooks: invalid }), /invalid store backup receipt/);
+    assert.equal(await currentDeployTarget(root), null);
+    assert.deepEqual(log.restarts, []);
+    let backupCurrent: string | null | undefined;
+    const valid = { ...hooks, async backupStore() {
+      backupCurrent = await currentDeployTarget(root);
+      return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture");
+    } };
+    await deployVersion({ root, repoRoot, hooks: valid });
+    assert.equal(backupCurrent, null);
+    assert.equal(log.restarts.length, 1);
+  });
+});
+
+test("a custom environment data directory refuses deploy before the no-store shortcut", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    await commit("custom-data");
+    const previous = process.env.HIVE_V2_DATA_DIR;
+    process.env.HIVE_V2_DATA_DIR = join(root, "other-data");
+    try {
+      await assert.rejects(deployVersion({ root, repoRoot, hooks }), /custom HIVE_V2_DATA_DIR.*refusing swap/);
+      assert.equal(await currentDeployTarget(root), null);
+      assert.deepEqual(log.restarts, []);
+      assert.equal(existsSync(join(root, ".store-absence")), false);
+    } finally {
+      if (previous === undefined) delete process.env.HIVE_V2_DATA_DIR;
+      else process.env.HIVE_V2_DATA_DIR = previous;
+    }
+  });
+});
+
+test("custom config store paths refuse before recording a store-absence receipt", async () => {
+  await withDeployWorld(async ({ root, repoRoot, commit, hooks, log }) => {
+    await commit("custom-config-store");
+    const dataDir = join(root, "..", "v2");
+    const guarded = { ...hooks, async buildArtifact(context: BuildArtifactContext) {
+      await mkdir(dataDir, { recursive: true });
+      await writeFile(join(dataDir, "config.json"), JSON.stringify({ storePath: join(dataDir, "other.sqlite3") }));
+      return hooks.buildArtifact(context);
+    } };
+    await assert.rejects(deployVersion({ root, repoRoot, hooks: guarded }), /custom store\/socket configuration.*refusing swap/);
+    assert.equal(await currentDeployTarget(root), null);
+    assert.equal(existsSync(join(root, ".store-absence")), false);
+    assert.deepEqual(log.restarts, []);
   });
 });

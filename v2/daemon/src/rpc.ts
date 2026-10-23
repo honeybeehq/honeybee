@@ -1,3 +1,4 @@
+import { StoreBackupError } from "../../core/src/storeBackup.ts";
 import { HumanOutputError } from "../../core/src/humanOutput.ts";
 import { createHash } from "node:crypto";
 import type { AutomationReference, AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
@@ -234,6 +235,7 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string;
   }
   if (err instanceof AccountLeaseUnknownError) return { code: "account_unavailable", message: err.message, details: { reason: "lease_unknown" } };
   if (err instanceof CoreError && err.message === "batch_frozen") return { code: "batch_frozen", message: err.message };
+  if (err instanceof StoreBackupError) return { code: err.code, message: err.message };
   if (err instanceof CoreError) return { code: "invalid_request", message: err.message };
   return { code: "invalid_request", message: err instanceof Error ? err.message : String(err) };
 }
@@ -450,8 +452,8 @@ export class RpcServer {
         this.refusals.record("local_peer_credentials_unavailable", null, null);
         throw new RpcError("local_peer_credentials_unavailable", "Peer credentials are unavailable for this connection; reconnect before mutating state.");
       }
-      if (verb === "doctor.integrity" && (peer?.state !== "verified" || conn.ingress !== "local_unix" || conn.relayLane !== null)) {
-        throw new RpcError("caller_not_trusted", "Integrity check requires a verified direct local administrator connection.");
+      if ((verb === "doctor.integrity" || verb === "store.backup") && (peer?.state !== "verified" || conn.ingress !== "local_unix" || conn.relayLane !== null)) {
+        throw new RpcError("caller_not_trusted", "Store maintenance requires a verified direct local administrator connection.");
       }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       const result = withRpcCaller(caller, () => {
