@@ -81,7 +81,7 @@ function privateKey(file: string, root: string, uid: number): Buffer {
 export class LocalRpcTrust {
   private key: Buffer | null = null;
   private keyUnavailable = false;
-  private registration: {uid: number; pid: number; birth: string; expiresAtMs: number} | null = null;
+  private registration: {uid: number; pid: number; birth: string; expiresAtMs: number; nodeId: string | null} | null = null;
   private readonly challenges = new Map<string, {challenge: LocalTrustChallenge; connection: object; consumed: boolean}>();
   readonly daemonInstanceId = randomUUID();
   private config: LocalTrustConfig;
@@ -134,7 +134,8 @@ export class LocalRpcTrust {
   }
   register(params: Record<string, unknown>, connection: PeerConnection, identity: object, ingress: string | undefined): {registered: true; uid: number; pid: number; expiresAtMs: number} {
     const verified = this.peer(connection, ingress);
-    if (Object.keys(params).some(key => !["pid", "challengeId", "token"].includes(key)) || params.pid !== verified.peer.pid || typeof params.challengeId !== "string" || typeof params.token !== "string" || !/^[a-f0-9]{64}$/.test(params.token)) refusal("invalid_registration");
+    if (Object.keys(params).some(key => !["pid", "challengeId", "token", "nodeId"].includes(key)) || params.pid !== verified.peer.pid || typeof params.challengeId !== "string" || typeof params.token !== "string" || !/^[a-f0-9]{64}$/.test(params.token)) refusal("invalid_registration");
+    if (params.nodeId !== undefined && (typeof params.nodeId !== "string" || !/^[A-Za-z0-9_.:-]{1,256}$/.test(params.nodeId))) refusal("invalid_registration");
     const entry = this.challenges.get(params.challengeId);
     if (!entry) refusal("challenge_unknown");
     if (entry.consumed) refusal("challenge_consumed");
@@ -149,7 +150,7 @@ export class LocalRpcTrust {
     expected.fill(0); supplied.fill(0);
     if (!valid) refusal("invalid_token");
     const previous = this.registration;
-    this.registration = {uid: verified.peer.uid, pid: verified.peer.pid, birth: verified.peer.processBirth!, expiresAtMs: this.now() + 300_000};
+    this.registration = {uid: verified.peer.uid, pid: verified.peer.pid, birth: verified.peer.processBirth!, expiresAtMs: this.now() + 300_000, nodeId: params.nodeId as string | undefined ?? null};
     this.audit("rpc.local_registered", {uid: verified.peer.uid, pid: verified.peer.pid, replacedPid: previous?.pid ?? null, expiresAtMs: this.registration.expiresAtMs});
     return {registered: true, uid: verified.peer.uid, pid: verified.peer.pid, expiresAtMs: this.registration.expiresAtMs};
   }
@@ -159,6 +160,7 @@ export class LocalRpcTrust {
     const registered = this.registration;
     if (!registered || registered.expiresAtMs <= this.now() || registered.uid !== verified.peer.uid || registered.pid !== verified.peer.pid || registered.birth !== verified.peer.processBirth) refusal("registration_required");
   }
+  get nodeId(): string | null { return this.registration?.nodeId ?? null; }
   disconnect(identity: object): void { for (const [id, entry] of this.challenges) if (entry.connection === identity) this.challenges.delete(id); }
   close(): void { this.key?.fill(0); this.key = null; this.registration = null; this.challenges.clear(); }
 }
