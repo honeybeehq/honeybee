@@ -85,6 +85,7 @@ export type AdapterSignal =
 
 /** Context the driver supplies when encoding a delivered mailbox message. */
 export interface EncodeContext {
+  freshTurn?: boolean;
   /** Provider session/thread id learned from the `booted` signal, if any. */
   sessionId: string | null;
   /** The mailbox message id being delivered (stable across retries). */

@@ -194,7 +194,8 @@ export const claudeAdapter: HarnessAdapter = {
     return [];
   },
   parseLine: parseClaudeLine,
-  encodeMessage(body: string, _ctx: EncodeContext): string | null {
+  encodeMessage(body: string, ctx: EncodeContext): string | null {
+    if (ctx.freshTurn && ctx.turnActive) return null;
     return encodeClaudeMessage(body);
   },
   resumeArgs: claudeResumeArgs,

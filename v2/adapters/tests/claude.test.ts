@@ -154,3 +154,10 @@ test("claude: typed authentication failure and HTTP 401 work without provider pr
   assert.ok(parseClaudeLine(JSON.stringify({ type: "result", is_error: true, api_error_status: 401, result: "Request refused" })).some(signal => signal.kind === "flag" && signal.flag === "auth_needed" && signal.action === "set"));
   assert.ok(!parseClaudeLine(JSON.stringify({ type: "result", is_error: true, api_error_status: 429, result: "Rate limit exceeded" })).some(signal => signal.kind === "flag" && signal.flag === "auth_needed"));
 });
+
+
+test("claude: fresh delivery refuses a known active turn and accepts idle", () => {
+  const context = { sessionId: "session", messageId: 1, turnId: null, freshTurn: true };
+  assert.equal(claudeAdapter.encodeMessage("fresh", { ...context, turnActive: true }), null);
+  assert.equal(claudeAdapter.encodeMessage("fresh", { ...context, turnActive: false }), encodeClaudeMessage("fresh"));
+});

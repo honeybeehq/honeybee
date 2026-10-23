@@ -1,6 +1,8 @@
 import type { RpcVerb } from "./protocol.ts";
 
 export const RPC_ACCESS = {
+  "mail.humanFirst.set": "mutate",
+  "mail.humanFirst.get": "read",
   "rpc.execution.coordinator.register": "mutate",
   "rpc.execution.claim.compareAndSet": "mutate",
   "rpc.execution.execute": "mutate",

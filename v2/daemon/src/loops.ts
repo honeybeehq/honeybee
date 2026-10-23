@@ -106,6 +106,7 @@ export interface DaemonPolicy {
    * turn.
    */
   i1DeadlineSteps?: number | null;
+  humanFirstWaitMs?: number;
 }
 
 /** Injected fault hooks (the harness's FaultInjector; absent in production). */
@@ -1784,8 +1785,16 @@ export class DaemonCore {
         // budget.11's race; real claude would end mis-flagged spawn_failed).
         // Any real parsed output upgrades bootEvidence and re-engages the gate.
         const trulyMidTurn = rt.state === "running" && rt.bootEvidence === "real";
-        const eligible = trulyMidTurn ? pending.filter((m) => m.urgency !== "idle") : pending;
-        if (eligible.length === 0) continue;
+        const humanState = this.humanFirstState(rt.beeId, rt.generation);
+        const humanFirst = humanState.enabled;
+        const humanHead = humanState.head;
+        const humanPending = humanHead !== null;
+        const eligible = quotaGate.messageIds.length > 0
+          ? pending.filter(message => !trulyMidTurn || message.urgency !== "idle")
+          : pending.filter(message => this.humanFirstEligible(message, trulyMidTurn, humanState));
+        const urgentHuman = humanFirst ? pending.find(message => message.humanChat !== undefined && message.urgency === "now" && !this.interruptRequested.has(message.id) && !this.store.getDeliveryConfirmationIntent(message.id)) : undefined;
+
+        if (!humanFirst && eligible.length === 0) continue;
         const move = this.store.activeMoveOf(rt.beeId);
         if (move && move.phase !== "starting") continue;
         // v23: a quiescing source takes no new turn; the target runtime receives
@@ -1794,15 +1803,18 @@ export class DaemonCore {
         // that jumped the queue).
         const handoff = this.store.activeHandoffOf(rt.beeId);
         if (handoff && handoffFencesSource(handoff.phase)) continue;
-        const seedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
-        const seed = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
+        const handoffSeedId = this.store.pendingHandoffSeedMessageId(rt.beeId);
+        const seedId = handoffSeedId ?? humanState.seed;
+        const seedCandidate = seedId == null ? null : pending.find((m) => m.id === seedId) ?? null;
+        const seed = seedCandidate && (handoffSeedId !== null || this.humanFirstEligible(seedCandidate, trulyMidTurn, humanState)) ? seedCandidate : null;
+        if (eligible.length === 0 && !seed && !urgentHuman) continue;
         if (!trulyMidTurn && this.beforeTurn && !this.beforeTurn(rt.beeId, rt.generation)) { this.deliveryRetries.delete(rt.beeId); continue; }
         if (rt.state === "running") {
           // Mid-turn `now`: interrupt first (the v6 verb), then deliver. One
           // interrupt per message; an eligible `now` behind an undelivered
           // `next` still interrupts — the accept point it creates serves the
           // whole FIFO, which keeps delivering in enqueue order.
-          const urgent = eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
+          const urgent = urgentHuman ?? eligible.find((m) => m.urgency === "now" && !this.interruptRequested.has(m.id) && !this.store.getDeliveryConfirmationIntent(m.id));
           if (urgent) {
             // Give the driver the triggering mailbox id so an asynchronously
             // confirmed delivery cannot interrupt the turn it just opened.
@@ -1828,7 +1840,8 @@ export class DaemonCore {
           }
         }
         const selected = seed ?? eligible[0];
-        if (!selected) continue;
+        if (!selected || humanFirst && humanPending && selected.humanChat !== undefined && selected.id !== humanHead && !seed && quotaGate.messageIds.length === 0) continue;
+        if (humanFirst && this.store.listDeliveryConfirmationIntents(rt.beeId).some(intent => intent.messageId !== selected.id && intent.wireLine !== null && intent.state === "awaiting_confirmation" && intent.generation === rt.generation && !this.confirmationReady.has(intent.messageId))) continue;
         const msg = this.store.getMessage(selected.id);
         if (
           !msg ||
@@ -1845,6 +1858,8 @@ export class DaemonCore {
         // The mailbox row stays the durable truth — the envelope is
         // delivery-time rendering only.
         if (msg.deliveryHold?.detail === "delivery_hold_state_unknown") {this.store.reconcileUnknownMultilineHold(msg.id); continue;}
+        const freshTurn = humanFirst && msg.humanChat !== undefined && msg.urgency !== "now";
+        if (freshTurn && this.store.getBee(rt.beeId)?.substrate === "tmux") continue;
         const peer = isPeerSender(msg.sender, (id) => this.store.getBee(id) != null);
         const interruptedTurn = msg.urgency === "now" && this.store.deliveryInterruptedTurn(rt.beeId, msg.id, rt.generation);
         let body = deliveryText(msg, peer, interruptedTurn, this.store.answeredQuestionId(msg.id), this.store.dismissedQuestionId(msg.id));
@@ -1906,7 +1921,7 @@ export class DaemonCore {
           const existing = this.store.getDeliveryConfirmationIntent(msg.id);
           if (existing) {
             if (existing.generation !== rt.generation || existing.wireLine === null || existing.state !== "awaiting_confirmation" || !this.confirmationReady.has(msg.id)) continue;
-            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
+            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
             if (!plan || plan === "not_ready") { refusePlan(); continue; }
             if (this.store.inTransaction) continue;
             const input = { beeId: rt.beeId, messageId: msg.id, generation: rt.generation, wireLine: plan.wireLine, digest: plan.digest, host: plan.host, settlement };
@@ -1914,7 +1929,7 @@ export class DaemonCore {
             confirmation = this.store.transact(() => { const row = this.store.replanDeliveryConfirmationIntent(input, existing.digest); recordPointerAttempt(); return row; });
             this.confirmationReady.delete(msg.id);
           } else {
-            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body);
+            const plan = this.driver.planDeliveryConfirmation?.(rt.beeId, rt.generation, msg.id, body, { freshTurn });
             if (plan === "not_ready") { refusePlan(); continue; }
             if (plan) {
               if (this.store.inTransaction) continue;
@@ -1932,7 +1947,7 @@ export class DaemonCore {
           }
         }
         const outcome = fallback?.handled ? { accepted: fallback.accepted, reason: "not_ready" as const, detail: undefined }
-          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { confirmation, multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
+          : this.driver.deliver(rt.beeId, rt.generation, msg.id, body, { confirmation, freshTurn, multilineWaitExpired: msg.deliveryHold?.stage === "expired" });
         if (outcome.accepted) {
           this.deliveryRetries.delete(rt.beeId);
           if (fallback?.confirmationBody) this.store.completeMultilineFallback(msg.id, rt.generation, this.turnTriggerSourceOf(msg, peer), true);
@@ -1981,12 +1996,63 @@ export class DaemonCore {
    * aware deadlines, and a suspended clock while a closed-list flag is active
    * (a visibly blocked bee is at an external boundary — I3/I6 territory).
    */
+  private readonly reportedHumanWait = new Set<number>();
+
+  private readonly humanEligibilitySince = new Map<number, number>();
+
+  private humanFirstState(beeId: string, generation = this.store.currentRuntime(beeId)?.generation ?? -1) {
+    const policy = this.store.humanFirstPolicy(beeId);
+    return { enabled: policy.enabled, seed: policy.enabled ? this.store.pendingHumanFirstSeedMessageId(beeId) : null, head: policy.enabled ? this.store.pendingHumanChatId(beeId) : null, active: policy.enabled && this.store.humanTurnActive(beeId, generation) };
+  }
+
+  private humanFirstEligible(message: Pick<MessageRow, "id" | "urgency" | "humanChat">, midTurn: boolean, state: ReturnType<DaemonCore["humanFirstState"]>): boolean {
+    if (state.enabled && state.seed !== null) return message.id === state.seed && !midTurn && !state.active;
+    if (state.enabled && (state.head !== null || state.active)) {
+      if (message.id !== state.head) return false;
+      return !(midTurn || state.active) || message.urgency === "now";
+    }
+    return !midTurn || message.urgency !== "idle";
+  }
+
   private i1Telemetry(rows: readonly I1PendingBee[]): void {
     const bound = this.policy.i1DeadlineSteps as number;
     const record = this.onI1Violation as (violation: I1ViolationEvent) => void;
     const now = this.now();
-    for (const { beeId, runtime: rt, hasActiveFlag, pending } of rows) {
-      if (hasActiveFlag) continue;
+    const seenPolicyMessages = new Set<number>();
+    const seenHumanWait = new Set<number>();
+    const monitored = [...rows];
+    const present = new Set(rows.map(row => row.beeId));
+    for (const policy of this.store.listHumanFirstPolicies()) {
+      if (!policy.enabled || present.has(policy.beeId)) continue;
+      const runtime = this.store.currentRuntime(policy.beeId);
+      if (runtime && runtime.state !== "stopped" && this.store.humanTurnActive(policy.beeId,runtime.generation)) monitored.push({beeId:policy.beeId,runtime,hasActiveFlag:this.store.activeFlags(policy.beeId).length > 0,pending:[]});
+    }
+    for (const { beeId, runtime: rt, hasActiveFlag, pending } of monitored) {
+      const humanState = this.humanFirstState(beeId);
+      const midTurn = rt?.state === "running" && rt.bootEvidence === "real";
+      const seedId = humanState.enabled ? this.store.pendingHandoffSeedMessageId(beeId) : null;
+      const quotaGate = humanState.enabled ? this.store.quotaDeliveryGate(beeId) : null;
+      if (hasActiveFlag) {
+        for (const message of pending) this.humanEligibilitySince.delete(message.id);
+        continue;
+      }
+      if (humanState.enabled && !quotaGate?.held) {
+        const trigger = this.store.getBee(beeId)?.lastTurnTrigger;
+        const waiting = humanState.head === null ? null : this.store.getMessage(humanState.head);
+        const active = humanState.active && trigger?.messageId !== null && trigger?.messageId !== undefined ? this.store.getMessage(trigger.messageId) : null;
+        const heldHuman = waiting && !this.humanFirstEligible(waiting,midTurn,humanState) ? waiting : active;
+        if (heldHuman) {
+          seenHumanWait.add(heldHuman.id);
+          const base = heldHuman.id === active?.id && trigger ? trigger.startedAt : heldHuman.enqueuedAt;
+          const deadline = base + (this.policy.humanFirstWaitMs ?? 600_000);
+          if (now > deadline && !this.reportedHumanWait.has(heldHuman.id)) {
+            this.reportedHumanWait.add(heldHuman.id);
+            const detail = `human_first_wait message=${heldHuman.id} deadline=${deadline} now=${now}; turn end is unobserved or the human turn remains open`;
+            record({detectedAt:now,beeId,messageId:heldHuman.id,enqueuedAt:heldHuman.enqueuedAt,deadline,detail});
+            this.log(`i1.human_first_wait bee=${beeId} msg=${heldHuman.id} deadline=${deadline}`);
+          }
+        }
+      }
       pending.forEach((m, pos) => {
         // v8 (Q2 amendment): an `idle` message's deadline clock starts when it
         // becomes ELIGIBLE (the runtime not `running`), not at enqueue — a
@@ -1994,6 +2060,16 @@ export class DaemonCore {
         // I1 violation. While the runtime is running the clock is suspended;
         // once out of `running`, the base is that transition (rt.updatedAt).
         let base = m.enqueuedAt;
+        if (humanState.enabled) {
+          seenPolicyMessages.add(m.id);
+          const quotaContinuation = quotaGate?.messageIds.includes(m.id) === true;
+          const heldByQuota = quotaGate?.held || quotaGate && quotaGate.messageIds.length > 0 && !quotaContinuation;
+          const heldByHuman = m.id !== seedId && !quotaContinuation && !this.humanFirstEligible(m, midTurn, humanState);
+          if (heldByQuota || heldByHuman) { this.humanEligibilitySince.delete(m.id); return; }
+          const eligibleAt = this.humanEligibilitySince.get(m.id) ?? now;
+          this.humanEligibilitySince.set(m.id, eligibleAt);
+          base = Math.max(base, eligibleAt);
+        }
         if (m.urgency === "idle") {
           // Mirrors the delivery rule: synthetic-boot `running` is provisional
           // — idle mail is ELIGIBLE there, so its clock runs (else the churn
@@ -2009,6 +2085,8 @@ export class DaemonCore {
         this.log(`i1.violation bee=${beeId} msg=${m.id} deadline=${deadline}`);
       });
     }
+    for (const id of this.humanEligibilitySince.keys()) if (!seenPolicyMessages.has(id)) this.humanEligibilitySince.delete(id);
+    for (const id of this.reportedHumanWait) if (!seenHumanWait.has(id)) this.reportedHumanWait.delete(id);
   }
 
   /**

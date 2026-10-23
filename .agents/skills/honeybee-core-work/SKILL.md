@@ -62,7 +62,16 @@ Silence and time passage never prove idle, completion, crash, or unreachability.
 
 - `now`: interrupt, then deliver; `next`: next accept point/default; `idle`: runtime idle.
 
-Urgency controls eligibility, never FIFO order or whether a stopped bee wakes. Map buz
+The optional human-first policy is an explicit eligibility exception: authenticated
+Apiary human next/idle chat waits for a genuine turn end, precedes ordinary pending
+background, and runs one human turn at a time. Background stays ineligible while
+a human is pending or its turn is active. Human-human and background-background
+FIFO and required system seed precedence remain intact. Explicit human now retains
+interrupt semantics. SenderKind alone grants no provenance; policy off preserves
+the ordinary urgency contract. Native self-wake admission races remain a strict
+enablement gate; observed idle alone is not an atomic native fence.
+
+Otherwise urgency controls eligibility, never FIFO order or whether a stopped bee wakes. Map buz
 compatibility onto this mailbox. Allow `mail.cancel`/`mail.expedite` only before delivery.
 Measure every accepted message with invariant-1 telemetry: deliver within the policy bound
 or record a durable structured violation.

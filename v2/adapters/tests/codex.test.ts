@@ -394,3 +394,16 @@ test("codex: legacy usage-limit text and failed auth retain their boundaries", (
     assert.ok(!signals.some(s => s.kind === "flag" && s.action === "clear"));
   }
 });
+
+
+test("codex: fresh delivery starts a turn and refuses every known active turn", () => {
+  for (const turnId of [null, "native-turn"]) {
+    assert.equal(adapter.encodeMessage("fresh", { sessionId: "thread", messageId: 41, turnActive: true, turnId, freshTurn: true }), null);
+  }
+  const wire = adapter.encodeMessage("fresh", { sessionId: "thread", messageId: 41, turnActive: false, turnId: "old-turn", freshTurn: true });
+  assert.ok(wire);
+  const request = JSON.parse(wire);
+  assert.equal(request.method, "turn/start");
+  assert.equal(request.params.expectedTurnId, undefined);
+  assert.ok(adapter.parseLine(JSON.stringify({id: request.id, error: {message: "active turn"}})).some(signal => signal.kind === "delivery_refused" && signal.messageId === 41));
+});
