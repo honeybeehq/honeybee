@@ -1,4 +1,5 @@
 import type { BeeTellRow, BeeReactionRow } from "./humanOutputTypes.ts";
+import type { MailBatch, MailBatchingPolicy } from "./types.ts";
 import type { HumanFirstPolicy, HumanChatReceipt } from "./types.ts";
 import { publicDeliveryConfirmation } from "./deliveryConfirmation.ts";
 import type { DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
@@ -42,6 +43,8 @@ import type {
 import type { LoginFlowRow } from "./loginFlow.ts";
 
 export function replayAudit(rows: AuditRow[]): StateDump {
+  const mailBatchingPolicies = new Map<string, MailBatchingPolicy>();
+  const mailBatches = new Map<string, MailBatch>();
   const humanFirstPolicies = new Map<string, HumanFirstPolicy>();
   const humanChatAdmissions = new Map<string, HumanChatReceipt>();
   const deliveryConfirmationIntents = new Map<number, DeliveryConfirmationIntent>();
@@ -99,6 +102,20 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   for (const row of rows) {
     const p = row.payload;
     switch (row.kind) {
+      case "mail.batching.put": {
+        const policy = structuredClone(p.policy as MailBatchingPolicy);
+        mailBatchingPolicies.set(policy.beeId,policy);
+        break;
+      }
+      case "mail.batch.put": {
+        const batch = structuredClone(p.batch as MailBatch);
+        mailBatches.set(batch.id,batch);
+        for (const id of batch.memberIds) {
+          const message = mailbox.get(id);
+          if (message) message.mailBatchId = batch.id;
+        }
+        break;
+      }
       case "mail.human_first.put": {
         const policy = structuredClone(p.policy as HumanFirstPolicy);
         humanFirstPolicies.set(policy.beeId, policy);
@@ -325,6 +342,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         for (const [id, tell] of tells) if (tell.beeId === beeId) tells.delete(id);
         for (const [id, reaction] of reactions) if (reaction.beeId === beeId) reactions.delete(id);
         humanFirstPolicies.delete(beeId);
+        mailBatchingPolicies.delete(beeId);
+        for (const [id,batch] of mailBatches) if (batch.beeId === beeId) mailBatches.delete(id);
         for (const [key, admission] of humanChatAdmissions) if (admission.beeId === beeId) humanChatAdmissions.delete(key);
         for (const [k, i] of quotaRecoveries) if (i.beeId === beeId) quotaRecoveries.delete(k);
         for (const [k, i] of authInterruptions) if (i.beeId === beeId) authInterruptions.delete(k);
@@ -720,6 +739,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     if (message) message.deliveryConfirmation = publicDeliveryConfirmation(current && current.generation !== intent.generation ? { ...intent, state: "held", reason: "generation_changed" } : intent);
   }
   return {
+    ...(mailBatchingPolicies.size ? { mailBatchingPolicies: [...mailBatchingPolicies.values()].sort((a,b) => a.beeId.localeCompare(b.beeId)) } : {}),
+    ...(mailBatches.size ? { mailBatches: [...mailBatches.values()].sort((a,b) => a.id.localeCompare(b.id)) } : {}),
     ...(humanFirstPolicies.size ? { humanFirstPolicies: [...humanFirstPolicies.values()].sort((a, b) => a.beeId < b.beeId ? -1 : a.beeId > b.beeId ? 1 : 0) } : {}),
     ...(humanChatAdmissions.size ? { humanChatAdmissions: [...humanChatAdmissions.values()].sort((a, b) => a.idempotencyKey < b.idempotencyKey ? -1 : a.idempotencyKey > b.idempotencyKey ? 1 : 0) } : {}),
     ...(deliveryConfirmationIntents.size ? { deliveryConfirmationIntents: [...deliveryConfirmationIntents.values()].sort((a, b) => a.messageId - b.messageId) } : {}),

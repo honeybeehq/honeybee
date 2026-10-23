@@ -297,6 +297,44 @@ export interface FlagRow {
 export const MESSAGE_URGENCIES = ["now", "next", "idle"] as const;
 export type Urgency = (typeof MESSAGE_URGENCIES)[number];
 
+export const AUTOMATION_KINDS = ["tell-reprompt", "tell-mode", "role-refresh", "obligation-notice", "proof-notice", "context-notice", "blocking_decision", "actionable_warning"] as const;
+export type AutomationKind = (typeof AUTOMATION_KINDS)[number];
+export interface AutomationReference {
+  version: 1;
+  workspaceId: string;
+  beeId: string;
+  kind: "question" | "proof" | "obligation";
+  id: string;
+  status: "open";
+}
+export type MailDeliveryClass = "human-followup" | "control" | "bypass" | "ordinary";
+export function automationDeliveryClass(kind?: AutomationKind): MailDeliveryClass {
+  switch (kind) {
+    case "tell-reprompt": return "human-followup";
+    case "tell-mode": case "role-refresh": case "context-notice": return "control";
+    case "blocking_decision": case "actionable_warning": return "bypass";
+    case "obligation-notice": case "proof-notice": case undefined: return "ordinary";
+  }
+}
+export interface MailBatchingPolicy {
+  beeId: string;
+  enabled: boolean;
+  updatedAt: number | null;
+}
+export interface MailBatch {
+  droppedAt?: number;
+  resolution?: { action: "resend_anyway" | "drop"; key: string; generation: number; at: number };
+  id: string;
+  beeId: string;
+  memberIds: number[];
+  cutoff: number;
+  policyRevision: number;
+  frozenAt: number;
+  releaseReason: "window-close" | "idle" | "max-age";
+  deliveredAt: number | null;
+  deliveredGeneration: number | null;
+}
+
 export interface HumanChatProvenance {
   version: 1;
   authorityId: string;
@@ -326,6 +364,10 @@ export interface HumanChatReceipt extends HumanChatAdmission {
 }
 
 export interface MessageRow {
+  automationReference?: AutomationReference;
+  automationKind?: AutomationKind;
+  automationRef?: string;
+  mailBatchId?: string;
   humanChat?: HumanChatProvenance;
   queueOrder?: number;
   replacesMessageId?: number;
@@ -388,6 +430,7 @@ export type MailHistoryLifecycle =
 
 /** One accepted send reconstructed from typed mail audit events, never a raw audit row. */
 export interface MailHistoryMessage {
+  mailBatchId?: string;
   queueOrder?: number;
   replacesMessageId?: number;
   deliveryConfirmation?: DeliveryConfirmation;
@@ -1076,6 +1119,8 @@ export interface TrackRow {
 export interface StateDump {
   tells?: BeeTellRow[];
   reactions?: BeeReactionRow[];
+  mailBatchingPolicies?: MailBatchingPolicy[];
+  mailBatches?: MailBatch[];
   humanFirstPolicies?: HumanFirstPolicy[];
   humanChatAdmissions?: HumanChatReceipt[];
   deliveryConfirmationIntents?: DeliveryConfirmationIntent[];

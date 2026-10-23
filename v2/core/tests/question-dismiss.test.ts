@@ -102,7 +102,7 @@ test("schema46 migration without a status CHECK gains dismissal columns additive
     store = h.open(); assert.equal(store.dismissQuestionWithKey(q.id, "additive").question.status, "dismissed"); store.close();
     const after = new DatabaseSync(h.path);
     assert.equal(after.prepare("SELECT rootpage FROM sqlite_master WHERE name='questions'").get()!.rootpage, rootPage);
-    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "50"); after.close();
+    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "51"); after.close();
     store = h.open(); assert.equal(store.getQuestion(q.id)!.status, "dismissed");
   } finally {store.close(); h.cleanup();}
 });
