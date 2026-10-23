@@ -45,6 +45,7 @@ async function fingerprint(paths) {
 
 const sourceFiles = await typescriptFiles(join(root, "src"));
 const testFiles = await typescriptFiles(join(root, "tests"));
+const coreFiles = await typescriptFiles(join(root, "v2", "core", "src"));
 const assetFiles = [
   ...(await listedFiles(join(root, "tests", "fixtures"), () => true)),
   ...(await listedFiles(join(root, "contracts"), () => true)),
@@ -55,6 +56,7 @@ const stampInputs = [
   join(root, "v2", "cli", "src", "client.ts"),
   join(root, "v2", "daemon", "src", "protocol.ts"),
   ...sourceFiles,
+  ...coreFiles,
   ...testFiles,
   ...assetFiles,
   join(root, "package.json"),
@@ -98,6 +100,16 @@ await build({
       }));
     },
   }],
+});
+
+await build({
+  entryPoints: [join(root, "v2", "core", "src", "storeBackup.ts")],
+  outfile: join(outDir, "v2", "core", "src", "storeBackup.js"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  logLevel: "silent",
 });
 
 // A handful of tests and source modules resolve fixtures/contracts relative to
