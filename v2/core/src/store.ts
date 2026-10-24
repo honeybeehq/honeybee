@@ -6072,6 +6072,17 @@ export class CoreStore {
   runtimeIdentityHooks(): RuntimeIdentityHooks {
     return {
       read: (beeId, generation) => this.runtimeProcessIdentity(beeId, generation),
+      bindPendingStart: (beeId, generation, stamp, identity) => this.tx(() => {
+        if (!processIdentityValue(identity)) return false;
+        const current = this.currentRuntime(beeId);
+        if (!current || current.generation !== generation || current.state === "stopped" || current.pid !== identity.pid || current.pidStartedAt !== stamp) return false;
+        const binding = this.runtimeProcessIdentity(beeId, generation);
+        if (binding.kind !== "unavailable" || binding.reason !== "pending-new-start") return false;
+        const changed = this.db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=? AND generation=? AND pid=? AND pid_started_at=? AND state!='stopped' AND process_identity=?").run(JSON.stringify(identity), beeId, generation, identity.pid, stamp, '{"kind":"pending-new-start"}');
+        if (Number(changed.changes) !== 1) return false;
+        this.audit("runtime.pending_start_bound", beeId, {generation, proof: "authenticated-host-generation", count: 1});
+        return true;
+      }),
       bindLegacy: (beeId, generation, stamp, identity, proof) => this.tx(() => {
         if (!processIdentityValue(identity) || !["authenticated-host-generation", "owned-tmux-pane"].includes(proof)) return false;
         const current = this.currentRuntime(beeId);

@@ -84,3 +84,43 @@ test("legacy rows cannot acquire exact authority through recordRuntimeProc", () 
     assert.equal(store.runtimeIdentityHooks().bindLegacy(bee.id, 1, 1234000, identity, "authenticated-host-generation"), true);
   } finally {store.close(); h.cleanup();}
 });
+
+test("pending start recovery binds once with current generation, PID and stamp fences", () => {
+  const h = harness(); let store = h.open();
+  try {
+    const {bee} = makeBee(store), generation = store.currentRuntime(bee.id)!.generation;
+    store.recordRuntimeProc(bee.id, generation, {pid: identity.pid, pidStartedAt: 1234000});
+    const hooks = store.runtimeIdentityHooks();
+    assert.deepEqual(hooks.read(bee.id, generation), {kind: "unavailable", reason: "pending-new-start"});
+    assert.equal(hooks.bindPendingStart!(bee.id, generation + 1, 1234000, identity), false);
+    assert.equal(hooks.bindPendingStart!(bee.id, generation, 1234001, identity), false);
+    assert.equal(hooks.bindPendingStart!(bee.id, generation, 1234000, {...identity, pid: 124}), false);
+    assert.equal(hooks.bindPendingStart!(bee.id, generation, 1234000, identity), true);
+    assert.equal(hooks.bindPendingStart!(bee.id, generation, 1234000, identity), false);
+    assert.equal(hooks.bindPendingStart!(bee.id, generation, 1234000, {...identity, birth: "darwin:1235:42"}), false);
+    store.close(); store = h.open();
+    assert.deepEqual(store.runtimeProcessIdentity(bee.id, generation), {kind: "bound", identity, pidStartedAt: 1234000});
+    const audits = store.auditTail(0, 1000).filter(row => row.kind === "runtime.pending_start_bound");
+    assert.equal(audits.length, 1);
+    assert.equal(audits[0]!.beeId, bee.id);
+    assert.equal(audits[0]!.payload.generation, generation);
+  } finally {store.close(); h.cleanup();}
+});
+
+test("pending recovery refuses stopped, stale, legacy and malformed rows", () => {
+  for (const state of ["stopped", "stale", "legacy", "malformed", "extra-field"] as const) {
+    const h = harness(), store = h.open();
+    try {
+      const {bee} = makeBee(store), generation = store.currentRuntime(bee.id)!.generation;
+      store.recordRuntimeProc(bee.id, generation, {pid: identity.pid, pidStartedAt: 1234000});
+      const db = (store as unknown as {db: DatabaseSync}).db;
+      if (state === "stopped" || state === "stale") store.updateRuntimeState(bee.id, generation, "stopped", {exitCause: "clean"});
+      if (state === "stale") store.reviveBee(bee.id);
+      if (state === "legacy" || state === "malformed" || state === "extra-field") db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=?").run(state === "legacy" ? null : state === "malformed" ? "{broken" : '{"kind":"pending-new-start","extra":true}', bee.id);
+      const before = db.prepare("SELECT * FROM runtimes WHERE bee_id=?").all(bee.id);
+      assert.equal(store.runtimeIdentityHooks().bindPendingStart!(bee.id, generation, 1234000, identity), false, state);
+      assert.deepEqual(db.prepare("SELECT * FROM runtimes WHERE bee_id=?").all(bee.id), before);
+      assert.equal(store.auditTail(0, 1000).filter(row => row.kind === "runtime.pending_start_bound").length, 0);
+    } finally {store.close(); h.cleanup();}
+  }
+});

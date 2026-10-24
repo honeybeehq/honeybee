@@ -3,11 +3,12 @@ import type {DatabaseSync} from "node:sqlite";
 import {processIdentityValue, type RuntimeProcessIdentity} from "./processIdentity.ts";
 export {processIdentityValue};
 export type {RuntimeProcessIdentity};
-export type RuntimeIdentityRead = {kind: "bound"; identity: RuntimeProcessIdentity; pidStartedAt: number} | {kind: "legacy"} | {kind: "unavailable"};
+export type RuntimeIdentityRead = {kind: "bound"; identity: RuntimeProcessIdentity; pidStartedAt: number} | {kind: "legacy"} | {kind: "unavailable"; reason?: "pending-new-start"};
 export interface RuntimeIdentityHooks {
   read(beeId: string, generation: number): RuntimeIdentityRead;
   unavailable?(beeId: string, generation: number): void;
   bindLegacy(beeId: string, generation: number, stamp: number, identity: RuntimeProcessIdentity, proof: "authenticated-host-generation" | "owned-tmux-pane"): boolean;
+  bindPendingStart?(beeId: string, generation: number, stamp: number, identity: RuntimeProcessIdentity): boolean;
 }
 export function installRuntimeProcessIdentity(db: DatabaseSync): void {
   if (!db.prepare("PRAGMA table_info(runtimes)").all().some(row => row.name === "process_identity")) db.exec("ALTER TABLE runtimes ADD COLUMN process_identity TEXT");
@@ -19,6 +20,7 @@ export function readRuntimeProcessIdentity(db: DatabaseSync, beeId: string, gene
   const row = db.prepare("SELECT pid,pid_started_at,process_identity FROM runtimes WHERE bee_id=? AND generation=?").get(beeId, generation);
   if (!row) return {kind: "unavailable"};
   if (row.process_identity === null) return {kind: "legacy"};
+  if (row.process_identity === '{"kind":"pending-new-start"}') return {kind: "unavailable", reason: "pending-new-start"};
   try {
     const identity = processIdentityValue(JSON.parse(String(row.process_identity)));
     return identity && identity.pid === row.pid && typeof row.pid_started_at === "number" && Number.isFinite(row.pid_started_at) ? {kind: "bound", identity, pidStartedAt: row.pid_started_at} : {kind: "unavailable"};

@@ -220,6 +220,7 @@ interface ManagedProcess {
   authFailures?: number;
   processIdentity?: ProcessIdentity;
   legacyBirthPending?: boolean;
+  pendingStartIdentity?: ProcessIdentity;
   executionStart?: ExecutionStart;
   executionHost?: ExecutionProcess;
   executionAccepted?: boolean;
@@ -695,6 +696,26 @@ export class HsrDriver implements RuntimeDriver {
       attempt.setTimeout(0);
       if (this.detached || p.exited) { attempt.destroy(); return; }
       this.captureProcessIdentity(p);
+      if (p.pendingStartIdentity) {
+        const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
+        const value = legacyProcessCandidate(p.pid, p.pidStartedAt);
+        const identity = p.pendingStartIdentity;
+        const fd = (attempt as unknown as {_handle?: {fd?: number}})._handle?.fd;
+        if (!value || !sameProcess(identity, value) || !status || status.beeId !== p.beeId || status.generation !== p.generation || status.hostPid !== p.pid || status.exited || fd === undefined || !authenticatedProcessPeer(fd, identity)) {
+          this.rejectHostPeer(p, attempt); return;
+        }
+        try {
+          if (p.executionStart) {
+            if (status.hostBirth !== p.executionHost?.birth || status.executionIntentId !== p.executionStart.intentId || status.executionDigest !== canonicalDigest(p.executionStart as unknown as JsonValue)) throw new Error("Runner execution identity changed");
+            this.cfg.execution!.check(p.executionStart, "pending_start_recovery");
+          }
+          if (!this.cfg.runtimeIdentity?.bindPendingStart?.(p.beeId, p.generation, p.pidStartedAt, identity)) {
+            this.rejectHostPeer(p, attempt); return;
+          }
+        } catch { this.rejectHostPeer(p, attempt); return; }
+        p.processIdentity = identity;
+        p.pendingStartIdentity = undefined;
+      }
       if (p.legacyBirthPending) {
         const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
         const value = legacyProcessCandidate(p.pid, p.pidStartedAt);
@@ -1139,6 +1160,7 @@ export class HsrDriver implements RuntimeDriver {
   /** One observation pass over a host-style runtime: status facts, log tail,
    * and (for adopted hosts with no exit callback) pid-liveness. */
   private pumpHost(p: ManagedProcess): void {
+    if (p.pendingStartIdentity) return;
     this.captureProcessIdentity(p);
     const disposition = processDisposition(p.processIdentity ?? null, inspectProcess(p.pid));
     if (disposition === "unavailable") this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation);
@@ -1345,9 +1367,11 @@ export class HsrDriver implements RuntimeDriver {
     } catch { return false; }
 
     const storedIdentity = this.cfg.runtimeIdentity?.read(beeId, generation) ?? {kind: "legacy" as const};
-    if (storedIdentity.kind === "unavailable") return false;
+    const pendingStart = storedIdentity.kind === "unavailable" && storedIdentity.reason === "pending-new-start";
+    if (storedIdentity.kind === "unavailable" && !pendingStart) return false;
     if (storedIdentity.kind === "bound" && storedIdentity.pidStartedAt !== pidStartedAt) return false;
     const value = inspectProcess(pid);
+    const pendingStartIdentity = pendingStart && value.kind === "present" ? {pid, birth: value.birth, bootId: value.bootId} : undefined;
     let processIdentity: ProcessIdentity | undefined = storedIdentity.kind === "bound" ? storedIdentity.identity : undefined;
     if (processIdentity ? !verifyProcessIdentity(pid, processIdentity) : !legacyProcessCandidate(pid, pidStartedAt, value)) return false;
     // WP5: a runtime with runner-host artifacts for this exact (pid ==
@@ -1360,6 +1384,7 @@ export class HsrDriver implements RuntimeDriver {
     if (status && status.hostPid === pid && !status.exited) {
       const hasGenerationIdentity = status.beeId !== undefined || status.generation !== undefined;
       const exactGenerationIdentity = status.beeId === beeId && status.generation === generation;
+      if (pendingStart && !exactGenerationIdentity) return false;
       let adapter: HarnessAdapter | null = null;
       try {
         adapter = execution ? this.cfg.resolveExecutionAdapter?.(beeId) ?? null : this.cfg.resolve(beeId).adapter;
@@ -1421,7 +1446,8 @@ export class HsrDriver implements RuntimeDriver {
           const proc: ManagedProcess = {
             ...(execution && executionHost ? { executionStart: execution, executionHost } : {}),
             processIdentity,
-            legacyBirthPending: !processIdentity,
+            pendingStartIdentity,
+            legacyBirthPending: !processIdentity && !pendingStart,
             beeId,
             generation,
             pid,
@@ -1475,14 +1501,14 @@ export class HsrDriver implements RuntimeDriver {
             pendingWrites: [],
             socketBroken: false,
           };
-          if (execution && status.agentPid && status.agentBirth) { try { this.acceptExecutionStarted(proc,{pid:status.agentPid,birth:status.agentBirth}); } catch { return false; } }
+          if (!pendingStart && execution && status.agentPid && status.agentBirth) { try { this.acceptExecutionStarted(proc,{pid:status.agentPid,birth:status.agentBirth}); } catch { return false; } }
           this.procs.set(beeId,proc);
           this.connectSocket(proc);
           return true;
         }
       }
     }
-    if (execution) return false;
+    if (execution || pendingStart) return false;
     const receiptHost = status ? status.hostPid === pid && status.beeId === beeId && status.generation === generation && !status.exited
       : (() => { try { return statSync(paths.status).isFile(); } catch { return false; } })();
     this.procs.set(beeId, {
