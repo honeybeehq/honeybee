@@ -1651,6 +1651,7 @@ export class CoreStore {
   private readonly maxRpcIdempotencyRows: number;
   private readonly multilineUnsupportedActive = new Map<number, { beeId: string; generation: number }>();
   private readonly stmts = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
+  private readonly pendingStartBoundAtCache = new Map<string, {generation: number; at: number | null}>();
   private txDepth = 0;
   private commitCallbacks: Array<() => void> = [];
   private closed = false;
@@ -3085,6 +3086,7 @@ export class CoreStore {
    * B1's graph. Pending commands for the bee settle `done` (moot — B6 philosophy).
    */
   deleteBee(beeId: string): DeleteResult {
+    this.pendingStartBoundAtCache.delete(beeId);
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
       if (bee.activeMoveId) {
@@ -3603,6 +3605,7 @@ export class CoreStore {
    * revived runtime is resolved with them.
    */
   reviveBee(beeId: string, opts: { proc?: { pid: number; pidStartedAt: number }; args?: string[] | null } = {}): RuntimeRow {
+    this.pendingStartBoundAtCache.delete(beeId);
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
       this.refuseMailboxOnlyRuntime(bee, "revive");
@@ -6066,8 +6069,12 @@ export class CoreStore {
   runtimeProcessIdentity(beeId: string, generation: number) { return readRuntimeProcessIdentity(this.db, beeId, generation); }
 
   runtimePendingStartBoundAt(beeId: string, generation: number): number | null {
+    const cached = this.inTransaction ? undefined : this.pendingStartBoundAtCache.get(beeId);
+    if (cached?.generation === generation) return cached.at;
     const row = this.stmt("SELECT ts FROM audit WHERE bee_id=? AND kind='runtime.pending_start_bound' AND json_extract(payload,'$.generation')=? ORDER BY seq DESC LIMIT 1").get(beeId, generation);
-    return row ? Number(row.ts) : null;
+    const at = row ? Number(row.ts) : null;
+    if (!this.inTransaction) this.pendingStartBoundAtCache.set(beeId, {generation, at});
+    return at;
   }
 
   tmuxCleanupCounts(): {retained: number; informational: number} {
@@ -6105,6 +6112,7 @@ export class CoreStore {
         if (binding.kind !== "unavailable" || binding.reason !== "pending-new-start") return false;
         const changed = this.db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=? AND generation=? AND pid=? AND pid_started_at=? AND state!='stopped' AND process_identity=?").run(JSON.stringify(identity), beeId, generation, identity.pid, stamp, '{"kind":"pending-new-start"}');
         if (Number(changed.changes) !== 1) return false;
+        this.pendingStartBoundAtCache.delete(beeId);
         this.audit("runtime.pending_start_bound", beeId, {generation, proof: "authenticated-host-generation", count: 1});
         return true;
       }),
