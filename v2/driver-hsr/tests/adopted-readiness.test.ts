@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
-import {mkdtempSync, readFileSync, writeFileSync, rmSync} from "node:fs";
+import {mkdtempSync, readFileSync, writeFileSync, appendFileSync, rmSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {openCoreStore} from "../../core/src/index.ts";
-import {codexAdapter} from "../../adapters/src/index.ts";
+import {codexAdapter, claudeAdapter} from "../../adapters/src/index.ts";
 import {HsrDriver} from "../src/index.ts";
 import {inspectProcess, sameProcess, type ProcessIdentity} from "../src/psutil.ts";
 import {drainUntil, ofKind, sleep} from "./helpers.ts";
@@ -73,4 +73,32 @@ for (const mode of ["idle", "active", "transient-status", "agent-birth", "unowne
     assert.equal(requests.filter(row => row.method === "thread/start").length, 1);
     assert.equal(store.auditTail(0, 1000).filter(row => row.kind === "runtime.readiness_recovery_claimed").length, 0);
   } finally {third?.detachAll(); second?.detachAll(); first.disposeAll(); store.close(); rmSync(dir, {recursive: true, force: true});}
+});
+
+test("Claude adopted readiness waits for the complete journal before deriving idle", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-claude-tail-"));
+  const store = openCoreStore(join(dir, "core.sqlite3"), {ephemeral: true});
+  const {bee} = store.createBee({name: "quiet", agent: "claude", substrate: "hsr", cwd: dir});
+  const makeDriver = () => new HsrDriver({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(dir, "logs"), resolve: () => ({adapter: claudeAdapter, command: process.execPath, args: ["-e", "setInterval(() => {}, 1000)"], cwd: dir})});
+  const first = makeDriver(); let second: HsrDriver | undefined;
+  try {
+    first.start(bee.id, 1);
+    await drainUntil(first, events => ofKind(events, "booted").length > 0);
+    const proc = first.procOf(bee.id, 1)!;
+    first.detachAll();
+    store.recordRuntimeProc(bee.id, 1, {pid: proc.pid, pidStartedAt: proc.pidStartedAt, observationCursor: 0});
+    const path = first.observationLogPath(bee.id, 1);
+    appendFileSync(path, '{"type":"system","subtype":"thinking_tokens"}\n'.repeat(120000) + '{"type":"assistant","message":{"content":[]}}\n');
+    second = makeDriver();
+    assert.equal(second.adopt(bee.id, 1, proc.pid, proc.pidStartedAt, "booting", 0), true);
+    await sleep(100);
+    assert.deepEqual(second.observe(), []);
+    await sleep(1100);
+    assert.deepEqual(second.observe(), []);
+    assert.equal(second.deliver(bee.id, 1, 1, "must wait").accepted, false);
+    appendFileSync(path, '{"type":"result","subtype":"success","result":"finished"}\n');
+    const events = await drainUntil(second, events => ofKind(events, "booted").length > 0);
+    assert.equal(ofKind(events, "booted")[0]!.synthetic, true);
+    assert.equal(ofKind(events, "turn_ended").length, 1);
+  } finally {second?.detachAll(); first.disposeAll(); store.close(); rmSync(dir, {recursive: true, force: true});}
 });

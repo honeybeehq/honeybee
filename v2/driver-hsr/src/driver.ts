@@ -1302,6 +1302,9 @@ export class HsrDriver implements RuntimeDriver {
     if (!p.readinessRecovery || p.phase !== "booting" && !p.executionStart) return;
     recovery.started = true;
     if (p.adapter?.readyAtSpawn) {
+      try {
+        if (!p.observationPath || p.logOffset < statSync(p.observationPath).size || p.stdoutRest.length > 0) { recovery.nextProbeAt = this.now() + 1000; return; }
+      } catch { recovery.nextProbeAt = this.now() + 1000; return; }
       const context = p.observationPath ? recoverAdapterContext(p.adapter, p.observationPath, p.logOffset, p.sessionId) : null;
       this.applyRecoveredReadiness(p, {kind: "ready", sessionId: context?.sessionId ?? p.sessionId ?? "", state: context?.phase ?? "idle", ...(context?.turnId ? {turnId: context.turnId} : {}), synthetic: true});
     } else {
