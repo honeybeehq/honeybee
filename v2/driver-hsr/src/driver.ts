@@ -1297,7 +1297,7 @@ export class HsrDriver implements RuntimeDriver {
   private recoverAdoptedReadiness(p: ManagedProcess): void {
     const recovery = p.readinessRecovery;
     if (!recovery || recovery.started || recovery.refused) return;
-    if (!this.recoveryAgentIsLive(p)) { this.refuseReadinessRecovery(p); return; }
+    if (!this.recoveryAgentIsLive(p)) { recovery.nextProbeAt = this.now() + 1000; return; }
     this.pumpHostTail(p);
     if (!p.readinessRecovery || p.phase !== "booting" && !p.executionStart) return;
     recovery.started = true;
@@ -1312,7 +1312,8 @@ export class HsrDriver implements RuntimeDriver {
 
   private applyRecoveredReadiness(p: ManagedProcess, result: ReadinessRecovery): void {
     const recovery = p.readinessRecovery;
-    if (!recovery || recovery.refused || !this.recoveryAgentIsLive(p)) { this.refuseReadinessRecovery(p); return; }
+    if (!recovery || recovery.refused) return;
+    if (!this.recoveryAgentIsLive(p)) { recovery.nextProbeAt = this.now() + 1000; return; }
     if (result.kind === "refused") { this.refuseReadinessRecovery(p); return; }
     if (result.kind === "query") {
       if (!this.writeLine(p, result.line, undefined, true)) this.refuseReadinessRecovery(p);
@@ -1411,7 +1412,7 @@ export class HsrDriver implements RuntimeDriver {
       const lateBoot = p.phase !== "booting" && signals.some((sig) => sig.kind === "booted");
       for (const signal of signals) {
         if (lateBoot && signal.kind === "turn_ended") continue;
-        if (signal.kind === "respond" && p.readinessRecovery && p.adapter.recoveryProbe) continue;
+        if (signal.kind === "respond" && signal.bootstrap && p.readinessRecovery) continue;
         if (this.onSignal(p, signal, String(lineEndCursor), line) === false) {
           p.logOffset = lineBeginCursor;
           p.stdoutRest = Buffer.alloc(0);

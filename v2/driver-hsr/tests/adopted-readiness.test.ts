@@ -11,7 +11,7 @@ import {drainUntil, ofKind, sleep} from "./helpers.ts";
 
 const fakeCodex = new URL("../test-agent/fake-codex.mjs", import.meta.url).pathname;
 
-for (const mode of ["idle", "active", "agent-birth", "unowned-agent"] as const) test(`adopted Codex readiness: ${mode}`, async () => {
+for (const mode of ["idle", "active", "transient-status", "agent-birth", "unowned-agent"] as const) test(`adopted Codex readiness: ${mode}`, async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-adopt-ready-"));
   const store = openCoreStore(join(dir, "core.sqlite3"), {ephemeral: true});
   const {bee} = store.createBee({name: "quiet", agent: "codex", substrate: "hsr", cwd: dir});
@@ -60,6 +60,13 @@ for (const mode of ["idle", "active", "agent-birth", "unowned-agent"] as const) 
       second.detachAll();
       third = makeDriver();
       assert.equal(third.adopt(bee.id, 1, proc.pid, proc.pidStartedAt, "booting", cursor), true);
+      if (mode === "transient-status") {
+        const contents = readFileSync(statusPath, "utf8");
+        writeFileSync(statusPath, "{");
+        await sleep(200);
+        assert.deepEqual(third.observe(), []);
+        writeFileSync(statusPath, contents);
+      }
       await drainUntil(third, events => ofKind(events, "booted").length > 0);
     }
     const requests = readFileSync(log, "utf8").trim().split("\n").map(line => JSON.parse(line));

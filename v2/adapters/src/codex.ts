@@ -191,6 +191,7 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
     if (msg.id === INITIALIZE_ID && "result" in msg) {
       return [{
         kind: "respond",
+        bootstrap: true,
         lines: [JSON.stringify({ jsonrpc: "2.0", method: "initialized" }), threadStartLine],
       }];
     }

@@ -35,3 +35,13 @@ test("Codex live thread state reports authenticated live idle or active evidence
   assert.deepEqual(parse("start", {thread}), {kind: "ready", sessionId: "known", state: "idle", synthetic: false, threadCwd: "/fixture", adapterCwd: "/fixture"});
   for (const patch of [{id: "other"}, {status: {type: "notLoaded"}}, {status: {type: "systemError"}}]) assert.equal(parse("read:known", {thread: {...thread, ...patch}}, "known")?.kind, "refused");
 });
+
+test("Codex marks only the sole initialize response as bootstrap", () => {
+  const boot = adapter.parseLine('{"id":1,"result":{}}');
+  assert.equal(boot.length, 1);
+  assert.equal(boot[0]!.kind, "respond");
+  if (boot[0]!.kind === "respond") assert.equal(boot[0]!.bootstrap, true);
+  const request = adapter.parseLine('{"id":1,"method":"item/commandExecution/requestApproval","params":{}}');
+  assert.equal(request.length, 1);
+  if (request[0]!.kind === "respond") assert.equal(request[0]!.bootstrap, undefined);
+});

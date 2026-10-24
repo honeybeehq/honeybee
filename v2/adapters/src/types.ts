@@ -81,7 +81,7 @@ export type AdapterSignal =
    * Protocol lines the driver must write back to the runtime's stdin (e.g. the
    * codex JSON-RPC handshake continuation). Derived purely from the input line.
    */
-  | { kind: "respond"; lines: string[] };
+  | { kind: "respond"; lines: string[]; bootstrap?: boolean };
 
 /** Context the driver supplies when encoding a delivered mailbox message. */
 export interface EncodeContext {
