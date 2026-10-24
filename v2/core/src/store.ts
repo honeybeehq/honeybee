@@ -1651,6 +1651,7 @@ export class CoreStore {
   private readonly maxRpcIdempotencyRows: number;
   private readonly multilineUnsupportedActive = new Map<number, { beeId: string; generation: number }>();
   private readonly stmts = new Map<string, ReturnType<DatabaseSync["prepare"]>>();
+  private readonly pendingStartBoundAtCache = new Map<string, {generation: number; at: number | null}>();
   private txDepth = 0;
   private commitCallbacks: Array<() => void> = [];
   private closed = false;
@@ -3085,6 +3086,7 @@ export class CoreStore {
    * B1's graph. Pending commands for the bee settle `done` (moot — B6 philosophy).
    */
   deleteBee(beeId: string): DeleteResult {
+    this.pendingStartBoundAtCache.delete(beeId);
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
       if (bee.activeMoveId) {
@@ -3603,6 +3605,7 @@ export class CoreStore {
    * revived runtime is resolved with them.
    */
   reviveBee(beeId: string, opts: { proc?: { pid: number; pidStartedAt: number }; args?: string[] | null } = {}): RuntimeRow {
+    this.pendingStartBoundAtCache.delete(beeId);
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);
       this.refuseMailboxOnlyRuntime(bee, "revive");
@@ -5556,6 +5559,7 @@ export class CoreStore {
          AND verb = 'stop' AND target_generation = ?
          AND json_extract(args, '$.cause') = 'stopped_by_system'
          AND json_extract(args, '$.reason') = 'hang_policy'
+         AND COALESCE(json_extract(args, '$.hangPolicySkipped'), 0) = 0
        LIMIT 1`,
     ).get(beeId, generation) !== undefined;
   }
@@ -5809,6 +5813,25 @@ export class CoreStore {
     });
   }
 
+  deferBootHangStop(id: number, nextAttemptAt: number): void {
+    this.tx(() => {
+      const command = this.getCommand(id);
+      if (!command || command.status !== "running" || command.verb !== "stop" || command.args.cause !== "stopped_by_system" || command.args.reason !== "hang_policy" || !Number.isFinite(nextAttemptAt) || nextAttemptAt <= this.now()) throw new CommandProtocolError("not a deferrable boot-hang stop");
+      this.db.prepare("UPDATE commands SET status='queued',next_attempt_at=? WHERE id=?").run(nextAttemptAt, id);
+      this.audit("command.boot_hang_deferred", command.beeId, {commandId: id, generation: command.targetGeneration, nextAttemptAt});
+    });
+  }
+
+  skipBootHangStop(id: number): void {
+    this.tx(() => {
+      const command = this.getCommand(id);
+      if (!command || command.status !== "running" || command.verb !== "stop" || command.args.cause !== "stopped_by_system" || command.args.reason !== "hang_policy") throw new CommandProtocolError("not a running boot-hang stop");
+      this.db.prepare("UPDATE commands SET args=? WHERE id=?").run(JSON.stringify({...command.args, hangPolicySkipped: true}), id);
+      this.audit("command.moot", command.beeId, {commandId: id, generation: command.targetGeneration, reason: "runtime_ready"});
+      this.completeCommand(id);
+    });
+  }
+
   /** Reconnect owns a typed receipt; it never turns a tool-control failure into runtime failure. */
   setReconnectTargets(id: number, targets: string[]): void {
     this.tx(() => {
@@ -6045,6 +6068,15 @@ export class CoreStore {
 
   runtimeProcessIdentity(beeId: string, generation: number) { return readRuntimeProcessIdentity(this.db, beeId, generation); }
 
+  runtimePendingStartBoundAt(beeId: string, generation: number): number | null {
+    const cached = this.inTransaction ? undefined : this.pendingStartBoundAtCache.get(beeId);
+    if (cached?.generation === generation) return cached.at;
+    const row = this.stmt("SELECT ts FROM audit WHERE bee_id=? AND kind='runtime.pending_start_bound' AND json_extract(payload,'$.generation')=? ORDER BY seq DESC LIMIT 1").get(beeId, generation);
+    const at = row ? Number(row.ts) : null;
+    if (!this.inTransaction) this.pendingStartBoundAtCache.set(beeId, {generation, at});
+    return at;
+  }
+
   tmuxCleanupCounts(): {retained: number; informational: number} {
     const rows = readTmuxCleanup(this.db);
     return {retained: rows.malformed + rows.entries.filter(row => row.state === "retained").length, informational: rows.entries.filter(row => row.state === "socket-gone-unverifiable").length};
@@ -6080,6 +6112,7 @@ export class CoreStore {
         if (binding.kind !== "unavailable" || binding.reason !== "pending-new-start") return false;
         const changed = this.db.prepare("UPDATE runtimes SET process_identity=? WHERE bee_id=? AND generation=? AND pid=? AND pid_started_at=? AND state!='stopped' AND process_identity=?").run(JSON.stringify(identity), beeId, generation, identity.pid, stamp, '{"kind":"pending-new-start"}');
         if (Number(changed.changes) !== 1) return false;
+        this.pendingStartBoundAtCache.delete(beeId);
         this.audit("runtime.pending_start_bound", beeId, {generation, proof: "authenticated-host-generation", count: 1});
         return true;
       }),
