@@ -6105,6 +6105,10 @@ export class CoreStore {
     return {
       read: (beeId, generation) => this.runtimeProcessIdentity(beeId, generation),
       pendingStartBoundAt: (beeId, generation) => this.runtimePendingStartBoundAt(beeId, generation),
+      readinessSessionId: (beeId, generation) => {
+        const row = this.stmt("SELECT json_extract(payload,'$.threadId') AS thread_id FROM audit WHERE bee_id=? AND kind='runtime.readiness_recovered' AND json_extract(payload,'$.generation')=? ORDER BY seq DESC LIMIT 1").get(beeId, generation);
+        return typeof row?.thread_id === "string" ? row.thread_id : null;
+      },
       recordReadinessRecovery: (beeId, generation, identity, evidence) => this.tx(() => {
         const rt = this.currentRuntime(beeId), binding = this.runtimeProcessIdentity(beeId, generation);
         if (!rt || rt.generation !== generation || rt.state !== "booting" || binding.kind !== "bound" || binding.identity.pid !== identity.pid || binding.identity.birth !== identity.birth || binding.identity.bootId !== identity.bootId || this.runtimePendingStartBoundAt(beeId, generation) === null) return false;

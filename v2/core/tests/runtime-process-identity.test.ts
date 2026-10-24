@@ -146,6 +146,9 @@ test("readiness bootstrap claim requires exact bound booting identity and commit
     assert.equal(record(1, {...identity, birth: "wrong"}), false);
     assert.equal(record(), true);
     assert.equal(record(), true);
+    store.close(); store = h.open();
+    assert.equal(store.runtimeIdentityHooks().readinessSessionId!(bee.id, 1), "thread");
+    assert.equal(store.runtimeIdentityHooks().readinessSessionId!(bee.id, 2), null);
     const recovered = store.auditTail(0, 1000).filter(row => row.kind === "runtime.readiness_recovered");
     assert.equal(recovered.length, 1);
     assert.equal(recovered[0]!.payload.threadCwd, evidence.threadCwd);

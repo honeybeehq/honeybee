@@ -102,3 +102,54 @@ test("Claude adopted readiness waits for the complete journal before deriving id
     assert.equal(ofKind(events, "turn_ended").length, 1);
   } finally {second?.detachAll(); first.disposeAll(); store.close(); rmSync(dir, {recursive: true, force: true});}
 });
+
+test("late legacy thread response cannot replace the recovered thread across adoption", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-late-thread-"));
+  const store = openCoreStore(join(dir, "core.sqlite3"), {ephemeral: true});
+  const {bee} = store.createBee({name: "quiet", agent: "codex", substrate: "hsr", cwd: dir});
+  const script = join(dir, "agent.mjs"), requests = join(dir, "requests.jsonl");
+  writeFileSync(script, `import {createInterface} from 'node:readline';
+import {appendFileSync} from 'node:fs';
+const emit = value => process.stdout.write(JSON.stringify(value)+'\\n');
+setInterval(() => {}, 1000);
+createInterface({input: process.stdin}).on('line', line => {
+ const m=JSON.parse(line);appendFileSync(process.argv[2],line+'\\n');
+ if(m.method==='initialize')emit({id:m.id,result:{}});
+ if(m.method==='thread/loaded/list')emit({id:m.id,result:{data:[]}});
+ if(m.method==='thread/start' && m.id!==2)emit({id:m.id,result:{thread:{id:'chosen',status:{type:'idle'}}}});
+ if(m.method==='turn/start'){
+  emit({id:m.id,result:{turn:{id:'turn'}}});
+  emit({method:'turn/started',params:{threadId:'chosen',turn:{id:'turn'}}});
+  emit({id:2,result:{thread:{id:'unused-legacy'}}});
+  setTimeout(()=>emit({method:'turn/completed',params:{threadId:'chosen',turn:{id:'turn',status:'completed'}}}),50);
+ }
+});`);
+  const makeDriver = () => new HsrDriver({runtimeIdentity: store.runtimeIdentityHooks(), sessionLogDir: join(dir, "logs"), resolve: () => ({adapter: codexAdapter({cwd: dir}), command: process.execPath, args: [script, requests], cwd: dir})});
+  const first = makeDriver(); let second: HsrDriver | undefined, third: HsrDriver | undefined;
+  try {
+    first.start(bee.id, 1);
+    let cursor = 0;
+    for (let i = 0; i < 100; i++) {await sleep(20); first.observe(); cursor = first.observeRecoveryCursors().at(-1)?.cursor ?? cursor; if (cursor > 0) break;}
+    assert.ok(cursor > 0);
+    const proc = first.procOf(bee.id, 1)!;
+    store.recordRuntimeProc(bee.id, 1, {pid: proc.pid, pidStartedAt: proc.pidStartedAt, observationCursor: cursor});
+    first.detachAll(); second = makeDriver();
+    assert.equal(second.adopt(bee.id, 1, proc.pid, proc.pidStartedAt, "booting", cursor), true);
+    await drainUntil(second, events => ofKind(events, "booted").length > 0);
+    assert.equal(second.observeSessions().at(-1)!.sessionId, "chosen");
+    second.deliver(bee.id, 1, 1, "one message");
+    await drainUntil(second, events => ofKind(events, "turn_ended").length > 0);
+    assert.deepEqual(second.observeSessions(), []);
+    const sent = readFileSync(requests, "utf8").trim().split("\n").map(line => JSON.parse(line)).filter(row => row.method === "turn/start");
+    assert.equal(sent.length, 1); assert.equal(sent[0].params.threadId, "chosen");
+    const sidecar = readFileSync(join(dir, "logs", `${bee.id}.stderr.log`), "utf8");
+    assert.match(sidecar, /thread=unused-legacy recoveredThread=chosen/);
+    cursor = second.observeRecoveryCursors().at(-1)!.cursor;
+    second.detachAll(); third = makeDriver();
+    assert.equal(third.adopt(bee.id, 1, proc.pid, proc.pidStartedAt, "idle", cursor, "chosen"), true);
+    await sleep(100);
+    appendFileSync(third.observationLogPath(bee.id, 1), '{"id":2,"result":{"thread":{"id":"another-unused"}}}\n');
+    await sleep(60); assert.deepEqual(third.observe(), []); assert.deepEqual(third.observeSessions(), []);
+    assert.equal(store.runtimeIdentityHooks().readinessSessionId!(bee.id, 1), "chosen");
+  } finally {third?.detachAll(); second?.detachAll(); first.disposeAll(); store.close(); rmSync(dir, {recursive: true, force: true});}
+});

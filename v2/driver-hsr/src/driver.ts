@@ -222,6 +222,7 @@ interface ManagedProcess {
   processIdentity?: ProcessIdentity;
   legacyBirthPending?: boolean;
   pendingStartIdentity?: ProcessIdentity;
+  recoveredSessionId?: string;
   readinessRecovery?: {requestId: string; agent?: ProcessIdentity; started: boolean; refused: boolean; nextProbeAt?: number; bootstrapSent?: boolean};
   executionStart?: ExecutionStart;
   executionHost?: ExecutionProcess;
@@ -1331,6 +1332,7 @@ export class HsrDriver implements RuntimeDriver {
     }
     if (result.state === "running") { recovery.nextProbeAt = this.now() + 1000; return; }
     if (p.adapter?.recoveryProbe && !this.cfg.runtimeIdentity?.recordReadinessRecovery?.(p.beeId, p.generation, p.processIdentity!, {requestId: recovery.requestId, threadId: result.sessionId, state: result.state, ...(result.threadCwd !== undefined ? {threadCwd: result.threadCwd} : {}), ...(result.adapterCwd !== undefined ? {adapterCwd: result.adapterCwd} : {})})) { this.refuseReadinessRecovery(p); return; }
+    if (p.adapter?.recoveryProbe) p.recoveredSessionId = result.sessionId;
     p.readinessRecovery = undefined;
     p.phase = result.state;
     p.turnId = null;
@@ -1412,6 +1414,12 @@ export class HsrDriver implements RuntimeDriver {
         continue;
       }
       const signals = p.adapter.parseLine(line);
+      const boot = signals.find(signal => signal.kind === "booted");
+      if (boot?.kind === "booted" && p.adapter.recoveryProbe && (p.readinessRecovery || p.recoveredSessionId && boot.sessionId && boot.sessionId !== p.recoveredSessionId)) {
+        if (p.recoveredSessionId && boot.sessionId && boot.sessionId !== p.recoveredSessionId) this.appendSidecar(p.beeId, `ignored foreign readiness bee=${p.beeId} generation=${p.generation} thread=${boot.sessionId} recoveredThread=${p.recoveredSessionId}\n`);
+        p.pendingObservationCursor = lineEndCursor;
+        continue;
+      }
       const lateBoot = p.phase !== "booting" && signals.some((sig) => sig.kind === "booted");
       for (const signal of signals) {
         if (lateBoot && signal.kind === "turn_ended") continue;
@@ -1562,7 +1570,9 @@ export class HsrDriver implements RuntimeDriver {
           // evidence/delivery lane. Pending mail rotates it through the normal
           // degraded-runtime policy; silence never changes its phase.
         } else {
+          const recoveredSessionId = adapter.recoveryProbe ? this.cfg.runtimeIdentity?.readinessSessionId?.(beeId, generation) ?? null : null;
           const proc: ManagedProcess = {
+            ...(recoveredSessionId ? {recoveredSessionId} : {}),
             ...(execution && executionHost ? { executionStart: execution, executionHost } : {}),
             processIdentity,
             pendingStartIdentity,
@@ -1590,7 +1600,7 @@ export class HsrDriver implements RuntimeDriver {
             // generation journal so a daemon deploy cannot strand either a
             // mid-turn steer or an acknowledgement in the crash gap.
             quiet: recovered.quiet,
-            sessionId: recovered.sessionId,
+            sessionId: recoveredSessionId ?? recovered.sessionId,
             turnId: lastKnownState === "running" ? recovered.turnId : null,
             turn: { ...freshTurn(), observedFromStart: lastKnownState !== "running" },
             pendingDeliveries: new Set(),

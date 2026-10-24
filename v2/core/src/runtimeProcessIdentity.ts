@@ -9,6 +9,7 @@ export interface RuntimeIdentityHooks {
   unavailable?(beeId: string, generation: number): void;
   bindLegacy(beeId: string, generation: number, stamp: number, identity: RuntimeProcessIdentity, proof: "authenticated-host-generation" | "owned-tmux-pane"): boolean;
   bindPendingStart?(beeId: string, generation: number, stamp: number, identity: RuntimeProcessIdentity): boolean;
+  readinessSessionId?(beeId: string, generation: number): string | null;
   pendingStartBoundAt?(beeId: string, generation: number): number | null;
   recordReadinessRecovery?(beeId: string, generation: number, identity: RuntimeProcessIdentity, evidence: {requestId: string; threadId: string; state: "idle" | "running"; threadCwd?: string; adapterCwd?: string}): boolean;
   claimReadinessRecovery?(beeId: string, generation: number, identity: RuntimeProcessIdentity, requestId: string): boolean;
