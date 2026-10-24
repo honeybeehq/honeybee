@@ -707,7 +707,6 @@ export class HsrDriver implements RuntimeDriver {
         try {
           if (p.executionStart) {
             if (status.hostBirth !== p.executionHost?.birth || status.executionIntentId !== p.executionStart.intentId || status.executionDigest !== canonicalDigest(p.executionStart as unknown as JsonValue)) throw new Error("Runner execution identity changed");
-            this.cfg.execution!.check(p.executionStart, "pending_start_recovery");
           }
           if (!this.cfg.runtimeIdentity?.bindPendingStart?.(p.beeId, p.generation, p.pidStartedAt, identity)) {
             this.rejectHostPeer(p, attempt); return;
@@ -731,13 +730,19 @@ export class HsrDriver implements RuntimeDriver {
       const fd = (attempt as unknown as { _handle?: { fd?: number } })._handle?.fd;
       const authenticated = fd !== undefined && authenticatedProcessPeer(fd, p.processIdentity);
       if ((p.socketBroken || p.adapter?.confirmsDelivery) && !authenticated) { this.rejectHostPeer(p, attempt); return; }
+      const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
+      if (p.executionStart && !p.executionAccepted) {
+        try {
+          if (!authenticated || !status?.agentPid || !status.agentBirth || status.hostBirth !== p.executionHost?.birth || status.executionIntentId !== p.executionStart.intentId || status.executionDigest !== canonicalDigest(p.executionStart as unknown as JsonValue)) throw new Error("Runner execution identity unavailable");
+          this.acceptExecutionStarted(p, {pid: status.agentPid, birth: status.agentBirth});
+        } catch { this.rejectHostPeer(p, attempt); return; }
+      }
       p.authFailureSince = undefined;
       p.authFailures = 0;
       if (p.socketBroken) {
         p.socketBroken = false;
       }
       p.socket = attempt;
-      const status = p.statusPath ? readRunnerStatus(p.statusPath) : null;
       const supported = status?.beeId === p.beeId && status.generation === p.generation && status.hostPid === p.pid
         && status.capabilities?.includes(DELIVERY_STATUS_CAPABILITY) === true;
       const exactStatus = status?.beeId === p.beeId && status.generation === p.generation && status.hostPid === p.pid;
@@ -785,7 +790,16 @@ export class HsrDriver implements RuntimeDriver {
     p.authFailureSince ??= this.now();
     p.authFailures = Math.min(8, (p.authFailures ?? 0) + 1);
     socket.destroy();
+    if (p.pendingStartIdentity && p.authFailures >= 3) this.releasePendingStart(p, "peer-or-binding-rejected");
     this.cfg.onWriteLaneReady?.();
+  }
+
+  private releasePendingStart(p: ManagedProcess, reason: string): void {
+    p.exited = true;
+    if (p.socketRetry) clearTimeout(p.socketRetry);
+    p.socket?.destroy();
+    this.procs.delete(p.beeId);
+    this.appendSidecar(p.beeId, `pending start recovery held: bee=${p.beeId} generation=${p.generation} pid=${p.pid} reason=${reason}\n`);
   }
 
   /** Host-style runtime finished (host exit observed or pid gone): drain the
@@ -922,6 +936,7 @@ export class HsrDriver implements RuntimeDriver {
     if (!p || p.generation !== generation || p.exited) {
       return refused("no_process");
     }
+    if (p.pendingStartIdentity || p.executionStart && !p.executionAccepted) return refused("not_ready");
     if (this.reconnecting.has(`${beeId}:${generation}`)) return refused("not_ready");
     // A re-adopted process has no stdin (pipes died with the previous daemon).
     // Refuse deterministically; the daemon's degraded-runtime policy rotates
@@ -1160,7 +1175,13 @@ export class HsrDriver implements RuntimeDriver {
   /** One observation pass over a host-style runtime: status facts, log tail,
    * and (for adopted hosts with no exit callback) pid-liveness. */
   private pumpHost(p: ManagedProcess): void {
-    if (p.pendingStartIdentity) return;
+    if (p.pendingStartIdentity) {
+      const value = inspectProcess(p.pid);
+      if (value.kind === "gone" || value.kind === "present" && (value.state === "zombie" || !sameProcess(p.pendingStartIdentity, value))) {
+        this.releasePendingStart(p, value.kind === "gone" ? "gone" : value.state === "zombie" ? "zombie" : "birth-changed");
+      }
+      return;
+    }
     this.captureProcessIdentity(p);
     const disposition = processDisposition(p.processIdentity ?? null, inspectProcess(p.pid));
     if (disposition === "unavailable") this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation);

@@ -10,14 +10,14 @@ import {HsrDriver} from "../src/index.ts";
 import {inspectProcess, sameProcess} from "../src/psutil.ts";
 import {AGENT_PATH, drainUntil, ofKind, sleep} from "./helpers.ts";
 
-for (const scenario of ["recover", "stamp", "bee", "generation", "host", "journal", "stopped-race", "bound-race", "socket-peer", "birth-race"] as const) {
+for (const scenario of ["recover", "stamp", "bee", "generation", "host", "journal", "stopped-race", "bound-race", "socket-peer", "birth-race", "gone"] as const) {
   test(`pending start recovery: ${scenario}`, async () => {
     const dir = mkdtempSync(join(tmpdir(), "hb-pending-"));
     const store = openCoreStore(join(dir, "core.sqlite3"), {ephemeral: true});
     const {bee} = store.createBee({name: "pending", agent: "stub", substrate: "hsr", cwd: dir});
     const hooks = store.runtimeIdentityHooks();
     const driver = () => new HsrDriver({
-      runtimeIdentity: hooks,
+      runtimeIdentity: scenario === "gone" ? {...hooks, bindPendingStart: () => false} : hooks,
       sessionLogDir: join(dir, "logs"),
       resolve: () => ({adapter: stubAdapter, command: process.execPath, args: [AGENT_PATH], cwd: dir, env: {STUB_TURN_MS: "5"}}),
     });
@@ -58,6 +58,7 @@ for (const scenario of ["recover", "stamp", "bee", "generation", "host", "journa
         const procs = (second as unknown as {procs: Map<string, {pendingStartIdentity: {birth: string}}>}).procs;
         procs.get(bee.id)!.pendingStartIdentity.birth = process.platform === "darwin" ? "darwin:1:0" : "linux:1";
       }
+      if (scenario === "gone") first.disposeAll();
       if (scenario === "recover") {
         const events = await drainUntil(second, observed => ofKind(observed, "booted").length > 0, 5000);
         assert.ok(ofKind(events, "booted").length);
@@ -71,13 +72,21 @@ for (const scenario of ["recover", "stamp", "bee", "generation", "host", "journa
         assert.ok(readFileSync(join(dir, "logs", `${bee.id}.jsonl`), "utf8").includes("recovered without restart"));
         assert.equal(store.auditTail(0, 1000).filter(row => row.kind === "runtime.pending_start_bound").length, 1);
       } else {
-        await sleep(150);
+        if (scenario === "socket-peer") {
+          const deadline = Date.now() + 5000;
+          while (second.hasProcess(bee.id, 1) && Date.now() < deadline) await sleep(10);
+        } else await sleep(150);
         assert.deepEqual(second.observe(), []);
         assert.equal(second.deliver(bee.id, 1, 123, "must stay queued").accepted, false);
-        assert.ok(sameProcess(proc.processIdentity, inspectProcess(proc.pid)));
+        if (scenario !== "gone") assert.ok(sameProcess(proc.processIdentity, inspectProcess(proc.pid)));
         assert.equal(hooks.read(bee.id, 1).kind, scenario === "bound-race" ? "bound" : "unavailable");
         assert.equal(second.procOf(bee.id, 1)?.processIdentity, undefined);
         assert.equal(store.auditTail(0, 1000).filter(row => row.kind === "runtime.pending_start_bound").length, scenario === "bound-race" ? 1 : 0);
+        if (scenario === "gone" || scenario === "socket-peer" || scenario === "birth-race") {
+          assert.equal(second.hasProcess(bee.id, 1), false);
+          assert.equal(store.currentRuntime(bee.id)!.state, "booting");
+          if (scenario === "gone") assert.equal(second.adopt(bee.id, 1, proc.pid, proc.pidStartedAt, "booting", 0), false);
+        }
       }
     } finally {
       second?.detachAll();

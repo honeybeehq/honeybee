@@ -59,7 +59,7 @@ test("owner disconnect before release never forks an agent",async t=>{
   await wait(()=>child.exitCode!==null||child.signalCode!==null,"unreleased host exit; stderr="+stderr);
   assert.equal(existsSync(counter),false);
 });
-test("HSR owner commits exact release before IPC and persists agent-start completion",async t=>{
+test("HSR owner commits release and recovers pending identity with agent-start acceptance",async t=>{
   const root=mkdtempSync(join(tmpdir(),"fenced-owner-")),store=openCoreStore(join(root,"db"),{ephemeral:true}),args={id:"fenced",name:"fenced",agent:"stub",substrate:"hsr",cwd:root},resource={beeId:args.id};
   const claim={...context().claim,...store.effectCoverage(),resource,requestDigest:executionRequestDigest("spawn",resource,args),idempotencyKey:"effect-v1:"+store.effectCoverage().coverageId+":salt"};
   store.registerExecutionCoordinator("project",1000);store.compareAndSetExecutionClaim({transitionId:"one",expectedClaim:null,claim},1000);
@@ -67,10 +67,38 @@ test("HSR owner commits exact release before IPC and persists agent-start comple
   store.beginFencedSpawn(request,1000);store.admitFencedSpawn(request,()=>{store.createBee({id:"fenced",name:"fenced",agent:"stub",substrate:"hsr",cwd:root});return{beeId:"fenced",commandId:store.enqueueCommand("spawn","fenced",{},{idempotencyKey}).id};});
   const start=store.prepareExecutionStart("fenced",1)!,base=store.executionRuntimeHooks();let commits=0;
   const driver=new HsrDriver({sessionLogDir:join(root,"logs"),runnersDir:join(root,"runners"),socketDir:root,execution:{...base,bindAndRelease(s,host){base.bindAndRelease(s,host);assert.equal(store.currentRuntime("fenced")?.pid,host.pid);commits++;assert.throws(()=>store.compareAndSetExecutionClaim({transitionId:"two",expectedClaim:claim,claim:{...claim,generation:2,claimId:"two"}},1000),e=>(e as {code?:string}).code==="rpc_execution_busy");}},resolve:()=>({command:process.execPath,args:["-e","setInterval(()=>{},1000)"],cwd:root,env:{PATH:process.env.PATH ?? "",HOME:process.env.HOME ?? "",TMPDIR:process.env.TMPDIR ?? ""},adapter:stubAdapter})});
-  t.after(()=>{driver.disposeAll();store.close();rmSync(root,{recursive:true,force:true});});
+  let successor: HsrDriver | undefined;
+  t.after(()=>{successor?.detachAll();driver.disposeAll();store.close();rmSync(root,{recursive:true,force:true});});
   driver.start("fenced",1,start);
   await wait(()=>{driver.observe();const r=store.resolveExecution(request,1000);return "executionReceipt" in r&&r.executionReceipt.status==="completed";},"owner completion");
   assert.equal(commits,1);assert.ok(store.executionStartHost(start)?.birth);
+  assert.deepEqual(store.runtimeProcessIdentity("fenced",1), {kind:"unavailable",reason:"pending-new-start"});
+  const runtime=store.currentRuntime("fenced")!;
+  driver.detachAll();
+  let accepted=0, bindAttempts=0, startAttempts=0, allowBind=false;
+  const identityHooks=store.runtimeIdentityHooks();
+  successor=new HsrDriver({
+    sessionLogDir:join(root,"logs"),runnersDir:join(root,"runners"),socketDir:root,
+    runtimeIdentity:{...identityHooks,bindPendingStart(...args){bindAttempts++;return allowBind && identityHooks.bindPendingStart!(...args);}},
+    executionStartFor:(bee,generation)=>store.existingExecutionStart(bee,generation),
+    executionHostFor:s=>store.executionStartHost(s),
+    execution:{...base,started(s,host,agent){startAttempts++;if(startAttempts===1)throw new Error("transient receipt refusal");base.started(s,host,agent);accepted++;}},
+    resolveExecutionAdapter:()=>stubAdapter,
+    resolve:()=>{throw new Error("recovery must not spawn");},
+  });
+  assert.equal(successor.adopt("fenced",1,runtime.pid!,runtime.pidStartedAt!,"booting",0),true);
+  await wait(()=>bindAttempts===1,"rejected binding");
+  assert.equal(startAttempts,0);
+  assert.equal(store.runtimeProcessIdentity("fenced",1).kind,"unavailable");
+  allowBind=true;
+  await wait(()=>startAttempts===1,"rejected execution acknowledgement");
+  assert.equal(store.runtimeProcessIdentity("fenced",1).kind,"bound");
+  assert.equal(successor.deliver("fenced",1,1,"held").accepted,false);
+  await wait(()=>accepted===1,"recovered execution acceptance");
+  assert.equal(store.runtimeProcessIdentity("fenced",1).kind,"bound");
+  assert.equal(successor.procOf("fenced",1)!.pid,runtime.pid);
+  successor.observe();
+  assert.equal(accepted,1);
 });
 
 test("HSR refuses a mismatched bee or runtime generation before spec preparation",t=>{
