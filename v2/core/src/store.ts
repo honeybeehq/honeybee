@@ -5556,6 +5556,7 @@ export class CoreStore {
          AND verb = 'stop' AND target_generation = ?
          AND json_extract(args, '$.cause') = 'stopped_by_system'
          AND json_extract(args, '$.reason') = 'hang_policy'
+         AND COALESCE(json_extract(args, '$.hangPolicySkipped'), 0) = 0
        LIMIT 1`,
     ).get(beeId, generation) !== undefined;
   }
@@ -5809,6 +5810,25 @@ export class CoreStore {
     });
   }
 
+  deferBootHangStop(id: number, nextAttemptAt: number): void {
+    this.tx(() => {
+      const command = this.getCommand(id);
+      if (!command || command.status !== "running" || command.verb !== "stop" || command.args.cause !== "stopped_by_system" || command.args.reason !== "hang_policy" || !Number.isFinite(nextAttemptAt) || nextAttemptAt <= this.now()) throw new CommandProtocolError("not a deferrable boot-hang stop");
+      this.db.prepare("UPDATE commands SET status='queued',next_attempt_at=? WHERE id=?").run(nextAttemptAt, id);
+      this.audit("command.boot_hang_deferred", command.beeId, {commandId: id, generation: command.targetGeneration, nextAttemptAt});
+    });
+  }
+
+  skipBootHangStop(id: number): void {
+    this.tx(() => {
+      const command = this.getCommand(id);
+      if (!command || command.status !== "running" || command.verb !== "stop" || command.args.cause !== "stopped_by_system" || command.args.reason !== "hang_policy") throw new CommandProtocolError("not a running boot-hang stop");
+      this.db.prepare("UPDATE commands SET args=? WHERE id=?").run(JSON.stringify({...command.args, hangPolicySkipped: true}), id);
+      this.audit("command.moot", command.beeId, {commandId: id, generation: command.targetGeneration, reason: "runtime_ready"});
+      this.completeCommand(id);
+    });
+  }
+
   /** Reconnect owns a typed receipt; it never turns a tool-control failure into runtime failure. */
   setReconnectTargets(id: number, targets: string[]): void {
     this.tx(() => {
@@ -6044,6 +6064,11 @@ export class CoreStore {
   }
 
   runtimeProcessIdentity(beeId: string, generation: number) { return readRuntimeProcessIdentity(this.db, beeId, generation); }
+
+  runtimePendingStartBoundAt(beeId: string, generation: number): number | null {
+    const row = this.stmt("SELECT ts FROM audit WHERE bee_id=? AND kind='runtime.pending_start_bound' AND json_extract(payload,'$.generation')=? ORDER BY seq DESC LIMIT 1").get(beeId, generation);
+    return row ? Number(row.ts) : null;
+  }
 
   tmuxCleanupCounts(): {retained: number; informational: number} {
     const rows = readTmuxCleanup(this.db);

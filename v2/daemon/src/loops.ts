@@ -907,12 +907,16 @@ export class DaemonCore {
     const now = this.now();
     for (const { runtime: rt } of work) {
       if (rt.state !== "booting" || this.unresolvedIdentity.get(rt.beeId) === rt.generation) continue;
-      if (now - rt.startedAt <= this.policy.bootHangTimeoutSteps) continue;
+      if (now <= this.bootHangDeadline(rt)) continue;
       if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
       if (this.store.hasBootHangStopCommand(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "hang_policy" });
       this.log(`policy.hang_stop bee=${rt.beeId} gen=${rt.generation} state=${rt.state}`);
     }
+  }
+
+  private bootHangDeadline(rt: {beeId: string; generation: number; startedAt: number}): number {
+    return Math.max(rt.startedAt, this.store.runtimePendingStartBoundAt(rt.beeId, rt.generation) ?? rt.startedAt) + this.policy.bootHangTimeoutSteps;
   }
 
   // -------------------------------------------------------------------------
@@ -1108,6 +1112,11 @@ export class DaemonCore {
           }
         }
         if (rt.state === "stopped") return true;
+        if (cmd.args.cause === "stopped_by_system" && cmd.args.reason === "hang_policy") {
+          if (rt.state !== "booting") { this.store.skipBootHangStop(cmd.id); return false; }
+          const deadline = this.bootHangDeadline(rt);
+          if (this.now() <= deadline) { this.store.deferBootHangStop(cmd.id, deadline + 1); return false; }
+        }
         const { hadProcess } = this.driver.stop(cmd.beeId, gen, cause);
         if (!hadProcess) {
           // Parenthood certainty: no process exists, so the stop is a fact now.
