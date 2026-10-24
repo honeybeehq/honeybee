@@ -37,6 +37,7 @@ export interface SandboxPolicy {
   /** OS scratch dirs kept writable. Defaults to the platform list. */
   scratchPaths?: string[];
   tmpfsBytes?: number | null;
+  kvm?: boolean;
 }
 
 export const DEFAULT_SANDBOX_TMPFS_BYTES = 1024 * 1024 * 1024;
@@ -293,6 +294,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     ...bwrapLaunchBinds(command, args),
     "--bind", policy.cellDir, policy.cellDir,
   ];
+  if (policy.kvm) out.push("--dev-bind", "/dev/kvm", "/dev/kvm");
   for (const p of policy.writablePaths) {
     // --bind-try: absent harness homes must not break the spawn.
     out.push("--bind-try", p, p);

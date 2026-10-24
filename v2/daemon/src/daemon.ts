@@ -937,6 +937,7 @@ export class HiveDaemon {
       cellsRoot: this.cfg.cellsRoot,
       nodeKind: this.cfg.nodeKind,
       resolveHarness: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation),
+      sandboxKvm: this.cfg.cellKvm,
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
       resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
@@ -4810,6 +4811,7 @@ export class HiveDaemon {
           timeoutMs,
           sandbox: cell.sandbox,
           nodeKind: this.cfg.nodeKind,
+          kvm: this.cfg.cellKvm,
         },
         (spawned) => {
           store.updateCellOp(op.id, { pid: spawned.pid, pidStartedAt: spawned.pidStartedAt });
