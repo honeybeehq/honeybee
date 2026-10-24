@@ -163,6 +163,7 @@ export interface CellsConfig {
   root?: string;
   /** Node-wide sandbox override; absent = node-kind default (A4). */
   sandbox?: boolean;
+  kvm?: boolean;
   /** Per-repo warm-cell artifact dirs (A5, opt-in), keyed by origin repo path. */
   warm?: Record<string, string[]>;
   /** Test-only: allow agent `stub` on bee.move. Default false. */
@@ -331,6 +332,7 @@ export interface ResolvedNodeConfig {
   cellsRoot: string;
   /** Node-wide cell-sandbox override; null = node-kind default (A4). */
   cellSandbox: boolean | null;
+  cellKvm: boolean;
   /** Per-repo warm-cell artifact dirs (A5). */
   cellWarm: Record<string, string[]>;
   /** Test-only stub continuation for bee.move. */
@@ -613,18 +615,19 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   return out;
 }
 
-function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention } {
+function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: string; sandbox: boolean | null; kvm: boolean; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention } {
   const envFree = Number(process.env.HIVE_CELL_WARMPOOL_FREE);
   const envOverride = Number.isFinite(envFree) && envFree >= 0 ? Math.floor(envFree) : null;
   const defaultWarmPoolFree = nodeKind === "satellite" ? 1 : 0;
   const v = raw.cells;
-  if (v === undefined) return { sandbox: null, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32, retention: cellRetentionOf(undefined, nodeKind) };
+  if (v === undefined) return { sandbox: null, kvm: false, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32, retention: cellRetentionOf(undefined, nodeKind) };
   if (v === null || typeof v !== "object" || Array.isArray(v)) {
     throw new ConfigError("config: cells must be an object of {root?, sandbox?, warm?, retention?}");
   }
   const c = v as Record<string, unknown>;
-  const out: { root?: string; sandbox: boolean | null; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention } = {
+  const out: { root?: string; sandbox: boolean | null; kvm: boolean; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention } = {
     sandbox: null,
+    kvm: false,
     warm: {},
     allowStubMove: false,
     warmPoolFree: defaultWarmPoolFree,
@@ -653,6 +656,10 @@ function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: str
   if (c.sandbox !== undefined) {
     if (typeof c.sandbox !== "boolean") throw new ConfigError("config: cells.sandbox must be a boolean");
     out.sandbox = c.sandbox;
+  }
+  if (c.kvm !== undefined) {
+    if (typeof c.kvm !== "boolean") throw new ConfigError("config: cells.kvm must be a boolean");
+    out.kvm = c.kvm;
   }
   if (c.warm !== undefined) {
     if (c.warm === null || typeof c.warm !== "object" || Array.isArray(c.warm)) {
@@ -1016,6 +1023,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     nodeKind,
     cellsRoot: cells.root ?? join(dataDir, "cells"),
     cellSandbox: cells.sandbox,
+    cellKvm: cells.kvm,
     cellWarm: cells.warm,
     cellMoveAllowStub: cells.allowStubMove,
     cellWarmPoolFree: cells.warmPoolFree,

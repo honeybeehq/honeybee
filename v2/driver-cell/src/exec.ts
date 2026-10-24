@@ -21,6 +21,7 @@ export interface CellExecSpec {
   timeoutMs?: number;
   sandbox: boolean | null;
   nodeKind: NodeKind;
+  kvm?: boolean;
 }
 
 export interface CellExecSpawned {
@@ -278,7 +279,7 @@ export async function runCellExec(
   let wrappedArgs = args;
   if (sandboxEnabled(spec.nodeKind, spec.sandbox)) {
     const wrapped = wrapWithSandbox(
-      { cellDir: paths.wrapperDir, writablePaths: defaultWritablePaths() },
+      { cellDir: paths.wrapperDir, writablePaths: defaultWritablePaths(), kvm: spec.kvm },
       command,
       args,
       paths.sandboxProfilePath,
