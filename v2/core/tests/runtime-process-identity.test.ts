@@ -124,3 +124,35 @@ test("pending recovery refuses stopped, stale, legacy and malformed rows", () =>
     } finally {store.close(); h.cleanup();}
   }
 });
+
+test("readiness bootstrap claim requires exact bound booting identity and commits once across reopen", () => {
+  const h = harness(); let store = h.open();
+  try {
+    const {bee} = makeBee(store);
+    store.recordRuntimeProc(bee.id, 1, {pid: identity.pid, pidStartedAt: 1234000});
+    const claim = (generation = 1, value = identity) => store.runtimeIdentityHooks().claimReadinessRecovery!(bee.id, generation, value, "hive-readiness-abcd");
+    assert.equal(claim(), false);
+    assert.equal(store.runtimeIdentityHooks().bindPendingStart!(bee.id, 1, 1234000, identity), true);
+    assert.equal(claim(2), false);
+    assert.equal(claim(1, {...identity, birth: "wrong"}), false);
+    assert.throws(() => store.transact(() => {assert.equal(claim(), true); throw new Error("rollback");}), /rollback/);
+    assert.equal(claim(), true);
+    assert.equal(claim(), false);
+    store.close(); store = h.open();
+    assert.equal(claim(), false);
+    const evidence = {requestId: "hive-readiness-abcd", threadId: "thread", state: "idle" as const, adapterCwd: "/tmp/alias", threadCwd: "/private/tmp/alias"};
+    const record = (generation = 1, value = identity) => store.runtimeIdentityHooks().recordReadinessRecovery!(bee.id, generation, value, evidence);
+    assert.equal(record(2), false);
+    assert.equal(record(1, {...identity, birth: "wrong"}), false);
+    assert.equal(record(), true);
+    assert.equal(record(), true);
+    const recovered = store.auditTail(0, 1000).filter(row => row.kind === "runtime.readiness_recovered");
+    assert.equal(recovered.length, 1);
+    assert.equal(recovered[0]!.payload.threadCwd, evidence.threadCwd);
+    assert.equal(recovered[0]!.payload.adapterCwd, evidence.adapterCwd);
+    store.updateRuntimeState(bee.id, 1, "stopped", {exitCause: "clean"});
+    assert.equal(record(), false);
+    assert.equal(claim(), false);
+    assert.equal(store.auditTail(0, 1000).filter(row => row.kind === "runtime.readiness_recovery_claimed").length, 1);
+  } finally {store.close(); h.cleanup();}
+});

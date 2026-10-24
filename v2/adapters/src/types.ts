@@ -103,6 +103,12 @@ export interface InterruptContext {
   turnId: string | null;
 }
 
+export type ReadinessRecovery =
+  | {kind: "query"; line: string}
+  | {kind: "start"; lines: string[]}
+  | {kind: "ready"; sessionId: string; state: "idle" | "running"; turnId?: string; synthetic: boolean; threadCwd?: string; adapterCwd?: string}
+  | {kind: "refused"};
+
 export interface HarnessAdapter {
   readonly harness: string;
   /**
@@ -144,6 +150,8 @@ export interface HarnessAdapter {
    * treating daemon-local buffering as delivery.
    */
   readonly readyAtSpawn: boolean;
+  recoveryProbe?(requestId: string): string;
+  parseRecovery?(line: string, requestId: string, sessionId: string | null): ReadinessRecovery | null;
   /** Lines to write to the runtime's stdin immediately after spawn. */
   bootLines(): string[];
   /** Pure, stateless: one raw native stream line → zero or more signals. */

@@ -6104,6 +6104,21 @@ export class CoreStore {
   runtimeIdentityHooks(): RuntimeIdentityHooks {
     return {
       read: (beeId, generation) => this.runtimeProcessIdentity(beeId, generation),
+      pendingStartBoundAt: (beeId, generation) => this.runtimePendingStartBoundAt(beeId, generation),
+      recordReadinessRecovery: (beeId, generation, identity, evidence) => this.tx(() => {
+        const rt = this.currentRuntime(beeId), binding = this.runtimeProcessIdentity(beeId, generation);
+        if (!rt || rt.generation !== generation || rt.state !== "booting" || binding.kind !== "bound" || binding.identity.pid !== identity.pid || binding.identity.birth !== identity.birth || binding.identity.bootId !== identity.bootId || this.runtimePendingStartBoundAt(beeId, generation) === null) return false;
+        if (!this.stmt("SELECT 1 FROM audit WHERE bee_id=? AND kind='runtime.readiness_recovered' AND json_extract(payload,'$.generation')=? LIMIT 1").get(beeId, generation)) this.audit("runtime.readiness_recovered", beeId, {generation, ...evidence});
+        return true;
+      }),
+      claimReadinessRecovery: (beeId, generation, identity, requestId) => this.tx(() => {
+        const rt = this.currentRuntime(beeId), binding = this.runtimeProcessIdentity(beeId, generation);
+        if (!rt || rt.generation !== generation || rt.state !== "booting" || binding.kind !== "bound" || binding.identity.pid !== identity.pid || binding.identity.birth !== identity.birth || binding.identity.bootId !== identity.bootId || this.runtimePendingStartBoundAt(beeId, generation) === null) return false;
+        if (!/^hive-readiness-[a-f0-9-]+$/.test(requestId)) return false;
+        if (this.stmt("SELECT 1 FROM audit WHERE bee_id=? AND kind='runtime.readiness_recovery_claimed' AND json_extract(payload,'$.generation')=? LIMIT 1").get(beeId, generation)) return false;
+        this.audit("runtime.readiness_recovery_claimed", beeId, {generation, requestId});
+        return true;
+      }),
       bindPendingStart: (beeId, generation, stamp, identity) => this.tx(() => {
         if (!processIdentityValue(identity)) return false;
         const current = this.currentRuntime(beeId);

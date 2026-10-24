@@ -56,7 +56,7 @@ import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
  */
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { connect, type Socket } from "node:net";
 import { dirname, extname, join, resolve as resolvePath } from "node:path";
@@ -73,6 +73,7 @@ import type {
   StopCause,
 } from "../../harness/src/driver.ts";
 import type { HarnessAdapter } from "../../adapters/src/index.ts";
+import type {ReadinessRecovery} from "../../adapters/src/types.ts";
 import { executableNotFoundDetail, type SpawnCommandResolution } from "../../core/src/executables.ts";
 import { inspectProcess, sameProcess, processDisposition, legacyProcessCandidate, ProcessIdentityUnavailableError, verifyProcessIdentity, type ProcessIdentity } from "./psutil.ts";
 import { persistentSocketDir, socketPathFits } from "../../core/src/socketPath.ts";
@@ -221,6 +222,7 @@ interface ManagedProcess {
   processIdentity?: ProcessIdentity;
   legacyBirthPending?: boolean;
   pendingStartIdentity?: ProcessIdentity;
+  readinessRecovery?: {requestId: string; agent?: ProcessIdentity; started: boolean; refused: boolean; nextProbeAt?: number; bootstrapSent?: boolean};
   executionStart?: ExecutionStart;
   executionHost?: ExecutionProcess;
   executionAccepted?: boolean;
@@ -309,6 +311,7 @@ interface ManagedProcess {
 }
 
 interface RecoveredAdapterContext {
+  phase?: "running" | "idle";
   sessionId: string | null;
   turnId: string | null;
   confirmedDeliveries: Set<number>;
@@ -331,6 +334,7 @@ function recoverAdapterContext(
   const quiet = new TurnQuiet(adapter.harness);
   let sessionId = providerSessionId;
   let turnId: string | null = null;
+  let phase: "running" | "idle" | undefined;
   const confirmedDeliveries = new Set<number>();
   const reconnectReplies = new Map<string, string | null>();
   let fd: number | null = null;
@@ -355,8 +359,9 @@ function recoverAdapterContext(
         if (raw.length === 0) continue;
         quiet.pushLine(raw.toString("utf8"), sessionId);
         for (const signal of adapter.parseLine(raw.toString("utf8"))) {
-          if (signal.kind === "booted" && signal.sessionId && sessionId == null) {
-            sessionId = signal.sessionId;
+          if (signal.kind === "booted") {
+            phase = "running";
+            if (signal.sessionId && sessionId == null) sessionId = signal.sessionId;
             continue;
           }
           if (signal.kind === "tools_control_result") { reconnectReplies.set(signal.requestId, signal.error ?? null); continue; }
@@ -370,8 +375,8 @@ function recoverAdapterContext(
           }
           if (signal.kind !== "turn_started" && signal.kind !== "turn_ended") continue;
           if (signal.threadId && sessionId && signal.threadId !== sessionId) continue;
-          if (signal.kind === "turn_started") turnId = signal.turnId ?? null;
-          else { turnId = null; quiet.end(); }
+          if (signal.kind === "turn_started") { turnId = signal.turnId ?? null; phase = "running"; }
+          else { turnId = null; quiet.end(); phase = "idle"; }
         }
       }
       rest = Buffer.from(data.subarray(lineStart));
@@ -382,7 +387,7 @@ function recoverAdapterContext(
   } finally {
     if (fd != null) closeSync(fd);
   }
-  return { sessionId, turnId, confirmedDeliveries, reconnectReplies, quiet };
+  return { sessionId, turnId, confirmedDeliveries, reconnectReplies, quiet, phase };
 }
 
 export class ReconnectToolsControlError extends Error {
@@ -751,6 +756,7 @@ export class HsrDriver implements RuntimeDriver {
       for (const line of p.pendingWrites.splice(0)) {
         attempt.write(`${JSON.stringify({ op: "write", line })}\n`);
       }
+      this.recoverAdoptedReadiness(p);
       this.cfg.onWriteLaneReady?.();
     });
     attempt.on("error", () => undefined);
@@ -776,7 +782,13 @@ export class HsrDriver implements RuntimeDriver {
       }
     });
     attempt.on("close", () => {
-      if (p.socket === attempt) { p.socket = null; p.deliveryProtocol = undefined; }
+      if (p.socket === attempt) {
+        p.socket = null; p.deliveryProtocol = undefined;
+        if (p.readinessRecovery && !p.readinessRecovery.refused) {
+          p.readinessRecovery.started = false;
+          p.readinessRecovery.requestId = `hive-readiness-${randomUUID()}`;
+        }
+      }
       if (this.detached || p.exited) return;
       p.socketRetry = setTimeout(() => {
         p.socketRetry = null;
@@ -1253,15 +1265,84 @@ export class HsrDriver implements RuntimeDriver {
         }
       }
     }
+    if (p.readinessRecovery?.nextProbeAt !== undefined && this.now() >= p.readinessRecovery.nextProbeAt) {
+      p.readinessRecovery.nextProbeAt = undefined;
+      p.readinessRecovery.started = false;
+      this.recoverAdoptedReadiness(p);
+    }
     this.pumpHostTail(p);
     // An adopted host has no ChildProcess exit callback; recover its death by
     // polling the exact identity, then fold the recorded exit facts.
     if (p.child == null && disposition === "exited") this.finishHost(p);
   }
 
+  private recoveryAgentIsLive(p: ManagedProcess): boolean {
+    const recovery = p.readinessRecovery;
+    if (!recovery || !p.processIdentity || !p.deliveryProtocol?.authenticated || !p.socket?.writable || p.socket.destroyed || !p.statusPath) return false;
+    const host = inspectProcess(p.pid), status = readRunnerStatus(p.statusPath);
+    if (!sameProcess(p.processIdentity, host) || host.kind !== "present" || host.state !== "live" || !status || status.hostPid !== p.pid || status.beeId !== p.beeId || status.generation !== p.generation || status.exited || status.agentPid !== p.agentPid || !status.agentPid) return false;
+    const agent = inspectProcess(status.agentPid);
+    if (agent.kind !== "present" || agent.state !== "live" || agent.ppid !== p.pid || agent.uid !== host.uid || (status.agentBirth && status.agentBirth !== agent.birth)) return false;
+    if (recovery.agent && !sameProcess(recovery.agent, agent)) return false;
+    recovery.agent ??= {pid: agent.pid, birth: agent.birth, bootId: agent.bootId};
+    return true;
+  }
+
+  private refuseReadinessRecovery(p: ManagedProcess): void {
+    if (!p.readinessRecovery || p.readinessRecovery.refused) return;
+    p.readinessRecovery.refused = true;
+    this.appendSidecar(p.beeId, `readiness recovery held bee=${p.beeId} generation=${p.generation} pid=${p.pid}\n`);
+  }
+
+  private recoverAdoptedReadiness(p: ManagedProcess): void {
+    const recovery = p.readinessRecovery;
+    if (!recovery || recovery.started || recovery.refused) return;
+    if (!this.recoveryAgentIsLive(p)) { this.refuseReadinessRecovery(p); return; }
+    this.pumpHostTail(p);
+    if (!p.readinessRecovery || p.phase !== "booting" && !p.executionStart) return;
+    recovery.started = true;
+    if (p.adapter?.readyAtSpawn) {
+      const context = p.observationPath ? recoverAdapterContext(p.adapter, p.observationPath, p.logOffset, p.sessionId) : null;
+      this.applyRecoveredReadiness(p, {kind: "ready", sessionId: context?.sessionId ?? p.sessionId ?? "", state: context?.phase ?? "idle", ...(context?.turnId ? {turnId: context.turnId} : {}), synthetic: true});
+    } else {
+      const line = p.adapter?.recoveryProbe?.(recovery.requestId);
+      if (!line || !this.writeLine(p, line, undefined, true)) this.refuseReadinessRecovery(p);
+    }
+  }
+
+  private applyRecoveredReadiness(p: ManagedProcess, result: ReadinessRecovery): void {
+    const recovery = p.readinessRecovery;
+    if (!recovery || recovery.refused || !this.recoveryAgentIsLive(p)) { this.refuseReadinessRecovery(p); return; }
+    if (result.kind === "refused") { this.refuseReadinessRecovery(p); return; }
+    if (result.kind === "query") {
+      if (!this.writeLine(p, result.line, undefined, true)) this.refuseReadinessRecovery(p);
+      return;
+    }
+    if (result.kind === "start") {
+      if (recovery.bootstrapSent) { recovery.nextProbeAt = this.now() + 1000; return; }
+      if (!this.cfg.runtimeIdentity?.claimReadinessRecovery?.(p.beeId, p.generation, p.processIdentity!, recovery.requestId)) { recovery.nextProbeAt = this.now() + 1000; return; }
+      recovery.bootstrapSent = true;
+      for (const line of result.lines) if (!this.writeLine(p, line, undefined, true)) { this.refuseReadinessRecovery(p); return; }
+      return;
+    }
+    if (result.state === "running") { recovery.nextProbeAt = this.now() + 1000; return; }
+    if (p.adapter?.recoveryProbe && !this.cfg.runtimeIdentity?.recordReadinessRecovery?.(p.beeId, p.generation, p.processIdentity!, {requestId: recovery.requestId, threadId: result.sessionId, state: result.state, ...(result.threadCwd !== undefined ? {threadCwd: result.threadCwd} : {}), ...(result.adapterCwd !== undefined ? {adapterCwd: result.adapterCwd} : {})})) { this.refuseReadinessRecovery(p); return; }
+    p.readinessRecovery = undefined;
+    p.phase = result.state;
+    p.turnId = null;
+    if (result.sessionId && p.sessionId !== result.sessionId) {
+      p.sessionId = result.sessionId;
+      this.sessions.push({beeId: p.beeId, generation: p.generation, sessionId: result.sessionId});
+    }
+    if (!result.synthetic) p.realEvidence = true;
+    this.events.push({beeId: p.beeId, generation: p.generation, kind: "booted", pid: p.pid, pidStartedAt: p.pidStartedAt, synthetic: result.synthetic});
+    if (result.state === "idle") this.events.push({beeId: p.beeId, generation: p.generation, kind: "turn_ended", synthetic: result.synthetic});
+  }
+
   /** Read new output-only journal bytes and normalize complete agent lines. */
   private pumpHostTail(p: ManagedProcess): void {
     if (!p.adapter || !p.observationPath) return;
+    if (p.adapter.recoveryProbe && !p.deliveryProtocol?.authenticated) return;
     const path = p.observationPath;
     let size: number;
     try {
@@ -1304,6 +1385,7 @@ export class HsrDriver implements RuntimeDriver {
     for (;;) {
       const newline = data.indexOf(0x0a, lineStart);
       if (newline < 0) break;
+      const lineBeginCursor = dataStart + lineStart;
       let raw = data.subarray(lineStart, newline);
       if (raw.length > 0 && raw[raw.length - 1] === 0x0d) raw = raw.subarray(0, raw.length - 1);
       const line = raw.toString("utf8");
@@ -1318,11 +1400,23 @@ export class HsrDriver implements RuntimeDriver {
         continue;
       }
       p.quiet?.pushLine(line, p.sessionId);
+      const recovery = p.readinessRecovery;
+      const recovered = recovery?.started && !recovery.refused ? p.adapter.parseRecovery?.(line, recovery.requestId, p.sessionId) : null;
+      if (recovered) {
+        this.applyRecoveredReadiness(p, recovered);
+        p.pendingObservationCursor = lineEndCursor;
+        continue;
+      }
       const signals = p.adapter.parseLine(line);
       const lateBoot = p.phase !== "booting" && signals.some((sig) => sig.kind === "booted");
       for (const signal of signals) {
         if (lateBoot && signal.kind === "turn_ended") continue;
-        this.onSignal(p, signal, String(lineEndCursor), line);
+        if (signal.kind === "respond" && p.readinessRecovery && p.adapter.recoveryProbe) continue;
+        if (this.onSignal(p, signal, String(lineEndCursor), line) === false) {
+          p.logOffset = lineBeginCursor;
+          p.stdoutRest = Buffer.alloc(0);
+          return;
+        }
       }
       if (signals.length > 0) p.pendingObservationCursor = lineEndCursor;
     }
@@ -1468,6 +1562,7 @@ export class HsrDriver implements RuntimeDriver {
             ...(execution && executionHost ? { executionStart: execution, executionHost } : {}),
             processIdentity,
             pendingStartIdentity,
+            ...(lastKnownState === "booting" && (pendingStart || this.cfg.runtimeIdentity?.pendingStartBoundAt?.(beeId, generation) != null) && (adapter.readyAtSpawn || adapter.recoveryProbe) ? {readinessRecovery: {requestId: `hive-readiness-${randomUUID()}`, started: false, refused: false}} : {}),
             legacyBirthPending: !processIdentity && !pendingStart,
             beeId,
             generation,
@@ -1817,7 +1912,7 @@ export class HsrDriver implements RuntimeDriver {
   }
 
 
-  private onSignal(p: ManagedProcess, signal: ReturnType<HarnessAdapter["parseLine"]>[number], sourceId: string, rawLine: string): void {
+  private onSignal(p: ManagedProcess, signal: ReturnType<HarnessAdapter["parseLine"]>[number], sourceId: string, rawLine: string): void | boolean {
     if (
       (signal.kind === "turn_started" || signal.kind === "turn_ended")
       && signal.threadId
@@ -1868,6 +1963,7 @@ export class HsrDriver implements RuntimeDriver {
         // booted = "live and working its initial turn" (running). The adapter
         // follows with turn_ended when the harness boots straight to ready.
         p.phase = "running";
+        p.readinessRecovery = undefined;
         this.events.push({
           beeId: p.beeId,
           generation: p.generation,
@@ -1942,8 +2038,9 @@ export class HsrDriver implements RuntimeDriver {
         return;
       }
       case "respond": {
-        for (const line of signal.lines) this.writeLine(p, line);
-        return;
+        if (p.adapter?.recoveryProbe && !p.deliveryProtocol?.authenticated) return false;
+        for (const line of signal.lines) if (!this.writeLine(p, line, undefined, true)) return false;
+        return true;
       }
     }
   }

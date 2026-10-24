@@ -84,6 +84,13 @@ rl.on("line", (raw) => {
       return;
     case "initialized":
       return;
+    case "thread/loaded/list":
+      emit({id: msg.id, result: {data: threadId ? [threadId] : [], nextCursor: null}});
+      return;
+    case "thread/read":
+      if (msg.params?.threadId !== threadId) emit({id: msg.id, error: {code: -32600, message: "unknown thread"}});
+      else emit({id: msg.id, result: {thread: {id: threadId, cwd: process.cwd(), status: {type: currentTurnId ? "active" : "idle"}, turns: currentTurnId ? [{id: currentTurnId, status: "inProgress"}] : []}}});
+      return;
     case "thread/start":
       threadId = randomUUID();
       if (strictHome) {
@@ -92,7 +99,7 @@ rl.on("line", (raw) => {
         writeFileSync(rollout, JSON.stringify({ type: "session_meta", payload: { id: threadId, model_provider: "openai" } }) + "\n");
         indexRollout(threadId, rollout);
       }
-      emit({ jsonrpc: "2.0", id: msg.id, result: { thread: { id: threadId, cwd: msg.params?.cwd ?? null } } });
+      emit({ jsonrpc: "2.0", id: msg.id, result: { thread: { id: threadId, cwd: msg.params?.cwd ?? null, status: {type: "idle"} } } });
       return;
     case "thread/resume":
       threadId = String(msg.params?.threadId ?? "");

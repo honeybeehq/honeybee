@@ -286,6 +286,34 @@ export function codexAdapter(opts: CodexAdapterOptions): HarnessAdapter {
     midTurnMessageNeedsTurnId: true,
     confirmsDelivery: true,
     readyAtSpawn: false,
+    recoveryProbe(requestId): string {
+      return JSON.stringify({jsonrpc: "2.0", id: `${requestId}:list`, method: "thread/loaded/list", params: {}});
+    },
+    parseRecovery(line, requestId, sessionId) {
+      const msg = parseJsonLine(line);
+      if (!msg || typeof msg.id !== "string" || !msg.id.startsWith(`${requestId}:`) || "method" in msg) return null;
+      if (msg.error || !("result" in msg)) return {kind: "refused"};
+      const result = asObject(msg.result);
+      if (msg.id === `${requestId}:list`) {
+        const ids = result?.data;
+        if (!Array.isArray(ids) || result?.nextCursor != null || ids.some(id => typeof id !== "string" || !id) || ids.length > 1) return {kind: "refused"};
+        if (ids.length === 0) {
+          if (sessionId || opts.resumeThreadId || opts.forkThreadId) return {kind: "refused"};
+          return {kind: "start", lines: [JSON.stringify({jsonrpc: "2.0", method: "initialized"}), JSON.stringify({jsonrpc: "2.0", id: `${requestId}:start`, method: threadRequest.method, params: threadRequest.params})]};
+        }
+        if (sessionId && sessionId !== ids[0]) return {kind: "refused"};
+        return {kind: "query", line: JSON.stringify({jsonrpc: "2.0", id: `${requestId}:read:${ids[0]}`, method: "thread/read", params: {threadId: ids[0], includeTurns: false}})};
+      }
+      const thread = asObject(result?.thread);
+      const id = thread?.id;
+      const expected = msg.id.startsWith(`${requestId}:read:`) ? msg.id.slice(`${requestId}:read:`.length) : null;
+      if (typeof id !== "string" || !id || (expected && id !== expected) || (sessionId && id !== sessionId)) return {kind: "refused"};
+      if (msg.id !== `${requestId}:start` && !expected) return {kind: "refused"};
+      const status = asObject(thread?.status)?.type;
+      if (status !== "idle" && status !== "active") return {kind: "refused"};
+      const activeTurn = Array.isArray(thread?.turns) ? thread.turns.map(asObject).find(turn => turn?.status === "inProgress") : null;
+      return {kind: "ready", sessionId: id, state: status === "idle" ? "idle" : "running", ...(typeof activeTurn?.id === "string" ? {turnId: activeTurn.id} : {}), synthetic: false, ...(typeof thread?.cwd === "string" ? {threadCwd: thread.cwd} : {}), adapterCwd: opts.cwd};
+    },
     bootLines(): string[] {
       return [JSON.stringify({
         jsonrpc: "2.0",
