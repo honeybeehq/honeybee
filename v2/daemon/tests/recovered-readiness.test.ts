@@ -125,3 +125,24 @@ test("skipping a hang stop on synthetic readiness does not miscount a later syst
     assert.equal(r.store.getBee(r.bee.id)!.spawnFailures, 0);
   } finally {r.cleanup();}
 });
+
+test("bind-time memoization follows committed binding, rollback, generation and deletion", () => {
+  const r = rig();
+  try {
+    assert.equal(r.store.runtimePendingStartBoundAt(r.bee.id, 1), null);
+    assert.throws(() => r.store["tx"](() => {
+      assert.equal(r.store.runtimeIdentityHooks().bindPendingStart!(r.bee.id, 1, 1000, {pid: 123, birth: "darwin:1:0", bootId: ""}), true);
+      assert.equal(r.store.runtimePendingStartBoundAt(r.bee.id, 1), 100000);
+      throw new Error("roll back binding");
+    }), /roll back binding/);
+    assert.equal(r.store.runtimePendingStartBoundAt(r.bee.id, 1), null);
+    r.at(100010); r.bind();
+    assert.equal(r.store.runtimePendingStartBoundAt(r.bee.id, 1), 100010);
+    assert.equal(r.store.runtimePendingStartBoundAt(r.bee.id, 2), null);
+    assert.equal(r.store.runtimePendingStartBoundAt(r.bee.id, 1), 100010);
+    r.restart();
+    assert.equal(r.store.runtimePendingStartBoundAt(r.bee.id, 1), 100010);
+    r.store.deleteBee(r.bee.id);
+    assert.equal((r.store as unknown as {pendingStartBoundAtCache: Map<string, unknown>}).pendingStartBoundAtCache.has(r.bee.id), false);
+  } finally {r.cleanup();}
+});
