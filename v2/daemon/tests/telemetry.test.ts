@@ -1,11 +1,13 @@
 /** Spec 04 behavior 5: the i1_violations table — durable, deduped, ledger-shaped. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TelemetryStore, formatI1Violation } from "../src/telemetry.ts";
 import type { I1ViolationEvent } from "../src/loops.ts";
+import { HiveDaemon } from "../src/daemon.ts";
+import { loadNodeConfig } from "../src/config.ts";
 
 const V: I1ViolationEvent = {
   detectedAt: 5000,
@@ -47,4 +49,52 @@ test("telemetry.2: the log line matches the harness ledger shape", () => {
   assert.deepEqual(Object.keys(line).sort(), ["bee", "detail", "invariant", "ops", "step"]);
   assert.equal(line.invariant, "I1");
   assert.equal(line.bee, "bee-1");
+});
+
+test("telemetry.3: repeated daemon violations retain useful history without nesting earlier violation payloads", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-tel-history-"));
+  const cfg = loadNodeConfig(dir);
+  const telemetry = new TelemetryStore(cfg.telemetryPath);
+  const daemon = new HiveDaemon(cfg) as unknown as {
+    telemetry: TelemetryStore;
+    log(op: string): void;
+    recordI1(event: I1ViolationEvent): void;
+  };
+  daemon.telemetry = telemetry;
+  try {
+    daemon.log("deliver.refused bee=bee-1 reason=not_ready");
+    for (let messageId = 1; messageId <= 256; messageId++) {
+      daemon.recordI1({ ...V, messageId });
+      const rows = telemetry.listI1();
+      assert.equal(rows.length, messageId);
+      const row = rows.at(-1)!;
+      assert.ok(row.ops.length <= 40);
+      assert.ok(JSON.stringify(row.ops).length < 16_384, "recent operations must not expand recursively");
+      assert.ok(row.ops.every(op => !op.startsWith("i1_violation {")));
+    }
+    const lines = readFileSync(cfg.logPath, "utf8").trim().split("\n");
+    const violations = lines.map(line => JSON.parse(line).op as string).filter(op => op.startsWith("i1_violation {"));
+    assert.equal(violations.length, 256);
+    const first = JSON.parse(violations[0]!.slice("i1_violation ".length));
+    assert.equal(first.detail, V.detail);
+    assert.deepEqual(first.ops, ["deliver.refused bee=bee-1 reason=not_ready"]);
+    assert.ok(violations.every(line => line.length < 16_384));
+    assert.ok(telemetry.listI1().at(-1)!.ops.some(op => op.includes("msg=255")));
+    daemon.recordI1({ ...V, messageId: 256 });
+    assert.equal(telemetry.i1Count(), 256);
+    assert.equal(readFileSync(cfg.logPath, "utf8").trim().split("\n").length, lines.length);
+    telemetry.close();
+    const reopened = new TelemetryStore(cfg.telemetryPath);
+    daemon.telemetry = reopened;
+    try {
+      daemon.recordI1({ ...V, messageId: 256 });
+      assert.equal(reopened.i1Count(), 256);
+      assert.equal(readFileSync(cfg.logPath, "utf8").trim().split("\n").length, lines.length);
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    telemetry.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

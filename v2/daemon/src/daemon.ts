@@ -1839,9 +1839,9 @@ export class HiveDaemon {
   // telemetry + log
   // -------------------------------------------------------------------------
 
-  private log(op: string): void {
+  private log(op: string, recentOp = op): void {
     if (this.opLog.length >= 4000) this.opLog.shift();
-    this.opLog.push(op);
+    this.opLog.push(recentOp);
     try {
       appendFileSync(this.cfg.logPath, `${JSON.stringify({ ts: Date.now(), op })}\n`);
     } catch {
@@ -1852,7 +1852,7 @@ export class HiveDaemon {
   private recordI1(v: I1ViolationEvent): void {
     const ops = this.opLog.slice(-OP_LOG_TAIL);
     const fresh = this.telemetry?.recordI1(v, ops) ?? false;
-    if (fresh) this.log(`i1_violation ${formatI1Violation(v, ops)}`);
+    if (fresh) this.log(`i1_violation ${formatI1Violation(v, ops)}`, `i1_violation bee=${v.beeId} msg=${v.messageId} deadline=${v.deadline}`);
   }
 
   // -------------------------------------------------------------------------
