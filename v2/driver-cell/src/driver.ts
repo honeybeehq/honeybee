@@ -79,6 +79,7 @@ export interface CellDriverConfig {
   hsr: Omit<HsrDriverConfig, "resolve">;
   /** Baseline sandbox-writable paths (defaults: harness homes + caches). */
   sandboxWritablePaths?: string[];
+  sandboxKvm?: boolean;
   /**
    * Additional authoritative paths for this bee. Callers must derive these
    * from trusted state, never from the harness spawn environment.
@@ -784,6 +785,7 @@ export class CellDriver implements RuntimeDriver {
     const wrapped = wrapWithSandbox(
       {
         cellDir: cell.paths.wrapperDir,
+        kvm: this.cfg.sandboxKvm,
         writablePaths: mergeSandboxWritablePaths(
           this.cfg.sandboxWritablePaths ?? defaultWritablePaths(),
           this.cfg.resolveSandboxWritablePaths?.(beeId) ?? [],
