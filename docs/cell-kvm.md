@@ -29,7 +29,13 @@ Deploy through `hive deploy` and restart the daemon through the supported
 deployment path to load the setting. Existing Cell processes keep their
 current mounts. Setting it back to `false` hides KVM for subsequent launches.
 
-On metal-3 or metal-1, verify with a disposable provisioned Cell:
+Verify host permissions before enabling the setting. On metal-1, `trmd`
+also needs an administrator to grant the host's `kvm` group membership and
+ensure the Honeybee service inherits it. A visible device still returns
+permission denied when the process lacks that membership.
+
+Once host access works on metal-3 or metal-1, verify with a disposable
+provisioned Cell:
 
 ```sh
 node v2/driver-cell/kvm-smoke.ts
