@@ -99,3 +99,37 @@ for (const observedExit of [false,true]) test(`released archived stop cannot wak
     assert.equal(store.enqueueWake(bee.id).outcome,"enqueued");
   } finally {store.close();h.cleanup();}
 });
+
+
+test("a non-command RPC can win the request key while legacy socket authentication awaits", async () => {
+  const {RpcServer} = await import("../src/rpc.ts");
+  const {RpcClient} = await import("../../cli/src/client.ts");
+  const {HiveDaemon} = await import("../src/daemon.ts");
+  const {loadNodeConfig} = await import("../src/config.ts");
+  const {makeDaemonDir} = await import("./helpers.ts");
+  const {h,store,bee}=fixture(), rig=makeDaemonDir();
+  const daemon=new HiveDaemon(loadNodeConfig(rig.dir));
+  let resume!:()=>void, entered!:()=>void;
+  const pendingPin=new Promise<void>(resolve=>{resume=resolve;});
+  const pinEntered=new Promise<void>(resolve=>{entered=resolve;});
+  const internals=daemon as unknown as {store:typeof store;driver:unknown;dispatch:(verb:import("../src/protocol.ts").RpcVerb,params:Record<string,unknown>,conn:import("../src/rpc.ts").RpcConn)=>unknown};
+  internals.store=store;
+  internals.driver={hsr:{prepareLegacyStop:async (_bee:string,_release:unknown,accept:()=>unknown)=>{entered();await pendingPin;return accept();}}};
+  const server=new RpcServer({socketPath:rig.dir+"/release.sock",log(){},dispatch:(...args)=>internals.dispatch(...args)});
+  let a:import("../../cli/src/client.ts").RpcClient|undefined,b:import("../../cli/src/client.ts").RpcClient|undefined;
+  try {
+    await server.listen();a=await RpcClient.connect(rig.dir+"/release.sock");b=await RpcClient.connect(rig.dir+"/release.sock");
+    const pending=a.request("stop",{beeId:bee.id,legacyRelease:release,idempotencyKey:"await-key"});
+    const refused=assert.rejects(pending,(error:unknown)=>(error as {code?:string}).code==="idempotency_conflict");
+    await pinEntered;
+    await b.request("bee.rename",{beeId:bee.id,name:"key-owner",idempotencyKey:"await-key"});
+    resume();await refused;
+    assert.equal(store.lookupRpcResult("await-key")!.verb,"bee.rename");
+    assert.equal(store.getCommandByIdempotencyKey("await-key"),null);
+    assert.equal(store.auditTail(0,1000).filter(row=>row.kind==="runtime.legacy_stop_released").length,0);
+    await a.request("stop",{beeId:bee.id,legacyRelease:release,idempotencyKey:"stop-wins"});
+    assert.equal(store.lookupRpcResult("stop-wins")!.verb,"stop");
+    await assert.rejects(b.request("bee.rename",{beeId:bee.id,name:"must-not-win",idempotencyKey:"stop-wins"}),(error:unknown)=>(error as {code?:string}).code==="idempotency_conflict");
+    assert.equal(store.getBee(bee.id)!.name,"key-owner");
+  } finally {resume();a?.close();b?.close();await server.close();store.close();h.cleanup();rig.cleanup();}
+});

@@ -1,3 +1,4 @@
+import {IdempotencyConflictError} from "../../core/src/types.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
@@ -5872,6 +5873,7 @@ export class HiveDaemon {
       this.requestTick();
       return {commandId: command.id, status: command.status};
     } catch (error) {
+      if (error instanceof IdempotencyConflictError) throw error;
       throw new RpcError("invalid_request", `Legacy stop proof refused: ${error instanceof Error ? error.message : "identity unavailable"}`);
     }
   }

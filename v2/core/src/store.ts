@@ -6107,12 +6107,14 @@ export class CoreStore {
       const prior = this.db.prepare("SELECT * FROM commands WHERE idempotency_key=?").get(key) as Row | undefined;
       if (prior) {
         const command = mapCommand(prior);
-        if (command.beeId !== beeId || command.verb !== "stop" || !isDeepStrictEqual(command.args.legacyRelease, release)) throw new CoreError("Legacy stop idempotency conflict");
+        if (command.beeId !== beeId || command.verb !== "stop" || !isDeepStrictEqual(command.args.legacyRelease, release)) throw new IdempotencyConflictError("Legacy stop idempotency conflict");
         return command;
       }
+      if (this.lookupRpcResult(key)) throw new IdempotencyConflictError("Legacy stop idempotency conflict");
       if (!this.legacyStopAllowed(beeId, release)) throw new CoreError("Archived legacy runtime changed before release");
       const command = this.enqueueCommand("stop", beeId, {cause: "stopped_by_user", legacyRelease: release}, {idempotencyKey: key});
       this.audit("runtime.legacy_stop_released", beeId, {commandId: command.id, ...release, proof: "authenticated-peer-pidfd"});
+      this.recordRpcResult(key, "stop", command.id, {commandId:command.id,status:command.status});
       return command;
     });
   }
