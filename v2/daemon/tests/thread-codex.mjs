@@ -27,7 +27,8 @@ rl.on('line', async line => {
     threadId = m.params.threadId; path = m.params.path ?? db.prepare('SELECT rollout_path FROM threads WHERE id = ?').get(threadId)?.rollout_path;
     if (JSON.parse(readFileSync(path, 'utf8').split('\n')[0]).payload.id !== threadId) throw new Error('wrong successor identity');
     db.prepare('INSERT INTO threads VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET rollout_path = excluded.rollout_path').run(threadId, path);
-    if (!m.params.config?.compact_prompt) await waitGate(process.env.THREAD_START_GATE);
+    if (m.params.config?.compact_prompt) await waitGate(process.env.THREAD_COMPACT_RESUME_GATE);
+    else await waitGate(process.env.THREAD_START_GATE);
     response(m.id, { thread: { id: threadId, path } });
   } else if (m.method === 'thread/compact/start') {
     if (process.env.THREAD_UNSUPPORTED_FILE && existsSync(process.env.THREAD_UNSUPPORTED_FILE)) {
