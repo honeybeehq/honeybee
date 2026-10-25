@@ -1,3 +1,5 @@
+import type {LegacyStopRelease} from "../../core/src/legacyStop.ts";
+import {pinAuthenticatedProcessPeer, type PinnedProcess} from "../../harness/src/processIdentity.ts";
 import { quotaSourceId } from "../../adapters/src/quota.ts";
 import type { QuotaBoundary } from "../../core/src/quota.ts";
 import type {RuntimeIdentityHooks} from "../../core/src/runtimeProcessIdentity.ts";
@@ -221,6 +223,8 @@ interface ManagedProcess {
   authFailures?: number;
   processIdentity?: ProcessIdentity;
   legacyBirthPending?: boolean;
+  legacyStopProof?: {release: LegacyStopRelease; pin: PinnedProcess; socket: Socket};
+  legacyStopping?: boolean;
   pendingStartIdentity?: ProcessIdentity;
   recoveredSessionId?: string;
   readinessRecovery?: {requestId: string; agent?: ProcessIdentity; started: boolean; refused: boolean; nextProbeAt?: number; bootstrapSent?: boolean};
@@ -1089,6 +1093,59 @@ export class HsrDriver implements RuntimeDriver {
     } finally { this.reconnecting.delete(`${beeId}:${generation}`); }
   }
 
+  private legacyStatusMissing(beeId: string, generation: number): boolean {
+    try { const value = statSync(this.runnerPaths(beeId, generation).status); return value.isFile() && value.size === 0; }
+    catch (error) { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
+  }
+
+  legacyStopReady(beeId: string, release: LegacyStopRelease): boolean {
+    const p = this.procs.get(beeId), proof = p?.legacyStopProof;
+    if (!p || p.generation !== release.generation || p.pid !== release.pid || p.pidStartedAt !== release.pidStartedAt
+      || p.processIdentity || !p.degraded || !proof || JSON.stringify(proof.release) !== JSON.stringify(release)
+      || !this.legacyStatusMissing(beeId, release.generation)) return false;
+    try { return proof.pin.current() && !!legacyProcessCandidate(release.pid, release.pidStartedAt); } catch { return false; }
+  }
+
+  async prepareLegacyStop<T>(beeId: string, release: LegacyStopRelease, accept: () => T): Promise<T> {
+    if (this.detached || !this.legacyStatusMissing(beeId, release.generation)) throw new ProcessIdentityUnavailableError();
+    if (this.legacyStopReady(beeId, release)) return accept();
+    const value = inspectProcess(release.pid);
+    if (!sameProcess(release, value) || value.uid !== release.uid || !legacyProcessCandidate(release.pid, release.pidStartedAt, value)) throw new ProcessIdentityUnavailableError();
+    if (!this.hasProcess(beeId, release.generation)) this.adopt(beeId, release.generation, release.pid, release.pidStartedAt);
+    const p = this.procs.get(beeId);
+    if (!p || p.generation !== release.generation || p.pid !== release.pid || p.pidStartedAt !== release.pidStartedAt || p.processIdentity || !p.degraded) throw new ProcessIdentityUnavailableError();
+    const socket = connect(this.runnerPaths(beeId, release.generation).socket);
+    let pin: PinnedProcess | null = null;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        socket.setTimeout(2000, () => reject(new ProcessIdentityUnavailableError()));
+        socket.once("connect", resolve);
+        socket.once("error", reject);
+      });
+      socket.setTimeout(0);
+      const fd = (socket as unknown as {_handle?: {fd?: number}})._handle?.fd;
+      pin = fd === undefined ? null : pinAuthenticatedProcessPeer(fd, release, release.uid);
+      if (!pin || !pin.current() || this.detached || this.procs.get(beeId) !== p || p.processIdentity
+        || !this.legacyStatusMissing(beeId, release.generation) || !legacyProcessCandidate(release.pid, release.pidStartedAt)) throw new ProcessIdentityUnavailableError();
+      const result = accept();
+      p.legacyStopProof?.pin.close();
+      p.legacyStopProof?.socket.destroy();
+      p.legacyStopProof = {release, pin, socket};
+      return result;
+    } catch (error) { pin?.close(); socket.destroy(); throw error; }
+  }
+
+  stopReleased(beeId: string, release: LegacyStopRelease, cause: StopCause): {hadProcess: boolean} {
+    const p = this.procs.get(beeId);
+    if (processDisposition(release, inspectProcess(release.pid)) === "exited") {
+      if (p && p.generation === release.generation && p.pid === release.pid) { p.stopCause = cause; this.onExit(p, null, null); }
+      return {hadProcess: false};
+    }
+    if (!p || !this.legacyStopReady(beeId, release)) throw new ProcessIdentityUnavailableError();
+    p.legacyStopping = true;
+    return this.stop(beeId, release.generation, cause);
+  }
+
   stop(beeId: string, generation: number, cause: StopCause): { hadProcess: boolean } {
     const pending = this.pendingStarts.get(beeId);
     if (pending && pending.generation === generation) {
@@ -1101,8 +1158,10 @@ export class HsrDriver implements RuntimeDriver {
     const p = this.procs.get(beeId);
     if (!p || p.generation !== generation || p.exited) return { hadProcess: false };
     this.captureProcessIdentity(p);
-    if (processDisposition(p.processIdentity ?? null, inspectProcess(p.pid)) === "exited") { this.finishHost(p); return {hadProcess: false}; }
-    if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) throw new ProcessIdentityUnavailableError();
+    const release = p.legacyStopping ? p.legacyStopProof?.release : undefined;
+    const identity = release ? {pid:release.pid,birth:release.birth,bootId:release.bootId} : p.processIdentity;
+    if (processDisposition(identity ?? null, inspectProcess(p.pid)) === "exited") { this.finishHost(p); return {hadProcess: false}; }
+    if (!verifyProcessIdentity(p.pid, identity ?? null)) throw new ProcessIdentityUnavailableError();
     if (p.stopCause == null) p.stopCause = cause;
     // Exact identity (spec points 4–5): we signal only the pid we spawned and
     // still hold the un-exited handle for — parenthood guarantees the pid has
@@ -1188,6 +1247,7 @@ export class HsrDriver implements RuntimeDriver {
   /** One observation pass over a host-style runtime: status facts, log tail,
    * and (for adopted hosts with no exit callback) pid-liveness. */
   private pumpHost(p: ManagedProcess): void {
+    if (p.legacyStopProof) return;
     if (p.pendingStartIdentity) {
       const value = inspectProcess(p.pid);
       if (value.kind === "gone" || value.kind === "present" && (value.state === "zombie" || !sameProcess(p.pendingStartIdentity, value))) {
@@ -1699,7 +1759,7 @@ export class HsrDriver implements RuntimeDriver {
   private pollDegraded(): void {
     for (const p of [...this.procs.values()]) {
       if (!p.degraded || p.exited) continue;
-      const disposition = processDisposition(p.processIdentity ?? null, inspectProcess(p.pid));
+      const disposition = processDisposition((p.legacyStopping ? p.legacyStopProof?.release : p.processIdentity) ?? null, inspectProcess(p.pid));
       if (disposition === "exited") this.onExit(p, null, null);
       else if (disposition === "unavailable") this.cfg.runtimeIdentity?.unavailable?.(p.beeId, p.generation);
     }
@@ -1810,6 +1870,9 @@ export class HsrDriver implements RuntimeDriver {
     this.detached = true;
     this.pendingStarts.clear();
     for (const p of this.procs.values()) {
+      p.legacyStopProof?.pin.close();
+      p.legacyStopProof?.socket.destroy();
+      p.legacyStopProof = undefined;
       if (p.killTimer) {
         clearTimeout(p.killTimer);
         p.killTimer = null;
@@ -1894,6 +1957,16 @@ export class HsrDriver implements RuntimeDriver {
 
   private signalGroup(p: ManagedProcess, signal: "SIGTERM" | "SIGKILL"): void {
     if (p.pid <= 0) return;
+    if (p.legacyStopping) {
+      const proof = p.legacyStopProof;
+      if (!proof) return;
+      try {
+        const value = inspectProcess(p.pid);
+        if (!proof.pin.current() || !sameProcess(proof.release, value) || value.state !== "live" || value.uid !== proof.release.uid) return;
+        process.kill(value.pgid === p.pid ? -p.pid : p.pid, signal);
+      } catch {}
+      return;
+    }
     this.captureProcessIdentity(p);
     if (!verifyProcessIdentity(p.pid, p.processIdentity ?? null)) return;
     if (p.degraded) {
@@ -2069,6 +2142,9 @@ export class HsrDriver implements RuntimeDriver {
 
   private onExit(p: ManagedProcess, code: number | null, _signal: NodeJS.Signals | null): void {
     if (p.exited) return;
+    p.legacyStopProof?.pin.close();
+    p.legacyStopProof?.socket.destroy();
+    p.legacyStopProof = undefined;
     p.exited = true;
     if (p.killTimer) {
       clearTimeout(p.killTimer);

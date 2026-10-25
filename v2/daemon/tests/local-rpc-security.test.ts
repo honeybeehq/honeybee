@@ -106,3 +106,17 @@ for (const present of [true, false]) test(`RPC doctor reports delivery native he
   assert.equal(existsSync(health.deliveryFileHelper.artifactPath), present);
   assert.equal(health.deliveryFileHelper.state, present ? "ready" : "delivery_file_helper_unavailable");
 });
+
+for (const mode of ["direct", "degraded", "relay"] as const) test(`legacy stop release accepts only a verified direct-local administrator: ${mode}`, async () => {
+  const root = mkdtempSync(join(tmpdir(), "rpc-legacy-stop-"));
+  const credentials = mode === "degraded" ? new PeerCredentials({load:()=>{throw new Error("private unavailable fixture");}}) : undefined;
+  let dispatches=0;
+  const server = new RpcServer({socketPath:join(root,"rpc.sock"),peerCredentials:credentials,log(){},dispatch:()=>{dispatches++;return {ok:true};}});
+  let client:RpcClient|undefined;
+  try {
+    await server.listen();client=await RpcClient.connect(join(root,"rpc.sock"),3000,mode === "relay" ? "node_relay" : undefined);
+    if(mode === "direct") assert.deepEqual(await client.request("stop",{legacyRelease:{}}),{ok:true});
+    else await assert.rejects(client.request("stop",{legacyRelease:{}}),code("caller_not_trusted"));
+    assert.equal(dispatches,mode === "direct" ? 1 : 0);
+  } finally {client?.close();await server.close();rmSync(root,{recursive:true,force:true});}
+});

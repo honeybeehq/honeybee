@@ -5,6 +5,8 @@ import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess} from "../../harness/src/processIdentity.ts";
+import {legacyStopRelease} from "../../core/src/legacyStop.ts";
+import {processDisposition, ProcessIdentityUnavailableError} from "../../driver-hsr/src/psutil.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
 import { type PhoneOriginRequest, parsePhoneOrigin } from "../../core/src/phoneOrigin.ts";
@@ -716,6 +718,8 @@ export class HiveDaemon {
   /** Event-loop delay histogram: stalls anywhere (tick, RPC handler, fs) starve the accept loop. */
   private loopDelay: IntervalHistogram | null = null;
   private readonly identityRecovery = new IdentityRecovery();
+  private readonly legacyStopCommands = new Set<number>();
+  private readonly preparingLegacyStops = new Set<number>();
   private identityWarningAt = 0;
   private identityRecoveryTimer: NodeJS.Timeout | null = null;
   private loopDelayTimer: NodeJS.Timeout | null = null;
@@ -1039,6 +1043,12 @@ export class HiveDaemon {
       relocateSession: (move, bee) => this.relocateMoveSession(move, bee),
       validatePlacement: (move, bee) => this.validateMoveDestination(move, bee),
       onIdentityUnresolved: (beeId, generation) => this.retainProcessIdentity(beeId, generation),
+      releasedStopCommandIds: () => this.readyLegacyStopCommands(),
+      stopReleased: command => {
+        const release = legacyStopRelease(command.args.legacyRelease);
+        if (!release || !store.legacyStopAllowed(command.beeId, release)) throw new ProcessIdentityUnavailableError();
+        return driver.hsr.stopReleased(command.beeId, release, "stopped_by_user");
+      },
       blockedRuntimeStartBeeIds: () => this.prepareRuntimeStartCommands(),
       assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
       readHandoffTranscript: (bee, segments) => this.readHandoffTranscript(bee, segments),
@@ -1779,6 +1789,8 @@ export class HiveDaemon {
     this.identityRecovery.retry(Date.now(), row => {
       let rt = store.currentRuntime(row.beeId);
       if (!rt || rt.generation !== row.generation || rt.state === "stopped") { this.core!.resolveProcessIdentity(row.beeId, row.generation); return true; }
+      const released = store.pendingLegacyStop(row.beeId, row.generation);
+      if (released) this.prepareLegacyStopCommand(released);
       const captured = this.driver!.procOf(row.beeId, row.generation);
       if (captured && (rt.pid == null || rt.pidStartedAt == null || captured.processIdentity && store.runtimeProcessIdentity(row.beeId, row.generation).kind === "unavailable")) {
         store.recordRuntimeProc(row.beeId, row.generation, captured);
@@ -2256,6 +2268,7 @@ export class HiveDaemon {
         });
       }
       case "stop":
+        if (params.legacyRelease !== undefined) return this.rpcLegacyStop(params);
         return this.withIdempotency(verb, params, () =>
           this.rpcEnqueue("stop", this.param(params, "beeId"), { cause: "stopped_by_user" }, params),
         );
@@ -5814,6 +5827,53 @@ export class HiveDaemon {
     // rpc_idempotency record exists — surface it the same way.
     if (cmd.deduped) return { commandId: cmd.id, status: cmd.status, deduped: true };
     return { commandId: cmd.id };
+  }
+
+  private readyLegacyStopCommands(): ReadonlySet<number> {
+    const ready = new Set<number>(), store = this.mustStore();
+    for (const id of this.legacyStopCommands) {
+      const cmd = store.getCommand(id), release = legacyStopRelease(cmd?.args.legacyRelease);
+      if (!cmd || cmd.status !== "queued" || !release || !store.legacyStopAllowed(cmd.beeId, release)) { this.legacyStopCommands.delete(id); continue; }
+      if (processDisposition(release, inspectProcess(release.pid)) === "exited" || this.driver?.hsr.legacyStopReady(cmd.beeId, release)) ready.add(id);
+    }
+    return ready;
+  }
+
+  private prepareLegacyStopCommand(command: CommandRow): void {
+    if (this.preparingLegacyStops.has(command.id) || this.stopping || !this.driver) return;
+    const release = legacyStopRelease(command.args.legacyRelease), store = this.mustStore();
+    if (!release || !store.legacyStopAllowed(command.beeId, release)) return;
+    if (processDisposition(release, inspectProcess(release.pid)) === "exited") { this.legacyStopCommands.add(command.id); return; }
+    this.preparingLegacyStops.add(command.id);
+    void this.driver.hsr.prepareLegacyStop(command.beeId, release, () => {
+      if (this.stopping || !store.legacyStopAllowed(command.beeId, release) || store.getCommand(command.id)?.status !== "queued") throw new ProcessIdentityUnavailableError();
+      this.legacyStopCommands.add(command.id);
+    }).then(() => { if (!this.stopping) this.requestTick(); }, () => {}).finally(() => this.preparingLegacyStops.delete(command.id));
+  }
+
+  private async rpcLegacyStop(params: Record<string, unknown>): Promise<MutationResult> {
+    const release = legacyStopRelease(params.legacyRelease), beeId = this.param(params, "beeId"), key = this.idempotencyKeyOf(params);
+    if (!release || !key) throw new RpcError("invalid_request", "Legacy stop requires an exact Linux identity, operator authorityRef, and idempotencyKey");
+    const store = this.mustStore();
+    const prior = store.getCommandByIdempotencyKey(key);
+    if (prior) {
+      if (prior.verb !== "stop" || prior.beeId !== beeId || JSON.stringify(legacyStopRelease(prior.args.legacyRelease)) !== JSON.stringify(release)) throw new RpcError("idempotency_conflict", "Key belongs to another stop intent");
+      return {commandId: prior.id, status: prior.status, deduped: true};
+    }
+    if (store.lookupRpcResult(key)) throw new RpcError("idempotency_conflict", "Key belongs to another admission");
+    if (!store.legacyStopAllowed(beeId, release) || !this.driver) throw new RpcError("invalid_request", "Legacy release requires the unchanged archived HSR runtime with a NULL identity");
+    try {
+      const command = await this.driver.hsr.prepareLegacyStop(beeId, release, () => {
+        if (this.stopping) throw new ProcessIdentityUnavailableError();
+        return store.enqueueLegacyStop(beeId, release, key);
+      });
+      this.legacyStopCommands.add(command.id);
+      this.retainProcessIdentity(beeId, release.generation);
+      this.requestTick();
+      return {commandId: command.id, status: command.status};
+    } catch (error) {
+      throw new RpcError("invalid_request", `Legacy stop proof refused: ${error instanceof Error ? error.message : "identity unavailable"}`);
+    }
   }
 
   private identityDiagnostic(beeId: string, generation: number | null) {

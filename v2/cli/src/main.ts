@@ -1,3 +1,4 @@
+import {legacyStopRelease} from "../../core/src/legacyStop.ts";
 import { backupStoreOffline, restoreStoreOffline, StoreRestoreError, StoreBackupError } from "../../core/src/storeBackup.ts";
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
@@ -255,6 +256,7 @@ const VALUE_FLAGS = new Set([
   "--dir",
   "--id",
   "--idempotency-key",
+  "--legacy-release",
   "--method",
   "--credit-id",
   "--root",
@@ -2461,13 +2463,20 @@ async function cmdMutation(
   verb: "stop" | "revive" | "archive" | "unarchive" | "delete",
 ): Promise<number> {
   const needle = parsed.positional[1];
-  if (!needle) throw new Error(`usage: hive ${verb} <bee>${verb === "revive" ? " [--arg a]... | [-- <args…>]" : ""}`);
+  if (!needle) throw new Error(`usage: hive ${verb} <bee>${verb === "revive" ? " [--arg a]... | [-- <args…>]" : verb === "stop" ? " [--legacy-release <identity.json> --confirm --idempotency-key <key>]" : ""}`);
+  const releasePath = parsed.flags.get("--legacy-release");
+  const releaseKey = parsed.flags.get("--idempotency-key");
+  const release = typeof releasePath === "string" ? legacyStopRelease(JSON.parse(readFileSync(releasePath, "utf8"))) : null;
+  if (releasePath !== undefined && (verb !== "stop" || !release || parsed.flags.get("--confirm") !== true || typeof releaseKey !== "string" || !releaseKey)) {
+    throw new Error("usage: hive stop <bee> --legacy-release <identity.json> --confirm --idempotency-key <key>");
+  }
   return withClient(ctx, async (c) => {
+    if (release && !c.capabilities.includes("stop.legacy_release.v1")) throw new RpcError("capability_missing", "Update Honeybee: stop.legacy_release.v1 is required.");
     const list = await c.request<ListResult>("list");
     const beeId = resolveBeeIn(list.views, needle);
     // revive may replace the per-bee args as it runs (`--arg` or `-- …`).
     const reviveArgs = verb === "revive" ? (parsed.rest ?? (parsed.args.length > 0 ? parsed.args : undefined)) : undefined;
-    const result = await c.request<import("../../daemon/src/protocol.ts").MutationResult>(verb, { beeId, ...(reviveArgs !== undefined ? { args: reviveArgs } : {}) });
+    const result = await c.request<import("../../daemon/src/protocol.ts").MutationResult>(verb, { beeId, ...(reviveArgs !== undefined ? { args: reviveArgs } : {}), ...(release ? {legacyRelease: release, idempotencyKey: releaseKey} : {}) });
     emit(ctx, [confirm(result.pending ? "warn" : "ok", verb, result.pending ? `${beeId}: ${result.pending.message} (command ${result.commandId})` : `${beeId} enqueued (command ${result.commandId})`)], { beeId, ...result }, false);
     return 0;
   });

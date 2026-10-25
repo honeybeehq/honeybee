@@ -280,6 +280,8 @@ export interface DaemonCoreOptions {
    */
   cellCaptureExecutor?: CellCaptureExecutor;
   reconnectTools?: (command: CommandRow) => Promise<ReconnectToolsReceipt>;
+  releasedStopCommandIds?: () => ReadonlySet<number>;
+  stopReleased?: (command: CommandRow) => {hadProcess: boolean};
 }
 
 /** v24: what the action scheduler needs from the Cell landing owner. Read-only except `capture`. */
@@ -335,6 +337,8 @@ export class DaemonCore {
   private readonly summarizeHandoff: ((input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>) | null;
   private readonly cellCapture: CellCaptureExecutor | null;
   private readonly reconnectTools: DaemonCoreOptions["reconnectTools"];
+  private readonly releasedStopCommandIds: DaemonCoreOptions["releasedStopCommandIds"];
+  private readonly stopReleased: DaemonCoreOptions["stopReleased"];
   private reconnectOwnerClosed = false;
   /** Handoffs whose async summarizer is in flight (process-local; a restart simply re-runs it). */
   private readonly summarizing = new Set<string>();
@@ -375,6 +379,8 @@ export class DaemonCore {
     this.summarizeHandoff = opts.summarizeHandoff ?? null;
     this.cellCapture = opts.cellCaptureExecutor ?? null;
     this.reconnectTools = opts.reconnectTools;
+    this.releasedStopCommandIds = opts.releasedStopCommandIds;
+    this.stopReleased = opts.stopReleased;
   }
 
   /** Late asynchronous replies belong to the successor after shutdown. */
@@ -818,7 +824,7 @@ export class DaemonCore {
    */
   private reviveAfterStopIfRequested(beeId: string, generation: number): void {
     const bee = this.store.getBee(beeId);
-    if (bee?.activeMoveId || bee?.activeHandoffId) return;
+    if (bee?.activeMoveId || bee?.activeHandoffId || this.store.archivedLegacyStop(beeId, generation) !== null) return;
     if (!this.store.hasStopThenReviveRequest(beeId, generation)) return;
     if (this.store.hasPendingReviveOrWakeCommand(beeId, generation)) return;
     // Only the generation the stop targeted; a later generation means the
@@ -967,6 +973,7 @@ export class DaemonCore {
       const cmd = this.store.claimNextCommand({
         blockedRuntimeStartBeeIds: this.blockedRuntimeStartBeeIds(),
         blockedIdentityBeeIds: new Set(this.unresolvedIdentity.keys()),
+        releasedStopCommandIds: this.releasedStopCommandIds?.(),
       });
       if (!cmd) return;
       const crash = this.faults?.executorCrash() ?? "none";
@@ -1039,6 +1046,13 @@ export class DaemonCore {
 
   /** Execute one claimed command. Returns true when the caller should settle it done. */
   private execute(cmd: CommandRow): boolean {
+    if (["wake", "revive", "send_wake"].includes(cmd.verb) && cmd.targetGeneration !== null) {
+      const releaseId = this.store.archivedLegacyStop(cmd.beeId, cmd.targetGeneration);
+      if (releaseId !== null && cmd.id < releaseId) {
+        this.log(`cmd.skip id=${cmd.id} bee=${cmd.beeId} reason=legacy_stop_released`);
+        return true;
+      }
+    }
     switch (cmd.verb) {
       case "reconnect_tools": {
         const rt = this.store.currentRuntime(cmd.beeId);
@@ -1117,13 +1131,14 @@ export class DaemonCore {
           const deadline = this.bootHangDeadline(rt);
           if (this.now() <= deadline) { this.store.deferBootHangStop(cmd.id, deadline + 1); return false; }
         }
-        const { hadProcess } = this.driver.stop(cmd.beeId, gen, cause);
+        if (cmd.args.legacyRelease && !this.stopReleased) throw new ProcessIdentityUnavailableError();
+        const { hadProcess } = cmd.args.legacyRelease ? this.stopReleased!(cmd) : this.driver.stop(cmd.beeId, gen, cause);
         if (!hadProcess) {
           // Parenthood certainty: no process exists, so the stop is a fact now.
           this.store.updateRuntimeState(cmd.beeId, gen, "stopped", { exitCause: cause });
-          this.ensureWake(cmd.beeId);
+          if (!cmd.args.legacyRelease) this.ensureWake(cmd.beeId);
           // thenRevive: this stop command is still `running` here (settled by the caller).
-          this.reviveAfterStopIfRequested(cmd.beeId, gen);
+          if (!cmd.args.legacyRelease) this.reviveAfterStopIfRequested(cmd.beeId, gen);
         }
         this.log(`cmd.stop id=${cmd.id} bee=${cmd.beeId} gen=${gen} cause=${cause} hadProcess=${hadProcess}`);
         return true;
