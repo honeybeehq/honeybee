@@ -90,6 +90,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "stop.legacy_release.v1",
   "mail.humanFirst.v1",
   "mail.batching.v1",
   "mail.delivery.confirmation.v1",
@@ -1610,6 +1611,12 @@ export interface SendRpcResult extends DedupMarkers {
   /** The send_wake enqueued in the same transaction, when one was needed. */
   commandId: number | null;
   unarchived: boolean;
+}
+
+export interface LegacyStopParams {
+  beeId: string;
+  legacyRelease: import("../../core/src/legacyStop.ts").LegacyStopRelease;
+  idempotencyKey: string;
 }
 
 export interface MutationResult extends DedupMarkers {

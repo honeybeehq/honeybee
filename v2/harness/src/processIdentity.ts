@@ -79,6 +79,25 @@ export function authenticatedProcessPeer(fd: number, identity: ProcessIdentity):
     return (pin < 0 || bridge.alive(pin)) && !!fresh && fresh.uid === peer.uid && fresh.pid === peer.pid && fresh.birth === peer.birth && sameProcess(identity, inspectProcess(identity.pid));
   } catch { return false; } finally { if (pin >= 0) { try {closeSync(pin);} catch {} } }
 }
+export interface PinnedProcess { current(): boolean; close(): void }
+export function pinAuthenticatedProcessPeer(fd: number, identity: ProcessIdentity, uid: number): PinnedProcess | null {
+  let pin = -1;
+  try {
+    const bridge = processBridge();
+    if (uid !== process.getuid?.()) return null;
+    pin = bridge.pin(fd);
+    if (pin < 0) return null;
+    const current = () => {
+      if (pin < 0 || !bridge.alive(pin)) return false;
+      const peer = bridge.inspect(fd) as {uid?: unknown; pid?: unknown; birth?: unknown} | null;
+      const value = inspectProcess(identity.pid);
+      return peer?.uid === uid && peer.pid === identity.pid && peer.birth === identity.birth
+        && sameProcess(identity, value) && value.state === "live" && value.uid === uid;
+    };
+    if (!current()) { closeSync(pin); pin = -1; return null; }
+    return {current, close() { if (pin >= 0) { closeSync(pin); pin = -1; } }};
+  } catch { if (pin >= 0) { try { closeSync(pin); } catch {} } return null; }
+}
 export function exactProcessBirth(pid: number): string | null {
   if (!Number.isSafeInteger(pid) || pid <= 0) return null;
   try {

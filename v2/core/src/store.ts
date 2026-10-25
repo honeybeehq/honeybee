@@ -1,4 +1,5 @@
 import { backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
+import {legacyStopRelease, type LegacyStopRelease} from "./legacyStop.ts";
 import { HUMAN_OUTPUT_SQL, HumanOutputLedger, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
 import { automationDeliveryClass, type AutomationKind, type AutomationReference, type MailBatch, type MailBatchingPolicy } from "./types.ts";
@@ -3421,6 +3422,7 @@ export class CoreStore {
     if (!this.batchingWakeEligible(beeId)) return { command: null, outcome: "no_mail" };
     const current = this.currentRuntime(beeId);
     const targetGeneration = current?.generation ?? 0;
+    if (this.archivedLegacyStop(beeId, targetGeneration) !== null) return { command: null, outcome: "fenced" };
     const thread = this.threadOperationForSuccessor(beeId);
     if (thread && thread.phase !== "ready" && thread.phase !== "starting") return { command: null, outcome: "fenced" };
     if (bee.activeMoveId) {
@@ -5609,7 +5611,7 @@ export class CoreStore {
    * or blocking unrelated commands. This check shares the writer with turn
    * admission; arguments are changed only after the command is claimed.
    */
-  claimNextCommand(options: { blockedRuntimeStartBeeIds?: ReadonlySet<string>; blockedIdentityBeeIds?: ReadonlySet<string> } = {}): CommandRow | null {
+  claimNextCommand(options: { blockedRuntimeStartBeeIds?: ReadonlySet<string>; blockedIdentityBeeIds?: ReadonlySet<string>; releasedStopCommandIds?: ReadonlySet<number> } = {}): CommandRow | null {
     return this.tx(() => {
       const blockedRuntimeStartBeeIds = [...(options.blockedRuntimeStartBeeIds ?? [])];
       const blockedIdentityBeeIds = [...(options.blockedIdentityBeeIds ?? [])];
@@ -5630,7 +5632,8 @@ export class CoreStore {
           .prepare(
             `SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?
              ${blockedRuntimeStartClause}
-             AND NOT (bee_id IN (SELECT value FROM json_each(?)) AND verb IN ('stop','archive','delete','spawn','send_wake','revive','reconnect_tools'))
+             AND NOT (bee_id IN (SELECT value FROM json_each(?)) AND verb IN ('stop','archive','delete','spawn','send_wake','revive','reconnect_tools')
+               AND NOT (verb = 'stop' AND id IN (SELECT value FROM json_each(?))))
              AND NOT (verb = 'reconnect_tools' AND EXISTS (
                SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id
                AND r.generation = commands.target_generation AND r.state IN ('booting','running')
@@ -5691,7 +5694,7 @@ export class CoreStore {
              )
              ORDER BY id LIMIT 1`,
           )
-          .get(this.now(), ...(blockedRuntimeStartBeeIds.length > 0 ? [JSON.stringify(blockedRuntimeStartBeeIds)] : []), JSON.stringify(blockedIdentityBeeIds)) as Row | undefined;
+          .get(this.now(), ...(blockedRuntimeStartBeeIds.length > 0 ? [JSON.stringify(blockedRuntimeStartBeeIds)] : []), JSON.stringify(blockedIdentityBeeIds), JSON.stringify([...(options.releasedStopCommandIds ?? [])])) as Row | undefined;
         if (!row) return null;
         const command = mapCommand(row);
         if (!this.executionLedger.commandAllowed(command.id)) continue;
@@ -6067,6 +6070,54 @@ export class CoreStore {
   }
 
   runtimeProcessIdentity(beeId: string, generation: number) { return readRuntimeProcessIdentity(this.db, beeId, generation); }
+
+  legacyStopAllowed(beeId: string, release: LegacyStopRelease): boolean {
+    const bee = this.getBee(beeId), rt = this.currentRuntime(beeId);
+    return !!legacyStopRelease(release) && bee?.lifecycle === "archived" && bee.substrate === "hsr"
+      && !bee.activeMoveId && !bee.activeHandoffId && !!rt && rt.generation === release.generation && rt.state !== "stopped"
+      && rt.pid === release.pid && rt.pidStartedAt === release.pidStartedAt && this.runtimeProcessIdentity(beeId, rt.generation).kind === "legacy";
+  }
+
+  archivedLegacyStop(beeId: string, generation: number): number | null {
+    if (this.getBee(beeId)?.lifecycle !== "archived") return null;
+    const row = this.db.prepare("SELECT id FROM commands WHERE bee_id=? AND target_generation=? AND verb='stop' AND json_type(args,'$.legacyRelease')='object' ORDER BY id LIMIT 1").get(beeId, generation);
+    return row ? Number(row.id) : null;
+  }
+
+  skipReleasedLegacyWake(commandId: number): boolean {
+    return this.tx(() => {
+      const command = this.getCommand(commandId);
+      if (!command || command.status !== "running" || !["spawn", "revive", "send_wake"].includes(command.verb)) return false;
+      const generation = command.targetGeneration ?? this.currentRuntime(command.beeId)?.generation;
+      const releaseId = generation === undefined ? null : this.archivedLegacyStop(command.beeId, generation);
+      if (releaseId === null || command.id >= releaseId) return false;
+      this.audit("command.moot", command.beeId, {commandId, generation, releaseCommandId:releaseId, reason:"legacy_stop_released"});
+      this.completeCommand(commandId);
+      return true;
+    });
+  }
+
+  pendingLegacyStop(beeId: string, generation: number): CommandRow | null {
+    const row = this.db.prepare("SELECT * FROM commands WHERE bee_id=? AND target_generation=? AND verb='stop' AND status='queued' AND json_type(args,'$.legacyRelease')='object' ORDER BY id LIMIT 1").get(beeId, generation) as Row | undefined;
+    return row ? mapCommand(row) : null;
+  }
+
+  enqueueLegacyStop(beeId: string, release: LegacyStopRelease, key: string): CommandRow {
+    return this.tx(() => {
+      const prior = this.db.prepare("SELECT * FROM commands WHERE idempotency_key=?").get(key) as Row | undefined;
+      if (prior) {
+        const command = mapCommand(prior);
+        if (command.beeId !== beeId || command.verb !== "stop" || !isDeepStrictEqual(command.args.legacyRelease, release)) throw new IdempotencyConflictError("Legacy stop idempotency conflict");
+        return command;
+      }
+      if (this.lookupRpcResult(key)) throw new IdempotencyConflictError("Legacy stop idempotency conflict");
+      if (!this.legacyStopAllowed(beeId, release)) throw new CoreError("Archived legacy runtime changed before release");
+      const command = this.enqueueCommand("stop", beeId, {cause: "stopped_by_user", legacyRelease: release}, {idempotencyKey: key});
+      this.audit("runtime.legacy_stop_released", beeId, {commandId: command.id, ...release, proof: "authenticated-peer-pidfd"});
+      this.recordRpcResult(key, "stop", command.id, {commandId:command.id,status:command.status});
+      return command;
+    });
+  }
 
   runtimePendingStartBoundAt(beeId: string, generation: number): number | null {
     const cached = this.inTransaction ? undefined : this.pendingStartBoundAtCache.get(beeId);

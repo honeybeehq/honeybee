@@ -455,6 +455,10 @@ export class RpcServer {
       if ((verb === "doctor.integrity" || verb === "store.backup") && (peer?.state !== "verified" || conn.ingress !== "local_unix" || conn.relayLane !== null)) {
         throw new RpcError("caller_not_trusted", "Store maintenance requires a verified direct local administrator connection.");
       }
+      if (verb === "stop" && params.legacyRelease !== undefined && (peer?.state !== "verified" || !peer.current()
+        || conn.ingress !== "local_unix" || conn.relayLane !== null || frame.context !== undefined)) {
+        throw new RpcError("caller_not_trusted", "Legacy release requires a verified direct local administrator connection.");
+      }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       const result = withRpcCaller(caller, () => {
         const automationContext = frame.context as Record<string, unknown> | undefined;
