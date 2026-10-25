@@ -6084,6 +6084,19 @@ export class CoreStore {
     return row ? Number(row.id) : null;
   }
 
+  skipReleasedLegacyWake(commandId: number): boolean {
+    return this.tx(() => {
+      const command = this.getCommand(commandId);
+      if (!command || command.status !== "running" || !["spawn", "revive", "send_wake"].includes(command.verb)) return false;
+      const generation = command.targetGeneration ?? this.currentRuntime(command.beeId)?.generation;
+      const releaseId = generation === undefined ? null : this.archivedLegacyStop(command.beeId, generation);
+      if (releaseId === null || command.id >= releaseId) return false;
+      this.audit("command.moot", command.beeId, {commandId, generation, releaseCommandId:releaseId, reason:"legacy_stop_released"});
+      this.completeCommand(commandId);
+      return true;
+    });
+  }
+
   pendingLegacyStop(beeId: string, generation: number): CommandRow | null {
     const row = this.db.prepare("SELECT * FROM commands WHERE bee_id=? AND target_generation=? AND verb='stop' AND status='queued' AND json_type(args,'$.legacyRelease')='object' ORDER BY id LIMIT 1").get(beeId, generation) as Row | undefined;
     return row ? mapCommand(row) : null;

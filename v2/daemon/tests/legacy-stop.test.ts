@@ -67,11 +67,12 @@ test("only the exact release command bypasses the unresolved identity fence, onc
 });
 
 for (const observedExit of [false,true]) test(`released archived stop cannot wake queued mail after ${observedExit ? "observed" : "already gone"} exit or restart`, () => {
-  const {h,store,bee} = fixture();
+  const {h,store,bee,db} = fixture();
   try {
     const ordinary = store.enqueueCommand("stop",bee.id,{reason:"degraded_runtime"});
     const wake = store.enqueueCommand("send_wake",bee.id);
     const revive = store.enqueueCommand("revive",bee.id);
+    db.prepare("UPDATE commands SET target_generation=NULL WHERE id IN (?,?)").run(wake.id,revive.id);
     const released = store.enqueueLegacyStop(bee.id,release,"release");
     const driver = new FakeDriver(()=>10000000);driver.acceptDeliveries=false;
     if (observedExit) driver.procs.set(bee.id,{generation:1,pid:123,pidStartedAt:1234000,degraded:true});
@@ -89,6 +90,7 @@ for (const observedExit of [false,true]) test(`released archived stop cannot wak
     assert.equal(store.getCommand(ordinary.id)!.status,"done");
     assert.equal(store.getCommand(wake.id)!.status,"done");
     assert.equal(store.getCommand(revive.id)!.status,"done");
+    assert.deepEqual(store.auditTail(0,1000).filter(a=>a.kind==="command.moot" && a.payload.reason==="legacy_stop_released").map(a=>a.payload.commandId),[wake.id,revive.id]);
     assert.equal(store.getBee(bee.id)!.lifecycle,"archived");
     assert.equal(store.currentRuntime(bee.id)!.generation,1);
     assert.equal(store.undeliveredMessages(bee.id).length,1);

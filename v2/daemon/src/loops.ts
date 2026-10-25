@@ -1046,13 +1046,7 @@ export class DaemonCore {
 
   /** Execute one claimed command. Returns true when the caller should settle it done. */
   private execute(cmd: CommandRow): boolean {
-    if (["wake", "revive", "send_wake"].includes(cmd.verb) && cmd.targetGeneration !== null) {
-      const releaseId = this.store.archivedLegacyStop(cmd.beeId, cmd.targetGeneration);
-      if (releaseId !== null && cmd.id < releaseId) {
-        this.log(`cmd.skip id=${cmd.id} bee=${cmd.beeId} reason=legacy_stop_released`);
-        return true;
-      }
-    }
+    if (this.store.skipReleasedLegacyWake(cmd.id)) return false;
     switch (cmd.verb) {
       case "reconnect_tools": {
         const rt = this.store.currentRuntime(cmd.beeId);
