@@ -14,8 +14,8 @@ const errorCode = (code: string) => (error: unknown) => error instanceof Error &
 test("thread RPC: prompt receipt, disconnect/restart, history events, native compaction gate, queued mail and owner refusals", { timeout: 90000 }, async t => {
   const root = mkdtempSync(join(tmpdir(), "hb-thread-rpc-"));
   const home = join(root, "home"); mkdirSync(home);
-  const compactGate = join(root, "compact-go"); const startGate = join(root, "start-go"); const rpcLog = join(root, "rpc.jsonl");
-  const rig = makeDaemonDir({ naming: { auto: false }, agents: { codex: { command: process.execPath, args: [native, "app-server"], adapter: "codex", env: { CODEX_HOME: home, THREAD_COMPACT_GATE: compactGate, THREAD_START_GATE: startGate, THREAD_RPC_LOG: rpcLog } } } });
+  const resumeGate = join(root, "resume-go"); const compactGate = join(root, "compact-go"); const startGate = join(root, "start-go"); const rpcLog = join(root, "rpc.jsonl");
+  const rig = makeDaemonDir({ naming: { auto: false }, agents: { codex: { command: process.execPath, args: [native, "app-server"], adapter: "codex", env: { CODEX_HOME: home, THREAD_COMPACT_RESUME_GATE: resumeGate, THREAD_COMPACT_GATE: compactGate, THREAD_START_GATE: startGate, THREAD_RPC_LOG: rpcLog } } } });
   let daemon = await startDaemon(rig.dir); let client = await daemon.client();
   t.after(async () => { client.close(); await daemon.stop(); rig.cleanup(); rmSync(root, { recursive: true, force: true }); });
   const watcher = await daemon.client(); const frames: WatchFrame[] = [];
@@ -58,6 +58,7 @@ test("thread RPC: prompt receipt, disconnect/restart, history events, native com
   await assert.rejects(client.request("bee.fork", { beeId: source.beeId, prompt: "compact" }), errorCode("thread_unsupported"));
   await assert.rejects(client.request("bee.setArgs", { beeId: successor, args: [] }), errorCode("thread_busy"));
   await assert.rejects(client.request("bee.fork", { beeId: successor }), errorCode("thread_busy"));
+  const interruptedCompactor = await waitFor(() => readFileSync(rpcLog, "utf8").trim().split("\n").map(line => JSON.parse(line)).find(c => c.method === "thread/resume" && c.params.config?.compact_prompt), "first compactor waiting on resume");
   await daemon.kill(); client.close();
   daemon = await startDaemon(rig.dir); client = await daemon.client();
   const duplicate = await client.request<ThreadOperationResult>("thread.handoff", params);
@@ -66,6 +67,7 @@ test("thread RPC: prompt receipt, disconnect/restart, history events, native com
   assert.equal(duplicate.operation.id, row.id);
   const afterReload = await client.request<{ data: string }>("thread.transcript", { operationId: row.id });
   assert.equal(afterReload.data, transcript.data, "source output cannot change inherited history after reload");
+  writeFileSync(resumeGate, "go");
   writeFileSync(compactGate, "go");
   await waitFor(async () => (await op()).operation.phase === "starting", "compacted, waiting on provider readiness", 20000);
   assert.equal((await op()).operation.compacted, true);
@@ -89,10 +91,16 @@ test("thread RPC: prompt receipt, disconnect/restart, history events, native com
   assert.equal(originalNow.bee?.lifecycle, "active");
   assert.equal(originalNow.bee?.providerSessionId, original.bee!.providerSessionId);
   const calls = readFileSync(rpcLog, "utf8").trim().split("\n").map(line => JSON.parse(line));
-  const compactor = calls.find(c => c.method === "thread/resume" && c.params.config?.compact_prompt);
+  const compactRequests = calls.filter(c => c.method === "thread/compact/start");
+  assert.equal(compactRequests.length, 1, "one replacement worker requests native compaction");
+  assert.equal(compactRequests[0].params.threadId, receipt.operation.successorProviderSessionId);
+  const compactors = calls.filter(c => c.method === "thread/resume" && c.params.config?.compact_prompt);
+  const compactor = compactors.find(c => c.pid === compactRequests[0].pid);
+  assert.ok(compactor, "the successful compactor resumed the successor");
+  assert.notEqual(compactor.pid, interruptedCompactor.pid, "the interrupted worker cannot finish compaction");
+  assert.match(compactor.params.baseInstructions, /Source instructions/);
   assert.match(compactor.params.baseInstructions, /Preserve the migration decision/);
-  assert.ok(calls.some(c => c.pid === compactor.pid && c.method === "thread/compact/start"));
-  assert.ok(!calls.some(c => c.pid === compactor.pid && ["turn/start", "turn/steer"].includes(c.method)), "compaction never becomes an ordinary message");
+  assert.ok(!calls.some(c => compactors.some(worker => worker.pid === c.pid) && ["turn/start", "turn/steer"].includes(c.method)), "compaction never becomes an ordinary message");
 });
 
 test("native method refusal is typed, retry keys recover one successor, and plain Fork requests no compaction", { timeout: 60000 }, async t => {
