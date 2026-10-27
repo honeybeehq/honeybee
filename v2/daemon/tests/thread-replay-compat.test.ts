@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import { HiveDaemon } from "../src/daemon.ts";
@@ -19,7 +20,9 @@ for (const kind of ["fork", "handoff"] as const) {
       .run(JSON.stringify({ ...fixture.row, requestHash: legacyHash }), fixture.row.id);
     fixture.restart();
     // Exercise the real admission/replay method without starting native workers.
-    const daemon = Object.assign(Object.create(HiveDaemon.prototype), { store: fixture.store }) as {
+    const daemon = Object.assign(Object.create(HiveDaemon.prototype), {
+      store: fixture.store, cfg: { nodeKind: "cloud" }, admissionCaller: new AsyncLocalStorage(),
+    }) as {
       rpcThreadOperation(kind: "fork" | "handoff", params: Record<string, unknown>): ThreadOperationResult;
     };
     const params = { beeId: "source", sourceProviderSessionId: shape.sourceProviderSessionId,
