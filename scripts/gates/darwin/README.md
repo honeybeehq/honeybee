@@ -2,7 +2,8 @@
 
 ## Current maintenance self-test
 
-`hardening-self-test.sh <absolute-node> <passwd-home>` is the mini07-only,
+`hardening-self-test.sh <absolute-node> <passwd-home>` is the mini07 (or mini04
+outside 03:00–04:40Z),
 offline shell/Node hardening check. Run it from the committed review checkout.
 The home argument comes from the account record, never from scanning that home.
 The runner refuses stamped HIVE_/APIARY_ controller keys at entry, ignoring and
