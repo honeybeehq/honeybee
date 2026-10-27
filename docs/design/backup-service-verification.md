@@ -5,7 +5,7 @@ Studio/MacBook home, SX65, real email destination, root, sudo or systemd operati
 Toolchain: Node 24.18.0, npm 11.16.0, restic 0.18.1, rest-server 0.14.0, Linux x64.
 
 Run `HIVE_TEST_RESTIC=/absolute/path/to/restic HIVE_TEST_REST_SERVER=/absolute/path/to/rest-server node scripts/verify-backup-service.mjs`.
-Expect six Python helper checks followed by 12 passing Node tests, with zero skips.
+Expect seven Python helper checks followed by 12 passing Node tests, with zero skips.
 The drill writes `.audit/backup-b6/loopback-summary.json` and `writer-quota-summary.json`.
 
 The helper checks persistent fences across a simulated boot/unit start, uncertain/live
@@ -34,12 +34,12 @@ Final evidence under `.audit/backup-b6/`:
 
 | Evidence | Result |
 | --- | --- |
-| fence-check-final.log, fence-v2check-final.log, fence-build-final.log | pinned checks and build passed |
-| fence-core-final.log | core 623, fleet 6 passed, schema 55 |
-| fence-daemon-final.log | local RPC, eviction, retained safety and retention: 32 passed |
-| fence-service-final.log | six Python and 12 Node tests passed, zero skips |
-| fence-b2-final.log | capture/SQLite/retry/exact restore: 5 passed |
-| fence-b4-final.log | built verifier/eviction: 13 passed |
+| integration-check-final.log, integration-v2check-final.log, integration-build-final.log | pinned checks and build passed |
+| integration-core-final.log | core 623, fleet 6 passed, schema 55 |
+| integration-daemon-final.log | local RPC, eviction, retained safety and retention: 32 passed |
+| integration-service-final.log | seven Python and 12 Node tests passed, zero skips |
+| integration-b2-final.log | capture/SQLite/retry/exact restore: 5 passed |
+| integration-b4-final.log | built verifier/eviction: 13 passed |
 | protocol.log | proxy/restic/fence phases and closed refusals |
 | writer-quota-summary.json | actual maintenance addition/deletion retally and backend cap refusal |
 | loopback-summary.json | operation/report retry, sole copy, SMTP, stuck fence, orphan recovery and auth checks |
@@ -59,3 +59,21 @@ schema/macOS runtime, inherited special-tar fixture and mmap/inaccessible-fd res
 operator bootstrap/install ordering, immutable extra pins, unknown rejected snapshots,
 service history growth and 30s token revocation lag. Bootstrap identity is trusted private
 configuration, not a cryptographic operator signature. No rollout is implied by these tests.
+
+
+The final B1 integration drill checks B1's nested namespace, real group-accessible 0660/setgid
+modes, startup HTTP401, a complete logical tally including directories, the exact backend
+max-size, incomplete pre-inventory refusal and legacy permissions refusal before fencing.
+Failed admission requeues the same monthly run; its durable backoff prevents immediate
+re-admission while another independent weekly job can proceed. After clock advancement,
+the real prune reduces six snapshots to four and bounded check succeeds.
+
+The root helper has seven named tests in integration-service-final.log. The 12 named Node
+tests include the scheduled-owner/SMTP/prune run, inventory failure, expiry recovery,
+unknown arrivals, failed gateway initialization, retention, capacity, durable facts, RPC
+classification, protected keys, busy Cells and actual writer quota enforcement.
+A forced authority-close failure in daemon shutdown is NOT_COVERED. Two-UID/systemd/sudo
+installation and large-repository scan timing remain operator proof. The authority's standing
+ciphertext group write access is an explicit compromise residual, not OS-bounded deletion.
+Proof replacement currently fails because the author machine's Apiary runtime lacks versioned
+proof pins; see .audit/backup-b6/proof-replace-blocker.json. No live update was attempted.

@@ -217,3 +217,61 @@ reachable frontend. The loopback drill sends those headers without a grant and r
 It also kills a real disposable guard, proves automatic orphan recovery, tests a stuck fence,
 and checks actual writer quota retally after maintenance additions and deletions. Production
 sudoers, systemd boot behavior, target ACLs and actual SX65 installation remain untested.
+
+## Final B1 filesystem and readiness alignment
+
+The supported server model has separate writer and authority UIDs. The backend runs as the
+same dedicated nonroot authority UID (matching authority.uid) with supplementary ciphertext
+group `fleet-backup`. Both rest-server paths use `--group-accessible-repos`, UMask 0007 and
+setgid 2770 repository directories; ciphertext files are 0660. The guard sets only its own
+backend umask before spawn. Authority keys/config and state remain in private 0700 trees
+under /etc/fleet-backup-authority and /var/lib/fleet-backup-authority, primary private group,
+with writer/proxy InaccessiblePaths. The authority needs an owned private reserve/artifact
+directory too; do not point it at B1's root-only reserve directory without reviewed access.
+
+This is a trusted-authority boundary: its shared group grants standing write/unlink access
+to ciphertext. Compromise of the network-facing authority can delete repository data and
+bypass its own grant/pin checks. Group permissions are not an OS enforcement boundary against
+that process; grant bounds constrain the trusted implementation and authenticated callers.
+The server still receives no decryption or verifier private key. This residual is explicit
+in B1 v13 and requires operator review before activation.
+
+For existing repositories, Tormod must perform a one-time migration while writers and
+maintenance are stopped: validate each exact canonical encrypted instance tree, reject
+symlinks, change only that tree to the ciphertext group, set directories 2770 and files
+0660, then verify it. Never apply recursive changes to /p4/main/depots, Perforce or private
+authority state. New initialization uses these modes from the start. Before backend launch,
+a bounded preflight checks the repository root, metadata directories, sampled metadata and
+pack files, matching group and actual authority access. Every data prefix directory is checked; pack sampling stops after the first 16 packs found. File mode 0660 is a hygiene requirement stricter than unlink needs: writer umask drift refuses as permissions_invalid. Legacy 0600 files refuse early with
+`permissions_invalid` before forget. Sampling does not replace the full migration.
+
+The inventory root is the actual namespace (`repos/unit/unit` in B1); the backend root is
+its parent (`repos/unit`), derived from and checked against the configured repository URL.
+A complete pre-maintenance census records logical bytes including directory metadata,
+separately from physical allocated bytes. Incomplete logical inventory cannot admit a backend
+or supply its max-size input. The cap is the exact lesser of limit+admitted writes and
+logical observed bytes+admitted writes. Post-maintenance incomplete physical observations
+hold client admission/eviction; a valid static writer credential can still reach the freshly
+retallied, hard-capped writer. That is not an adversarial endpoint fence after restart.
+
+Successful writer start additionally requires an anonymous GET /unit/config on its allocated
+loopback port to return 401. Active/running alone is not ready. A bounded readiness timeout
+retains the marker/restarting phase; retry waits for the same already-started writer instead
+of repeatedly stopping its initial tally. The local drill uses B1's nested layout, checks
+real 0660/setgid bits, tests incomplete pre-inventory and legacy mode refusal, and proves the
+backend's exact argv/cap. A real two-UID deployment, sudoers and systemd remain operator proof.
+
+B1 reserveRoot alignment: `/p4/main/depots/fleet-backup/reserve/authority` is authority-owned
+0700, beneath a root:private-authority-group 0750 parent. Writers are not members of that
+private group. The authority has an explicit ReadWritePaths grant for its child; reserve
+accounting includes it. No agent created or changed these production paths.
+
+
+Failed maintenance admission is durable and retryable. After confirmed cleanup, the same
+run is queued with admissionFailures and notBefore: exponential 30-second delay capped by
+the configured weekly check interval. A held same-job fence still reconciles immediately.
+This prevents a persistent backend fault from repeatedly stopping and restarting writers.
+Unauthorized preflight never takes the writer fence. Failed cleanup retains its lease.
+On daemon shutdown, a durable held writer fence cannot skip RPC cleanup and runner-host
+detachment; the successor reconciles the persisted fence. The forced shutdown-catch branch
+is NOT_COVERED by a fault-injected daemon test.

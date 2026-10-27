@@ -1164,7 +1164,7 @@ export class HiveDaemon {
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
       this.backupServiceAbort.abort();
-      if(this.backupService instanceof BackupAuthority)await this.backupService.close();
+      if(this.backupService instanceof BackupAuthority){try{await this.backupService.close();}catch{this.log("backup.service.shutdown writer_fence_failed fence=held");}}
       if(this.backupGateway)await new Promise<void>(r=>this.backupGateway!.close(()=>r()));
       if(this.backupServiceWork)await this.backupServiceWork.catch(()=>undefined);
       for (const job of this.backupJobs.values()) job.abort.abort();

@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 """Root-only fixed-argv lifecycle helper. Never install or invoke it against real units in a drill."""
-import fcntl, json, os, re, signal, socket, subprocess, sys, time
+import fcntl, http.client, json, os, re, signal, socket, subprocess, sys, time
 from pathlib import Path
 FORMAT = 'honeybee.writer-fence.v1'
 class FenceError(Exception): pass
@@ -51,6 +51,18 @@ def reap_orphans(identity, uid):
             time.sleep(.02)
     return absent(identity)
 
+def writer_ready(port, machine):
+    deadline=time.monotonic()+10
+    while time.monotonic()<deadline:
+        connection=http.client.HTTPConnection('127.0.0.1',port,timeout=.5)
+        try:
+            connection.request('GET','/'+machine+'/config');response=connection.getresponse();response.read(1024)
+            if response.status==401: return True
+        except (OSError,http.client.HTTPException): pass
+        finally: connection.close()
+        time.sleep(.05)
+    return False
+
 def systemd(action, unit):
     if action in ('stop','start'):
         subprocess.run(['/usr/bin/systemctl', action, unit], check=True, timeout=10, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -68,7 +80,8 @@ def systemd(action, unit):
 
 class WriterFence:
     # Paths/adapters are injectable only by imported disposable tests, never CLI/env input.
-    def __init__(self, root=Path('/var/lib/fleet-backup/writer-fences'), allocations=Path('/etc/fleet-backup/allocations.tsv'), repos=Path('/p4/main/depots/fleet-backup/repos'), manager=systemd, gone=absent, inspect=proc, owner_uid=None):
+    def __init__(self, root=Path('/var/lib/fleet-backup/writer-fences'), allocations=Path('/etc/fleet-backup/allocations.tsv'), repos=Path('/p4/main/depots/fleet-backup/repos'), manager=systemd, gone=absent, inspect=proc, owner_uid=None, ready=writer_ready):
+        self.ready=ready
         self.owner_uid=os.getuid() if owner_uid is None else owner_uid
         if self.owner_uid<=0: raise FenceError()
         self.root, self.allocations, self.repos, self.manager, self.gone, self.inspect = root, allocations, repos, manager, gone, inspect
@@ -109,6 +122,7 @@ class WriterFence:
                     if time.monotonic()>deadline: raise FenceError()
                     time.sleep(.02)
             marker=self.root/machine;journal=self.root/(machine+'.json');unit='fleet-backup@'+machine+'.service'
+            port=int(next(r[1] for r in rows if r[0]==machine))
             row=json.loads(journal.read_text()) if journal.exists() else None
             if row and row['fenced'] and row.get('ownerUid')!=self.owner_uid: raise FenceError()
             if row and row['fenced'] and row['jobId']!=request['jobId']: raise FenceError()
@@ -125,7 +139,8 @@ class WriterFence:
                 if (not row or not row['fenced']) and action=='status' and backend is None and not marker.exists():
                     state=self.manager('status',unit)
                     if state.get('ActiveState')!='active' or state.get('SubState')!='running': raise FenceError()
-                    return {'format':FORMAT,'machine':machine,'jobId':request['jobId'],'unit':unit,'writer':'running','activeState':'active','subState':'running','backend':None,'fenced':False,'inventoryBytes':None,'inventoryComplete':False}
+                    if not self.ready(port,machine): raise FenceError()
+                    return {'format':FORMAT,'machine':machine,'jobId':request['jobId'],'unit':unit,'writer':'running','activeState':'active','subState':'running','backend':None,'fenced':False,'inventoryBytes':None,'inventoryComplete':False,'ready':True,'phase':'released'}
                 if not row or row['jobId']!=request['jobId'] or not row['fenced']: raise FenceError()
                 state=self.manager('status',unit)
                 if action=='status':
@@ -146,9 +161,9 @@ class WriterFence:
                     try: state=self.manager('start',unit)
                     except Exception:
                         fd=os.open(marker,os.O_CREAT|os.O_WRONLY|os.O_NOFOLLOW,0o600);os.fsync(fd);os.close(fd);self.sync();raise FenceError()
-                    if state.get('ActiveState')!='active' or state.get('SubState')!='running':
+                    if state.get('ActiveState')!='active' or state.get('SubState')!='running' or not self.ready(port,machine):
                         fd=os.open(marker,os.O_CREAT|os.O_WRONLY|os.O_NOFOLLOW,0o600);os.fsync(fd);os.close(fd);self.sync();raise FenceError()
-                    row['fenced']=False;row['phase']='released';self.save(journal,row)
+                    row['ready']=True;row['fenced']=False;row['phase']='released';self.save(journal,row)
             row['activeState']=state['ActiveState'];row['subState']=state['SubState'];row['writer']='running' if state['ActiveState']=='active' else 'stopped'
             return row
         finally: os.close(lock)
@@ -168,7 +183,7 @@ def main():
     owner_uid=authority_uid(Path('/etc/fleet-backup/authority.uid').read_text().strip(),os.environ.get('SUDO_UID'))
     request=json.loads(sys.stdin.read(4097))
     result=WriterFence(owner_uid=owner_uid).call(sys.argv[1],sys.argv[2],request)
-    print(json.dumps({k:result[k] for k in ['format','jobId','machine','unit','writer','activeState','subState','backend','fenced']+(['inventoryBytes','inventoryComplete'] if 'inventoryBytes' in result else [])}))
+    print(json.dumps({k:result[k] for k in ['format','jobId','machine','unit','writer','activeState','subState','backend','fenced','phase']+(['ready'] if 'ready' in result else [])+(['inventoryBytes','inventoryComplete'] if 'inventoryBytes' in result else [])}))
 if __name__=='__main__':
     try: main()
     except Exception:
