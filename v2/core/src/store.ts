@@ -11,7 +11,7 @@ import { DeliveryNotHeldError } from "./types.ts";
 import type { QuotaRecoveryRow, QuotaRecoveryReasonDetail } from "./types.ts";
 import { QUOTA_RECOVERIES_TABLE_SQL } from "./schema.ts";
 import { automaticQuotaRecovery, quotaRecoveryMatches, type QuotaObservedEvent } from "./quota.ts";
-import { MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
+import { MULTILINE_METADATA_MAX_BYTES, MULTILINE_UNSUPPORTED_DETAILS, MULTILINE_DELIVERY_SQL, MULTILINE_UNKNOWN_SQL, advanceMultilineUnsupported, deliveryHold, publicDeliveryFallback, readMultilineDelivery, readDeliveryFallback, type DeliveryFallback, type DeliveryHoldReceipt, type MultilineDeliveryRow } from "./multilineDelivery.ts";
 import { ExecutionStarts, type ExecutionStart, type ExecutionRuntimeHooks } from "./executionStart.ts";
 import {installRuntimeProcessIdentity, processIdentityValue, readRuntimeProcessIdentity, type RuntimeIdentityHooks, type RuntimeProcessIdentity} from "./runtimeProcessIdentity.ts";
 import {cleanupLocator, readTmuxCleanup, type TmuxCleanupHooks, type TmuxCleanupLocator, type TmuxCleanupState} from "./runtimeCleanup.ts";
@@ -4001,8 +4001,12 @@ export class CoreStore {
 
   recoverInFlightMultilineFallbacks(): void {
     this.tx(() => {
-      for (const row of this.listMultilineDeliveries()) {
-        if (row.fallback?.state === "in_flight") this.transitionMultilineFallback(row.messageId, "in_flight", "unknown", {detail: "delivery_pointer_daemon_restarted"});
+      const candidates = this.stmt(`SELECT message_id FROM multiline_delivery WHERE CASE
+        WHEN length(CAST(row_json AS BLOB)) > ${MULTILINE_METADATA_MAX_BYTES} THEN 0
+        WHEN json_valid(row_json) THEN json_extract(row_json, '$.fallback.state') = 'in_flight' ELSE 0 END`).all() as Row[];
+      for (const candidate of candidates) {
+        const row = this.multilineDelivery(Number(candidate.message_id));
+        if (row?.fallback?.state === "in_flight") this.transitionMultilineFallback(row.messageId, "in_flight", "unknown", {detail: "delivery_pointer_daemon_restarted"});
       }
     });
   }
@@ -4026,7 +4030,11 @@ export class CoreStore {
   }
 
   multilinePaneQuarantines(): MultilineDeliveryRow[] {
-    return this.listMultilineDeliveries()
+    return (this.stmt(`SELECT message_id FROM multiline_delivery WHERE CASE
+      WHEN length(CAST(row_json AS BLOB)) > ${MULTILINE_METADATA_MAX_BYTES} THEN 0
+      WHEN json_valid(row_json) THEN json_type(row_json, '$.fallback.paneInput') = 'object'
+        AND json_type(row_json, '$.fallback.paneInput.clearedAt') IS NULL ELSE 0 END`).all() as Row[])
+      .map(row => this.multilineDelivery(Number(row.message_id))!)
       .filter(row => row.fallback?.paneInput && row.fallback.paneInput.clearedAt === undefined);
   }
 
@@ -4182,7 +4190,10 @@ export class CoreStore {
 
   multilineSenderNotice(messageId: number): boolean {
     return this.multilineSenderReceipt(messageId) !== null
-      || this.listMultilineDeliveries().some(row => row.fallback?.senderNoticeMessageId === messageId);
+      || (this.stmt(`SELECT message_id FROM multiline_delivery WHERE CASE
+        WHEN length(CAST(row_json AS BLOB)) > ${MULTILINE_METADATA_MAX_BYTES} THEN 0
+        WHEN json_valid(row_json) THEN json_extract(row_json, '$.fallback.senderNoticeMessageId') = ? ELSE 0 END`).all(messageId) as Row[])
+        .some(row => this.multilineDelivery(Number(row.message_id))?.fallback?.senderNoticeMessageId === messageId);
   }
 
   private pendingMultilineReorders(beeId: string, selectedMessageId: number): MultilineDeliveryRow[] {
@@ -4560,8 +4571,8 @@ export class CoreStore {
   }
 
   mailBatchCandidate(messageId: number): boolean {
-    const message = this.getMessage(messageId);
-    if (!message || message.deliveredAt !== null || message.humanChat || this.mailBatchControl(messageId) || automationDeliveryClass(message.automationKind) !== "ordinary" || this.getDeliveryConfirmationIntent(messageId)) return false;
+    const message = this.stmt("SELECT delivered_at,human_chat,automation_kind FROM mailbox WHERE id=?").get(messageId) as Row | undefined;
+    if (!message || message.delivered_at !== null || message.human_chat || this.mailBatchControl(messageId) || automationDeliveryClass(message.automation_kind == null ? undefined : message.automation_kind as AutomationKind) !== "ordinary" || this.getDeliveryConfirmationIntent(messageId)) return false;
     const hold = this.multilineDelivery(messageId);
     return !hold || hold.detail !== "delivery_hold_state_unknown" && hold.fallback?.state !== "unknown" && (hold.heldSince === null || hold.fallback?.state === "ready");
   }
@@ -4597,7 +4608,7 @@ export class CoreStore {
       const releaseReason = this.mailBatchReleaseReason(beeId);
       if (!policy.enabled || releaseReason === null) return null;
       const seed = this.pendingHumanFirstSeedMessageId(beeId), handoff = this.pendingHandoffSeedMessageId(beeId);
-      let eligible = (this.stmt("SELECT message.* FROM mailbox AS message WHERE message.bee_id=? AND message.delivered_at IS NULL AND message.human_chat IS NULL AND (message.automation_kind IS NULL OR message.automation_kind IN ('obligation-notice','proof-notice')) AND message.id != ? AND message.id != ? AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=message.id) ORDER BY COALESCE(message.queue_order,message.id),message.id").all(beeId,seed ?? -1,handoff ?? -1) as Row[]).filter(row => this.mailBatchCandidate(Number(row.id))).slice(0, 64).map(row => this.mapPhoneMessage(row));
+      let eligible = (this.stmt(`SELECT message.id FROM mailbox AS message WHERE message.bee_id=? AND message.delivered_at IS NULL AND message.human_chat IS NULL AND (message.automation_kind IS NULL OR message.automation_kind IN ('obligation-notice','proof-notice')) AND message.id != ? AND message.id != ? AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=message.id) AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id=message.id AND CASE WHEN ${MULTILINE_UNKNOWN_SQL} THEN 1 ELSE held.held_since IS NOT NULL AND COALESCE(json_extract(held.row_json, '$.fallback.state'), '') != 'ready' END) ORDER BY COALESCE(message.queue_order,message.id),message.id LIMIT 64`).all(beeId,seed ?? -1,handoff ?? -1) as Row[]).filter(row => this.mailBatchCandidate(Number(row.id))).slice(0, 64).map(row => this.getMessage(Number(row.id))!);
       if (!eligible.length) return null;
       const at = this.now();
       let batch: MailBatch = { id: `batch-${beeId}-${eligible[0]!.id}`, beeId, memberIds: eligible.map(message => message.id), cutoff: eligible.at(-1)!.id, policyRevision: policy.updatedAt ?? 0, frozenAt: at, releaseReason, deliveredAt: null, deliveredGeneration: null };
