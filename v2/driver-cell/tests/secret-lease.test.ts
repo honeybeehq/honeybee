@@ -19,7 +19,7 @@ function running(pid: number) {
     return true;
   } catch { return false; }
 }
-for (const mode of ["kill", "stop", "normal", "deadline", "cancel-frozen", "supervisor-kill"] as const) {
+for (const mode of ["kill", "stop", "normal", "deadline", "cancel-frozen", "supervisor-kill", "supervisor-only-kill"] as const) {
   test(`secret runner lease kills child and grandchild on ${mode}`, async () => {
     const root = mkdtempSync(join(tmpdir(), "secret-lease-"));
     const paths = cellPaths(root, "wrap", "repo", "c1");
@@ -38,9 +38,9 @@ for (const mode of ["kill", "stop", "normal", "deadline", "cancel-frozen", "supe
       pids = JSON.parse(readFileSync(marker, "utf8"));
       assert.ok(pids.every(running));
       const start = Date.now();
-      if (mode === "supervisor-kill") {
+      if (mode === "supervisor-kill" || mode === "supervisor-only-kill") {
         supervisorPid = Number(readFileSync(supervisorMarker, "utf8"));
-        process.kill(-supervisorPid, "SIGKILL");
+        process.kill(mode === "supervisor-only-kill" ? supervisorPid : -supervisorPid, "SIGKILL");
       }
       if (mode === "cancel-frozen") {
         supervisorPid = Number(readFileSync(supervisorMarker, "utf8"));
@@ -49,8 +49,8 @@ for (const mode of ["kill", "stop", "normal", "deadline", "cancel-frozen", "supe
       }
       if (mode === "kill") owner.kill("SIGKILL");
       if (mode === "stop") owner.kill("SIGSTOP");
-      await until(() => pids.every(pid => !running(pid)), mode === "normal" ? 3000 : 2000);
-      if (mode === "supervisor-kill") await until(() => ownerExited);
+      await until(() => pids.every(pid => !running(pid)), mode === "supervisor-only-kill" ? 4000 : mode === "normal" ? 3000 : 2000);
+      if (mode === "supervisor-kill" || mode === "supervisor-only-kill") await until(() => ownerExited);
       console.log(JSON.stringify({ mode, cleanupMs: Date.now() - start, childAndGrandchildStopped: true }));
     } finally {
       if (supervisorPid && running(supervisorPid)) process.kill(supervisorPid, "SIGCONT");

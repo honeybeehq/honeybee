@@ -14,7 +14,7 @@ import {
   CELL_EXEC_MAX_OUTPUT_BYTES,
   clampCellExecTimeout,
 } from "../../core/src/cellMove.ts";
-import { pidAlive, processStartTimeMs } from "../../driver-hsr/src/psutil.ts";
+import { processStartTimeMs } from "../../driver-hsr/src/psutil.ts";
 import { defaultWritablePaths, sandboxEnabled, wrapWithSandbox, type NodeKind } from "./sandbox.ts";
 import type { CellPaths } from "./layout.ts";
 
@@ -223,13 +223,7 @@ function killTree(pid: number, signal: "SIGTERM" | "SIGKILL"): void {
   if (pid <= 0) return;
   try {
     process.kill(-pid, signal);
-  } catch {
-    try {
-      process.kill(pid, signal);
-    } catch {
-      /* gone */
-    }
-  }
+  } catch {}
 }
 
 function closesWithin(closed: Promise<number | null>, timeoutMs: number): Promise<boolean> {
@@ -258,7 +252,7 @@ async function terminateAndReap(
   if (reaped.reaped) return;
   if (pid > 0) killTree(pid, "SIGTERM");
   const closedAfterTerm = await closesWithin(closed, 1_000);
-  if (!closedAfterTerm && !reaped.reaped && pid > 0 && pidAlive(pid)) {
+  if (!closedAfterTerm && !reaped.reaped && pid > 0) {
     killTree(pid, "SIGKILL");
   }
   if (!reaped.reaped) await closed;
