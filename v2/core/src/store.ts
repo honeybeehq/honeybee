@@ -1,4 +1,4 @@
-import { backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
+import { snapshotStore, backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
 import { HUMAN_OUTPUT_SQL, HumanOutputLedger, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
 import { automationDeliveryClass, type AutomationKind, type AutomationReference, type MailBatch, type MailBatchingPolicy } from "./types.ts";
@@ -1729,6 +1729,10 @@ export class CoreStore {
     }
   }
 
+  snapshot(sourceBuild: string, destination: string, maxBytes: number, signal?: AbortSignal): Promise<StoreBackupReceipt> {
+    return snapshotStore(this.db, this.path, sourceBuild, destination, maxBytes, signal);
+  }
+
   backup(sourceBuild: string): StoreBackupReceipt {
     return backupStore(this.db, this.path, sourceBuild);
   }
@@ -2087,6 +2091,12 @@ export class CoreStore {
       this.db.exec("DROP TABLE cells_v30");
     }
     this.db.exec(BEE_MOVES_TABLE_SQL);
+    const cellOpsDdl = String(this.db.prepare("SELECT sql FROM sqlite_master WHERE name='cell_ops'").get()?.sql ?? "");
+    if (cellOpsDdl && !cellOpsDdl.includes("'backup'")) {
+      this.db.exec("ALTER TABLE cell_ops RENAME TO cell_ops_v51");
+      this.db.exec(CELL_OPS_TABLE_SQL);
+      this.db.exec("INSERT INTO cell_ops SELECT * FROM cell_ops_v51; DROP TABLE cell_ops_v51");
+    }
     this.db.exec(CELL_OPS_TABLE_SQL);
     this.db.exec(BEE_HANDOFFS_TABLE_SQL);
     this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
@@ -9984,6 +9994,10 @@ export class CoreStore {
   getCellOpByKey(idempotencyKey: string): CellOpRow | null {
     const row = this.stmt("SELECT * FROM cell_ops WHERE idempotency_key = ?").get(idempotencyKey) as Row | undefined;
     return row ? mapCellOp(row) : null;
+  }
+
+  listPendingBackupOps(): CellOpRow[] {
+    return (this.stmt("SELECT * FROM cell_ops WHERE kind = 'backup' AND status IN ('queued','running','outcome_unknown')").all() as Row[]).map(mapCellOp);
   }
 
   listCellOps(): CellOpRow[] {

@@ -1,6 +1,6 @@
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +8,7 @@ import { hashCellOpRequest, openCoreStore, type CoreStore } from "../../core/src
 import { localRepoIdentity } from "../../driver-cell/src/git.ts";
 import { deleteCell } from "../../driver-cell/src/remove.ts";
 import { commitInCell, g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
-import type { BeeMoveResult, CellCaptureResult, CellExecResult, CellRetainedRemoveResult, SpawnResult, ViewResult } from "../src/protocol.ts";
+import type { CommandsResult, BeeMoveResult, CellCaptureResult, CellExecResult, CellRetainedRemoveResult, SpawnResult, ViewResult } from "../src/protocol.ts";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 
 async function retainedFixture(t: TestContext) {
@@ -58,7 +58,7 @@ async function retainedFixture(t: TestContext) {
     daemon = await startDaemon(rig.dir);
     client = await daemon.client();
   };
-  return { cell, origin, request, view, restart, beeId: spawned.beeId };
+  return { cell, origin, request, view, restart, dataDir: rig.dir, beeId: spawned.beeId };
 }
 
 test("retained capture resolves the registry after daemon restart", { timeout: 120_000 }, async (t) => {
@@ -144,4 +144,61 @@ test("interrupted retained removal with wrapper present refuses the original key
   assert.equal(existsSync(f.cell.spaceDir), false);
   assert.equal((await f.view()).bee?.lifecycle, "active");
   assert.equal((await f.view()).bee?.cellId, null);
+});
+
+
+test("surviving backup guard fences retained exec, landing and forced removal after restart", { timeout: 120_000 }, async (t) => {
+  const f = await retainedFixture(t);
+  await f.restart(store => {
+    const op = store.putCellOp({ cellId: f.cell.id, kind: "backup", idempotencyKey: "capture-backup", requestHash: "fixture" });
+    store.updateCellOp(op.id, { status: "running", pid: process.pid });
+  });
+  const exec = await f.request<CellExecResult>("cell.exec", { cellId: f.cell.id, idempotencyKey: "exec-after-backup", argv: [process.execPath, "-e", "0"] });
+  assert.equal(exec.reason, "busy");
+  for (const [verb, params] of [
+    ["cell.capture", { beeId: f.beeId, targetBranch: "concurrent", mode: "merge", idempotencyKey: "landing-after-backup" }],
+    ["cell.retained.remove", { cellId: f.cell.id, idempotencyKey: "remove-after-backup", force: true }],
+  ] as const) {
+    await assert.rejects(f.request(verb, params), (error: unknown) => error instanceof Error && "code" in error && error.code === "runtime_refused");
+  }
+  assert.equal(existsSync(f.cell.spaceDir), true);
+});
+
+
+test("cell.backup uses owner configuration and refuses a busy retained Cell without starting tools", { timeout: 120_000 }, async t => {
+  const f=await retainedFixture(t);
+  const params={cellId:f.cell.id,idempotencyKey:"backup-request"};
+  assert.deepEqual(await f.request("cell.backup",params),{status:"refused",reason:"invalid_request"});
+  writeFileSync(join(f.dataDir,"backup.json"),JSON.stringify({repository:"rest:http://127.0.0.1:1/fixture/",passwordRef:"global/fleet-backup-fixture-repo-key",writerRef:"global/fleet-backup-fixture-writer"}));
+  await f.restart(store=>{
+    const op=store.putCellOp({cellId:f.cell.id,kind:"backup",idempotencyKey:"existing-guard",requestHash:"fixture"});
+    store.updateCellOp(op.id,{status:"running",pid:process.pid});
+  });
+  assert.deepEqual(await f.request("cell.backup",params),{status:"refused",reason:"busy"});
+  assert.equal(existsSync(f.cell.spaceDir),true);
+});
+
+
+test("mail waits behind an evicted Cell backup and boots afterward without charging the spawn budget", { timeout: 120_000 }, async t => {
+  const f=await retainedFixture(t);
+  const spawned=await f.request<SpawnResult>("spawn",{name:"backup-wake",agent:"stub",substrate:"cell",cell:{originRepo:f.origin.repo}});
+  const view=()=>f.request<ViewResult>("view",{beeId:spawned.beeId});
+  const ready=await waitFor(async()=>{const row=await view();return row.cell && row.view.runtimeState==="idle" ? row : null;},"backup wake fixture ready",60_000);
+  await f.request("stop",{beeId:spawned.beeId});
+  await waitFor(async()=>(await view()).view.runtimeState==="stopped","fixture stopped");
+  await f.request("cell.evict",{beeId:spawned.beeId,idempotencyKey:"fixture-eviction"});
+  let backupId="";
+  await f.restart(store=>{
+    const op=store.putCellOp({cellId:ready.cell!.id,kind:"backup",idempotencyKey:"wake-guard",requestHash:"fixture"});backupId=op.id;
+    store.updateCellOp(op.id,{status:"running",pid:process.pid});
+  });
+  await f.request("send",{beeId:spawned.beeId,body:"after backup",idempotencyKey:"wake-during-backup"});
+  const held=await waitFor(async()=>{const rows=await f.request<CommandsResult>("commands",{beeId:spawned.beeId});return rows.commands.find(row=>row.verb==="send_wake" && row.status==="queued");},"wake stays queued");
+  assert.equal(held.attempts,0);
+  assert.equal((await view()).bee?.spawnFailures,0);
+  assert.equal(existsSync(ready.cell!.spaceDir),false,"backup hold does not recreate a Cell");
+  await f.restart(store=>{store.updateCellOp(backupId,{status:"done",pid:null,failure:null});});
+  const resumed=await waitFor(async()=>{const row=await view();return row.view.runtimeState==="idle" ? row : null;},"wake resumes after backup",60_000);
+  assert.equal(resumed.bee?.spawnFailures,0);
+  assert.ok(!resumed.view.flags.includes("spawn_failed"));
 });

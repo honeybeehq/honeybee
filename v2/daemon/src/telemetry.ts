@@ -12,6 +12,7 @@
  * message across daemon restarts — INSERT OR IGNORE makes re-detection after
  * a reboot a no-op, so the counter never double-counts.
  */
+import { snapshotStore, type StoreBackupReceipt } from "../../core/src/storeBackup.ts";
 import { DatabaseSync } from "node:sqlite";
 import type { I1ViolationEvent } from "./loops.ts";
 
@@ -56,7 +57,9 @@ export class TelemetryStore {
   private readonly db: DatabaseSync;
   private closed = false;
 
+  private readonly path: string;
   constructor(path: string) {
+    this.path = path;
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec(TELEMETRY_SCHEMA);
@@ -95,6 +98,10 @@ export class TelemetryStore {
       detail: r.detail as string,
       ops: JSON.parse(r.ops as string) as string[],
     }));
+  }
+
+  snapshot(destination: string, maxBytes: number, signal?: AbortSignal): Promise<StoreBackupReceipt> {
+    return snapshotStore(this.db, this.path, "honeybee-telemetry", destination, maxBytes, signal);
   }
 
   close(): void {

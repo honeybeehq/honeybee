@@ -177,3 +177,69 @@ export function restoreStoreOffline(storePath: string, receiptPath: string): { p
   try { return restoreStore(storePath, resolve(receiptPath)); }
   catch (error) { throw new StoreRestoreError(`Restore refused: ${error instanceof Error ? error.message : String(error)}`); }
 }
+
+/** Owner-side online snapshot for background capture; never reads the live main/WAL as files. */
+export async function snapshotStore(db: DatabaseSync, storePath: string, sourceBuild: string, destination: string, maxBytes: number, signal?: AbortSignal): Promise<StoreBackupReceipt> {
+  const checkAbort = () => { if (signal?.aborted) throw new StoreBackupError("Snapshot interrupted"); };
+  checkAbort();
+  const { backup } = await import("node:sqlite");
+  const fs = await import("node:fs/promises");
+  const { createReadStream } = await import("node:fs");
+  const { Worker } = await import("node:worker_threads");
+  const pageSize = Number(db.prepare("PRAGMA page_size").get()?.page_size);
+  const size = Number(db.prepare("PRAGMA page_count").get()?.page_count) * pageSize;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0 || size > maxBytes) throw new StoreBackupError("Snapshot exceeds scratch budget");
+  const directory = resolve(destination);
+  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+  await fs.chmod(directory, 0o700);
+  const backupPath = join(directory, `${Date.now()}-${randomUUID()}.sqlite3`);
+  const receiptPath = backupPath.replace(/\.sqlite3$/, ".json");
+  let budgetExceeded = false;
+  try {
+    await backup(db, backupPath, { rate: 256, progress: ({ totalPages }) => { checkAbort(); if (totalPages * pageSize > maxBytes) { budgetExceeded = true; throw new StoreBackupError("Snapshot exceeds scratch budget"); } } });
+    checkAbort();
+    await fs.chmod(backupPath, 0o600);
+    if ((await fs.stat(backupPath)).size > maxBytes) throw new StoreBackupError("Snapshot exceeds scratch budget");
+    // The potentially long integrity scan owns only the closed export, on another thread.
+    const verified = await new Promise<{ schemaVersion: number; ddlDigest: string; integrityCheck: "ok" }>((accept, reject) => {
+      const worker = new Worker(`
+        const {parentPort,workerData}=require('node:worker_threads');
+        const {DatabaseSync}=require('node:sqlite');
+        const {createHash}=require('node:crypto');
+        const db=new DatabaseSync(workerData,{readOnly:true});
+        try {
+          const rows=db.prepare('PRAGMA integrity_check').all();
+          if(rows.length!==1 || rows[0].integrity_check!=='ok') throw Error('invalid snapshot');
+          const meta=db.prepare("SELECT 1 FROM sqlite_master WHERE name='meta' AND type='table'").get();
+          const version=meta ? Number(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value ?? 1) : 1;
+          if(!Number.isSafeInteger(version)||version<1) throw Error('invalid schema');
+          const ddl=db.prepare('SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type,name').all();
+          parentPort.postMessage({schemaVersion:version,ddlDigest:createHash('sha256').update(JSON.stringify(ddl)).digest('hex'),integrityCheck:'ok'});
+        } finally {db.close();}
+      `, { eval: true, workerData: backupPath });
+      const abort = () => { void worker.terminate().then(() => reject(new StoreBackupError("Snapshot interrupted"))); };
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+      worker.once("message", accept);
+      worker.once("error", () => reject(new StoreBackupError("Snapshot validation failed")));
+      worker.once("exit", code => { signal?.removeEventListener("abort", abort); if (code !== 0) reject(new StoreBackupError(signal?.aborted ? "Snapshot interrupted" : "Snapshot validation failed")); });
+    });
+    checkAbort();
+    const digest = createHash("sha256");
+    for await (const bytes of createReadStream(backupPath, { signal })) digest.update(bytes);
+    checkAbort();
+    const receipt: StoreBackupReceipt = { format: 1, sourceBuild, storePath: resolve(storePath), ...verified,
+      createdAt: new Date().toISOString(), sha256: digest.digest("hex"), backupPath, receiptPath };
+    const handle = await fs.open(backupPath, "r"); try { await handle.sync(); } finally { await handle.close(); }
+    await fs.writeFile(receiptPath, JSON.stringify(receipt) + "\n", { flag: "wx", mode: 0o600 });
+    const receiptHandle = await fs.open(receiptPath, "r"); try { await receiptHandle.sync(); } finally { await receiptHandle.close(); }
+    const directoryHandle = await fs.open(directory, "r"); try { await directoryHandle.sync(); } finally { await directoryHandle.close(); }
+    return receipt;
+  } catch (error) {
+    await fs.rm(backupPath, { force: true }); await fs.rm(receiptPath, { force: true });
+    if (signal?.aborted) throw new StoreBackupError("Snapshot interrupted");
+    if (budgetExceeded) throw new StoreBackupError("Snapshot exceeds scratch budget");
+    if (error instanceof StoreBackupError) throw error;
+    throw new StoreBackupError("Owner snapshot failed");
+  }
+}

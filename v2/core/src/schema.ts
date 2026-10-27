@@ -159,7 +159,8 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 51;
+// v52: owner-coordinated backup operations share the durable Cell gate.
+export const SCHEMA_VERSION = 52;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -858,7 +859,7 @@ CREATE TABLE IF NOT EXISTS bee_moves (
 CREATE TABLE IF NOT EXISTS cell_ops (
   id              TEXT PRIMARY KEY,
   cell_id         TEXT NOT NULL,
-  kind            TEXT NOT NULL CHECK (kind IN ('exec','remove')),
+  kind            TEXT NOT NULL CHECK (kind IN ('exec','remove','backup')),
   idempotency_key TEXT NOT NULL UNIQUE,
   request_hash    TEXT NOT NULL,
   status          TEXT NOT NULL CHECK (status IN ('queued','running','done','failed','outcome_unknown')),
@@ -875,6 +876,7 @@ CREATE TABLE IF NOT EXISTS cell_ops (
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL
 ) STRICT;
+CREATE INDEX IF NOT EXISTS cell_ops_backup_pending ON cell_ops(status) WHERE kind = 'backup';
 `;
 
 /**
@@ -967,7 +969,7 @@ export const CELL_OPS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS cell_ops (
   id              TEXT PRIMARY KEY,
   cell_id         TEXT NOT NULL,
-  kind            TEXT NOT NULL CHECK (kind IN ('exec','remove')),
+  kind            TEXT NOT NULL CHECK (kind IN ('exec','remove','backup')),
   idempotency_key TEXT NOT NULL UNIQUE,
   request_hash    TEXT NOT NULL,
   status          TEXT NOT NULL CHECK (status IN ('queued','running','done','failed','outcome_unknown')),
@@ -984,6 +986,7 @@ CREATE TABLE IF NOT EXISTS cell_ops (
   created_at      INTEGER NOT NULL,
   updated_at      INTEGER NOT NULL
 ) STRICT;
+CREATE INDEX IF NOT EXISTS cell_ops_backup_pending ON cell_ops(status) WHERE kind = 'backup';
 `;
 
 /**

@@ -1,3 +1,4 @@
+import type { BackupResult } from "../../daemon/src/backupCapture.ts";
 import { backupStoreOffline, restoreStoreOffline, StoreRestoreError, StoreBackupError } from "../../core/src/storeBackup.ts";
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
@@ -2646,8 +2647,15 @@ async function cmdArchive(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--no-measure] | cell evict <bee> [--force]";
+  const usage = "usage: hive cell backup <cellId> --idempotency-key <key> | cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--no-measure] | cell evict <bee> [--force]";
   switch (sub) {
+    case "backup": {
+      const key = parsed.flags.get("--idempotency-key");
+      if (!needle || typeof key !== "string") throw new Error("Usage: hive cell backup <cellId> --idempotency-key <key>");
+      const result = await withClient(ctx, c => c.request<BackupResult>("cell.backup", { cellId: needle, idempotencyKey: key }, 24 * 60 * 60_000));
+      emit(ctx, [result.status === "snapshot_created" ? `snapshot ${result.record.snapshotId} created; verification pending` : `${result.status}: ${result.reason}`], result, false);
+      return result.status === "snapshot_created" ? 0 : 2;
+    }
     case "gc": {
       const apply = parsed.flags.get("--apply") === true;
       const measure = parsed.flags.get("--no-measure") !== true;

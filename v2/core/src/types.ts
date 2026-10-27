@@ -1260,7 +1260,7 @@ export interface BeeMoveRow extends BeeMoveView {
   observedHead: string;
 }
 
-export const CELL_OP_KINDS = ["exec", "remove"] as const;
+export const CELL_OP_KINDS = ["exec", "remove", "backup"] as const;
 export type CellOpKind = (typeof CELL_OP_KINDS)[number];
 
 export const CELL_OP_STATUSES = ["queued", "running", "done", "failed", "outcome_unknown"] as const;

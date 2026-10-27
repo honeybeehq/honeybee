@@ -1,3 +1,5 @@
+import { StoreBackupError } from "../../core/src/storeBackup.ts";
+import { BackupError, captureAndSnapshot, remainingBackupScratch, retireBackupCheckpoint, validateBackupRequest, type BackupRecord, type BackupResult } from "./backupCapture.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
@@ -175,6 +177,7 @@ import {
   hasCommit,
   restoreEnvFiles,
   restoreKeptPaths,
+  cellKeepRootForCells,
   localRepoIdentity,
   parseSpaceName,
   readLedger,
@@ -711,6 +714,7 @@ export class HiveDaemon {
   private driver: SubstrateRouter | null = null;
   private core: DaemonCore | null = null;
   private telemetry: TelemetryStore | null = null;
+  private readonly backupJobs = new Map<string, { abort: AbortController; settled: Promise<void> }>();
   private rpc: RpcServer | null = null;
   private tickTimer: NodeJS.Timeout | null = null;
   /** Event-loop delay histogram: stalls anywhere (tick, RPC handler, fs) starve the accept loop. */
@@ -1146,6 +1150,23 @@ export class HiveDaemon {
       // v16: no login worker outlives the daemon (boot marks their flows interrupted).
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
+      for (const job of this.backupJobs.values()) job.abort.abort();
+      let backupDeadline: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          Promise.allSettled([...this.backupJobs.values()].map(job => job.settled)),
+          new Promise<never>((_, reject) => { backupDeadline = setTimeout(() => reject(new Error("Backup shutdown deadline exceeded; restart preserves interrupted state")), 30_000); }),
+        ]);
+      } catch (error) {
+        this.log("backup.shutdown.deadline outcome=interrupted stores=open");
+        // Even a stalled export must detach the runner owner and remove endpoints.
+        // Do not close SQLite connections still used by snapshot work.
+        await this.rpc?.close();
+        removeEndpointRecord(this.cfg.dataDir, this.instanceId);
+        this.core?.detachReconnectOwner();
+        this.driver?.detachAll();
+        throw error;
+      } finally { if (backupDeadline) clearTimeout(backupDeadline); }
       await this.rpc?.close();
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       this.core?.detachReconnectOwner();
@@ -1333,6 +1354,12 @@ export class HiveDaemon {
     this.authResume?.reconcile();
     this.refreshAccountActivations();
     const blocked = new Set([...this.blockedRuntimeStartBeeIds(),...this.executionStartHolds]);
+    for (const op of this.mustStore().listPendingBackupOps()) {
+      if (!this.cellOpHoldsGate(op)) continue;
+      const cell = this.mustStore().getCell(op.cellId);
+      const bee = cell ? this.mustStore().getBee(cell.sourceBeeId) : null;
+      if (bee?.cellId === op.cellId) blocked.add(bee.id);
+    }
     for (const row of this.mustStore().listLiveAuthInterruptions()) if (this.authResume?.holdsStoppedRuntime(row)) {
       blocked.add(row.beeId);
       if (this.runtimeStartHolds.get(row.beeId) !== "account_auth_needed") {
@@ -2331,6 +2358,8 @@ export class HiveDaemon {
         return this.rpcActionReportIdempotent(params);
       case "action.claim":
         return this.rpcActionClaim(params);
+      case "cell.backup":
+        return this.rpcCellBackup(params);
       case "cell.exec":
         return this.rpcCellExec(params);
       case "cell.retained.remove":
@@ -4658,6 +4687,14 @@ export class HiveDaemon {
 
   private cellOpProcessPresent(op: CellOpRow): boolean {
     if (op.pid == null) return false;
+    if (op.kind === "backup") {
+      const observed = inspectProcess(op.pid);
+      if (observed.kind === "gone") return false;
+      try {
+        const record = JSON.parse(op.stdout) as BackupRecord;
+        if (record.processIdentity && observed.kind === "present") return sameProcess(record.processIdentity, observed) && observed.state === "live";
+      } catch { /* Corrupt identity never proves process absence. */ }
+    }
     if (pidAlive(op.pid)) {
       this.log(`cell_op.pid_unverified op=${op.id} pid=${op.pid}`);
       return true;
@@ -4674,6 +4711,7 @@ export class HiveDaemon {
    */
   private cellOpHoldsGate(op: CellOpRow): boolean {
     if (op.kind === "remove") return false;
+
     if (op.pid != null) return this.cellOpProcessPresent(op);
     if (op.failure === "process_identity_unavailable") return true;
     return op.status === "queued" || op.status === "running";
@@ -4716,6 +4754,16 @@ export class HiveDaemon {
         }
         continue;
       }
+      if (op.kind === "backup") {
+        if (op.status === "running" || op.status === "queued") {
+          // Guarded tools cannot start before PID-save, and stop on daemon disconnect.
+          // Keep a surviving guard fenced until its process is actually absent.
+          if (op.pid == null) store.updateCellOp(op.id, { status: "failed", failure: "interrupted", pid: null });
+          else if (this.cellOpProcessPresent(op)) this.settleAbsentCellOp(op, "process_present");
+          else store.updateCellOp(op.id, { status: "failed", failure: "interrupted", pid: null });
+        }
+        continue;
+      }
       if (op.kind !== "exec") continue;
       if (op.status === "queued" || (op.status === "running" && op.pid == null)) {
         this.settleAbsentCellOp(op, "process_identity_unavailable");
@@ -4730,6 +4778,121 @@ export class HiveDaemon {
       if (op.cellId !== cellId || op.kind !== "exec" || op.status !== "running") continue;
       if (this.cellOpHoldsGate(op)) continue;
       this.settleAbsentCellOp(op, "process_absent");
+    }
+  }
+
+  /** Machine service entry point; destinations and Hem refs come only from owner configuration. */
+  private async rpcCellBackup(params: Record<string, unknown>): Promise<BackupResult> {
+    if (this.stopping) return { status: "refused", reason: "busy" };
+    let request;
+    try {
+      const config: unknown = JSON.parse(readFileSync(join(this.cfg.dataDir, "backup.json"), "utf8"));
+      if (!config || typeof config !== "object") throw new BackupError("invalid_request");
+      request = validateBackupRequest({ ...config, cellId: params.cellId, idempotencyKey: params.idempotencyKey });
+    } catch { return { status: "refused", reason: "invalid_request" }; }
+    const store = this.mustStore();
+    const cell = store.getCell(request.cellId);
+    if (!cell || (cell.state !== "retained" && cell.state !== "evicted")) return { status: "refused", reason: "not_retained" };
+    const hash = createHash("sha256").update(JSON.stringify(request)).digest("hex");
+    const existing = store.getCellOpByKey(request.idempotencyKey);
+    if (existing && (existing.kind !== "backup" || existing.cellId !== cell.id || existing.requestHash !== hash)) {
+      throw new RpcError("idempotency_conflict", "backup key is already bound to another request");
+    }
+    const previous = existing?.stdout ? JSON.parse(existing.stdout) as BackupRecord : undefined;
+    if (existing && previous?.state === "snapshot_created") {
+      if (existing.status !== "done") store.updateCellOp(existing.id, { status: "done", pid: null, failure: null });
+      return { status: "snapshot_created", record: previous };
+    }
+    if (previous?.checkpointRetired) return { status: "failed", reason: "checkpoint_retired", operationId: existing!.id };
+    if (existing && this.cellOpHoldsGate(existing)) return { status: "refused", reason: "busy", operationId: existing.id };
+    this.releaseAbsentCellOps(cell.id);
+    // One node-wide backup lane also serializes every repository's writer.
+    if (store.listPendingBackupOps().some(op => op.id !== existing?.id && this.cellOpHoldsGate(op))) {
+      return { status: "refused", reason: "busy" };
+    }
+    const bee = store.getBee(cell.sourceBeeId);
+    const runtime = store.currentRuntime(cell.sourceBeeId);
+    if (bee?.cellId === cell.id && runtime && runtime.state !== "stopped") return { status: "refused", reason: "busy" };
+    if (this.cellHasInFlightOp(cell.id, existing?.idempotencyKey) || bee?.activeMoveId || bee?.activeHandoffId
+      || this.driver?.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
+      return { status: "refused", reason: "busy" };
+    }
+    // No await between checking the gate and acquiring its durable row.
+    const op = existing ?? store.putCellOp({ cellId: cell.id, kind: "backup", idempotencyKey: request.idempotencyKey, requestHash: hash });
+    const scratchRoot = join(canonicalPath(this.cfg.dataDir), "backup-captures");
+    const scratch = join(scratchRoot, op.id);
+    const initial: BackupRecord = previous ?? {
+      format: "honeybee.backup-draft.v1", operationId: op.id, machine: this.cfg.accounts.allocationNodeId ?? hostname(),
+      cellId: cell.id, generation: op.id, repository: request.repository, manifestPath: join(scratch, "manifest.json"), manifestHash: "",
+      snapshotId: null, state: "capturing", capturedAt: null, snapshotAt: null, verification: "not_verified",
+      tools: { node: process.version, git: "", restic: "" },
+    };
+    const ownerProcess = inspectProcess(process.pid);
+    if (ownerProcess.kind !== "present") {
+      store.updateCellOp(op.id, { status: "failed", failure: "identity_probe_failed", pid: null });
+      return { status: "failed", reason: "outcome_unknown", operationId: op.id };
+    }
+    initial.processIdentity = { pid: process.pid, birth: ownerProcess.birth, bootId: ownerProcess.bootId };
+    store.updateCellOp(op.id, { status: "running", pid: process.pid, pidStartedAt: ownerProcess.startedAtMs, failure: null, stdout: JSON.stringify(initial) });
+    const abort = new AbortController();
+    let release!: () => void;
+    const settled = new Promise<void>(resolve => { release = resolve; });
+    this.backupJobs.set(op.id, { abort, settled });
+    try {
+      const executable = (name: string) => {
+        const path = resolveExecutable(name)?.path;
+        if (!path) throw new BackupError("tool_failed");
+        return path;
+      };
+      const initialBudget = await remainingBackupScratch(scratchRoot, op.id, request.maxScratchBytes).catch(error => {
+        if (error instanceof BackupError && error.code === "scratch_limit") return 0;
+        throw error;
+      });
+      for (const failed of initialBudget < request.maxScratchBytes ? store.listCellOps().sort((a,b) => a.createdAt - b.createdAt) : []) {
+        if (failed.kind !== "backup" || failed.id === op.id || failed.status !== "failed" || this.cellOpHoldsGate(failed)) continue;
+        const draft = failed.stdout ? JSON.parse(failed.stdout) as BackupRecord : null;
+        const uncertainUpload = draft?.state === "uploading" && ["tool_failed", "outcome_unknown", "interrupted"].includes(failed.failure ?? "");
+        if (draft?.checkpointRetired || uncertainUpload || failed.failure === "interrupted") continue;
+        await retireBackupCheckpoint(scratchRoot, failed.id);
+        store.updateCellOp(failed.id, { stdout: draft ? JSON.stringify({ ...draft, checkpointRetired: true }) : failed.stdout });
+      }
+      const budget = await remainingBackupScratch(scratchRoot, op.id, request.maxScratchBytes);
+      const record = await captureAndSnapshot({ ...request, maxScratchBytes: budget }, {
+        cell, machine: this.cfg.accounts.allocationNodeId ?? hostname(), operationId: op.id,
+        scratch, signal: abort.signal,
+        keepRoot: cellKeepRootForCells(this.cfg.cellsRoot),
+        tools: { git: executable("git"), restic: executable("restic"), hem: executable("hem") },
+        snapshotDatabases: async (destination, budget, signal) => {
+          const core = await store.snapshot(JSON.stringify(BUILD_IDENTITY), join(destination, "core"), budget, signal);
+          const telemetry = await this.telemetry?.snapshot(join(destination, "telemetry"), budget - statSync(core.backupPath).size, signal);
+          if (!telemetry) throw new BackupError("tool_failed");
+          return [core, telemetry];
+        },
+        save: record => {
+          const latest = store.getCellOp(op.id);
+          const identity = latest?.stdout ? (JSON.parse(latest.stdout) as BackupRecord).processIdentity : undefined;
+          store.updateCellOp(op.id, { stdout: JSON.stringify({ ...record, processIdentity: identity }) });
+        },
+        child: pid => {
+          const identity = inspectProcess(pid ?? process.pid);
+          if (identity.kind !== "present") throw new BackupError("outcome_unknown");
+          const latest = JSON.parse(store.getCellOp(op.id)!.stdout) as BackupRecord;
+          latest.processIdentity = { pid: identity.pid, birth: identity.birth, bootId: identity.bootId };
+          store.updateCellOp(op.id, { pid: identity.pid, pidStartedAt: identity.startedAtMs, stdout: JSON.stringify(latest) });
+        },
+      }, previous);
+      store.updateCellOp(op.id, { status: "done", pid: null, failure: null, stdout: JSON.stringify(record) });
+      return { status: "snapshot_created", record };
+    } catch (error) {
+      const reason = abort.signal.aborted ? "interrupted" : error instanceof BackupError ? error.code
+        : error instanceof StoreBackupError && error.message === "Snapshot exceeds scratch budget" ? "scratch_limit"
+        : error instanceof StoreBackupError && error.message === "Snapshot interrupted" ? "interrupted"
+        : ["ENOENT", "ELOOP"].includes((error as NodeJS.ErrnoException)?.code ?? "") ? "source_changed" : "tool_failed";
+      store.updateCellOp(op.id, { status: reason === "outcome_unknown" ? "outcome_unknown" : "failed", pid: null, failure: reason });
+      return { status: reason === "outcome_unknown" ? "outcome_unknown" : "failed", reason, operationId: op.id };
+    } finally {
+      this.backupJobs.delete(op.id);
+      release();
     }
   }
 
