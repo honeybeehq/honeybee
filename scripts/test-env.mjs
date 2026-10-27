@@ -12,5 +12,7 @@ export function compileCacheDir() {
 export function testEnv(extra = {}) {
   const dir = compileCacheDir();
   mkdirSync(dir, { recursive: true });
-  return { ...process.env, HIVE_NO_KEYCHAIN: process.env.HIVE_NO_KEYCHAIN ?? "1", NODE_COMPILE_CACHE: dir, ...extra };
+  const ambient = { ...process.env };
+  for (const key of ["HIVE_BEE_ID", "HIVE_BEE", "HIVE_PARENT", "HIVE_CELL", "HIVE_CELL_SPACE", "HIVE_V2_DATA_DIR", "HIVE_V2_SOCKET_PATH"]) delete ambient[key];
+  return { ...ambient, HIVE_NO_KEYCHAIN: ambient.HIVE_NO_KEYCHAIN ?? "1", NODE_COMPILE_CACHE: dir, ...extra };
 }

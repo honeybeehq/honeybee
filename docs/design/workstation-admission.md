@@ -64,3 +64,13 @@ runtime to a workstation before:
 
 No deployment or merge is part of this change. Validation uses disposable satellite
 fixtures with a simulated workstation kind and fake HOME, never a human workstation.
+
+The standard `npm test` and `npm run v2:daemon` worker launchers remove ambient
+bee identity and daemon-target variables through `scripts/test-env.mjs`. Explicit
+fixture overrides still win. Direct `node --test` and `npm run test:source` do not
+use that launcher; run them under `env -i` with a disposable short HOME. A short
+visible RUNNER_TEMP is also required by sandboxed Unix-socket delivery fixtures.
+The first upgraded open builds an audit expression index, which can scan the audit
+once. This boot cost is unmeasured. Apiary must attach admission context only to
+the supported new-admission/exec verbs and verify the new informational audit kind
+before activation; ordinary resume, handoff and messaging need no such marker.

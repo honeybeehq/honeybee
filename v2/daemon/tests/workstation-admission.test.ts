@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { runV2Cli } from "../../cli/src/main.ts";
 import { HiveDaemon } from "../src/daemon.ts";
 import { RpcError } from "../src/protocol.ts";
@@ -90,11 +91,13 @@ test("workstation RPC denies all automatic substrates before effects; local huma
   await waitFor(async () => (await operator.request<ViewResult>("view", { beeId: owner.beeId })).view.runtimeState === "idle", "human stub idle");
   const saved = process.env.HIVE_BEE_ID;
   const cliErrors: string[] = [];
+  const cliOutput: string[] = [];
   try {
     process.env.HIVE_BEE_ID = owner.beeId;
-    const exit = await runV2Cli(["spawn", "cli-child", "--agent", "stub", "--cwd", rig.dir, "--data-dir", rig.dir], { out: () => {}, err: line => cliErrors.push(line) });
+    const exit = await runV2Cli(["spawn", "cli-child", "--agent", "stub", "--cwd", rig.dir, "--data-dir", rig.dir, "--json"], { out: line => cliOutput.push(line), err: line => cliErrors.push(line) });
     assert.equal(exit, 1);
-    assert.match(cliErrors.join("\n"), /forage|workstation_heavy_work_denied/);
+    assert.equal(JSON.parse(cliOutput.at(-1)!).error.code, "workstation_heavy_work_denied");
+    assert.equal((await operator.request<SnapshotResult>("snapshot")).views.length, 1);
   } finally {
     if (saved === undefined) delete process.env.HIVE_BEE_ID;
     else process.env.HIVE_BEE_ID = saved;
@@ -254,4 +257,17 @@ test("dark fenced-spawn implementation preserves an admission refusal without ma
   const method = (HiveDaemon.prototype as unknown as { rpcFencedSpawn: (p: Record<string, unknown>, c: RpcConn) => Promise<unknown> }).rpcFencedSpawn;
   await assert.rejects(method.call(fake, {}, { executionCoordinatorUid: 1001 } as RpcConn), denied);
   assert.equal(unknown, 0);
+});
+
+
+test("standard test worker environment removes ambient runtime targets but retains explicit fixture overrides", () => {
+  const module = new URL("../../../scripts/test-env.mjs", import.meta.url).href;
+  const code = `import assert from 'node:assert/strict'; import {testEnv} from ${JSON.stringify(module)};
+    const keys=['HIVE_BEE_ID','HIVE_BEE','HIVE_PARENT','HIVE_CELL','HIVE_CELL_SPACE','HIVE_V2_DATA_DIR','HIVE_V2_SOCKET_PATH'];
+    for(const key of keys)process.env[key]='synthetic-runtime';
+    const clean=testEnv();for(const key of keys)assert.equal(clean[key],undefined,key);
+    const fixture=testEnv({HIVE_BEE_ID:'intentional-reader',HIVE_V2_DATA_DIR:'intentional-fixture'});
+    assert.equal(fixture.HIVE_BEE_ID,'intentional-reader');assert.equal(fixture.HIVE_V2_DATA_DIR,'intentional-fixture');
+    console.log('isolated');`;
+  assert.equal(execFileSync(process.execPath, ["--input-type=module", "-e", code], { encoding: "utf8" }).trim(), "isolated");
 });
