@@ -159,7 +159,7 @@ test("real ordinary paste post-Enter commit failure and corruption cannot claim 
   assert.equal(rows().filter(row => row.submittedBody === "ordinary\nbody").length, 1);
 });
 
-for (const clearWorks of [true, false, "unset_failure", "missing_identity", "legacy_query"] as const) test(`real pointer phase ${typeof clearWorks === "string" ? clearWorks : clearWorks ? "clears and retries the same publication" : "quarantines all later mail"}`, async t => {
+for (const clearWorks of [true, false, "unset_failure", "missing_identity", "legacy_query", "legacy_pointer"] as const) test(`real pointer phase ${typeof clearWorks === "string" ? clearWorks : clearWorks ? "clears and retries the same publication" : "quarantines all later mail"}`, async t => {
   ensureDeliveryFileArtifact();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "mfp-partial-"))), data = join(root, "data"), work = join(root, "work"), socketPath = join(root, "t.sock"), receipt = join(root, "receipt.jsonl");
   mkdirSync(data, {mode: 0o700}); mkdirSync(work, {mode: 0o700});
@@ -175,7 +175,7 @@ for (const clearWorks of [true, false, "unset_failure", "missing_identity", "leg
   const wait = async (condition: () => boolean) => {for (let i = 0; i < 400; i++) {now += 15; if (condition()) return; await new Promise(resolve => setTimeout(resolve, 15));} assert.fail("partial terminal timed out");};
   const bee = store.createBee({name: "partial", agent: "stub", substrate: "tmux", cwd: work}).bee; store.enqueueCommand("spawn", bee.id);
   await wait(() => {core.step(); return rows().some(row => row.ready) && store.currentRuntime(bee.id)?.state === "idle";});
-  if (clearWorks === "legacy_query") {
+  if (clearWorks === "legacy_query" || clearWorks === "legacy_pointer") {
     const serverTry = TmuxServer.prototype.try;
     TmuxServer.prototype.try = function(args, options) {
       if (this.socketPath === socketPath && args[0] === "show-options" && args.includes("-p")) return {status: 1, stdout: "", stderr: "simulated tmux2 pane options unsupported"};
@@ -183,9 +183,37 @@ for (const clearWorks of [true, false, "unset_failure", "missing_identity", "leg
       return serverTry.call(this, args, options);
     };
     t.after(() => {TmuxServer.prototype.try = serverTry;});
+    let heldMessageId: number | undefined;
+    if (clearWorks === "legacy_pointer") {
+      const writes: string[][] = [];
+      const intercepted = TmuxServer.prototype.try;
+      TmuxServer.prototype.try = function(args, options) {
+        if (this.socketPath === socketPath && ["set-option", "send-keys", "load-buffer", "paste-buffer"].includes(args[0]!)) writes.push(args);
+        return intercepted.call(this, args, options);
+      };
+      const message = store.send(bee.id, "one\ntwo").message;
+      heldMessageId = message.id;
+      for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+      core.step();
+      const fallback = store.getMessage(message.id)!.deliveryFallback!;
+      assert.equal(store.getMessage(message.id)!.deliveredAt, null);
+      assert.equal(fallback.state, "held");
+      assert.equal(fallback.detail, "pane_options_unsupported");
+      assert.equal(fallback.attemptPhase, "before_enter_cleared");
+      assert.equal(store.countUnknownMultilineHolds(), 0);
+      assert.equal(store.multilinePaneQuarantines().length, 0);
+      assert.deepEqual(writes, []);
+      for (let i = 0; i < 4; i++) core.step();
+      assert.equal(store.getMessage(message.id)!.deliveryFallback!.attempts, 1);
+      assert.deepEqual(writes, []);
+    }
     const ordinary = store.send(bee.id, "legacy-exact").message;
-    await wait(() => {core.step(); return store.getMessage(ordinary.id)?.deliveredAt !== null && rows().some(row => row.submittedBody === "legacy-exact");});
+    await wait(() => {core.step(); return store.getMessage(ordinary.id)?.deliveredAt !== null && rows().some(row => row.submittedBody?.endsWith("legacy-exact"));});
     assert.equal(store.multilinePaneQuarantines().length, 0);
+    if (heldMessageId !== undefined) {
+      assert.equal(store.getMessage(heldMessageId)!.deliveredAt, null);
+      assert.equal(rows().filter(row => row.submittedBody !== undefined).length, 1);
+    }
     return;
   }
   const hook = driver as unknown as {inject: (...args: unknown[]) => void}, inject = hook.inject.bind(driver); let partial = typeof clearWorks === "boolean";

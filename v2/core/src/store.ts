@@ -4088,7 +4088,7 @@ export class CoreStore {
 
   transitionMultilineFallback(messageId: number, expected: DeliveryFallback["state"], state: DeliveryFallback["state"], values: Partial<Pick<DeliveryFallback, "path" | "pointer" | "digest" | "bytes" | "generation" | "detail" | "attempts" | "attemptPhase" | "paneInput">> = {}): DeliveryFallback | undefined {
     const allowed: Record<DeliveryFallback["state"], readonly DeliveryFallback["state"][]> = {
-      preparing: ["ready", "held", "removed"], ready: ["in_flight", "held", "removed"], in_flight: ["ready", "unknown", "delivered", "removed"],
+      preparing: ["ready", "held", "removed"], ready: ["in_flight", "held", "removed"], in_flight: ["ready", "unknown", "held", "delivered", "removed"],
       unknown: ["ready", "delivered", "removed"], held: ["removed"], delivered: ["removed"], removed: [],
     };
     const acceptedBatch = expected === "ready" && state === "delivered" && this.getMessage(messageId)?.mailBatchId !== undefined && this.getMessage(messageId)?.deliveredAt != null;

@@ -417,8 +417,9 @@ export class TmuxDriver implements RuntimeDriver {
       if (!identity || expected && (expected.socketPath !== identity.socketPath || expected.paneId !== identity.paneId || expected.serverIdentity !== identity.serverIdentity)) return {accepted: false, reason: "not_ready", detail: "delivery_not_attempted"};
     }
     const quarantine = this.server.try(["show-options", "-p", "-q", "-v", "-t", p.paneId, "@honeybee_input_unknown"]);
-    const legacyVersion = quarantine.status !== 0 && !options?.singleAttempt ? this.server.try(["display-message", "-p", "#{version}"]) : null;
+    const legacyVersion = quarantine.status !== 0 ? this.server.try(["display-message", "-p", "#{version}"]) : null;
     const legacyWithoutPaneOptions = legacyVersion?.status === 0 && /^[12]\.\d+[a-z]?$/.test(legacyVersion.stdout.trim());
+    if (legacyWithoutPaneOptions && options?.singleAttempt) return {accepted: false, reason: "not_ready", detail: "pane_options_unsupported", attemptPhase: "before_enter_cleared"};
     if (quarantine.status !== 0 && !legacyWithoutPaneOptions || quarantine.status === 0 && quarantine.stdout.trim() !== "") return {accepted: false, reason: "not_ready", detail: "pane_input_unknown", attemptPhase: "before_enter_unknown"};
     if (options?.singleAttempt && this.server.try(["set-option", "-p", "-t", p.paneId, "@honeybee_input_unknown", `${generation}:${messageId}`]).status !== 0) return {accepted: false, reason: "not_ready", detail: "delivery_not_attempted"};
     if (p.deliveryMode === "type" && body.includes("\n")) {

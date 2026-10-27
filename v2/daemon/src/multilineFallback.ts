@@ -126,7 +126,7 @@ export class MultilineFallback {
       }
       if (outcome.pendingConfirmation) return {handled: true, accepted: false};
       const cleared = outcome.attemptPhase === "before_enter_cleared" || outcome.detail === "delivery_not_attempted";
-      this.store.transitionMultilineFallback(message.id, "in_flight", cleared ? "ready" : "unknown", {
+      this.store.transitionMultilineFallback(message.id, "in_flight", outcome.detail === "pane_options_unsupported" ? "held" : cleared ? "ready" : "unknown", {
         detail: outcome.detail ?? "delivery_pointer_outcome_unknown", ...(outcome.attemptPhase ? {attemptPhase: outcome.attemptPhase} : cleared ? {attemptPhase: "before_enter_cleared" as const} : {}),
         ...(paneInput ? {paneInput: {...paneInput, reason: outcome.detail ?? "delivery_pointer_outcome_unknown", ...(cleared || outcome.attemptPhase === "enter_attempted" && outcome.accepted ? {clearedAt: Date.now()} : {})}} : {}),
       });
