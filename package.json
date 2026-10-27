@@ -62,6 +62,7 @@
     "deploy": "node scripts/deploy-settle.mjs",
     "pretest": "npm run release:test && npm run build:test",
     "test": "node scripts/with-fixture-warden.mjs node scripts/run-tests.mjs",
+    "test:artifact-admission": "node scripts/t7-admission-fixture.mjs --expect admitted",
     "test:source": "node --import tsx --test --test-concurrency=8 --test-reporter=dot tests/*.test.ts",
     "execution:digest": "tsx scripts/update-execution-digest.mjs",
     "runtime:artifact": "tsx scripts/build-runtime-artifact.mjs",

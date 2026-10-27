@@ -320,11 +320,13 @@ offline backup. An owner implementing T5 can back up over RPC. The CLI fixtures
 prove the offline route with inert activation, not the running pre-T5 route or a
 real daemon boot. DEPLOY HOLD must be released separately before any live action.
 
-Schema support follows the core migration capability rather than a schema27
-allowlist. The receipt proves the prior store is recoverable; it does not make an
+Schema support admits schemas 27 through the candidate capability, except 29,
+following the core migration capability rather than a schema27 allowlist. The receipt proves the prior store is recoverable; it does not make an
 older binary compatible with newer data. The existing rollback schema guard still
 refuses an incompatible previous runtime before publication, and schema29 remains
 excluded because it belongs to reverted build `7374447d`, which the core refuses.
+The repeatable `npm run test:artifact-admission` check exercises the real deploy
+CLI against genuine historical stores; run `npm run build` first.
 The receipt's DDL digest is checked against the backup's actual schema; this does
 not compare all live data against the snapshot. Freshness uses this deploy's backup
 start time and fails closed if the wall clock moves backward.

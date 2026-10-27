@@ -188,7 +188,7 @@ symlinks. Retrying an interrupted installation safely completes that exposure.
 The daemon exposes `update.reservation.v1` through `update.status`,
 `update.reserve`, and `update.release`; `hive update-owner` is their thin CLI.
 An exact id/recovery-subject/epoch token reserves the closed
-`honeybee-v27-disabled-authority-v1` contract. Its monotonic epoch and active or
+`honeybee-backup-bound-recovery-v2` (schemas 27 through the candidate capability except reverted schema 29; fresh verified pre-deploy backup required) contract. Its monotonic epoch and active or
 released state live in the core SQLite metadata under the serialized writer.
 There is no lease timeout: a crashed helper resumes the same token. Release
 requires the exact installed and live Honeybee identity. The shared deployment
