@@ -20,6 +20,7 @@ export interface BackupVerificationOwner {
   stageRoot: string;
   maxRestoreBytes: number;
   trustedPublicKey: string;
+  child?:(pid:number|null)=>void;
   signal?: AbortSignal;
   resolveSecret?: BackupOwner["resolveSecret"];
 }
@@ -53,7 +54,7 @@ function abort(owner: BackupVerificationOwner): void { if (owner.signal?.aborted
 function pathValid(path: unknown): path is string {
   return typeof path === "string" && path.length < 16384 && path.startsWith("/") && path !== "/" && !/[\x00-\x1f\\]/.test(path) && posix.normalize(path) === path;
 }
-function processOwner(owner: BackupVerificationOwner) { return { tools: owner.tools, signal: owner.signal, child: () => undefined, resolveSecret: owner.resolveSecret }; }
+function processOwner(owner: BackupVerificationOwner) { return { tools: owner.tools, signal: owner.signal, child: owner.child??(() => undefined), resolveSecret: owner.resolveSecret }; }
 async function privateStage(owner: BackupVerificationOwner): Promise<string> {
   abort(owner);check(isAbsolute(owner.stageRoot) && owner.maxRestoreBytes > 0 && Number.isSafeInteger(owner.maxRestoreBytes));
   await mkdir(owner.stageRoot,{recursive:true,mode:0o700});

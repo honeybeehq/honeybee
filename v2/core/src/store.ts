@@ -1896,6 +1896,8 @@ export class CoreStore {
       }
     }
     if (this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cell_ops'").get()) {
+    this.db.exec("CREATE INDEX IF NOT EXISTS backup_drill_latest ON backup_service_state(json_extract(body,'$.value.payload.checkedAt') DESC,id DESC) WHERE role='machine' AND json_extract(body,'$.kind')='drill'");
+    this.db.exec("CREATE INDEX IF NOT EXISTS backup_restore_pending ON backup_service_state(id) WHERE json_extract(body,'$.kind')='restore' AND (json_extract(body,'$.value.status')='running' OR (json_extract(body,'$.value.status')='outcome_unknown' AND json_extract(body,'$.value.cleanup')='held'))");
     this.db.exec("CREATE INDEX IF NOT EXISTS cell_ops_mutation_pending ON cell_ops(cell_id,status) WHERE kind IN ('backup','remove') AND status IN ('queued','running','outcome_unknown')");
     this.db.exec("CREATE INDEX IF NOT EXISTS cell_ops_backup_latest ON cell_ops(cell_id,created_at DESC) WHERE kind = 'backup'");
     }
@@ -10050,6 +10052,14 @@ export class CoreStore {
       const next={...state,revision:expectedRevision+1};this.stmt("INSERT INTO backup_service_state(id,revision,role,body) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,role=excluded.role,body=excluded.body").run(next.id,next.revision,next.role,canonicalBackupJson(next));
       this.audit("backup_service.put",null,{state:next});return next;
     });
+  }
+
+  latestBackupRestoreDrills(limit=100):import('./backupClientFacts.ts').BackupRestoreDrill[]{
+    return(this.stmt("SELECT body FROM backup_service_state WHERE role='machine' AND json_extract(body,'$.kind')='drill' ORDER BY json_extract(body,'$.value.payload.checkedAt') DESC,id DESC LIMIT ?").all(Math.min(250,Math.max(1,limit))) as Row[]).map(row=>(JSON.parse(String(row.body)) as {value:import('./backupClientFacts.ts').BackupRestoreDrill}).value);
+  }
+
+  pendingBackupRestores():import('./backupService.ts').BackupRestoreOperation[]{
+    return(this.stmt("SELECT body FROM backup_service_state WHERE json_extract(body,'$.kind')='restore' AND (json_extract(body,'$.value.status')='running' OR (json_extract(body,'$.value.status')='outcome_unknown' AND json_extract(body,'$.value.cleanup')='held'))").all() as Row[]).map(row=>(JSON.parse(String(row.body)) as {value:import('./backupService.ts').BackupRestoreOperation}).value);
   }
 
   latestCellBackupOp(cellId:string):CellOpRow|null {

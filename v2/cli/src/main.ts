@@ -4966,7 +4966,11 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       case "task":
         return await cmdTask(ctx, parsed);
       case "backup": {
-        if(!["run","status"].includes(parsed.positional[1]??""))throw new Error("Usage: hive backup run | status [after]");
+        if(parsed.positional[1]==="trust-capacity-epoch"){
+          const epoch=parsed.positional[2];if(!epoch)throw new Error("Usage: hive backup trust-capacity-epoch <epoch>");
+          const result=await withClient(ctx,c=>c.request<{status:string}>("backup.capacity.epoch.accept",{epoch}));ctx.io.out(JSON.stringify(result));return result.status==="accepted"?0:2;
+        }
+        if(!["run","status"].includes(parsed.positional[1]??""))throw new Error("Usage: hive backup run | status [after] | trust-capacity-epoch <epoch>");
         const result=await withClient(ctx,c=>c.request(parsed.positional[1]==="run"?"backup.service.run":"backup.service.status",{after:parsed.positional[2]},24*60*60_000));ctx.io.out(JSON.stringify(result));return 0;
       }
       case "cell":

@@ -100,3 +100,5 @@ export type { VerifiedBackupReceipt, BackupVerificationPayload, VerifiedTranscri
 
 export * from "./backupService.ts";
 export * from "./backupPublication.ts";
+
+export * from './backupClientFacts.ts';

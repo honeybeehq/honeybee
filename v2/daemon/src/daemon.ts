@@ -1,3 +1,5 @@
+import {BackupRestoreService} from './backupRestoreService.ts';
+import {backupClientStatus,acceptRestoreDrill,acceptCapacityEpoch} from './backupClientStatus.ts';
 import { BackupMachineService } from "./backupMachineService.ts";
 import { BackupAuthority } from "./backupAuthority.ts";
 import { createBackupAuthorityGateway } from "./backupAuthorityGateway.ts";
@@ -723,6 +725,8 @@ export class HiveDaemon {
   private telemetry: TelemetryStore | null = null;
   private backupService: BackupMachineService | BackupAuthority | BackupMaintenanceExecutor | null = null;
   private backupGateway: ReturnType<typeof createBackupAuthorityGateway> | null = null;
+  private backupRestoreCleanup:Promise<unknown>=Promise.resolve();
+  private backupRestoreService: BackupRestoreService | null = null;
   private backupServiceAbort = new AbortController();
   private backupServiceWork: Promise<unknown> | null = null;
   private readonly backupPermits = new Set<string>();
@@ -1090,6 +1094,8 @@ export class HiveDaemon {
     this.identityRecoveryTimer.unref();
     this.sweepBeeTmpAtBoot(store);
     this.reconcileCellOpsAtBoot();
+    const restoreRecovery=new BackupRestoreService({store:this.mustStore(),dataDir:this.cfg.dataDir,tools:{git:"",restic:"",hem:""},now:Date.now,busy:()=>true});restoreRecovery.markInterrupted();
+    this.backupRestoreCleanup=new Promise<void>(r=>setImmediate(r)).then(()=>restoreRecovery.reconcile()).catch(()=>this.log("backup.restore.cleanup held"));
     // v31: wrappers parked by an earlier pass are already evicted; finish deleting them.
     void this.retention.sweep();
     this.retention.reconcileKept();
@@ -1164,6 +1170,8 @@ export class HiveDaemon {
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
       this.backupServiceAbort.abort();
+      await this.backupRestoreCleanup;
+      if(this.backupRestoreService)await this.backupRestoreService.settled();
       if(this.backupService instanceof BackupAuthority){try{await this.backupService.close();}catch{this.log("backup.service.shutdown writer_fence_failed fence=held");}}
       if(this.backupGateway)await new Promise<void>(r=>this.backupGateway!.close(()=>r()));
       if(this.backupServiceWork)await this.backupServiceWork.catch(()=>undefined);
@@ -2391,7 +2399,25 @@ export class HiveDaemon {
         if (typeof key !== "string" || !key) throw new RpcError("invalid_request", "Backup verifier authority is not trusted");
         return { receipt: this.mustStore().acceptBackupReceipt(params.receipt, key) };
       }
-      case "backup.service.status": return {states:this.mustStore().listBackupStates("",typeof params.after==="string"?params.after:"",250)};
+      case "backup.service.status": return backupClientStatus(this.mustStore(),this.cfg.dataDir,typeof params.after==="string"?params.after:"");
+      case "backup.capacity.epoch.accept": {try{return acceptCapacityEpoch(this.mustStore(),this.cfg.dataDir,params.epoch);}catch{return{status:"refused",reason:"capacity_unknown"};}}
+      case "backup.restore.drill.report": {
+        try{return acceptRestoreDrill(this.mustStore(),this.cfg.dataDir,params.drill);}catch{return{status:"refused",reason:"drill_invalid"};}
+      }
+      case "cell.backup.restore.dispose":
+      case "cell.backup.restore": {
+        if(this.stopping)return{status:"refused",reason:"interrupted"};
+        if(!this.backupRestoreService){
+          const executable=(name:string)=>resolveExecutable(name)?.path;
+          const git=executable("git"),restic=executable("restic"),hem=executable("hem");if(!git||!restic||!hem)return{status:"refused",reason:"tool_missing"};
+          this.backupRestoreService=new BackupRestoreService({store:this.mustStore(),dataDir:this.cfg.dataDir,tools:{git,restic,hem},now:Date.now,signal:this.backupServiceAbort.signal,busy:(cellId)=>{
+            const store=this.mustStore(),cell=store.getCell(cellId);if(!cell)return false;
+            const bee=store.getBee(cell.sourceBeeId),runtime=store.currentRuntime(cell.sourceBeeId);
+            return this.cellHasInFlightOp(cellId)||!!bee?.activeMoveId||!!bee?.activeHandoffId||this.executionStartHolds.has(cell.sourceBeeId)||!!(bee?.cellId===cell.id&&runtime&&runtime.state!=="stopped")||!!this.driver?.cell.hasProcess(cell.sourceBeeId,runtime?.generation??0);
+          }});
+        }
+        return this.backupRestoreCleanup.then<unknown>(()=>verb==="cell.backup.restore.dispose"?this.backupRestoreService!.dispose(params.idempotencyKey):this.backupRestoreService!.restore(params));
+      }
       case "backup.service.run": {
         if(this.backupServiceWork)return this.backupServiceWork;
         const work=this.runBackupService();this.backupServiceWork=work;

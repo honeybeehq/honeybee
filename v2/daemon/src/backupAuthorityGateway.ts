@@ -15,7 +15,7 @@ export function createBackupAuthorityGateway(authority:BackupAuthority){
   await refresh();const supplied=createHash('sha256').update(authorization.slice(7)).digest('hex');for(const entry of tokenHashes)if(equal(supplied,entry.hash)){insist(!principal,'scope_refused');principal=entry.principal;}
   insist(principal,'scope_refused');const body=await json(req);let result:unknown;
   switch(url.pathname){
-   case '/v1/status':insist(body.repository===principal.repository,'scope_refused');{const status=authority.status();result={lease:status.lease?.repository===principal.repository?status.lease:null,observations:status.observations.filter(o=>o.repository===principal.repository),watches:status.watches.filter(w=>w.repository===principal.repository)};}break;
+   case '/v1/status':insist(body.repository===principal.repository,'scope_refused');{const status=authority.status();result={lease:status.lease?.repository===principal.repository?status.lease:null,observations:status.observations.filter(o=>o.repository===principal.repository),watches:status.watches.filter(w=>w.repository===principal.repository),capacity:await authority.clientCapacity(principal)};}break;
    case '/v1/upload':result=await authority.acquireUpload(principal,body);break;
    case '/v1/heartbeat':result=authority.heartbeat(principal,body);break;
    case '/v1/release':insist(principal.role==='machine','scope_refused');result=authority.release(principal,body);break;

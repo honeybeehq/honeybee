@@ -1,3 +1,4 @@
+import {repoKey} from './backupServiceSupport.ts';
 /** Admission is synchronous; the owner gate is durable before the worker starts. */
 import { Worker } from "node:worker_threads";
 import { readFileSync, existsSync } from "node:fs";
@@ -39,6 +40,7 @@ export async function evictThroughOwner(cell:CellRow,mode:"evict"|"remove"|"trim
   }catch{return refuse("receipt_corrupt");}
   try{repository=JSON.parse(readFileSync(join(owner.dataDir,"backup.json"),"utf8")).repository;policy=JSON.parse(readFileSync(join(owner.dataDir,"backup-eviction.json"),"utf8"));if(!prior||!existsSync(prior.completionPath))checkEvictionPolicy(policy,repository,Date.now());}
   catch(error){return refuse(error instanceof VerifiedEvictionError?error.reason:"unknown_policy");}
+  if((!prior||!existsSync(prior.completionPath))&&existsSync(join(owner.dataDir,'backup-service.json'))){const health=store.backupState('machine:capacity-health:'+repoKey(repository),'capacityHealth','machine');if(!health?.value.valid)return refuse('capacity_stop');}
   if(record.repository!==repository)return refuse("receipt_stale");
   // There is no await between the final live-state check and the durable gate.
   if(owner.busy(cell,old?.idempotencyKey))return refuse("gate_busy");
