@@ -1755,6 +1755,7 @@ export interface HealthResult {
   tmuxCleanupInformational?: number;
   paneInputUnknown?: number;
   deliveryHoldUnknown?: number;
+  deliveryInFlight?: {count: number; overdue: number; oldestAgeMs: number; thresholdMs: number};
   deliveryPrepareAuditUnknown?: number;
   deliveryFileHelper?: {state: "ready" | "delivery_file_helper_unavailable"; target: string; artifactPath: string};
   identityDiagnostic?: {warning: "process_identity_unresolved" | null; count: number};

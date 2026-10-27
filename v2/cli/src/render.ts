@@ -585,6 +585,7 @@ export function renderHealth(result: HealthResult): string[] {
       dim(`${result.bees.archived} archived`),
     ]),
     joinParts([bold("i1"), `${i1} violations`]),
+    ...(result.deliveryInFlight ? [joinParts([bold("delivery in_flight"), `${result.deliveryInFlight.count} pending`, result.deliveryInFlight.overdue ? yellow(`${result.deliveryInFlight.overdue} aged >= ${result.deliveryInFlight.thresholdMs}ms`) : dim("0 aged"), `oldest ${result.deliveryInFlight.oldestAgeMs}ms`])] : []),
     ...(result.naming ? [namingHealthLine(result.naming)] : []),
     ...tmuxCleanupDoctor(result).lines,
   ];

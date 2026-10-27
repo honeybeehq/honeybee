@@ -5995,6 +5995,7 @@ export class HiveDaemon {
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
       deliveryHoldUnknown: store.countUnknownMultilineHolds(),
+      deliveryInFlight: store.multilineInFlightDiagnostics(),
       ...(params.includeDeliveryPrepareAuditUnknown === true ? {deliveryFileHelper: this.deliveryFiles.status()} : {}),
       ...(params.includeDeliveryPrepareAuditUnknown === true ? {deliveryPrepareAuditUnknown: store.countUnknownMultilinePrepareAudits()} : {}),
       paneInputUnknown: store.multilinePaneQuarantines().length,

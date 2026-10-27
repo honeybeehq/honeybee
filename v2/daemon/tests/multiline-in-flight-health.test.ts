@@ -1,0 +1,39 @@
+import {test} from "node:test";
+import assert from "node:assert/strict";
+import {openCoreStore, type CoreStore} from "../../core/src/store.ts";
+import {harness, makeBee, bootToRunning} from "../../core/tests/helpers.ts";
+import {HiveDaemon} from "../src/daemon.ts";
+import {loadNodeConfig} from "../src/config.ts";
+import type {HealthResult} from "../src/protocol.ts";
+import {makeDaemonDir} from "./helpers.ts";
+import {renderHealth} from "../../cli/src/render.ts";
+
+test("fixture daemon health and CLI show aged in-flight pointers without changing the claim", () => {
+  const h = harness(), rig = makeDaemonDir();
+  let now = 1_000_000;
+  const store = openCoreStore(h.path, {now: () => now, ephemeral: true});
+  try {
+    const {bee} = makeBee(store);
+    bootToRunning(store, bee.id, 100, 1);
+    const message = store.send(bee.id, "one\ntwo").message;
+    for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+    store.prepareMultilineFallback(message.id, rig.dir, []);
+    store.transitionMultilineFallback(message.id, "preparing", "ready", {path: `${rig.dir}/content`, pointer: `full text: ${rig.dir}/content`, digest: "a".repeat(64), bytes: 7});
+    store.transitionMultilineFallback(message.id, "ready", "in_flight", {generation: 1});
+    now += 300_000;
+    const daemon = new HiveDaemon(loadNodeConfig(rig.dir));
+    const internal = daemon as unknown as {store: CoreStore; rpcHealth(): HealthResult};
+    internal.store = store;
+    const seq = store.lastAuditSeq();
+    const health = internal.rpcHealth();
+    assert.deepEqual(health.deliveryInFlight, {count: 1, overdue: 1, oldestAgeMs: 300_000, thresholdMs: 300_000});
+    const text = renderHealth(health).join("\n");
+    assert.ok(text.includes("1 pending"));
+    assert.ok(text.includes("1 aged >= 300000ms"));
+    assert.ok(text.includes("oldest 300000ms"));
+    assert.equal(store.lastAuditSeq(), seq);
+    assert.equal(store.getMessage(message.id)?.deliveredAt, null);
+    assert.equal(store.multilineDelivery(message.id)?.fallback?.state, "in_flight");
+    console.log(JSON.stringify({fixture: "in-flight-health", deliveryInFlight: health.deliveryInFlight, state: "in_flight", deliveredAt: null, auditUnchanged: true}));
+  } finally {store.close(); h.cleanup(); rig.cleanup();}
+});

@@ -3999,6 +3999,13 @@ export class CoreStore {
     return Number((this.stmt(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get() as Row).count);
   }
 
+  multilineInFlightDiagnostics(now: number = this.now()): {count: number; overdue: number; oldestAgeMs: number; thresholdMs: number} {
+    const thresholdMs = 300_000;
+    const ages = this.listMultilineDeliveries().filter(row => row.fallback?.state === "in_flight")
+      .map(row => Math.max(0, now - row.lastAttemptAt));
+    return {count: ages.length, overdue: ages.filter(age => age >= thresholdMs).length, oldestAgeMs: ages.reduce((oldest, age) => Math.max(oldest, age), 0), thresholdMs};
+  }
+
   recoverInFlightMultilineFallbacks(): void {
     this.tx(() => {
       const rows = this.stmt(`SELECT message_id FROM multiline_delivery WHERE CASE WHEN json_valid(row_json)
@@ -4103,7 +4110,7 @@ export class CoreStore {
         const notice = this.send(message.sender, `[Honeybee automated delivery receipt, not typed by a person] delivery_file_fallback: message ${messageId} to ${JSON.stringify(row.beeId)} ${state === "unknown" ? this.unknownMultilineNotice() : "is held"}; full text: ${fallback.path ?? "unavailable"}; ${fallback.detail ?? "delivery outcome unknown"}`, { sender: "automation:delivery", senderKind: "automation", origin: "mail.send" });
         fallback = { ...fallback, senderNoticeMessageId: notice.message.id };
       }
-      this.putMultilineDelivery({ ...row, fallback }, `mail.delivery_fallback_${state}`);
+      this.putMultilineDelivery({ ...row, ...(state === "in_flight" ? {lastAttemptAt: this.now()} : {}), fallback }, `mail.delivery_fallback_${state}`);
       return fallback;
     });
   }
