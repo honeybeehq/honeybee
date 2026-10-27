@@ -1,0 +1,18 @@
+import {spawn} from 'node:child_process';
+import {writeFileSync,readFileSync,mkdirSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {once} from 'node:events';
+const dir=resolve('.audit/runner'); mkdirSync(dir,{recursive:true});
+const descendant=`setTimeout(()=>process.exit(0),2500);`;
+const parent=`const {spawn}=require('node:child_process'); const c=spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:['ignore','inherit','inherit']}); c.unref(); setTimeout(()=>process.exit(0),100);`;
+const config={beeId:'t24-fixture',generation:1,command:process.execPath,args:['-e',parent],cwd:process.cwd(),env:{PATH:process.env.PATH},sessionLogPath:dir+'/session',observationLogPath:dir+'/observations',sidecarPath:dir+'/stderr',socketPath:'/proc/self/cwd/.audit/runner/sock',statusPath:dir+'/status',bootLines:[]};
+const file=dir+'/config.json'; writeFileSync(file,JSON.stringify(config));
+const host=spawn(process.execPath,['--input-type=module','-e',`import {runRunnerHost} from './v2/driver-hsr/src/runner-host.ts'; runRunnerHost(${JSON.stringify(file)});`],{stdio:['ignore','pipe','pipe']});
+let stderr='';host.stderr.on('data',b=>stderr+=b);
+const closed=once(host,'close');
+await new Promise(r=>setTimeout(r,650));
+const status=JSON.parse(readFileSync(config.statusPath,'utf8'));
+const alive=pid=>{try{process.kill(pid,0);return true;}catch{return false;}};
+console.log(JSON.stringify({afterMs:650,agentAlive:alive(status.agentPid),hostAlive:alive(host.pid),statusExited:status.exited??false,bugObserved:!alive(status.agentPid)&&alive(host.pid)&&!status.exited}));
+await closed;
+console.log(JSON.stringify({finalStatusExited:JSON.parse(readFileSync(config.statusPath,'utf8')).exited,hostExitCode:host.exitCode,stderr}));

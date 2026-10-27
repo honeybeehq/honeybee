@@ -1,0 +1,5 @@
+ts	phase	decision	why	evidence	result
+2026-10-27T19:50:00Z	scope	Audit own source and finite local fixtures only	Live process counts are not authorized in this lane	findings/t24-honeybee-process-audit.md	No live attribution
+2026-10-27T19:52:00Z	probe	Reject exec timeout as confirmed defect	First fixture completed after grace	.audit/t24-cell-exec.mjs	1270ms; bugObserved false
+2026-10-27T19:54:00Z	probe	Report close-only host retention	Actual agent exits before its inherited pipes close	findings/t24-runner-close.mjs	Two runs bugObserved true
+2026-10-27T19:55:00Z	checks	Report blocked repository gates	Fresh checkout has no TypeScript executable	findings/t24-honeybee-process-audit.md	check/build tsc not found
