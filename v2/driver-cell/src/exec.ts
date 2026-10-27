@@ -300,7 +300,7 @@ export async function runCellExec(
     env,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
-  }); } catch (error) { if (spec.secretEnv) throw new Error("cell_execution_spawn_failed"); throw error; }
+  }); } catch (error) { if (spec.secretEnv || spec.outputCapture) throw new Error("cell_execution_spawn_failed"); throw error; }
   for (const name of Object.keys(secretEnv)) delete secretEnv[name];
   const reaped = { reaped: false, code: null as number | null };
   let spawnError: Error | null = null;
@@ -368,7 +368,7 @@ export async function runCellExec(
       privateOutput?.fill(0);
       stdout.finish(); stderr.finish(); stdout.dispose(); stderr.dispose();
       for (const name of Object.keys(env)) delete env[name as keyof typeof env];
-      if (spec.secretEnv) throw new Error("secret_execution_failed");
+      if (spec.secretEnv || spec.outputCapture) throw new Error("secret_execution_failed");
       throw error;
     }
   }
@@ -406,9 +406,9 @@ export async function runCellExec(
   if (privateOutput) {
     try {
       if (!spawnError && !spec.signal?.aborted && reaped.code === 0 && !privateFailed && spec.outputCapture!.expiresAt > Date.now()) spec.outputCapture!.receive(privateOutput.subarray(0, privateLength));
-    } finally { privateOutput.fill(0); }
+    } catch { throw new Error("cell_execution_failed"); } finally { privateOutput.fill(0); }
   }
-  if (spawnError) { if (spec.secretEnv) throw new Error("cell_execution_spawn_failed"); throw spawnError; }
+  if (spawnError) { if (spec.secretEnv || spec.outputCapture) throw new Error("cell_execution_spawn_failed"); throw spawnError; }
   if (spec.signal?.aborted) return outcome("interrupted", reaped.code);
   return outcome(reaped.code === 0 ? "ok" : "nonzero", reaped.code);
 }

@@ -67,6 +67,8 @@ test("private stdout capture releases only bounded successful bytes and suppress
   const paths = cellPaths(root, "wrap", "repo", "c1");
   mkdirSync(paths.spaceDir, { recursive: true });
   try {
+    const outputCapture = { maxBytes: 8, expiresAt: Date.now() + 30000, receive: () => { throw new Error("synthetic-private-callback-detail"); } };
+    await assert.rejects(runCellExec(paths, { sandbox: false, nodeKind: "satellite", outputCapture, argv: ["/nonexistent/synthetic-private-executable"] }), /^Error: cell_execution_spawn_failed$/);
     for (const mode of ["ok", "boundary", "nonzero", "overflow", "timeout", "expired", "cancel"] as const) {
       const released: Buffer[] = [];
       const controller = new AbortController();

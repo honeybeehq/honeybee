@@ -458,6 +458,7 @@ export class RpcServer {
       }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       let secretCapture: { leaseId: string; bytesBase64: string } | undefined;
+      let captureExpiresAt = 0;
       const result = withRpcCaller(caller, () => {
         const automationContext = frame.context as Record<string, unknown> | undefined;
         if (verb === "cell.execSecret" || verb === "cell.execSecret.cancel" || automationContext?.secretExecution !== undefined) {
@@ -465,7 +466,7 @@ export class RpcServer {
             || !automationContext || Object.keys(automationContext).some(key => key !== "secretExecution")) throw new RpcError("caller_not_trusted", "Secret execution requires the registered local authority");
           this.trust.require(peer, conn.ingress);
           if (!this.trust.nodeId) throw new RpcError("caller_not_trusted", "Secret execution requires registered node binding");
-          return this.opts.dispatch(verb, params, { ...conn, captureSecretOutput: (leaseId, bytes) => { secretCapture = { leaseId, bytesBase64: bytes.toString("base64") }; }, secretExecutionNodeId: this.trust.nodeId, secretExecution: automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext });
+          return this.opts.dispatch(verb, params, { ...conn, captureSecretOutput: (leaseId, bytes) => { secretCapture = { leaseId, bytesBase64: bytes.toString("base64") }; captureExpiresAt = (automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext).outputCapture?.expiresAt ?? 0; }, secretExecutionNodeId: this.trust.nodeId, secretExecution: automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext });
         }
         if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
         if (params.automationKind !== undefined || params.automationRef !== undefined || automationContext?.automationReference !== undefined) {
@@ -589,7 +590,7 @@ export class RpcServer {
         result.then(
           (value) => {
             span.end();
-            conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), ...(secretCapture ? { secretCapture } : {}) });
+            conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), ...(secretCapture && captureExpiresAt > Date.now() ? { secretCapture } : {}) });
             secretCapture = undefined;
           },
           (err) => {

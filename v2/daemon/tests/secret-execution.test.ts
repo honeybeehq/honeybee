@@ -49,9 +49,13 @@ test("secret RPC requires registered local process and node binding, refuses rel
   const socketPath = Buffer.byteLength(absoluteSocket) < 100 ? absoluteSocket : relative(process.cwd(), absoluteSocket);
   const keyFile = join(root, "private", "key");
   let accepted = 0;
-  const server = new RpcServer({ socketPath: socketPath, dataDir: root, localTrust: { requireObservationCaller: true, registrationKeyFile: keyFile }, log: () => {}, dispatch: (_verb, _params, conn) => {
+  const server = new RpcServer({ socketPath: socketPath, dataDir: root, localTrust: { requireObservationCaller: true, registrationKeyFile: keyFile }, log: () => {}, dispatch: async (_verb, _params, conn) => {
     accepted++;
     assert.equal(conn.secretExecutionNodeId, "node-1");
+    if (_params.outputCapture) {
+      conn.captureSecretOutput!("expiry-lease", Buffer.from("synthetic-expiry-private"));
+      await new Promise(resolve => setTimeout(resolve, 30));
+    }
     return { safe: true };
   } });
   let client: RpcClient | undefined;
@@ -77,6 +81,15 @@ test("secret RPC requires registered local process and node binding, refuses rel
     relay = await RpcClient.connect(socketPath, 3000, "node_relay");
     await assert.rejects(relay.request("cell.execSecret", a.params, 3000, { secretExecution: a.context }));
     assert.equal(accepted, 1);
+    const observed: string[] = [];
+    const socket = (client as unknown as { socket: import("node:net").Socket }).socket;
+    const observe = (chunk: string) => observed.push(chunk);
+    socket.on("data", observe);
+    const outputCapture = { name: "Expiry display", maxBytes: 128, leaseId: "expiry-lease", expiresAt: Date.now() + 10 };
+    await client.request("cell.execSecret", { ...a.params, outputCapture }, 3000, { secretExecution: { ...a.context, outputCapture } });
+    socket.off("data", observe);
+    assert.equal(observed.join("").includes("secretCapture"), false);
+    assert.equal(observed.join("").includes("synthetic-expiry-private"), false);
   } finally { client?.close(); relay?.close(); await server.close(); rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -100,6 +113,8 @@ test("daemon executes active owned Cell, keeps durable bytes clean, deduplicates
   mkdirSync(paths.spaceDir, { recursive: true });
   const cell = store.putCell({ id: "cell-fixture", sourceBeeId: bee.id, originRepo: root, sha: "a".repeat(40), wrapper: "wrap", spaceName: paths.spaceName, spaceDir: paths.spaceDir, gitCommonDirRealpath: root, objectFormat: "sha1", sandbox: false });
   const token = "synthetic-" + "durable-sentinel-92781";
+  const capturedBytes = Buffer.from("synthetic-captured-private-92781");
+  const capturedBase64 = capturedBytes.toString("base64");
   const base = { nodeId: "node-1", beeId: bee.id, cellId: cell.id };
   const absoluteSocket = join(root, "rpc.sock");
   const socketPath = Buffer.byteLength(absoluteSocket) < 100 ? absoluteSocket : relative(process.cwd(), absoluteSocket);
@@ -121,26 +136,45 @@ test("daemon executes active owned Cell, keeps durable bytes clean, deduplicates
   const scan = (dir: string): number => readdirSync(dir, { withFileTypes: true }).reduce((n, entry) => {
     const path = join(dir, entry.name);
     if (entry.isFile()) scannedFiles++;
-    return n + (entry.isDirectory() ? scan(path) : entry.isFile() && readFileSync(path).includes(Buffer.from(token)) ? 1 : 0);
+    return n + (entry.isDirectory() ? scan(path) : entry.isFile() && [Buffer.from(token), capturedBytes, Buffer.from(capturedBase64)].some(value => readFileSync(path).includes(value)) ? 1 : 0);
   }, 0);
   try {
     const frames: Record<string, unknown>[] = [];
     const socket = (client as unknown as { socket: import("node:net").Socket }).socket;
-    const observe = (chunk: string) => { for (const line of chunk.trim().split("\n")) frames.push(JSON.parse(line)); };
+    let frameBuffer = "";
+    const observe = (chunk: string) => {
+      frameBuffer += chunk;
+      for (let newline; (newline = frameBuffer.indexOf("\n")) >= 0;) {
+        frames.push(JSON.parse(frameBuffer.slice(0, newline)));
+        frameBuffer = frameBuffer.slice(newline + 1);
+      }
+    };
     socket.on("data", observe);
-    const captureArgv = [process.execPath, "-e", "process.stdout.write(Buffer.from([0,255,12,34]));process.stderr.write(Buffer.from([0,255,12,34]))"];
-    const outputCapture = { name: "TOKEN", maxBytes: 8, leaseId: "capture-lease", expiresAt: Date.now() + 30000 };
+    const captureArgv = [process.execPath, "-e", `process.stdout.write(Buffer.from(${JSON.stringify([...capturedBytes])}));process.stderr.write(Buffer.from(${JSON.stringify([...capturedBytes])}))`];
+    const outputCapture = { name: "TOKEN", maxBytes: 128, leaseId: "capture-lease", expiresAt: Date.now() + 30000 };
     const captureBinding = { ...base, executionId: "capture-once", argvDigest: secretArgvDigest(captureArgv), expiresAt: Date.now() + 30000, outputCapture };
     const captureParams = { ...captureBinding, argv: captureArgv, idempotencyKey: "capture-once" };
     const captureContext = { secretExecution: captureBinding };
     const captured = await client.request<import("../src/protocol.ts").CellExecResult>("cell.execSecret", captureParams, 10000, captureContext);
     assert.equal(captured.stdout, "");
     assert.equal(captured.stderr, "");
-    assert.deepEqual(frames.at(-1)?.secretCapture, { leaseId: "capture-lease", bytesBase64: Buffer.from([0,255,12,34]).toString("base64") });
+    assert.deepEqual(frames.at(-1)?.secretCapture, { leaseId: "capture-lease", bytesBase64: capturedBase64 });
     assert.equal(JSON.stringify(captured).includes("secretCapture"), false);
     assert.equal(JSON.stringify(store.dumpState()).includes("bytesBase64"), false);
-    await client.request("cell.execSecret", captureParams, 10000, captureContext);
+    const replay = await client.request<import("../src/protocol.ts").CellExecResult>("cell.execSecret", captureParams, 10000, captureContext);
+    assert.equal(replay.deduped, true);
     assert.equal(frames.at(-1)?.secretCapture, undefined);
+    const emptyArgv = [process.execPath, "-e", "process.stderr.write('discarded')"];
+    const emptyBinding = { ...captureBinding, executionId: "capture-empty", argvDigest: secretArgvDigest(emptyArgv) };
+    await client.request("cell.execSecret", { ...emptyBinding, argv: emptyArgv, idempotencyKey: emptyBinding.executionId }, 10000, { secretExecution: emptyBinding });
+    assert.deepEqual(frames.at(-1)?.secretCapture, { leaseId: "capture-lease", bytesBase64: "" });
+    const failureArgv = ["/nonexistent/synthetic-private-path"];
+    const failureBinding = { ...captureBinding, executionId: "capture-spawn-failure", argvDigest: secretArgvDigest(failureArgv) };
+    const failedCapture = await client.request<import("../src/protocol.ts").CellExecResult>("cell.execSecret", { ...failureBinding, argv: failureArgv, idempotencyKey: failureBinding.executionId }, 10000, { secretExecution: failureBinding });
+    assert.equal(failedCapture.stderr, "secret_execution_failed");
+    assert.equal(store.getCellOpByKey(failureBinding.executionId)?.failure, "secret_execution_failed");
+    assert.equal(frames.at(-1)?.secretCapture, undefined);
+    assert.equal(scan(root), 0);
     socket.off("data", observe);
     const argv = [process.execPath, "-e", "const fs=require('node:fs');fs.appendFileSync('runs','1');process.stdout.write(process.env.TOKEN);process.stderr.write(process.env.TOKEN)"];
     const first = await run("exec-durable", argv);
@@ -169,7 +203,7 @@ test("daemon executes active owned Cell, keeps durable bytes clean, deduplicates
     await assert.rejects(run("exec-durable", [process.execPath, "-e", "0"]), /idempotency key/);
     assert.equal(JSON.stringify(cancelled).includes(token), false);
     assert.equal(scan(root), 0);
-    assert.equal(logs.join("\n").includes(token), false);
+    for (const value of [token, capturedBytes.toString("utf8"), capturedBase64]) assert.equal(logs.join("\n").includes(value), false);
     assert.equal(JSON.stringify(first).includes(token), false);
     console.log(`synthetic scan: ${scannedFiles} raw fixture file reads, 0 matches; ${logs.length} log records, 0 matches; 2 output results, 0 matches; duplicate command runs=1`);
   } finally { client.close(); await server.close(); store.close(); rmSync(root, { recursive: true, force: true }); }
