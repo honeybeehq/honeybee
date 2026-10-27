@@ -66,6 +66,8 @@ export const RPC_ACCESS = {
   "bee.move": "mutate",
   "bee.move.get": "read",
   "cell.exec": "mutate",
+  "cell.execSecret": "mutate",
+  "cell.execSecret.cancel": "mutate",
   "cell.retained.remove": "mutate",
   "cell.gc": "mutate",
   "cell.evict": "mutate",

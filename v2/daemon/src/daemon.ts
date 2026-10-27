@@ -1,3 +1,4 @@
+import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
@@ -705,6 +706,7 @@ export class HiveDaemon {
   cfg: ResolvedNodeConfig;
   private readonly deliveryFiles = new DeliveryFiles();
   private store: CoreStore | null = null;
+  private readonly secretExecutions = new Map<string, {beeId: string; cellId: string; nodeId: string; controller: AbortController}>();
   private integrityCheck: Promise<{ ok: boolean; results: string[]; durationMs: number }> | null = null;
   private integrityCheckAt = -Infinity;
   private threadOperations: ThreadOperations | null = null;
@@ -2328,6 +2330,24 @@ export class HiveDaemon {
         return this.rpcActionReportIdempotent(params);
       case "action.claim":
         return this.rpcActionClaim(params);
+      case "cell.execSecret":
+        return this.rpcCellExecSecret(params, conn);
+      case "cell.execSecret.cancel": {
+        if (Object.keys(params).some(key => !["beeId", "cellId", "executionId", "nodeId"].includes(key)) || params.nodeId !== conn.secretExecutionNodeId
+          || [params.beeId, params.cellId, params.executionId, params.nodeId].some(value => typeof value !== "string" || !/^[A-Za-z0-9_.:-]{1,256}$/.test(value))) throw new RpcError("invalid_request", "secret_execution_invalid");
+        const cell = this.mustStore().getCell(params.cellId as string);
+        if (!cell || cell.sourceBeeId !== params.beeId) throw new RpcError("invalid_request", "secret_execution_refused");
+        const execution = this.secretExecutions.get(params.executionId as string);
+        if (execution && (execution.beeId !== params.beeId || execution.cellId !== params.cellId || execution.nodeId !== params.nodeId)) throw new RpcError("invalid_request", "secret_execution_invalid");
+        const prior = this.mustStore().getCellOpByKey(params.executionId as string);
+        if (prior && prior.cellId !== params.cellId) throw new RpcError("idempotency_conflict", "secret_execution_invalid");
+        if (!prior) {
+          const op = this.mustStore().putCellOp({ cellId: cell.id, kind: "exec", idempotencyKey: params.executionId as string, requestHash: hashCellOpRequest({ secretCancellation: params }), argv: [] });
+          this.mustStore().updateCellOp(op.id, { status: "failed", failure: "secret_execution_revoked" });
+        }
+        execution?.controller.abort();
+        return { cancelled: execution !== undefined || !prior || prior.failure === "secret_execution_revoked" };
+      }
       case "cell.exec":
         return this.rpcCellExec(params);
       case "cell.retained.remove":
@@ -2417,9 +2437,11 @@ export class HiveDaemon {
       case "task.supply.set":
         return this.withIdempotency(verb, params, () => this.rpcTaskSupplySet(params));
       case "archive":
-        return this.withIdempotency(verb, params, () =>
-          this.rpcEnqueue("archive", this.param(params, "beeId"), {}, params),
-        );
+        return this.withIdempotency(verb, params, () => {
+          const result = this.rpcEnqueue("archive", this.param(params, "beeId"), {}, params);
+          for (const execution of this.secretExecutions.values()) if (execution.beeId === params.beeId) execution.controller.abort();
+          return result;
+        });
       case "unarchive":
         return this.withIdempotency(verb, params, () =>
           this.rpcEnqueue("unarchive", this.param(params, "beeId"), {}, params),
@@ -4726,7 +4748,23 @@ export class HiveDaemon {
     }
   }
 
-  private async rpcCellExec(params: Record<string, unknown>): Promise<CellExecResult> {
+  private async rpcCellExecSecret(params: Record<string, unknown>, conn: RpcConn): Promise<CellExecResult> {
+    const admission = admitSecretExecution(params, conn.secretExecution, conn.secretExecutionNodeId);
+    try {
+      const bee = this.mustStore().getBee(admission.beeId);
+      const cell = this.mustStore().getCell(admission.cellId);
+      if (!bee || bee.lifecycle !== "active" || !cell || cell.sourceBeeId !== bee.id || cell.state === "removed" || cell.state === "evicted") throw new RpcError("invalid_request", "secret_execution_refused");
+      return await this.rpcCellExec(params, admission);
+    } catch (error) {
+      if (error instanceof RpcError) throw error;
+      throw new RpcError("invalid_request", "secret_execution_failed");
+    } finally {
+      for (const name of Object.keys(admission.env)) delete admission.env[name];
+      if (conn.secretExecution) for (const name of Object.keys(conn.secretExecution.env)) delete conn.secretExecution.env[name];
+    }
+  }
+
+  private async rpcCellExec(params: Record<string, unknown>, secret?: import("./protocol.ts").SecretExecutionContext): Promise<CellExecResult> {
     const store = this.mustStore();
     const cellId = this.param(params, "cellId");
     this.releaseAbsentCellOps(cellId);
@@ -4744,7 +4782,7 @@ export class HiveDaemon {
     }
     const timeoutMs = params.timeoutMs;
     const cwd = params.cwd;
-    const hash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null });
+    const hash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null, ...(secret ? { secretExecution: { beeId: secret.beeId, nodeId: secret.nodeId, executionId: secret.executionId, argvDigest: secret.argvDigest } } : {}) });
     const existing = store.getCellOpByKey(key);
     if (existing) {
       if (existing.requestHash !== hash || existing.kind !== "exec" || existing.cellId !== cellId) {
@@ -4778,7 +4816,7 @@ export class HiveDaemon {
       return this.cellExecResultFromOp(store.updateCellOp(op.id, { status: "failed", failure }), false);
     };
     if (busy) return persistRefusal("busy");
-    if (this.driver?.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
+    if (!secret && this.driver?.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
       return persistRefusal("cell_runtime_live");
     }
     const op = existing ?? store.putCellOp({
@@ -4795,7 +4833,10 @@ export class HiveDaemon {
     const parsed = parseSpaceName(cell.spaceName);
     if (!parsed) throw new RpcError("invalid_request", `cell.exec: malformed space name ${cell.spaceName}`);
     const paths = cellPaths(this.cfg.cellsRoot, cell.wrapper, parsed.repoName, parsed.cellId);
+    const controller = secret ? new AbortController() : undefined;
+    if (secret && controller) this.secretExecutions.set(secret.executionId, { beeId: secret.beeId, cellId, nodeId: secret.nodeId, controller });
     try {
+      if (secret && secret.expiresAt <= Date.now()) throw new Error("secret_execution_expired");
       const outcome = await runCellExec(
         paths,
         {
@@ -4805,6 +4846,7 @@ export class HiveDaemon {
           sandbox: cell.sandbox,
           nodeKind: this.cfg.nodeKind,
           kvm: this.cfg.cellKvm,
+          ...(secret ? { secretEnv: secret.env, signal: controller!.signal } : {}),
         },
         (spawned) => {
           store.updateCellOp(op.id, { pid: spawned.pid, pidStartedAt: spawned.pidStartedAt });
@@ -4822,10 +4864,12 @@ export class HiveDaemon {
       });
       return this.cellExecResultFromOp({ ...saved, timeoutMs: saved.timeoutMs ?? outcome.timeoutMs }, false);
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+      const detail = secret ? "secret_execution_failed" : err instanceof Error ? err.message : String(err);
       const reason = /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
       const saved = store.updateCellOp(op.id, { status: "failed", failure: reason === "containment" ? "containment" : detail });
       return { ...this.cellExecResultFromOp(saved, false), reason, stderr: detail, timeoutMs: timeoutMs ?? 0 };
+    } finally {
+      if (secret) this.secretExecutions.delete(secret.executionId);
     }
   }
 
