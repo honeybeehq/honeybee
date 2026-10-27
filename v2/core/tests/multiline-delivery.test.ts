@@ -481,8 +481,41 @@ for (const held of [false, true]) for (const corruption of ["malformed", "ready-
     assert.equal(store.countUnknownMultilineHolds(), 65);
     for (const id of ids) assert.equal(store.mailBatchCandidate(id), false);
     assert.equal(store.mailBatchReleaseReason(bee.id), "idle");
+    const bodyReads: number[] = [];
+    const getMessage = store.getMessage.bind(store);
+    store.getMessage = id => {bodyReads.push(id); return getMessage(id);};
     assert.deepEqual(store.freezeMailBatch(bee.id)?.memberIds, [later.id]);
+    assert.deepEqual(bodyReads, [later.id]);
+    store.getMessage = getMessage;
     for (const id of ids) assert.equal(store.mailBatchForMessage(id), null);
     if (held) assert.equal(store.readDaemonWork()[0]?.pending.some(row => ids.includes(row.id)), false);
+  } finally {store.close(); h.cleanup();}
+});
+
+test("positive selector prefilters preserve escaped keys and reject duplicate descriptors", () => {
+  const h = harness(); let store = h.open();
+  try {
+    const {bee} = makeBee(store); bootToRunning(store, bee.id, 100, 1);
+    const message = store.send(bee.id, "one\ntwo").message;
+    for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+    const base = store.multilineDelivery(message.id)!;
+    const fallback: DeliveryFallback = {code: "delivery_file_fallback", state: "in_flight", id: "00000000-0000-4000-8000-000000000000", ownerStoreId: "owner", root: "/data", worktrees: [], path: "/data/content", pointer: "full text: /data/content", digest: "a".repeat(64), bytes: 10, generation: 1, detail: null, senderNoticeMessageId: 999, attempts: 1, attemptPhase: "injecting", paneInput: {code: "pane_input_unknown", generation: 1, since: 1000, reason: "unverified_clear", socketPath: "/runtime/t.sock", paneId: "%1", serverIdentity: "1:2:3.5:4:5.5"}};
+    store.close();
+    const corrupt = new DatabaseSync(h.path);
+    for (const [offset, json] of [[1, "not-json"], [2, '{"extra":"' + "x".repeat(1024 * 1024)]] as const) {
+      corrupt.prepare("INSERT INTO multiline_delivery VALUES(?,?,?,?,?,?)").run(message.id + offset, bee.id, base.heldAt, base.heldSince, null, json);
+    }
+    corrupt.close();
+    const escaped = JSON.stringify({...base, fallback}).replace('"fallback":', String.raw`"\u0066allback":`).replace('"state":', String.raw`"\u0073tate":`).replace('"senderNoticeMessageId":999', String.raw`"\u0073enderNoticeMessageId":999`).replace('"paneInput":', String.raw`"\u0070aneInput":`);
+    for (const duplicate of [false, true]) {
+      const db = new DatabaseSync(h.path);
+      db.prepare("UPDATE multiline_delivery SET row_json=? WHERE message_id=?").run(duplicate ? escaped.slice(0, -1) + ',"extra":{"a":1,"a":2}}' : escaped, message.id);
+      db.close(); store = h.open();
+      assert.equal(store.multilineSenderNotice(999), !duplicate);
+      assert.equal(store.multilinePaneQuarantines().length, duplicate ? 0 : 1);
+      store.recoverInFlightMultilineFallbacks();
+      assert.equal(store.multilineDelivery(message.id)?.fallback?.detail, duplicate ? "delivery_hold_state_unknown" : "delivery_pointer_daemon_restarted");
+      store.close();
+    }
   } finally {store.close(); h.cleanup();}
 });
