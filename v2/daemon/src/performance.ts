@@ -22,6 +22,7 @@ const STATIC_SPAN_NAMES = [
   "daemon.tick.auto_title",
   "daemon.tick.watch",
   "rpc.serialize",
+  "rpc.watch.pass",
   "core.step.total",
   "core.step.observe",
   "core.step.flags",

@@ -251,7 +251,7 @@ test("RPC serialization profiling covers responses and watcher frames", async ()
     };
     await client.request("watch");
     server.flushWatch(
-      1,
+      () => 1,
       () => [
         {
           seq: 1,
@@ -273,6 +273,7 @@ test("RPC serialization profiling covers responses and watcher frames", async ()
   try {
     const artifact = readArtifacts(directory);
     const stats = spanSummary(artifact, "rpc.serialize");
+    assert.equal(requireNumber(spanSummary(artifact, "rpc.watch.pass").count, "watch pass count"), 1);
     assert.equal(requireNumber(stats.count, "serialize count"), 3);
     assert.equal(requireNumber(stats.errors, "serialize errors"), 0);
     assert.equal(

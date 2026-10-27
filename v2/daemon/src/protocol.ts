@@ -18,8 +18,6 @@ import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
  * Watch push frames (no id):
  *   {type:"delta", baseSeq, seq, events:[AuditRow…]}  — contiguous: baseSeq
  *     always equals the seq the client last held; anything else IS a gap.
- *   {type:"gap", seq} — the server bounded the batch (or restarted) and the
- *     client must refetch the snapshot (fail-closed cursor).
  */
 import type {
   AccountStatus,

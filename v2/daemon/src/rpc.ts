@@ -182,6 +182,8 @@ interface Connection extends RpcConn {
   relayLane: "node_relay" | "remote" | null;
   caller?: HelloCaller;
   watchCursor: number | null;
+  watchNeedsSnapshot: boolean;
+  send(obj: unknown, serialized?: string): void;
 }
 
 const RPC_VERB_SET = new Set<string>(RPC_VERBS);
@@ -246,7 +248,11 @@ export class RpcServer {
   private readonly performance: PerformanceRecorder;
   private readonly server: Server;
   private readonly conns = new Set<Connection>();
+  private readonly watchers = new Set<Connection>();
   private listening = false;
+  private watchSource: { latest: () => number; eventsSince: (fromSeq: number, limit: number) => AuditRow[]; maxBatch: number } | null = null;
+  private watchTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchScanRemaining = 0;
   private readonly credentials: PeerCredentials;
   private readonly trust: LocalRpcTrust;
   private readonly refusals: LocalRpcRefusals;
@@ -282,8 +288,13 @@ export class RpcServer {
   }
 
   close(): Promise<void> {
+    if (this.watchTimer) clearTimeout(this.watchTimer);
+    this.watchTimer = null;
+    this.watchSource = null;
+    this.watchScanRemaining = 0;
     for (const conn of this.conns) conn.socket.destroy();
     this.conns.clear();
+    this.watchers.clear();
     this.credentials.close();
     this.trust.close();
     this.refusals.close();
@@ -297,37 +308,95 @@ export class RpcServer {
     });
   }
 
-  /**
-   * Stream pending audit rows to every watching connection. Deltas carry
-   * `baseSeq` (what the client last held) and `seq` (new cursor): the client
-   * fails closed on any `baseSeq` mismatch. A batch larger than `maxBatch`
-   * becomes an explicit `{type:"gap"}` — the server never sends unbounded
-   * frames, and the gap is detectable by construction.
-   */
-  flushWatch(latestSeq: number, eventsSince: (fromSeq: number) => AuditRow[], maxBatch: number): void {
-    // Steady-state watchers share a cursor: fetch each distinct cursor once
-    // per pass instead of once per connection.
+  flushWatch(latestSeq: () => number, eventsSince: (fromSeq: number, limit: number) => AuditRow[], maxBatch: number): void {
+    this.watchSource = { latest: latestSeq, eventsSince, maxBatch: Math.min(256, Math.max(1, Math.floor(maxBatch))) };
+    this.watchScanRemaining = this.watchers.size;
+    if (!this.watchTimer) this.flushWatchPass();
+  }
+
+  private scheduleWatch(): void {
+    if (this.watchTimer || !this.watchSource || this.watchScanRemaining === 0) return;
+    this.watchTimer = setTimeout(() => {
+      this.watchTimer = null;
+      this.flushWatchPass();
+    }, 1);
+  }
+
+  private watchReady(conn: Connection, latest: number): boolean {
+    return conn.watchCursor !== null && conn.watchCursor !== latest && !conn.watchNeedsSnapshot
+      && !conn.socket.destroyed && !conn.socket.writableNeedDrain;
+  }
+
+  private flushWatchPass(): void {
+    this.performance.measureSync("rpc.watch.pass", () => this.writeWatchPass());
+  }
+
+  private writeWatchPass(): void {
+    const source = this.watchSource;
+    if (!source) return;
+    const latestSeq = source.latest();
     const byCursor = new Map<number, AuditRow[]>();
-    for (const conn of this.conns) {
-      if (conn.watchCursor == null || conn.watchCursor >= latestSeq) continue;
-      let events = byCursor.get(conn.watchCursor);
-      if (events === undefined) {
-        events = eventsSince(conn.watchCursor);
-        byCursor.set(conn.watchCursor, events);
-      }
-      if (events.length === 0) continue;
-      if (events.length > maxBatch) {
-        const frame: WatchFrame = { type: "gap", seq: latestSeq };
-        conn.send(frame);
-        conn.watchCursor = latestSeq;
-        this.opts.log(`rpc.watch.gap cursor=${latestSeq} dropped=${events.length}`);
+    const started = performance.now();
+    let visited = 0;
+    const scanLimit = this.watchScanRemaining;
+    let scanned = 0;
+    while (scanned++ < scanLimit && this.watchers.size > 0) {
+      this.watchScanRemaining--;
+      const conn = this.watchers.values().next().value!;
+      this.watchers.delete(conn);
+      this.watchers.add(conn);
+      if (!this.watchReady(conn, latestSeq)) {
+        if (performance.now() - started >= 4) break;
         continue;
       }
-      const last = events[events.length - 1] as AuditRow;
-      const frame: WatchFrame = { type: "delta", baseSeq: conn.watchCursor, seq: last.seq, events };
-      conn.send(projectQuestionDismissalDelta(projectAnswerTriggerDelta(projectMailDeliveryDelta(frame, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities));
-      conn.watchCursor = last.seq;
+      const cursor = conn.watchCursor!;
+      if (cursor > latestSeq) {
+        this.opts.log(`rpc.watch.head_regressed cursor=${cursor} head=${latestSeq}`);
+        conn.socket.destroy();
+        this.watchers.delete(conn);
+        if (++visited >= 8 || performance.now() - started >= 4) break;
+        continue;
+      }
+      let events = byCursor.get(cursor);
+      if (events === undefined) {
+        events = source.eventsSince(cursor, source.maxBatch).filter(row => row.seq <= latestSeq).slice(0, source.maxBatch);
+        byCursor.set(cursor, events);
+      }
+      if (events.length === 0 || events.some((row, index) => row.seq !== cursor + index + 1)) {
+        const frame: WatchFrame = { type: "gap", seq: latestSeq };
+        conn.send(frame);
+        conn.watchNeedsSnapshot = true;
+        this.opts.log(`rpc.watch.gap cursor=${cursor} head=${latestSeq}`);
+      } else {
+        const frame = projectQuestionDismissalDelta(projectAnswerTriggerDelta(projectMailDeliveryDelta({ type: "delta", baseSeq: cursor, seq: events[events.length - 1]!.seq, events }, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities) as WatchFrame;
+        let serialized: string | undefined;
+        if (frame.type === "delta") {
+          const encodedRows: string[] = [];
+          const envelope = `{"type":"delta","baseSeq":${cursor},"seq":`;
+          const overhead = Buffer.byteLength(envelope + ',"events":[]}\n');
+          let bytes = 0, count = 0;
+          for (const event of frame.events) {
+            const encoded = JSON.stringify(event);
+            const rowBytes = Buffer.byteLength(encoded);
+            const envelopeBytes = overhead + String(event.seq).length;
+            if (count > 0 && envelopeBytes + bytes + rowBytes + count > 128 * 1024) break;
+            bytes += rowBytes;
+            encodedRows.push(encoded);
+            count++;
+            if (envelopeBytes + bytes + count - 1 > 128 * 1024) break;
+          }
+          frame.events = frame.events.slice(0, count);
+          frame.seq = frame.events[count - 1]!.seq;
+          serialized = `${envelope}${frame.seq},"events":[${encodedRows.join(",")}]}\n`;
+        }
+        conn.send(frame, serialized);
+        if (frame.type === "gap") conn.watchNeedsSnapshot = true;
+        else conn.watchCursor = frame.seq;
+      }
+      if (this.watchReady(conn, latestSeq)) this.watchScanRemaining = Math.max(this.watchScanRemaining, this.watchers.size);
+      if (++visited >= 8 || performance.now() - started >= 4) break;
     }
+    this.scheduleWatch();
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
@@ -346,17 +415,23 @@ export class RpcServer {
       relayLane: null,
       get ingress() { return localUnix ? conn.relayLane ?? "local_unix" : "remote"; },
       watchCursor: null,
-      send: (obj: unknown) => {
+      watchNeedsSnapshot: false,
+      send: (obj: unknown, serialized?: string) => {
         if (socket.destroyed) return;
         this.performance.measureSync("rpc.serialize", () => {
-          socket.write(`${JSON.stringify(obj)}\n`);
+          socket.write(serialized ?? `${JSON.stringify(obj)}\n`);
         });
       },
       subscribeWatch: (cursor: number) => {
         conn.watchCursor = cursor;
+        conn.watchNeedsSnapshot = false;
+        this.watchers.add(conn);
       },
       alignWatch: (cursor: number) => {
-        if (conn.watchCursor != null) conn.watchCursor = cursor;
+        if (conn.watchCursor != null) {
+          conn.watchCursor = cursor;
+          conn.watchNeedsSnapshot = false;
+        }
       },
     };
     this.conns.add(conn);
@@ -365,8 +440,12 @@ export class RpcServer {
     // additive: a pre-v16 client ignores the extra key.
     conn.send({ protocol: PROTOCOL, capabilities: this.capabilities, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}) } satisfies HelloFrame);
     socket.on("data", (chunk: string) => this.onData(conn, chunk));
+    socket.on("drain", () => {
+      this.watchScanRemaining = this.watchers.size;
+      this.scheduleWatch();
+    });
     socket.on("error", () => socket.destroy());
-    socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.conns.delete(conn); });
+    socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.conns.delete(conn); this.watchers.delete(conn); });
   }
 
   private onData(conn: Connection, chunk: string): void {

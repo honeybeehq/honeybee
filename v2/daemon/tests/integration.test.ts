@@ -17,6 +17,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createConnection } from "node:net";
+import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { pidAlive } from "../../driver-hsr/src/psutil.ts";
 import type {
@@ -181,11 +182,11 @@ test("int.2: typed errors — closed list only (bee_not_found, invalid_request, 
 });
 
 test("int.3: watch — snapshot + contiguous seq deltas; induced gap forces a snapshot refetch", async () => {
-  // watchMaxBatch 5 with a burst of writes inside one tick = a guaranteed gap.
   const { dir, cleanup } = makeDaemonDir({ watchMaxBatch: 5, tickMs: 120 });
+  const control = join(dir, "watch-control.json");
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir);
+    daemon = await startDaemon(dir, { env: { HIVE_TEST_WATCH_AUDIT_CONTROL: control, NODE_OPTIONS: `--import=${fileURLToPath(new URL("./fixtures/watch-audit-control.mjs", import.meta.url))}` } });
     const worker = await daemon.client();
     const beeId = await spawnAndSettle(worker, "watched");
 
@@ -220,7 +221,14 @@ test("int.3: watch — snapshot + contiguous seq deltas; induced gap forces a sn
     await waitFor(() => deltas.length >= 1, "deltas flowing");
     assert.equal(chainBroken, false, "delta chain must be contiguous before the burst");
 
-    // Burst: > watchMaxBatch audit rows within one tick → server sends a gap.
+    const burstStart = cursor;
+    await Promise.all(Array.from({ length: 12 }, (_, index) => worker.request("bee.rename", { beeId, name: `retained-${index}` })));
+    await waitFor(() => cursor >= burstStart + 12, "retained overflow catches up");
+    assert.equal(gaps, 0);
+    assert.equal(chainBroken, false);
+    assert.ok(deltas.every(delta => delta.count <= 5));
+
+    writeFileSync(control, JSON.stringify({ kind: "delete-first" }));
     for (let i = 0; i < 10; i++) {
       await worker.request<SendRpcResult>("send", { beeId, body: `burst ${i}` });
     }

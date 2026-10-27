@@ -65,7 +65,7 @@ test("answer trigger negotiation: simultaneous legacy and capable sockets get in
     const newInitial = await modern.request<{ views: ViewResult[] }>("watch");
     assert.equal(oldInitial.views[0]!.bee!.lastTurnTrigger!.kind, "human");
     assert.equal(newInitial.views[0]!.bee!.lastTurnTrigger!.kind, "answer");
-    server.flushWatch(2, () => events, 10);
+    server.flushWatch(() => 2, () => events, 10);
     await waitFor(() => oldFrames.length > 0 && newFrames.length > 0 && phoneFrames.length > 0, "legacy, modern and phone subscriber deltas");
     assert.doesNotMatch(JSON.stringify(phoneFrames[0]), /"(?:kind|triggerKind)":"answer"/);
     if (phoneFrames[0]!.type === "delta") assert.equal((phoneFrames[0]!.events[0]!.payload.unansweredHumanMessage as { triggerKind: string }).triggerKind, "human");
@@ -82,7 +82,7 @@ test("answer trigger negotiation: simultaneous legacy and capable sockets get in
       const oldResult = await old.request(verb), newResult = await modern.request(verb);
       assert.deepEqual(oldResult, JSON.parse(JSON.stringify(newResult).replaceAll('"kind":"answer"', '"kind":"human"').replaceAll('"triggerKind":"answer"', '"triggerKind":"human"')));
     }
-    server.flushWatch(5, () => [...events, { ...events[0]!, seq: 5 }], 1);
+    server.flushWatch(() => 5, () => [...events, { ...events[0]!, seq: 5 }], 1);
     await waitFor(() => oldFrames.length === 2 && newFrames.length === 2, "both subscriber gaps");
     assert.deepEqual(oldFrames[1], { type: "gap", seq: 5 });
     assert.deepEqual(newFrames[1], oldFrames[1]);
@@ -90,7 +90,7 @@ test("answer trigger negotiation: simultaneous legacy and capable sockets get in
     const reconnect = await RpcClient.connect(join(dir, "rpc.sock")); clients.push(reconnect);
     const replayed: WatchFrame[] = []; reconnect.onEvent = (frame) => replayed.push(frame);
     await reconnect.request("watch");
-    server.flushWatch(2, () => events, 10);
+    server.flushWatch(() => 2, () => events, 10);
     await waitFor(() => replayed.length === 1, "legacy reconnect replay");
     assert.deepEqual(replayed[0], oldFrames[0]);
     for (const capabilities of [null, "turn-trigger.answer.v1", [42], [""], ["x".repeat(129)], Array(65).fill("x")]) {

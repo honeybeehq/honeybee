@@ -1508,9 +1508,7 @@ export class HiveDaemon {
     if (!store || !rpc) return;
     const latest = store.lastAuditSeq();
     if (latest > this.publishedSeq) this.publishedSeq = latest;
-    // maxBatch+1: one extra row is exactly enough to detect a gap without
-    // materializing the backlog (the 2026-08-21 flush stall).
-    rpc.flushWatch(latest, (fromSeq) => this.mirrorAuditRows(store.auditRows(fromSeq, this.cfg.watchMaxBatch + 1)), this.cfg.watchMaxBatch);
+    rpc.flushWatch(() => store.lastAuditSeq(), (fromSeq, limit) => this.mirrorAuditRows(store.auditRows(fromSeq, limit, 128 * 1024)), this.cfg.watchMaxBatch);
   }
 
   /**

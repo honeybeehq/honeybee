@@ -8886,13 +8886,21 @@ export class CoreStore {
     return row?.seq == null ? 0 : Number(row.seq);
   }
 
-  auditRows(fromSeq = 0, limit?: number): AuditRow[] {
+  auditRows(fromSeq = 0, limit?: number, maxBytes?: number): AuditRow[] {
     // Bounded when the caller says so: the watch flush reads maxBatch+1 to
     // detect a gap WITHOUT materializing the whole backlog — the unbounded
     // read here was the 5.9s accept-loop stall of 2026-08-21 (every watcher
     // with an old cursor triggered a full audit-table scan per tick).
     const rows = (
-      limit !== undefined
+      maxBytes !== undefined
+        ? this.db.prepare(`WITH bounded AS MATERIALIZED (
+            SELECT seq, octet_length(payload) + octet_length(kind) + 128 AS bytes
+            FROM audit WHERE seq > ? ORDER BY seq LIMIT ?
+          ), sized AS (
+            SELECT seq, sum(bytes) OVER (ORDER BY seq) AS total, row_number() OVER (ORDER BY seq) AS position FROM bounded
+          ) SELECT audit.* FROM audit JOIN sized ON audit.seq = sized.seq
+            WHERE sized.total <= ? OR sized.position = 1 ORDER BY audit.seq`).all(fromSeq, limit ?? 256, maxBytes)
+        : limit !== undefined
         ? this.db.prepare("SELECT * FROM audit WHERE seq > ? ORDER BY seq LIMIT ?").all(fromSeq, limit)
         : this.db.prepare("SELECT * FROM audit WHERE seq > ? ORDER BY seq").all(fromSeq)
     ) as Row[];

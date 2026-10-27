@@ -289,7 +289,6 @@ export interface NodeConfigFile {
   stopKillGraceMs?: number;
   /** Start-time tolerance for cross-restart re-adoption. */
   adoptToleranceMs?: number;
-  /** Watch stream: max delta events per frame before the server declares a gap. */
   watchMaxBatch?: number;
   socketPath?: string;
   logPath?: string;

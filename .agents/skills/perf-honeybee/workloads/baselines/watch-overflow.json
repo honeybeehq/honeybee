@@ -1,0 +1,86 @@
+{
+  "workload": "watch-overflow",
+  "seriesId": "watch-overflow-v1:trmd-metal-2:v24.18.0:10000:512:0:false:512:0",
+  "capturedAt": "2026-10-27T13:23:11.885Z",
+  "machine": "trmd-metal-2",
+  "runtime": "v24.18.0",
+  "complete": true,
+  "sourceHashes": {
+    "v2/core/src/store.ts": "0399c440d7d31e4760b24465899319dbaf244225",
+    "v2/daemon/src/rpc.ts": "7f6bc6eceff885bab987049198d363162be3a8ee",
+    "v2/daemon/src/daemon.ts": "3bba868c55c53949ac06f9036509eb0720be15ae",
+    "v2/daemon/src/performance.ts": "691a4bb8ed79a5074a54d76d06547be269349fe4"
+  },
+  "collector": "Generated disposable real hived; sequential before/after; contiguous transport/cursor only; timing excludes deliberate collection wait and includes receiver polling; no Apiary fold/install.",
+  "before": {
+    "snapshotBytes": [
+      21191043,
+      21191043,
+      21191043,
+      21191043,
+      21191043
+    ],
+    "gaps": [
+      1,
+      1,
+      1,
+      1,
+      1
+    ]
+  },
+  "counts": [
+    {
+      "deltaBytes": 133008,
+      "frames": 2,
+      "maxFrameRows": 256,
+      "maxFrameBytes": 66614,
+      "startSeq": 7413,
+      "endSeq": 7925
+    },
+    {
+      "deltaBytes": 133008,
+      "frames": 2,
+      "maxFrameRows": 256,
+      "maxFrameBytes": 66614,
+      "startSeq": 7925,
+      "endSeq": 8437
+    },
+    {
+      "deltaBytes": 133008,
+      "frames": 2,
+      "maxFrameRows": 256,
+      "maxFrameBytes": 66614,
+      "startSeq": 8437,
+      "endSeq": 8949
+    },
+    {
+      "deltaBytes": 133008,
+      "frames": 2,
+      "maxFrameRows": 256,
+      "maxFrameBytes": 66614,
+      "startSeq": 8949,
+      "endSeq": 9461
+    },
+    {
+      "deltaBytes": 133008,
+      "frames": 2,
+      "maxFrameRows": 256,
+      "maxFrameBytes": 66614,
+      "startSeq": 9461,
+      "endSeq": 9973
+    }
+  ],
+  "results": [
+    {
+      "metric": "replacementSnapshotBytes",
+      "samples": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "invariantHolds": true
+    }
+  ]
+}

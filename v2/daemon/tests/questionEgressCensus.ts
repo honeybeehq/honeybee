@@ -66,9 +66,11 @@ const policy: Readonly<Record<string, string>> = {
  'v2/core/src/store.ts:dismissQuestionWithKey:JSON.stringify':'canonical private SQLite receipt',
  'v2/core/src/store.ts:reportAction:finish':'canonical internal result; RPC dispatch census covers egress',
  'v2/daemon/src/loops.ts:buildHandoffContext:buildExtractiveHandoffContext':'text-only handoff; no question-row serialization',
- 'v2/daemon/src/rpc.ts:flushWatch:byCursor.set':'canonical private cursor batch',
- 'v2/daemon/src/rpc.ts:flushWatch:projectAnswerTriggerDelta':'outer question projector before send',
- 'v2/daemon/src/rpc.ts:flushWatch:projectMailDeliveryDelta':'delivery capability projection before outer question projector',
+ 'v2/daemon/src/rpc.ts:writeWatchPass:JSON.stringify':'already projected watch row/header serialization',
+ 'v2/daemon/src/rpc.ts:writeWatchPass:conn.send':'already projected watch frame',
+ 'v2/daemon/src/rpc.ts:writeWatchPass:byCursor.set':'canonical private cursor batch',
+ 'v2/daemon/src/rpc.ts:writeWatchPass:projectAnswerTriggerDelta':'outer question projector before send',
+ 'v2/daemon/src/rpc.ts:writeWatchPass:projectMailDeliveryDelta':'delivery capability projection before outer question projector',
  'v2/daemon/src/daemon.ts:flushWatchers:this.mirrorAuditRows':'canonical audit batch; RPC delta projection next',
  'v2/daemon/src/daemon.ts:mirrorAuditRows:mirrorBeeAuditRow':'canonical audit redaction; RPC delta projection next',
  'v2/daemon/src/daemon.ts:mirrorAuditRows:this.publicConfirmationAudit':'delivery-confirmation redaction; RPC question delta projection next',
@@ -101,14 +103,14 @@ export function assertQuestionEgress(census: ReturnType<typeof questionEgressCen
   assert.equal(census.mirrorReferences.length, 0, "New direct MirrorSnapshot consumer needs egress coverage");
   const boundaries = census.sends.map(row => {
     const argument = row.argument.trim(); let coverage: string;
-    if (argument.startsWith("projectQuestionDismissalDelta(")) coverage = "projected delta";
+    if (argument.startsWith("projectQuestionDismissalDelta(") || row.initializer?.startsWith("projectQuestionDismissalDelta(")) coverage = "projected delta";
     else if (argument.startsWith("{") && /ok:\s*true/.test(argument)) {assert.match(argument, /result:\s*projectQuestionDismissalResult\(/); coverage = "projected RPC result";}
     else if (argument.startsWith("{") && /ok:\s*false/.test(argument)) {
       if (/error:\s*projectQuestionDismissalError\(/.test(argument)) coverage = "projected RPC error";
       else {assert.match(argument, /error:\s*\{\s*code:\s*"(?:invalid_request|protocol_mismatch)"/); coverage = "literal request validation error";}
     }
     else if (argument.includes("satisfies HelloFrame")) coverage = "hello, no question rows";
-    else if (argument === "frame" && row.scope === "flushWatch") {assert.match(row.initializer ?? "", /type:\s*"gap"/); assert.doesNotMatch(row.initializer ?? "", /events|questions/); coverage = "gap, no question rows";}
+    else if (argument === "frame" && row.scope === "writeWatchPass") {assert.match(row.initializer ?? "", /type:\s*"gap"/); assert.doesNotMatch(row.initializer ?? "", /events|questions/); coverage = "gap, no question rows";}
     else assert.fail(`Uncovered RPC send boundary ${row.scope}`);
     return {file: row.file, line: row.line, scope: row.scope, coverage};
   });

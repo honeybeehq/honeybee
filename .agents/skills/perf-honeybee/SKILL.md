@@ -93,3 +93,5 @@ Referenced Cell projection is mapped by [fleet-cell-projection](workloads/fleet-
 Full watch transfer and RPC framing are mapped by [watch-snapshot](workloads/watch-snapshot.md).
 Its generated 20 MB fixture compares receiver algorithms against a disposable daemon;
 shared-host timing is recipe evidence, and cannot establish Apiary launch latency.
+
+[Retained watch overflow](workloads/watch-overflow.md) measures connected catch-up with generated real-daemon bursts, separate normal-tick/large-row/diagnostic controls, exact transport cursors, and explicit oversized-singleton limits. It does not measure Apiary installation or production overflow frequency.

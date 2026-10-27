@@ -1,0 +1,135 @@
+{
+  "protocolVersion": 1,
+  "id": "watch-overflow",
+  "title": "Retained watch overflow catch-up",
+  "lane": "streaming",
+  "processes": [
+    "hived",
+    "helper"
+  ],
+  "owners": [
+    "v2/core/src/store.ts@0399c440d7d31e4760b24465899319dbaf244225",
+    "v2/daemon/src/rpc.ts@7f6bc6eceff885bab987049198d363162be3a8ee",
+    "v2/daemon/src/daemon.ts@3bba868c55c53949ac06f9036509eb0720be15ae",
+    "v2/daemon/src/performance.ts@691a4bb8ed79a5074a54d76d06547be269349fe4"
+  ],
+  "effect": {
+    "user": "A connected watcher catches up retained audit history without a replacement snapshot.",
+    "assertions": [
+      "Exact contiguous sequence and payloads; frames contain at most 256 events.",
+      "Real missing history requires gap and snapshot."
+    ],
+    "exclusions": [
+      "Apiary folding/rendering and production overflow frequency"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "boundaries",
+      "key": "socket:v2/daemon/src/rpc.ts#1"
+    },
+    {
+      "inventory": "work-triggers",
+      "key": "timer:v2/daemon/src/rpc.ts#1"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "Outside this transfer recipe."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "Outside this transfer recipe."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Complete 20 MB responses measured after hello."
+    },
+    "scale": {
+      "matters": true,
+      "why": "Complete 20 MB responses measured after hello."
+    },
+    "background": {
+      "matters": false,
+      "why": "Outside this transfer recipe."
+    },
+    "release": {
+      "matters": false,
+      "why": "Outside this transfer recipe."
+    },
+    "recovery": {
+      "matters": false,
+      "why": "Outside this transfer recipe."
+    }
+  },
+  "fixture": {
+    "preset": "watch-overflow-synthetic-v1",
+    "isolationPolicy": 1,
+    "seed": "1000 stopped bees with generated 19000-byte seals; 512 pipelined renames before 10-second flush"
+  },
+  "recipe": {
+    "driver": "scripts/perf/watch-overflow.mjs",
+    "command": "node scripts/perf/watch-overflow.mjs --out .proof/watch-overflow/run.json",
+    "readiness": "Watch initial snapshot received.",
+    "completion": "Contiguous deltas or gap followed by replacement snapshot reaches target seq.",
+    "warmup": "One warmup then five samples.",
+    "teardown": "Stop only owned daemon; retain fixture and receipts.",
+    "serial": true,
+    "requires": [
+      "Node 24.18.0 with SQLite 3.53.1 octet_length",
+      "env -i with fake HOME/CODEX_HOME/CLAUDE_CONFIG_DIR, HIVE_NO_KEYCHAIN=1 and fail-closed mock HIVE_TEST_SECURITY_BIN"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "replacementSnapshotBytes",
+      "unit": "bytes",
+      "scope": "Replacement snapshot caused by retained overflow",
+      "collector": "JSON UTF-8 bytes including newline",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "measured",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "invariant": "All five captures: zero gaps/snapshot bytes; contiguous exact target cursor; <=256 events and <=128KiB encoded bytes OR one oversized singleton.",
+      "noise": "Deterministic work count. Timing is satellite recipe evidence only.",
+      "baseline": {
+        "seriesId": "watch-overflow-v1:trmd-metal-2:v24.18.0:10000:512:0:false:512:0",
+        "machine": "trmd-metal-2",
+        "runtime": "v24.18.0",
+        "buildMode": "dev",
+        "aggregation": "max",
+        "aggregate": 21191043,
+        "capturedAt": "2026-10-27T12:38:12.882659+00:00",
+        "receipt": ".agents/skills/perf-honeybee/workloads/baselines/watch-overflow.json",
+        "commit": "9ead5193db97bed924bfc3de128835ca72119e2f",
+        "samples": 5
+      },
+      "budget": {
+        "value": 0,
+        "unit": "bytes",
+        "comparator": "<=",
+        "status": "ruled",
+        "source": "User retained-overflow contract 2026-10-27: no replacement snapshot for complete retained history",
+        "condition": "Complete retained generated burst; genuine missing history and deliberate legacy projection gaps excluded"
+      }
+    }
+  ],
+  "gaps": [
+    "No Apiary fold/install or UI transaction bound; no Studio timing or production overflow frequency.",
+    "Decoded-row amplification is scoped to decoded/enriched rows; each prefix still examines up to256 row-size metadata records.",
+    "Soft4ms per pass can be exceeded by one indivisible row; ordinary RPC response queues are outside watch queue bounds."
+  ],
+  "updatedAt": "2026-10-27",
+  "readiness": "Measured deterministic transfer counts on metal-2: 5/5 retained512-event bursts use2frames/133008B and no replacement snapshot. Shared-host convergence timing is recipe evidence, not a Studio/Apiary baseline.",
+  "linked": [
+    {
+      "workload": "watch-snapshot",
+      "why": "Full initial snapshot remains necessary; rerun as displaced-cost control on the same satellite."
+    }
+  ]
+}
