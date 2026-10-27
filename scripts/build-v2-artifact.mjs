@@ -24,6 +24,7 @@ const runnerHostInputs = [
   "src/runtimeEnvironment.ts",
   "v2/driver-hsr/src/runner-host-main.ts",
   "v2/driver-hsr/src/runner-host.ts",
+  "v2/driver-hsr/src/runner-exit.ts",
   "src/peercredReceipt.ts",
 ];
 const runnerHostMaxBytes = 32 * 1024;

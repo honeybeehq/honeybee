@@ -1,3 +1,4 @@
+import { observeRunnerExit } from "./runner-exit.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -60,7 +61,7 @@ export function runGatedRunnerHost(cfg: RunnerHostConfig, sessionLogLine: (line:
       for (const line of cfg.bootLines) write(line);
     });
     child.once("error", () => finish({ spawnError: "Agent fork failed", exited: true, exitCode: null, exitSignal: null }));
-    child.once("close", (code, signal) => finish({ exited: true, exitCode: code, exitSignal: signal ?? null }));
+    observeRunnerExit(child, (code, signal, outputDrainTimedOut) => finish({ exited: true, exitCode: code, exitSignal: signal, ...(outputDrainTimedOut ? { outputDrainTimedOut } : {}) }));
     child.stdin?.on("error", () => {});
     let rest = ""; child.stdout?.setEncoding("utf8");
     child.stdout?.on("data", (chunk: string) => {

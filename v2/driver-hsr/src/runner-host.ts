@@ -1,3 +1,4 @@
+import { observeRunnerExit } from "./runner-exit.ts";
 import { runGatedRunnerHost } from "./gated-runner-host.ts";
 import { DeliveryReceipts, DELIVERY_FRAME_MAX_BYTES, DELIVERY_STATUS_CAPABILITY, type TaggedDelivery } from "./delivery-receipts.ts";
 import { stateFile, runnerStateFiles } from "../../harness/src/statePath.ts";
@@ -79,6 +80,7 @@ export interface RunnerStatus {
   observationError?: string;
   spawnError?: string;
   exited?: boolean;
+  outputDrainTimedOut?: boolean;
   exitCode?: number | null;
   exitSignal?: string | null;
   at: number;
@@ -238,10 +240,8 @@ export function runRunnerHost(configPath: string): void {
     appendFileSync(cfg.sidecarPath, `spawn error: ${String(err?.message ?? err)}\n`);
     finish({ spawnError: String(err?.message ?? err), exited: true, exitCode: null, exitSignal: null });
   });
-  // `close`, not `exit`: close fires after stdio drained, so the final
-  // stdout lines are in the session log before the exit facts land.
-  child.on("close", (code, signal) => {
-    finish({ exited: true, exitCode: code, exitSignal: signal ?? null });
+  observeRunnerExit(child, (code, signal, outputDrainTimedOut) => {
+    finish({ exited: true, exitCode: code, exitSignal: signal, ...(outputDrainTimedOut ? { outputDrainTimedOut } : {}) });
   });
   child.stdin?.on("error", () => undefined);
 
