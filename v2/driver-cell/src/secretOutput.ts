@@ -18,17 +18,27 @@ export class SecretOutput {
     this.pending = Buffer.concat([this.pending, chunk]);
     this.drain(false);
   }
-  finish(): void { this.drain(true); }
+  finish(normal = true): void {
+    if (normal) this.drain(true);
+    else {
+      this.pending.fill(0);
+      this.pending = Buffer.alloc(0);
+    }
+  }
   private drain(final: boolean): void {
     const limit = final ? this.pending.length : Math.max(0, this.pending.length - this.overlap);
     let cursor = 0;
     let plain = 0;
     while (cursor < limit) {
-      const value = this.firstByte.get(this.pending[cursor]!)?.find(value => cursor + value.length <= this.pending.length && this.pending.compare(value, 0, value.length, cursor, cursor + value.length) === 0);
+      const remaining = this.pending.length - cursor;
+      const value = this.firstByte.get(this.pending[cursor]!)?.find(value => {
+        const length = Math.min(value.length, remaining);
+        return (final || length === value.length) && this.pending.compare(value, 0, length, cursor, cursor + length) === 0;
+      });
       if (value) {
         if (cursor > plain) this.capture(this.pending.subarray(plain, cursor));
         this.capture(Buffer.from("[REDACTED]"));
-        cursor += value.length;
+        cursor += Math.min(value.length, remaining);
         plain = cursor;
       } else cursor++;
     }

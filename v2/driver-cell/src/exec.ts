@@ -347,6 +347,7 @@ export async function runCellExec(
   const privateOutput = spec.outputCapture ? Buffer.alloc(spec.outputCapture.maxBytes) : undefined;
   let privateLength = 0;
   let privateFailed = false;
+  let outputFailed = false;
   child.stdout?.on("data", (chunk: Buffer) => {
     if (!privateOutput) { intake(stdout, chunk); return; }
     if (privateFailed) return;
@@ -361,8 +362,8 @@ export async function runCellExec(
   });
   child.stderr?.on("data", (chunk: Buffer) => { if (!privateOutput) intake(stderr, chunk); });
   child.stdout?.on("error", () => { privateFailed = true; });
-  child.stdout?.on("error", () => stdout.finish());
-  child.stderr?.on("error", () => stderr.finish());
+  child.stdout?.on("error", () => { outputFailed = true; stdout.finish(false); });
+  child.stderr?.on("error", () => { outputFailed = true; stderr.finish(false); });
   let abortKill: ReturnType<typeof setTimeout> | undefined;
   const abort = () => {
     if (!reaped.reaped && child.pid) {
@@ -382,7 +383,7 @@ export async function runCellExec(
       spec.signal?.removeEventListener("abort", abort);
       if (abortKill) clearTimeout(abortKill);
       privateOutput?.fill(0);
-      stdout.finish(); stderr.finish(); stdout.dispose(); stderr.dispose();
+      stdout.finish(false); stderr.finish(false); stdout.dispose(); stderr.dispose();
       for (const name of Object.keys(env)) delete env[name as keyof typeof env];
       if (spec.secretEnv || spec.outputCapture) throw new Error("secret_execution_failed");
       throw error;
@@ -403,24 +404,24 @@ export async function runCellExec(
     pidStartedAt,
   });
 
-  const finish = () => {
+  const finish = (normal: boolean) => {
     lease?.destroy();
     if (abortKill) clearTimeout(abortKill);
     spec.signal?.removeEventListener("abort", abort);
-    stdout.finish(); stderr.finish();
+    stdout.finish(normal); stderr.finish(normal);
     stdout.dispose(); stderr.dispose();
     for (const name of Object.keys(env)) delete env[name as keyof typeof env];
   };
   const timedOut = !(await closesWithin(closed, timeoutMs));
   if (timedOut) {
     await terminateAndReap(child, pid, reaped, closed);
-    finish();
+    finish(false);
     privateOutput?.fill(0);
     if (supervised && !supervisorReady && !spec.signal?.aborted) throw new Error("secret_execution_containment_unavailable");
     return outcome(spec.signal?.aborted ? "interrupted" : "timeout", reaped.code);
   }
 
-  finish();
+  finish(!spawnError && !spec.signal?.aborted && !outputFailed && reaped.code === 0);
   if (privateOutput) {
     try {
       if (!spawnError && !spec.signal?.aborted && reaped.code === 0 && !privateFailed && spec.outputCapture!.expiresAt > Date.now()) spec.outputCapture!.receive(privateOutput.subarray(0, privateLength));
