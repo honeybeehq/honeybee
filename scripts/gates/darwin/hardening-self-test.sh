@@ -1,5 +1,8 @@
 #!/bin/sh
 set -eu
+unset HIVE_REAL_HOME
+stamped_keys=$(/usr/bin/env | /usr/bin/cut -d= -f1 | /usr/bin/grep -E '^(HIVE_|APIARY_)' | LC_ALL=C /usr/bin/sort | /usr/bin/paste -sd, -)
+[ -z "$stamped_keys" ] || { printf 'REFUSED: stamped controller keys: %s\n' "$stamped_keys" >&2; exit 90; }
 [ "$(uname -s)" = Darwin ] || { echo 'REFUSED: Darwin required' >&2; exit 90; }
 case "$(hostname -s)" in *mini07*|*fangorn*) ;; *) echo 'REFUSED: mini07 required' >&2; exit 90;; esac
 [ "$#" = 2 ] || { echo 'usage: hardening-self-test.sh <absolute-node> <passwd-home>' >&2; exit 90; }

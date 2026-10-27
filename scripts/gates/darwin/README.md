@@ -5,14 +5,17 @@
 `hardening-self-test.sh <absolute-node> <passwd-home>` is the mini07-only,
 offline shell/Node hardening check. Run it from the committed review checkout.
 The home argument comes from the account record, never from scanning that home.
-The runner constructs an empty environment and a private mode0700 run under
+The runner refuses stamped HIVE_/APIARY_ controller keys at entry, ignoring and
+unsetting the tool-injected HIVE_REAL_HOME exception. It constructs an empty
+environment and a private mode0700 run under
 `/private/var/tmp/hb-gate.*`. All test writes and caches stay there.
 
 Real-home and Library write checks reject computed paths before any filesystem
 call. They do not probe the real home. A separate Seatbelt child writes an allowed
 file and records the exact errno and message for a refused write to an owned
-fixture outside its sandbox but inside the run root. It has no network or Mach
-service access. The sentinel uses only an owned LaunchAgents fixture, names and
+fixture outside its sandbox but inside the run root. Its policy denies network
+and Mach service access; it attempts no network operations and does not establish
+Darwin inbound isolation. The sentinel uses only an owned LaunchAgents fixture, names and
 SHA256 hashes. The empty refusal fixture is removed; the rest of the run remains
 with receipt and script hashes in `SHA256SUMS.json`, whose SHA256 is printed.
 Nothing sweeps old runs or accesses Keychain. This entry does not execute the

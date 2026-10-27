@@ -83,7 +83,7 @@ function selfTest(root, realHome) {
   if (JSON.stringify(before) !== JSON.stringify(launchAgents(fixtureHome))) throw new Error('sentinel exceeded LaunchAgents scope');
   rows.push({ sentinel: before, scope: 'fixture LaunchAgents names and SHA256 only' });
   fs.rmdirSync(fixture);
-  const receipt = JSON.stringify({ ok: true, root, realHomeFilesystemAccess: false, network: 'denied', keychain: 'no access', cache: path.join(sandbox, 'cache'), rows }, null, 2) + '\n';
+  const receipt = JSON.stringify({ ok: true, root, realHomeFilesystemAccess: false, network: 'deny network* policy; no network operations attempted; Darwin inbound isolation is not established', keychain: 'no access', cache: path.join(sandbox, 'cache'), rows }, null, 2) + '\n';
   write(path.join(root, 'receipt.json'), receipt, root, realHome);
   const hashes = {};
   for (const name of ['hardening.mjs', 'hardening-self-test.sh', 'hardening.test.mjs']) hashes[name] = createHash('sha256').update(fs.readFileSync(new URL(name, import.meta.url))).digest('hex');
