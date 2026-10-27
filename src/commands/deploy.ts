@@ -581,7 +581,7 @@ async function deployInit(): Promise<void> {
 
 export async function backupBeforeSwap({ root, installedDir, sourceRevision }: { root: string; installedDir: string; sourceRevision: string | null }): Promise<{ receiptPath: string }> {
   const dataDir = join(root, "..", "v2");
-  const pin = resolveNodePin(dataDir, process.env);
+  const pin = resolveNodePin(dataDir, process.env, undefined, true);
   const sourceBuild = sourceRevision ? await readFile(join(root, sourceRevision, "dist", "build-identity.json"), "utf8") : "unknown: no previous runtime";
   const { stdout } = await execFileAsync(pin.path, [join(installedDir, "dist", "cli.js"), "v2", "store", "backup", "--data-dir", dataDir, "--source-build", sourceBuild, "--json"],
     { timeout: 120_000, env: { ...nativeNodeEnv(), ...nodePinEnv(pin) } });

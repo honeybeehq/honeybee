@@ -52,7 +52,9 @@ export async function unpackDeployArtifact(archive: string, expected: ComponentI
   await readFile(join(artifactDir, "dist", "cli.js"));
   const bundle = await readFile(join(artifactDir, "dist", "v2", "cli.js"), "utf8");
   const recoveryContract = /\bUPDATE_RECOVERY_CONTRACT\d* = "([^"]+)"/.exec(bundle)?.[1] ?? null;
-  return { artifactDir, artifactHash: manifest.artifactHash, identity, recoveryContract };
+  const schemas = [...bundle.matchAll(/^(?:var|let|const) SCHEMA_VERSION\d* = (\d+);$/gm)].map(match => Number(match[1]));
+  if (schemas.length !== 1 || !Number.isSafeInteger(schemas[0]) || schemas[0]! < 1) throw new Error("deploy: artifact has no unambiguous schema capability");
+  return { artifactDir, artifactHash: manifest.artifactHash, identity, recoveryContract, candidateSchemaVersion: schemas[0]! };
 }
 
 /** Includes links and modes; deploy's legacy dist-only stamp is not a release checksum. */

@@ -291,3 +291,17 @@ This backup/restore change must ship with T4's rollback schema guard
 (commit `b9721c1a05248b839695b28bd19e3db56c2d4553`), which refuses both manual
 and automatic rollback to an older schema. T5 alone does not make rollback safe.
 DEPLOY HOLD remains until the combined candidate passes Queen's release gate.
+
+### Backup-bound artifact admission
+
+Verified artifact updates use `honeybee-backup-bound-recovery-v2`. The candidate
+bundle declares its schema capability; a newer store refuses with `schema_newer`.
+Before publication, the deploy owner creates a T5 backup under the deploy lock.
+Admission requires a receipt created during that attempt, matching the standard
+store path, current schema and exact active recovery reservation. It verifies the
+snapshot checksum, SQLite integrity and DDL digest independently. Missing, reused
+or invalid receipts refuse with `backup_missing`, `backup_stale` or `backup_invalid`.
+Recovery-plan identity checks, authority blockers, reservation fencing and rollback
+schema checks still apply. There is no admission bypass flag. Node interpreter
+migration must explicitly select a different verified `HIVE_NODE_PATH`; the prior
+pin remains unchanged until the existing restart owner accepts activation.

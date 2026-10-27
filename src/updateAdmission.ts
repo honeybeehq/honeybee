@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+import { createHash } from "node:crypto";
 import { recordedSocketPath } from "./daemonSocketPath.js";
 import { childNodePath, nativeNodeEnv } from "./nodeRuntime.js";
 /** Read-only deploy admission. SQLite remains the daemon's sole authority. */
@@ -11,10 +13,18 @@ import { parseRecoveryPlan as parseRoleBoundRecoveryPlan, type RecoveryPlan as R
 import { canonicalDigest } from "./comb/canonical.js";
 import { UPDATE_RECOVERY_CONTRACT, parseUpdateReservation, type UpdateReservation } from "./updateReservation.js";
 export { UPDATE_RECOVERY_CONTRACT } from "./updateReservation.js";
+export type BackupAdmission = { receiptPath: string; startedAt: number; candidateSchemaVersion: number };
+export class UpdateAdmissionError extends Error {
+  constructor(readonly code: "schema_newer" | "backup_missing" | "backup_stale" | "backup_invalid", detail: string) {
+    super(`deploy: ${code}: ${detail}`);
+    this.name = "UpdateAdmissionError";
+  }
+}
 export type UpdateAdmission = { reservation: UpdateReservation; recovery: RecoveryPlan | RoleBoundRecoveryPlan };
 
 /** Called inside the SAME deploy lock used by the daemon's reserve/release RPC. */
-export async function assertUpdateAdmission(root: string, identity: ComponentIdentity, admission: UpdateAdmission): Promise<void> {
+export async function assertUpdateAdmission(root: string, identity: ComponentIdentity, admission: UpdateAdmission, backup: BackupAdmission): Promise<void> {
+  if (!Number.isSafeInteger(backup.candidateSchemaVersion) || backup.candidateSchemaVersion < 1) throw new UpdateAdmissionError("backup_invalid", "candidate schema capability missing");
   const requested = parseUpdateReservation(admission.reservation);
   // Recovery plans have no top-level version field. Their closed combination
   // shapes discriminate readers; never convert a plan or retry a failed parser.
@@ -28,8 +38,37 @@ export async function assertUpdateAdmission(root: string, identity: ComponentIde
     || ![recovery.subject.from.honeybee, recovery.subject.to.honeybee].some(h => canonicalDigest(h) === canonicalDigest(identity))) {
     throw new Error("deploy: no exact automatic recovery admission");
   }
-  const { reservation, blockers } = await readUpdateOwner(root);
+  const { reservation, blockers, schemaVersion } = await readUpdateOwner(root);
+  if (schemaVersion > backup.candidateSchemaVersion) throw new UpdateAdmissionError("schema_newer", `store schema ${schemaVersion} exceeds candidate schema ${backup.candidateSchemaVersion}`);
   if (blockers || canonicalDigest(reservation) !== canonicalDigest(requested)) throw new Error("deploy: stale reservation or incompatible storage");
+  verifyBackup(root, schemaVersion, backup, requested);
+}
+
+function verifyBackup(root: string, schemaVersion: number, backup: BackupAdmission, reservation: UpdateReservation): void {
+  if (!backup.receiptPath || !existsSync(backup.receiptPath)) throw new UpdateAdmissionError("backup_missing", "pre-deploy backup receipt missing");
+  try {
+    const receipt = JSON.parse(readFileSync(backup.receiptPath, "utf8"));
+    const createdAt = Date.parse(receipt.createdAt);
+    if (!Number.isFinite(createdAt) || createdAt < backup.startedAt || createdAt > Date.now()) throw new UpdateAdmissionError("backup_stale", "receipt was not created for this deploy attempt");
+    const storePath = join(standardStore(root), "core.sqlite3");
+    if (receipt.format !== 1 || receipt.integrityCheck !== "ok" || receipt.storePath !== storePath
+      || receipt.receiptPath !== resolve(backup.receiptPath) || receipt.schemaVersion !== schemaVersion
+      || typeof receipt.backupPath !== "string" || resolve(receipt.backupPath, "..") !== `${storePath}.backups`
+      || receipt.sha256 !== createHash("sha256").update(readFileSync(receipt.backupPath)).digest("hex")) throw new Error("receipt paths, schema or checksum mismatch");
+    const db = new DatabaseSync(receipt.backupPath, { readOnly: true });
+    try {
+      const integrity = db.prepare("PRAGMA integrity_check").all();
+      const schema = Number(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value);
+      const ddl = db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY type,name").all();
+      const row = db.prepare("SELECT value FROM meta WHERE key='coordinated_update'").get();
+      if (integrity.length !== 1 || integrity[0]?.integrity_check !== "ok" || schema !== schemaVersion
+        || receipt.ddlDigest !== createHash("sha256").update(JSON.stringify(ddl)).digest("hex")
+        || !row || canonicalDigest(parseUpdateReservation(JSON.parse(String(row.value)))) !== canonicalDigest(reservation)) throw new Error("backup integrity, schema or reservation mismatch");
+    } finally { db.close(); }
+  } catch (error) {
+    if (error instanceof UpdateAdmissionError) throw error;
+    throw new UpdateAdmissionError("backup_invalid", error instanceof Error ? error.message : String(error));
+  }
 }
 
 function standardStore(root: string): string {
@@ -45,16 +84,16 @@ function standardStore(root: string): string {
   return dataDir;
 }
 
-type Owner = { reservation: UpdateReservation | null; blockers: boolean };
+type Owner = { reservation: UpdateReservation | null; blockers: boolean; schemaVersion: number };
 async function readUpdateOwner(root: string): Promise<Owner> {
   const dataDir = standardStore(root);
   // With no database there cannot be a durable reservation. Do not query an
   // ambient/default socket belonging to a different node.
-  if (!existsSync(join(dataDir, "core.sqlite3"))) return { reservation: null, blockers: false };
+  if (!existsSync(join(dataDir, "core.sqlite3"))) return { reservation: null, blockers: false, schemaVersion: 0 };
   let response: string | undefined;
   try {
-    const { stdout } = await promisify(execFile)(childNodePath(),
-      [join(root, "current", "dist", "v2", "cli.js"), "update-owner", "status", "--data-dir", dataDir, "--socket", recordedSocketPath(dataDir)],
+    const { stdout } = await promisify(execFile)(childNodePath(dataDir, true),
+      ["--input-type=module", "--eval", `const { runV2Cli } = await import(${JSON.stringify(pathToFileURL(join(root, "current", "dist", "v2", "cli.js")).href)}); process.exitCode = await runV2Cli(process.argv.slice(1));`, "update-owner", "status", "--data-dir", dataDir, "--socket", recordedSocketPath(dataDir)],
       { timeout: 10_000, env: nativeNodeEnv() });
     response = stdout;
   } catch {
@@ -63,7 +102,7 @@ async function readUpdateOwner(root: string): Promise<Owner> {
   }
   if (response !== undefined) {
     const live = JSON.parse(response);
-    if (live.contract !== UPDATE_RECOVERY_CONTRACT || ![27, 28, 30].includes(live.schemaVersion)
+    if (![UPDATE_RECOVERY_CONTRACT, "honeybee-v27-disabled-authority-v1"].includes(live.contract) || !Number.isSafeInteger(live.schemaVersion) || live.schemaVersion < 27 || live.schemaVersion === 29
       || typeof live.runtimeRoot !== "string" || resolve(live.runtimeRoot) !== resolve(root)
       || typeof live.storePath !== "string" || resolve(live.storePath) !== join(dataDir, "core.sqlite3")
       || !Array.isArray(live.blockers)) throw new Error("deploy: incompatible live owner");
@@ -71,7 +110,7 @@ async function readUpdateOwner(root: string): Promise<Owner> {
     // valid absence for ordinary deployment, never a usable admission token.
     const initial = live.reservation?.epoch === 0 && live.reservation.id === ""
       && live.reservation.recoverySubjectDigest === "" && live.reservation.active === false;
-    return { reservation: live.reservation === null || initial ? null : parseUpdateReservation(live.reservation), blockers: live.schemaVersion !== 27 || live.blockers.length > 0 };
+    return { reservation: live.reservation === null || initial ? null : parseUpdateReservation(live.reservation), schemaVersion: live.schemaVersion, blockers: live.blockers.length > 0 };
   }
   return readOfflineOwner(root);
 }
@@ -85,10 +124,11 @@ function readOfflineOwner(root: string): Owner {
     const row = db.prepare("SELECT value FROM meta WHERE key='coordinated_update'").get();
     // v26 predates reservations; allow its ordinary offline deployment, never
     // automatic recovery admission. Unknown schemas defer to migration.
-    if (schema?.value === "26" && !row) return { reservation: null, blockers: true };
-    if (!["27", "28", "30"].includes(String(schema?.value))) throw new Error("deploy: incompatible storage; coordinated migration required");
+    if (schema?.value === "26" && !row) return { reservation: null, blockers: true, schemaVersion: 26 };
+    const schemaVersion = Number(schema?.value);
+    if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 27 || schemaVersion === 29) throw new Error("deploy: incompatible storage; coordinated migration required");
     return { reservation: row ? parseUpdateReservation(JSON.parse(String(row.value))) : null,
-      blockers: schema?.value !== "27" || !!db.prepare("SELECT 1 FROM account_credential_authorities WHERE phase <> 'disabled' LIMIT 1").get() };
+      schemaVersion, blockers: !!db.prepare("SELECT 1 FROM account_credential_authorities WHERE phase <> 'disabled' LIMIT 1").get() };
   } finally { db.close(); }
 }
 
