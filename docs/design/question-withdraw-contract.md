@@ -198,3 +198,35 @@ using another checkout, then exercises old writer → withdrawal writer → old
 writer → withdrawal writer on one disposable cache store. The older writer
 opens and writes while the isolated receipt table exists; stamp 44, SQLite
 integrity, foreign keys and the original withdrawal receipt must all survive.
+
+## Approved workstation activation
+
+Workstation deployment provisions registered-service trust only when the approved
+host's deploy explicitly includes `--provision-question-withdrawal`. Both source
+and verified `--artifact` deployments accept this switch. Routine deployment
+without the switch preserves the installed trust configuration. An explicit
+`rpcLocalTrust.requireObservationCaller: false` remains an opt-out even with the
+switch, and does not prevent an ordinary update.
+
+For a reviewed source deployment, run `hive deploy <approved-sha>
+--provision-question-withdrawal`. For a coordinated release, the Apiary owner must
+forward the same switch to its staged Honeybee `deploy --artifact` invocation,
+with the existing identity, admission and expected-current arguments. The staged
+CLI must itself contain this deployment change. Reapplying the identical source
+or verified artifact with the switch can repair missing provisioning.
+
+Provisioning merges the trust field before daemon startup and leaves native
+Honeybee startup responsible for creating and validating the private key. The
+activation gate requires the running daemon's hello to offer
+`question.withdraw.v1`; missing native peer credentials or unsupported runtime
+bytes fail activation. If activation restores the previous runtime, it restores
+only the trust field, preserving unrelated configuration changes. If that field
+changed during activation, recovery refuses to overwrite it. A held candidate
+keeps its configuration for recovery. Explicit later `hive deploy --rollback`
+preserves successfully installed node trust configuration and private keys; the
+older runtime ignores unsupported configuration fields.
+
+This mechanism does not approve rollout. Keep the reviewed canary scope of one
+satellite and erebor, the 24-hour observation window, and the observer inventory
+including forage before widening activation. Deploy compatible Apiary readers and
+registered-service clients first. No fleet-wide default is enabled by this switch.

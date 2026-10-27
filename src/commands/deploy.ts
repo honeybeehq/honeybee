@@ -1,3 +1,4 @@
+import { provisionQuestionWithdrawal, verifyQuestionWithdrawal } from "../deployQuestionWithdrawal.js";
 import { parseNpmPackResult } from "../npmPack.js";
 import { serviceDirectory } from "../servicePaths.js";
 import { randomUUID } from "node:crypto";
@@ -46,6 +47,7 @@ const execFileAsync = promisify(execFile);
 
 const USAGE = [
   "Usage: hive deploy [<sha>] [--keep <n>] [--skip-tests]   build+verify <sha> (default HEAD) in a temp checkout, install to ~/.hive/runtime/<sha>, retarget current, restart daemon",
+  "       --provision-question-withdrawal provisions registered local service trust for an approved host; explicit false in config remains disabled",
   "       --skip-tests skips tests with a not release-grade warning; release artifacts cannot skip tests",
   "       refuses a <sha> that does not contain the deployed commit (silent-revert guard); --allow-non-descendant overrides",
   "       hive deploy --rollback             retarget current to the previous deploy and restart the daemon",
@@ -54,7 +56,7 @@ const USAGE = [
   "       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current",
 ].join("\n");
 
-const KNOWN_FLAGS = new Set(["skip-tests", "keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
+const KNOWN_FLAGS = new Set(["provision-question-withdrawal", "skip-tests", "keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
 
 export async function cmdDeploy(parsed: Parsed): Promise<void> {
   // Help and unknown flags must never fall through to a real deploy: a bare
@@ -65,6 +67,9 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
   }
   const unknown = [...parsed.flags.keys()].filter((key) => !KNOWN_FLAGS.has(key));
   if (unknown.length > 0) throw new Error(`deploy: unknown flag ${unknown.map((key) => `--${key}`).join(", ")}\n${USAGE}`);
+  const provision = flag(parsed, "provision-question-withdrawal");
+  if (provision !== undefined && provision !== true) throw new Error("deploy: --provision-question-withdrawal is a switch");
+  if (provision && ["rollback", "list", "init"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
   const skipTests = flag(parsed, "skip-tests");
   if (skipTests !== undefined && skipTests !== true && !["true", "1", "yes", "false", "0", "no"].includes(String(skipTests))) {
     throw new Error("deploy: --skip-tests requires a boolean value");
@@ -80,7 +85,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
     const result = await deployArtifact({ archive, identity: JSON.parse(await readFile(identity, "utf8")),
       admission: JSON.parse(await readFile(admission, "utf8")),
       ...(typeof binDirectory === "string" ? { cliBinDirectory: binDirectory } : {}),
-      expectedCurrent: expected === "none" ? null : expected, hooks: { backupStore: backupBeforeSwap, restartDaemon: restartDeployedDaemon } });
+      expectedCurrent: expected === "none" ? null : expected, hooks: { backupStore: backupBeforeSwap, restartDaemon: context => restartDeployedDaemon(context, provision === true) } });
     console.log(JSON.stringify(result));
     return;
   }
@@ -200,18 +205,18 @@ async function restoreServiceFile(file: string, data: Buffer | null, mode = 0o60
   try { await directory.sync(); } finally { await directory.close(); }
 }
 
-export async function restartDeployedDaemon(context: RestartDaemonContext): Promise<void> {
+export async function restartDeployedDaemon(context: RestartDaemonContext, provision = false): Promise<void> {
   if (hasDeployRestartAdmission(context)) {
     await assertDeployRestartAdmission(context);
-    return restartAdmittedDaemon(context);
+    return restartAdmittedDaemon(context, provision);
   }
   await withFileLock(join(context.root, ".deploy.lock"), async () => {
     await assertRuntimeUpdateAllowed(context.root, "restart");
-    await restartAdmittedDaemon(context);
+    await restartAdmittedDaemon(context, provision);
   });
 }
 
-async function restartAdmittedDaemon({ root, installedDir, sha, log, runtime, restorePrevious, assertRollbackSafe }: RestartDaemonContext): Promise<void> {
+async function restartAdmittedDaemon({ root, installedDir, sha, log, runtime, restorePrevious, assertRollbackSafe }: RestartDaemonContext, provision: boolean): Promise<void> {
   const v2 = runtime === "v2" || runtimeUsesV2(root);
   if (!v2) throw new Error("deploy: legacy service activation is refused; install the pinned v2 service first");
   const dataDir = join(root, "..", "v2");
@@ -320,6 +325,7 @@ async function restartAdmittedDaemon({ root, installedDir, sha, log, runtime, re
     catch (error) { if (!await absent()) throw error; }
     if (previousIdentity && (!Number.isSafeInteger(previousIdentity.pid) || !previousIdentity.identity?.sourceRevision)) throw new Error("deploy: previous daemon identity unavailable; refusing to stop");
   }
+  let withdrawal: Awaited<ReturnType<typeof provisionQuestionWithdrawal>> | undefined;
   let stopped = false;
   let stopInitiated = false;
   try {
@@ -332,8 +338,11 @@ async function restartAdmittedDaemon({ root, installedDir, sha, log, runtime, re
       stopped = true;
       log("deploy: v2 service is absent (fresh start)");
     }
+    withdrawal = provision ? await provisionQuestionWithdrawal(dataDir) : undefined;
+    if (withdrawal) log(withdrawal.enabled ? "deploy: approved question withdrawal provisioning enabled" : "deploy: question withdrawal explicitly disabled; preserving opt-out");
     await run("start");
     await ready(pin);
+    if (withdrawal?.enabled) await verifyQuestionWithdrawal(dataDir);
   } catch (error) {
     if (stopInitiated && restorePrevious) {
       try { await checkRollback(); }
@@ -376,6 +385,11 @@ async function restartAdmittedDaemon({ root, installedDir, sha, log, runtime, re
       throw held(error, recoveryError);
     }
     if (restorePrevious && !restored) throw held(error, "previous runtime was not restored");
+    let trustRestoreError: unknown;
+    if (restored || !stopInitiated) {
+      try { await withdrawal?.restore(); }
+      catch (failure) { trustRestoreError = failure; }
+    }
     if (restored) {
       for (const snapshot of files) await restoreServiceFile(snapshot.file, snapshot.data, snapshot.mode);
       if (process.platform === "linux") await execFileAsync("systemctl", ["--user", "daemon-reload"], { env: nativeNodeEnv() });
@@ -390,6 +404,7 @@ async function restartAdmittedDaemon({ root, installedDir, sha, log, runtime, re
       await verifyRunningPin(priorPin, recovered);
       log("deploy: previous runtime and service recovered after failed activation");
     }
+    if (trustRestoreError) throw held(error, `trust configuration restore failed; previous runtime ${stopped && restored && previousIdentity ? "restarted with current on-disk trust configuration" : "restart not confirmed"}; ${trustRestoreError instanceof Error ? trustRestoreError.message : String(trustRestoreError)}`);
     throw error;
   }
 }
@@ -426,7 +441,7 @@ async function deployRun(parsed: Parsed): Promise<void> {
     skipTests: truthy(flag(parsed, "skip-tests")),
     log,
     ...(parsed.flags.has("allow-non-descendant") ? { allowNonDescendant: true } : {}),
-    hooks: { buildArtifact: buildDeployArtifact, backupStore: backupBeforeSwap, restartDaemon: restartDeployedDaemon },
+    hooks: { buildArtifact: buildDeployArtifact, backupStore: backupBeforeSwap, restartDaemon: context => restartDeployedDaemon(context, flag(parsed, "provision-question-withdrawal") === true) },
   });
   if (isPretty()) {
     console.log(actionLine("ok", "deploy", [
