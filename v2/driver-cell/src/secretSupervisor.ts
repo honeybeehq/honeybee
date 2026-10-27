@@ -35,7 +35,7 @@ lease.on('data', chunk => {
     });
     for (const key of Object.keys(config.env)) delete config.env[key];
     child.on('error', () => finish(125, 'spawn_error'));
-    child.on('exit', code => finish(code === null ? 1 : code));
+    child.on('exit', code => finish(code === null ? 1 : code, 'exit:' + JSON.stringify(code)));
   } catch { finish(125); }
 });
 `;

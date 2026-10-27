@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SecretOutput, validateSecretEnv } from "../src/secretOutput.ts";
@@ -54,7 +54,15 @@ test("child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure a
     assert.equal(JSON.stringify(flood).includes(material[1]!), false);
     assert.ok(Buffer.byteLength(flood.stdout) + Buffer.byteLength(flood.stderr) <= 1048576);
     const controller = new AbortController();
-    const pending = runCellExec(paths, { ...spec, signal: controller.signal, argv: [process.execPath, "-e", "process.stdout.write(process.env.SYNTHETIC_TOKEN);setInterval(()=>{},1000)"] }, () => { setTimeout(() => controller.abort(), 60); });
+    const pending = runCellExec(paths, { ...spec, signal: controller.signal, argv: [process.execPath, "-e", "process.stdout.write(process.env.SYNTHETIC_TOKEN);require('node:fs').writeFileSync('cancel-ready','1');setInterval(()=>{},1000)"] }, () => {
+      const deadline = Date.now() + 5000;
+      const ready = setInterval(() => {
+        if (existsSync(join(paths.spaceDir, "cancel-ready")) || Date.now() >= deadline) {
+          clearInterval(ready);
+          controller.abort();
+        }
+      }, 20);
+    });
     const cancelled = await pending;
     assert.equal(cancelled.status, "interrupted");
     assert.equal(cancelled.stdout, "[REDACTED]");
@@ -92,11 +100,11 @@ test("supervisor preserves command exit codes and fragmented unicode configurati
   const paths = cellPaths(root, "wrap", "repo", "c1");
   mkdirSync(paths.spaceDir, { recursive: true });
   try {
-    for (const exitCode of [0, 124, 125]) {
+    for (const exitCode of [0, 124, 125, null]) {
       const result = await runCellExec(paths, {
         sandbox: false, nodeKind: "satellite",
         secretEnv: Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`TOKEN_${i}`, "é😀".repeat(2500)])),
-        argv: [process.execPath, "-e", `process.stdout.write(process.env.TOKEN_3);process.exitCode=${exitCode}`],
+        argv: [process.execPath, "-e", `process.stdout.write(process.env.TOKEN_3);${exitCode === null ? "process.kill(process.pid, 'SIGTERM')" : `process.exitCode=${exitCode}`}`],
       });
       assert.equal(result.exitCode, exitCode);
       assert.equal(result.status, exitCode === 0 ? "ok" : "nonzero");

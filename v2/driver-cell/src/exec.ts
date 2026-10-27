@@ -319,7 +319,7 @@ export async function runCellExec(
     });
     child.once("close", (code) => {
       reaped.reaped = true;
-      reaped.code = code;
+      reaped.code = supervisorStatus.startsWith("exit:") ? JSON.parse(supervisorStatus.slice(5)) as number | null : code;
       resolveClose(code);
     });
   });
