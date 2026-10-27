@@ -1,6 +1,7 @@
 import type { JsonValue } from "../../../src/comb/canonical.ts";
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createConnection } from "node:net";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -32,9 +33,9 @@ async function rawRequest(path: string, verb: string): Promise<{ error: { code: 
 async function fixture(t: TestContext, enabled = true) {
   const root = mkdtempSync(join(tmpdir(), "exec-rpc-")), keyFile = join(root, "private", "key"), store = openCoreStore(join(root, "core.sqlite3"), { ephemeral: true });
   const owner = Object.create(HiveDaemon.prototype) as Record<string, unknown>;
-  Object.assign(owner, { cfg: { dataDir: root, logPath: join(root, "log"), agents: { stub: { adapter: "stub" } } }, store, stopping: false, opLog: [], deps: {}, refusedClaims: new Map(), identityRecovery: new IdentityRecovery(), requestTick() {} });
+  Object.assign(owner, { cfg: { nodeKind: "cloud", dataDir: root, logPath: join(root, "log"), agents: { stub: { adapter: "stub" } } }, admissionCaller: new AsyncLocalStorage(), store, stopping: false, opLog: [], deps: {}, refusedClaims: new Map(), identityRecovery: new IdentityRecovery(), requestTick() {} });
   const calls: string[] = [];
-  const server = new RpcServer({ socketPath: join(root, "s"), dataDir: root, localTrust: { requireObservationCaller: enabled, registrationKeyFile: keyFile }, log() {}, dispatch: (verb, params, conn) => { calls.push(verb); return (owner.dispatch as RpcDispatch).call(owner, verb, params, conn); } });
+  const server = new RpcServer({ socketPath: join(root, "s"), dataDir: root, localTrust: { requireObservationCaller: enabled, registrationKeyFile: keyFile }, log() {}, dispatch: (verb, params, conn) => { calls.push(verb); return (owner.dispatchWithAdmission as RpcDispatch).call(owner, verb, params, conn); } });
   await server.listen();
   const client = await RpcClient.connect(join(root, "s")), clients = [client];
   t.after(async () => { clients.forEach(client => client.close()); await server.close(); store.close(); rmSync(root, { recursive: true, force: true }); });
