@@ -4655,6 +4655,7 @@ export class HiveDaemon {
     let reason: CellExecResult["reason"] = null;
     if (op.status === "failed") {
       if (failure === "busy") reason = "busy";
+      else if (failure === "secret_execution_containment_unavailable") reason = "secret_execution_containment_unavailable";
       else if (failure === "cell_runtime_live") reason = "cell_runtime_live";
       else if (failure === "no_cell") reason = "no_cell";
       else if (failure === "containment" || /escapes|space-relative|does not exist/.test(failure)) reason = "containment";
@@ -4867,7 +4868,7 @@ export class HiveDaemon {
       return this.cellExecResultFromOp({ ...saved, timeoutMs: saved.timeoutMs ?? outcome.timeoutMs }, false);
     } catch (err) {
       const detail = secret ? err instanceof Error && err.message === "secret_execution_containment_unavailable" ? err.message : "secret_execution_failed" : err instanceof Error ? err.message : String(err);
-      const reason = /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
+      const reason = detail === "secret_execution_containment_unavailable" ? "secret_execution_containment_unavailable" : /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
       const saved = store.updateCellOp(op.id, { status: "failed", failure: reason === "containment" ? "containment" : detail });
       return { ...this.cellExecResultFromOp(saved, false), reason, stderr: detail, timeoutMs: timeoutMs ?? 0 };
     } finally {

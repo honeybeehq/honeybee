@@ -4,7 +4,7 @@ import { spawn } from "node:child_process";
 import { runCellExec } from "../src/exec.ts";
 import { cellPaths } from "../src/layout.ts";
 
-test("macOS refuses secret execution and private capture before spawning or reading credentials", async () => {
+for (const platform of ["darwin", "freebsd", "win32"] as const) test(`${platform} refuses secret execution and private capture before spawning or reading credentials`, async () => {
   const descriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
   let spawned = false;
   let credentialRead = false;
@@ -19,7 +19,7 @@ test("macOS refuses secret execution and private capture before spawning or read
   });
   const attempts: Promise<unknown>[] = [];
   try {
-    Object.defineProperty(process, "platform", { ...descriptor, value: "darwin" });
+    Object.defineProperty(process, "platform", { ...descriptor, value: platform });
     for (const mode of ["secret", "capture", "both"] as const) {
       attempts.push(assert.rejects(runCellExec(cellPaths("/missing", "wrap", "repo", "c1"), {
         argv: [process.execPath, "-e", "throw Error('must_not_run')"],

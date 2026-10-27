@@ -150,6 +150,32 @@ test("daemon executes active owned Cell, keeps durable bytes clean, deduplicates
       }
     };
     socket.on("data", observe);
+    const platformDescriptor = Object.getOwnPropertyDescriptor(process, "platform")!;
+    for (const platform of ["darwin", "freebsd", "win32"] as const) {
+      for (const capture of [false, true]) {
+        const executionId = `unsupported-${platform}-${capture}`;
+        const refusedArgv = [process.execPath, "-e", "require('node:fs').writeFileSync('must-not-run','bad')"];
+        const binding = { ...base, executionId, argvDigest: secretArgvDigest(refusedArgv), expiresAt: Date.now() + 30000 };
+        const outputCapture = { name: "Synthetic", maxBytes: 128, leaseId: executionId, expiresAt: binding.expiresAt };
+        const params = { ...binding, argv: refusedArgv, idempotencyKey: executionId, ...(capture ? { outputCapture } : {}) };
+        const context = { secretExecution: { ...binding, ...(capture ? { outputCapture } : { env: { TOKEN: token } }) } };
+        try {
+          Object.defineProperty(process, "platform", { ...platformDescriptor, value: platform });
+          const refused = await client.request<import("../src/protocol.ts").CellExecResult>("cell.execSecret", params, 10000, context);
+          assert.equal(refused.status, "failed");
+          assert.equal(refused.reason, "secret_execution_containment_unavailable");
+          assert.equal(refused.stderr, "secret_execution_containment_unavailable");
+          assert.equal(frames.at(-1)?.secretCapture, undefined);
+        } finally { Object.defineProperty(process, "platform", platformDescriptor); }
+        assert.equal(store.getCellOpByKey(executionId)?.failure, "secret_execution_containment_unavailable");
+        store.close(); store = openCoreStore(storePath); internal.store = store;
+        const replay = await client.request<import("../src/protocol.ts").CellExecResult>("cell.execSecret", params, 10000, context);
+        assert.equal(replay.deduped, true);
+        assert.equal(replay.reason, "secret_execution_containment_unavailable");
+        assert.equal((await import("node:fs")).existsSync(join(paths.spaceDir, "must-not-run")), false);
+        console.log(`unsupported platform ${platform} capture=${capture}: fresh and reopened reason=secret_execution_containment_unavailable, no command or capture`);
+      }
+    }
     const captureArgv = [process.execPath, "-e", `process.stdout.write(Buffer.from(${JSON.stringify([...capturedBytes])}));process.stderr.write(Buffer.from(${JSON.stringify([...capturedBytes])}))`];
     const outputCapture = { name: "TOKEN", maxBytes: 128, leaseId: "capture-lease", expiresAt: Date.now() + 30000 };
     const captureBinding = { ...base, executionId: "capture-once", argvDigest: secretArgvDigest(captureArgv), expiresAt: Date.now() + 30000, outputCapture };

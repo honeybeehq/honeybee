@@ -2019,7 +2019,7 @@ export interface CellExecResult {
   stderr: string;
   truncated: boolean;
   timeoutMs: number;
-  reason: "no_cell" | "cell_runtime_live" | "busy" | "argv_invalid" | "containment" | null;
+  reason: "no_cell" | "cell_runtime_live" | "busy" | "argv_invalid" | "containment" | "secret_execution_containment_unavailable" | null;
   deduped?: boolean;
 }
 
