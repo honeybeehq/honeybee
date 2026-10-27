@@ -295,7 +295,7 @@ export async function runCellExec(
   const startedAt = process.hrtime.bigint();
   const linuxNamespace = supervised && process.platform === "linux";
   const supervisorCommand = linuxNamespace ? "/usr/bin/unshare" : process.execPath;
-  const supervisorArgs = [...(linuxNamespace ? ["--user", "--map-current-user", "--pid", "--fork", "--kill-child=SIGKILL", process.execPath] : []), "-e", secretSupervisorSource];
+  const supervisorArgs = [...(linuxNamespace ? ["--user", "--map-current-user", "--pid", "--mount", "--mount-proc", "--fork", "--kill-child=SIGKILL", process.execPath] : []), "-e", secretSupervisorSource];
   let child: ChildProcess;
   try { child = spawnProcess(supervised ? supervisorCommand : wrappedCommand, supervised ? supervisorArgs : wrappedArgs, {
     cwd,
