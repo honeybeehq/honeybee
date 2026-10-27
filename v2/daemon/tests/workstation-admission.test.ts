@@ -28,6 +28,7 @@ test("new admission is fail closed for missing, remote and runtime context; huma
   for (const c of [{} as RpcConn, automatic(), { ...human, ingress: "remote" } as RpcConn, { ...human, registeredApiary: true }]) {
     assert.throws(() => newAdmissionBasis("workstation", "spawn", c, null, 100), denied);
   }
+  assert.throws(() => newAdmissionBasis("workstation", "spawn", { ...human, phoneLane: "interim-v1" }, null, 100), denied);
   assert.equal(newAdmissionBasis("workstation", "spawn", human, null, 100), "human");
   assert.equal(newAdmissionBasis("satellite", "spawn", automatic(), null, 100), "automatic_nonworkstation");
   assert.equal(newAdmissionBasis("cloud", "spawn", automatic(), null, 100), "automatic_nonworkstation");

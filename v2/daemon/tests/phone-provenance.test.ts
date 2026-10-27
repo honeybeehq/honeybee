@@ -13,7 +13,7 @@ import { deliveryText } from "../src/envelope.ts";
 
 const origin: PhoneOriginRequest = { format: PHONE_FORMAT, channel: "phone", issuerNodeId: "fixture-node", assigner: "listener/1", credentialRef: "opaque-ref", target: { kind: "crew", id: "crew" }, contentKind: "message", assurance: "credential-possession-only", humanApproval: "not-verified", lane: "envelope-v1", parentSources: [], rootSources: [], ancestry: "complete" };
 test("real owner phone admission: trust, atomic replay, lane pinning, initial prompt and mailbox-only polling", async () => {
-  const { dir, cleanup } = makeDaemonDir({ rpcLocalTrust: { requireObservationCaller: true } });
+  const { dir, cleanup } = makeDaemonDir({ nodeKind: "cloud", rpcLocalTrust: { requireObservationCaller: true } });
   let daemon = await startDaemon(dir); let client = await daemon.client();
   const context: RpcRequestContext = { phoneOrigin: origin };
   try {

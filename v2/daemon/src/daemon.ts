@@ -1100,7 +1100,7 @@ export class HiveDaemon {
       localTrust: this.cfg.rpcLocalTrust,
       securityAudit: (kind, payload) => store.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload),
       log: (op) => this.log(op),
-      dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
+      dispatch: (verb, params, conn) => this.dispatchWithAdmission(verb, params, conn),
       performance: this.performance,
     });
     try {
@@ -1957,8 +1957,8 @@ export class HiveDaemon {
 
   private readonly admissionCaller = new AsyncLocalStorage<{ conn: RpcConn; basis?: AdmissionBasis }>();
 
-  private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
-    return this.admissionCaller.run({ conn }, () => this.dispatchAdmitted(verb, params, conn));
+  private dispatchWithAdmission(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    return this.admissionCaller.run({ conn }, () => this.dispatch(verb, params, conn));
   }
 
   private admissionBinding(): string {
@@ -1985,7 +1985,7 @@ export class HiveDaemon {
     }
   }
 
-  private dispatchAdmitted(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+  private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
     if (["spawn", "bee.fork", "thread.fork", "thread.handoff", "import.fromFrozen"].includes(verb)) {
       const key = this.idempotencyKeyOf(params);
       if (key) this.mustStore().checkWorkstationAdmission(key, this.admissionBinding());
