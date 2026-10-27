@@ -35,6 +35,11 @@ assert.equal(schema48Core.SCHEMA_VERSION, 48);
 const pin = probeNativeNode(process.execPath);
 const candidateSha = "a".repeat(40);
 const results = [];
+const entrySmoke = spawnSync(process.execPath, ["--input-type=module", "--eval", `const {runV2Cli} = await import(${JSON.stringify(pathToFileURL(join(repo, "dist", "v2", "cli.js")).href)}); process.exitCode = await runV2Cli(["help"]);`], { cwd: work, env: { PATH: "/usr/bin:/bin", HOME: work, HIVE_STORE_ROOT: work, HIVE_V2_DATA_DIR: join(work, "entry-smoke"), HIVE_NODE_PATH: pin.path }, encoding: "utf8", timeout: 10000 });
+writeFileSync(join(work, "runV2Cli-help.log"), `${entrySmoke.stdout ?? ""}${entrySmoke.stderr ?? ""}`);
+assert.equal(entrySmoke.status, 0, "Real built runV2Cli help entry failed");
+assert.match(entrySmoke.stdout, /hive/i);
+console.log(`PASS real built runV2Cli help entry; evidence ${join(work, "runV2Cli-help.log")}`);
 const hash = file => createHash("sha256").update(readFileSync(file)).digest("hex");
 const logFile = join(work, "decisions.tsv");
 writeFileSync(logFile, "ts\tphase\tdecision\twhy\tevidence\tresult\n");
@@ -57,7 +62,7 @@ for (const schema of [...new Set([44, 48, current.SCHEMA_VERSION])]) {
     writeFileSync(join(runtime, sourceSha, "dist", "build-identity.json"), JSON.stringify(sourceBuild));
     writeFileSync(join(oldDir, "cli.js"), `var SCHEMA_VERSION = ${schema};\nvar PROTOCOL = "v2/1";\nexports.runV2Cli = async () => 1;\nif (require.main === module) process.exit(1);\n`);
     execFileSync("ln", ["-s", sourceSha, join(runtime, "current")]);
-    const shim = `const fs = require("node:fs");\nconst child = require("node:child_process");\nconst args = process.argv.slice(2);\nfs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify(args)+"\\n");\nif (args.slice(0,3).join(" ") === "v2 store backup") {\n  if (${JSON.stringify(receiptMode)} === "missing") { console.log(JSON.stringify({format:1,integrityCheck:"ok",receiptPath:${JSON.stringify(join(dir, "missing.json"))},sourceBuild:${JSON.stringify(JSON.stringify(sourceBuild))}})); process.exit(0); }\n  if (${JSON.stringify(receiptMode)} === "stale") { console.log(fs.readFileSync(${JSON.stringify(join(dir, "stale.json"))},"utf8")); process.exit(0); }\n  const result = child.spawnSync(process.execPath,[${JSON.stringify(join(repo, "dist", "cli.js"))},...args],{env:process.env,encoding:"utf8"});\n  process.stdout.write(result.stdout || ""); process.stderr.write(result.stderr || ""); process.exit(result.status ?? 1);\n}\nif (args.slice(0,2).join(" ") === "v2 deploy-info") { console.log(JSON.stringify({pid:process.pid,startedAt:1,nodeVersion:process.version,identity:{sourceRevision:${JSON.stringify(candidateSha)}}})); process.exit(0); }\nif (args.slice(0,2).join(" ") === "v2 daemon" && ["install","stop","start","status"].includes(args[2])) { console.log(JSON.stringify({running:args[2] === "status",service:{installed:false}})); process.exit(0); }\nprocess.exit(91);\n`;
+    const shim = `const fs = require("node:fs");\nconst child = require("node:child_process");\nconst args = process.argv.slice(2);\nfs.appendFileSync(${JSON.stringify(calls)}, JSON.stringify(args)+"\\n");\nif (args.slice(0,3).join(" ") === "v2 store backup") {\n  if (${JSON.stringify(receiptMode)} === "missing") { console.log(JSON.stringify({format:1,integrityCheck:"ok",receiptPath:${JSON.stringify(join(data, "core.sqlite3.backups", "missing.json"))},sourceBuild:${JSON.stringify(JSON.stringify(sourceBuild))}})); process.exit(0); }\n  if (${JSON.stringify(receiptMode)} === "stale") { console.log(fs.readFileSync(${JSON.stringify(join(dir, "stale.json"))},"utf8")); process.exit(0); }\n  const result = child.spawnSync(process.execPath,[${JSON.stringify(join(repo, "dist", "cli.js"))},...args],{env:process.env,encoding:"utf8"});\n  process.stdout.write(result.stdout || ""); process.stderr.write(result.stderr || ""); process.exit(result.status ?? 1);\n}\nif (args.slice(0,2).join(" ") === "v2 deploy-info") { console.log(JSON.stringify({pid:process.pid,startedAt:1,nodeVersion:process.version,identity:{sourceRevision:${JSON.stringify(candidateSha)}}})); process.exit(0); }\nif (args.slice(0,2).join(" ") === "v2 daemon" && ["install","stop","start","status"].includes(args[2])) { console.log(JSON.stringify({running:args[2] === "status",service:{installed:false}})); process.exit(0); }\nprocess.exit(91);\n`;
     writeFileSync(join(stage, "dist", "cli.js"), shim);
     writeFileSync(join(runtime, sourceSha, "dist", "cli.js"), shim);
     writeFileSync(join(stage, "dist", "v2", "cli.js"), `var SCHEMA_VERSION = ${current.SCHEMA_VERSION};\nvar PROTOCOL = "v2/1";\nvar UPDATE_RECOVERY_CONTRACT = "${UPDATE_RECOVERY_CONTRACT}";\nexports.runV2Cli = async () => 1;\nif (require.main === module) process.exit(1);\n`);
@@ -84,10 +89,7 @@ for (const schema of [...new Set([44, 48, current.SCHEMA_VERSION])]) {
     if (receiptMode === "stale") {
       const stale = await backupStoreOffline(storePath, JSON.stringify(sourceBuild));
       writeFileSync(join(dir, "stale.json"), JSON.stringify(stale));
-      const changed = api.openCoreStore(storePath);
-      try { changed.releaseUpdate({ ...reservation }); changed.reserveUpdate({ id: reservation.id, recoverySubjectDigest: reservation.recoverySubjectDigest, expectedEpoch: reservation.epoch }); } finally { changed.close(); }
-      const db = new DatabaseSync(storePath, { readOnly: true });
-      try { reservation = JSON.parse(db.prepare("SELECT value FROM meta WHERE key='coordinated_update'").get().value); } finally { db.close(); }
+
     }
     writeFileSync(join(dir, "identity.json"), JSON.stringify(identity));
     writeFileSync(join(dir, "admission.json"), JSON.stringify({ reservation, recovery }));
@@ -103,7 +105,7 @@ for (const schema of [...new Set([44, 48, current.SCHEMA_VERSION])]) {
     const check = new DatabaseSync(storePath, { readOnly: true });
     try { assert.equal(Number(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get().value), schema); assert.equal(check.prepare("PRAGMA integrity_check").get().integrity_check, "ok"); } finally { check.close(); }
     assert.equal(hash(storePath), before, `${name}: deploy fixture changed database bytes`);
-    const row = { name, schema, receiptMode, expected, status: result.status, signal: result.signal, error: result.error?.message, activated, oldRevision, candidateSha, contract: UPDATE_RECOVERY_CONTRACT, command: [process.execPath, ...command], stdout: result.stdout, stderr: result.stderr, calls: callList, databaseUnchanged: true, fixture: dir };
+    const row = { name, schema, receiptMode, expected, status: result.status, signal: result.signal, error: result.error?.message, activated, oldRevision, sourceSha, candidateSha, cliSha256: hash(join(repo, "dist", "cli.js")), ownerBundleSha256: hash(join(repo, "dist", "v2", "cli.js")), contract: UPDATE_RECOVERY_CONTRACT, command: [process.execPath, ...command], stdout: result.stdout, stderr: result.stderr, calls: callList, databaseUnchanged: true, fixture: dir };
     results.push(row);
     writeFileSync(join(work, "results.json"), JSON.stringify(results, null, 2));
     console.log(JSON.stringify(row));
@@ -111,9 +113,10 @@ for (const schema of [...new Set([44, 48, current.SCHEMA_VERSION])]) {
     assert.equal(result.status, success ? 0 : 1, `${name}: unexpected exit; see ${dir}`);
     if (expected === "blocked") assert.match(result.stderr, /incompatible storage|recovery admission/, `${name}: failed before admission`);
     if (expected === "admitted" && receiptMode !== "valid") assert.match(result.stderr, receiptMode === "missing" ? /backup_missing/ : /backup_stale/, `${name}: wrong refusal reason`);
+    if (success) assert.ok(callList.some(call => call[0] === "systemctl" && call.includes("show")), `${name}: fixture systemctl adapter was not used`);
     assert.equal(activated, success, `${name}: unexpected current target`);
     assert.equal(callList.some(call => call[0] === "v2" && call[1] === "daemon"), success, `${name}: unexpected activation attempt`);
-    writeFileSync(logFile, `${new Date().toISOString()}\tfixture\t${name} exercised real deploy CLI\tverify backup-bound admission without a daemon\t${join(dir, "stdout.log")}\t${success ? "admitted" : "refused"}\n`, { flag: "a" });
+    writeFileSync(logFile, `${new Date().toISOString()}\tfixture\t${name} exercised real deploy CLI\tverify backup-bound admission without a daemon\t${join(dir, "stdout.log")}\t${sourceSha} ${success ? "inert activation admitted" : result.stderr.trim()}\n`, { flag: "a" });
   }
 }
 console.log(`PASS ${results.length} isolated deploy fixtures (${expected}); evidence ${work}`);
