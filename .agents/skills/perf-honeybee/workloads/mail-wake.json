@@ -1,0 +1,150 @@
+{
+  "protocolVersion": 1,
+  "id": "mail-wake",
+  "title": "Committed mail wakes delivery and watch",
+  "lane": "interaction",
+  "processes": [
+    "hived",
+    "helper"
+  ],
+  "owners": [
+    "v2/daemon/src/daemon.ts@bb46f21030ad40ff0be397234d2cb596eff87648",
+    "v2/core/src/store.ts@9b9cb9626cc83fbf38d56f5dc19fa8d113a8c8c7"
+  ],
+  "effect": {
+    "user": "Accepted mail reaches an eligible receiver without waiting for the periodic tick.",
+    "assertions": [
+      "Each of30accepted sends has one committed delivered mailbox row and a contiguous keyed watch event.",
+      "Duplicate wake requests do not postpone the first scheduled wake.",
+      "Idle tick callback counts remain unchanged."
+    ],
+    "exclusions": [
+      "Provider acceptance",
+      "Apiary mirror and rendering (separate Home T20 fixture)"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "boundaries",
+      "key": "socket:v2/daemon/src/rpc.ts#1"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": true,
+      "why": "Delivery after explicit idle, plus five quiet windows."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "Outside this fixture."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Delivery after explicit idle, plus five quiet windows."
+    },
+    "scale": {
+      "matters": false,
+      "why": "Outside this fixture."
+    },
+    "background": {
+      "matters": false,
+      "why": "Outside this fixture."
+    },
+    "release": {
+      "matters": false,
+      "why": "Outside this fixture."
+    },
+    "recovery": {
+      "matters": false,
+      "why": "Outside this fixture."
+    }
+  },
+  "fixture": {
+    "preset": "mail-wake-native-relay-v1",
+    "isolationPolicy": 1,
+    "seed": "One generated stub bee per disposable owner,30unique sends at deterministic phase offsets;metal2 and metal3 run independently as owners. Fake HOME and null keychain."
+  },
+  "recipe": {
+    "driver": "scripts/perf/mail-wake-peer.mjs",
+    "command": "node scripts/perf/mail-wake-peer.mjs collector <owner-tailnet-ip> <port> .proof/mail-wake/collector.json - after",
+    "readiness": "Owned disposable hived relay started with owner <bind-ip> <port> <owner.json> <allowed-ip> after; stub explicitly idle and watch subscribed.",
+    "completion": "30 keyed delivery events and mailbox rows verified; five2-second owner idle windows returned.",
+    "warmup": "Built native artifacts and stub explicit idle.",
+    "teardown": "Collector lab.finish shuts down only owned daemon, runtime and relay; retain all receipts.",
+    "serial": true,
+    "requires": [
+      "Node 24 native TypeScript stripping",
+      "Fake HOME with env -i and HIVE_NO_KEYCHAIN=1"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "deliveredWatchMs",
+      "unit": "ms",
+      "scope": "Remote collector send request to delivered watch over allowlisted lab relay; includes TCP buffering.",
+      "collector": "performance.now",
+      "aggregation": "p95",
+      "kind": "actual",
+      "status": "recipe-only",
+      "states": [
+        "repeated"
+      ],
+      "betterWhen": "lower",
+      "invariant": "One durable delivered row per accepted id; no FIFO or urgency policy change.",
+      "noise": "Shared host and collector overhead included; no production latency claim."
+    },
+    {
+      "id": "cpuMs",
+      "unit": "ms",
+      "scope": "Owner daemon plus idle collector task CPU per2seconds; noisy shared-host observation.",
+      "collector": "process.cpuUsage",
+      "aggregation": "median",
+      "kind": "actual",
+      "status": "recipe-only",
+      "states": [
+        "idle"
+      ],
+      "betterWhen": "lower",
+      "invariant": "One durable delivered row per accepted id; no FIFO or urgency policy change.",
+      "noise": "Shared host and collector overhead included; no production latency claim."
+    },
+    {
+      "id": "voluntaryContextSwitches",
+      "unit": "count",
+      "scope": "Owner voluntary switches per2seconds; wakeup proxy only.",
+      "collector": "process.resourceUsage",
+      "aggregation": "median",
+      "kind": "estimate",
+      "status": "recipe-only",
+      "states": [
+        "idle"
+      ],
+      "betterWhen": "lower",
+      "invariant": "One durable delivered row per accepted id; no FIFO or urgency policy change.",
+      "noise": "Shared host and collector overhead included; no production latency claim."
+    },
+    {
+      "id": "durableDeliveryMs",
+      "unit": "ms",
+      "scope": "Owner same-clock mailbox enqueuedAt to deliveredAt; no cross-machine clock subtraction.",
+      "collector": "Committed mailbox rows verified after keyed delivered event.",
+      "aggregation": "p95",
+      "kind": "actual",
+      "status": "recipe-only",
+      "states": [
+        "repeated"
+      ],
+      "betterWhen": "lower",
+      "invariant": "All30accepted messages committed as delivered once.",
+      "noise": "Date.now resolution and loaded shared host; recipe evidence only."
+    }
+  ],
+  "gaps": [
+    "Field active-runtime tick cost is unmeasured; spaced sends cause approximately one full tick each.",
+    "Exact OS wakeups unmeasured (perf/bpftrace absent); idle tick callbacks and context switches retained.",
+    "Native watch relay has a roughly40ms mode, provisionally TCP buffering; no setNoDelay, no production tail claim.",
+    "Production Apiary push belongs to Home T20; independent native loopback fixture numbers must not be merged."
+  ],
+  "updatedAt": "2026-10-27",
+  "readiness": "Loaded-host recipe proof only: no idle-host baseline or latency budget.30samples per arm on two native owners; idle ticks unchanged, CPU inconclusive, active burst cost disclosed."
+}

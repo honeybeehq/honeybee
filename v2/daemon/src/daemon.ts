@@ -713,6 +713,7 @@ export class HiveDaemon {
   private telemetry: TelemetryStore | null = null;
   private rpc: RpcServer | null = null;
   private tickTimer: NodeJS.Timeout | null = null;
+  private tickRequested = false;
   /** Event-loop delay histogram: stalls anywhere (tick, RPC handler, fs) starve the accept loop. */
   private loopDelay: IntervalHistogram | null = null;
   private readonly identityRecovery = new IdentityRecovery();
@@ -1178,14 +1179,16 @@ export class HiveDaemon {
    * progress: a null timer only means the daemon is not running.
    */
   private requestTick(): void {
-    if (this.stopping || !this.tickTimer) return;
+    if (this.stopping || !this.tickTimer || this.tickRequested) return;
+    this.tickRequested = true;
     clearTimeout(this.tickTimer);
-    this.scheduleTick(0);
+    this.scheduleTick(nextTickDelayMs(0));
   }
 
   private scheduleTick(delayMs: number): void {
     this.tickTimer = withoutRpcCaller(() => setTimeout(() => {
       this.tickTimer = null;
+      this.tickRequested = false;
       if (this.stopping) return;
       this.tick();
       if (!this.stopping) {
@@ -5512,6 +5515,7 @@ export class HiveDaemon {
     const answer = this.param(params, "answer");
     if (!store.getQuestion(questionId)) throw new RpcError("question_not_found", `question not found: ${questionId}`);
     const res = store.answerQuestion(questionId, answer, { answeredBy: "rpc" });
+    store.afterCommit(() => this.requestTick());
     this.log(`question.answer question=${questionId} bee=${res.question.beeId} msg=${res.send.message.id}${res.send.wakeCommand ? ` wake=${res.send.wakeCommand.id}` : ""}`);
     return {
       question: res.question,
@@ -5526,7 +5530,11 @@ export class HiveDaemon {
     const questionId = this.param(params, "questionId");
     const key = this.idempotencyKeyOf(params);
     if (!key) throw new RpcError("invalid_request", "question.dismiss requires idempotencyKey");
-    return this.mustStore().dismissQuestionWithKey(questionId, key);
+    const store = this.mustStore();
+    const before = store.lastAuditSeq();
+    const result = store.dismissQuestionWithKey(questionId, key);
+    if (store.lastAuditSeq() !== before) store.afterCommit(() => this.requestTick());
+    return result;
   }
 
   private rpcQuestionWithdraw(params: Record<string, unknown>, conn: RpcConn): QuestionWithdrawResult {
@@ -5761,6 +5769,7 @@ export class HiveDaemon {
     if (this.phoneOriginOf(params)) { sender = `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone`; senderKind = undefined; }
     const res = store.send(beeId, body, { sender, urgency, ...(params.automationKind !== undefined ? { automationKind: params.automationKind as AutomationKind, ...(typeof params.automationRef === "string" ? { automationRef: params.automationRef } : {}) } : {}), ...((params as Record<PropertyKey,unknown>)[AUTOMATION_REFERENCE] ? {automationReference:(params as Record<PropertyKey,unknown>)[AUTOMATION_REFERENCE] as import("../../core/src/types.ts").AutomationReference} : {}), ...(humanChat ? { humanChat } : {}), ...(senderKind ? { senderKind } : {}), ...this.phoneSendOptions(params) });
     this.forwardIfMailboxOnly(beeId, res.message);
+    store.afterCommit(() => this.requestTick());
     const held = this.authResume?.waitingForMaterial(beeId);
     return { messageId: res.message.id, commandId: res.wakeCommand?.id ?? null, unarchived: res.unarchived,
       ...(held ? { runtimeStartHold: { code: "account_auth_needed" as const, message: "Waiting for refreshed account material" as const } } : {}) };

@@ -6,6 +6,7 @@ description: Measure satellite Cell startup, unchanged action-lane polling batch
 # Perf Honeybee
 
 This map covers **satellite Cell startup** and **unchanged action-lane polling** **batch action views**, and **boot-state reads**, not all Honeybee performance.
+Mail wake scheduling and its explicit active-load limits are mapped by [mail-wake](workloads/mail-wake.md); native relay timing is separate from Apiary remote notice visibility.
 Read [the map](workloads/README.md) and [the workload](workloads/remote-cell-spawn.md).
 For action polling, read [its workload](workloads/action-noop-reconciliation.md).
 It counts store work in real SQLite fixtures; no runtime is launched or timing claimed.
