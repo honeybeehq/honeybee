@@ -23,8 +23,8 @@ export class UpdateAdmissionError extends Error {
 export type UpdateAdmission = { reservation: UpdateReservation; recovery: RecoveryPlan | RoleBoundRecoveryPlan };
 
 /** Called inside the SAME deploy lock used by the daemon's reserve/release RPC. */
-export async function assertUpdateAdmission(root: string, identity: ComponentIdentity, admission: UpdateAdmission, backup: BackupAdmission): Promise<void> {
-  if (!Number.isSafeInteger(backup.candidateSchemaVersion) || backup.candidateSchemaVersion < 1) throw new UpdateAdmissionError("backup_invalid", "candidate schema capability missing");
+export async function assertUpdateRecoveryAdmission(root: string, identity: ComponentIdentity, admission: UpdateAdmission, candidateSchemaVersion: number): Promise<{ schemaVersion: number; reservation: UpdateReservation }> {
+  if (!Number.isSafeInteger(candidateSchemaVersion) || candidateSchemaVersion < 1) throw new UpdateAdmissionError("backup_invalid", "candidate schema capability missing");
   const requested = parseUpdateReservation(admission.reservation);
   // Recovery plans have no top-level version field. Their closed combination
   // shapes discriminate readers; never convert a plan or retry a failed parser.
@@ -39,9 +39,14 @@ export async function assertUpdateAdmission(root: string, identity: ComponentIde
     throw new Error("deploy: no exact automatic recovery admission");
   }
   const { reservation, blockers, schemaVersion } = await readUpdateOwner(root);
-  if (schemaVersion > backup.candidateSchemaVersion) throw new UpdateAdmissionError("schema_newer", `store schema ${schemaVersion} exceeds candidate schema ${backup.candidateSchemaVersion}`);
+  if (schemaVersion > candidateSchemaVersion) throw new UpdateAdmissionError("schema_newer", `store schema ${schemaVersion} exceeds candidate schema ${candidateSchemaVersion}`);
   if (blockers || canonicalDigest(reservation) !== canonicalDigest(requested)) throw new Error("deploy: stale reservation or incompatible storage");
-  verifyBackup(root, schemaVersion, backup, requested);
+  return { schemaVersion, reservation: requested };
+}
+
+export async function assertUpdateAdmission(root: string, identity: ComponentIdentity, admission: UpdateAdmission, backup: BackupAdmission): Promise<void> {
+  const owner = await assertUpdateRecoveryAdmission(root, identity, admission, backup.candidateSchemaVersion);
+  verifyBackup(root, owner.schemaVersion, backup, owner.reservation);
 }
 
 function verifyBackup(root: string, schemaVersion: number, backup: BackupAdmission, reservation: UpdateReservation): void {

@@ -13,7 +13,7 @@ import * as v2 from "../src/release/v2.js";
 async function assertUpdateAdmission(root: string, identity: Parameters<typeof rawAssertUpdateAdmission>[1], admission: UpdateAdmission) {
   const startedAt = Date.now();
   const receipt = backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture");
-  return rawAssertUpdateAdmission(root, identity, admission, { receiptPath: receipt.receiptPath, startedAt, candidateSchemaVersion: 48 });
+  return rawAssertUpdateAdmission(root, identity, admission, { receiptPath: receipt.receiptPath, startedAt, candidateSchemaVersion: 51 });
 }
 async function writeStatus(path: string, source: string) {
   await writeFile(path, `exports.runV2Cli = async () => { ${source} };`);
@@ -178,7 +178,7 @@ test("the live owner's initial unreserved status cannot be used for recovery", a
   } finally { await rm(f.dir, { recursive: true, force: true }); }
 });
 
-for (const schemaVersion of [44, 48]) {
+for (const schemaVersion of [28, 30, 44, 48, 51]) {
   for (const live of [false, true]) {
     test(`schema ${schemaVersion} ${live ? "live" : "offline"} owner admits with a verified receipt`, async () => {
       const f = await fixture();

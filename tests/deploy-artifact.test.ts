@@ -34,11 +34,11 @@ import { cp, mkdir, readFile, readlink, symlink, lstat } from "node:fs/promises"
 import { packRuntimeArtifact, sha256File } from "../src/runtimeArtifact.js";
 import type { ComponentIdentity } from "../src/release/index.js";
 
-async function release(dir: string, sha = "a".repeat(40), gate: "full" | "tests-skipped" = "full", cli = "console.log('hive');\n") {
+async function release(dir: string, sha = "a".repeat(40), gate: "full" | "tests-skipped" = "full", cli = "console.log('hive');\n", schema = 48) {
   const stage = join(dir, `stage-${sha}`);
   await mkdir(join(stage, "dist", "v2"), { recursive: true });
   await writeFile(join(stage, "dist", "cli.js"), cli);
-  await writeFile(join(stage, "dist", "v2", "cli.js"), `var SCHEMA_VERSION = 48;\nvar PROTOCOL = "v2/1";\nvar UPDATE_RECOVERY_CONTRACT = "${UPDATE_RECOVERY_CONTRACT}";\nprocess.exit(1);\n`);
+  await writeFile(join(stage, "dist", "v2", "cli.js"), `var SCHEMA_VERSION = ${schema};\nvar PROTOCOL = "v2/1";\nvar UPDATE_RECOVERY_CONTRACT = "${UPDATE_RECOVERY_CONTRACT}";\nprocess.exit(1);\n`);
   await writeFile(join(stage, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1,
     component: "honeybee", version: "0.1.0", packageVersion: "0.1.0", sourceRevision: sha,
     dirty: false, release: true, target: `${process.platform}-${process.arch}` }));
@@ -486,7 +486,7 @@ for (const scenario of ["missing", "stale", "newer"] as const) {
       }
       const history = await readFile(join(root, "deploys.json"), "utf8").catch(() => null);
       await assert.rejects(deployArtifact({ ...next, root, expectedCurrent: previous.identity.sourceRevision, admission, hooks: {
-        async backupStore() { return scenario === "missing" ? { receiptPath: join(dir, "missing.json") } : receipt; },
+        async backupStore() { assert.notEqual(scenario, "newer", "newer store refuses before candidate backup runs"); return scenario === "missing" ? { receiptPath: join(dir, "missing.json") } : receipt; },
         async restartDaemon() { assert.fail("refused admission must not activate"); },
       } }), new RegExp(scenario === "newer" ? "schema_newer" : `backup_${scenario}`));
       assert.equal(await currentDeployTarget(root), previous.identity.sourceRevision);
@@ -495,3 +495,23 @@ for (const scenario of ["missing", "stale", "newer"] as const) {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 }
+
+test("modern store admission still refuses an older incompatible rollback runtime", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "hb-artifact-old-rollback-")), root = join(dir, "runtime");
+  try {
+    const previous = await release(dir, "b".repeat(40), "full", undefined, 44), next = await release(dir);
+    await deployArtifact({ ...previous, root, expectedCurrent: null, admission: { fresh: true }, hooks: { async restartDaemon() {} } });
+    const admission = await reserve(dir, next.identity), store = join(dir, "v2", "core.sqlite3");
+    const db = new DatabaseSync(store);
+    db.exec("UPDATE meta SET value='48' WHERE key='schema_version'");
+    db.close();
+    let backedUp = false;
+    await assert.rejects(deployArtifact({ ...next, root, expectedCurrent: previous.identity.sourceRevision, admission, hooks: {
+      async backupStore() { backedUp = true; return backupStoreOffline(store, "fixture"); },
+      async restartDaemon() { assert.fail("incompatible rollback must not activate"); },
+    } }), /ROLLBACK_STORE_RESTORE_REQUIRED/);
+    assert.equal(backedUp, true);
+    assert.equal(await currentDeployTarget(root), previous.identity.sourceRevision);
+    assert.equal(existsSync(join(root, next.identity.sourceRevision)), false);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});

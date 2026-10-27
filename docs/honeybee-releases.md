@@ -305,3 +305,26 @@ Recovery-plan identity checks, authority blockers, reservation fencing and rollb
 schema checks still apply. There is no admission bypass flag. Node interpreter
 migration must explicitly select a different verified `HIVE_NODE_PATH`; the prior
 pin remains unchanged until the existing restart owner accepts activation.
+
+The invoking deploy owner must understand this contract before it can admit a T7
+artifact. Pre-T7 owners intentionally reject it, including after rollback to an
+older owner. Use a verified T7-capable deploy owner with the exact artifact identity
+and a recovery plan naming the new requirement; do not relabel a v1 plan or marker.
+This is a coordinated updater prerequisite, not an automatic bootstrap mechanism.
+
+A running pre-T5 daemon has no `store.backup` RPC. Its deploy attempt refuses;
+there is no fallback around a live writer. For such a starting runtime, an
+explicitly authorized maintenance procedure must stop the daemon through its
+owner, verify it is down, then run the T7-capable deploy owner so T5 can take the
+offline backup. An owner implementing T5 can back up over RPC. The CLI fixtures
+prove the offline route with inert activation, not the running pre-T5 route or a
+real daemon boot. DEPLOY HOLD must be released separately before any live action.
+
+Schema support follows the core migration capability rather than a schema27
+allowlist. The receipt proves the prior store is recoverable; it does not make an
+older binary compatible with newer data. The existing rollback schema guard still
+refuses an incompatible previous runtime before publication, and schema29 remains
+excluded because it belongs to reverted build `7374447d`, which the core refuses.
+The receipt's DDL digest is checked against the backup's actual schema; this does
+not compare all live data against the snapshot. Freshness uses this deploy's backup
+start time and fails closed if the wall clock moves backward.
