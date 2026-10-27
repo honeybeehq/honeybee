@@ -11,7 +11,8 @@ import type { ThreadOperationView } from "./threadOperation.ts";
  * tracks mirror as their store rows. Deltas are audit rows; the mirror is
  * always exactly "hive at seq N".
  *
- * Changing anything here is a protocol change (bump PROTOCOL in the daemon).
+ * Admission metadata is additive under workstation.admission.v1; older wire
+ * projections retain their prior shapes. Other shape changes require a protocol change.
  * The shape snapshot test (tests/mirror.test.ts) fails on any drift.
  */
 import type { AccountAdmissionReservationRow, AccountLimitsRow, AccountRow, ActionQueueView, ActionView, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow, TranscriptSegmentRow } from "./types.ts";
@@ -275,6 +276,7 @@ export type MirrorLoginFlowAuditKind = (typeof MIRROR_LOGIN_FLOW_AUDIT_KINDS)[nu
 /** Key lists — the shape snapshot; a materializer's column map must cover exactly these. */
 export const MIRROR_BEE_ROW_KEYS = ["view", "bee", "runtime", "move", "cell", "handoff"] as const;
 export const MIRROR_BEE_VIEW_KEYS = [
+  "admissionBasis",
   "humanOutputMode", "humanAcknowledgementTrackingSince", "lastHumanAcknowledgementAt", "unansweredHumanMessage",
   "beeId",
   "exists",
@@ -290,6 +292,7 @@ export const MIRROR_BEE_VIEW_KEYS = [
   "flags",
 ] as const;
 export const MIRROR_BEE_RECORD_KEYS = [
+  "admissionBasis",
   "humanOutputMode", "humanAcknowledgementTrackingSince", "lastHumanAcknowledgementAt", "unansweredHumanMessage",
   "id",
   "name",

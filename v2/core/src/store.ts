@@ -1924,7 +1924,12 @@ export class CoreStore {
       // missing, so fresh and v1 stores (whose bees table was just created in
       // full) are untouched.
       this.addMissingColumns("bees", BEES_ADDITIVE_COLUMNS);
-      if (stored < 52) this.db.exec("UPDATE bees SET admission_basis = 'continuation'");
+      if (stored < 52) {
+        for (const row of this.stmt("SELECT id FROM bees").all() as Row[]) {
+          this.stmt("UPDATE bees SET admission_basis = 'continuation' WHERE id = ?").run(String(row.id));
+          this.audit("workstation.admission", String(row.id), { operation: "migration", outcome: "migration", beeId: String(row.id), admissionBasis: "continuation" });
+        }
+      }
       // v7 → v8: additive urgency column on mailbox (spec 01 Q2 amendment).
       const mailCols = new Set(
         (this.stmt("SELECT name FROM pragma_table_info('mailbox')").all() as Row[]).map((c) => String(c.name)),
@@ -2189,7 +2194,7 @@ export class CoreStore {
         if (!previous.lastLocal && previous.highWatermarkMs === 0) this.putAccountObservation(account,{lastLocal:{limits:this.getAccountLimits(account)!,source:null},provenance:null,source:null,highWatermarkMs:0});
       }
     }
-    this.db.exec("CREATE TABLE IF NOT EXISTS workstation_admission_bindings (request_key TEXT PRIMARY KEY, digest TEXT NOT NULL)");
+    this.db.exec("CREATE TABLE IF NOT EXISTS workstation_admission_bindings (request_key TEXT PRIMARY KEY, digest TEXT NOT NULL); CREATE INDEX IF NOT EXISTS audit_workstation_request ON audit(json_extract(payload, '$.requestKey')) WHERE kind='workstation.admission'");
     this.db.exec(PHONE_PROVENANCE_SQL);
     this.db.exec(DELIVERY_CONFIRMATION_SQL);
     this.stmt("INSERT OR IGNORE INTO meta(key,value) SELECT 'confirmation_legacy_max_message_id', CAST(COALESCE(MAX(id),0) AS TEXT) FROM mailbox").run();
@@ -2488,6 +2493,16 @@ export class CoreStore {
     });
   }
 
+  workstationStartCandidates(): BeeRow[] {
+    return (this.stmt(`SELECT DISTINCT b.* FROM commands c JOIN bees b ON b.id=c.bee_id
+      WHERE c.status='queued' AND c.verb IN ('spawn','revive','send_wake')
+        AND b.admission_basis NOT IN ('continuation','human')`).all() as Row[]).map(row => this.mapPhoneBee(row));
+  }
+
+  hasRuntimeStartEvidence(beeId: string): boolean {
+    return this.stmt("SELECT 1 FROM runtimes WHERE bee_id=? AND pid IS NOT NULL LIMIT 1").get(beeId) !== undefined;
+  }
+
   bindWorkstationAdmission(key: string, digest: string): void {
     const row = this.stmt("SELECT digest FROM workstation_admission_bindings WHERE request_key = ?").get(key) as Row | undefined;
     if (row && row.digest !== digest) throw new IdempotencyConflictError(key);
@@ -2500,7 +2515,17 @@ export class CoreStore {
   }
 
   recordWorkstationAdmission(beeId: string | null, payload: Record<string, unknown>): void {
-    this.tx(() => this.audit("workstation.admission", beeId, payload));
+    this.tx(() => {
+      if (typeof payload.requestKey === "string") {
+        const previous = this.stmt("SELECT payload FROM audit WHERE kind='workstation.admission' AND json_extract(payload,'$.requestKey') = ? ORDER BY seq DESC LIMIT 1").get(payload.requestKey) as Row | undefined;
+        if (previous) {
+          const prior = JSON.parse(String(previous.payload)) as Record<string, unknown>;
+          delete prior.rpcCaller;
+          if (JSON.stringify(prior) === JSON.stringify(payload)) return;
+        }
+      }
+      this.audit("workstation.admission", beeId, payload);
+    });
   }
 
   recordLocalRpcEvent(kind: "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload: Record<string, unknown>): void {

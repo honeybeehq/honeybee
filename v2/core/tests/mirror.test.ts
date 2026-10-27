@@ -200,6 +200,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "humanAcknowledgementTrackingSince": null,
         "lastHumanAcknowledgementAt": null,
         "unansweredHumanMessage": null,
+        "admissionBasis": "unadmitted",
         "exists": true,
         "lifecycle": "active",
         "generation": 1,
@@ -213,6 +214,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "flags": []
       },
       "bee": {
+        "admissionBasis": "unadmitted",
         "id": "BEE_ID",
         "name": "alpha",
         "agent": "claude",

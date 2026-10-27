@@ -375,7 +375,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
     storePath,
     proc,
     output: () => out,
-    client: () => RpcClient.connect(handle.socketPath, 3000, undefined, { caller: { client: "hive-cli", runtimeBeeId: null, runtimeContext: false, expectedInstanceId: null } }),
+    client: () => RpcClient.connect(handle.socketPath, 3000, undefined, { capabilities: ["workstation.admission.v1"], caller: { client: "hive-cli", runtimeBeeId: null, runtimeContext: false, expectedInstanceId: readLiveEndpointRecord(handle.dir)?.instanceId ?? null } }),
     kill: async () => {
       proc.kill("SIGKILL");
       await waitFor(() => proc.exitCode != null || proc.signalCode != null, "daemon killed", 4000);

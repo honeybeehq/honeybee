@@ -1332,27 +1332,31 @@ export class HiveDaemon {
   }
 
   /** Refresh the bounded due-start set immediately before a command claim. */
+  private workstationHeldBeeIds: Set<string> | null = null;
+
   private prepareRuntimeStartCommands(): ReadonlySet<string> {
     this.authResume?.reconcile();
     this.refreshAccountActivations();
     const blocked = new Set([...this.blockedRuntimeStartBeeIds(),...this.executionStartHolds]);
     if (this.cfg.nodeKind === "workstation") {
       const store = this.mustStore();
-      for (const command of store.listCommands({ status: "queued" })) {
-        if (!["spawn", "revive", "send_wake"].includes(command.verb)) continue;
-        const bee = store.getBee(command.beeId);
-        if (!bee) continue;
-        const started = store.listRuntimes(bee.id).some(runtime => runtime.pid !== null);
+      this.workstationHeldBeeIds ??= new Set(store.listBees().filter(bee => store.activeFlags(bee.id).some(flag => flag.flag === "resource_blocked" && flag.detail === "workstation_heavy_work_denied")).map(bee => bee.id));
+      const held = new Set<string>();
+      for (const bee of store.workstationStartCandidates()) {
+        const started = store.hasRuntimeStartEvidence(bee.id);
         if (!startAdmissionAllowed(bee, started, this.cfg.landingFixerPolicy, Date.now())) {
           blocked.add(bee.id);
+          held.add(bee.id);
           if (!store.activeFlags(bee.id).some(flag => flag.flag === "resource_blocked" && flag.detail === "workstation_heavy_work_denied")) {
             store.setFlag(bee.id, "resource_blocked", "workstation_heavy_work_denied");
-            store.recordWorkstationAdmission(bee.id, { operation: command.verb, outcome: "held", reason: "workstation_heavy_work_denied" });
+            store.recordWorkstationAdmission(bee.id, { operation: "runtime-start", outcome: "held", reason: "workstation_heavy_work_denied" });
           }
-        } else if (store.activeFlags(bee.id).some(flag => flag.flag === "resource_blocked" && flag.detail === "workstation_heavy_work_denied")) {
-          store.clearFlag(bee.id, "resource_blocked", "workstation admission allowed");
         }
       }
+      for (const beeId of this.workstationHeldBeeIds) {
+        if (!held.has(beeId) && store.activeFlags(beeId).some(flag => flag.flag === "resource_blocked" && flag.detail === "workstation_heavy_work_denied")) store.clearFlag(beeId, "resource_blocked", "workstation admission no longer held");
+      }
+      this.workstationHeldBeeIds = held;
     }
 
     for (const row of this.mustStore().listLiveAuthInterruptions()) if (this.authResume?.holdsStoppedRuntime(row)) {
@@ -1919,7 +1923,7 @@ export class HiveDaemon {
     const begun = this.mustStore().beginFencedSpawn(params, conn.executionCoordinatorUid);
     if (begun.fresh) {
       try { await this.rpcSpawnWithAccount({ ...begun.request.args, idempotencyKey: begun.request.idempotencyKey }, begun.request); }
-      catch { this.mustStore().markSpawnUnknown(begun.request.idempotencyKey); throw new ExecutionFenceError("rpc_execution_history_unknown","Spawn preparation may have committed; reconcile the original execution"); }
+      catch (error) { if (error instanceof RpcError && error.code === "workstation_heavy_work_denied") throw error; this.mustStore().markSpawnUnknown(begun.request.idempotencyKey); throw new ExecutionFenceError("rpc_execution_history_unknown","Spawn preparation may have committed; reconcile the original execution"); }
     }
     return this.mustStore().resolveExecution(params, conn.executionCoordinatorUid);
   }
@@ -4815,9 +4819,10 @@ export class HiveDaemon {
     const cwd = params.cwd;
     const actor = this.admissionCaller.getStore()?.conn;
     const hash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null, admission: actor?.workstationAdmission ?? null, actor: actor?.authenticatedBeeId ?? actor?.caller?.runtimeBeeId ?? null, client: actor?.caller?.client ?? null });
+    const legacyHash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null });
     const existing = store.getCellOpByKey(key);
     if (existing) {
-      if (existing.requestHash !== hash || existing.kind !== "exec" || existing.cellId !== cellId) {
+      if ((existing.requestHash !== hash && existing.requestHash !== legacyHash) || existing.kind !== "exec" || existing.cellId !== cellId) {
         throw new RpcError("idempotency_conflict", "idempotency key already bound to a different cell.exec request");
       }
       if (existing.status === "running") {
@@ -4839,7 +4844,7 @@ export class HiveDaemon {
     }
     const busy = this.cellHasInFlightOp(cellId, key);
     const persistRefusal = (failure: "busy" | "cell_runtime_live" | "workstation_heavy_work_denied"): CellExecResult => {
-      const op = store.putCellOp({
+      const op = existing ?? store.putCellOp({
         cellId,
         kind: "exec",
         idempotencyKey: key,

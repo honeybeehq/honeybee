@@ -166,10 +166,15 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         threadOperations.set(operation.id, operation);
         break;
       }
+      case "workstation.admission": {
+        if (p.outcome === "migration" && p.beeId) mustBee(p.beeId as string).admissionBasis = "continuation";
+        break;
+      }
       case "bee.created": {
         const bee = p.bee as BeeRow;
         bees.set(bee.id, {
           ...bee,
+          admissionBasis: bee.admissionBasis ?? "continuation",
           human_ref: bee.human_ref ?? null,
           issuing_namespace: bee.issuing_namespace ?? null,
           parentExternal: bee.parentExternal ?? false,

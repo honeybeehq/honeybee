@@ -1,3 +1,4 @@
+import { projectWorkstationAdmission } from "./workstationAdmissionProjection.ts";
 import { StoreBackupError } from "../../core/src/storeBackup.ts";
 import { HumanOutputError } from "../../core/src/humanOutput.ts";
 import { createHash } from "node:crypto";
@@ -351,7 +352,7 @@ export class RpcServer {
       send: (obj: unknown) => {
         if (socket.destroyed) return;
         this.performance.measureSync("rpc.serialize", () => {
-          socket.write(`${JSON.stringify(obj)}\n`);
+          socket.write(`${JSON.stringify(projectWorkstationAdmission(obj, conn.clientCapabilities))}\n`);
         });
       },
       subscribeWatch: (cursor: number) => {
@@ -456,27 +457,30 @@ export class RpcServer {
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       const admissionContext = frame.context as Record<string, unknown> | undefined;
       const admissionFacts = (() => {
-        const admission = admissionContext?.workstationAdmission;
-        if (admission !== undefined || (verb === "cell.exec" && admissionContext?.sessionPrincipal !== undefined)) {
-          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("workstation_heavy_work_denied", "Workstation admission context requires registered direct-local Apiary authority");
-          this.trust.require(peer, conn.ingress);
-          let marker: import("../../core/src/types.ts").WorkstationAdmission | undefined;
-          if (admission !== undefined) {
-            if (!admission || typeof admission !== "object" || Array.isArray(admission)) throw new RpcError("invalid_request", "Invalid workstationAdmission");
-            const a = admission as Record<string, unknown>;
-            if (Object.keys(a).some(key => !["version", "intent", "requestKey", "policyId"].includes(key)) || a.version !== 1 || !["automatic", "human", "landing-fixer-local"].includes(String(a.intent)) || typeof a.requestKey !== "string" || !a.requestKey || a.requestKey !== params.idempotencyKey || (a.intent === "landing-fixer-local" ? verb !== "spawn" || typeof a.policyId !== "string" || !a.policyId : a.policyId !== undefined)) throw new RpcError("invalid_request", "Invalid workstation admission binding");
-            marker = a as unknown as typeof marker;
-          }
-          const principal = admissionContext?.sessionPrincipal as { beeId?: unknown } | undefined;
-          if (principal !== undefined && (verb !== "cell.exec" || !principal || typeof principal.beeId !== "string" || !principal.beeId || (marker && marker.intent !== "automatic"))) throw new RpcError("invalid_request", "Invalid Cell execution principal");
-          return { registeredApiary: true, ...(marker ? { workstationAdmission: marker } : {}), ...(principal ? { authenticatedBeeId: principal.beeId as string } : {}) };
+        const gated = ["spawn", "bee.fork", "thread.fork", "thread.handoff", "import.fromFrozen", "cell.exec"].includes(verb);
+        const raw = admissionContext?.workstationAdmission;
+        const principal = admissionContext?.sessionPrincipal as { beeId?: unknown } | undefined;
+        let marker: import("../../core/src/types.ts").WorkstationAdmission | undefined;
+        if (raw !== undefined) {
+          if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", "Invalid workstationAdmission");
+          const a = raw as Record<string, unknown>;
+          if (!gated || Object.keys(a).some(key => !["version", "intent", "requestKey", "policyId"].includes(key)) || a.version !== 1 || !["automatic", "human", "landing-fixer-local"].includes(String(a.intent)) || typeof a.requestKey !== "string" || !a.requestKey || a.requestKey !== params.idempotencyKey || (a.intent === "landing-fixer-local" ? verb !== "spawn" || typeof a.policyId !== "string" || !/^[^\s\0]{1,128}$/.test(a.policyId) : a.policyId !== undefined)) throw new RpcError("invalid_request", "Invalid workstation admission binding");
+          marker = a as unknown as typeof marker;
+          if (principal !== undefined && marker?.intent !== "automatic") throw new RpcError("invalid_request", "Session principals cannot claim human or fixer intent");
         }
+        if (!gated) return {};
         let registeredApiary = false;
         if (peer && this.trust.enabled && conn.ingress === "local_unix") {
           try { this.trust.require(peer, conn.ingress); registeredApiary = true; } catch {}
         }
-        return { registeredApiary };
-
+        if (marker && marker.intent !== "automatic" && !registeredApiary) throw new RpcError("workstation_heavy_work_denied", "Human/fixer admission requires registered direct-local Apiary authority");
+        if (registeredApiary && principal !== undefined && (!principal || typeof principal.beeId !== "string" || !principal.beeId || principal.beeId.length > 256 || principal.beeId.includes("\0"))) throw new RpcError("invalid_request", "Invalid admission principal");
+        return {
+          registeredApiary,
+          // Automatic metadata is never an exception, even without trust.
+          ...(marker ? { workstationAdmission: marker } : {}),
+          ...(registeredApiary && principal ? { authenticatedBeeId: principal.beeId as string } : {}),
+        };
       })();
       const dispatch = (v: RpcVerb, p: Record<string, unknown>, c: RpcConn) => this.opts.dispatch(v, p, { ...c, ...admissionFacts });
       const result = withRpcCaller(caller, () => {

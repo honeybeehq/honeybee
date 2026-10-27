@@ -5,7 +5,7 @@ import { RpcError } from "./protocol.ts";
 
 export function humanAdmission(conn: RpcConn): boolean {
   if (conn.phoneLane === "interim-v1") return false;
-  if (conn.workstationAdmission) return conn.workstationAdmission.intent === "human" && !conn.authenticatedBeeId;
+  if (conn.workstationAdmission) return conn.registeredApiary === true && conn.workstationAdmission.intent === "human" && !conn.authenticatedBeeId;
   return conn.ingress === "local_unix" && !conn.registeredApiary && !conn.authenticatedBeeId
     && conn.caller?.client === "hive-cli" && conn.caller.runtimeBeeId === null && conn.caller.runtimeContext === false;
 }
@@ -20,7 +20,7 @@ export function newAdmissionBasis(kind: string, operation: string, conn: RpcConn
   if (kind !== "workstation") return "automatic_nonworkstation";
   if (humanAdmission(conn)) return "human";
   const marker = conn.workstationAdmission;
-  if (operation === "spawn" && marker?.intent === "landing-fixer-local") {
+  if (operation === "spawn" && conn.registeredApiary === true && marker?.intent === "landing-fixer-local") {
     if (!policy || marker.policyId !== policy.policyId) throw admissionFailure(operation, "fixer_policy_missing");
     if (policy.expiresAt <= now) throw admissionFailure(operation, "fixer_policy_expired");
     return `fixer:${policy.policyId}`;
@@ -36,6 +36,6 @@ export function startAdmissionAllowed(bee: BeeRow, hasStarted: boolean, policy: 
 
 export function ownCellAdmission(bee: BeeRow, conn: RpcConn): boolean {
   if (humanAdmission(conn)) return true;
-  const actor = conn.authenticatedBeeId ?? conn.caller?.runtimeBeeId;
+  const actor = conn.authenticatedBeeId ?? (conn.ingress === "local_unix" ? conn.caller?.runtimeBeeId : undefined);
   return actor === bee.id && (["continuation", "human"].includes(bee.admissionBasis ?? "unadmitted") || bee.admissionBasis?.startsWith("fixer:") === true);
 }

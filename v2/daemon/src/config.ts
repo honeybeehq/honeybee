@@ -1095,6 +1095,6 @@ export function landingFixerPolicyOf(raw: Record<string, unknown>): LandingFixer
   if (policy === undefined) return null;
   if (!policy || typeof policy !== "object" || Array.isArray(policy)) throw new ConfigError("Invalid landingFixerPolicy");
   const p = policy as Record<string, unknown>;
-  if (Object.keys(p).some(key => !["policyId", "owner", "expiresAt"].includes(key)) || typeof p.policyId !== "string" || !p.policyId.trim() || p.owner !== "T114" || typeof p.expiresAt !== "number" || !Number.isSafeInteger(p.expiresAt) || p.expiresAt <= 0) throw new ConfigError("landingFixerPolicy requires policyId, owner T114 and finite expiresAt epoch milliseconds");
+  if (Object.keys(p).some(key => !["policyId", "owner", "expiresAt"].includes(key)) || typeof p.policyId !== "string" || !/^[^\s\0]{1,128}$/.test(p.policyId) || p.owner !== "T114" || typeof p.expiresAt !== "number" || !Number.isSafeInteger(p.expiresAt) || p.expiresAt <= 0) throw new ConfigError("landingFixerPolicy requires policyId, owner T114 and finite expiresAt epoch milliseconds");
   return { policyId: p.policyId, owner: "T114", expiresAt: p.expiresAt };
 }

@@ -38,9 +38,11 @@ The timestamp above is illustrative and expired; the owner must supply a finite
 approved expiry. Policy expiry blocks new fixer admissions, not existing work.
 Children receive independent admission. `admission_basis` defaults `unadmitted`;
 missed creation paths are held before command claim without consuming spawn retries.
-After an older-store rollback, new unadmitted rows remain held on redeploy until a
-separately authorized migration/tool exists. Downgrade to an older schema reader
-still follows the existing newer-store refusal/backup contract.
+An older daemon refuses schema52, so rollback restores its pre-migration backup.
+On redeploy, every bee in that restored database, including rollback-created
+automatic bees, migrates to continuation. Those bees are a disclosed rollback gap;
+never claim the migration marker survives backup restoration. Unknown creation
+paths in an already-migrated store still default unadmitted and are held.
 
 Refusals use `workstation_heavy_work_denied` and suggest a suitable satellite or
 `forage --needs linux -- '<command>'` for Linux-compatible work. They never rerun
