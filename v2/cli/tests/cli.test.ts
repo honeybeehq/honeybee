@@ -631,7 +631,7 @@ test("cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto`
 });
 
 test("cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --parent (+ ambient HIVE_BEE_ID), ask/answer/question list, seal create/list/get; stale fallbacks for the reads", async () => {
-  const { dir, cleanup } = makeDaemonDir();
+  const { dir, cleanup } = makeDaemonDir({ nodeKind: "cloud" });
   let daemon: DaemonHandle | null = null;
   const savedEnv = process.env.HIVE_BEE_ID;
   try {

@@ -1,3 +1,4 @@
+import { runV2Cli } from "../../cli/src/main.ts";
 import { HiveDaemon } from "../src/daemon.ts";
 import { RpcError } from "../src/protocol.ts";
 import { makeOrigin } from "../../driver-cell/tests/helpers.ts";
@@ -87,6 +88,17 @@ test("workstation RPC denies all automatic substrates before effects; local huma
   assert.equal((await operator.request<SnapshotResult>("snapshot")).views.length, 0);
   const owner = await operator.request<SpawnResult>("spawn", { name: "human", agent: "stub", cwd: rig.dir, idempotencyKey: "human" });
   await waitFor(async () => (await operator.request<ViewResult>("view", { beeId: owner.beeId })).view.runtimeState === "idle", "human stub idle");
+  const saved = process.env.HIVE_BEE_ID;
+  const cliErrors: string[] = [];
+  try {
+    process.env.HIVE_BEE_ID = owner.beeId;
+    const exit = await runV2Cli(["spawn", "cli-child", "--agent", "stub", "--cwd", rig.dir, "--data-dir", rig.dir], { out: () => {}, err: line => cliErrors.push(line) });
+    assert.equal(exit, 1);
+    assert.match(cliErrors.join("\n"), /forage|workstation_heavy_work_denied/);
+  } finally {
+    if (saved === undefined) delete process.env.HIVE_BEE_ID;
+    else process.env.HIVE_BEE_ID = saved;
+  }
   const child = await RpcClient.connect(daemon.socketPath, 3000, undefined, { caller: { client: "hive-cli", runtimeBeeId: owner.beeId, runtimeContext: true, expectedInstanceId: null } });
   t.after(() => child.close());
   await assert.rejects(child.request("spawn", { name: "child", agent: "stub", cwd: rig.dir, parentId: owner.beeId }), denied);

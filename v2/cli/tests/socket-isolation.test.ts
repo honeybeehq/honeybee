@@ -381,8 +381,8 @@ test("socket isolation against throwaway daemons", async (t) => {
       try {
         await assert.rejects(client.request("spawn", { name: "raw-foreign", agent: "claude", cwd: scratch }), (err: unknown) =>
           err instanceof RpcError && err.code === "foreign_daemon_spawn" && (err.details as Json).reason === "data_dir_mismatch");
-        const stub = await client.request<Json>("spawn", { name: "raw-stub", agent: "stub", cwd: scratch });
-        assert.ok(stub.beeId);
+        await assert.rejects(client.request("spawn", { name: "raw-stub", agent: "stub", cwd: scratch }), (err: unknown) =>
+          err instanceof RpcError && err.code === "workstation_heavy_work_denied");
       } finally {
         client.close();
       }
