@@ -24,7 +24,7 @@ export async function sendBackupAlert(config:BackupMailConfig,alert:BackupServic
   // No source paths, URLs, credentials or raw exception/tool output belong in email.
   const machine=alert.machine.replace(/[^A-Za-z0-9._-]/g,'?').slice(0,128),code=alert.code;
   const id=createHash('sha256').update(alert.messageId).digest('hex');
-  const body=['From: '+from,'To: '+recipient,'Subject: Honeybee backup '+code,'Message-ID: <'+id+'@honeybee-backup.invalid>','Date: '+new Date(alert.createdAt).toUTCString(),'MIME-Version: 1.0','Content-Type: text/plain; charset=utf-8','','Backup monitoring: '+code,'Machine: '+machine,'Inspect the owner backup status for details.'];
+  const body=['From: '+from,'To: '+recipient,'Subject: Honeybee backup '+code,'Message-ID: <'+id+'@honeybee-backup.invalid>','Date: '+new Date(alert.createdAt).toUTCString(),'MIME-Version: 1.0','Content-Type: text/plain; charset=utf-8','','Backup monitoring: '+code,'Machine: '+machine,...(alert.phase?['Phase: '+alert.phase.replace(/[^A-Za-z0-9._-]/g,'?').slice(0,64)]:[]),'Inspect the owner backup status for details.'];
   await command(body.map(line=>line.startsWith('.')?'.'+line:line).join('\r\n')+'\r\n.',[250]);await command('QUIT',[221]);socket.end();
  }catch{throw new BackupMailError();}finally{socket.destroy();}
 }

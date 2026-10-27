@@ -2,9 +2,9 @@ import type { BackupServiceAlert,BackupStateRow } from '../../core/src/backupSer
 import { BackupFacts,serviceHash,serviceSecret,type BackupServiceOwner } from './backupServiceSupport.ts';
 import { sendBackupAlert,type BackupMailConfig } from './backupMail.ts';
 const flushing=new WeakMap<object,Promise<void>>();
-export function queueBackupAlert(owner:BackupServiceOwner,role:BackupStateRow['role'],identity:string,code:BackupServiceAlert['code'],machine:string,repository:string):void{
+export function queueBackupAlert(owner:BackupServiceOwner,role:BackupStateRow['role'],identity:string,code:BackupServiceAlert['code'],machine:string,repository:string,phase?:string):void{
  const facts=new BackupFacts(owner,role),id=serviceHash({identity,code,machine,repository}),key=role+':alert:'+id;if(facts.get(key,'alert'))return;
- facts.put(key,'alert',{id,code,machine,repository,createdAt:owner.now(),state:'pending',attempts:0,nextAttemptAt:owner.now(),messageId:id,sentAt:null});
+ facts.put(key,'alert',{id,code,machine,repository,createdAt:owner.now(),state:'pending',attempts:0,nextAttemptAt:owner.now(),messageId:id,sentAt:null,...(phase?{phase}:{})});
 }
 export async function flushBackupAlerts(owner:BackupServiceOwner,role:BackupStateRow['role'],config:BackupMailConfig):Promise<void>{
  const existing=flushing.get(owner.store);if(existing)return existing;

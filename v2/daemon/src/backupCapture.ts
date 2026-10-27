@@ -134,10 +134,10 @@ process.once('message',message=>{
   child.once('close',code=>{if(timer)clearTimeout(timer);process.exit(code===0 && !stopping ? 0 : 2);});
 });
 `;
-async function run(command: string, args: string[], owner: Pick<BackupOwner, "tools" | "child" | "signal">, options: { cwd?: string; env?: NodeJS.ProcessEnv; output?: string; limit?: number; input?: string; inputFile?: string } = {}): Promise<string> {
+async function run(command: string, args: string[], owner: Pick<BackupOwner, "tools" | "child" | "signal">, options: { cwd?: string; env?: NodeJS.ProcessEnv; output?: string; limit?: number; input?: string; inputFile?: string; beforeStart?:(pid:number)=>Promise<void>;detachedGuard?:boolean } = {}): Promise<string> {
   if (owner.signal?.aborted) throw new BackupError("interrupted");
   return new Promise((accept, reject) => {
-    const child = spawn(process.execPath, ["-e", TOOL_GUARD], { cwd: options.cwd, env: toolEnv(), stdio: ["pipe", "pipe", "pipe", "ipc"], signal: owner.signal, timeout: 60 * 60_000 });
+    const child = spawn(process.execPath, ["-e", TOOL_GUARD], { detached:options.detachedGuard??false,cwd: options.cwd, env: toolEnv(), stdio: ["pipe", "pipe", "pipe", "ipc"], signal: owner.signal, timeout: 60 * 60_000 });
     const stdin = child.stdin, stdout = child.stdout, stderr = child.stderr;
     if (!stdin || !stdout || !stderr) { child.kill(); reject(new BackupError("tool_failed")); return; }
     stdin.on("error", () => undefined);
@@ -153,7 +153,7 @@ async function run(command: string, args: string[], owner: Pick<BackupOwner, "to
       try {
         if (!child.pid) throw new BackupError("tool_failed");
         owner.child(child.pid);
-        if (!owner.signal?.aborted) child.send({ command, args, env: options.env ?? toolEnv() }, error => { if (error) fail(); });
+        void Promise.resolve(options.beforeStart?.(child.pid)).then(()=>{if (!owner.signal?.aborted&&child.connected)child.send({ command, args, env: options.env ?? toolEnv() }, error => { if (error) fail(); });}).catch(fail);
       } catch { fail(); }
     });
     // Drain and discard diagnostics: tools and Hem may echo credentials or sensitive source names.

@@ -19,7 +19,7 @@ export class BackupMachineService {
   const o=response.observations.find(v=>v.repository===this.config.repository);insist(o&&o.observedAt<=this.owner.now()&&this.owner.now()-o.observedAt<=this.config.observationMaxAgeMs,'capacity_unknown');
   // Only this owner writes B4's observation file; installation owns the policy values.
   let policy:any;try{policy=JSON.parse(await readFile(join(this.owner.dataDir,'backup-eviction.json'),'utf8'));}catch{throw new BackupServiceError('invalid_config');}
-  policy.pinRequired=true;policy.capacity={admission:o.band==='stop'?'stop':'allow',maxAgeMs:this.config.observationMaxAgeMs,stopFraction:0.9,repository:o.repository,observedAt:o.observedAt,repositoryUsedBytes:o.repositoryBytes,repositoryLimitBytes:o.repositoryLimitBytes,fleetUsedBytes:o.fleetBytes,fleetLimitBytes:o.fleetLimitBytes};
+  policy.pinRequired=true;policy.capacity={admission:o.band==='stop'||o.band==='unknown'?'stop':'allow',maxAgeMs:this.config.observationMaxAgeMs,stopFraction:0.9,repository:o.repository,observedAt:o.observedAt,repositoryUsedBytes:o.repositoryBytes,repositoryLimitBytes:o.repositoryLimitBytes,fleetUsedBytes:o.fleetBytes,fleetLimitBytes:o.fleetLimitBytes};
   await mkdir(this.owner.dataDir,{recursive:true});const temporary=join(this.owner.dataDir,'backup-eviction.json.new');await writeFile(temporary,JSON.stringify(policy),{mode:0o600});await rename(temporary,join(this.owner.dataDir,'backup-eviction.json'));return o;
  }
  private async runOnce():Promise<unknown>{

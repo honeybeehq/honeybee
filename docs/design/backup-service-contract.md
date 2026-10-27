@@ -151,3 +151,69 @@ and Tormod's deployment access establish who may write it; no public operator ke
 Do not describe that label as cryptographic proof of Tormod's identity. There is no code
 that can enforce this install order on a node that has B4 but has never configured B6.
 The operator must configure B6/pinRequired and bootstrap before production deletion.
+
+## Writer fencing and quota retally follow-up
+
+Schema 55 prevents a v54 owner from replaying this privileged effect protocol. The
+writer and maintenance backend share ciphertext, so the fleet lease alone is insufficient:
+append-only rest-server still permits lock deletion and its size counter is only scanned
+at startup. Before maintenance, stop and confirm the exact writer unit. Afterward, prove
+all backend processes gone and start a fresh writer so its quota is recounted.
+
+Authority configuration requires exactly
+`maintenance.writerFenceCommand = ["/usr/bin/sudo","-n","/usr/local/libexec/fleet-backup-writer-fence"]`.
+The daemon supplies only `stop|status|start` plus an allocation unit label. A profile may
+set `writerFenceMachine` when its source identity differs from that label. No request,
+shell string, URL or Serve identity header can supply a privileged command.
+
+Tormod installs `deploy/backup/fleet-backup-writer-fence.py` as that root-owned 0755 helper.
+Its root-owned `/etc/fleet-backup/allocations.tsv` is B1's three-column label/port/limit
+allowlist. Its root-owned `/etc/fleet-backup/authority.uid` pins the nonroot authority UID;
+UID 0 refuses, and SUDO_UID, if present, must match. The environment never selects the UID.
+Root-only persistent state lives at `/var/lib/fleet-backup/writer-fences`: `<label>` is
+the writer-start marker, `<label>.json` its job/bound-identity journal, and a flock serializes
+operations. Install the matching unit condition from `writer-unit-fence.conf`. Enabled
+writers cannot auto-start through a retained marker after reboot. Never store this fence
+only in /run. Exact 45 sudoers permissions (three actions × 15 labels), directory ownership,
+Linux pidfd support and effective authority service privilege settings require operator
+installation proof. No root, sudo or systemd command was run during development.
+
+JSON stdin is `{format:"honeybee.writer-fence.v1",jobId:<64 hex>,backend:null|{pid,birth,bootId}}`.
+Output binds format, jobId, machine, `fleet-backup@<label>.service`, writer, ActiveState,
+SubState, backend, fenced, and optional inventoryBytes/inventoryComplete. Zero exit alone
+is insufficient. `stop` persists intent/marker before stopping and proves inactive/dead,
+zero MainPID/ControlPID and an empty unit cgroup. `fenced:true` is intent until stopped
+is confirmed. `status` with a backend identity binds it before the guard can launch the
+tool; null only inspects recovery, including an already-running/released writer.
+
+The backend guard is a separate process-group leader. Before restarting, the helper
+requires the same job and proves the whole same-boot group absent. If the guard was killed,
+it can reap only bound orphans of the pinned UID, using exact Linux pidfds, birth/boot/PGID
+rechecks, TERM then bounded KILL. It never signals a live/reused leader or a foreign UID.
+TypeScript never kills an unverified raw PGID. SIGSTOPped/live unknown guards stay held for
+operator inspection. If pipes remain open after guard death, the owner uses a one-second
+settle bound and asks the helper for authoritative reap/absence. After proven release,
+a late close cannot keep the in-memory backend lane wedged; hash artifacts are cleaned.
+
+The backend always receives an explicit integer `--max-size` equal to the lesser of
+`profile.limitBytes + grant.maxWriteBytes` and the observed repository bytes plus that write
+budget, also bounded by the 30 TB allocation. Existing duration, reserve, byte and object
+budgets still apply. Raw backend ports remain numeric loopback only.
+
+Before restart, the authority attempts a bounded five-second physical inventory; the helper
+has a separate two-second advisory scan. Incomplete measurement is recorded, invalidates
+capacity/admission, and raises `writer_fence_failed` phase inventory. It does not indefinitely
+prevent a confirmed fresh writer restart. A fresh unknown observation writes B4 admission
+stop. Ordinary inventory must recover before uploads/evictions resume. Large-repository
+scan timing is not measured by the fixture. Lifecycle/identity failures retain marker and
+fleet lease, with a phase-specific alert; other repositories still get monitoring/overdue
+processing. A journal belonging to a lost job must be reconciled from its durable Core intent
+and same-job helper protocol; never erase the marker, change the pinned UID or manually
+start through uncertainty.
+
+The gateway continues to require configured Bearer credentials and scoped maintenance Basic
+grants. Tailscale Serve `Tailscale-User-*` headers confer no authentication, even on a
+reachable frontend. The loopback drill sends those headers without a grant and receives 403.
+It also kills a real disposable guard, proves automatic orphan recovery, tests a stuck fence,
+and checks actual writer quota retally after maintenance additions and deletions. Production
+sudoers, systemd boot behavior, target ACLs and actual SX65 installation remain untested.

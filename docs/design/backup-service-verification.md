@@ -1,47 +1,61 @@
-# B6 verification receipt
+# B6 verification receipt, including writer-fence follow-up
 
-All runs used this worker's disposable fixtures and numeric loopback. No real Cell,
-Studio/MacBook home, SX65, real email destination or installed service was used.
+All runs used disposable fixtures and numeric loopback from the worker Cell. No real Cell,
+Studio/MacBook home, SX65, real email destination, root, sudo or systemd operation was used.
 Toolchain: Node 24.18.0, npm 11.16.0, restic 0.18.1, rest-server 0.14.0, Linux x64.
 
 Run `HIVE_TEST_RESTIC=/absolute/path/to/restic HIVE_TEST_REST_SERVER=/absolute/path/to/rest-server node scripts/verify-backup-service.mjs`.
-Expect 11 passing tests, no skips, and `.audit/backup-b6/loopback-summary.json`.
+Expect six Python helper checks followed by 12 passing Node tests, with zero skips.
+The drill writes `.audit/backup-b6/loopback-summary.json` and `writer-quota-summary.json`.
 
-The eleven tests cover inventory failure/capacity alert, expired maintenance takeover,
-unknown encrypted arrivals, gateway bind recovery, real scheduled upload/restart/SMTP/
-finite prune, approved configurable retention, exact capacity bands, durable CAS/replay,
-real RPC service admission, poisoned-key/outage fairness, and local live-Cell preflight.
-The real drill uses six encrypted snapshots, retains four after deleting an unpinned
-capture/catalogue pair, preserves the pinned sole copy and completes bounded check/prune.
-It refuses keys/config mutation, out-of-grant snapshot deletion, pack deletion before
-index publication, a late pin, grant replay and uploader maintenance access. It also
-refuses prune before the operator bootstrap attestation. Report retry succeeds without
-another capture. Overdue and capacity-stop mail reach a local authenticated SMTP sink.
+The helper checks persistent fences across a simulated boot/unit start, uncertain/live
+backend refusal, stuck stop/wrong job, slow advisory inventory, pinned nonroot UID and
+SUDO_UID mismatch, foreign UID binding, and invalid action/machine/extra fields.
+
+The Node tests cover inventory/capacity alerts, maintenance takeover, unknown encrypted
+arrivals, gateway bind recovery, real scheduled upload/restart/SMTP/finite prune, approved
+retention, exact capacity bands, durable CAS/replay, real owner RPC admission, poisoned-key/
+outage fairness, local busy preflight plus B4 unknown-capacity refusal, and actual quota
+retally. Six encrypted snapshots become four after an unpinned capture/catalogue pair is
+forgotten; the pinned recovery copy survives bounded check/prune. Report retries do not
+recapture. Proxy role, bootstrap, keys/config, out-of-grant, early-pack, late-pin and replay
+refusals are exercised. Serve identity headers without credentials return 403.
+
+The integration stops a real disposable writer before the backend starts, asserts the
+backend's live argv contains its recorded bounded max-size, then kills its guard. The root
+helper logic runs through a disposable manager adapter (no systemd/root) and automatically
+reaps the owned orphan via pidfds before writer restart and fleet-lease release. A stuck
+fence refuses backend launch and retains the lease. A separate synthetic quota drill proves
+both directions: maintenance-added bytes make the restarted writer refuse a write; after
+maintenance deletes bytes, a restarted writer accepts newly available space. A backend
+write above its own explicit cap is refused.
 
 Final evidence under `.audit/backup-b6/`:
 
 | Evidence | Result |
 | --- | --- |
-| check-final.log, v2check-final.log, build-final.log | pinned checks and build passed |
-| core-fleet-final.log | core 623, fleet 6 passed |
-| daemon-final.log | local RPC security, eviction, retained safety and retention: 32 passed |
-| service-drill-final.log | 11 passed, zero skips |
-| b2-regression.log | capture/SQLite/retry/restore: 5 passed |
-| b4-built-regression.log | built verifier/eviction worker: 13 passed, including pin-unavailable intact-source assertion |
-| protocol.log | real proxy/restic phases and closed refusals, no credentials |
-| loopback-summary.json | operation/report retry, 6→4 snapshots, protected copy, SMTP and access checks |
-| templates.log | TOML/plist syntax parsed; platform/target runtime not claimed |
+| fence-check-final.log, fence-v2check-final.log, fence-build-final.log | pinned checks and build passed |
+| fence-core-final.log | core 623, fleet 6 passed, schema 55 |
+| fence-daemon-final.log | local RPC, eviction, retained safety and retention: 32 passed |
+| fence-service-final.log | six Python and 12 Node tests passed, zero skips |
+| fence-b2-final.log | capture/SQLite/retry/exact restore: 5 passed |
+| fence-b4-final.log | built verifier/eviction: 13 passed |
+| protocol.log | proxy/restic/fence phases and closed refusals |
+| writer-quota-summary.json | actual maintenance addition/deletion retally and backend cap refusal |
+| loopback-summary.json | operation/report retry, sole copy, SMTP, stuck fence, orphan recovery and auth checks |
+| templates.log | TOML/plist syntax only; installation/runtime not claimed |
 
 The expanded scan checks fixture repository/HTTP/SMTP/private signing/HMAC secrets,
 derived maintenance passwords, bearer tokens and common base64 forms in tool/server
 output, mail bodies, Core facts and records. It does not claim application backup contents
-are secret-free. Fixture repositories, databases and hashed authentication files are cleaned.
+are secret-free. Fixture repositories, databases and authentication hashes are cleaned.
 
-Review: claude-opus-5-5, read-only, no tests rerun. No remaining Medium-or-higher code
-findings in the reviewed excerpts. The committed decision trail records failed experiments
-and their superseding real results. Operational limitations remain in the service contract:
-private server-config bootstrap attestation (not a cryptographic operator signature),
-B6-before-B4 install ordering, immutable extra pins after failed eviction, no signed rejected-
-snapshot disposal API, 30s token revocation lag, and unbounded retained service history.
-Pollinate target schema, launchd runtime and inherited special-tar fixture are NOT_COVERED;
-B4's mmap/inaccessible-fd writer residual remains. No installation is implied by these tests.
+Review: claude-opus-5-5, read-only, no tests rerun. No remaining Medium-or-higher findings
+in reviewed code. Earlier timeout/hash/budget experiments and their final results are in
+the decision trail. Real privileged-helper installation, exact sudoers restrictions, actual
+systemd boot behavior, target tailnet ACLs, large-repository scan timing and the forced
+late-pipe-only branch are NOT_COVERED. Previously recorded limits remain: Pollinate target
+schema/macOS runtime, inherited special-tar fixture and mmap/inaccessible-fd residual,
+operator bootstrap/install ordering, immutable extra pins, unknown rejected snapshots,
+service history growth and 30s token revocation lag. Bootstrap identity is trusted private
+configuration, not a cryptographic operator signature. No rollout is implied by these tests.

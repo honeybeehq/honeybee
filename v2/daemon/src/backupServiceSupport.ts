@@ -3,7 +3,7 @@ import type { CoreStore,BackupStateFacts,BackupStateKind,BackupStateRow } from "
 import { canonicalBackupJson } from "../../core/src/backupReceipt.ts";
 import { resolveBackupSecret, type BackupTools } from "./backupCapture.ts";
 import { validateBackupEndpoint } from "./backupServiceConfig.ts";
-export type BackupServiceReason="invalid_config"|"not_due"|"busy"|"capacity_stop"|"capacity_unknown"|"owner_unavailable"|"secret_unavailable"|"mail_failed"|"grant_invalid"|"scope_refused"|"protected_missing"|"retention_unknown"|"interrupted"|"outcome_unknown"|"job_failed"|"verification_refused"|"listen_failed"|"tool_missing";
+export type BackupServiceReason="invalid_config"|"not_due"|"busy"|"capacity_stop"|"capacity_unknown"|"owner_unavailable"|"secret_unavailable"|"mail_failed"|"grant_invalid"|"scope_refused"|"protected_missing"|"retention_unknown"|"interrupted"|"outcome_unknown"|"job_failed"|"verification_refused"|"listen_failed"|"tool_missing"|"writer_fence_failed";
 export class BackupServiceError extends Error {readonly reason:BackupServiceReason;constructor(reason:BackupServiceReason){super(reason);this.reason=reason;}}
 export function insist(value:unknown,reason:BackupServiceReason="invalid_config"):asserts value {if(!value)throw new BackupServiceError(reason);}
 export const serviceHash=(value:unknown)=>createHash('sha256').update(canonicalBackupJson(value)).digest('hex');
