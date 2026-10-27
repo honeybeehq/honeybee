@@ -2,11 +2,14 @@
 
 ## Current maintenance self-test
 
-`hardening-self-test.sh <absolute-node> <passwd-home>` is the offline shell/Node
+`hardening-self-test.sh <absolute-node> <passwd-home> <source-sha>` is the offline shell/Node
 hardening check for exact host `trmd-fangorn-mini07`, or `trmd-hobbiton-mini04`
 outside 03:00–04:40Z inclusive. Both entries enforce the venue. Run it from the
 committed review checkout outside the real home. Script and checkout paths under
 the passwd home refuse from computed paths, before loading the Node script.
+Node must be 24 or newer. An independent checkout with no object alternates is
+required; the exact source SHA and clean gate files are checked locally and the
+SHA is recorded. No remote Git operation occurs in the self-test.
 The home argument comes from the account record, never from scanning that home.
 The runner refuses stamped HIVE_/APIARY_ controller keys at entry, ignoring and
 unsetting the tool-injected HIVE_REAL_HOME exception. It constructs an empty
@@ -27,7 +30,10 @@ historical Python self-test or product suites. The legacy wrappers below remain
 held, including the exit-88 pinned-runtime/full bodies; this check does not
 authorize a runtime gate, deployment or a run on any other Mac.
 
-This wrapper runs only on erebor, through the orchestrator-authorized absolute forage route. All ordinary Darwin runs remain held pending Queen's review of this hardening. This PR's self-test uses only its private run root; it does not read the real HOME sentinel or LaunchAgents.
+The historical wrapper below uses the erebor/forage route. It is documentation
+of the merged #51 implementation, not current permission to run on erebor.
+Current lab restrictions above take precedence. The maintenance self-test reads
+only its owned LaunchAgents fixture. Runtime/full bodies remain held.
 
 ## Entry and provenance
 

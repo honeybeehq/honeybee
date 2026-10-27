@@ -3,7 +3,21 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
+import { spawnSync } from 'node:child_process';
 import { inside, labHost, launchAgents, profile, writable, write } from './hardening.mjs';
+
+test('shell refuses stamped keys before platform or filesystem work', () => {
+  const script = new URL('./hardening-self-test.sh', import.meta.url).pathname;
+  const refused = spawnSync('/bin/sh', [script], { env: { PATH: '/usr/bin:/bin', APIARY_TEST: 'not-printed' }, encoding: 'utf8' });
+  assert.equal(refused.status, 90);
+  assert.match(refused.stderr, /stamped controller keys: APIARY_TEST/);
+  assert.ok(!refused.stderr.includes('not-printed'));
+  if (process.platform === 'linux') {
+    const exception = spawnSync('/bin/sh', [script], { env: { PATH: '/usr/bin:/bin', HIVE_REAL_HOME: '/must-not-read' }, encoding: 'utf8' });
+    assert.equal(exception.status, 90);
+    assert.match(exception.stderr, /Darwin required/);
+  }
+});
 
 test('exact lab hosts and inclusive quiet window fail closed', () => {
   for (const utc of ['0300', '0340', '0400', '0440', '', '9999', 'ab12']) assert.throws(() => labHost('trmd-hobbiton-mini04', utc), /REFUSED/);

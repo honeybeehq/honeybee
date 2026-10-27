@@ -57,12 +57,23 @@ export function profile(root, realHome) {
   return `(version 1)(allow default)(deny network*)(deny mach-lookup)(deny file-write*)(allow file-write* (subpath ${JSON.stringify(root)}))(deny file-read* (subpath ${JSON.stringify(realHome)}) (subpath "/Library/Keychains") (subpath "/private/var/db/Keychains"))(deny process-exec (literal "/usr/bin/security"))`;
 }
 
-function selfTest(root, realHome) {
+function selfTest(root, realHome, source) {
   if (process.platform !== 'darwin') throw new Error('Darwin required');
   const now = new Date();
   labHost(os.hostname(), String(now.getUTCHours()).padStart(2, '0') + String(now.getUTCMinutes()).padStart(2, '0'));
   if (realHome !== os.userInfo().homedir) throw new Error('passwd home mismatch');
   if ([process.cwd(), fileURLToPath(import.meta.url)].some(candidate => inside(path.resolve(candidate), realHome))) throw new Error('REFUSED: checkout or script under real home');
+  if (Number(process.versions.node.split('.')[0]) < 24) throw new Error('REFUSED: Node 24 or newer required');
+  if (!/^[a-f0-9]{40}$/.test(source)) throw new Error('REFUSED: exact source SHA required');
+  const checkout = fileURLToPath(new URL('../../../', import.meta.url));
+  const gitDir = path.join(checkout, '.git');
+  if (!fs.lstatSync(gitDir).isDirectory() || fs.lstatSync(gitDir).isSymbolicLink() || fs.existsSync(path.join(gitDir, 'objects/info/alternates'))) throw new Error('REFUSED: independent checkout required');
+  const git = args => {
+    const result = spawnSync('/usr/bin/git', ['--no-optional-locks', '-C', checkout, ...args], { env: { PATH: '/usr/bin:/bin', HOME: '/private/var/tmp', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' }, encoding: 'utf8', timeout: 15000 });
+    if (result.error || result.status !== 0) throw new Error('REFUSED: local source verification failed');
+    return result.stdout.trim();
+  };
+  if (git(['rev-parse', 'HEAD']) !== source || git(['status', '--porcelain', '--', 'scripts/gates/darwin'])) throw new Error('REFUSED: source SHA mismatch or dirty gate');
   if (!path.isAbsolute(root) || path.dirname(root) !== '/private/var/tmp' || !path.basename(root).startsWith('hb-gate.')) throw new Error('unsafe run root');
   writable(root, root, realHome);
   if (fs.realpathSync(root) !== root || fs.lstatSync(root).isSymbolicLink() || (fs.statSync(root).mode & 0o777) !== 0o700) throw new Error('unsafe run directory');
@@ -94,7 +105,7 @@ function selfTest(root, realHome) {
   if (JSON.stringify(before) !== JSON.stringify(launchAgents(fixtureHome))) throw new Error('sentinel exceeded LaunchAgents scope');
   rows.push({ sentinel: before, scope: 'fixture LaunchAgents names and SHA256 only' });
   fs.rmdirSync(fixture);
-  const receipt = JSON.stringify({ ok: true, root, realHomeFilesystemAccess: false, network: 'deny network* policy; no network operations attempted; Darwin inbound isolation is not established', keychain: 'no access', cache: path.join(sandbox, 'cache'), rows }, null, 2) + '\n';
+  const receipt = JSON.stringify({ ok: true, source, node: process.versions.node, root, policyAssertions: { realHome: 'computed-path refusal; no real-home filesystem probe', network: 'deny network* policy; no network operations attempted; Darwin inbound isolation is not established', keychain: 'no access requested; policy denies Keychain paths and Mach lookup' }, cache: path.join(sandbox, 'cache'), rows }, null, 2) + '\n';
   write(path.join(root, 'receipt.json'), receipt, root, realHome);
   const hashes = {};
   for (const name of ['hardening.mjs', 'hardening-self-test.sh', 'hardening.test.mjs']) hashes[name] = createHash('sha256').update(fs.readFileSync(new URL(name, import.meta.url))).digest('hex');
@@ -112,7 +123,7 @@ function selfTest(root, realHome) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
-    if (process.argv.length !== 5 || process.argv[2] !== '--self-test') throw new Error('only --self-test <root> <passwd-home> is supported');
-    selfTest(process.argv[3], process.argv[4]);
+    if (process.argv.length !== 6 || process.argv[2] !== '--self-test') throw new Error('only --self-test <root> <passwd-home> <source-sha> is supported');
+    selfTest(process.argv[3], process.argv[4], process.argv[5]);
   } catch (error) { console.error(error.message); process.exitCode = 1; }
 }

@@ -12,7 +12,7 @@ case "$(/bin/hostname -s)" in
     case "$utc" in 03??|040?|041?|042?|043?|0440) echo 'REFUSED: mini04 quiet window' >&2; exit 90;; esac ;;
   *) echo 'REFUSED: approved Mac lab required' >&2; exit 90;;
 esac
-[ "$#" = 2 ] || { echo 'usage: hardening-self-test.sh <absolute-node> <passwd-home>' >&2; exit 90; }
+[ "$#" = 3 ] || { echo 'usage: hardening-self-test.sh <absolute-node> <passwd-home> <source-sha>' >&2; exit 90; }
 case "$1" in /opt/homebrew/bin/node|/usr/local/bin/node|/opt/homebrew/opt/node@24/bin/node) ;; *) echo 'REFUSED: unconfigured Node' >&2; exit 90;; esac
 case "$2" in /Users/*) ;; *) echo 'REFUSED: absolute passwd home required' >&2; exit 90;; esac
 script_dir=$(/usr/bin/dirname "$0")
@@ -20,4 +20,4 @@ script_dir=$(/usr/bin/dirname "$0")
 root=$(/usr/bin/mktemp -d /private/var/tmp/hb-gate.XXXXXXXX)
 /bin/chmod 700 "$root"
 /bin/mkdir -m 700 "$root/home" "$root/tmp"
-exec /usr/bin/env -i PATH=/usr/bin:/bin HOME="$root/home" TMPDIR="$root/tmp" "$1" "$script_dir/hardening.mjs" --self-test "$root" "$2"
+exec /usr/bin/env -i PATH=/usr/bin:/bin HOME="$root/home" TMPDIR="$root/tmp" "$1" "$script_dir/hardening.mjs" --self-test "$root" "$2" "$3"
