@@ -160,7 +160,8 @@
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
 // v52: owner-coordinated backup operations share the durable Cell gate.
-export const SCHEMA_VERSION = 52;
+// v53: verified owner removal intents and fail-closed eviction semantics; older daemons must not replay them.
+export const SCHEMA_VERSION = 53;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -877,6 +878,8 @@ CREATE TABLE IF NOT EXISTS cell_ops (
   updated_at      INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS cell_ops_backup_pending ON cell_ops(status) WHERE kind = 'backup';
+CREATE INDEX IF NOT EXISTS cell_ops_mutation_pending ON cell_ops(cell_id,status) WHERE kind IN ('backup','remove') AND status IN ('queued','running','outcome_unknown');
+CREATE INDEX IF NOT EXISTS cell_ops_backup_latest ON cell_ops(cell_id,created_at DESC) WHERE kind = 'backup';
 `;
 
 /**
@@ -987,6 +990,8 @@ CREATE TABLE IF NOT EXISTS cell_ops (
   updated_at      INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS cell_ops_backup_pending ON cell_ops(status) WHERE kind = 'backup';
+CREATE INDEX IF NOT EXISTS cell_ops_mutation_pending ON cell_ops(cell_id,status) WHERE kind IN ('backup','remove') AND status IN ('queued','running','outcome_unknown');
+CREATE INDEX IF NOT EXISTS cell_ops_backup_latest ON cell_ops(cell_id,created_at DESC) WHERE kind = 'backup';
 `;
 
 /**

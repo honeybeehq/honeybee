@@ -83,7 +83,7 @@ test("cell-retention.0: verbs and capability are published", () => {
   assert.ok((DAEMON_CAPABILITIES as readonly string[]).includes("cell.retention.v1"));
 });
 
-test("cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply evicts a clean archived Cell; a message revives it in place", { timeout: 180_000 }, async () => {
+test("cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply holds an unbacked archived Cell; a message resumes it", { timeout: 180_000 }, async () => {
   const rig = makeRig({ enabled: false, archivedAfterDays: 0 });
   let daemon: DaemonHandle | null = null;
   try {
@@ -120,8 +120,8 @@ test("cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply
     const applied = await gc(client, { dryRun: false });
     assert.ok(applied.outcomes);
     const outcome = applied.outcomes.find((o) => o.beeId === clean.beeId)!;
-    assert.equal(outcome.status, "evicted");
-    assert.equal(existsSync(cleanWrapper), false, "the wrapper is gone from the bee's path");
+    assert.equal(outcome.status,"refused");assert.equal(outcome.reason,"receipt_missing");
+    assert.equal(existsSync(cleanWrapper), true, "the wrapper is gone from the bee's path");
     await waitFor(() => !existsSync(join(rig.cellsRoot, EVICTING_DIR)) || readdirSync(join(rig.cellsRoot, EVICTING_DIR)).length === 0, "parked wrapper swept", 20_000);
     assert.equal(existsSync(dirty.view.bee!.cwd), true, "the dirty Cell was not touched");
 
@@ -130,11 +130,11 @@ test("cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply
     assert.equal(after.bee?.cellId, clean.view.cell!.id, "…with its Cell id");
     assert.equal(after.bee?.cwd, cleanSpace, "…and its cwd");
     assert.equal(after.bee?.sessionLogPath, clean.view.bee!.sessionLogPath, "…and its transcript path");
-    assert.equal(after.cell?.state, "evicted");
-    assert.equal(after.cell?.evictedHead, rig.origin.sha);
+    assert.equal(after.cell?.state, "active");
+    assert.equal(after.cell?.evictedHead, null);
     assert.equal(existsSync(after.bee!.sessionLogPath!), true, "the transcript file is untouched");
     const again = await gc(client);
-    assert.equal(itemFor(again, clean.beeId).reason, "already_evicted");
+    assert.equal(itemFor(again, clean.beeId).reason, "archived_age");
 
     // Revive by message: auto-unarchive → new generation → Cell re-provisioned in place → row active again.
     commitOn(rig.origin.repo, "later.txt", "origin moved on\n", "origin advance");
@@ -152,14 +152,14 @@ test("cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply
     assert.equal(revived.cell?.state, "active");
     assert.equal(revived.cell?.evictedAt, null);
     assert.equal(revived.cell?.evictedHead, null);
-    assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.reprovisioned bee=/);
+    assert.ok(existsSync(cleanSpace),"the unbacked checkout was never replaced");
   } finally {
     await daemon?.stop();
     rig.cleanup();
   }
 });
 
-test("cell-retention.2: cell.evict on one bee — refused dirty, forced parks, live runtime is typed-refused, idempotent replay", { timeout: 180_000 }, async () => {
+test("cell-retention.2: cell.evict on one bee — refused dirty, force cannot bypass backup protection, live runtime is held, idempotent replay", { timeout: 180_000 }, async () => {
   const rig = makeRig({ enabled: false });
   let daemon: DaemonHandle | null = null;
   try {
@@ -167,26 +167,23 @@ test("cell-retention.2: cell.evict on one bee — refused dirty, forced parks, l
     const client = await daemon.client();
     const bee = await spawnIdle(client, "one", rig.origin.repo);
     const space = bee.view.bee!.cwd;
-    await assert.rejects(
-      client.request("cell.evict", { beeId: bee.beeId, idempotencyKey: "live" }),
-      (err: Error & { code?: string }) => err.code === "runtime_refused",
-    );
+    const live=await client.request<CellEvictResult>("cell.evict",{beeId:bee.beeId,idempotencyKey:"live"});assert.equal(live.reason,"gate_busy");
     await stopped(client, bee.beeId);
     writeFileSync(join(space, "wip.txt"), "uncommitted\n");
     const refused = await client.request<CellEvictResult>("cell.evict", { beeId: bee.beeId, idempotencyKey: "k1" });
     assert.equal(refused.status, "refused");
-    assert.equal(refused.report?.uncommitted, true);
+    assert.equal(refused.reason,"receipt_missing");
     assert.equal(existsSync(space), true);
     const forced = await client.request<CellEvictResult>("cell.evict", { beeId: bee.beeId, idempotencyKey: "k2", force: true });
-    assert.equal(forced.status, "evicted");
-    assert.equal(forced.forced, true);
-    assert.equal(forced.cell?.state, "evicted");
-    assert.equal(existsSync(dirname(space)), false);
+    assert.equal(forced.status, "refused");assert.equal(forced.reason,"receipt_missing");
+    assert.equal(forced.forced, false);
+    assert.equal(forced.cell?.state, "active");
+    assert.equal(existsSync(dirname(space)), true);
     const replay = await client.request<CellEvictResult>("cell.evict", { beeId: bee.beeId, idempotencyKey: "k2", force: true });
-    assert.equal(replay.deduped, true);
-    assert.equal(replay.status, "evicted");
+    assert.equal(replay.reason,"receipt_missing");
+    assert.equal(replay.status, "refused");
     const fresh = await client.request<CellEvictResult>("cell.evict", { beeId: bee.beeId, idempotencyKey: "k3" });
-    assert.equal(fresh.status, "absent");
+    assert.equal(fresh.status, "refused");
     const view = await client.request<ViewResult>("view", { beeId: bee.beeId });
     assert.equal(view.bee?.lifecycle, "active");
     assert.equal(view.view.reachable, true);
@@ -196,7 +193,7 @@ test("cell-retention.2: cell.evict on one bee — refused dirty, forced parks, l
   }
 });
 
-test("cell-retention.3: the automatic pass runs on its interval and evicts a clean stopped Cell past the age floor", { timeout: 180_000 }, async () => {
+test("cell-retention.3: the automatic pass runs on its interval and holds an unbacked stopped Cell past the age floor", { timeout: 180_000 }, async () => {
   const rig = makeRig({ enabled: true, stoppedAfterDays: 0, archivedAfterDays: 0, intervalHours: 1 });
   let daemon: DaemonHandle | null = null;
   try {
@@ -206,16 +203,16 @@ test("cell-retention.3: the automatic pass runs on its interval and evicts a cle
     const bee = await spawnIdle(client, "auto", rig.origin.repo);
     const space = bee.view.bee!.cwd;
     await stopped(client, bee.beeId);
-    await waitFor(async () => (await client.request<ViewResult>("view", { beeId: bee.beeId })).cell?.state === "evicted", "auto-evicted", 60_000);
-    assert.equal(existsSync(dirname(space)), false);
-    assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.retention\.evicted .*reason=stopped_age/);
+    await waitFor(()=>readFileSync(join(rig.dir,"hived.log"),"utf8").includes("cell.retention.pass"),"automatic pass recorded",60000);
+    assert.equal(existsSync(dirname(space)), true);
+    assert.equal((await client.request<ViewResult>("view",{beeId:bee.beeId})).cell?.state,"active");
   } finally {
     await daemon?.stop();
     rig.cleanup();
   }
 });
 
-test("cell-retention.4: a clean retained Cell (its bee moved away) is removed by the pass; the moved bee is untouched", { timeout: 180_000 }, async () => {
+test("cell-retention.4: a clean retained Cell (its bee moved away) is held without a receipt; the moved bee is untouched", { timeout: 180_000 }, async () => {
   const root = mkdtempSync(join(tmpdir(), "hb-v2-retention-move-"));
   const origin = makeOrigin(root);
   const cellsRoot = join(root, "cells");
@@ -251,12 +248,12 @@ test("cell-retention.4: a clean retained Cell (its bee moved away) is removed by
     assert.equal(item.verdict, "remove_retained");
     assert.equal(item.reason, "retained_age");
     const applied = await gc(client, { dryRun: false });
-    assert.equal(applied.outcomes?.find((o) => o.cellId === source.cell!.id)?.status, "removed");
-    assert.equal(existsSync(retainedWrapper), false);
+    assert.equal(applied.outcomes?.find((o) => o.cellId === source.cell!.id)?.reason, "receipt_missing");
+    assert.equal(existsSync(retainedWrapper), true);
     const after = await client.request<ViewResult>("view", { beeId: spawned.beeId });
     assert.equal(after.bee?.lifecycle, "active");
     assert.equal(after.bee?.cwd, origin.repo, "the moved bee keeps its checkout");
-    assert.equal(after.bee?.cellId, null);
+    assert.equal(after.bee?.cellId, source.cell!.id,"the retained allocation remains tracked");
     assert.equal(after.view.reachable, true);
   } finally {
     await daemon?.stop();
@@ -265,7 +262,7 @@ test("cell-retention.4: a clean retained Cell (its bee moved away) is removed by
   }
 });
 
-test("cell-retention.5: ignored env files survive eviction and come back on revive; stashes and side branches hold the Cell", { timeout: 180_000 }, async () => {
+test("cell-retention.5: ignored env files stay intact without a backup; stashes and side branches hold the Cell", { timeout: 180_000 }, async () => {
   const rig = makeRig({ enabled: false, archivedAfterDays: 0 });
   let daemon: DaemonHandle | null = null;
   try {
@@ -298,14 +295,14 @@ test("cell-retention.5: ignored env files survive eviction and come back on revi
     assert.equal(itemFor(plan, branchy.beeId).reason, "dirty_unlanded");
     assert.deepEqual(itemFor(plan, branchy.beeId).report?.unlandedBranches, ["side"]);
 
+    const originalEnvMode=statSync(join(space,"packages","db",".env")).mode&0o777;
     const applied = await gc(client, { dryRun: false, measure: false });
     const outcome = applied.outcomes!.find((o) => o.beeId === env.beeId)!;
-    assert.equal(outcome.status, "evicted");
-    assert.deepEqual(outcome.envFiles, [".env.local", "packages/db/.env"]);
-    assert.equal(existsSync(space), false);
+    assert.equal(outcome.status,"refused");assert.equal(outcome.reason,"receipt_missing");
+    assert.deepEqual(outcome.envFiles, []);
+    assert.equal(existsSync(space), true);
     const envRoot = join(dirname(rig.cellsRoot), "cell-env", env.view.cell!.spaceName);
-    assert.equal(readFileSync(join(envRoot, "packages", "db", ".env"), "utf8"), "DATABASE_URL=secret\n");
-    assert.equal(statSync(join(envRoot, ".env.local")).mode & 0o777, 0o600);
+    assert.equal(existsSync(envRoot),false,"no unverified transfer or deletion");
     assert.equal(existsSync(stashy.view.bee!.cwd), true);
     assert.equal(existsSync(branchy.view.bee!.cwd), true);
 
@@ -316,9 +313,9 @@ test("cell-retention.5: ignored env files survive eviction and come back on revi
     }, "delivered after re-provision", 60_000);
     assert.equal(readFileSync(join(space, ".env.local"), "utf8"), "LOCAL=1\n");
     assert.equal(readFileSync(join(space, "packages", "db", ".env"), "utf8"), "DATABASE_URL=secret\n");
-    assert.equal(statSync(join(space, "packages", "db", ".env")).mode & 0o777, 0o600);
+    assert.equal(statSync(join(space, "packages", "db", ".env")).mode & 0o777, originalEnvMode);
     assert.equal(existsSync(envRoot), false, "restored files leave the stash");
-    assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.env\.restored bee=.* files=2/);
+    assert.ok(existsSync(space));
     assert.equal((await client.request<ViewResult>("view", { beeId: env.beeId })).cell?.state, "active");
   } finally {
     await daemon?.stop();
@@ -326,7 +323,7 @@ test("cell-retention.5: ignored env files survive eviction and come back on revi
   }
 });
 
-test("cell-retention.6: idle Cells lose build output and keep everything else; eviction moves kept files aside and revive brings them back", { timeout: 180_000 }, async () => {
+test("cell-retention.6: unbacked Cells keep build output and evidence through cleanup and revive", { timeout: 180_000 }, async () => {
   const rig = makeRig({ enabled: false, archivedAfterDays: 0, trimAfterHours: 0 });
   let daemon: DaemonHandle | null = null;
   try {
@@ -366,23 +363,23 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
 
     const applied = await gc(client, { dryRun: false });
     const trimmed = applied.trimOutcomes!.find((o) => o.beeId === stoppedBee.beeId)!;
-    assert.equal(trimmed.status, "trimmed");
-    assert.deepEqual(trimmed.paths, ["apps/web/.next"]);
-    assert.equal(existsSync(join(stoppedBee.view.bee!.cwd, "apps", "web", ".next")), false);
+    assert.equal(trimmed.status, "refused");assert.equal(trimmed.reason,"receipt_missing");
+    assert.deepEqual(trimmed.paths, []);
+    assert.equal(existsSync(join(stoppedBee.view.bee!.cwd, "apps", "web", ".next")), true);
     assert.equal(readFileSync(join(stoppedBee.view.bee!.cwd, "wip.txt"), "utf8"), "uncommitted\n");
     assert.equal(readFileSync(join(stoppedBee.view.bee!.cwd, ".proof", "shot.png"), "utf8"), "evidence\n");
     assert.equal(existsSync(join(live.view.bee!.cwd, "apps", "web", ".next", "page.js")), true);
 
     const evicted = applied.outcomes!.find((o) => o.beeId === archivedBee.beeId)!;
-    assert.equal(evicted.status, "evicted");
-    assert.deepEqual(evicted.keptPaths, [".proof"]);
+    assert.equal(evicted.status, "refused");assert.equal(evicted.reason,"receipt_missing");
+    assert.deepEqual(evicted.keptPaths, []);
     const archivedSpace = archivedBee.view.bee!.cwd;
-    assert.equal(existsSync(archivedSpace), false);
+    assert.equal(existsSync(archivedSpace), true);
     const keepRoot = join(dirname(rig.cellsRoot), "cell-keep", archivedBee.view.cell!.spaceName);
-    assert.equal(readFileSync(join(keepRoot, ".proof", "shot.png"), "utf8"), "evidence\n");
+    assert.equal(readFileSync(join(archivedSpace, ".proof", "shot.png"), "utf8"), "evidence\n");
     const log = readFileSync(join(rig.dir, "hived.log"), "utf8");
-    assert.match(log, /cell\.retention\.trimmed cell=.* paths=1 skipped=0/);
-    assert.match(log, /cell\.retention\.evicted cell=.* kept=1/);
+    assert.doesNotMatch(log,/cell\.retention\.trimmed/);
+    assert.doesNotMatch(log,/cell\.retention\.evicted/);
 
     const sent = await client.request<SendRpcResult>("send", { beeId: archivedBee.beeId, body: "back to work" });
     await waitFor(async () => {
@@ -391,7 +388,7 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
     }, "delivered after re-provision", 60_000);
     assert.equal(readFileSync(join(archivedSpace, ".proof", "shot.png"), "utf8"), "evidence\n");
     assert.equal(existsSync(keepRoot), false, "restored paths leave cell-keep");
-    assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.keep\.restored bee=.* paths=1 conflicts=0/);
+    assert.ok(existsSync(archivedSpace));
   } finally {
     await daemon?.stop();
     rig.cleanup();

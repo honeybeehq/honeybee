@@ -1,12 +1,6 @@
-/**
- * Cell deletion (WP5, spec 05 point 6 — the A2 ruling).
- *
- * A dirty cell — uncommitted changes in the space, or commits that have not
- * landed in the origin (landed.ts) — refuses deletion without `force`.
- * Deletion only ever operates on shape-checked paths (a wrapper containing a
- * `-space-` checkout), so a mis-wired variable can never point the reaper at
- * a user directory.
- * ENOTEMPTY (a racing writer mid-delete) retries exactly once.
+/** Cell inspection facts and retired local deletion entrypoint.
+ * Physical disposal belongs to the independently verified Honeybee owner worker.
+ * A dirty/clean report and force flag never authorize deletion by themselves.
  */
 import { existsSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -236,21 +230,11 @@ export interface DeleteResult {
  * Delete a cell wrapper. Throws CellDeleteRefused for a dirty cell without
  * `force` (A2), CellShapeError for anything not cell-shaped.
  */
-export function deleteCell(wrapperDir: string, opts: DirtyReportOptions & { force?: boolean } = {}): DeleteResult {
-  const target = resolve(wrapperDir);
-  const detailed = existsSync(target) ? dirtyReportDetailed(target, opts) : null;
-  if (detailed == null) return { deleted: false, forced: false, report: null };
-  const report = detailed.report;
-  if (report.dirty && !(opts.force ?? false)) {
-    throw new CellDeleteRefused(target, report, detailed.dirtySubmodules);
-  }
-  try {
-    rmSync(target, { recursive: true, force: true });
-  } catch (err) {
-    // A racing writer (agent teardown, indexer) can repopulate a directory
-    // between unlink and rmdir. Exactly one retry (spec 05 point 6).
-    if ((err as NodeJS.ErrnoException).code !== "ENOTEMPTY") throw err;
-    rmSync(target, { recursive: true, force: true });
-  }
-  return { deleted: true, forced: report.dirty, report };
+export class CellBackupRequiredError extends Error {
+  readonly reason: "receipt_missing" | "unknown_policy";
+  constructor(reason: "receipt_missing" | "unknown_policy" = "receipt_missing") {super(reason);this.reason=reason;}
+}
+/** Physical deletion is exclusively performed by Honeybee's verified owner worker. */
+export function deleteCell(_wrapperDir: string, _opts: DirtyReportOptions & { force?: boolean } = {}): DeleteResult {
+  throw new CellBackupRequiredError();
 }

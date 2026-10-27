@@ -155,6 +155,7 @@ export function claimFromPool(
     }
     if (!exact && !reachCommit(member.paths.spaceDir, req.originRepo, req.sha)) continue;
     // Atomic claim: the first rename wins; a raced loser sees ENOENT.
+    if (existsSync(beePaths.spaceDir)) return null; // Existing claimed bytes require owner recovery.
     mkdirSync(beePaths.wrapperDir, { recursive: true });
     try {
       renameSync(member.paths.spaceDir, beePaths.spaceDir);

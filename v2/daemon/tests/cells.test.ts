@@ -377,110 +377,14 @@ test("cells.1: spawn {substrate:cell} → row + seed ledger → provisioned on s
   }
 });
 
-test("cells.2: cell.remove — runtime_refused while live; refused-dirty leaves everything; forced deletes cell + enqueues delete; replay keeps its own status; absent path", async () => {
-  const rig = makeCellRig();
-  let daemon: DaemonHandle | null = null;
-  try {
-    daemon = await startDaemon(rig.dir);
-    const client = await daemon.client();
-    const { beeId, view } = await spawnCell(client, "dirty-bee", rig.origin.repo);
-    const spaceDir = view.bee?.cwd as string;
-    const wrapperDir = dirname(spaceDir);
-
-    // Live runtime → typed runtime_refused; nothing removed.
-    await assert.rejects(() => client.request("cell.remove", { beeId, idempotencyKey: "rm-0" }), rpcCode("runtime_refused"));
-    assert.ok(existsSync(spaceDir));
-
-    // Dirty the cell from inside (uncommitted change), stop, then remove → refused with the report.
-    await shInCell(client, beeId, "printf 'wip\\n' >> README.md");
-    await stopAndWait(client, beeId);
-    const refused = await client.request<CellRemoveResult>("cell.remove", { beeId, idempotencyKey: "rm-1" });
-    assertKeys(refused, REMOVE_RESULT_KEYS, "remove result");
-    assert.equal(refused.status, "refused");
-    assert.equal(refused.forced, false);
-    assert.equal(refused.commandId, null);
-    assert.ok(refused.report);
-    assertKeys(refused.report, DIRTY_REPORT_KEYS, "dirty report");
-    assert.deepEqual(refused.report, { dirty: true, uncommitted: true, unpushed: false, stashed: false, unlandedBranches: [], unlandedCommits: [], unlandedCommitCount: 0, originUnknown: false });
-    assert.ok(existsSync(spaceDir), "refused: cell still there");
-    assert.equal((await client.request<ViewResult>("view", { beeId })).bee?.id, beeId, "refused: bee still there");
-    // Replay of the refused key: same answer, deduped.
-    const refusedAgain = await client.request<CellRemoveResult>("cell.remove", { beeId, idempotencyKey: "rm-1" });
-    assert.equal(refusedAgain.deduped, true);
-    assert.equal(refusedAgain.status, "refused");
-
-    // Forced: cell gone, delete enqueued, bee gone once it runs.
-    const forced = await client.request<CellRemoveResult>("cell.remove", { beeId, force: true, idempotencyKey: "rm-2" });
-    assertKeys(forced, REMOVE_RESULT_KEYS, "forced remove result");
-    assert.equal(forced.status, "deleted");
-    assert.equal(forced.forced, true, "forced through a dirty guard");
-    assert.equal(forced.report?.dirty, true);
-    assert.ok(typeof forced.commandId === "number" && forced.commandId > 0, "delete command enqueued");
-    assert.equal(existsSync(wrapperDir), false, "wrapper dir removed");
-    await waitFor(async () => {
-      try {
-        await client.request<ViewResult>("view", { beeId });
-        const v = await client.request<ViewResult>("view", { beeId });
-        return v.bee == null ? true : null;
-      } catch {
-        return true;
-      }
-    }, "bee deleted by the executor");
-    // Replay after the delete settled: the recorded cell result (status
-    // 'deleted'), marked deduped — NOT the command's status, and no error
-    // even though the bee row is gone.
-    const forcedReplay = await client.request<CellRemoveResult>("cell.remove", { beeId, force: true, idempotencyKey: "rm-2" });
-    assert.equal(forcedReplay.deduped, true);
-    assert.equal(forcedReplay.status, "deleted");
-    assert.equal(forcedReplay.commandId, forced.commandId);
-
-    // Absent: a cell bee whose cell dir is already gone → absent + delete enqueued.
-    const second = await spawnCell(client, "vanishing", rig.origin.repo);
-    await stopAndWait(client, second.beeId);
-    rmSync(dirname(second.view.bee?.cwd as string), { recursive: true, force: true });
-    const absent = await client.request<CellRemoveResult>("cell.remove", { beeId: second.beeId, idempotencyKey: "rm-3" });
-    assert.equal(absent.status, "absent");
-    assert.equal(absent.forced, false);
-    assert.equal(absent.report, null);
-    assert.ok(typeof absent.commandId === "number");
-
-    // Clean cell (committed + captured) removes without force; unpushed commits refuse.
-    const third = await spawnCell(client, "clean-bee", rig.origin.repo);
-    await shInCell(client, third.beeId, "printf 'x\\n' > x.txt && git add -A && git commit -q -m x");
-    await stopAndWait(client, third.beeId);
-    const uncaptured = await client.request<CellRemoveResult>("cell.remove", { beeId: third.beeId, idempotencyKey: "rm-4" });
-    assert.equal(uncaptured.status, "refused");
-    const uncapturedHead = uncaptured.report?.unlandedCommits[0]?.sha ?? "";
-    assert.match(uncapturedHead, /^[0-9a-f]{40}$/);
-    assert.deepEqual(uncaptured.report, {
-      dirty: true,
-      uncommitted: false,
-      unpushed: true,
-      stashed: false,
-      unlandedBranches: [],
-      unlandedCommits: [{ sha: uncapturedHead, subject: "x" }],
-      unlandedCommitCount: 1,
-      originUnknown: false,
-    });
-    const cap = await client.request<CellCaptureResult>("cell.capture", {
-      beeId: third.beeId,
-      targetBranch: "throwaway/clean",
-      mode: "merge",
-      idempotencyKey: "cap-clean",
-    });
-    assert.equal(cap.status, "landed");
-    const clean = await client.request<CellRemoveResult>("cell.remove", { beeId: third.beeId, idempotencyKey: "rm-5" });
-    assert.equal(clean.status, "deleted");
-    assert.equal(clean.forced, false);
-    assert.deepEqual(clean.report, { dirty: false, uncommitted: false, unpushed: false, stashed: false, unlandedBranches: [], unlandedCommits: [], unlandedCommitCount: 0, originUnknown: false });
-
-    // Unknown bee.
-    await assert.rejects(() => client.request("cell.remove", { beeId: "nope" }), rpcCode("bee_not_found"));
-    client.close();
-  } finally {
-    await daemon?.stop().catch(() => {});
-    rig.cleanup();
-  }
+test("cells.2: remove preserves live, dirty and landed Cells without a verified backup, including force",async()=>{
+ const rig=makeCellRig();let daemon:DaemonHandle|null=null;try{
+  daemon=await startDaemon(rig.dir);const client=await daemon.client();const {beeId,view}=await spawnCell(client,"protected",rig.origin.repo);const space=view.bee!.cwd;
+  const live=await client.request<CellRemoveResult>("cell.remove",{beeId,idempotencyKey:"live"});assert.equal(live.reason,"gate_busy");
+  await shInCell(client,beeId,"printf 'unique\\n' > work.txt");await stopAndWait(client,beeId);
+  for(const force of[false,true]){const r=await client.request<CellRemoveResult>("cell.remove",{beeId,force,idempotencyKey:"remove-"+force});assert.equal(r.status,"refused");assert.equal(r.reason,"receipt_missing");assert.equal(r.commandId,null);assert.ok(existsSync(join(space,"work.txt")));}
+  assert.ok((await client.request<ViewResult>("view",{beeId})).bee);client.close();
+ }finally{await daemon?.stop().catch(()=>{});rig.cleanup();}
 });
 
 test("cells.3: daemon SIGKILL → restart re-adopts a live cell bee at full capability: the missed completion folds from the journal and mail reaches the SAME generation", async () => {

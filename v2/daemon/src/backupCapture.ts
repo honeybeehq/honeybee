@@ -37,6 +37,7 @@ export interface BackupManifest {
   cell: CellRow;
   generation: string;
   captureKind: "retained_checkout" | "evicted_stash";
+  sourceRuntimeGeneration: number | null;
   git: { head: string; headRef: string; base: string; bundle: string; objects: string; index: string | null; refs: string; objectIdsHash: string; dependencies: [] };
   policy: { version: 1; excludedNames: string[]; evidenceNames: string[] };
   exclusions: { path: string; reason: string }[];
@@ -68,6 +69,7 @@ export type BackupResult = { status: "snapshot_created"; record: BackupRecord } 
 export interface BackupTools { git: string; restic: string; hem: string }
 export interface BackupOwner {
   cell: CellRow;
+  runtimeGeneration?: number | null;
   machine: string;
   operationId: string;
   scratch: string;
@@ -278,7 +280,7 @@ export async function remainingBackupScratch(root: string, current: string, maxi
 }
 /** A retry probes the repository by operation+manifest tags before issuing another backup. */
 export async function captureAndSnapshot(request: BackupRequest, owner: BackupOwner, previous?: BackupRecord): Promise<BackupRecord> {
-  if (owner.cell.state !== "retained" && owner.cell.state !== "evicted") throw new BackupError("not_retained");
+  if (owner.cell.state !== "retained" && owner.cell.state !== "evicted" && owner.cell.state !== "active") throw new BackupError("not_retained");
   const stashOnly = owner.cell.state === "evicted";
   const repositoryRoot = stashOnly ? owner.cell.originRepo : owner.cell.spaceDir;
   const root = await realpath(repositoryRoot);
@@ -390,7 +392,7 @@ export async function captureAndSnapshot(request: BackupRequest, owner: BackupOw
     const scratchBytes = await usage(owner.scratch);
     if (scratchBytes > request.maxScratchBytes) throw new BackupError("scratch_limit");
     selected.entries.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
-    manifest = { format: "honeybee.capture.v1", machine: owner.machine, cell: owner.cell, generation: owner.operationId, captureKind: stashOnly ? "evicted_stash" : "retained_checkout",
+    manifest = { format: "honeybee.capture.v1", machine: owner.machine, cell: owner.cell, generation: owner.operationId, sourceRuntimeGeneration: owner.runtimeGeneration ?? null, captureKind: stashOnly ? "evicted_stash" : "retained_checkout",
       git: { head, headRef, base: owner.cell.sha, bundle, objects, index: indexPath, refs, objectIdsHash: hash(objectIds), dependencies: [] }, policy: { version: 1, excludedNames: EXCLUDED, evidenceNames: EVIDENCE },
       exclusions: selected.exclusions, databases, entries: selected.entries, files: selected.entries.filter(e => e.kind !== "directory").length,
       bytes: selected.entries.reduce((n, e) => n + e.bytes, 0) };
@@ -454,7 +456,7 @@ export async function captureAndSnapshot(request: BackupRequest, owner: BackupOw
     record = { ...record, state: "uploading" }; owner.save(record);
     const output = await restic(["backup", "--json", "--host", owner.machine, "--tag", tag, "--files-from-raw", files]);
     const summary = output.trim().split("\n").map(line => JSON.parse(line) as { message_type?: string; snapshot_id?: string }).find(row => row.message_type === "summary");
-    snapshotId = summary?.snapshot_id;
+    snapshotId = summary?.snapshot_id ?? "";
   }
   if (!snapshotId || !/^[a-f0-9]{64}$/.test(snapshotId)) throw new BackupError("tool_failed");
   await check();

@@ -88,6 +88,7 @@ export interface HiveCellDirtyReport {
  * first; a non-cell bee answers `invalid_request`.
  */
 export interface HiveCellRemoveResult {
+  reason?: import("../../src/verifiedEviction.ts").EvictionReason;
   status: 'deleted' | 'refused' | 'absent'
   forced: boolean
   report: HiveCellDirtyReport | null

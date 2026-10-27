@@ -5,12 +5,12 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { cellPaths } from "../src/layout.ts";
 import { provisionCell } from "../src/provision.ts";
-import { CellDeleteRefused, CellShapeError } from "../src/remove.ts";
+import { CellBackupRequiredError, CellDeleteRefused, CellShapeError } from "../src/remove.ts";
 import {
   CellHeadMovedError,
   EVICTING_DIR,
@@ -26,6 +26,7 @@ import {
   listPreservedEnvFiles,
   measureDirectoryBytes,
   preserveEnvFiles,
+  preserveKeptPaths,
   restoreEnvFiles,
   restoreKeptPaths,
   retentionWorkerUrl,
@@ -84,62 +85,6 @@ test("retention.inspect: uncommitted and unlanded work are reported distinctly",
   }
 });
 
-test("retention.evict: a clean Cell is parked atomically under _evicting and the sweep deletes it", async () => {
-  const rig = makeRig();
-  try {
-    const { paths } = provisioned(rig, "a");
-    const res = evictCellWrapper(rig.cellsRoot, paths.wrapperDir, { expectedHead: rig.origin.sha, now: () => 42 });
-    assert.ok(res);
-    assert.equal(res.head, rig.origin.sha);
-    assert.equal(res.forced, false);
-    assert.equal(existsSync(paths.wrapperDir), false, "the bee's path is free immediately");
-    assert.ok(res.parkedDir.startsWith(join(rig.cellsRoot, EVICTING_DIR)));
-    assert.ok(existsSync(join(res.parkedDir, "box", "cell.json")), "parked wrapper is intact until swept");
-    assert.deepEqual(listEvicting(rig.cellsRoot), [res.parkedDir]);
-    const swept = await sweepEvicting(rig.cellsRoot);
-    assert.deepEqual(swept.removed, [res.parkedDir]);
-    assert.deepEqual(swept.failed, []);
-    assert.equal(existsSync(res.parkedDir), false);
-    assert.deepEqual(listEvicting(rig.cellsRoot), []);
-    assert.equal(evictCellWrapper(rig.cellsRoot, paths.wrapperDir), null, "already absent → null");
-  } finally {
-    rig.cleanup();
-  }
-});
-
-test("retention.evict: dirty refuses without force, force parks and reports forced", () => {
-  const rig = makeRig();
-  try {
-    const { paths } = provisioned(rig, "a");
-    writeFileSync(join(paths.spaceDir, "scratch.txt"), "wip\n");
-    assert.throws(() => evictCellWrapper(rig.cellsRoot, paths.wrapperDir), CellDeleteRefused);
-    assert.equal(existsSync(paths.spaceDir), true, "nothing changed on refusal");
-    const forced = evictCellWrapper(rig.cellsRoot, paths.wrapperDir, { force: true });
-    assert.equal(forced?.forced, true);
-    assert.equal(forced?.report?.uncommitted, true);
-    assert.equal(sweepEvictingSync(rig.cellsRoot).length, 1);
-  } finally {
-    rig.cleanup();
-  }
-});
-
-test("retention.evict: HEAD moved since planning refuses; shape and containment are enforced", () => {
-  const rig = makeRig();
-  try {
-    const { paths } = provisioned(rig, "a");
-    assert.throws(() => evictCellWrapper(rig.cellsRoot, paths.wrapperDir, { expectedHead: "0000000" }), CellHeadMovedError);
-    assert.equal(existsSync(paths.spaceDir), true);
-    const stray = join(rig.cellsRoot, "not-a-cell");
-    mkdirSync(join(stray, "plain"), { recursive: true });
-    assert.throws(() => evictCellWrapper(rig.cellsRoot, stray), CellShapeError);
-    assert.throws(() => evictCellWrapper(rig.cellsRoot, rig.origin.repo), CellShapeError, "outside the cells root");
-    assert.equal(existsSync(join(rig.origin.repo, "README.md")), true);
-    assert.equal(g(rig.origin.repo, ["rev-parse", "HEAD"]), rig.origin.sha);
-  } finally {
-    rig.cleanup();
-  }
-});
-
 test("retention.worker: inspects a batch off-thread and reports per-wrapper errors", async () => {
   const rig = makeRig();
   try {
@@ -171,7 +116,7 @@ test("retention.dirty: a stash and a branch the agent switched away from are dat
     assert.equal(ia.report?.uncommitted, false);
     assert.equal(ia.report?.stashed, true);
     assert.equal(ia.report?.dirty, true);
-    assert.throws(() => evictCellWrapper(rig.cellsRoot, a.paths.wrapperDir), (err: unknown) => err instanceof CellDeleteRefused && /stashed changes/.test(err.message));
+    assert.throws(() => evictCellWrapper(rig.cellsRoot, a.paths.wrapperDir), CellBackupRequiredError);
 
     const b = provisioned(rig, "b");
     g(b.paths.spaceDir, ["checkout", "-q", "-b", "feature/x"]);
@@ -181,7 +126,7 @@ test("retention.dirty: a stash and a branch the agent switched away from are dat
     assert.equal(ib.head, rig.origin.sha, "HEAD itself is landed");
     assert.equal(ib.report?.unpushed, true);
     assert.deepEqual(ib.report?.unlandedBranches, ["feature/x"]);
-    assert.throws(() => evictCellWrapper(rig.cellsRoot, b.paths.wrapperDir), (err: unknown) => err instanceof CellDeleteRefused && /unlanded branches \(feature\/x\)/.test(err.message));
+    assert.throws(() => evictCellWrapper(rig.cellsRoot, b.paths.wrapperDir), CellBackupRequiredError);
     assert.equal(existsSync(b.paths.spaceDir), true);
     // Once the origin holds the branch tip, the Cell is clean again.
     g(rig.origin.repo, ["fetch", "-q", b.paths.spaceDir, `${tip}:refs/heads/landed-x`]);
@@ -192,7 +137,7 @@ test("retention.dirty: a stash and a branch the agent switched away from are dat
   }
 });
 
-test("retention.env: ignored .env files are preserved (0600) on eviction and restored into a re-provisioned space", () => {
+test("retention.env: historical env stashes restore privately into a fresh checkout", () => {
   const rig = makeRig();
   try {
     writeFileSync(join(rig.origin.repo, ".gitignore"), ".env\n.env.*\nnode_modules/\n*.env.txt\n");
@@ -212,7 +157,7 @@ test("retention.env: ignored .env files are preserved (0600) on eviction and res
     assert.equal(i.report?.dirty, false, "ignored files do not make a Cell dirty");
     assert.deepEqual(i.envFiles, [".env", "apps/web/.env.local"]);
 
-    const res = evictCellWrapper(rig.cellsRoot, a.paths.wrapperDir, { expectedHead: rig.origin.sha });
+    const res = seedHistoricalStash(rig.cellsRoot, a.paths.wrapperDir, { expectedHead: rig.origin.sha });
     assert.deepEqual(res?.envFiles, [".env", "apps/web/.env.local"]);
     const stash = join(cellEnvRootForCells(rig.cellsRoot), a.paths.spaceName);
     assert.equal(readFileSync(join(stash, "apps", "web", ".env.local"), "utf8"), "WEB=2\n");
@@ -257,7 +202,7 @@ test("retention refuses wrappers nested below the direct Cell root", () => {
     mkdirSync(parent);
     const moved = join(parent, "wrapper");
     renameSync(paths.wrapperDir, moved);
-    assert.throws(() => evictCellWrapper(rig.cellsRoot, moved), CellShapeError);
+    assert.throws(() => evictCellWrapper(rig.cellsRoot, moved), CellBackupRequiredError);
     assert.equal(existsSync(moved), true);
   } finally { rig.cleanup(); }
 });
@@ -350,96 +295,19 @@ test("retention.classify: ignored entries split into env files, build output and
   }
 });
 
-test("retention.trim: parks build output and leaves source, kept files, installs and git state untouched", async () => {
-  const rig = makeRig();
-  try {
-    ignoringOrigin(rig);
-    const { paths } = provisioned(rig, "trim");
-    populateIgnored(paths.spaceDir);
-    const statusBefore = g(paths.spaceDir, ["status", "--porcelain", "--ignored"]);
-    const res = trimCellWrapper(rig.cellsRoot, paths.wrapperDir, ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"], { now: () => 7 });
-    assert.deepEqual(res.trimmed, ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"]);
-    assert.deepEqual(res.skipped, []);
-    assert.ok(res.parkedDir?.startsWith(join(rig.cellsRoot, EVICTING_DIR)));
-    for (const gone of ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"]) assert.equal(existsSync(join(paths.spaceDir, gone)), false, gone);
-    for (const kept of ["README.md", "src/app.ts", ".env", ".proof/shot.png", "tmp/promo/final.mp4", "out", "node_modules/pkg/index.js", "apps/app/node_modules/dep/index.js"]) {
-      assert.equal(existsSync(join(paths.spaceDir, kept)), true, kept);
-    }
-    assert.equal(g(paths.spaceDir, ["status", "--porcelain"]), "");
-    assert.notEqual(g(paths.spaceDir, ["status", "--porcelain", "--ignored"]), statusBefore);
-    assert.deepEqual((await sweepEvicting(rig.cellsRoot)).removed, [res.parkedDir]);
-    assert.equal(existsSync(paths.spaceDir), true, "the Cell stays");
-  } finally {
-    rig.cleanup();
-  }
-});
-
-test("retention.trim: build output modified inside the idle window is skipped as recently modified", () => {
-  const rig = makeRig();
-  try {
-    ignoringOrigin(rig);
-    const { paths } = provisioned(rig, "recent");
-    put(paths.spaceDir, "apps/app/.next/page.js");
-    const hourAgo = Date.now() - 3_600_000;
-    assert.deepEqual(verifyTrimPaths(paths.wrapperDir, ["apps/app/.next"], { modifiedSinceMs: hourAgo }), {
-      confirmed: [],
-      skipped: [{ path: "apps/app/.next", why: "recently_modified" }],
-    });
-    const twoDaysAgo = (Date.now() - 2 * 86_400_000) / 1000;
-    for (const p of ["apps/app/.next/page.js", "apps/app/.next"]) utimesSync(join(paths.spaceDir, p), twoDaysAgo, twoDaysAgo);
-    assert.deepEqual(verifyTrimPaths(paths.wrapperDir, ["apps/app/.next"], { modifiedSinceMs: hourAgo }).confirmed, ["apps/app/.next"]);
-  } finally {
-    rig.cleanup();
-  }
-});
-
-test("retention.trim: re-classifies at apply time and skips nested repositories, symlinks and paths that are no longer ignored build output", () => {
-  const rig = makeRig();
-  try {
-    ignoringOrigin(rig);
-    const { paths } = provisioned(rig, "trimguard");
-    put(paths.spaceDir, "apps/app/.next/page.js");
-    put(paths.spaceDir, "dist/bundle.js");
-    g(join(paths.spaceDir, "dist"), ["init", "-q"]);
-    const outside = join(rig.root, "outside-build");
-    mkdirSync(outside);
-    writeFileSync(join(outside, "precious.txt"), "not ours\n");
-    mkdirSync(join(paths.spaceDir, "pkg"));
-    symlinkSync(outside, join(paths.spaceDir, "pkg", "build"));
-    g(paths.spaceDir, ["add", "-f", "apps/app/.next/page.js"]);
-    const res = trimCellWrapper(rig.cellsRoot, paths.wrapperDir, ["apps/app/.next", "dist", "pkg/build", "../outside-build", "missing/.next"]);
-    assert.deepEqual(res.trimmed, []);
-    assert.equal(res.parkedDir, null);
-    assert.deepEqual(res.skipped, [
-      { path: "apps/app/.next", why: "not_ignored_build_output" },
-      { path: "dist", why: "nested_repository" },
-      { path: "pkg/build", why: "not_ignored_build_output" },
-      { path: "../outside-build", why: "not_ignored_build_output" },
-      { path: "missing/.next", why: "not_ignored_build_output" },
-    ]);
-    assert.equal(existsSync(join(paths.spaceDir, "apps/app/.next/page.js")), true);
-    assert.equal(existsSync(join(paths.spaceDir, "dist/bundle.js")), true);
-    assert.equal(readFileSync(join(outside, "precious.txt"), "utf8"), "not ours\n");
-    assert.throws(() => trimCellWrapper(rig.cellsRoot, rig.origin.repo, ["src"]), CellShapeError);
-  } finally {
-    rig.cleanup();
-  }
-});
-
-test("retention.evict: ignored files outside the trim patterns move to cell-keep and return on re-provision", () => {
+test("retention.restoreKept: historical ignored files return to a fresh checkout", () => {
   const rig = makeRig();
   try {
     ignoringOrigin(rig);
     const { req, paths } = provisioned(rig, "keep");
     populateIgnored(paths.spaceDir);
-    const res = evictCellWrapper(rig.cellsRoot, paths.wrapperDir, { expectedHead: rig.origin.sha });
+    const res = seedHistoricalStash(rig.cellsRoot, paths.wrapperDir, { expectedHead: rig.origin.sha });
     assert.ok(res);
     assert.deepEqual(res.keptPaths, [".proof", "out", "tmp"]);
     assert.deepEqual(res.envFiles, [".env"]);
     const stash = join(cellKeepRootForCells(rig.cellsRoot), paths.spaceName);
     assert.equal(readFileSync(join(stash, "tmp/promo/final.mp4"), "utf8"), "video\n");
-    assert.equal(existsSync(join(res.parkedDir, paths.spaceName, ".proof")), false, "kept files left the parked wrapper");
-    assert.equal(existsSync(join(res.parkedDir, paths.spaceName, "apps/app/.next")), true, "build output goes with the wrapper");
+    assert.equal(existsSync(paths.wrapperDir),false,"historical fixture seeded without production eviction authority");
     assert.deepEqual(listPendingKeeps(rig.cellsRoot), [paths.spaceName]);
     assert.deepEqual(listKeptPaths(rig.cellsRoot, paths.spaceName), [".proof", "out", "tmp"]);
     sweepEvictingSync(rig.cellsRoot);
@@ -458,38 +326,13 @@ test("retention.evict: ignored files outside the trim patterns move to cell-keep
   }
 });
 
-test("retention.evict: a failed park moves kept files back, and an unrestored keep refuses the next eviction", () => {
-  const rig = makeRig();
-  try {
-    ignoringOrigin(rig);
-    const { req, paths } = provisioned(rig, "keepfail");
-    populateIgnored(paths.spaceDir);
-    writeFileSync(join(rig.cellsRoot, EVICTING_DIR), "not a directory\n");
-    assert.throws(() => evictCellWrapper(rig.cellsRoot, paths.wrapperDir));
-    assert.equal(readFileSync(join(paths.spaceDir, "tmp/promo/final.mp4"), "utf8"), "video\n");
-    assert.equal(existsSync(join(paths.spaceDir, ".proof/shot.png")), true);
-    assert.deepEqual(listPendingKeeps(rig.cellsRoot), []);
-    assert.equal(existsSync(join(cellKeepRootForCells(rig.cellsRoot), paths.spaceName)), false);
-    rmSync(join(rig.cellsRoot, EVICTING_DIR));
-
-    assert.ok(evictCellWrapper(rig.cellsRoot, paths.wrapperDir));
-    provisionCell(rig.cellsRoot, req, "op-keepfail-again", OPTS);
-    populateIgnored(paths.spaceDir);
-    assert.throws(() => evictCellWrapper(rig.cellsRoot, paths.wrapperDir), CellShapeError);
-    assert.equal(existsSync(paths.spaceDir), true, "refused before the park");
-    assert.equal(readFileSync(join(paths.spaceDir, "tmp/promo/final.mp4"), "utf8"), "video\n");
-  } finally {
-    rig.cleanup();
-  }
-});
-
 test("retention.restoreKept: a path that already exists in the new space stays in cell-keep and in the manifest", () => {
   const rig = makeRig();
   try {
     ignoringOrigin(rig);
     const { req, paths } = provisioned(rig, "keepconflict");
     populateIgnored(paths.spaceDir);
-    assert.ok(evictCellWrapper(rig.cellsRoot, paths.wrapperDir));
+    assert.ok(seedHistoricalStash(rig.cellsRoot, paths.wrapperDir));
     provisionCell(rig.cellsRoot, req, "op-keepconflict-again", OPTS);
     put(paths.spaceDir, "tmp/new.txt", "new\n");
     writeFileSync(join(cellKeepRootForCells(rig.cellsRoot), paths.spaceName, ".DS_Store"), "finder\n");
@@ -514,7 +357,7 @@ test("retention.restoreKept: a path whose parent is now unsafe becomes a conflic
     const { req, paths } = provisioned(rig, "keepparent");
     put(paths.spaceDir, "a/.proof/shot.png", "a\n");
     put(paths.spaceDir, "tmp/z.txt", "z\n");
-    assert.deepEqual(evictCellWrapper(rig.cellsRoot, paths.wrapperDir)?.keptPaths, ["a/.proof", "tmp"]);
+    assert.deepEqual(seedHistoricalStash(rig.cellsRoot, paths.wrapperDir)?.keptPaths, ["a/.proof", "tmp"]);
     provisionCell(rig.cellsRoot, req, "op-keepparent-again", OPTS);
     const outside = join(rig.root, "outside-keep");
     mkdirSync(outside);
@@ -526,21 +369,6 @@ test("retention.restoreKept: a path whose parent is now unsafe becomes a conflic
   } finally {
     rig.cleanup();
   }
-});
-
-
-test("retention.trim: refuses repositories below a build directory", () => {
-  const rig = makeRig();
-  try {
-    ignoringOrigin(rig);
-    const { paths } = provisioned(rig, "deeprepo");
-    put(paths.spaceDir, "build/checkout/work.txt", "uncommitted work\n");
-    g(join(paths.spaceDir, "build/checkout"), ["init", "-q"]);
-    const result = trimCellWrapper(rig.cellsRoot, paths.wrapperDir, ["build"]);
-    assert.deepEqual(result.trimmed, []);
-    assert.deepEqual(result.skipped, [{ path: "build", why: "nested_repository" }]);
-    assert.equal(readFileSync(join(paths.spaceDir, "build/checkout/work.txt"), "utf8"), "uncommitted work\n");
-  } finally { rig.cleanup(); }
 });
 
 test("retention.classify: install directory names do not discard ignored regular files", () => {
@@ -555,16 +383,8 @@ test("retention.classify: install directory names do not discard ignored regular
   } finally { rig.cleanup(); }
 });
 
-
-test("retention.trim: retains trees beyond the bounded repository inspection", () => {
-  const rig = makeRig();
-  try {
-    ignoringOrigin(rig);
-    const { paths } = provisioned(rig, "largebuild");
-    for (let i = 0; i < 1100; i++) put(paths.spaceDir, `build/output-${i}`, "generated\n");
-    const result = trimCellWrapper(rig.cellsRoot, paths.wrapperDir, ["build"]);
-    assert.deepEqual(result.trimmed, []);
-    assert.deepEqual(result.skipped, [{ path: "build", why: "inspection_limit" }]);
-    assert.equal(existsSync(join(paths.spaceDir, "build/output-1099")), true);
-  } finally { rig.cleanup(); }
-});
+/** Disposable historical stash fixture; production disposal uses the verified owner gate. */
+function seedHistoricalStash(cellsRoot:string,wrapper:string,_opts:unknown={}){
+ const space=join(wrapper,readdirSync(wrapper).find(name=>name.includes('-space-'))!);const ignored=classifyIgnored(space),envFiles=preserveEnvFiles(cellsRoot,space,ignored.env),keptPaths=preserveKeptPaths(cellsRoot,space,ignored.keep);
+ rmSync(wrapper,{recursive:true,force:true});return{envFiles,keptPaths};
+}

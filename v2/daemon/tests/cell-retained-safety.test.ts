@@ -106,44 +106,16 @@ test("an attempted exec without saved process identity is unknown and keeps the 
   assert.equal(existsSync(join(f.cell.spaceDir, "replayed")), false);
   const next = await f.request<CellExecResult>("cell.exec", { cellId: f.cell.id, idempotencyKey: "new", argv: [process.execPath, "-e", "0"] });
   assert.equal(next.reason, "busy", JSON.stringify(next));
-  await assert.rejects(f.request("cell.retained.remove", { cellId: f.cell.id, idempotencyKey: "remove", force: true }),
-    (error: unknown) => error instanceof Error && "code" in error && error.code === "runtime_refused");
+  const held=await f.request<CellRetainedRemoveResult>("cell.retained.remove",{cellId:f.cell.id,idempotencyKey:"remove",force:true});assert.equal(held.reason,"gate_busy");
 });
 
-test("interrupted retained removal reconciles its directory instead of exec process identity", { timeout: 120_000 }, async (t) => {
-  const f = await retainedFixture(t);
-  await f.restart((store) => {
-    const op = store.putCellOp({ cellId: f.cell.id, kind: "remove", idempotencyKey: "remove",
-      requestHash: hashCellOpRequest({ cellId: f.cell.id, kind: "remove", force: true }) });
-    store.updateCellOp(op.id, { status: "running" });
-    // Crash boundary: the filesystem effect happened, its result was not saved.
-    deleteCell(dirname(f.cell.spaceDir), { force: true });
-  });
-  const result = await f.request<CellRetainedRemoveResult>("cell.retained.remove", { cellId: f.cell.id, idempotencyKey: "remove", force: true });
-  assert.equal(result.status, "deleted");
-  assert.equal(result.forced, true);
-  assert.equal(result.deduped, true);
-  assert.equal((await f.view()).bee?.cellId, null);
-  assert.equal((await f.view()).bee?.lifecycle, "active");
-});
-
-test("interrupted retained removal with wrapper present refuses the original key and lets a fresh key delete", { timeout: 120_000 }, async (t) => {
-  const f = await retainedFixture(t);
-  await f.restart((store) => {
-    const op = store.putCellOp({ cellId: f.cell.id, kind: "remove", idempotencyKey: "remove",
-      requestHash: hashCellOpRequest({ cellId: f.cell.id, kind: "remove", force: true }) });
-    store.updateCellOp(op.id, { status: "running" });
-  });
-  const original = await f.request<CellRetainedRemoveResult>("cell.retained.remove", { cellId: f.cell.id, idempotencyKey: "remove", force: true });
-  assert.equal(original.status, "refused", JSON.stringify(original));
-  assert.equal(original.deduped, true);
-  assert.equal(existsSync(f.cell.spaceDir), true);
-  assert.equal((await f.view()).cell?.state, "retained");
-  const next = await f.request<CellRetainedRemoveResult>("cell.retained.remove", { cellId: f.cell.id, idempotencyKey: "remove-2", force: true });
-  assert.equal(next.status, "deleted", JSON.stringify(next));
-  assert.equal(existsSync(f.cell.spaceDir), false);
-  assert.equal((await f.view()).bee?.lifecycle, "active");
-  assert.equal((await f.view()).bee?.cellId, null);
+test("legacy interrupted removal cannot authorize a new deletion or launder an absent wrapper", {timeout:120000},async t=>{
+  const f=await retainedFixture(t);
+  await f.restart(store=>{const op=store.putCellOp({cellId:f.cell.id,kind:"remove",idempotencyKey:"legacy-remove",requestHash:"legacy"});store.updateCellOp(op.id,{status:"running"});});
+  const next=await f.request<CellRetainedRemoveResult>("cell.retained.remove",{cellId:f.cell.id,idempotencyKey:"new-remove",force:true});assert.equal(next.status,"refused");assert.equal(next.reason,"gate_busy");assert.ok(existsSync(f.cell.spaceDir));
+  await f.restart(()=>{rmSync(dirname(f.cell.spaceDir),{recursive:true,force:true});});
+  await assert.rejects(f.request("cell.retained.remove",{cellId:f.cell.id,idempotencyKey:"legacy-remove",force:true}));
+  assert.equal((await f.view()).cell?.state,"retained","absence alone is never receipt authority");
 });
 
 
@@ -155,12 +127,8 @@ test("surviving backup guard fences retained exec, landing and forced removal af
   });
   const exec = await f.request<CellExecResult>("cell.exec", { cellId: f.cell.id, idempotencyKey: "exec-after-backup", argv: [process.execPath, "-e", "0"] });
   assert.equal(exec.reason, "busy");
-  for (const [verb, params] of [
-    ["cell.capture", { beeId: f.beeId, targetBranch: "concurrent", mode: "merge", idempotencyKey: "landing-after-backup" }],
-    ["cell.retained.remove", { cellId: f.cell.id, idempotencyKey: "remove-after-backup", force: true }],
-  ] as const) {
-    await assert.rejects(f.request(verb, params), (error: unknown) => error instanceof Error && "code" in error && error.code === "runtime_refused");
-  }
+  await assert.rejects(f.request("cell.capture",{beeId:f.beeId,targetBranch:"concurrent",mode:"merge",idempotencyKey:"landing-after-backup"}),(error:unknown)=>error instanceof Error&&"code"in error&&error.code==="runtime_refused");
+  const held=await f.request<CellRetainedRemoveResult>("cell.retained.remove",{cellId:f.cell.id,idempotencyKey:"remove-after-backup",force:true});assert.equal(held.reason,"gate_busy");
   assert.equal(existsSync(f.cell.spaceDir), true);
 });
 
@@ -186,7 +154,8 @@ test("mail waits behind an evicted Cell backup and boots afterward without charg
   const ready=await waitFor(async()=>{const row=await view();return row.cell && row.view.runtimeState==="idle" ? row : null;},"backup wake fixture ready",60_000);
   await f.request("stop",{beeId:spawned.beeId});
   await waitFor(async()=>(await view()).view.runtimeState==="stopped","fixture stopped");
-  await f.request("cell.evict",{beeId:spawned.beeId,idempotencyKey:"fixture-eviction"});
+  // Model a historical eviction in disposable data; production eviction now requires a receipt.
+  await f.restart(store=>{rmSync(dirname(ready.cell!.spaceDir),{recursive:true,force:true});store.evictCell(ready.cell!.id,{head:f.origin.sha,bytes:0,reason:"disposable_historical_fixture"});});
   let backupId="";
   await f.restart(store=>{
     const op=store.putCellOp({cellId:ready.cell!.id,kind:"backup",idempotencyKey:"wake-guard",requestHash:"fixture"});backupId=op.id;

@@ -250,6 +250,7 @@ export function tryMaterializeGitImage(
   const imageRepo = imageGitDir(imagesRoot, image);
   if (!hasCommit(imageRepo, sha) || !probeCow(imageRepo, boxDir, platform)) return null;
 
+  if (existsSync(spaceDir)) return null; // Never replace an existing claimed checkout.
   try {
     rmSync(spaceDir, { recursive: true, force: true });
     const initArgs = ["init"];

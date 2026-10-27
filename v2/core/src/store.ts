@@ -1893,6 +1893,10 @@ export class CoreStore {
         }
       }
     }
+    if (this.db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='cell_ops'").get()) {
+    this.db.exec("CREATE INDEX IF NOT EXISTS cell_ops_mutation_pending ON cell_ops(cell_id,status) WHERE kind IN ('backup','remove') AND status IN ('queued','running','outcome_unknown')");
+    this.db.exec("CREATE INDEX IF NOT EXISTS cell_ops_backup_latest ON cell_ops(cell_id,created_at DESC) WHERE kind = 'backup'");
+    }
     this.db.exec("CREATE INDEX IF NOT EXISTS questions_dismissal_message ON questions(dismissal_message_id) WHERE dismissal_message_id IS NOT NULL");
     const needsHumanRefMigration = stored < 30;
     if (needsHumanRefMigration && !this.stmt("SELECT 1 FROM meta WHERE key = 'human_ref_installation_id'").get()) {
@@ -5642,6 +5646,11 @@ export class CoreStore {
             `SELECT * FROM commands WHERE status = 'queued' AND next_attempt_at <= ?
              ${blockedRuntimeStartClause}
              AND NOT (bee_id IN (SELECT value FROM json_each(?)) AND verb IN ('stop','archive','delete','spawn','send_wake','revive','reconnect_tools'))
+             AND NOT (verb IN ('spawn','send_wake','revive') AND EXISTS (
+               SELECT 1 FROM bees held_bee JOIN cells held_cell ON held_cell.id = held_bee.cell_id JOIN cell_ops held_op ON held_op.cell_id = held_cell.id
+               WHERE held_bee.id = commands.bee_id AND held_cell.state IN ('active','evicted') AND held_op.kind IN ('backup','remove')
+                 AND held_op.status IN ('queued','running','outcome_unknown')
+             ))
              AND NOT (verb = 'reconnect_tools' AND EXISTS (
                SELECT 1 FROM runtimes r WHERE r.bee_id = commands.bee_id
                AND r.generation = commands.target_generation AND r.state IN ('booting','running')
@@ -10019,6 +10028,15 @@ export class CoreStore {
 
   listPendingBackupOps(): CellOpRow[] {
     return (this.stmt("SELECT * FROM cell_ops WHERE kind = 'backup' AND status IN ('queued','running','outcome_unknown')").all() as Row[]).map(mapCellOp);
+  }
+
+  latestCellBackupOp(cellId:string):CellOpRow|null {
+    const row=this.stmt("SELECT * FROM cell_ops WHERE cell_id = ? AND kind = 'backup' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(cellId) as Row|undefined;
+    return row?mapCellOp(row):null;
+  }
+
+  listPendingCellMutationOps(): CellOpRow[] {
+    return (this.stmt("SELECT * FROM cell_ops WHERE kind IN ('backup','remove') AND status IN ('queued','running','outcome_unknown')").all() as Row[]).map(mapCellOp);
   }
 
   listCellOps(): CellOpRow[] {

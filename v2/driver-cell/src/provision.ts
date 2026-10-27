@@ -354,8 +354,8 @@ function runProvisionOperation(
   // ---- step 1: place a .git in the space --------------------------------
   if (op.steps.git_placed == null) {
     // A crash may have left a partial space dir with no recorded step —
-    // wipe and redo (the step records only after it fully completed).
-    rmSync(paths.spaceDir, { recursive: true, force: true });
+    // retain it for owner recovery (the step records only after completion).
+    if (existsSync(paths.spaceDir)) throw new Error("content_changed: existing checkout requires owner recovery");
     let mode: CopyMode = "clone";
     let image: { repoKey: string; generation: string } | undefined;
     if (cfg.useGitImages && !cfg.disableCow && cfg.platform != null) {

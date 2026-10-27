@@ -194,6 +194,7 @@ export const DAEMON_CAPABILITIES = [
    * transcript and cwd; its next runtime re-provisions the Cell in place.
    */
   "cell.backup.receipts.v1",
+  "cell.mutation-status.v1",
   "cell.backup.v1",
   "cell.retention.v1",
   "cell.retention.trim.v1",
@@ -552,6 +553,7 @@ export const RPC_VERBS = [
   "bee.move",
   "bee.move.get",
   "cell.backup.receipt",
+  "cell.status",
   "cell.backup",
   "cell.exec",
   "cell.retained.remove",
@@ -1969,6 +1971,7 @@ export interface CellRemoveParams {
 }
 
 export interface CellRemoveResult extends CellDedupMarker {
+  reason?: import("./verifiedEviction.ts").EvictionReason;
   status: "deleted" | "refused" | "absent";
   forced: boolean;
   report: CellDirtyReport | null;
@@ -2020,6 +2023,7 @@ export interface CellRetainedRemoveParams {
 }
 
 export interface CellRetainedRemoveResult {
+  reason?: import("./verifiedEviction.ts").EvictionReason;
   cell: CellRow;
   status: "deleted" | "refused" | "absent";
   forced: boolean;
@@ -2234,6 +2238,7 @@ export interface CellEvictParams {
 }
 
 export interface CellEvictResult {
+  reason?: import("./verifiedEviction.ts").EvictionReason;
   cell: CellRow | null;
   status: "evicted" | "refused" | "absent";
   forced: boolean;
@@ -2528,3 +2533,8 @@ export interface HumanRefStatusResult { installationId: string; issuer: import("
 export interface HumanRefEnrollResult { issuer: import("../../core/src/humanRefs.ts").HumanRefIssuer; applied: boolean }
 export interface HumanRefRegistryStatusResult { registry: import("../../core/src/humanRefs.ts").HumanRefRegistry | null }
 export interface HumanRefRegistryInitResult { registry: import("../../core/src/humanRefs.ts").HumanRefRegistry; applied: boolean }
+
+export interface CellStatusResult {
+  cell: CellRow;
+  mutation: {state:"cell_mutation_held";operations:{id:string;kind:import("../../core/src/types.ts").CellOpRow["kind"];status:import("../../core/src/types.ts").CellOpRow["status"];reason:string|null}[]}|null;
+}

@@ -1,35 +1,7 @@
-/**
- * Cell retention primitives (v31).
- *
- * Honeybee owns Cells, so Honeybee reclaims them. The daemon's retention
- * pass decides WHICH Cells go (policy over registry + bee facts, see
- * v2/daemon/src/cellRetention.ts); this module owns the disk effects and the
- * facts a decision needs:
- *
- *  - `inspectCellWrapper`: presence, the A2 dirty report (uncommitted changes,
- *    commits the origin has never seen, unknown origin), HEAD, and du-style
- *    bytes. Read-only; safe against the live store.
- *  - `evictCellWrapper`: the reclaim. Re-runs the dirty guard on shape-checked
- *    paths, requires HEAD to still be the planned one, then PARKS the wrapper
- *    by an atomic rename into `<cells-root>/_evicting/`. The bee's path is free
- *    the instant the rename lands, so a concurrent revive re-provisions a
- *    fresh Cell at the same cwd with no race against the (slow) deletion.
- *  - `sweepEvicting`: asynchronous deletion of parked wrappers, at boot and
- *    after every pass. Anything under `_evicting/` is by construction already
- *    evicted; deleting it is idempotent.
- *  - `trimCellWrapper`: reclaim rebuildable build output (`.next`, `target`,
- *    `DerivedData`, …) from a Cell that stays in place, by the same atomic
- *    park into `_evicting/`.
- *
- * Git-ignored content falls into four classes (`classifyIgnored`): env files
- * (copied to `cell-env/`), build output (trimmed or deleted), installable
- * dependencies (`node_modules`, deleted), and everything else, which eviction
- * moves to `cell-keep/<spaceName>/` and revive moves back. Nothing that is not
- * known to be rebuildable is ever deleted by retention.
- *
- * Bytes are `du -sk` semantics (allocated blocks, symlinks not followed). On
- * APFS a pnpm `node_modules` copied by CoW shares blocks with its origin, so
- * du overstates what a deletion actually frees; callers label it as such.
+/** Cell retention inspection and lossless env/keep transfer helpers.
+ * Physical disposal belongs to Honeybee's verified owner worker. Legacy local
+ * park/trim APIs refuse and legacy/orphaned park sweeps hold their contents.
+ * Classification/restore remain read-only or preserve bytes at their destination.
  */
 import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, opendirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
@@ -38,7 +10,7 @@ import { GitError, revParse, tryGit } from "./git.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import type { LandingReceipt } from "./landed.ts";
 import type { UpstreamRef } from "./upstream.ts";
-import { CellDeleteRefused, CellShapeError, dirtyReportDetailed, type DirtyReport } from "./remove.ts";
+import { CellBackupRequiredError, CellDeleteRefused, CellShapeError, dirtyReportDetailed, type DirtyReport } from "./remove.ts";
 
 /** Reserved wrapper under the cells root where evicted wrappers wait for deletion. */
 export const EVICTING_DIR = "_evicting";
@@ -510,23 +482,8 @@ export function verifyTrimPaths(
   return { confirmed, skipped };
 }
 
-export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: string[], opts: { now?: () => number } = {}): TrimResult {
-  const { root, target, spaceDir } = trimTarget(cellsRoot, wrapperDir);
-  const result: TrimResult = { parkedDir: null, trimmed: [], skipped: [] };
-  for (const rel of confirmed) {
-    const why = trimPathRefusal(spaceDir, rel);
-    if (why != null) {
-      result.skipped.push({ path: rel, why });
-      continue;
-    }
-    if (result.parkedDir == null) {
-      result.parkedDir = join(root, EVICTING_DIR, `${basename(target)}.trim.${(opts.now ?? Date.now)()}.${process.pid}`);
-      mkdirSync(result.parkedDir, { recursive: true });
-    }
-    renameSync(join(spaceDir, rel), join(result.parkedDir, String(result.trimmed.length)));
-    result.trimmed.push(rel);
-  }
-  return result;
+export function parkTrimPaths(_cellsRoot: string, _wrapperDir: string, _confirmed: string[], _opts: { now?: () => number } = {}): TrimResult {
+  throw new CellBackupRequiredError("unknown_policy");
 }
 
 export function trimCellWrapper(
@@ -597,38 +554,9 @@ export class CellHeadMovedError extends Error {
  * when the wrapper is already absent.
  */
 export function evictCellWrapper(
-  cellsRoot: string,
-  wrapperDir: string,
-  opts: { force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
-): EvictResult | null {
-  const target = resolve(wrapperDir);
-  if (!existsSync(target)) return null;
-  const root = resolve(cellsRoot);
-  if (dirname(target) !== root || basename(target) === EVICTING_DIR) {
-    throw new CellShapeError(target, "not a wrapper directly under the cells root");
-  }
-  const spaceDir = spaceDirIn(target);
-  if (spaceDir == null) throw new CellShapeError(target, "no -space- checkout inside");
-  const { report, dirtySubmodules } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
-  const force = opts.force ?? false;
-  if (report.dirty && !force) throw new CellDeleteRefused(target, report, dirtySubmodules);
-  const head = existsSync(join(spaceDir, ".git")) ? revParse(spaceDir, "HEAD") : null;
-  if (opts.expectedHead !== undefined && head !== opts.expectedHead) {
-    throw new CellHeadMovedError(target, opts.expectedHead, head);
-  }
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
-  const envFiles = preserveEnvFiles(root, spaceDir, ignored.env);
-  const keptPaths = preserveKeptPaths(root, spaceDir, ignored.keep);
-  const parkedDir = join(root, EVICTING_DIR, `${basename(target)}.${(opts.now ?? Date.now)()}.${process.pid}`);
-  try {
-    mkdirSync(dirname(parkedDir), { recursive: true });
-    renameSync(target, parkedDir);
-  } catch (err) {
-    restoreKeptPaths(root, spaceDir);
-    throw err;
-  }
-  return { parkedDir, head, report, forced: report.dirty, envFiles, keptPaths };
-}
+  _cellsRoot: string, _wrapperDir: string,
+  _opts: { force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
+): EvictResult | null { throw new CellBackupRequiredError(); }
 
 /**
  * Undo a park whose registry write failed: rename the wrapper back to its
@@ -680,22 +608,8 @@ export function listEvicting(cellsRoot: string): string[] {
  * directories that were removed and the ones that failed.
  */
 export async function sweepEvicting(cellsRoot: string): Promise<{ removed: string[]; failed: Array<{ dir: string; error: string }> }> {
-  const removed: string[] = [];
-  const failed: Array<{ dir: string; error: string }> = [];
-  for (const dir of listEvicting(cellsRoot)) {
-    try {
-      await rm(dir, { recursive: true, force: true, maxRetries: 2 });
-      removed.push(dir);
-    } catch (err) {
-      failed.push({ dir, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-  return { removed, failed };
+  return {removed:[],failed:listEvicting(cellsRoot).map(dir=>({dir,error:"receipt_missing"}))};
 }
 
-/** Synchronous variant for tests and the CLI; production uses `sweepEvicting`. */
-export function sweepEvictingSync(cellsRoot: string): string[] {
-  const dirs = listEvicting(cellsRoot);
-  for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
-  return dirs;
-}
+/** Legacy/orphaned parks are held for owner reconciliation; never inferred safe by location. */
+export function sweepEvictingSync(_cellsRoot: string): string[] { return []; }

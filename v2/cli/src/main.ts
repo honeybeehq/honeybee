@@ -2649,6 +2649,11 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const needle = parsed.positional[2];
   const usage = "usage: hive cell backup <cellId> --idempotency-key <key> | cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--no-measure] | cell evict <bee> [--force]";
   switch (sub) {
+    case "status": {
+      if(!needle)throw new Error("Usage: hive cell status <cellId>");
+      const result=await withClient(ctx,c=>c.request<import("../../daemon/src/protocol.ts").CellStatusResult>("cell.status",{cellId:needle}));
+      emit(ctx,[result.mutation?`cell_mutation_held: ${result.mutation.operations.map(op=>op.reason??op.status).join(", ")}`:`cell ${result.cell.state}`],result,false);return 0;
+    }
     case "backup-accept": {
       if (!needle) throw new Error("Usage: hive cell backup-accept <signed-receipt.json>");
       const receipt: unknown = JSON.parse(readFileSync(needle, "utf8"));
@@ -2680,7 +2685,7 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         });
         const lines: string[] = [];
         if (r.status === "refused") {
-          lines.push(confirm("err", "refused:", `cell is dirty (${dirtyCauses(r.report).join(", ")}) — pass --force to evict anyway (work is lost)`, r.deduped));
+          lines.push(confirm("err", "refused:", `backup protection: ${r.reason ?? "receipt_missing"}`, r.deduped));
         } else {
           lines.push(confirm("ok", `cell ${r.status}${r.forced ? " (forced)" : ""}`, `${beeId} keeps its bee, transcript and cwd; the next runtime re-provisions${r.cell?.evictedHead ? ` at ${r.cell.evictedHead.slice(0, 12)}` : ""}${r.envFiles.length > 0 ? `; ${r.envFiles.length} env file(s) preserved for restore` : ""}`, r.deduped));
         }
@@ -2752,7 +2757,7 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         const lines: string[] = [];
         if (r.status === "refused") {
           lines.push(
-            confirm("err", "refused:", `cell is dirty (${dirtyCauses(r.report).join(", ")}) — pass --force to delete anyway (work is lost)`, r.deduped),
+            confirm("err", "refused:", `backup protection: ${r.reason ?? "receipt_missing"}`, r.deduped),
           );
         } else {
           lines.push(
@@ -2806,7 +2811,7 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         });
         emit(
           ctx,
-          [confirm(r.status === "refused" ? "err" : "ok", `cell ${r.status}`, needle, r.deduped)],
+          [confirm(r.status === "refused" ? "err" : "ok", `cell ${r.status}`, r.reason ?? needle, r.deduped)],
           r,
           false,
         );

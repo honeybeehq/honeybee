@@ -1,3 +1,4 @@
+import { evictThroughOwner, type OwnerEvictionResult } from "./evictionService.ts";
 import { StoreBackupError } from "../../core/src/storeBackup.ts";
 import { BackupError, captureAndSnapshot, remainingBackupScratch, retireBackupCheckpoint, validateBackupRequest, type BackupRecord, type BackupResult } from "./backupCapture.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
@@ -996,6 +997,7 @@ export class HiveDaemon {
         return this.cellHasInFlightOp(cellId);
       },
       forgetCell: (beeId) => cell.forgetCell(beeId),
+      verifiedEvict: async (row,mode) => this.verifiedRemoval(row,mode),
       ...(this.deps.retentionWorkerUrl ? { workerUrl: this.deps.retentionWorkerUrl } : {}),
       ...(this.deps.retentionInitialDelayMs !== undefined ? { initialDelayMs: this.deps.retentionInitialDelayMs } : {}),
       ...(this.deps.retentionDiskCheckMs !== undefined ? { diskCheckMs: this.deps.retentionDiskCheckMs } : {}),
@@ -1354,11 +1356,11 @@ export class HiveDaemon {
     this.authResume?.reconcile();
     this.refreshAccountActivations();
     const blocked = new Set([...this.blockedRuntimeStartBeeIds(),...this.executionStartHolds]);
-    for (const op of this.mustStore().listPendingBackupOps()) {
+    for (const op of this.mustStore().listPendingCellMutationOps()) {
       if (!this.cellOpHoldsGate(op)) continue;
       const cell = this.mustStore().getCell(op.cellId);
       const bee = cell ? this.mustStore().getBee(cell.sourceBeeId) : null;
-      if (bee?.cellId === op.cellId) blocked.add(bee.id);
+      if (bee?.cellId === op.cellId && cell?.state !== "retained") blocked.add(bee.id);
     }
     for (const row of this.mustStore().listLiveAuthInterruptions()) if (this.authResume?.holdsStoppedRuntime(row)) {
       blocked.add(row.beeId);
@@ -2316,7 +2318,7 @@ export class HiveDaemon {
       case "cell.capture":
         return this.withIdempotency(verb, params, () => this.rpcCellCapture(params));
       case "cell.remove":
-        return this.withIdempotency(verb, params, () => this.rpcCellRemove(params));
+        return this.withCellIdempotency(verb,params,()=>this.rpcCellRemove(params));
       case "bee.move":
         return this.rpcBeeMove(params);
       case "bee.move.get":
@@ -2358,6 +2360,12 @@ export class HiveDaemon {
         return this.rpcActionReportIdempotent(params);
       case "action.claim":
         return this.rpcActionClaim(params);
+      case "cell.status": {
+        const store=this.mustStore(),cell=store.getCell(this.param(params,"cellId"));
+        if(!cell)throw new RpcError("cell_not_found","Cell not found");
+        const operations=store.listPendingCellMutationOps().filter(op=>op.cellId===cell.id&&this.cellOpHoldsGate(op)).map(op=>({id:op.id,kind:op.kind,status:op.status,reason:op.failure}));
+        return{cell,mutation:operations.length?{state:"cell_mutation_held",operations}:null};
+      }
       case "cell.backup.receipt": {
         let config: { publicKeys?: Record<string,string> };
         try { config = JSON.parse(readFileSync(join(this.cfg.dataDir, "backup-trust.json"), "utf8")); }
@@ -2373,11 +2381,11 @@ export class HiveDaemon {
       case "cell.exec":
         return this.rpcCellExec(params);
       case "cell.retained.remove":
-        return this.rpcCellRetainedRemove(params);
+        return this.withCellIdempotency(verb,params,()=>this.rpcCellRetainedRemove(params));
       case "cell.gc":
         return this.rpcCellGc(params);
       case "cell.evict":
-        return this.withIdempotency(verb, params, () => this.rpcCellEvict(params));
+        return this.withCellIdempotency(verb,params,()=>this.rpcCellEvict(params));
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
@@ -2717,6 +2725,16 @@ export class HiveDaemon {
   private phoneSendOptions(params: Record<string, unknown>): { phone?: { origin: PhoneOriginRequest; key: string } } {
     const origin = this.phoneOriginOf(params);
     return origin ? { phone: { origin, key: this.idempotencyKeyOf(params)! } } : {};
+  }
+
+  private async withCellIdempotency<T extends object>(verb:RpcVerb,params:Record<string,unknown>,fn:()=>Promise<T>):Promise<T>{
+    const key=this.idempotencyKeyOf(params),store=this.mustStore();
+    if(key){const hit=store.lookupRpcResult(key);if(hit){if(hit.verb!==verb)throw new RpcError("idempotency_conflict","Key belongs to another verb");return{...(hit.result as T),deduped:true} as T;}}
+    const result=await fn();const reason=(result as {reason?:string}).reason;
+    if(key&&!['gate_busy','outcome_unknown','interrupted'].includes(reason??"")){
+      const hit=store.lookupRpcResult(key);if(!hit)store.recordRpcResult(key,verb,(result as {commandId?:number}).commandId??null,this.beeEnvRedacted(result));
+    }
+    return result;
   }
 
   private withIdempotency<T extends object>(
@@ -3754,40 +3772,23 @@ export class HiveDaemon {
    * lifecycle `delete` in the same call. Refused ⇒ nothing changed, no
    * command. A live runtime is a typed `runtime_refused` — stop it first.
    */
-  private rpcCellRemove(params: Record<string, unknown>): CellRemoveResult {
-    const { beeId, cell, cellId } = this.requireActiveCellBee(params);
-    const store = this.mustStore();
-    if (params.force !== undefined && typeof params.force !== "boolean") {
-      throw new RpcError("invalid_request", "cell.remove: force must be a boolean when given");
-    }
-    const force = params.force === true;
-    this.releaseAbsentCellOps(cellId);
-    if (this.cellHasInFlightOp(cellId)) {
-      throw new RpcError("runtime_refused", `cell ${cellId} has an in-flight Cell operation`);
-    }
-    const rt = store.currentRuntime(beeId);
-    if ((rt && rt.state !== "stopped") || (rt && this.driver?.hasProcess(beeId, rt.generation))) {
-      throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); stop it before removing its cell`);
-    }
-    let result: CellRemoveResult;
-    try {
-      const res = cell.removeCell(beeId, { force, receipts: store.listLandingReceipts(beeId) });
-      result = res.deleted
-        ? { status: "deleted", forced: res.forced, report: res.report, commandId: null }
-        : { status: "absent", forced: false, report: null, commandId: null };
-    } catch (err) {
-      if (err instanceof CellDeleteRefused) {
-        this.log(`cell.remove bee=${beeId} refused dirty=${JSON.stringify(err.report)} causes=${JSON.stringify(dirtyCauses(err.report))}`);
-        return { status: "refused", forced: false, report: err.report, commandId: null };
-      }
-      if (err instanceof CellRuntimeLiveError) throw new RpcError("runtime_refused", err.message);
-      throw err;
-    }
-    const key = this.idempotencyKeyOf(params);
-    const cmd = store.enqueueCommand("delete", beeId, {}, key == null ? {} : { idempotencyKey: key });
-    result.commandId = cmd.id;
-    this.log(`cell.remove bee=${beeId} status=${result.status} forced=${result.forced} delete=${cmd.id}`);
-    return result;
+  private async rpcCellRemove(params: Record<string, unknown>): Promise<CellRemoveResult> {
+    const {beeId,cellId}=this.requireActiveCellBee(params);const store=this.mustStore(),row=store.getCell(cellId)!;
+    const result=await this.verifiedRemoval(row,"remove",this.idempotencyKeyOf(params)??undefined);
+    if(result.status==="refused")return{status:"refused",reason:result.reason,forced:false,report:null,commandId:null};
+    this.driver?.cell.forgetCell(beeId);const cmd=store.enqueueCommand("delete",beeId,{},{});
+    return{status:"deleted",forced:false,report:null,commandId:cmd.id};
+  }
+
+  private async verifiedRemoval(row:CellRow,mode:"evict"|"remove"|"trim",key?:string):Promise<OwnerEvictionResult>{
+    if(this.backupJobs.has("eviction:"+row.id))return{status:"refused",reason:"gate_busy"};
+    const abort=new AbortController();let release!:()=>void;const settled=new Promise<void>(r=>release=r),jobId="eviction:"+row.id;
+    this.backupJobs.set(jobId,{abort,settled});
+    try{return await evictThroughOwner(row,mode,key,{
+      store:this.mustStore(),dataDir:this.cfg.dataDir,cellsRoot:this.cfg.cellsRoot,keepRoot:cellKeepRootForCells(this.cfg.cellsRoot),machine:this.cfg.accounts.allocationNodeId??hostname(),git:resolveExecutable("git")?.path??"git",signal:abort.signal,
+      busy:(cell,exceptKey)=>{this.releaseAbsentCellOps(cell.id);const bee=this.mustStore().getBee(cell.sourceBeeId),rt=this.mustStore().currentRuntime(cell.sourceBeeId);
+        return this.stopping||this.cellHasInFlightOp(cell.id,exceptKey)||!!bee?.activeMoveId||!!bee?.activeHandoffId||this.executionStartHolds.has(cell.sourceBeeId)||(cell.state!=="retained"&&!!rt&&rt.state!=="stopped")||!!this.driver?.cell.hasProcess(cell.sourceBeeId,rt?.generation??0);},
+    });}finally{this.backupJobs.delete(jobId);release();}
   }
 
   /** v31 — the driver put a checkout back under an evicted allocation: `evicted → active`. */
@@ -3844,68 +3845,13 @@ export class HiveDaemon {
    * A2 dirty guard applies unless `force`; a live runtime or in-flight Cell
    * operation is a typed refusal. Refused-dirty is a RESULT, never an error.
    */
-  private rpcCellEvict(params: Record<string, unknown>): CellEvictResult {
-    const beeId = this.requireBee(params);
-    const store = this.mustStore();
-    if (params.force !== undefined && typeof params.force !== "boolean") {
-      throw new RpcError("invalid_request", "cell.evict: force must be a boolean when given");
-    }
-    const force = params.force === true;
-    const bee = store.getBee(beeId);
-    const row = bee?.cellId ? store.getCell(bee.cellId) : null;
-    if (!bee || bee.substrate !== "cell" || !row || row.state === "removed" || row.state === "removing") {
-      throw new RpcError("invalid_request", `cell.evict: bee ${beeId} has no Cell allocation`);
-    }
-    if (row.state === "evicted") return { cell: row, status: "absent", forced: false, report: null, bytes: null, envFiles: [], keptPaths: [] };
-    if (row.state !== "active") {
-      throw new RpcError("invalid_request", `cell.evict: cell ${row.id} is ${row.state}; retained allocations use cell.retained.remove`);
-    }
-    this.releaseAbsentCellOps(row.id);
-    if (this.cellHasInFlightOp(row.id)) throw new RpcError("runtime_refused", `cell ${row.id} has an in-flight Cell operation`);
-    if (bee.activeMoveId) throw new RpcError("move_in_progress", `bee ${beeId} has a move in flight`);
-    if (bee.activeHandoffId) throw new RpcError("handoff_in_progress", `bee ${beeId} has a handoff in flight`);
-    const rt = store.currentRuntime(beeId);
-    if ((rt && rt.state !== "stopped") || (rt && this.driver?.hasProcess(beeId, rt.generation))) {
-      throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); stop it before evicting its cell`);
-    }
-    const driver = this.driver;
-    if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
-    const wrapperDir = dirname(resolve(row.spaceDir));
-    try {
-      const parked = evictCellWrapper(this.cfg.cellsRoot, wrapperDir, {
-        force,
-        trimPatterns: this.cfg.cellRetention.trimPatterns,
-        receipts: store.listLandingReceipts(beeId),
-        upstream: this.cfg.cellRetention.fetchUpstream ? readUpstreamMirror(row.originRepo, upstreamRootFor(this.cfg.dataDir)) : null,
-      });
-      driver.cell.forgetCell(beeId);
-      if (parked == null) {
-        const evicted = store.evictCell(row.id, { head: null, bytes: null, reason: "operator" });
-        return { cell: evicted, status: "absent", forced: false, report: null, bytes: null, envFiles: [], keptPaths: [] };
-      }
-      let evicted: CellRow;
-      try {
-        evicted = store.evictCell(row.id, { head: parked.head, bytes: null, reason: "operator", envFiles: parked.envFiles, keptPaths: parked.keptPaths });
-      } catch (err) {
-        try {
-          unparkCellWrapper(this.cfg.cellsRoot, wrapperDir, parked);
-          this.log(`cell.evict.unparked bee=${beeId} cell=${row.id} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`);
-        } catch (undoErr) {
-          this.log(`cell.evict.unpark_failed bee=${beeId} cell=${row.id} parked=${parked.parkedDir} undo_err=${JSON.stringify(undoErr instanceof Error ? undoErr.message : String(undoErr))}`);
-        }
-        throw err;
-      }
-      this.log(`cell.evict bee=${beeId} cell=${row.id} forced=${parked.forced} head=${parked.head ?? "-"} parked=${parked.parkedDir} env_files=${parked.envFiles.length} kept=${parked.keptPaths.length}`);
-      void this.retention?.sweep();
-      return { cell: evicted, status: "evicted", forced: parked.forced, report: parked.report, bytes: null, envFiles: parked.envFiles, keptPaths: parked.keptPaths };
-    } catch (err) {
-      if (err instanceof CellDeleteRefused) {
-        this.log(`cell.evict bee=${beeId} refused dirty=${JSON.stringify(err.report)}`);
-        return { cell: row, status: "refused", forced: false, report: err.report, bytes: null, envFiles: [], keptPaths: [] };
-      }
-      if (err instanceof CellHeadMovedError) throw new RpcError("runtime_refused", err.message);
-      throw err;
-    }
+  private async rpcCellEvict(params: Record<string, unknown>): Promise<CellEvictResult> {
+    const beeId=this.requireBee(params),store=this.mustStore(),bee=store.getBee(beeId),row=bee?.cellId?store.getCell(bee.cellId):null;
+    if(!row)throw new RpcError("cell_not_found","Cell not found");
+    if(row.state==="evicted"||row.state==="removed")return{cell:row,status:"absent",forced:false,report:null,bytes:null,envFiles:[],keptPaths:[]};
+    const result=await this.verifiedRemoval(row,"evict",this.idempotencyKeyOf(params)??undefined);
+    if(result.status==="deleted")this.driver?.cell.forgetCell(beeId);
+    return{cell:store.getCell(row.id),status:result.status==="deleted"?"evicted":"refused",...(result.status==="refused"?{reason:result.reason}:{}),forced:false,report:null,bytes:null,envFiles:[],keptPaths:[]};
   }
 
   private backfillCellRegistry(store: CoreStore): void {
@@ -4041,6 +3987,7 @@ export class HiveDaemon {
     const beeId = this.requireBee(params);
     const bee = store.getBee(beeId);
     if (!bee) throw new RpcError("bee_not_found", `bee not found: ${beeId}`);
+    if (bee.cellId && this.cellHasInFlightOp(bee.cellId)) throw new RpcError("runtime_refused", "Cell operation holds the mutation gate");
     const dest = params.destination;
     if (!dest || typeof dest !== "object" || Array.isArray(dest)) {
       throw new RpcError("invalid_request", "bee.move: destination is required");
@@ -4239,6 +4186,7 @@ export class HiveDaemon {
       throw new RpcError("lifecycle_refused", `bee.handoff: bee ${beeId} is ${bee.lifecycle}; unarchive it first`);
     }
     if (bee.activeHandoffId) throw new RpcError("handoff_in_progress", `bee ${beeId} already has an in-flight handoff ${bee.activeHandoffId}`);
+    if (bee.cellId && this.cellHasInFlightOp(bee.cellId)) throw new RpcError("runtime_refused", "Cell operation holds the mutation gate");
     if (bee.activeMoveId) throw new RpcError("move_in_progress", `bee ${beeId} has an in-flight move ${bee.activeMoveId}`);
     const targetSpec = this.cfg.agents[targetAgent];
     const targetAdapter = targetSpec?.adapter ?? targetAgent;
@@ -4720,7 +4668,7 @@ export class HiveDaemon {
    * holds this gate.
    */
   private cellOpHoldsGate(op: CellOpRow): boolean {
-    if (op.kind === "remove") return false;
+    if (op.kind === "remove") return op.status === "queued" || op.status === "running" || op.status === "outcome_unknown";
 
     if (op.pid != null) return this.cellOpProcessPresent(op);
     if (op.failure === "process_identity_unavailable") return true;
@@ -4749,6 +4697,12 @@ export class HiveDaemon {
     const store = this.mustStore();
     for (const op of store.listCellOps()) {
       if (op.kind === "remove") {
+        if (op.stdout.includes('"format":"honeybee.eviction-intent.v1"')) {
+          if (op.status === "running" || op.status === "queued") store.updateCellOp(op.id,{status:"outcome_unknown",pid:null,failure:"interrupted"});
+          const cell=store.getCell(op.cellId);
+          if(cell&&op.status!=="done"&&op.status!=="failed")setImmediate(()=>{if(!this.stopping&&this.driver)void this.verifiedRemoval(cell,JSON.parse(op.stdout).input.mode,op.idempotencyKey).catch(()=>this.log("cell.eviction.reconcile_failed"));});
+          continue;
+        }
         if (op.status !== "queued" && op.status !== "running") continue;
         const cell = store.getCell(op.cellId);
         if (!cell || cell.state === "removed") continue;
@@ -4802,7 +4756,7 @@ export class HiveDaemon {
     } catch { return { status: "refused", reason: "invalid_request" }; }
     const store = this.mustStore();
     const cell = store.getCell(request.cellId);
-    if (!cell || (cell.state !== "retained" && cell.state !== "evicted")) return { status: "refused", reason: "not_retained" };
+    if (!cell || (cell.state !== "retained" && cell.state !== "evicted" && cell.state !== "active")) return { status: "refused", reason: "not_retained" };
     const hash = createHash("sha256").update(JSON.stringify(request)).digest("hex");
     const existing = store.getCellOpByKey(request.idempotencyKey);
     if (existing && (existing.kind !== "backup" || existing.cellId !== cell.id || existing.requestHash !== hash)) {
@@ -4817,7 +4771,7 @@ export class HiveDaemon {
     if (existing && this.cellOpHoldsGate(existing)) return { status: "refused", reason: "busy", operationId: existing.id };
     this.releaseAbsentCellOps(cell.id);
     // One node-wide backup lane also serializes every repository's writer.
-    if (store.listPendingBackupOps().some(op => op.id !== existing?.id && this.cellOpHoldsGate(op))) {
+    if (store.listPendingBackupOps().some(op => op.kind === "backup" && op.id !== existing?.id && this.cellOpHoldsGate(op))) {
       return { status: "refused", reason: "busy" };
     }
     const bee = store.getBee(cell.sourceBeeId);
@@ -4868,7 +4822,7 @@ export class HiveDaemon {
       }
       const budget = await remainingBackupScratch(scratchRoot, op.id, request.maxScratchBytes);
       const record = await captureAndSnapshot({ ...request, maxScratchBytes: budget }, {
-        cell, machine: this.cfg.accounts.allocationNodeId ?? hostname(), operationId: op.id,
+        cell, runtimeGeneration: cell.state === "active" ? store.currentRuntime(cell.sourceBeeId)?.generation ?? null : null, machine: this.cfg.accounts.allocationNodeId ?? hostname(), operationId: op.id,
         scratch, signal: abort.signal,
         keepRoot: cellKeepRootForCells(this.cfg.cellsRoot),
         tools: { git: executable("git"), restic: executable("restic"), hem: executable("hem") },
@@ -5029,95 +4983,13 @@ export class HiveDaemon {
     };
   }
 
-  private rpcCellRetainedRemove(params: Record<string, unknown>): CellRetainedRemoveResult {
-    const store = this.mustStore();
-    const cellId = this.param(params, "cellId");
-    this.releaseAbsentCellOps(cellId);
-    const key = this.idempotencyKeyOf(params);
-    if (key == null) throw new RpcError("invalid_request", "cell.retained.remove: idempotencyKey is required");
-    if (params.force !== undefined && typeof params.force !== "boolean") {
-      throw new RpcError("invalid_request", "cell.retained.remove: force must be a boolean when given");
-    }
-    const force = params.force === true;
-    const hash = hashCellOpRequest({ cellId, kind: "remove", force });
-    const existing = store.getCellOpByKey(key);
-    if (existing) {
-      if (existing.requestHash !== hash || existing.kind !== "remove" || existing.cellId !== cellId) {
-        throw new RpcError("idempotency_conflict", "idempotency key already bound to a different cell.retained.remove request");
-      }
-      const cell = store.getCell(cellId);
-      if (!cell) throw new RpcError("cell_not_found", `cell not found: ${cellId}`);
-      if (existing.status === "done" || existing.status === "failed" || existing.status === "outcome_unknown") {
-        return this.parseRetainedRemoveResult(existing, cell, true);
-      }
-      if (existing.status === "running") {
-        const parsed = parseSpaceName(cell.spaceName);
-        const gone = parsed
-          ? !existsSync(cellPaths(this.cfg.cellsRoot, cell.wrapper, parsed.repoName, parsed.cellId).wrapperDir)
-          : cell.state === "removed";
-        if (gone) {
-          const marked = cell.state === "removed" ? cell : store.markCellRemoved(cellId);
-          const saved = store.updateCellOp(existing.id, {
-            status: "done",
-            stdout: JSON.stringify({ status: "deleted", forced: force, report: null }),
-          });
-          return this.parseRetainedRemoveResult(saved, marked, true);
-        }
-        const unknown = store.updateCellOp(existing.id, {
-          status: "outcome_unknown",
-          failure: "daemon_restart",
-          stdout: JSON.stringify({ status: "refused", forced: false, report: null }),
-        });
-        return this.parseRetainedRemoveResult(unknown, cell, true);
-      }
-    }
-    const cell = store.getCell(cellId);
-    if (!cell) throw new RpcError("cell_not_found", `cell not found: ${cellId}`);
-    if (cell.state === "removed") return { cell, status: "absent", forced: false, report: null };
-    if (cell.state !== "retained") {
-      throw new RpcError("invalid_request", `cell.retained.remove: cell ${cellId} is ${cell.state}, not retained`);
-    }
-    if (this.cellHasInFlightOp(cellId, key)) {
-      throw new RpcError("runtime_refused", `cell ${cellId} has an in-flight Cell operation`);
-    }
-    const driver = this.driver;
-    if (!driver) throw new RpcError("node_stopped", "daemon is shutting down");
-    if (driver.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
-      throw new RpcError("runtime_refused", `cell ${cellId} still has a live Cell runtime`);
-    }
-    const op = existing ?? store.putCellOp({ cellId, kind: "remove", idempotencyKey: key, requestHash: hash });
-    const parsed = parseSpaceName(cell.spaceName);
-    if (!parsed) throw new RpcError("invalid_request", `cell.retained.remove: malformed space name ${cell.spaceName}`);
-    const paths = cellPaths(this.cfg.cellsRoot, cell.wrapper, parsed.repoName, parsed.cellId);
-    store.updateCellOp(op.id, { status: "running" });
-    try {
-      if (!existsSync(paths.wrapperDir)) {
-        const marked = store.markCellRemoved(cellId);
-        const saved = store.updateCellOp(op.id, {
-          status: "done",
-          stdout: JSON.stringify({ status: "absent", forced: false, report: null }),
-        });
-        return this.parseRetainedRemoveResult(saved, marked, false);
-      }
-      const res = deleteCell(paths.wrapperDir, { force, receipts: store.listLandingReceipts(cell.sourceBeeId) });
-      const marked = store.markCellRemoved(cellId);
-      const status = res.deleted ? "deleted" : "absent";
-      const saved = store.updateCellOp(op.id, {
-        status: "done",
-        stdout: JSON.stringify({ status, forced: res.forced, report: res.report }),
-      });
-      return this.parseRetainedRemoveResult(saved, marked, false);
-    } catch (err) {
-      if (err instanceof CellDeleteRefused) {
-        const saved = store.updateCellOp(op.id, {
-          status: "done",
-          stdout: JSON.stringify({ status: "refused", forced: false, report: err.report }),
-        });
-        return this.parseRetainedRemoveResult(saved, cell, false);
-      }
-      store.updateCellOp(op.id, { status: "failed", failure: err instanceof Error ? err.message : String(err) });
-      throw err;
-    }
+  private async rpcCellRetainedRemove(params: Record<string, unknown>): Promise<CellRetainedRemoveResult> {
+    const store=this.mustStore(),cellId=this.param(params,"cellId"),row=store.getCell(cellId);
+    if(!row)throw new RpcError("cell_not_found","Cell not found");
+    if(row.state==="removed")return{cell:row,status:"absent",forced:false,report:null};
+    if(row.state!=="retained")throw new RpcError("invalid_request","Cell is not retained");
+    const result=await this.verifiedRemoval(row,"remove",this.idempotencyKeyOf(params)??undefined);
+    return{cell:store.getCell(cellId)!,status:result.status==="deleted"?"deleted":"refused",...(result.status==="refused"?{reason:result.reason}:{}),forced:false,report:null};
   }
 
   // -------------------------------------------------------------------------
@@ -5498,6 +5370,7 @@ export class HiveDaemon {
     if (!source) throw new RpcError("bee_not_found", "Source bee is not owned by this daemon");
     if (source.providerSessionId !== sourceProviderSessionId) throw new RpcError("thread_history_unavailable", "Source provider identity changed; refresh its snapshot");
     if (source.agent !== "codex" || source.substrate !== "hsr" || (this.cfg.agents[source.agent]?.adapter ?? source.agent) !== "codex") throw new RpcError("thread_unsupported", "Thread operations currently support only local Codex HSR bees");
+    if (source.cellId && this.cellHasInFlightOp(source.cellId)) throw new RpcError("runtime_refused", "Cell operation holds the mutation gate");
     if (source.activeHandoffId || source.activeMoveId || (store.threadOperationForSuccessor(source.id)?.phase ?? "ready") !== "ready") throw new RpcError("thread_busy", "Source is undergoing an execution transition");
     const spec = this.resolveSpawnSpec(source.id);
     const home = spec.env?.CODEX_HOME ?? join(homedir(), ".codex");

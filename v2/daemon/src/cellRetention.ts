@@ -91,6 +91,7 @@ export interface CellRetentionDeps {
   opInFlight: (cellId: string) => boolean;
   /** Drop the driver's cached allocation after a park. */
   forgetCell: (beeId: string) => void;
+  verifiedEvict?: (cell: CellRow, mode: "evict"|"remove"|"trim") => Promise<import("./evictionService.ts").OwnerEvictionResult>;
   /** Tests: substitute the inspection worker entrypoint. */
   workerUrl?: URL;
   /** Delay before the first automatic pass after boot (default 5 min). */
@@ -663,7 +664,7 @@ export class CellRetentionService {
         items.push(item);
         this.countProgress(progress, item.reason, item.bytes);
         if (item.verdict !== "evict") continue;
-        const outcome = this.applyCapped(item);
+        const outcome = await this.applyCapped(item);
         if (outcome == null) {
           capped = true;
           break;
@@ -987,7 +988,7 @@ export class CellRetentionService {
     for (const item of items) {
       this.assertRunning();
       if (item.verdict !== "evict" && item.verdict !== "remove_retained") continue;
-      const outcome = this.applyCapped(item);
+      const outcome = await this.applyCapped(item);
       if (outcome) outcomes.push(outcome);
       await new Promise<void>((r) => setImmediate(r));
     }
@@ -1022,64 +1023,26 @@ export class CellRetentionService {
   }
 
   /** applyOne under the daily cap: a capped item is held, a reclaimed one counts against the window. */
-  private applyCapped(item: CellGcItem): CellGcOutcome | null {
+  private async applyCapped(item: CellGcItem): Promise<CellGcOutcome | null> {
     const now = this.deps.now();
     if (this.evictionBudget(now) === 0) {
       this.holdForDailyCap(item, now);
       return null;
     }
-    const outcome = this.applyOne(item);
+    const outcome = await this.applyOne(item);
     if (outcome.status === "evicted" || outcome.status === "removed") this.evictionTimes.push(this.deps.now());
     return outcome;
   }
 
   /** One eviction, preconditions re-checked synchronously at the moment of the rename. */
-  private applyOne(item: CellGcItem): CellGcOutcome {
-    const store = this.deps.store();
-    const outcome = (status: CellGcOutcome["status"], reason: string | null, envFiles: string[] = [], keptPaths: string[] = []): CellGcOutcome => ({
-      cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, bytes: item.bytes, envFiles, keptPaths,
-    });
-    const cell = item.cellId ? store.getCell(item.cellId) : null;
-    if (!cell || cell.state !== item.cellState) return outcome("refused", "cell_state_changed");
-    const bee = store.getBee(item.beeId);
-    if (bee && bee.lifecycle !== item.beeLifecycle) return outcome("refused", "lifecycle_changed");
-    if (this.deps.cellInUse(item.beeId, store.currentRuntime(item.beeId), cell.state)) return outcome("refused", "runtime_live");
-    if (this.deps.opInFlight(cell.id)) return outcome("refused", "op_in_flight");
-    if (bee?.activeMoveId) return outcome("refused", "move_in_flight");
-    if (bee?.activeHandoffId) return outcome("refused", "handoff_in_flight");
-    try {
-      const parked = evictCellWrapper(this.deps.cellsRoot, item.wrapperDir, {
-        expectedHead: item.head,
-        now: this.deps.now,
-        trimPatterns: this.deps.policy.trimPatterns,
-        receipts: store.listLandingReceipts(item.beeId),
-        upstream: item.originRepo ? this.upstreamRefs.get(item.originRepo) ?? null : null,
-      });
-      this.deps.forgetCell(item.beeId);
-      if (parked == null) {
-        if (item.verdict === "remove_retained") store.markCellRemoved(cell.id);
-        return outcome("absent", null);
-      }
-      const env = parked.envFiles.length > 0 ? ` env_files=${parked.envFiles.length} env_stash=${cellEnvRootForCells(this.deps.cellsRoot)}` : "";
-      const kept = parked.keptPaths.length > 0 ? ` kept=${parked.keptPaths.length} keep_stash=${cellKeepRootForCells(this.deps.cellsRoot)}` : "";
-      const recorded = this.recordOrUnpark(cell.id, item, parked, () => {
-        if (item.verdict === "remove_retained") store.markCellRemoved(cell.id);
-        else store.evictCell(cell.id, { head: parked.head, bytes: item.bytes, reason: item.reason, envFiles: parked.envFiles, keptPaths: parked.keptPaths });
-      });
-      if (recorded != null) return outcome("failed", recorded);
-      if (item.verdict === "remove_retained") {
-        this.deps.log(`cell.retention.removed cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}`);
-        return outcome("removed", item.reason, parked.envFiles, parked.keptPaths);
-      }
-      this.deps.log(`cell.retention.evicted cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}`);
-      return outcome("evicted", item.reason, parked.envFiles, parked.keptPaths);
-    } catch (err) {
-      if (err instanceof CellDeleteRefused) return outcome("refused", "dirty");
-      if (err instanceof CellHeadMovedError) return outcome("refused", "head_moved");
-      const detail = err instanceof Error ? err.message : String(err);
-      this.deps.log(`cell.retention.failed cell=${cell.id} bee=${item.beeId} err=${JSON.stringify(detail)}`);
-      return outcome("failed", detail);
-    }
+  private async applyOne(item: CellGcItem): Promise<CellGcOutcome> {
+    const store=this.deps.store(),cell=item.cellId?store.getCell(item.cellId):null;
+    const outcome=(status:CellGcOutcome["status"],reason:string|null):CellGcOutcome=>({cellId:item.cellId,beeId:item.beeId,wrapperDir:item.wrapperDir,status,reason,bytes:item.bytes,envFiles:[],keptPaths:[]});
+    if(!cell||cell.state!==item.cellState)return outcome("refused","cell_state_changed");
+    if(!this.deps.verifiedEvict)return outcome("refused","unknown_policy");
+    const result=await this.deps.verifiedEvict(cell,item.verdict==="remove_retained"?"remove":"evict");
+    if(result.status==="refused")return outcome("refused",result.reason);
+    this.deps.forgetCell(item.beeId);return outcome(item.verdict==="remove_retained"?"removed":"evicted",item.reason);
   }
 
   /** Record the park in the registry; when that write fails, put the wrapper back and return the error. */
@@ -1113,13 +1076,13 @@ export class CellRetentionService {
     const outcomes: CellGcTrimOutcome[] = [];
     for (const [index, item] of planned.entries()) {
       this.assertRunning();
-      outcomes.push(this.trimOne(item, byKey.get(String(index)) ?? null));
+      outcomes.push(await this.trimOne(item, byKey.get(String(index)) ?? null));
       await new Promise<void>((r) => setImmediate(r));
     }
     return outcomes;
   }
 
-  private trimOne(item: CellGcItem, verified: TrimVerifyWorkerResult["verified"][number] | null): CellGcTrimOutcome {
+  private async trimOne(item: CellGcItem, verified: TrimVerifyWorkerResult["verified"][number] | null): Promise<CellGcTrimOutcome> {
     const store = this.deps.store();
     const outcome = (status: CellGcTrimOutcome["status"], reason: string | null, paths: string[] = [], skipped: TrimSkip[] = verified?.skipped ?? []): CellGcTrimOutcome => {
       const trimmed = new Set(paths);
@@ -1143,20 +1106,9 @@ export class CellRetentionService {
     const idleSince = this.idleSinceOf({ cell, bee, runtime });
     if (idleSince == null || this.deps.now() - idleSince < (this.deps.policy.trimAfterMs ?? Number.POSITIVE_INFINITY)) return outcome("refused", "not_idle");
     if (verified.confirmed.length === 0) return outcome("refused", "nothing_to_trim");
-    try {
-      const res = parkTrimPaths(this.deps.cellsRoot, item.wrapperDir, verified.confirmed, { now: this.deps.now });
-      const skipped = [...verified.skipped, ...res.skipped];
-      const result = outcome(res.trimmed.length > 0 ? "trimmed" : "refused", res.trimmed.length > 0 ? null : "nothing_to_trim", res.trimmed, skipped);
-      this.deps.log(
-        `cell.retention.trimmed cell=${cell.id} bee=${item.beeId} paths=${res.trimmed.length} skipped=${skipped.length} bytes=${result.bytes ?? "?"}` +
-          ` parked=${res.parkedDir ?? "-"}${skipped.length > 0 ? ` first_skip=${JSON.stringify(skipped[0])}` : ""}`,
-      );
-      return result;
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      this.deps.log(`cell.retention.trim_failed cell=${cell.id} bee=${item.beeId} err=${JSON.stringify(detail)}`);
-      return outcome("failed", detail);
-    }
+    if (!this.deps.verifiedEvict) return outcome("refused", "unknown_policy");
+    const checked = await this.deps.verifiedEvict(cell, "trim");
+    return outcome("refused", checked.status === "refused" ? checked.reason : "unknown_policy");
   }
 
   reconcileKept(): void {

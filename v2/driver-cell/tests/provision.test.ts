@@ -150,7 +150,7 @@ test("provision.layout: wrapper/space/box shape and clean space checkout", () =>
   }
 });
 
-test("provision.replay: interrupted provisioning (partial space, no recorded step) replays idempotently", () => {
+test("provision.replay: interrupted provisioning refuses an existing unrecorded tree without overwriting", () => {
   const rig = makeRig();
   try {
     const paths = cellPaths(rig.cellsRoot, "bee-1", "fixture", "c1");
@@ -170,18 +170,9 @@ test("provision.replay: interrupted provisioning (partial space, no recorded ste
     mkdirSync(join(paths.spaceDir, ".git"), { recursive: true });
     writeFileSync(join(paths.spaceDir, ".git", "HEAD"), "garbage");
 
-    // Replay with the SAME operation id — must recover to a working cell.
-    const cell = provisionCell(rig.cellsRoot, req(rig), "cmd-1", { disableCow: true });
-    assert.equal(cell.replayed, false);
-    assert.equal(g(cell.paths.spaceDir, ["rev-parse", "HEAD"]), rig.origin.sha);
-    assert.equal(g(cell.paths.spaceDir, ["status", "--porcelain"]), "");
-
-    // A second replay (same op) is a recorded no-op.
-    const again = provisionCell(rig.cellsRoot, req(rig), "cmd-1", { disableCow: true });
-    assert.equal(again.replayed, true);
-    // And a replay under a DIFFERENT op id (retried command chain) no-ops too.
-    const other = provisionCell(rig.cellsRoot, req(rig), "cmd-2", { disableCow: true });
-    assert.equal(other.replayed, true);
+    // An unrecorded tree may contain unique work; owner recovery must classify it.
+    assert.throws(()=>provisionCell(rig.cellsRoot,req(rig),"cmd-1",{disableCow:true}),/content_changed/);
+    assert.equal(readFileSync(join(paths.spaceDir,".git","HEAD"),"utf8"),"garbage");
   } finally {
     rig.cleanup();
   }
