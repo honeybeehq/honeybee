@@ -67,19 +67,19 @@ test("private stdout capture releases only bounded successful bytes and suppress
   const paths = cellPaths(root, "wrap", "repo", "c1");
   mkdirSync(paths.spaceDir, { recursive: true });
   try {
-    for (const mode of ["ok", "nonzero", "overflow", "timeout", "expired", "cancel"] as const) {
+    for (const mode of ["ok", "boundary", "nonzero", "overflow", "timeout", "expired", "cancel"] as const) {
       const released: Buffer[] = [];
       const controller = new AbortController();
       const result = await runCellExec(paths, {
         sandbox: false, nodeKind: "satellite", signal: controller.signal,
         timeoutMs: mode === "timeout" ? 1000 : 5000,
         outputCapture: { maxBytes: 8, expiresAt: Date.now() + (mode === "expired" ? -1 : 30000), receive: bytes => released.push(Buffer.from(bytes)) },
-        argv: [process.execPath, "-e", `process.stdout.write(Buffer.from([0,255,1,2]));process.stderr.write('synthetic-private-stderr');${mode === "overflow" ? "process.stdout.write('123456789')" : mode === "nonzero" ? "process.exitCode=9" : mode === "timeout" || mode === "cancel" ? "setInterval(()=>{},1000)" : ""}`],
+        argv: [process.execPath, "-e", `process.stdout.write(Buffer.from([0,255,1,2]));process.stderr.write('synthetic-private-stderr');${mode === "boundary" ? "process.stdout.write(Buffer.from([3,4,5,6]))" : mode === "overflow" ? "process.stdout.write('12345')" : mode === "nonzero" ? "process.exitCode=9" : mode === "timeout" || mode === "cancel" ? "setInterval(()=>{},1000)" : ""}`],
       }, () => { if (mode === "cancel") setTimeout(() => controller.abort(), 100); });
       assert.equal(result.stdout, "");
       assert.equal(result.stderr, "");
-      assert.equal(released.length, mode === "ok" ? 1 : 0);
-      if (released.length) assert.deepEqual(released[0], Buffer.from([0,255,1,2]));
+      assert.equal(released.length, mode === "ok" || mode === "boundary" ? 1 : 0);
+      if (released.length) assert.deepEqual(released[0], Buffer.from(mode === "boundary" ? [0,255,1,2,3,4,5,6] : [0,255,1,2]));
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
