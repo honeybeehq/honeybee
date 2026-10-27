@@ -1,4 +1,5 @@
 export const secretSupervisorSource = String.raw`
+if (process.platform === 'linux' && process.pid !== 1) process.exit(125);
 const { spawn } = require('node:child_process');
 const { writeSync } = require('node:fs');
 const { Socket } = require('node:net');
@@ -11,6 +12,7 @@ const finish = (code, reason) => {
   if (finished) return;
   finished = true;
   if (reason) { try { writeSync(3, reason); } catch {} }
+  if (process.platform === 'linux' && process.pid === 1) process.exit(code);
   if (child?.pid) {
     try { process.kill(-process.pid, 'SIGKILL'); } catch {}
   }

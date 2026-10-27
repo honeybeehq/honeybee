@@ -292,8 +292,11 @@ export async function runCellExec(
   if (spec.signal?.aborted) throw new Error("secret_execution_revoked");
   const supervised = Boolean(spec.secretEnv || spec.outputCapture);
   const startedAt = process.hrtime.bigint();
+  const linuxNamespace = supervised && process.platform === "linux";
+  const supervisorCommand = linuxNamespace ? "/usr/bin/unshare" : process.execPath;
+  const supervisorArgs = [...(linuxNamespace ? ["--user", "--map-current-user", "--pid", "--fork", "--kill-child=SIGKILL", process.execPath] : []), "-e", secretSupervisorSource];
   let child: ChildProcess;
-  try { child = spawn(supervised ? process.execPath : wrappedCommand, supervised ? ["-e", secretSupervisorSource] : wrappedArgs, {
+  try { child = spawn(supervised ? supervisorCommand : wrappedCommand, supervised ? supervisorArgs : wrappedArgs, {
     cwd,
     env: supervised ? sanitizedCellExecEnv() : env,
     stdio: supervised ? ["ignore", "pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
