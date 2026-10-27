@@ -82,6 +82,7 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly captureSecretOutput?: (leaseId: string, bytes: Buffer) => void;
   readonly secretExecution?: import("./protocol.ts").SecretExecutionContext;
   readonly secretExecutionNodeId?: string;
   readonly humanChat?: HumanChatAdmission;
@@ -330,7 +331,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => !(["cell.secret.exec.v1", "question.withdraw.v1", "mail.humanFirst.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => !(["cell.secret.exec.v1", "cell.secret.capture.v1", "question.withdraw.v1", "mail.humanFirst.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
   }
 
   private onConnection(socket: Socket): void {
@@ -456,6 +457,7 @@ export class RpcServer {
         throw new RpcError("caller_not_trusted", "Integrity check requires a verified direct local administrator connection.");
       }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
+      let secretCapture: { leaseId: string; bytesBase64: string } | undefined;
       const result = withRpcCaller(caller, () => {
         const automationContext = frame.context as Record<string, unknown> | undefined;
         if (verb === "cell.execSecret" || verb === "cell.execSecret.cancel" || automationContext?.secretExecution !== undefined) {
@@ -463,7 +465,7 @@ export class RpcServer {
             || !automationContext || Object.keys(automationContext).some(key => key !== "secretExecution")) throw new RpcError("caller_not_trusted", "Secret execution requires the registered local authority");
           this.trust.require(peer, conn.ingress);
           if (!this.trust.nodeId) throw new RpcError("caller_not_trusted", "Secret execution requires registered node binding");
-          return this.opts.dispatch(verb, params, { ...conn, secretExecutionNodeId: this.trust.nodeId, secretExecution: automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext });
+          return this.opts.dispatch(verb, params, { ...conn, captureSecretOutput: (leaseId, bytes) => { secretCapture = { leaseId, bytesBase64: bytes.toString("base64") }; }, secretExecutionNodeId: this.trust.nodeId, secretExecution: automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext });
         }
         if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
         if (params.automationKind !== undefined || params.automationRef !== undefined || automationContext?.automationReference !== undefined) {
@@ -587,9 +589,11 @@ export class RpcServer {
         result.then(
           (value) => {
             span.end();
-            conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities) });
+            conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), ...(secretCapture ? { secretCapture } : {}) });
+            secretCapture = undefined;
           },
           (err) => {
+            secretCapture = undefined;
             span.end("error");
             conn.send({ id, ok: false, error: projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities) });
           },

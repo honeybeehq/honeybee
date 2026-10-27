@@ -54,3 +54,32 @@ Both raw stdout and stderr pass through byte redactors before the shared output 
 No harness shell interception is claimed. Only this dedicated command path is protected. JavaScript strings, child environments, swap and privileged process inspection preclude forensic memory-erasure guarantees. Abrupt daemon death loses in-memory cancellation handles; durable process identity and attempted state prevent replay but cannot retract already released material. Grant revocation cannot undo effects or copies already produced by an authorized command. Matching is leftmost then longest: partial prefixes and suffixes, including a suffix after an overlapping matched value, can remain visible; exact masking is not substring concealment.
 
 Verification uses only synthetic sentinels in `v2/driver-cell/tests/secret-output.test.ts` and `v2/daemon/tests/secret-execution.test.ts`, plus existing exec/local-trust tests. The daemon fixture scans raw SQLite/WAL files and fixture output, checks duplicate/reopen behavior and cancellation-before-spawn, and prints counts without values. TLS enrollment enforcement must additionally be verified in the Apiary receiver integration.
+
+
+## Private stdout capture
+
+`cell.secret.capture.v1` is advertised with the same local authentication readiness as
+`cell.secret.exec.v1`. Capture uses `cell.execSecret` with matching metadata-only
+`outputCapture: {name,maxBytes,leaseId,expiresAt}` in params and protected
+`secretExecution`. The context omits `env`. Names are credential display names of 1–120 NUL-free characters,
+lease IDs follow execution ID syntax, maxBytes is 1–16384, and lease expiry is integer
+Unix milliseconds strictly in the future and at most 30 seconds away at admission.
+
+Stdout bypasses ordinary output capture and redaction into a bounded private Buffer.
+Stderr is drained and discarded. Normal and durable results have empty stdout/stderr.
+Only zero exit, no cancellation, no timeout, no overflow, and an unexpired lease release
+bytes. The Buffer is cleared after the synchronous private response callback consumes it.
+The registered local process receives the JSON frame
+`{id,ok:true,result:CellExecResult,secretCapture:{leaseId,bytesBase64}}`.
+The private field belongs to the transport envelope, never CellExecResult. Callers must
+extract it through their private response callback and exclude it from ordinary results,
+logs, journals, transcripts and durable transports. Duplicate execution IDs return only
+the safe durable result and never release bytes again. Admission metadata participates
+in the idempotency binding; a changed capture lease requires a fresh execution ID.
+
+Capture delivery is at most once: a dropped response cannot be recovered. The broker
+must use a fresh execution ID for a new attempt. `deduped:true` distinguishes replay
+from a successful empty stdout capture, which carries `bytesBase64:""`. Buffer clearing
+does not erase transient base64 strings, JSON frames, kernel buffers or privileged
+process inspection evidence. Capture mode intentionally sends raw stdout to the trusted
+authority and performs no exact-value masking on that private response.

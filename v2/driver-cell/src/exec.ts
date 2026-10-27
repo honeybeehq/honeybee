@@ -24,6 +24,7 @@ export interface CellExecSpec {
   nodeKind: NodeKind;
   secretEnv?: Record<string, string>;
   signal?: AbortSignal;
+  outputCapture?: { maxBytes: number; expiresAt: number; receive: (bytes: Buffer) => void };
 }
 
 export interface CellExecSpawned {
@@ -327,8 +328,23 @@ export async function runCellExec(
     }
     redactor.push(chunk);
   };
-  child.stdout?.on("data", (chunk: Buffer) => intake(stdout, chunk));
-  child.stderr?.on("data", (chunk: Buffer) => intake(stderr, chunk));
+  const privateOutput = spec.outputCapture ? Buffer.alloc(spec.outputCapture.maxBytes) : undefined;
+  let privateLength = 0;
+  let privateFailed = false;
+  child.stdout?.on("data", (chunk: Buffer) => {
+    if (!privateOutput) { intake(stdout, chunk); return; }
+    if (privateFailed) return;
+    if (chunk.length > privateOutput.length - privateLength) {
+      privateFailed = true;
+      outputBudget.truncated = true;
+      privateOutput.fill(0);
+      return;
+    }
+    chunk.copy(privateOutput, privateLength);
+    privateLength += chunk.length;
+  });
+  child.stderr?.on("data", (chunk: Buffer) => { if (!privateOutput) intake(stderr, chunk); });
+  child.stdout?.on("error", () => { privateFailed = true; });
   child.stdout?.on("error", () => stdout.finish());
   child.stderr?.on("error", () => stderr.finish());
   let abortKill: ReturnType<typeof setTimeout> | undefined;
@@ -349,6 +365,7 @@ export async function runCellExec(
       await terminateAndReap(child, pid, reaped, closed);
       spec.signal?.removeEventListener("abort", abort);
       if (abortKill) clearTimeout(abortKill);
+      privateOutput?.fill(0);
       stdout.finish(); stderr.finish(); stdout.dispose(); stderr.dispose();
       for (const name of Object.keys(env)) delete env[name as keyof typeof env];
       if (spec.secretEnv) throw new Error("secret_execution_failed");
@@ -381,10 +398,16 @@ export async function runCellExec(
   if (timedOut) {
     await terminateAndReap(child, pid, reaped, closed);
     finish();
+    privateOutput?.fill(0);
     return outcome(spec.signal?.aborted ? "interrupted" : "timeout", reaped.code);
   }
 
   finish();
+  if (privateOutput) {
+    try {
+      if (!spawnError && !spec.signal?.aborted && reaped.code === 0 && !privateFailed && spec.outputCapture!.expiresAt > Date.now()) spec.outputCapture!.receive(privateOutput.subarray(0, privateLength));
+    } finally { privateOutput.fill(0); }
+  }
   if (spawnError) { if (spec.secretEnv) throw new Error("cell_execution_spawn_failed"); throw spawnError; }
   if (spec.signal?.aborted) return outcome("interrupted", reaped.code);
   return outcome(reaped.code === 0 ? "ok" : "nonzero", reaped.code);

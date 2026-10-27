@@ -27,6 +27,22 @@ test("admission binds every execution field, argv, expiry and env shape without 
   assert.throws(() => admitSecretExecution(a.params, a.context, "other", 1000), /secret_execution_invalid/);
 });
 
+
+test("capture admission binds display metadata, bounds bytes and excludes input env", () => {
+  const a = admission();
+  const { env: _env, ...binding } = a.context;
+  const outputCapture = { name: "Synthetic display credential", maxBytes: 16384, leaseId: "lease-1", expiresAt: 2000 };
+  const context = { ...binding, outputCapture };
+  const params = { ...a.params, outputCapture };
+  assert.deepEqual(admitSecretExecution(params, context, "node-1", 1000).outputCapture, outputCapture);
+  for (const patch of [{ name: "" }, { name: "x".repeat(121) }, { name: "nul\0name" }, { maxBytes: 16385 }, { maxBytes: 0 }, { maxBytes: 1.5 }, { leaseId: "" }, { expiresAt: 1000 }]) {
+    const invalid = { ...outputCapture, ...patch };
+    assert.throws(() => admitSecretExecution({ ...params, outputCapture: invalid }, { ...context, outputCapture: invalid }, "node-1", 1000), /secret_execution_invalid/);
+  }
+  assert.throws(() => admitSecretExecution(params, { ...context, env: a.context.env }, "node-1", 1000), /secret_execution_invalid/);
+  assert.throws(() => admitSecretExecution(params, { ...context, outputCapture: { ...outputCapture, leaseId: "other" } }, "node-1", 1000), /secret_execution_invalid/);
+});
+
 test("secret RPC requires registered local process and node binding, refuses relay and unrelated context", async () => {
   const root = (await import("node:fs")).realpathSync(mkdtempSync(join(tmpdir(), "secret-rpc-")));
   const absoluteSocket = join(root, "rpc.sock");
@@ -108,6 +124,24 @@ test("daemon executes active owned Cell, keeps durable bytes clean, deduplicates
     return n + (entry.isDirectory() ? scan(path) : entry.isFile() && readFileSync(path).includes(Buffer.from(token)) ? 1 : 0);
   }, 0);
   try {
+    const frames: Record<string, unknown>[] = [];
+    const socket = (client as unknown as { socket: import("node:net").Socket }).socket;
+    const observe = (chunk: string) => { for (const line of chunk.trim().split("\n")) frames.push(JSON.parse(line)); };
+    socket.on("data", observe);
+    const captureArgv = [process.execPath, "-e", "process.stdout.write(Buffer.from([0,255,12,34]));process.stderr.write(Buffer.from([0,255,12,34]))"];
+    const outputCapture = { name: "TOKEN", maxBytes: 8, leaseId: "capture-lease", expiresAt: Date.now() + 30000 };
+    const captureBinding = { ...base, executionId: "capture-once", argvDigest: secretArgvDigest(captureArgv), expiresAt: Date.now() + 30000, outputCapture };
+    const captureParams = { ...captureBinding, argv: captureArgv, idempotencyKey: "capture-once" };
+    const captureContext = { secretExecution: captureBinding };
+    const captured = await client.request<import("../src/protocol.ts").CellExecResult>("cell.execSecret", captureParams, 10000, captureContext);
+    assert.equal(captured.stdout, "");
+    assert.equal(captured.stderr, "");
+    assert.deepEqual(frames.at(-1)?.secretCapture, { leaseId: "capture-lease", bytesBase64: Buffer.from([0,255,12,34]).toString("base64") });
+    assert.equal(JSON.stringify(captured).includes("secretCapture"), false);
+    assert.equal(JSON.stringify(store.dumpState()).includes("bytesBase64"), false);
+    await client.request("cell.execSecret", captureParams, 10000, captureContext);
+    assert.equal(frames.at(-1)?.secretCapture, undefined);
+    socket.off("data", observe);
     const argv = [process.execPath, "-e", "const fs=require('node:fs');fs.appendFileSync('runs','1');process.stdout.write(process.env.TOKEN);process.stderr.write(process.env.TOKEN)"];
     const first = await run("exec-durable", argv);
     assert.equal(first.stdout, "[REDACTED]");
