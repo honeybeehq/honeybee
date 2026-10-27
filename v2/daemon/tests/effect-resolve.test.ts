@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
 import { IdentityRecovery } from "../src/identityRecovery.ts";
 import { HiveDaemon } from "../src/daemon.ts";
-import { RpcServer, type RpcDispatch } from "../src/rpc.ts";
+import { RpcServer, type RpcConn, type RpcDispatch } from "../src/rpc.ts";
 import { RpcClient } from "../../cli/src/client.ts";
 import { RpcError, type SpawnResult, type SendRpcResult, type MutationResult } from "../src/protocol.ts";
 
@@ -129,6 +129,36 @@ test("legacy effect RPC rejects changed in-flight args but replays changed args 
   f.reopen();
   assert.equal((await f.client.request<SpawnResult>("spawn", replayArgs)).beeId, original.beeId);
 
+});
+
+test("pending human spawn cannot be joined by a matching remote or relay caller", async t => {
+  const f = await fixture(t);
+  Object.assign(f.owner.cfg as object, { nodeKind: "workstation" });
+  const caller = { client: "hive-cli" as const, runtimeBeeId: null, runtimeContext: false, dataDir: null, expectedInstanceId: null };
+  const invoke = (params: Record<string, unknown>, conn: RpcConn) =>
+    (f.owner.dispatchWithAdmission as RpcDispatch).call(f.owner, "spawn", params, conn);
+  for (const ingress of ["remote", "node_relay"] as const) {
+    let entered!: () => void, release!: () => void;
+    const seen = new Promise<void>(resolve => { entered = resolve; });
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    t.after(() => release());
+    f.owner.accounts = { allocationMode: () => "shadow", async ensureFreshAdmissionLimits() { entered(); await wait; }, isolationRefusal: () => null };
+    const params = { name: ingress, agent: "stub", cwd: tmpdir(), idempotencyKey: `pending-${ingress}` };
+    const local = { ingress: "local_unix", caller } as RpcConn;
+    const pending = Promise.resolve(invoke(params, local)) as Promise<SpawnResult>;
+    await seen;
+    const duplicate = Promise.resolve(invoke(params, local)) as Promise<SpawnResult>;
+    let remote: Promise<unknown>;
+    try { remote = Promise.resolve(invoke(params, { ingress, caller } as RpcConn)); }
+    catch (error) { remote = Promise.reject(error); }
+    const refused = assert.rejects(remote, refusal("idempotency_conflict"));
+    release();
+    const original = await pending;
+    await refused;
+    assert.equal((await duplicate).beeId, original.beeId);
+    assert.equal(f.store.getBee(original.beeId)?.admissionBasis, "human");
+  }
+  assert.equal(f.store.listBees().length, 2);
 });
 
 test("effect RPC missing capability fails locally without sending a resolver frame", async t => {

@@ -2796,7 +2796,7 @@ export class HiveDaemon {
     if (key === null) return this.rpcSpawnWithAccount(params);
     this.mustStore().transact(() => this.mustStore().lookupRpcResult(key));
     const binding = this.phoneRequestBinding(params);
-    const fingerprint = canonicalDigest(JSON.parse(JSON.stringify({ request: binding.lane === "legacy" ? JSON.parse(JSON.stringify(params)) : binding.digest, admission: this.admissionCaller.getStore()?.conn.workstationAdmission ?? null, caller: this.admissionCaller.getStore()?.conn.caller ?? null })));
+    const fingerprint = canonicalDigest(JSON.parse(JSON.stringify({ request: binding.lane === "legacy" ? JSON.parse(JSON.stringify(params)) : binding.digest, admission: this.admissionCaller.getStore()?.conn.workstationAdmission ?? null, caller: this.admissionCaller.getStore()?.conn.caller ?? null, effectiveAdmission: this.admissionBinding() })));
     const registry = this.effectInFlight ??= new Map();
     const existing = registry.get(key);
     if (existing) {
