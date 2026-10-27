@@ -2,6 +2,7 @@ export const secretSupervisorSource = String.raw`
 if (process.platform === 'linux' && process.pid !== 1) process.exit(125);
 const { spawn } = require('node:child_process');
 const { writeSync } = require('node:fs');
+writeSync(3, 'ready\n');
 const { Socket } = require('node:net');
 const lease = new Socket({ fd: 3, readable: true, writable: true });
 lease.setEncoding('utf8');

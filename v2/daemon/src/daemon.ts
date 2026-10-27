@@ -4866,7 +4866,7 @@ export class HiveDaemon {
       });
       return this.cellExecResultFromOp({ ...saved, timeoutMs: saved.timeoutMs ?? outcome.timeoutMs }, false);
     } catch (err) {
-      const detail = secret ? "secret_execution_failed" : err instanceof Error ? err.message : String(err);
+      const detail = secret ? err instanceof Error && err.message === "secret_execution_containment_unavailable" ? err.message : "secret_execution_failed" : err instanceof Error ? err.message : String(err);
       const reason = /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
       const saved = store.updateCellOp(op.id, { status: "failed", failure: reason === "containment" ? "containment" : detail });
       return { ...this.cellExecResultFromOp(saved, false), reason, stderr: detail, timeoutMs: timeoutMs ?? 0 };

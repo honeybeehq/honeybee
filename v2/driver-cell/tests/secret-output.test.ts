@@ -1,6 +1,7 @@
+import { spawn } from "node:child_process";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SecretOutput, validateSecretEnv } from "../src/secretOutput.ts";
@@ -112,5 +113,23 @@ test("supervisor preserves command exit codes and fragmented unicode configurati
       assert.equal(result.status, exitCode === 0 ? "ok" : "nonzero");
       assert.equal(result.stdout, "[REDACTED]");
     }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test("unavailable containment refuses before sending configuration or executing argv", async () => {
+  const root = mkdtempSync(join(tmpdir(), "secret-unavailable-"));
+  const paths = cellPaths(root, "wrap", "repo", "c1");
+  mkdirSync(paths.spaceDir, { recursive: true });
+  const marker = join(paths.spaceDir, "intake");
+  const fake = `const {Socket}=require('node:net');const fs=require('node:fs');const pipe=new Socket({fd:3,readable:true,writable:true});let bytes=0;pipe.on('data',chunk=>bytes+=chunk.length);setTimeout(()=>{fs.writeFileSync(${JSON.stringify(marker)},String(bytes));process.exit(1)},100)`;
+  const launch: typeof spawn = ((_command: unknown, _args: unknown, options: object) => spawn(process.execPath, ["-e", fake], options)) as typeof spawn;
+  try {
+    await assert.rejects(runCellExec(paths, {
+      sandbox: false, nodeKind: "satellite", secretEnv: { TOKEN: "synthetic-unavailable-only" },
+      argv: [process.execPath, "-e", "require('node:fs').writeFileSync('must-not-run','1')"],
+    }, undefined, launch), /^Error: secret_execution_containment_unavailable$/);
+    assert.equal(readFileSync(marker, "utf8"), "0");
+    assert.equal(existsSync(join(paths.spaceDir, "must-not-run")), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

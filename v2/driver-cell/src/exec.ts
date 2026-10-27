@@ -262,6 +262,7 @@ export async function runCellExec(
   paths: CellPaths,
   spec: CellExecSpec,
   onSpawned?: (identity: CellExecSpawned) => void,
+  spawnProcess: typeof spawn = spawn,
 ): Promise<CellExecOutcome> {
   if (!Array.isArray(spec.argv) || spec.argv.length === 0 || spec.argv.some((a) => typeof a !== "string")) {
     throw new Error("cell.exec argv must be a non-empty string array");
@@ -296,7 +297,7 @@ export async function runCellExec(
   const supervisorCommand = linuxNamespace ? "/usr/bin/unshare" : process.execPath;
   const supervisorArgs = [...(linuxNamespace ? ["--user", "--map-current-user", "--pid", "--fork", "--kill-child=SIGKILL", process.execPath] : []), "-e", secretSupervisorSource];
   let child: ChildProcess;
-  try { child = spawn(supervised ? supervisorCommand : wrappedCommand, supervised ? supervisorArgs : wrappedArgs, {
+  try { child = spawnProcess(supervised ? supervisorCommand : wrappedCommand, supervised ? supervisorArgs : wrappedArgs, {
     cwd,
     env: supervised ? sanitizedCellExecEnv() : env,
     stdio: supervised ? ["ignore", "pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
@@ -304,9 +305,17 @@ export async function runCellExec(
   }); } catch (error) { if (spec.secretEnv || spec.outputCapture) throw new Error("cell_execution_spawn_failed"); throw error; }
   const lease = supervised ? child.stdio[3] as Duplex : undefined;
   let supervisorStatus = "";
-  lease?.on("data", (chunk: Buffer) => { supervisorStatus += chunk.toString("utf8"); });
+  let supervisorReady = false;
+  lease?.on("data", (chunk: Buffer) => {
+    supervisorStatus += chunk.toString("utf8");
+    if (!supervisorReady && supervisorStatus.startsWith("ready\n")) {
+      supervisorReady = true;
+      supervisorStatus = supervisorStatus.slice(6);
+      if (spec.signal?.aborted) return;
+      lease.write(JSON.stringify({ command: wrappedCommand, args: wrappedArgs, env, timeoutMs: Math.max(0, timeoutMs - Number((process.hrtime.bigint() - startedAt) / 1_000_000n)) }) + "\n");
+    }
+  });
   lease?.on("error", () => {});
-  lease?.write(JSON.stringify({ command: wrappedCommand, args: wrappedArgs, env, timeoutMs: Math.max(0, timeoutMs - Number((process.hrtime.bigint() - startedAt) / 1_000_000n)) }) + "\n");
   for (const name of Object.keys(secretEnv)) delete secretEnv[name];
   const reaped = { reaped: false, code: null as number | null };
   let spawnError: Error | null = null;
@@ -407,6 +416,7 @@ export async function runCellExec(
     await terminateAndReap(child, pid, reaped, closed);
     finish();
     privateOutput?.fill(0);
+    if (supervised && !supervisorReady && !spec.signal?.aborted) throw new Error("secret_execution_containment_unavailable");
     return outcome(spec.signal?.aborted ? "interrupted" : "timeout", reaped.code);
   }
 
@@ -416,9 +426,10 @@ export async function runCellExec(
       if (!spawnError && !spec.signal?.aborted && reaped.code === 0 && !privateFailed && spec.outputCapture!.expiresAt > Date.now()) spec.outputCapture!.receive(privateOutput.subarray(0, privateLength));
     } catch { throw new Error("cell_execution_failed"); } finally { privateOutput.fill(0); }
   }
+  if (spawnError) { if (supervised) throw new Error("secret_execution_containment_unavailable"); throw spawnError; }
+  if (supervised && !supervisorReady && !spec.signal?.aborted) throw new Error("secret_execution_containment_unavailable");
   if (supervisorStatus === "spawn_error") throw new Error("cell_execution_spawn_failed");
   if (supervisorStatus === "timeout") return outcome("timeout", reaped.code);
-  if (spawnError) { if (spec.secretEnv || spec.outputCapture) throw new Error("cell_execution_spawn_failed"); throw spawnError; }
   if (spec.signal?.aborted) return outcome("interrupted", reaped.code);
   return outcome(reaped.code === 0 ? "ok" : "nonzero", reaped.code);
 }
