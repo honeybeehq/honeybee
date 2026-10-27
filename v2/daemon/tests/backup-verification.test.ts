@@ -124,6 +124,8 @@ test("independent verifier signs full remote readback, restores with source abse
     const goodRecord=JSON.parse(core.getCellOp(op.id)!.stdout) as BackupRecord;
     assert.equal(canonicalBackupJson(JSON.parse(readFileSync(goodRecord.manifestPath,"utf8")).cell),canonicalBackupJson(cell),"capture Cell identity remains current");
     const unchanged=()=>assert.equal(readFileSync(join(repo,"tracked"),"utf8"),"dirty\n");
+    writeFileSync(policyPath,JSON.stringify({...policy,pinRequired:true}));
+    const pinHeld=await evictThroughOwner(cell,"remove","pin-unavailable",{...deletionOwner,pinRecovery:async()=>{throw Error("fixture authority unavailable");}});assert.equal((pinHeld as {reason:string}).reason,"pin_unavailable");assert.ok(existsSync(repo));writeFileSync(policyPath,JSON.stringify(policy));
     for(const mode of ["evict","remove","trim"] as const){
       core.updateCellOp(op.id,{stdout:JSON.stringify({...goodRecord,verification:"not_verified",receipt:undefined})});assert.equal((await evictThroughOwner(cell,mode,undefined,deletionOwner) as {reason:string}).reason,"receipt_unverified");unchanged();
       core.updateCellOp(op.id,{stdout:JSON.stringify({...goodRecord,receipt:{...verified.receipt,signature:"A".repeat(88)}})});assert.equal((await evictThroughOwner(cell,mode,undefined,deletionOwner) as {reason:string}).reason,"receipt_corrupt");unchanged();

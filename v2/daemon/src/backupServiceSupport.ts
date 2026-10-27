@@ -1,0 +1,30 @@
+import { createHash,createPublicKey,verify } from "node:crypto";
+import type { CoreStore,BackupStateFacts,BackupStateKind,BackupStateRow } from "../../core/src/index.ts";
+import { canonicalBackupJson } from "../../core/src/backupReceipt.ts";
+import { resolveBackupSecret, type BackupTools } from "./backupCapture.ts";
+import { validateBackupEndpoint } from "./backupServiceConfig.ts";
+export type BackupServiceReason="invalid_config"|"not_due"|"busy"|"capacity_stop"|"capacity_unknown"|"owner_unavailable"|"secret_unavailable"|"mail_failed"|"grant_invalid"|"scope_refused"|"protected_missing"|"retention_unknown"|"interrupted"|"outcome_unknown"|"job_failed"|"verification_refused"|"listen_failed"|"tool_missing";
+export class BackupServiceError extends Error {readonly reason:BackupServiceReason;constructor(reason:BackupServiceReason){super(reason);this.reason=reason;}}
+export function insist(value:unknown,reason:BackupServiceReason="invalid_config"):asserts value {if(!value)throw new BackupServiceError(reason);}
+export const serviceHash=(value:unknown)=>createHash('sha256').update(canonicalBackupJson(value)).digest('hex');
+export const repoKey=(repository:string)=>serviceHash(repository).slice(0,32);
+export interface BackupServiceOwner {store:CoreStore;tools:BackupTools;dataDir:string;now:()=>number;signal?:AbortSignal;resolveSecret?:(ref:string,field:string)=>Promise<string>;trace?:(event:string)=>void}
+export function serviceSecret(owner:BackupServiceOwner,ref:string,field:string):Promise<string>{insist(/^global\/fleet-backup-[A-Za-z0-9._-]+$/.test(ref),'scope_refused');return resolveBackupSecret({tools:owner.tools,signal:owner.signal,child:()=>undefined,resolveSecret:owner.resolveSecret},ref,field);}
+export class BackupFacts {
+ readonly owner:BackupServiceOwner;readonly role:BackupStateRow['role'];
+ constructor(owner:BackupServiceOwner,role:BackupStateRow['role']){this.owner=owner;this.role=role;}
+ get<K extends BackupStateKind>(id:string,kind:K):BackupStateFacts[K]|null{return this.owner.store.backupState(id,kind,this.role)?.value??null;}
+ put<K extends BackupStateKind>(id:string,kind:K,value:BackupStateFacts[K]):void{const old=this.owner.store.backupState(id,kind,this.role);this.owner.store.putBackupState({format:'honeybee.backup-service.v1',id,role:this.role,kind,value:JSON.parse(JSON.stringify(value)) as BackupStateFacts[K]},old?.revision??0);}
+ rows<K extends BackupStateKind>(prefix:string,kind:K):BackupStateFacts[K][]{const result:BackupStateFacts[K][]=[];let after='';for(;;){const rows=this.owner.store.listBackupStates(prefix,after,250);if(!rows.length)return result;for(const row of rows){insist(row.kind===kind&&row.role===this.role);result.push(row.value as BackupStateFacts[K]);}after=rows.at(-1)!.id;}}
+ async scan<K extends BackupStateKind>(prefix:string,kind:K):Promise<BackupStateFacts[K][]>{const result:BackupStateFacts[K][]=[];let after='';for(;;){const rows=this.owner.store.listBackupStates(prefix,after,250);if(!rows.length)return result;for(const row of rows){insist(row.kind===kind&&row.role===this.role);result.push(row.value as BackupStateFacts[K]);}after=rows.at(-1)!.id;await new Promise<void>(r=>setImmediate(r));}}
+}
+export interface BackupOperationalGrantPayload {format:'honeybee.backup-grant.v1';id:string;counter:number;jobId:string;role:'upload'|'maintenance';machine:string;repository:string;issuedAt:number;expiresAt:number;kind:'upload'|'check'|'prune';repositoryId:string|null;endpoint:string|null;maxRepackBytes:number;maxDeleteBytes:number;maxWriteBytes:number;maxReadBytes:number;maxDurationMs:number;forgetIds:string[];protectedIds:string[];protectedSetHash:string;planHash:string}
+export interface BackupOperationalGrant {payload:BackupOperationalGrantPayload;signature:string}
+export function verifyOperationalGrant(grant:BackupOperationalGrant,key:string,now:number):BackupOperationalGrantPayload{
+ try{const p=grant.payload,bytes=Buffer.from(grant.signature,'base64');insist(p.format==='honeybee.backup-grant.v1'&&['upload','maintenance'].includes(p.role)&&['upload','check','prune'].includes(p.kind)&&p.issuedAt<=now+30000&&p.expiresAt>now&&Number.isSafeInteger(p.counter)&&p.counter>0,'grant_invalid');insist(bytes.length===64&&bytes.toString('base64')===grant.signature&&verify(null,Buffer.from(canonicalBackupJson(p)),createPublicKey({key:Buffer.from(key,'base64'),format:'der',type:'spki'}),bytes),'grant_invalid');return p;}catch{throw new BackupServiceError('grant_invalid');}
+}
+/** Transport logs only closed failures; never a URL, bearer token or response body. */
+export async function callBackupEndpoint<T>(owner:BackupServiceOwner,base:string,ref:string,path:string,value:unknown,timeoutMs=10000):Promise<T>{
+ validateBackupEndpoint(base);let token:string;try{token=await serviceSecret(owner,ref,'token');insist(token.length>0&&!/[\r\n]/.test(token),'secret_unavailable');}catch{throw new BackupServiceError('secret_unavailable');}
+ try{const result=await fetch(base.replace(/\/$/,'')+path,{method:'POST',redirect:'error',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:canonicalBackupJson(value),signal:owner.signal?AbortSignal.any([owner.signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs)});const length=Number(result.headers.get('content-length')??'0');insist(length<=8*1024*1024,'owner_unavailable');const chunks:Buffer[]=[];let bytes=0;for await(const chunk of result.body!){bytes+=chunk.length;insist(bytes<=8*1024*1024,'owner_unavailable');chunks.push(Buffer.from(chunk));}const parsed=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(parsed?.reason==='verification_failed')parsed.reason='verification_refused';if(!result.ok){const reasons=['busy','capacity_stop','capacity_unknown','not_due','protected_missing','scope_refused','grant_invalid','verification_refused'];throw new BackupServiceError(reasons.includes(parsed?.reason)?parsed.reason:'owner_unavailable');}return parsed as T;}catch(error){if(owner.signal?.aborted)throw new BackupServiceError('interrupted');throw error instanceof BackupServiceError?error:new BackupServiceError('owner_unavailable');}
+}

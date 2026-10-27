@@ -66,6 +66,8 @@ export const RPC_ACCESS = {
   "cell.backup.receipt": "mutate",
   "cell.status": "read",
   "cell.backup": "mutate",
+  "backup.service.run": "mutate",
+  "backup.service.status": "read",
   "cell.exec": "mutate",
   "cell.retained.remove": "mutate",
   "cell.gc": "mutate",

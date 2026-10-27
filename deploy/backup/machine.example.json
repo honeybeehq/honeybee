@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "role": "machine",
+  "machine": "REPLACE_WITH_ALLOCATION_NODE_ID",
+  "repository": "rest:https://BACKUP_TAILNET_HOST:8000/MACHINE_REPO/",
+  "authorityUrl": "https://BACKUP_TAILNET_HOST:8443",
+  "authorityRef": "global/fleet-backup-MACHINE-service",
+  "grantPublicKey": "REPLACE_WITH_PUBLIC_ED25519_SPKI_BASE64",
+  "verifierUrl": "https://VERIFIER_TAILNET_HOST:8443",
+  "verifierRef": "global/fleet-backup-MACHINE-verify",
+  "targets": [{"cellId":"REPLACE_WITH_CELL_ID","periodMs":3600000,"jitterMs":300000}],
+  "maxAttempts": 8,
+  "maxReceiptAgeMs": 86400000,
+  "observationMaxAgeMs": 300000,
+  "mail": {"host":"SMTP_HOST","port":465,"secure":true,"recipientRef":"global/fleet-backup-alert-tormod","credentialRef":"global/fleet-backup-mail-service"}
+}

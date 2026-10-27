@@ -1,0 +1,17 @@
+Trigger id: honeybee-backup-owner
+Source: schedule, every 1 minute; skip replay of missed ticks (the owner reconciles due jobs).
+Delivery: immediate, maxConcurrent=1.
+Action: command /usr/local/bin/hive backup run, timeout 65 minutes.
+cwd: / (machine service; no Cell working directory).
+Context variables: none. Repository, targets, periods and jitter belong to the owner role config.
+Initial state: disabled.
+
+Operator validation recipe (not executed by development):
+  pol create honeybee-backup-owner --source schedule --every 1m --cwd / --action command --command '/usr/local/bin/hive backup run' --timeout 65m --max-concurrent 1
+Immediately disable before starting the Pollinate daemon; alternatively import the disabled
+TOML after validating its timing fields against the installed release.
+  pol disable honeybee-backup-owner
+  pol trigger honeybee-backup-owner --dry-run
+Expected action: the local owner RPC only, no bee creation and no direct restic invocation.
+After operator enablement: pol jobs --last 20; pol ledger -n 50.
+No trigger or Pollinate store was created during development.

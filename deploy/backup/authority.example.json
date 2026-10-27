@@ -1,0 +1,13 @@
+{
+  "version":1,"role":"authority","machine":"SX65_CIPHERTEXT_AUTHORITY","listenPort":8444,
+  "backupRoot":"/srv/honeybee-backup/repositories","reserveRoot":"/srv/honeybee-backup/maintenance",
+  "fleetLimitBytes":24000000000000,"reserveLimitBytes":6000000000000,
+  "repositories":[{"machine":"REPLACE_WITH_ALLOCATION_NODE_ID","repository":"rest:https://BACKUP_TAILNET_HOST:8000/MACHINE_REPO/","root":"/srv/honeybee-backup/repositories/MACHINE_REPO","limitBytes":1500000000000,"periodMs":3600000,"jitterMs":300000,"slotWaitMs":3600000}],
+  "retention":{"hourly":48,"daily":30,"weekly":12,"monthly":12,"quarantineMs":86400000,"maxReceiptAgeMs":86400000},
+  "trustedVerifierKeys":{"PUBLIC_VERIFIER_KEY_FINGERPRINT":"REPLACE_WITH_PUBLIC_ED25519_SPKI_BASE64"},
+  "grantKeyRef":"global/fleet-backup-maintenance-authorizer-primary","grantPublicKey":"REPLACE_WITH_PUBLIC_ED25519_SPKI_BASE64",
+  "maintenance":{"checkEveryMs":604800000,"pruneEveryMs":2592000000,"maxRepackBytes":1073741824,"maxDeleteBytes":10737418240,"maxDurationMs":3600000,"grantTtlMs":30000,"checkReadBytes":1073741824,"endpoint":"rest:https://BACKUP_TAILNET_HOST:8443/maintenance","backendUrl":"http://127.0.0.1:8445/","backendCommand":"/usr/local/bin/rest-server","accessKeyRef":"global/fleet-backup-maintenance-access-primary"},
+  "bootstrap":[],
+  "principals":[{"id":"REPLACE_WITH_ALLOCATION_NODE_ID","role":"machine","repository":"rest:https://BACKUP_TAILNET_HOST:8000/MACHINE_REPO/","tokenRef":"global/fleet-backup-MACHINE-service"},{"id":"REPLACE_WITH_EXECUTOR_ID","role":"executor","repository":"rest:https://BACKUP_TAILNET_HOST:8000/MACHINE_REPO/","tokenRef":"global/fleet-backup-MACHINE-maintenance"}],
+  "mail":{"host":"SMTP_HOST","port":465,"secure":true,"recipientRef":"global/fleet-backup-alert-tormod","credentialRef":"global/fleet-backup-mail-service"}
+}

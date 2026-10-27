@@ -8,7 +8,7 @@ import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type { CellRow } from "../../core/src/types.ts";
 import type { StoreBackupReceipt } from "../../core/src/storeBackup.ts";
 
-export type BackupFailure = "invalid_request" | "busy" | "not_retained" | "source_changed" | "sensitive_file" | "database_in_tree" | "scratch_limit" | "secret_unavailable" | "tool_failed" | "interrupted" | "outcome_unknown" | "git_incomplete" | "git_listing_too_large" | "checkpoint_retired";
+export type BackupFailure = "invalid_request" | "busy" | "not_retained" | "source_changed" | "sensitive_file" | "database_in_tree" | "scratch_limit" | "secret_unavailable" | "tool_failed" | "interrupted" | "outcome_unknown" | "git_incomplete" | "git_listing_too_large" | "checkpoint_retired" | "service_required";
 export class BackupError extends Error {
   readonly code: BackupFailure;
   constructor(code: BackupFailure) { super(code); this.code = code; }
@@ -68,6 +68,7 @@ export interface BackupRecord {
 export type BackupResult = { status: "snapshot_created"; record: BackupRecord } | { status: "refused" | "failed" | "outcome_unknown"; reason: BackupFailure; operationId?: string };
 export interface BackupTools { git: string; restic: string; hem: string }
 export interface BackupOwner {
+  probeOnly?: boolean;
   cell: CellRow;
   runtimeGeneration?: number | null;
   machine: string;
@@ -447,6 +448,7 @@ export async function captureAndSnapshot(request: BackupRequest, owner: BackupOw
   if (snapshots.length > 1) throw new BackupError("outcome_unknown");
   let snapshotId = snapshots[0]?.id;
   if (!snapshotId) {
+    if(owner.probeOnly)throw new BackupError("outcome_unknown");
     const files = join(owner.scratch, "files.raw");
     const paths: string[] = [];
     for (const item of manifest.entries) {

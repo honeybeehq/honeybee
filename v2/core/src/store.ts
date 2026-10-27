@@ -1,4 +1,6 @@
-import { verifyBackupReceipt, type VerifiedBackupReceipt } from "./backupReceipt.ts";
+import type { BackupStateRow, BackupStateKind } from "./backupService.ts";
+import { BACKUP_SERVICE_SQL } from "./schema.ts";
+import { canonicalBackupJson, verifyBackupReceipt, type VerifiedBackupReceipt } from "./backupReceipt.ts";
 import { snapshotStore, backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
 import { HUMAN_OUTPUT_SQL, HumanOutputLedger, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
@@ -2103,6 +2105,7 @@ export class CoreStore {
       this.db.exec("INSERT INTO cell_ops SELECT * FROM cell_ops_v51; DROP TABLE cell_ops_v51");
     }
     this.db.exec(CELL_OPS_TABLE_SQL);
+    this.db.exec(BACKUP_SERVICE_SQL);
     this.db.exec(BEE_HANDOFFS_TABLE_SQL);
     this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
     // v24: the action queue tables are additive (CREATE IF NOT EXISTS).
@@ -10030,6 +10033,25 @@ export class CoreStore {
     return (this.stmt("SELECT * FROM cell_ops WHERE kind = 'backup' AND status IN ('queued','running','outcome_unknown')").all() as Row[]).map(mapCellOp);
   }
 
+  backupState<K extends BackupStateKind>(id:string,kind:K,role:BackupStateRow["role"]):BackupStateRow<K>|null {
+    const row=this.stmt("SELECT body FROM backup_service_state WHERE id = ?").get(id) as Row|undefined;
+    if(!row)return null;const state=JSON.parse(String(row.body)) as BackupStateRow<K>;
+    if(state.role!==role||state.kind!==kind||state.id!==id||state.format!=="honeybee.backup-service.v1")throw new CoreError("backup_state_invalid");return state;
+  }
+
+  listBackupStates(prefix="",after="",limit=250):BackupStateRow[]{
+    return(this.stmt("SELECT body FROM backup_service_state WHERE id >= ? AND id < ? AND id > ? ORDER BY id LIMIT ?").all(prefix,prefix+"\uffff",after,Math.min(1000,Math.max(1,limit))) as Row[]).map(row=>JSON.parse(String(row.body)) as BackupStateRow);
+  }
+
+  putBackupState<K extends BackupStateKind>(state:Omit<BackupStateRow<K>,"revision">,expectedRevision:number):BackupStateRow<K> {
+    return this.tx(()=>{
+      const old=this.backupState(state.id,state.kind,state.role);if((old?.revision??0)!==expectedRevision)throw new CoreError("backup_state_conflict");
+      if(old&&canonicalBackupJson(old.value)===canonicalBackupJson(state.value))return old;
+      const next={...state,revision:expectedRevision+1};this.stmt("INSERT INTO backup_service_state(id,revision,role,body) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,role=excluded.role,body=excluded.body").run(next.id,next.revision,next.role,canonicalBackupJson(next));
+      this.audit("backup_service.put",null,{state:next});return next;
+    });
+  }
+
   latestCellBackupOp(cellId:string):CellOpRow|null {
     const row=this.stmt("SELECT * FROM cell_ops WHERE cell_id = ? AND kind = 'backup' ORDER BY created_at DESC,rowid DESC LIMIT 1").get(cellId) as Row|undefined;
     return row?mapCellOp(row):null;
@@ -11294,6 +11316,7 @@ export class CoreStore {
       cells: this.listCells(),
       beeMoves: this.listBeeMoves(),
       cellOps: this.listCellOps(),
+      ...(this.listBackupStates("","",1000).length?{backupService:(this.stmt("SELECT body FROM backup_service_state ORDER BY id").all() as Row[]).map(row=>JSON.parse(String(row.body)) as BackupStateRow)}:{}),
       beeHandoffs: this.listBeeHandoffs(),
       transcriptSegments: this.listTranscriptSegments(),
       actions: this.listActionViews(),

@@ -97,3 +97,6 @@ export * from "./humanOutput.ts";
 
 export { verifyBackupReceipt, backupVerifierKeyId, canonicalBackupJson } from "./backupReceipt.ts";
 export type { VerifiedBackupReceipt, BackupVerificationPayload, VerifiedTranscriptObject, TranscriptArchiveIdentity, TranscriptArchiveSummary } from "./backupReceipt.ts";
+
+export * from "./backupService.ts";
+export * from "./backupPublication.ts";

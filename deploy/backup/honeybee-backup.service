@@ -1,0 +1,10 @@
+# Artifact only. Tormod installs this after configuring the owner daemon and Hem principal.
+[Unit]
+Description=Honeybee owner backup service tick
+After=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/hive backup run
+TimeoutStartSec=3900
+NoNewPrivileges=true
+# Configure User and the daemon's HIVE_HOME in a local drop-in; never put credentials here.

@@ -6,17 +6,19 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { backupDigest, canonicalBackupJson, verifyBackupReceipt, type VerifiedBackupReceipt } from "../../core/src/backupReceipt.ts";
 import { classifyIgnored } from "../../driver-cell/src/retention.ts";
 import type { BackupEntry, BackupManifest, BackupRecord } from "./backupCapture.ts";
-export const EVICTION_REASONS=["receipt_missing","receipt_stale","receipt_corrupt","receipt_unverified","content_changed","capacity_stop","unknown_policy","gate_busy","interrupted","outcome_unknown"] as const;
+export const EVICTION_REASONS=["receipt_missing","receipt_stale","receipt_corrupt","receipt_unverified","content_changed","capacity_stop","unknown_policy","gate_busy","interrupted","outcome_unknown","pin_unavailable"] as const;
 export type EvictionReason=typeof EVICTION_REASONS[number];
 export class VerifiedEvictionError extends Error { readonly reason:EvictionReason; constructor(reason:EvictionReason){super(reason);this.reason=reason;} }
 function requireThat(value:unknown,reason:EvictionReason):asserts value {if(!value)throw new VerifiedEvictionError(reason);}
-export interface EvictionPolicy {version:1;maxReceiptAgeMs:number;capacity:{repository:string;observedAt:number;maxAgeMs:number;repositoryUsedBytes:number;repositoryLimitBytes:number;fleetUsedBytes:number;fleetLimitBytes:number;stopFraction:number}}
+export interface EvictionPolicy {version:1;pinRequired?:boolean;maxReceiptAgeMs:number;capacity:{admission?:"allow"|"stop";repository:string;observedAt:number;maxAgeMs:number;repositoryUsedBytes:number;repositoryLimitBytes:number;fleetUsedBytes:number;fleetLimitBytes:number;stopFraction:number}}
 export interface VerifiedEvictionInput {operationId:string;cellId:string;machine:string;spaceDir:string;cellsRoot:string;keepRoot:string;record:BackupRecord;publicKey:string;policy:EvictionPolicy;repository:string;mode:"evict"|"remove"|"trim";now:number;git:string;runtimeGeneration:number|null;cellIdentity:string;completionPath:string;policyPath?:string;sourceBeePresent?:boolean;abortFlag?:SharedArrayBuffer}
 export interface VerifiedEvictionResult {status:"deleted";head:string;generation:string;parkedDir:string}
 export function checkEvictionPolicy(policy:EvictionPolicy,repository:string,now:number):void {
   requireThat(policy?.version===1&&Number.isSafeInteger(policy.maxReceiptAgeMs)&&policy.maxReceiptAgeMs>0,"unknown_policy");
   const c=policy.capacity;
   requireThat(c&&c.repository===repository&&Number.isSafeInteger(c.observedAt)&&c.observedAt<=now&&Number.isSafeInteger(c.maxAgeMs)&&c.maxAgeMs>0&&now-c.observedAt<=c.maxAgeMs&&c.stopFraction===0.9,"unknown_policy");
+  requireThat(c.admission===undefined||c.admission==="allow"||c.admission==="stop","unknown_policy");
+  requireThat(c.admission!=="stop","capacity_stop");
   for(const value of[c.repositoryUsedBytes,c.repositoryLimitBytes,c.fleetUsedBytes,c.fleetLimitBytes])requireThat(Number.isSafeInteger(value)&&value>=0,"unknown_policy");
   requireThat(c.repositoryLimitBytes>0&&c.fleetLimitBytes>0,"unknown_policy");
   requireThat(c.repositoryUsedBytes<c.repositoryLimitBytes*c.stopFraction&&c.fleetUsedBytes<c.fleetLimitBytes*c.stopFraction,"capacity_stop");

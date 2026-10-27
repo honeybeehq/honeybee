@@ -1,3 +1,4 @@
+import type { BackupStateRow } from "./backupService.ts";
 import type { BeeTellRow, BeeReactionRow } from "./humanOutputTypes.ts";
 import type { MailBatch, MailBatchingPolicy } from "./types.ts";
 import type { HumanFirstPolicy, HumanChatReceipt } from "./types.ts";
@@ -74,6 +75,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   const cells = new Map<string, CellRow>();
   const beeMoves = new Map<string, BeeMoveRow>();
   const cellOps = new Map<string, CellOpRow>();
+  const backupService=new Map<string,BackupStateRow>();
   const beeHandoffs = new Map<string, BeeHandoffRow>();
   const transcriptSegments = new Map<string, TranscriptSegmentRow>();
   const actions = new Map<string, ActionView>();
@@ -620,6 +622,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         beeMoves.set(move.id, { ...move, from: { ...move.from }, to: { ...move.to }, observedHead: move.observedHead ?? "" });
         break;
       }
+      case "backup_service.put": {const state=p.state as BackupStateRow;backupService.set(state.id,JSON.parse(JSON.stringify(state)));break;}
       case "cell_op.put": {
         const op = p.op as CellOpRow;
         cellOps.set(op.id, { ...op, argv: op.argv === null ? null : [...op.argv] });
@@ -772,6 +775,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     loginFlows: [...loginFlows.values()].sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     cells: [...cells.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     beeMoves: [...beeMoves.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    ...(backupService.size?{backupService:[...backupService.values()].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)}:{}),
     cellOps: [...cellOps.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     beeHandoffs: [...beeHandoffs.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     transcriptSegments: [...transcriptSegments.values()].sort((a, b) =>

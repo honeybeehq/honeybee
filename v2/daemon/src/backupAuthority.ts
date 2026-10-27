@@ -1,0 +1,159 @@
+import { BackupMaintenanceBackend } from './backupMaintenanceBackend.ts';
+/** Ciphertext-only authority: scheduling, inventory, pins and bounded operational grants. */
+import { createHash,createHmac,createPrivateKey,createPublicKey,randomUUID,sign } from 'node:crypto';
+import { lstat,opendir,realpath } from 'node:fs/promises';
+import { basename,join,relative,resolve } from 'node:path';
+import { backupDigest,canonicalBackupJson,verifyBackupReceipt,type VerifiedBackupReceipt } from '../../core/src/backupReceipt.ts';
+import { verifyBackupPublication,type BackupPublication } from '../../core/src/backupPublication.ts';
+import { backupCapacityBand,planBackupRetention,type BackupCapacityBand,type BackupCapacityObservation,type BackupMaintenanceRun,type BackupServiceAlert } from '../../core/src/backupService.ts';
+import type { BackupAuthorityConfig,BackupAuthorityRepository } from './backupServiceConfig.ts';
+import { BackupFacts,BackupServiceError,insist,repoKey,serviceHash,serviceSecret,type BackupOperationalGrant,type BackupOperationalGrantPayload,type BackupServiceOwner } from './backupServiceSupport.ts';
+export interface BackupPrincipal {id:string;role:'machine'|'executor';repository:string}
+export interface AuthorityGrantResult {status:'granted';grant:BackupOperationalGrant;observation:BackupCapacityObservation;username?:string;password?:string}
+
+import { queueBackupAlert,flushBackupAlerts } from './backupAlerts.ts';
+const hashId=/^[a-f0-9]{64}$/;
+const inside=(path:string,root:string)=>path===root||path.startsWith(root+'/');
+const bandRank:Record<BackupCapacityBand,number>={normal:0,warn:1,review:2,stop:3,unknown:4};
+export class BackupAuthority {
+ readonly facts:BackupFacts;readonly backend:BackupMaintenanceBackend;private observing:Promise<BackupCapacityObservation[]>|null=null;
+ readonly config:BackupAuthorityConfig;readonly owner:BackupServiceOwner;
+ constructor(config:BackupAuthorityConfig,owner:BackupServiceOwner){this.config=config;this.owner=owner;this.facts=new BackupFacts(owner,'authority');this.backend=new BackupMaintenanceBackend(config,owner);}
+ profile(repository:string):BackupAuthorityRepository {const profile=this.config.repositories.find(r=>r.repository===repository);insist(profile,'scope_refused');return profile;}
+ private scope(principal:BackupPrincipal,repository:string,role:BackupPrincipal['role']):BackupAuthorityRepository{insist(principal.role===role&&principal.repository===repository,'scope_refused');return this.profile(repository);}
+ private leaseState(){return this.facts.get('authority:lease','lease')??{lease:null,counter:0};}
+ private observation(repository:string):BackupCapacityObservation{const value=this.facts.get('authority:observation:'+repoKey(repository),'observation');insist(value&&value.observedAt<=this.owner.now()&&this.owner.now()-value.observedAt<=300000,'capacity_unknown');return value;}
+ async observe():Promise<BackupCapacityObservation[]>{if(this.observing)return this.observing;const work=this.observeOnce();this.observing=work;try{return await work;}catch(error){for(const profile of this.config.repositories)queueBackupAlert(this.owner,'authority','observation-failed:'+Math.floor(this.owner.now()/300000),'capacity_unknown',profile.machine,profile.repository);await flushBackupAlerts(this.owner,'authority',this.config.mail);throw error;}finally{this.observing=null;}}
+ private async observeOnce():Promise<BackupCapacityObservation[]>{
+  const root=await realpath(this.config.backupRoot),dataRoot=await realpath(this.owner.dataDir);insist(root===resolve(this.config.backupRoot)&&root!=='/','invalid_config');
+  const profiles=await Promise.all(this.config.repositories.map(async r=>{const path=await realpath(r.root);insist(path===resolve(r.root)&&inside(path,root)&&path!==root,'invalid_config');return{...r,path};}));
+  for(let i=0;i<profiles.length;i++)for(let j=0;j<i;j++)insist(!inside(profiles[i]!.path,profiles[j]!.path)&&!inside(profiles[j]!.path,profiles[i]!.path),'invalid_config');
+  const sizes=new Map(profiles.map(r=>[r.repository,0])),snapshots=new Map<string,{id:string;bytes:number}[]>();let total=0,count=0;
+  const walk=async(path:string,external=false):Promise<void>=>{
+   if(this.owner.signal?.aborted)throw new BackupServiceError('interrupted');if(external&&inside(path,root))return;
+   const st=await lstat(path);insist(!st.isSymbolicLink(),'capacity_unknown');const bytes=Math.max(st.size,(st.blocks??0)*512);total+=bytes;insist(Number.isSafeInteger(total)&&++count<5_000_000,'capacity_unknown');
+   const profile=profiles.find(r=>inside(path,r.path));if(profile)sizes.set(profile.repository,sizes.get(profile.repository)!+bytes);
+   if(st.isDirectory()){for await(const entry of await opendir(path))await walk(join(path,entry.name),external);}
+   else if(profile&&st.isFile()&&relative(profile.path,path).split('/').length===2&&relative(profile.path,path).startsWith('snapshots/')&&hashId.test(basename(path))){const rows=snapshots.get(profile.repository)??[];rows.push({id:basename(path),bytes});snapshots.set(profile.repository,rows);}
+  };
+  await walk(root);if(!inside(dataRoot,root))await walk(dataRoot,true);
+  const fleetBytes=[...sizes.values()].reduce((n,v)=>n+v,0),reserveBytes=Math.max(0,total-fleetBytes),now=this.owner.now(),results:BackupCapacityObservation[]=[];
+  for(const profile of profiles){
+   const prefix='authority:arrival:'+repoKey(profile.repository)+':',current=new Set((snapshots.get(profile.repository)??[]).map(row=>row.id));
+   for(const row of snapshots.get(profile.repository)??[]){const key=prefix+row.id,old=this.facts.get(key,'arrival');this.facts.put(key,'arrival',{repository:profile.repository,snapshotId:row.id,firstSeenAt:old?.firstSeenAt??now,bytes:row.bytes,present:true});}
+   for(const old of await this.facts.scan(prefix,'arrival'))if(old.present&&!current.has(old.snapshotId))this.facts.put(prefix+old.snapshotId,'arrival',{...old,present:false});
+   const repoBand=backupCapacityBand(sizes.get(profile.repository)!,profile.limitBytes),fleetBand=backupCapacityBand(fleetBytes,this.config.fleetLimitBytes);let band=bandRank[repoBand]>bandRank[fleetBand]?repoBand:fleetBand;if(reserveBytes>=this.config.reserveLimitBytes||total>=this.config.fleetLimitBytes+this.config.reserveLimitBytes)band='stop';
+   const first=this.owner.store.listBackupStates('authority:history:'+repoKey(profile.repository)+':','',1)[0],repositoryId=first?.kind==='history'?(first.value as import('../../core/src/backupService.ts').BackupTrustedHistory).repositoryId:null;
+   const observation:BackupCapacityObservation={repository:profile.repository,repositoryId,observedAt:now,repositoryBytes:sizes.get(profile.repository)!,repositoryLimitBytes:profile.limitBytes,fleetBytes,fleetLimitBytes:this.config.fleetLimitBytes,reserveBytes,reserveLimitBytes:this.config.reserveLimitBytes,band};this.facts.put('authority:observation:'+repoKey(profile.repository),'observation',observation);results.push(observation);
+   const watchKey='authority:watch:'+repoKey(profile.repository),watch=this.facts.get(watchKey,'watch')??{machine:profile.machine,repository:profile.repository,registeredAt:now,lastArrivalAt:null,lastVerifiedAt:null,lastBand:'normal' as const,overdue:false};
+   if(band!==watch.lastBand&&band!=='normal')queueBackupAlert(this.owner,'authority',String(now),('capacity_'+(band==='unknown'?'unknown':band)) as BackupServiceAlert['code'],profile.machine,profile.repository);
+   const lease=this.leaseState().lease,active=lease?.repository===profile.repository&&now-lease.heartbeatAt<=this.config.maintenance.grantTtlMs&&now-lease.createdAt<=this.config.maintenance.maxDurationMs;
+   const maintenanceActive=lease?.role==='maintenance'&&now-lease.heartbeatAt<=this.config.maintenance.grantTtlMs&&now-lease.createdAt<=this.config.maintenance.maxDurationMs;const overdue=!active&&!maintenanceActive&&now-(watch.lastArrivalAt??watch.registeredAt)>=2*profile.periodMs+profile.jitterMs+profile.slotWaitMs;
+   if(overdue&&!watch.overdue)queueBackupAlert(this.owner,'authority',String(watch.lastArrivalAt??watch.registeredAt),'overdue',profile.machine,profile.repository);
+   this.facts.put(watchKey,'watch',{...watch,lastBand:band,overdue});
+   const historyIds=new Set((await this.facts.scan('authority:history:'+repoKey(profile.repository)+':','history')).flatMap(h=>[h.snapshotId,h.catalogueSnapshotId]));const unknown=(await this.facts.scan(prefix,'arrival')).filter(a=>a.present&&!historyIds.has(a.snapshotId)&&now-a.firstSeenAt>=2*profile.periodMs);if(unknown.length)queueBackupAlert(this.owner,'authority','unknown:'+serviceHash(unknown.map(a=>a.snapshotId)),'unverified_snapshots',profile.machine,profile.repository);
+   await this.enqueueMaintenance(profile,repositoryId);
+  }
+  const lease=this.leaseState();if(lease.lease?.role==='upload'&&now-lease.lease.heartbeatAt>this.config.maintenance.grantTtlMs)this.facts.put('authority:lease','lease',{lease:null,counter:lease.counter});else if(lease.lease&&now-lease.lease.heartbeatAt>this.config.maintenance.grantTtlMs&&lease.lease.state!=='unknown')this.facts.put('authority:lease','lease',{...lease,lease:{...lease.lease,state:'unknown'}});
+  if(lease.lease?.role==='maintenance'&&(now-lease.lease.heartbeatAt>this.config.maintenance.grantTtlMs||now-lease.lease.createdAt>this.config.maintenance.maxDurationMs)){queueBackupAlert(this.owner,'authority',lease.lease.jobId,'maintenance_stuck',this.profile(lease.lease.repository).machine,lease.lease.repository);const run=this.facts.get('authority:maintenance:'+lease.lease.jobId,'maintenance');if(run&&await this.backend.quiet(run)){this.facts.put('authority:maintenance:'+run.id,'maintenance',{...run,state:'unknown',reason:'interrupted'});this.facts.put('authority:lease','lease',{lease:null,counter:lease.counter});}}
+  await flushBackupAlerts(this.owner,'authority',this.config.mail);return results;
+ }
+ private async enqueueMaintenance(profile:BackupAuthorityRepository,repositoryId:string|null):Promise<void>{
+  if(!repositoryId)return;const now=this.owner.now();
+  for(const kind of['check','prune']as const){const duration=kind==='check'?this.config.maintenance.checkEveryMs:this.config.maintenance.pruneEveryMs;insist(Number.isSafeInteger(duration)&&duration>0);const bucket=String(Math.floor(now/duration)),id=serviceHash({repository:profile.repository,kind,bucket});
+   if(this.facts.get('authority:maintenance:'+id,'maintenance'))continue;
+   this.facts.put('authority:maintenance:'+id,'maintenance',{id,repository:profile.repository,kind,bucket,state:'queued',startedAt:null,finishedAt:null,grantCounter:0,planHash:null,protectedSetHash:null,forgottenIds:[],checkResult:null,reason:null});
+  }
+ }
+ async acquireUpload(principal:BackupPrincipal,input:{repository:string;jobId:string;probeOnly?:boolean}):Promise<AuthorityGrantResult>{
+  const profile=this.scope(principal,input.repository,'machine');insist(principal.id===profile.machine&&/^[a-f0-9]{64}$/.test(input.jobId),'scope_refused');const observation=this.observation(profile.repository);insist(observation.band!=='stop'||input.probeOnly===true,'capacity_stop');insist(observation.band!=='unknown','capacity_unknown');
+  const lease=this.leaseState();if(lease.lease)insist(lease.lease.jobId===input.jobId&&lease.lease.machine===principal.id&&lease.lease.role==='upload','busy');
+  const current=lease.lease??{id:randomUUID(),counter:lease.counter+1,jobId:input.jobId,repository:profile.repository,machine:principal.id,role:'upload' as const,createdAt:this.owner.now(),heartbeatAt:this.owner.now(),state:'held' as const};
+  this.facts.put('authority:lease','lease',{lease:{...current,heartbeatAt:this.owner.now(),state:'held'},counter:current.counter});
+  const payload=this.payload(current,'upload',observation.repositoryId);return{status:'granted',grant:await this.signGrant(payload),observation};
+ }
+ private payload(lease:NonNullable<ReturnType<BackupAuthority['leaseState']>['lease']>,kind:BackupOperationalGrantPayload['kind'],repositoryId:string|null):BackupOperationalGrantPayload{return{format:'honeybee.backup-grant.v1',id:lease.id,counter:lease.counter,jobId:lease.jobId,role:lease.role,machine:lease.machine,repository:lease.repository,issuedAt:this.owner.now(),expiresAt:this.owner.now()+this.config.maintenance.grantTtlMs,kind,repositoryId,endpoint:null,maxRepackBytes:0,maxDeleteBytes:0,maxWriteBytes:0,maxReadBytes:0,maxDurationMs:this.config.maintenance.maxDurationMs,forgetIds:[],protectedIds:[],protectedSetHash:serviceHash([]),planHash:serviceHash({kind})};}
+ private async signGrant(payload:BackupOperationalGrantPayload):Promise<BackupOperationalGrant>{
+  const encoded=await serviceSecret(this.owner,this.config.grantKeyRef,'signing_key_pkcs8_base64'),key=createPrivateKey({key:Buffer.from(encoded,'base64'),format:'der',type:'pkcs8'});insist(key.asymmetricKeyType==='ed25519'&&createPublicKey(key).export({format:'der',type:'spki'}).toString('base64')===this.config.grantPublicKey,'grant_invalid');return{payload,signature:sign(null,Buffer.from(canonicalBackupJson(payload)),key).toString('base64')};
+ }
+ heartbeat(principal:BackupPrincipal,input:{id:string;counter:number;jobId:string}):{status:'held'}{
+  const state=this.leaseState(),lease=state.lease;insist(lease&&this.owner.now()-lease.createdAt<=this.config.maintenance.maxDurationMs&&lease.id===input.id&&lease.counter===input.counter&&lease.jobId===input.jobId&&lease.machine===principal.id&&lease.repository===principal.repository,'grant_invalid');this.facts.put('authority:lease','lease',{...state,lease:{...lease,heartbeatAt:this.owner.now(),state:'held'}});return{status:'held'};
+ }
+ release(principal:BackupPrincipal,input:{id:string;counter:number;jobId:string}):{status:'released'}{
+  insist(principal.role==='machine','scope_refused');const state=this.leaseState(),lease=state.lease;if(!lease)return{status:'released'};insist(lease.role==='upload'&&lease.id===input.id&&lease.counter===input.counter&&lease.jobId===input.jobId&&lease.machine===principal.id&&lease.repository===principal.repository,'grant_invalid');this.facts.put('authority:lease','lease',{lease:null,counter:state.counter});return{status:'released'};
+ }
+ async report(principal:BackupPrincipal,input:{receipt:VerifiedBackupReceipt;publication:BackupPublication}):Promise<{status:'recorded'}>{
+  insist(this.leaseState().lease?.role!=='maintenance','busy');const p=input.receipt?.payload,profile=this.scope(principal,p?.repository,'machine');insist(profile.machine===principal.id&&p.machine===profile.machine,'scope_refused');const key=this.config.trustedVerifierKeys[p.verifier.keyId];insist(key,'scope_refused');verifyBackupReceipt(input.receipt,key);const publication=verifyBackupPublication(input.publication,input.receipt,key);
+  const priorHistory=this.facts.get('authority:history:'+repoKey(profile.repository)+':'+p.snapshotId,'history');if(priorHistory){insist(priorHistory.receiptHash===backupDigest(canonicalBackupJson(input.receipt))&&priorHistory.catalogueSnapshotId===publication.payload.catalogueSnapshotId,'scope_refused');return{status:'recorded'};}const root=await realpath(profile.root);for(const id of[p.snapshotId,publication.payload.catalogueSnapshotId]){const st=await lstat(join(root,'snapshots',id));insist(st.isFile()&&!st.isSymbolicLink(),'protected_missing');const idKey='authority:arrival:'+repoKey(profile.repository)+':'+id,old=this.facts.get(idKey,'arrival');this.facts.put(idKey,'arrival',{repository:profile.repository,snapshotId:id,firstSeenAt:old?.firstSeenAt??this.owner.now(),bytes:Math.max(st.size,(st.blocks??0)*512),present:true});}
+  insist(this.leaseState().lease?.role!=='maintenance','busy');const first=this.owner.store.listBackupStates('authority:history:'+repoKey(profile.repository)+':','',1)[0];insist(!first||(first.value as import('../../core/src/backupService.ts').BackupTrustedHistory).repositoryId===p.repositoryId,'scope_refused');
+  this.facts.put('authority:history:'+repoKey(profile.repository)+':'+p.snapshotId,'history',{repository:profile.repository,repositoryId:p.repositoryId,snapshotId:p.snapshotId,catalogueSnapshotId:publication.payload.catalogueSnapshotId,cellId:p.cellId,generation:p.generation,receiptHash:backupDigest(canonicalBackupJson(input.receipt)),verifiedAt:Date.parse(p.verifiedAt),registeredAt:this.facts.get('authority:history:'+repoKey(profile.repository)+':'+p.snapshotId,'history')?.registeredAt??this.owner.now()});
+  const watchKey='authority:watch:'+repoKey(profile.repository),watch=this.facts.get(watchKey,'watch')??{machine:profile.machine,repository:profile.repository,registeredAt:this.owner.now(),lastArrivalAt:null,lastVerifiedAt:null,lastBand:'normal' as const,overdue:false};
+  this.facts.put(watchKey,'watch',{...watch,lastArrivalAt:this.owner.now(),lastVerifiedAt:this.owner.now(),overdue:false});return{status:'recorded'};
+ }
+ pin(principal:BackupPrincipal,input:{snapshotId:string;generation:string;kind:'cell'|'proof';reference:string}):{status:'pinned';pinId:string;snapshotId:string;generation:string;repositoryId:string}{
+  this.scope(principal,principal.repository,'machine');insist(['cell','proof'].includes(input.kind)&&typeof input.reference==='string'&&input.reference.length>0&&input.reference.length<=512&&hashId.test(input.snapshotId),'scope_refused');
+  const lease=this.leaseState().lease;insist(!lease||lease.role!=='maintenance','busy');const key=repoKey(principal.repository),history=this.facts.get('authority:history:'+key+':'+input.snapshotId,'history'),arrival=this.facts.get('authority:arrival:'+key+':'+input.snapshotId,'arrival');insist(history&&history.generation===input.generation&&arrival?.present,'protected_missing');
+  const id=serviceHash({repository:principal.repository,...input});this.facts.put('authority:pin:'+key+':'+id,'pin',{id,repository:principal.repository,snapshotId:input.snapshotId,kind:input.kind,reference:input.reference,generation:input.generation,createdAt:this.facts.get('authority:pin:'+key+':'+id,'pin')?.createdAt??this.owner.now()});return{status:'pinned',pinId:id,snapshotId:input.snapshotId,generation:input.generation,repositoryId:history.repositoryId};
+ }
+ async claimMaintenance(principal:BackupPrincipal):Promise<AuthorityGrantResult>{
+  const profile=this.scope(principal,principal.repository,'executor'),observation=this.observation(profile.repository),leaseState=this.leaseState();
+  if(leaseState.lease)insist(leaseState.lease.role==='maintenance'&&leaseState.lease.machine===principal.id&&leaseState.lease.repository===profile.repository,'busy');
+  const runs=await this.facts.scan('authority:maintenance:','maintenance');const run=leaseState.lease?runs.find(r=>r.id===leaseState.lease!.jobId):runs.filter(r=>r.repository===profile.repository&&['queued','unknown'].includes(r.state)).sort((a,b)=>Number(b.kind==='prune')-Number(a.kind==='prune')||a.id.localeCompare(b.id))[0];insist(run,'not_due');
+  // Re-check/acquire after the async scan. No unowned interval exists after this transaction.
+  const latest=this.leaseState();if(latest.lease)insist(latest.lease.jobId===run.id&&latest.lease.machine===principal.id,'busy');
+  const lease=latest.lease??{id:randomUUID(),counter:latest.counter+1,jobId:run.id,repository:profile.repository,machine:principal.id,role:'maintenance' as const,createdAt:this.owner.now(),heartbeatAt:this.owner.now(),state:'held' as const};this.facts.put('authority:lease','lease',{lease:{...lease,heartbeatAt:this.owner.now(),state:'held'},counter:lease.counter});
+  try{
+   const prefix=repoKey(profile.repository),history=await this.facts.scan('authority:history:'+prefix+':','history'),arrivals=(await this.facts.scan('authority:arrival:'+prefix+':','arrival')).filter(a=>a.present),pins=await this.facts.scan('authority:pin:'+prefix+':','pin');
+   insist(history.length>0&&history.every(h=>h.repositoryId===observation.repositoryId),'retention_unknown');
+   if(run.kind==='prune'){const bootstrap=this.config.bootstrap?.find(b=>b.repository===profile.repository);insist(bootstrap&&/^[a-f0-9]{64}$/.test(bootstrap.inventoryHash)&&bootstrap.approvedAt<=this.owner.now()&&bootstrap.approvedBy.length>0&&bootstrap.pinIds.every(id=>pins.some(p=>p.id===id)),'retention_unknown');this.facts.put('authority:bootstrap:'+prefix,'bootstrap',bootstrap);}
+   const plan=planBackupRetention(profile.repository,{history,arrivals,pins},this.config.retention,this.owner.now());if(plan.unknown.length)queueBackupAlert(this.owner,'authority','unknown:'+serviceHash(plan.unknown),'unverified_snapshots',profile.machine,profile.repository);
+   for(const id of plan.protected)insist(arrivals.some(a=>a.snapshotId===id),'protected_missing');
+   this.owner.trace?.('retention.plan forget='+plan.forget.length+' protected='+plan.protected.length+' unknown='+plan.unknown.length);const budget=this.config.maintenance.maxRepackBytes;insist(observation.reserveBytes+budget+16*1024*1024<=this.config.reserveLimitBytes&&observation.fleetBytes+observation.reserveBytes+budget+16*1024*1024<=this.config.fleetLimitBytes+this.config.reserveLimitBytes,'capacity_stop');
+   const payload=this.payload(lease,run.kind,observation.repositoryId);payload.endpoint=this.config.maintenance.endpoint.replace(/\/$/,'')+'/'+encodeURIComponent(profile.machine)+'/';payload.maxReadBytes=run.kind==='check'?this.config.maintenance.checkReadBytes:budget*4;payload.maxRepackBytes=budget;payload.maxDeleteBytes=this.config.maintenance.maxDeleteBytes;payload.maxWriteBytes=budget+16*1024*1024;payload.forgetIds=run.kind==='prune'?plan.forget:[];payload.protectedIds=plan.protected;payload.protectedSetHash=serviceHash(plan.protected);payload.planHash=serviceHash({kind:run.kind,forget:payload.forgetIds,protected:payload.protectedIds,retention:this.config.retention});
+   const password=await this.maintenancePassword(lease.id,lease.counter),username='grant-'+lease.id;
+   this.facts.put('authority:maintenance:'+run.id,'maintenance',{...run,state:'running',startedAt:run.startedAt??this.owner.now(),finishedAt:null,grantCounter:lease.counter,planHash:payload.planHash,protectedSetHash:payload.protectedSetHash,grantPayload:payload,credentialHash:backupDigest(password),indexPublished:false,deletedBytes:run.deletedBytes??0,writtenBytes:run.writtenBytes??0,chargedPaths:run.chargedPaths??[],lockIds:run.lockIds??[],reason:null});
+   await this.backend.ensure(this.facts.get('authority:maintenance:'+run.id,'maintenance')!,lease.id,lease.counter);
+   return{status:'granted',grant:await this.signGrant(payload),observation,username,password};
+  }catch(error){const reason=error instanceof BackupServiceError?error.reason:'job_failed';queueBackupAlert(this.owner,'authority',run.id+':'+reason,reason==='protected_missing'?'protected_missing':reason==='capacity_stop'?'capacity_stop':'maintenance_failed',profile.machine,profile.repository);this.facts.put('authority:maintenance:'+run.id,'maintenance',{...this.facts.get('authority:maintenance:'+run.id,'maintenance')!,reason});const state=this.leaseState();if(!latest.lease&&state.lease?.jobId===run.id){await this.backend.stop(run.id);this.facts.put('authority:lease','lease',{lease:null,counter:state.counter});}throw error;}
+ }
+ async maintenancePassword(id:string,counter:number):Promise<string>{const secret=await serviceSecret(this.owner,this.config.maintenance.accessKeyRef,'secret');insist(secret.length>=32,'secret_unavailable');return createHmac('sha256',secret).update(id+':'+counter).digest('base64url');}
+ async finishMaintenance(principal:BackupPrincipal,input:{id:string;counter:number;jobId:string;ok:boolean;forgottenIds:string[];checkOk:boolean;reason?:string}):Promise<{status:'recorded'}>{
+  this.scope(principal,principal.repository,'executor');const state=this.leaseState(),lease=state.lease;insist(lease&&lease.id===input.id&&lease.counter===input.counter&&lease.jobId===input.jobId&&lease.machine===principal.id,'grant_invalid');const run=this.facts.get('authority:maintenance:'+lease.jobId,'maintenance');insist(run&&run.repository===principal.repository,'grant_invalid');
+  await this.backend.stop(run.id);
+  const payload=run.grantPayload as BackupOperationalGrantPayload;insist(input.forgottenIds.every(id=>payload.forgetIds.includes(id)),'grant_invalid');
+  this.facts.put('authority:maintenance:'+run.id,'maintenance',{...run,state:input.ok?'succeeded':'failed',finishedAt:this.owner.now(),forgottenIds:[...new Set([...run.forgottenIds,...input.forgottenIds])].sort(),checkResult:input.checkOk?'ok':null,reason:input.ok?null:'job_failed',credentialHash:''});
+  for(const id of [...new Set([...run.forgottenIds,...input.forgottenIds])]){const key='authority:arrival:'+repoKey(principal.repository)+':'+id,old=this.facts.get(key,'arrival');if(old)this.facts.put(key,'arrival',{...old,present:false});}
+  for(const h of await this.facts.scan('authority:history:'+repoKey(principal.repository)+':','history')){const capture=this.facts.get('authority:arrival:'+repoKey(principal.repository)+':'+h.snapshotId,'arrival'),catalogue=this.facts.get('authority:arrival:'+repoKey(principal.repository)+':'+h.catalogueSnapshotId,'arrival');if(!capture?.present&&!catalogue?.present&&payload.forgetIds.includes(h.snapshotId)&&payload.forgetIds.includes(h.catalogueSnapshotId))this.facts.put('authority:history:'+repoKey(principal.repository)+':'+h.snapshotId,'history',{...h,retiredAt:this.owner.now()});}
+  if(!input.ok)queueBackupAlert(this.owner,'authority',run.id,'maintenance_failed',this.profile(principal.repository).machine,principal.repository);
+  this.facts.put('authority:lease','lease',{lease:null,counter:state.counter});return{status:'recorded'};
+ }
+ /** The proxy is the only remotely reachable delete path; it enforces scope and byte budgets. */
+ async admitMaintenanceRequest(input:{username:string;password:string;machine:string;method:string;path:string;bytes:number;range?:string}):Promise<{backendUrl:string;repository:string}>{
+  const lease=this.leaseState().lease;insist(lease?.role==='maintenance'&&input.username==='grant-'+lease.id&&this.owner.now()-lease.createdAt<=this.config.maintenance.maxDurationMs&&this.owner.now()-lease.heartbeatAt<=this.config.maintenance.grantTtlMs,'grant_invalid');const profile=this.profile(lease.repository);insist(profile.machine===input.machine,'scope_refused');
+  const run=this.facts.get('authority:maintenance:'+lease.jobId,'maintenance');insist(run?.state==='running'&&run.credentialHash===backupDigest(input.password),'grant_invalid');const grant=run.grantPayload as BackupOperationalGrantPayload;
+  insist(!input.path.startsWith('/')&&!input.path.includes('..')&&!/[\\\x00-\x1f]/.test(input.path),'scope_refused');const parts=input.path.split('/').filter(Boolean),directory=parts[0]??'',id=parts.at(-1)??'';
+  insist(['GET','HEAD','POST','DELETE'].includes(input.method)&&['','config','keys','data','index','snapshots','locks'].includes(directory),'scope_refused');
+  insist(parts.length<=2&&(parts.length<2||hashId.test(id)),'scope_refused');let next={...run};
+  if(input.method==='DELETE'){
+   insist(hashId.test(id)&&['data','index','snapshots','locks'].includes(directory),'scope_refused');if(directory==='snapshots')insist(grant.forgetIds.includes(id)&&!grant.protectedIds.includes(id),'protected_missing');if(directory==='locks')insist(run.lockIds?.includes(id),'scope_refused');if(directory==='data'||directory==='index')insist(run.indexPublished,'scope_refused');
+   insist((run.deleteCount??0)<100000,'capacity_stop');const charge='DELETE:'+input.path;if(!run.chargedPaths?.includes(charge)){
+    const path=directory==='data'?join(profile.root,'data',id.slice(0,2),id):join(profile.root,...parts),st=await lstat(path).catch(()=>null),bytes=st?Math.max(st.size,(st.blocks??0)*512):0;
+    // An async stat may interleave; re-read the current run before charging.
+    const current=this.facts.get('authority:maintenance:'+lease.jobId,'maintenance')!;if(current.chargedPaths?.includes(charge))return{backendUrl:this.backendPath(profile,input.path),repository:profile.repository};insist(current.state==='running'&&current.grantCounter===lease.counter,'grant_invalid');
+    insist((current.deletedBytes??0)+bytes<=grant.maxDeleteBytes,'capacity_stop');next={...current,deleteCount:(current.deleteCount??0)+1,deletedBytes:(current.deletedBytes??0)+bytes,chargedPaths:[...(current.chargedPaths??[]),charge]};
+   }
+  }else if(input.method==='GET'&&directory==='data'&&hashId.test(id)){
+   const st=await lstat(join(profile.root,'data',id.slice(0,2),id));let readSize=st.size;if(input.range){const match=/^bytes=(\d+)-(\d*)$/.exec(input.range);insist(match,'scope_refused');const start=Number(match[1]),end=match[2]?Number(match[2]):st.size-1;insist(Number.isSafeInteger(start)&&Number.isSafeInteger(end)&&start>=0&&end>=start&&end<st.size,'scope_refused');readSize=end-start+1;}const current=this.facts.get('authority:maintenance:'+lease.jobId,'maintenance')!;
+   insist((current.readBytes??0)+readSize<=grant.maxReadBytes,'capacity_stop');next={...current,readBytes:(current.readBytes??0)+readSize};this.facts.put('authority:maintenance:'+run.id,'maintenance',next);
+  }else if(input.method==='POST'){
+   insist(['data','index','locks'].includes(directory)&&hashId.test(id)&&Number.isSafeInteger(input.bytes)&&input.bytes>=0,'scope_refused');insist((run.writtenBytes??0)+input.bytes<=grant.maxWriteBytes,'capacity_stop');next={...run,writtenBytes:(run.writtenBytes??0)+input.bytes,lockIds:directory==='locks'?[...new Set([...(run.lockIds??[]),id])]:run.lockIds};
+  }
+  if(input.method==='POST'||input.method==='DELETE')this.facts.put('authority:maintenance:'+run.id,'maintenance',next);
+  return{backendUrl:this.backendPath(profile,input.path),repository:profile.repository};
+ }
+ private backendPath(profile:BackupAuthorityRepository,path:string):string{const namespace=new URL(profile.repository.slice(5)).pathname.replace(/^\//,'').replace(/\/$/,'');return this.config.maintenance.backendUrl.replace(/\/$/,'')+'/'+namespace+'/'+path.split('/').filter(Boolean).map(encodeURIComponent).join('/')+(path.endsWith('/')?'/':'');}
+ noteIndexPublished():void{const lease=this.leaseState().lease;if(lease?.role==='maintenance'){const run=this.facts.get('authority:maintenance:'+lease.jobId,'maintenance');if(run)this.facts.put('authority:maintenance:'+run.id,'maintenance',{...run,indexPublished:true});}}
+ noteSnapshotDeleted(repository:string,id:string):void{const key='authority:arrival:'+repoKey(repository)+':'+id,old=this.facts.get(key,'arrival');if(old)this.facts.put(key,'arrival',{...old,present:false});const lease=this.leaseState().lease;if(lease?.role==='maintenance'){const run=this.facts.get('authority:maintenance:'+lease.jobId,'maintenance');if(run)this.facts.put('authority:maintenance:'+lease.jobId,'maintenance',{...run,forgottenIds:[...new Set([...run.forgottenIds,id])]});}}
+ async close():Promise<void>{await this.backend.stop();}
+ status(){return{lease:this.leaseState().lease,observations:this.facts.rows('authority:observation:','observation'),watches:this.facts.rows('authority:watch:','watch')};}
+}

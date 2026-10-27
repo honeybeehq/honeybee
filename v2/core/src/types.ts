@@ -1155,6 +1155,7 @@ export interface StateDump {
   cells: CellRow[];
   beeMoves: BeeMoveRow[];
   cellOps: CellOpRow[];
+  backupService?: import("./backupService.ts").BackupStateRow[];
   /** v23 */
   beeHandoffs: BeeHandoffRow[];
   transcriptSegments: TranscriptSegmentRow[];

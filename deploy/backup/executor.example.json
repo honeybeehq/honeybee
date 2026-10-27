@@ -1,0 +1,8 @@
+{
+  "version":1,"role":"executor","machine":"REPLACE_WITH_EXECUTOR_ID",
+  "authorityUrl":"https://BACKUP_TAILNET_HOST:8443","authorityRef":"global/fleet-backup-MACHINE-maintenance",
+  "grantPublicKey":"REPLACE_WITH_PUBLIC_ED25519_SPKI_BASE64",
+  "repositories":[{"repository":"rest:https://BACKUP_TAILNET_HOST:8000/MACHINE_REPO/","repositoryId":"REPLACE_WITH_AUTHENTICATED_REPOSITORY_ID","passwordRef":"global/fleet-backup-MACHINE-repo-key","readerRef":"global/fleet-backup-MACHINE-reader"}],
+  "stageRoot":"/var/lib/honeybee-maintenance/stage",
+  "mail":{"host":"SMTP_HOST","port":465,"secure":true,"recipientRef":"global/fleet-backup-alert-tormod","credentialRef":"global/fleet-backup-mail-service"}
+}

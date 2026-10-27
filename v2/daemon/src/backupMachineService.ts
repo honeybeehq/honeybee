@@ -1,0 +1,66 @@
+import {verifyBackupPublication} from "../../core/src/backupPublication.ts";
+/** Owner-only scheduler. Persist the operation key before invoking the existing capture owner. */
+import {readFile,writeFile,mkdir,rename} from 'node:fs/promises';
+import {join} from 'node:path';
+import type {BackupServiceJob,BackupCapacityObservation} from '../../core/src/backupService.ts';
+import type {VerifiedBackupReceipt} from '../../core/src/backupReceipt.ts';
+import type {BackupPublication} from '../../core/src/backupPublication.ts';
+import type {BackupRecord,BackupResult} from './backupCapture.ts';
+import type {BackupMachineConfig} from './backupServiceConfig.ts';
+import {BackupFacts,BackupServiceError,callBackupEndpoint,insist,repoKey,serviceHash,verifyOperationalGrant,type BackupOperationalGrant,type BackupServiceOwner} from './backupServiceSupport.ts';
+import {queueBackupAlert,flushBackupAlerts} from './backupAlerts.ts';
+export interface MachineServiceOwner extends BackupServiceOwner {canCapture?:(cellId:string,key:string)=>boolean;capture(cellId:string,key:string,signal:AbortSignal,probeOnly:boolean):Promise<BackupResult>}
+export class BackupMachineService {
+ readonly config:BackupMachineConfig;readonly owner:MachineServiceOwner;readonly facts:BackupFacts;private running:Promise<unknown>|null=null;
+ constructor(config:BackupMachineConfig,owner:MachineServiceOwner){this.config=config;this.owner=owner;this.facts=new BackupFacts(owner,'machine');}
+ run():Promise<unknown>{if(this.running)return this.running;const work=this.runOnce();this.running=work;void work.finally(()=>{this.running=null;}).catch(()=>undefined);return work;}
+ private async observation():Promise<BackupCapacityObservation>{
+  const response=await callBackupEndpoint<{observations:BackupCapacityObservation[]}>(this.owner,this.config.authorityUrl,this.config.authorityRef,'/v1/status',{repository:this.config.repository});
+  const o=response.observations.find(v=>v.repository===this.config.repository);insist(o&&o.observedAt<=this.owner.now()&&this.owner.now()-o.observedAt<=this.config.observationMaxAgeMs,'capacity_unknown');
+  // Only this owner writes B4's observation file; installation owns the policy values.
+  let policy:any;try{policy=JSON.parse(await readFile(join(this.owner.dataDir,'backup-eviction.json'),'utf8'));}catch{throw new BackupServiceError('invalid_config');}
+  policy.pinRequired=true;policy.capacity={admission:o.band==='stop'?'stop':'allow',maxAgeMs:this.config.observationMaxAgeMs,stopFraction:0.9,repository:o.repository,observedAt:o.observedAt,repositoryUsedBytes:o.repositoryBytes,repositoryLimitBytes:o.repositoryLimitBytes,fleetUsedBytes:o.fleetBytes,fleetLimitBytes:o.fleetLimitBytes};
+  await mkdir(this.owner.dataDir,{recursive:true});const temporary=join(this.owner.dataDir,'backup-eviction.json.new');await writeFile(temporary,JSON.stringify(policy),{mode:0o600});await rename(temporary,join(this.owner.dataDir,'backup-eviction.json'));return o;
+ }
+ private async runOnce():Promise<unknown>{
+  const now=this.owner.now(),repository=this.config.repository;let observed:BackupCapacityObservation|undefined,observationError:unknown;try{observed=await this.observation();}catch(error){observationError=error;queueBackupAlert(this.owner,'machine','observation:'+Math.floor(now/300000),'capacity_unknown',this.config.machine,repository);}let job:BackupServiceJob|undefined=this.facts.rows('machine:job:','job').filter(j=>j.reportPending&&j.retryAt<=now).sort((a,b)=>a.updatedAt-b.updatedAt)[0];
+  // Recover old B2 keys, including uploads whose caller lost its response, before new periods.
+  for(const op of this.owner.store.listCellOps().filter(o=>o.kind==='backup').sort((a,b)=>a.createdAt-b.createdAt)){
+   if(job)break;let record:BackupRecord;try{record=JSON.parse(op.stdout);}catch{continue;}if(record.repository!==repository||record.checkpointRetired)continue;
+   const protectedKey=op.status==='outcome_unknown'||op.status==='failed'&&op.failure==='interrupted'||record.state==='uploading'&&['tool_failed','outcome_unknown','interrupted'].includes(op.failure??'')||op.status==='done'&&record.verification!=='verified';
+   if(!protectedKey)continue;const known=this.facts.rows('machine:job:','job').find(j=>j.operationKey===op.idempotencyKey);
+   if(known?.state==='failed'||known&&known.retryAt>now)continue;job=known??{id:serviceHash({repository,key:op.idempotencyKey}),repository,cellId:op.cellId,period:-1,operationKey:op.idempotencyKey,state:'retry_wait',attempt:0,startedAt:op.createdAt,updatedAt:now,retryAt:0,reason:null,snapshotId:record.snapshotId,generation:record.generation,leaseId:null,leaseCounter:null};break;
+  }
+  job??=this.facts.rows('machine:job:','job').filter(j=>!['succeeded','failed','skipped_busy'].includes(j.state)&&j.retryAt<=now).sort((a,b)=>a.updatedAt-b.updatedAt)[0];
+  if(!job){for(const target of this.config.targets){const period=Math.floor(now/target.periodMs),jitter=parseInt(serviceHash({machine:this.config.machine,cell:target.cellId,period}).slice(0,8),16)%(target.jitterMs+1);if(now<period*target.periodMs+jitter)continue;const id=serviceHash({repository,cellId:target.cellId,period});if(this.facts.get('machine:job:'+id,'job'))continue;job={id,repository,cellId:target.cellId,period,operationKey:'backup-service:'+id,state:'queued',attempt:0,startedAt:null,updatedAt:now,retryAt:0,reason:null,snapshotId:null,generation:null,leaseId:null,leaseCounter:null};break;}}
+  if(!job){await flushBackupAlerts(this.owner,'machine',this.config.mail);return{status:'not_due'};}if(job.retryAt>now)return{status:'retry_wait',jobId:job.id};
+  const save=(patch:Partial<BackupServiceJob>)=>{job={...job!,...patch,updatedAt:this.owner.now()};this.facts.put('machine:job:'+job.id,'job',job);};save({});
+  let lease:{id:string;counter:number;jobId:string}|undefined;const abort=new AbortController();const signal=this.owner.signal?AbortSignal.any([abort.signal,this.owner.signal]):abort.signal;let heartbeat:NodeJS.Timeout|undefined;let heartbeatWork:Promise<unknown>=Promise.resolve();
+  try{
+   if(job.reportPending){await callBackupEndpoint(this.owner,this.config.authorityUrl,this.config.authorityRef,'/v1/report',job.reportPending);save({state:'succeeded',reportPending:null,reportedAt:this.owner.now(),reason:null,retryAt:0});return{status:'succeeded',jobId:job.id,snapshotId:job.snapshotId};}
+   if(!observed)throw observationError;const observation=observed;let result:BackupResult;
+   const old=this.owner.store.getCellOpByKey(job.operationKey);const record=old?.stdout?JSON.parse(old.stdout) as BackupRecord:null;
+   if(record?.state!=='snapshot_created'&&this.owner.canCapture&&!this.owner.canCapture(job.cellId,job.operationKey)){const target=this.config.targets.find(t=>t.cellId===job!.cellId),skipped=!old&&job.period>=0&&target&&Math.floor(now/target.periodMs)>job.period;save({state:skipped?'skipped_busy':'retry_wait',reason:'busy',deferrals:(job.deferrals??0)+1,retryAt:now+60000});const cellJobs=this.facts.rows('machine:job:','job').filter(j=>j.cellId===job!.cellId),lastSuccess=Math.max(-1,...cellJobs.filter(j=>j.state==='succeeded').map(j=>j.period)),periodNow=Math.floor(now/(target?.periodMs??3600000)),busyPeriods=new Set(cellJobs.filter(j=>j.reason==='busy'&&j.period>lastSuccess).map(j=>j.period));if(busyPeriods.has(periodNow)&&busyPeriods.has(periodNow-1))queueBackupAlert(this.owner,'machine','busy:'+job.cellId+':'+Math.floor(now/(2*(target?.periodMs??3600000))),'overdue',this.config.machine,repository);return{status:job.state,jobId:job.id,reason:'busy'};}
+   if(record?.state==='snapshot_created')result={status:'snapshot_created',record};
+   else{
+    // At stop capacity an uncertain old upload may only probe its existing tag, never upload.
+    const probeOnly=observation.band==='stop';insist(!probeOnly||record?.state==='uploading','capacity_stop');
+    const response=await callBackupEndpoint<{grant:BackupOperationalGrant}>(this.owner,this.config.authorityUrl,this.config.authorityRef,'/v1/upload',{repository,jobId:job.id,probeOnly});
+    const grant=verifyOperationalGrant(response.grant,this.config.grantPublicKey,this.owner.now());insist(grant.repository===repository&&grant.machine===this.config.machine&&grant.jobId===job.id&&grant.role==='upload','grant_invalid');lease={id:grant.id,counter:grant.counter,jobId:job.id};save({leaseId:grant.id,leaseCounter:grant.counter,state:'uploading',startedAt:job.startedAt??now,attempt:job.attempt+1});
+    heartbeat=setInterval(()=>{heartbeatWork=callBackupEndpoint(this.owner,this.config.authorityUrl,this.config.authorityRef,'/v1/heartbeat',lease).catch(()=>{abort.abort();});},Math.max(100,Math.min(10000,Math.floor((grant.expiresAt-grant.issuedAt)/3))));
+    result=await this.owner.capture(job.cellId,job.operationKey,signal,probeOnly);
+   }
+   if(result.status!=='snapshot_created'){if(result.reason==='busy'){save({state:'retry_wait',attempt:Math.max(0,job.attempt-1),reason:'busy',retryAt:now+60000});return{status:'retry_wait',jobId:job.id,reason:'busy'};}
+    const terminal=['source_changed','sensitive_file','database_in_tree','git_incomplete','git_listing_too_large','checkpoint_retired','invalid_request','not_retained'].includes(result.reason);
+    save({state:terminal?'failed':'retry_wait',reason:result.reason,retryAt:this.owner.now()+Math.min(3600000,30000*2**Math.min(job.attempt,7))});if(!terminal&&!!old&&job.attempt>=(this.config.maxAttempts??8))queueBackupAlert(this.owner,'machine',job.id,'protected_key_held',this.config.machine,repository);if(terminal)queueBackupAlert(this.owner,'machine',job.id,'job_failed',this.config.machine,repository);return{status:job.state,jobId:job.id,reason:result.reason};
+   }
+   if(heartbeat){clearInterval(heartbeat);heartbeat=undefined;}await heartbeatWork;if(lease){await callBackupEndpoint(this.owner,this.config.authorityUrl,this.config.authorityRef,'/v1/release',lease);lease=undefined;}
+   save({state:'verifying',snapshotId:result.record.snapshotId,generation:result.record.generation});
+   if(record?.state==='snapshot_created')save({attempt:job.attempt+1});
+   const verified=await callBackupEndpoint<{receipt:VerifiedBackupReceipt;publication:BackupPublication}>(this.owner,this.config.verifierUrl,this.config.verifierRef,'/v1/verify',{record:result.record},3600000);
+   const trust=JSON.parse(await readFile(join(this.owner.dataDir,'backup-trust.json'),'utf8')),key=trust.publicKeys?.[verified.receipt.payload.verifier.keyId];insist(typeof key==='string','scope_refused');verifyBackupPublication(verified.publication,verified.receipt,key);this.owner.store.acceptBackupReceipt(verified.receipt,key);save({reportPending:verified});
+   await callBackupEndpoint(this.owner,this.config.authorityUrl,this.config.authorityRef,'/v1/report',verified);save({state:'succeeded',reportPending:null,reportedAt:this.owner.now(),reason:null,retryAt:0});return{status:'succeeded',jobId:job.id,snapshotId:job.snapshotId};
+  }catch(error){const reason=error instanceof BackupServiceError?error.reason:signal.aborted?'interrupted':'job_failed';const transient=['busy','capacity_unknown','capacity_stop','owner_unavailable','interrupted'].includes(reason);const exhausted=!job.reportPending&&!transient&&job.attempt>=(this.config.maxAttempts??8);save({state:exhausted?'failed':'retry_wait',reason,deferrals:(job.deferrals??0)+1,retryAt:this.owner.now()+Math.min(3600000,30000*2**Math.min(job.deferrals??0,7))+parseInt(job.id.slice(0,4),16)%5000});if(exhausted)queueBackupAlert(this.owner,'machine',job.id,'job_failed',this.config.machine,repository);if(reason==='capacity_stop'||reason==='capacity_unknown')queueBackupAlert(this.owner,'machine',job.id,reason,this.config.machine,repository);return{status:job.state,jobId:job.id,reason};}
+  finally{if(heartbeat)clearInterval(heartbeat);await heartbeatWork;if(lease)await callBackupEndpoint(this.owner,this.config.authorityUrl,this.config.authorityRef,'/v1/release',lease).catch(()=>undefined);await flushBackupAlerts(this.owner,'machine',this.config.mail);}
+ }
+}

@@ -4965,6 +4965,10 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdSeal(ctx, parsed);
       case "task":
         return await cmdTask(ctx, parsed);
+      case "backup": {
+        if(!["run","status"].includes(parsed.positional[1]??""))throw new Error("Usage: hive backup run | status [after]");
+        const result=await withClient(ctx,c=>c.request(parsed.positional[1]==="run"?"backup.service.run":"backup.service.status",{after:parsed.positional[2]},24*60*60_000));ctx.io.out(JSON.stringify(result));return 0;
+      }
       case "cell":
         return await cmdCell(ctx, parsed);
       case "account":

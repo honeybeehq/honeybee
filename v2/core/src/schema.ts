@@ -161,7 +161,8 @@
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
 // v52: owner-coordinated backup operations share the durable Cell gate.
 // v53: verified owner removal intents and fail-closed eviction semantics; older daemons must not replay them.
-export const SCHEMA_VERSION = 53;
+// v54: durable owner service scheduling, fleet grants, capacity and maintenance facts.
+export const SCHEMA_VERSION = 54;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -298,7 +299,11 @@ CREATE TABLE IF NOT EXISTS account_limits (
 ) STRICT;
 `;
 
+export const BACKUP_SERVICE_SQL = `CREATE TABLE IF NOT EXISTS backup_service_state (id TEXT PRIMARY KEY, revision INTEGER NOT NULL CHECK(revision > 0), role TEXT NOT NULL CHECK(role IN ('machine','authority','executor')), body TEXT NOT NULL CHECK(json_valid(body))) STRICT;`;
+
 export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS backup_service_state (id TEXT PRIMARY KEY, revision INTEGER NOT NULL CHECK(revision > 0), role TEXT NOT NULL CHECK(role IN ('machine','authority','executor')), body TEXT NOT NULL CHECK(json_valid(body))) STRICT;
+
 CREATE TABLE IF NOT EXISTS account_limit_observations (
   account TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
   record TEXT NOT NULL

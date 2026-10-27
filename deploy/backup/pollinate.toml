@@ -1,0 +1,19 @@
+# Disabled definition. Validate with the installed Pollinate version before importing.
+# No Pollinate CLI is installed in this development Cell.
+[trigger]
+id = "honeybee-backup-owner"
+name = "Honeybee owner backup tick"
+enabled = false
+cwd = "/"
+[trigger.source]
+kind = "schedule"
+[trigger.source.timing]
+kind = "interval"
+everyMs = 60000
+[trigger.delivery]
+mode = "immediate"
+maxConcurrent = 1
+[trigger.action]
+kind = "command"
+command = "/usr/local/bin/hive backup run"
+timeoutMs = 3900000

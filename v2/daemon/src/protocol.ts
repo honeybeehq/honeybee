@@ -196,6 +196,7 @@ export const DAEMON_CAPABILITIES = [
   "cell.backup.receipts.v1",
   "cell.mutation-status.v1",
   "cell.backup.v1",
+  "backup.service.v1",
   "cell.retention.v1",
   "cell.retention.trim.v1",
   "cell.retention.pressure.v1",
@@ -555,6 +556,8 @@ export const RPC_VERBS = [
   "cell.backup.receipt",
   "cell.status",
   "cell.backup",
+  "backup.service.run",
+  "backup.service.status",
   "cell.exec",
   "cell.retained.remove",
   // v31: Cell disk retention (plan/apply a pass; evict one bee's Cell).

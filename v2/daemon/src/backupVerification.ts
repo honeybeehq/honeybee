@@ -1,3 +1,4 @@
+import { verifyBackupPublication, type BackupPublication, type BackupPublicationPayload } from "../../core/src/backupPublication.ts";
 import { list as listTar, type ReadEntry } from "tar";
 /** Independent read/decrypt/verifier service. Not imported by the uploading daemon. */
 import { createHash, createPrivateKey, createPublicKey, sign } from "node:crypto";
@@ -239,6 +240,16 @@ export async function signVerifiedCapture(stage:VerifiedCaptureStage,authority:B
     verifier:{id:authority.id,keyId:backupVerifierKeyId(publicKey)},verifiedAt:new Date().toISOString()};
   const receipt={payload,signature:sign(null,Buffer.from(canonicalBackupJson(payload)),key).toString("base64")};return verifyBackupReceipt(receipt,owner.trustedPublicKey);
 }
+async function signCataloguePublication(stage:VerifiedCaptureStage,receipt:VerifiedBackupReceipt,catalogueSnapshotId:string,access:BackupRepositoryAccess,authority:BackupVerifierAuthority,owner:BackupVerificationOwner):Promise<BackupPublication>{
+ check(readbackProofs.get(stage)===stageClaim(stage),"authority_denied");
+ const restic=await transport(access,owner),entry=JSON.parse(await restic(["dump",catalogueSnapshotId,CATALOGUE_PATH])) as RecoveryCatalogue;
+ boundCatalogue(entry,access.repository,access.machine,stage.repositoryId,owner.trustedPublicKey);check(canonicalBackupJson(entry.receipt)===canonicalBackupJson(receipt),"catalogue_conflict");
+ check(/^global\/fleet-backup-verifier-[A-Za-z0-9._-]+$/.test(authority.signingKeyRef),"authority_denied");
+ const encoded=await resolveBackupSecret(processOwner(owner),authority.signingKeyRef,"signing_key_pkcs8_base64"),key=createPrivateKey({key:Buffer.from(encoded,"base64"),format:"der",type:"pkcs8"});
+ check(key.asymmetricKeyType==="ed25519"&&backupVerifierKeyId(createPublicKey(key).export({format:"der",type:"spki"}).toString("base64"))===backupVerifierKeyId(owner.trustedPublicKey),"authority_denied");
+ const payload:BackupPublicationPayload={format:"honeybee.catalogue-publication.v1",keyId:receipt.payload.verifier.keyId,repository:receipt.payload.repository,repositoryId:stage.repositoryId,snapshotId:receipt.payload.snapshotId,catalogueSnapshotId,receiptHash:backupDigest(canonicalBackupJson(receipt)),publishedAt:new Date().toISOString()};
+ return verifyBackupPublication({payload,signature:sign(null,Buffer.from(canonicalBackupJson(payload)),key).toString("base64")},receipt,owner.trustedPublicKey);
+}
 function sameCatalogueCapture(a:RecoveryCatalogue,b:RecoveryCatalogue):boolean {
   const claim=(entry:RecoveryCatalogue)=>canonicalBackupJson({...entry.receipt.payload,verifiedAt:""});
   return claim(a)===claim(b);
@@ -270,15 +281,15 @@ export async function publishRecoveryCatalogue(record:BackupRecord,receipt:Verif
   check(await restic(["dump",summary!.snapshot_id!,CATALOGUE_PATH])===body,"content_mismatch");return summary!.snapshot_id!;
 }
 /** Bootstrap from the repository alone. A pinned verifier public key prevents accepting an uploader's replacement authority. */
-export async function discoverRecoveryCatalogue(generation:string,access:BackupRepositoryAccess,owner:BackupVerificationOwner):Promise<RecoveryCatalogue>{
+export async function discoverRecoveryCatalogue(generation:string,access:BackupRepositoryAccess,owner:BackupVerificationOwner):Promise<RecoveryCatalogue & {catalogueSnapshotId:string}>{
   check(access.credentialRef.endsWith("-reader"),"authority_denied");
   check(/^[A-Za-z0-9._-]{1,128}$/.test(generation));const restic=await transport(access,owner);const config=JSON.parse(await restic(["cat","config"])) as {id:string};
-  const snapshots=JSON.parse(await restic(["snapshots","--json","--tag",CATALOGUE_TAG+":"+generation])) as {id:string}[];let found:RecoveryCatalogue|undefined;
+  const snapshots=JSON.parse(await restic(["snapshots","--json","--tag",CATALOGUE_TAG+":"+generation])) as {id:string}[];let found:RecoveryCatalogue|undefined;let selectedSnapshot="";
   for(const snapshot of snapshots){
     let entry:RecoveryCatalogue;try{entry=JSON.parse(await restic(["dump",snapshot.id,CATALOGUE_PATH]));boundCatalogue(entry,access.repository,access.machine,config.id,owner.trustedPublicKey);check(entry.receipt.payload.generation===generation,"receipt_invalid");}catch{continue;}
-    if(found){check(sameCatalogueCapture(found,entry),"catalogue_conflict");found=earlierCatalogue(found,entry);}else found=entry;
+    if(found){check(sameCatalogueCapture(found,entry),"catalogue_conflict");const selected=earlierCatalogue(found,entry);if(selected===entry)selectedSnapshot=snapshot.id;found=selected;}else{found=entry;selectedSnapshot=snapshot.id;}
   }
-  check(found,"catalogue_missing");return found!;
+  check(found,"catalogue_missing");return{...found!,catalogueSnapshotId:selectedSnapshot};
 }
 export async function restoreFromCatalogue(generation:string,access:BackupRepositoryAccess,owner:BackupVerificationOwner):Promise<VerifiedCaptureStage>{
   const catalogue=await discoverRecoveryCatalogue(generation,access,owner);return readBackCapture(catalogue.record,access,owner,catalogue.receipt.payload.transcripts);
@@ -342,7 +353,7 @@ export async function materializeVerifiedCapture(stage:VerifiedCaptureStage,owne
 }
 
 
-export async function verifyAndCatalogue(record:BackupRecord,readAccess:BackupRepositoryAccess,catalogueAccess:BackupRepositoryAccess,authority:BackupVerifierAuthority,owner:BackupVerificationOwner,transcripts:VerifiedTranscriptObject[]=[]):Promise<{stage:VerifiedCaptureStage;receipt:VerifiedBackupReceipt;catalogueSnapshot:string}>{
+export async function verifyAndCatalogue(record:BackupRecord,readAccess:BackupRepositoryAccess,catalogueAccess:BackupRepositoryAccess,authority:BackupVerifierAuthority,owner:BackupVerificationOwner,transcripts:VerifiedTranscriptObject[]=[]):Promise<{stage:VerifiedCaptureStage;receipt:VerifiedBackupReceipt;catalogueSnapshot:string;publication:BackupPublication}>{
   const stage=await readBackCapture(record,readAccess,owner,transcripts);
   try {
   let receipt:VerifiedBackupReceipt|undefined;
@@ -354,7 +365,8 @@ export async function verifyAndCatalogue(record:BackupRecord,readAccess:BackupRe
   receipt??=await signVerifiedCapture(stage,authority,owner);
   const catalogueSnapshot=await publishRecoveryCatalogue(record,receipt,catalogueAccess,owner);
   const catalogued=await discoverRecoveryCatalogue(record.generation,readAccess,owner);
-  return{stage,receipt:catalogued.receipt,catalogueSnapshot};
+  const publication=await signCataloguePublication(stage,catalogued.receipt,catalogued.catalogueSnapshotId,catalogueAccess,authority,owner);
+  return{stage,receipt:catalogued.receipt,catalogueSnapshot:catalogued.catalogueSnapshotId,publication};
   } catch(error) {await disposeVerifiedCapture(stage);throw error;}
 }
 

@@ -1,3 +1,9 @@
+import { BackupMachineService } from "./backupMachineService.ts";
+import { BackupAuthority } from "./backupAuthority.ts";
+import { createBackupAuthorityGateway } from "./backupAuthorityGateway.ts";
+import { BackupMaintenanceExecutor } from "./backupMaintenanceExecutor.ts";
+import { validateBackupServiceConfig, type BackupMachineConfig } from "./backupServiceConfig.ts";
+import { BackupServiceError, callBackupEndpoint } from "./backupServiceSupport.ts";
 import { evictThroughOwner, type OwnerEvictionResult } from "./evictionService.ts";
 import { StoreBackupError } from "../../core/src/storeBackup.ts";
 import { BackupError, captureAndSnapshot, remainingBackupScratch, retireBackupCheckpoint, validateBackupRequest, type BackupRecord, type BackupResult } from "./backupCapture.ts";
@@ -715,6 +721,11 @@ export class HiveDaemon {
   private driver: SubstrateRouter | null = null;
   private core: DaemonCore | null = null;
   private telemetry: TelemetryStore | null = null;
+  private backupService: BackupMachineService | BackupAuthority | BackupMaintenanceExecutor | null = null;
+  private backupGateway: ReturnType<typeof createBackupAuthorityGateway> | null = null;
+  private backupServiceAbort = new AbortController();
+  private backupServiceWork: Promise<unknown> | null = null;
+  private readonly backupPermits = new Set<string>();
   private readonly backupJobs = new Map<string, { abort: AbortController; settled: Promise<void> }>();
   private rpc: RpcServer | null = null;
   private tickTimer: NodeJS.Timeout | null = null;
@@ -1152,6 +1163,10 @@ export class HiveDaemon {
       // v16: no login worker outlives the daemon (boot marks their flows interrupted).
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
+      this.backupServiceAbort.abort();
+      if(this.backupService instanceof BackupAuthority)await this.backupService.close();
+      if(this.backupGateway)await new Promise<void>(r=>this.backupGateway!.close(()=>r()));
+      if(this.backupServiceWork)await this.backupServiceWork.catch(()=>undefined);
       for (const job of this.backupJobs.values()) job.abort.abort();
       let backupDeadline: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -2375,6 +2390,12 @@ export class HiveDaemon {
         const key = typeof keyId === "string" ? config?.publicKeys?.[keyId] : undefined;
         if (typeof key !== "string" || !key) throw new RpcError("invalid_request", "Backup verifier authority is not trusted");
         return { receipt: this.mustStore().acceptBackupReceipt(params.receipt, key) };
+      }
+      case "backup.service.status": return {states:this.mustStore().listBackupStates("",typeof params.after==="string"?params.after:"",250)};
+      case "backup.service.run": {
+        if(this.backupServiceWork)return this.backupServiceWork;
+        const work=this.runBackupService();this.backupServiceWork=work;
+        return work.finally(()=>{this.backupServiceWork=null;});
       }
       case "cell.backup":
         return this.rpcCellBackup(params);
@@ -3785,7 +3806,10 @@ export class HiveDaemon {
     const abort=new AbortController();let release!:()=>void;const settled=new Promise<void>(r=>release=r),jobId="eviction:"+row.id;
     this.backupJobs.set(jobId,{abort,settled});
     try{return await evictThroughOwner(row,mode,key,{
-      store:this.mustStore(),dataDir:this.cfg.dataDir,cellsRoot:this.cfg.cellsRoot,keepRoot:cellKeepRootForCells(this.cfg.cellsRoot),machine:this.cfg.accounts.allocationNodeId??hostname(),git:resolveExecutable("git")?.path??"git",signal:abort.signal,
+      store:this.mustStore(),dataDir:this.cfg.dataDir,cellsRoot:this.cfg.cellsRoot,keepRoot:cellKeepRootForCells(this.cfg.cellsRoot),machine:this.cfg.accounts.allocationNodeId??hostname(),pinRecovery:existsSync(join(this.cfg.dataDir,"backup-service.json"))?async record=>{
+        const config=validateBackupServiceConfig(JSON.parse(readFileSync(join(this.cfg.dataDir,"backup-service.json"),"utf8")));if(config.role!=="machine")throw new Error("unknown_policy");
+        await callBackupEndpoint({store:this.mustStore(),dataDir:this.cfg.dataDir,tools:{git:resolveExecutable("git")!.path,restic:resolveExecutable("restic")!.path,hem:resolveExecutable("hem")!.path},now:Date.now,signal:abort.signal},config.authorityUrl,config.authorityRef,"/v1/pin",{snapshotId:record.snapshotId,generation:record.generation,kind:"cell",reference:row.id});
+      }:undefined,git:resolveExecutable("git")?.path??"git",signal:abort.signal,
       busy:(cell,exceptKey)=>{this.releaseAbsentCellOps(cell.id);const bee=this.mustStore().getBee(cell.sourceBeeId),rt=this.mustStore().currentRuntime(cell.sourceBeeId);
         return this.stopping||this.cellHasInFlightOp(cell.id,exceptKey)||!!bee?.activeMoveId||!!bee?.activeHandoffId||this.executionStartHolds.has(cell.sourceBeeId)||(cell.state!=="retained"&&!!rt&&rt.state!=="stopped")||!!this.driver?.cell.hasProcess(cell.sourceBeeId,rt?.generation??0);},
     });}finally{this.backupJobs.delete(jobId);release();}
@@ -4746,8 +4770,32 @@ export class HiveDaemon {
   }
 
   /** Machine service entry point; destinations and Hem refs come only from owner configuration. */
-  private async rpcCellBackup(params: Record<string, unknown>): Promise<BackupResult> {
+  private async runBackupService():Promise<unknown>{
+    await new Promise<void>(r=>setImmediate(r));
+    if(this.stopping)return{status:"refused",reason:"interrupted"};
+    let initializing=false;
+    try{
+      const config=(()=>{try{return validateBackupServiceConfig(JSON.parse(readFileSync(join(this.cfg.dataDir,"backup-service.json"),"utf8")));}catch{throw new BackupServiceError("invalid_config");}})();
+      if(!this.backupService){
+        initializing=true;
+        const executable=(name:string)=>{const path=resolveExecutable(name)?.path;if(!path)throw new BackupServiceError("tool_missing");return path;};
+        const owner={store:this.mustStore(),dataDir:this.cfg.dataDir,tools:{git:executable("git"),restic:executable("restic"),hem:executable("hem")},now:Date.now,signal:this.backupServiceAbort.signal};
+        if(config.role==="machine")this.backupService=new BackupMachineService(config,{...owner,canCapture:(cellId,key)=>{const store=this.mustStore(),cell=store.getCell(cellId);if(!cell)return true;const bee=store.getBee(cell.sourceBeeId),rt=store.currentRuntime(cell.sourceBeeId);this.releaseAbsentCellOps(cellId);return !this.cellHasInFlightOp(cellId,key)&&!bee?.activeMoveId&&!bee?.activeHandoffId&&!this.executionStartHolds.has(cell.sourceBeeId)&&!(bee?.cellId===cellId&&rt&&rt.state!=="stopped")&&!this.driver?.cell.hasProcess(cell.sourceBeeId,rt?.generation??0);},capture:async(cellId,key,signal,probeOnly)=>{
+          this.backupPermits.add(key);try{return await this.rpcCellBackup({cellId,idempotencyKey:key},signal,probeOnly);}finally{this.backupPermits.delete(key);}
+        }});
+        else if(config.role==="authority"){
+          this.backupService=new BackupAuthority(config,owner);this.backupGateway=createBackupAuthorityGateway(this.backupService);
+          await new Promise<void>((accept,reject)=>{this.backupGateway!.once("error",()=>reject(new BackupServiceError("listen_failed")));this.backupGateway!.listen(config.listenPort,"127.0.0.1",accept);});
+        }else this.backupService=new BackupMaintenanceExecutor(config,owner);
+        initializing=false;
+      }
+      return this.backupService instanceof BackupAuthority?{status:"observed",observations:await this.backupService.observe()}:await this.backupService.run();
+    }catch(error){if(initializing){this.backupGateway?.close(()=>{});this.backupGateway=null;this.backupService=null;}return{status:"refused",reason:error instanceof BackupServiceError?error.reason:error instanceof SyntaxError?"invalid_config":"service_unavailable"};}
+  }
+
+  private async rpcCellBackup(params: Record<string, unknown>, serviceSignal?:AbortSignal, probeOnly=false): Promise<BackupResult> {
     if (this.stopping) return { status: "refused", reason: "busy" };
+    if(existsSync(join(this.cfg.dataDir,"backup-service.json"))&&!this.backupPermits.has(String(params.idempotencyKey)))return{status:"refused",reason:"service_required"};
     let request;
     try {
       const config: unknown = JSON.parse(readFileSync(join(this.cfg.dataDir, "backup.json"), "utf8"));
@@ -4799,6 +4847,7 @@ export class HiveDaemon {
     initial.processIdentity = { pid: process.pid, birth: ownerProcess.birth, bootId: ownerProcess.bootId };
     store.updateCellOp(op.id, { status: "running", pid: process.pid, pidStartedAt: ownerProcess.startedAtMs, failure: null, stdout: JSON.stringify(initial) });
     const abort = new AbortController();
+    const serviceAbort=()=>abort.abort();serviceSignal?.addEventListener("abort",serviceAbort,{once:true});if(serviceSignal?.aborted)abort.abort();
     let release!: () => void;
     const settled = new Promise<void>(resolve => { release = resolve; });
     this.backupJobs.set(op.id, { abort, settled });
@@ -4823,7 +4872,7 @@ export class HiveDaemon {
       const budget = await remainingBackupScratch(scratchRoot, op.id, request.maxScratchBytes);
       const record = await captureAndSnapshot({ ...request, maxScratchBytes: budget }, {
         cell, runtimeGeneration: cell.state === "active" ? store.currentRuntime(cell.sourceBeeId)?.generation ?? null : null, machine: this.cfg.accounts.allocationNodeId ?? hostname(), operationId: op.id,
-        scratch, signal: abort.signal,
+        scratch, signal: abort.signal, probeOnly,
         keepRoot: cellKeepRootForCells(this.cfg.cellsRoot),
         tools: { git: executable("git"), restic: executable("restic"), hem: executable("hem") },
         snapshotDatabases: async (destination, budget, signal) => {
@@ -4855,6 +4904,7 @@ export class HiveDaemon {
       store.updateCellOp(op.id, { status: reason === "outcome_unknown" ? "outcome_unknown" : "failed", pid: null, failure: reason });
       return { status: reason === "outcome_unknown" ? "outcome_unknown" : "failed", reason, operationId: op.id };
     } finally {
+      serviceSignal?.removeEventListener("abort",serviceAbort);
       this.backupJobs.delete(op.id);
       release();
     }

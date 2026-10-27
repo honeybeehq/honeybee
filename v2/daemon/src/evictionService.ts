@@ -7,7 +7,7 @@ import { canonicalBackupJson, verifyBackupReceipt } from "../../core/src/backupR
 import type { CoreStore, CellRow } from "../../core/src/index.ts";
 import type { BackupRecord } from "./backupCapture.ts";
 import { checkEvictionPolicy, rollbackUnauthorizedPark, VerifiedEvictionError, type EvictionReason, type EvictionPolicy, type VerifiedEvictionInput, type VerifiedEvictionResult } from "./verifiedEviction.ts";
-export interface EvictionOwner {store:CoreStore;dataDir:string;cellsRoot:string;keepRoot:string;machine:string;busy:(cell:CellRow,exceptKey?:string)=>boolean;git:string;signal?:AbortSignal;workerUrl?:URL}
+export interface EvictionOwner {store:CoreStore;dataDir:string;cellsRoot:string;keepRoot:string;machine:string;busy:(cell:CellRow,exceptKey?:string)=>boolean;git:string;signal?:AbortSignal;workerUrl?:URL;pinRecovery?:(record:BackupRecord)=>Promise<void>}
 export type OwnerEvictionResult={status:"deleted";head:string;operationId:string;generation:string}|{status:"refused";reason:EvictionReason;operationId?:string};
 export async function evictThroughOwner(cell:CellRow,mode:"evict"|"remove"|"trim",key:string|undefined,owner:EvictionOwner):Promise<OwnerEvictionResult>{
   const {store}=owner;
@@ -48,6 +48,7 @@ export async function evictThroughOwner(cell:CellRow,mode:"evict"|"remove"|"trim
   store.updateCellOp(op.id,{status:"running",pid:process.pid,stdout:JSON.stringify({format:"honeybee.eviction-intent.v1",input:{...input,publicKey:undefined,abortFlag:undefined},captureGeneration:record.generation})});
   const url=owner.workerUrl??new URL(import.meta.url.endsWith(".ts")?"./evictionWorker.ts":"./eviction-worker.js",import.meta.url);
   try{
+    if(!existsSync(input.completionPath)){if(policy.pinRequired&&!owner.pinRecovery)throw new VerifiedEvictionError("pin_unavailable");if(owner.pinRecovery){try{await owner.pinRecovery(record);}catch{throw new VerifiedEvictionError("pin_unavailable");}}}
     const result=await new Promise<VerifiedEvictionResult>((accept,reject)=>{
       const worker=new Worker(url,{workerData:input});let settled=false;
       const abort=()=>{Atomics.store(new Int32Array(input.abortFlag!),0,1);};owner.signal?.addEventListener("abort",abort,{once:true});
