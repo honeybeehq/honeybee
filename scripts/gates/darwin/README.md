@@ -1,5 +1,25 @@
 # Darwin gate v2
 
+## Current maintenance self-test
+
+`hardening-self-test.sh <absolute-node> <passwd-home>` is the mini07-only,
+offline shell/Node hardening check. Run it from the committed review checkout.
+The home argument comes from the account record, never from scanning that home.
+The runner constructs an empty environment and a private mode0700 run under
+`/private/var/tmp/hb-gate.*`. All test writes and caches stay there.
+
+Real-home and Library write checks reject computed paths before any filesystem
+call. They do not probe the real home. A separate Seatbelt child writes an allowed
+file and records the exact errno and message for a refused write to an owned
+fixture outside its sandbox but inside the run root. It has no network or Mach
+service access. The sentinel uses only an owned LaunchAgents fixture, names and
+SHA256 hashes. The empty refusal fixture is removed; the rest of the run remains
+with receipt and script hashes in `SHA256SUMS.json`, whose SHA256 is printed.
+Nothing sweeps old runs or accesses Keychain. This entry does not execute the
+historical Python self-test or product suites. The legacy wrappers below remain
+held, including the exit-88 pinned-runtime/full bodies; this check does not
+authorize a runtime gate, deployment or a run on any other Mac.
+
 This wrapper runs only on erebor, through the orchestrator-authorized absolute forage route. All ordinary Darwin runs remain held pending Queen's review of this hardening. This PR's self-test uses only its private run root; it does not read the real HOME sentinel or LaunchAgents.
 
 ## Entry and provenance
