@@ -3,6 +3,8 @@
  * forwarded. Output/time bounded. Process-group stop; the Promise does not
  * settle until the child is reaped. Never a B5 command.
  */
+import { secretSupervisorSource } from "./secretSupervisor.ts";
+import type { Duplex } from "node:stream";
 import { SecretOutput, validateSecretEnv } from "./secretOutput.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, lstatSync, realpathSync, writeFileSync } from "node:fs";
@@ -294,13 +296,20 @@ export async function runCellExec(
     wrappedArgs = wrapped.args;
   }
   if (spec.signal?.aborted) throw new Error("secret_execution_revoked");
+  const supervised = Boolean(spec.secretEnv || spec.outputCapture);
+  const deadline = Date.now() + timeoutMs;
   let child: ChildProcess;
-  try { child = spawn(wrappedCommand, wrappedArgs, {
+  try { child = spawn(supervised ? process.execPath : wrappedCommand, supervised ? ["-e", secretSupervisorSource] : wrappedArgs, {
     cwd,
-    env,
-    stdio: ["ignore", "pipe", "pipe"],
+    env: supervised ? sanitizedCellExecEnv() : env,
+    stdio: supervised ? ["ignore", "pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
     detached: true,
   }); } catch (error) { if (spec.secretEnv || spec.outputCapture) throw new Error("cell_execution_spawn_failed"); throw error; }
+  const lease = supervised ? child.stdio[3] as Duplex : undefined;
+  let supervisorStatus = "";
+  lease?.on("data", (chunk: Buffer) => { supervisorStatus += chunk.toString("utf8"); });
+  lease?.on("error", () => {});
+  lease?.write(JSON.stringify({ command: wrappedCommand, args: wrappedArgs, env, deadline }) + "\n");
   for (const name of Object.keys(secretEnv)) delete secretEnv[name];
   const reaped = { reaped: false, code: null as number | null };
   let spawnError: Error | null = null;
@@ -388,6 +397,7 @@ export async function runCellExec(
   });
 
   const finish = () => {
+    lease?.destroy();
     if (abortKill) clearTimeout(abortKill);
     spec.signal?.removeEventListener("abort", abort);
     stdout.finish(); stderr.finish();
@@ -408,6 +418,8 @@ export async function runCellExec(
       if (!spawnError && !spec.signal?.aborted && reaped.code === 0 && !privateFailed && spec.outputCapture!.expiresAt > Date.now()) spec.outputCapture!.receive(privateOutput.subarray(0, privateLength));
     } catch { throw new Error("cell_execution_failed"); } finally { privateOutput.fill(0); }
   }
+  if (supervisorStatus === "spawn_error") throw new Error("cell_execution_spawn_failed");
+  if (supervisorStatus === "timeout") return outcome("timeout", reaped.code);
   if (spawnError) { if (spec.secretEnv || spec.outputCapture) throw new Error("cell_execution_spawn_failed"); throw spawnError; }
   if (spec.signal?.aborted) return outcome("interrupted", reaped.code);
   return outcome(reaped.code === 0 ? "ok" : "nonzero", reaped.code);

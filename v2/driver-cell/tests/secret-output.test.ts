@@ -85,3 +85,22 @@ test("private stdout capture releases only bounded successful bytes and suppress
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test("supervisor preserves command exit codes and fragmented unicode configuration", async () => {
+  const root = mkdtempSync(join(tmpdir(), "secret-config-"));
+  const paths = cellPaths(root, "wrap", "repo", "c1");
+  mkdirSync(paths.spaceDir, { recursive: true });
+  try {
+    for (const exitCode of [0, 124, 125]) {
+      const result = await runCellExec(paths, {
+        sandbox: false, nodeKind: "satellite",
+        secretEnv: Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`TOKEN_${i}`, "é😀".repeat(2500)])),
+        argv: [process.execPath, "-e", `process.stdout.write(process.env.TOKEN_3);process.exitCode=${exitCode}`],
+      });
+      assert.equal(result.exitCode, exitCode);
+      assert.equal(result.status, exitCode === 0 ? "ok" : "nonzero");
+      assert.equal(result.stdout, "[REDACTED]");
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
