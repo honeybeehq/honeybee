@@ -267,6 +267,9 @@ export async function runCellExec(
   if (!Array.isArray(spec.argv) || spec.argv.length === 0 || spec.argv.some((a) => typeof a !== "string")) {
     throw new Error("cell.exec argv must be a non-empty string array");
   }
+  if (process.platform === "darwin" && (spec.secretEnv || spec.outputCapture)) {
+    throw new Error("secret_execution_containment_unavailable");
+  }
   const secretEnv = spec.secretEnv ? validateSecretEnv(spec.secretEnv) : {};
   const timeoutMs = clampCellExecTimeout(spec.timeoutMs);
   const cwd = containedExecCwd(paths.spaceDir, spec.cwd);
