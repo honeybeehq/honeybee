@@ -1,3 +1,4 @@
+import { mirrorBeeRow, type PublicBeeRow } from "../../core/src/envRedaction.ts";
 import { HumanOutputLedger } from "../../core/src/humanOutput.ts";
 import { readAccountLease, presentAccountLease } from "../../core/src/accountLease.ts";
 /**
@@ -311,7 +312,7 @@ function mapTrackRow(r: Row): TrackRow {
 
 export interface StaleViewResult {
   view: BeeView;
-  bee: BeeRow | null;
+  bee: PublicBeeRow | null;
   runtime: RuntimeRow | null;
   move: BeeMoveView | null;
   cell: CellRow | null;
@@ -388,7 +389,7 @@ export class ReadOnlyStore {
         bee ? facts.filter(row => row.flag !== null).map(row => row.flag as Flag) : [],
         { runtimeStartHeld: facts.some(row => row.flag === "resource_blocked" && typeof row.detail === "string" && row.detail.startsWith("runtime_start_held:")), automaticQuotaRecovery: automaticQuotaRecovery(bee, runtime, recoveries), deliveryConfirmations: readDeliveryConfirmations({ prepare: sql => this.stmt(sql) }, beeId, runtime?.generation ?? null) },
       ),
-      bee,
+      bee: mirrorBeeRow(bee),
       runtime,
       move: this.latestMoveView(beeId),
       cell: bee?.cellId ? this.getCell(bee.cellId) : null,

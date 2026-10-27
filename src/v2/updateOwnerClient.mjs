@@ -19,6 +19,7 @@ export async function readLiveUpdateOwner(socketPath, dataDir) {
   let client;
   try {
     client = await RpcClient.connect(socketPath, 3000, undefined, {
+      updateOwnerCompatibility: true,
       caller: { dataDir, expectedInstanceId: liveEndpoint(dataDir)?.instanceId ?? null },
     });
   } catch (error) {

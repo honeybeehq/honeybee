@@ -1,3 +1,4 @@
+import { mirrorBeeRow } from "../src/envRedaction.ts";
 import { readFileSync } from "node:fs";
 import { projectQuestionDismissalResult } from "../../daemon/src/questionDismissalProjection.ts";
 import { presentAccountLease } from "../src/accountLease.ts";
@@ -55,7 +56,7 @@ test("mirror.1: live rows carry exactly the declared keys — bees (view/bee/run
 
     const row: MirrorBeeRow = {
       view: store.view(bee.id),
-      bee: store.getBee(bee.id),
+      bee: mirrorBeeRow(store.getBee(bee.id)),
       runtime: store.currentRuntime(bee.id),
       move: null,
       cell: null,
@@ -163,7 +164,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
     const snapshot: MirrorSnapshot = {
       threadOperations: [],
       seq: store.lastAuditSeq(),
-      bees: [{ view: store.view(bee.id), bee: store.getBee(bee.id), runtime: store.currentRuntime(bee.id), move: null, cell: null, handoff: null }],
+      bees: [{ view: store.view(bee.id), bee: mirrorBeeRow(store.getBee(bee.id)), runtime: store.currentRuntime(bee.id), move: null, cell: null, handoff: null }],
       cells: [],
       beeMoves: [],
       beeHandoffs: [],
@@ -226,7 +227,6 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "archivedAt": null,
         "lastOutputAt": null,
         "providerSessionId": null,
-        "env": {},
         "importedFrom": null,
         "spawnFailures": 0,
         "args": null,
@@ -247,7 +247,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "humanOutputMode": "legacy",
         "humanAcknowledgementTrackingSince": null,
         "lastHumanAcknowledgementAt": null,
-        "unansweredHumanMessage": null
+        "unansweredHumanMessage": null,
+        "envKeys": []
       },
       "runtime": {
         "beeId": "BEE_ID",

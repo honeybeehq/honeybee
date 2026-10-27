@@ -61,7 +61,7 @@ if (mode === 'owner') {
         for (const line of frames.push(chunk)) {
           const frame = JSON.parse(line);
           if (!handshake) {
-            assert.equal(frame.protocol, 'v2/1');
+            assert.equal(frame.protocol, 'v2/2');
             assert.deepEqual(Object.keys(frame), ['protocol']);
             handshake = true;
             unix.write(line + '\n');

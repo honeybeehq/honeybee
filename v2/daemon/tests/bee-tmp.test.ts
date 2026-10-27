@@ -184,9 +184,9 @@ async function runProbe(opts: { nodeKind?: "satellite"; bees?: { tmpRoot?: strin
   const client = await daemon.client();
   const spawned = await client.request<SpawnResult>("spawn", { name: "tmp-probe", agent: "probe", cwd: rig.dir });
   const report = await waitFor(() => latestReport(outDir, spawned.beeId), "probe report", 30_000);
-  const view = await client.request<ViewResult>("view", { beeId: spawned.beeId, revealEnv: true });
-  assert.equal(view.bee?.env.TMPDIR, undefined, "daemon-set tmp env never lands in the stored bee env");
-  assert.equal(view.bee?.env.NODE_COMPILE_CACHE, undefined);
+  const view = await client.request<ViewResult>("view", { beeId: spawned.beeId });
+  assert.equal(view.bee?.envKeys.includes("TMPDIR"), false, "daemon-set tmp env never lands in the stored bee env");
+  assert.equal(view.bee?.envKeys.includes("NODE_COMPILE_CACHE"), false);
   client.close();
   return {
     report,

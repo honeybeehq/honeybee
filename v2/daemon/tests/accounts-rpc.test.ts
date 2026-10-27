@@ -375,7 +375,7 @@ test("rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → re
       return v.view.generation === 2 && v.view.runtimeState !== "stopped" && v.bee?.providerSessionId && v.bee.providerSessionId !== sid1 ? v : null;
     }, "generation 2 with a fresh session id", 15_000);
     assert.equal(gen2.bee?.account, "claude-b");
-    assert.equal(gen2.bee?.env.CLAUDE_CONFIG_DIR, homeB);
+    assert.equal(gen2.bee?.envKeys.includes("CLAUDE_CONFIG_DIR"), true);
     assert.equal(gen2.bee?.forkSeed, null, "seed consumed once the fork's own id is known");
     await waitState(client, spawned.beeId, "idle", "idle on generation 2");
     const boots2 = jsonl<{ env: { CLAUDE_CONFIG_DIR: string | null }; resumed: string | null; forked: boolean; sessionId: string }>(argvLog);
@@ -395,7 +395,7 @@ test("rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → re
     assert.equal(back.commandId, null);
     const rebound = await client.request<ViewResult>("view", { beeId: spawned.beeId });
     assert.equal(rebound.bee?.account, "claude-a");
-    assert.equal(rebound.bee?.env.CLAUDE_CONFIG_DIR, homeA);
+    assert.equal(rebound.bee?.envKeys.includes("CLAUDE_CONFIG_DIR"), true);
     assert.equal(rebound.view.runtimeState, "stopped");
     // rebind_only carries the conversation too — the next wake forks it in home A
     const sid2 = gen2.bee?.providerSessionId as string;
@@ -408,7 +408,7 @@ test("rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → re
     await rejects(() => client.request("bee.swapAccount", { beeId: spawned.beeId, account: "claude-b" }), "transcript_unavailable");
     const untouched = await client.request<ViewResult>("view", { beeId: spawned.beeId });
     assert.equal(untouched.bee?.account, "claude-a");
-    assert.equal(untouched.bee?.env.CLAUDE_CONFIG_DIR, homeA);
+    assert.equal(untouched.bee?.envKeys.includes("CLAUDE_CONFIG_DIR"), true);
     assert.equal(untouched.bee?.forkSeed, sid2, "no rekey, no rebind");
     client.close();
   } finally {
@@ -828,7 +828,7 @@ test("rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delay
       const v = await client.request<ViewResult>("view", { beeId: bee.beeId });
       return v.bee?.account === "claude-b" && v.view.generation === 2 && v.view.runtimeState !== "stopped" ? v : null;
     }, "rotated to claude-b on generation 2", 15_000);
-    assert.equal(swapped.bee?.env.CLAUDE_CONFIG_DIR, homeB);
+    assert.equal(swapped.bee?.envKeys.includes("CLAUDE_CONFIG_DIR"), true);
     // the exhausted account carries the evidence; the bee's flag was set by the adapter evidence
     const acctA = await client.request<AccountGetResult>("account.get", { id: "claude-a" });
     assert.ok(acctA.account.exhaustedAt, "exhaustion evidence recorded on the account");
@@ -945,7 +945,7 @@ test("rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit 
       const v = await client.request<ViewResult>("view", { beeId: idle.beeId });
       return v.bee?.account === "claude-fleet" && v.view.generation === 2 ? v : null;
     }, "idle bee moved to claude-fleet on generation 2", 15_000);
-    assert.equal(moved.bee?.env.CLAUDE_CONFIG_DIR, homeFleet);
+    assert.equal(moved.bee?.envKeys.includes("CLAUDE_CONFIG_DIR"), true);
     const note = await waitFor(async () => {
       const { messages } = await client.request<MailboxResult>("mailbox", { beeId: idle.beeId });
       const found = messages.find((m) => m.sender === "hive");

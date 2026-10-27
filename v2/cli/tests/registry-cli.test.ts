@@ -133,8 +133,8 @@ test("regcli.3: template run and --template execute migrated presets through v2 
     assert.equal(view.bee?.name, "committer");
     assert.equal(view.bee?.cwd, scratch);
     assert.deepEqual(view.bee?.tags, ["preset"]);
-    assert.equal(view.bee?.env.TEMPLATE_ENV, "from-template");
-    assert.equal(view.bee?.env.EXPLICIT_ENV, "wins");
+    assert.ok(view.bee?.envKeys.includes("TEMPLATE_ENV"));
+    assert.ok(view.bee?.envKeys.includes("EXPLICIT_ENV"));
     await waitFor(async () => {
       const mailbox = await client.request<MailboxResult>("mailbox", { beeId: launch.beeId });
       return mailbox.messages.some((m) => m.id === launch.messageId && m.body === "Do the commit" && m.deliveredAt != null);

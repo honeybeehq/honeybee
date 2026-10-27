@@ -1,3 +1,4 @@
+import type { PublicBeeRow } from "./envRedaction.ts";
 import type { BeeTellRow, BeeReactionRow } from "./humanOutputTypes.ts";
 import type { ThreadOperationView } from "./threadOperation.ts";
 /**
@@ -21,7 +22,7 @@ import { LOGIN_FLOW_KEYS, type LoginFlowRow } from "./loginFlow.ts";
 export interface MirrorBeeRow {
   view: BeeView;
   /** null only for a view of a deleted/never-existed bee (never in snapshots). */
-  bee: BeeRow | null;
+  bee: PublicBeeRow | null;
   runtime: RuntimeRow | null;
   /** v21 — latest move receipt (in-flight, complete, or failed). Null only when the bee has never moved. */
   move: BeeMoveView | null;
@@ -305,7 +306,7 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "lastOutputAt",
   // v3 (WP7): additive — a v2/1 materializer that ignores unknown keys stays correct.
   "providerSessionId",
-  "env",
+  "envKeys",
   "importedFrom",
   // v4: consecutive boot failures (the spawn-retry budget); additive likewise.
   "spawnFailures",
@@ -333,7 +334,6 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "lastTurnTrigger",
   "lastHumanOutputAt",
 ] as const;
-export const MIRROR_RAW_BEE_ENV_KEYS = ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "GROK_HOME"] as const;
 export const MIRROR_RUNTIME_KEYS = [
   "beeId",
   "generation",

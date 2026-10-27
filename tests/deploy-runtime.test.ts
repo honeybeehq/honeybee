@@ -302,13 +302,13 @@ for (const state of ["corrupt", "null", "sentinel", "missing-meta"] as const) {
   });
 }
 
-test("reservation lab: live schema 44 owner takes precedence over offline reservation", async () => {
+for (const protocol of ["v2/1", "v2/2"]) test(`reservation lab: live schema 44 owner takes precedence over offline reservation (${protocol})`, async () => {
   await withDeployWorld(async ({ root }) => {
     await seedReservation(root, false);
     const reservation = { id: "live-owner", epoch: 8, active: true, recoverySubjectDigest: `sha256:${"b".repeat(64)}` };
     let status: unknown = { runtimeRoot: root, storePath: join(root, "..", "v2", "core.sqlite3"), schemaVersion: 44, reservation };
     const server = createServer(socket => {
-      socket.write(`${JSON.stringify({ protocol: "v2/1" })}\n`);
+      socket.write(`${JSON.stringify({ protocol })}\n`);
       let buffer = "";
       socket.on("data", chunk => {
         buffer += chunk;

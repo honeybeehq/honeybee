@@ -219,8 +219,8 @@ test("handoff.rpc.cross-family: claude → codex on an idle hsr bee keeps identi
   assert.equal(after.bee?.args, null, "cross-family: source-harness args are dropped unless given");
   assert.equal(after.bee?.account, codexAccount.account.id, "bound to the explicit TARGET-harness account");
   assert.equal(done.to.account, codexAccount.account.id);
-  assert.equal(after.bee?.env.CLAUDE_CONFIG_DIR, undefined, "the source harness home does not leak into the target env");
-  assert.equal(after.bee?.env.CODEX_HOME, codexAccount.account.homePath, "the target account home is installed");
+  assert.equal(after.bee?.envKeys.includes("CLAUDE_CONFIG_DIR"), false, "the source harness home does not leak into the target env");
+  assert.equal(after.bee?.envKeys.includes("CODEX_HOME"), true, "the target account home is installed");
   assert.equal(after.bee?.providerSessionId, "codex-session", "the target reported its OWN thread");
   assert.equal(after.runtime?.generation, v.runtime!.generation + 1);
   assert.equal(after.runtime?.state, "idle");

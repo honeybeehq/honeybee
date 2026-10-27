@@ -66,7 +66,7 @@ export async function verifyQuestionWithdrawal(dataDir: string): Promise<void> {
       if (newline < 0) return;
       try {
         const hello = JSON.parse(buffer.slice(0, newline));
-        if (hello.protocol !== "v2/1" || !Array.isArray(hello.capabilities) || !hello.capabilities.includes("question.withdraw.v1")) {
+        if ((hello.protocol !== "v2/1" && hello.protocol !== "v2/2") || !Array.isArray(hello.capabilities) || !hello.capabilities.includes("question.withdraw.v1")) {
           throw new Error("deploy: question.withdraw.v1 unavailable after approved provisioning");
         }
         finish();

@@ -256,7 +256,7 @@ import {
   type LoginMethodDescriptor,
 } from "./loginFlow.ts";
 import { deriveBeeView } from "./view.ts";
-import { carriesBeeEnvRecord, redactBeeResultEnv } from "./envRedaction.ts";
+import { carriesBeeEnvRecord, publicBeeResult } from "./envRedaction.ts";
 import {
   fieldsEqual,
   normalizeTemplate,
@@ -2248,7 +2248,7 @@ export class CoreStore {
             receipt.skippedUnrecognised += 1;
             continue;
           }
-          const redacted = JSON.stringify(redactBeeResultEnv(parsed));
+          const redacted = JSON.stringify(publicBeeResult(parsed));
           if (redacted !== stored) updates.push([redacted, String(row.key)]);
         } catch {
           receipt.skippedUnrecognised += 1;

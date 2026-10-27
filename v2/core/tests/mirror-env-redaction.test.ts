@@ -2,15 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { MIRROR_RAW_BEE_ENV_KEYS, SCHEMA_VERSION, type AuditRow } from "../src/index.ts";
-import {
-  REDACTED_ENV_VALUE,
-  isSecretEnvKey,
-  mirrorBeeAuditRow,
-  mirrorBeeRow,
-  redactBeeResultEnv,
-  redactMirrorBeeEnv,
-} from "../src/envRedaction.ts";
+import { SCHEMA_VERSION, type AuditRow } from "../src/index.ts";
+import { publicAuditRow, publicBeeResult, publicEnvRecords, toPublicBee } from "../src/envRedaction.ts";
 import { harness, makeBee } from "./helpers.ts";
 
 const TOKEN = "fake-h18b-token-DEADBEEF";
@@ -23,14 +16,7 @@ const RAW_ENV = {
   CLAUDE_CONFIG_DIR: "/homes/claude-a",
   GROK_HOME: "/homes/grok-a",
 };
-const MIRROR_ENV = {
-  APIARY_AGENT_TOKEN: REDACTED_ENV_VALUE,
-  DATABASE_URL: REDACTED_ENV_VALUE,
-  HIVE_BEE: REDACTED_ENV_VALUE,
-  CODEX_HOME: "/homes/codex-a",
-  CLAUDE_CONFIG_DIR: "/homes/claude-a",
-  GROK_HOME: "/homes/grok-a",
-};
+const ENV_KEYS = Object.keys(RAW_ENV).sort();
 
 function auditRow(kind: string, payload: Record<string, unknown>): AuditRow {
   return { seq: 1, ts: 1, kind, beeId: "b1", payload };
@@ -76,57 +62,23 @@ function shapeOf(value: unknown): unknown {
   return typeof value;
 }
 
-test("mirror-env.1: the raw allowlist is exactly the keys Apiary reads, and none is secret-named", () => {
-  assert.deepEqual([...MIRROR_RAW_BEE_ENV_KEYS], ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "GROK_HOME"]);
-  for (const key of MIRROR_RAW_BEE_ENV_KEYS) assert.equal(isSecretEnvKey(key), false, key);
-});
-
-test("mirror-env.2: mirror bee env keeps every key and only allowlisted values", () => {
-  const input = { ...RAW_ENV };
-  assert.deepEqual(redactMirrorBeeEnv(input), MIRROR_ENV);
-  assert.deepEqual(input, RAW_ENV);
-  assert.deepEqual(redactMirrorBeeEnv({}), {});
-  assert.equal(mirrorBeeRow(null), null);
-});
-
-test("mirror-env.3: every bee audit payload that carries env is redacted without mutating the stored row", () => {
-  const rows = [
-    auditRow("bee.created", { bee: { id: "b1", name: "worker", env: { ...RAW_ENV } } }),
-    auditRow("bee.env_set", { beeId: "b1", env: { ...RAW_ENV }, previous: { ...RAW_ENV } }),
-    auditRow("bee.handoff_switched", { beeId: "b1", env: { ...RAW_ENV }, previousEnv: { ...RAW_ENV }, args: ["--token", "kept"] }),
-    auditRow("bee.handoff_admitted", { handoff: { id: "h1", targetEnv: { ...RAW_ENV }, to: { agent: "codex", args: null } } }),
-    auditRow("bee.handoff_phase", { handoffId: "h1", beeId: "b1", phase: "switched", previous: "admitted", handoff: { id: "h1", targetEnv: { ...RAW_ENV } } }),
-  ];
-  const before = JSON.stringify(rows);
-  const mirrored = rows.map(mirrorBeeAuditRow);
-  assert.equal(JSON.stringify(rows), before);
-  const text = JSON.stringify(mirrored);
-  assert.equal(text.includes(TOKEN), false);
-  assert.equal(text.includes(DSN), false);
-  assert.deepEqual((mirrored[0]!.payload.bee as { env: unknown }).env, MIRROR_ENV);
-  assert.deepEqual(mirrored[1]!.payload, { beeId: "b1", env: MIRROR_ENV, previous: MIRROR_ENV });
-  assert.deepEqual(mirrored[2]!.payload, { beeId: "b1", env: MIRROR_ENV, previousEnv: MIRROR_ENV, args: ["--token", "kept"] });
-  assert.deepEqual(mirrored[3]!.payload, { handoff: { id: "h1", targetEnv: MIRROR_ENV, to: { agent: "codex", args: null } } });
-  assert.equal(mirrored[4]!.payload.previous, "admitted");
-  assert.deepEqual(shapeOf(mirrored), shapeOf(rows));
-});
-
-test("mirror-env.4: non-env bee payloads and non-bee rows pass through", () => {
-  const renamed = auditRow("bee.renamed", { beeId: "b1", name: "next", previous: "worker" });
-  assert.deepEqual(mirrorBeeAuditRow(renamed), renamed);
-  const tagged = auditRow("bee.tagged", { beeId: "b1", tags: ["a"], previous: [], added: ["a"], removed: [] });
-  assert.deepEqual(mirrorBeeAuditRow(tagged), tagged);
-  const template = auditRow("template.put", { template: { id: "t1", env: { API_KEY: TOKEN } }, outcome: "created" });
-  assert.equal(mirrorBeeAuditRow(template), template);
-});
-
-test("mirror-env.5: a stored result is redacted exactly when it carries a bee row", () => {
-  const result = { bee: { id: "b1", env: { ...RAW_ENV }, args: null }, applied: true };
-  assert.deepEqual(redactBeeResultEnv(result), { bee: { id: "b1", env: { ...RAW_ENV, APIARY_AGENT_TOKEN: REDACTED_ENV_VALUE }, args: null }, applied: true });
-  assert.deepEqual(result.bee.env, RAW_ENV);
-  for (const value of [null, 3, "text", [], { bee: null }, { bee: { env: null } }, { template: { env: { API_KEY: TOKEN } } }, { beeId: "b1", commandId: 7 }]) {
-    assert.equal(redactBeeResultEnv(value), value);
-  }
+test("public bee and audit projections preserve raw launch data", () => {
+  const h = harness();
+  try {
+    const store = h.open();
+    const { bee } = makeBee(store);
+    const raw = { ...bee, env: RAW_ENV };
+    const projected = toPublicBee(raw);
+    assert.deepEqual(projected.envKeys, ENV_KEYS);
+    assert.equal("env" in projected, false);
+    assert.deepEqual(raw.env, RAW_ENV);
+    const event = auditRow("bee.env_set", { env: RAW_ENV, previous: RAW_ENV });
+    assert.deepEqual(publicAuditRow(event).payload, { envKeys: ENV_KEYS, previousEnvKeys: ENV_KEYS });
+    assert.equal(JSON.stringify(publicAuditRow(event)).includes(DSN), false);
+    const template = auditRow("template.put", { template: { env: RAW_ENV } });
+    assert.equal(publicAuditRow(template), template);
+    assert.deepEqual(publicEnvRecords(projected), projected);
+  } finally { h.cleanup(); }
 });
 
 test("mirror-env.6: the schema migration redacts stored idempotency results once, in place", () => {
@@ -148,10 +100,10 @@ test("mirror-env.6: the schema migration redacts stored idempotency results once
     const before = storedRows(h.path);
 
     const migrated = h.open();
-    assert.deepEqual({ ...migrated.rpcIdempotencyRedactionReceipt, wallMs: 0 }, { seen: 5, redacted: 1, skippedUnparseable: 1, skippedUnrecognised: 1, complete: true, wallMs: 0 });
+    assert.deepEqual({ ...migrated.rpcIdempotencyRedactionReceipt, wallMs: 0 }, { seen: 5, redacted: 2, skippedUnparseable: 1, skippedUnrecognised: 1, complete: true, wallMs: 0 });
     const replay = migrated.lookupRpcResult("k-rename");
-    assert.deepEqual(replay?.result, { bee: { ...bee, env: { ...RAW_ENV, APIARY_AGENT_TOKEN: REDACTED_ENV_VALUE } }, applied: true });
-    assert.deepEqual(shapeOf(replay?.result), shapeOf(rename));
+    assert.deepEqual(replay?.result, { bee: { ...toPublicBee(bee), envKeys: ENV_KEYS }, applied: true });
+    assert.deepEqual(shapeOf(replay?.result), shapeOf(publicEnvRecords(rename)));
     assert.deepEqual(migrated.lookupRpcResult("k-spawn")?.result, spawn);
     assert.equal(migrated.lookupRpcResult("k-spawn")?.commandId, 7);
     assert.deepEqual(migrated.lookupRpcResult("k-template")?.result, template);
@@ -160,7 +112,7 @@ test("mirror-env.6: the schema migration redacts stored idempotency results once
     const after = storedRows(h.path);
     assert.deepEqual(after.map(({ key, verb, command_id, created_at }) => ({ key, verb, command_id, created_at })),
       before.map(({ key, verb, command_id, created_at }) => ({ key, verb, command_id, created_at })));
-    assert.deepEqual(after.filter((row, index) => row.result !== before[index]!.result).map((row) => row.key), ["k-rename"]);
+    assert.deepEqual(after.filter((row, index) => row.result !== before[index]!.result).map((row) => row.key), ["k-clean", "k-rename"]);
     assert.equal(after.find((row) => row.key === "k-rename")!.result.includes(TOKEN), false);
 
     const version = new DatabaseSync(h.path, { readOnly: true });
@@ -219,7 +171,7 @@ test("mirror-env.6b: rows the migration cannot parse or recognise are left untou
 
     const migrated = h.open();
     assert.deepEqual({ ...migrated.rpcIdempotencyRedactionReceipt, wallMs: 0 }, { seen: 14, redacted: 2, skippedUnparseable: 3, skippedUnrecognised: 6, complete: true, wallMs: 0 });
-    assert.deepEqual(migrated.lookupRpcResult("r-unknown-verb")?.result, { bee: { ...bee, env: { ...RAW_ENV, APIARY_AGENT_TOKEN: REDACTED_ENV_VALUE } }, applied: true });
+    assert.deepEqual(migrated.lookupRpcResult("r-unknown-verb")?.result, { bee: { ...toPublicBee(bee), envKeys: ENV_KEYS }, applied: true });
     migrated.close();
 
     const after = new Map(storedRows(h.path).map((row) => [row.key, row.result]));

@@ -43,6 +43,8 @@ export const RPC_ACCESS = {
   "audit.tail": "read",
   "watch": "read",
   "snapshot": "read",
+  "mirror.local.snapshot": "read",
+  "mirror.local.watch": "read",
   "template.list": "read",
   "template.get": "read",
   "template.put": "mutate",

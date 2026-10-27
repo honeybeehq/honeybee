@@ -221,7 +221,7 @@ test("cli.send-sender-wire: the real CLI request carries the authority-bound amb
   const requests: Array<{ id: number; verb: string; params: Record<string, unknown> }> = [];
   const server = createServer((socket) => {
     socket.setEncoding("utf8");
-    socket.write(`${JSON.stringify({ protocol: "v2/1" })}\n`);
+    socket.write(`${JSON.stringify({ protocol: "v2/2" })}\n`);
     let buffer = "";
     socket.on("data", (chunk: string) => {
       buffer += chunk;
@@ -1011,7 +1011,7 @@ test("cli.answer-display-label: --by stays local and question rows use plain ans
   const requests: Array<{ verb: string; params: Record<string, unknown> }> = [];
   const server = createServer((socket) => {
     socket.setEncoding("utf8");
-    socket.write(`${JSON.stringify({ protocol: "v2/1" })}\n`);
+    socket.write(`${JSON.stringify({ protocol: "v2/2" })}\n`);
     let buffer = "";
     socket.on("data", (chunk: string) => {
       buffer += chunk;

@@ -1,3 +1,4 @@
+import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
 import { StoreBackupError } from "../../core/src/storeBackup.ts";
 import { HumanOutputError } from "../../core/src/humanOutput.ts";
 import { createHash } from "node:crypto";
@@ -84,6 +85,7 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly operatorLocalHomes?: boolean;
   readonly humanChat?: HumanChatAdmission;
   readonly humanPolicyAuthority?: true;
   readonly automationAuthority?: true;
@@ -100,9 +102,9 @@ export interface RpcConn {
   /** Push a raw frame (used for watch deltas/gaps). */
   send(obj: unknown): void;
   /** Enter watch mode from this seq; subsequent flushes stream deltas. */
-  subscribeWatch(cursor: number): void;
+  subscribeWatch(cursor: number, operatorLocalHomes?: boolean): void;
   /** Re-align the watch cursor (after serving a snapshot to a watching client). */
-  alignWatch(cursor: number): void;
+  alignWatch(cursor: number, operatorLocalHomes?: boolean): void;
 }
 
 const AUTOMATION_KINDS: readonly AutomationKind[] = [
@@ -182,6 +184,7 @@ interface Connection extends RpcConn {
   relayLane: "node_relay" | "remote" | null;
   caller?: HelloCaller;
   watchCursor: number | null;
+  operatorLocalWatch: boolean;
 }
 
 const RPC_VERB_SET = new Set<string>(RPC_VERBS);
@@ -304,16 +307,25 @@ export class RpcServer {
    * becomes an explicit `{type:"gap"}` — the server never sends unbounded
    * frames, and the gap is detectable by construction.
    */
-  flushWatch(latestSeq: number, eventsSince: (fromSeq: number) => AuditRow[], maxBatch: number): void {
+  flushWatch(latestSeq: number, eventsSince: (fromSeq: number, includeOperatorLocalHomes: boolean) => AuditRow[], maxBatch: number): void {
     // Steady-state watchers share a cursor: fetch each distinct cursor once
     // per pass instead of once per connection.
-    const byCursor = new Map<number, AuditRow[]>();
+    const byCursor = new Map<string, AuditRow[]>();
     for (const conn of this.conns) {
       if (conn.watchCursor == null || conn.watchCursor >= latestSeq) continue;
-      let events = byCursor.get(conn.watchCursor);
+      if (conn.operatorLocalWatch && !this.operatorLocalAllowed(conn)) {
+        conn.operatorLocalWatch = false;
+        conn.watchCursor = null;
+        this.opts.log("rpc.mirror.local.closed reason=local_trust_lost");
+        conn.socket.destroy();
+        continue;
+      }
+      const includeHomes = conn.operatorLocalWatch;
+      const batchKey = `${conn.watchCursor}:${includeHomes}`;
+      let events = byCursor.get(batchKey);
       if (events === undefined) {
-        events = eventsSince(conn.watchCursor);
-        byCursor.set(conn.watchCursor, events);
+        events = eventsSince(conn.watchCursor, includeHomes);
+        byCursor.set(batchKey, events);
       }
       if (events.length === 0) continue;
       if (events.length > maxBatch) {
@@ -324,14 +336,19 @@ export class RpcServer {
         continue;
       }
       const last = events[events.length - 1] as AuditRow;
-      const frame: WatchFrame = { type: "delta", baseSeq: conn.watchCursor, seq: last.seq, events };
+      const frame: WatchFrame = { type: "delta", baseSeq: conn.watchCursor, seq: last.seq, events: publicEnvRecords(events, includeHomes) as AuditRow[] };
       conn.send(projectQuestionDismissalDelta(projectAnswerTriggerDelta(projectMailDeliveryDelta(frame, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities));
       conn.watchCursor = last.seq;
     }
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => !(["question.withdraw.v1", "mail.humanFirst.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => !(["mirror.local.homes.v1", "question.withdraw.v1", "mail.humanFirst.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+  }
+
+  private operatorLocalAllowed(conn: Connection): boolean {
+    if (conn.authenticatedBeeId !== undefined || conn.automationAuthority !== undefined || conn.humanChat !== undefined || conn.phoneOrigin !== undefined || conn.phoneLane !== undefined || !this.trust.enabled || this.trust.state !== "ready" || conn.ingress !== "local_unix" || conn.relayLane !== null || !conn.peerConnection) return false;
+    try { this.trust.require(conn.peerConnection, conn.ingress); return true; } catch { return false; }
   }
 
   private onConnection(socket: Socket): void {
@@ -346,16 +363,19 @@ export class RpcServer {
       relayLane: null,
       get ingress() { return localUnix ? conn.relayLane ?? "local_unix" : "remote"; },
       watchCursor: null,
+      operatorLocalWatch: false,
       send: (obj: unknown) => {
         if (socket.destroyed) return;
         this.performance.measureSync("rpc.serialize", () => {
           socket.write(`${JSON.stringify(obj)}\n`);
         });
       },
-      subscribeWatch: (cursor: number) => {
+      subscribeWatch: (cursor: number, operatorLocalHomes = false) => {
+        conn.operatorLocalWatch = operatorLocalHomes;
         conn.watchCursor = cursor;
       },
-      alignWatch: (cursor: number) => {
+      alignWatch: (cursor: number, operatorLocalHomes = false) => {
+        conn.operatorLocalWatch = operatorLocalHomes;
         if (conn.watchCursor != null) conn.watchCursor = cursor;
       },
     };
@@ -437,7 +457,12 @@ export class RpcServer {
       conn.send({ id, ok: false, error: { code: "invalid_request", message: "params must be an object" } });
       return;
     }
+    if (frame.context !== undefined) conn.operatorLocalWatch = false;
+    let includeOperatorLocalHomes = false;
     try {
+      if (params.revealEnv !== undefined && params.revealEnv !== false) {
+        throw new RpcError("caller_not_trusted", "Environment values require an authenticated human operator credential; this protocol has no human-read credential.");
+      }
       if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: coordinator installation is NOT_COVERED pending the shared step-up Stage B protected-credential prerequisite");
       const peer = conn.peerConnection;
       if (peer?.state === "verified" && peer.peer.uid !== process.geteuid!()) {
@@ -453,6 +478,10 @@ export class RpcServer {
       }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
       const result = withRpcCaller(caller, () => {
+        if (verb === "mirror.local.snapshot" || verb === "mirror.local.watch") {
+          includeOperatorLocalHomes = frame.context === undefined && Object.keys(params).length === 0 && this.operatorLocalAllowed(conn);
+          return this.opts.dispatch(verb, params, { ...conn, operatorLocalHomes: includeOperatorLocalHomes });
+        }
         const automationContext = frame.context as Record<string, unknown> | undefined;
         if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
         if (params.automationKind !== undefined || params.automationRef !== undefined || automationContext?.automationReference !== undefined) {
@@ -576,21 +605,21 @@ export class RpcServer {
         result.then(
           (value) => {
             span.end();
-            conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities) });
+            conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes) });
           },
           (err) => {
             span.end("error");
-            conn.send({ id, ok: false, error: projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities) });
+            conn.send({ id, ok: false, error: publicEnvRecords(projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)) });
           },
         );
         return;
       }
       span.end();
-      conn.send({ id, ok: true, result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities) });
+      conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes) });
     } catch (err) {
       if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
       span.end("error");
-      conn.send({ id, ok: false, error: projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities) });
+      conn.send({ id, ok: false, error: publicEnvRecords(projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)) });
     }
   }
 }
@@ -632,4 +661,21 @@ export function socketAcceptsConnections(socketPath: string, timeoutMs = 1000): 
     probe.once("connect", () => finish(true));
     probe.once("error", (err: NodeJS.ErrnoException) => finish(err.code !== "ECONNREFUSED" && err.code !== "ENOENT" && err.code !== "ENOTSOCK"));
   });
+}
+
+export const ENV_TRANSFER_VERBS: ReadonlySet<RpcVerb> = new Set([
+  "account.lease",
+  "template.list", "template.get", "template.put", "template.delete", "template.export", "template.import",
+]);
+
+export function publicBeeResponse(verb: RpcVerb, result: unknown, includeOperatorLocalHomes = false): unknown {
+  if (ENV_TRANSFER_VERBS.has(verb)) return result;
+  if ((verb === "snapshot" || verb === "watch" || verb === "mirror.local.snapshot" || verb === "mirror.local.watch") && result && typeof result === "object" && "templates" in result) {
+    const { templates, ...observation } = result;
+    return { ...publicEnvRecords(observation, includeOperatorLocalHomes) as object, templates };
+  }
+  if (verb === "audit.tail" && result && typeof result === "object" && "rows" in result && Array.isArray(result.rows)) {
+    return { ...result, rows: result.rows.map(row => publicAuditRow(row)) };
+  }
+  return publicEnvRecords(result, includeOperatorLocalHomes);
 }

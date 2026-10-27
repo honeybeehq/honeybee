@@ -118,7 +118,7 @@ test("int.1: verb round-trips over the real socket — the full bee lifecycle", 
     assert.equal(health.i1Violations, 0);
     assert.equal(health.bees.total, 1);
     const info = await client.request<{ protocol: string }>("deployInfo");
-    assert.equal(info.protocol, "v2/1");
+    assert.equal(info.protocol, "v2/2");
 
     // delete → everything gone; view reports unreachable non-existence
     await client.request("delete", { beeId });

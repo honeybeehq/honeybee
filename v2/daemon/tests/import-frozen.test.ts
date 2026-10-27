@@ -99,7 +99,7 @@ test("import.int: frozen import over RPC → revive resumes claude (--resume) an
     assert.equal(claudeView.view.runtimeState, "stopped");
     assert.equal(claudeView.view.reachable, true);
     assert.equal(claudeView.bee?.providerSessionId, CLAUDE_HSR_SESSION_ID);
-    assert.deepEqual(claudeView.bee?.env, { CLAUDE_CONFIG_DIR: claudeHome });
+    assert.deepEqual(claudeView.bee?.envKeys, ["CLAUDE_CONFIG_DIR"]);
     assert.equal(claudeView.bee?.importedFrom, "frozen");
     assert.equal(claudeView.bee?.name, "apiary-waggle-msx67afb-1");
     assert.deepEqual(claudeView.bee?.args, ["--dangerously-skip-permissions", "--model", "fable", "--effort", "high"], "per-bee args kept from the old launch argv (schema v5)");

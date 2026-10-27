@@ -1,43 +1,53 @@
-import { MIRROR_RAW_BEE_ENV_KEYS } from "./mirror.ts";
+import { isAbsolute } from "node:path";
 import type { AuditRow, BeeRow } from "./types.ts";
 
-export const REDACTED_ENV_VALUE = "<redacted>";
-
-const SECRET_ENV_KEY = /token|secret|key|password|credential/i;
 const ENV_FIELDS = new Set(["env", "previousEnv", "targetEnv"]);
-const MIRROR_RAW_KEYS: ReadonlySet<string> = new Set(MIRROR_RAW_BEE_ENV_KEYS);
-
-type EnvRedactor = (env: Record<string, string>) => Record<string, string>;
-
-export function isSecretEnvKey(key: string): boolean {
-  return SECRET_ENV_KEY.test(key);
-}
-
-export function redactEnv(env: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(env).map(([key, value]) => [key, isSecretEnvKey(key) ? REDACTED_ENV_VALUE : value]));
-}
 
 function isStringRecord(value: unknown): value is Record<string, string> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    && Object.values(value).every((entry) => typeof entry === "string");
+    && Object.values(value).every(entry => typeof entry === "string");
 }
 
-export function redactEnvRecords<T>(value: T, redact: EnvRedactor = redactEnv): T {
-  if (Array.isArray(value)) return value.map((entry) => redactEnvRecords(entry, redact)) as T;
-  if (typeof value !== "object" || value === null) return value;
-  const source = value as Record<string, unknown>;
-  const envSibling = "env" in source && isStringRecord(source.env);
-  const out: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(source)) {
-    const envField = ENV_FIELDS.has(key) || (key === "previous" && envSibling);
-    out[key] = envField && isStringRecord(entry) ? redact(entry) : redactEnvRecords(entry, redact);
+export type PublicBeeRow = Omit<BeeRow, "env"> & { envKeys: string[] };
+
+export function toPublicBee(bee: BeeRow): PublicBeeRow {
+  const { env, ...publicBee } = bee;
+  return { ...publicBee, envKeys: Object.keys(env).sort() };
+}
+
+export function mirrorBeeRow(bee: BeeRow | null): PublicBeeRow | null {
+  return bee === null ? null : toPublicBee(bee);
+}
+
+export interface OperatorLocalHomes {
+  codexHome: string | null;
+  claudeConfigDir: string | null;
+  grokHome: string | null;
+}
+
+export type OperatorLocalBeeRow = PublicBeeRow & { operatorLocalHomes: OperatorLocalHomes };
+
+export function operatorLocalHomesOf(env: Record<string, string>): OperatorLocalHomes {
+  const path = (value: string | undefined): string | null => value && isAbsolute(value) && !/[\0\r\n]/.test(value) ? value : null;
+  return { codexHome: path(env.CODEX_HOME), claudeConfigDir: path(env.CLAUDE_CONFIG_DIR), grokHome: path(env.GROK_HOME) };
+}
+
+export function operatorLocalBee(bee: BeeRow | null): OperatorLocalBeeRow | null {
+  return bee === null ? null : { ...toPublicBee(bee), operatorLocalHomes: operatorLocalHomesOf(bee.env) };
+}
+
+export function publicAuditRow(row: AuditRow, includeOperatorLocalHomes = false): AuditRow {
+  if (row.kind.startsWith("template.")) return row;
+  const payload = publicEnvRecords(row.payload) as Record<string, unknown>;
+  if (includeOperatorLocalHomes && row.kind.startsWith("bee.")) {
+    const bee = row.payload.bee;
+    if (bee && typeof bee === "object" && "env" in bee && isStringRecord(bee.env)) {
+      payload.bee = { ...payload.bee as object, operatorLocalHomes: operatorLocalHomesOf(bee.env) };
+    } else if (isStringRecord(row.payload.env)) {
+      payload.operatorLocalHomes = operatorLocalHomesOf(row.payload.env);
+    }
   }
-  return out as T;
-}
-
-export function redactBeeResultEnv<T>(result: T): T {
-  const bee = (result as { bee?: { env?: unknown } | null } | null)?.bee;
-  return typeof bee?.env === "object" && bee.env !== null ? redactEnvRecords(result) : result;
+  return { ...row, payload };
 }
 
 export function carriesBeeEnvRecord(result: unknown): boolean {
@@ -46,14 +56,34 @@ export function carriesBeeEnvRecord(result: unknown): boolean {
   return typeof bee === "object" && bee !== null && !Array.isArray(bee) && isStringRecord((bee as { env?: unknown }).env);
 }
 
-export function redactMirrorBeeEnv(env: Record<string, string>): Record<string, string> {
-  return Object.fromEntries(Object.entries(env).map(([key, value]) => [key, MIRROR_RAW_KEYS.has(key) ? value : REDACTED_ENV_VALUE]));
+export function publicBeeResult(result: unknown): unknown {
+  return carriesBeeEnvRecord(result) ? publicEnvRecords(result) : result;
 }
 
-export function mirrorBeeRow<T extends BeeRow | null>(bee: T): T {
-  return bee === null ? bee : { ...bee, env: redactMirrorBeeEnv(bee.env) };
-}
-
-export function mirrorBeeAuditRow(row: AuditRow): AuditRow {
-  return row.kind.startsWith("bee.") ? { ...row, payload: redactEnvRecords(row.payload, redactMirrorBeeEnv) } : row;
+export function publicEnvRecords(value: unknown, includeOperatorLocalHomes = false): unknown {
+  if (Array.isArray(value)) return value.map(entry => publicEnvRecords(entry, includeOperatorLocalHomes));
+  if (typeof value !== "object" || value === null) return value;
+  const source = value as Record<string, unknown>;
+  const envSibling = isStringRecord(source.env);
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(source)) {
+    if (key === "operatorLocalHomes") {
+      if (includeOperatorLocalHomes && entry && typeof entry === "object") {
+        const homes = entry as Record<string, unknown>;
+        out[key] = operatorLocalHomesOf({
+          ...(typeof homes.codexHome === "string" ? { CODEX_HOME: homes.codexHome } : {}),
+          ...(typeof homes.claudeConfigDir === "string" ? { CLAUDE_CONFIG_DIR: homes.claudeConfigDir } : {}),
+          ...(typeof homes.grokHome === "string" ? { GROK_HOME: homes.grokHome } : {}),
+        });
+      }
+      continue;
+    }
+    if ((ENV_FIELDS.has(key) || key === "previous" && envSibling) && isStringRecord(entry)) {
+      const field = key === "previous" ? "previousEnvKeys" : `${key}Keys`;
+      out[field] = Object.keys(entry).sort();
+    } else {
+      out[key] = publicEnvRecords(entry, includeOperatorLocalHomes);
+    }
+  }
+  return out;
 }

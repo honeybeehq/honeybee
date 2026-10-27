@@ -1,3 +1,4 @@
+import type { PublicBeeRow } from "../../core/src/envRedaction.ts";
 export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import { honeybeeBuildIdentity, type BuildIdentity } from "../../../src/release/buildIdentity.ts";
 export { UPDATE_RECOVERY_CONTRACT } from "../../../src/updateReservation.ts";
@@ -79,7 +80,7 @@ import type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocation
 
 export type { AccountAdmissionClaim, AccountAllocationContext, AccountAllocationReceipt, AccountNodeActivity, EphemeralCredential, EphemeralCredentialFile } from "./accountsService.ts";
 
-export const PROTOCOL = "v2/1";
+export const PROTOCOL = "v2/2";
 export const BUILD_IDENTITY = Object.freeze(honeybeeBuildIdentity());
 export const DAEMON_VERSION = BUILD_IDENTITY.version;
 
@@ -90,6 +91,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "mirror.local.homes.v1",
   "mail.humanFirst.v1",
   "mail.batching.v1",
   "mail.delivery.confirmation.v1",
@@ -525,6 +527,8 @@ export const RPC_VERBS = [
   // watch
   "watch",
   "snapshot",
+  "mirror.local.snapshot",
+  "mirror.local.watch",
   // templates + tracks + packages (WP6a, spec 06 §1.4.1)
   "template.list",
   "template.get",
@@ -1269,7 +1273,7 @@ export interface SwapAccountResult extends DedupMarkers {
  * Audit `bee.renamed`.
  */
 export interface RenameResult extends DedupMarkers {
-  bee: BeeRow;
+  bee: PublicBeeRow;
   applied: boolean;
 }
 
@@ -1333,7 +1337,7 @@ export interface NamingUsageResult {
  * workspaces. Audit `bee.tagged` (payload carries the full new list).
  */
 export interface TagResult extends DedupMarkers {
-  bee: BeeRow;
+  bee: PublicBeeRow;
   applied: boolean;
   added: string[];
   removed: string[];
@@ -1374,7 +1378,7 @@ export interface ForkResult extends DedupMarkers {
   /** The source's provider session id the fork will fork from; null only on old persisted receipts. */
   forkSeed: string | null;
   messageId: number | null;
-  bee: BeeRow;
+  bee: PublicBeeRow;
   allocation?: AccountAllocationReceipt;
   allocationClaimId?: string;
 }
@@ -1572,7 +1576,7 @@ export interface SpawnCellParams {
  * owner node still holds it; release it there via `account.admission.release`).
  */
 export interface SetArgsResult extends DedupMarkers {
-  bee: BeeRow;
+  bee: PublicBeeRow;
   applied: boolean;
 }
 
@@ -1620,7 +1624,7 @@ export interface MutationResult extends DedupMarkers {
 export interface ViewResult {
   identityDiagnostic?: {message: "identity unresolved"; warning: boolean};
   view: BeeView;
-  bee: BeeRow | null;
+  bee: PublicBeeRow | null;
   runtime: RuntimeRow | null;
   /** v21 — latest move receipt (in-flight, complete, or failed). */
   move: BeeMoveView | null;

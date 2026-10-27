@@ -141,7 +141,8 @@ import {
   isTaskTransitionAction,
   matchAccount,
   parseTaskListRef,
-  redactEnvRecords,
+  publicAuditRow,
+  publicEnvRecords,
   TASK_STATUSES,
   type AuditRow,
   type CommandRow,
@@ -389,7 +390,6 @@ const BOOL_FLAGS = new Set([
   "--remote",
   "--no-wait",
   "--replace-account",
-  "--reveal-env",
 ]);
 
 const KNOWN_FLAGS = new Set([...VALUE_FLAGS, ...BOOL_FLAGS, ...OPTIONAL_VALUE_FLAGS]);
@@ -532,7 +532,6 @@ interface CliContext {
   target: ResolvedDaemonTarget;
   io: CliIo;
   json: boolean;
-  revealEnv: boolean;
   allowForeignDaemon: boolean;
   daemon: { instance: DaemonInstance | null; connected: boolean };
 }
@@ -548,7 +547,6 @@ function makeContext(parsed: Parsed, io: CliIo): CliContext {
     target,
     io,
     json: parsed.flags.get("--json") === true,
-    revealEnv: parsed.flags.get("--reveal-env") === true,
     allowForeignDaemon: parsed.flags.get("--allow-foreign-daemon") === true,
     daemon: { instance: null, connected: false },
   };
@@ -624,14 +622,6 @@ export function resolveBeeIn(views: ViewResult[], needle: string): string {
 // ---------------------------------------------------------------------------
 // output
 // ---------------------------------------------------------------------------
-
-function envOutput<T>(ctx: CliContext, value: T): T {
-  return ctx.revealEnv ? value : redactEnvRecords(value);
-}
-
-function envParams(ctx: CliContext): { revealEnv?: true } {
-  return ctx.revealEnv ? { revealEnv: true } : {};
-}
 
 function emit(ctx: CliContext, human: string[], jsonValue: unknown, stale: boolean): void {
   if (ctx.json) {
@@ -1440,7 +1430,7 @@ async function cmdRename(ctx: CliContext, parsed: Parsed): Promise<number> {
     const list = await c.request<ListResult>("list");
     const beeId = resolveBeeIn(list.views, needle);
     const r = await c.request<RenameResult>("bee.rename", { beeId, name, idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined });
-    emit(ctx, [confirm(r.applied ? "ok" : "info", r.applied ? "renamed" : "unchanged", `${beeId} → ${JSON.stringify(r.bee.name)}`, r.deduped)], envOutput(ctx, r), false);
+    emit(ctx, [confirm(r.applied ? "ok" : "info", r.applied ? "renamed" : "unchanged", `${beeId} → ${JSON.stringify(r.bee.name)}`, r.deduped)], publicEnvRecords(r), false);
     return 0;
   });
 }
@@ -1472,7 +1462,7 @@ async function cmdTag(ctx: CliContext, parsed: Parsed): Promise<number> {
           r.deduped,
         ),
       ],
-      envOutput(ctx, r),
+      publicEnvRecords(r),
       false,
     );
     return 0;
@@ -1578,7 +1568,7 @@ async function cmdFork(ctx: CliContext, parsed: Parsed): Promise<number> {
           r.deduped,
         ),
       ],
-      envOutput(ctx, r),
+      publicEnvRecords(r),
       false,
     );
     return 0;
@@ -3099,7 +3089,7 @@ async function cmdBee(ctx: CliContext, parsed: Parsed): Promise<number> {
               `args for ${beeId}: ${result.bee.args ? JSON.stringify(result.bee.args) : "(none)"} — applies to the next runtime (stop or revive)`,
             ),
           ],
-          envOutput(ctx, result),
+          publicEnvRecords(result),
           false,
         );
         return 0;
@@ -3132,14 +3122,14 @@ async function cmdView(ctx: CliContext, parsed: Parsed): Promise<number> {
     async (c) => {
       const list = await c.request<ListResult>("list");
       const beeId = resolveBeeIn(list.views, needle);
-      return c.request<ViewResult>("view", { beeId, ...envParams(ctx) });
+      return c.request<ViewResult>("view", { beeId });
     },
     (store) => {
       const beeId = resolveBeeIn(store.list(null), needle);
       return store.view(beeId);
     },
   );
-  emit(ctx, renderBeeView(result, stale), envOutput(ctx, result), stale);
+  emit(ctx, renderBeeView(result, stale), publicEnvRecords(result), stale);
   return 0;
 }
 
@@ -3152,10 +3142,10 @@ async function cmdList(ctx: CliContext, parsed: Parsed): Promise<number> {
         : ((parsed.flags.get("--lifecycle") as string | undefined) ?? "active");
   const { result, stale } = await readPath(
     ctx,
-    (c) => c.request<ListResult>("list", { ...(lifecycle == null ? {} : { lifecycle }), ...envParams(ctx) }),
+    (c) => c.request<ListResult>("list", { ...(lifecycle == null ? {} : { lifecycle }) }),
     (store) => ({ views: store.list(lifecycle) }),
   );
-  emit(ctx, renderBeeList(result.views, stale), envOutput(ctx, result), stale);
+  emit(ctx, renderBeeList(result.views, stale), publicEnvRecords(result), stale);
   return 0;
 }
 
@@ -3330,7 +3320,7 @@ async function cmdCommands(ctx: CliContext, parsed: Parsed): Promise<number> {
       return { commands: store.commands(beeId) };
     },
   );
-  emit(ctx, renderCommands(result.commands, stale), result, stale);
+  emit(ctx, renderCommands(result.commands, stale), publicEnvRecords(result), stale);
   return 0;
 }
 
@@ -4363,13 +4353,13 @@ async function cmdEvents(ctx: CliContext, parsed: Parsed): Promise<number> {
       ctx,
       async (c) => {
         const beeId = beeFlag ? resolveBeeIn((await c.request<ListResult>("list")).views, beeFlag) : undefined;
-        return c.request<AuditTailResult>("audit.tail", { afterSeq, limit: n, ...(beeId ? { beeId } : {}), ...envParams(ctx) });
+        return c.request<AuditTailResult>("audit.tail", { afterSeq, limit: n, ...(beeId ? { beeId } : {}) });
       },
       (store) => {
         const beeId = beeFlag ? resolveBeeIn(store.list(null), beeFlag) : undefined;
         return { rows: store.auditRows(afterSeq, beeId).slice(-n) };
       },
-    ).then(({ result, stale }) => ({ result: envOutput(ctx, result), stale }));
+    ).then(({ result, stale }) => ({ result: { ...result, rows: result.rows.map(row => publicAuditRow(row)) }, stale }));
 
   const { result, stale } = await readRows(0, limit);
   const rows = matcher ? result.rows.filter((r) => matcher.test(r.kind)) : result.rows;
@@ -4504,7 +4494,7 @@ async function cmdSetModel(ctx: CliContext, parsed: Parsed): Promise<number> {
           `model for ${beeId}: ${clear ? "harness default" : model} — args ${r.bee.args ? JSON.stringify(r.bee.args) : "(none)"} — applies to the next runtime (stop or revive to apply)`,
         ),
       ],
-      envOutput(ctx, r),
+      publicEnvRecords(r),
       false,
     );
     return 0;

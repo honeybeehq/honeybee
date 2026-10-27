@@ -126,10 +126,11 @@ import {
   type CoreStore,
   type MirrorAccountRow,
   pauseLabel,
-  mirrorBeeAuditRow,
+  publicAuditRow,
   mirrorBeeRow,
-  redactBeeResultEnv,
-  redactEnvRecords,
+  toPublicBee,
+  operatorLocalBee,
+  publicBeeResult,
   type RowSource,
   type Scope,
   type Urgency,
@@ -1513,20 +1514,13 @@ export class HiveDaemon {
     if (latest > this.publishedSeq) this.publishedSeq = latest;
     // maxBatch+1: one extra row is exactly enough to detect a gap without
     // materializing the backlog (the 2026-08-21 flush stall).
-    rpc.flushWatch(latest, (fromSeq) => this.mirrorAuditRows(store.auditRows(fromSeq, this.cfg.watchMaxBatch + 1)), this.cfg.watchMaxBatch);
+    rpc.flushWatch(latest, (fromSeq, includeHomes) => this.mirrorAuditRows(store.auditRows(fromSeq, this.cfg.watchMaxBatch + 1), includeHomes), this.cfg.watchMaxBatch);
   }
 
-  /**
-   * v18: the watch stream IS the mirror's delta channel, so an `account.put`
-   * payload carries the same derived `credentialHealth` the snapshot row
-   * does — computed here, at emit, from the current vault/home/limits facts
-   * (never stored, never derived by the materializer). Bee rows carry
-   * the mirror's redacted env; every other row passes through verbatim.
-   */
-  private mirrorAuditRows(rows: AuditRow[]): AuditRow[] {
+  private mirrorAuditRows(rows: AuditRow[], includeOperatorLocalHomes = false): AuditRow[] {
     const accounts = this.accounts;
     return rows.map((source) => {
-      const row = this.publicConfirmationAudit(mirrorBeeAuditRow(source));
+      const row = this.publicConfirmationAudit(publicAuditRow(source, includeOperatorLocalHomes));
       if (row.kind === "thread_operation.put") return { ...row, payload: { operation: row.payload.operation } };
       if (!accounts) return row;
       if (row.kind !== "account.put") return row;
@@ -2435,9 +2429,9 @@ export class HiveDaemon {
           this.rpcEnqueue("delete", this.param(params, "beeId"), {}, params),
         );
       case "view":
-        return this.envRedacted(params, this.viewOf(this.mustStore(), this.param(params, "beeId")));
+        return this.viewOf(this.mustStore(), this.param(params, "beeId"));
       case "list":
-        return this.envRedacted(params, this.rpcList(params));
+        return this.rpcList(params);
       case "mailbox":
         return this.rpcMailbox(params);
       case "mail.ack":
@@ -2449,7 +2443,7 @@ export class HiveDaemon {
       case "commands":
         return { commands: this.mustStore().listCommands({ beeId: this.requireBee(params) }) };
       case "audit.tail":
-        return this.envRedacted(params, this.rpcAuditTail(params));
+        return this.rpcAuditTail(params);
       case "deployInfo":
         return this.rpcDeployInfo();
       case "update.apiarySwap.status":
@@ -2556,14 +2550,18 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcImportLocalConfig(params));
       case "import.fromFrozen":
         return this.withIdempotency(verb, params, () => this.rpcImportFromFrozen(params));
+      case "mirror.local.snapshot":
       case "snapshot": {
-        const snap = this.snapshot();
-        conn.alignWatch(snap.seq);
+        const includeHomes = verb === "mirror.local.snapshot" && conn.operatorLocalHomes === true;
+        const snap = this.snapshot(includeHomes);
+        conn.alignWatch(snap.seq, includeHomes);
         return snap;
       }
+      case "mirror.local.watch":
       case "watch": {
-        const snap = this.snapshot();
-        conn.subscribeWatch(snap.seq);
+        const includeHomes = verb === "mirror.local.watch" && conn.operatorLocalHomes === true;
+        const snap = this.snapshot(includeHomes);
+        conn.subscribeWatch(snap.seq, includeHomes);
         return snap;
       }
       default: {
@@ -2632,7 +2630,7 @@ export class HiveDaemon {
     const args = this.argsParam(params, "bee.setArgs", true);
     const res = this.mustStore().updateBeeArgs(beeId, args);
     this.log(`bee.setArgs bee=${beeId} applied=${res.applied} args=${JSON.stringify(args)}`);
-    return { bee: res.bee, applied: res.applied };
+    return { bee: toPublicBee(res.bee), applied: res.applied };
   }
 
   private requireBee(params: Record<string, unknown>): string {
@@ -2689,7 +2687,7 @@ export class HiveDaemon {
     fn: () => T,
   ): T | (T & { deduped: true; status?: CommandRow["status"] }) {
     const key = this.idempotencyKeyOf(params);
-    if (key == null) return this.revealedOrRedacted(params, fn());
+    if (key == null) return fn();
     const store = this.mustStore();
     if (this.effectInFlight?.has(key) && verb !== "spawn") throw new RpcError("idempotency_conflict", "Key belongs to an in-flight spawn");
     return store.transact(() => {
@@ -2719,17 +2717,9 @@ export class HiveDaemon {
       const boundEffect = (verb === "send" || verb === "spawn") ? { ...effect, requestBinding: { version: 1, verb, lane: this.phoneRequestBinding(params).lane, requestDigest: this.phoneRequestBinding(params).digest } } : effect;
       const result = input ? { ...boundEffect, phoneAdmission: { ownerStoreId: input.envelope.ownerStoreId, admissionId: input.envelope.admissionId, contentDigest: input.envelope.contentDigest, lane: input.envelope.lane } } : operationOrigin ? { ...boundEffect, phoneAdmission: { ownerStoreId: operationOrigin.ownerStoreId, admissionId: operationOrigin.admissionId, contentDigest: null, lane: operationOrigin.lane } } : boundEffect;
       const commandId = (result as { commandId?: unknown }).commandId;
-      store.recordRpcResult(key, verb, typeof commandId === "number" ? commandId : null, this.beeEnvRedacted(result));
-      return this.revealedOrRedacted(params, result);
+      store.recordRpcResult(key, verb, typeof commandId === "number" ? commandId : null, publicBeeResult(result));
+      return result;
     });
-  }
-
-  private beeEnvRedacted<T>(result: T): T {
-    return redactBeeResultEnv(result);
-  }
-
-  private revealedOrRedacted<T>(params: Record<string, unknown>, result: T): T {
-    return params.revealEnv === true ? result : this.beeEnvRedacted(result);
   }
 
   private rpcSpawnEffect(params: Record<string, unknown>): Promise<SpawnResult> {
@@ -4990,7 +4980,7 @@ export class HiveDaemon {
     const name = this.param(params, "name");
     const res = this.mustStore().renameBee(beeId, name);
     this.log(`bee.rename bee=${beeId} applied=${res.applied} name=${JSON.stringify(name)}`);
-    return { bee: res.bee, applied: res.applied };
+    return { bee: toPublicBee(res.bee), applied: res.applied };
   }
 
   private rpcConfigGet(): ConfigGetResult {
@@ -5203,7 +5193,7 @@ export class HiveDaemon {
     if (add === undefined && remove === undefined) throw new RpcError("invalid_request", "bee.tag: give add and/or remove");
     const res = this.mustStore().tagBee(beeId, { add, remove });
     this.log(`bee.tag bee=${beeId} applied=${res.applied} added=${JSON.stringify(res.added)} removed=${JSON.stringify(res.removed)}`);
-    return { bee: res.bee, applied: res.applied, added: res.added, removed: res.removed };
+    return { bee: toPublicBee(res.bee), applied: res.applied, added: res.added, removed: res.removed };
   }
 
   private rpcReconnectTools(params: Record<string, unknown>): ReconnectToolsResult {
@@ -5403,7 +5393,7 @@ export class HiveDaemon {
       if (original) {
         const bee = store.getBee(original.beeId);
         if (bee) {
-          return { beeId: bee.id, commandId: original.id, forkedFrom: bee.forkedFrom ?? "", forkSeed: bee.forkSeed, messageId: null, bee, status: original.status, deduped: true };
+          return { beeId: bee.id, commandId: original.id, forkedFrom: bee.forkedFrom ?? "", forkSeed: bee.forkSeed, messageId: null, bee: toPublicBee(bee), status: original.status, deduped: true };
         }
       }
     }
@@ -5469,7 +5459,7 @@ export class HiveDaemon {
     store.recordFork(id, source.id, forkSeed);
     const cmd = store.enqueueCommand("spawn", id, {}, key == null ? {} : { idempotencyKey: key });
     this.log(`bee.fork source=${source.id} fork=${id} seed=${forkSeed ?? "-"} cmd=${cmd.id}`);
-    return { beeId: id, commandId: cmd.id, forkedFrom: source.id, forkSeed, messageId: null, bee,
+    return { beeId: id, commandId: cmd.id, forkedFrom: source.id, forkSeed, messageId: null, bee: toPublicBee(bee),
       ...(claim ? { allocation: claim.allocation, allocationClaimId: claim.id } : {}),
       ...(admission?.ok ? { allocation: admission.receipt } : {}) };
   }
@@ -5835,7 +5825,7 @@ export class HiveDaemon {
     return {
       ...this.identityDiagnostic(beeId, store.currentRuntime(beeId)?.generation ?? null),
       view: store.view(beeId),
-      bee,
+      bee: mirrorBeeRow(bee),
       runtime: bee ? store.currentRuntime(beeId) : null,
       move: bee ? (() => { const m = store.latestMoveOf(bee.id); return m ? toBeeMoveView(m) : null; })() : null,
       cell: bee?.cellId ? store.getCell(bee.cellId) : null,
@@ -5843,15 +5833,11 @@ export class HiveDaemon {
     };
   }
 
-  private envRedacted<T>(params: Record<string, unknown>, result: T): T {
-    return params.revealEnv === true ? result : redactEnvRecords(result);
-  }
-
   private rpcList(params: Record<string, unknown>): ListResult {
     const store = this.mustStore();
     const lifecycle = typeof params.lifecycle === "string" ? params.lifecycle : null;
     const views = store.listBeeViewRows(lifecycle);
-    return {views: views.map(row => ({...row, ...this.identityDiagnostic(row.view.beeId, row.view.generation)}))};
+    return {views: views.map(row => ({...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation)}))};
   }
 
   /**
@@ -6020,7 +6006,7 @@ export class HiveDaemon {
     };
   }
 
-  private snapshot(): SnapshotResult {
+  private snapshot(includeOperatorLocalHomes = false): SnapshotResult {
     const store = this.mustStore();
     // Single-threaded: reading the seq and the rows is atomic w.r.t. writes.
     const seq = store.lastAuditSeq();
@@ -6030,7 +6016,7 @@ export class HiveDaemon {
       humanFirstPolicies: store.listHumanFirstPolicies(),
       mailBatchingPolicies: store.listMailBatchingPolicies(),
       mailBatches: store.listMailBatches(),
-      views: store.listBeeViewRows().map((row) => ({ ...row, bee: mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
+      views: store.listBeeViewRows().map((row) => ({ ...row, bee: includeOperatorLocalHomes ? operatorLocalBee(row.bee) : mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
       templates: store.listTemplates(),
       tracks: store.listTracks(),
       tells: store.listTells(),
@@ -6389,15 +6375,15 @@ export class HiveDaemon {
       const inFlight = this.asyncInFlight.get(key);
       if (inFlight) {
         this.log(`rpc.dedup verb=${verb} key=${key} joined=in_flight`);
-        return { ...this.beeEnvRedacted((await inFlight) as T), deduped: true as const };
+        return { ...((await inFlight) as T), deduped: true as const };
       }
     }
     const pending = fn();
     if (key != null) this.asyncInFlight.set(key, pending);
     try {
       const result = await pending;
-      if (key != null) store.recordRpcResult(key, verb, null, this.beeEnvRedacted(result));
-      return this.revealedOrRedacted(params, result);
+      if (key != null) store.recordRpcResult(key, verb, null, publicBeeResult(result));
+      return result;
     } finally {
       if (key != null && this.asyncInFlight.get(key) === pending) this.asyncInFlight.delete(key);
     }

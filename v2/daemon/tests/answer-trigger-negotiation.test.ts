@@ -103,7 +103,7 @@ test("answer trigger negotiation: simultaneous legacy and capable sockets get in
           for (;;) {
             const newline = lines.indexOf("\n"); if (newline < 0) return;
             const frame = JSON.parse(lines.slice(0, newline)); lines = lines.slice(newline + 1);
-            if (!greeted) { greeted = true; socket.write(`${JSON.stringify({ protocol: "v2/1", capabilities })}\n${JSON.stringify({ id: 1, verb: "view", params: {} })}\n`); }
+            if (!greeted) { greeted = true; socket.write(`${JSON.stringify({ protocol: "v2/2", capabilities })}\n${JSON.stringify({ id: 1, verb: "view", params: {} })}\n`); }
             else resolve(frame);
           }
         });

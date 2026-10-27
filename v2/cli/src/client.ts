@@ -33,6 +33,7 @@ export interface DaemonInstance {
 }
 
 export interface ConnectOptions {
+  updateOwnerCompatibility?: true;
   capabilities?: readonly string[];
   caller?: { dataDir?: string; liveTarget?: boolean; expectedInstanceId: string | null; allowForeignDaemon?: boolean };
   verifyInstance?: (instance: DaemonInstance | null) => void;
@@ -49,6 +50,7 @@ export class RpcClient {
   private readonly frames = new JsonLineBuffer();
   private nextId = 1;
   private closed = false;
+  private legacyUpdateOwner = false;
   capabilities: readonly string[] = [];
   instance: DaemonInstance | null = null;
   /** Watch push frames (deltas/gaps) land here. */
@@ -89,7 +91,8 @@ export class RpcClient {
             reject(new RpcError("protocol_mismatch", "server hello is not json"));
             return;
           }
-          if (hello.protocol !== PROTOCOL) {
+          client.legacyUpdateOwner = options.updateOwnerCompatibility === true && hello.protocol === "v2/1";
+          if (hello.protocol !== PROTOCOL && !client.legacyUpdateOwner) {
             socket.destroy();
             reject(
               new RpcError(
@@ -108,7 +111,7 @@ export class RpcClient {
             reject(err);
             return;
           }
-          socket.write(`${JSON.stringify({ protocol: PROTOCOL, ...(clientLane ? { clientLane } : {}), ...(options.caller ? { caller: options.caller } : {}), ...(options.capabilities ? { capabilities: options.capabilities } : {}) })}\n`);
+          socket.write(`${JSON.stringify({ protocol: hello.protocol, ...(clientLane ? { clientLane } : {}), ...(options.caller ? { caller: options.caller } : {}), ...(options.capabilities ? { capabilities: options.capabilities } : {}) })}\n`);
           socket.on("data", (c: string) => client.onData(c));
           socket.on("close", () => client.onSocketClose());
           socket.on("error", () => socket.destroy());
@@ -140,6 +143,7 @@ export class RpcClient {
   }
 
   request<T = unknown>(verb: RpcVerb, params: Record<string, unknown> = {}, timeoutMs = 10_000, context?: RpcRequestContext): Promise<T> {
+    if (this.legacyUpdateOwner && verb !== "update.status") return Promise.reject(new RpcError("protocol_mismatch", "Legacy update-owner compatibility permits only update.status"));
     if (verb.startsWith("rpc.execution.")) return Promise.reject(new RpcError("rpc_execution_fence_unsupported", "Owner does not support archive/send execution fencing; do not fall back"));
     if ((verb === "rpc.effect.resolve" || verb === "rpc.effect.status") && !this.capabilities.includes("rpc-effect-resolve.v1")) return Promise.reject(new RpcError("rpc_effect_resolve_unsupported", "Owner does not support effect resolution"));
     if (verb === "question.dismiss" && !this.capabilities.includes("question.dismiss.v1")) return Promise.reject(new RpcError("question_dismiss_unsupported", "Question dismissal is unsupported by this Honeybee."));
