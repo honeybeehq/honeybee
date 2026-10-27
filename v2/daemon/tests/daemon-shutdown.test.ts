@@ -9,6 +9,7 @@ import { inspectProcess, verifyProcessIdentity, type ProcessIdentity } from "../
 import { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, waitFor } from "./helpers.ts";
 import type { SpawnResult, ViewResult } from "../src/protocol.ts";
+import { readLiveEndpointRecord } from "../src/endpointRecord.ts";
 
 const fixture = fileURLToPath(new URL("./fixtures/shutdown-daemon.mjs", import.meta.url));
 type Identity = ProcessIdentity;
@@ -49,7 +50,7 @@ for (const mode of ["natural", "retention", "backstop"] as const) test(`daemon s
     children.push(child);
     return { child, output: () => output };
   };
-  const connect = () => waitFor(async () => { try { return await RpcClient.connect(join(rig.dir, "hived.sock")); } catch { return null; } }, "daemon socket", 15_000);
+  const connect = () => waitFor(async () => { try { return await RpcClient.connect(join(rig.dir, "hived.sock"), 3000, undefined, { caller: { client: "hive-cli", runtimeBeeId: null, runtimeContext: false, expectedInstanceId: readLiveEndpointRecord(rig.dir)?.instanceId ?? null } }); } catch { return null; } }, "daemon socket", 15_000);
   try {
     const first = launch(mode);
     client = await connect();
