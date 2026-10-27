@@ -16,7 +16,7 @@ test("question egress census rejects raw mirror row/snapshot serializers and unp
     '\nfunction uncoveredCopy(value: import("../../core/src/mirror.ts").MirrorQuestionRow) {return JSON.stringify({...value});}\n',
     '\nfunction uncoveredIndex(value: Record<string, import("../../core/src/mirror.ts").MirrorQuestionRow>) {return JSON.stringify(value);}\n',
   ]) assert.throws(() => assertQuestionEgress(questionEgressCensus(new Map([[rpc, text => text + source]]))), /Uncovered typed question consumer/);
-  assert.throws(() => assertQuestionEgress(questionEgressCensus(new Map([[rpc, text => text.replace('result: projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities)', 'result: value')]]))));
-  assert.throws(() => assertQuestionEgress(questionEgressCensus(new Map([[rpc, text => text.replace('error: projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)', 'error: toRpcError(err)')]]))));
+  assert.throws(() => assertQuestionEgress(questionEgressCensus(new Map([[rpc, text => text.replace('projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities)', 'value')]]))));
+  assert.throws(() => assertQuestionEgress(questionEgressCensus(new Map([[rpc, text => text.replace('projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)', 'toRpcError(err)')]]))));
   assert.throws(() => assertQuestionEgress(questionEgressCensus(new Map([[rpc, text => text + '\nfunction uncoveredError(conn: RpcConn) { conn.send({id: 1, ok: false, error: {code: "question_dismissed", message: "dismissed"}}); }\n']]))));
 });

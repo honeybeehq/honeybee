@@ -67,13 +67,12 @@ const policy: Readonly<Record<string, string>> = {
  'v2/core/src/store.ts:reportAction:finish':'canonical internal result; RPC dispatch census covers egress',
  'v2/daemon/src/loops.ts:buildHandoffContext:buildExtractiveHandoffContext':'text-only handoff; no question-row serialization',
  'v2/daemon/src/rpc.ts:flushWatch:byCursor.set':'canonical private cursor batch',
- 'v2/daemon/src/rpc.ts:flushWatch:projectAnswerTriggerDelta':'outer question projector before send',
+ 'v2/daemon/src/rpc.ts:flushWatch:publicEnvRecords':'env projection before mandatory outer question delta projector',
  'v2/daemon/src/rpc.ts:flushWatch:projectMailDeliveryDelta':'delivery capability projection before outer question projector',
  'v2/daemon/src/daemon.ts:flushWatchers:this.mirrorAuditRows':'canonical audit batch; RPC delta projection next',
- 'v2/daemon/src/daemon.ts:mirrorAuditRows:mirrorBeeAuditRow':'canonical audit redaction; RPC delta projection next',
+ 'v2/daemon/src/daemon.ts:mirrorAuditRows:publicAuditRow':'canonical audit redaction; RPC delta projection next',
  'v2/daemon/src/daemon.ts:mirrorAuditRows:this.publicConfirmationAudit':'delivery-confirmation redaction; RPC question delta projection next',
  'v2/daemon/src/daemon.ts:rpcAuditTail:this.publicConfirmationAudit':'delivery-confirmation redaction; RPC question result projection next',
- 'v2/daemon/src/daemon.ts:dispatch:this.envRedacted':'canonical RPC dispatch; sync/async projection next',
  'v2/daemon/src/daemon.ts:rpcActionReportIdempotent:store.recordRpcResult':'canonical private SQLite receipt; result projection next',
  'v2/cli/src/client.ts:onFrame:this.onEvent':'already projected owner frame',
  'v2/cli/src/main.ts:cmdAction:emit':'current CLI advertises new reader capability; projected RPC result',
@@ -82,7 +81,7 @@ const policy: Readonly<Record<string, string>> = {
  'v2/cli/src/main.ts:cmdQuestion:emit':'current CLI projected RPC or feature-aware stale local row',
  'v2/cli/src/main.ts:cmdAnswer:emit':'current CLI advertises new reader capability; projected RPC result',
  'v2/cli/src/main.ts:cmdWatch:printSnapshot':'view-only text; no question rows emitted',
- 'v2/cli/src/main.ts:readRows:envOutput':'current CLI projected RPC or feature-aware stale local audit',
+ 'v2/cli/src/main.ts:readRows:publicAuditRow':'current CLI projected RPC or feature-aware stale local audit',
  'v2/cli/src/main.ts:cmdEvents:emit':'current CLI projected RPC or feature-aware stale local audit',
  'v2/cli/src/main.ts:cmdEvents:auditLine':'feature-aware CLI text',
  'v2/cli/src/main.ts:cmdEvents:withDaemonTarget':'feature-aware CLI JSON follow; projected RPC or stale local audit',
@@ -102,9 +101,9 @@ export function assertQuestionEgress(census: ReturnType<typeof questionEgressCen
   const boundaries = census.sends.map(row => {
     const argument = row.argument.trim(); let coverage: string;
     if (argument.startsWith("projectQuestionDismissalDelta(")) coverage = "projected delta";
-    else if (argument.startsWith("{") && /ok:\s*true/.test(argument)) {assert.match(argument, /result:\s*projectQuestionDismissalResult\(/); coverage = "projected RPC result";}
+    else if (argument.startsWith("{") && /ok:\s*true/.test(argument)) {assert.match(argument, /result:\s*publicBeeResponse\(verb,\s*projectQuestionDismissalResult\(/); coverage = "projected RPC result";}
     else if (argument.startsWith("{") && /ok:\s*false/.test(argument)) {
-      if (/error:\s*projectQuestionDismissalError\(/.test(argument)) coverage = "projected RPC error";
+      if (/error:\s*publicEnvRecords\(projectQuestionDismissalError\(/.test(argument)) coverage = "projected RPC error";
       else {assert.match(argument, /error:\s*\{\s*code:\s*"(?:invalid_request|protocol_mismatch)"/); coverage = "literal request validation error";}
     }
     else if (argument.includes("satisfies HelloFrame")) coverage = "hello, no question rows";
