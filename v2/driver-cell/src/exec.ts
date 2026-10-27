@@ -3,6 +3,7 @@
  * forwarded. Output/time bounded. Process-group stop; the Promise does not
  * settle until the child is reaped. Never a B5 command.
  */
+import { SecretOutput, validateSecretEnv } from "./secretOutput.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, lstatSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -22,6 +23,8 @@ export interface CellExecSpec {
   sandbox: boolean | null;
   nodeKind: NodeKind;
   kvm?: boolean;
+  secretEnv?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 export interface CellExecSpawned {
@@ -267,11 +270,13 @@ export async function runCellExec(
   if (!Array.isArray(spec.argv) || spec.argv.length === 0 || spec.argv.some((a) => typeof a !== "string")) {
     throw new Error("cell.exec argv must be a non-empty string array");
   }
+  const secretEnv = spec.secretEnv ? validateSecretEnv(spec.secretEnv) : {};
   const timeoutMs = clampCellExecTimeout(spec.timeoutMs);
   const cwd = containedExecCwd(paths.spaceDir, spec.cwd);
   const [command, ...args] = spec.argv;
   const env = {
     ...sanitizedCellExecEnv(),
+    ...secretEnv,
     HIVE_CELL: "1",
     HIVE_CELL_SPACE: paths.spaceName,
   };
@@ -288,12 +293,15 @@ export async function runCellExec(
     wrappedCommand = wrapped.command;
     wrappedArgs = wrapped.args;
   }
-  const child = spawn(wrappedCommand, wrappedArgs, {
+  if (spec.signal?.aborted) throw new Error("secret_execution_revoked");
+  let child: ChildProcess;
+  try { child = spawn(wrappedCommand, wrappedArgs, {
     cwd,
     env,
     stdio: ["ignore", "pipe", "pipe"],
     detached: true,
-  });
+  }); } catch (error) { if (spec.secretEnv) throw new Error("cell_execution_spawn_failed"); throw error; }
+  for (const name of Object.keys(secretEnv)) delete secretEnv[name];
   const reaped = { reaped: false, code: null as number | null };
   let spawnError: Error | null = null;
   const closed = new Promise<number | null>((resolveClose) => {
@@ -309,8 +317,29 @@ export async function runCellExec(
   const outputBudget = new OutputBudget();
   const stdoutCap = new OutputCap(outputBudget);
   const stderrCap = new OutputCap(outputBudget);
-  child.stdout?.on("data", (chunk: Buffer) => stdoutCap.push(chunk));
-  child.stderr?.on("data", (chunk: Buffer) => stderrCap.push(chunk));
+  const values = Object.values(spec.secretEnv ?? {});
+  const stdout = new SecretOutput(values, chunk => stdoutCap.push(chunk));
+  const stderr = new SecretOutput(values, chunk => stderrCap.push(chunk));
+  const intake = (redactor: SecretOutput, chunk: Buffer) => {
+    if (outputBudget.rawUsed >= CELL_EXEC_MAX_OUTPUT_BYTES || outputBudget.encodedUsed >= CELL_EXEC_MAX_OUTPUT_BYTES) {
+      if (chunk.length) outputBudget.truncated = true;
+      redactor.dispose();
+      return;
+    }
+    redactor.push(chunk);
+  };
+  child.stdout?.on("data", (chunk: Buffer) => intake(stdout, chunk));
+  child.stderr?.on("data", (chunk: Buffer) => intake(stderr, chunk));
+  child.stdout?.on("error", () => stdout.finish());
+  child.stderr?.on("error", () => stderr.finish());
+  let abortKill: ReturnType<typeof setTimeout> | undefined;
+  const abort = () => {
+    if (!reaped.reaped && child.pid) {
+      killTree(child.pid, "SIGTERM");
+      abortKill = setTimeout(() => { if (!reaped.reaped && child.pid) killTree(child.pid, "SIGKILL"); }, 1000);
+    }
+  };
+  spec.signal?.addEventListener("abort", abort, { once: true });
 
   const pid = child.pid ?? 0;
   const pidStartedAt = pid > 0 ? (processStartTimeMs(pid) ?? Date.now()) : null;
@@ -319,6 +348,11 @@ export async function runCellExec(
       onSpawned({ pid, pidStartedAt });
     } catch (error) {
       await terminateAndReap(child, pid, reaped, closed);
+      spec.signal?.removeEventListener("abort", abort);
+      if (abortKill) clearTimeout(abortKill);
+      stdout.finish(); stderr.finish(); stdout.dispose(); stderr.dispose();
+      for (const name of Object.keys(env)) delete env[name as keyof typeof env];
+      if (spec.secretEnv) throw new Error("secret_execution_failed");
       throw error;
     }
   }
@@ -337,12 +371,22 @@ export async function runCellExec(
     pidStartedAt,
   });
 
+  const finish = () => {
+    if (abortKill) clearTimeout(abortKill);
+    spec.signal?.removeEventListener("abort", abort);
+    stdout.finish(); stderr.finish();
+    stdout.dispose(); stderr.dispose();
+    for (const name of Object.keys(env)) delete env[name as keyof typeof env];
+  };
   const timedOut = !(await closesWithin(closed, timeoutMs));
   if (timedOut) {
     await terminateAndReap(child, pid, reaped, closed);
-    return outcome("timeout", reaped.code);
+    finish();
+    return outcome(spec.signal?.aborted ? "interrupted" : "timeout", reaped.code);
   }
 
-  if (spawnError) throw spawnError;
+  finish();
+  if (spawnError) { if (spec.secretEnv) throw new Error("cell_execution_spawn_failed"); throw spawnError; }
+  if (spec.signal?.aborted) return outcome("interrupted", reaped.code);
   return outcome(reaped.code === 0 ? "ok" : "nonzero", reaped.code);
 }

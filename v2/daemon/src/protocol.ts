@@ -92,6 +92,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  */
 export const DAEMON_CAPABILITIES = [
   "mirror.local.homes.v1",
+  "cell.secret.exec.v1",
   "mail.humanFirst.v1",
   "mail.batching.v1",
   "mail.delivery.confirmation.v1",
@@ -554,6 +555,8 @@ export const RPC_VERBS = [
   "bee.move",
   "bee.move.get",
   "cell.exec",
+  "cell.execSecret",
+  "cell.execSecret.cancel",
   "cell.retained.remove",
   // v31: Cell disk retention (plan/apply a pass; evict one bee's Cell).
   "cell.gc",
@@ -698,7 +701,18 @@ export const RPC_VERBS = [
 export type RpcVerb = (typeof RPC_VERBS)[number];
 
 /** Service assertion, accepted only on a registered direct-local RPC connection. */
+export interface SecretExecutionContext {
+  nodeId: string;
+  beeId: string;
+  cellId: string;
+  executionId: string;
+  argvDigest: string;
+  expiresAt: number;
+  env: Record<string, string>;
+}
+
 export interface RpcRequestContext {
+  secretExecution?: SecretExecutionContext;
   humanChat?: import("../../core/src/types.ts").HumanChatAdmission;
   sessionPrincipal?: { beeId: string };
   phoneOrigin?: import("../../core/src/phoneOrigin.ts").PhoneOriginRequest;

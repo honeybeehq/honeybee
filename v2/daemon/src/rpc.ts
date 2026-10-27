@@ -86,6 +86,8 @@ import {
 
 export interface RpcConn {
   readonly operatorLocalHomes?: boolean;
+  readonly secretExecution?: import("./protocol.ts").SecretExecutionContext;
+  readonly secretExecutionNodeId?: string;
   readonly humanChat?: HumanChatAdmission;
   readonly humanPolicyAuthority?: true;
   readonly automationAuthority?: true;
@@ -343,7 +345,7 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => !(["mirror.local.homes.v1", "question.withdraw.v1", "mail.humanFirst.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => !(["cell.secret.exec.v1", "mirror.local.homes.v1", "question.withdraw.v1", "mail.humanFirst.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
   }
 
   private operatorLocalAllowed(conn: Connection): boolean {
@@ -483,6 +485,13 @@ export class RpcServer {
           return this.opts.dispatch(verb, params, { ...conn, operatorLocalHomes: includeOperatorLocalHomes });
         }
         const automationContext = frame.context as Record<string, unknown> | undefined;
+        if (verb === "cell.execSecret" || verb === "cell.execSecret.cancel" || automationContext?.secretExecution !== undefined) {
+          if (!["cell.execSecret", "cell.execSecret.cancel"].includes(verb) || !peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null
+            || !automationContext || Object.keys(automationContext).some(key => key !== "secretExecution")) throw new RpcError("caller_not_trusted", "Secret execution requires the registered local authority");
+          this.trust.require(peer, conn.ingress);
+          if (!this.trust.nodeId) throw new RpcError("caller_not_trusted", "Secret execution requires registered node binding");
+          return this.opts.dispatch(verb, params, { ...conn, secretExecutionNodeId: this.trust.nodeId, secretExecution: automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext });
+        }
         if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
         if (params.automationKind !== undefined || params.automationRef !== undefined || automationContext?.automationReference !== undefined) {
           if (verb !== "send" || !peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null
