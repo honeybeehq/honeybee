@@ -12,7 +12,7 @@ const finish = (code, reason) => {
   finished = true;
   if (reason) { try { writeSync(3, reason); } catch {} }
   if (child?.pid) {
-    try { process.kill(-child.pid, 'SIGKILL'); } catch {}
+    try { process.kill(-process.pid, 'SIGKILL'); } catch {}
   }
   process.exit(code);
 };
@@ -27,11 +27,11 @@ lease.on('data', chunk => {
   try {
     const config = JSON.parse(input);
     input = '';
-    const remaining = config.deadline - Date.now();
+    const remaining = config.timeoutMs;
     if (remaining <= 0) return finish(124, 'timeout');
     setTimeout(() => finish(124, 'timeout'), remaining);
     child = spawn(config.command, config.args, {
-      env: config.env, detached: true, stdio: ['ignore', 1, 2]
+      env: config.env, detached: false, stdio: ['ignore', 1, 2]
     });
     for (const key of Object.keys(config.env)) delete config.env[key];
     child.on('error', () => finish(125, 'spawn_error'));

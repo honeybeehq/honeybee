@@ -65,6 +65,7 @@ test("child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure a
     });
     const cancelled = await pending;
     assert.equal(cancelled.status, "interrupted");
+    assert.equal(cancelled.exitCode, null);
     assert.equal(cancelled.stdout, "[REDACTED]");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
@@ -88,6 +89,7 @@ test("private stdout capture releases only bounded successful bytes and suppress
       }, () => { if (mode === "cancel") setTimeout(() => controller.abort(), 100); });
       assert.equal(result.stdout, "");
       assert.equal(result.stderr, "");
+      if (mode === "timeout") { assert.equal(result.status, "timeout"); assert.equal(result.exitCode, null); }
       assert.equal(released.length, mode === "ok" || mode === "boundary" ? 1 : 0);
       if (released.length) assert.deepEqual(released[0], Buffer.from(mode === "boundary" ? [0,255,1,2,3,4,5,6] : [0,255,1,2]));
     }

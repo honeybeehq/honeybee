@@ -297,7 +297,7 @@ export async function runCellExec(
   }
   if (spec.signal?.aborted) throw new Error("secret_execution_revoked");
   const supervised = Boolean(spec.secretEnv || spec.outputCapture);
-  const deadline = Date.now() + timeoutMs;
+  const startedAt = process.hrtime.bigint();
   let child: ChildProcess;
   try { child = spawn(supervised ? process.execPath : wrappedCommand, supervised ? ["-e", secretSupervisorSource] : wrappedArgs, {
     cwd,
@@ -309,7 +309,7 @@ export async function runCellExec(
   let supervisorStatus = "";
   lease?.on("data", (chunk: Buffer) => { supervisorStatus += chunk.toString("utf8"); });
   lease?.on("error", () => {});
-  lease?.write(JSON.stringify({ command: wrappedCommand, args: wrappedArgs, env, deadline }) + "\n");
+  lease?.write(JSON.stringify({ command: wrappedCommand, args: wrappedArgs, env, timeoutMs: Math.max(0, timeoutMs - Number((process.hrtime.bigint() - startedAt) / 1_000_000n)) }) + "\n");
   for (const name of Object.keys(secretEnv)) delete secretEnv[name];
   const reaped = { reaped: false, code: null as number | null };
   let spawnError: Error | null = null;
@@ -319,7 +319,8 @@ export async function runCellExec(
     });
     child.once("close", (code) => {
       reaped.reaped = true;
-      reaped.code = supervisorStatus.startsWith("exit:") ? JSON.parse(supervisorStatus.slice(5)) as number | null : code;
+      const exitStatus = /^exit:(null|[0-9]{1,3})$/.exec(supervisorStatus)?.[1];
+      reaped.code = exitStatus ? exitStatus === "null" ? null : Number(exitStatus) : supervised ? null : code;
       resolveClose(code);
     });
   });
