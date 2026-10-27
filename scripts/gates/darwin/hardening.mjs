@@ -5,8 +5,16 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export function inside(candidate, root) {
+export function inside(candidate, root, platform = process.platform) {
+  if (platform === 'darwin') { candidate = candidate.toLowerCase(); root = root.toLowerCase(); }
   return candidate === root || candidate.startsWith(root + path.sep);
+}
+
+export function labHost(host, utc) {
+  if (host === 'trmd-fangorn-mini07') return;
+  if (host !== 'trmd-hobbiton-mini04') throw new Error('REFUSED: approved Mac lab required');
+  if (!/^[0-9]{4}$/.test(utc) || Number(utc.slice(0, 2)) > 23 || Number(utc.slice(2)) > 59) throw new Error('REFUSED: invalid UTC time');
+  if (utc >= '0300' && utc <= '0440') throw new Error('REFUSED: mini04 quiet window');
 }
 
 export function writable(candidate, root, realHome) {
@@ -51,7 +59,10 @@ export function profile(root, realHome) {
 
 function selfTest(root, realHome) {
   if (process.platform !== 'darwin') throw new Error('Darwin required');
+  const now = new Date();
+  labHost(os.hostname(), String(now.getUTCHours()).padStart(2, '0') + String(now.getUTCMinutes()).padStart(2, '0'));
   if (realHome !== os.userInfo().homedir) throw new Error('passwd home mismatch');
+  if ([process.cwd(), fileURLToPath(import.meta.url)].some(candidate => inside(path.resolve(candidate), realHome))) throw new Error('REFUSED: checkout or script under real home');
   if (!path.isAbsolute(root) || path.dirname(root) !== '/private/var/tmp' || !path.basename(root).startsWith('hb-gate.')) throw new Error('unsafe run root');
   writable(root, root, realHome);
   if (fs.realpathSync(root) !== root || fs.lstatSync(root).isSymbolicLink() || (fs.statSync(root).mode & 0o777) !== 0o700) throw new Error('unsafe run directory');
@@ -91,8 +102,12 @@ function selfTest(root, realHome) {
   const manifest = JSON.stringify(hashes, null, 2) + '\n';
   write(path.join(root, 'SHA256SUMS.json'), manifest, root, realHome);
   console.log(receipt.trim());
+  console.log('GATE_MANIFEST=' + manifest.trim());
   console.log('GATE_ROOT=' + root);
   console.log('GATE_RECEIPT_SHA256=' + createHash('sha256').update(manifest).digest('hex'));
+  const identity = fs.lstatSync(root);
+  if (!root.startsWith('/private/var/tmp/hb-gate.') || !identity.isDirectory() || identity.isSymbolicLink() || identity.uid !== process.getuid() || (identity.mode & 0o777) !== 0o700) throw new Error('REFUSED: cleanup root identity');
+  fs.rmSync(root, { recursive: true });
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

@@ -3,7 +3,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { launchAgents, profile, writable, write } from './hardening.mjs';
+import { inside, labHost, launchAgents, profile, writable, write } from './hardening.mjs';
+
+test('exact lab hosts and inclusive quiet window fail closed', () => {
+  for (const utc of ['0300', '0340', '0400', '0440', '', '9999', 'ab12']) assert.throws(() => labHost('trmd-hobbiton-mini04', utc), /REFUSED/);
+  for (const utc of ['0259', '0441', '2359']) assert.doesNotThrow(() => labHost('trmd-hobbiton-mini04', utc));
+  assert.doesNotThrow(() => labHost('trmd-fangorn-mini07', '0300'));
+  for (const host of ['mini04', 'evil-mini04', 'elrond', 'fangorn']) assert.throws(() => labHost(host, '1200'), /REFUSED/);
+  assert.equal(inside('/users/LAB/Library', '/Users/lab', 'darwin'), true);
+  assert.equal(inside('/Users/laboratory', '/Users/lab', 'darwin'), false);
+});
 
 test('protected paths refuse before filesystem operations', () => {
   const originals = new Map(['lstatSync', 'statSync', 'realpathSync', 'openSync', 'readdirSync'].map(key => [key, fs[key]]));

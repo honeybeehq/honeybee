@@ -2,9 +2,11 @@
 
 ## Current maintenance self-test
 
-`hardening-self-test.sh <absolute-node> <passwd-home>` is the mini07 (or mini04
-outside 03:00–04:40Z),
-offline shell/Node hardening check. Run it from the committed review checkout.
+`hardening-self-test.sh <absolute-node> <passwd-home>` is the offline shell/Node
+hardening check for exact host `trmd-fangorn-mini07`, or `trmd-hobbiton-mini04`
+outside 03:00–04:40Z inclusive. Both entries enforce the venue. Run it from the
+committed review checkout outside the real home. Script and checkout paths under
+the passwd home refuse from computed paths, before loading the Node script.
 The home argument comes from the account record, never from scanning that home.
 The runner refuses stamped HIVE_/APIARY_ controller keys at entry, ignoring and
 unsetting the tool-injected HIVE_REAL_HOME exception. It constructs an empty
@@ -17,8 +19,9 @@ file and records the exact errno and message for a refused write to an owned
 fixture outside its sandbox but inside the run root. Its policy denies network
 and Mach service access; it attempts no network operations and does not establish
 Darwin inbound isolation. The sentinel uses only an owned LaunchAgents fixture, names and
-SHA256 hashes. The empty refusal fixture is removed; the rest of the run remains
-with receipt and script hashes in `SHA256SUMS.json`, whose SHA256 is printed.
+SHA256 hashes. The receipt, `SHA256SUMS.json` manifest and its digest are printed
+before removing this run's own root after an owner/mode/symlink check. Queen
+explicitly approved this temporary-root cleanup instead of accessing home Trash.
 Nothing sweeps old runs or accesses Keychain. This entry does not execute the
 historical Python self-test or product suites. The legacy wrappers below remain
 held, including the exit-88 pinned-runtime/full bodies; this check does not
