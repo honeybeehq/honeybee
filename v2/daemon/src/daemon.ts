@@ -1,3 +1,6 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { newAdmissionBasis, startAdmissionAllowed, ownCellAdmission, admissionFailure, humanAdmission } from "./workstationAdmission.ts";
+import type { AdmissionBasis } from "../../core/src/types.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
@@ -1333,6 +1336,25 @@ export class HiveDaemon {
     this.authResume?.reconcile();
     this.refreshAccountActivations();
     const blocked = new Set([...this.blockedRuntimeStartBeeIds(),...this.executionStartHolds]);
+    if (this.cfg.nodeKind === "workstation") {
+      const store = this.mustStore();
+      for (const command of store.listCommands({ status: "queued" })) {
+        if (!["spawn", "revive", "send_wake"].includes(command.verb)) continue;
+        const bee = store.getBee(command.beeId);
+        if (!bee) continue;
+        const started = store.listRuntimes(bee.id).some(runtime => runtime.pid !== null);
+        if (!startAdmissionAllowed(bee, started, this.cfg.landingFixerPolicy, Date.now())) {
+          blocked.add(bee.id);
+          if (!store.activeFlags(bee.id).some(flag => flag.flag === "resource_blocked" && flag.detail === "workstation_heavy_work_denied")) {
+            store.setFlag(bee.id, "resource_blocked", "workstation_heavy_work_denied");
+            store.recordWorkstationAdmission(bee.id, { operation: command.verb, outcome: "held", reason: "workstation_heavy_work_denied" });
+          }
+        } else if (store.activeFlags(bee.id).some(flag => flag.flag === "resource_blocked" && flag.detail === "workstation_heavy_work_denied")) {
+          store.clearFlag(bee.id, "resource_blocked", "workstation admission allowed");
+        }
+      }
+    }
+
     for (const row of this.mustStore().listLiveAuthInterruptions()) if (this.authResume?.holdsStoppedRuntime(row)) {
       blocked.add(row.beeId);
       if (this.runtimeStartHolds.get(row.beeId) !== "account_auth_needed") {
@@ -1929,7 +1951,41 @@ export class HiveDaemon {
     }
   }
 
+  private readonly admissionCaller = new AsyncLocalStorage<{ conn: RpcConn; basis?: AdmissionBasis }>();
+
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    return this.admissionCaller.run({ conn }, () => this.dispatchAdmitted(verb, params, conn));
+  }
+
+  private admissionBinding(): string {
+    const conn = this.admissionCaller.getStore()?.conn;
+    return canonicalDigest(JSON.parse(JSON.stringify({
+      human: conn ? humanAdmission(conn) : false,
+      actor: conn?.authenticatedBeeId ?? conn?.caller?.runtimeBeeId ?? null,
+      intent: conn?.workstationAdmission?.intent ?? null,
+      policyId: conn?.workstationAdmission?.policyId ?? null,
+    })));
+  }
+
+  private newWorkAdmission(operation: string, params: Record<string, unknown>): AdmissionBasis {
+    const context = this.admissionCaller.getStore();
+    const conn = context?.conn ?? {} as RpcConn;
+    try {
+      const basis = newAdmissionBasis(this.cfg.nodeKind, operation, conn, this.cfg.landingFixerPolicy, Date.now());
+      if (context) context.basis = basis;
+      this.mustStore().recordWorkstationAdmission(null, { operation, nodeKind: this.cfg.nodeKind, outcome: "allowed", basis, requestKey: this.idempotencyKeyOf(params) });
+      return basis;
+    } catch (error) {
+      this.mustStore().recordWorkstationAdmission(null, { operation, nodeKind: this.cfg.nodeKind, outcome: "denied", reason: error instanceof RpcError ? error.details?.reason : "automatic_workstation", requestKey: this.idempotencyKeyOf(params) });
+      throw error;
+    }
+  }
+
+  private dispatchAdmitted(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    if (["spawn", "bee.fork", "thread.fork", "thread.handoff", "import.fromFrozen"].includes(verb)) {
+      const key = this.idempotencyKeyOf(params);
+      if (key) this.mustStore().checkWorkstationAdmission(key, this.admissionBinding());
+    }
     if (params.automationKind !== undefined || params.automationRef !== undefined) {
       if (verb !== "send") throw new RpcError("automation_unauthorized", "Automation metadata is only valid for send");
       assertAutomationSend(params, conn);
@@ -2552,6 +2608,7 @@ export class HiveDaemon {
       case "packages.importLocalConfig":
         return this.withIdempotency(verb, params, () => this.rpcImportLocalConfig(params));
       case "import.fromFrozen":
+        if (params.dryRun !== true) this.newWorkAdmission(verb, params);
         return this.withIdempotency(verb, params, () => this.rpcImportFromFrozen(params));
       case "snapshot": {
         const snap = this.snapshot();
@@ -2710,6 +2767,7 @@ export class HiveDaemon {
         store.bindPhoneAdmission(key, verb, binding.lane, binding.digest);
       }
       const effect = fn();
+      if (["spawn", "bee.fork", "import.fromFrozen"].includes(verb)) store.bindWorkstationAdmission(key, this.admissionBinding());
       const messageId = (effect as { messageId?: number }).messageId;
       const input = typeof messageId === "number" ? store.phoneInput(messageId) : undefined;
       const operationOrigin = this.phoneOriginOf(params) && !input && typeof (effect as { beeId?: unknown }).beeId === "string" ? store.getBee((effect as { beeId: string }).beeId)?.phoneOperationOrigin : undefined;
@@ -2734,7 +2792,7 @@ export class HiveDaemon {
     if (key === null) return this.rpcSpawnWithAccount(params);
     this.mustStore().transact(() => this.mustStore().lookupRpcResult(key));
     const binding = this.phoneRequestBinding(params);
-    const fingerprint = binding.lane === "legacy" ? canonicalDigest(JSON.parse(JSON.stringify(params))) : binding.digest;
+    const fingerprint = canonicalDigest(JSON.parse(JSON.stringify({ request: binding.lane === "legacy" ? JSON.parse(JSON.stringify(params)) : binding.digest, admission: this.admissionCaller.getStore()?.conn.workstationAdmission ?? null, caller: this.admissionCaller.getStore()?.conn.caller ?? null })));
     const registry = this.effectInFlight ??= new Map();
     const existing = registry.get(key);
     if (existing) {
@@ -2757,6 +2815,7 @@ export class HiveDaemon {
       if (execution) throw new RpcError("rpc_execution_fence_unsupported", "Mailbox-only spawn has no agent-start handshake");
       return this.withIdempotency("spawn", params, () => this.rpcSpawnMailboxOnly(params));
     }
+    this.newWorkAdmission("spawn", params);
     const embedded = this.embeddedSpawnAccount(rawAgent, params.account !== undefined);
     const normalizedParams = embedded.agent === rawAgent ? params : { ...params, agent: embedded.agent };
     const agent = embedded.agent;
@@ -3266,6 +3325,7 @@ export class HiveDaemon {
       ...(this.phoneOriginOf(params) && params.prompt == null ? { phoneOperation: this.phoneSendOptions(params).phone } : {}),
       id,
       name,
+      admissionBasis: "inbox_only",
       agent: INBOX_AGENT,
       substrate: "hsr",
       cwd: typeof params.cwd === "string" ? params.cwd : "",
@@ -3455,6 +3515,7 @@ export class HiveDaemon {
     const cell = substrate === "cell" ? this.planCell(id, name, this.cellParam(params)) : null;
     if (execution) store.checkSpawnPreparation(execution, "create_bee");
     const { bee: created } = store.createBee({
+      admissionBasis: this.admissionCaller.getStore()?.basis ?? "unadmitted",
       ...(this.phoneOriginOf(params) && params.prompt == null ? { phoneOperation: this.phoneSendOptions(params).phone } : {}),
       id,
       name,
@@ -4636,7 +4697,8 @@ export class HiveDaemon {
     const failure = op.failure ?? "";
     let reason: CellExecResult["reason"] = null;
     if (op.status === "failed") {
-      if (failure === "busy") reason = "busy";
+      if (failure === "workstation_heavy_work_denied") reason = "workstation_heavy_work_denied";
+      else if (failure === "busy") reason = "busy";
       else if (failure === "cell_runtime_live") reason = "cell_runtime_live";
       else if (failure === "no_cell") reason = "no_cell";
       else if (failure === "containment" || /escapes|space-relative|does not exist/.test(failure)) reason = "containment";
@@ -4751,7 +4813,8 @@ export class HiveDaemon {
     }
     const timeoutMs = params.timeoutMs;
     const cwd = params.cwd;
-    const hash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null });
+    const actor = this.admissionCaller.getStore()?.conn;
+    const hash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null, admission: actor?.workstationAdmission ?? null, actor: actor?.authenticatedBeeId ?? actor?.caller?.runtimeBeeId ?? null, client: actor?.caller?.client ?? null });
     const existing = store.getCellOpByKey(key);
     if (existing) {
       if (existing.requestHash !== hash || existing.kind !== "exec" || existing.cellId !== cellId) {
@@ -4765,25 +4828,37 @@ export class HiveDaemon {
         const unknown = store.updateCellOp(existing.id, { status: "outcome_unknown", failure });
         return this.cellExecResultFromOp(unknown, true);
       }
-      if (existing.status !== "queued") return this.cellExecResultFromOp(existing, true);
+      if (existing.status !== "queued") {
+        if (existing.failure === "workstation_heavy_work_denied") throw admissionFailure("cell.exec", "cross_bee_exec", this.cfg.nodeKind, { cellId, deduped: true });
+        return this.cellExecResultFromOp(existing, true);
+      }
     }
     const cell = store.getCell(cellId);
     if (!cell || cell.state === "removed") {
       return { id: existing?.id ?? "", cellId, status: "failed", exitCode: null, stdout: "", stderr: "", truncated: false, timeoutMs: 0, reason: "no_cell" };
     }
     const busy = this.cellHasInFlightOp(cellId, key);
-    const persistRefusal = (failure: "busy" | "cell_runtime_live"): CellExecResult => {
+    const persistRefusal = (failure: "busy" | "cell_runtime_live" | "workstation_heavy_work_denied"): CellExecResult => {
       const op = store.putCellOp({
         cellId,
         kind: "exec",
         idempotencyKey: key,
         requestHash: hash,
-        argv: argv as string[],
+        argv: failure === "workstation_heavy_work_denied" ? [] : argv as string[],
         cwd: cwd ?? null,
         timeoutMs: timeoutMs ?? null,
       });
       return this.cellExecResultFromOp(store.updateCellOp(op.id, { status: "failed", failure }), false);
     };
+    if (this.cfg.nodeKind === "workstation") {
+      const owner = store.getBee(cell.sourceBeeId);
+      if (!owner || !actor || !ownCellAdmission(owner, actor)) {
+        store.recordWorkstationAdmission(cell.sourceBeeId, { operation: "cell.exec", outcome: "denied", reason: "cross_bee_exec", requestKey: key });
+        persistRefusal("workstation_heavy_work_denied");
+        throw admissionFailure("cell.exec", "cross_bee_exec", this.cfg.nodeKind, { cellId, beeId: cell.sourceBeeId });
+      }
+    }
+    if (!existing) store.recordWorkstationAdmission(cell.sourceBeeId, { operation: "cell.exec", outcome: "allowed", requestKey: key, nodeKind: this.cfg.nodeKind });
     if (busy) return persistRefusal("busy");
     if (this.driver?.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
       return persistRefusal("cell_runtime_live");
@@ -5274,6 +5349,7 @@ export class HiveDaemon {
   private async rpcThreadOperationWithAdmission(kind: "fork" | "handoff", params: Record<string, unknown>) {
     const key = this.idempotencyKeyOf(params);
     if (key && this.mustStore().threadOperationByKey(key)) return this.rpcThreadOperation(kind, params);
+    this.newWorkAdmission(`thread.${kind}`, params);
     const source = typeof params.beeId === "string" ? this.mustStore().getBee(params.beeId) : null;
     if (source?.account && this.accounts && !this.allocationClaimParam(params) && this.accounts.allocationMode() === "shadow") {
       await this.accounts.ensureFreshAdmissionLimits(source.agent, {
@@ -5362,8 +5438,10 @@ export class HiveDaemon {
         throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
       }
       if (admission?.ok) allocation = admission.receipt;
+      store.bindWorkstationAdmission(key, this.admissionBinding());
       const admitted = store.admitThreadOperation({ id, kind, sourceBeeId, sourceProviderSessionId, successorBeeId, successorProviderSessionId,
         idempotencyKey: key, requestHash, instruction, source: boundary, historyPath: join(directory, "history.jsonl"), sessionPath: join(directory, "successor.jsonl") }, {
+        admissionBasis: this.admissionCaller.getStore()?.basis ?? "unadmitted",
         id: successorBeeId, name: name ?? `${source.name}-${kind}-${id.slice(0, 8)}`, agent: source.agent, substrate: source.substrate,
         cwd: source.cwd, title: source.title ?? undefined, tags: withoutRoleTags(source.tags), env: { ...source.env }, args: source.args,
         account: claimedAccount?.id ?? source.account,
@@ -5384,6 +5462,7 @@ export class HiveDaemon {
     if (key != null && store.lookupRpcResult(key)) {
       return this.withIdempotency("bee.fork", params, () => this.rpcFork(params));
     }
+    this.newWorkAdmission("bee.fork", params);
     const source = store.getBee(this.requireBee(params));
     if (source?.account && this.accounts && !this.allocationClaimParam(params)
       && this.accounts.allocationMode() === "shadow") {
@@ -5444,6 +5523,7 @@ export class HiveDaemon {
       throw new RpcError(admission.code, admission.message, { allocation: admission.receipt as unknown as Record<string, unknown> });
     }
     const { bee } = store.createBee({
+      admissionBasis: this.admissionCaller.getStore()?.basis ?? "unadmitted",
       id,
       name,
       agent: source.agent,
@@ -5910,6 +5990,7 @@ export class HiveDaemon {
       dataDir: this.cfg.dataDir,
       socketPath: this.cfg.socketPath,
       storePath: this.cfg.storePath,
+      workstationAdmission: { version: 1, nodeKind: this.cfg.nodeKind, scope: "new-work-and-cross-bee-exec", provenance: "cooperative", landingFixerPolicy: this.cfg.landingFixerPolicy },
       localSecurity: this.rpc?.localSecurity,
       cellDisk: this.retention?.diskStatus() ?? null,
     };
@@ -5996,6 +6077,7 @@ export class HiveDaemon {
       lastTickAt: this.lastTickAt,
       tickErrors: this.tickErrors,
       stopping: this.stopping,
+      workstationAdmission: { version: 1, nodeKind: this.cfg.nodeKind, scope: "new-work-and-cross-bee-exec", provenance: "cooperative", landingFixerPolicy: this.cfg.landingFixerPolicy },
       localSecurity: this.rpc?.localSecurity,
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
@@ -7367,6 +7449,7 @@ export class HiveDaemon {
     const dryRun = params.dryRun === true;
     const force = params.force === true;
     const report = importFromFrozen(store, root, {
+      admissionBasis: this.admissionCaller.getStore()?.basis ?? "unadmitted",
       dryRun,
       force,
       knownAgents: Object.keys(this.cfg.agents),

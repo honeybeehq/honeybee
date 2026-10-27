@@ -51,6 +51,7 @@ function mapBee(r: Row): BeeRow {
     id: r.id as string,
     name: r.name as string,
     agent: r.agent as string,
+    admissionBasis: (r.admission_basis ?? "unadmitted") as BeeRow["admissionBasis"],
     substrate: r.substrate as string,
     cwd: r.cwd as string,
     title: (r.title as string | null) ?? null,

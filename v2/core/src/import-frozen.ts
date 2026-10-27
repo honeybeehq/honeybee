@@ -190,6 +190,7 @@ export interface PreflightResult {
 }
 
 export interface FrozenImportOptions {
+  admissionBasis?: import("./types.ts").AdmissionBasis;
   /** Report only; write nothing. Preflight still runs and is reported. */
   dryRun?: boolean;
   /** Import even when the preflight found live old-world runtimes (A2 override). */
@@ -927,6 +928,7 @@ export function importFromFrozen(store: CoreStore, frozenRoot: string, opts: Fro
     const b = entry.bee;
     store.transact(() => {
       store.createBee({
+        admissionBasis: opts.admissionBasis,
         id: b.id,
         name: b.name,
         agent: b.agent,

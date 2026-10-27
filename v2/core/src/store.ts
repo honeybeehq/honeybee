@@ -299,6 +299,7 @@ export interface CoreStoreOptions {
 }
 
 export interface CreateBeeInput {
+  admissionBasis?: BeeRow["admissionBasis"];
   phoneOperation?: { origin: PhoneOriginRequest; key: string };
   /** Known process identity at spawn time, so a daemon restart mid-boot can re-adopt (WP2 finding). */
   proc?: { pid: number; pidStartedAt: number };
@@ -711,6 +712,7 @@ export function handlePrefix(agent: string): string {
 
 function mapBee(r: Row): BeeRow {
   return {
+    admissionBasis: (r.admission_basis ?? "unadmitted") as BeeRow["admissionBasis"],
     ...(Number(r.auth_control_fence ?? 0) > 0 ? { authControlFence: Number(r.auth_control_fence) } : {}),
     id: r.id as string,
     name: r.name as string,
@@ -1922,6 +1924,7 @@ export class CoreStore {
       // missing, so fresh and v1 stores (whose bees table was just created in
       // full) are untouched.
       this.addMissingColumns("bees", BEES_ADDITIVE_COLUMNS);
+      if (stored < 52) this.db.exec("UPDATE bees SET admission_basis = 'continuation'");
       // v7 → v8: additive urgency column on mailbox (spec 01 Q2 amendment).
       const mailCols = new Set(
         (this.stmt("SELECT name FROM pragma_table_info('mailbox')").all() as Row[]).map((c) => String(c.name)),
@@ -2186,6 +2189,7 @@ export class CoreStore {
         if (!previous.lastLocal && previous.highWatermarkMs === 0) this.putAccountObservation(account,{lastLocal:{limits:this.getAccountLimits(account)!,source:null},provenance:null,source:null,highWatermarkMs:0});
       }
     }
+    this.db.exec("CREATE TABLE IF NOT EXISTS workstation_admission_bindings (request_key TEXT PRIMARY KEY, digest TEXT NOT NULL)");
     this.db.exec(PHONE_PROVENANCE_SQL);
     this.db.exec(DELIVERY_CONFIRMATION_SQL);
     this.stmt("INSERT OR IGNORE INTO meta(key,value) SELECT 'confirmation_legacy_max_message_id', CAST(COALESCE(MAX(id),0) AS TEXT) FROM mailbox").run();
@@ -2482,6 +2486,21 @@ export class CoreStore {
       })) : [this.send(row.beeId, "Continue the interrupted turn from where you stopped. Preserve the current action attempt and report its result only when the work is complete.", { sender: "hive:quota-resume", origin: "quota.resume" })];
       return this.putQuotaRecovery({ ...row, state: row.interrupted && rt.bootEvidence !== "real" ? "rotating" : "resumed", successorGeneration: rt.generation, continuationKind: !row.interrupted ? "none" : replay ? "replay" : "continue", continuationMessageIds: sent.map(result => result.message.id) });
     });
+  }
+
+  bindWorkstationAdmission(key: string, digest: string): void {
+    const row = this.stmt("SELECT digest FROM workstation_admission_bindings WHERE request_key = ?").get(key) as Row | undefined;
+    if (row && row.digest !== digest) throw new IdempotencyConflictError(key);
+    this.stmt("INSERT OR IGNORE INTO workstation_admission_bindings(request_key,digest) VALUES(?,?)").run(key, digest);
+  }
+
+  checkWorkstationAdmission(key: string, digest: string): void {
+    const row = this.stmt("SELECT digest FROM workstation_admission_bindings WHERE request_key = ?").get(key) as Row | undefined;
+    if (row && row.digest !== digest) throw new IdempotencyConflictError(key);
+  }
+
+  recordWorkstationAdmission(beeId: string | null, payload: Record<string, unknown>): void {
+    this.tx(() => this.audit("workstation.admission", beeId, payload));
   }
 
   recordLocalRpcEvent(kind: "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", payload: Record<string, unknown>): void {
@@ -2872,6 +2891,10 @@ export class CoreStore {
           humanRef,
           namespace,
         );
+      if (input.admissionBasis !== undefined) {
+        if (!["unadmitted", "continuation", "human", "automatic_nonworkstation", "inbox_only"].includes(input.admissionBasis) && !/^fixer:[^\s]+$/.test(input.admissionBasis)) throw new CoreError("createBee: invalid admission basis");
+        this.stmt("UPDATE bees SET admission_basis = ? WHERE id = ?").run(input.admissionBasis, id);
+      }
       if (input.phoneOperation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(input.phoneOperation.origin, null, input.phoneOperation.key, id)));
       const bee = this.mustGetBee(id);
       this.audit("bee.created", id, { bee });

@@ -43,6 +43,9 @@ export function callerDataDir(env: Record<string, string | undefined> = process.
 }
 
 export interface CallerHello {
+  client: "hive-cli";
+  runtimeBeeId: string | null;
+  runtimeContext: boolean;
   dataDir?: string;
   liveTarget?: true;
   expectedInstanceId: string | null;
@@ -56,6 +59,9 @@ export function callerHelloFor(target: ResolvedDaemonTarget, allowForeignDaemon:
   const liveTarget = explicit && envDataDir !== null && !samePath(envDataDir, target.cfg.dataDir)
     && (samePath(target.cfg.dataDir, join(homedir(), ".hive", "v2")) || (envSocket !== undefined && samePath(target.cfg.socketPath, envSocket)));
   return {
+    client: "hive-cli",
+    runtimeBeeId: env.HIVE_BEE_ID || null,
+    runtimeContext: [env.HIVE_BEE_ID, env.HIVE_BEE, env.HIVE_CELL].some(value => value !== undefined && value !== ""),
     ...(envDataDir && (!explicit || liveTarget) ? { dataDir: envDataDir } : {}),
     ...(liveTarget ? { liveTarget: true as const } : {}),
     expectedInstanceId: target.recordInstanceId,

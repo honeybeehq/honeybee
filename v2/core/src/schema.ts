@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 51;
+export const SCHEMA_VERSION = 52;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -348,6 +348,7 @@ CREATE TABLE IF NOT EXISTS bees (
   name             TEXT NOT NULL,
   agent            TEXT NOT NULL,
   substrate        TEXT NOT NULL,
+  admission_basis  TEXT NOT NULL DEFAULT 'unadmitted',
   cwd              TEXT NOT NULL,
   title            TEXT,
   tags             TEXT NOT NULL DEFAULT '[]',
@@ -889,6 +890,7 @@ CREATE TABLE IF NOT EXISTS cell_ops (
  * account; v21: parent_external.
  */
 export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
+  ["admission_basis", "admission_basis TEXT NOT NULL DEFAULT 'unadmitted'"],
   ["auth_control_fence", "auth_control_fence INTEGER NOT NULL DEFAULT 0"],
   ["provider_session_id", "provider_session_id TEXT"],
   ["env", "env TEXT NOT NULL DEFAULT '{}'"],

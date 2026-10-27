@@ -121,7 +121,7 @@ export type CellExecResult = {
   stderr: string
   truncated: boolean
   timeoutMs: number
-  reason: 'no_cell' | 'cell_runtime_live' | 'busy' | 'argv_invalid' | 'containment' | null
+  reason: 'no_cell' | 'cell_runtime_live' | 'busy' | 'argv_invalid' | 'containment' | 'workstation_heavy_work_denied' | null
   deduped?: boolean
 }
 

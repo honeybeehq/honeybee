@@ -92,7 +92,13 @@ export const RUNTIME_TRANSITIONS: Readonly<Record<RuntimeState, readonly Runtime
 // Row shapes (as exposed by the API and by dumpState()/replayAudit()).
 // ---------------------------------------------------------------------------
 
+export interface LandingFixerPolicy { policyId: string; owner: "T114"; expiresAt: number }
+export interface WorkstationAdmission { version: 1; intent: "automatic" | "human" | "landing-fixer-local"; requestKey: string; policyId?: string }
+
+export type AdmissionBasis = "unadmitted" | "continuation" | "human" | "automatic_nonworkstation" | "inbox_only" | `fixer:${string}`;
+
 export interface BeeRow extends Partial<HumanOutputFacts> {
+  admissionBasis?: AdmissionBasis;
   phoneOperationOrigin?: PhoneOperationOrigin;
   id: string;
   name: string;
@@ -1015,6 +1021,7 @@ export interface TaskSupplyRow {
 
 /** B8 — the derived read model. Computed, never stored. */
 export interface BeeView extends Partial<HumanOutputFacts> {
+  admissionBasis?: AdmissionBasis;
   deliveryConfirmations?: DeliveryConfirmation[];
   beeId: string;
   exists: boolean;

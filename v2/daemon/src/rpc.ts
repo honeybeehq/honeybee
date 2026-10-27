@@ -84,6 +84,8 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly workstationAdmission?: import("../../core/src/types.ts").WorkstationAdmission;
+  readonly registeredApiary?: boolean;
   readonly humanChat?: HumanChatAdmission;
   readonly humanPolicyAuthority?: true;
   readonly automationAuthority?: true;
@@ -452,6 +454,31 @@ export class RpcServer {
         throw new RpcError("caller_not_trusted", "Store maintenance requires a verified direct local administrator connection.");
       }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
+      const admissionContext = frame.context as Record<string, unknown> | undefined;
+      const admissionFacts = (() => {
+        const admission = admissionContext?.workstationAdmission;
+        if (admission !== undefined || (verb === "cell.exec" && admissionContext?.sessionPrincipal !== undefined)) {
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("workstation_heavy_work_denied", "Workstation admission context requires registered direct-local Apiary authority");
+          this.trust.require(peer, conn.ingress);
+          let marker: import("../../core/src/types.ts").WorkstationAdmission | undefined;
+          if (admission !== undefined) {
+            if (!admission || typeof admission !== "object" || Array.isArray(admission)) throw new RpcError("invalid_request", "Invalid workstationAdmission");
+            const a = admission as Record<string, unknown>;
+            if (Object.keys(a).some(key => !["version", "intent", "requestKey", "policyId"].includes(key)) || a.version !== 1 || !["automatic", "human", "landing-fixer-local"].includes(String(a.intent)) || typeof a.requestKey !== "string" || !a.requestKey || a.requestKey !== params.idempotencyKey || (a.intent === "landing-fixer-local" ? verb !== "spawn" || typeof a.policyId !== "string" || !a.policyId : a.policyId !== undefined)) throw new RpcError("invalid_request", "Invalid workstation admission binding");
+            marker = a as unknown as typeof marker;
+          }
+          const principal = admissionContext?.sessionPrincipal as { beeId?: unknown } | undefined;
+          if (principal !== undefined && (verb !== "cell.exec" || !principal || typeof principal.beeId !== "string" || !principal.beeId || (marker && marker.intent !== "automatic"))) throw new RpcError("invalid_request", "Invalid Cell execution principal");
+          return { registeredApiary: true, ...(marker ? { workstationAdmission: marker } : {}), ...(principal ? { authenticatedBeeId: principal.beeId as string } : {}) };
+        }
+        let registeredApiary = false;
+        if (peer && this.trust.enabled && conn.ingress === "local_unix") {
+          try { this.trust.require(peer, conn.ingress); registeredApiary = true; } catch {}
+        }
+        return { registeredApiary };
+
+      })();
+      const dispatch = (v: RpcVerb, p: Record<string, unknown>, c: RpcConn) => this.opts.dispatch(v, p, { ...c, ...admissionFacts });
       const result = withRpcCaller(caller, () => {
         const automationContext = frame.context as Record<string, unknown> | undefined;
         if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
@@ -465,7 +492,7 @@ export class RpcServer {
           const reference = automationContext?.automationReference === undefined ? undefined : parseAutomationReference(automationContext.automationReference);
           const authorized = { ...conn, automationAuthority: true as const, ...(reference ? {automationReference:reference} : {}) };
           assertAutomationSend(params, authorized);
-          return this.opts.dispatch(verb, params, authorized);
+          return dispatch(verb, params, authorized);
         }
         if (verb === "mail.batch.read") {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "Batch reads require the registered direct local Apiary authority or its authenticated owning bee.");
@@ -474,11 +501,11 @@ export class RpcServer {
           if (context !== undefined && (!context || typeof context !== "object" || Array.isArray(context))) throw new RpcError("caller_not_trusted", "Invalid batch read context.");
           if (automationContext?.humanChat !== undefined || automationContext?.phoneOrigin !== undefined || automationContext?.phoneLane !== undefined) throw new RpcError("caller_not_trusted", "Batch reads cannot use human or phone admission.");
           const principal = automationContext?.sessionPrincipal;
-          if (principal === undefined) return this.opts.dispatch(verb, params, { ...conn, automationAuthority: true });
+          if (principal === undefined) return dispatch(verb, params, { ...conn, automationAuthority: true });
           if (!principal || typeof principal !== "object" || Array.isArray(principal)) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal.");
           const beeId = (principal as Record<string, unknown>).beeId;
           if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256 || beeId.includes("\0") || beeId !== params.beeId) throw new RpcError("caller_not_trusted", "Batch reads require the authenticated owning bee.");
-          return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
+          return dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
         }
         if (verb === "mail.batching.set" || verb === "mail.batching.get" || verb === "mail.batch.resolve") {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null
@@ -487,7 +514,7 @@ export class RpcServer {
             throw new RpcError("automation_unauthorized", "Batching policy requires the registered direct local Apiary authority");
           }
           try { this.trust.require(peer, conn.ingress); } catch { throw new RpcError("automation_unauthorized", "Batching policy requires the registered direct local Apiary authority"); }
-          return this.opts.dispatch(verb, params, { ...conn, automationAuthority: true });
+          return dispatch(verb, params, { ...conn, automationAuthority: true });
         }
         if (verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register") {
           if (!peer) throw new RpcError("caller_not_trusted", "Registration requires a local Unix connection.");
@@ -515,12 +542,12 @@ export class RpcServer {
           const principal = (context as Record<string, unknown> | undefined)?.sessionPrincipal;
           if (verb === "bee.setHumanOutputMode") {
             if (principal !== undefined) throw new RpcError("caller_not_trusted", "A session principal cannot change its mode.");
-            return this.opts.dispatch(verb, params, { ...conn, humanOutputManagement: true });
+            return dispatch(verb, params, { ...conn, humanOutputManagement: true });
           }
           if (!principal || typeof principal !== "object" || Array.isArray(principal) || Object.keys(principal).some(key => key !== "beeId")) throw new RpcError("caller_not_trusted", "Human output requires an authenticated session principal.");
           const beeId = (principal as Record<string, unknown>).beeId;
           if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256 || params.beeId !== beeId) throw new RpcError("caller_not_trusted", "Human output principal does not match beeId.");
-          return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
+          return dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
         }
         if (verb === "question.withdraw") {
           if (!this.capabilities.includes("question.withdraw.v1")) throw new RpcError("question_withdraw_unsupported", "Question withdrawal is unsupported by this Honeybee.");
@@ -532,14 +559,14 @@ export class RpcServer {
           if (!principal || typeof principal !== "object" || Array.isArray(principal)) throw new RpcError("caller_not_trusted", "Withdrawal requires an authenticated session principal.");
           const beeId = (principal as Record<string, unknown>).beeId;
           if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256) throw new RpcError("caller_not_trusted", "Invalid authenticated session principal.");
-          return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
+          return dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
         }
         if (verb === "send" && (params.humanChat !== undefined || params.humanFirst !== undefined || params.provenance !== undefined || params.replayHumanChatMessageId !== undefined)) throw new RpcError("human_chat_unauthorized", "Human provenance belongs in protected RPC context");
         const humanContext = frame.context as Record<string, unknown> | undefined;
         if (verb === "mail.humanFirst.set" || humanContext?.humanChat !== undefined) {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("human_chat_unauthorized", "Human chat requires the registered local Apiary authority");
           try { this.trust.require(peer, conn.ingress); } catch { throw new RpcError("human_chat_unauthorized", "Human chat requires the registered local Apiary authority"); }
-          if (verb === "mail.humanFirst.set") return this.opts.dispatch(verb, params, { ...conn, humanPolicyAuthority: true });
+          if (verb === "mail.humanFirst.set") return dispatch(verb, params, { ...conn, humanPolicyAuthority: true });
           if (verb !== "send" || humanContext?.phoneOrigin !== undefined || humanContext?.phoneLane !== undefined) throw new RpcError("human_chat_unauthorized", "Human chat context is only valid for send");
           const raw = humanContext?.humanChat;
           if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("human_chat_invalid", "Malformed human chat admission");
@@ -552,7 +579,7 @@ export class RpcServer {
             || params.sender !== undefined && params.sender !== "operator" && (typeof params.sender !== "string" || !params.sender.startsWith("human:") || !params.sender.slice(6).trim())
             || chat.beeId !== params.beeId || chat.idempotencyKey !== params.idempotencyKey || typeof params.body !== "string"
             || chat.bodySha256 !== createHash("sha256").update(params.body).digest("hex")) throw new RpcError("human_chat_invalid", "Human chat destination, body or key binding is invalid");
-          return this.opts.dispatch(verb, params, { ...conn, humanChat: chat as unknown as HumanChatAdmission });
+          return dispatch(verb, params, { ...conn, humanChat: chat as unknown as HumanChatAdmission });
         }
         if (params.phoneOrigin !== undefined || params.phoneInput !== undefined || params.phoneLane !== undefined) throw new RpcError("invalid_request", "Phone carriers belong in RPC context, not args");
         const context = frame.context as Record<string, unknown> | undefined;
@@ -561,13 +588,13 @@ export class RpcServer {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Phone envelope requires a LocalRpcTrust-authenticated local caller");
           this.trust.require(peer, conn.ingress);
           if (context.phoneLane !== undefined && context.phoneLane !== "envelope-v1") throw new RpcError("invalid_request", "Phone envelope lane mismatch");
-          return this.opts.dispatch(verb, params, { ...conn, phoneOrigin: parsePhoneOrigin(context.phoneOrigin), phoneCarrierDigest: canonicalDigest(JSON.parse(JSON.stringify(context.phoneOrigin))), phoneLane: "envelope-v1" });
+          return dispatch(verb, params, { ...conn, phoneOrigin: parsePhoneOrigin(context.phoneOrigin), phoneCarrierDigest: canonicalDigest(JSON.parse(JSON.stringify(context.phoneOrigin))), phoneLane: "envelope-v1" });
         }
         if (context?.phoneLane !== undefined) {
           if (context.phoneLane !== "interim-v1" || (verb !== "send" && verb !== "spawn")) throw new RpcError("invalid_request", "Invalid phone lane");
-          return this.opts.dispatch(verb, params, { ...conn, phoneLane: "interim-v1" });
+          return dispatch(verb, params, { ...conn, phoneLane: "interim-v1" });
         }
-        return this.opts.dispatch(verb, params, conn);
+        return dispatch(verb, params, conn);
       });
       // v7: verbs with a bounded async leg (limits fetch before an auto pick,
       // the login seat's keychain baseline) return a promise; sync verbs are
@@ -596,6 +623,9 @@ export class RpcServer {
 }
 
 export interface HelloCaller {
+  client?: "hive-cli";
+  runtimeBeeId?: string | null;
+  runtimeContext?: boolean;
   dataDir: string | null;
   liveTarget: boolean;
   expectedInstanceId: string | null | undefined;
@@ -610,7 +640,9 @@ function helloCaller(value: unknown): HelloCaller | null | "invalid" {
   if (raw.expectedInstanceId !== undefined && raw.expectedInstanceId !== null && typeof raw.expectedInstanceId !== "string") return "invalid";
   if (raw.allowForeignDaemon !== undefined && typeof raw.allowForeignDaemon !== "boolean") return "invalid";
   if (raw.liveTarget !== undefined && typeof raw.liveTarget !== "boolean") return "invalid";
+  if (raw.client !== undefined && (raw.client !== "hive-cli" || (raw.runtimeBeeId !== null && typeof raw.runtimeBeeId !== "string") || typeof raw.runtimeContext !== "boolean")) return "invalid";
   return {
+    ...(raw.client === "hive-cli" ? { client: "hive-cli" as const, runtimeBeeId: raw.runtimeBeeId as string | null, runtimeContext: raw.runtimeContext as boolean } : {}),
     dataDir: typeof raw.dataDir === "string" ? raw.dataDir : null,
     liveTarget: raw.liveTarget === true,
     expectedInstanceId: raw.expectedInstanceId as string | null | undefined,

@@ -90,6 +90,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "workstation.admission.v1",
   "mail.humanFirst.v1",
   "mail.batching.v1",
   "mail.delivery.confirmation.v1",
@@ -279,6 +280,7 @@ export interface HelloFrame {
 
 /** Closed-list, typed errors — never fuzzy (spec 04). */
 export const RPC_ERROR_CODES = [
+  "workstation_heavy_work_denied",
   "human_chat_unauthorized",
   "human_chat_invalid",
   "human_first_unsupported",
@@ -695,6 +697,7 @@ export type RpcVerb = (typeof RPC_VERBS)[number];
 
 /** Service assertion, accepted only on a registered direct-local RPC connection. */
 export interface RpcRequestContext {
+  workstationAdmission?: import("../../core/src/types.ts").WorkstationAdmission;
   humanChat?: import("../../core/src/types.ts").HumanChatAdmission;
   sessionPrincipal?: { beeId: string };
   phoneOrigin?: import("../../core/src/phoneOrigin.ts").PhoneOriginRequest;
@@ -1694,7 +1697,10 @@ export interface AuditTailResult {
   rows: AuditRow[];
 }
 
+export interface WorkstationAdmissionStatus { version: number; nodeKind: string; scope: string; provenance: string; landingFixerPolicy: import("../../core/src/types.ts").LandingFixerPolicy | null }
+
 export interface DeployInfoResult {
+  workstationAdmission?: WorkstationAdmissionStatus;
   localSecurity?: {peerCredentials: import("./peerCredentials.ts").PeerCredentialStatus; localTrust: "off" | "ready" | "registration_key_unavailable"};
   identity?: BuildIdentity;
   protocol: string;
@@ -1747,6 +1753,7 @@ export interface HarnessFact {
 }
 
 export interface HealthResult {
+  workstationAdmission?: WorkstationAdmissionStatus;
   tmuxCleanupRetained?: number;
   tmuxCleanupInformational?: number;
   paneInputUnknown?: number;
@@ -2005,7 +2012,7 @@ export interface CellExecResult {
   stderr: string;
   truncated: boolean;
   timeoutMs: number;
-  reason: "no_cell" | "cell_runtime_live" | "busy" | "argv_invalid" | "containment" | null;
+  reason: "no_cell" | "cell_runtime_live" | "busy" | "argv_invalid" | "containment" | "workstation_heavy_work_denied" | null;
   deduped?: boolean;
 }
 

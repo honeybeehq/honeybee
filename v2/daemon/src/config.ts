@@ -1,3 +1,4 @@
+import type { LandingFixerPolicy } from "../../core/src/types.ts";
 /**
  * Per-node daemon config (spec 04 behavior 7; Q1 resolution: json).
  *
@@ -254,6 +255,7 @@ export interface ResolvedCellRetention {
 
 /** The raw (all-optional) shape of config.json. */
 export interface NodeConfigFile {
+  workstationAdmission?: { landingFixerPolicy?: LandingFixerPolicy };
   /** Node kind (workstation | satellite | cloud). Default workstation. */
   nodeKind?: NodeKind;
   /** Cell substrate settings (WP5). */
@@ -325,6 +327,7 @@ export interface NodeConfigFile {
 }
 
 export interface ResolvedNodeConfig {
+  landingFixerPolicy: LandingFixerPolicy | null;
   dataDir: string;
   rpcLocalTrust: {requireObservationCaller: boolean; registrationKeyFile: string};
   configPath: string;
@@ -1020,6 +1023,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
   const resolved: ResolvedNodeConfig = {
     dataDir,
     configPath: path,
+    landingFixerPolicy: landingFixerPolicyOf(raw),
     nodeKind,
     cellsRoot: cells.root ?? join(dataDir, "cells"),
     cellSandbox: cells.sandbox,
@@ -1081,4 +1085,16 @@ function localTrustOf(raw: Record<string, unknown>, dataDir: string): {requireOb
   const config = value as Record<string, unknown>;
   if (Object.keys(config).some(key => !["requireObservationCaller", "registrationKeyFile"].includes(key)) || (config.requireObservationCaller !== undefined && typeof config.requireObservationCaller !== "boolean") || (config.registrationKeyFile !== undefined && (typeof config.registrationKeyFile !== "string" || !config.registrationKeyFile.startsWith("/")))) throw new Error("Invalid rpcLocalTrust configuration");
   return {requireObservationCaller: config.requireObservationCaller === true, registrationKeyFile: typeof config.registrationKeyFile === "string" ? config.registrationKeyFile : join(dataDir, "rpc-private", "registration.key")};
+}
+
+export function landingFixerPolicyOf(raw: Record<string, unknown>): LandingFixerPolicy | null {
+  const value = raw.workstationAdmission;
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some(key => key !== "landingFixerPolicy")) throw new ConfigError("Invalid workstationAdmission configuration");
+  const policy = (value as Record<string, unknown>).landingFixerPolicy;
+  if (policy === undefined) return null;
+  if (!policy || typeof policy !== "object" || Array.isArray(policy)) throw new ConfigError("Invalid landingFixerPolicy");
+  const p = policy as Record<string, unknown>;
+  if (Object.keys(p).some(key => !["policyId", "owner", "expiresAt"].includes(key)) || typeof p.policyId !== "string" || !p.policyId.trim() || p.owner !== "T114" || typeof p.expiresAt !== "number" || !Number.isSafeInteger(p.expiresAt) || p.expiresAt <= 0) throw new ConfigError("landingFixerPolicy requires policyId, owner T114 and finite expiresAt epoch milliseconds");
+  return { policyId: p.policyId, owner: "T114", expiresAt: p.expiresAt };
 }

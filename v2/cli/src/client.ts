@@ -34,7 +34,7 @@ export interface DaemonInstance {
 
 export interface ConnectOptions {
   capabilities?: readonly string[];
-  caller?: { dataDir?: string; liveTarget?: boolean; expectedInstanceId: string | null; allowForeignDaemon?: boolean };
+  caller?: { client?: "hive-cli"; runtimeBeeId?: string | null; runtimeContext?: boolean; dataDir?: string; liveTarget?: boolean; expectedInstanceId: string | null; allowForeignDaemon?: boolean };
   verifyInstance?: (instance: DaemonInstance | null) => void;
 }
 
