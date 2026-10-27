@@ -2,6 +2,7 @@ import type { MultilineStage, DeliveryFallback, DeliveryHoldReceipt, MultilineDe
 export type { MultilineStage, DeliveryFallback, DeliveryHoldReceipt, MultilineDeliveryRow, DeliveryHold } from "./multilineDeliveryTypes.ts";
 import { createScanner } from "jsonc-parser";
 
+export const MULTILINE_METADATA_MAX_BYTES = 1024 * 1024;
 export const MULTILINE_UNSUPPORTED_ATTEMPTS = 3;
 export const MULTILINE_UNSUPPORTED_MS = 30_000;
 export const MULTILINE_UNSUPPORTED_DETAILS = ["multiline_type_mode", "multiline_bracketed_paste_disabled", "multiline_bracketed_paste_unknown", "multiline_bracketed_paste_version_unsupported"] as const;
@@ -106,7 +107,7 @@ function uniqueJsonObjectKeys(json: string): boolean {
 
 export function readMultilineDelivery(json: string, messageId: number, beeId: string, heldAt: number | null, heldSince: number | null): MultilineDeliveryRow {
   try {
-    if (!uniqueJsonObjectKeys(json)) throw new Error("delivery_hold_state_unknown");
+    if (Buffer.byteLength(json, "utf8") > MULTILINE_METADATA_MAX_BYTES || !uniqueJsonObjectKeys(json)) throw new Error("delivery_hold_state_unknown");
     const row = JSON.parse(json) as MultilineDeliveryRow;
     if (row && typeof row === "object" && !Array.isArray(row) && row.messageId === messageId && row.beeId === beeId && row.heldAt === heldAt && row.heldSince === heldSince
       && ["waiting", "expired", "held", "delivered"].includes(row.stage)
@@ -213,7 +214,8 @@ const multilineValidSql = [
   jsonText('$.detail'), jsonNullable('$.notice', jsonText('$.notice')),
   jsonOptional(fallbackPath, fallbackValidSql),
 ].map(check => `(${check})`).join(' AND ');
-export const MULTILINE_UNKNOWN_SQL = `CASE WHEN NOT json_valid(row_json) THEN 1
+export const MULTILINE_UNKNOWN_SQL = `CASE WHEN length(CAST(row_json AS BLOB)) > ${MULTILINE_METADATA_MAX_BYTES} THEN 1
+  WHEN NOT json_valid(row_json) THEN 1
   WHEN EXISTS (SELECT 1 FROM json_tree(row_json) AS member
     WHERE typeof(member.key) = 'text' GROUP BY member.parent, member.key HAVING COUNT(*) > 1) THEN 1
   ELSE NOT COALESCE((${multilineValidSql}), 0)

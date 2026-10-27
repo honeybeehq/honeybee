@@ -382,3 +382,69 @@ test("SQL unknown count agrees with decoder for outer and fallback shape boundar
     } finally {db.close();}
   } finally {h.cleanup();}
 });
+
+for (const order of ["first", "last"] as const) test(`duplicate descriptors stay unknown across acting selectors: ${order}`, () => {
+  const h = harness(); let store = h.open();
+  try {
+    const {bee} = makeBee(store); bootToRunning(store, bee.id, 100, 1);
+    const message = store.send(bee.id, "one\ntwo").message;
+    for (let i = 0; i < 3; i++) store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+    store.close();
+    let db = new DatabaseSync(h.path);
+    const raw = db.prepare("SELECT row_json FROM multiline_delivery WHERE message_id = ?").get(message.id) as {row_json: string};
+    const base = JSON.parse(raw.row_json);
+    const fallback: DeliveryFallback = {code: "delivery_file_fallback", state: "in_flight", id: "00000000-0000-4000-8000-000000000000", ownerStoreId: "owner", root: "/data", worktrees: [], path: "/data/content", pointer: "full text: /data/content", digest: "a".repeat(64), bytes: 10, generation: 1, detail: null, senderNoticeMessageId: 999};
+    for (const state of ["removed", "held", "delivered", "in_flight", "notice", "nested", "pane"]) {
+      const pane = {code: "pane_input_unknown", generation: 1, since: 1000, reason: "unverified_clear", socketPath: "/runtime/t.sock", paneId: "%1", serverIdentity: "1:2:3.5:4:5.5"};
+      const good = JSON.stringify({...fallback, state: state === "notice" || state === "nested" || state === "pane" ? "in_flight" : state, ...(state === "pane" ? {attempts: 1, attemptPhase: "injecting", paneInput: pane} : {})});
+      let duplicate = order === "first" ? good.slice(0, -1) + ',"state":"ready"}' : good.replace('"state":' + JSON.stringify(state), '"state":"ready","state":' + JSON.stringify(state));
+      if (state === "notice") duplicate = good.replace('"senderNoticeMessageId":999', order === "first" ? '"senderNoticeMessageId":999,"senderNoticeMessageId":998' : '"senderNoticeMessageId":998,"senderNoticeMessageId":999');
+      if (state === "nested") duplicate = good.slice(0, -1) + ',"extra":{"a":1,"a":2}}';
+      if (state === "pane") duplicate = good.replace('"paneId":"%1"', order === "first" ? '"paneId":"%1","paneId":"%2"' : '"paneId":"%2","paneId":"%1"');
+      db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(JSON.stringify({...base, fallback}).replace(JSON.stringify(fallback), duplicate), message.id);
+      db.close();
+      store = h.open();
+      assert.equal(store.multilineDelivery(message.id)?.detail, "delivery_hold_state_unknown");
+      assert.equal(store.heldMultilineMail().get(bee.id)?.[0]?.fallback?.state, "unknown");
+      assert.equal(store.multilineSenderNotice(999), false);
+      assert.deepEqual(store.multilinePaneQuarantines(), []);
+      const before = store.auditRows();
+      store.recoverInFlightMultilineFallbacks();
+      assert.deepEqual(store.auditRows(), before);
+      assert.equal(store.multilineDelivery(message.id)?.fallback?.id, "");
+      store.close();
+      db = new DatabaseSync(h.path);
+    }
+    db.exec("PRAGMA foreign_keys = OFF");
+    db.prepare("UPDATE multiline_delivery SET bee_id = ? WHERE message_id = ?").run("deleted-bee", message.id);
+    db.close();
+    store = h.open();
+    assert.equal(store.deletedMultilineFiles()[0]?.fallback?.state, "unknown");
+    assert.equal(store.deletedMultilineFiles()[0]?.fallback?.path, null);
+  } finally {store.close(); h.cleanup();}
+});
+
+test("metadata byte cap agrees in decoder and SQL before parsing", () => {
+  const h = harness(); const store = h.open();
+  try {
+    const {bee} = makeBee(store); bootToRunning(store, bee.id, 100, 1);
+    const message = store.send(bee.id, "one\ntwo").message;
+    store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+    const base = store.multilineDelivery(message.id)!;
+    store.close();
+    const db = new DatabaseSync(h.path);
+    try {
+      for (const [bytes, marker] of [[1024 * 1024, ""], [1024 * 1024 + 1, ""], [1024 * 1024, "😀"], [1024 * 1024 + 1, "😀"]] as const) {
+        const prefix = JSON.stringify({...base, extra: ""});
+        const json = prefix.replace('"extra":""', '"extra":"' + marker + "x".repeat(bytes - Buffer.byteLength(prefix) - Buffer.byteLength(marker)) + '"');
+        assert.equal(Buffer.byteLength(json), bytes);
+        db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(json, message.id);
+        assert.equal(readMultilineDelivery(json, message.id, bee.id, base.heldAt, base.heldSince).detail === "delivery_hold_state_unknown", bytes > 1024 * 1024);
+        assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get()!.count, bytes > 1024 * 1024 ? 1 : 0);
+      }
+      const oversized = '{"extra":"' + "é".repeat(600_000) + '"';
+      db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(oversized, message.id);
+      assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get()!.count, 1);
+    } finally {db.close();}
+  } finally {h.cleanup();}
+});

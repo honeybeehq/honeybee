@@ -3965,10 +3965,10 @@ export class CoreStore {
     const rows = this.stmt(`SELECT message.id, message.urgency, message.enqueued_at, message.queue_order, message.human_chat, held.*
       FROM multiline_delivery AS held JOIN mailbox AS message ON message.id = held.message_id AND message.bee_id = held.bee_id
       WHERE held.held_since IS NOT NULL AND message.delivered_at IS NULL
-        AND CASE WHEN json_valid(held.row_json) THEN COALESCE(json_extract(held.row_json, '$.fallback.state'), '') NOT IN ('held', 'delivered', 'removed') ELSE 1 END
       ORDER BY COALESCE(message.queue_order,message.id), message.id`).all() as Row[];
     for (const row of rows) {
       const beeId = String(row.bee_id), hold = readMultilineDelivery(String(row.row_json), Number(row.message_id), beeId, row.held_at == null ? null : Number(row.held_at), Number(row.held_since));
+      if (hold.fallback && ["held", "delivered", "removed"].includes(hold.fallback.state)) continue;
       const pending = result.get(beeId) ?? [];
       pending.push({ ...mapDaemonPendingMessage(row.id, row.urgency, row.enqueued_at), ...(row.queue_order == null ? {} : { queueOrder: Number(row.queue_order) }), ...(hold.fallback ? { fallback: hold.fallback } : {}) });
       result.set(beeId, pending);
@@ -3979,9 +3979,9 @@ export class CoreStore {
   deletedMultilineFiles(): MultilineDeliveryRow[] {
     return (this.stmt(`SELECT held.* FROM multiline_delivery AS held LEFT JOIN bees AS bee ON bee.id = held.bee_id
       WHERE (bee.id IS NULL OR bee.lifecycle = 'deleted')
-        AND CASE WHEN json_valid(held.row_json) THEN json_type(held.row_json, '$.fallback') IS NOT NULL AND COALESCE(json_extract(held.row_json, '$.fallback.state'), '') != 'removed' ELSE 0 END
       ORDER BY held.message_id`).all() as Row[])
-      .map(row => readMultilineDelivery(String(row.row_json), Number(row.message_id), String(row.bee_id), row.held_at == null ? null : Number(row.held_at), row.held_since == null ? null : Number(row.held_since)));
+      .map(row => readMultilineDelivery(String(row.row_json), Number(row.message_id), String(row.bee_id), row.held_at == null ? null : Number(row.held_at), row.held_since == null ? null : Number(row.held_since)))
+      .filter(row => row.fallback !== undefined && row.fallback.state !== "removed");
   }
 
   retainsMultilineRuntimeContent(beeId: string, primaryRoot: string): boolean {
@@ -4008,9 +4008,9 @@ export class CoreStore {
 
   recoverInFlightMultilineFallbacks(): void {
     this.tx(() => {
-      const rows = this.stmt(`SELECT message_id FROM multiline_delivery WHERE CASE WHEN json_valid(row_json)
-        THEN json_extract(row_json, '$.fallback.state') = 'in_flight' ELSE 0 END`).all() as Row[];
-      for (const row of rows) this.transitionMultilineFallback(Number(row.message_id), "in_flight", "unknown", {detail: "delivery_pointer_daemon_restarted"});
+      for (const row of this.listMultilineDeliveries()) {
+        if (row.fallback?.state === "in_flight") this.transitionMultilineFallback(row.messageId, "in_flight", "unknown", {detail: "delivery_pointer_daemon_restarted"});
+      }
     });
   }
 
@@ -4033,9 +4033,7 @@ export class CoreStore {
   }
 
   multilinePaneQuarantines(): MultilineDeliveryRow[] {
-    return (this.stmt(`SELECT * FROM multiline_delivery WHERE CASE WHEN json_valid(row_json)
-      THEN json_type(row_json, '$.fallback.paneInput') = 'object' AND json_type(row_json, '$.fallback.paneInput.clearedAt') IS NULL ELSE 0 END`).all() as Row[])
-      .map(row => readMultilineDelivery(String(row.row_json), Number(row.message_id), String(row.bee_id), row.held_at == null ? null : Number(row.held_at), row.held_since == null ? null : Number(row.held_since)))
+    return this.listMultilineDeliveries()
       .filter(row => row.fallback?.paneInput && row.fallback.paneInput.clearedAt === undefined);
   }
 
@@ -4190,8 +4188,8 @@ export class CoreStore {
   }
 
   multilineSenderNotice(messageId: number): boolean {
-    return this.multilineSenderReceipt(messageId) !== null || !!this.stmt(`SELECT 1 FROM multiline_delivery WHERE CASE WHEN json_valid(row_json)
-      THEN json_extract(row_json, '$.fallback.senderNoticeMessageId') = ? ELSE 0 END LIMIT 1`).get(messageId);
+    return this.multilineSenderReceipt(messageId) !== null
+      || this.listMultilineDeliveries().some(row => row.fallback?.senderNoticeMessageId === messageId);
   }
 
   private pendingMultilineReorders(beeId: string, selectedMessageId: number): MultilineDeliveryRow[] {
