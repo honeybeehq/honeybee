@@ -434,6 +434,7 @@ test("metadata byte cap agrees in decoder and SQL before parsing", () => {
     store.close();
     const db = new DatabaseSync(h.path);
     try {
+      assert.equal(db.prepare("PRAGMA encoding").get()!.encoding, "UTF-8");
       for (const [bytes, marker] of [[1024 * 1024, ""], [1024 * 1024 + 1, ""], [1024 * 1024, "😀"], [1024 * 1024 + 1, "😀"]] as const) {
         const prefix = JSON.stringify({...base, extra: ""});
         const json = prefix.replace('"extra":""', '"extra":"' + marker + "x".repeat(bytes - Buffer.byteLength(prefix) - Buffer.byteLength(marker)) + '"');
@@ -442,9 +443,46 @@ test("metadata byte cap agrees in decoder and SQL before parsing", () => {
         assert.equal(readMultilineDelivery(json, message.id, bee.id, base.heldAt, base.heldSince).detail === "delivery_hold_state_unknown", bytes > 1024 * 1024);
         assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get()!.count, bytes > 1024 * 1024 ? 1 : 0);
       }
+      const valid = JSON.stringify(base);
+      db.prepare("INSERT INTO multiline_delivery VALUES(?,?,?,?,?,?)").run(message.id + 1, bee.id, base.heldAt, base.heldSince, null, valid.replace('"messageId":' + message.id, '"messageId":' + (message.id + 1)));
+      db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run("not-json", message.id);
+      assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get()!.count, 1);
+      assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE CASE WHEN ${MULTILINE_UNKNOWN_SQL} THEN 0 ELSE 1 END`).get()!.count, 1);
       const oversized = '{"extra":"' + "é".repeat(600_000) + '"';
       db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(oversized, message.id);
       assert.equal(db.prepare(`SELECT COUNT(*) AS count FROM multiline_delivery WHERE ${MULTILINE_UNKNOWN_SQL}`).get()!.count, 1);
     } finally {db.close();}
   } finally {h.cleanup();}
+});
+
+for (const held of [false, true]) for (const corruption of ["malformed", "ready-first", "ready-last"] as const) test(`batch skips 65 unknown descriptors before its cap and releases later mail: ${corruption}, held=${held}`, () => {
+  const h = harness(); let store = h.open();
+  try {
+    const {bee} = makeBee(store); bootToRunning(store, bee.id, 100, 1);
+    store.setMailBatchingPolicy(bee.id, true);
+    const ids: number[] = [];
+    for (let i = 0; i < 65; i++) {
+      const message = store.send(bee.id, "one\ntwo").message;
+      ids.push(message.id);
+      for (let attempt = 0; attempt < (held ? 3 : 1); attempt++) store.recordMultilineDeliveryRefusal(message.id, 1, "multiline_type_mode");
+    }
+    for (let i = 0; i < 650; i++) h.now();
+    const later = store.send(bee.id, "later").message;
+    store.close();
+    const db = new DatabaseSync(h.path);
+    for (const id of ids) {
+      const raw = db.prepare("SELECT row_json FROM multiline_delivery WHERE message_id = ?").get(id) as {row_json: string};
+      const fallback: DeliveryFallback = {code: "delivery_file_fallback", state: "ready", id: "00000000-0000-4000-8000-000000000000", ownerStoreId: "owner", root: "/data", worktrees: [], path: "/data/content", pointer: "full text: /data/content", digest: "a".repeat(64), bytes: 10, generation: 1, detail: null, senderNoticeMessageId: null};
+      let json = JSON.stringify({...JSON.parse(raw.row_json), fallback});
+      json = corruption === "malformed" ? "not-json" : json.replace('"state":"ready"', corruption === "ready-first" ? '"state":"ready","state":"removed"' : '"state":"removed","state":"ready"');
+      db.prepare("UPDATE multiline_delivery SET row_json = ? WHERE message_id = ?").run(json, id);
+    }
+    db.close(); store = h.open();
+    assert.equal(store.countUnknownMultilineHolds(), 65);
+    for (const id of ids) assert.equal(store.mailBatchCandidate(id), false);
+    assert.equal(store.mailBatchReleaseReason(bee.id), "idle");
+    assert.deepEqual(store.freezeMailBatch(bee.id)?.memberIds, [later.id]);
+    for (const id of ids) assert.equal(store.mailBatchForMessage(id), null);
+    if (held) assert.equal(store.readDaemonWork()[0]?.pending.some(row => ids.includes(row.id)), false);
+  } finally {store.close(); h.cleanup();}
 });

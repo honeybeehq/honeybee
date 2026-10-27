@@ -4563,12 +4563,12 @@ export class CoreStore {
     const message = this.getMessage(messageId);
     if (!message || message.deliveredAt !== null || message.humanChat || this.mailBatchControl(messageId) || automationDeliveryClass(message.automationKind) !== "ordinary" || this.getDeliveryConfirmationIntent(messageId)) return false;
     const hold = this.multilineDelivery(messageId);
-    return !hold || hold.heldSince === null || hold.fallback?.state === "ready";
+    return !hold || hold.detail !== "delivery_hold_state_unknown" && hold.fallback?.state !== "unknown" && (hold.heldSince === null || hold.fallback?.state === "ready");
   }
 
   mailBatchReleaseReason(beeId: string): MailBatch["releaseReason"] | null {
-    const candidates = this.stmt("SELECT id,enqueued_at,mail_batch_id FROM mailbox WHERE bee_id=? AND delivered_at IS NULL AND human_chat IS NULL AND (automation_kind IS NULL OR automation_kind IN ('obligation-notice','proof-notice')) AND (mail_batch_id IS NOT NULL OR (NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=mailbox.id) AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id=mailbox.id AND held.held_since IS NOT NULL AND COALESCE(json_extract(held.row_json,'$.fallback.state'),'') != 'ready'))) ORDER BY enqueued_at,id").all(beeId) as Row[];
-    const oldest = candidates.find(row => row.mail_batch_id != null || !this.mailBatchControl(Number(row.id)));
+    const candidates = this.stmt("SELECT id,enqueued_at,mail_batch_id FROM mailbox WHERE bee_id=? AND delivered_at IS NULL AND human_chat IS NULL AND (automation_kind IS NULL OR automation_kind IN ('obligation-notice','proof-notice')) AND (mail_batch_id IS NOT NULL OR (NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=mailbox.id))) ORDER BY enqueued_at,id").all(beeId) as Row[];
+    const oldest = candidates.find(row => row.mail_batch_id != null || this.mailBatchCandidate(Number(row.id)));
     if (oldest && this.now() - Number(oldest.enqueued_at) > 600_000) return "max-age";
     if (this.activeHumanWindow(beeId)) return null;
     return this.humanFirstPolicy(beeId).lastHumanReceivedAt === null ? "idle" : "window-close";
@@ -4597,7 +4597,7 @@ export class CoreStore {
       const releaseReason = this.mailBatchReleaseReason(beeId);
       if (!policy.enabled || releaseReason === null) return null;
       const seed = this.pendingHumanFirstSeedMessageId(beeId), handoff = this.pendingHandoffSeedMessageId(beeId);
-      let eligible = (this.stmt("SELECT message.* FROM mailbox AS message WHERE message.bee_id=? AND message.delivered_at IS NULL AND message.human_chat IS NULL AND (message.automation_kind IS NULL OR message.automation_kind IN ('obligation-notice','proof-notice')) AND message.id != ? AND message.id != ? AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id=message.id AND held.held_since IS NOT NULL AND COALESCE(json_extract(held.row_json,'$.fallback.state'),'') != 'ready') AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=message.id) ORDER BY COALESCE(message.queue_order,message.id),message.id LIMIT 64").all(beeId,seed ?? -1,handoff ?? -1) as Row[]).map(row => this.mapPhoneMessage(row)).filter(message => !this.mailBatchControl(message.id));
+      let eligible = (this.stmt("SELECT message.* FROM mailbox AS message WHERE message.bee_id=? AND message.delivered_at IS NULL AND message.human_chat IS NULL AND (message.automation_kind IS NULL OR message.automation_kind IN ('obligation-notice','proof-notice')) AND message.id != ? AND message.id != ? AND NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=message.id) ORDER BY COALESCE(message.queue_order,message.id),message.id").all(beeId,seed ?? -1,handoff ?? -1) as Row[]).filter(row => this.mailBatchCandidate(Number(row.id))).slice(0, 64).map(row => this.mapPhoneMessage(row));
       if (!eligible.length) return null;
       const at = this.now();
       let batch: MailBatch = { id: `batch-${beeId}-${eligible[0]!.id}`, beeId, memberIds: eligible.map(message => message.id), cutoff: eligible.at(-1)!.id, policyRevision: policy.updatedAt ?? 0, frozenAt: at, releaseReason, deliveredAt: null, deliveredGeneration: null };
@@ -6362,7 +6362,7 @@ export class CoreStore {
    * projected, and pending messages stay body-free until delivery selects one.
    */
   private batchingReadyFallbackMessages(): Row[] {
-    return (this.stmt("SELECT message.id,message.bee_id,message.urgency,message.enqueued_at,message.queue_order,message.human_chat FROM mail_batching_policies AS policy JOIN multiline_delivery AS held ON held.bee_id=policy.bee_id JOIN mailbox AS message ON message.id=held.message_id WHERE policy.enabled=1 AND message.delivered_at IS NULL AND held.held_since IS NOT NULL AND CASE WHEN json_valid(held.row_json) THEN json_extract(held.row_json,'$.fallback.state') = 'ready' ELSE 0 END").all() as Row[]).filter(row => this.multilineDelivery(Number(row.id))?.fallback?.state === "ready");
+    return (this.stmt("SELECT message.id,message.bee_id,message.urgency,message.enqueued_at,message.queue_order,message.human_chat FROM mail_batching_policies AS policy JOIN multiline_delivery AS held ON held.bee_id=policy.bee_id JOIN mailbox AS message ON message.id=held.message_id WHERE policy.enabled=1 AND message.delivered_at IS NULL AND held.held_since IS NOT NULL").all() as Row[]).filter(row => this.multilineDelivery(Number(row.id))?.fallback?.state === "ready");
   }
 
   readDaemonWork(): DaemonWorkRow[] {
