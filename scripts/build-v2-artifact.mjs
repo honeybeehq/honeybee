@@ -95,6 +95,12 @@ await build({
   preserveSymlinks: true,
   logLevel: "silent",
 });
+await build({
+  absWorkingDir: root,
+  entryPoints: [join(root, "v2", "daemon", "src", "backupVerifierMain.ts")],
+  outfile: join(outDir, "backup-verifier.js"),
+  bundle: true, platform: "node", format: "esm", target: "node24", logLevel: "silent",
+});
 const runnerHostBuild = await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "driver-hsr", "src", "runner-host-main.ts")],

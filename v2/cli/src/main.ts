@@ -2649,6 +2649,13 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const needle = parsed.positional[2];
   const usage = "usage: hive cell backup <cellId> --idempotency-key <key> | cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--no-measure] | cell evict <bee> [--force]";
   switch (sub) {
+    case "backup-accept": {
+      if (!needle) throw new Error("Usage: hive cell backup-accept <signed-receipt.json>");
+      const receipt: unknown = JSON.parse(readFileSync(needle, "utf8"));
+      const result = await withClient(ctx, c => c.request("cell.backup.receipt", { receipt }));
+      emit(ctx, ["Backup receipt accepted"], result, false);
+      return 0;
+    }
     case "backup": {
       const key = parsed.flags.get("--idempotency-key");
       if (!needle || typeof key !== "string") throw new Error("Usage: hive cell backup <cellId> --idempotency-key <key>");

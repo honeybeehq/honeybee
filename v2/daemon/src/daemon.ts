@@ -2358,6 +2358,16 @@ export class HiveDaemon {
         return this.rpcActionReportIdempotent(params);
       case "action.claim":
         return this.rpcActionClaim(params);
+      case "cell.backup.receipt": {
+        let config: { publicKeys?: Record<string,string> };
+        try { config = JSON.parse(readFileSync(join(this.cfg.dataDir, "backup-trust.json"), "utf8")); }
+        catch { throw new RpcError("invalid_request", "Backup verifier authority is not trusted"); }
+        const receipt = params.receipt as { payload?: { verifier?: { keyId?: string } } } | undefined;
+        const keyId = receipt?.payload?.verifier?.keyId;
+        const key = typeof keyId === "string" ? config?.publicKeys?.[keyId] : undefined;
+        if (typeof key !== "string" || !key) throw new RpcError("invalid_request", "Backup verifier authority is not trusted");
+        return { receipt: this.mustStore().acceptBackupReceipt(params.receipt, key) };
+      }
       case "cell.backup":
         return this.rpcCellBackup(params);
       case "cell.exec":

@@ -94,3 +94,6 @@ export * from "./multilineDelivery.ts";
 export { publicDeliveryConfirmation, readDeliveryConfirmations, DELIVERY_CONFIRMATION_SQL } from "./deliveryConfirmation.ts";
 
 export * from "./humanOutput.ts";
+
+export { verifyBackupReceipt, backupVerifierKeyId, canonicalBackupJson } from "./backupReceipt.ts";
+export type { VerifiedBackupReceipt, BackupVerificationPayload, VerifiedTranscriptObject, TranscriptArchiveIdentity, TranscriptArchiveSummary } from "./backupReceipt.ts";

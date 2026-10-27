@@ -1,3 +1,4 @@
+import type { VerifiedBackupReceipt } from "../../core/src/backupReceipt.ts";
 /** Owner-only capture engine. No lifecycle effects, eviction authority or scheduler. */
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
@@ -45,7 +46,7 @@ export interface BackupManifest {
   bytes: number;
 }
 export interface BackupRecord {
-  format: "honeybee.backup-draft.v1";
+  format: "honeybee.backup-draft.v1" | "honeybee.backup-record.v2";
   operationId: string;
   machine: string;
   cellId: string;
@@ -57,7 +58,8 @@ export interface BackupRecord {
   state: "capturing" | "captured" | "uploading" | "snapshot_created";
   capturedAt: string | null;
   snapshotAt: string | null;
-  verification: "not_verified";
+  verification: "not_verified" | "verified";
+  receipt?: VerifiedBackupReceipt;
   tools: { node: string; git: string; restic: string };
   checkpointRetired?: boolean;
   processIdentity?: { pid: number; birth: string; bootId: string };
@@ -129,14 +131,16 @@ process.once('message',message=>{
   child.once('close',code=>{if(timer)clearTimeout(timer);process.exit(code===0 && !stopping ? 0 : 2);});
 });
 `;
-async function run(command: string, args: string[], owner: BackupOwner, options: { cwd?: string; env?: NodeJS.ProcessEnv; output?: string; limit?: number; input?: string } = {}): Promise<string> {
+async function run(command: string, args: string[], owner: Pick<BackupOwner, "tools" | "child" | "signal">, options: { cwd?: string; env?: NodeJS.ProcessEnv; output?: string; limit?: number; input?: string; inputFile?: string } = {}): Promise<string> {
   if (owner.signal?.aborted) throw new BackupError("interrupted");
   return new Promise((accept, reject) => {
     const child = spawn(process.execPath, ["-e", TOOL_GUARD], { cwd: options.cwd, env: toolEnv(), stdio: ["pipe", "pipe", "pipe", "ipc"], signal: owner.signal, timeout: 60 * 60_000 });
     const stdin = child.stdin, stdout = child.stdout, stderr = child.stderr;
     if (!stdin || !stdout || !stderr) { child.kill(); reject(new BackupError("tool_failed")); return; }
     stdin.on("error", () => undefined);
-    stdin.end(options.input);
+    const input = options.inputFile ? createReadStream(options.inputFile, { signal: owner.signal }) : null;
+    if (input) { input.on("error", () => child.kill("SIGTERM")); input.pipe(stdin); }
+    else stdin.end(options.input);
     let bytes = 0, failed = false;
     const chunks: Buffer[] = [];
     const output = options.output ? createWriteStream(options.output, { flags: "wx", mode: 0o600 }) : null;
@@ -159,6 +163,7 @@ async function run(command: string, args: string[], owner: BackupOwner, options:
     });
     child.once("error", () => { failed = true; });
     child.once("close", (code) => {
+      input?.destroy();
       try { owner.child(null); } catch { failed = true; }
       const finish = () => owner.signal?.aborted ? reject(new BackupError("interrupted"))
         : failed || code !== 0 ? reject(new BackupError(bytes > (options.limit ?? 16 * 1024 * 1024) ? options.output ? "scratch_limit" : command === owner.tools.git ? "git_listing_too_large" : "tool_failed" : "tool_failed"))
@@ -167,7 +172,7 @@ async function run(command: string, args: string[], owner: BackupOwner, options:
     });
   });
 }
-async function secret(owner: BackupOwner, ref: string, field: string): Promise<string> {
+async function secret(owner: Pick<BackupOwner, "tools" | "child" | "signal" | "resolveSecret">, ref: string, field: string): Promise<string> {
   try {
     const value = owner.resolveSecret ? await owner.resolveSecret(ref, field) : await run(owner.tools.hem, ["get", ref, field], owner,
       { env: { PATH: process.env.PATH, HOME: process.env.HOME, VALHALL_HEMD_ENDPOINT: process.env.VALHALL_HEMD_ENDPOINT, VALHALL_HEM_TOKEN: process.env.VALHALL_HEM_TOKEN }, limit: 8192 });
@@ -458,3 +463,6 @@ export async function captureAndSnapshot(request: BackupRequest, owner: BackupOw
   await cleanScratch();
   return record;
 }
+
+// Shared constrained subprocess boundary for the independent verifier service.
+export { run as runBackupTool, secret as resolveBackupSecret, toolEnv as backupToolEnv };

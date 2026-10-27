@@ -1,3 +1,4 @@
+import { verifyBackupReceipt, type VerifiedBackupReceipt } from "./backupReceipt.ts";
 import { snapshotStore, backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
 import { HUMAN_OUTPUT_SQL, HumanOutputLedger, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
@@ -9994,6 +9995,26 @@ export class CoreStore {
   getCellOpByKey(idempotencyKey: string): CellOpRow | null {
     const row = this.stmt("SELECT * FROM cell_ops WHERE idempotency_key = ?").get(idempotencyKey) as Row | undefined;
     return row ? mapCellOp(row) : null;
+  }
+
+  /** Verifier-signed evidence joins its exact owner capture; the uploader never signs. */
+  acceptBackupReceipt(value: unknown, trustedPublicKey: string): VerifiedBackupReceipt {
+    const receipt = verifyBackupReceipt(value, trustedPublicKey);
+    return this.tx(() => {
+      const op = this.getCellOp(receipt.payload.generation);
+      if (!op || op.kind !== "backup" || op.status !== "done" || !op.stdout) throw new CoreError("Backup capture receipt binding failed");
+      const record = JSON.parse(op.stdout) as Record<string, unknown>;
+      const p = receipt.payload;
+      if (record.operationId !== p.generation || record.cellId !== p.cellId || record.machine !== p.machine || record.manifestHash !== p.manifestHash || record.manifestPath !== p.manifestPath
+        || record.repository !== p.repository || record.snapshotId !== p.snapshotId || record.state !== "snapshot_created") throw new CoreError("Backup capture receipt binding failed");
+      if (record.receipt) {
+        const previous = verifyBackupReceipt(record.receipt, trustedPublicKey);
+        if (previous.payload.repositoryId !== p.repositoryId || previous.payload.snapshotId !== p.snapshotId || previous.payload.manifestHash !== p.manifestHash) throw new CoreError("Backup receipt conflict");
+        return previous;
+      }
+      this.updateCellOp(op.id, { stdout: JSON.stringify({ ...record, format: "honeybee.backup-record.v2", verification: "verified", receipt }) });
+      return receipt;
+    });
   }
 
   listPendingBackupOps(): CellOpRow[] {

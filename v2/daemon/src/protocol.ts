@@ -193,6 +193,7 @@ export const DAEMON_CAPABILITIES = [
    * pass, and the `cell.evicted` audit kind. An evicted bee keeps its row,
    * transcript and cwd; its next runtime re-provisions the Cell in place.
    */
+  "cell.backup.receipts.v1",
   "cell.backup.v1",
   "cell.retention.v1",
   "cell.retention.trim.v1",
@@ -550,6 +551,7 @@ export const RPC_VERBS = [
   "cell.remove",
   "bee.move",
   "bee.move.get",
+  "cell.backup.receipt",
   "cell.backup",
   "cell.exec",
   "cell.retained.remove",
