@@ -208,7 +208,8 @@ for (const clearWorks of [true, false, "unset_failure", "missing_identity", "leg
       assert.deepEqual(writes, []);
     }
     const ordinary = store.send(bee.id, "legacy-exact").message;
-    await wait(() => {core.step(); return store.getMessage(ordinary.id)?.deliveredAt !== null && rows().some(row => row.submittedBody?.endsWith("legacy-exact"));});
+    const expectedOrdinary = heldMessageId === undefined ? "legacy-exact" : `[delivery_unsupported_multiline: message ${heldMessageId} — delivered later messages; this one is held] legacy-exact`;
+    await wait(() => {core.step(); return store.getMessage(ordinary.id)?.deliveredAt !== null && rows().some(row => row.submittedBody === expectedOrdinary);});
     assert.equal(store.multilinePaneQuarantines().length, 0);
     if (heldMessageId !== undefined) {
       assert.equal(store.getMessage(heldMessageId)!.deliveredAt, null);

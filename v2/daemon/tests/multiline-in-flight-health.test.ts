@@ -31,11 +31,14 @@ test("fixture daemon health and CLI show aged in-flight pointers without changin
     server = new RpcServer({socketPath: `${rig.dir}/hived.sock`, dispatch: (method, params) => method === "deployInfo" ? {dataDir: rig.dir, socketPath: `${rig.dir}/hived.sock`, instanceId: "fixture"} : internal.rpcHealth(params), log: () => {}});
     await server.listen();
     const output: string[] = [];
-    const cli = () => runV2Cli(["doctor", "--json", "--data-dir", rig.dir, "--socket", `${rig.dir}/hived.sock`], {out: line => output.push(line), err: line => output.push(line)});
-    assert.equal(await cli(), 1);
+    const cli = (json = true) => runV2Cli(["doctor", ...(json ? ["--json"] : []), "--data-dir", rig.dir, "--socket", `${rig.dir}/hived.sock`], {out: line => output.push(line), err: line => output.push(line)});
+    assert.equal(await cli(), 0);
     assert.ok(output.at(-1)?.startsWith("{"), output.join("\n"));
     assert.deepEqual(JSON.parse(output.at(-1)!).deliveryInFlight, {count: 1, overdue: 1, oldestAgeMs: 300_000, thresholdMs: 300_000});
     assert.equal(internal.rpcHealth().deliveryInFlight, undefined);
+    output.length = 0;
+    assert.equal(await cli(false), 0);
+    assert.ok(output.some(line => line.includes("delivery_in_flight:") && line.includes("1 aged at least 300000ms")), output.join("\n"));
     const health = internal.rpcHealth({includeDeliveryPrepareAuditUnknown: true});
     assert.deepEqual(health.deliveryInFlight, {count: 1, overdue: 1, oldestAgeMs: 300_000, thresholdMs: 300_000});
     const text = renderHealth(health).join("\n");
