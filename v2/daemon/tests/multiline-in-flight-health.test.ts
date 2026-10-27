@@ -6,12 +6,15 @@ import {HiveDaemon} from "../src/daemon.ts";
 import {loadNodeConfig} from "../src/config.ts";
 import type {HealthResult} from "../src/protocol.ts";
 import {makeDaemonDir} from "./helpers.ts";
+import {RpcServer} from "../src/rpc.ts";
+import {runV2Cli} from "../../cli/src/main.ts";
 import {renderHealth} from "../../cli/src/render.ts";
 
-test("fixture daemon health and CLI show aged in-flight pointers without changing the claim", () => {
+test("fixture daemon health and CLI show aged in-flight pointers without changing the claim", async () => {
   const h = harness(), rig = makeDaemonDir();
   let now = 1_000_000;
   const store = openCoreStore(h.path, {now: () => now, ephemeral: true});
+  let server: RpcServer | undefined;
   try {
     const {bee} = makeBee(store);
     bootToRunning(store, bee.id, 100, 1);
@@ -25,6 +28,13 @@ test("fixture daemon health and CLI show aged in-flight pointers without changin
     const internal = daemon as unknown as {store: CoreStore; rpcHealth(): HealthResult};
     internal.store = store;
     const seq = store.lastAuditSeq();
+    server = new RpcServer({socketPath: `${rig.dir}/hived.sock`, dispatch: method => method === "deployInfo" ? {dataDir: rig.dir, socketPath: `${rig.dir}/hived.sock`, instanceId: "fixture"} : internal.rpcHealth(), log: () => {}});
+    await server.listen();
+    const output: string[] = [];
+    const cli = () => runV2Cli(["doctor", "--json", "--data-dir", rig.dir, "--socket", `${rig.dir}/hived.sock`], {out: line => output.push(line), err: line => output.push(line)});
+    assert.equal(await cli(), 1);
+    assert.ok(output.at(-1)?.startsWith("{"), output.join("\n"));
+    assert.deepEqual(JSON.parse(output.at(-1)!).deliveryInFlight, {count: 1, overdue: 1, oldestAgeMs: 300_000, thresholdMs: 300_000});
     const health = internal.rpcHealth();
     assert.deepEqual(health.deliveryInFlight, {count: 1, overdue: 1, oldestAgeMs: 300_000, thresholdMs: 300_000});
     const text = renderHealth(health).join("\n");
@@ -34,6 +44,9 @@ test("fixture daemon health and CLI show aged in-flight pointers without changin
     assert.equal(store.lastAuditSeq(), seq);
     assert.equal(store.getMessage(message.id)?.deliveredAt, null);
     assert.equal(store.multilineDelivery(message.id)?.fallback?.state, "in_flight");
+    now -= 1;
+    output.length = 0;
+    assert.equal(await cli(), 0);
     console.log(JSON.stringify({fixture: "in-flight-health", deliveryInFlight: health.deliveryInFlight, state: "in_flight", deliveredAt: null, auditUnchanged: true}));
-  } finally {store.close(); h.cleanup(); rig.cleanup();}
+  } finally {await server?.close(); store.close(); h.cleanup(); rig.cleanup();}
 });
