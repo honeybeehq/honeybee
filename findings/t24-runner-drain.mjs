@@ -18,7 +18,7 @@ for(const gated of [false,true]) for(const mode of ['none','finite','infinite'])
   const host=spawn(process.execPath,[baseline?'dist/v2/t24-before-runner.js':'v2/driver-hsr/src/runner-host-main.ts',config],{stdio:['ignore','pipe','pipe',...(gated?['ipc']:[])]});
   let errors='';host.stderr.on('data',data=>errors+=data);
   host.on('message',frame=>{if(frame.op==='execution_ready')host.send({...frame,op:'execution_release'});});
-  const closed=once(host,'close');let identity;
+  const closed=once(host,'close');let identity,result,hostFallbackKills=0;
   try {
     await wait(()=>existsSync(cfg.statusPath)&&JSON.parse(readFileSync(cfg.statusPath)).agentPid);
     if(mode!=='none'){await wait(()=>existsSync(pidFile));identity=inspectProcess(Number(readFileSync(pidFile,'utf8')));assert.equal(identity.kind,'present');}
@@ -31,11 +31,12 @@ for(const gated of [false,true]) for(const mode of ['none','finite','infinite'])
     assert.equal(readFileSync(cfg.sessionLogPath,'utf8'),readFileSync(cfg.observationLogPath,'utf8'));
     assert.ok(readFileSync(cfg.sidecarPath,'utf8').includes('final-stderr'));
     if(mode!=='none'){assert.ok(lines.some(x=>x.late==='output'));assert.ok(readFileSync(cfg.sidecarPath,'utf8').includes('late-stderr'));assert.ok(sameProcess(identity,inspectProcess(identity.pid)));}
-    console.log(JSON.stringify({gated,mode,baseline,exited:!!status.exited,exitCode:status.exitCode??null,outputDrainTimedOut:status.outputDrainTimedOut??false,fullFinalOutput:true,lateOutput:mode!=='none',holderStillOwnedAndLive:mode!=='none'}));
+    result={gated,mode,baseline,exited:!!status.exited,exitCode:status.exitCode??null,outputDrainTimedOut:status.outputDrainTimedOut??false,fullFinalOutput:true,lateOutput:mode!=='none',holderStillOwnedAndLive:mode!=='none'};
   } finally {
     if(identity&&sameProcess(identity,inspectProcess(identity.pid)))process.kill(identity.pid,'SIGTERM');
     await Promise.race([closed,sleep(1500)]);
-    if(host.exitCode===null&&host.signalCode===null){host.kill('SIGKILL');await closed;}
+    if(host.exitCode===null&&host.signalCode===null){hostFallbackKills++;host.kill('SIGKILL');await closed;}
     assert.equal(errors,'');
   }
+  console.log(JSON.stringify({...result,hostFallbackKills}));
 }

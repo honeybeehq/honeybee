@@ -2,3 +2,9 @@ ts	phase	decision	why	evidence	result
 2026-10-27T19:57:21Z	fix	Bound capture drain after direct-child exit	Retain final output without waiting forever for descendant pipes	v2/driver-hsr/src/runner-exit.ts	No descendant signals
 2026-10-27T19:57:21Z	verification	Use stable shell PID for Cell-local TMPDIR	Child cwd changes broke proc/self fixture paths	findings/t24-runner-drain-fix.md	25 existing checks pass
 2026-10-27T19:57:21Z	comparison	Check both host types with finite and indefinite holders	Prove real lifecycle before and after	findings/t24-runner-drain.mjs	Six before and six after cases
+2026-10-27T20:03:23Z	review	State that capture closure may break later holder writes	No signals does not mean no descendant effects	findings/t24-review-notes.md	EPIPE/SIGPIPE risk explicit
+2026-10-27T20:03:23Z	review	Limit final-output evidence to flowing capture	A fixed drain cannot promise arbitrary backpressure retention	findings/t24-review-notes.md	128 KiB record and in-window output only
+2026-10-27T20:03:23Z	follow-up	Route nonconfirm delivery death-window and perf drift to parent	Separate existing risks need triage outside the exit-drain patch	findings/t24-review-notes.md	Parent b82108c7 triage; implementation unassigned
+2026-10-27T20:03:23Z	review	Record existing unterminated final-line loss separately	Neither host has an end or close fragment flush	v2/driver-hsr/src/runner-host.ts:250	Existing behavior; reviewer withdrew patch concern
+2026-10-27T20:03:23Z	scope	Limit process-slot claim to freeing the host	Descendant holders remain live after capture closes	findings/t24-runner-drain-receipt.json	Live mini cause unknown
+2026-10-27T20:03:33Z	verification	Count host cleanup fallback in repeated fixture run	Make fallback ownership claims observable	findings/t24-runner-drain-receipt.json	12 cases; hostFallbackKillsTotal 0
