@@ -4652,6 +4652,7 @@ export class HiveDaemon {
     let reason: CellExecResult["reason"] = null;
     if (op.status === "failed") {
       if (failure === "busy") reason = "busy";
+      else if (failure === "secret_execution_containment_unavailable") reason = "secret_execution_containment_unavailable";
       else if (failure === "cell_runtime_live") reason = "cell_runtime_live";
       else if (failure === "no_cell") reason = "no_cell";
       else if (failure === "containment" || /escapes|space-relative|does not exist/.test(failure)) reason = "containment";
@@ -4754,17 +4755,17 @@ export class HiveDaemon {
       const bee = this.mustStore().getBee(admission.beeId);
       const cell = this.mustStore().getCell(admission.cellId);
       if (!bee || bee.lifecycle !== "active" || !cell || cell.sourceBeeId !== bee.id || cell.state === "removed" || cell.state === "evicted") throw new RpcError("invalid_request", "secret_execution_refused");
-      return await this.rpcCellExec(params, admission);
+      return await this.rpcCellExec(params, admission, conn.captureSecretOutput);
     } catch (error) {
       if (error instanceof RpcError) throw error;
       throw new RpcError("invalid_request", "secret_execution_failed");
     } finally {
       for (const name of Object.keys(admission.env)) delete admission.env[name];
-      if (conn.secretExecution) for (const name of Object.keys(conn.secretExecution.env)) delete conn.secretExecution.env[name];
+      if (conn.secretExecution) for (const name of Object.keys(conn.secretExecution.env ?? {})) delete conn.secretExecution.env![name];
     }
   }
 
-  private async rpcCellExec(params: Record<string, unknown>, secret?: import("./protocol.ts").SecretExecutionContext): Promise<CellExecResult> {
+  private async rpcCellExec(params: Record<string, unknown>, secret?: import("./protocol.ts").SecretExecutionContext, captureSecretOutput?: (leaseId: string, bytes: Buffer) => void): Promise<CellExecResult> {
     const store = this.mustStore();
     const cellId = this.param(params, "cellId");
     this.releaseAbsentCellOps(cellId);
@@ -4782,7 +4783,7 @@ export class HiveDaemon {
     }
     const timeoutMs = params.timeoutMs;
     const cwd = params.cwd;
-    const hash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null, ...(secret ? { secretExecution: { beeId: secret.beeId, nodeId: secret.nodeId, executionId: secret.executionId, argvDigest: secret.argvDigest } } : {}) });
+    const hash = hashCellOpRequest({ cellId, kind: "exec", argv, cwd: cwd ?? null, timeoutMs: timeoutMs ?? null, ...(secret ? { secretExecution: { beeId: secret.beeId, nodeId: secret.nodeId, executionId: secret.executionId, argvDigest: secret.argvDigest, ...(secret.outputCapture ? { outputCapture: secret.outputCapture } : {}) } } : {}) });
     const existing = store.getCellOpByKey(key);
     if (existing) {
       if (existing.requestHash !== hash || existing.kind !== "exec" || existing.cellId !== cellId) {
@@ -4836,7 +4837,7 @@ export class HiveDaemon {
     const controller = secret ? new AbortController() : undefined;
     if (secret && controller) this.secretExecutions.set(secret.executionId, { beeId: secret.beeId, cellId, nodeId: secret.nodeId, controller });
     try {
-      if (secret && secret.expiresAt <= Date.now()) throw new Error("secret_execution_expired");
+      if (secret && (secret.expiresAt <= Date.now() || secret.outputCapture && secret.outputCapture.expiresAt <= Date.now())) throw new Error("secret_execution_expired");
       const outcome = await runCellExec(
         paths,
         {
@@ -4846,7 +4847,8 @@ export class HiveDaemon {
           sandbox: cell.sandbox,
           nodeKind: this.cfg.nodeKind,
           kvm: this.cfg.cellKvm,
-          ...(secret ? { secretEnv: secret.env, signal: controller!.signal } : {}),
+          ...(secret ? { secretEnv: secret.outputCapture ? undefined : secret.env, ...(secret.outputCapture ? { outputCapture: { maxBytes: secret.outputCapture.maxBytes, expiresAt: secret.outputCapture.expiresAt, receive: (bytes: Buffer) => captureSecretOutput?.(secret.outputCapture!.leaseId, bytes) } } : {}), signal: controller!.signal } : {}),
+
         },
         (spawned) => {
           store.updateCellOp(op.id, { pid: spawned.pid, pidStartedAt: spawned.pidStartedAt });
@@ -4864,8 +4866,8 @@ export class HiveDaemon {
       });
       return this.cellExecResultFromOp({ ...saved, timeoutMs: saved.timeoutMs ?? outcome.timeoutMs }, false);
     } catch (err) {
-      const detail = secret ? "secret_execution_failed" : err instanceof Error ? err.message : String(err);
-      const reason = /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
+      const detail = secret ? err instanceof Error && err.message === "secret_execution_containment_unavailable" ? err.message : "secret_execution_failed" : err instanceof Error ? err.message : String(err);
+      const reason = detail === "secret_execution_containment_unavailable" ? "secret_execution_containment_unavailable" : /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
       const saved = store.updateCellOp(op.id, { status: "failed", failure: reason === "containment" ? "containment" : detail });
       return { ...this.cellExecResultFromOp(saved, false), reason, stderr: detail, timeoutMs: timeoutMs ?? 0 };
     } finally {

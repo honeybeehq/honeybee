@@ -93,6 +93,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
 export const DAEMON_CAPABILITIES = [
   "mirror.local.homes.v1",
   "cell.secret.exec.v1",
+  "cell.secret.capture.v1",
   "mail.humanFirst.v1",
   "mail.batching.v1",
   "mail.delivery.confirmation.v1",
@@ -708,7 +709,8 @@ export interface SecretExecutionContext {
   executionId: string;
   argvDigest: string;
   expiresAt: number;
-  env: Record<string, string>;
+  env?: Record<string, string>;
+  outputCapture?: { name: string; maxBytes: number; leaseId: string; expiresAt: number };
 }
 
 export interface RpcRequestContext {
@@ -2023,7 +2025,7 @@ export interface CellExecResult {
   stderr: string;
   truncated: boolean;
   timeoutMs: number;
-  reason: "no_cell" | "cell_runtime_live" | "busy" | "argv_invalid" | "containment" | null;
+  reason: "no_cell" | "cell_runtime_live" | "busy" | "argv_invalid" | "containment" | "secret_execution_containment_unavailable" | null;
   deduped?: boolean;
 }
 

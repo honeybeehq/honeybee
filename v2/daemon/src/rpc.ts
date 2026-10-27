@@ -86,6 +86,7 @@ import {
 
 export interface RpcConn {
   readonly operatorLocalHomes?: boolean;
+  readonly captureSecretOutput?: (leaseId: string, bytes: Buffer) => void;
   readonly secretExecution?: import("./protocol.ts").SecretExecutionContext;
   readonly secretExecutionNodeId?: string;
   readonly humanChat?: HumanChatAdmission;
@@ -345,12 +346,13 @@ export class RpcServer {
   }
 
   get capabilities(): typeof DAEMON_CAPABILITIES[number][] {
-    return DAEMON_CAPABILITIES.filter(capability => !(["cell.secret.exec.v1", "mirror.local.homes.v1", "question.withdraw.v1", "mail.humanFirst.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
+    return DAEMON_CAPABILITIES.filter(capability => !(["cell.secret.exec.v1", "cell.secret.capture.v1", "mirror.local.homes.v1", "question.withdraw.v1", "mail.humanFirst.v1", "mail.batching.v1", "bee.tell.v1", "bee.react.v1", "bee.human_output_mode.v1"] as string[]).includes(capability) || (this.trust.enabled && this.trust.state === "ready" && this.credentials.status.state === "ready"));
   }
 
   private operatorLocalAllowed(conn: Connection): boolean {
     if (conn.authenticatedBeeId !== undefined || conn.automationAuthority !== undefined || conn.humanChat !== undefined || conn.phoneOrigin !== undefined || conn.phoneLane !== undefined || !this.trust.enabled || this.trust.state !== "ready" || conn.ingress !== "local_unix" || conn.relayLane !== null || !conn.peerConnection) return false;
     try { this.trust.require(conn.peerConnection, conn.ingress); return true; } catch { return false; }
+
   }
 
   private onConnection(socket: Socket): void {
@@ -479,6 +481,8 @@ export class RpcServer {
         throw new RpcError("caller_not_trusted", "Store maintenance requires a verified direct local administrator connection.");
       }
       const caller = peer?.state === "verified" ? {transport: "local_unix" as const, ingress: conn.ingress ?? "remote", uid: peer.peer.uid, pid: peer.peer.pid, verb} : null;
+      let secretCapture: { leaseId: string; bytesBase64: string } | undefined;
+      let captureExpiresAt = 0;
       const result = withRpcCaller(caller, () => {
         if (verb === "mirror.local.snapshot" || verb === "mirror.local.watch") {
           includeOperatorLocalHomes = frame.context === undefined && Object.keys(params).length === 0 && this.operatorLocalAllowed(conn);
@@ -490,7 +494,7 @@ export class RpcServer {
             || !automationContext || Object.keys(automationContext).some(key => key !== "secretExecution")) throw new RpcError("caller_not_trusted", "Secret execution requires the registered local authority");
           this.trust.require(peer, conn.ingress);
           if (!this.trust.nodeId) throw new RpcError("caller_not_trusted", "Secret execution requires registered node binding");
-          return this.opts.dispatch(verb, params, { ...conn, secretExecutionNodeId: this.trust.nodeId, secretExecution: automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext });
+          return this.opts.dispatch(verb, params, { ...conn, captureSecretOutput: (leaseId, bytes) => { secretCapture = { leaseId, bytesBase64: bytes.toString("base64") }; captureExpiresAt = (automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext).outputCapture?.expiresAt ?? 0; }, secretExecutionNodeId: this.trust.nodeId, secretExecution: automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext });
         }
         if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
         if (params.automationKind !== undefined || params.automationRef !== undefined || automationContext?.automationReference !== undefined) {
@@ -614,9 +618,11 @@ export class RpcServer {
         result.then(
           (value) => {
             span.end();
-            conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes) });
+            conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, value, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes), ...(secretCapture && captureExpiresAt > Date.now() ? { secretCapture } : {}) });
+            secretCapture = undefined;
           },
           (err) => {
+            secretCapture = undefined;
             span.end("error");
             conn.send({ id, ok: false, error: publicEnvRecords(projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)) });
           },

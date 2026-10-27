@@ -1,6 +1,7 @@
+import { spawn } from "node:child_process";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SecretOutput, validateSecretEnv } from "../src/secretOutput.ts";
@@ -54,9 +55,81 @@ test("child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure a
     assert.equal(JSON.stringify(flood).includes(material[1]!), false);
     assert.ok(Buffer.byteLength(flood.stdout) + Buffer.byteLength(flood.stderr) <= 1048576);
     const controller = new AbortController();
-    const pending = runCellExec(paths, { ...spec, signal: controller.signal, argv: [process.execPath, "-e", "process.stdout.write(process.env.SYNTHETIC_TOKEN);setInterval(()=>{},1000)"] }, () => { setTimeout(() => controller.abort(), 60); });
+    const pending = runCellExec(paths, { ...spec, signal: controller.signal, argv: [process.execPath, "-e", "process.stdout.write(process.env.SYNTHETIC_TOKEN);require('node:fs').writeFileSync('cancel-ready','1');setInterval(()=>{},1000)"] }, () => {
+      const deadline = Date.now() + 5000;
+      const ready = setInterval(() => {
+        if (existsSync(join(paths.spaceDir, "cancel-ready")) || Date.now() >= deadline) {
+          clearInterval(ready);
+          controller.abort();
+        }
+      }, 20);
+    });
     const cancelled = await pending;
     assert.equal(cancelled.status, "interrupted");
+    assert.equal(cancelled.exitCode, null);
     assert.equal(cancelled.stdout, "[REDACTED]");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test("private stdout capture releases only bounded successful bytes and suppresses both ordinary streams", async () => {
+  const root = mkdtempSync(join(tmpdir(), "private-capture-"));
+  const paths = cellPaths(root, "wrap", "repo", "c1");
+  mkdirSync(paths.spaceDir, { recursive: true });
+  try {
+    const outputCapture = { maxBytes: 8, expiresAt: Date.now() + 30000, receive: () => { throw new Error("synthetic-private-callback-detail"); } };
+    await assert.rejects(runCellExec(paths, { sandbox: false, nodeKind: "satellite", outputCapture, argv: ["/nonexistent/synthetic-private-executable"] }), /^Error: cell_execution_spawn_failed$/);
+    for (const mode of ["ok", "boundary", "nonzero", "overflow", "timeout", "expired", "cancel"] as const) {
+      const released: Buffer[] = [];
+      const controller = new AbortController();
+      const result = await runCellExec(paths, {
+        sandbox: false, nodeKind: "satellite", signal: controller.signal,
+        timeoutMs: mode === "timeout" ? 1000 : 5000,
+        outputCapture: { maxBytes: 8, expiresAt: Date.now() + (mode === "expired" ? -1 : 30000), receive: bytes => released.push(Buffer.from(bytes)) },
+        argv: [process.execPath, "-e", `process.stdout.write(Buffer.from([0,255,1,2]));process.stderr.write('synthetic-private-stderr');${mode === "boundary" ? "process.stdout.write(Buffer.from([3,4,5,6]))" : mode === "overflow" ? "process.stdout.write('12345')" : mode === "nonzero" ? "process.exitCode=9" : mode === "timeout" || mode === "cancel" ? "setInterval(()=>{},1000)" : ""}`],
+      }, () => { if (mode === "cancel") setTimeout(() => controller.abort(), 100); });
+      assert.equal(result.stdout, "");
+      assert.equal(result.stderr, "");
+      if (mode === "timeout") { assert.equal(result.status, "timeout"); assert.equal(result.exitCode, null); }
+      assert.equal(released.length, mode === "ok" || mode === "boundary" ? 1 : 0);
+      if (released.length) assert.deepEqual(released[0], Buffer.from(mode === "boundary" ? [0,255,1,2,3,4,5,6] : [0,255,1,2]));
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test("supervisor preserves command exit codes and fragmented unicode configuration", async () => {
+  const root = mkdtempSync(join(tmpdir(), "secret-config-"));
+  const paths = cellPaths(root, "wrap", "repo", "c1");
+  mkdirSync(paths.spaceDir, { recursive: true });
+  try {
+    for (const exitCode of [0, 124, 125, null]) {
+      const result = await runCellExec(paths, {
+        sandbox: false, nodeKind: "satellite",
+        secretEnv: Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`TOKEN_${i}`, "é😀".repeat(2500)])),
+        argv: [process.execPath, "-e", `process.stdout.write(process.env.TOKEN_3);${exitCode === null ? "process.kill(process.pid, 'SIGTERM')" : `process.exitCode=${exitCode}`}`],
+      });
+      assert.equal(result.exitCode, exitCode);
+      assert.equal(result.status, exitCode === 0 ? "ok" : "nonzero");
+      assert.equal(result.stdout, "[REDACTED]");
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+
+test("unavailable containment refuses before sending configuration or executing argv", async () => {
+  const root = mkdtempSync(join(tmpdir(), "secret-unavailable-"));
+  const paths = cellPaths(root, "wrap", "repo", "c1");
+  mkdirSync(paths.spaceDir, { recursive: true });
+  const marker = join(paths.spaceDir, "intake");
+  const fake = `const {Socket}=require('node:net');const fs=require('node:fs');const pipe=new Socket({fd:3,readable:true,writable:true});let bytes=0;pipe.on('data',chunk=>bytes+=chunk.length);setTimeout(()=>{fs.writeFileSync(${JSON.stringify(marker)},String(bytes));process.exit(1)},100)`;
+  const launch: typeof spawn = ((_command: unknown, _args: unknown, options: object) => spawn(process.execPath, ["-e", fake], options)) as typeof spawn;
+  try {
+    await assert.rejects(runCellExec(paths, {
+      sandbox: false, nodeKind: "satellite", secretEnv: { TOKEN: "synthetic-unavailable-only" },
+      argv: [process.execPath, "-e", "require('node:fs').writeFileSync('must-not-run','1')"],
+    }, undefined, launch), /^Error: secret_execution_containment_unavailable$/);
+    assert.equal(readFileSync(marker, "utf8"), "0");
+    assert.equal(existsSync(join(paths.spaceDir, "must-not-run")), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

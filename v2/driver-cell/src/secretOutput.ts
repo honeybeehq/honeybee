@@ -1,43 +1,100 @@
 export class SecretOutput {
   private pending = Buffer.alloc(0);
+  private matched = Buffer.alloc(0);
+  private masking = false;
   private readonly values: Buffer[];
   private readonly overlap: number;
-  private readonly firstByte = new Map<number, Buffer[]>();
+  private readonly prefixes: Uint32Array[] = [];
+  private readonly states: number[] = [];
   private readonly capture: (chunk: Buffer) => void;
   constructor(values: readonly string[], capture: (chunk: Buffer) => void) {
     this.capture = capture;
     this.values = [...new Set(values)].map(value => Buffer.from(value)).filter(value => value.length > 0).sort((a, b) => b.length - a.length);
     this.overlap = Math.max(0, ...this.values.map(value => value.length - 1));
     for (const value of this.values) {
-      const candidates = this.firstByte.get(value[0]!) ?? [];
-      candidates.push(value);
-      this.firstByte.set(value[0]!, candidates);
+      const prefix = new Uint32Array(value.length);
+      let length = 0;
+      for (let index = 1; index < value.length; index++) {
+        while (length > 0 && value[index] !== value[length]) length = prefix[length - 1]!;
+        if (value[index] === value[length]) length++;
+        prefix[index] = length;
+      }
+      this.prefixes.push(prefix);
+      this.states.push(0);
     }
   }
+
   push(chunk: Buffer): void {
+    if (!this.values.length) { this.capture(chunk); return; }
+    const previousLength = this.pending.length;
     this.pending = Buffer.concat([this.pending, chunk]);
+    this.matched = Buffer.concat([this.matched, Buffer.alloc(chunk.length)]);
+    for (let pattern = 0; pattern < this.values.length; pattern++) {
+      const value = this.values[pattern]!;
+      const prefix = this.prefixes[pattern]!;
+      let length = this.states[pattern]!;
+      let unionStart = -1;
+      let unionEnd = 0;
+      for (let cursor = 0; cursor < chunk.length; cursor++) {
+        while (length > 0 && chunk[cursor] !== value[length]) length = prefix[length - 1]!;
+        if (chunk[cursor] === value[length]) length++;
+        if (length === value.length) {
+          const end = previousLength + cursor + 1;
+          const start = end - value.length;
+          if (unionStart < 0) unionStart = start;
+          else if (start > unionEnd) {
+            this.matched.fill(1, unionStart, unionEnd);
+            unionStart = start;
+          }
+          unionEnd = end;
+          length = prefix[length - 1]!;
+        }
+      }
+      if (unionStart >= 0) this.matched.fill(1, unionStart, unionEnd);
+      this.states[pattern] = length;
+    }
     this.drain(false);
   }
-  finish(): void { this.drain(true); }
-  private drain(final: boolean): void {
-    const limit = final ? this.pending.length : Math.max(0, this.pending.length - this.overlap);
-    let cursor = 0;
-    let plain = 0;
-    while (cursor < limit) {
-      const value = this.firstByte.get(this.pending[cursor]!)?.find(value => cursor + value.length <= this.pending.length && this.pending.compare(value, 0, value.length, cursor, cursor + value.length) === 0);
-      if (value) {
-        if (cursor > plain) this.capture(this.pending.subarray(plain, cursor));
-        this.capture(Buffer.from("[REDACTED]"));
-        cursor += value.length;
-        plain = cursor;
-      } else cursor++;
+  finish(normal = true): void {
+    if (normal) this.drain(true);
+    else {
+      this.pending.fill(0);
+      this.pending = Buffer.alloc(0);
+      this.matched.fill(0);
+      this.matched = Buffer.alloc(0);
+      this.states.fill(0);
     }
-    if (cursor > plain) this.capture(this.pending.subarray(plain, cursor));
-    const tail = Buffer.from(this.pending.subarray(cursor));
+  }
+  private drain(final: boolean): void {
+    if (final) {
+      const prefixLength = Math.max(0, ...this.states);
+      if (prefixLength) this.matched.fill(1, this.pending.length - prefixLength);
+      this.states.fill(0);
+    }
+    const limit = final ? this.pending.length : Math.max(0, this.pending.length - this.overlap);
+    let plain = 0;
+    for (let cursor = 0; cursor < limit; cursor++) {
+      if (this.matched[cursor]) {
+        if (cursor > plain) this.capture(this.pending.subarray(plain, cursor));
+        if (!this.masking) this.capture(Buffer.from("[REDACTED]"));
+        this.masking = true;
+        plain = cursor + 1;
+      } else this.masking = false;
+    }
+    if (limit > plain) this.capture(this.pending.subarray(plain, limit));
+    const tail = Buffer.from(this.pending.subarray(limit));
+    const matchedTail = Buffer.from(this.matched.subarray(limit));
     this.pending.fill(0);
+    this.matched.fill(0);
     this.pending = tail;
+    this.matched = matchedTail;
   }
   dispose(): void {
+    this.masking = false;
+    this.states.fill(0);
+    for (const prefix of this.prefixes) prefix.fill(0);
+    this.matched.fill(0);
+    this.matched = Buffer.alloc(0);
     this.pending.fill(0);
     this.pending = Buffer.alloc(0);
     for (const value of this.values) value.fill(0);
