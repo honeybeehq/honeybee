@@ -102,3 +102,25 @@ test("streaming union equals an independent whole-buffer interval oracle", () =>
   }
   console.log(JSON.stringify({ referenceCases: 1000, mismatches: 0 }));
 });
+
+test("periodic values at the material/count caps keep union scanning bounded", () => {
+  const cases = [
+    Array.from({ length: 32 }, (_, index) => "a".repeat(1800 + index)),
+    ["a".repeat(16384), "b".repeat(16384), "c".repeat(16384), "ab".repeat(8192)],
+  ];
+  for (const values of cases) {
+    let captures = 0;
+    let capturedBytes = 0;
+    const redactor = new SecretOutput(values, bytes => { captures++; capturedBytes += bytes.length; });
+    const chunk = Buffer.alloc(65536, 97);
+    const started = performance.now();
+    for (let index = 0; index < 16; index++) redactor.push(chunk);
+    redactor.finish();
+    const elapsedMs = performance.now() - started;
+    assert.equal(captures, 1);
+    assert.equal(capturedBytes, Buffer.byteLength("[REDACTED]"));
+    assert.ok(elapsedMs < 5000, "1MiB periodic-value regression budget");
+    redactor.dispose();
+    console.log(JSON.stringify({ periodicPatterns: values.length, maxValueBytes: Math.max(...values.map(value => value.length)), materialBytes: values.reduce((sum, value) => sum + value.length, 0), inputBytes: 1048576, elapsedMs: Math.round(elapsedMs), captures }));
+  }
+});
