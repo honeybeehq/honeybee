@@ -11,9 +11,9 @@
  * OFF (the ephemeral VM is the boundary there). Per-cell override wins.
  */
 import { spawnSync } from "node:child_process";
-import { lstatSync, realpathSync, statSync } from "node:fs";
+import { cpSync, lstatSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
-import { isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
+import { dirname, isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 
 export type NodeKind = "workstation" | "satellite" | "cloud";
 
@@ -278,12 +278,37 @@ function bwrapLaunchBinds(command: string, args: readonly string[]): string[] {
   return [...roots].flatMap((root) => ["--ro-bind", realpathSync(root), root]);
 }
 
+export function createSshConfigView(profilePath: string, source = "/etc/ssh/ssh_config.d"): string | undefined {
+  let view: string | undefined;
+  try {
+    const info = statSync(source, { throwIfNoEntry: false });
+    if (!info) return undefined;
+    if (!info.isDirectory()) throw new Error(`SSH client include path is not a directory: ${source}`);
+    view = mkdtempSync(join(dirname(profilePath), "ssh-config-"));
+    cpSync(source, view, {
+      recursive: true,
+      dereference: true,
+      filter: (path) => {
+        const entry = statSync(path, { throwIfNoEntry: false });
+        if (!entry) return false;
+        if (!entry.isFile() && !entry.isDirectory()) throw new Error(`unsupported SSH client include: ${path}`);
+        return true;
+      },
+    });
+    return view;
+  } catch (error) {
+    if (view) rmSync(view, { recursive: true, force: true });
+    console.warn(`cell sandbox: retaining host SSH config: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  }
+}
+
 /**
  * bwrap argv (linux): read-only root with the writable paths re-bound
  * read-write. Pure argv construction — testable on any platform; execution
  * is exercised by the linux gate (trmd-metal-3).
  */
-export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]): string[] {
+export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[], sshConfigView?: string): string[] {
   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
   const out: string[] = [
     "--ro-bind", "/", "/",
@@ -303,6 +328,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     if (p === "/tmp" || p === "/var/tmp" || p === "/dev") continue; // already mounted above
     out.push("--bind-try", p, p);
   }
+  if (sshConfigView) out.push("--ro-bind", sshConfigView, sshConfigView, "--ro-bind", sshConfigView, "/etc/ssh/ssh_config.d");
   out.push("--share-net", "--die-with-parent", "--", command, ...args);
   return out;
 }
@@ -334,7 +360,7 @@ export function wrapWithSandbox(
     };
   }
   if (osPlatform === "linux") {
-    return { command: "bwrap", args: bwrapArgs(policy, command, args) };
+    return { command: "bwrap", args: bwrapArgs(policy, command, args, createSshConfigView(profilePath)) };
   }
   throw new Error(`cell sandbox: unsupported platform '${osPlatform}'`);
 }

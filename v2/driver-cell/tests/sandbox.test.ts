@@ -8,11 +8,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   bwrapArgs,
+  createSshConfigView,
   DEFAULT_SANDBOX_TMPFS_BYTES,
   defaultWritablePaths,
   mergeSandboxWritablePaths,
@@ -188,10 +189,80 @@ test("sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, othe
   assert.equal(darwin.command, "sandbox-exec");
   assert.deepEqual(darwin.args.slice(0, 2), ["-f", "/box/p.sb"]);
   assert.ok(darwin.profile != null && darwin.profile.includes("(version 1)"));
-  const linux = wrapWithSandbox(policy, "node", ["a.mjs"], "/box/p.sb", "linux");
-  assert.equal(linux.command, "bwrap");
-  assert.equal(linux.profile, undefined);
+  const box = mkdtempSync(join(tmpdir(), "hb-v2-wrap-"));
+  try {
+    const linux = wrapWithSandbox(policy, "node", ["a.mjs"], join(box, "p.sb"), "linux");
+    assert.equal(linux.command, "bwrap");
+    assert.equal(linux.profile, undefined);
+  } finally {
+    rmSync(box, { recursive: true, force: true });
+  }
   assert.throws(() => wrapWithSandbox(policy, "node", [], "/p", "win32"), /unsupported platform/);
+});
+
+test("sandbox.ssh-config: materializes symlinked client includes without changing settings or host files", () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-v2-ssh-config-"));
+  try {
+    const source = join(root, "ssh_config.d");
+    const box = join(root, "box");
+    mkdirSync(source);
+    mkdirSync(box);
+    const target = join(root, "system.conf");
+    const content = "Host github.com\n  Port 443\n  IdentityFile ~/.ssh/approved\n  StrictHostKeyChecking yes\n";
+    writeFileSync(target, content, { mode: 0o644 });
+    symlinkSync(target, join(source, "20-system.conf"));
+    const view = createSshConfigView(join(box, "sandbox.sb"), source);
+    assert.ok(view?.startsWith(`${box}/`));
+    const copied = join(view!, "20-system.conf");
+    assert.equal(lstatSync(copied).isSymbolicLink(), false);
+    assert.equal(statSync(copied).uid, process.getuid?.());
+    assert.equal(statSync(copied).mode & 0o777, 0o644);
+    assert.equal(readFileSync(copied, "utf8"), content);
+    assert.equal(lstatSync(join(source, "20-system.conf")).isSymbolicLink(), true);
+    assert.equal(readFileSync(target, "utf8"), content);
+    writeFileSync(target, "Host *\n  BatchMode yes\n");
+    const next = createSshConfigView(join(box, "sandbox.sb"), source);
+    assert.notEqual(view, next);
+    assert.equal(readFileSync(copied, "utf8"), content);
+    assert.equal(readFileSync(join(next!, "20-system.conf"), "utf8"), readFileSync(target, "utf8"));
+    assert.equal(createSshConfigView(join(box, "sandbox.sb"), join(root, "missing")), undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("sandbox.ssh-config: include view is bound read-only after writable mounts without changing the SSH command", () => {
+  const policy = { cellDir: "/cells/bee", writablePaths: ["/home/u/.cache"] };
+  const command = ["-o", "StrictHostKeyChecking=yes", "git@github.com"];
+  const args = bwrapArgs(policy, "ssh", command, "/cells/bee/box/ssh-config-123");
+  const mount = args.indexOf("/etc/ssh/ssh_config.d");
+  assert.deepEqual(args.slice(mount - 2, mount + 1), ["--ro-bind", "/cells/bee/box/ssh-config-123", "/etc/ssh/ssh_config.d"]);
+  assert.deepEqual(args.slice(mount - 5, mount - 2), ["--ro-bind", "/cells/bee/box/ssh-config-123", "/cells/bee/box/ssh-config-123"]);
+  assert.ok(mount > args.lastIndexOf("--bind-try"));
+  assert.deepEqual(args.slice(args.indexOf("--") + 1), ["ssh", ...command]);
+  assert.equal(args.includes("--uid"), false);
+  assert.equal(args.includes("--gid"), false);
+});
+
+test("sandbox.ssh-config: missing include targets are ignored and snapshot failures preserve the host view", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "hb-v2-ssh-invalid-"));
+  try {
+    const source = join(root, "ssh_config.d");
+    mkdirSync(source);
+    symlinkSync(join(root, "missing.conf"), join(source, "dangling.conf"));
+    const view = createSshConfigView(join(root, "sandbox.sb"), source);
+    assert.ok(view);
+    assert.throws(() => statSync(join(view!, "dangling.conf")), { code: "ENOENT" });
+    const warn = t.mock.method(console, "warn", () => {});
+    const invalid = join(root, "file");
+    writeFileSync(invalid, "not a directory");
+    assert.equal(createSshConfigView(join(root, "sandbox.sb"), invalid), undefined);
+    assert.equal(createSshConfigView(join(root, "missing-box", "sandbox.sb"), source), undefined);
+    assert.equal(warn.mock.callCount(), 2);
+    assert.match(String(warn.mock.calls[0]?.arguments[0]), /retaining host SSH config/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("sandbox.seatbelt-real: sandbox-exec confines writes to the cell (darwin)", { skip: !IS_DARWIN }, () => {
