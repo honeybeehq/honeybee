@@ -1,5 +1,5 @@
 /** Versioned admission token shared by the core and deploy owner. */
-export const UPDATE_RECOVERY_CONTRACT = "honeybee-v27-disabled-authority-v1";
+export const UPDATE_RECOVERY_CONTRACT = "honeybee-backup-bound-recovery-v2";
 export type UpdateReservation = { epoch: number; id: string; recoverySubjectDigest: string; active: boolean };
 
 export function parseUpdateReservation(value: unknown): UpdateReservation {

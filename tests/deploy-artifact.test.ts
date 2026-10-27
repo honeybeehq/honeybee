@@ -465,3 +465,33 @@ test("artifact backup refusal preserves current and never activates the candidat
     assert.equal(await currentDeployTarget(root), previous.identity.sourceRevision);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
+
+for (const scenario of ["missing", "stale", "newer"] as const) {
+  test(`artifact ${scenario} backup admission leaves the current runtime and history untouched`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hb-artifact-receipt-")), root = join(dir, "runtime");
+    try {
+      const previous = await release(dir, "b".repeat(40)), next = await release(dir);
+      await deployArtifact({ ...previous, root, expectedCurrent: null, admission: { fresh: true }, hooks: { async restartDaemon() {} } });
+      const admission = await reserve(dir, next.identity);
+      const store = join(dir, "v2", "core.sqlite3");
+      if (scenario === "newer") {
+        const db = new DatabaseSync(store);
+        db.exec("UPDATE meta SET value='49' WHERE key='schema_version'");
+        db.close();
+      }
+      const receipt = backupStoreOffline(store, "fixture");
+      if (scenario === "stale") {
+        receipt.createdAt = "2000-01-01T00:00:00.000Z";
+        await writeFile(receipt.receiptPath, JSON.stringify(receipt));
+      }
+      const history = await readFile(join(root, "deploys.json"), "utf8").catch(() => null);
+      await assert.rejects(deployArtifact({ ...next, root, expectedCurrent: previous.identity.sourceRevision, admission, hooks: {
+        async backupStore() { return scenario === "missing" ? { receiptPath: join(dir, "missing.json") } : receipt; },
+        async restartDaemon() { assert.fail("refused admission must not activate"); },
+      } }), new RegExp(scenario === "newer" ? "schema_newer" : `backup_${scenario}`));
+      assert.equal(await currentDeployTarget(root), previous.identity.sourceRevision);
+      assert.equal(existsSync(join(root, next.identity.sourceRevision)), false);
+      assert.equal(await readFile(join(root, "deploys.json"), "utf8").catch(() => null), history);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+}

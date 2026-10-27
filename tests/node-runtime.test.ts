@@ -95,3 +95,20 @@ test("aliases to the recorded executable cannot migrate changed bytes", () => fi
     assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: path }, undefined, true), /identity drift|identity probe failed/);
   }
 }));
+
+test("deploy child migration selects an explicitly different pin without mutating the recorded pin", () => fixture(dir => {
+  const data = join(dir, "v2"), node = join(dir, "candidate-node");
+  copyFileSync(process.execPath, node);
+  persistNodePin(data, probeNativeNode(process.execPath));
+  const recorded = readFileSync(nodePinFile(data), "utf8");
+  const saved = process.env.HIVE_NODE_PATH;
+  try {
+    process.env.HIVE_NODE_PATH = node;
+    assert.throws(() => childNodePath(data), /identity drift/);
+    assert.equal(childNodePath(data, true), node);
+    assert.equal(readFileSync(nodePinFile(data), "utf8"), recorded);
+  } finally {
+    if (saved === undefined) delete process.env.HIVE_NODE_PATH;
+    else process.env.HIVE_NODE_PATH = saved;
+  }
+}));

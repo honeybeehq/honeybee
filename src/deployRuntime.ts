@@ -34,7 +34,7 @@ import { exposeDeployedCli } from "./deployCli.js";
 import { unpackDeployArtifact, artifactTreeDigest, assertArtifactLinksContained } from "./deployArtifact.js";
 import type { ComponentIdentity } from "./release/index.js";
 import { canonicalDigest } from "./comb/canonical.js";
-import { assertUpdateAdmission, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "./updateAdmission.js";
+import { assertUpdateAdmission, UpdateAdmissionError, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "./updateAdmission.js";
 import { hashDirectoryTree, readBuildStamp, verifyDistAgainstArtifact, writeBuildStamp } from "./deploySettle.js";
 import { atomicWriteFile, storeRoot } from "./fsx.js";
 import { hostGitEnv } from "./hostGit.js";
@@ -537,7 +537,7 @@ async function reconcileCurrentDeployHistory(root: string, now: () => Date, by: 
     by: `${by} (adopted current; activation unconfirmed)`, activation: "unconfirmed" });
 }
 
-async function backupBeforeRuntimeSwap(root: string, hooks: Pick<DeployHooks, "backupStore">, installedDir: string, previousSha: string | null, log: (line: string) => void): Promise<void> {
+async function backupBeforeRuntimeSwap(root: string, hooks: Pick<DeployHooks, "backupStore">, installedDir: string, previousSha: string | null, log: (line: string) => void): Promise<string | null> {
   const dataDir = resolve(root, "..", "v2");
   if (process.env.HIVE_V2_DATA_DIR?.trim() && resolve(process.env.HIVE_V2_DATA_DIR) !== dataDir) throw new Error("deploy: custom HIVE_V2_DATA_DIR requires an explicit coordinated store backup owner; refusing swap");
   const storePath = join(dataDir, "core.sqlite3");
@@ -563,22 +563,23 @@ async function backupBeforeRuntimeSwap(root: string, hooks: Pick<DeployHooks, "b
     for (const name of (await readdir(directory)).filter(name => name.endsWith(".json")).sort().reverse().slice(10)) await rm(join(directory, name));
     await syncDeployPath(directory);
     log(`deploy: no prior store; absence receipt ${receiptPath}`);
-    return;
+    return null;
   }
-  if (!hooks.backupStore) throw new Error("deploy: store backup owner is required before swap");
+  if (!hooks.backupStore) throw new UpdateAdmissionError("backup_missing", "store backup owner is required before swap");
   const receipt = await hooks.backupStore({ root, installedDir, sourceRevision: previousSha });
-  if (!receipt.receiptPath || !existsSync(receipt.receiptPath)) throw new Error("deploy: durable store backup receipt missing");
+  if (!receipt.receiptPath || !existsSync(receipt.receiptPath)) throw new UpdateAdmissionError("backup_missing", "durable store backup receipt missing");
   const manifest = JSON.parse(await readFile(receipt.receiptPath, "utf8"));
   if (manifest.format !== 1 || manifest.integrityCheck !== "ok" || manifest.storePath !== storePath
     || manifest.receiptPath !== resolve(receipt.receiptPath) || typeof manifest.backupPath !== "string"
     || dirname(manifest.backupPath) !== dirname(resolve(receipt.receiptPath))
-    || manifest.sha256 !== createHash("sha256").update(await readFile(manifest.backupPath)).digest("hex")) throw new Error("deploy: invalid store backup receipt");
+    || manifest.sha256 !== createHash("sha256").update(await readFile(manifest.backupPath)).digest("hex")) throw new UpdateAdmissionError("backup_invalid", "invalid store backup receipt");
   log(`deploy: store backup receipt ${receipt.receiptPath}`);
+  return receipt.receiptPath;
 }
 
-async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, immutable = false, gate, reservation }: {
+async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, now, log, hooks, immutable = false, gate, reservation, admit }: {
   root: string; sha: string; artifactDir: string; artifactHash: string; keep: number; by: string;
-  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">; immutable?: boolean; gate?: "full" | "tests-skipped"; reservation?: UpdateReservation;
+  now: () => Date; log: (line: string) => void; hooks: Pick<DeployHooks, "restartDaemon" | "backupStore">; immutable?: boolean; gate?: "full" | "tests-skipped"; reservation?: UpdateReservation; admit?: (receiptPath: string | null, startedAt: number) => Promise<void>;
 }): Promise<DeployOutcome> {
   const previousLink = await readlink(join(root, CURRENT_LINK_NAME)).catch((error: NodeJS.ErrnoException) => { if (error.code === "ENOENT") return null; throw error; });
   const previousSha = await currentDeployTarget(root);
@@ -594,7 +595,9 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
     await cp(artifactDir, staging, { recursive: true, verbatimSymlinks: true });
     if (immutable) await syncDeployTree(staging);
 
-    await backupBeforeRuntimeSwap(root, hooks, staging, previousSha, log);
+    const backupStartedAt = Date.now();
+    const backupReceiptPath = await backupBeforeRuntimeSwap(root, hooks, staging, previousSha, log);
+    await admit?.(backupReceiptPath, backupStartedAt);
     if (previousLink) {
       try { await assertRollbackStoreCompatible(root, resolve(root, previousLink)); }
       catch (cause) { throw new DeployActivationRefusedError(sha, cause); }
@@ -728,10 +731,13 @@ export async function deployArtifact(options: DeployArtifactOptions): Promise<De
         if (options.admission.fresh !== true || Object.keys(options.admission).length !== 1 || options.expectedCurrent !== null
           || (!replay && ["v2", "store.json", "bees", "sessions", "legacy-agentpit", "FROZEN"].some(name => existsSync(join(root, "..", name)))))
           throw new Error("deploy: fresh installation requires an empty node; coordinated migration required");
-      } else await assertUpdateAdmission(root, prepared.identity, { ...options.admission, reservation: reservation! });
+      }
+      const admission = options.admission;
       const outcome = await publishDeploy({ root, sha: prepared.identity.sourceRevision, ...prepared,
         keep: DEFAULT_KEEP_VERSIONS, by: deployedBy(), now: () => new Date(), log: () => undefined,
-        hooks: options.hooks, immutable: true, reservation });
+        hooks: options.hooks, immutable: true, reservation,
+        ...("fresh" in admission ? {} : { admit: (receiptPath: string | null, startedAt: number) => assertUpdateAdmission(root, prepared.identity,
+          { ...admission, reservation: reservation! }, { receiptPath: receiptPath ?? "", startedAt, candidateSchemaVersion: prepared.candidateSchemaVersion }) }) });
       if (options.cliBinDirectory !== undefined) await exposeDeployedCli(root, options.cliBinDirectory, resolveNodePin(join(root, "..", "v2")).path);
       return outcome;
     });

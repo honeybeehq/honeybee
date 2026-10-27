@@ -1,3 +1,4 @@
+import { backupStoreOffline } from "../v2/core/src/storeBackup.ts";
 import { createRequire } from "node:module";
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -5,9 +6,18 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { assertUpdateAdmission, readOfflineUpdateReservation, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "../src/updateAdmission.js";
+import { assertUpdateAdmission as rawAssertUpdateAdmission, UpdateAdmissionError, readOfflineUpdateReservation, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "../src/updateAdmission.js";
 import { parseRecoveryPlan, recoverySubjectDigest } from "../src/release/index.js";
 import * as v2 from "../src/release/v2.js";
+
+async function assertUpdateAdmission(root: string, identity: Parameters<typeof rawAssertUpdateAdmission>[1], admission: UpdateAdmission) {
+  const startedAt = Date.now();
+  const receipt = backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture");
+  return rawAssertUpdateAdmission(root, identity, admission, { receiptPath: receipt.receiptPath, startedAt, candidateSchemaVersion: 48 });
+}
+async function writeStatus(path: string, source: string) {
+  await writeFile(path, `exports.runV2Cli = async () => { ${source} };`);
+}
 
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), "hon8-admission-"));
@@ -90,7 +100,7 @@ for (const scenario of ["unrelated Honeybee", "caller artifact", "changed caller
 test("a live owner for another store cannot authorize the local reservation", async () => {
   const f = await fixture();
   try {
-    await writeFile(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, storePath: join(f.dir, "other.sqlite3") }))});`);
+    await writeStatus(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, storePath: join(f.dir, "other.sqlite3") }))});`);
     await assert.rejects(assertUpdateAdmission(f.root, f.identity, f.admission), /incompatible live owner/);
   } finally { await rm(f.dir, { recursive: true, force: true }); }
 });
@@ -114,7 +124,7 @@ for (const scenario of ["unknown requirement", "custom offline store", "released
         db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify({ ...f.admission.reservation, active: false }));
         db.close();
       }
-      if (scenario === "live runtime mismatch") await writeFile(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, runtimeRoot: join(f.dir, "other-runtime") }))});`);
+      if (scenario === "live runtime mismatch") await writeStatus(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, runtimeRoot: join(f.dir, "other-runtime") }))});`);
       await assert.rejects(assertUpdateAdmission(f.root, f.identity, f.admission), /admission|migration|stale|incompatible/);
     } finally { await rm(f.dir, { recursive: true, force: true }); }
   });
@@ -123,7 +133,7 @@ for (const scenario of ["unknown requirement", "custom offline store", "released
 test("status query explicitly targets this node's data directory and socket", async () => {
   const f = await fixture();
   try {
-    await writeFile(f.statusFile, `const fs=require('node:fs'); fs.writeFileSync(${JSON.stringify(join(f.dir, "args.json"))}, JSON.stringify(process.argv.slice(2))); console.log(${JSON.stringify(JSON.stringify(f.status))});`);
+    await writeStatus(f.statusFile, `const fs=require('node:fs'); fs.writeFileSync(${JSON.stringify(join(f.dir, "args.json"))}, JSON.stringify(process.argv.slice(1))); console.log(${JSON.stringify(JSON.stringify(f.status))});`);
     await assertUpdateAdmission(f.root, f.identity, f.admission);
     const args = JSON.parse(await readFile(join(f.dir, "args.json"), "utf8"));
     assert.deepEqual(args, ["update-owner", "status", "--data-dir", join(f.dir, "v2"), "--socket", join(f.dir, "v2", "hived.sock")]);
@@ -133,7 +143,7 @@ test("status query explicitly targets this node's data directory and socket", as
 test("status query follows a live endpoint record to a relocated socket and ignores a dead one", async () => {
   const f = await fixture();
   try {
-    await writeFile(f.statusFile, `const fs=require('node:fs'); fs.writeFileSync(${JSON.stringify(join(f.dir, "args.json"))}, JSON.stringify(process.argv.slice(2))); console.log(${JSON.stringify(JSON.stringify(f.status))});`);
+    await writeStatus(f.statusFile, `const fs=require('node:fs'); fs.writeFileSync(${JSON.stringify(join(f.dir, "args.json"))}, JSON.stringify(process.argv.slice(1))); console.log(${JSON.stringify(JSON.stringify(f.status))});`);
     const socketDir = join(f.dir, "socket");
     await mkdir(socketDir, { mode: 0o700 });
     const native = createRequire(import.meta.url)(join(process.cwd(), "dist", "v2", "peercred", `${process.platform}-${process.arch}`, "peercred.node")).inspectProcess(process.pid);
@@ -163,23 +173,48 @@ test("the live owner's initial unreserved status cannot be used for recovery", a
   const f = await fixture();
   try {
     const reservation = { epoch: 0, id: "", recoverySubjectDigest: "", active: false };
-    await writeFile(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, reservation }))});`);
+    await writeStatus(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, reservation }))});`);
     await assert.rejects(assertUpdateAdmission(f.root, f.identity, f.admission), /stale/);
   } finally { await rm(f.dir, { recursive: true, force: true }); }
 });
 
-for (const schemaVersion of [28, 30]) {
+for (const schemaVersion of [44, 48]) {
   for (const live of [false, true]) {
-    test(`schema ${schemaVersion} ${live ? "live" : "offline"} owner does not widen recovery`, async () => {
+    test(`schema ${schemaVersion} ${live ? "live" : "offline"} owner admits with a verified receipt`, async () => {
       const f = await fixture();
       try {
         const db = new DatabaseSync(join(f.dir, "v2", "core.sqlite3"));
         db.prepare("UPDATE meta SET value=? WHERE key='schema_version'").run(String(schemaVersion));
         db.close();
-        if (live) await writeFile(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, schemaVersion }))});`);
-        await assert.rejects(assertUpdateAdmission(f.root, f.identity, f.admission), /incompatible storage/);
-        assert.throws(() => readOfflineUpdateReservation(f.root), /incompatible storage/);
+        if (live) await writeStatus(f.statusFile, `console.log(${JSON.stringify(JSON.stringify({ ...f.status, schemaVersion }))});`);
+        await assertUpdateAdmission(f.root, f.identity, f.admission);
+        assert.deepEqual(readOfflineUpdateReservation(f.root), f.admission.reservation);
       } finally { await rm(f.dir, { recursive: true, force: true }); }
     });
   }
+}
+
+for (const scenario of ["missing", "stale", "newer", "checksum", "schema", "integrity", "reservation"] as const) {
+  test(`backup-bound admission refuses ${scenario}`, async () => {
+    const f = await fixture();
+    try {
+      const startedAt = Date.now();
+      const receipt = backupStoreOffline(join(f.dir, "v2", "core.sqlite3"), "fixture");
+      if (scenario === "checksum") await writeFile(receipt.backupPath, "corrupt");
+      if (scenario === "schema") receipt.schemaVersion = 48;
+      if (scenario === "integrity") receipt.integrityCheck = "bad" as "ok";
+      if (scenario === "reservation") {
+        const db = new DatabaseSync(join(f.dir, "v2", "core.sqlite3"));
+        f.admission.reservation.epoch++;
+        db.prepare("UPDATE meta SET value=? WHERE key='coordinated_update'").run(JSON.stringify(f.admission.reservation));
+        db.close();
+      }
+      await writeFile(receipt.receiptPath, JSON.stringify(receipt));
+      await assert.rejects(rawAssertUpdateAdmission(f.root, f.identity, f.admission, {
+        receiptPath: scenario === "missing" ? "" : receipt.receiptPath,
+        startedAt: scenario === "stale" ? Date.now() + 1 : startedAt,
+        candidateSchemaVersion: scenario === "newer" ? 26 : 48,
+      }), error => error instanceof UpdateAdmissionError && error.code === (scenario === "missing" ? "backup_missing" : scenario === "stale" ? "backup_stale" : scenario === "newer" ? "schema_newer" : "backup_invalid"));
+    } finally { await rm(f.dir, { recursive: true, force: true }); }
+  });
 }

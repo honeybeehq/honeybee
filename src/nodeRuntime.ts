@@ -97,11 +97,11 @@ export function nodePinEnv(pin: NodePin): Record<string, string> {
   return { HIVE_NODE_PATH: pin.path, HIVE_NODE_VERSION: pin.version, HIVE_NODE_SHA256: pin.sha256 };
 }
 
-export function childNodePath(): string {
+export function childNodePath(explicitDataDir?: string, allowMigration = false): string {
   const env = process.env;
-  const dataDir = env.HIVE_V2_DATA_DIR ?? join(env.HIVE_STORE_ROOT ?? join(homedir(), ".hive"), "v2");
+  const dataDir = explicitDataDir ?? env.HIVE_V2_DATA_DIR ?? join(env.HIVE_STORE_ROOT ?? join(homedir(), ".hive"), "v2");
   if (env.HIVE_NODE_PATH || env.HIVE_NODE_VERSION || env.HIVE_NODE_SHA256 || existsSync(nodePinFile(dataDir))) {
-    return resolveNodePin(dataDir).path;
+    return resolveNodePin(dataDir, env, undefined, allowMigration).path;
   }
   if (process.versions.electron) throw new Error("HIVE_NODE_PATH required: Electron cannot launch Honeybee Node children");
   return realpathSync(process.execPath);
