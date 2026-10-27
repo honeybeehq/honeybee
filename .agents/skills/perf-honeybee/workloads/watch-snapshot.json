@@ -1,0 +1,115 @@
+{
+  "protocolVersion": 1,
+  "id": "watch-snapshot",
+  "title": "Full watch snapshot over a local Unix socket",
+  "lane": "streaming",
+  "processes": [
+    "hived",
+    "helper"
+  ],
+  "owners": [
+    "v2/daemon/src/rpc.ts@fdb9d51c1185297e402412c7e0c5ac6c558809e0",
+    "v2/cli/src/client.ts@4fff52ecad7a446e5f056535f2175cb953ecfc3e",
+    "v2/daemon/src/jsonl.ts@35cd489052536319edaed61f73589032ebb59e91",
+    "v2/daemon/src/daemon.ts@4f57c8d83f5a83516edd8b067c4d98023e115716"
+  ],
+  "effect": {
+    "user": "A new watcher receives the complete initial state promptly.",
+    "assertions": [
+      "Complete JSON frame, exact row counts and body content, same snapshot sequence across receiver modes.",
+      "Watch remains subscribed and ordered."
+    ],
+    "exclusions": [
+      "Live database composition and Apiary rendering"
+    ]
+  },
+  "accounts": [
+    {
+      "inventory": "boundaries",
+      "key": "socket:v2/cli/src/client.ts#1"
+    },
+    {
+      "inventory": "boundaries",
+      "key": "socket:v2/daemon/src/rpc.ts#1"
+    }
+  ],
+  "states": {
+    "idle": {
+      "matters": false,
+      "why": "Outside this transfer recipe."
+    },
+    "first-use": {
+      "matters": false,
+      "why": "Outside this transfer recipe."
+    },
+    "repeated": {
+      "matters": true,
+      "why": "Complete 20 MB responses measured after hello."
+    },
+    "scale": {
+      "matters": true,
+      "why": "Complete 20 MB responses measured after hello."
+    },
+    "background": {
+      "matters": false,
+      "why": "Outside this transfer recipe."
+    },
+    "release": {
+      "matters": false,
+      "why": "Outside this transfer recipe."
+    },
+    "recovery": {
+      "matters": false,
+      "why": "Outside this transfer recipe."
+    }
+  },
+  "fixture": {
+    "preset": "watch-synthetic-v1",
+    "isolationPolicy": 1,
+    "seed": "1000 stopped bees, 900 archived; one 19000-byte seal per bee, generated locally; isolated daemon home/store/socket"
+  },
+  "recipe": {
+    "driver": "scripts/perf/watch-snapshot.mjs",
+    "command": "node scripts/perf/watch-snapshot.mjs --out .proof/watch/run.json",
+    "readiness": "Handshake complete; clock starts when watch request is written.",
+    "completion": "Last newline received; parse measured separately.",
+    "warmup": "One request per receiver, then five per receiver interleaved.",
+    "teardown": "Stop only owned daemon PID; retain disposable fixture and evidence.",
+    "serial": true,
+    "requires": [
+      "Node 24 with native TypeScript stripping"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "lastByteMs",
+      "unit": "ms",
+      "scope": "Client request write to final response byte, including snapshot construction/encode",
+      "collector": "monotonic client clock and raw socket data callbacks",
+      "aggregation": "max",
+      "kind": "actual",
+      "status": "recipe-only",
+      "states": [
+        "repeated",
+        "scale"
+      ],
+      "betterWhen": "lower",
+      "budget": {
+        "value": 300,
+        "unit": "ms",
+        "comparator": "<",
+        "status": "ruled",
+        "source": "Tormod task 2026-10-27: 20 MB Studio target",
+        "condition": "20 MB snapshot on Studio; other hosts give recipe evidence"
+      },
+      "invariant": "All complete frames preserve exact snapshot content and sequence.",
+      "noise": "Shared host timing is recipe evidence; no production baseline."
+    }
+  ],
+  "gaps": [
+    "Real production size breakdown forbidden by task isolation; generated composition is not a claim about live data.",
+    "Studio timing requires running the identical disposable recipe there."
+  ],
+  "updatedAt": "2026-10-27",
+  "readiness": "Executable generated-data recipe proves linear transfer and content parity; shared-host timings are not a retained Studio baseline. Field daemon slowness claim was retracted as probe overhead."
+}

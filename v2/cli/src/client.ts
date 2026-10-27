@@ -5,6 +5,7 @@ import type { EffectCoverage, EffectResolution, EffectVerb } from "../../core/sr
  * read-only store (readonly.ts) only when the daemon is down.
  */
 import { createConnection, type Socket } from "node:net";
+import { JsonLineBuffer } from "../../daemon/src/jsonl.ts";
 import {
   PROTOCOL,
   RpcError,
@@ -45,7 +46,7 @@ interface Pending {
 export class RpcClient {
   private readonly socket: Socket;
   private readonly pending = new Map<number, Pending>();
-  private buffer = "";
+  private readonly frames = new JsonLineBuffer();
   private nextId = 1;
   private closed = false;
   capabilities: readonly string[] = [];
@@ -75,11 +76,9 @@ export class RpcClient {
         socket.setEncoding("utf8");
         // Wait for the server hello, then answer with ours (negotiated once).
         const onHello = (chunk: string): void => {
-          client.buffer += chunk;
-          const nl = client.buffer.indexOf("\n");
-          if (nl < 0) return;
-          const line = client.buffer.slice(0, nl);
-          client.buffer = client.buffer.slice(nl + 1);
+          const lines = client.frames.push(chunk);
+          const line = lines.shift();
+          if (line === undefined) return;
           socket.off("data", onHello);
           clearTimeout(timer);
           let hello: Record<string, unknown>;
@@ -113,8 +112,10 @@ export class RpcClient {
           socket.on("data", (c: string) => client.onData(c));
           socket.on("close", () => client.onSocketClose());
           socket.on("error", () => socket.destroy());
-          // Drain anything that arrived glued to the hello.
-          if (client.buffer.length > 0) client.onData("");
+          for (const frame of lines) {
+            const line = frame.trim();
+            if (line.length > 0) client.onFrame(line);
+          }
           resolve(client);
         };
         socket.on("data", onHello);
@@ -171,14 +172,9 @@ export class RpcClient {
   }
 
   private onData(chunk: string): void {
-    this.buffer += chunk;
-    for (;;) {
-      const nl = this.buffer.indexOf("\n");
-      if (nl < 0) return;
-      const line = this.buffer.slice(0, nl).trim();
-      this.buffer = this.buffer.slice(nl + 1);
-      if (line.length === 0) continue;
-      this.onFrame(line);
+    for (const frame of this.frames.push(chunk)) {
+      const line = frame.trim();
+      if (line.length > 0) this.onFrame(line);
     }
   }
 

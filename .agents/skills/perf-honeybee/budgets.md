@@ -10,3 +10,7 @@ timeouts are fixture failure bounds, not performance targets.
 
 Only the operator rules latency budgets. Agents may propose budgets before an
 optimization, retain baselines, and report same-series regressions.
+
+Full watch: Tormod's 2026-10-27 task sets request-to-last-byte below 300 ms for a
+20 MB snapshot on Studio. See `workloads/watch-snapshot.json`. Shared-host fixture
+results are recipe evidence, not an idle Studio baseline. Only Tormod changes this target.

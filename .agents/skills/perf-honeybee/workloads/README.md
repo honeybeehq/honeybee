@@ -19,6 +19,7 @@ Each workload is a `<id>.json` record (machine-readable, schema in `record.schem
 | [Latest handoff projection in fleet lists](./fleet-handoff-projection.md) | throughput | hived | 0 | 0 | 0 | 0 | 1 | recovery | 144 full output comparisons across three repetitions of 48 deterministic cases; zero excess handoff rows; no CPU or latency claim. |
 | [Latest move mapping in fleet lists](./fleet-move-projection.md) | throughput | hived | 0 | 0 | 0 | 0 | 1 | recovery | 144 full-output comparisons across three alternating pairs of 48 cases; zero excess move mappings, unchanged SQL counts and rows. Count-only result. |
 | [Remote Cell spawn: satellite owner](./remote-cell-spawn.md) | startup | hived, bee-runtime, helper | 3 | 3 | 0 | 0 | 0 | first-use, repeated, scale, release, recovery | Executable owner-side satellite stub benchmark; real provider, per-phase attribution and workstation-to-visible latency remain explicit gaps. |
+| [Full watch snapshot over a local Unix socket](./watch-snapshot.md) | streaming | hived, helper | 0 | 1 | 0 | 0 | 0 | repeated, scale | Executable generated-data recipe proves linear transfer and content parity; shared-host timings are not a retained Studio baseline. Field daemon slowness claim was retracted as probe overhead. |
 
 ## Accounted gaps (74)
 

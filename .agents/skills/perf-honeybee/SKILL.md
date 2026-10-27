@@ -89,3 +89,7 @@ Action reminders are mapped by [action-reminder-reads](workloads/action-reminder
 Latest handoff projection in fleet lists is mapped by [fleet-handoff-projection](workloads/fleet-handoff-projection.md). Its isolated CoreStore collector counts returned handoff rows and preserves fresh latest-record ordering; it does not measure CPU or latency.
 
 Referenced Cell projection is mapped by [fleet-cell-projection](workloads/fleet-cell-projection.md): selected Cell row counts in fleet lists, with full registry reads and CPU/latency explicitly outside the claim.
+
+Full watch transfer and RPC framing are mapped by [watch-snapshot](workloads/watch-snapshot.md).
+Its generated 20 MB fixture compares receiver algorithms against a disposable daemon;
+shared-host timing is recipe evidence, and cannot establish Apiary launch latency.

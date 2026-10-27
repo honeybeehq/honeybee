@@ -23,6 +23,7 @@ import { withRpcCaller } from "../../core/src/rpcAuditContext.ts";
  * errors onto the closed list, and owns the per-connection watch cursors.
  * Verb semantics live in the daemon's dispatch function.
  */
+import { JsonLineBuffer } from "./jsonl.ts";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { existsSync, unlinkSync } from "node:fs";
 import type { AuditRow } from "../../core/src/index.ts";
@@ -175,7 +176,7 @@ export interface RpcServerOptions {
 interface Connection extends RpcConn {
   peerConnection: PeerConnection | null;
   socket: Socket;
-  buffer: string;
+  frames: JsonLineBuffer;
   helloDone: boolean;
   clientCapabilities: readonly string[];
   relayLane: "node_relay" | "remote" | null;
@@ -339,7 +340,7 @@ export class RpcServer {
       socket,
       peerConnection: localUnix ? this.credentials.connect(socket) : null,
       get localPeer() { return conn.peerConnection?.state === "verified" ? conn.peerConnection.peer : undefined; },
-      buffer: "",
+      frames: new JsonLineBuffer(),
       helloDone: false,
       clientCapabilities: Object.freeze([]),
       relayLane: null,
@@ -369,14 +370,9 @@ export class RpcServer {
   }
 
   private onData(conn: Connection, chunk: string): void {
-    conn.buffer += chunk;
-    for (;;) {
-      const nl = conn.buffer.indexOf("\n");
-      if (nl < 0) return;
-      const line = conn.buffer.slice(0, nl).trim();
-      conn.buffer = conn.buffer.slice(nl + 1);
-      if (line.length === 0) continue;
-      this.onFrame(conn, line);
+    for (const frame of conn.frames.push(chunk)) {
+      const line = frame.trim();
+      if (line.length > 0) this.onFrame(conn, line);
     }
   }
 
