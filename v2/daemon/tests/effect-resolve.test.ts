@@ -2,6 +2,7 @@ import { EFFECT_RESULT_REQUIRED_FIELDS, type EffectVerb } from "../../core/src/e
 import { executionRequestDigest, type ExecutionClaim } from "../../core/src/executionFence.ts";
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -31,9 +32,9 @@ async function fixture(t: TestContext) {
   const dir = mkdtempSync(join(tmpdir(), "effect-rpc-")), path = join(dir, "core.sqlite3");
   let store = openCoreStore(path, { ephemeral: true, maxRpcIdempotencyRows: 2 });
   const owner = Object.create(HiveDaemon.prototype) as Record<string, unknown>;
-  Object.assign(owner, { cfg: { dataDir: dir, logPath: join(dir, "log"), agents: { stub: { adapter: "stub" } } }, store, stopping: false, opLog: [], deps: {}, refusedClaims: new Map(), identityRecovery: new IdentityRecovery() });
+  Object.assign(owner, { cfg: { nodeKind: "cloud", dataDir: dir, logPath: join(dir, "log"), agents: { stub: { adapter: "stub" } } }, admissionCaller: new AsyncLocalStorage(), store, stopping: false, opLog: [], deps: {}, refusedClaims: new Map(), identityRecovery: new IdentityRecovery() });
   const calls: string[] = [];
-  const server = new RpcServer({ socketPath: join(dir, "s"), log() {}, dispatch: (verb, params, conn) => { calls.push(verb); return (owner.dispatch as RpcDispatch).call(owner, verb, params, conn); } });
+  const server = new RpcServer({ socketPath: join(dir, "s"), log() {}, dispatch: (verb, params, conn) => { calls.push(verb); return (owner.dispatchWithAdmission as RpcDispatch).call(owner, verb, params, conn); } });
   await server.listen();
   const client = await RpcClient.connect(join(dir, "s"));
   t.after(async () => { client.close(); await server.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
