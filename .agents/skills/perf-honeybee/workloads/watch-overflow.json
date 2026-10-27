@@ -44,11 +44,11 @@
     },
     "repeated": {
       "matters": true,
-      "why": "Complete 20 MB responses measured after hello."
+      "why": "Repeated bursts of 512 renames exceed the 256-row threshold; ordinary deltas must converge without a replacement snapshot."
     },
     "scale": {
       "matters": true,
-      "why": "Complete 20 MB responses measured after hello."
+      "why": "Generated retained bursts and 20 KB/60 KB audit payload controls exercise row and byte prefix bounds; diagnostic populations remain separate."
     },
     "background": {
       "matters": false,
@@ -108,14 +108,6 @@
         "receipt": ".agents/skills/perf-honeybee/workloads/baselines/watch-overflow.json",
         "commit": "9ead5193db97bed924bfc3de128835ca72119e2f",
         "samples": 5
-      },
-      "budget": {
-        "value": 0,
-        "unit": "bytes",
-        "comparator": "<=",
-        "status": "ruled",
-        "source": "User retained-overflow contract 2026-10-27: no replacement snapshot for complete retained history",
-        "condition": "Complete retained generated burst; genuine missing history and deliberate legacy projection gaps excluded"
       }
     }
   ],
