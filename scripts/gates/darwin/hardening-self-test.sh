@@ -16,7 +16,7 @@ esac
 case "$1" in /opt/homebrew/bin/node|/usr/local/bin/node|/opt/homebrew/opt/node@24/bin/node) ;; *) echo 'REFUSED: unconfigured Node' >&2; exit 90;; esac
 case "$2" in /Users/*) ;; *) echo 'REFUSED: absolute passwd home required' >&2; exit 90;; esac
 script_dir=$(/usr/bin/dirname "$0")
-/usr/bin/env -i PATH=/usr/bin:/bin HOME=/private/var/tmp "$1" -e 'const p=require("node:path"),o=require("node:os");const h=o.userInfo().homedir.toLowerCase();for(const x of [process.cwd(),p.resolve(process.argv[1]),p.resolve(process.argv[2])]){const q=x.toLowerCase();if(q===h||q.startsWith(h+"/"))throw Error("REFUSED: checkout or script under real home")}if(process.argv[3]!==o.userInfo().homedir)throw Error("REFUSED: passwd home mismatch")' "$script_dir" "$PWD" "$2"
+/usr/bin/env -i PATH=/usr/bin:/bin HOME=/private/var/tmp "$1" -e 'const p=require("node:path"),o=require("node:os");const h=o.userInfo().homedir.toLowerCase();for(const x of [process.cwd(),p.resolve(process.argv[1]),p.resolve(process.argv[2])]){const q=x.toLowerCase();if(q===h||q.startsWith(h+"/"))throw Error("REFUSED: checkout or script under real home")}if(process.argv[3]!==o.userInfo().homedir)throw Error("REFUSED: passwd home mismatch")' "$script_dir" "$PWD" "$2" || exit 90
 root=$(/usr/bin/mktemp -d /private/var/tmp/hb-gate.XXXXXXXX)
 /bin/chmod 700 "$root"
 /bin/mkdir -m 700 "$root/home" "$root/tmp"

@@ -23,6 +23,8 @@ test('exact lab hosts and inclusive quiet window fail closed', () => {
   for (const utc of ['0300', '0340', '0400', '0440', '', '9999', 'ab12']) assert.throws(() => labHost('trmd-hobbiton-mini04', utc), /REFUSED/);
   for (const utc of ['0259', '0441', '2359']) assert.doesNotThrow(() => labHost('trmd-hobbiton-mini04', utc));
   assert.doesNotThrow(() => labHost('trmd-fangorn-mini07', '0300'));
+  assert.doesNotThrow(() => labHost('trmd-fangorn-mini07.local', '0300'));
+  assert.throws(() => labHost('trmd-hobbiton-mini04.local', '0440'), /REFUSED/);
   for (const host of ['mini04', 'evil-mini04', 'elrond', 'fangorn']) assert.throws(() => labHost(host, '1200'), /REFUSED/);
   assert.equal(inside('/users/LAB/Library', '/Users/lab', 'darwin'), true);
   assert.equal(inside('/Users/laboratory', '/Users/lab', 'darwin'), false);

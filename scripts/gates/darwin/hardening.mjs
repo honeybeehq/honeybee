@@ -11,6 +11,7 @@ export function inside(candidate, root, platform = process.platform) {
 }
 
 export function labHost(host, utc) {
+  host = host.split('.')[0];
   if (host === 'trmd-fangorn-mini07') return;
   if (host !== 'trmd-hobbiton-mini04') throw new Error('REFUSED: approved Mac lab required');
   if (!/^[0-9]{4}$/.test(utc) || Number(utc.slice(0, 2)) > 23 || Number(utc.slice(2)) > 59) throw new Error('REFUSED: invalid UTC time');
@@ -119,6 +120,7 @@ function selfTest(root, realHome, source) {
   const identity = fs.lstatSync(root);
   if (!root.startsWith('/private/var/tmp/hb-gate.') || !identity.isDirectory() || identity.isSymbolicLink() || identity.uid !== process.getuid() || (identity.mode & 0o777) !== 0o700) throw new Error('REFUSED: cleanup root identity');
   fs.rmSync(root, { recursive: true });
+  console.log('GATE_RESULT=PASS');
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

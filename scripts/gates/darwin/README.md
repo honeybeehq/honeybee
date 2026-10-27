@@ -25,6 +25,8 @@ Darwin inbound isolation. The sentinel uses only an owned LaunchAgents fixture, 
 SHA256 hashes. The receipt, `SHA256SUMS.json` manifest and its digest are printed
 before removing this run's own root after an owner/mode/symlink check. Queen
 explicitly approved this temporary-root cleanup instead of accessing home Trash.
+Consumers must require exit 0 and the final `GATE_RESULT=PASS` after cleanup;
+printed receipt data alone does not establish a successful run.
 Nothing sweeps old runs or accesses Keychain. This entry does not execute the
 historical Python self-test or product suites. The legacy wrappers below remain
 held, including the exit-88 pinned-runtime/full bodies; this check does not
