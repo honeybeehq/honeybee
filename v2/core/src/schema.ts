@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 51;
+export const SCHEMA_VERSION = 52;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -381,6 +381,7 @@ CREATE TABLE IF NOT EXISTS bees (
   -- may be deleted; delete ORPHANS local children by nulling this, never
   -- cascades).
   parent_id        TEXT,
+  spawn_provenance TEXT,
   -- v21: true when parent_id names a parent owned outside this node. This is
   -- durable provenance, never a local foreign key or a delete-cascade edge.
   parent_external  INTEGER NOT NULL DEFAULT 0 CHECK (parent_external IN (0,1)),
@@ -896,6 +897,7 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["spawn_failures", "spawn_failures INTEGER NOT NULL DEFAULT 0"],
   ["args", "args TEXT"],
   ["parent_id", "parent_id TEXT"],
+  ["spawn_provenance", "spawn_provenance TEXT"],
   ["parent_external", "parent_external INTEGER NOT NULL DEFAULT 0 CHECK (parent_external IN (0,1))"],
   ["forked_from", "forked_from TEXT"],
   ["fork_seed", "fork_seed TEXT"],

@@ -317,6 +317,7 @@ export const MIRROR_BEE_RECORD_KEYS = [
   // ownership claim; old snapshots and creation events mean false.
   "parentId",
   "parentExternal",
+  "spawnProvenance",
   "forkedFrom",
   "forkSeed",
   // v7: additive — the account binding (accounts.id | null).
