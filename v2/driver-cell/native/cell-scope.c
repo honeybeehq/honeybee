@@ -3,11 +3,29 @@
 #include <linux/landlock.h>
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
+#include <sys/stat.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
 int main(int argc, char **argv) {
+  if (argc >= 5 && strcmp(argv[1], "--assert-userns") == 0 && strcmp(argv[3], "--") == 0) {
+    struct stat info;
+    char current[96];
+    if (stat("/proc/self/ns/user", &info) != 0) {
+      perror("cell scope: user namespace unavailable");
+      return 125;
+    }
+    snprintf(current, sizeof(current), "%ju:%ju", (uintmax_t)info.st_dev, (uintmax_t)info.st_ino);
+    if (strcmp(current, argv[2]) == 0) {
+      fputs("cell scope: user namespace unchanged; refusing launch\n", stderr);
+      return 125;
+    }
+    execvp(argv[4], &argv[4]);
+    perror("cell scope: exec");
+    return 126;
+  }
   int abi = syscall(SYS_landlock_create_ruleset, NULL, 0, LANDLOCK_CREATE_RULESET_VERSION);
   if (argc == 2 && strcmp(argv[1], "--abi") == 0) {
     printf("%d\n", abi);
