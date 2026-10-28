@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { platform } from "node:os";
+import { platform, devNull } from "node:os";
 import { join } from "node:path";
 import { provisionCell, provisionRequestOf, reserveCell } from "../src/provision.ts";
 import { isProvisioned, readLedger, writeLedger, newLedger } from "../src/ledger.ts";
@@ -62,7 +62,7 @@ test("provision.cow: CoW path places .git, records copy_mode=cow, hygiene applie
     assert.equal(g(space, ["status", "--porcelain"]), "");
 
     // Hygiene: hooksPath → empty dir, fsmonitor off, live state scrubbed.
-    assert.equal(g(space, ["config", "core.hooksPath"]), cell.paths.emptyHooksDir);
+    assert.equal(g(space, ["config", "core.hooksPath"]), devNull);
     assert.equal(g(space, ["config", "core.fsmonitor"]), "false");
     for (const leftover of ["MERGE_HEAD", "index.lock", "rebase-merge", "sequencer"]) {
       assert.ok(!existsSync(join(space, ".git", leftover)), `${leftover} not scrubbed`);

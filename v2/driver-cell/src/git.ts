@@ -157,6 +157,8 @@ export function hostGitEnv(base: Record<string, string>, overrides: ReadonlyArra
 export function gitEnv(extra: Record<string, string> = {}): Record<string, string> {
   return {
     ...cellGitEnv(process.env),
+    ...(process.env.GIT_TRACE ? { GIT_TRACE: process.env.GIT_TRACE } : {}),
+    ...(process.env.GIT_TRACE2_EVENT ? { GIT_TRACE2_EVENT: process.env.GIT_TRACE2_EVENT } : {}),
     GIT_CONFIG_GLOBAL: devNull,
     GIT_CONFIG_SYSTEM: devNull,
     GIT_CONFIG_NOSYSTEM: "1",

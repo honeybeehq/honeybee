@@ -1,4 +1,4 @@
-import { assertCellGitSafe, cellGitEnv, configureCellGit } from "./gitSafety.ts";
+import { prepareCellGit, configureCellGit } from "./gitSafety.ts";
 /**
  * Per-repository warm Cell pool (spawn floor work, 2026-09-21).
  *
@@ -157,7 +157,12 @@ export function claimFromPool(
     if (!exact && !reachCommit(member.paths.spaceDir, req.originRepo, req.sha)) continue;
     // Atomic claim: the first rename wins; a raced loser sees ENOENT.
     mkdirSync(beePaths.wrapperDir, { recursive: true });
-    assertCellGitSafe(member.paths.spaceDir, cellGitEnv(process.env));
+    try {
+      prepareCellGit(member.paths.spaceDir);
+    } catch {
+      discardMember(member.wrapperDir);
+      continue;
+    }
     try {
       renameSync(member.paths.spaceDir, beePaths.spaceDir);
     } catch {

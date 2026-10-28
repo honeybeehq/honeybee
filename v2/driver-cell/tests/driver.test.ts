@@ -6,6 +6,7 @@
  * remove) against a live driver.
  */
 import { test } from "node:test";
+import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { platform } from "node:os";
@@ -495,6 +496,7 @@ test("cell-driver.restart: a successor daemon re-adopts a live cell runtime from
     // this bee's allocation. Adoption must hydrate from that ledger; before
     // the fix it threw "no provisioned cell", lost the adapter, and adopted
     // degraded (no tail → the bee stayed "running" forever).
+    g(first.cellOf("bee-1")!.paths.spaceDir, ["config", "credential.helper", "tampered"]);
     second = makeDriver(rig);
     assert.equal(second.adopt("bee-1", 1, proc.pid, proc.pidStartedAt, "running", checkpoint), true);
     assert.equal(second.isDegraded("bee-1", 1), false, "ledger-backed adoption is never degraded");
@@ -519,6 +521,7 @@ test("cell-driver.restart: a successor daemon re-adopts a live cell runtime from
 
     second.stop("bee-1", 1, "stopped_by_user");
     await drainUntil(second, (e) => e.some((x) => x.kind === "exited"));
+    assert.throws(() => second!.start("bee-1", 2), { code: "cell_git_unsafe", reason: "credential_helper" });
   } finally {
     second?.disposeAll();
     first.disposeAll();
@@ -566,13 +569,21 @@ test("cell-driver.git-safety: runner receives the pinned Git environment", async
   const rig = makeRig();
   let checked = false;
   const driver = makeDriver(rig, {
-    harnessEnv: { GIT_CONFIG_GLOBAL: "/bad", GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "credential.helper", GIT_CONFIG_VALUE_0: "bad" },
+    harnessEnv: { GIT_CONFIG_GLOBAL: "/bad", GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "credential.helper", GIT_CONFIG_VALUE_0: "bad", GIT_ASKPASS: "/bad", SSH_ASKPASS: "/bad", GIT_SSH_COMMAND: "bad", GIT_EXEC_PATH: "/bad" },
     hostCommand: configPath => {
       const config = JSON.parse(readFileSync(configPath, "utf8"));
       assert.equal(config.env.GIT_CONFIG_GLOBAL, "/dev/null");
       assert.equal(config.env.GIT_CONFIG_NOSYSTEM, "1");
       assert.equal(config.env.GIT_CONFIG_COUNT, undefined);
       assert.equal(config.env.GIT_CONFIG_KEY_0, undefined);
+      assert.equal(config.env.GIT_ASKPASS, undefined);
+      assert.equal(config.env.SSH_ASKPASS, undefined);
+      assert.equal(config.env.GIT_SSH_COMMAND, undefined);
+      assert.equal(config.env.GIT_EXEC_PATH, undefined);
+      assert.equal(config.env.GIT_TERMINAL_PROMPT, "0");
+      const committed = spawnSync("git", ["commit", "--allow-empty", "-m", "runner env fixture"], { cwd: config.cwd, env: config.env, encoding: "utf8" });
+      assert.equal(committed.status, 0, committed.stderr);
+      console.log(`Runner environment git commit: exit ${committed.status}`);
       checked = true;
       return { command: process.execPath, args: ["-e", "process.exit(0)"] };
     },
@@ -580,6 +591,28 @@ test("cell-driver.git-safety: runner receives the pinned Git environment", async
   try {
     driver.start("bee-1", 1);
     assert.equal(checked, true);
+    await drainUntil(driver, events => events.some(event => event.kind === "exited"));
+  } finally {
+    driver.disposeAll();
+    rig.cleanup();
+  }
+});
+
+
+for (const backgroundProvisioning of [false, true]) test(`cell-driver.git-safety: legacy HTTPS Cell migrates once before start (background=${backgroundProvisioning})`, async () => {
+  const rig = makeRig();
+  const driver = makeDriver(rig, { backgroundProvisioning });
+  try {
+    const cell = driver.ensureCell("bee-1", "prepare-legacy");
+    g(cell.paths.spaceDir, ["config", "--unset-all", "hive.cellGitSafety"]);
+    g(cell.paths.spaceDir, ["config", "remote.origin.url", "https://github.com/fixture/repo.git"]);
+    g(cell.paths.spaceDir, ["config", "remote.origin.pushurl", "https://github.com/fixture/repo.git"]);
+    g(cell.paths.spaceDir, ["config", "credential.helper", "!gh auth git-credential"]);
+    driver.start("bee-1", 1);
+    await drainUntil(driver, events => events.some(event => event.kind === "booted"));
+    assert.equal(g(cell.paths.spaceDir, ["remote", "get-url", "--push", "origin"]), "git@github.com:fixture/repo.git");
+    console.log("Legacy HTTPS Cell: normalized to SSH and booted");
+    driver.stop("bee-1", 1, "stopped_by_user");
     await drainUntil(driver, events => events.some(event => event.kind === "exited"));
   } finally {
     driver.disposeAll();

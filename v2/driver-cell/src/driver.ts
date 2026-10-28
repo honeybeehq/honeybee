@@ -1,4 +1,4 @@
-import { assertCellGitSafe, cellGitEnv } from "./gitSafety.ts";
+import { prepareCellGit, cellGitEnv } from "./gitSafety.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { stateDirectory } from "../../harness/src/statePath.ts";
@@ -205,6 +205,7 @@ export class CellDriver implements RuntimeDriver {
       const claimed = this.warmPoolEnabled() ? this.tryClaimFromPool(beeId) : null;
       if (claimed) this.cells.set(beeId, claimed);
       else this.ensureCell(beeId, opId);
+      prepareCellGit(this.cells.get(beeId)!.paths.spaceDir);
       this.cfg.onCellMaterialized?.(beeId);
       this.inner.start(beeId, generation);
       this.refreshOriginOf(beeId);
@@ -579,7 +580,7 @@ export class CellDriver implements RuntimeDriver {
     try {
       // The worker completed the ledger-keyed operation. This replay only
       // hydrates the parent driver's cache before the HSR process starts.
-      this.ensureCell(pending.beeId, `start-${pending.beeId}-g${pending.generation}`);
+      if (!this.cellOf(pending.beeId)) throw new Error("Cell provisioning completed without a durable Cell");
       this.cfg.onCellMaterialized?.(pending.beeId);
       this.inner.start(pending.beeId, pending.generation);
     } catch (error) {
@@ -770,7 +771,6 @@ export class CellDriver implements RuntimeDriver {
       HIVE_CELL: "1",
       HIVE_CELL_SPACE: cell.paths.spaceName,
     };
-    assertCellGitSafe(cell.paths.spaceDir, env);
     if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
       return { ...harness, cwd: cell.paths.spaceDir, env };
     }
