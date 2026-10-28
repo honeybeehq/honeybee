@@ -1,0 +1,41 @@
+Checkpoint reviewed: 853140832c6779b7f47e88661237efd799e9bbce atop hotfix 2491e5a0.
+Scope: independent conflict-resolution review; test-only commit.
+Source review: unioned RpcServerOptions and Connection fields; both policies and typed errors retained.
+Raw hived keeps peerConfinement/admitConfined. Gateway keeps cellGateway, without raw confinement hook.
+Main bee.transcript is now recognized but refused for confined peers; adapted prior invalid_request assertion.
+Fixture: actual sandboxed process connects to both own temporary endpoints using native SO_PEERCRED and production HiveDaemon admission/dispatch.
+Only fixture hived.sock is deliberately RO-mounted at /run/honeybee/test-hived.sock; no live socket is opened.
+Initial test-only mount injection accidentally landed in inner scope argv; corrected to insert before /run remount.
+
+Command: node scripts/test-cell-gateway-joint.mjs --composition
+Exit: 0 (default and custom daemon roots)
+{"fixture":"owned-node-code-overlay","node":"v24.18.0","sha256":"41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c","credentialsCopied":false}
+{"fixture":"same-cell-hived5-gateway6","customRoot":false,"sameProcess":true,"hivedAllowed":5,"gatewayAllowed":6,"transcriptHived":"confined_peer_refused","transcriptGateway":true,"privilegedDeniedBoth":true,"passed":true}
+✔ same sandboxed Cell preserves the raw hived five verbs and gateway six verbs (184.641446ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 795.791958
+{"fixture":"same-cell-hived5-gateway6","customRoot":true,"sameProcess":true,"hivedAllowed":5,"gatewayAllowed":6,"transcriptHived":"confined_peer_refused","transcriptGateway":true,"privilegedDeniedBoth":true,"passed":true}
+✔ same sandboxed Cell preserves the raw hived five verbs and gateway six verbs (183.088941ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 744.368614
+
+Command: node --test v2/daemon/tests/confined-peer.test.ts v2/daemon/tests/confined-peer-rpc.test.ts v2/daemon/tests/spawn-lineage.test.ts v2/daemon/tests/spawn-lineage-logic.test.ts v2/driver-hsr/tests/runner-host.test.ts v2/daemon/tests/cell-gateway.test.ts
+Exit: 0;64 passed,0 failed,0 skipped
+Command: npm run check
+Exit: 0
+Command: node node_modules/typescript/bin/tsc -p v2/daemon/tsconfig.json
+Exit: 0
+Command: npm run build
+Exit: 0;native cell-scope ABI6 and peercred probes passed

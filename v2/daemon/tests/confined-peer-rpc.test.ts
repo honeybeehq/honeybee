@@ -108,7 +108,7 @@ createInterface({input:process.stdin}).on('line', line => {
   assert.equal(own.seal.seal.beeId, child.beeId);
   assert.equal(typeof own.send.messageId, "number");
   for (const key of ["foreign", "thread", "fork", "context"]) assert.equal(own[key], "confined_peer_refused");
-  assert.equal(own.transcript, "invalid_request");
+  assert.equal(own.transcript, "confined_peer_refused");
 
 });
 
