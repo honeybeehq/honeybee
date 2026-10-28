@@ -44,3 +44,32 @@ test("spawn refuses missing ancestry evidence and process replacement during ins
   assert.throws(() => spawnCallerBee(peer, [{ beeId: "caller", identity: proc(4, 0) }], () => ({ ...proc(4, 0), birth: ++reads === 1 ? "linux:4" : "linux:99" })), refused);
   assert.equal(spawnCallerBee(peer, [{ beeId: "recycled", identity: { ...proc(4, 0), birth: "linux:99" } }], () => proc(4, 0)), null);
 });
+
+test("macOS ancestry ends at the first other-user ancestor that proc_pidinfo refuses, without losing the nearest bee", () => {
+  const mac = (pid: number, ppid: number, uid = 501): Extract<ProcessInspection, {kind: "present"}> => ({
+    kind: "present", pid, ppid, uid, pgid: pid, state: "live", birth: `darwin:1793200000:${pid}`, bootId: "", startedAtMs: 1793200000000, waitStatus: null,
+  });
+  const denied: ProcessInspection = { kind: "unavailable", reason: "permission_denied" };
+  const chain = (...values: ProcessInspection[]) => {
+    const processes = new Map<number, ProcessInspection>();
+    for (const [index, value] of values.entries()) processes.set(value.kind === "present" ? value.pid : -index, value);
+    return (pid: number): ProcessInspection => processes.get(pid) ?? (pid === 1 || pid === 300 ? denied : { kind: "gone" });
+  };
+  const runner = chain(mac(700, 600), mac(600, 550), mac(550, 510), mac(510, 505), mac(505, 1));
+  const terminal = chain(mac(470, 460), mac(460, 300));
+  const ci = { pid: 700, uid: 501, processBirth: "darwin:1793200000:700" };
+  const cli = { pid: 470, uid: 501, processBirth: "darwin:1793200000:470" };
+  assert.equal(spawnCallerBee(ci, [], runner), null);
+  assert.equal(spawnCallerBee(cli, [], terminal), null);
+  assert.equal(spawnCallerBee(cli, [{ beeId: "stale", identity: null, pid: null }], terminal), null);
+  assert.equal(spawnCallerBee(ci, [{ beeId: "bee", identity: mac(550, 510) }], runner), "bee");
+  assert.equal(spawnCallerBee(ci, [{ beeId: "bee", identity: mac(550, 510), pid: 550 }], runner), "bee");
+  assert.throws(() => spawnCallerBee(cli, [{ beeId: "hidden", identity: null, pid: 300 }], terminal), refused);
+  assert.throws(() => spawnCallerBee(cli, [{ beeId: "hidden", identity: { ...mac(300, 1), birth: "darwin:1793200000:300" } }], terminal), refused);
+  assert.throws(() => spawnCallerBee(cli, [], () => denied), refused);
+  for (const failure of [{ kind: "gone" }, { kind: "unavailable", reason: "native_observation_failed" }, { kind: "unavailable", reason: "artifact_unavailable" }, { ...mac(460, 300), state: "zombie" }] as ProcessInspection[]) {
+    assert.throws(() => spawnCallerBee(cli, [], pid => pid === 460 ? failure : terminal(pid)), refused);
+  }
+  let reads = 0;
+  assert.throws(() => spawnCallerBee(cli, [], pid => pid === 460 && ++reads > 1 ? { ...mac(460, 1) } : terminal(pid)), refused);
+});

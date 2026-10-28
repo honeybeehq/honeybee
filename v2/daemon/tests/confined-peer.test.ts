@@ -120,3 +120,12 @@ test("bwrap mode detects the setuid bit on the resolved executable", async () =>
   chmodSync(file, 0o4755);
   assert.deepEqual(bwrapMode(dir), {path: realpathSync(file), setuid: true});
 });
+
+test("Linux confinement follows the kernel rather than a simulated process platform", {skip: process.platform !== "linux"}, () => {
+  const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
+  Object.defineProperty(process, "platform", {value: "darwin"});
+  try {
+    assert.equal(peerConfinement(peer, {proc: reader()}), "unconfined");
+    assert.equal(peerConfinement(peer, {proc: reader({userns: () => "user:[2]"})}), "confined");
+  } finally { Object.defineProperty(process, "platform", platform); }
+});

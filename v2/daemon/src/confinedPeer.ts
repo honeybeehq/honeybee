@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { accessSync, closeSync, constants, openSync, readFileSync, readlinkSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { type } from "node:os";
 import { join } from "node:path";
 import type { LocalPeer } from "./peerCredentials.ts";
 import { RpcError } from "./protocol.ts";
@@ -58,7 +59,7 @@ export function runtimeUserNamespace(pid: number, proc: ProcReader = procReader,
 export function peerConfinement(peer: LocalPeer | undefined, options: {
   platform?: string; proc?: ProcReader; substrate?: () => string | null; strict?: boolean; registered?: boolean;
 } = {}): Confinement {
-  if ((options.platform ?? process.platform) !== "linux") return "unknown";
+  if ((options.platform ?? (type() === "Linux" ? "linux" : type())) !== "linux") return "unknown";
   if (peerUserNamespace(peer, options.proc) !== "same") return "confined";
   try {
     const substrate = options.substrate?.() ?? null;

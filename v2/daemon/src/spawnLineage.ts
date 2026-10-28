@@ -11,6 +11,9 @@ export function spawnCallerBee(
   let pid = peer.pid;
   for (let depth = 0; depth < 256; depth++) {
     const value = inspect(pid);
+    const boundary = depth > 0 && value.kind === "unavailable" && value.reason === "permission_denied";
+    if (boundary && runtimes.some(runtime => (runtime.pid !== undefined ? runtime.pid : runtime.identity?.pid) === pid)) throw new RpcError("caller_not_trusted", "Spawning bee process identity is unresolved");
+    if (boundary) return verifiedAncestry(chain, inspect, null);
     if (value.kind !== "present" || value.state !== "live"
       || depth === 0 && (value.birth !== peer.processBirth || value.uid !== peer.uid) || chain.some(item => item.pid === pid)) {
       throw new RpcError("caller_not_trusted", "Spawn caller process ancestry is unavailable");
@@ -18,16 +21,18 @@ export function spawnCallerBee(
     chain.push(value);
     const owner = runtimes.find(runtime => runtime.identity ? sameProcess(runtime.identity, value) : runtime.pid === value.pid);
     if (owner && !owner.identity) throw new RpcError("caller_not_trusted", "Spawning bee process identity is unresolved");
-    if (owner || value.ppid === 0) {
-      if (chain.some(item => {
-        const current = inspect(item.pid);
-        return !sameProcess(item, current) || current.ppid !== item.ppid || current.state !== "live";
-      })) throw new RpcError("caller_not_trusted", "Spawn caller process ancestry changed");
-      return owner?.beeId ?? null;
-    }
+    if (owner || value.ppid === 0) return verifiedAncestry(chain, inspect, owner?.beeId ?? null);
     pid = value.ppid;
   }
   throw new RpcError("caller_not_trusted", "Spawn caller process ancestry exceeds the supported depth");
+}
+
+function verifiedAncestry(chain: Extract<ProcessInspection, { kind: "present" }>[], inspect: (pid: number) => ProcessInspection, beeId: string | null): string | null {
+  if (chain.some(item => {
+    const current = inspect(item.pid);
+    return !sameProcess(item, current) || current.ppid !== item.ppid || current.state !== "live";
+  })) throw new RpcError("caller_not_trusted", "Spawn caller process ancestry changed");
+  return beeId;
 }
 
 export function bindSpawnParent(params: Record<string, unknown>, callerBeeId: string | null, serviceAuthority = false): Record<string, unknown> {
