@@ -801,6 +801,7 @@ export class CellDriver implements RuntimeDriver {
         cellDir: cell.paths.wrapperDir,
         protectedPaths: this.cfg.sandboxProtectedPaths,
         gatewaySocketPath: gateway?.socketPath,
+        log: this.cfg.log,
         ...(harnessHome ? { harnessHome: { ...harnessHome, cwd: cell.paths.spaceDir } } : {}),
         kvm: this.cfg.sandboxKvm,
         writablePaths: mergeSandboxWritablePaths(
