@@ -14,6 +14,7 @@ const binary = join(directory, "cell-scope");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 mkdirSync(directory, { recursive: true });
 execFileSync(process.env.CC ?? "cc", ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-fPIE", "-pie", source, "-o", binary], { stdio: "inherit" });
+chmodSync(binary, 0o755);
 copyFileSync(join(root, "v2/driver-cell/native/hive"), join(directory, "hive"));
 chmodSync(join(directory, "hive"), 0o755);
 writeFileSync(join(directory, "manifest.json"), JSON.stringify({ version: 1, target, sourceSha256: hash(readFileSync(source)), cliShimSha256: hash(readFileSync(join(directory, "hive"))), sha256: hash(readFileSync(binary)) }) + "\n");

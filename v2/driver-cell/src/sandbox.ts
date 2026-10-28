@@ -13,7 +13,7 @@ import { prepareSandboxHarnessHome } from "./harnessHome.ts";
  */
 import { cellCliBundlePath, cellScopeArtifactDirectory, validatedCellScopeBinary } from "./cellScope.ts";
 import { spawnSync } from "node:child_process";
-import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, platform, userInfo } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 
@@ -44,6 +44,7 @@ export interface SandboxPolicy {
   hiddenPaths?: readonly string[];
   gatewaySocketPath?: string;
   homePaths?: readonly string[];
+  log?: (line: string) => void;
   harnessHome?: { harness: string; path: string; cwd: string };
 }
 
@@ -364,6 +365,38 @@ export function createSshConfigView(profilePath: string, source = "/etc/ssh/ssh_
  * read-write. Pure argv construction — testable on any platform; execution
  * is exercised by the linux gate (trmd-metal-3).
  */
+export function assertSandboxToolchainMetadata(info: { uid: number; mode: number }, allowedOwners: ReadonlySet<number>): void {
+  if (info.uid === 65534) throw new Error("cell sandbox: toolchain root owner is unmapped; refusing launch");
+  if ((info.mode & 0o022) !== 0) throw new Error("cell sandbox: toolchain root is group- or world-writable; refusing launch");
+  if (!allowedOwners.has(info.uid)) throw new Error("cell sandbox: toolchain root has an untrusted owner; refusing launch");
+}
+
+export function sandboxToolchainRoot(executable: string = process.execPath, log?: (line: string) => void): string | null {
+  const binary = realpathSync(executable);
+  if (binary.startsWith("/usr/") || binary.startsWith("/bin/")) return null;
+  const root = realpathSync(dirname(dirname(binary)));
+  if (!/^\/opt\/node-v[0-9]+\.[0-9]+\.[0-9]+-linux-(?:x64|arm64)$/.test(root)) throw new Error("cell sandbox: unapproved executable install root; refusing launch");
+  const info = statSync(root);
+  if (!info.isDirectory()) throw new Error("cell sandbox: toolchain root is not a directory");
+  const metadata = `path=${root} uid=${info.uid} mode=${(info.mode & 0o777).toString(8)}`;
+  try { assertSandboxToolchainMetadata(info, new Set([0, process.geteuid?.() ?? userInfo().uid])); }
+  catch (error) { log?.(`cell.sandbox.toolchain ${metadata} verdict=refused`); throw error; }
+  log?.(`cell.sandbox.toolchain ${metadata} verdict=accepted`);
+  return root;
+}
+
+function systemReadOnlyMounts(): string[] {
+  const mounts: string[] = [];
+  for (const path of ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"]) {
+    const info = lstatSync(path, { throwIfNoEntry: false });
+    if (!info) continue;
+    if (info.isSymbolicLink()) mounts.push("--symlink", readlinkSync(path), path);
+    else if (info.isDirectory()) mounts.push("--ro-bind", path, path);
+    else throw new Error(`cell sandbox: unsupported system root: ${path}`);
+  }
+  return mounts;
+}
+
 export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[], _sshConfigView?: string): string[] {
   checkedWritablePaths(policy);
   if ((policy.scratchPaths ?? []).some(path => !["/tmp", "/var/tmp", "/dev"].includes(path))) {
@@ -372,9 +405,12 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
   const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path) : undefined;
   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
   const homes = [...new Set([homedir(), userInfo().homedir, ...(policy.homePaths ?? [])].map(path => realpathSync(path)))];
+  const toolchain = sandboxToolchainRoot(process.execPath, policy.log);
   const out: string[] = [
     "--unshare-user", "--unshare-pid", "--unshare-ipc",
-    "--ro-bind", "/", "/", "--dev", "/dev", ...size, "--tmpfs", "/dev/shm", "--proc", "/proc",
+    "--tmpfs", "/", ...systemReadOnlyMounts(),
+    ...(toolchain ? ["--ro-bind", toolchain, toolchain] : []),
+    "--dev", "/dev", ...size, "--tmpfs", "/dev/shm", "--proc", "/proc",
     ...BWRAP_PRIVATE_MOUNTS.flatMap(mount => [...size, "--tmpfs", mount]),
     ...homes.flatMap(home => ["--tmpfs", home]),
     "--tmpfs", "/run", "--dir", "/run/user", "--dir", "/run/honeybee", "--dir", "/run/honeybee/bin",
