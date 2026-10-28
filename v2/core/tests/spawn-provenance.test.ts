@@ -163,3 +163,45 @@ test("durable provenance decoder withholds inconsistent authority claims", (t) =
     for (const bee of bees) assert.equal(store.getBee(bee.id)?.spawnProvenance, null);
   } finally { store.close(); }
 });
+
+
+test("creation lineage preserves immutable provenance after deletion with legacy root fallback", (t) => {
+  const h = harness();
+  t.after(() => h.cleanup());
+  let store = h.open();
+  try {
+    const parent = store.createBee({ ...input, name: "parent" }).bee;
+    const child = store.createBee({ ...input, name: "child", parentId: parent.id, spawnProvenance: peer }).bee;
+    const legacy = store.createBee({ ...input, name: "legacy", spawnProvenance: service }).bee;
+    const explicitNull = store.createBee({ ...input, name: "null", spawnProvenance: null }).bee;
+    const corrupt = store.createBee({ ...input, name: "corrupt", spawnProvenance: service }).bee;
+    const expected = { parentId: parent.id, parentExternal: false, spawnProvenance: peer };
+    assert.deepEqual(store.creationLineage(child.id), expected);
+    store.deleteBee(parent.id);
+    assert.deepEqual(store.creationLineage(child.id), expected);
+    store.deleteBee(child.id);
+    assert.deepEqual(store.creationLineage(child.id), expected);
+    assert.equal(store.creationLineage("missing"), null);
+    store.close();
+    const db = new DatabaseSync(h.path);
+    try {
+      db.prepare("UPDATE bees SET spawn_provenance = ? WHERE id = ?").run(JSON.stringify(service), child.id);
+      for (const bee of [legacy, explicitNull, corrupt]) {
+        const payload = JSON.parse(String(db.prepare("SELECT payload FROM audit WHERE kind = 'bee.created' AND bee_id = ?").get(bee.id)!.payload)) as { bee: Record<string, unknown>; spawnProvenance?: unknown };
+        payload.spawnProvenance = peer;
+        if (bee.id === legacy.id) {
+          delete payload.bee.spawnProvenance;
+          payload.spawnProvenance = service;
+        } else if (bee.id === corrupt.id) payload.bee.spawnProvenance = inconsistent[0];
+        db.prepare("UPDATE audit SET payload = ? WHERE kind = 'bee.created' AND bee_id = ?").run(JSON.stringify(payload), bee.id);
+      }
+    } finally { db.close(); }
+    store = h.open();
+    assert.equal(store.getBee(child.id), null);
+    assert.deepEqual(store.creationLineage(child.id), expected);
+    assert.deepEqual(store.creationLineage(legacy.id)?.spawnProvenance, service);
+    assert.equal(Object.hasOwn(store.creationLineage(legacy.id)!.spawnProvenance!, "serviceIntent"), false);
+    assert.equal(store.creationLineage(explicitNull.id)?.spawnProvenance, null);
+    assert.equal(store.creationLineage(corrupt.id)?.spawnProvenance, null);
+  } finally { store.close(); }
+});
