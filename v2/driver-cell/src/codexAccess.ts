@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, writeFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export class CellCredentialRefusal extends Error {
@@ -42,13 +42,14 @@ export function readAccessOnlyCodex(path: string): string {
   finally { if (fd !== undefined) closeSync(fd); }
 }
 
-export function snapshotAccessOnlyCodex(sourceHome: string, source: string): string {
+export function snapshotAccessOnlyCodex(sourceHome: string, source: string, snapshotRoot?: string): string {
   const raw = readAccessOnlyCodex(source);
-  const root = join(sourceHome, ".honeybee-cell-access");
+  const root = snapshotRoot ?? join(sourceHome, ".honeybee-cell-access");
   try { mkdirSync(root, { mode: 0o700 }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw new CellCredentialRefusal(); }
   const info = lstatSync(root);
   if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.geteuid?.() || (info.mode & 0o077) !== 0) throw new CellCredentialRefusal();
   const target = join(root, `${createHash("sha256").update(raw).digest("hex")}.json`);
+  if (!lstatSync(target, { throwIfNoEntry: false }) && readdirSync(root).length >= 128) throw new CellCredentialRefusal();
   let fd: number | undefined;
   try {
     fd = openSync(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o400);

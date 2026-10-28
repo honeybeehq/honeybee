@@ -615,6 +615,7 @@ export interface ShutdownOptions {
 
 /** v7: injectable transports for in-process tests (the daemon binary uses the defaults). */
 export interface HiveDaemonDeps {
+  cellCredentialNow?: () => number;
   keychainReader?: KeychainReader;
   keychainWriter?: KeychainWriter;
   fetchers?: LimitsFetchers;
@@ -936,7 +937,7 @@ export class HiveDaemon {
         if (process.platform === "linux" && store.getBee(beeId)?.substrate === "cell") {
           this.cellNamespaces.set(beeId, pid ? runtimeUserNamespace(pid) : "unavailable");
           const runtime = store.currentRuntime(beeId);
-          if (runtime?.credentialStamp?.cellProjection && this.cellNamespaces.get(beeId) === "different") store.mountCellCredentialProjection(beeId, runtime.generation);
+          if (runtime?.pid === pid && runtime.credentialStamp?.cellProjection && store.runtimeProcessIdentity(beeId,runtime.generation).kind === "bound" && this.cellNamespaces.get(beeId) === "different") store.mountCellCredentialProjection(beeId, runtime.generation);
           if ([...this.cellNamespaces.values()].some(value => value !== "different")) this.confinementReason("cell_userns_unisolated");
           else if (this.confinementReasons.delete("cell_userns_unisolated")) this.log(`security.confinement strict=${this.confinementReasons.size > 0} reasons=${[...this.confinementReasons].join(",")}`);
         }
@@ -966,7 +967,7 @@ export class HiveDaemon {
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
       sandboxProtectedPaths: [this.cfg.dataDir, this.cfg.accounts.homesDir],
       onCredentialProjectionRefused: (beeId, generation) => {
-        if (store.currentRuntime(beeId)?.generation === generation) store.setFlag(beeId, "auth_needed", "cell_access_only_required");
+        if (store.currentRuntime(beeId)?.generation === generation) this.setCellAuthNeeded(beeId, "cell_access_only_required");
       },
       onCredentialProjection: (beeId, generation, sources) => this.recordCellCredentialProjection(beeId, generation, sources),
       resolveSandboxGateway: (beeId, generation) => this.cellGateway(beeId, generation),
@@ -1405,7 +1406,7 @@ export class HiveDaemon {
         if (existsSync(mirror)) readAccessOnlyCodex(mirror);
       } catch {
         readiness = { ready: false, code: "account_auth_needed", message: "Sandboxed Codex requires access-only credentials; human enrollment or renewed lease required" };
-        this.mustStore().setFlag(bee.id, "auth_needed", "cell_access_only_required");
+        this.setCellAuthNeeded(bee.id, "cell_access_only_required");
       }
     }
     const previous = this.runtimeStartHolds.get(bee.id);
@@ -1616,26 +1617,34 @@ export class HiveDaemon {
    * layer between the agent spec's args and the resume selector — see
    * composeSpawn for the precedence.
    */
-  private recordCellCredentialProjection(beeId: string, generation: number, sources: readonly string[]): void {
+  private readonly cellCredentialDigests = new Map<string, Record<string,string>>();
+
+  private setCellAuthNeeded(beeId: string, detail: string): void {
+    const store = this.mustStore();
+    if (!store.activeFlags(beeId).some(flag => flag.flag === "auth_needed" && flag.detail === detail)) store.setFlag(beeId,"auth_needed",detail);
+  }
+
+  private recordCellCredentialProjection(beeId: string, generation: number, sources: readonly {path: string; source: string}[]): void {
     const store = this.mustStore(), accounts = this.mustAccounts(), bee = store.getBee(beeId);
     const account = bee?.account ? store.getAccount(bee.account) : null;
     if (!bee || !account || sources.length === 0) throw new Error("auth_needed: missing Cell credential projection");
     const home = this.resolveCellSandboxHarnessHome(beeId)!;
-    const current = [join(home.path, "auth.json"), join(home.path, ".codex", "auth.json")].filter(path => existsSync(path)).map(readAccessOnlyCodex);
-    const projected = sources.map(readAccessOnlyCodex);
-    if (projected.length !== current.length || projected.some((raw, index) => raw !== current[index])) throw new Error("auth_needed: Cell credential publication changed during projection");
+    const current = Object.fromEntries(["auth.json", ".codex/auth.json"].filter(path => existsSync(join(home.path,path))).map(path => [path,readAccessOnlyCodex(join(home.path,path))]));
+    const projected = Object.fromEntries(sources.map(file => [file.path,readAccessOnlyCodex(file.source)]));
+    if (Object.keys(projected).length !== Object.keys(current).length || Object.entries(projected).some(([path,raw]) => raw !== current[path])) throw new Error("auth_needed: Cell credential publication changed during projection");
     const material = accounts.authDeathMaterial(account);
     const authority = accounts.authorityFor(account)?.status(account);
     const lease = account.source === "leased" ? knownAccountLease(account) : null;
     const expiresAt = lease?.expiresAt != null ? lease.expiresAt * 1000 : authority?.expiresAt;
-    if (!material || !expiresAt || expiresAt <= Date.now()) throw new Error("auth_needed: access-only material requires a live authority or lease");
-    const digests = projected.map(raw => createHash("sha256").update(raw).digest("hex"));
-    store.recordCellCredentialProjection(beeId, generation, { material, revision: accounts.credentialRevision(account), account: account.id, agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId, controlFence: bee.authControlFence ?? 0, cellProjection: { digests, expiresAt, preparedAt: Date.now() } });
+    if (!material || !expiresAt || expiresAt <= (this.deps.cellCredentialNow ?? Date.now)()) throw new Error("auth_needed: access-only material requires a live authority or lease");
+    const digests = Object.fromEntries(Object.entries(projected).map(([path,raw]) => [path,createHash("sha256").update(raw).digest("hex")]));
+    store.recordCellCredentialProjection(beeId, generation, { material, revision: accounts.credentialRevision(account), account: account.id, agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId, controlFence: bee.authControlFence ?? 0, cellProjection: { digests, expiresAt, preparedAt: (this.deps.cellCredentialNow ?? Date.now)() } });
     this.log(`cell.credentials.prepared bee=${beeId} gen=${generation} account=${account.id} material=${material.generation}`);
   }
 
   private reconcileCellCredentials(): void {
     const store = this.mustStore();
+    this.cellCredentialDigests.clear();
     const materials = new Map<string, ReturnType<AccountsService["authDeathMaterial"]>>();
     for (const bee of store.listBees()) {
       if (bee.substrate !== "cell" || bee.agent !== "codex") continue;
@@ -1655,23 +1664,26 @@ export class HiveDaemon {
     const admitted = runtime.credentialStamp;
     if (!account) return false;
     if (!admitted?.cellProjection) {
-      store.setFlag(beeId, "auth_needed", "cell_projection_unknown: manual restart required");
+      if (runtime.state === "booting") return false;
+      this.setCellAuthNeeded(beeId, "cell_projection_unknown: manual restart required");
       return false;
     }
     const replacement = material === undefined ? this.mustAccounts().authDeathMaterial(account) : material;
     const changed = replacement && (replacement.authorityInstanceId !== admitted.material.authorityInstanceId || replacement.scope !== admitted.material.scope || replacement.epoch !== admitted.material.epoch || replacement.generation > admitted.material.generation);
-    const expired = Date.now() >= admitted.cellProjection.expiresAt;
-    if (expired) store.setFlag(beeId, "auth_needed", "cell_access_expired: renewed projection required; manual restart if renewal is unavailable");
+    const expired = (this.deps.cellCredentialNow ?? Date.now)() >= admitted.cellProjection.expiresAt;
+    if (expired) this.setCellAuthNeeded(beeId, "cell_access_expired: renewed projection required; manual restart if renewal is unavailable");
+    const commandKey = `cell-credentials:${beeId}:${generation}`;
+    if (store.getCommandByIdempotencyKey(commandKey)) return false;
     let changedBytes = false;
     if (changed) {
       try {
-        const paths = [join(account.homePath, "auth.json"), join(account.homePath, ".codex", "auth.json")].filter(path => existsSync(path));
-        const digests = paths.map(path => createHash("sha256").update(readAccessOnlyCodex(path)).digest("hex"));
-        changedBytes = JSON.stringify(digests) !== JSON.stringify(admitted.cellProjection.digests);
+        const digests = this.cellCredentialDigests.get(account.id) ?? Object.fromEntries(["auth.json", ".codex/auth.json"].filter(path => existsSync(join(account.homePath,path))).map(path => [path,createHash("sha256").update(readAccessOnlyCodex(join(account.homePath,path))).digest("hex")]));
+        this.cellCredentialDigests.set(account.id,digests);
+        changedBytes = Object.keys(digests).length !== Object.keys(admitted.cellProjection.digests).length || Object.entries(digests).some(([path,digest]) => digest !== admitted.cellProjection!.digests[path]);
       } catch { return false; }
     }
     if (changed && changedBytes && !bee.activeMoveId && !bee.activeHandoffId && bee.lifecycle === "active") {
-      if (!store.getCommandByIdempotencyKey(`cell-credentials:${beeId}:${generation}`)) store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: "cell_credentials", waitForIdle: true, thenRevive: true }, { idempotencyKey: `cell-credentials:${beeId}:${generation}` });
+      if (!store.getCommandByIdempotencyKey(`cell-credentials:${beeId}:${generation}`)) store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: "cell_credentials", cellCredentialFence: bee.authControlFence ?? 0, cellCredentialAccount: account.id, waitForIdle: true, thenRevive: true }, { idempotencyKey: `cell-credentials:${beeId}:${generation}` });
       return false;
     }
     if (expired) return false;
@@ -1796,7 +1808,7 @@ export class HiveDaemon {
     };
   }
 
-  private resolveCellSandboxHarnessHome(beeId: string): { harness: string; path: string } | undefined {
+  private resolveCellSandboxHarnessHome(beeId: string): { harness: string; path: string; snapshotRoot?: string } | undefined {
     const store = this.mustStore();
     const bee = store.getBee(beeId);
     if (!bee) throw new Error(`resolveCellSandboxHarnessHome: bee ${beeId} not found`);
@@ -1811,7 +1823,9 @@ export class HiveDaemon {
       const account = bee.account ? store.getAccount(bee.account) : null;
       if (!account || realpathSync(path) !== realpathSync(account.homePath)) throw new Error("auth_needed: Codex Cell must use its assigned account home");
     }
-    return { harness, path };
+    const snapshotRoot = join(this.cfg.dataDir, "cell-access", createHash("sha256").update(bee.account ?? beeId).digest("hex"));
+    mkdirSync(join(this.cfg.dataDir, "cell-access"), { recursive: true, mode: 0o700 });
+    return { harness, path, ...(harness === "codex" ? {snapshotRoot} : {}) };
   }
 
   private verifiedBeeTmp(beeId: string): { TMPDIR: string; NODE_COMPILE_CACHE: string } {
@@ -6971,7 +6985,7 @@ export class HiveDaemon {
     }
     if (!seen.has(codec.primaryFile)) throw invalid();
     let restored: AccountCredentialsRestoredResult | undefined;
-    const installed = await this.mustAccounts().installLease(params as unknown as AccountLeaseInstallParams, account => { restored = this.rpcAccountCredentialsRestored({ id: account.id }); this.reconcileCellCredentials(); }, conn.ingress === "local_unix");
+    const installed = await this.mustAccounts().installLease(params as unknown as AccountLeaseInstallParams, account => { restored = this.rpcAccountCredentialsRestored({ id: account.id }); try { this.reconcileCellCredentials(); } catch { this.log("cell.credentials.reconcile_deferred"); } }, conn.ingress === "local_unix");
     return { ...installed, account: restored!.account, restored: restored! };
   }
 

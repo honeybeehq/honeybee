@@ -46,8 +46,8 @@ export interface SandboxPolicy {
   gatewaySocketPath?: string;
   homePaths?: readonly string[];
   log?: (line: string) => void;
-  harnessHome?: { harness: string; path: string; cwd: string };
-  onCredentialProjection?: (sources: readonly string[]) => void;
+  harnessHome?: { harness: string; path: string; cwd: string; snapshotRoot?: string };
+  onCredentialProjection?: (sources: readonly {path: string; source: string}[]) => void;
 }
 
 export const DEFAULT_SANDBOX_TMPFS_BYTES = 1024 * 1024 * 1024;
@@ -404,7 +404,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
   if ((policy.scratchPaths ?? []).some(path => !["/tmp", "/var/tmp", "/dev"].includes(path))) {
     throw new Error("cell sandbox: only Cell-owned writable paths are supported");
   }
-  const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path) : undefined;
+  const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path, policy.harnessHome.snapshotRoot) : undefined;
   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
   const homes = [...new Set([homedir(), userInfo().homedir, ...(policy.homePaths ?? [])].map(path => realpathSync(path)))];
   const toolchain = sandboxToolchainRoot(process.execPath, policy.log);
@@ -421,7 +421,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
   ];
   if (policy.kvm) out.push("--dev-bind", "/dev/kvm", "/dev/kvm");
   if (projection) {
-    if (policy.harnessHome?.harness === "codex") policy.onCredentialProjection?.(projection.files.filter(file => file.destination.endsWith("/auth.json")).map(file => file.source));
+    if (policy.harnessHome?.harness === "codex") policy.onCredentialProjection?.(projection.files.filter(file => file.credentialPath !== undefined).map(file => ({path: file.credentialPath!, source: file.source})));
     for (const file of projection.files) out.push("--ro-bind", file.source, file.destination);
     out.push("--setenv", policy.harnessHome!.harness === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR", projection.home);
   }

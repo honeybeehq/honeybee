@@ -5522,6 +5522,8 @@ export class CoreStore {
        WHERE bee_id = ? AND status IN ('done','running')
          AND verb = 'stop' AND target_generation = ?
          AND json_type(args, '$.thenRevive') = 'true'
+         AND (json_extract(args, '$.reason') IS NOT 'cell_credentials'
+           OR json_extract(args, '$.cellCredentialFence') = (SELECT COALESCE(auth_control_fence,0) FROM bees WHERE id = commands.bee_id))
        LIMIT 1`,
     ).get(beeId, generation) !== undefined;
   }
@@ -5703,6 +5705,15 @@ export class CoreStore {
         if (!row) return null;
         const command = mapCommand(row);
         if (!this.executionLedger.commandAllowed(command.id)) continue;
+        if (command.args.reason === "cell_credentials") {
+          const bee = this.getBee(command.beeId);
+          if (!bee || bee.lifecycle !== "active" || bee.account !== command.args.cellCredentialAccount || (bee.authControlFence ?? 0) !== command.args.cellCredentialFence || bee.activeMoveId || bee.activeHandoffId) {
+            const at = this.now();
+            this.stmt("UPDATE commands SET status='done', finished_at=?, args=json_set(args,'$.thenRevive',json('false')) WHERE id=?").run(at,command.id);
+            this.audit("command.moot",command.beeId,{commandId:command.id,reason:"cell_credentials_superseded",finishedAt:at});
+            continue;
+          }
+        }
         if (
           (command.verb === "stop" || command.verb === "archive" || command.verb === "delete" || command.verb === "revive")
         ) {
@@ -7872,6 +7883,8 @@ export class CoreStore {
       if (!runtime || runtime.generation !== generation || runtime.state !== "booting" || !stamp.cellProjection) throw new CoreError("Cell projection requires the current booting generation");
       this.stmt("UPDATE runtimes SET credential_stamp = ? WHERE bee_id = ? AND generation = ?").run(JSON.stringify(stamp), beeId, generation);
       this.audit("runtime.updated", beeId, { runtime: this.currentRuntime(beeId)! });
+      const flag = this.activeFlags(beeId).find(row => row.flag === "auth_needed");
+      if (flag?.detail.startsWith("cell_")) this.clearFlag(beeId,"auth_needed","Access-only projection prepared for current generation");
     });
   }
 
@@ -7890,6 +7903,8 @@ export class CoreStore {
       const runtime = this.currentRuntime(beeId), stamp = runtime?.credentialStamp;
       if (!runtime || runtime.generation !== generation || runtime.state === "stopped" || !stamp?.cellProjection?.mountedAt || stamp.cellProjection.authenticatedAt !== undefined) return;
       stamp.cellProjection.authenticatedAt = this.now();
+      const flag = this.activeFlags(beeId).find(row => row.flag === "auth_needed");
+      if (flag?.detail.startsWith("cell_")) this.clearFlag(beeId,"auth_needed","Current Cell generation authenticated");
       this.stmt("UPDATE runtimes SET credential_stamp = ? WHERE bee_id = ? AND generation = ?").run(JSON.stringify(stamp), beeId, generation);
       this.audit("runtime.updated", beeId, { runtime: this.currentRuntime(beeId)! });
     });
