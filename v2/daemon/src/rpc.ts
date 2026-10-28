@@ -85,7 +85,7 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
-  readonly spawnServiceAuthority?: true;
+  readonly spawnServiceIntent?: "service" | "delegation";
   readonly operatorLocalHomes?: boolean;
   readonly captureSecretOutput?: (leaseId: string, bytes: Buffer) => void;
   readonly secretExecution?: import("./protocol.ts").SecretExecutionContext;
@@ -491,6 +491,13 @@ export class RpcServer {
           return this.opts.dispatch(verb, params, { ...conn, operatorLocalHomes: includeOperatorLocalHomes });
         }
         const automationContext = frame.context as Record<string, unknown> | undefined;
+        if (automationContext?.serviceIntent !== undefined && (
+          !["spawn", "bee.fork", "thread.fork", "thread.handoff"].includes(verb)
+          || !["service", "delegation"].includes(automationContext.serviceIntent as string)
+          || automationContext.sessionPrincipal !== undefined
+          || Object.keys(automationContext).some(key => !["serviceIntent", ...(verb === "spawn" ? ["phoneOrigin", "phoneLane"] : [])].includes(key))
+        )) throw new RpcError("caller_not_trusted", "Invalid or mixed service creation intent");
+        let creationConn: RpcConn = conn;
         if (verb === "cell.execSecret" || verb === "cell.execSecret.cancel" || automationContext?.secretExecution !== undefined) {
           if (!["cell.execSecret", "cell.execSecret.cancel"].includes(verb) || !peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null
             || !automationContext || Object.keys(automationContext).some(key => key !== "secretExecution")) throw new RpcError("caller_not_trusted", "Secret execution requires the registered local authority");
@@ -601,7 +608,7 @@ export class RpcServer {
           return this.opts.dispatch(verb, params, { ...conn, humanChat: chat as unknown as HumanChatAdmission });
         }
         if (params.phoneOrigin !== undefined || params.phoneInput !== undefined || params.phoneLane !== undefined) throw new RpcError("invalid_request", "Phone carriers belong in RPC context, not args");
-        if (verb === "spawn") {
+        if (["spawn", "bee.fork", "thread.fork", "thread.handoff"].includes(verb)) {
           const rawContext = frame.context;
           if (rawContext !== undefined && (!rawContext || typeof rawContext !== "object" || Array.isArray(rawContext))) throw new RpcError("caller_not_trusted", "Invalid spawn context");
           const principal = (rawContext as Record<string, unknown> | undefined)?.sessionPrincipal;
@@ -614,11 +621,11 @@ export class RpcServer {
             if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256 || beeId.includes("\0")) throw new RpcError("caller_not_trusted", "Invalid spawn principal");
             return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
           }
-          if (rawContext === undefined && peer && this.trust.enabled && conn.ingress === "local_unix" && conn.relayLane === null) {
-            let trusted = false;
-            try { this.trust.require(peer, conn.ingress); trusted = true; }
-            catch (error) { if (!(error instanceof RpcError) || error.code !== "caller_not_trusted") throw error; }
-            if (trusted) return this.opts.dispatch(verb, params, { ...conn, spawnServiceAuthority: true });
+          const intent = (rawContext as Record<string, unknown> | undefined)?.serviceIntent;
+          if (intent !== undefined) {
+            if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "Service creation intent requires the registered direct local Apiary service");
+            this.trust.require(peer, conn.ingress);
+            creationConn = { ...conn, spawnServiceIntent: intent as "service" | "delegation" };
           }
         }
         const context = frame.context as Record<string, unknown> | undefined;
@@ -627,13 +634,13 @@ export class RpcServer {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Phone envelope requires a LocalRpcTrust-authenticated local caller");
           this.trust.require(peer, conn.ingress);
           if (context.phoneLane !== undefined && context.phoneLane !== "envelope-v1") throw new RpcError("invalid_request", "Phone envelope lane mismatch");
-          return this.opts.dispatch(verb, params, { ...conn, ...(verb === "spawn" ? { spawnServiceAuthority: true as const } : {}), phoneOrigin: parsePhoneOrigin(context.phoneOrigin), phoneCarrierDigest: canonicalDigest(JSON.parse(JSON.stringify(context.phoneOrigin))), phoneLane: "envelope-v1" });
+          return this.opts.dispatch(verb, params, { ...creationConn, phoneOrigin: parsePhoneOrigin(context.phoneOrigin), phoneCarrierDigest: canonicalDigest(JSON.parse(JSON.stringify(context.phoneOrigin))), phoneLane: "envelope-v1" });
         }
         if (context?.phoneLane !== undefined) {
           if (context.phoneLane !== "interim-v1" || (verb !== "send" && verb !== "spawn")) throw new RpcError("invalid_request", "Invalid phone lane");
-          return this.opts.dispatch(verb, params, { ...conn, phoneLane: "interim-v1" });
+          return this.opts.dispatch(verb, params, { ...creationConn, phoneLane: "interim-v1" });
         }
-        return this.opts.dispatch(verb, params, conn);
+        return this.opts.dispatch(verb, params, creationConn);
       });
       // v7: verbs with a bounded async leg (limits fetch before an auto pick,
       // the login seat's keychain baseline) return a promise; sync verbs are

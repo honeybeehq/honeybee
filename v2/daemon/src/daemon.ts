@@ -1,6 +1,6 @@
 import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
-import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
+import type { AutomationKind, HumanChatAdmission, SpawnProvenance } from "../../core/src/types.ts";
 import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
@@ -2379,7 +2379,7 @@ export class HiveDaemon {
         return { operations: ["fork", "handoff"], executors: [{ harness: "codex", substrate: "hsr", ownership: "local", instructionCompaction: true }], transcript: "codex.rollout.jsonl" };
       case "thread.fork":
       case "thread.handoff":
-        return this.rpcThreadOperationWithAdmission(verb === "thread.fork" ? "fork" : "handoff", params);
+        return this.rpcThreadOperationWithAdmission(verb === "thread.fork" ? "fork" : "handoff", params, this.authenticatedCreationProvenance(conn));
       case "thread.operation.get":
         return { operation: threadOperationView(this.requireThreadOperation(params)) };
       case "thread.operation.retry":
@@ -2395,7 +2395,7 @@ export class HiveDaemon {
         return readThreadHistory(row, offset, limit).catch(error => { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); });
       }
       case "bee.fork":
-        return this.releasingRefusedClaim(() => this.rpcForkWithAdmission(params));
+        return this.releasingRefusedClaim(() => this.rpcForkWithAdmission(params, this.authenticatedCreationProvenance(conn)));
       case "bee.children":
         return this.rpcChildren(params);
       case "bee.tell":
@@ -2748,26 +2748,49 @@ export class HiveDaemon {
     });
   }
 
-  private authenticatedSpawnParams(params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
-    const store = this.mustStore();
+  private authenticatedCreationProvenance(conn: RpcConn, externalPrincipal = false): SpawnProvenance {
     let callerBeeId = conn.authenticatedBeeId ?? null;
-    if (!callerBeeId && !conn.spawnServiceAuthority && (!conn.localPeer || conn.ingress !== "local_unix")) throw new RpcError("caller_not_trusted", "Spawn requires a verified direct local caller or registered service authority");
-    if (!callerBeeId && !conn.spawnServiceAuthority && conn.localPeer && conn.ingress === "local_unix") {
+    if (!callerBeeId) {
+      if (!conn.localPeer || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Creation requires a verified direct local caller or registered service principal");
       callerBeeId = this.spawnPeerBee(conn.localPeer);
+      if (callerBeeId && conn.spawnServiceIntent) throw new RpcError("caller_not_trusted", "Bee-origin creation requires its authenticated session principal, never a service intent");
     }
-    if (callerBeeId && !store.getBee(callerBeeId)) throw new RpcError("bee_not_found", "Authenticated spawning bee does not exist");
-    const key = this.idempotencyKeyOf(params);
-    const prior = key === null ? null : store.lookupRpcResult(key);
-    if (callerBeeId && prior) {
-      const result = prior.result as { beeId?: string };
-      const bee = result.beeId ? store.creationLineage(result.beeId) : null;
-      if (prior.verb !== "spawn" || !bee || bee.parentExternal || bee.parentId !== callerBeeId) throw new RpcError("idempotency_conflict", "Spawn key belongs to a different parent");
-    }
-    return { ...bindSpawnParent(params, callerBeeId, conn.spawnServiceAuthority === true), spawnProvenance: {
+    if (callerBeeId && !externalPrincipal && !this.mustStore().getBee(callerBeeId)) throw new RpcError("bee_not_found", "Authenticated initiating bee does not exist");
+    return {
       callerBeeId,
-      authority: callerBeeId ? "bee" : conn.spawnServiceAuthority ? "registered_service" : "unattributed",
+      authority: callerBeeId ? "bee" : conn.spawnServiceIntent ? "registered_service" : "unattributed",
       peerPid: conn.localPeer?.pid ?? null,
-    } };
+      ...(conn.spawnServiceIntent ? { serviceIntent: conn.spawnServiceIntent } : {}),
+    };
+  }
+
+  private creationAuthority(provenance: SpawnProvenance) {
+    return { callerBeeId: provenance.callerBeeId, authority: provenance.authority, ...(provenance.serviceIntent ? { serviceIntent: provenance.serviceIntent } : {}) };
+  }
+
+  private assertCreationReplay(provenance: SpawnProvenance, beeId: string | undefined): void {
+    const original = beeId ? this.mustStore().getBee(beeId)?.spawnProvenance : null;
+    if (!original && provenance.authority === "unattributed") return;
+    if (!original || original.callerBeeId !== provenance.callerBeeId || original.authority !== provenance.authority || original.serviceIntent !== provenance.serviceIntent) {
+      throw new RpcError("idempotency_conflict", "Creation key belongs to a different initiating authority");
+    }
+  }
+
+  private authenticatedSpawnParams(params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
+    const provenance = this.authenticatedCreationProvenance(conn, params.parentExternal === true && params.parentId === conn.authenticatedBeeId);
+    const normalized = bindSpawnParent(params, provenance.callerBeeId, provenance.authority === "registered_service");
+    const key = this.idempotencyKeyOf(params);
+    const prior = key === null ? null : this.mustStore().lookupRpcResult(key);
+    if (prior) {
+      const result = prior.result as { beeId?: string };
+      if (prior.verb !== "spawn") throw new RpcError("idempotency_conflict", "Creation key belongs to another operation");
+      this.assertCreationReplay(provenance, result.beeId);
+      if (provenance.callerBeeId) {
+        const bee = result.beeId ? this.mustStore().creationLineage(result.beeId) : null;
+        if (!bee || bee.parentExternal !== (normalized.parentExternal === true) || bee.parentId !== provenance.callerBeeId) throw new RpcError("idempotency_conflict", "Spawn key belongs to a different parent");
+      }
+    }
+    return { ...normalized, spawnProvenance: provenance };
   }
 
   private spawnPeerBee(peer: NonNullable<RpcConn["localPeer"]>): string | null {
@@ -2785,7 +2808,7 @@ export class HiveDaemon {
     this.mustStore().transact(() => this.mustStore().lookupRpcResult(key));
     const binding = this.phoneRequestBinding(params);
     const { spawnProvenance, ...requestParams } = params;
-    const fingerprint = binding.lane === "legacy" ? canonicalDigest(JSON.parse(JSON.stringify({ ...requestParams, spawnCallerBeeId: (spawnProvenance as { callerBeeId?: string } | undefined)?.callerBeeId ?? null }))) : binding.digest;
+    const fingerprint = binding.lane === "legacy" ? canonicalDigest(JSON.parse(JSON.stringify({ ...requestParams, spawnAuthority: this.creationAuthority(spawnProvenance as SpawnProvenance) }))) : canonicalDigest({ requestDigest: binding.digest, spawnAuthority: this.creationAuthority(spawnProvenance as SpawnProvenance) });
     const registry = this.effectInFlight ??= new Map();
     const existing = registry.get(key);
     if (existing) {
@@ -5348,19 +5371,19 @@ export class HiveDaemon {
     return row;
   }
 
-  private async rpcThreadOperationWithAdmission(kind: "fork" | "handoff", params: Record<string, unknown>) {
+  private async rpcThreadOperationWithAdmission(kind: "fork" | "handoff", params: Record<string, unknown>, provenance: SpawnProvenance) {
     const key = this.idempotencyKeyOf(params);
-    if (key && this.mustStore().threadOperationByKey(key)) return this.rpcThreadOperation(kind, params);
+    if (key && this.mustStore().threadOperationByKey(key)) return this.rpcThreadOperation(kind, params, provenance);
     const source = typeof params.beeId === "string" ? this.mustStore().getBee(params.beeId) : null;
     if (source?.account && this.accounts && !this.allocationClaimParam(params) && this.accounts.allocationMode() === "shadow") {
       await this.accounts.ensureFreshAdmissionLimits(source.agent, {
         model: this.modelParamOf({ args: source.args ?? [] }, source.agent),
       });
     }
-    return this.rpcThreadOperation(kind, params);
+    return this.rpcThreadOperation(kind, params, provenance);
   }
 
-  private rpcThreadOperation(kind: "fork" | "handoff", params: Record<string, unknown>) {
+  private rpcThreadOperation(kind: "fork" | "handoff", params: Record<string, unknown>, provenance: SpawnProvenance) {
     const allowed = new Set(["beeId", "sourceProviderSessionId", "sourceNode", "idempotencyKey", "name", "allocationContext", "allocationClaim", "successorBeeId", ...(kind === "handoff" ? ["instruction"] : [])]);
     for (const key of Object.keys(params)) if (!allowed.has(key)) throw new RpcError("thread_unsupported", `${kind} does not accept '${key}'`);
     if (params.sourceNode !== undefined && params.sourceNode !== "local") throw new RpcError("thread_remote_unsupported", "Dispatch to the source's owning daemon; cross-node execution is unsupported");
@@ -5384,6 +5407,7 @@ export class HiveDaemon {
     const store = this.mustStore();
     const previous = store.threadOperationByKey(key);
     if (previous) {
+      this.assertCreationReplay(provenance, previous.successorBeeId);
       // Pre-v28 receipts did not include successor/claim fields. Accept that
       // exact old intent only when no new placement identity was supplied.
       const legacyHash = !claim && requestedSuccessorBeeId === null
@@ -5444,7 +5468,7 @@ export class HiveDaemon {
         id: successorBeeId, name: name ?? `${source.name}-${kind}-${id.slice(0, 8)}`, agent: source.agent, substrate: source.substrate,
         cwd: source.cwd, title: source.title ?? undefined, tags: withoutRoleTags(source.tags), env: { ...source.env }, args: source.args,
         account: claimedAccount?.id ?? source.account,
-        parentId: source.id, forkedFrom: source.id, sessionLogPath: this.canonicalSessionLogPath(successorBeeId),
+        parentId: source.id, forkedFrom: source.id, spawnProvenance: provenance, sessionLogPath: this.canonicalSessionLogPath(successorBeeId),
       });
       if (claim) this.consumeAccountClaim(claim, successorBeeId);
       else if (admission?.ok && admission.reservation) store.bindAccountAdmission(admission.reservation.id, successorBeeId);
@@ -5455,21 +5479,22 @@ export class HiveDaemon {
       ...(allocation ? { allocation } : {}) };
   }
 
-  private async rpcForkWithAdmission(params: Record<string, unknown>): Promise<ForkResult> {
+  private async rpcForkWithAdmission(params: Record<string, unknown>, provenance: SpawnProvenance): Promise<ForkResult> {
     const store = this.mustStore();
     const key = this.idempotencyKeyOf(params);
     if (key != null && store.lookupRpcResult(key)) {
-      return this.withIdempotency("bee.fork", params, () => this.rpcFork(params));
+      this.assertCreationReplay(provenance, (store.lookupRpcResult(key)!.result as { beeId?: string }).beeId);
+      return this.withIdempotency("bee.fork", params, () => this.rpcFork(params, provenance));
     }
     const source = store.getBee(this.requireBee(params));
     if (source?.account && this.accounts && !this.allocationClaimParam(params)
       && this.accounts.allocationMode() === "shadow") {
       await this.accounts.ensureFreshAdmissionLimits(source.agent, { model: this.modelParamOf({ args: source.args ?? [] }, source.agent) });
     }
-    return this.withIdempotency("bee.fork", params, () => this.rpcFork(params));
+    return this.withIdempotency("bee.fork", params, () => this.rpcFork(params, provenance));
   }
 
-  private rpcFork(params: Record<string, unknown>): ForkResult {
+  private rpcFork(params: Record<string, unknown>, provenance: SpawnProvenance): ForkResult {
     const store = this.mustStore();
     const key = this.idempotencyKeyOf(params);
     if (key != null) {
@@ -5477,6 +5502,7 @@ export class HiveDaemon {
       if (original) {
         const bee = store.getBee(original.beeId);
         if (bee) {
+          this.assertCreationReplay(provenance, bee.id);
           return { beeId: bee.id, commandId: original.id, forkedFrom: bee.forkedFrom ?? "", forkSeed: bee.forkSeed, messageId: null, bee: toPublicBee(bee), status: original.status, deduped: true };
         }
       }
@@ -5535,6 +5561,7 @@ export class HiveDaemon {
       parentExternal: false,
       forkedFrom: source.id,
       forkSeed,
+      spawnProvenance: provenance,
       // v7: a fork runs on the source's account (same identity, same home).
       account: claimedAccount?.id ?? source.account,
     });

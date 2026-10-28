@@ -118,6 +118,7 @@ export const DAEMON_CAPABILITIES = [
   "thread.handoff.codex.hsr.v1",
   /** Spawn may retain a parent owned outside this node via `{parentId, parentExternal:true}`. */
   "spawn.external_parent.v1",
+  "spawn.provenance.v1",
   /** Configuration-only onboarding preview/import; never imports harness authentication. */
   "account.config.import.v1",
   /** Typed, tmux-independent account login flows: account.login.* verbs + the login_flows snapshot table. */
@@ -717,6 +718,7 @@ export interface RpcRequestContext {
   secretExecution?: SecretExecutionContext;
   humanChat?: import("../../core/src/types.ts").HumanChatAdmission;
   sessionPrincipal?: { beeId: string };
+  serviceIntent?: "service" | "delegation";
   phoneOrigin?: import("../../core/src/phoneOrigin.ts").PhoneOriginRequest;
   phoneLane?: "envelope-v1" | "interim-v1";
 }
