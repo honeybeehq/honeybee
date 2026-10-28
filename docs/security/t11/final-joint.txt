@@ -1,0 +1,28 @@
+sourceSha=4e12ddbdf5773b22a309c768c442537062b3cab0
+date=2026-10-28T15:31:29.247106+00:00
+venue=netcup-4 owned Cell; own disposable fixtures only
+command=node scripts/test-cell-gateway-joint.mjs
+
+{"fixture":"owned-node-code-overlay","node":"v24.18.0","sha256":"41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c","credentialsCopied":false}
+{"fixture":"joint-gateway-launcher","customRoot":false,"hostPathsPreexisting":true,"liveSocketPreexisting":true,"tmuxFixture":"actual isolated server","tmuxSocketPreexisting":true,"passed":true,"self":true,"other":"caller_not_trusted","cwdSpawn":"caller_not_trusted","inboxForward":"caller_not_trusted","hostSocket":"ENOENT","tmuxSocket":"ENOENT","liveSocket":"ENOENT","store":"ENOENT","sharedLogs":"ENOENT","gateway":true,"cli":true,"cliSend":true,"cliTranscript":true,"missingGateway":"refused"}
+✔ joint Cell gateway and launcher fixture allows self, masks host sockets and refuses escapes (887.745534ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1525.48089
+{"fixture":"joint-gateway-launcher","customRoot":true,"hostPathsPreexisting":true,"liveSocketPreexisting":true,"tmuxFixture":"actual isolated server","tmuxSocketPreexisting":true,"passed":true,"self":true,"other":"caller_not_trusted","cwdSpawn":"caller_not_trusted","inboxForward":"caller_not_trusted","hostSocket":"ENOENT","tmuxSocket":"ENOENT","liveSocket":"ENOENT","store":"ENOENT","sharedLogs":"ENOENT","gateway":true,"cli":true,"cliSend":true,"cliTranscript":true,"missingGateway":"refused"}
+✔ joint Cell gateway and launcher fixture allows self, masks host sockets and refuses escapes (519.530752ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1139.932798
+
+exitCode=0

@@ -1,0 +1,40 @@
+sourceSha=4e12ddbdf5773b22a309c768c442537062b3cab0
+date=2026-10-28T15:31:38.234131+00:00
+venue=netcup-4 owned Cell; own disposable fixtures only
+command=node --test v2/adapters/tests/codex.test.ts
+
+✔ codex: bootLines is a single initialize request (1.064708ms)
+✔ codex: initialize response → respond with initialized + thread/start (ack-ordered handshake) (0.845633ms)
+✔ codex: thread/start response → booted(threadId) + spawn_failed clear + turn_ended (0.197769ms)
+✔ codex: turn/started → turn_started; turn/completed → clears + turn_ended (0.372223ms)
+✔ codex: error notification with auth-expiry signature → auth_needed set (0.467412ms)
+✔ codex: authentication flag details never retain provider credential text (0.27434ms)
+✔ codex: read-only credential refresh remains a visible authentication boundary (0.279468ms)
+✔ codex: error notification with rate-limit text → resource_blocked set; generic error → [] (0.307321ms)
+✔ codex: rateLimits reached → resource_blocked set with primary-window reset hint (0.817309ms)
+✔ codex: benign rolling rateLimits update (reached null) → [] (0.306961ms)
+✔ codex: mid-turn deltas, reasoning and usage notifications carry no state edge (0.246446ms)
+✔ codex: inbound server request is refused (method-not-found), never left hanging (0.216568ms)
+✔ codex: encodeMessage requires the learned thread id; idle encodes turn/start (0.254378ms)
+✔ codex: a running turn encodes turn/steer with its native id and refuses safely before that id is known (0.14041ms)
+✔ codex: turn delivery responses confirm or refuse the mailbox message; errors still surface flags (0.180923ms)
+✔ codex: resume requests metadata only and reaches idle with the preserved conversation id (0.336086ms)
+✔ codex v6: turn/started carries the turn id; encodeInterrupt = turn/interrupt {threadId, turnId} (null before a turn id is known); the ack parses to [] (0.492161ms)
+✔ codex v6: forkThreadId → the handshake sends thread/fork {threadId: source}; the response's NEW thread.id lands as booted; resume wins over fork (0.322145ms)
+✔ codex: GPT-6 Astra model passes verbatim to start, resume, and fork (0.20443ms)
+✔ codex: developerInstructions ride on thread/start and thread/resume, not as a replacement of cwd/model (0.341004ms)
+✔ codex: usage-limit failure stays blocked after turn completion (0.247028ms)
+✔ codex: typed quota error survives unfamiliar message wording and completion-only errors (0.174433ms)
+✔ codex: only an explicitly successful completion clears boundary flags (0.188865ms)
+✔ codex: legacy usage-limit text and failed auth retain their boundaries (0.183317ms)
+✔ codex: fresh delivery starts a turn and refuses every known active turn (0.296243ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 135.868053
+
+exitCode=0

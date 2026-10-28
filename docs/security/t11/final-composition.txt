@@ -1,0 +1,28 @@
+sourceSha=4e12ddbdf5773b22a309c768c442537062b3cab0
+date=2026-10-28T15:31:32.630130+00:00
+venue=netcup-4 owned Cell; own disposable fixtures only
+command=node scripts/test-cell-gateway-joint.mjs --composition
+
+{"fixture":"owned-node-code-overlay","node":"v24.18.0","sha256":"41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c","credentialsCopied":false}
+{"fixture":"same-cell-hived5-gateway6","customRoot":false,"sameProcess":true,"hivedAllowed":5,"gatewayAllowed":6,"transcriptHived":"confined_peer_refused","transcriptGateway":true,"privilegedDeniedBoth":true,"passed":true}
+✔ same sandboxed Cell preserves the raw hived five verbs and gateway six verbs (186.027767ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 716.289485
+{"fixture":"same-cell-hived5-gateway6","customRoot":true,"sameProcess":true,"hivedAllowed":5,"gatewayAllowed":6,"transcriptHived":"confined_peer_refused","transcriptGateway":true,"privilegedDeniedBoth":true,"passed":true}
+✔ same sandboxed Cell preserves the raw hived five verbs and gateway six verbs (167.333154ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 709.253015
+
+exitCode=0
