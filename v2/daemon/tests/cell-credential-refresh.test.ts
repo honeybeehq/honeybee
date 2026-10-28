@@ -14,13 +14,13 @@ import { loadNodeConfig } from "../src/config.ts";
 function fixture(t: import("node:test").TestContext) {
   mkdirSync(resolve(".cache/t11g-trash"), {recursive:true});
   const root = mkdtempSync(resolve(".cache/hb-refresh-"));
-  const store = openCoreStore(join(root,"core.sqlite"), {now:()=>1000, ephemeral:true});
-  t.after(()=> {store.close(); const r=spawnSync("trash",["--trash-dir",resolve(".cache/t11g-trash"),root],{encoding:"utf8"});assert.equal(r.status,0,r.stderr);});
   let clock=1000;
+  const store = openCoreStore(join(root,"core.sqlite"), {now:()=>clock, ephemeral:true});
+  t.after(()=> {store.close(); const r=spawnSync("trash",["--trash-dir",resolve(".cache/t11g-trash"),root],{encoding:"utf8"});assert.equal(r.status,0,r.stderr);});
   const daemon = new HiveDaemon({...loadNodeConfig(root),nodeKind:"satellite"},{cellCredentialNow:()=>clock});
   const internal = daemon as any;
   internal.store=store; internal.resolveCellSpec=()=>({sandbox:true});
-  let material={kind:"lease",scope:"studio:share",epoch:1,generation:1,authorityInstanceId:"studio"};
+  let material={kind:"central",scope:"codex-fixture",epoch:0,generation:1,authorityInstanceId:"studio"};
   internal.accounts={authDeathMaterial:()=>material};
   let raw=JSON.stringify({tokens:{access_token:"synthetic-1",refresh_token:""}});
   writeFileSync(join(root,"auth.json"),raw);
@@ -28,16 +28,19 @@ function fixture(t: import("node:test").TestContext) {
   const account=store.createAccount({id:"codex-fixture",harness:"codex",label:"fixture",homePath:home});
   internal.resolveCellSandboxHarnessHome=()=>({harness:"codex",path:home});
   internal.accounts.credentialRevision=()=>"synthetic";
-  internal.accounts.authorityFor=()=>({status:()=>({expiresAt:3_601_000})});
+  store.putAccountCredentialAuthority({account:account.id,authorityInstanceId:"studio",phase:"ready",generation:1,expiresAt:3_601_000,operationKey:null});
+  material={...material,authorityInstanceId:store.getAccountCredentialAuthority(account.id)!.authorityInstanceId!};
+  internal.accounts.authorityFor=()=>({status:()=>store.getAccountCredentialAuthority(account.id)});
   internal.accounts.accountForGeneration=()=>store.getAccount(account.id);
   internal.accounts.centralCredentialInDoubt=()=>false;
   function bee(name:string,expiry=3_601_000) {
     const {bee}=store.createBee({name,agent:"codex",substrate:"cell",account:account.id,cwd:root});
-    store.recordCellCredentialProjection(bee.id,1,{material:{...material,kind:"lease"},revision:"synthetic",account:account.id,agent:"codex",cwd:root,cellId:null,controlFence:0,cellProjection:{digests:{"auth.json":createHash("sha256").update(raw).digest("hex")},expiresAt:expiry,preparedAt:1000}});
+    store.recordCellCredentialProjection(bee.id,1,{material:{...material,kind:"central"},revision:"synthetic",account:account.id,agent:"codex",cwd:root,cellId:null,controlFence:0,cellProjection:{digests:{"auth.json":createHash("sha256").update(raw).digest("hex")},expiresAt:expiry,preparedAt:1000}});
+    store.mountCellCredentialProjection(bee.id,1);
     store.updateRuntimeState(bee.id,1,"running");
     return bee.id;
   }
-  return {store,internal,bee,advance:(at:number)=>{clock=at;},renew:(unchanged=false)=>{material={...material,generation:material.generation+1}; if(!unchanged) {raw=JSON.stringify({tokens:{access_token:`synthetic-${material.generation}`,refresh_token:""}});writeFileSync(join(home,"auth.json"),raw);}}};
+  return {store,internal,bee,advance:(at:number)=>{clock=at;},renew:(unchanged=false)=>{material={...material,generation:material.generation+1};store.putAccountCredentialAuthority({...store.getAccountCredentialAuthority(account.id)!,generation:material.generation}); if(!unchanged) {raw=JSON.stringify({tokens:{access_token:`synthetic-${material.generation}`,refresh_token:""}});writeFileSync(join(home,"auth.json"),raw);}}};
 }
 
 test("lease publication queues one replacement per Bee, waits for a safe boundary and preserves mail", t=>{
@@ -214,9 +217,55 @@ test("an expired or superseded Cell 401 stays scoped to its Bee",t=>{
   assert.equal(r.store.listAccounts()[0]!.status,"ok");assert.equal(r.store.currentRuntime(sibling)?.state,"running");
 });
 
-test("extended lease expiry remounts even unchanged access-only bytes",t=>{
+test("same-byte extension updates only the fenced expiry without restart",t=>{
   const r=fixture(t),id=r.bee("extended-expiry");
-  r.internal.accounts.authorityFor=()=>({status:()=>({expiresAt:7_201_000})});
+  const account=r.store.listAccounts()[0]!;
+  r.store.putAccountCredentialAuthority({...r.store.getAccountCredentialAuthority(account.id)!,expiresAt:7_201_000});
+  const digests=r.store.currentRuntime(id)!.credentialStamp!.cellProjection!.digests;
+  assert.equal(r.internal.admitCellCredentialTurn(id,1),true);
+  assert.equal(r.store.latestCellCredentialReplacement(id,1),null);
+  assert.equal(r.store.currentRuntime(id)?.credentialStamp?.cellProjection?.expiresAt,7_201_000);
+  assert.deepEqual(r.store.currentRuntime(id)?.credentialStamp?.cellProjection?.digests,digests);
+});
+
+
+test("a distinct second account replacement round is guarded for six durable hours",t=>{
+  const r=fixture(t),first=r.bee("round-a");r.renew();r.internal.reconcileCellCredentials();
+  assert.equal(r.store.latestCellCredentialReplacement(first,1)?.status,"queued");
+  const second=r.bee("round-b");r.renew();
+  const logs:string[]=[];r.internal.log=(line:string)=>logs.push(line);
+  r.internal.reconcileCellCredentials();r.internal.reconcileCellCredentials();
+  assert.equal(r.store.latestCellCredentialReplacement(second,1),null);
+  assert.ok(r.store.activeFlags(second).some(f=>f.detail.startsWith("cell_replacement_rate_limited")));
+  assert.equal(logs.filter(line=>line.includes("code=replacement_rate_limited")).length,1);
+  r.advance(6*60*60_000+1001);r.internal.reconcileCellCredentials();
+  assert.equal(r.store.latestCellCredentialReplacement(second,1)?.status,"queued");
+});
+
+test("expiry extension is monotonic, source-bounded and refused by placement or control fences",t=>{
+  const r=fixture(t),id=r.bee("extension-fences"),account=r.store.listAccounts()[0]!;
+  r.store.putAccountCredentialAuthority({...r.store.getAccountCredentialAuthority(account.id)!,expiresAt:7_201_000});
+  const stamp=r.store.currentRuntime(id)!.credentialStamp!;
+  const input={account:account.id,controlFence:0,hostDigests:stamp.cellProjection!.digests,expiresAt:7_201_000,material:stamp.material};
+  assert.equal(r.store.extendCellCredentialExpiry(id,2,input),false);
+  assert.equal(r.store.extendCellCredentialExpiry(id,1,{...input,expiresAt:8_000_000}),false);
+  assert.equal(r.store.extendCellCredentialExpiry(id,1,{...input,expiresAt:1_000}),false);
+  const original=r.store.getBee.bind(r.store);
+  for(const field of ["activeMoveId","activeHandoffId"]) {
+    r.store.getBee=(value:string)=>{const bee=original(value);return bee ? {...bee,[field]:"fixture-operation"}:null;};
+    assert.equal(r.store.extendCellCredentialExpiry(id,1,input),false);
+  }
+  r.store.getBee=original;r.store.cancelAuthDeathRecovery(id);
+  assert.equal(r.store.extendCellCredentialExpiry(id,1,input),false);
+  assert.equal(r.store.currentRuntime(id)?.credentialStamp?.cellProjection?.expiresAt,3_601_000);
+});
+
+
+test("a between-tick publication cannot extend expiry using stale cached digests",t=>{
+  const r=fixture(t),id=r.bee("cache-publication-fence"),account=r.store.listAccounts()[0]!;
+  r.renew(true);assert.equal(r.internal.admitCellCredentialTurn(id,1),true);
+  r.renew();r.store.putAccountCredentialAuthority({...r.store.getAccountCredentialAuthority(account.id)!,expiresAt:7_201_000});
   assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
-  assert.equal(r.store.latestCellCredentialReplacement(id,1)?.args.waitForIdle,true);
+  assert.equal(r.store.currentRuntime(id)?.credentialStamp?.cellProjection?.expiresAt,3_601_000);
+  assert.equal(r.store.latestCellCredentialReplacement(id,1)?.status,"queued");
 });

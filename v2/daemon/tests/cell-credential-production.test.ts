@@ -27,7 +27,8 @@ test("production lease publication, start gate and private projection run on syn
   internal.authResume=new AuthResume({store,log:()=>{},now:()=>clock,accountForGeneration:(bee,generation)=>accounts.accountForGeneration(bee,generation),credentialRevision:account=>accounts.credentialRevision(account)});
   const expiry=clock/1000+3600;
   const lease=(generation:number,raw:string)=>({id:"codex-installed",harness:"codex",label:"synthetic",authorityNodeId:"fixture-authority",shareId:"fixture-share",epoch:1,generation,expiresAt:expiry,files:[{homeRelPath:"auth.json",mode:0o600,contentB64:Buffer.from(raw).toString("base64")}]});
-  const first=await internal.rpcAccountLeaseInstall(lease(1,material(expiry,"first")),{ingress:"local_unix"});
+  const firstRaw=material(expiry+3600,"first");
+  const first=await internal.rpcAccountLeaseInstall(lease(1,firstRaw),{ingress:"local_unix"});
   const account=store.getAccount(first.account.id)!;assert.equal(account.source,"leased");
   const cellDir=join(root,"cell");mkdirSync(cellDir);
   const {bee}=store.createBee({name:"production",agent:"codex",substrate:"cell",account:account.id,cwd:cellDir});
@@ -37,9 +38,13 @@ test("production lease publication, start gate and private projection run on syn
   assert.ok(home.snapshotRoot.startsWith(join(root,"cell-access")));
   const projection=prepareSandboxHarnessHome(cellDir,"codex",home.path,home.snapshotRoot,home.liveDigests);
   internal.recordCellCredentialProjection(bee.id,1,projection.files.filter(file=>file.credentialPath).map(file=>({path:file.credentialPath,source:file.source})));
+  store.mountCellCredentialProjection(bee.id,1);
   store.updateRuntimeState(bee.id,1,"running");
   assert.ok(internal.resolveCellSandboxHarnessHome(bee.id).liveDigests.length>0);
-  await internal.rpcAccountLeaseInstall(lease(2,material(expiry,"renewed")),{ingress:"local_unix"});
+  await internal.rpcAccountLeaseInstall({...lease(2,firstRaw),expiresAt:expiry+3600},{ingress:"local_unix"});
+  assert.equal(store.latestCellCredentialReplacement(bee.id,1),null);
+  assert.equal(store.currentRuntime(bee.id)?.credentialStamp?.cellProjection?.expiresAt,(expiry+3600)*1000);
+  await internal.rpcAccountLeaseInstall({...lease(3,material(expiry+3600,"renewed")),expiresAt:expiry+3600},{ingress:"local_unix"});
   assert.equal(store.latestCellCredentialReplacement(bee.id,1)?.args.waitForIdle,true);
   assert.equal(store.currentRuntime(bee.id)?.state,"running");
   assert.equal(store.claimNextCommand(),null);

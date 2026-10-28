@@ -7882,6 +7882,49 @@ export class CoreStore {
     });
   }
 
+  extendCellCredentialExpiry(beeId: string, generation: number, input: {account: string; controlFence: number; hostDigests: Record<string,string>; expiresAt: number; material: import("./types.ts").AccountMaterialStamp}): boolean {
+    return this.tx(() => {
+      const bee = this.getBee(beeId), runtime = this.currentRuntime(beeId), stamp = runtime?.credentialStamp;
+      const account = this.getAccount(input.account);
+      if (!bee || !runtime || runtime.generation !== generation || runtime.state === "stopped" || !stamp?.cellProjection?.mountedAt || !account || bee.lifecycle !== "active" || bee.account !== input.account || stamp.account !== input.account || stamp.agent !== bee.agent || stamp.cwd !== bee.cwd || stamp.cellId !== bee.cellId || (bee.authControlFence ?? 0) !== input.controlFence || stamp.controlFence !== input.controlFence || bee.activeMoveId || bee.activeHandoffId || this.activeCredentialHandoff(account.id) || account.status === "paused" && (account.pausedBy ?? "operator") === "operator") return false;
+      if (Object.keys(input.hostDigests).length !== Object.keys(stamp.cellProjection.digests).length || Object.entries(input.hostDigests).some(([path,digest]) => stamp.cellProjection!.digests[path] !== digest)) return false;
+      const lease = account.source === "leased" ? knownAccountLease(account) : null;
+      const authority = lease ? null : this.getAccountCredentialAuthority(account.id);
+      if (lease && (lease.materialPublished !== true || lease.generation === undefined || lease.revokedAt !== null) || !lease && authority?.phase !== "ready") return false;
+      const sourceExpiry = lease?.expiresAt != null ? lease.expiresAt * 1000 : authority?.expiresAt;
+      const sourceKind = lease ? "lease" : "central";
+      const sourceScope = lease ? `${lease.authorityNodeId}:${lease.shareId}` : account.id;
+      const sourceEpoch = lease?.epoch ?? this.credentialAuthorityEpoch(account.id);
+      const sourceGeneration = lease?.generation ?? authority?.generation;
+      const sourceInstance = lease?.authorityInstanceId ?? authority?.authorityInstanceId;
+      if (!sourceExpiry || !Number.isSafeInteger(input.expiresAt) || input.expiresAt <= stamp.cellProjection.expiresAt || input.expiresAt > sourceExpiry || sourceExpiry <= this.now() || input.material.kind !== sourceKind || input.material.scope !== sourceScope || input.material.epoch !== sourceEpoch || input.material.generation !== sourceGeneration || input.material.authorityInstanceId !== sourceInstance) return false;
+      stamp.cellProjection.expiresAt = input.expiresAt;
+      stamp.material = input.material;
+      this.stmt("UPDATE runtimes SET credential_stamp=? WHERE bee_id=? AND generation=?").run(JSON.stringify(stamp),beeId,generation);
+      this.audit("runtime.updated",beeId,{runtime:this.currentRuntime(beeId)!});
+      const flag = this.activeFlags(beeId).find(row => row.flag === "auth_needed");
+      if (flag?.detail.startsWith("cell_access_expired")) this.clearFlag(beeId,"auth_needed","Mounted access-only bytes received an extended host lease");
+      return true;
+    });
+  }
+
+  queueCellCredentialReplacement(beeId: string, generation: number, input: {account:string; controlFence:number; round:string; key:string}): {outcome:"queued"|"stale"} | {outcome:"guarded"; log:boolean; until:number} {
+    return this.tx(() => {
+      const bee=this.getBee(beeId), runtime=this.currentRuntime(beeId), account=this.getAccount(input.account);
+      if (!bee || !runtime || runtime.generation !== generation || runtime.state === "stopped" || bee.lifecycle !== "active" || bee.account !== input.account || (bee.authControlFence ?? 0) !== input.controlFence || bee.activeMoveId || bee.activeHandoffId || !account || account.status === "paused" && (account.pausedBy ?? "operator") === "operator") return {outcome:"stale"};
+      const prior=this.stmt("SELECT enqueued_at FROM commands INDEXED BY commands_cell_credential_account WHERE json_extract(args,'$.cellCredentialAccount')=? AND verb='stop' AND json_extract(args,'$.reason')='cell_credentials' AND enqueued_at>? AND json_extract(args,'$.thenRevive') IS NOT 0 AND COALESCE(json_extract(args,'$.cellCredentialRound'),'legacy') != ? ORDER BY enqueued_at LIMIT 1").get(input.account,this.now()-6*60*60_000,input.round) as Row | undefined;
+      if (prior) {
+        const until=Number(prior.enqueued_at)+6*60*60_000,key=`cell_credential_guard_logged:${input.account}`;
+        const previous=this.stmt("SELECT value FROM meta WHERE key=?").get(key) as Row | undefined;
+        const log=previous?.value !== String(until);
+        if (log) this.stmt("INSERT INTO meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key,String(until));
+        return {outcome:"guarded",log,until};
+      }
+      this.enqueueCommand("stop",beeId,{cause:"stopped_by_system",reason:"cell_credentials",cellCredentialFence:input.controlFence,cellCredentialAccount:input.account,cellCredentialRound:input.round,waitForIdle:true,thenRevive:true},{idempotencyKey:input.key});
+      return {outcome:"queued"};
+    });
+  }
+
   recordCellCredentialProjection(beeId: string, generation: number, stamp: import("./types.ts").RuntimeCredentialStamp): void {
     this.tx(() => {
       const runtime = this.currentRuntime(beeId);

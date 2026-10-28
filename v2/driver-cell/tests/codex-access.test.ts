@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chmodSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { accessOnlyCodexDocument, readAccessOnlyCodex, snapshotAccessOnlyCodex } from "../src/codexAccess.ts";
@@ -66,4 +66,18 @@ test("atomic snapshot publication repairs a truncated canonical file",t=>{
   assert.equal(snapshotAccessOnlyCodex(root,source),target);
   assert.equal(readFileSync(target,"utf8"),document());
   assert.ok(readdirSync(join(root,".honeybee-cell-access")).every(name=>!name.startsWith(".stage-")));
+});
+
+
+test("snapshot GC sweeps only old owned regular staging files",t=>{
+  mkdirSync(resolve(".cache/t11g-trash"),{recursive:true});
+  const root=mkdtempSync(resolve(".cache/hb-stage-gc-"));
+  t.after(()=>{const r=spawnSync("trash",["--trash-dir",resolve(".cache/t11g-trash"),root],{encoding:"utf8"});assert.equal(r.status,0,r.stderr);});
+  const source=join(root,"auth.json");writeFileSync(source,document());snapshotAccessOnlyCodex(root,source);
+  const cache=join(root,".honeybee-cell-access"),old=join(cache,".stage-00000000-0000-0000-0000-000000000000"),fresh=join(cache,".stage-00000000-0000-0000-0000-000000000001");
+  writeFileSync(old,"synthetic partial",{mode:0o400});writeFileSync(fresh,"synthetic partial",{mode:0o400});
+  const past=new Date(Date.now()-11*60_000);utimesSync(old,past,past);
+  snapshotAccessOnlyCodex(root,source);
+  assert.ok(!readdirSync(cache).includes(old.split("/").at(-1)!));
+  assert.ok(readdirSync(cache).includes(fresh.split("/").at(-1)!));
 });

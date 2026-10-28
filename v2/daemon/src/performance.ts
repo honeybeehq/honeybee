@@ -17,6 +17,7 @@ const STATIC_SPAN_NAMES = [
   "daemon.start.rpc",
   "daemon.tick.total",
   "daemon.tick.core",
+  "daemon.tick.cell_credentials",
   "daemon.tick.accounts",
   "daemon.tick.login",
   "daemon.tick.auto_title",

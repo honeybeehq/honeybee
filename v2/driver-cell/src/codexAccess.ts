@@ -50,6 +50,10 @@ export function snapshotAccessOnlyCodex(sourceHome: string, source: string, snap
   if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.geteuid?.() || (info.mode & 0o077) !== 0) throw new CellCredentialRefusal();
   const target = join(root, `${createHash("sha256").update(raw).digest("hex")}.json`);
   const retained = new Set([...liveDigests, createHash("sha256").update(raw).digest("hex")]);
+  for (const name of readdirSync(root).filter(name => /^\.stage-[a-f0-9-]{36}$/.test(name))) {
+    const staged=lstatSync(join(root,name));
+    if (staged.isFile() && !staged.isSymbolicLink() && staged.uid === process.geteuid?.() && (staged.mode & 0o222) === 0 && staged.mtimeMs < Date.now()-10*60_000) unlinkSync(join(root,name));
+  }
   const snapshots = readdirSync(root).filter(name => /^[a-f0-9]{64}\.json$/.test(name)).map(name => ({name, info:lstatSync(join(root,name))}));
   snapshots.sort((a,b) => b.info.mtimeMs-a.info.mtimeMs || a.name.localeCompare(b.name));
   for (const snapshot of snapshots.slice(8)) {

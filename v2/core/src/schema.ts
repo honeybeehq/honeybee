@@ -525,6 +525,9 @@ CREATE INDEX IF NOT EXISTS commands_by_bee ON commands(bee_id, id);
 CREATE INDEX IF NOT EXISTS commands_cell_credentials
   ON commands(bee_id, target_generation, id)
   WHERE verb = 'stop' AND json_extract(args, '$.reason') = 'cell_credentials';
+CREATE INDEX IF NOT EXISTS commands_cell_credential_account
+  ON commands(json_extract(args, '$.cellCredentialAccount'), enqueued_at)
+  WHERE verb = 'stop' AND json_extract(args, '$.reason') = 'cell_credentials';
 CREATE INDEX IF NOT EXISTS commands_by_bee_status ON commands(bee_id, status, id);
 -- Stop-recovery probe (hasStopThenReviveRequest): seek (bee, generation)
 -- among the stop rows that can carry restart intent instead of walking the

@@ -1619,7 +1619,7 @@ export class HiveDaemon {
    * layer between the agent spec's args and the resume selector — see
    * composeSpawn for the precedence.
    */
-  private readonly cellCredentialDigests = new Map<string, Record<string,string>>();
+  private readonly cellCredentialDigests = new Map<string, {key:string;digests:Record<string,string>}>();
 
   private setCellAuthNeeded(beeId: string, detail: string): void {
     const store = this.mustStore();
@@ -1706,15 +1706,29 @@ export class HiveDaemon {
     if (previous?.status === "failed") { this.setCellAuthNeeded(beeId,"cell_replacement_failed: manual restart required"); return false; }
     const commandKey = `cell-credentials:${beeId}:${generation}:${account.id}:${bee.authControlFence ?? 0}:${previous?.id ?? 0}`;
     let changedBytes = false;
+    let hostDigests: Record<string,string> | undefined;
     if (changed) {
       try {
-        const digests = this.cellCredentialDigests.get(account.id) ?? Object.fromEntries(["auth.json", ".codex/auth.json"].filter(path => existsSync(join(account.homePath,path))).map(path => [path,createHash("sha256").update(readAccessOnlyCodex(join(account.homePath,path))).digest("hex")]));
-        this.cellCredentialDigests.set(account.id,digests);
+        const key=JSON.stringify([replacement,expiry]);
+        const cached=this.cellCredentialDigests.get(account.id);
+        const digests = cached?.key === key ? cached.digests : Object.fromEntries(["auth.json", ".codex/auth.json"].filter(path => existsSync(join(account.homePath,path))).map(path => [path,createHash("sha256").update(readAccessOnlyCodex(join(account.homePath,path))).digest("hex")]));
+        this.cellCredentialDigests.set(account.id,{key,digests});
+        hostDigests=digests;
         changedBytes = Object.keys(digests).length !== Object.keys(admitted.cellProjection.digests).length || Object.entries(digests).some(([path,digest]) => digest !== admitted.cellProjection!.digests[path]);
       } catch { this.setCellAuthNeeded(beeId,"cell_access_only_required"); return false; }
     }
-    if (changed && (changedBytes || extendedExpiry) && !bee.activeMoveId && !bee.activeHandoffId && bee.lifecycle === "active") {
-      store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: "cell_credentials", cellCredentialFence: bee.authControlFence ?? 0, cellCredentialAccount: account.id, waitForIdle: true, thenRevive: true }, { idempotencyKey: commandKey });
+    if (extendedExpiry && !changedBytes && hostDigests && replacement && expiry !== null) {
+      const applied=store.extendCellCredentialExpiry(beeId,generation,{account:account.id,controlFence:bee.authControlFence ?? 0,hostDigests,expiresAt:expiry,material:replacement});
+      if (!applied) this.setCellAuthNeeded(beeId,"cell_replacement_held: projection fence changed");
+      return applied || !expired;
+    }
+    if (changed && changedBytes && hostDigests && !bee.activeMoveId && !bee.activeHandoffId && bee.lifecycle === "active") {
+      const round=createHash("sha256").update(JSON.stringify(Object.entries(hostDigests).sort(([a],[b])=>a.localeCompare(b)))).digest("hex");
+      const result=store.queueCellCredentialReplacement(beeId,generation,{account:account.id,controlFence:bee.authControlFence ?? 0,round,key:commandKey});
+      if (result.outcome === "guarded") {
+        for (const affected of store.beesOnAccount(account.id)) if (affected.substrate === "cell" && affected.agent === "codex") this.setCellAuthNeeded(affected.id,`cell_replacement_rate_limited: until ${result.until}`);
+        if (result.log) this.log(`cell.credentials.guard account=${account.id} code=replacement_rate_limited`);
+      }
       return false;
     }
     if (expired) return false;
