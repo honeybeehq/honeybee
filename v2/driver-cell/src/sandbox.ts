@@ -1,4 +1,5 @@
-import { prepareSandboxHarnessHome } from "./harnessHome.ts";
+import { withoutCellHostRoutes } from "./runtimeEnvironment.ts";
+import { ensureCellPrivateDirectory, prepareSandboxHarnessHome } from "./harnessHome.ts";
 /**
  * Cell sandbox wrapper (WP5, spec 05 point 5 — the A4 ruling).
  *
@@ -130,17 +131,18 @@ function checkedWritablePaths(policy: SandboxPolicy): string[] {
 }
 
 
-export function sandboxEnvironment(cellDir: string, original: Readonly<Record<string, string>>): Record<string, string> {
+export function sandboxEnvironment(cellDir: string, original: Readonly<Record<string, string>>, sandboxed = true): Record<string, string> {
   const root = join(cellDir, "sandbox-state");
   const temp = join(root, "tmp");
   const cache = join(root, "cache");
-  for (const path of [root, temp, cache]) {
-    const info = lstatSync(path, { throwIfNoEntry: false });
-    if (info && (!info.isDirectory() || info.isSymbolicLink())) throw new Error(`cell sandbox: unsafe private state: ${path}`);
-    if (!info) mkdirSync(path, { mode: 0o700 });
+  const home = join(root, "home");
+  const config = join(root, "config"), data = join(root, "data"), state = join(root, "state");
+  for (const path of [root, temp, cache, home, config, data, state]) {
+    try { ensureCellPrivateDirectory(cellDir, path); }
+    catch { throw new Error(`cell sandbox: unsafe private state: ${path}`); }
   }
-  const scratch = platform() === "linux" ? "/tmp" : temp;
-  const env = { ...original, TMPDIR: scratch, TMP: scratch, TEMP: scratch, CLAUDE_CODE_TMPDIR: scratch,
+  const scratch = sandboxed && platform() === "linux" ? "/tmp" : temp;
+  const env = { ...withoutCellHostRoutes(original), HOME: home, XDG_CONFIG_HOME: config, XDG_DATA_HOME: data, XDG_STATE_HOME: state, TMPDIR: scratch, TMP: scratch, TEMP: scratch, CLAUDE_CODE_TMPDIR: scratch,
     XDG_CACHE_HOME: cache, NODE_COMPILE_CACHE: join(cache, "node-compile"), npm_config_cache: join(cache, "npm"),
     npm_config_store_dir: join(cache, "pnpm"), YARN_CACHE_FOLDER: join(cache, "yarn"), PIP_CACHE_DIR: join(cache, "pip"),
     UV_CACHE_DIR: join(cache, "uv"), GOCACHE: join(cache, "go-build"), GOMODCACHE: join(cache, "go-mod"),

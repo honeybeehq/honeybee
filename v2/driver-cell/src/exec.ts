@@ -286,8 +286,8 @@ export async function runCellExec(
   if (!sandboxEnabled(spec.nodeKind, spec.sandbox) && spec.nodeKindExplicit === false && spec.sandbox !== false) throw new Error("cell sandbox: nodeKind is missing; explicit cells.sandbox:false is required for an unsandboxed Cell");
   let wrappedCommand = command as string;
   let wrappedArgs = args;
+  env = sandboxEnvironment(paths.wrapperDir, env, sandboxEnabled(spec.nodeKind, spec.sandbox)) as typeof env;
   if (sandboxEnabled(spec.nodeKind, spec.sandbox)) {
-    env = sandboxEnvironment(paths.wrapperDir, env) as typeof env;
     (env as Record<string, string>).HIVE_CELL_GATEWAY_SOCKET = "/run/honeybee/gateway.sock";
     const wrapped = wrapWithSandbox(
       { cellDir: paths.wrapperDir, writablePaths: defaultWritablePaths(), kvm: spec.kvm, gatewaySocketPath: spec.gatewaySocketPath },

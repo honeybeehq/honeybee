@@ -1,3 +1,4 @@
+import { cellDaemonEnvironment, withoutCellHostRoutes } from "../../driver-cell/src/runtimeEnvironment.ts";
 import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, peerConfinement, runtimeUserNamespace, strictConfinementReasons } from "./confinedPeer.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
@@ -5310,15 +5311,22 @@ export class HiveDaemon {
       const account = this.mustStore().getAccount(bee.account);
       if (!account) throw new Error(`${label}: bee ${bee.id} is bound to unknown account ${bee.account}`);
       accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
+      const homeKey = homeEnvFor(account.harness);
+      if (bee.substrate === "cell" && homeKey) accountEnv[homeKey] = account.homePath;
       beeEnv = this.accounts.nativeBeeEnv(account, bee.env);
     }
+    const inherited = bee.substrate === "cell"
+      ? cellDaemonEnvironment(process.env, process.env.HIVE_DEBUG_CELL_ENV === "1" ? names => this.log(`debug.cell_env.dropped names=${JSON.stringify(names)}`) : undefined)
+      : process.env;
     const env: Record<string, string> = {
-      ...(process.env as Record<string, string>),
+      ...(inherited as Record<string, string>),
       ...(spec.env ?? {}),
       ...beeEnv,
       ...accountEnv,
     };
-    return { ...env, ...beeIdentityEnv(bee, this.cfg.dataDir, resolve(this.cfg.socketPath)) };
+    return bee.substrate === "cell"
+      ? withoutCellHostRoutes({...env, ...beeIdentityEnv(bee)})
+      : { ...env, ...beeIdentityEnv(bee, this.cfg.dataDir, resolve(this.cfg.socketPath)) };
   }
 
   private claudeContextLaunchFor(bee: BeeRow, args: readonly string[], env: Record<string, string>): ClaudeContextLaunch {
