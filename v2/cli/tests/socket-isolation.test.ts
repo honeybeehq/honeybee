@@ -200,7 +200,7 @@ test("socket isolation against throwaway daemons", async (t) => {
   let daemonB: DaemonHandle | null = null;
   try {
     daemonA = await startDaemon(a.dir, { socketPath: aSock });
-    daemonB = await startDaemon(b.dir);
+    daemonB = await startDaemon(b.dir, { env: { HIVE_V2_SOCKET_PATH: join(sockDir, "inherited.sock") } });
     const infoA = (await cli(["deploy-info", "--json", "--socket", aSock, "--data-dir", a.dir], { HOME: home })).json[0]!;
     const infoB = (await cli(["deploy-info", "--json", "--data-dir", b.dir], { HOME: home })).json[0]!;
     assert.match(infoA.instanceId, /^[0-9a-f-]{36}$/);
@@ -419,11 +419,11 @@ test("socket isolation against throwaway daemons", async (t) => {
       }
     });
 
-    await t.test("hive daemon run honors an explicit HIVE_V2_SOCKET_PATH", async () => {
+    await t.test("hive daemon run ignores an inherited HIVE_V2_SOCKET_PATH and listens on its data dir's socket", async () => {
       const d = makeDaemonDir();
       try {
         const proc = spawn(process.execPath, [CLI_BIN, "daemon", "run", "--data-dir", d.dir], {
-          env: { ...process.env, HOME: home, HIVE_NODE_PATH: process.execPath, HIVE_V2_DATA_DIR: d.dir, HIVE_V2_SOCKET_PATH: join(d.dir, "env.sock"), HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
+          env: { ...process.env, HOME: home, HIVE_NODE_PATH: process.execPath, HIVE_V2_DATA_DIR: d.dir, HIVE_V2_SOCKET_PATH: daemonB!.socketPath, HIVE_NO_KEYCHAIN: "1", HIVE_GATEWAYS_DISABLE: "1", HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN: "1", ...ownerBoundEnv(process.env.NODE_OPTIONS) },
           stdio: ["ignore", "pipe", "pipe"],
         });
         let output = "";
@@ -432,7 +432,7 @@ test("socket isolation against throwaway daemons", async (t) => {
         try {
           await waitFor(() => readLiveEndpointRecord(d.dir) !== null || proc.exitCode !== null, "daemon run record", 30_000);
           assert.equal(proc.exitCode, null, output);
-          assert.equal(readLiveEndpointRecord(d.dir)?.socketPath, join(d.dir, "env.sock"));
+          assert.equal(readLiveEndpointRecord(d.dir)?.socketPath, join(d.dir, "hived.sock"));
           const b2 = await cli(["deploy-info", "--json", "--data-dir", b.dir], { HOME: home });
           assert.equal(b2.json[0]!.instanceId, infoB.instanceId);
         } finally {

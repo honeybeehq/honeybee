@@ -52,7 +52,7 @@ function loadDaemonConfig(args: DaemonRunArgs, dataDir: string): ResolvedNodeCon
   const loaded = loadNodeConfig(dataDir, args.configPath);
   const vaultDir = args.vaultDir ?? process.env.HIVE_V2_VAULT_DIR;
   if (vaultDir !== undefined && !vaultDir.trim()) throw new ConfigError("daemon run: vault directory must be a non-empty path");
-  const cfg = { ...loaded, vaultDirExplicit: loaded.vaultDirExplicit || vaultDir !== undefined, socketPath: resolve(args.socketPath ?? process.env.HIVE_V2_SOCKET_PATH ?? loaded.socketPath),
+  const cfg = { ...loaded, vaultDirExplicit: loaded.vaultDirExplicit || vaultDir !== undefined, socketPath: resolve(args.socketPath ?? loaded.socketPath),
     accounts: { ...loaded.accounts, ...(vaultDir === undefined ? {} : { vaultDir: resolve(vaultDir) }) } };
   validateDaemonVault(cfg);
   return cfg;
