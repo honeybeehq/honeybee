@@ -1,0 +1,19 @@
+sourceSha=028587ffd8d11aebf35b8d8ae0c44573d5aa6eb9
+command=["npm", "run", "build"]
+
+> honeybee@0.0.1 build
+> tsc -p tsconfig.json && node scripts/build-runner-host-artifact.mjs && node scripts/build-cell-scope.mjs && node scripts/probe-cell-scope.mjs && node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs && node scripts/build-cli-entry.mjs
+
+runner-host artifact 627f7e4c81d71227c0cf3ad993dabc06bd6e6cfc144691a26a4ccde367dbe95d (1630216 bytes) staged under /home/trmd/.hive/v2/cells/hdm-t11-gateway-0012039cbb53/github-com-honeybeehq-honeybee-a9015b303498-space-0012039cbb53/dist/hsr/artifacts
+cell scope built: linux-x64
+{"version":1,"passed":true,"target":"linux-x64","sha256":"5f9cd6e0db23acebba9f237a2d807e83ef89cc06f3c8d1e778d8f49f697692e1","sourceSha256":"b2806d903690cebe76518868b274e48033447ae454dbcdecb62a289d91680949","kernel":"6.12.107+deb13-amd64","abi":6,"outside":"EPERM","inside":"inside"}
+peer credential bridge linux-x64 (145 C lines)
+{"passed":true,"target":"linux-x64","node":"v24.18.0","uid":1000,"pid":1970294,"processBirth":"linux:97961609","pidfd":true}
+v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, and dist/v2/runner-host.js (22058 bytes)
+dependency-light cli entry staged at dist/cli.js
+
+> honeybee@0.0.1 postbuild
+> chmod +x dist/cli.js dist/cli-x.js
+
+
+exitCode=0

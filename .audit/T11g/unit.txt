@@ -1,0 +1,24 @@
+sourceSha=028587ffd8d11aebf35b8d8ae0c44573d5aa6eb9
+command=["node", "--test", "v2/daemon/tests/cell-credential-refresh.test.ts", "v2/driver-cell/tests/codex-access.test.ts"]
+✔ lease publication queues one replacement per Bee, waits for a safe boundary and preserves mail (178.575316ms)
+✔ unchanged material does not churn; expiry and unknown projections are visible auth_needed (120.897351ms)
+✔ projection and authentication receipts are generation-fenced and survive store reads (134.864866ms)
+✔ async boot window is quiet and operator control cancels a queued refresh (129.04701ms)
+✔ real input projection records the boot receipt and clears only Cell-owned attention (126.592216ms)
+✔ safe boundary replacement reaches exactly one successor and keeps the pending mailbox (146.479208ms)
+✔ mooted refresh intent can be replaced without silently wedging the runtime (125.362825ms)
+✔ Cell expiry preserves a genuine harness authentication failure (121.537411ms)
+✔ operator parking holds replacement without stopping a running Cell (143.186585ms)
+✔ Codex projection accepts only bounded explicit access-only documents (3.711937ms)
+✔ Codex projection snapshots validated bytes and refuses mirrors, symlinks and non-files (134.315009ms)
+✔ snapshot maintenance retains live digests across more than 128 publications (195.604856ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1541.820212
+
+exitCode=0

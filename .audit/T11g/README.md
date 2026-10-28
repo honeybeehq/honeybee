@@ -1,0 +1,13 @@
+# T11g verification receipt
+
+Verified source: 028587ffd8d11aebf35b8d8ae0c44573d5aa6eb9, on review/hdm-T11g-refresh, base ca5ccb6e9fb2318f3e8f36437786a8f39f7b5e1c. Every receipt includes that SHA, the exact command and exitCode=0. The runner checked that HEAD and source files stayed unchanged before each command. The subsequent packaging commit changes only evidence and documents.
+
+Root check, v2:check and build passed. Targeted suites total 163: 159 pass, four skip, zero fail. Counts: new synthetic credentials/lifecycle 12; sandbox/driver 53 (49 pass, four skip: three Darwin-only and one no local CoW); central Codex synthetic-provider RPC 3; strict unattributed refusal 1; core daemon loops 94. No full npm test claim is made. Fixture venue requires trash, bwrap and the built native helpers. The sandbox runner uses an owned hash-checked Node overlay, without weakening the production toolchain guard.
+
+The initial neighboring Codex run refused two unattributed clients with confined_peer_refused. Those fixture daemons were strict under the existing hotfix. Test-only configuration now explicitly selects satellite with sandbox enabled and registers its fixture operator against its own disposable daemon key. The same Codex paths pass (including refresh single-flight, early refresh, invalid_grant, and native ownership recovery); a separate strict fixture still proves rejection. No production admission policy changed.
+
+Independent Claude Opus 5.5 source review: 9906, 9909, 9911 and final 9913. All Medium-or-higher findings closed at 028587ff. The reviewer independently EXPLAIN-verified the partial command index. Its own test venue lacked trash, so its cleanup hooks failed; that rerun is not represented as a passing test receipt. This receipt uses netcup-3, where all twelve new tests pass.
+
+The decision TSV is a reconstructed decision summary; timestamps identify report/review windows, not exact tool start times. Earlier cap/intent decisions are superseded by later rows. Snapshot retention keeps live referenced digests plus the newest eight; no 128-publication outage remains.
+
+No live credential reads, token operations, provisioning, keychain access, deployment or restarts of other Bees were performed. Queen's separate Apiary source review supplies the 60-minute renewal cadence and reactive retry-floor behavior; this Honeybee checkout does not independently contain that transport implementation. Operator metadata inventory is closed per Queen's 17:17 clarification. Old unreceipted Cells require retirement/manual restart as described in docs/security/t11g/rollout.md. Deployment and proof filing remain held pending their existing approvals and the Studio API all-clear.

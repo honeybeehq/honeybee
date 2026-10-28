@@ -1,0 +1,907 @@
+diff --git a/v2/core/src/schema.ts b/v2/core/src/schema.ts
+index 0e888042..5daba94b 100644
+--- a/v2/core/src/schema.ts
++++ b/v2/core/src/schema.ts
+@@ -522,6 +522,9 @@ CREATE INDEX IF NOT EXISTS commands_ready ON commands(status, next_attempt_at, i
+ -- bee_id, status, and id have existed since v1, so these indexes install
+ -- additively on every open without changing the schema format version.
+ CREATE INDEX IF NOT EXISTS commands_by_bee ON commands(bee_id, id);
++CREATE INDEX IF NOT EXISTS commands_cell_credentials
++  ON commands(bee_id, target_generation, id)
++  WHERE verb = 'stop' AND json_extract(args, '$.reason') = 'cell_credentials';
+ CREATE INDEX IF NOT EXISTS commands_by_bee_status ON commands(bee_id, status, id);
+ -- Stop-recovery probe (hasStopThenReviveRequest): seek (bee, generation)
+ -- among the stop rows that can carry restart intent instead of walking the
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index 030aa4fc..5d99dec6 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -5522,6 +5522,8 @@ export class CoreStore {
+        WHERE bee_id = ? AND status IN ('done','running')
+          AND verb = 'stop' AND target_generation = ?
+          AND json_type(args, '$.thenRevive') = 'true'
++         AND (json_extract(args, '$.reason') IS NOT 'cell_credentials'
++           OR json_extract(args, '$.cellCredentialFence') = (SELECT COALESCE(auth_control_fence,0) FROM bees WHERE id = commands.bee_id))
+        LIMIT 1`,
+     ).get(beeId, generation) !== undefined;
+   }
+@@ -5572,6 +5574,11 @@ export class CoreStore {
+     ).get(beeId, generation) !== undefined;
+   }
+ 
++  latestCellCredentialReplacement(beeId: string, generation: number): CommandRow | null {
++    const row = this.stmt("SELECT * FROM commands INDEXED BY commands_cell_credentials WHERE bee_id=? AND target_generation=? AND verb='stop' AND json_extract(args,'$.reason')='cell_credentials' ORDER BY id DESC LIMIT 1").get(beeId,generation) as Row | undefined;
++    return row ? mapCommand(row) : null;
++  }
++
+   listCommands(filter: { beeId?: string; status?: CommandRow["status"] } = {}): CommandRow[] {
+     let sql = "SELECT * FROM commands";
+     const where: string[] = [];
+@@ -5703,6 +5710,15 @@ export class CoreStore {
+         if (!row) return null;
+         const command = mapCommand(row);
+         if (!this.executionLedger.commandAllowed(command.id)) continue;
++        if (command.args.reason === "cell_credentials") {
++          const bee = this.getBee(command.beeId);
++          if (!bee || bee.lifecycle !== "active" || bee.account !== command.args.cellCredentialAccount || (bee.authControlFence ?? 0) !== command.args.cellCredentialFence || bee.activeMoveId || bee.activeHandoffId) {
++            const at = this.now();
++            this.stmt("UPDATE commands SET status='done', finished_at=?, args=json_set(args,'$.thenRevive',json('false')) WHERE id=?").run(at,command.id);
++            this.audit("command.moot",command.beeId,{commandId:command.id,reason:"cell_credentials_superseded",finishedAt:at});
++            continue;
++          }
++        }
+         if (
+           (command.verb === "stop" || command.verb === "archive" || command.verb === "delete" || command.verb === "revive")
+         ) {
+@@ -7866,6 +7882,39 @@ export class CoreStore {
+     });
+   }
+ 
++  recordCellCredentialProjection(beeId: string, generation: number, stamp: import("./types.ts").RuntimeCredentialStamp): void {
++    this.tx(() => {
++      const runtime = this.currentRuntime(beeId);
++      if (!runtime || runtime.generation !== generation || runtime.state !== "booting" || !stamp.cellProjection) throw new CoreError("Cell projection requires the current booting generation");
++      this.stmt("UPDATE runtimes SET credential_stamp = ? WHERE bee_id = ? AND generation = ?").run(JSON.stringify(stamp), beeId, generation);
++      this.audit("runtime.updated", beeId, { runtime: this.currentRuntime(beeId)! });
++      const flag = this.activeFlags(beeId).find(row => row.flag === "auth_needed");
++      if (flag?.detail.startsWith("cell_")) this.clearFlag(beeId,"auth_needed","Access-only projection prepared for current generation");
++    });
++  }
++
++  mountCellCredentialProjection(beeId: string, generation: number): void {
++    this.tx(() => {
++      const runtime = this.currentRuntime(beeId), stamp = runtime?.credentialStamp;
++      if (!runtime || runtime.generation !== generation || runtime.state === "stopped" || !stamp?.cellProjection || stamp.cellProjection.mountedAt !== undefined) return;
++      stamp.cellProjection.mountedAt = this.now();
++      this.stmt("UPDATE runtimes SET credential_stamp = ? WHERE bee_id = ? AND generation = ?").run(JSON.stringify(stamp), beeId, generation);
++      this.audit("runtime.updated", beeId, { runtime: this.currentRuntime(beeId)! });
++    });
++  }
++
++  authenticateCellCredentialProjection(beeId: string, generation: number): void {
++    this.tx(() => {
++      const runtime = this.currentRuntime(beeId), stamp = runtime?.credentialStamp;
++      if (!runtime || runtime.generation !== generation || runtime.state === "stopped" || !stamp?.cellProjection?.mountedAt || stamp.cellProjection.authenticatedAt !== undefined) return;
++      stamp.cellProjection.authenticatedAt = this.now();
++      const flag = this.activeFlags(beeId).find(row => row.flag === "auth_needed");
++      if (flag?.detail.startsWith("cell_")) this.clearFlag(beeId,"auth_needed","Current Cell generation authenticated");
++      this.stmt("UPDATE runtimes SET credential_stamp = ? WHERE bee_id = ? AND generation = ?").run(JSON.stringify(stamp), beeId, generation);
++      this.audit("runtime.updated", beeId, { runtime: this.currentRuntime(beeId)! });
++    });
++  }
++
+   cancelAuthDeathRecovery(beeId: string, reason: AuthSettleReason = "auth_recovery_cancelled"): void {
+     this.tx(() => {
+       const bee = this.mustGetBee(beeId);
+diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
+index c4dd7cfc..87592bb0 100644
+--- a/v2/core/src/types.ts
++++ b/v2/core/src/types.ts
+@@ -236,6 +236,7 @@ export interface AccountMaterialStamp {
+ }
+ 
+ export interface RuntimeCredentialStamp {
++  cellProjection?: { digests: Record<string, string>; expiresAt: number; preparedAt: number; mountedAt?: number; authenticatedAt?: number };
+   material: AccountMaterialStamp;
+   revision: string;
+   account: string;
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 2c73450a..b89f88e9 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -193,6 +193,7 @@ import {
+   isAncestor,
+   currentBranch,
+   sandboxEnabled,
++  readAccessOnlyCodex,
+   DEFAULT_SANDBOX_TMPFS_BYTES,
+   runCellExec,
+   sanitizeComponent,
+@@ -614,6 +615,7 @@ export interface ShutdownOptions {
+ 
+ /** v7: injectable transports for in-process tests (the daemon binary uses the defaults). */
+ export interface HiveDaemonDeps {
++  cellCredentialNow?: () => number;
+   keychainReader?: KeychainReader;
+   keychainWriter?: KeychainWriter;
+   fetchers?: LimitsFetchers;
+@@ -934,6 +936,8 @@ export class HiveDaemon {
+       onRuntimeReady: (beeId: string, pid: number | null) => {
+         if (process.platform === "linux" && store.getBee(beeId)?.substrate === "cell") {
+           this.cellNamespaces.set(beeId, pid ? runtimeUserNamespace(pid) : "unavailable");
++          const runtime = store.currentRuntime(beeId);
++          if (runtime?.pid === pid && runtime.credentialStamp?.cellProjection && store.runtimeProcessIdentity(beeId,runtime.generation).kind === "bound" && this.cellNamespaces.get(beeId) === "different") store.mountCellCredentialProjection(beeId, runtime.generation);
+           if ([...this.cellNamespaces.values()].some(value => value !== "different")) this.confinementReason("cell_userns_unisolated");
+           else if (this.confinementReasons.delete("cell_userns_unisolated")) this.log(`security.confinement strict=${this.confinementReasons.size > 0} reasons=${[...this.confinementReasons].join(",")}`);
+         }
+@@ -962,6 +966,10 @@ export class HiveDaemon {
+       sandboxKvm: this.cfg.cellKvm,
+       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
+       sandboxProtectedPaths: [this.cfg.dataDir, this.cfg.accounts.homesDir],
++      onCredentialProjectionRefused: (beeId, generation) => {
++        if (store.currentRuntime(beeId)?.generation === generation) this.setCellAuthNeeded(beeId, "cell_access_only_required");
++      },
++      onCredentialProjection: (beeId, generation, sources) => this.recordCellCredentialProjection(beeId, generation, sources),
+       resolveSandboxGateway: (beeId, generation) => this.cellGateway(beeId, generation),
+       resolveSandboxHarnessHome: (beeId: string) => this.resolveCellSandboxHarnessHome(beeId),
+       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
+@@ -1389,7 +1397,18 @@ export class HiveDaemon {
+    * Logged once per (bee, code) transition.
+    */
+   private holdRuntimeStart(bee: BeeRow, account: AccountRow, commandId: number): boolean {
+-    const readiness = this.runtimeStartReadiness(account);
++    let readiness = this.runtimeStartReadiness(account);
++    if (readiness.ready && bee.substrate === "cell" && bee.agent === "codex" && sandboxEnabled(this.cfg.nodeKind, this.resolveCellSpec(bee.id).sandbox)) {
++      try {
++        if (!this.mustAccounts().authDeathMaterial(account)) throw new Error("authority material unavailable");
++        readAccessOnlyCodex(join(account.homePath, "auth.json"));
++        const mirror = join(account.homePath, ".codex", "auth.json");
++        if (existsSync(mirror)) readAccessOnlyCodex(mirror);
++      } catch {
++        readiness = { ready: false, code: "account_auth_needed", message: "Sandboxed Codex requires access-only credentials; human enrollment or renewed lease required" };
++        this.setCellAuthNeeded(bee.id, "cell_access_only_required");
++      }
++    }
+     const previous = this.runtimeStartHolds.get(bee.id);
+     if (readiness.ready) {
+       this.clearRuntimeStartAttention(bee.id);
+@@ -1480,6 +1499,7 @@ export class HiveDaemon {
+     try {
+       this.threadOperations?.tick();
+       this.performance.measureSync("daemon.tick.core", () => {
++        this.reconcileCellCredentials();
+         core.step();
+         this.quotaRecovery?.reconcile();
+         this.authResume?.reconcile();
+@@ -1597,6 +1617,86 @@ export class HiveDaemon {
+    * layer between the agent spec's args and the resume selector — see
+    * composeSpawn for the precedence.
+    */
++  private readonly cellCredentialDigests = new Map<string, Record<string,string>>();
++
++  private setCellAuthNeeded(beeId: string, detail: string): void {
++    const store = this.mustStore();
++    const active = store.activeFlags(beeId).find(flag => flag.flag === "auth_needed");
++    if (!active || active.detail.startsWith("cell_") && active.detail !== detail) store.setFlag(beeId,"auth_needed",detail);
++  }
++
++  private recordCellCredentialProjection(beeId: string, generation: number, sources: readonly {path: string; source: string}[]): void {
++    const store = this.mustStore(), accounts = this.mustAccounts(), bee = store.getBee(beeId);
++    const account = bee?.account ? store.getAccount(bee.account) : null;
++    if (!bee || !account || sources.length === 0) throw new Error("auth_needed: missing Cell credential projection");
++    const home = this.resolveCellSandboxHarnessHome(beeId)!;
++    const current = Object.fromEntries(["auth.json", ".codex/auth.json"].filter(path => existsSync(join(home.path,path))).map(path => [path,readAccessOnlyCodex(join(home.path,path))]));
++    const projected = Object.fromEntries(sources.map(file => [file.path,readAccessOnlyCodex(file.source)]));
++    if (Object.keys(projected).length !== Object.keys(current).length || Object.entries(projected).some(([path,raw]) => raw !== current[path])) throw new Error("auth_needed: Cell credential publication changed during projection");
++    const material = accounts.authDeathMaterial(account);
++    const authority = accounts.authorityFor(account)?.status(account);
++    const lease = account.source === "leased" ? knownAccountLease(account) : null;
++    const expiresAt = lease?.expiresAt != null ? lease.expiresAt * 1000 : authority?.expiresAt;
++    if (!material || !expiresAt || expiresAt <= (this.deps.cellCredentialNow ?? Date.now)()) throw new Error("auth_needed: access-only material requires a live authority or lease");
++    const digests = Object.fromEntries(Object.entries(projected).map(([path,raw]) => [path,createHash("sha256").update(raw).digest("hex")]));
++    store.recordCellCredentialProjection(beeId, generation, { material, revision: accounts.credentialRevision(account), account: account.id, agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId, controlFence: bee.authControlFence ?? 0, cellProjection: { digests, expiresAt, preparedAt: (this.deps.cellCredentialNow ?? Date.now)() } });
++    this.log(`cell.credentials.prepared bee=${beeId} gen=${generation} account=${account.id} material=${material.generation}`);
++  }
++
++  private reconcileCellCredentials(): void {
++    const store = this.mustStore();
++    this.cellCredentialDigests.clear();
++    const materials = new Map<string, ReturnType<AccountsService["authDeathMaterial"]>>();
++    for (const bee of store.listBees()) {
++      if (bee.substrate !== "cell" || bee.agent !== "codex") continue;
++      const account = bee.account ? store.getAccount(bee.account) : null;
++      if (account && !materials.has(account.id)) materials.set(account.id, this.mustAccounts().authDeathMaterial(account));
++      const runtime = store.currentRuntime(bee.id);
++      if (runtime && runtime.state !== "stopped") this.admitCellCredentialTurn(bee.id, runtime.generation, account ? materials.get(account.id) : null);
++    }
++  }
++
++  private admitCellCredentialTurn(beeId: string, generation: number, material?: ReturnType<AccountsService["authDeathMaterial"]>): boolean {
++    const store = this.mustStore(), bee = store.getBee(beeId);
++    if (!bee || bee.substrate !== "cell" || bee.agent !== "codex" || !sandboxEnabled(this.cfg.nodeKind, this.resolveCellSpec(beeId).sandbox)) return true;
++    const runtime = store.currentRuntime(beeId);
++    if (!runtime || runtime.generation !== generation || runtime.state === "stopped") return false;
++    const account = bee.account ? store.getAccount(bee.account) : null;
++    const admitted = runtime.credentialStamp;
++    if (!account) return false;
++    if (!admitted?.cellProjection) {
++      if (runtime.state === "booting") return false;
++      this.setCellAuthNeeded(beeId, "cell_projection_unknown: manual restart required");
++      return false;
++    }
++    const replacement = material === undefined ? this.mustAccounts().authDeathMaterial(account) : material;
++    const changed = replacement && (replacement.authorityInstanceId !== admitted.material.authorityInstanceId || replacement.scope !== admitted.material.scope || replacement.epoch !== admitted.material.epoch || replacement.generation > admitted.material.generation);
++    const expired = (this.deps.cellCredentialNow ?? Date.now)() >= admitted.cellProjection.expiresAt;
++    if (expired) this.setCellAuthNeeded(beeId, "cell_access_expired: renewed projection required; manual restart if renewal is unavailable");
++    const previous = store.latestCellCredentialReplacement(beeId,generation);
++    if (account.status === "paused" && (account.pausedBy ?? "operator") === "operator") {
++      if (!expired && (previous || changed)) this.setCellAuthNeeded(beeId,"cell_replacement_held: operator control");
++      return !expired;
++    }
++    if (previous && (previous.status === "queued" || previous.status === "running" || previous.status === "done" && previous.args.thenRevive === true)) return false;
++    if (previous?.status === "failed") { this.setCellAuthNeeded(beeId,"cell_replacement_failed: manual restart required"); return false; }
++    const commandKey = `cell-credentials:${beeId}:${generation}:${account.id}:${bee.authControlFence ?? 0}:${previous?.id ?? 0}`;
++    let changedBytes = false;
++    if (changed) {
++      try {
++        const digests = this.cellCredentialDigests.get(account.id) ?? Object.fromEntries(["auth.json", ".codex/auth.json"].filter(path => existsSync(join(account.homePath,path))).map(path => [path,createHash("sha256").update(readAccessOnlyCodex(join(account.homePath,path))).digest("hex")]));
++        this.cellCredentialDigests.set(account.id,digests);
++        changedBytes = Object.keys(digests).length !== Object.keys(admitted.cellProjection.digests).length || Object.entries(digests).some(([path,digest]) => digest !== admitted.cellProjection!.digests[path]);
++      } catch { return false; }
++    }
++    if (changed && changedBytes && !bee.activeMoveId && !bee.activeHandoffId && bee.lifecycle === "active") {
++      store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: "cell_credentials", cellCredentialFence: bee.authControlFence ?? 0, cellCredentialAccount: account.id, waitForIdle: true, thenRevive: true }, { idempotencyKey: commandKey });
++      return false;
++    }
++    if (expired) return false;
++    return true;
++  }
++
+   private stampRuntimeCredential(beeId: string, generation: number): void {
+     const store = this.store, accounts = this.accounts;
+     if (this.stopping || !store || !accounts) return;
+@@ -1715,7 +1815,7 @@ export class HiveDaemon {
+     };
+   }
+ 
+-  private resolveCellSandboxHarnessHome(beeId: string): { harness: string; path: string } | undefined {
++  private resolveCellSandboxHarnessHome(beeId: string): { harness: string; path: string; snapshotRoot?: string; liveDigests?: readonly string[] } | undefined {
+     const store = this.mustStore();
+     const bee = store.getBee(beeId);
+     if (!bee) throw new Error(`resolveCellSandboxHarnessHome: bee ${beeId} not found`);
+@@ -1726,7 +1826,17 @@ export class HiveDaemon {
+     const env = this.runtimeEnvOf(bee, spec, "sandbox");
+     const key = harness === "claude" ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME";
+     const path = env[key] ?? join(homedir(), harness === "claude" ? ".claude" : ".codex");
+-    return { harness, path };
++    if (harness === "codex") {
++      const account = bee.account ? store.getAccount(bee.account) : null;
++      if (!account || realpathSync(path) !== realpathSync(account.homePath)) throw new Error("auth_needed: Codex Cell must use its assigned account home");
++    }
++    const snapshotRoot = join(this.cfg.dataDir, "cell-access", createHash("sha256").update(bee.account ?? beeId).digest("hex"));
++    mkdirSync(join(this.cfg.dataDir, "cell-access"), { recursive: true, mode: 0o700 });
++    const liveDigests = store.beesOnAccount(bee.account ?? "").flatMap(row => {
++      const runtime = store.currentRuntime(row.id);
++      return runtime && runtime.state !== "stopped" ? Object.values(runtime.credentialStamp?.cellProjection?.digests ?? {}) : [];
++    });
++    return { harness, path, ...(harness === "codex" ? {snapshotRoot,liveDigests} : {}) };
+   }
+ 
+   private verifiedBeeTmp(beeId: string): { TMPDIR: string; NODE_COMPILE_CACHE: string } {
+@@ -6886,7 +6996,7 @@ export class HiveDaemon {
+     }
+     if (!seen.has(codec.primaryFile)) throw invalid();
+     let restored: AccountCredentialsRestoredResult | undefined;
+-    const installed = await this.mustAccounts().installLease(params as unknown as AccountLeaseInstallParams, account => { restored = this.rpcAccountCredentialsRestored({ id: account.id }); }, conn.ingress === "local_unix");
++    const installed = await this.mustAccounts().installLease(params as unknown as AccountLeaseInstallParams, account => { restored = this.rpcAccountCredentialsRestored({ id: account.id }); try { this.reconcileCellCredentials(); } catch { this.log("cell.credentials.reconcile_deferred"); } }, conn.ingress === "local_unix");
+     return { ...installed, account: restored!.account, restored: restored! };
+   }
+ 
+@@ -7220,6 +7330,7 @@ export class HiveDaemon {
+         this.authResume?.interrupted(ev);
+         if (account.harness === "claude" && !authorityInDoubt) accounts.scheduleClaudeRecovery(account.id);
+       } else {
++        store.authenticateCellCredentialProjection(bee.id, ev.generation);
+         store.quotaTurnSucceeded(bee.id, ev.generation);
+         this.authResume?.turnSucceeded(bee.id);
+         if (account.status === "auth_needed" && !authorityInDoubt) {
+@@ -7320,6 +7431,7 @@ export class HiveDaemon {
+   }
+ 
+   private admitProviderTurn(beeId: string, generation: number): boolean {
++    if (!this.admitCellCredentialTurn(beeId, generation)) return false;
+     const store = this.mustStore();
+     const bee = store.getBee(beeId);
+     if (!bee?.account || bee.activeMoveId || bee.activeHandoffId || !this.accounts || autoswapDisabled(bee) || bee.agent !== "claude" && bee.agent !== "codex") return true;
+diff --git a/v2/daemon/tests/cell-credential-refresh.test.ts b/v2/daemon/tests/cell-credential-refresh.test.ts
+new file mode 100644
+index 00000000..2c7c9b6b
+--- /dev/null
++++ b/v2/daemon/tests/cell-credential-refresh.test.ts
+@@ -0,0 +1,163 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
++import { join, resolve } from "node:path";
++import { createHash } from "node:crypto";
++import { spawnSync } from "node:child_process";
++import { openCoreStore } from "../../core/src/index.ts";
++import { prepareSandboxHarnessHome } from "../../driver-cell/src/harnessHome.ts";
++import { DaemonCore } from "../src/loops.ts";
++import { FakeDriver } from "./helpers.ts";
++import { HiveDaemon } from "../src/daemon.ts";
++import { loadNodeConfig } from "../src/config.ts";
++
++function fixture(t: import("node:test").TestContext) {
++  mkdirSync(resolve(".cache/t11g-trash"), {recursive:true});
++  const root = mkdtempSync(resolve(".cache/hb-refresh-"));
++  const store = openCoreStore(join(root,"core.sqlite"), {now:()=>1000, ephemeral:true});
++  t.after(()=> {store.close(); const r=spawnSync("trash",["--trash-dir",resolve(".cache/t11g-trash"),root],{encoding:"utf8"});assert.equal(r.status,0,r.stderr);});
++  let clock=1000;
++  const daemon = new HiveDaemon({...loadNodeConfig(root),nodeKind:"satellite"},{cellCredentialNow:()=>clock});
++  const internal = daemon as any;
++  internal.store=store; internal.resolveCellSpec=()=>({sandbox:true});
++  let material={kind:"lease",scope:"studio:share",epoch:1,generation:1,authorityInstanceId:"studio"};
++  internal.accounts={authDeathMaterial:()=>material};
++  let raw=JSON.stringify({tokens:{access_token:"synthetic-1",refresh_token:""}});
++  writeFileSync(join(root,"auth.json"),raw);
++  const home=join(root,"home");mkdirSync(home);writeFileSync(join(home,"auth.json"),raw);
++  const account=store.createAccount({id:"codex-fixture",harness:"codex",label:"fixture",homePath:home});
++  internal.resolveCellSandboxHarnessHome=()=>({harness:"codex",path:home});
++  internal.accounts.credentialRevision=()=>"synthetic";
++  internal.accounts.authorityFor=()=>({status:()=>({expiresAt:3_601_000})});
++  function bee(name:string,expiry=3_601_000) {
++    const {bee}=store.createBee({name,agent:"codex",substrate:"cell",account:account.id,cwd:root});
++    store.recordCellCredentialProjection(bee.id,1,{material:{...material,kind:"lease"},revision:"synthetic",account:account.id,agent:"codex",cwd:root,cellId:null,controlFence:0,cellProjection:{digests:{"auth.json":createHash("sha256").update(raw).digest("hex")},expiresAt:expiry,preparedAt:1000}});
++    store.updateRuntimeState(bee.id,1,"running");
++    return bee.id;
++  }
++  return {store,internal,bee,advance:(at:number)=>{clock=at;},renew:(unchanged=false)=>{material={...material,generation:material.generation+1}; if(!unchanged) {raw=JSON.stringify({tokens:{access_token:`synthetic-${material.generation}`,refresh_token:""}});writeFileSync(join(home,"auth.json"),raw);}}};
++}
++
++test("lease publication queues one replacement per Bee, waits for a safe boundary and preserves mail", t=>{
++  const r=fixture(t), first=r.bee("first"),second=r.bee("second");
++  r.store.send(first,"durable mail");
++  assert.equal(r.internal.admitCellCredentialTurn(first,1),true);
++  r.renew(); r.internal.reconcileCellCredentials(); r.internal.reconcileCellCredentials();
++  const stops=r.store.listCommands().filter(c=>c.verb==="stop");
++  assert.equal(stops.length,2);
++  assert.ok(stops.every(c=>c.args.waitForIdle===true && c.args.thenRevive===true && c.targetGeneration===1));
++  assert.equal(r.store.claimNextCommand(),null);
++  assert.equal(r.store.undeliveredMessages(first).length,1);
++  r.store.updateRuntimeState(first,1,"idle");
++  const stop=r.store.claimNextCommand(); assert.equal(stop?.beeId,first); assert.equal(stop?.verb,"stop");
++  assert.equal(r.store.currentRuntime(second)?.state,"running");
++  const before=r.store.lastAuditSeq();r.internal.reconcileCellCredentials();assert.equal(r.store.lastAuditSeq(),before);
++});
++
++test("unchanged material does not churn; expiry and unknown projections are visible auth_needed",t=>{
++  const r=fixture(t), id=r.bee("expired",999);
++  assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
++  const seq = r.store.lastAuditSeq();
++  for(let i=0;i<3;i++) assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
++  assert.equal(r.store.lastAuditSeq(),seq);
++  assert.equal(r.store.listCommands().filter(c=>c.verb==="stop").length,0);
++  assert.ok(r.store.activeFlags(id).some(f=>f.flag==="auth_needed"));
++  r.renew(true);r.internal.admitCellCredentialTurn(id,1);
++  assert.equal(r.store.listCommands().filter(c=>c.verb==="stop").length,0);
++  r.renew();assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
++  assert.equal(r.store.claimNextCommand(),null);
++  assert.equal(r.store.currentRuntime(id)?.state,"running");
++  assert.equal(r.internal.admitCellCredentialTurn(id,2),false);
++});
++
++test("projection and authentication receipts are generation-fenced and survive store reads",t=>{
++  const r=fixture(t), id=r.bee("receipt");
++  r.store.authenticateCellCredentialProjection(id,2);
++  assert.equal(r.store.currentRuntime(id)?.credentialStamp?.cellProjection?.authenticatedAt,undefined);
++  r.store.mountCellCredentialProjection(id,1);
++  r.store.authenticateCellCredentialProjection(id,1);
++  assert.equal(r.store.currentRuntime(id)?.credentialStamp?.cellProjection?.authenticatedAt,1000);
++  const before=r.store.lastAuditSeq();r.store.authenticateCellCredentialProjection(id,1);assert.equal(r.store.lastAuditSeq(),before);
++  assert.throws(()=>r.store.recordCellCredentialProjection(id,2,r.store.currentRuntime(id)!.credentialStamp!));
++});
++
++
++test("async boot window is quiet and operator control cancels a queued refresh",t=>{
++  const r=fixture(t);
++  const account=r.store.listAccounts()[0]!;
++  const {bee}=r.store.createBee({name:"boot-window",agent:"codex",substrate:"cell",account:account.id,cwd:account.homePath});
++  const seq=r.store.lastAuditSeq();assert.equal(r.internal.admitCellCredentialTurn(bee.id,1),false);assert.equal(r.store.lastAuditSeq(),seq);
++  assert.equal(r.store.activeFlags(bee.id).length,0);
++  const id=r.bee("operator");r.renew();r.internal.reconcileCellCredentials();
++  r.store.enqueueCommand("stop",id,{cause:"stopped_by_user"});
++  r.store.updateRuntimeState(id,1,"idle");
++  const command=r.store.claimNextCommand();assert.equal(command?.args.cause,"stopped_by_user");
++  assert.equal(r.store.hasStopThenReviveRequest(id,1),false);
++});
++
++
++test("real input projection records the boot receipt and clears only Cell-owned attention",t=>{
++  const r=fixture(t), account=r.store.listAccounts()[0]!;
++  const cell=join(account.homePath,"..","cell");mkdirSync(cell);
++  const {bee}=r.store.createBee({name:"real-projection",agent:"codex",substrate:"cell",account:account.id,cwd:cell});
++  assert.equal(r.internal.admitCellCredentialTurn(bee.id,1),false);
++  const projection=prepareSandboxHarnessHome(cell,"codex",account.homePath);
++  r.store.setFlag(bee.id,"auth_needed","cell_projection_unknown: old receipt");
++  const sources=projection.files.filter(file=>file.credentialPath!==undefined).map(file=>({path:file.credentialPath!,source:file.source}));
++  r.internal.recordCellCredentialProjection(bee.id,1,sources);
++  assert.ok(r.store.currentRuntime(bee.id)?.credentialStamp?.cellProjection?.digests["auth.json"]);
++  assert.equal(r.store.activeFlags(bee.id).length,0);
++  r.store.setFlag(bee.id,"auth_needed","operator login required");
++  r.internal.recordCellCredentialProjection(bee.id,1,sources);
++  assert.equal(r.store.activeFlags(bee.id)[0]?.detail,"operator login required");
++});
++
++
++test("safe boundary replacement reaches exactly one successor and keeps the pending mailbox",t=>{
++  const r=fixture(t), id=r.bee("successor");
++  r.store.send(id,"pending original");r.renew();r.internal.reconcileCellCredentials();
++  const driver=new FakeDriver(()=>1000);driver.autoBoot=false;
++  const core=new DaemonCore({store:r.store,driver,policy:{commandsPerStep:8,bootHangTimeoutSteps:50},now:()=>1000,log:()=>{}});
++  core.step();assert.equal(driver.starts.length,0);assert.equal(r.store.currentRuntime(id)?.generation,1);
++  r.store.updateRuntimeState(id,1,"idle");
++  for(let i=0;i<4;i++) core.step();
++  assert.equal(r.store.currentRuntime(id)?.generation,2);assert.equal(driver.starts.length,1);
++  assert.equal(r.store.undeliveredMessages(id).length,1);
++});
++
++
++test("mooted refresh intent can be replaced without silently wedging the runtime",t=>{
++  const r=fixture(t),id=r.bee("mooted");r.renew();r.internal.reconcileCellCredentials();
++  const first=r.store.listCommands().find(c=>c.args.reason==="cell_credentials")!;
++  r.store.cancelAuthDeathRecovery(id);r.store.updateRuntimeState(id,1,"idle");
++  assert.equal(r.store.claimNextCommand(),null);
++  assert.equal(r.store.getCommand(first.id)?.args.thenRevive,false);
++  assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
++  const replacements=r.store.listCommands().filter(c=>c.args.reason==="cell_credentials");
++  assert.equal(replacements.length,2);assert.equal(replacements[1]?.status,"queued");
++  assert.notEqual(replacements[0]?.idempotencyKey,replacements[1]?.idempotencyKey);
++});
++
++test("Cell expiry preserves a genuine harness authentication failure",t=>{
++  const r=fixture(t),id=r.bee("real-auth-failure",999);
++  r.store.setFlag(id,"auth_needed","Provider rejected synthetic fixture");
++  const seq=r.store.lastAuditSeq();
++  r.internal.admitCellCredentialTurn(id,1);r.internal.admitCellCredentialTurn(id,1);
++  assert.equal(r.store.lastAuditSeq(),seq);
++  assert.equal(r.store.activeFlags(id)[0]?.detail,"Provider rejected synthetic fixture");
++});
++
++
++test("operator parking holds replacement without stopping a running Cell",t=>{
++  const r=fixture(t),id=r.bee("parked");r.renew();r.internal.reconcileCellCredentials();
++  r.store.pauseAccount(r.store.listAccounts()[0]!.id,{by:"operator",owner:null});
++  r.store.updateRuntimeState(id,1,"idle");assert.equal(r.store.claimNextCommand(),null);
++  r.store.updateRuntimeState(id,1,"running");
++  assert.equal(r.internal.admitCellCredentialTurn(id,1),true);
++  assert.equal(r.store.listCommands().filter(c=>c.verb==="stop" && c.status==="queued").length,0);
++  assert.equal(r.store.activeFlags(id)[0]?.detail,"cell_replacement_held: operator control");
++  assert.equal(r.store.currentRuntime(id)?.state,"running");
++  r.advance(3_601_000);assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
++  assert.match(r.store.activeFlags(id)[0]!.detail,/cell_access_expired/);
++  assert.equal(r.store.currentRuntime(id)?.state,"running");
++});
+diff --git a/v2/daemon/tests/codex-central-credentials.test.ts b/v2/daemon/tests/codex-central-credentials.test.ts
+index bc5d46d6..818ca451 100644
+--- a/v2/daemon/tests/codex-central-credentials.test.ts
++++ b/v2/daemon/tests/codex-central-credentials.test.ts
+@@ -4,13 +4,14 @@ import { fileURLToPath } from "node:url";
+ import { test } from "node:test";
+ import assert from "node:assert/strict";
+ import { createServer } from "node:http";
+-import { randomUUID } from "node:crypto";
++import { createHmac, randomUUID } from "node:crypto";
+ import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+ import { join } from "node:path";
+ import type { AddressInfo } from "node:net";
+ import { makeDaemonDir, startDaemon, waitFor, sleep, type DaemonHandle } from "./helpers.ts";
+ import type { AccountCredentialAuthority } from "../../core/src/index.ts";
+ import type { RpcClient } from "../../cli/src/client.ts";
++import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
+ import { RpcError } from "../src/protocol.ts";
+ import { CODEX_OAUTH_CLIENT_ID, readCodexCredentialCopy } from "../src/codexCredentialAuthority.ts";
+ 
+@@ -22,8 +23,20 @@ function files(root: string): string[] {
+   return readdirSync(root, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(join(root, entry.name)) : entry.isFile() ? [join(root, entry.name)] : []);
+ }
+ 
++async function fixtureOperatorClient(daemon: DaemonHandle): Promise<RpcClient> {
++  const client = await daemon.client();
++  const health = await client.request<{confinement?: {strict:boolean}}>("health",{});
++  assert.equal(health.confinement?.strict,false,"explicit sandboxed satellite fixture is non-strict");
++  const challenge = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge",{});
++  const secret = readFileSync(join(daemon.dir,"rpc-private","registration.key"));
++  const token = createHmac("sha256",secret).update(localTrustMessage(challenge)).digest("hex");
++  secret.fill(0);
++  await client.request("rpc.localTrust.register",{pid:process.pid,challengeId:challenge.challengeId,token});
++  return client;
++}
++
+ test("central Codex: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native", async () => {
+-  const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0, centralRefreshMinIntervalMs: 1800, centralRefreshRetryBaseMs: 100 } });
++  const { dir, cleanup } = makeDaemonDir({ nodeKind: "satellite", cells: {sandbox:true}, accounts: { centralRefreshAheadMs: 0, centralRefreshMinIntervalMs: 1800, centralRefreshRetryBaseMs: 100 } });
+   const id = "codex-test-example.com";
+   const secrets: string[] = [];
+   const requests: string[] = [];
+@@ -75,10 +88,11 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
+     chmodSync(binary, 0o700);
+     const cfgPath = join(dir, "config.json");
+     const config = JSON.parse(readFileSync(cfgPath, "utf8"));
++    config.rpcLocalTrust = {requireObservationCaller:true,registrationKeyFile:join(dir,"rpc-private","registration.key")};
+     config.agents.codex = { command: binary, adapter: "codex" };
+     writeFileSync(cfgPath, JSON.stringify(config));
+     daemon = await startDaemon(dir, { env: { HIVE_CODEX_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, CODEX_HOME: join(dir, "unused") } });
+-    client = await daemon.client();
++    client = await fixtureOperatorClient(daemon);
+     const rpcResults: unknown[] = [];
+     const cli = async (action: string, key?: string, account = id): Promise<AccountCredentialAuthority> => {
+       const { stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)),
+@@ -171,7 +185,7 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
+     config.accounts.centralRefreshAheadMs = 3_600_000;
+     writeFileSync(cfgPath, JSON.stringify(config));
+     daemon = await startDaemon(dir, { env: { HIVE_CODEX_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, CODEX_HOME: join(dir, "unused") } });
+-    client = await daemon.client();
++    client = await fixtureOperatorClient(daemon);
+     console.log("automatic early refresh enabled after exact explicit-refresh counts; daemon restarted with the same store");
+     const early = await waitFor(async () => {
+       const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
+@@ -226,7 +240,7 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
+ });
+ 
+ test("central Codex review: running-bee ownership fence, bad access preserves rotation, disable/login/enable recovers", async () => {
+-  const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0, centralRefreshRetryBaseMs: 10_000 } });
++  const { dir, cleanup } = makeDaemonDir({ nodeKind: "satellite", cells: {sandbox:true}, accounts: { centralRefreshAheadMs: 0, centralRefreshRetryBaseMs: 10_000 } });
+   const id = "codex-review-example.com";
+   let expected = randomUUID();
+   const refreshes: string[] = [];
+@@ -261,10 +275,11 @@ test("central Codex review: running-bee ownership fence, bad access preserves ro
+     chmodSync(binary, 0o700);
+     const cfgPath = join(dir, "config.json");
+     const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
++    cfg.rpcLocalTrust = {requireObservationCaller:true,registrationKeyFile:join(dir,"rpc-private","registration.key")};
+     cfg.agents.codex = { command: process.execPath, args: [binary, "app-server"], adapter: "codex", login: { command: binary, args: ["login"] } };
+     writeFileSync(cfgPath, JSON.stringify(cfg));
+     daemon = await startDaemon(dir, { env: { HIVE_CODEX_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, CODEX_HOME: join(dir, "unused"), HIVE_GATEWAYS_DISABLE: "1" } });
+-    client = await daemon.client();
++    client = await fixtureOperatorClient(daemon);
+     await client.request("account.add", { harness: "codex", label: "review-example.com", importExisting: true });
+     const bee = await client.request<{ beeId: string }>("spawn", { name: "review", agent: "codex", cwd: dir, account: id, tags: ["autoswap=false"] });
+     await waitFor(async () => {
+diff --git a/v2/driver-cell/src/codexAccess.ts b/v2/driver-cell/src/codexAccess.ts
+new file mode 100644
+index 00000000..47003d00
+--- /dev/null
++++ b/v2/driver-cell/src/codexAccess.ts
+@@ -0,0 +1,69 @@
++import { createHash } from "node:crypto";
++import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
++import { join } from "node:path";
++
++export class CellCredentialRefusal extends Error {
++  readonly code = "account_auth_needed";
++  constructor(snapshotName?: string) { super("auth_needed: sandboxed Codex requires access-only credentials; enroll native accounts through the human operator" + (snapshotName ? `; invalid snapshot metadata: ${snapshotName}` : "")); }
++}
++
++export function accessOnlyCodexDocument(raw: string): string {
++  try {
++    if (Buffer.byteLength(raw) > 65_536) throw new Error();
++    const doc = JSON.parse(raw);
++    if (!doc || typeof doc !== "object" || Array.isArray(doc)) throw new Error();
++    if (Object.keys(doc).some(key => !["auth_mode", "tokens", "last_refresh", "OPENAI_API_KEY"].includes(key))) throw new Error();
++    if (doc.OPENAI_API_KEY != null || doc.auth_mode !== undefined && doc.auth_mode !== "chatgpt") throw new Error();
++    const tokens = doc.tokens;
++    if (!tokens || typeof tokens !== "object" || Array.isArray(tokens)) throw new Error();
++    if (tokens.refresh_token !== "" || typeof tokens.access_token !== "string" || !tokens.access_token) throw new Error();
++    if (Object.keys(tokens).some(key => !["access_token", "id_token", "account_id", "refresh_token"].includes(key))) throw new Error();
++    if (Object.values(tokens).some(value => typeof value !== "string")) throw new Error();
++    if (doc.last_refresh !== undefined && typeof doc.last_refresh !== "string") throw new Error();
++    return JSON.stringify(doc);
++  } catch { throw new CellCredentialRefusal(); }
++}
++
++export function readAccessOnlyCodex(path: string): string {
++  let fd: number | undefined;
++  try {
++    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
++    const before = fstatSync(fd);
++    if (!before.isFile() || before.size > 65_536) throw new Error();
++    const bytes = Buffer.alloc(65_537);
++    let count = 0;
++    while (count < bytes.length) { const read = readSync(fd, bytes, count, bytes.length - count, null); if (!read) break; count += read; }
++    if (count > 65_536) throw new Error();
++    const raw = bytes.subarray(0, count).toString("utf8");
++    const after = fstatSync(fd);
++    if (before.ino !== after.ino || before.dev !== after.dev || before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) throw new Error();
++    return accessOnlyCodexDocument(raw);
++  } catch { throw new CellCredentialRefusal(); }
++  finally { if (fd !== undefined) closeSync(fd); }
++}
++
++export function snapshotAccessOnlyCodex(sourceHome: string, source: string, snapshotRoot?: string, liveDigests: readonly string[] = []): string {
++  const raw = readAccessOnlyCodex(source);
++  const root = snapshotRoot ?? join(sourceHome, ".honeybee-cell-access");
++  try { mkdirSync(root, { mode: 0o700 }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw new CellCredentialRefusal(); }
++  const info = lstatSync(root);
++  if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.geteuid?.() || (info.mode & 0o077) !== 0) throw new CellCredentialRefusal();
++  const target = join(root, `${createHash("sha256").update(raw).digest("hex")}.json`);
++  const retained = new Set([...liveDigests, createHash("sha256").update(raw).digest("hex")]);
++  const snapshots = readdirSync(root).filter(name => /^[a-f0-9]{64}\.json$/.test(name)).map(name => ({name, info:lstatSync(join(root,name))}));
++  snapshots.sort((a,b) => b.info.mtimeMs-a.info.mtimeMs || a.name.localeCompare(b.name));
++  for (const snapshot of snapshots.slice(8)) {
++    if (retained.has(snapshot.name.slice(0,-5))) continue;
++    if (!snapshot.info.isFile() || snapshot.info.isSymbolicLink() || snapshot.info.uid !== process.geteuid?.() || (snapshot.info.mode & 0o222) !== 0) throw new CellCredentialRefusal(snapshot.name);
++    unlinkSync(join(root,snapshot.name));
++  }
++  let fd: number | undefined;
++  try {
++    fd = openSync(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o400);
++    writeFileSync(fd, raw);
++  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw new CellCredentialRefusal(); }
++  finally { if (fd !== undefined) closeSync(fd); }
++  const pinned = lstatSync(target);
++  if (!pinned.isFile() || pinned.isSymbolicLink() || pinned.uid !== process.geteuid?.() || (pinned.mode & 0o222) !== 0 || readAccessOnlyCodex(target) !== raw) throw new CellCredentialRefusal();
++  return target;
++}
+diff --git a/v2/driver-cell/src/driver.ts b/v2/driver-cell/src/driver.ts
+index 7b368a0b..50008198 100644
+--- a/v2/driver-cell/src/driver.ts
++++ b/v2/driver-cell/src/driver.ts
+@@ -85,7 +85,9 @@ export interface CellDriverConfig {
+   sandboxKvm?: boolean;
+   sandboxProtectedPaths?: readonly string[];
+   resolveSandboxGateway?(beeId: string, generation: number): { socketPath: string };
+-  resolveSandboxHarnessHome?(beeId: string): { harness: string; path: string } | undefined;
++  onCredentialProjectionRefused?(beeId: string, generation: number): void;
++  onCredentialProjection?(beeId: string, generation: number, sources: readonly {path: string; source: string}[]): void;
++  resolveSandboxHarnessHome?(beeId: string): { harness: string; path: string; snapshotRoot?: string; liveDigests?: readonly string[] } | undefined;
+   /**
+    * Additional authoritative paths for this bee. Callers must derive these
+    * from trusted state, never from the harness spawn environment.
+@@ -797,11 +799,13 @@ export class CellDriver implements RuntimeDriver {
+       });
+       this.sandboxTmp.track(beeId, generation ?? null);
+     }
+-    const wrapped = wrapWithSandbox(
++    let wrapped: ReturnType<typeof wrapWithSandbox>;
++    try { wrapped = wrapWithSandbox(
+       {
+         cellDir: cell.paths.wrapperDir,
+         protectedPaths: this.cfg.sandboxProtectedPaths,
+         gatewaySocketPath: gateway?.socketPath,
++        onCredentialProjection: sources => { if (generation !== undefined) this.cfg.onCredentialProjection?.(beeId, generation, sources); },
+         log: this.cfg.log,
+         ...(harnessHome ? { harnessHome: { ...harnessHome, cwd: cell.paths.spaceDir } } : {}),
+         kvm: this.cfg.sandboxKvm,
+@@ -815,6 +819,10 @@ export class CellDriver implements RuntimeDriver {
+       harness.args,
+       cell.paths.sandboxProfilePath,
+     );
++    } catch (error) {
++      if (generation !== undefined && error instanceof Error && (error.message.startsWith("auth_needed:") || (error as Error & { code?: string }).code === "account_auth_needed")) this.cfg.onCredentialProjectionRefused?.(beeId, generation);
++      throw error;
++    }
+     if (wrapped.profile != null) writeFileSync(cell.paths.sandboxProfilePath, wrapped.profile);
+     return {
+       adapter: harness.adapter,
+diff --git a/v2/driver-cell/src/harnessHome.ts b/v2/driver-cell/src/harnessHome.ts
+index 0894fa93..deee2a2c 100644
+--- a/v2/driver-cell/src/harnessHome.ts
++++ b/v2/driver-cell/src/harnessHome.ts
+@@ -1,6 +1,8 @@
+ import { closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, realpathSync } from "node:fs";
+ import { isAbsolute, join, relative, sep } from "node:path";
+ 
++import { readAccessOnlyCodex, snapshotAccessOnlyCodex } from "./codexAccess.ts";
++
+ export const SANDBOX_HARNESS_INPUTS: Readonly<Record<string, readonly { path: string; why: string }[]>> = {
+   codex: [
+     { path: "auth.json", why: "Existing account authentication, read only" },
+@@ -24,7 +26,7 @@ export const SANDBOX_HARNESS_INPUTS: Readonly<Record<string, readonly { path: st
+ export interface SandboxHarnessProjection {
+   home: string;
+   sourceHome: string;
+-  files: readonly { source: string; destination: string }[];
++  files: readonly { source: string; destination: string; credentialPath?: string }[];
+ }
+ 
+ export function ensureCellPrivateDirectory(cellDir: string, path: string): void {
+@@ -54,17 +56,20 @@ export function privateHarnessHomePath(cellDir: string, harness: string): string
+   return join(cellDir, "sandbox-state", harness);
+ }
+ 
+-export function prepareSandboxHarnessHome(cellDir: string, harness: string, sourceHome: string): SandboxHarnessProjection {
++export function prepareSandboxHarnessHome(cellDir: string, harness: string, sourceHome: string, snapshotRoot?: string, liveDigests?: readonly string[]): SandboxHarnessProjection {
+   if (!isAbsolute(sourceHome)) throw new Error("cell sandbox: account home must be absolute");
+   const root = realpathSync(sourceHome);
+-  const rel = relative(root, realpathSync(cellDir));
++  const canonicalCell = realpathSync(cellDir);
++  if (root === canonicalCell || root.startsWith(`${canonicalCell}${sep}`)) throw new Error("cell sandbox: account home is Cell-controlled");
++  const rel = relative(root, canonicalCell);
+   if (rel === "" || rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)) throw new Error("cell sandbox: account home contains the Cell");
+   const rootInfo = lstatSync(sourceHome);
+   if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error("cell sandbox: account home must be a real directory");
+   ensureCellPrivateDirectory(cellDir, join(cellDir, "sandbox-state"));
+   const home = privateHarnessHomePath(cellDir, harness);
+   ensureCellPrivateDirectory(cellDir, home);
+-  const files: { source: string; destination: string }[] = [];
++  if (harness === "codex") readAccessOnlyCodex(join(root, "auth.json"));
++  const files: { source: string; destination: string; credentialPath?: string }[] = [];
+   const walk = (relativePath: string, depth: number): void => {
+     if (depth > 16 || files.length >= 4096) throw new Error("cell sandbox: account input projection exceeds its limit");
+     const source = join(root, relativePath), destination = join(home, relativePath);
+@@ -78,7 +83,8 @@ export function prepareSandboxHarnessHome(cellDir: string, harness: string, sour
+       for (const entry of readdirSync(source).sort()) if (!entry.startsWith(".")) walk(join(relativePath, entry), depth + 1);
+     } else if (info.isFile()) {
+       if (existing && !existing.isFile()) throw new Error(`cell sandbox: private input type mismatch: ${destination}`);
+-      files.push({ source, destination });
++      const credential = harness === "codex" && (relativePath === "auth.json" || relativePath === ".codex/auth.json");
++      files.push({ source: credential ? snapshotAccessOnlyCodex(root, source, snapshotRoot, liveDigests) : source, destination, ...(credential ? {credentialPath: relativePath} : {}) });
+     } else throw new Error(`cell sandbox: non-file account input refused: ${source}`);
+   };
+   for (const input of SANDBOX_HARNESS_INPUTS[harness] ?? []) {
+diff --git a/v2/driver-cell/src/index.ts b/v2/driver-cell/src/index.ts
+index 73c81860..1af7424a 100644
+--- a/v2/driver-cell/src/index.ts
++++ b/v2/driver-cell/src/index.ts
+@@ -181,3 +181,5 @@ export {
+ } from "./gitImage.ts";
+ 
+ export { prepareSandboxHarnessHome, privateHarnessHomePath, SANDBOX_HARNESS_INPUTS } from "./harnessHome.ts";
++
++export { CellCredentialRefusal, accessOnlyCodexDocument, readAccessOnlyCodex } from "./codexAccess.ts";
+diff --git a/v2/driver-cell/src/sandbox.ts b/v2/driver-cell/src/sandbox.ts
+index a08e60fd..3e7b3f4d 100644
+--- a/v2/driver-cell/src/sandbox.ts
++++ b/v2/driver-cell/src/sandbox.ts
+@@ -46,7 +46,8 @@ export interface SandboxPolicy {
+   gatewaySocketPath?: string;
+   homePaths?: readonly string[];
+   log?: (line: string) => void;
+-  harnessHome?: { harness: string; path: string; cwd: string };
++  harnessHome?: { harness: string; path: string; cwd: string; snapshotRoot?: string; liveDigests?: readonly string[] };
++  onCredentialProjection?: (sources: readonly {path: string; source: string}[]) => void;
+ }
+ 
+ export const DEFAULT_SANDBOX_TMPFS_BYTES = 1024 * 1024 * 1024;
+@@ -403,7 +404,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
+   if ((policy.scratchPaths ?? []).some(path => !["/tmp", "/var/tmp", "/dev"].includes(path))) {
+     throw new Error("cell sandbox: only Cell-owned writable paths are supported");
+   }
+-  const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path) : undefined;
++  const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path, policy.harnessHome.snapshotRoot, policy.harnessHome.liveDigests) : undefined;
+   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
+   const homes = [...new Set([homedir(), userInfo().homedir, ...(policy.homePaths ?? [])].map(path => realpathSync(path)))];
+   const toolchain = sandboxToolchainRoot(process.execPath, policy.log);
+@@ -420,6 +421,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
+   ];
+   if (policy.kvm) out.push("--dev-bind", "/dev/kvm", "/dev/kvm");
+   if (projection) {
++    if (policy.harnessHome?.harness === "codex") policy.onCredentialProjection?.(projection.files.filter(file => file.credentialPath !== undefined).map(file => ({path: file.credentialPath!, source: file.source})));
+     for (const file of projection.files) out.push("--ro-bind", file.source, file.destination);
+     out.push("--setenv", policy.harnessHome!.harness === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR", projection.home);
+   }
+diff --git a/v2/driver-cell/tests/codex-access.test.ts b/v2/driver-cell/tests/codex-access.test.ts
+new file mode 100644
+index 00000000..3259354e
+--- /dev/null
++++ b/v2/driver-cell/tests/codex-access.test.ts
+@@ -0,0 +1,56 @@
++import assert from "node:assert/strict";
++import { test } from "node:test";
++import { mkdtempSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
++import { join, resolve } from "node:path";
++import { spawnSync } from "node:child_process";
++import { accessOnlyCodexDocument, readAccessOnlyCodex, snapshotAccessOnlyCodex } from "../src/codexAccess.ts";
++import { prepareSandboxHarnessHome } from "../src/harnessHome.ts";
++
++const document = (access = "synthetic-access", refresh = "") => JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: access, refresh_token: refresh, id_token: "synthetic-id", account_id: "synthetic-account" } });
++
++test("Codex projection accepts only bounded explicit access-only documents", () => {
++  assert.equal(accessOnlyCodexDocument(document()), document());
++  for (const raw of [document("a", "synthetic-refresh"), "{}", "null", "[]", "bad", JSON.stringify({tokens:{access_token:"a"}}), JSON.stringify({tokens:{access_token:"a",refresh_token:null}}), JSON.stringify({tokens:{access_token:"a",refresh_token:"",unknown:"secret"}}), JSON.stringify({OPENAI_API_KEY:"synthetic-key",tokens:{access_token:"a",refresh_token:""}}), document("a".repeat(70_000))]) {
++    assert.throws(() => accessOnlyCodexDocument(raw), error => (error as {code:string}).code === "account_auth_needed");
++  }
++});
++
++test("Codex projection snapshots validated bytes and refuses mirrors, symlinks and non-files", t => {
++  mkdirSync(resolve(".cache"), { recursive: true });
++  mkdirSync(resolve(".cache/t11g-trash"), { recursive: true });
++  const root = mkdtempSync(resolve(".cache/hb-access-only-"));
++  t.after(() => { const result = spawnSync("trash", ["--trash-dir", resolve(".cache/t11g-trash"), root], {encoding:"utf8"}); assert.equal(result.status, 0, result.stderr); });
++  const home = join(root,"home"), cell = join(root,"cell");
++  mkdirSync(home); mkdirSync(cell); mkdirSync(join(home,".codex"));
++  const primary = join(home,"auth.json"), mirror = join(home,".codex/auth.json");
++  writeFileSync(primary,document()); writeFileSync(mirror,document());
++  const projection = prepareSandboxHarnessHome(cell,"codex",home);
++  assert.equal(projection.files.length,2);
++  for (const file of projection.files) assert.equal(readFileSync(file.source,"utf8"),document());
++  const staged = snapshotAccessOnlyCodex(home,primary);
++  const replacement = join(home,"next"); writeFileSync(replacement,document("new-access")); renameSync(replacement,primary);
++  assert.equal(readFileSync(staged,"utf8"),document());
++  assert.notEqual(snapshotAccessOnlyCodex(home,primary),staged);
++  writeFileSync(mirror,document("a","synthetic-refresh"));
++  assert.throws(() => prepareSandboxHarnessHome(cell,"codex",home), /auth_needed/);
++  const linked = join(home,"linked"); symlinkSync(primary,linked);
++  assert.throws(() => readAccessOnlyCodex(linked), /auth_needed/);
++  assert.throws(() => readAccessOnlyCodex(home), /auth_needed/);
++  const fifo = join(home,"fifo"); assert.equal(spawnSync("mkfifo",[fifo]).status,0);
++  assert.throws(() => readAccessOnlyCodex(fifo), /auth_needed/);
++  const nested = join(cell,"account"); mkdirSync(nested); writeFileSync(join(nested,"auth.json"),document());
++  assert.throws(() => prepareSandboxHarnessHome(cell,"codex",nested), /Cell-controlled/);
++});
++
++
++test("snapshot maintenance retains live digests across more than 128 publications",t=>{
++  mkdirSync(resolve(".cache/t11g-trash"),{recursive:true});
++  const root=mkdtempSync(resolve(".cache/hb-snapshot-gc-"));
++  t.after(()=>{const r=spawnSync("trash",["--trash-dir",resolve(".cache/t11g-trash"),root],{encoding:"utf8"});assert.equal(r.status,0,r.stderr);});
++  const source=join(root,"auth.json");writeFileSync(source,document("pinned"));
++  const pinned=snapshotAccessOnlyCodex(root,source);
++  const digest=pinned.split("/").at(-1)!.slice(0,-5);
++  for(let i=0;i<129;i++) {writeFileSync(source,document(`synthetic-${i}`));snapshotAccessOnlyCodex(root,source,undefined,[digest]);}
++  assert.equal(readFileSync(pinned,"utf8"),document("pinned"));
++  assert.ok(readdirSync(join(root,".honeybee-cell-access")).length<=10);
++});
+diff --git a/v2/driver-cell/tests/driver.test.ts b/v2/driver-cell/tests/driver.test.ts
+index 846dc3e2..7521e5aa 100644
+--- a/v2/driver-cell/tests/driver.test.ts
++++ b/v2/driver-cell/tests/driver.test.ts
+@@ -7,7 +7,7 @@
+  */
+ import { test } from "node:test";
+ import assert from "node:assert/strict";
+-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
++import { writeFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+ import { platform } from "node:os";
+ import { dirname, join } from "node:path";
+ import { fileURLToPath } from "node:url";
+@@ -451,6 +451,7 @@ test("cell-driver.account-home: the bee resolver never grants the shared account
+   const baseline = join(rig.root, "baseline-cache");
+   mkdirSync(accountHome, { recursive: true });
+   mkdirSync(siblingHome);
++  writeFileSync(join(accountHome, "auth.json"), JSON.stringify({ tokens: { access_token: "synthetic-access", refresh_token: "" } }));
+   mkdirSync(baseline);
+   const accountGrant = sandboxWritableDirectory(accountHome, { forbiddenDirectories: [homesRoot] });
+   const canonicalHomesRoot = realpathSync(homesRoot);
+diff --git a/v2/driver-cell/tests/sandbox-hardening.test.ts b/v2/driver-cell/tests/sandbox-hardening.test.ts
+index a806d8ed..c21b1a3c 100644
+--- a/v2/driver-cell/tests/sandbox-hardening.test.ts
++++ b/v2/driver-cell/tests/sandbox-hardening.test.ts
+@@ -51,7 +51,7 @@ test("hardening: harness projection binds only existing explicit input files", {
+   try {
+     const home = join(root, "account"), cell = join(root, "cell");
+     mkdirSync(home); mkdirSync(cell);
+-    writeFileSync(join(home, "auth.json"), "fixture");
++    writeFileSync(join(home, "auth.json"), JSON.stringify({tokens:{access_token:"synthetic",refresh_token:""}}));
+     writeFileSync(join(home, "config.toml"), "fixture");
+     writeFileSync(join(home, "unlisted"), "hidden");
+     mkdirSync(join(home, "skills"));
+@@ -60,7 +60,8 @@ test("hardening: harness projection binds only existing explicit input files", {
+     writeFileSync(join(home, "skills", ".git", "config"), "hidden");
+     writeFileSync(join(home, "skills", ".env"), "hidden");
+     const projection = prepareSandboxHarnessHome(cell, "codex", home);
+-    assert.deepEqual(projection.files.map(file => file.source), [join(home, "auth.json"), join(home, "config.toml"), join(home, "skills", "fixture.md")]);
++    assert.match(projection.files[0]!.source, /\.honeybee-cell-access/);
++    assert.deepEqual(projection.files.slice(1).map(file => file.source), [join(home, "config.toml"), join(home, "skills", "fixture.md")]);
+     assert.ok(projection.files.every(file => file.destination.startsWith(projection.home + "/")));
+     symlinkSync(join(root, "missing"), join(home, "skills", "unsafe"));
+     assert.throws(() => prepareSandboxHarnessHome(cell, "codex", home), /symlink account input/);
+@@ -240,7 +241,7 @@ test("hardening: private writes stay local, account inputs stay read only, and s
+     const account = join(root, "account"), cell = join(root, "cell");
+     mkdirSync(account); mkdirSync(cell);
+     const auth = join(account, "auth.json"), config = join(account, "config.toml");
+-    writeFileSync(auth, "fixture-not-a-credential"); writeFileSync(config, "fixture");
++    writeFileSync(auth, JSON.stringify({tokens:{access_token:"synthetic",refresh_token:""}})); writeFileSync(config, "fixture");
+     writeFileSync(join(account, "unlisted"), "hidden");
+     const script = `
+       const fs = require('node:fs');
+@@ -253,7 +254,7 @@ test("hardening: private writes stay local, account inputs stay read only, and s
+     const run = spawnSync(wrapped.command, wrapped.args, { encoding: "utf8", timeout: 5000 });
+     assert.equal(run.status, 0, run.stderr);
+     assert.deepEqual(JSON.parse(run.stdout), { privateWrite: true, authWrite: false, configWrite: false, unlisted: false, sourceUnlisted: false });
+-    assert.equal(readFileSync(auth, "utf8"), "fixture-not-a-credential");
++    assert.equal(readFileSync(auth, "utf8"), JSON.stringify({tokens:{access_token:"synthetic",refresh_token:""}}));
+     assert.equal(readFileSync(config, "utf8"), "fixture");
+     assert.equal(existsSync(join(account, "local-state")), false);
+     symlinkSync(account, join(cell, "sandbox-state", "codex", "skills"));

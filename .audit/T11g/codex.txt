@@ -1,0 +1,37 @@
+sourceSha=028587ffd8d11aebf35b8d8ae0c44573d5aa6eb9
+command=["node", "scripts/with-fixture-warden.mjs", "node", "--test", "v2/daemon/tests/codex-central-credentials.test.ts"]
+status.v2 capability=true unsupported={"supported":false} non_enrolled={"supported":true,"phase":"native","generation":null,"expiresAt":null}
+status.v2 enrolled: supported=true phase=ready generation=2 expiresAt=1793211388000
+CLI status: phase=ready generation=2 expiry=2026-10-28T18:16:28.000Z
+mirror scrub and modes: home/.codex/auth.json access-only; 0600 files/0700 private directories; refresh-byte scan homes+vault=0 outside authority
+1 enable: ready generation=2 expiry=2026-10-28T18:16:28.000Z authority_refresh_present=true home_refresh_present=false daemon_pid=1971169
+foreign mirror refresh chain blocked before provider call
+empty runtime mirror refused before provider call
+2 concurrent refresh: generation=3 refresh_calls=1 previous_token_matched=true rotated=true
+distinct concurrent requests: serialized; each used its own rotated generation; no token double-spent
+automatic early refresh enabled after exact explicit-refresh counts; daemon restarted with the same store
+3 automatic early refresh: generation=6 before_expiry=true
+4 invalid_grant: login_required retry_at=null calls_after_wait=0
+5 non-enabled account: native codex exec invoked; central status=native supported=true
+disable after refusal: disabled; mirror scrubbed; recovery instructions name disable before native login
+6 secret scan: logs=0 SQLite/ledger=0 RPC_metadata=0; daemon_pid=1971281 stopped=true
+cleanup: owned daemon stopped; stub listener closed
+✔ central Codex: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native (9140.839048ms)
+running Codex bees: enable and disable refused, no ownership change; stopped bees permit enrollment
+expired 2xx access: rotated refresh token saved; next refresh used new chain and restored ready
+missing 2xx access: rotated refresh token saved; next refresh used new chain and restored ready
+null refresh response preserves chain; healthy disable restores canonical native chain and leaves legacy mirror access-only
+recovery end to end: login_required → disable (all mirrors scrubbed) → fake native login succeeded → enable ready; homes/vault refresh scan zero outside authority
+review cleanup: owned daemon PID stopped, stub closed
+✔ central Codex review: running-bee ownership fence, bad access preserves rotation, disable/login/enable recovers (2219.015409ms)
+✔ Codex copy inspection re-reads a transient empty copy once and gives concrete recovery for persistent corruption (1.396301ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11550.047869
+
+exitCode=0
