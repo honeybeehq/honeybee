@@ -5,6 +5,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { HiveDaemon } from "../src/daemon.ts";
 import type { ThreadOperationResult } from "../src/protocol.ts";
 import { threadFixture } from "./thread-fixture.ts";
+import type { SpawnProvenance } from "../../core/src/types.ts";
 
 for (const kind of ["fork", "handoff"] as const) {
   test(`${kind}: replay pre-allocation receipts after reopening, without accepting changed intent`, t => {
@@ -20,21 +21,24 @@ for (const kind of ["fork", "handoff"] as const) {
     fixture.restart();
     // Exercise the real admission/replay method without starting native workers.
     const daemon = Object.assign(Object.create(HiveDaemon.prototype), { store: fixture.store }) as {
-      rpcThreadOperation(kind: "fork" | "handoff", params: Record<string, unknown>): ThreadOperationResult;
+      rpcThreadOperation(kind: "fork" | "handoff", params: Record<string, unknown>, provenance: SpawnProvenance): ThreadOperationResult;
     };
     const params = { beeId: "source", sourceProviderSessionId: shape.sourceProviderSessionId,
       ...(kind === "handoff" ? { instruction: shape.instruction } : {}), idempotencyKey: "key" };
     const before = fixture.store.dumpState();
-    const replay = daemon.rpcThreadOperation(kind, params);
+    const provenance: SpawnProvenance = { callerBeeId: null, authority: "unattributed", peerPid: null };
+    const replay = daemon.rpcThreadOperation(kind, params, provenance);
     assert.equal(replay.deduped, true);
     assert.equal(replay.operation.id, fixture.row.id);
     assert.equal(replay.operation.successorBeeId, "successor");
     assert.deepEqual(fixture.store.dumpState(), before);
     for (const changes of [{ name: "different" }, { successorBeeId: "different" },
       { sourceProviderSessionId: "different" }, ...(kind === "handoff" ? [{ instruction: "different" }] : [])]) {
-      assert.throws(() => daemon.rpcThreadOperation(kind, { ...params, ...changes }),
+      assert.throws(() => daemon.rpcThreadOperation(kind, { ...params, ...changes }, provenance),
         (error: unknown) => error instanceof Error && "code" in error && error.code === "idempotency_conflict");
     }
+    assert.throws(() => daemon.rpcThreadOperation(kind, params, { callerBeeId: "source", authority: "bee", peerPid: null }),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === "idempotency_conflict");
     assert.deepEqual(fixture.store.dumpState(), before);
   });
 }
