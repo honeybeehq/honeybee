@@ -86,3 +86,16 @@ test("a permission denial between the caller and its bee runtime never attribute
   assert.throws(() => spawnCallerBee(peer, [{ beeId: "hidden", identity: proc(3, 2), pid: 3 }], inspect), refused);
   assert.equal(spawnCallerBee(peer, [{ beeId: "below", identity: proc(4, 3) }, { beeId: "above", identity: proc(2, 1) }], inspect), "below");
 });
+
+test("gateway ancestry refuses peer and runtime PID reuse and reparenting during the final fence", () => {
+  const peer = { pid: 4, uid: 1000, processBirth: "linux:4" };
+  assert.equal(spawnCallerBee(peer, [{ beeId: "reused", identity: { ...proc(4, 0), birth: "linux:old" } }], () => proc(4, 0)), null);
+  assert.throws(() => spawnCallerBee(peer, [{ beeId: "runtime", identity: proc(4, 0) }], () => ({ ...proc(4, 0), birth: "linux:new" })), refused);
+  const reads = new Map<number, number>();
+  assert.throws(() => spawnCallerBee(peer, [{ beeId: "runtime", identity: proc(2, 1) }], pid => {
+    const count = (reads.get(pid) ?? 0) + 1;
+    reads.set(pid, count);
+    const value = proc(pid, pid - 1);
+    return pid === 3 && count > 1 ? { ...value, ppid: 1 } : value;
+  }), refused);
+});
