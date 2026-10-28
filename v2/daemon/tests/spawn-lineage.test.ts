@@ -290,6 +290,21 @@ renameSync(payload.output+'.pending',payload.output);
     await assert.rejects(client.request("spawn", { ...params, parentId: other.beeId }, 5000, context), error => error instanceof RpcError && error.code === "caller_not_trusted");
     await assert.rejects(client.request("spawn", { name: "missing-local-owner", agent: "inbox" }, 5000, context), error => error instanceof RpcError && error.code === "bee_not_found");
   });
+  await t.test("a known local forwarded principal always retains local parent deletion semantics", async () => {
+    const owner = await client.request<SpawnResult>("spawn", { name: "local-forwarder", agent: "inbox" }, 5000, { serviceIntent: "service" });
+    const context = { sessionPrincipal: { beeId: owner.beeId } };
+    const child = await client.request<SpawnResult>("spawn", { name: "local-external-claim", agent: "inbox", parentId: owner.beeId, parentExternal: true }, 5000, context);
+    const before = await client.request<ViewResult>("view", { beeId: child.beeId });
+    assert.equal(before.bee?.parentId, owner.beeId);
+    assert.equal(before.bee?.parentExternal, false);
+    assert.equal(before.bee?.spawnProvenance?.callerBeeId, owner.beeId);
+    await client.request("delete", { beeId: owner.beeId });
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId: owner.beeId })).bee === null, "local forwarded parent deletion");
+    const after = await client.request<ViewResult>("view", { beeId: child.beeId });
+    assert.equal(after.bee?.parentId, null);
+    assert.equal(after.bee?.parentExternal, false);
+    assert.deepEqual(after.bee?.spawnProvenance, before.bee?.spawnProvenance);
+  });
   await t.test("unknown, mixed, relayed, and argument-level intent cannot confer authority", async () => {
     for (const context of [{ serviceIntent: "unknown" }, { serviceIntent: null }, { serviceIntent: "service", sessionPrincipal: { beeId: parent.beeId } }, { serviceIntent: "service", extra: true }]) {
       await assert.rejects(client.request("spawn", { name: `bad-context-${++sequence}`, agent: "inbox" }, 5000, context as never), error => error instanceof RpcError && error.code === "caller_not_trusted");

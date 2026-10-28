@@ -2777,6 +2777,9 @@ export class HiveDaemon {
   }
 
   private authenticatedSpawnParams(params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
+    if (conn.authenticatedBeeId !== undefined && params.parentExternal === true && params.parentId === conn.authenticatedBeeId && this.mustStore().getBee(conn.authenticatedBeeId)) {
+      params = { ...params, parentExternal: false };
+    }
     const provenance = this.authenticatedCreationProvenance(conn, params.parentExternal === true && conn.authenticatedBeeId !== undefined);
     const normalized = bindSpawnParent(params, provenance.callerBeeId, provenance.authority === "registered_service", conn.authenticatedBeeId !== undefined);
     const key = this.idempotencyKeyOf(params);

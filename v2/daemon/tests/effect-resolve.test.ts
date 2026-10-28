@@ -11,6 +11,7 @@ import { HiveDaemon } from "../src/daemon.ts";
 import { RpcServer, type RpcDispatch } from "../src/rpc.ts";
 import { RpcClient } from "../../cli/src/client.ts";
 import { RpcError, type SpawnResult, type SendRpcResult, type MutationResult } from "../src/protocol.ts";
+import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
 
 type RequiredFields<T> = { [K in keyof T]-?: object extends Pick<T, K> ? never : K }[keyof T];
 type WriterResults = { spawn: SpawnResult; send: SendRpcResult; archive: MutationResult };
@@ -50,7 +51,7 @@ test("dark fenced-spawn production writer satisfies the shared effect-result con
   f.store.compareAndSetExecutionClaim({ transitionId: "one", expectedClaim: null, claim }, uid);
   const { verb, resource: target, digestVersion, requestDigest, idempotencyKey, ...executionFence } = claim;
   const request = { verb, resource: target, digestVersion, requestDigest, idempotencyKey, executionFence, args };
-  const invoke = () => (f.owner.rpcFencedSpawn as (params: Record<string, unknown>, conn: Parameters<RpcDispatch>[2]) => Promise<{ admissionReceipt: { result: unknown; commandId: number | null }; executionReceipt: { result: unknown } }>).call(f.owner, request, { executionCoordinatorUid: uid } as Parameters<RpcDispatch>[2]);
+  const invoke = () => (f.owner.rpcFencedSpawn as (params: Record<string, unknown>, conn: Parameters<RpcDispatch>[2]) => Promise<{ admissionReceipt: { result: unknown; commandId: number | null }; executionReceipt: { result: unknown } }>).call(f.owner, request, { executionCoordinatorUid: uid, ingress: "local_unix", localPeer: { uid, pid: process.pid, processBirth: exactProcessBirth(process.pid) } } as Parameters<RpcDispatch>[2]);
   const first = await invoke();
   assertWriterResult("spawn", first.admissionReceipt.result);
   assertWriterResult("spawn", first.executionReceipt.result);
