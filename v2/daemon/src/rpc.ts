@@ -477,6 +477,7 @@ export class RpcServer {
         throw new RpcError("caller_not_trusted", "Environment values require an authenticated human operator credential; this protocol has no human-read credential.");
       }
       if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: coordinator installation is NOT_COVERED pending the shared step-up Stage B protected-credential prerequisite");
+      if (process.platform === "linux" && this.opts.peerConfinement && conn.peerConnection && conn.peerConnection.state !== "verified") throw new RpcError("local_peer_credentials_unavailable", "Peer identity is unavailable; confined admission fails closed");
       let registered = false;
       try { if (this.trust.enabled && conn.peerConnection) { this.trust.require(conn.peerConnection, conn.ingress); registered = true; } } catch {}
       conn.confinement = this.opts.peerConfinement?.(conn.localPeer, registered) ?? "unknown";

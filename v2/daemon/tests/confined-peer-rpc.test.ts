@@ -12,7 +12,7 @@ import type { SpawnResult, HealthResult } from "../src/protocol.ts";
 
 const exec = promisify(execFile);
 test("real unshare peer is refused by a disposable daemon while host CLI still spawns", {skip: process.platform !== "linux", timeout: 60000}, async t => {
-  const rig = makeDaemonDir({cells: {sandbox: true}});
+  const rig = makeDaemonDir({nodeKind: "satellite", cells: {sandbox: true}});
   const keyFile = join(rig.dir, "rpc-private", "registration.key");
   const configPath = join(rig.dir, "config.json");
   const config = JSON.parse(readFileSync(configPath, "utf8"));
@@ -26,6 +26,11 @@ test("real unshare peer is refused by a disposable daemon while host CLI still s
   t.after(() => client.close());
   const health = await client.request<HealthResult>("health", {});
   assert.equal(health.confinement?.strict, false);
+  for (const lane of ["remote", "node_relay"] as const) {
+    const relay = await (await import("../../cli/src/client.ts")).RpcClient.connect(daemon.socketPath, 3000, lane);
+    try { assert.equal((await relay.request<HealthResult>("health", {})).confinement?.strict, false); }
+    finally { relay.close(); }
+  }
   for (const params of [{substrate: "hsr"}, {substrate: "tmux"}, {cwd: rig.dir}]) {
     const result = await client.request<SpawnResult>("spawn", {name: `host-${Math.random()}`, agent: "stub", account: null, cwd: rig.dir, ...params});
     assert.equal(typeof result.commandId, "number");
@@ -116,5 +121,32 @@ test("strict host with trust disabled cannot treat an unattributed host peer as 
   for (const [verb, params] of [["spawn", {name:"escape",agent:"inbox"}], ["rpc.localTrust.challenge", {}], ["account.lease.export", {}], ["account.credentials.status", {}], ["health", {}]] as const) {
     await assert.rejects(client.request(verb as "spawn", params), error => (error as {code:string}).code === "confined_peer_refused");
   }
+  for (const lane of ["remote", "node_relay"] as const) {
+    const relay = await (await import("../../cli/src/client.ts")).RpcClient.connect(daemon.socketPath, 3000, lane);
+    try { await assert.rejects(relay.request("health", {}), error => (error as {code:string}).code === "confined_peer_refused"); }
+    finally { relay.close(); }
+  }
   assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /security\.confinement strict=true/);
+});
+
+for (const mode of ["degraded", "lookup_failed"] as const) test(`missing Linux peer credentials fail closed with a diagnostic error: ${mode}`, {skip: process.platform !== "linux"}, async t => {
+  const {mkdtempSync} = await import("node:fs");
+  const {tmpdir} = await import("node:os");
+  const {RpcServer} = await import("../src/rpc.ts");
+  const {PeerCredentials} = await import("../src/peerCredentials.ts");
+  const {RpcClient} = await import("../../cli/src/client.ts");
+  const dir = mkdtempSync(join(tmpdir(), "hb-confined-degraded-"));
+  const socketPath = join(dir, "rpc.sock");
+  const peerCredentials = new PeerCredentials({load: () => {
+    if (mode === "degraded") throw new Error("fixture unavailable");
+    return {inspect: () => null, pin: () => -1, alive: () => true};
+  }});
+  let dispatched = false;
+  const server = new RpcServer({socketPath, peerCredentials, peerConfinement: () => "confined", log: () => {}, dispatch: () => {dispatched = true;}});
+  await server.listen();
+  t.after(() => server.close());
+  const client = await RpcClient.connect(socketPath);
+  t.after(() => client.close());
+  for (const verb of ["health", "spawn", "rpc.localTrust.challenge"] as const) await assert.rejects(client.request(verb, {}), error => (error as {code:string}).code === "local_peer_credentials_unavailable");
+  assert.equal(dispatched, false);
 });
