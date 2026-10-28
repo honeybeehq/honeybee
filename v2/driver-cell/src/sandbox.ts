@@ -1,3 +1,4 @@
+import { prepareSandboxHarnessHome } from "./harnessHome.ts";
 /**
  * Cell sandbox wrapper (WP5, spec 05 point 5 — the A4 ruling).
  *
@@ -10,8 +11,9 @@
  * Defaults by node kind (A4): workstation OFF, satellite ON, cloud gateway
  * OFF (the ephemeral VM is the boundary there). Per-cell override wins.
  */
+import { validatedCellScopeBinary } from "./cellScope.ts";
 import { spawnSync } from "node:child_process";
-import { cpSync, lstatSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
+import { cpSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 
@@ -38,6 +40,10 @@ export interface SandboxPolicy {
   scratchPaths?: string[];
   tmpfsBytes?: number | null;
   kvm?: boolean;
+  protectedPaths?: readonly string[];
+  hiddenPaths?: readonly string[];
+  gatewaySocketPath?: string;
+  harnessHome?: { harness: string; path: string; cwd: string };
 }
 
 export const DEFAULT_SANDBOX_TMPFS_BYTES = 1024 * 1024 * 1024;
@@ -87,21 +93,57 @@ export function defaultScratchPaths(
  * sandbox (spec: "manager download caches remain visible via the sandbox
  * profile, so cold installs stay network-warm").
  */
-export function defaultWritablePaths(home: string = homedir()): string[] {
-  return [
-    join(home, ".claude"),
-    join(home, ".claude.json"),
-    join(home, ".codex"),
-    join(home, ".gemini"),
-    join(home, ".grok"),
-    join(home, ".config"),
-    join(home, ".cache"),
-    join(home, ".npm"),
-    join(home, ".bun"),
-    join(home, ".local", "share", "muse"),
-    join(home, ".local", "share", "pnpm"),
-    join(home, "Library", "Caches"),
-  ];
+export function defaultWritablePaths(_home: string = homedir()): string[] {
+  return [];
+}
+
+export function sandboxProtectedPaths(home: string = homedir()): string[] {
+  return [".config", ".local", ".ssh", ".gnupg", ".hive", ".nectar", ".claude", ".claude.json",
+    ".codex", ".grok", ".gemini", ".kimi", ".cache", ".npm", ".bun", ".bashrc", ".profile",
+    ".bash_profile", ".zshrc", ".zprofile", "Library/LaunchAgents", "Library/Caches"]
+    .map(path => join(home, path));
+}
+
+function hiddenPaths(policy: SandboxPolicy): string[] {
+  return [...new Set([join(homedir(), ".config", "gh"), ...(policy.hiddenPaths ?? [])])]
+    .filter(path => lstatSync(path, { throwIfNoEntry: false }))
+    .map(path => {
+      const canonical = realpathSync(path);
+      if (!statSync(canonical).isDirectory()) throw new Error(`cell sandbox: hidden credential root is not a directory: ${path}`);
+      return canonical;
+    });
+}
+
+function checkedWritablePaths(policy: SandboxPolicy): string[] {
+  const protectedPaths = [...sandboxProtectedPaths(), "/run", ...(policy.protectedPaths ?? []), ...(policy.harnessHome ? [policy.harnessHome.path] : [])].map(canonicalPath);
+  const paths = [...policy.writablePaths, ...(policy.scratchPaths ?? [])];
+  for (const path of paths) {
+    const canonical = canonicalPath(path);
+    if (!isAbsolute(path) || protectedPaths.some(protectedPath => containsPath(canonical, protectedPath) || containsPath(protectedPath, canonical))) {
+      throw new Error(`cell sandbox: protected writable path refused: ${path}`);
+    }
+  }
+  return policy.writablePaths;
+}
+
+
+export function sandboxEnvironment(cellDir: string, original: Readonly<Record<string, string>>): Record<string, string> {
+  const root = join(cellDir, "sandbox-state");
+  const temp = join(root, "tmp");
+  const cache = join(root, "cache");
+  for (const path of [root, temp, cache]) {
+    const info = lstatSync(path, { throwIfNoEntry: false });
+    if (info && (!info.isDirectory() || info.isSymbolicLink())) throw new Error(`cell sandbox: unsafe private state: ${path}`);
+    if (!info) mkdirSync(path, { mode: 0o700 });
+  }
+  const scratch = platform() === "linux" ? "/tmp" : temp;
+  const env = { ...original, TMPDIR: scratch, TMP: scratch, TEMP: scratch, CLAUDE_CODE_TMPDIR: scratch,
+    XDG_CACHE_HOME: cache, NODE_COMPILE_CACHE: join(cache, "node-compile"), npm_config_cache: join(cache, "npm"),
+    npm_config_store_dir: join(cache, "pnpm"), YARN_CACHE_FOLDER: join(cache, "yarn"), PIP_CACHE_DIR: join(cache, "pip"),
+    UV_CACHE_DIR: join(cache, "uv"), GOCACHE: join(cache, "go-build"), GOMODCACHE: join(cache, "go-mod"),
+    GRADLE_USER_HOME: join(cache, "gradle") };
+  for (const key of ["DBUS_SESSION_BUS_ADDRESS", "DBUS_SYSTEM_BUS_ADDRESS", "XDG_RUNTIME_DIR", "SSH_AUTH_SOCK", "NODE_OPTIONS"]) delete (env as Record<string, string>)[key];
+  return env;
 }
 
 /** A canonical existing directory admitted through the narrow per-bee seam. */
@@ -115,10 +157,18 @@ export interface SandboxWritableDirectoryOptions {
 }
 
 function canonicalPath(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {
-    return resolvePath(path);
+  let cursor = resolvePath(path);
+  const suffix: string[] = [];
+  for (;;) {
+    try {
+      return join(realpathSync(cursor), ...suffix);
+    } catch {
+      if (lstatSync(cursor, { throwIfNoEntry: false })) throw new Error(`cell sandbox: unresolved path refused: ${path}`);
+      const parent = dirname(cursor);
+      if (parent === cursor) throw new Error(`cell sandbox: unresolved path refused: ${path}`);
+      suffix.unshift(cursor.slice(parent.length + (parent.endsWith(sep) ? 0 : 1)));
+      cursor = parent;
+    }
   }
 }
 
@@ -211,6 +261,7 @@ function withRealpaths(paths: string[]): string[] {
  * Later SBPL rules win, so the allow-list overrides the deny.
  */
 export function seatbeltProfile(policy: SandboxPolicy): string {
+  checkedWritablePaths(policy);
   const writeAllows = withRealpaths([
     policy.cellDir,
     ...policy.writablePaths,
@@ -226,6 +277,7 @@ export function seatbeltProfile(policy: SandboxPolicy): string {
     "(allow file-write*",
     writeAllows,
     ")",
+    ...hiddenPaths(policy).map(path => `(deny file-read* (subpath ${sbPath(path)}))`),
     "",
   ].join("\n");
 }
@@ -309,11 +361,14 @@ export function createSshConfigView(profilePath: string, source = "/etc/ssh/ssh_
  * is exercised by the linux gate (trmd-metal-3).
  */
 export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[], sshConfigView?: string): string[] {
+  checkedWritablePaths(policy);
+  const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path) : undefined;
   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
   const out: string[] = [
+    "--unshare-pid", "--unshare-ipc",
     "--ro-bind", "/", "/",
     "--dev", "/dev",
-    ...(size.length > 0 ? [...size, "--tmpfs", "/dev/shm"] : []),
+    ...size, "--tmpfs", "/dev/shm",
     "--proc", "/proc",
     ...BWRAP_PRIVATE_MOUNTS.flatMap((mount) => [...size, "--tmpfs", mount]),
     ...bwrapLaunchBinds(command, args),
@@ -328,8 +383,17 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     if (p === "/tmp" || p === "/var/tmp" || p === "/dev") continue; // already mounted above
     out.push("--bind-try", p, p);
   }
+  if (projection) {
+    for (const file of projection.files) out.push("--ro-bind", file.source, file.destination);
+    out.push("--tmpfs", projection.sourceHome, "--remount-ro", projection.sourceHome);
+    out.push("--setenv", policy.harnessHome!.harness === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR", projection.home);
+  }
+  for (const path of hiddenPaths(policy)) out.push("--tmpfs", path, "--remount-ro", path);
   if (sshConfigView) out.push("--ro-bind", sshConfigView, sshConfigView, "--ro-bind", sshConfigView, "/etc/ssh/ssh_config.d");
-  out.push("--share-net", "--die-with-parent", "--", command, ...args);
+  out.push("--tmpfs", "/run/user", "--remount-ro", "/run/user",
+    "--unsetenv", "DBUS_SESSION_BUS_ADDRESS", "--unsetenv", "DBUS_SYSTEM_BUS_ADDRESS",
+    "--unsetenv", "SSH_AUTH_SOCK", "--unsetenv", "XDG_RUNTIME_DIR",
+    "--share-net", "--die-with-parent", "--", command, ...args);
   return out;
 }
 
@@ -353,6 +417,7 @@ export function wrapWithSandbox(
   osPlatform: string = platform(),
 ): WrappedCommand {
   if (osPlatform === "darwin") {
+    if (policy.harnessHome) throw new Error("cell sandbox: private harness input projection is unsupported on darwin; refusing launch");
     return {
       command: "sandbox-exec",
       args: ["-f", profilePath, command, ...args],
@@ -360,7 +425,11 @@ export function wrapWithSandbox(
     };
   }
   if (osPlatform === "linux") {
-    return { command: "bwrap", args: bwrapArgs(policy, command, args, createSshConfigView(profilePath)) };
+    const socket = policy.gatewaySocketPath;
+    if (!socket || !isAbsolute(socket)) throw new Error("cell sandbox: per-Cell gateway is required; refusing launch");
+    const info = lstatSync(socket, { throwIfNoEntry: false });
+    if (!info?.isSocket() || info.isSymbolicLink() || realpathSync(socket) !== socket) throw new Error("cell sandbox: per-Cell gateway is missing or unsafe; refusing launch");
+    return { command: validatedCellScopeBinary(), args: ["--", "bwrap", ...bwrapArgs(policy, command, args, createSshConfigView(profilePath))] };
   }
   throw new Error(`cell sandbox: unsupported platform '${osPlatform}'`);
 }

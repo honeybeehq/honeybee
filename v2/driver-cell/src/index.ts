@@ -93,6 +93,8 @@ export {
   NODE_KINDS,
   sandboxDefaultFor,
   sandboxEnabled,
+  sandboxEnvironment,
+  sandboxProtectedPaths,
   sandboxWritableDirectory,
   seatbeltProfile,
   wrapWithSandbox,
@@ -177,3 +179,5 @@ export {
   type GitImagePointer,
   type GitImageRefreshResult,
 } from "./gitImage.ts";
+
+export { prepareSandboxHarnessHome, privateHarnessHomePath, SANDBOX_HARNESS_INPUTS } from "./harnessHome.ts";

@@ -189,14 +189,12 @@ import {
   type CellBase,
   isAncestor,
   currentBranch,
-  sandboxWritableDirectory,
   sandboxEnabled,
   DEFAULT_SANDBOX_TMPFS_BYTES,
   runCellExec,
   sanitizeComponent,
   type CellSpec,
   type ReserveRequest,
-  type SandboxWritableDirectory,
 } from "../../driver-cell/src/index.ts";
 import { deliveryContentRoot } from "./multilineFallback.ts";
 import { DeliveryFiles } from "./deliveryFile.ts";
@@ -955,7 +953,8 @@ export class HiveDaemon {
       resolveHarness: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation),
       sandboxKvm: this.cfg.cellKvm,
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
-      resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
+      sandboxProtectedPaths: [this.cfg.dataDir, this.cfg.accounts.homesDir],
+      resolveSandboxHarnessHome: (beeId: string) => this.resolveCellSandboxHarnessHome(beeId),
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
       log: (op: string) => this.log(op),
       onCellMaterialized: (beeId: string, execution?: ExecutionStart) => this.onCellMaterialized(beeId,execution),
@@ -1636,7 +1635,7 @@ export class HiveDaemon {
     // from the account row. The tracked pre-claim readiness gate has already
     // activated the home and reconciled its native MCP config.
     const env = { ...this.runtimeEnvOf(bee, spec, "resolve"), ...this.beeTmpEnv(bee, spec) };
-    if (adapterName === "codex" && bee.providerSessionId && env.CODEX_HOME) {
+    if (adapterName === "codex" && bee.substrate !== "cell" && bee.providerSessionId && env.CODEX_HOME) {
       const path = codexSwapHistoryPath(env.CODEX_HOME, bee.id, bee.providerSessionId);
       if (existsSync(path)) {
         validateCodexSwapPath(env.CODEX_HOME, path);
@@ -1703,21 +1702,18 @@ export class HiveDaemon {
     };
   }
 
-  private resolveCellSandboxWritablePaths(beeId: string): readonly SandboxWritableDirectory[] {
+  private resolveCellSandboxHarnessHome(beeId: string): { harness: string; path: string } | undefined {
     const store = this.mustStore();
     const bee = store.getBee(beeId);
-    if (!bee) throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} not found`);
-    const tmp = this.beeTmp ? this.verifiedBeeTmp(beeId) : null;
-    const grants: SandboxWritableDirectory[] = tmp ? [{ path: tmp.TMPDIR }, { path: tmp.NODE_COMPILE_CACHE }] : [];
-    if (!bee.account) return grants;
-    const account = store.getAccount(bee.account);
-    if (!account) {
-      throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} is bound to unknown account ${bee.account}`);
-    }
-    if (this.mustAccounts().isNative(account)) return grants;
-    return [...grants, sandboxWritableDirectory(account.homePath, {
-      forbiddenDirectories: [this.cfg.accounts.homesDir],
-    })];
+    if (!bee) throw new Error(`resolveCellSandboxHarnessHome: bee ${beeId} not found`);
+    const spec = this.cfg.agents[bee.agent];
+    if (!spec) throw new Error(`resolveCellSandboxHarnessHome: no agent spec for ${bee.agent}`);
+    const harness = spec.adapter ?? bee.agent;
+    if (harness !== "claude" && harness !== "codex") return undefined;
+    const env = this.runtimeEnvOf(bee, spec, "sandbox");
+    const key = harness === "claude" ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME";
+    const path = env[key] ?? join(homedir(), harness === "claude" ? ".claude" : ".codex");
+    return { harness, path };
   }
 
   private verifiedBeeTmp(beeId: string): { TMPDIR: string; NODE_COMPILE_CACHE: string } {
@@ -6980,6 +6976,7 @@ export class HiveDaemon {
   }
 
   private carryCodexTranscript(bee: BeeRow, target: AccountRow): SwapAccountResult["transcript"] {
+    if (bee.substrate === "cell") return "none";
     const sessionId = bee.providerSessionId ?? bee.forkSeed;
     if (!sessionId) return "none";
     if (!bee.providerSessionId) throw new RpcError("transcript_unavailable", `bee ${bee.name}: Codex fork must start before its account can be swapped`);
@@ -7016,6 +7013,7 @@ export class HiveDaemon {
    * rekey has not been consumed yet (a stopped bee swapped twice).
    */
   private carryClaudeTranscript(bee: BeeRow, from: string | null, target: AccountRow): SwapAccountResult["transcript"] {
+    if (bee.substrate === "cell") return "none";
     const seed = bee.providerSessionId ?? bee.forkSeed;
     if (!seed) return "none";
     const key = homeEnvFor("claude");
