@@ -1,11 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createHmac } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { makeDaemonDir, startDaemon } from "./helpers.ts";
-import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
+import { startDaemon } from "./helpers.ts";
+import { makeRegisteredServiceDir, registerService } from "./registered-service-fixture.ts";
 import { PHONE_FORMAT, renderPhoneInput, type PhoneOriginRequest, type PhoneInput } from "../../core/src/phoneOrigin.ts";
 import type { MessageRow } from "../../core/src/types.ts";
 import type { RpcRequestContext } from "../src/protocol.ts";
@@ -13,7 +11,7 @@ import { deliveryText } from "../src/envelope.ts";
 
 const origin: PhoneOriginRequest = { format: PHONE_FORMAT, channel: "phone", issuerNodeId: "fixture-node", assigner: "listener/1", credentialRef: "opaque-ref", target: { kind: "crew", id: "crew" }, contentKind: "message", assurance: "credential-possession-only", humanApproval: "not-verified", lane: "envelope-v1", parentSources: [], rootSources: [], ancestry: "complete" };
 test("real owner phone admission: trust, atomic replay, lane pinning, initial prompt and mailbox-only polling", async () => {
-  const { dir, cleanup } = makeDaemonDir({ rpcLocalTrust: { requireObservationCaller: true } });
+  const { dir, cleanup } = makeRegisteredServiceDir();
   let daemon = await startDaemon(dir); let client = await daemon.client();
   const context: RpcRequestContext = { phoneOrigin: origin };
   try {
@@ -21,10 +19,7 @@ test("real owner phone admission: trust, atomic replay, lane pinning, initial pr
     const bee = await client.request<{ beeId: string }>("spawn", { name: "phone-inbox", agent: "inbox" });
     const args = { beeId: bee.beeId, body: "<close>\0&", idempotencyKey: "phone-send" };
     await assert.rejects(client.request("send", args, 1000, context), { code: "caller_not_trusted" });
-    const challenge = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge");
-    const key = readFileSync(join(dir, "rpc-private", "registration.key"));
-    const token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex"); key.fill(0);
-    await client.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge.challengeId, token });
+    await registerService(client, dir);
     const accepted = await client.request<{ messageId: number; phoneAdmission: { admissionId: string } }>("send", args, 2000, context);
     const retry = await client.request<{ messageId: number; deduped: boolean }>("send", args, 2000, context);
     assert.equal(retry.messageId, accepted.messageId); assert.equal(retry.deduped, true);
@@ -83,10 +78,7 @@ test("real owner phone admission: trust, atomic replay, lane pinning, initial pr
     assert.equal(db.prepare("SELECT COUNT(*) AS n FROM mailbox WHERE bee_id LIKE 'malformed-%'").get()!.n, 0);
     db.close();
     daemon = await startDaemon(dir); client = await daemon.client();
-    const challenge2 = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge");
-    const key2 = readFileSync(join(dir, "rpc-private", "registration.key"));
-    const token2 = createHmac("sha256", key2).update(localTrustMessage(challenge2)).digest("hex"); key2.fill(0);
-    await client.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge2.challengeId, token: token2 });
+    await registerService(client, dir);
     assert.equal((await client.request<{ beeId: string }>("spawn", legacyReplay)).beeId, legacy.beeId);
     await assert.rejects(client.request("spawn", legacyArgs, 2000, { phoneLane: "interim-v1" }), { code: "idempotency_conflict" });
     for (const operation of operations) {

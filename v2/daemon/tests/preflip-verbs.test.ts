@@ -50,6 +50,7 @@ import { makeDaemonDir, sleep, startDaemon, waitFor, type DaemonHandle } from ".
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { makeOrigin } from "../../driver-cell/tests/helpers.ts";
+import { makeRegisteredServiceDir, registerService } from "./registered-service-fixture.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLAUDE = join(here, "..", "..", "driver-hsr", "test-agent", "fake-claude.mjs");
@@ -94,11 +95,12 @@ async function waitState(
 }
 
 test("v6.rpc.1: rename / tag / children round-trips, idempotent replays, typed refusals; snapshot + watch carry the new rows/kinds", async () => {
-  const { dir, cleanup } = makeDaemonDir();
+  const { dir, cleanup } = makeRegisteredServiceDir();
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
     const client = await daemon.client();
+    await registerService(client, dir);
     const watcher = await daemon.client();
     const frames: WatchFrame[] = [];
     watcher.onEvent = (f: WatchFrame) => frames.push(f);
@@ -416,11 +418,12 @@ test("daemon restart: adopted Codex keeps its thread id and confirms queued mail
 test("v6.rpc.5: parenting policy over RPC — archive parent leaves children; delete parent orphans (bee.orphaned in the watch stream, children alive, parentId null); fork of a cell bee refused", async () => {
   const root = mkdtempSync(join(tmpdir(), "hb-v6-cells-"));
   const origin = makeOrigin(root);
-  const { dir, cleanup } = makeDaemonDir({ cells: { root: join(root, "cells") } });
+  const { dir, cleanup } = makeRegisteredServiceDir({ cells: { root: join(root, "cells") } });
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
     const client = await daemon.client();
+    await registerService(client, dir);
     const watcher = await daemon.client();
     const frames: WatchFrame[] = [];
     watcher.onEvent = (f: WatchFrame) => frames.push(f);
