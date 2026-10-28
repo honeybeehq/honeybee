@@ -1,3 +1,4 @@
+import { cellDaemonEnvironment } from "./runtimeEnvironment.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { stateDirectory } from "../../harness/src/statePath.ts";
@@ -769,12 +770,13 @@ export class CellDriver implements RuntimeDriver {
     const harness = this.cfg.resolveHarness(beeId, generation);
     const spec = this.cfg.resolveCell(beeId);
     let env: Record<string, string> = {
-      ...(harness.env ?? (process.env as Record<string, string>)),
+      ...(harness.env ?? cellDaemonEnvironment(process.env)),
       // The old runner discipline: in-cell tools detect containment and the
       // space identity through these stamps.
       HIVE_CELL: "1",
       HIVE_CELL_SPACE: cell.paths.spaceName,
     };
+    env = sandboxEnvironment(cell.paths.wrapperDir, env, sandboxEnabled(this.cfg.nodeKind, spec.sandbox));
     if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
       if (this.cfg.nodeKindExplicit === false && spec.sandbox !== false) {
         this.cfg.log?.("cell.sandbox.refused reason=nodeKind_missing implicit_workstation_default");
@@ -782,7 +784,6 @@ export class CellDriver implements RuntimeDriver {
       }
       return { ...harness, cwd: cell.paths.spaceDir, env };
     }
-    env = sandboxEnvironment(cell.paths.wrapperDir, env);
     const harnessHome = this.cfg.resolveSandboxHarnessHome?.(beeId);
     const gateway = generation === undefined ? undefined : this.cfg.resolveSandboxGateway?.(beeId, generation);
     if (platform() === "linux" && !gateway) throw new Error("cell sandbox: per-Cell gateway is required; refusing launch");
