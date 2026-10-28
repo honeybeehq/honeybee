@@ -1,7 +1,8 @@
 /** Local placement and retained operations over real disposable daemons. */
+import { DatabaseSync } from "node:sqlite";
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,12 +11,13 @@ import { localRepoIdentity } from "../../driver-cell/src/git.ts";
 import { fingerprintOrigin, g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
 import { claudeProjectKey } from "../../driver-tmux/src/index.ts";
 import type { BeeMoveResult, CellExecResult, CellRetainedRemoveResult, MailboxResult, SendRpcResult, SpawnResult, ViewResult } from "../src/protocol.ts";
+import { makeRegisteredServiceDir, registerService } from "./registered-service-fixture.ts";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 
 const cellAgent = fileURLToPath(new URL("../../driver-cell/test-agent/agent.mjs", import.meta.url));
 const SESSION_ID = "move-fixture-conversation";
 
-async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "codex" } = {}) {
+async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "codex"; serviceIntent?: "service" | "delegation" } = {}) {
   const agent = opts.agent ?? "stub";
   const root = mkdtempSync(join(tmpdir(), "hb-cell-move-rpc-"));
   const origin = makeOrigin(root);
@@ -24,17 +26,18 @@ async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "code
   const claudeHome = join(root, "claude-home");
   mkdirSync(claudeHome);
   const agentSpec = { command: process.execPath, args: [cellAgent], adapter: "stub" as const, env: { STUB_SESSION_ID: SESSION_ID } };
-  const rig = makeDaemonDir({
+  const rig = makeRegisteredServiceDir({
     cells: { root: cellsRoot, allowStubMove: true },
     agents: { stub: agentSpec, claude: agentSpec, codex: agentSpec },
   });
   let daemon = await startDaemon(rig.dir);
   let client = await daemon.client();
+  if (opts.serviceIntent) await registerService(client, rig.dir);
   t.after(async () => {
     client.close();
     await daemon.stop();
-    rig.cleanup();
-    rmSync(root, { recursive: true, force: true });
+    renameSync(rig.dir, `${rig.dir}.trash`);
+    renameSync(root, `${root}.trash`);
   });
   const spawned = await client.request<SpawnResult>("spawn", {
     name: "move-fixture",
@@ -42,7 +45,7 @@ async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "code
     substrate: "cell",
     cell: { originRepo: origin.repo },
     ...(agent === "claude" ? { env: { CLAUDE_CONFIG_DIR: claudeHome } } : {}),
-  });
+  }, 10_000, opts.serviceIntent ? { serviceIntent: opts.serviceIntent } : undefined);
   const view = () => client.request<ViewResult>("view", { beeId: spawned.beeId });
   const before = await waitFor(async () => {
     const result = await view();
@@ -101,6 +104,16 @@ async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "code
     }, "placement prefix in dest session log", 20_000);
     return after;
   };
+  const restoreLegacyProvenance = async () => {
+    client.close();
+    await daemon.stop();
+    const db = new DatabaseSync(daemon.storePath);
+    try { db.prepare("UPDATE bees SET spawn_provenance=NULL WHERE id=?").run(bee.id); }
+    finally { db.close(); }
+    daemon = await startDaemon(rig.dir);
+    client = await daemon.client();
+    assert.equal((await view()).bee?.spawnProvenance, null);
+  };
   const finishMoveNoMail = async (move: BeeMoveResult) => {
     await waitFor(async () => {
       const receipt = await requestRpc<BeeMoveResult>("bee.move.get", { moveId: move.id });
@@ -117,11 +130,11 @@ async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "code
     mkdirSync(join(claudeHome, "projects", fromKey), { recursive: true });
     writeFileSync(join(claudeHome, "projects", fromKey, `${SESSION_ID}.jsonl`), "src-transcript\n");
   }
-  return { root, origin, before, bee, cell, runtime, request, requestRpc, restart, finishMove, finishMoveNoMail, view, claudeHome };
+  return { root, origin, before, bee, cell, runtime, request, requestRpc, restart, restoreLegacyProvenance, finishMove, finishMoveNoMail, view, claudeHome };
 }
 
 test("cell move RPC preserves conversation, source work, mail and retained operations", { timeout: 120_000 }, async (t) => {
-  const f = await fixture(t);
+  const f = await fixture(t, { serviceIntent: "delegation" });
   writeFileSync(join(f.cell.spaceDir, "retained-work.txt"), "retained\n");
   writeFileSync(join(f.origin.repo, "checkout-work.txt"), "checkout\n");
   const original = fingerprintOrigin(f.origin.repo);
@@ -131,9 +144,12 @@ test("cell move RPC preserves conversation, source work, mail and retained opera
   const move = await f.requestRpc<BeeMoveResult>("bee.move", f.request);
   const after = await f.finishMove(move);
   assert.equal(after.bee?.id, f.bee.id);
+  assert.deepEqual(after.bee?.spawnProvenance, f.bee.spawnProvenance);
+  assert.equal(after.bee?.spawnProvenance?.serviceIntent, "delegation");
   assert.equal(after.bee?.cwd, f.origin.repo);
   assert.equal(after.bee?.substrate, "hsr");
   assert.equal(after.bee?.placementVersion, f.bee.placementVersion + 1);
+  assert.deepEqual(after.bee?.spawnProvenance, f.bee.spawnProvenance);
   assert.ok(f.bee.providerSessionId);
   assert.equal(after.bee?.providerSessionId, f.bee.providerSessionId);
   assert.equal(after.runtime?.generation, f.runtime.generation + 1);
@@ -230,6 +246,7 @@ test("cell move survives daemon loss after durable admission", { timeout: 120_00
   await f.restart();
   const after = await f.finishMove(move);
   assert.equal(after.bee?.placementVersion, f.bee.placementVersion + 1);
+  assert.deepEqual(after.bee?.spawnProvenance, f.bee.spawnProvenance);
   assert.equal(after.runtime?.generation, f.runtime.generation + 1);
   assert.equal(after.bee?.providerSessionId, f.bee.providerSessionId);
   assert.equal(after.move?.id, move.id);
@@ -284,4 +301,14 @@ test("cell move carries Claude transcript and completes with no mail", { timeout
   const dest = join(f.claudeHome, "projects", claudeProjectKey(f.origin.repo), `${SESSION_ID}.jsonl`);
   assert.equal(readFileSync(dest, "utf8"), "src-transcript\n");
   assert.ok(existsSync(join(f.claudeHome, "projects", claudeProjectKey(f.origin.repo), `.hive-move-${move.id}`)));
+});
+
+test("local move keeps legacy null provenance instead of attributing the move caller", { timeout: 120_000 }, async t => {
+  const f = await fixture(t);
+  await f.restoreLegacyProvenance();
+  const move = await f.requestRpc<BeeMoveResult>("bee.move", f.request);
+  const after = await f.finishMove(move);
+  assert.equal(after.bee?.spawnProvenance, null);
+  assert.equal(after.bee?.id, f.bee.id);
+  assert.equal(after.bee?.placementVersion, f.bee.placementVersion + 1);
 });

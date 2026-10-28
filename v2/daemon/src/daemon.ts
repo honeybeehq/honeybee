@@ -1899,7 +1899,7 @@ export class HiveDaemon {
     if (conn.executionCoordinatorUid === undefined) throw new RpcError("caller_not_trusted", "Execution requires a protected coordinator");
     const begun = this.mustStore().beginFencedSpawn(params, conn.executionCoordinatorUid);
     if (begun.fresh) {
-      try { await this.rpcSpawnWithAccount({ ...begun.request.args, idempotencyKey: begun.request.idempotencyKey }, begun.request); }
+      try { await this.rpcSpawnWithAccount(this.authenticatedSpawnParams({ ...begun.request.args, idempotencyKey: begun.request.idempotencyKey }, conn), begun.request); }
       catch { this.mustStore().markSpawnUnknown(begun.request.idempotencyKey); throw new ExecutionFenceError("rpc_execution_history_unknown","Spawn preparation may have committed; reconcile the original execution"); }
     }
     return this.mustStore().resolveExecution(params, conn.executionCoordinatorUid);
@@ -2769,7 +2769,7 @@ export class HiveDaemon {
   }
 
   private assertCreationReplay(provenance: SpawnProvenance, beeId: string | undefined): void {
-    const original = beeId ? this.mustStore().getBee(beeId)?.spawnProvenance : null;
+    const original = beeId ? this.mustStore().creationLineage(beeId)?.spawnProvenance : null;
     if (!original && provenance.authority === "unattributed") return;
     if (!original || original.callerBeeId !== provenance.callerBeeId || original.authority !== provenance.authority || original.serviceIntent !== provenance.serviceIntent) {
       throw new RpcError("idempotency_conflict", "Creation key belongs to a different initiating authority");
@@ -2777,8 +2777,8 @@ export class HiveDaemon {
   }
 
   private authenticatedSpawnParams(params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
-    const provenance = this.authenticatedCreationProvenance(conn, params.parentExternal === true && params.parentId === conn.authenticatedBeeId);
-    const normalized = bindSpawnParent(params, provenance.callerBeeId, provenance.authority === "registered_service");
+    const provenance = this.authenticatedCreationProvenance(conn, params.parentExternal === true && conn.authenticatedBeeId !== undefined);
+    const normalized = bindSpawnParent(params, provenance.callerBeeId, provenance.authority === "registered_service", conn.authenticatedBeeId !== undefined);
     const key = this.idempotencyKeyOf(params);
     const prior = key === null ? null : this.mustStore().lookupRpcResult(key);
     if (prior) {
@@ -5491,6 +5491,7 @@ export class HiveDaemon {
       && this.accounts.allocationMode() === "shadow") {
       await this.accounts.ensureFreshAdmissionLimits(source.agent, { model: this.modelParamOf({ args: source.args ?? [] }, source.agent) });
     }
+    if (key != null && store.lookupRpcResult(key)) this.assertCreationReplay(provenance, (store.lookupRpcResult(key)!.result as { beeId?: string }).beeId);
     return this.withIdempotency("bee.fork", params, () => this.rpcFork(params, provenance));
   }
 

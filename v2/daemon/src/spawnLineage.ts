@@ -30,12 +30,12 @@ export function spawnCallerBee(
   throw new RpcError("caller_not_trusted", "Spawn caller process ancestry exceeds the supported depth");
 }
 
-export function bindSpawnParent(params: Record<string, unknown>, callerBeeId: string | null, serviceAuthority = false): Record<string, unknown> {
+export function bindSpawnParent(params: Record<string, unknown>, callerBeeId: string | null, serviceAuthority = false, externalPrincipal = false): Record<string, unknown> {
   if (callerBeeId === null) {
     if (!serviceAuthority && (params.parentId !== undefined || params.parentExternal === true)) throw new RpcError("caller_not_trusted", "Explicit, empty, and external parent claims require the registered Apiary service");
     return params;
   }
-  if (params.parentExternal === true && params.parentId === callerBeeId) return { ...params, parentId: callerBeeId, parentExternal: true };
+  if (externalPrincipal && params.parentExternal === true && params.parentId === callerBeeId) return { ...params, parentId: callerBeeId, parentExternal: true };
   if (params.parentExternal === true || params.parentId !== undefined && params.parentId !== callerBeeId) {
     throw new RpcError("caller_not_trusted", "A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused");
   }

@@ -5,7 +5,8 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RpcError, type AuditTailResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
+import { RpcError, type AuditTailResult, type SnapshotResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
+import { RpcClient } from "../../cli/src/client.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 
@@ -232,11 +233,17 @@ renameSync(payload.output+'.pending',payload.output);
   await t.test("unregistered caller cannot assert an Apiary principal", async () => {
     await assert.rejects(client.request("spawn", { name: "forged-principal", agent: "inbox" }, 5000, { sessionPrincipal: { beeId: parent.beeId } }), error => error instanceof RpcError && error.code === "caller_not_trusted");
   });
+  await t.test("unregistered caller cannot claim a service intent", async () => {
+    for (const serviceIntent of ["service", "delegation"] as const) {
+      await assert.rejects(client.request("spawn", { name: `unregistered-${serviceIntent}`, agent: "inbox" }, 5000, { serviceIntent }), error => error instanceof RpcError && error.code === "caller_not_trusted");
+    }
+  });
   const challenge = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge");
   const secret = readFileSync(keyFile);
   const token = createHmac("sha256", secret).update(localTrustMessage(challenge)).digest("hex");
   secret.fill(0);
   await client.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge.challengeId, token });
+  assert.ok(client.capabilities.includes("spawn.provenance.v1"));
   const context = { sessionPrincipal: { beeId: parent.beeId } };
   await t.test("replay cannot borrow another authenticated parent's spawn", async () => {
     const params = { name: "replayed-child", agent: "inbox", idempotencyKey: "lineage-replay" };
@@ -245,6 +252,7 @@ renameSync(payload.output+'.pending',payload.output);
     await assert.rejects(client.request("spawn", params, 5000, { sessionPrincipal: { beeId: other.beeId } }), error => error instanceof RpcError && error.code === "idempotency_conflict");
     await assert.rejects(client.request("spawn", { ...params, parentId: other.beeId }, 5000, context), error => error instanceof RpcError && error.code === "caller_not_trusted");
     await client.request("delete", { beeId: first.beeId });
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId: first.beeId })).bee === null, "child actually deleted");
     assert.equal((await client.request<SpawnResult>("spawn", params, 5000, context)).beeId, first.beeId);
     await assert.rejects(client.request("spawn", params, 5000, { sessionPrincipal: { beeId: other.beeId } }), error => error instanceof RpcError && error.code === "idempotency_conflict");
   });
@@ -260,13 +268,52 @@ renameSync(payload.output+'.pending',payload.output);
       await assert.rejects(client.request("spawn", { name: `denied-service-${++sequence}`, agent: "inbox", ...lineage }, 5000, context), error => error instanceof RpcError && error.code === "caller_not_trusted");
     });
   }
-  await t.test("registered service without principal can delegate any lineage", async () => {
+  await t.test("registered PID without intent remains unattributed and cannot claim a parent", async () => {
+    const child = await client.request<SpawnResult>("spawn", { name: "unattributed-service", agent: "inbox", idempotencyKey: "no-authority-upgrade" });
+    const view = await client.request<ViewResult>("view", { beeId: child.beeId });
+    assert.deepEqual(view.bee?.spawnProvenance, { callerBeeId: null, authority: "unattributed", peerPid: process.pid });
     for (const lineage of [{ parentId: other.beeId }, { parentId: null }, { parentId: external, parentExternal: true }]) {
-      const child = await client.request<SpawnResult>("spawn", { name: `delegated-${++sequence}`, agent: "inbox", ...lineage });
+      await assert.rejects(client.request("spawn", { name: `no-intent-${++sequence}`, agent: "inbox", ...lineage }), error => error instanceof RpcError && error.code === "caller_not_trusted");
+    }
+    await assert.rejects(client.request("spawn", { name: "unattributed-service", agent: "inbox", idempotencyKey: "no-authority-upgrade" }, 5000, { serviceIntent: "service" }), error => error instanceof RpcError && error.code === "idempotency_conflict");
+  });
+  await t.test("external forwarded principal needs no local bee and must match the external parent", async () => {
+    const context = { sessionPrincipal: { beeId: external } };
+    const params = { name: "external-owner-child", agent: "inbox", parentId: external, parentExternal: true, idempotencyKey: "external-principal" };
+    const child = await client.request<SpawnResult>("spawn", params, 5000, context);
+    const view = await client.request<ViewResult>("view", { beeId: child.beeId });
+    assert.equal(view.bee?.parentId, external);
+    assert.equal(view.bee?.parentExternal, true);
+    assert.equal(view.bee?.spawnProvenance?.callerBeeId, external);
+    assert.equal(view.bee?.spawnProvenance?.authority, "bee");
+    assert.equal((await client.request<SpawnResult>("spawn", params, 5000, context)).beeId, child.beeId);
+    await assert.rejects(client.request("spawn", { ...params, parentId: other.beeId }, 5000, context), error => error instanceof RpcError && error.code === "caller_not_trusted");
+    await assert.rejects(client.request("spawn", { name: "missing-local-owner", agent: "inbox" }, 5000, context), error => error instanceof RpcError && error.code === "bee_not_found");
+  });
+  await t.test("unknown, mixed, relayed, and argument-level intent cannot confer authority", async () => {
+    for (const context of [{ serviceIntent: "unknown" }, { serviceIntent: null }, { serviceIntent: "service", sessionPrincipal: { beeId: parent.beeId } }, { serviceIntent: "service", extra: true }]) {
+      await assert.rejects(client.request("spawn", { name: `bad-context-${++sequence}`, agent: "inbox" }, 5000, context as never), error => error instanceof RpcError && error.code === "caller_not_trusted");
+    }
+    for (const lane of ["node_relay", "remote"] as const) {
+      const relay = await RpcClient.connect(daemon.socketPath, 3000, lane);
+      try {
+        await assert.rejects(relay.request("spawn", { name: `intent-${lane}`, agent: "inbox" }, 5000, { serviceIntent: "delegation" }), error => error instanceof RpcError && error.code === "caller_not_trusted");
+      } finally { relay.close(); }
+    }
+    await assert.rejects(client.request("send", { beeId: parent.beeId, body: "mixed-service" }, 5000, { serviceIntent: "service" }), error => error instanceof RpcError && error.code === "caller_not_trusted");
+    await assert.rejects(client.request("spawn", { name: "intent-argument", agent: "inbox", parentId: other.beeId, serviceIntent: "delegation" }), error => error instanceof RpcError && error.code === "caller_not_trusted");
+  });
+  await t.test("registered service with explicit intent can delegate any lineage", async () => {
+    for (const intent of ["service", "delegation"] as const) for (const lineage of [{ parentId: other.beeId }, { parentId: null }, { parentId: external, parentExternal: true }]) {
+      const child = await client.request<SpawnResult>("spawn", { name: `delegated-${++sequence}`, agent: "inbox", ...lineage }, 5000, { serviceIntent: intent });
       const view = await client.request<ViewResult>("view", { beeId: child.beeId });
       assert.equal(view.bee?.parentId, lineage.parentId);
       assert.equal(view.bee?.parentExternal, "parentExternal" in lineage);
       await checkProvenance(child.beeId, "registered_service", null);
+      assert.equal(view.bee?.spawnProvenance?.serviceIntent, intent);
+      const snapshot = await client.request<SnapshotResult>("snapshot");
+      assert.deepEqual(snapshot.views.find(row => row.bee?.id === child.beeId)?.bee?.spawnProvenance, view.bee?.spawnProvenance);
+      assert.equal("spawnAuthority" in view.bee!, false);
     }
   });
 });

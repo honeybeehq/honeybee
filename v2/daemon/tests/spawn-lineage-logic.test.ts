@@ -13,7 +13,9 @@ const refused = (error: unknown) => error instanceof RpcError && error.code === 
 test("spawn lineage binds authenticated bee and preserves operator delegation", () => {
   assert.deepEqual(bindSpawnParent({ name: "helper" }, "caller"), { name: "helper", parentId: "caller", parentExternal: false });
   assert.deepEqual(bindSpawnParent({ parentId: "caller" }, "caller"), { parentId: "caller", parentExternal: false });
-  for (const params of [{ parentId: "other" }, { parentId: null }, { parentId: "caller", parentExternal: true }]) {
+  assert.deepEqual(bindSpawnParent({ parentId: "caller", parentExternal: true }, "caller", false, true), { parentId: "caller", parentExternal: true });
+  assert.throws(() => bindSpawnParent({ parentId: "caller", parentExternal: true }, "caller"), refused);
+  for (const params of [{ parentId: "other", parentExternal: true }, { parentId: "other" }, { parentId: null }]) {
     assert.throws(() => bindSpawnParent(params, "caller"), refused);
   }
   for (const params of [{ parentId: "other" }, { parentId: null }, { parentId: "external", parentExternal: true }]) {

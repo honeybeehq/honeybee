@@ -46,11 +46,11 @@ import type {
 import { ANSWER_INJECTION_MARKER } from "../src/envelope.ts";
 import { RpcError } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
-import { makeDaemonDir, sleep, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
+import { sleep, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { makeOrigin } from "../../driver-cell/tests/helpers.ts";
-import { makeRegisteredServiceDir, registerService } from "./registered-service-fixture.ts";
+import { makeRegisteredServiceDir, registerService, serviceRequest } from "./registered-service-fixture.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLAUDE = join(here, "..", "..", "driver-hsr", "test-agent", "fake-claude.mjs");
@@ -62,7 +62,7 @@ function jsonl<T>(path: string): T[] {
 }
 
 async function spawnAndSettle(client: RpcClient, name: string, extra: Record<string, unknown> = {}): Promise<string> {
-  const spawned = await client.request<SpawnResult>("spawn", { name, agent: "stub", cwd: "/tmp", ...extra });
+  const spawned = await serviceRequest(client)<SpawnResult>("spawn", { name, agent: "stub", cwd: "/tmp", ...extra });
   await waitFor(async () => (await client.request<ViewResult>("view", { beeId: spawned.beeId })).view.runtimeState === "idle", `${name} idle`);
   return spawned.beeId;
 }
@@ -134,11 +134,11 @@ test("v6.rpc.1: rename / tag / children round-trips, idempotent replays, typed r
     assert.deepEqual(listed.views[0]?.bee?.tags, ["apiary:workspace=new", "x"], "list carries the tags verbatim");
 
     // children (parenting) via spawn {parentId}
-    const child = await client.request<SpawnResult>("spawn", { name: "kid", agent: "stub", cwd: "/tmp", parentId: beeId });
+    const child = await serviceRequest(client)<SpawnResult>("spawn", { name: "kid", agent: "stub", cwd: "/tmp", parentId: beeId });
     const kids = await client.request<ChildrenResult>("bee.children", { beeId });
     assert.deepEqual(kids.children.map((v) => v.bee?.id), [child.beeId]);
     assert.equal(kids.children[0]?.bee?.parentId, beeId);
-    await assert.rejects(client.request("spawn", { name: "orphan", agent: "stub", cwd: "/tmp", parentId: "no-such-parent" }), (e: unknown) => e instanceof RpcError && e.code === "bee_not_found");
+    await assert.rejects(serviceRequest(client)("spawn", { name: "orphan", agent: "stub", cwd: "/tmp", parentId: "no-such-parent" }), (e: unknown) => e instanceof RpcError && e.code === "bee_not_found");
 
     // snapshot carries questions/seals arrays (empty here) — additive keys
     const snap = await client.request<SnapshotResult>("snapshot");
@@ -161,11 +161,12 @@ test("v6.rpc.1: rename / tag / children round-trips, idempotent replays, typed r
 });
 
 test("v6.rpc.2: bee.interrupt — idle no-op; mid-turn (hung) interrupt → turn_ended, runtime live, next message delivers to the same generation; replay dedups", async () => {
-  const { dir, cleanup } = makeDaemonDir();
+  const { dir, cleanup } = makeRegisteredServiceDir();
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
     const client = await daemon.client();
+    await registerService(client, dir);
     const beeId = await spawnAndSettle(client, "hanger");
     const idle = await client.request<InterruptResult>("bee.interrupt", { beeId });
     assert.deepEqual(idle, { beeId, generation: 1, interrupted: false, reason: "idle" });
@@ -214,7 +215,7 @@ test("v6.rpc.2: bee.interrupt — idle no-op; mid-turn (hung) interrupt → turn
 
 test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (--resume <src> --fork-session), records the fork's own id (seed consumed), parentId/forkedFrom set, HIVE_* env stamps; revive resumes the fork's own id; copy has no prompt; replay dedups", async () => {
   const argvLog = join(process.env.TMPDIR ?? "/tmp", `hb-v6-fork-${process.pid}-${Date.now()}.jsonl`);
-  const { dir, cleanup } = makeDaemonDir({
+  const { dir, cleanup } = makeRegisteredServiceDir({
     agents: {
       claude: {
         command: process.execPath,
@@ -228,10 +229,11 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
   try {
     daemon = await startDaemon(dir);
     const client = await daemon.client();
+    await registerService(client, dir);
     type Boot = { argv: string[]; env: { HIVE_BEE: string | null; HIVE_BEE_ID: string | null; HIVE_V2_DATA_DIR: string | null; HIVE_PARENT: string | null }; sessionId: string; resumed: string | null; forked: boolean };
 
     // source: boot + first message so it reports its session id
-    const src = await client.request<SpawnResult>("spawn", { name: "src", agent: "claude", cwd: dir, args: ["--model", "opus"], tags: ["team:a"] });
+    const src = await serviceRequest(client)<SpawnResult>("spawn", { name: "src", agent: "claude", cwd: dir, args: ["--model", "opus"], tags: ["team:a"] });
     const first = await client.request<SendRpcResult>("send", { beeId: src.beeId, body: "hello" });
     await waitDelivered(client, src.beeId, first.messageId, "source first delivery");
     const srcSession = await waitFor(async () => (await client.request<ViewResult>("view", { beeId: src.beeId })).bee?.providerSessionId, "source session id recorded");
@@ -251,6 +253,7 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
     assert.equal(fork.bee.forkSeed, srcSession);
     assert.equal(fork.bee.providerSessionId, null, "no session of its own yet");
     assert.equal(fork.bee.name, "src-b");
+    assert.deepEqual(fork.bee.spawnProvenance, { callerBeeId: null, authority: "unattributed", peerPid: process.pid });
     assert.equal(fork.bee.agent, "claude");
     assert.equal(fork.bee.cwd, dir);
     assert.deepEqual(fork.bee.args, ["--model", "opus"], "same args");
@@ -303,7 +306,7 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
     assert.equal((await client.request<ViewResult>("view", { beeId: fork.beeId })).bee?.providerSessionId, forkSession, "continuity kept across the revive");
 
     // No conversation means there is nothing to copy; refuse explicitly.
-    const fresh = await client.request<SpawnResult>("spawn", { name: "never-spoke", agent: "claude", cwd: dir });
+    const fresh = await serviceRequest(client)<SpawnResult>("spawn", { name: "never-spoke", agent: "claude", cwd: dir });
     await assert.rejects(client.request("bee.fork", { beeId: fresh.beeId }), error => error instanceof RpcError && error.code === "thread_history_unavailable");
     client.close();
   } finally {
@@ -314,7 +317,7 @@ test("v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (-
 
 test("v6.rpc.4: bee.fork (codex) — the fork's handshake sends thread/fork {threadId: source}; the NEW thread id is recorded; delivery targets the new thread", async () => {
   const rpcLog = join(process.env.TMPDIR ?? "/tmp", `hb-v6-codex-fork-${process.pid}-${Date.now()}.jsonl`);
-  const { dir, cleanup } = makeDaemonDir({
+  const { dir, cleanup } = makeRegisteredServiceDir({
     agents: {
       codex: { command: process.execPath, args: [FAKE_CODEX, "app-server"], adapter: "codex", env: { FAKE_CODEX_RPC_LOG: rpcLog } },
     },
@@ -323,14 +326,27 @@ test("v6.rpc.4: bee.fork (codex) — the fork's handshake sends thread/fork {thr
   try {
     daemon = await startDaemon(dir);
     const client = await daemon.client();
-    const src = await client.request<SpawnResult>("spawn", { name: "csrc", agent: "codex", cwd: dir });
+    await registerService(client, dir);
+    const src = await serviceRequest(client)<SpawnResult>("spawn", { name: "csrc", agent: "codex", cwd: dir });
     const srcThread = await waitFor(
       async () => (await client.request<ViewResult>("view", { beeId: src.beeId })).bee?.providerSessionId,
       "codex source thread id",
       20_000,
     );
     await waitState(client, src.beeId, "idle", "codex source idle");
-    const fork = await client.request<ForkResult>("bee.fork", { beeId: src.beeId });
+    const initiator = await client.request<SpawnResult>("spawn", { name: "fork-initiator", agent: "inbox" });
+    const context = { sessionPrincipal: { beeId: initiator.beeId } };
+    const forkParams = { beeId: src.beeId, idempotencyKey: "initiated-fork" };
+    const fork = await client.request<ForkResult>("bee.fork", forkParams, 5000, context);
+    assert.equal(fork.bee.parentId, src.beeId);
+    assert.equal(fork.bee.forkedFrom, src.beeId);
+    assert.deepEqual(fork.bee.spawnProvenance, { callerBeeId: initiator.beeId, authority: "bee", peerPid: process.pid });
+    assert.equal((await client.request<ForkResult>("bee.fork", forkParams, 5000, context)).beeId, fork.beeId);
+    await assert.rejects(client.request("bee.fork", forkParams, 5000, { sessionPrincipal: { beeId: src.beeId } }), (error: unknown) => error instanceof Error && "code" in error && error.code === "idempotency_conflict");
+    const serviceFork = await client.request<ForkResult>("bee.fork", { beeId: src.beeId }, 5000, { serviceIntent: "delegation" });
+    assert.deepEqual(serviceFork.bee.spawnProvenance, { callerBeeId: null, authority: "registered_service", peerPid: process.pid, serviceIntent: "delegation" });
+    assert.equal(serviceFork.bee.parentId, src.beeId);
+    assert.equal(serviceFork.bee.forkedFrom, src.beeId);
     assert.equal(fork.forkSeed, srcThread);
     const forkThread = await waitFor(
       async () => (await client.request<ViewResult>("view", { beeId: fork.beeId })).bee?.providerSessionId,
@@ -360,7 +376,7 @@ test("v6.rpc.4: bee.fork (codex) — the fork's handshake sends thread/fork {thr
 
 test("daemon restart: adopted Codex keeps its thread id and confirms queued mail", async () => {
   const rpcLog = join(process.env.TMPDIR ?? "/tmp", `hb-v6-codex-adopt-${process.pid}-${Date.now()}.jsonl`);
-  const { dir, cleanup } = makeDaemonDir({
+  const { dir, cleanup } = makeRegisteredServiceDir({
     agents: {
       codex: { command: process.execPath, args: [FAKE_CODEX, "app-server"], adapter: "codex", env: { FAKE_CODEX_RPC_LOG: rpcLog } },
     },
@@ -371,7 +387,8 @@ test("daemon restart: adopted Codex keeps its thread id and confirms queued mail
   try {
     daemon = await startDaemon(dir);
     client = await daemon.client();
-    const spawned = await client.request<SpawnResult>("spawn", { name: "codex-adopt", agent: "codex", cwd: dir });
+    await registerService(client, dir);
+    const spawned = await serviceRequest(client)<SpawnResult>("spawn", { name: "codex-adopt", agent: "codex", cwd: dir });
     const threadId = await waitFor(
       async () => (await client!.request<ViewResult>("view", { beeId: spawned.beeId })).bee?.providerSessionId,
       "codex thread id",
@@ -386,6 +403,7 @@ test("daemon restart: adopted Codex keeps its thread id and confirms queued mail
     await daemon.kill();
     daemon = await startDaemon(dir);
     client = await daemon.client();
+    await registerService(client, dir);
 
     const adopted = await client.request<ViewResult>("view", { beeId: spawned.beeId });
     assert.equal(adopted.view.generation, 1, "the surviving runtime is adopted, not replaced");
@@ -453,7 +471,7 @@ test("v6.rpc.5: parenting policy over RPC — archive parent leaves children; de
     assert.deepEqual(orphaned.map((e) => e.payload.parentId), [parent, parent]);
 
     // a cell bee's checkout is single-tenant: fork is a typed refusal
-    const celly = await client.request<SpawnResult>("spawn", { name: "celly", agent: "stub", substrate: "cell", cell: { originRepo: origin.repo, sha: origin.sha } });
+    const celly = await serviceRequest(client)<SpawnResult>("spawn", { name: "celly", agent: "stub", substrate: "cell", cell: { originRepo: origin.repo, sha: origin.sha } });
     await assert.rejects(client.request("bee.fork", { beeId: celly.beeId }), (e: unknown) => e instanceof RpcError && e.code === "invalid_request" && /cell/.test(e.message));
     watcher.close();
     client.close();
@@ -465,11 +483,12 @@ test("v6.rpc.5: parenting policy over RPC — archive parent leaves children; de
 });
 
 test("v6.rpc.6: questions + seals — ask → open row → answer → delivered as mailbox message → answered; list filters; seals CRUD; typed not-found; idempotent replays; snapshot carries them", async () => {
-  const { dir, cleanup } = makeDaemonDir();
+  const { dir, cleanup } = makeRegisteredServiceDir();
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
     const client = await daemon.client();
+    await registerService(client, dir);
     const beeId = await spawnAndSettle(client, "asker");
 
     const asked = await client.request<QuestionAskResult>("question.ask", { beeId, text: "merge or rebase?", options: ["merge", "rebase"], idempotencyKey: "ask-1" });
