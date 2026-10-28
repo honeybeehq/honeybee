@@ -47,6 +47,7 @@ export interface SandboxPolicy {
   homePaths?: readonly string[];
   log?: (line: string) => void;
   harnessHome?: { harness: string; path: string; cwd: string };
+  onCredentialProjection?: (sources: readonly string[]) => void;
 }
 
 export const DEFAULT_SANDBOX_TMPFS_BYTES = 1024 * 1024 * 1024;
@@ -420,6 +421,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
   ];
   if (policy.kvm) out.push("--dev-bind", "/dev/kvm", "/dev/kvm");
   if (projection) {
+    if (policy.harnessHome?.harness === "codex") policy.onCredentialProjection?.(projection.files.filter(file => file.destination.endsWith("/auth.json")).map(file => file.source));
     for (const file of projection.files) out.push("--ro-bind", file.source, file.destination);
     out.push("--setenv", policy.harnessHome!.harness === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR", projection.home);
   }

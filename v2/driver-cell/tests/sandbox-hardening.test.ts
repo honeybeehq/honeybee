@@ -51,7 +51,7 @@ test("hardening: harness projection binds only existing explicit input files", {
   try {
     const home = join(root, "account"), cell = join(root, "cell");
     mkdirSync(home); mkdirSync(cell);
-    writeFileSync(join(home, "auth.json"), "fixture");
+    writeFileSync(join(home, "auth.json"), JSON.stringify({tokens:{access_token:"synthetic",refresh_token:""}}));
     writeFileSync(join(home, "config.toml"), "fixture");
     writeFileSync(join(home, "unlisted"), "hidden");
     mkdirSync(join(home, "skills"));
@@ -60,7 +60,8 @@ test("hardening: harness projection binds only existing explicit input files", {
     writeFileSync(join(home, "skills", ".git", "config"), "hidden");
     writeFileSync(join(home, "skills", ".env"), "hidden");
     const projection = prepareSandboxHarnessHome(cell, "codex", home);
-    assert.deepEqual(projection.files.map(file => file.source), [join(home, "auth.json"), join(home, "config.toml"), join(home, "skills", "fixture.md")]);
+    assert.match(projection.files[0]!.source, /\.honeybee-cell-access/);
+    assert.deepEqual(projection.files.slice(1).map(file => file.source), [join(home, "config.toml"), join(home, "skills", "fixture.md")]);
     assert.ok(projection.files.every(file => file.destination.startsWith(projection.home + "/")));
     symlinkSync(join(root, "missing"), join(home, "skills", "unsafe"));
     assert.throws(() => prepareSandboxHarnessHome(cell, "codex", home), /symlink account input/);
@@ -240,7 +241,7 @@ test("hardening: private writes stay local, account inputs stay read only, and s
     const account = join(root, "account"), cell = join(root, "cell");
     mkdirSync(account); mkdirSync(cell);
     const auth = join(account, "auth.json"), config = join(account, "config.toml");
-    writeFileSync(auth, "fixture-not-a-credential"); writeFileSync(config, "fixture");
+    writeFileSync(auth, JSON.stringify({tokens:{access_token:"synthetic",refresh_token:""}})); writeFileSync(config, "fixture");
     writeFileSync(join(account, "unlisted"), "hidden");
     const script = `
       const fs = require('node:fs');
@@ -253,7 +254,7 @@ test("hardening: private writes stay local, account inputs stay read only, and s
     const run = spawnSync(wrapped.command, wrapped.args, { encoding: "utf8", timeout: 5000 });
     assert.equal(run.status, 0, run.stderr);
     assert.deepEqual(JSON.parse(run.stdout), { privateWrite: true, authWrite: false, configWrite: false, unlisted: false, sourceUnlisted: false });
-    assert.equal(readFileSync(auth, "utf8"), "fixture-not-a-credential");
+    assert.equal(readFileSync(auth, "utf8"), JSON.stringify({tokens:{access_token:"synthetic",refresh_token:""}}));
     assert.equal(readFileSync(config, "utf8"), "fixture");
     assert.equal(existsSync(join(account, "local-state")), false);
     symlinkSync(account, join(cell, "sandbox-state", "codex", "skills"));

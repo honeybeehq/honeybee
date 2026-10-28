@@ -1,6 +1,8 @@
 import { closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
 
+import { readAccessOnlyCodex, snapshotAccessOnlyCodex } from "./codexAccess.ts";
+
 export const SANDBOX_HARNESS_INPUTS: Readonly<Record<string, readonly { path: string; why: string }[]>> = {
   codex: [
     { path: "auth.json", why: "Existing account authentication, read only" },
@@ -57,13 +59,16 @@ export function privateHarnessHomePath(cellDir: string, harness: string): string
 export function prepareSandboxHarnessHome(cellDir: string, harness: string, sourceHome: string): SandboxHarnessProjection {
   if (!isAbsolute(sourceHome)) throw new Error("cell sandbox: account home must be absolute");
   const root = realpathSync(sourceHome);
-  const rel = relative(root, realpathSync(cellDir));
+  const canonicalCell = realpathSync(cellDir);
+  if (root === canonicalCell || root.startsWith(`${canonicalCell}${sep}`)) throw new Error("cell sandbox: account home is Cell-controlled");
+  const rel = relative(root, canonicalCell);
   if (rel === "" || rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)) throw new Error("cell sandbox: account home contains the Cell");
   const rootInfo = lstatSync(sourceHome);
   if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error("cell sandbox: account home must be a real directory");
   ensureCellPrivateDirectory(cellDir, join(cellDir, "sandbox-state"));
   const home = privateHarnessHomePath(cellDir, harness);
   ensureCellPrivateDirectory(cellDir, home);
+  if (harness === "codex") readAccessOnlyCodex(join(root, "auth.json"));
   const files: { source: string; destination: string }[] = [];
   const walk = (relativePath: string, depth: number): void => {
     if (depth > 16 || files.length >= 4096) throw new Error("cell sandbox: account input projection exceeds its limit");
@@ -78,7 +83,7 @@ export function prepareSandboxHarnessHome(cellDir: string, harness: string, sour
       for (const entry of readdirSync(source).sort()) if (!entry.startsWith(".")) walk(join(relativePath, entry), depth + 1);
     } else if (info.isFile()) {
       if (existing && !existing.isFile()) throw new Error(`cell sandbox: private input type mismatch: ${destination}`);
-      files.push({ source, destination });
+      files.push({ source: harness === "codex" && (relativePath === "auth.json" || relativePath === ".codex/auth.json") ? snapshotAccessOnlyCodex(root, source) : source, destination });
     } else throw new Error(`cell sandbox: non-file account input refused: ${source}`);
   };
   for (const input of SANDBOX_HARNESS_INPUTS[harness] ?? []) {

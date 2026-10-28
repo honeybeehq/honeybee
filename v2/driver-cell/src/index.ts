@@ -181,3 +181,5 @@ export {
 } from "./gitImage.ts";
 
 export { prepareSandboxHarnessHome, privateHarnessHomePath, SANDBOX_HARNESS_INPUTS } from "./harnessHome.ts";
+
+export { CellCredentialRefusal, accessOnlyCodexDocument, readAccessOnlyCodex } from "./codexAccess.ts";

@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { writeFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -451,6 +451,7 @@ test("cell-driver.account-home: the bee resolver never grants the shared account
   const baseline = join(rig.root, "baseline-cache");
   mkdirSync(accountHome, { recursive: true });
   mkdirSync(siblingHome);
+  writeFileSync(join(accountHome, "auth.json"), JSON.stringify({ tokens: { access_token: "synthetic-access", refresh_token: "" } }));
   mkdirSync(baseline);
   const accountGrant = sandboxWritableDirectory(accountHome, { forbiddenDirectories: [homesRoot] });
   const canonicalHomesRoot = realpathSync(homesRoot);

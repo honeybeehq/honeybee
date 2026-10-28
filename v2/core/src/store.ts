@@ -7866,6 +7866,35 @@ export class CoreStore {
     });
   }
 
+  recordCellCredentialProjection(beeId: string, generation: number, stamp: import("./types.ts").RuntimeCredentialStamp): void {
+    this.tx(() => {
+      const runtime = this.currentRuntime(beeId);
+      if (!runtime || runtime.generation !== generation || runtime.state !== "booting" || !stamp.cellProjection) throw new CoreError("Cell projection requires the current booting generation");
+      this.stmt("UPDATE runtimes SET credential_stamp = ? WHERE bee_id = ? AND generation = ?").run(JSON.stringify(stamp), beeId, generation);
+      this.audit("runtime.updated", beeId, { runtime: this.currentRuntime(beeId)! });
+    });
+  }
+
+  mountCellCredentialProjection(beeId: string, generation: number): void {
+    this.tx(() => {
+      const runtime = this.currentRuntime(beeId), stamp = runtime?.credentialStamp;
+      if (!runtime || runtime.generation !== generation || runtime.state === "stopped" || !stamp?.cellProjection || stamp.cellProjection.mountedAt !== undefined) return;
+      stamp.cellProjection.mountedAt = this.now();
+      this.stmt("UPDATE runtimes SET credential_stamp = ? WHERE bee_id = ? AND generation = ?").run(JSON.stringify(stamp), beeId, generation);
+      this.audit("runtime.updated", beeId, { runtime: this.currentRuntime(beeId)! });
+    });
+  }
+
+  authenticateCellCredentialProjection(beeId: string, generation: number): void {
+    this.tx(() => {
+      const runtime = this.currentRuntime(beeId), stamp = runtime?.credentialStamp;
+      if (!runtime || runtime.generation !== generation || runtime.state === "stopped" || !stamp?.cellProjection?.mountedAt || stamp.cellProjection.authenticatedAt !== undefined) return;
+      stamp.cellProjection.authenticatedAt = this.now();
+      this.stmt("UPDATE runtimes SET credential_stamp = ? WHERE bee_id = ? AND generation = ?").run(JSON.stringify(stamp), beeId, generation);
+      this.audit("runtime.updated", beeId, { runtime: this.currentRuntime(beeId)! });
+    });
+  }
+
   cancelAuthDeathRecovery(beeId: string, reason: AuthSettleReason = "auth_recovery_cancelled"): void {
     this.tx(() => {
       const bee = this.mustGetBee(beeId);

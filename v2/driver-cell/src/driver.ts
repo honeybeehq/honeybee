@@ -85,6 +85,8 @@ export interface CellDriverConfig {
   sandboxKvm?: boolean;
   sandboxProtectedPaths?: readonly string[];
   resolveSandboxGateway?(beeId: string, generation: number): { socketPath: string };
+  onCredentialProjectionRefused?(beeId: string, generation: number): void;
+  onCredentialProjection?(beeId: string, generation: number, sources: readonly string[]): void;
   resolveSandboxHarnessHome?(beeId: string): { harness: string; path: string } | undefined;
   /**
    * Additional authoritative paths for this bee. Callers must derive these
@@ -797,11 +799,13 @@ export class CellDriver implements RuntimeDriver {
       });
       this.sandboxTmp.track(beeId, generation ?? null);
     }
-    const wrapped = wrapWithSandbox(
+    let wrapped: ReturnType<typeof wrapWithSandbox>;
+    try { wrapped = wrapWithSandbox(
       {
         cellDir: cell.paths.wrapperDir,
         protectedPaths: this.cfg.sandboxProtectedPaths,
         gatewaySocketPath: gateway?.socketPath,
+        onCredentialProjection: sources => { if (generation !== undefined) this.cfg.onCredentialProjection?.(beeId, generation, sources); },
         log: this.cfg.log,
         ...(harnessHome ? { harnessHome: { ...harnessHome, cwd: cell.paths.spaceDir } } : {}),
         kvm: this.cfg.sandboxKvm,
@@ -815,6 +819,10 @@ export class CellDriver implements RuntimeDriver {
       harness.args,
       cell.paths.sandboxProfilePath,
     );
+    } catch (error) {
+      if (generation !== undefined && error instanceof Error && (error.message.startsWith("auth_needed:") || (error as Error & { code?: string }).code === "account_auth_needed")) this.cfg.onCredentialProjectionRefused?.(beeId, generation);
+      throw error;
+    }
     if (wrapped.profile != null) writeFileSync(cell.paths.sandboxProfilePath, wrapped.profile);
     return {
       adapter: harness.adapter,
