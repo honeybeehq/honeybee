@@ -23,7 +23,6 @@ const policy: CellGatewayPolicy = {
   limits: new CellGatewayLimits(),
   current: value => value === peer,
   canSend: target => target === "parent",
-  ownsTranscript: id => id === "own-operation",
 };
 const accepted = {
   view: { beeId: "self" },
@@ -32,7 +31,6 @@ const accepted = {
   send: { beeId: "parent", body: "hello" },
   "question.ask": { beeId: "self", text: "ready?" },
   "seal.create": { beeId: "self", title: "done", body: "evidence" },
-  "thread.transcript": { operationId: "own-operation" },
 };
 const refused = (error: unknown): boolean => error instanceof RpcError && error.code === "caller_not_trusted";
 
@@ -67,6 +65,7 @@ test("identity, generation, authority context and sender cannot be supplied by t
   assert.throws(() => authorizeCellGateway(policy, peer, "send", { beeId: "parent", sender: "operator" }, undefined), refused);
   assert.throws(() => authorizeCellGateway(policy, peer, "send", { beeId: "foreign" }, undefined), refused);
   assert.throws(() => authorizeCellGateway(policy, peer, "thread.transcript", { operationId: "foreign" }, undefined), refused);
+  assert.throws(() => authorizeCellGateway(policy, peer, "thread.transcript", { operationId: "own-operation" }, undefined), refused);
   const result = authorizeCellGateway(policy, peer, "send", { beeId: "parent", urgency: "now", idempotencyKey: "key" }, undefined);
   assert.equal(result.sender, "self");
   assert.equal(result.urgency, "next");
