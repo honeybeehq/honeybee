@@ -337,6 +337,8 @@ export const RPC_ERROR_CODES = [
   "react_emoji_invalid",
   "invalid_request",
   "caller_not_trusted",
+  "cell_gateway_payload_too_large",
+  "cell_gateway_rate_limited",
   "local_peer_credentials_unavailable",
   "local_peer_uid_mismatch",
   "tag_reserved",

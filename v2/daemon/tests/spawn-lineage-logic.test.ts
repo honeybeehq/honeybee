@@ -44,3 +44,16 @@ test("spawn refuses missing ancestry evidence and process replacement during ins
   assert.throws(() => spawnCallerBee(peer, [{ beeId: "caller", identity: proc(4, 0) }], () => ({ ...proc(4, 0), birth: ++reads === 1 ? "linux:4" : "linux:99" })), refused);
   assert.equal(spawnCallerBee(peer, [{ beeId: "recycled", identity: { ...proc(4, 0), birth: "linux:99" } }], () => proc(4, 0)), null);
 });
+
+test("gateway ancestry refuses peer and runtime PID reuse and reparenting during the final fence", () => {
+  const peer = { pid: 4, uid: 1000, processBirth: "linux:4" };
+  assert.equal(spawnCallerBee(peer, [{ beeId: "reused", identity: { ...proc(4, 0), birth: "linux:old" } }], () => proc(4, 0)), null);
+  assert.throws(() => spawnCallerBee(peer, [{ beeId: "runtime", identity: proc(4, 0) }], () => ({ ...proc(4, 0), birth: "linux:new" })), refused);
+  const reads = new Map<number, number>();
+  assert.throws(() => spawnCallerBee(peer, [{ beeId: "runtime", identity: proc(2, 1) }], pid => {
+    const count = (reads.get(pid) ?? 0) + 1;
+    reads.set(pid, count);
+    const value = proc(pid, pid - 1);
+    return pid === 3 && count > 1 ? { ...value, ppid: 1 } : value;
+  }), refused);
+});

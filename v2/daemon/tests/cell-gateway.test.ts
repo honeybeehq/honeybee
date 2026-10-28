@@ -3,7 +3,9 @@ import { test } from "node:test";
 import { mkdtempSync, renameSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { authorizeCellGateway, type CellGatewayPolicy } from "../src/cellGateway.ts";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { authorizeCellGateway, CellGatewayLimits, CELL_GATEWAY_LIMITS, type CellGatewayPolicy } from "../src/cellGateway.ts";
 import { RPC_VERBS, RpcError } from "../src/protocol.ts";
 import { PeerCredentials, type PeerConnection } from "../src/peerCredentials.ts";
 import { RpcServer } from "../src/rpc.ts";
@@ -18,6 +20,7 @@ import { runV2Cli } from "../../cli/src/main.ts";
 const peer = { uid: process.geteuid!(), pid: process.pid, processBirth: "fixture" };
 const policy: CellGatewayPolicy = {
   identity: Object.freeze({ beeId: "self", generation: 3 }),
+  limits: new CellGatewayLimits(),
   current: value => value === peer,
   canSend: target => target === "parent",
   ownsTranscript: id => id === "own-operation",
@@ -69,7 +72,7 @@ test("identity, generation, authority context and sender cannot be supplied by t
   assert.equal(result.urgency, "next");
   assert.notEqual(result.idempotencyKey, "key");
   assert.notEqual(result.idempotencyKey, authorizeCellGateway({ ...policy, identity: { beeId: "other", generation: 3 } }, peer, "send", { beeId: "parent", idempotencyKey: "key" }, undefined).idempotencyKey);
-  assert.notEqual(result.idempotencyKey, authorizeCellGateway({ ...policy, identity: { beeId: "self", generation: 4 } }, peer, "send", { beeId: "parent", idempotencyKey: "key" }, undefined).idempotencyKey);
+  assert.equal(result.idempotencyKey, authorizeCellGateway({ ...policy, identity: { beeId: "self", generation: 4 } }, peer, "send", { beeId: "parent", idempotencyKey: "key" }, undefined).idempotencyKey);
 });
 
 class FixturePeers extends PeerCredentials {
@@ -117,7 +120,7 @@ test("temporary daemon home binds the socket to its own live generation with rea
   const root = mkdtempSync(join(tmpdir(), "hb-cg-"));
   const store = openCoreStore(join(root, "fixture.sqlite"));
   const daemon = new HiveDaemon(loadNodeConfig(root));
-  const internal = daemon as unknown as { store: typeof store; cellGateway(id: string, generation: number): { socketPath: string }; cellGateways: Map<string, { server: RpcServer }> };
+  const internal = daemon as unknown as { store: typeof store; cellGateway(id: string, generation: number): { socketPath: string }; cellGateways: Map<string, { server: RpcServer }>; cellGatewaySweep: NodeJS.Timeout | null };
   internal.store = store;
   const parent = store.createBee({ name: "parent", agent: "stub", substrate: "hsr", cwd: root }).bee;
   mkdirSync(join(root, "session-logs"));
@@ -144,6 +147,15 @@ test("temporary daemon home binds the socket to its own live generation with rea
     await assert.rejects(client.request("spawn", { agent: "stub", cwd: root }), /Cell gateway operation refused/);
     await client.request("question.ask", { beeId: bee.id, text: "fixture question" });
     assert.equal(store.listQuestions({ beeId: bee.id }).length, 1);
+    const inbox = store.createBee({ name: "remote-proxy-parent", agent: "inbox", substrate: "hsr", cwd: root }).bee;
+    const child = store.createBee({ name: "proxy-child", agent: "stub", substrate: "cell", cwd: root, parentId: inbox.id });
+    store.recordRuntimeProc(child.bee.id, child.runtime.generation, { pid: own.pid, pidStartedAt: own.startedAtMs, processIdentity: { pid: own.pid, birth: own.birth, bootId: own.bootId } });
+    const proxyGateway = internal.cellGateway(child.bee.id, child.runtime.generation);
+    const proxyClient = await RpcClient.connect(proxyGateway.socketPath);
+    try {
+      await assert.rejects(proxyClient.request("send", { beeId: inbox.id, body: "must not forward" }), /Cell gateway operation refused/);
+      assert.equal(store.listMessages(inbox.id).length, 0);
+    } finally { proxyClient.close(); }
     const priorGateway = process.env.HIVE_CELL_GATEWAY_SOCKET;
     process.env.HIVE_CELL_GATEWAY_SOCKET = gateway.socketPath;
     try {
@@ -155,18 +167,54 @@ test("temporary daemon home binds the socket to its own live generation with rea
       output.length = 0;
       assert.equal(await runV2Cli(["send", parent.id, "fixture mail", "--json", "--data-dir", root], io), 0, errors.join("\n"));
       assert.equal(store.listMessages(parent.id).at(-1)?.sender, bee.id);
+      process.env.HIVE_CELL_GATEWAY_SOCKET = join(root, "down.sock");
+      output.length = 0;
+      assert.equal(await runV2Cli(["view", bee.id, "--json", "--data-dir", root], io), 1);
+      assert.equal(JSON.parse(output.at(-1)!).error.code, "socket_unreachable");
     } finally {
       if (priorGateway === undefined) delete process.env.HIVE_CELL_GATEWAY_SOCKET;
       else process.env.HIVE_CELL_GATEWAY_SOCKET = priorGateway;
     }
     store.updateRuntimeState(bee.id, runtime.generation, "stopped", { exitCause: "clean" });
     await assert.rejects(client.request("view", {}), /Cell gateway operation refused/);
+    const next = store.reviveBee(bee.id);
+    store.recordRuntimeProc(bee.id, next.generation, { pid: own.pid, pidStartedAt: own.startedAtMs, processIdentity: { pid: own.pid, birth: own.birth, bootId: own.bootId } });
+    await assert.rejects(client.request("view", {}), /Cell gateway operation refused/);
+    const fresh = await RpcClient.connect(internal.cellGateway(bee.id, next.generation).socketPath);
+    try {
+      assert.equal((await fresh.request<{ bee: { id: string } }>("view", {})).bee.id, bee.id);
+    } finally { fresh.close(); }
+    assert.ok(store.auditTail(0, 1000).some(row => row.kind === "rpc.local_refused" && row.payload.beeId === bee.id && String(row.payload.reason).includes("cell.exec")));
   } finally {
+    if (internal.cellGatewaySweep) clearInterval(internal.cellGatewaySweep);
     client?.close();
     await Promise.all([...internal.cellGateways.values()].map(item => item.server.close()));
     store.close();
     trash(root);
   }
+});
+
+test("Cell mutation limits bound payload bytes and persist across generations with a deterministic window", () => {
+  let now = 0;
+  const limits = new CellGatewayLimits(() => now);
+  const current = { ...policy, limits };
+  for (const [verb, params] of [
+    ["send", { beeId: "parent", body: "x".repeat(CELL_GATEWAY_LIMITS.bodyBytes + 1) }],
+    ["question.ask", { text: "x".repeat(CELL_GATEWAY_LIMITS.textBytes + 1) }],
+    ["question.ask", { text: "ok", options: Array(33).fill("ok") }],
+    ["question.ask", { text: "ok", options: ["x".repeat(257)] }],
+    ["seal.create", { title: "x".repeat(513) }],
+    ["seal.create", { title: "ok", refs: Array(33).fill("ok") }],
+    ["seal.create", { title: "ok", refs: ["x".repeat(1025)] }],
+  ] as const) {
+    assert.throws(() => authorizeCellGateway(current, peer, verb, params, undefined), error => error instanceof RpcError && error.code === "cell_gateway_payload_too_large");
+  }
+  for (const [verb, maximum, params] of [["send", 60, { beeId: "parent", body: "ok" }], ["question.ask", 12, { text: "ok" }], ["seal.create", 12, { title: "ok" }]] as const) {
+    for (let count = 0; count < maximum; count++) authorizeCellGateway(current, peer, verb, params, undefined);
+    assert.throws(() => authorizeCellGateway({ ...current, identity: { beeId: "self", generation: 4 } }, peer, verb, params, undefined), error => error instanceof RpcError && error.code === "cell_gateway_rate_limited");
+  }
+  now = 60_000;
+  assert.doesNotThrow(() => authorizeCellGateway(current, peer, "send", { beeId: "parent", body: "ok" }, undefined));
 });
 
 test("Cell CLI target takes precedence over explicit sockets and never resolves the real socket", () => {
@@ -179,4 +227,41 @@ test("Cell CLI target takes precedence over explicit sockets and never resolves 
       assert.throws(() => resolveDaemonTarget({ dataDirFlag: root }, { HIVE_CELL_GATEWAY_SOCKET: value }), /Invalid Cell gateway/);
     }
   } finally { trash(root); }
+});
+
+test("native gateway refuses same-uid outsiders and admits a real runtime descendant", async () => {
+  const root = mkdtempSync(join(tmpdir(), "hb-ga-"));
+  const store = openCoreStore(join(root, "fixture.sqlite"));
+  const daemon = new HiveDaemon(loadNodeConfig(root));
+  const internal = daemon as unknown as { store: typeof store; cellGateway(id: string, generation: number): { socketPath: string }; cellGateways: Map<string, { server: RpcServer }>; cellGatewaySweep: NodeJS.Timeout | null };
+  internal.store = store;
+  const { bee, runtime } = store.createBee({ name: "ancestry", agent: "stub", substrate: "cell", cwd: root });
+  const clientScript = `const {RpcClient}=await import(process.argv[1]); const c=await RpcClient.connect(process.argv[2]); try { const r=await c.request('view',{}); console.log(JSON.stringify({beeId:r.bee.id})); } finally {c.close();}`;
+  const runtimeScript = `import {spawn} from 'node:child_process'; process.on('message',message=>{ const child=spawn(process.execPath,['--input-type=module','-e',message.code,message.client,message.socket],{stdio:['ignore','pipe','pipe']}); let out='',err=''; child.stdout.on('data',v=>out+=v);child.stderr.on('data',v=>err+=v);child.on('exit',code=>process.send({code,out,err})); });process.send('ready');`;
+  const ownedRuntime = spawn(process.execPath, ["--input-type=module", "-e", runtimeScript], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
+  let outsider: RpcClient | undefined;
+  try {
+    await once(ownedRuntime, "message");
+    const identity = inspectProcess(ownedRuntime.pid!);
+    assert.equal(identity.kind, "present");
+    if (identity.kind !== "present") throw new Error("fixture runtime identity unavailable");
+    store.recordRuntimeProc(bee.id, runtime.generation, { pid: identity.pid, pidStartedAt: identity.startedAtMs, processIdentity: { pid: identity.pid, birth: identity.birth, bootId: identity.bootId } });
+    const gateway = internal.cellGateway(bee.id, runtime.generation);
+    outsider = await RpcClient.connect(gateway.socketPath);
+    await assert.rejects(outsider.request("view", {}), error => error instanceof RpcError && error.code === "caller_not_trusted");
+    const response = once(ownedRuntime, "message");
+    ownedRuntime.send!({ code: clientScript, client: new URL("../../cli/src/client.ts", import.meta.url).href, socket: gateway.socketPath });
+    const [result] = await response as [{ code: number; out: string; err: string }];
+    assert.equal(result.code, 0, result.err);
+    assert.equal(JSON.parse(result.out).beeId, bee.id);
+  } finally {
+    outsider?.close();
+    const exited = once(ownedRuntime, "exit");
+    ownedRuntime.kill("SIGTERM");
+    await exited;
+    if (internal.cellGatewaySweep) clearInterval(internal.cellGatewaySweep);
+    await Promise.all([...internal.cellGateways.values()].map(item => item.server.close()));
+    store.close();
+    trash(root);
+  }
 });
