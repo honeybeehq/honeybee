@@ -103,6 +103,11 @@ jobs:
       - name: Require native Linux sandbox coverage
         # Fail before tests if this runner would skip the native containment probe.
         run: bwrap --new-session --die-with-parent --ro-bind / / --dev /dev --unshare-user --cap-drop ALL --unshare-pid --proc /proc -- /bin/true
+      - name: Allow the secret execution supervisor namespace under AppArmor
+        run: |
+          printf 'abi <abi/4.0>,\ninclude <tunables/global>\nprofile hive-ci-unshare /usr/bin/unshare flags=(unconfined) {\n  userns,\n}\n' | sudo tee /etc/apparmor.d/hive-ci-unshare >/dev/null
+          sudo apparmor_parser -r /etc/apparmor.d/hive-ci-unshare
+          /usr/bin/unshare --user --map-current-user --pid --mount --mount-proc --fork --kill-child=SIGKILL /bin/true
       - run: npm ci
       - run: npm run check
       - run: npm run v2:check

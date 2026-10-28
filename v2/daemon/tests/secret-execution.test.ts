@@ -176,6 +176,33 @@ test("daemon executes active owned Cell, keeps durable bytes clean, deduplicates
         console.log(`unsupported platform ${platform} capture=${capture}: fresh and reopened reason=secret_execution_containment_unavailable, no command or capture`);
       }
     }
+    const { spawnSync } = await import("node:child_process");
+    const { LINUX_SECRET_NAMESPACE_ARGS } = await import("../../driver-cell/src/exec.ts");
+    const containment = process.platform === "linux" && spawnSync("/usr/bin/unshare", [...LINUX_SECRET_NAMESPACE_ARGS, process.execPath, "-e", "process.exit(process.pid === 1 ? 0 : 125)"], { stdio: "ignore", timeout: 10000 }).status === 0;
+    console.log(`secret execution containment ${containment ? "available: exercising contained execution" : "unavailable: exercising the typed refusal"}`);
+    if (!containment) {
+      const probeArgv = [process.execPath, "-e", "const fs=require('node:fs');fs.appendFileSync('runs','1');process.stdout.write(process.env.TOKEN)"];
+      for (const capture of [false, true]) {
+        const executionId = `contained-${capture}`;
+        const binding = { ...base, executionId, argvDigest: secretArgvDigest(probeArgv), expiresAt: Date.now() + 30000 };
+        const outputCapture = { name: "TOKEN", maxBytes: 128, leaseId: executionId, expiresAt: binding.expiresAt };
+        const params = { ...binding, argv: probeArgv, idempotencyKey: executionId, ...(capture ? { outputCapture } : {}) };
+        const context = { secretExecution: { ...binding, ...(capture ? { outputCapture } : { env: { TOKEN: token } }) } };
+        const refused = await client.request<import("../src/protocol.ts").CellExecResult>("cell.execSecret", params, 10000, context);
+        assert.equal(refused.status, "failed");
+        assert.equal(refused.reason, "secret_execution_containment_unavailable");
+        assert.equal(refused.stdout, "");
+        assert.equal(frames.at(-1)?.secretCapture, undefined);
+        store.close(); store = openCoreStore(storePath); internal.store = store;
+        const replay = await client.request<import("../src/protocol.ts").CellExecResult>("cell.execSecret", params, 10000, context);
+        assert.equal(replay.deduped, true);
+        assert.equal(replay.reason, "secret_execution_containment_unavailable");
+      }
+      assert.equal((await import("node:fs")).existsSync(join(paths.spaceDir, "runs")), false);
+      assert.equal(scan(root), 0);
+      for (const value of [token, capturedBytes.toString("utf8"), capturedBase64]) assert.equal(logs.join("\n").includes(value), false);
+      return;
+    }
     const captureArgv = [process.execPath, "-e", `process.stdout.write(Buffer.from(${JSON.stringify([...capturedBytes])}));process.stderr.write(Buffer.from(${JSON.stringify([...capturedBytes])}))`];
     const outputCapture = { name: "TOKEN", maxBytes: 128, leaseId: "capture-lease", expiresAt: Date.now() + 30000 };
     const captureBinding = { ...base, executionId: "capture-once", argvDigest: secretArgvDigest(captureArgv), expiresAt: Date.now() + 30000, outputCapture };
