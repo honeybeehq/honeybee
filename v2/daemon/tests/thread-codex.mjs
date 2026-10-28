@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 const home = process.env.CODEX_HOME;
 mkdirSync(home, { recursive: true });
+mkdirSync(join(home, 'sessions'), { recursive: true });
 const db = new DatabaseSync(join(home, 'state_5.sqlite'));
 db.exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL)');
 const rl = createInterface({ input: process.stdin });
@@ -19,7 +20,7 @@ rl.on('line', async line => {
   if (process.env.THREAD_RPC_LOG) appendFileSync(process.env.THREAD_RPC_LOG, JSON.stringify({ pid: process.pid, method: m.method, params: m.params }) + '\n');
   if (m.method === 'initialize') response(m.id, { userAgent: 'thread-test' });
   else if (m.method === 'thread/start') {
-    threadId = randomUUID(); path = join(home, `${threadId}.jsonl`);
+    threadId = randomUUID(); path = join(home, 'sessions', `${threadId}.jsonl`);
     writeFileSync(path, JSON.stringify({ type: 'session_meta', payload: { id: threadId, model_provider: 'mock', base_instructions: { text: 'Source instructions' } } }) + '\n' + JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'Original history' }] } }) + '\n');
     db.prepare('INSERT INTO threads VALUES (?, ?)').run(threadId, path);
     response(m.id, { thread: { id: threadId, path } });
