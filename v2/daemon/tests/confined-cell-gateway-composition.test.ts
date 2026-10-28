@@ -10,9 +10,12 @@ import { sandboxEnvironment, wrapWithSandbox } from "../../driver-cell/src/sandb
 import { inspectProcess } from "../../harness/src/processIdentity.ts";
 import { HiveDaemon } from "../src/daemon.ts";
 import { loadNodeConfig } from "../src/config.ts";
+import { randomBytes } from "node:crypto";
 import { peerConfinement } from "../src/confinedPeer.ts";
 import type { LocalPeer } from "../src/peerCredentials.ts";
 import { RpcServer, type RpcConn } from "../src/rpc.ts";
+import type { BeeRow } from "../../core/src/index.ts";
+import type { AgentSpecConfig } from "../src/config.ts";
 import type { RpcVerb } from "../src/protocol.ts";
 
 test("same sandboxed Cell preserves the raw hived five verbs and gateway six verbs", {skip: process.platform !== "linux", timeout: 30000}, async () => {
@@ -34,6 +37,7 @@ test("same sandboxed Cell preserves the raw hived five verbs and gateway six ver
     spawnPeerBee(peer: LocalPeer): string | null;
     admitConfined(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): Record<string, unknown>;
     dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown;
+    runtimeEnvOf(bee: BeeRow, spec: AgentSpecConfig, label: string): Record<string, string>;
   };
   internal.store = store;
   const parent = store.createBee({name: "parent", agent: "stub", substrate: "hsr", cwd: root}).bee;
@@ -55,13 +59,15 @@ test("same sandboxed Cell preserves the raw hived five verbs and gateway six ver
   writeFileSync(probe, `
 import {createConnection} from 'node:net';
 import {existsSync} from 'node:fs';
+import {spawnSync} from 'node:child_process';
 const rpc=(path,verb,params,context)=>new Promise((resolve,reject)=>{
  const socket=createConnection(path);let buffer='',hello=false;
  socket.setEncoding('utf8');socket.on('error',reject);
  socket.on('data',chunk=>{buffer+=chunk;let at;while((at=buffer.indexOf('\\n'))>=0){const frame=JSON.parse(buffer.slice(0,at));buffer=buffer.slice(at+1);if(!hello){hello=true;socket.write(JSON.stringify({protocol:frame.protocol})+'\\n'+JSON.stringify({id:1,verb,params,...(context===undefined?{}:{context})})+'\\n');}else if(frame.id===1){socket.end();resolve(frame);}}});
 });
 const deadline=Date.now()+10000;while(!existsSync(${JSON.stringify(ready)})){if(Date.now()>deadline)throw Error('identity not bound');await new Promise(r=>setTimeout(r,10));}
-const results={pid:process.pid};
+const hostRoutes=['HIVE_SOCKET','HIVE_DATA_DIR','HIVE_V2_SOCKET_PATH','HIVE_V2_DATA_DIR','HIVE_TMUX_SOCKET','HIVE_TMUX_SOCKET_PATH'];
+const results={pid:process.pid,canaryAbsent:!Object.hasOwn(process.env,'T11J_CANARY_SECRET'),identity:process.env.HIVE_BEE_ID===${JSON.stringify(bee.id)},explicitEnv:['APIARY_GATEWAY_URL','APIARY_SESSION_ID','APIARY_AGENT_TOKEN','OPENAI_API_KEY'].every(name=>Object.hasOwn(process.env,name)),hostRoutesAbsent:hostRoutes.every(name=>!Object.hasOwn(process.env,name)),gatewayOnly:process.env.HIVE_CELL_GATEWAY_SOCKET==='/run/honeybee/gateway.sock',privateHome:process.env.HOME?.startsWith(${JSON.stringify(cellDir)}+'/sandbox-state/')};
 for(const [name,path] of [['hived','/run/honeybee/test-hived.sock'],['gateway','/run/honeybee/gateway.sock']]){
  const rows={};
  for(const [label,verb,params,context] of [
@@ -83,13 +89,21 @@ for(const [name,path] of [['hived','/run/honeybee/test-hived.sock'],['gateway','
  ]) rows[label]=await rpc(path,verb,params,context);
  results[name]=rows;
 }
+const cli=spawnSync('/run/honeybee/bin/hive',['transcript',${JSON.stringify(bee.id)},'--raw','--json','--socket','/run/honeybee/test-hived.sock'],{encoding:'utf8',timeout:10000});
+results.cliGatewayOnly=cli.status===0&&JSON.parse(cli.stdout).lines[0]==='own fixture transcript';
 console.log(JSON.stringify(results));
 `);
   const wrapped = wrapWithSandbox({cellDir, writablePaths: [], gatewaySocketPath: gateway.socketPath, protectedPaths: [root]}, process.execPath, [probe], join(cellDir, "sandbox.sb"));
   const separator = wrapped.args.findIndex((value, index) => value === "--remount-ro" && wrapped.args[index + 1] === "/run");
   assert.ok(separator >= 0);
   wrapped.args.splice(separator, 0, "--ro-bind", config.socketPath, "/run/honeybee/test-hived.sock");
-  const child = spawn(wrapped.command, wrapped.args, {cwd: cellDir, env: sandboxEnvironment(cellDir, process.env as Record<string, string>), stdio: ["ignore", "pipe", "pipe"]});
+  const savedCanary = process.env.T11J_CANARY_SECRET;
+  process.env.T11J_CANARY_SECRET = randomBytes(24).toString("hex");
+  let env: Record<string,string>;
+  try {
+    env = internal.runtimeEnvOf(bee,{command:process.execPath,env:{APIARY_GATEWAY_URL:"fixture",APIARY_SESSION_ID:"fixture",APIARY_AGENT_TOKEN:"fixture",OPENAI_API_KEY:"fixture",HIVE_V2_SOCKET_PATH:config.socketPath}},"fixture");
+  } finally {if(savedCanary===undefined)delete process.env.T11J_CANARY_SECRET;else process.env.T11J_CANARY_SECRET=savedCanary;}
+  const child = spawn(wrapped.command, wrapped.args, {cwd: cellDir, env: sandboxEnvironment(cellDir, env), stdio: ["ignore", "pipe", "pipe"]});
   let stdout = "", stderr = "";
   child.stdout.on("data", chunk => {stdout += chunk;});
   child.stderr.on("data", chunk => {stderr += chunk;});
@@ -105,6 +119,7 @@ console.log(JSON.stringify(results));
     assert.equal(await finished, 0, stderr);
     const result = JSON.parse(stdout.trim());
     assert.ok(Number.isSafeInteger(result.pid));
+    for (const name of ["canaryAbsent","identity","explicitEnv","hostRoutesAbsent","gatewayOnly","privateHome","cliGatewayOnly"]) assert.equal(result[name],true,name);
     for (const name of ["hived", "gateway"]) {
       const rows = result[name];
       for (const verb of ["view", "list", "ask", "seal", "send"]) assert.equal(rows[verb].ok, true, `${name}:${verb}`);
@@ -123,7 +138,7 @@ console.log(JSON.stringify(results));
     assert.equal(mail.length, 2);
     assert.ok(mail.every(message => message.sender === bee.id && message.urgency === "next"));
     assert.equal(store.listMessages(inbox.id).length, 0);
-    console.log(JSON.stringify({fixture: "same-cell-hived5-gateway6", customRoot, sameProcess: true, hivedAllowed: 5, gatewayAllowed: 6, transcriptHived: "confined_peer_refused", transcriptGateway: true, privilegedDeniedBoth: true, passed: true}));
+    console.log(JSON.stringify({fixture: "same-cell-hived5-gateway6", customRoot, sameProcess: true, hivedAllowed: 5, gatewayAllowed: 6, transcriptHived: "confined_peer_refused", transcriptGateway: true, privilegedDeniedBoth: true, envCanaryAbsent: true, hostEnvRoutesAbsent: true, explicitEnvPreserved: true, privateHome: true, passed: true}));
   } finally {
     clearTimeout(timeout);
     if (child.exitCode === null && child.signalCode === null) {child.kill("SIGTERM"); await finished;}
