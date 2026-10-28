@@ -87,6 +87,15 @@ test("codex: error notification with auth-expiry signature → auth_needed set",
   }
 });
 
+test("codex: authentication flag details never retain provider credential text", () => {
+  const message = 'Token refresh failed Bearer fixture-bearer sk-fixture-secret eyJfixture.eyJpayload.signature refresh_token=fixture-refresh';
+  const signals = adapter.parseLine(JSON.stringify({jsonrpc:"2.0", method:"error", params:{error:{message}}}));
+  const flag = signals.find(signal => signal.kind === "flag" && signal.flag === "auth_needed");
+  assert.ok(flag && flag.kind === "flag");
+  assert.equal(flag.detail, "Codex authentication failed; refresh credentials outside the Cell before retrying.");
+  for (const secret of ["fixture-bearer", "sk-fixture", "eyJ", "fixture-refresh"]) assert.ok(!flag.detail?.includes(secret));
+});
+
 test("codex: read-only credential refresh remains a visible authentication boundary", () => {
   for (const message of ["Token refresh failed: Read-only file system", "Cannot save auth.json: Read-only file system", "Cannot write .credentials.json: Permission denied"]) {
     const signals = adapter.parseLine(JSON.stringify({jsonrpc:"2.0", method:"error", params:{error:{message}}}));

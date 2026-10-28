@@ -134,7 +134,7 @@ function errorSignals(message: string, codexErrorInfo?: unknown): AdapterSignal[
     return [{ kind: "flag", flag: "resource_blocked", action: "set", detail: (quota.providerCategory === "text_fallback" ? message : `codex usage limit exceeded: ${message}`).slice(0, 500), quota }];
   }
   if (isAuthNeededMessage(message)) {
-    return [{ kind: "flag", flag: "auth_needed", action: "set", detail: message.slice(0, 500) }];
+    return [{ kind: "flag", flag: "auth_needed", action: "set", detail: "Codex authentication failed; refresh credentials outside the Cell before retrying." }];
   }
   if (isResourceBlockedMessage(message) || /usage limit/i.test(message)) {
     return [{ kind: "flag", flag: "resource_blocked", action: "set", detail: message.slice(0, 500) }];

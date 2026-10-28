@@ -1,4 +1,4 @@
-import { chmodSync, lstatSync, mkdirSync, readdirSync, realpathSync } from "node:fs";
+import { closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, sep } from "node:path";
 
 export const SANDBOX_HARNESS_INPUTS: Readonly<Record<string, readonly { path: string; why: string }[]>> = {
@@ -27,11 +27,26 @@ export interface SandboxHarnessProjection {
   files: readonly { source: string; destination: string }[];
 }
 
-function privateDirectory(path: string): void {
-  const info = lstatSync(path, { throwIfNoEntry: false });
-  if (info && (!info.isDirectory() || info.isSymbolicLink())) throw new Error(`cell sandbox: unsafe private harness directory: ${path}`);
-  if (!info) mkdirSync(path, { mode: 0o700 });
-  chmodSync(path, 0o700);
+function privateDirectory(cellDir: string, path: string): void {
+  const parts = relative(cellDir, path).split(sep).filter(Boolean);
+  if (parts.some(part => part === "..") || isAbsolute(relative(cellDir, path))) throw new Error("cell sandbox: private directory escapes Cell");
+  const handles: number[] = [];
+  try {
+    handles.push(openSync(cellDir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW));
+    for (const part of parts) {
+      const parent = handles[handles.length - 1]!;
+      const child = `${process.platform === "linux" ? "/proc/self/fd" : "/dev/fd"}/${parent}/${part}`;
+      try { mkdirSync(child, { mode: 0o700 }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
+      const handle = openSync(child, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+      handles.push(handle);
+      if (!fstatSync(handle).isDirectory()) throw new Error("cell sandbox: unsafe private harness directory");
+      fchmodSync(handle, 0o700);
+    }
+  } catch {
+    throw new Error(`cell sandbox: unsafe private harness directory: ${path}`);
+  } finally {
+    for (const handle of handles.reverse()) closeSync(handle);
+  }
 }
 
 export function privateHarnessHomePath(cellDir: string, harness: string): string {
@@ -46,9 +61,9 @@ export function prepareSandboxHarnessHome(cellDir: string, harness: string, sour
   if (rel === "" || rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel)) throw new Error("cell sandbox: account home contains the Cell");
   const rootInfo = lstatSync(sourceHome);
   if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) throw new Error("cell sandbox: account home must be a real directory");
-  privateDirectory(join(cellDir, "sandbox-state"));
+  privateDirectory(cellDir, join(cellDir, "sandbox-state"));
   const home = privateHarnessHomePath(cellDir, harness);
-  privateDirectory(home);
+  privateDirectory(cellDir, home);
   const files: { source: string; destination: string }[] = [];
   const walk = (relativePath: string, depth: number): void => {
     if (depth > 16 || files.length >= 4096) throw new Error("cell sandbox: account input projection exceeds its limit");
@@ -59,8 +74,8 @@ export function prepareSandboxHarnessHome(cellDir: string, harness: string, sour
     const existing = lstatSync(destination, { throwIfNoEntry: false });
     if (existing?.isSymbolicLink()) throw new Error(`cell sandbox: symlink private input refused: ${destination}`);
     if (info.isDirectory()) {
-      privateDirectory(destination);
-      for (const entry of readdirSync(source).sort()) walk(join(relativePath, entry), depth + 1);
+      privateDirectory(cellDir, destination);
+      for (const entry of readdirSync(source).sort()) if (!entry.startsWith(".")) walk(join(relativePath, entry), depth + 1);
     } else if (info.isFile()) {
       if (existing && !existing.isFile()) throw new Error(`cell sandbox: private input type mismatch: ${destination}`);
       files.push({ source, destination });
@@ -72,7 +87,7 @@ export function prepareSandboxHarnessHome(cellDir: string, harness: string, sour
       const path = join(root, ...parts.slice(0, length));
       const info = lstatSync(path, { throwIfNoEntry: false });
       if (info && (!info.isDirectory() || info.isSymbolicLink())) throw new Error(`cell sandbox: unsafe account input ancestor: ${path}`);
-      privateDirectory(join(home, ...parts.slice(0, length)));
+      privateDirectory(cellDir, join(home, ...parts.slice(0, length)));
     }
     walk(input.path, 0);
   }

@@ -54,6 +54,9 @@ test("hardening: harness projection binds only existing explicit input files", (
     writeFileSync(join(home, "unlisted"), "hidden");
     mkdirSync(join(home, "skills"));
     writeFileSync(join(home, "skills", "fixture.md"), "fixture");
+    mkdirSync(join(home, "skills", ".git"));
+    writeFileSync(join(home, "skills", ".git", "config"), "hidden");
+    writeFileSync(join(home, "skills", ".env"), "hidden");
     const projection = prepareSandboxHarnessHome(cell, "codex", home);
     assert.deepEqual(projection.files.map(file => file.source), [join(home, "auth.json"), join(home, "config.toml"), join(home, "skills", "fixture.md")]);
     assert.ok(projection.files.every(file => file.destination.startsWith(projection.home + "/")));
@@ -61,6 +64,18 @@ test("hardening: harness projection binds only existing explicit input files", (
     assert.throws(() => prepareSandboxHarnessHome(cell, "codex", home), /symlink account input/);
     const policy = { cellDir: cell, writablePaths: [home], harnessHome: { harness: "codex", path: home, cwd: cell } };
     assert.throws(() => bwrapArgs(policy, "/bin/true", []), /protected writable/);
+  } finally { dispose(root); }
+});
+
+test("hardening: private directory setup never chmods a symlink target", () => {
+  const root = mkdtempSync("/tmp/hb-private-directory-");
+  try {
+    const account = join(root, "account"), cell = join(root, "cell"), target = join(root, "target");
+    mkdirSync(account); mkdirSync(cell); mkdirSync(target, {mode: 0o755});
+    chmodSync(target, 0o755);
+    symlinkSync(target, join(cell, "sandbox-state"));
+    assert.throws(() => prepareSandboxHarnessHome(cell, "codex", account), /unsafe private harness directory/);
+    assert.equal(statSync(target).mode & 0o777, 0o755);
   } finally { dispose(root); }
 });
 
