@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { startDaemon } from "./helpers.ts";
-import { makeRegisteredServiceDir, registerService } from "./registered-service-fixture.ts";
+import { makeRegisteredServiceDir, registerService, serviceRequest } from "./registered-service-fixture.ts";
 import { PHONE_FORMAT, renderPhoneInput, type PhoneOriginRequest, type PhoneInput } from "../../core/src/phoneOrigin.ts";
 import type { MessageRow } from "../../core/src/types.ts";
 import type { RpcRequestContext } from "../src/protocol.ts";
@@ -39,35 +39,35 @@ test("real owner phone admission: trust, atomic replay, lane pinning, initial pr
     await assert.rejects(client.request("send", { ...interimArgs, body: renderPhoneInput("interim changed") }, 2000, { phoneLane: "interim-v1" }), { code: "idempotency_conflict" });
     await assert.rejects(client.request("send", interimArgs), { code: "idempotency_conflict" });
     const legacyArgs = { name: "legacy-original", agent: "inbox", parentId: "external-fixture-parent", parentExternal: true, prompt: "legacy initial", idempotencyKey: "legacy-spawn" };
-    const legacy = await client.request<{ beeId: string; messageId: number }>("spawn", legacyArgs);
+    const legacy = await serviceRequest(client)<{ beeId: string; messageId: number }>("spawn", legacyArgs);
     const legacyReplay = { ...legacyArgs, name: "ignored-legacy-name", parentExternal: false, prompt: undefined };
-    assert.equal((await client.request<{ beeId: string }>("spawn", legacyReplay)).beeId, legacy.beeId);
-    await assert.rejects(client.request("spawn", legacyArgs, 2000, { phoneLane: "interim-v1" }), { code: "idempotency_conflict" });
+    assert.equal((await serviceRequest(client)<{ beeId: string }>("spawn", legacyReplay)).beeId, legacy.beeId);
+    await assert.rejects(serviceRequest(client)("spawn", legacyArgs, 2000, { phoneLane: "interim-v1" }), { code: "idempotency_conflict" });
 
     const spawnArgs = { name: "phone-prompt", agent: "inbox", prompt: args.body, idempotencyKey: "phone-spawn" };
-    const spawnContext = { phoneOrigin: { ...origin, contentKind: "initial-prompt" as const } };
-    const spawned = await client.request<{ beeId: string }>("spawn", spawnArgs, 2000, spawnContext);
+    const spawnContext = { serviceIntent: "service" as const, phoneOrigin: { ...origin, contentKind: "initial-prompt" as const } };
+    const spawned = await serviceRequest(client)<{ beeId: string }>("spawn", spawnArgs, 2000, spawnContext);
     const prompts = await client.request<{ messages: { phoneInput?: PhoneInput; body: string }[] }>("mailbox", { beeId: spawned.beeId });
     assert.equal(prompts.messages[0]!.phoneInput!.originalContent, args.body);
     assert.equal(prompts.messages[0]!.body, renderPhoneInput(args.body));
-    await assert.rejects(client.request("spawn", { ...spawnArgs, prompt: "other" }, 2000, spawnContext), { code: "idempotency_conflict" });
-    assert.equal((await client.request<{ beeId: string }>("spawn", spawnArgs, 2000, spawnContext)).beeId, spawned.beeId);
+    await assert.rejects(serviceRequest(client)("spawn", { ...spawnArgs, prompt: "other" }, 2000, spawnContext), { code: "idempotency_conflict" });
+    assert.equal((await serviceRequest(client)<{ beeId: string }>("spawn", spawnArgs, 2000, spawnContext)).beeId, spawned.beeId);
     const operations: { args: Record<string, unknown>; beeId: string; admissionId: string }[] = [];
     for (const agent of ["inbox", "stub"]) {
       const args = { name: `promptless-${agent}`, agent, cwd: dir, idempotencyKey: `operation-${agent}` };
-      const admitted = await client.request<{ beeId: string; messageId: null; phoneAdmission: { admissionId: string; contentDigest: null } }>("spawn", args, 2000, spawnContext);
+      const admitted = await serviceRequest(client)<{ beeId: string; messageId: null; phoneAdmission: { admissionId: string; contentDigest: null } }>("spawn", args, 2000, spawnContext);
       assert.equal(admitted.messageId, null);
       assert.equal(admitted.phoneAdmission.contentDigest, null);
       const polled = await client.request<{ messages: MessageRow[] }>("mailbox", { beeId: admitted.beeId });
       assert.equal(polled.messages.length, 0);
       operations.push({ args, beeId: admitted.beeId, admissionId: admitted.phoneAdmission.admissionId });
-      assert.equal((await client.request<{ beeId: string }>("spawn", args, 2000, spawnContext)).beeId, admitted.beeId);
-      await assert.rejects(client.request("spawn", { ...args, idempotencyKey: `empty-${agent}`, prompt: "" }, 2000, spawnContext), { code: "invalid_request" });
+      assert.equal((await serviceRequest(client)<{ beeId: string }>("spawn", args, 2000, spawnContext)).beeId, admitted.beeId);
+      await assert.rejects(serviceRequest(client)("spawn", { ...args, idempotencyKey: `empty-${agent}`, prompt: "" }, 2000, spawnContext), { code: "invalid_request" });
     }
     for (const agent of ["inbox", "stub"]) {
       for (const [index, prompt] of [7, false, { text: "bad" }].entries()) {
         const id = `malformed-${agent}-${index}`;
-        await assert.rejects(client.request("spawn", { name: id, id, agent, cwd: dir, prompt, idempotencyKey: id }, 2000, spawnContext), { code: "invalid_request" });
+        await assert.rejects(serviceRequest(client)("spawn", { name: id, id, agent, cwd: dir, prompt, idempotencyKey: id }, 2000, spawnContext), { code: "invalid_request" });
         const absent = await client.request<{ bee: unknown }>("view", { beeId: id });
         assert.equal(absent.bee, null);
       }
@@ -79,10 +79,10 @@ test("real owner phone admission: trust, atomic replay, lane pinning, initial pr
     db.close();
     daemon = await startDaemon(dir); client = await daemon.client();
     await registerService(client, dir);
-    assert.equal((await client.request<{ beeId: string }>("spawn", legacyReplay)).beeId, legacy.beeId);
-    await assert.rejects(client.request("spawn", legacyArgs, 2000, { phoneLane: "interim-v1" }), { code: "idempotency_conflict" });
+    assert.equal((await serviceRequest(client)<{ beeId: string }>("spawn", legacyReplay)).beeId, legacy.beeId);
+    await assert.rejects(serviceRequest(client)("spawn", legacyArgs, 2000, { phoneLane: "interim-v1" }), { code: "idempotency_conflict" });
     for (const operation of operations) {
-      const replay = await client.request<{ beeId: string; messageId: null; phoneAdmission: { admissionId: string } }>("spawn", operation.args, 2000, spawnContext);
+      const replay = await serviceRequest(client)<{ beeId: string; messageId: null; phoneAdmission: { admissionId: string } }>("spawn", operation.args, 2000, spawnContext);
       assert.equal(replay.beeId, operation.beeId); assert.equal(replay.messageId, null);
       assert.equal(replay.phoneAdmission.admissionId, operation.admissionId);
       assert.deepEqual(await client.request("mailbox", { beeId: operation.beeId }), { messages: [] });

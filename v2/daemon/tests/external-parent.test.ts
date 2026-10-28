@@ -21,7 +21,7 @@ import {
   type WatchFrame,
 } from "../src/protocol.ts";
 import { startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
-import { makeRegisteredServiceDir, registerService } from "./registered-service-fixture.ts";
+import { makeRegisteredServiceDir, registerService, serviceRequest } from "./registered-service-fixture.ts";
 
 const EXTERNAL_PARENT_ID = "15ecdadc-f4b1-4265-9fac-9516a5ada650";
 const LOCAL_PARENT_ID = "named-parent";
@@ -67,47 +67,47 @@ test("spawn external-parent validation, mirroring, replay, restart, and delete p
     const deployInfo = await client.request<DeployInfoResult>("deployInfo");
     assert.ok(deployInfo.capabilities.includes("spawn.external_parent.v1"));
 
-    await rejectsCode(client.request("spawn", {
+    await rejectsCode(serviceRequest(client)("spawn", {
       name: "missing-parent",
       agent: "stub",
       cwd: "/tmp",
       parentExternal: true,
     }), "invalid_request");
-    await rejectsCode(client.request("spawn", {
+    await rejectsCode(serviceRequest(client)("spawn", {
       name: "nonboolean",
       agent: "stub",
       cwd: "/tmp",
       parentId: EXTERNAL_PARENT_ID,
       parentExternal: "true",
     }), "invalid_request");
-    await rejectsCode(client.request("spawn", {
+    await rejectsCode(serviceRequest(client)("spawn", {
       name: "empty-parent",
       agent: "stub",
       cwd: "/tmp",
       parentId: "",
       parentExternal: true,
     }), "invalid_request");
-    await rejectsCode(client.request("spawn", {
+    await rejectsCode(serviceRequest(client)("spawn", {
       name: "malformed-parent",
       agent: "stub",
       cwd: "/tmp",
       parentId: "\ud800",
       parentExternal: true,
     }), "invalid_request");
-    await rejectsCode(client.request("spawn", {
+    await rejectsCode(serviceRequest(client)("spawn", {
       name: "oversized-parent",
       agent: "stub",
       cwd: "/tmp",
       parentId: "x".repeat(257),
       parentExternal: true,
     }), "invalid_request");
-    await rejectsCode(client.request("spawn", {
+    await rejectsCode(serviceRequest(client)("spawn", {
       name: "ordinary-orphan",
       agent: "stub",
       cwd: "/tmp",
       parentId: EXTERNAL_PARENT_ID,
     }), "bee_not_found");
-    await rejectsCode(client.request("spawn", {
+    await rejectsCode(serviceRequest(client)("spawn", {
       name: "false-orphan",
       agent: "stub",
       cwd: "/tmp",
@@ -120,7 +120,7 @@ test("spawn external-parent validation, mirroring, replay, restart, and delete p
     watcher.onEvent = (frame: WatchFrame) => frames.push(frame);
     await watcher.request<SnapshotResult>("watch");
 
-    const first = await client.request<SpawnResult>("spawn", {
+    const first = await serviceRequest(client)<SpawnResult>("spawn", {
       name: "remote-child",
       agent: "stub",
       cwd: "/tmp",
@@ -129,7 +129,7 @@ test("spawn external-parent validation, mirroring, replay, restart, and delete p
       prompt: "one transactional prompt",
       idempotencyKey: "external-parent-spawn-1",
     });
-    const replay = await client.request<SpawnResult>("spawn", {
+    const replay = await serviceRequest(client)<SpawnResult>("spawn", {
       name: "ignored-on-replay",
       agent: "stub",
       cwd: "/tmp",
@@ -184,7 +184,7 @@ test("spawn external-parent validation, mirroring, replay, restart, and delete p
       restartedSnapshot.views.find((candidate) => candidate.bee?.id === first.beeId)?.bee?.parentExternal,
       true,
     );
-    const restartedReplay = await client.request<SpawnResult>("spawn", {
+    const restartedReplay = await serviceRequest(client)<SpawnResult>("spawn", {
       name: "still-ignored",
       agent: "stub",
       cwd: "/tmp",
@@ -196,19 +196,19 @@ test("spawn external-parent validation, mirroring, replay, restart, and delete p
     assert.equal(restartedReplay.deduped, true);
     assert.equal((await client.request<ViewResult>("view", { beeId: first.beeId })).bee?.parentExternal, true);
 
-    const localParent = await client.request<SpawnResult>("spawn", {
+    const localParent = await serviceRequest(client)<SpawnResult>("spawn", {
       id: LOCAL_PARENT_ID,
       name: "local-parent",
       agent: "stub",
       cwd: "/tmp",
     });
-    const localChild = await client.request<SpawnResult>("spawn", {
+    const localChild = await serviceRequest(client)<SpawnResult>("spawn", {
       name: "local-child",
       agent: "stub",
       cwd: "/tmp",
       parentId: localParent.beeId,
     });
-    const externalCollision = await client.request<SpawnResult>("spawn", {
+    const externalCollision = await serviceRequest(client)<SpawnResult>("spawn", {
       name: "external-collision",
       agent: "stub",
       cwd: "/tmp",

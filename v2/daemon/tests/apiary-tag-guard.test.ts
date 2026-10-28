@@ -4,7 +4,7 @@ import { DAEMON_CAPABILITIES, type ForkResult, type SpawnResult, type TagResult,
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
-import { makeRegisteredServiceDir, registerService } from "./registered-service-fixture.ts";
+import { makeRegisteredServiceDir, registerService, serviceRequest } from "./registered-service-fixture.ts";
 
 const FAKE_CLAUDE = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "driver-hsr", "test-agent", "fake-claude.mjs");
 
@@ -18,18 +18,18 @@ test("apiary:* tags: refused from a bee caller on spawn and bee.tag, allowed fro
     daemon = await startDaemon(dir);
     const client = await daemon.client();
     await registerService(client, dir);
-    const champion = await client.request<SpawnResult>("spawn", { name: "champ", agent: "stub", cwd: "/tmp", tags: ["apiary:workspace=w1", "apiary:role=champion"] });
-    const bee = await client.request<SpawnResult>("spawn", { name: "worker", agent: "stub", cwd: "/tmp", tags: ["apiary:workspace=w1"], parentId: champion.beeId });
+    const champion = await serviceRequest(client)<SpawnResult>("spawn", { name: "champ", agent: "stub", cwd: "/tmp", tags: ["apiary:workspace=w1", "apiary:role=champion"] });
+    const bee = await serviceRequest(client)<SpawnResult>("spawn", { name: "worker", agent: "stub", cwd: "/tmp", tags: ["apiary:workspace=w1"], parentId: champion.beeId });
 
     await assert.rejects(() => client.request("bee.tag", { beeId: bee.beeId, add: ["apiary:role=champion"], callerBeeId: bee.beeId }), reserved);
     await assert.rejects(() => client.request("bee.tag", { beeId: champion.beeId, remove: ["apiary:role=champion"], callerBeeId: bee.beeId }), reserved);
     await assert.rejects(() => client.request("bee.tag", { beeId: bee.beeId, add: ["team:a", "apiary:workspace=w2"], callerBeeId: bee.beeId }), reserved);
-    await assert.rejects(() => client.request("spawn", { name: "kid", agent: "stub", cwd: "/tmp", tags: ["apiary:role=champion"], parentId: bee.beeId, callerBeeId: bee.beeId }), reserved);
+    await assert.rejects(() => serviceRequest(client)("spawn", { name: "kid", agent: "stub", cwd: "/tmp", tags: ["apiary:role=champion"], parentId: bee.beeId, callerBeeId: bee.beeId }), reserved);
     await assert.rejects(() => client.request("bee.tag", { beeId: bee.beeId, add: ["team:a"], callerBeeId: "" }), (e: Error & { code?: string }) => e.code === "invalid_request");
 
     const own = await client.request<TagResult>("bee.tag", { beeId: bee.beeId, add: ["team:a"], callerBeeId: bee.beeId });
     assert.deepEqual(own.bee.tags, ["apiary:workspace=w1", "team:a"]);
-    const kid = await client.request<SpawnResult>("spawn", { name: "kid", agent: "stub", cwd: "/tmp", tags: ["team:b"], parentId: bee.beeId, callerBeeId: bee.beeId });
+    const kid = await serviceRequest(client)<SpawnResult>("spawn", { name: "kid", agent: "stub", cwd: "/tmp", tags: ["team:b"], parentId: bee.beeId, callerBeeId: bee.beeId });
     assert.ok(kid.beeId);
 
     const backfill = await client.request<TagResult>("bee.tag", { beeId: champion.beeId, add: ["apiary:role=champion"], idempotencyKey: "apiary-backfill-champ" });

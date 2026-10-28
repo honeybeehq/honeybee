@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
+import { makeRegisteredServiceDir, registerService } from "./registered-service-fixture.ts";
 import { runV2Cli } from "../../cli/src/main.ts";
 import type { SnapshotResult, SpawnResult, ThreadOperationResult, ViewResult, SendRpcResult, MailboxResult, WatchFrame } from "../src/protocol.ts";
 
@@ -107,8 +108,9 @@ test("native method refusal is typed, retry keys recover one successor, and plai
   const root = mkdtempSync(join(tmpdir(), "hb-thread-refusal-"));
   const home = join(root, "home"); const unsupported = join(root, "unsupported"); const rpcLog = join(root, "rpc.jsonl");
   writeFileSync(unsupported, "unsupported");
-  const rig = makeDaemonDir({ naming: { auto: false }, agents: { codex: { command: process.execPath, args: [native, "app-server"], adapter: "codex", env: { CODEX_HOME: home, THREAD_UNSUPPORTED_FILE: unsupported, THREAD_RPC_LOG: rpcLog } } } });
+  const rig = makeRegisteredServiceDir({ naming: { auto: false }, agents: { codex: { command: process.execPath, args: [native, "app-server"], adapter: "codex", env: { CODEX_HOME: home, THREAD_UNSUPPORTED_FILE: unsupported, THREAD_RPC_LOG: rpcLog } } } });
   const daemon = await startDaemon(rig.dir); const client = await daemon.client();
+  await registerService(client, rig.dir);
   t.after(async () => { client.close(); await daemon.stop(); rig.cleanup(); rmSync(root, { recursive: true, force: true }); });
   const capabilities = await client.request<{ executors: Array<{ instructionCompaction: boolean }> }>("thread.capabilities");
   assert.equal(capabilities.executors[0]?.instructionCompaction, true);
@@ -134,7 +136,16 @@ test("native method refusal is typed, retry keys recover one successor, and plai
   await assert.rejects(client.request("send", { beeId: source.beeId, body: "key collision", idempotencyKey: retry.idempotencyKey }), errorCode("idempotency_conflict"));
   await waitFor(async () => (await op()).operation.phase === "ready", "retry ready");
   await waitFor(async () => (await client.request<MailboxResult>("mailbox", { beeId: receipt.operation.successorBeeId })).messages.find(m => m.id === queued.messageId)?.deliveredAt != null, "held mail released");
-  const fork = await client.request<ThreadOperationResult>("thread.fork", { ...identity, idempotencyKey: "plain-copy" });
+  const initiator = await client.request<SpawnResult>("spawn", { name: "thread-initiator", agent: "inbox" });
+  const context = { sessionPrincipal: { beeId: initiator.beeId } };
+  const forkParams = { ...identity, idempotencyKey: "plain-copy" };
+  const fork = await client.request<ThreadOperationResult>("thread.fork", forkParams, 5000, context);
+  const forkView = await client.request<ViewResult>("view", { beeId: fork.operation.successorBeeId });
+  assert.equal(forkView.bee?.parentId, source.beeId);
+  assert.equal(forkView.bee?.forkedFrom, source.beeId);
+  assert.deepEqual(forkView.bee?.spawnProvenance, { callerBeeId: initiator.beeId, authority: "bee", peerPid: process.pid });
+  await assert.rejects(client.request("thread.fork", forkParams, 5000, { sessionPrincipal: { beeId: source.beeId } }), errorCode("idempotency_conflict"));
+  await assert.rejects(client.request("thread.fork", { ...forkParams, idempotencyKey: "remote-initiator" }, 5000, { sessionPrincipal: { beeId: "absent-remote" } }), errorCode("bee_not_found"));
   await waitFor(async () => (await client.request<ThreadOperationResult>("thread.operation.get", { operationId: fork.operation.id })).operation.phase === "ready", "fork ready");
   assert.equal(fork.operation.continuationMessageId, null);
   assert.equal((await client.request<MailboxResult>("mailbox", { beeId: fork.operation.successorBeeId })).messages.length, 0);
