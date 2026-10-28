@@ -26,7 +26,7 @@ interface ArchiveJson {
 
 async function spawnIdle(dir: string, name: string, parent?: string): Promise<string> {
   const s = capture();
-  const argv = ["spawn", name, "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json", ...(parent ? ["--parent", parent] : [])];
+  const argv = ["spawn", name, "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json", ...(parent ? ["--parent", parent, "--service-intent", "delegation"] : [])];
   assert.equal(await runV2Cli(argv, s.io), 0, s.err.join("\n"));
   const beeId = (JSON.parse(s.out[0] ?? "{}") as { beeId: string }).beeId;
   await waitFor(async () => {
