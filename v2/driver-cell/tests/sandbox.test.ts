@@ -84,7 +84,9 @@ test("sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure,
     ["agent.mjs"],
   );
   const joined = args.join(" ");
-  assert.match(joined, /--ro-bind \/ \//);
+  assert.match(joined, /--tmpfs \/ /);
+  assert.equal(args.includes("--unshare-user"), true);
+  assert.equal(args.some((value, index) => value === "--ro-bind" && args[index + 1] === "/"), false);
   assert.match(joined, /--bind \/cells\/bee-1 \/cells\/bee-1/);
   assert.equal(joined.includes("--bind-try"), false);
   assert.match(joined, /--share-net/);
