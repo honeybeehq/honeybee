@@ -104,7 +104,8 @@ test("effect-free legacy denial can requeue once, but changed arguments or start
   await assert.rejects(client.request("cell.exec",{...args,argv:["false"]}),{code:"idempotency_conflict"});
   const result = await client.request<{status:string;admissionDiagnostic?:{reason:string}}>("cell.exec",args,5000);
   assert.equal(result.status,"done"); assert.equal(result.admissionDiagnostic?.reason,"criteria_unsupported"); assert.equal(existsSync(sentinel),true);
-  const replay = await client.request<{status:string;deduped?:boolean}>("cell.exec",args,5000);
-  assert.equal(replay.status,"done"); assert.equal(replay.deduped,true); assert.equal(readFileSync(sentinel,"utf8"),"ran");
+  await client.request("spawn",{name:"same-key-other-operation",agent:"stub",cwd:rig.dir,idempotencyKey:args.idempotencyKey});
+  const replay = await client.request<{status:string;deduped?:boolean;notice?:unknown;admissionDiagnostic?:{reason:string}}>("cell.exec",args,5000);
+  assert.equal(replay.status,"done"); assert.equal(replay.deduped,true); assert.deepEqual(replay.notice,NO_SATELLITE_NOTICE); assert.equal(replay.admissionDiagnostic?.reason,"criteria_unsupported"); assert.equal(readFileSync(sentinel,"utf8"),"ran");
   assert.equal((await client.request<{status:string}>("cell.exec",uncertainArgs)).status,"failed");
 });

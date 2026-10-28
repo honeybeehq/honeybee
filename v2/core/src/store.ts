@@ -2514,8 +2514,8 @@ export class CoreStore {
     if (row && row.digest !== digest) throw new IdempotencyConflictError(key);
   }
 
-  workstationAdmissionForKey(key: string): Record<string, unknown> | null {
-    const row = this.stmt("SELECT payload FROM audit WHERE kind='workstation.admission' AND json_extract(payload,'$.requestKey')=? ORDER BY seq DESC LIMIT 1").get(key) as Row | undefined;
+  workstationAdmissionForKey(key: string, operation: string): Record<string, unknown> | null {
+    const row = this.stmt("SELECT payload FROM audit WHERE kind='workstation.admission' AND json_extract(payload,'$.requestKey')=? AND json_extract(payload,'$.operation')=? ORDER BY seq DESC LIMIT 1").get(key, operation) as Row | undefined;
     return row ? JSON.parse(String(row.payload)) as Record<string, unknown> : null;
   }
 

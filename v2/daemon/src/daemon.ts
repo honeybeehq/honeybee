@@ -1968,7 +1968,7 @@ export class HiveDaemon {
   private dispatchWithAdmission(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
     return this.admissionCaller.run({ conn }, () => {
       const finish = (value: unknown) => {
-        if (value && typeof value === "object" && ["spawn", "bee.fork", "thread.fork", "thread.handoff", "import.fromFrozen", "cell.exec"].includes(verb)) return this.withPlacementNotice(value, this.idempotencyKeyOf(params));
+        if (value && typeof value === "object" && ["spawn", "bee.fork", "thread.fork", "thread.handoff", "import.fromFrozen", "cell.exec"].includes(verb)) return this.withPlacementNotice(value, this.idempotencyKeyOf(params), verb);
         return value;
       };
       const execute = () => {
@@ -1989,10 +1989,10 @@ export class HiveDaemon {
     context.decision = await context.conn.satelliteEligibility?.(operation, params) ?? { eligible: false, reason: "no_subscription" };
   }
 
-  private withPlacementNotice<T extends object>(value: T, key: string | null = null): T {
+  private withPlacementNotice<T extends object>(value: T, key: string | null = null, operation?: string): T {
     let fallback = this.admissionCaller.getStore()?.fallback;
-    if (!fallback && key) {
-      const previous = this.mustStore().workstationAdmissionForKey(key);
+    if (!fallback && key && operation) {
+      const previous = this.mustStore().workstationAdmissionForKey(key, operation);
       if (previous?.outcome === "allowed" && previous.basis === "automatic_local_fallback") fallback = { notice: NO_SATELLITE_NOTICE, admissionDiagnostic: { reason: previous.reason as EligibilityReason } };
     }
     return fallback ? { ...value, ...fallback } : value;
@@ -4904,7 +4904,10 @@ export class HiveDaemon {
         if (context) context.fallback = { notice: NO_SATELLITE_NOTICE, admissionDiagnostic: { reason: "criteria_unsupported" } };
       }
     }
-    if (!existing) store.recordWorkstationAdmission(cell.sourceBeeId, { operation: "cell.exec", outcome: "allowed", requestKey: key, nodeKind: this.cfg.nodeKind });
+    const fallback = this.admissionCaller.getStore()?.fallback;
+    store.recordWorkstationAdmission(cell.sourceBeeId, { operation: "cell.exec", outcome: "allowed", requestKey: key, nodeKind: this.cfg.nodeKind,
+      ...(fallback ? { basis: "automatic_local_fallback", reason: fallback.admissionDiagnostic.reason } : {}),
+    });
     if (busy) return persistRefusal("busy");
     if (this.driver?.cell.hasProcess(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0)) {
       return persistRefusal("cell_runtime_live");
