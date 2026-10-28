@@ -116,10 +116,32 @@ test("safe boundary replacement reaches exactly one successor and keeps the pend
   const r=fixture(t), id=r.bee("successor");
   r.store.send(id,"pending original");r.renew();r.internal.reconcileCellCredentials();
   const driver=new FakeDriver(()=>1000);driver.autoBoot=false;
-  const core=new DaemonCore({store:r.store,driver,policy:{commandsPerStep:8},now:()=>1000,log:()=>{}});
+  const core=new DaemonCore({store:r.store,driver,policy:{commandsPerStep:8,bootHangTimeoutSteps:50},now:()=>1000,log:()=>{}});
   core.step();assert.equal(driver.starts.length,0);assert.equal(r.store.currentRuntime(id)?.generation,1);
   r.store.updateRuntimeState(id,1,"idle");
   for(let i=0;i<4;i++) core.step();
   assert.equal(r.store.currentRuntime(id)?.generation,2);assert.equal(driver.starts.length,1);
   assert.equal(r.store.undeliveredMessages(id).length,1);
+});
+
+
+test("mooted refresh intent can be replaced without silently wedging the runtime",t=>{
+  const r=fixture(t),id=r.bee("mooted");r.renew();r.internal.reconcileCellCredentials();
+  const first=r.store.listCommands().find(c=>c.args.reason==="cell_credentials")!;
+  r.store.cancelAuthDeathRecovery(id);r.store.updateRuntimeState(id,1,"idle");
+  assert.equal(r.store.claimNextCommand(),null);
+  assert.equal(r.store.getCommand(first.id)?.args.thenRevive,false);
+  assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
+  const replacements=r.store.listCommands().filter(c=>c.args.reason==="cell_credentials");
+  assert.equal(replacements.length,2);assert.equal(replacements[1]?.status,"queued");
+  assert.notEqual(replacements[0]?.idempotencyKey,replacements[1]?.idempotencyKey);
+});
+
+test("Cell expiry preserves a genuine harness authentication failure",t=>{
+  const r=fixture(t),id=r.bee("real-auth-failure",999);
+  r.store.setFlag(id,"auth_needed","Provider rejected synthetic fixture");
+  const seq=r.store.lastAuditSeq();
+  r.internal.admitCellCredentialTurn(id,1);r.internal.admitCellCredentialTurn(id,1);
+  assert.equal(r.store.lastAuditSeq(),seq);
+  assert.equal(r.store.activeFlags(id)[0]?.detail,"Provider rejected synthetic fixture");
 });

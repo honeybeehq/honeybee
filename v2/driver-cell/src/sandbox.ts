@@ -46,7 +46,7 @@ export interface SandboxPolicy {
   gatewaySocketPath?: string;
   homePaths?: readonly string[];
   log?: (line: string) => void;
-  harnessHome?: { harness: string; path: string; cwd: string; snapshotRoot?: string };
+  harnessHome?: { harness: string; path: string; cwd: string; snapshotRoot?: string; liveDigests?: readonly string[] };
   onCredentialProjection?: (sources: readonly {path: string; source: string}[]) => void;
 }
 
@@ -404,7 +404,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
   if ((policy.scratchPaths ?? []).some(path => !["/tmp", "/var/tmp", "/dev"].includes(path))) {
     throw new Error("cell sandbox: only Cell-owned writable paths are supported");
   }
-  const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path, policy.harnessHome.snapshotRoot) : undefined;
+  const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path, policy.harnessHome.snapshotRoot, policy.harnessHome.liveDigests) : undefined;
   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
   const homes = [...new Set([homedir(), userInfo().homedir, ...(policy.homePaths ?? [])].map(path => realpathSync(path)))];
   const toolchain = sandboxToolchainRoot(process.execPath, policy.log);

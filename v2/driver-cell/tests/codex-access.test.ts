@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, mkdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { accessOnlyCodexDocument, readAccessOnlyCodex, snapshotAccessOnlyCodex } from "../src/codexAccess.ts";
@@ -40,4 +40,17 @@ test("Codex projection snapshots validated bytes and refuses mirrors, symlinks a
   assert.throws(() => readAccessOnlyCodex(fifo), /auth_needed/);
   const nested = join(cell,"account"); mkdirSync(nested); writeFileSync(join(nested,"auth.json"),document());
   assert.throws(() => prepareSandboxHarnessHome(cell,"codex",nested), /Cell-controlled/);
+});
+
+
+test("snapshot maintenance retains live digests across more than 128 publications",t=>{
+  mkdirSync(resolve(".cache/t11g-trash"),{recursive:true});
+  const root=mkdtempSync(resolve(".cache/hb-snapshot-gc-"));
+  t.after(()=>{const r=spawnSync("trash",["--trash-dir",resolve(".cache/t11g-trash"),root],{encoding:"utf8"});assert.equal(r.status,0,r.stderr);});
+  const source=join(root,"auth.json");writeFileSync(source,document("pinned"));
+  const pinned=snapshotAccessOnlyCodex(root,source);
+  const digest=pinned.split("/").at(-1)!.slice(0,-5);
+  for(let i=0;i<129;i++) {writeFileSync(source,document(`synthetic-${i}`));snapshotAccessOnlyCodex(root,source,undefined,[digest]);}
+  assert.equal(readFileSync(pinned,"utf8"),document("pinned"));
+  assert.ok(readdirSync(join(root,".honeybee-cell-access")).length<=10);
 });

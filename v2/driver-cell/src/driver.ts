@@ -87,7 +87,7 @@ export interface CellDriverConfig {
   resolveSandboxGateway?(beeId: string, generation: number): { socketPath: string };
   onCredentialProjectionRefused?(beeId: string, generation: number): void;
   onCredentialProjection?(beeId: string, generation: number, sources: readonly {path: string; source: string}[]): void;
-  resolveSandboxHarnessHome?(beeId: string): { harness: string; path: string; snapshotRoot?: string } | undefined;
+  resolveSandboxHarnessHome?(beeId: string): { harness: string; path: string; snapshotRoot?: string; liveDigests?: readonly string[] } | undefined;
   /**
    * Additional authoritative paths for this bee. Callers must derive these
    * from trusted state, never from the harness spawn environment.

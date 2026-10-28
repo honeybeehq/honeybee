@@ -1,0 +1,21 @@
+# Codex Cell access-only refresh
+
+This change is source-only until reviewed and explicitly deployed. No agent may enroll credentials, refresh live tokens, or restart another Bee. T11's existing deploy HOLD remains.
+
+Apiary renews satellite Codex leases approximately 60 minutes before expiry, according to Queen's Apiary source review (leases/domain.ts:9–15,111–112,140–150; creds/domain.ts:578–624). Studio apiaryd availability remains necessary. Honeybee's receiver account.lease.install publication triggers reconciliation after the atomic file writes. A regular daemon tick also reconciles, so a deferred publication callback is recoverable. Authority refresh alone does not deliver a satellite lease.
+
+Every sandboxed Codex auth.json and .codex/auth.json must be a bounded, valid, explicit access-only document with tokens.refresh_token="". Native/full/unproven documents refuse with auth_needed. Native enrollment is a human operation. Validated bytes become immutable host snapshots under dataDir/cell-access/accountHash, never the shared account home or a Cell-writable directory. Projection mounts these snapshots read-only. Garbage collection retains every digest referenced by a non-stopped runtime plus the newest eight snapshots; 129 successive publications are covered by a synthetic fixture.
+
+Completed lease publication coalesces material inspection per account and queues one generation-fenced stop with waitForIdle and thenRevive per affected Bee. Core claim waits for idle; it never signals a running turn. The next generation remounts renewed material. Operator control, account changes, moves and handoffs fence stale replacement intent. A mooted command can be re-evaluated rather than silently blocking turns forever. Unchanged bytes do not trigger replacement even if a publisher increments its material generation. The Apiary RENEW_RETRY_FLOOR behavior is supplied by Queen's separate source review, not independently verified from this Honeybee checkout.
+
+A single turn that extends past the old projection expiry receives a quiet, visible auth_needed. It is not interrupted or repeatedly revived. If the relaunch path is unavailable before the confirmed expiry, Tormod must knowingly accept visible auth_needed and manually restart at a safe boundary. Genuine harness authentication failures are preserved; Cell maintenance never relabels and clears them as its own attention.
+
+## Identify old Cells and recover manually
+
+From the host operator environment, run `hive view <bee-id> --json`. The response carries `bee.substrate`, `runtime.generation`, `runtime.state`, and `runtime.credentialStamp.cellProjection`. A live Codex Cell with a missing cellProjection is an old, unreceipted generation and requires retirement or an operator-controlled restart before rollout. A missing mountedAt means the daemon has not recorded the bound process in a distinct user namespace; a missing authenticatedAt means no successful harness turn has yet confirmed authentication. These are metadata receipts, not token contents. The prepared receipt contains path-keyed document digests and the mounted material's expiry, never credential bytes.
+
+Do not infer a safe boundary from silence. Wait until `hive view <bee-id> --json` reports `runtime.state` as `idle`, with no active move/handoff. Tormod may then run `hive stop <bee-id> --json`, wait until that exact generation reports `stopped`, and run `hive revive <bee-id> --json`. Confirm the new runtime generation, cellProjection.mountedAt and, after a real completed harness turn, cellProjection.authenticatedAt. If the Bee is already stopped, only the explicit revive is needed. No such live actions were performed by this worker.
+
+## Verification scope
+
+Synthetic credentials only on netcup-3: strict schema/file refusal, immutable snapshot replacement, live snapshot retention across 129 publications, quiet expiry and async boot, operator-control cancellation, moot re-admission, safe-boundary successor generation, durable mailbox, and generation-fenced receipts. Existing sandbox/driver suites run through the owned Node overlay with no guard bypass. Central refresh RPC fixtures use an explicit satellite configuration and a registered fixture operator; a separate strict fixture proves unattributed refusal remains intact. These are targeted suites, not a full npm test claim.

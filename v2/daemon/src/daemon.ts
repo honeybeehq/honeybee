@@ -1621,7 +1621,8 @@ export class HiveDaemon {
 
   private setCellAuthNeeded(beeId: string, detail: string): void {
     const store = this.mustStore();
-    if (!store.activeFlags(beeId).some(flag => flag.flag === "auth_needed" && flag.detail === detail)) store.setFlag(beeId,"auth_needed",detail);
+    const active = store.activeFlags(beeId).find(flag => flag.flag === "auth_needed");
+    if (!active || active.detail.startsWith("cell_") && active.detail !== detail) store.setFlag(beeId,"auth_needed",detail);
   }
 
   private recordCellCredentialProjection(beeId: string, generation: number, sources: readonly {path: string; source: string}[]): void {
@@ -1672,8 +1673,10 @@ export class HiveDaemon {
     const changed = replacement && (replacement.authorityInstanceId !== admitted.material.authorityInstanceId || replacement.scope !== admitted.material.scope || replacement.epoch !== admitted.material.epoch || replacement.generation > admitted.material.generation);
     const expired = (this.deps.cellCredentialNow ?? Date.now)() >= admitted.cellProjection.expiresAt;
     if (expired) this.setCellAuthNeeded(beeId, "cell_access_expired: renewed projection required; manual restart if renewal is unavailable");
-    const commandKey = `cell-credentials:${beeId}:${generation}`;
-    if (store.getCommandByIdempotencyKey(commandKey)) return false;
+    const previous = store.listCommands({beeId}).filter(command => command.targetGeneration === generation && command.args.reason === "cell_credentials").at(-1);
+    if (previous && (previous.status === "queued" || previous.status === "running" || previous.status === "done" && previous.args.thenRevive === true)) return false;
+    if (previous?.status === "failed") { this.setCellAuthNeeded(beeId,"cell_replacement_failed: manual restart required"); return false; }
+    const commandKey = `cell-credentials:${beeId}:${generation}:${account.id}:${bee.authControlFence ?? 0}:${previous?.id ?? 0}`;
     let changedBytes = false;
     if (changed) {
       try {
@@ -1683,7 +1686,7 @@ export class HiveDaemon {
       } catch { return false; }
     }
     if (changed && changedBytes && !bee.activeMoveId && !bee.activeHandoffId && bee.lifecycle === "active") {
-      if (!store.getCommandByIdempotencyKey(`cell-credentials:${beeId}:${generation}`)) store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: "cell_credentials", cellCredentialFence: bee.authControlFence ?? 0, cellCredentialAccount: account.id, waitForIdle: true, thenRevive: true }, { idempotencyKey: `cell-credentials:${beeId}:${generation}` });
+      store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: "cell_credentials", cellCredentialFence: bee.authControlFence ?? 0, cellCredentialAccount: account.id, waitForIdle: true, thenRevive: true }, { idempotencyKey: commandKey });
       return false;
     }
     if (expired) return false;
@@ -1808,7 +1811,7 @@ export class HiveDaemon {
     };
   }
 
-  private resolveCellSandboxHarnessHome(beeId: string): { harness: string; path: string; snapshotRoot?: string } | undefined {
+  private resolveCellSandboxHarnessHome(beeId: string): { harness: string; path: string; snapshotRoot?: string; liveDigests?: readonly string[] } | undefined {
     const store = this.mustStore();
     const bee = store.getBee(beeId);
     if (!bee) throw new Error(`resolveCellSandboxHarnessHome: bee ${beeId} not found`);
@@ -1825,7 +1828,11 @@ export class HiveDaemon {
     }
     const snapshotRoot = join(this.cfg.dataDir, "cell-access", createHash("sha256").update(bee.account ?? beeId).digest("hex"));
     mkdirSync(join(this.cfg.dataDir, "cell-access"), { recursive: true, mode: 0o700 });
-    return { harness, path, ...(harness === "codex" ? {snapshotRoot} : {}) };
+    const liveDigests = store.beesOnAccount(bee.account ?? "").flatMap(row => {
+      const runtime = store.currentRuntime(row.id);
+      return runtime && runtime.state !== "stopped" ? Object.values(runtime.credentialStamp?.cellProjection?.digests ?? {}) : [];
+    });
+    return { harness, path, ...(harness === "codex" ? {snapshotRoot,liveDigests} : {}) };
   }
 
   private verifiedBeeTmp(beeId: string): { TMPDIR: string; NODE_COMPILE_CACHE: string } {

@@ -56,7 +56,7 @@ export function privateHarnessHomePath(cellDir: string, harness: string): string
   return join(cellDir, "sandbox-state", harness);
 }
 
-export function prepareSandboxHarnessHome(cellDir: string, harness: string, sourceHome: string, snapshotRoot?: string): SandboxHarnessProjection {
+export function prepareSandboxHarnessHome(cellDir: string, harness: string, sourceHome: string, snapshotRoot?: string, liveDigests?: readonly string[]): SandboxHarnessProjection {
   if (!isAbsolute(sourceHome)) throw new Error("cell sandbox: account home must be absolute");
   const root = realpathSync(sourceHome);
   const canonicalCell = realpathSync(cellDir);
@@ -84,7 +84,7 @@ export function prepareSandboxHarnessHome(cellDir: string, harness: string, sour
     } else if (info.isFile()) {
       if (existing && !existing.isFile()) throw new Error(`cell sandbox: private input type mismatch: ${destination}`);
       const credential = harness === "codex" && (relativePath === "auth.json" || relativePath === ".codex/auth.json");
-      files.push({ source: credential ? snapshotAccessOnlyCodex(root, source, snapshotRoot) : source, destination, ...(credential ? {credentialPath: relativePath} : {}) });
+      files.push({ source: credential ? snapshotAccessOnlyCodex(root, source, snapshotRoot, liveDigests) : source, destination, ...(credential ? {credentialPath: relativePath} : {}) });
     } else throw new Error(`cell sandbox: non-file account input refused: ${source}`);
   };
   for (const input of SANDBOX_HARNESS_INPUTS[harness] ?? []) {

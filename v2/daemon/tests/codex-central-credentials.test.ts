@@ -4,13 +4,14 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { makeDaemonDir, startDaemon, waitFor, sleep, type DaemonHandle } from "./helpers.ts";
 import type { AccountCredentialAuthority } from "../../core/src/index.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
+import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
 import { RpcError } from "../src/protocol.ts";
 import { CODEX_OAUTH_CLIENT_ID, readCodexCredentialCopy } from "../src/codexCredentialAuthority.ts";
 
@@ -22,8 +23,20 @@ function files(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(join(root, entry.name)) : entry.isFile() ? [join(root, entry.name)] : []);
 }
 
+async function fixtureOperatorClient(daemon: DaemonHandle): Promise<RpcClient> {
+  const client = await daemon.client();
+  const health = await client.request<{confinement?: {strict:boolean}}>("health",{});
+  assert.equal(health.confinement?.strict,false,"explicit sandboxed satellite fixture is non-strict");
+  const challenge = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge",{});
+  const secret = readFileSync(join(daemon.dir,"rpc-private","registration.key"));
+  const token = createHmac("sha256",secret).update(localTrustMessage(challenge)).digest("hex");
+  secret.fill(0);
+  await client.request("rpc.localTrust.register",{pid:process.pid,challengeId:challenge.challengeId,token});
+  return client;
+}
+
 test("central Codex: isolated daemon rotates once, publishes access-only, refreshes early and stops at invalid_grant; native path stays native", async () => {
-  const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0, centralRefreshMinIntervalMs: 1800, centralRefreshRetryBaseMs: 100 } });
+  const { dir, cleanup } = makeDaemonDir({ nodeKind: "satellite", cells: {sandbox:true}, accounts: { centralRefreshAheadMs: 0, centralRefreshMinIntervalMs: 1800, centralRefreshRetryBaseMs: 100 } });
   const id = "codex-test-example.com";
   const secrets: string[] = [];
   const requests: string[] = [];
@@ -75,10 +88,11 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     chmodSync(binary, 0o700);
     const cfgPath = join(dir, "config.json");
     const config = JSON.parse(readFileSync(cfgPath, "utf8"));
+    config.rpcLocalTrust = {requireObservationCaller:true,registrationKeyFile:join(dir,"rpc-private","registration.key")};
     config.agents.codex = { command: binary, adapter: "codex" };
     writeFileSync(cfgPath, JSON.stringify(config));
     daemon = await startDaemon(dir, { env: { HIVE_CODEX_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, CODEX_HOME: join(dir, "unused") } });
-    client = await daemon.client();
+    client = await fixtureOperatorClient(daemon);
     const rpcResults: unknown[] = [];
     const cli = async (action: string, key?: string, account = id): Promise<AccountCredentialAuthority> => {
       const { stdout } = await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url)),
@@ -171,7 +185,7 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     config.accounts.centralRefreshAheadMs = 3_600_000;
     writeFileSync(cfgPath, JSON.stringify(config));
     daemon = await startDaemon(dir, { env: { HIVE_CODEX_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, CODEX_HOME: join(dir, "unused") } });
-    client = await daemon.client();
+    client = await fixtureOperatorClient(daemon);
     console.log("automatic early refresh enabled after exact explicit-refresh counts; daemon restarted with the same store");
     const early = await waitFor(async () => {
       const state = await rpc<AccountCredentialAuthority>("account.credentials.status", { id });
@@ -226,7 +240,7 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
 });
 
 test("central Codex review: running-bee ownership fence, bad access preserves rotation, disable/login/enable recovers", async () => {
-  const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0, centralRefreshRetryBaseMs: 10_000 } });
+  const { dir, cleanup } = makeDaemonDir({ nodeKind: "satellite", cells: {sandbox:true}, accounts: { centralRefreshAheadMs: 0, centralRefreshRetryBaseMs: 10_000 } });
   const id = "codex-review-example.com";
   let expected = randomUUID();
   const refreshes: string[] = [];
@@ -261,10 +275,11 @@ test("central Codex review: running-bee ownership fence, bad access preserves ro
     chmodSync(binary, 0o700);
     const cfgPath = join(dir, "config.json");
     const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+    cfg.rpcLocalTrust = {requireObservationCaller:true,registrationKeyFile:join(dir,"rpc-private","registration.key")};
     cfg.agents.codex = { command: process.execPath, args: [binary, "app-server"], adapter: "codex", login: { command: binary, args: ["login"] } };
     writeFileSync(cfgPath, JSON.stringify(cfg));
     daemon = await startDaemon(dir, { env: { HIVE_CODEX_OAUTH_TOKEN_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, HOME: dir, CODEX_HOME: join(dir, "unused"), HIVE_GATEWAYS_DISABLE: "1" } });
-    client = await daemon.client();
+    client = await fixtureOperatorClient(daemon);
     await client.request("account.add", { harness: "codex", label: "review-example.com", importExisting: true });
     const bee = await client.request<{ beeId: string }>("spawn", { name: "review", agent: "codex", cwd: dir, account: id, tags: ["autoswap=false"] });
     await waitFor(async () => {

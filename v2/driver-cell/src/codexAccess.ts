@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, writeFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export class CellCredentialRefusal extends Error {
@@ -42,14 +42,21 @@ export function readAccessOnlyCodex(path: string): string {
   finally { if (fd !== undefined) closeSync(fd); }
 }
 
-export function snapshotAccessOnlyCodex(sourceHome: string, source: string, snapshotRoot?: string): string {
+export function snapshotAccessOnlyCodex(sourceHome: string, source: string, snapshotRoot?: string, liveDigests: readonly string[] = []): string {
   const raw = readAccessOnlyCodex(source);
   const root = snapshotRoot ?? join(sourceHome, ".honeybee-cell-access");
   try { mkdirSync(root, { mode: 0o700 }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw new CellCredentialRefusal(); }
   const info = lstatSync(root);
   if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.geteuid?.() || (info.mode & 0o077) !== 0) throw new CellCredentialRefusal();
   const target = join(root, `${createHash("sha256").update(raw).digest("hex")}.json`);
-  if (!lstatSync(target, { throwIfNoEntry: false }) && readdirSync(root).length >= 128) throw new CellCredentialRefusal();
+  const retained = new Set([...liveDigests, createHash("sha256").update(raw).digest("hex")]);
+  const snapshots = readdirSync(root).filter(name => /^[a-f0-9]{64}\.json$/.test(name)).map(name => ({name, info:lstatSync(join(root,name))}));
+  snapshots.sort((a,b) => b.info.mtimeMs-a.info.mtimeMs || a.name.localeCompare(b.name));
+  for (const snapshot of snapshots.slice(8)) {
+    if (retained.has(snapshot.name.slice(0,-5))) continue;
+    if (!snapshot.info.isFile() || snapshot.info.isSymbolicLink() || snapshot.info.uid !== process.geteuid?.() || (snapshot.info.mode & 0o222) !== 0) throw new CellCredentialRefusal();
+    unlinkSync(join(root,snapshot.name));
+  }
   let fd: number | undefined;
   try {
     fd = openSync(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o400);
