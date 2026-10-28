@@ -12,7 +12,7 @@ import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, 
 import { homedir, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  bwrapArgs,
+  bwrapArgs as productionBwrapArgs,
   createSshConfigView,
   DEFAULT_SANDBOX_TMPFS_BYTES,
   defaultWritablePaths,
@@ -23,7 +23,7 @@ import {
   seatbeltProfile,
   SANDBOX_TMPFS_PATHS,
   defaultScratchPaths,
-  wrapWithSandbox,
+  wrapWithSandbox as productionWrapWithSandbox,
 } from "../src/sandbox.ts";
 import {
   bwrapSupportsSize,
@@ -37,6 +37,10 @@ import {
   sandboxTmpFullDetail,
   SandboxTmpWatch,
 } from "../src/sandboxTmp.ts";
+
+import { withFixtureGateway } from "./sandboxFixture.ts";
+const bwrapArgs: typeof productionBwrapArgs = (policy, ...args) => productionBwrapArgs(withFixtureGateway(policy), ...args);
+const wrapWithSandbox: typeof productionWrapWithSandbox = (policy, ...args) => productionWrapWithSandbox(withFixtureGateway(policy), ...args);
 
 const IS_DARWIN = platform() === "darwin";
 const IS_LINUX = platform() === "linux";
@@ -58,12 +62,12 @@ test("sandbox.override: per-cell override beats the node-kind default", () => {
 test("sandbox.profile: Seatbelt profile confines writes to cell + harness paths, allows the rest", () => {
   const profile = seatbeltProfile({
     cellDir: "/cells/bee-1",
-    writablePaths: ["/home/u/.claude", "/home/u/.cache"],
+    writablePaths: ["/cells/bee-1/state"],
   });
   assert.match(profile, /\(allow default\)/); // read + network open
   assert.match(profile, /\(deny file-write\*\)/);
   assert.match(profile, /\(subpath "\/cells\/bee-1"\)/);
-  assert.match(profile, /\(subpath "\/home\/u\/\.claude"\)/);
+  assert.match(profile, /\(subpath "\/cells\/bee-1\/state"\)/);
   assert.match(profile, /\(subpath "\/private\/tmp"\)/);
   const userTemp = defaultScratchPaths("darwin")[3]!;
   assert.ok(userTemp === "/private/var/folders" || userTemp.startsWith("/private/var/folders/"), userTemp);
@@ -75,14 +79,14 @@ test("sandbox.profile: Seatbelt profile confines writes to cell + harness paths,
 
 test("sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure, all platforms)", () => {
   const args = bwrapArgs(
-    { cellDir: "/cells/bee-1", writablePaths: ["/home/u/.codex"] },
+    { cellDir: "/cells/bee-1", writablePaths: [] },
     "node",
     ["agent.mjs"],
   );
   const joined = args.join(" ");
   assert.match(joined, /--ro-bind \/ \//);
   assert.match(joined, /--bind \/cells\/bee-1 \/cells\/bee-1/);
-  assert.match(joined, /--bind-try \/home\/u\/\.codex \/home\/u\/\.codex/);
+  assert.equal(joined.includes("--bind-try"), false);
   assert.match(joined, /--share-net/);
   assert.match(joined, /--die-with-parent/);
   assert.ok(joined.endsWith("-- node agent.mjs"));
@@ -159,7 +163,7 @@ test("sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, othe
   const box = mkdtempSync(join(tmpdir(), "hb-v2-wrap-"));
   try {
     const linux = wrapWithSandbox(policy, "node", ["a.mjs"], join(box, "p.sb"), "linux");
-    assert.equal(linux.command, "bwrap");
+    assert.ok(linux.command.endsWith("/cell-scope"));
     assert.equal(linux.profile, undefined);
   } finally {
     rmSync(box, { recursive: true, force: true });
@@ -198,17 +202,11 @@ test("sandbox.ssh-config: materializes symlinked client includes without changin
   }
 });
 
-test("sandbox.ssh-config: include view is bound read-only after writable mounts without changing the SSH command", () => {
-  const policy = { cellDir: "/cells/bee", writablePaths: ["/home/u/.cache"] };
-  const command = ["-o", "StrictHostKeyChecking=yes", "git@github.com"];
-  const args = bwrapArgs(policy, "ssh", command, "/cells/bee/box/ssh-config-123");
-  const mount = args.indexOf("/etc/ssh/ssh_config.d");
-  assert.deepEqual(args.slice(mount - 2, mount + 1), ["--ro-bind", "/cells/bee/box/ssh-config-123", "/etc/ssh/ssh_config.d"]);
-  assert.deepEqual(args.slice(mount - 5, mount - 2), ["--ro-bind", "/cells/bee/box/ssh-config-123", "/cells/bee/box/ssh-config-123"]);
-  assert.ok(mount > args.lastIndexOf("--bind-try"));
-  assert.deepEqual(args.slice(args.lastIndexOf("--") + 1), ["ssh", ...command]);
-  assert.equal(args.includes("--uid"), false);
-  assert.equal(args.includes("--gid"), false);
+test("sandbox.ssh-config: the hardened home never restores host SSH keys or include directories", () => {
+  const args = bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [] }, "ssh", ["git@github.com"], "/cells/bee-1/ssh-config");
+  assert.equal(args.includes("/etc/ssh/ssh_config.d"), false);
+  assert.equal(args.includes("--unshare-user"), true);
+  assert.deepEqual(args.slice(args.lastIndexOf("--") + 1), ["ssh", "git@github.com"]);
 });
 
 test("sandbox.ssh-config: missing include targets are ignored and snapshot failures preserve the host view", (t) => {

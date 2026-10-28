@@ -72,6 +72,7 @@ export interface CellDriverConfig {
   cellsRoot: string;
   /** Node kind, from the daemon config — decides the sandbox default (A4). */
   nodeKind: NodeKind;
+  nodeKindExplicit?: boolean;
   /** Resolve the harness half of a spawn (adapter/command/args/env). cwd is cell-owned. */
   resolveHarness(beeId: string, generation?: number): SpawnSpec;
   /** Resolve the cell half (origin repo, sha, warm config, sandbox override). */
@@ -775,6 +776,10 @@ export class CellDriver implements RuntimeDriver {
       HIVE_CELL_SPACE: cell.paths.spaceName,
     };
     if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
+      if (this.cfg.nodeKindExplicit === false && spec.sandbox !== false) {
+        this.cfg.log?.("cell.sandbox.refused reason=nodeKind_missing implicit_workstation_default");
+        throw new Error("cell sandbox: nodeKind is missing; explicit cells.sandbox:false is required for an unsandboxed Cell");
+      }
       return { ...harness, cwd: cell.paths.spaceDir, env };
     }
     env = sandboxEnvironment(cell.paths.wrapperDir, env);
