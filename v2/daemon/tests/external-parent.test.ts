@@ -20,7 +20,8 @@ import {
   type ViewResult,
   type WatchFrame,
 } from "../src/protocol.ts";
-import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
+import { startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
+import { makeRegisteredServiceDir, registerService } from "./registered-service-fixture.ts";
 
 const EXTERNAL_PARENT_ID = "15ecdadc-f4b1-4265-9fac-9516a5ada650";
 const LOCAL_PARENT_ID = "named-parent";
@@ -54,11 +55,12 @@ function readHello(socketPath: string): Promise<HelloFrame> {
 }
 
 test("spawn external-parent validation, mirroring, replay, restart, and delete policy", { timeout: 45_000 }, async () => {
-  const rig = makeDaemonDir();
+  const rig = makeRegisteredServiceDir();
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(rig.dir);
     let client = await daemon.client();
+    await registerService(client, rig.dir);
 
     const hello = await readHello(daemon.socketPath);
     assert.ok(hello.capabilities.includes("spawn.external_parent.v1"));
@@ -172,6 +174,7 @@ test("spawn external-parent validation, mirroring, replay, restart, and delete p
     await daemon.stop();
     daemon = await startDaemon(rig.dir);
     client = await daemon.client();
+    await registerService(client, rig.dir);
 
     const restarted = await client.request<ViewResult>("view", { beeId: first.beeId });
     assert.equal(restarted.bee?.parentId, EXTERNAL_PARENT_ID);
