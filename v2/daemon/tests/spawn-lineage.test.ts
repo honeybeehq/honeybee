@@ -94,11 +94,13 @@ const outputs = payload.commands.map(args => {
   return {status:result.status,stdout:result.stdout,stderr:result.stderr};
 });
 const client = await RpcClient.connect(payload.socket);
-let rpc;
+let rpc,defaultSpawn;
 try { rpc = {result:await client.request('spawn',payload.params)}; }
 catch(error) { rpc = {code:error.code}; }
+try { defaultSpawn = {result:await client.request('spawn',{name:'detached-default',agent:'inbox'})}; }
+catch(error) { defaultSpawn = {code:error.code}; }
 finally { client.close(); }
-writeFileSync(payload.output+'.pending',JSON.stringify({pid:process.pid,initialPpid,detachedPpid,intermediatePid:payload.intermediatePid,intermediatePpid:payload.intermediatePpid,runtimePid:payload.runtimePid,ancestry,outputs,rpc}));
+writeFileSync(payload.output+'.pending',JSON.stringify({pid:process.pid,initialPpid,detachedPpid,intermediatePid:payload.intermediatePid,intermediatePpid:payload.intermediatePpid,runtimePid:payload.runtimePid,ancestry,outputs,rpc,defaultSpawn}));
 renameSync(payload.output+'.pending',payload.output);
 `);
   const configPath = join(rig.dir, "config.json");
@@ -200,6 +202,9 @@ renameSync(payload.output+'.pending',payload.output);
       assert.match(result.stdout + result.stderr, /caller_not_trusted/);
     }
     assert.equal(receipt.rpc.code, "caller_not_trusted");
+    const defaultBeeId = receipt.defaultSpawn.result.beeId as string;
+    assert.equal((await client.request<ViewResult>("view", { beeId: defaultBeeId })).bee?.parentId, null);
+    await checkProvenance(defaultBeeId, "unattributed", null);
   });
   await t.test("runtime Unix RPC refuses an external parent", async () => {
     const output = join(rig.dir, "external-rpc.json");
