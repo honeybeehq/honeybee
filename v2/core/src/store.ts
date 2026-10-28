@@ -1,3 +1,5 @@
+import { parseSpawnProvenance, readSpawnProvenance } from "./spawnProvenance.ts";
+import type { SpawnProvenance } from "./types.ts";
 import { backupStore, type StoreBackupReceipt } from "./storeBackup.ts";
 import { HUMAN_OUTPUT_SQL, HumanOutputLedger, type BeeTellParams, type BeeReactParams, type HumanOutputMode, type BeeTellRow, type BeeReactionRow } from "./humanOutput.ts";
 import { readMailBatchPage, renderMailBatch } from "./mailBatch.ts";
@@ -299,7 +301,7 @@ export interface CoreStoreOptions {
 }
 
 export interface CreateBeeInput {
-  spawnProvenance?: { callerBeeId: string | null; authority: "bee" | "unattributed" | "registered_service"; peerPid: number | null };
+  spawnProvenance?: SpawnProvenance | null;
   phoneOperation?: { origin: PhoneOriginRequest; key: string };
   /** Known process identity at spawn time, so a daemon restart mid-boot can re-adopt (WP2 finding). */
   proc?: { pid: number; pidStartedAt: number };
@@ -732,6 +734,7 @@ function mapBee(r: Row): BeeRow {
     args: parseArgsColumn(r.args),
     parentId: (r.parent_id as string | null) ?? null,
     parentExternal: Number(r.parent_external ?? 0) === 1,
+    spawnProvenance: readSpawnProvenance(r.spawn_provenance),
     forkedFrom: (r.forked_from as string | null) ?? null,
     forkSeed: (r.fork_seed as string | null) ?? null,
     account: (r.account as string | null) ?? null,
@@ -1923,6 +1926,19 @@ export class CoreStore {
       // missing, so fresh and v1 stores (whose bees table was just created in
       // full) are untouched.
       this.addMissingColumns("bees", BEES_ADDITIVE_COLUMNS);
+      if (stored < 52) {
+        for (const row of this.stmt("SELECT bee_id, payload FROM audit WHERE kind = 'bee.created' AND bee_id IN (SELECT bee_id FROM audit WHERE kind = 'bee.created' GROUP BY bee_id HAVING COUNT(*) = 1)").all() as Row[]) {
+          let payload: Record<string, unknown>;
+          try {
+            payload = JSON.parse(String(row.payload)) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
+          if (!payload || typeof payload !== "object" || !payload.bee || typeof payload.bee !== "object" || (payload.bee as Record<string, unknown>).id !== row.bee_id) continue;
+          const provenance = parseSpawnProvenance(payload.spawnProvenance);
+          if (provenance) this.stmt("UPDATE bees SET spawn_provenance = ? WHERE id = ? AND spawn_provenance IS NULL").run(JSON.stringify(provenance), String(row.bee_id));
+        }
+      }
       // v7 → v8: additive urgency column on mailbox (spec 01 Q2 amendment).
       const mailCols = new Set(
         (this.stmt("SELECT name FROM pragma_table_info('mailbox')").all() as Row[]).map((c) => String(c.name)),
@@ -2812,6 +2828,8 @@ export class CoreStore {
       if (input.parentExternal !== undefined && typeof input.parentExternal !== "boolean") {
         throw new CoreError("createBee: parentExternal must be a boolean when given");
       }
+      const spawnProvenance = parseSpawnProvenance(input.spawnProvenance);
+      if (input.spawnProvenance != null && spawnProvenance === null) throw new CoreError("createBee: invalid spawnProvenance");
       const parentExternal = input.parentExternal ?? false;
       if (parentExternal) requireBeeId(input.parentId, "createBee: external parentId");
       let handle: string;
@@ -2847,8 +2865,8 @@ export class CoreStore {
         .prepare(
           `INSERT INTO bees(id, name, agent, substrate, cwd, title, tags, session_log_path, lifecycle, created_at,
                             provider_session_id, env, imported_from, args, parent_id, parent_external, forked_from,
-                            fork_seed, account, handle, human_ref, issuing_namespace)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            fork_seed, account, handle, human_ref, issuing_namespace, spawn_provenance)
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -2872,10 +2890,11 @@ export class CoreStore {
           handle,
           humanRef,
           namespace,
+          spawnProvenance === null ? null : JSON.stringify(spawnProvenance),
         );
       if (input.phoneOperation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(input.phoneOperation.origin, null, input.phoneOperation.key, id)));
       const bee = this.mustGetBee(id);
-      this.audit("bee.created", id, { bee, ...(input.spawnProvenance ? { spawnProvenance: input.spawnProvenance } : {}) });
+      this.audit("bee.created", id, { bee, ...(spawnProvenance ? { spawnProvenance } : {}) });
       // v23: segment 0 — the spawn harness owns the session log from generation 1.
       this.insertTranscriptSegment({
         beeId: id,

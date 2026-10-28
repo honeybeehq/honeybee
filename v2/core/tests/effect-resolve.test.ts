@@ -1,3 +1,4 @@
+import { SCHEMA_VERSION } from "../src/schema.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -90,7 +91,7 @@ test("effect additive tables preserve schema45 and retained legacy positives boo
     assert.throws(() => store.resolveEffect("legacy-absent", "spawn"), error("rpc_effect_history_unknown"));
   } finally { store.close(); }
   const inspect = new DatabaseSync(h.path, { readOnly: true });
-  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "51"); }
+  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, String(SCHEMA_VERSION)); }
   finally { inspect.close(); h.cleanup(); }
 });
 
