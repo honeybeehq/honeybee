@@ -2782,19 +2782,21 @@ export class HiveDaemon {
   }
 
   private observeCellRuntimeNamespace(beeId: string, pid: number | null): void {
-    const store = this.mustStore();
-    if (process.platform !== "linux" || store.getBee(beeId)?.substrate !== "cell") return;
+    if (this.stopping || !this.store || process.platform !== "linux") return;
     let sandboxed = true;
     try {
-      const cellId = store.getBee(beeId)?.cellId;
-      const cell = cellId ? store.getCell(cellId) : null;
+      const bee = this.store.getBee(beeId);
+      if (bee?.substrate !== "cell") return;
+      const cell = bee.cellId ? this.store.getCell(bee.cellId) : null;
       if (!cell || cell.state === "removed") throw new Error("cell_unresolved");
       sandboxed = sandboxEnabled(this.cfg.nodeKind, cell.sandbox ?? this.cfg.cellSandbox);
     } catch { this.log("security.confinement cell_sandbox_unresolved assumed=sandboxed"); }
-    if (!sandboxed) return;
-    this.cellNamespaces.set(beeId, pid ? runtimeUserNamespace(pid) : "unavailable");
-    if ([...this.cellNamespaces.values()].some(value => value !== "different")) this.confinementReason("cell_userns_unisolated");
-    else if (this.confinementReasons.delete("cell_userns_unisolated")) this.log(`security.confinement strict=${this.confinementReasons.size > 0} reasons=${[...this.confinementReasons].join(",")}`);
+    try {
+      if (!sandboxed) return;
+      this.cellNamespaces.set(beeId, pid ? runtimeUserNamespace(pid) : "unavailable");
+      if ([...this.cellNamespaces.values()].some(value => value !== "different")) this.confinementReason("cell_userns_unisolated");
+      else if (this.confinementReasons.delete("cell_userns_unisolated")) this.log(`security.confinement strict=${this.confinementReasons.size > 0} reasons=${[...this.confinementReasons].join(",")}`);
+    } catch { this.log("security.confinement cell_namespace_unrecorded"); }
   }
 
   private readonly cellNamespaces = new Map<string, "same" | "different" | "unavailable">();

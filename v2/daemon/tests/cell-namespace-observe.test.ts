@@ -79,3 +79,61 @@ test("a Cell bee with no resolvable Cell row still spawns and adopts through the
     assert.ok(logs.includes("security.confinement cell_sandbox_unresolved assumed=sandboxed"));
   } finally { second?.disposeAll(); first.disposeAll(); store.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("Cell runtime readiness racing daemon stop never touches the store and never throws", {skip: process.platform !== "linux"}, () => {
+  const dir = mkdtempSync(join(tmpdir(), "cell-namespace-stop-"));
+  const store = openCoreStore(join(dir, "core.sqlite3"), { ephemeral: true });
+  try {
+    const beeId = store.createBee({ name: "stopping", agent: "stub", substrate: "cell", cwd: dir }).bee.id;
+    let reads = 0;
+    const counted = new Proxy(store, { get: (target, key, receiver) => { reads++; return Reflect.get(target, key, receiver); } });
+    for (const state of [{ store: counted, stopping: true }, { store: null, stopping: false }, { store: null, stopping: true }]) {
+      const owner = Object.create(HiveDaemon.prototype) as Record<string, unknown>;
+      Object.assign(owner, { ...state, cfg: { nodeKind: "satellite", cellSandbox: null }, cellNamespaces: new Map(), confinementReasons: new Set(), log: () => {} });
+      assert.doesNotThrow(() => (owner.observeCellRuntimeNamespace as (beeId: string, pid: number | null) => void).call(owner, beeId, process.pid));
+      assert.equal((owner.cellNamespaces as Map<string, string>).size, 0);
+    }
+    assert.equal(reads, 0);
+  } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("runtime readiness fired during daemon stop through the real HSR driver leaves the process exiting 0", {skip: process.platform !== "linux", timeout: 60_000}, async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { writeFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const dir = mkdtempSync(join(tmpdir(), "cell-namespace-stop-hsr-"));
+  const at = (path: string) => JSON.stringify(fileURLToPath(new URL(path, import.meta.url)));
+  const script = join(dir, "stop-race.mts");
+  writeFileSync(script, `import { HiveDaemon } from ${at("../src/daemon.ts")};
+import { HsrDriver } from ${at("../../driver-hsr/src/index.ts")};
+import { stubAdapter } from ${at("../../adapters/src/index.ts")};
+import { fixtureRuntimeIdentity, persistFixtureProcess, AGENT_PATH, drainUntil } from ${at("../../driver-hsr/tests/helpers.ts")};
+const dir = ${JSON.stringify(dir)};
+let storeReads = 0;
+const store = new Proxy({}, { get: () => { storeReads++; throw new Error("store accessed during stop"); } });
+const owner = Object.create(HiveDaemon.prototype);
+Object.assign(owner, { store, stopping: true, cfg: { nodeKind: "satellite", cellSandbox: null }, cellNamespaces: new Map(), confinementReasons: new Set(), log: () => {} });
+let readies = 0;
+const onRuntimeReady = (id, pid) => { readies++; owner.observeCellRuntimeNamespace(id, pid); };
+const adapter = { ...stubAdapter, readyAtSpawn: true, parseLine: () => [] };
+const driver = () => new HsrDriver({ onRuntimeReady, runtimeIdentity: fixtureRuntimeIdentity(dir), sessionLogDir: dir + "/logs", stopKillGraceMs: 400, resolve: () => ({ adapter, command: process.execPath, args: [AGENT_PATH], cwd: dir, env: { ...process.env, STUB_TURN_MS: "5" } }) });
+const first = driver();
+first.start("stopping-cell", 1);
+await drainUntil(first, events => events.some(event => event.kind === "booted"));
+const runtime = first.procOf("stopping-cell", 1);
+persistFixtureProcess(dir, "stopping-cell", 1, runtime);
+first.detachAll();
+const second = driver();
+if (!second.adopt("stopping-cell", 1, runtime.pid, runtime.pidStartedAt, "idle", 0)) throw new Error("adopt failed");
+second.disposeAll(); first.disposeAll();
+console.log(JSON.stringify({ readies, storeReads, namespaces: owner.cellNamespaces.size }));
+`);
+  try {
+    const child = spawnSync(process.execPath, [script], { encoding: "utf8", timeout: 45_000 });
+    assert.equal(child.status, 0, child.stderr);
+    const result = JSON.parse(child.stdout.trim().split("\n").at(-1)!);
+    assert.ok(result.readies >= 2);
+    assert.equal(result.storeReads, 0);
+    assert.equal(result.namespaces, 0);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
