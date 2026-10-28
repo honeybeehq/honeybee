@@ -50,3 +50,12 @@ The first direct Codex attempt correctly refused an unmapped toolchain owner. Th
 ## Review disposition
 
 Independent security review approved the exact-name inheritance filter and unchanged host substrates. Compatibility C1 was resolved under the orchestrator/Quiet ruling by admitting only the four non-secret Git identity names and a real in-Cell commit test. C2 was resolved by removing unnecessary private XDG config/data/state overrides while preserving their ambient default deny; the fixture proves an explicit host path is not a filesystem grant. The private HOME contract remains deliberate for sandbox:false Cells too. Native Claude onboarding/state differences remain unverified and Claude Cell rollout remains excluded under the existing T11 policy. Real authentication, expiry and refresh are still outside this proof.
+
+
+## Rollout preconditions
+
+Before deployment, supply GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL, GIT_COMMITTER_NAME and GIT_COMMITTER_EMAIL through a reviewed hived service environment or explicit agent-spec/bee environment, or prove a repository-local identity. Do not assume systemd/launchd inherits the operator's shell or ~/.gitconfig. Record names/presence only, never the values. After the separately authorized deploy, a fresh sandboxed Cell must make a real commit as a per-node check. The local fixture proves the four-name plumbing, not fleet configuration.
+
+Only Codex has the local deterministic-provider compatibility receipt here. Claude, Muse and other unverified Cell vendor harnesses remain excluded from rollout until their own reviewed projection and compatibility checks pass. Preserving a Muse XDG environment string is not a filesystem grant; a masked host home is still unavailable in a sandbox. Host HSR/tmux remain unchanged.
+
+The machine-readable fixture summary is printed after assertions; its fixed booleans summarize the test rather than independently measuring production state. There has been no deployment, environment inventory, live socket probe, real credential read or proof submission under the Project API pause.
