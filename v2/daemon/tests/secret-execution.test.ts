@@ -218,7 +218,10 @@ test("daemon executes active owned Cell, keeps durable bytes clean, deduplicates
     const binding = { ...base, beeId: foreign.id, executionId: "foreign", argvDigest: secretArgvDigest(argv), expiresAt: Date.now() + 30000 };
     await assert.rejects(client.request("cell.execSecret", { ...binding, argv, idempotencyKey: "foreign" }, 3000, { secretExecution: { ...binding, env: { TOKEN: token } } }), /secret_execution_refused/);
     const pending = run("exec-cancel", [process.execPath, "-e", "process.stdout.write(process.env.TOKEN);setInterval(()=>{},1000)"]);
-    await new Promise(resolve => setTimeout(resolve, 100));
+    for (const deadline = Date.now() + 10000; store.getCellOpByKey("exec-cancel")?.pid == null;) {
+      assert.ok(Date.now() < deadline, "secret execution spawned before cancellation");
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
     assert.deepEqual(await client.request("cell.execSecret.cancel", { ...base, executionId: "exec-cancel" }, 3000, {}), { cancelled: true });
     const cancelled = await pending;
     assert.equal(cancelled.status, "failed");
