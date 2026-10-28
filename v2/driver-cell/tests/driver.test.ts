@@ -392,8 +392,10 @@ test(
   },
 );
 
-for (const background of [false, true]) test("cell-driver.tty: sandbox runtime and adoption have no controlling terminal, background=" + background, { skip: platform() !== "linux" }, async () => {
+for (const background of [false, true]) test("cell-driver.tty: sandbox runtime and adoption have no controlling terminal, background=" + background, { skip: platform() !== "linux" }, async t => {
   const rig = makeRig();
+  const parentStat = readFileSync("/proc/self/stat", "utf8");
+  t.diagnostic("test-owned parent tty_nr=" + parentStat.slice(parentStat.lastIndexOf(")") + 2).split(" ")[4]);
   const first = makeDriver(rig, { sandbox: true, backgroundProvisioning: background });
   let second: CellDriver | undefined;
   const assertNoTty = (pid: number): void => {
