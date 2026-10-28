@@ -2751,6 +2751,7 @@ export class HiveDaemon {
   private authenticatedSpawnParams(params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
     const store = this.mustStore();
     let callerBeeId = conn.authenticatedBeeId ?? null;
+    if (!callerBeeId && !conn.spawnServiceAuthority && (!conn.localPeer || conn.ingress !== "local_unix")) throw new RpcError("caller_not_trusted", "Spawn requires a verified direct local caller or registered service authority");
     if (!callerBeeId && !conn.spawnServiceAuthority && conn.localPeer && conn.ingress === "local_unix") {
       callerBeeId = this.spawnPeerBee(conn.localPeer);
     }
