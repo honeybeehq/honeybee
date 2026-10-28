@@ -5039,6 +5039,7 @@ export class HiveDaemon {
           timeoutMs,
           sandbox: cell.sandbox,
           nodeKind: this.cfg.nodeKind,
+          nodeKindExplicit: this.cfg.nodeKindExplicit,
           kvm: this.cfg.cellKvm,
           gatewaySocketPath,
           ...(secret ? { secretEnv: secret.outputCapture ? undefined : secret.env, ...(secret.outputCapture ? { outputCapture: { maxBytes: secret.outputCapture.maxBytes, expiresAt: secret.outputCapture.expiresAt, receive: (bytes: Buffer) => captureSecretOutput?.(secret.outputCapture!.leaseId, bytes) } } : {}), signal: controller!.signal } : {}),

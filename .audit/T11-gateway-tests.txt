@@ -1,0 +1,21 @@
+{"fixture":"joint-gateway-launcher","passed":true,"self":true,"other":"caller_not_trusted","cwdSpawn":"caller_not_trusted","inboxForward":"caller_not_trusted","hostSocket":"ENOENT","liveSocket":"ENOENT","store":"ENOENT","sharedLogs":"ENOENT","gateway":true,"cli":true,"missingGateway":"refused"}
+✔ joint Cell gateway and launcher fixture allows self, masks host sockets and refuses escapes (404.267389ms)
+✔ gateway authorizes only the enumerated verbs; every other protocol verb is denied (3.794765ms)
+✔ identity, generation, authority context and sender cannot be supplied by the caller (1.725609ms)
+✔ gateway RPC intercepts privileged handlers and refuses degraded or expired peers (27.470236ms)
+✔ temporary daemon home binds the socket to its own live generation with real peer credentials (134.439391ms)
+✔ Cell mutation limits bound payload bytes and persist across generations with a deterministic window (2.183465ms)
+✔ Cell CLI target takes precedence over explicit sockets and never resolves the real socket (1.435776ms)
+✔ native gateway refuses same-uid outsiders and admits a real runtime descendant (150.526543ms)
+✔ spawn lineage binds authenticated bee and preserves operator delegation (4.392071ms)
+✔ spawn peer authentication follows exact process ancestry and chooses the closest bee (0.801924ms)
+✔ spawn refuses missing ancestry evidence and process replacement during inspection (0.417785ms)
+✔ gateway ancestry refuses peer and runtime PID reuse and reparenting during the final fence (0.366453ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 774.108684
