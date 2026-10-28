@@ -8,6 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
+import { makeRegisteredServiceDir, registerService } from "../../daemon/tests/registered-service-fixture.ts";
 import { runV2Cli, type CliIo } from "../src/main.ts";
 import { stripAnsi } from "../src/style.ts";
 
@@ -25,7 +26,7 @@ interface ArchiveJson {
 
 async function spawnIdle(dir: string, name: string, parent?: string): Promise<string> {
   const s = capture();
-  const argv = ["spawn", name, "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json", ...(parent ? ["--parent", parent] : ["--no-parent"])];
+  const argv = ["spawn", name, "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json", ...(parent ? ["--parent", parent] : [])];
   assert.equal(await runV2Cli(argv, s.io), 0, s.err.join("\n"));
   const beeId = (JSON.parse(s.out[0] ?? "{}") as { beeId: string }).beeId;
   await waitFor(async () => {
@@ -49,10 +50,13 @@ async function archiveJson(dir: string, argv: string[]): Promise<{ code: number;
 }
 
 test("archive.bulk: --tree walks descendants once, --dry-run changes nothing, unknown refs fail without aborting, archived bees are unchanged", async () => {
-  const { dir, cleanup } = makeDaemonDir();
+  const { dir, cleanup } = makeRegisteredServiceDir();
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
+    const service = await daemon.client();
+    await registerService(service, dir);
+    service.close();
     const parent = await spawnIdle(dir, "bulk-parent");
     const childA = await spawnIdle(dir, "bulk-child-a", "bulk-parent");
     const childB = await spawnIdle(dir, "bulk-child-b", "bulk-parent");

@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { createServer } from "node:net";
 import { openCoreStore } from "../../core/src/index.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../daemon/tests/helpers.ts";
+import { makeRegisteredServiceDir, registerService } from "../../daemon/tests/registered-service-fixture.ts";
 import { runV2Cli, serviceEnv, serviceExecArgs, serviceLabel, type CliIo } from "../src/main.ts";
 import { stripAnsi } from "../src/style.ts";
 import { claudeHsrRecord, makeFrozenFixture } from "../../core/tests/frozen-fixture.ts";
@@ -631,11 +632,14 @@ test("cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto`
 });
 
 test("cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --parent (+ ambient HIVE_BEE_ID), ask/answer/question list, seal create/list/get; stale fallbacks for the reads", async () => {
-  const { dir, cleanup } = makeDaemonDir();
+  const { dir, cleanup } = makeRegisteredServiceDir();
   let daemon: DaemonHandle | null = null;
   const savedEnv = process.env.HIVE_BEE_ID;
   try {
     daemon = await startDaemon(dir);
+    const service = await daemon.client();
+    await registerService(service, dir);
+    service.close();
     const s = capture();
     assert.equal(await runV2Cli(["spawn", "boss", "--agent", "stub", "--cwd", "/tmp", "--tag", "apiary:workspace=a", "--data-dir", dir, "--json"], s.io), 0);
     const boss = (JSON.parse(s.out[0] ?? "{}") as { beeId: string }).beeId;
