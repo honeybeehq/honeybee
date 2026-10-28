@@ -676,14 +676,14 @@ test("cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --paren
 
     // spawn --parent (explicit, by name) and the ambient HIVE_BEE_ID stamp
     const c1 = capture();
-    assert.equal(await runV2Cli(["spawn", "kid-1", "--agent", "stub", "--cwd", "/tmp", "--parent", "chief", "--data-dir", dir, "--json"], c1.io), 0);
+    assert.equal(await runV2Cli(["spawn", "kid-1", "--agent", "stub", "--cwd", "/tmp", "--parent", "chief", "--service-intent", "delegation", "--data-dir", dir, "--json"], c1.io), 0);
     const kid1 = (JSON.parse(c1.out[0] ?? "{}") as { beeId: string }).beeId;
     process.env.HIVE_BEE_ID = boss; // this process "is" the boss bee
     const c2 = capture();
-    assert.equal(await runV2Cli(["spawn", "kid-2", "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json"], c2.io), 0);
+    assert.equal(await runV2Cli(["spawn", "kid-2", "--service-intent", "delegation", "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json"], c2.io), 0);
     const kid2 = (JSON.parse(c2.out[0] ?? "{}") as { beeId: string }).beeId;
     const c3 = capture();
-    assert.equal(await runV2Cli(["spawn", "root-2", "--agent", "stub", "--cwd", "/tmp", "--no-parent", "--data-dir", dir, "--json"], c3.io), 0);
+    assert.equal(await runV2Cli(["spawn", "root-2", "--service-intent", "service", "--agent", "stub", "--cwd", "/tmp", "--no-parent", "--data-dir", dir, "--json"], c3.io), 0);
     process.env.HIVE_BEE_ID = "not-a-bee-on-this-node";
     const c4 = capture();
     assert.equal(await runV2Cli(["spawn", "root-3", "--agent", "stub", "--cwd", "/tmp", "--data-dir", dir, "--json"], c4.io), 0, "an unknown ambient stamp is dropped, not an error");
