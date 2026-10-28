@@ -12,6 +12,7 @@ import { AccountLeaseUnknownError } from "../../core/src/accountLease.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { EffectKeyError } from "../../core/src/effectResolve.ts";
 import { PeerCredentials, type PeerConnection } from "./peerCredentials.ts";
+import { authorizeCellGateway, type CellGatewayPolicy } from "./cellGateway.ts";
 import { LocalRpcTrust, type LocalTrustConfig } from "./localRpcTrust.ts";
 import { LocalRpcRefusals } from "./localRpcRefusals.ts";
 import { RPC_ACCESS } from "./rpcAccess.ts";
@@ -168,6 +169,7 @@ export type RpcDispatch = (
 ) => unknown;
 
 export interface RpcServerOptions {
+  cellGateway?: CellGatewayPolicy;
   assertServiceCaller?: (peer: NonNullable<RpcConn["localPeer"]>) => void;
   dataDir?: string;
   instance?: {id: string; dataDir: string};
@@ -287,6 +289,16 @@ export class RpcServer {
         resolve();
       });
     });
+  }
+
+  listenFresh(): void {
+    if (existsSync(this.opts.socketPath)) throw new RpcError("socket_in_use", "Fresh gateway socket already exists");
+    this.server.on("error", error => {
+      this.opts.log(`rpc.gateway.failed ${error.message}`);
+      for (const conn of this.conns) conn.socket.destroy();
+    });
+    this.server.listen(this.opts.socketPath);
+    this.listening = true;
   }
 
   close(): Promise<void> {
@@ -486,6 +498,13 @@ export class RpcServer {
       let secretCapture: { leaseId: string; bytesBase64: string } | undefined;
       let captureExpiresAt = 0;
       const result = withRpcCaller(caller, () => {
+        if (this.opts.cellGateway) {
+          if (peer?.state !== "verified" || !peer.current() || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "Cell gateway requires a current verified local peer");
+          const admitted = authorizeCellGateway(this.opts.cellGateway, peer.peer, verb, params, frame.context);
+          const gatewayConn = { ...conn, authenticatedBeeId: this.opts.cellGateway.identity.beeId };
+          if (verb === "list") return { views: [this.opts.dispatch("view", { beeId: gatewayConn.authenticatedBeeId }, gatewayConn)] };
+          return this.opts.dispatch(verb, admitted, gatewayConn);
+        }
         if (verb === "mirror.local.snapshot" || verb === "mirror.local.watch") {
           includeOperatorLocalHomes = frame.context === undefined && Object.keys(params).length === 0 && this.operatorLocalAllowed(conn);
           return this.opts.dispatch(verb, params, { ...conn, operatorLocalHomes: includeOperatorLocalHomes });

@@ -512,6 +512,7 @@ export const RPC_VERBS = [
   "delete",
   // reads
   "view",
+  "bee.transcript",
   "list",
   "mailbox",
   "mail.history",
