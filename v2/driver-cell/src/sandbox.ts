@@ -11,10 +11,10 @@ import { prepareSandboxHarnessHome } from "./harnessHome.ts";
  * Defaults by node kind (A4): workstation OFF, satellite ON, cloud gateway
  * OFF (the ephemeral VM is the boundary there). Per-cell override wins.
  */
-import { validatedCellScopeBinary } from "./cellScope.ts";
+import { cellCliBundlePath, cellScopeArtifactDirectory, validatedCellScopeBinary } from "./cellScope.ts";
 import { spawnSync } from "node:child_process";
-import { cpSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
-import { homedir, platform } from "node:os";
+import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { homedir, platform, userInfo } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 
 export type NodeKind = "workstation" | "satellite" | "cloud";
@@ -309,15 +309,6 @@ function isRegularFile(path: string): boolean {
   }
 }
 
-/**
- * Re-binds, read-only, the top-level entry of a private mount (/tmp, /var/tmp)
- * that holds a regular-file launch input, so the harness can still start.
- * Contract: a unix socket inside such a re-bound directory stays connectable
- * through the read-only bind. That is exploitable only when a socket shares a
- * directory with a regular-file launch input; HSR runner sockets are top-level
- * in /tmp, so none is exposed today. The grain stays the directory because
- * per-file binds break sibling imports next to the launch input.
- */
 function bwrapLaunchBinds(command: string, args: readonly string[]): string[] {
   const roots = new Set<string>();
   for (const input of [command, ...args]) {
@@ -325,6 +316,17 @@ function bwrapLaunchBinds(command: string, args: readonly string[]): string[] {
     for (const spelling of [input, realpathSync(input)]) {
       const root = maskedLaunchRoot(spelling);
       if (root) roots.add(root);
+    }
+  }
+  for (const root of roots) {
+    const pending = [{ path: root, depth: 0 }];
+    let visited = 0;
+    while (pending.length > 0) {
+      const entry = pending.pop()!;
+      if (++visited > 10000 || entry.depth > 16) throw new Error("cell sandbox: launch input tree exceeds its limit");
+      const info = lstatSync(entry.path);
+      if (info.isSocket() || info.isSymbolicLink() && statSync(entry.path).isSocket()) throw new Error(`cell sandbox: socket in launch input tree refused: ${entry.path}`);
+      if (info.isDirectory()) for (const name of readdirSync(entry.path)) pending.push({ path: join(entry.path, name), depth: entry.depth + 1 });
     }
   }
   return [...roots].flatMap((root) => ["--ro-bind", realpathSync(root), root]);
@@ -360,40 +362,43 @@ export function createSshConfigView(profilePath: string, source = "/etc/ssh/ssh_
  * read-write. Pure argv construction — testable on any platform; execution
  * is exercised by the linux gate (trmd-metal-3).
  */
-export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[], sshConfigView?: string): string[] {
+export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[], _sshConfigView?: string): string[] {
   checkedWritablePaths(policy);
+  if (policy.writablePaths.length > 0 || (policy.scratchPaths ?? []).some(path => !["/tmp", "/var/tmp", "/dev"].includes(path))) {
+    throw new Error("cell sandbox: only Cell-owned writable paths are supported");
+  }
   const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path) : undefined;
   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
+  const homes = [...new Set([homedir(), userInfo().homedir].map(path => realpathSync(path)))];
   const out: string[] = [
-    "--unshare-pid", "--unshare-ipc",
-    "--ro-bind", "/", "/",
-    "--dev", "/dev",
-    ...size, "--tmpfs", "/dev/shm",
-    "--proc", "/proc",
-    ...BWRAP_PRIVATE_MOUNTS.flatMap((mount) => [...size, "--tmpfs", mount]),
+    "--unshare-user", "--unshare-pid", "--unshare-ipc",
+    "--ro-bind", "/", "/", "--dev", "/dev", ...size, "--tmpfs", "/dev/shm", "--proc", "/proc",
+    ...BWRAP_PRIVATE_MOUNTS.flatMap(mount => [...size, "--tmpfs", mount]),
+    ...homes.flatMap(home => ["--tmpfs", home]),
+    "--tmpfs", "/run", "--dir", "/run/user", "--dir", "/run/honeybee", "--dir", "/run/honeybee/bin",
     ...bwrapLaunchBinds(command, args),
     "--bind", policy.cellDir, policy.cellDir,
   ];
   if (policy.kvm) out.push("--dev-bind", "/dev/kvm", "/dev/kvm");
-  for (const p of policy.writablePaths) {
-    // --bind-try: absent harness homes must not break the spawn.
-    out.push("--bind-try", p, p);
-  }
-  for (const p of policy.scratchPaths ?? defaultScratchPaths("linux")) {
-    if (p === "/tmp" || p === "/var/tmp" || p === "/dev") continue; // already mounted above
-    out.push("--bind-try", p, p);
-  }
   if (projection) {
     for (const file of projection.files) out.push("--ro-bind", file.source, file.destination);
-    out.push("--tmpfs", projection.sourceHome, "--remount-ro", projection.sourceHome);
     out.push("--setenv", policy.harnessHome!.harness === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR", projection.home);
   }
   for (const path of hiddenPaths(policy)) out.push("--tmpfs", path, "--remount-ro", path);
-  if (sshConfigView) out.push("--ro-bind", sshConfigView, sshConfigView, "--ro-bind", sshConfigView, "/etc/ssh/ssh_config.d");
-  out.push("--tmpfs", "/run/user", "--remount-ro", "/run/user",
+  if (policy.gatewaySocketPath) out.push("--ro-bind", policy.gatewaySocketPath, "/run/honeybee/gateway.sock");
+  const scopeDirectory = cellScopeArtifactDirectory();
+  out.push("--ro-bind", join(scopeDirectory, "cell-scope"), "/run/honeybee/cell-scope",
+    "--ro-bind", join(scopeDirectory, "hive"), "/run/honeybee/bin/hive",
+    "--ro-bind", cellCliBundlePath(), "/run/honeybee/hive.mjs");
+  for (const home of homes) out.push("--remount-ro", home);
+  out.push("--remount-ro", "/run",
     "--unsetenv", "DBUS_SESSION_BUS_ADDRESS", "--unsetenv", "DBUS_SYSTEM_BUS_ADDRESS",
-    "--unsetenv", "SSH_AUTH_SOCK", "--unsetenv", "XDG_RUNTIME_DIR",
-    "--share-net", "--die-with-parent", "--", command, ...args);
+    "--unsetenv", "SSH_AUTH_SOCK", "--unsetenv", "XDG_RUNTIME_DIR", "--unsetenv", "NODE_OPTIONS",
+    "--setenv", "HIVE_CELL_GATEWAY_SOCKET", "/run/honeybee/gateway.sock",
+    "--setenv", "PATH", `/run/honeybee/bin:${process.env.PATH ?? "/usr/bin:/bin"}`,
+    "--share-net", "--die-with-parent");
+  const parent = statSync("/proc/self/ns/user");
+  out.push("--", "/run/honeybee/cell-scope", "--assert-userns", `${parent.dev}:${parent.ino}`, "--", command, ...args);
   return out;
 }
 
