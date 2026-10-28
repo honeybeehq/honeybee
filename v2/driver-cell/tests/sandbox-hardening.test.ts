@@ -272,7 +272,7 @@ test("hardening: fixture systemd private socket is masked and gh token file is h
 
 test("hardening: toolchain owners, modes and escaping symlinks fail closed", { skip: !linux }, () => {
   const root = mkdtempSync("/tmp/hb-toolchain-owner-");
-  const allowed = new Set([0, process.geteuid()]);
+  const allowed = new Set([0, process.geteuid!()]);
   try {
     chmodSync(root, 0o755);
     assert.doesNotThrow(() => assertSandboxToolchainMetadata(statSync(root), allowed));
