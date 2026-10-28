@@ -1,0 +1,30 @@
+✔ authority instance RPC: scoped lease survives restart; legacy holder upgrades, lower same-instance and retired replay refuse (1498.709119ms)
+✔ gateway authorizes only the enumerated verbs; every other protocol verb is denied (3.678582ms)
+✔ identity, generation, authority context and sender cannot be supplied by the caller (1.470275ms)
+✔ gateway RPC intercepts privileged handlers and refuses degraded or expired peers (22.777547ms)
+✔ temporary daemon home binds the socket to its own live generation with real peer credentials (105.795208ms)
+✔ Cell mutation limits bound payload bytes and persist across generations with a deterministic window (1.866624ms)
+✔ Cell CLI target takes precedence over explicit sockets and never resolves the real socket (1.292166ms)
+✔ native gateway refuses same-uid outsiders and admits a real runtime descendant (160.136215ms)
+✔ every RPC reply is projected unless it is an explicit env transfer (5.875392ms)
+✔ private watch rechecks registration, expires, downgrades and isolates connections (162.819724ms)
+✔ private feed fails closed: disabled (3.347576ms)
+✔ private feed fails closed: missing-key (2.276343ms)
+✔ private feed fails closed: degraded (6.61757ms)
+✔ private feed fails closed: lookup-failed (5.424547ms)
+✔ human output registered service and principal boundary: disabled (28.825958ms)
+✔ human output registered service and principal boundary: missing-key (6.320997ms)
+✔ human output registered service and principal boundary: degraded (11.508915ms)
+✔ human output registered service and principal boundary: ready (19.090671ms)
+✔ spawn lineage binds authenticated bee and preserves operator delegation (4.235643ms)
+✔ spawn peer authentication follows exact process ancestry and chooses the closest bee (0.837087ms)
+✔ spawn refuses missing ancestry evidence and process replacement during inspection (0.526772ms)
+✔ gateway ancestry refuses peer and runtime PID reuse and reparenting during the final fence (0.360011ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1603.292956
