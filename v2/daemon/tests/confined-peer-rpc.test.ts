@@ -112,9 +112,58 @@ createInterface({input:process.stdin}).on('line', line => {
 
 });
 
-test("strict host with trust disabled cannot treat an unattributed host peer as registered", {skip: process.platform !== "linux", timeout: 30000}, async t => {
-  const rig = makeDaemonDir({cells: {sandbox: false}});
+test("sandbox-off host keeps unregistered host callers unconfined and still confines child-userns peers", {skip: process.platform !== "linux", timeout: 60000}, async t => {
+  for (const nodeKind of ["workstation", "cloud", "satellite"] as const) {
+    const rig = makeDaemonDir({nodeKind, cells: {sandbox: false}});
+    const daemon = await startDaemon(rig.dir);
+    const client = await daemon.client();
+    try {
+      const health = await client.request<HealthResult>("health", {});
+      assert.equal(health.confinement?.strict, false, nodeKind);
+      assert.deepEqual(health.confinement?.reasons, [], nodeKind);
+      await client.request("account.add", {harness: "codex", label: "host", idempotencyKey: `host-${nodeKind}`});
+      const spawned = await client.request<SpawnResult>("spawn", {name: `host-${nodeKind}`, agent: "stub", substrate: "hsr", account: null, cwd: rig.dir});
+      assert.equal(typeof spawned.commandId, "number");
+      const module = fileURLToPath(new URL("../../cli/src/client.ts", import.meta.url));
+      const script = `import {RpcClient} from ${JSON.stringify(module)};
+const c = await RpcClient.connect(${JSON.stringify(daemon.socketPath)});
+const codes = [];
+for (const [verb,params] of [['health',{}],['spawn',{name:'escape',agent:'stub',substrate:'hsr'}],['account.lease.export',{}]]) {try {await c.request(verb,params); codes.push('ALLOWED');} catch(e) {codes.push(e.code);}}
+c.close(); console.log(JSON.stringify(codes));`;
+      const {stdout} = await exec("unshare", ["-U", process.execPath, "--input-type=module", "-e", script], {timeout: 20000});
+      assert.deepEqual(JSON.parse(stdout), Array(3).fill("confined_peer_refused"), nodeKind);
+    } finally { client.close(); await daemon.stop(); rig.cleanup(); }
+  }
+});
+
+test("an explicitly unsandboxed Cell does not put a sandboxed satellite into strict host refusal", {skip: process.platform !== "linux", timeout: 60000}, async t => {
+  const {makeOrigin} = await import("../../driver-cell/tests/helpers.ts");
+  const rig = makeDaemonDir({nodeKind: "satellite", cells: {sandbox: true}});
+  t.after(() => rig.cleanup());
+  const origin = makeOrigin(rig.dir);
   const daemon = await startDaemon(rig.dir);
+  t.after(() => daemon.stop());
+  const client = await daemon.client();
+  t.after(() => client.close());
+  const cell = await client.request<SpawnResult>("spawn", {name: "open-cell", agent: "stub", account: null, cwd: "/ignored", substrate: "cell", cell: {originRepo: origin.repo, sandbox: false}});
+  await waitFor(async () => {
+    const view = await client.request<{runtime:{state:string} | null}>("view", {beeId: cell.beeId});
+    return view.runtime?.state === "idle" || view.runtime?.state === "running";
+  }, "unsandboxed Cell boot", 30000);
+  const health = await client.request<HealthResult>("health", {});
+  assert.equal(health.confinement?.strict, false);
+  assert.deepEqual(health.confinement?.reasons, []);
+  await client.request("account.add", {harness: "codex", label: "host", idempotencyKey: "host-after-open-cell"});
+});
+
+test("strict host with trust disabled cannot treat an unattributed host peer as registered", {skip: process.platform !== "linux", timeout: 30000}, async t => {
+  const rig = makeDaemonDir({nodeKind: "satellite", cells: {sandbox: true}});
+  const {mkdirSync, chmodSync} = await import("node:fs");
+  const bin = join(rig.dir, "setuid-bwrap-bin");
+  mkdirSync(bin);
+  writeFileSync(join(bin, "bwrap"), "#!/bin/sh\nexit 1\n");
+  chmodSync(join(bin, "bwrap"), 0o4755);
+  const daemon = await startDaemon(rig.dir, {env: {PATH: `${bin}:${process.env.PATH ?? ""}`}});
   t.after(() => daemon.stop());
   const client = await daemon.client();
   t.after(() => client.close());
@@ -126,7 +175,7 @@ test("strict host with trust disabled cannot treat an unattributed host peer as 
     try { await assert.rejects(relay.request("health", {}), error => (error as {code:string}).code === "confined_peer_refused"); }
     finally { relay.close(); }
   }
-  assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /security\.confinement strict=true/);
+  assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /security\.confinement strict=true reasons=setuid_bwrap/);
 });
 
 for (const mode of ["degraded", "lookup_failed"] as const) test(`missing Linux peer credentials fail closed with a diagnostic error: ${mode}`, {skip: process.platform !== "linux"}, async t => {

@@ -22,11 +22,11 @@ test("confinement uses pinned process birth and namespace, failing closed", () =
 });
 
 test("strict mode triggers and trusted host exceptions", () => {
-  assert.deepEqual(strictConfinementReasons(true, false, "different"), []);
-  assert.deepEqual(strictConfinementReasons(false, false), ["cell_sandbox_off"]);
-  assert.deepEqual(strictConfinementReasons(true, true), ["setuid_bwrap"]);
-  assert.deepEqual(strictConfinementReasons(true, false, "same"), ["cell_userns_unisolated"]);
-  assert.deepEqual(strictConfinementReasons(true, false, "unavailable"), ["cell_userns_unisolated"]);
+  assert.deepEqual(strictConfinementReasons(false, "different"), []);
+  assert.deepEqual(strictConfinementReasons(false), []);
+  assert.deepEqual(strictConfinementReasons(true), ["setuid_bwrap"]);
+  assert.deepEqual(strictConfinementReasons(false, "same"), ["cell_userns_unisolated"]);
+  assert.deepEqual(strictConfinementReasons(false, "unavailable"), ["cell_userns_unisolated"]);
   assert.equal(peerConfinement(peer, {proc: reader(), strict: true}), "confined");
   for (const options of [{registered: true}, {substrate: () => "hsr"}, {substrate: () => "tmux"}]) {
     assert.equal(peerConfinement(peer, {proc: reader(), strict: true, ...options}), "unconfined");

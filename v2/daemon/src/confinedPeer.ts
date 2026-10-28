@@ -66,8 +66,8 @@ export function peerConfinement(peer: LocalPeer | undefined, options: {
     return options.strict && !options.registered && substrate === null ? "confined" : "unconfined";
   } catch { return "confined"; }
 }
-export function strictConfinementReasons(sandbox: boolean, setuid: boolean, namespace?: "same" | "different" | "unavailable"): string[] {
-  return [...(!sandbox ? ["cell_sandbox_off"] : []), ...(setuid ? ["setuid_bwrap"] : []), ...(namespace !== undefined && namespace !== "different" ? ["cell_userns_unisolated"] : [])];
+export function strictConfinementReasons(setuid: boolean, namespace?: "same" | "different" | "unavailable"): string[] {
+  return [...(setuid ? ["setuid_bwrap"] : []), ...(namespace !== undefined && namespace !== "different" ? ["cell_userns_unisolated"] : [])];
 }
 export function bwrapMode(searchPath = process.env.PATH ?? ""): {path: string | null; setuid: boolean} {
   for (const directory of searchPath.split(":")) {

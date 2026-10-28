@@ -909,7 +909,7 @@ export class HiveDaemon {
     services.end();
     this.activeStartupPhase = null;
     this.confinementBwrap = bwrapMode();
-    for (const reason of strictConfinementReasons(sandboxEnabled(this.cfg.nodeKind, this.cfg.cellSandbox), this.confinementBwrap.setuid)) this.confinementReason(reason);
+    for (const reason of strictConfinementReasons(this.confinementBwrap.setuid)) this.confinementReason(reason);
     this.log(`security.confinement strict=${this.confinementReasons.size > 0} bwrap=${JSON.stringify(this.confinementBwrap)}`);
     const drivers = this.performance.startSpan("daemon.start.drivers");
     this.activeStartupPhase = drivers;
@@ -927,7 +927,7 @@ export class HiveDaemon {
       onWriteLaneReady: () => this.requestTick(),
       runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
       onRuntimeReady: (beeId: string, pid: number | null) => {
-        if (process.platform === "linux" && store.getBee(beeId)?.substrate === "cell") {
+        if (process.platform === "linux" && store.getBee(beeId)?.substrate === "cell" && sandboxEnabled(this.cfg.nodeKind, this.resolveCellSpec(beeId).sandbox)) {
           this.cellNamespaces.set(beeId, pid ? runtimeUserNamespace(pid) : "unavailable");
           if ([...this.cellNamespaces.values()].some(value => value !== "different")) this.confinementReason("cell_userns_unisolated");
           else if (this.confinementReasons.delete("cell_userns_unisolated")) this.log(`security.confinement strict=${this.confinementReasons.size > 0} reasons=${[...this.confinementReasons].join(",")}`);
