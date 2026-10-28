@@ -136,13 +136,12 @@ export function sandboxEnvironment(cellDir: string, original: Readonly<Record<st
   const temp = join(root, "tmp");
   const cache = join(root, "cache");
   const home = join(root, "home");
-  const config = join(root, "config"), data = join(root, "data"), state = join(root, "state");
-  for (const path of [root, temp, cache, home, config, data, state]) {
+  for (const path of [root, temp, cache, home]) {
     try { ensureCellPrivateDirectory(cellDir, path); }
     catch { throw new Error(`cell sandbox: unsafe private state: ${path}`); }
   }
   const scratch = sandboxed && platform() === "linux" ? "/tmp" : temp;
-  const env = { ...withoutCellHostRoutes(original), HOME: home, XDG_CONFIG_HOME: config, XDG_DATA_HOME: data, XDG_STATE_HOME: state, TMPDIR: scratch, TMP: scratch, TEMP: scratch, CLAUDE_CODE_TMPDIR: scratch,
+  const env = { ...withoutCellHostRoutes(original), HOME: home, TMPDIR: scratch, TMP: scratch, TEMP: scratch, CLAUDE_CODE_TMPDIR: scratch,
     XDG_CACHE_HOME: cache, NODE_COMPILE_CACHE: join(cache, "node-compile"), npm_config_cache: join(cache, "npm"),
     npm_config_store_dir: join(cache, "pnpm"), YARN_CACHE_FOLDER: join(cache, "yarn"), PIP_CACHE_DIR: join(cache, "pip"),
     UV_CACHE_DIR: join(cache, "uv"), GOCACHE: join(cache, "go-build"), GOMODCACHE: join(cache, "go-mod"),

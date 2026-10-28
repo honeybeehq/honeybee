@@ -17,6 +17,11 @@ test("Cell daemon inheritance is default deny, including identity-like secrets",
   const selected = cellDaemonEnvironment({PATH:"fixture",LANG:"fixture",LC_ALL:"fixture",LC_CTYPE:"fixture",TZ:"fixture",TERM:"fixture",HOME:"fixture",USER:"fixture",LOGNAME:"fixture",TMPDIR:"fixture",LC_UNEXPECTED_SECRET:"fixture",HIVE_UNKNOWN_SECRET:"fixture",APIARY_AGENT_TOKEN:"fixture",OPENAI_API_KEY:"fixture",UNKNOWN_SECRET:"fixture"}, dropped => names.push(...dropped));
   assert.deepEqual(Object.keys(selected).sort(), ["PATH","LANG","LC_ALL","LC_CTYPE","TZ","TERM","HOME","USER","LOGNAME","TMPDIR"].sort());
   assert.deepEqual(names, ["APIARY_AGENT_TOKEN","HIVE_UNKNOWN_SECRET","LC_UNEXPECTED_SECRET","OPENAI_API_KEY","UNKNOWN_SECRET"]);
+  const identityNames = ["GIT_AUTHOR_NAME","GIT_AUTHOR_EMAIL","GIT_COMMITTER_NAME","GIT_COMMITTER_EMAIL"];
+  const deniedNames = ["GIT_CONFIG","GIT_CONFIG_GLOBAL","GIT_CONFIG_SYSTEM","GIT_CONFIG_PARAMETERS","GIT_CONFIG_COUNT","GIT_CONFIG_KEY_0","GIT_CONFIG_VALUE_0","GIT_SSH","GIT_SSH_COMMAND","GIT_ASKPASS","GIT_DIR","GIT_TOKEN","SSH_AUTH_SOCK","SSH_AGENT_PID","SSH_CONNECTION","SESSION_TOKEN","APIARY_AGENT_TOKEN"];
+  const git = cellDaemonEnvironment(Object.fromEntries([...identityNames,...deniedNames].map(name=>[name,"fixture"])));
+  assert.deepEqual(Object.keys(git).sort(),identityNames.sort());
+  for (const name of deniedNames) assert.equal(Object.hasOwn(git,name),false,name);
 });
 
 test("Cell runtime keeps explicit harness, account and stamped identity env while host substrates keep inheritance", () => {
@@ -62,6 +67,11 @@ test("Cell runtime keeps explicit harness, account and stamped identity env whil
     const privateEnv = sandboxEnvironment(root,{...cell,HOME:root,HIVE_SOCKET:join(root,"hived.sock")});
     assert.ok(privateEnv.HOME?.startsWith(join(root,"sandbox-state")+"/"));
     for (const name of routes) assert.equal(Object.hasOwn(privateEnv,name),false,name);
+    const muse = store.createAccount({id:"muse-fixture",harness:"muse",label:"fixture",homePath:join(root,"muse-account")});
+    const museEnv = sandboxEnvironment(root,internal.runtimeEnvOf({...bee,account:muse.id},{command:process.execPath,env:{XDG_DATA_HOME:join(root,"explicit-data"),XDG_STATE_HOME:join(root,"explicit-state")}},"fixture"));
+    assert.ok(museEnv.XDG_CONFIG_HOME === muse.homePath);
+    assert.ok(museEnv.XDG_DATA_HOME === join(root,"explicit-data"));
+    assert.ok(museEnv.XDG_STATE_HOME === join(root,"explicit-state"));
     const plainCell = sandboxEnvironment(root,cell,false);
     assert.ok(plainCell.TMPDIR?.startsWith(join(root,"sandbox-state")+"/"));
   } finally {
