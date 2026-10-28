@@ -11,11 +11,14 @@ import { resolveDaemonConfig, runDaemon } from "../src/main.ts";
 
 async function withEntryDir(fn: (root: string) => void | Promise<void>): Promise<void> {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "hb-entry-path-")));
-  const previousCwd = process.cwd(), previousDataDir = process.env.HIVE_V2_DATA_DIR;
+  const previousCwd = process.cwd(), previousDataDir = process.env.HIVE_V2_DATA_DIR, previousVault = process.env.HIVE_V2_VAULT_DIR;
+  process.env.HIVE_V2_VAULT_DIR = join(root, "vault");
   process.chdir(root);
   process.env.HIVE_V2_DATA_DIR = join(root, "default");
   try { await fn(root); }
   finally {
+    if (previousVault === undefined) delete process.env.HIVE_V2_VAULT_DIR;
+    else process.env.HIVE_V2_VAULT_DIR = previousVault;
     process.chdir(previousCwd);
     if (previousDataDir === undefined) delete process.env.HIVE_V2_DATA_DIR;
     else process.env.HIVE_V2_DATA_DIR = previousDataDir;
@@ -109,7 +112,7 @@ for (const corrupt of [false, true]) test(`daemon entry holds before store/socke
     const pin = probeNativeNode(process.execPath);
     persistNodePin(data, { ...pin, version: "0.0.0" });
     if (corrupt) writeFileSync(nodePinFile(data), "corrupt JSON");
-    assert.equal(await runDaemon(["--data-dir", data]), 0);
+    assert.equal(await runDaemon(["--data-dir", data, "--vault-dir", join(root, "vault")]), 0);
     assert.equal(existsSync(join(data, "core.sqlite3")), false);
     assert.equal(existsSync(join(data, "hived.sock")), false);
     assert.equal(JSON.parse(readFileSync(nodeRepairFile(data), "utf8")).state, "held");
@@ -117,4 +120,27 @@ for (const corrupt of [false, true]) test(`daemon entry holds before store/socke
     assert.equal(validateDaemonNode(data, true), null);
     assert.equal(existsSync(nodeRepairFile(data)), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+for (const source of ["flag", "env", "config"] as const) test(`CLI daemon entry accepts explicit ${source} vault before the held Node pin`, async () => {
+  await withEntryDir(async root => {
+    const { runV2Cli } = await import("../../cli/src/main.ts");
+    const data = join(root, "data");
+    const pin = probeNativeNode(process.execPath);
+    persistNodePin(data, { ...pin, version: "0.0.0" });
+    const vault = join(root, "chosen-vault");
+    delete process.env.HIVE_V2_VAULT_DIR;
+    const extra: string[] = [];
+    if (source === "flag") extra.push("--vault-dir", vault);
+    if (source === "env") process.env.HIVE_V2_VAULT_DIR = vault;
+    if (source === "config") {
+      const config = join(root, "chosen-config.json");
+      writeFileSync(config, JSON.stringify({ accounts: { vaultDir: vault } }));
+      extra.push("--config", config);
+    }
+    const errors: string[] = [];
+    assert.equal(await runV2Cli(["daemon", "run", "--data-dir", data, ...extra], { out: () => undefined, err: line => errors.push(line) }), 0, errors.join("\n"));
+    assert.equal(existsSync(join(data, "core.sqlite3")), false);
+    assert.equal(existsSync(join(data, "hived.sock")), false);
+  });
 });

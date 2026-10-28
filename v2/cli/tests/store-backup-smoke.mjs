@@ -19,6 +19,7 @@ const fixture = mkdtempSync("/tmp/hb-t5-");
 const data = join(fixture, "v2");
 mkdirSync(data, { mode: 0o700 });
 process.env.HIVE_V2_DATA_DIR = data;
+writeFileSync(join(data, "config.json"), JSON.stringify({ accounts: { vaultDir: join(fixture, "vault"), homesDir: join(fixture, "homes"), limitsRefreshMs: 0 } }));
 const storePath = join(data, "core.sqlite3");
 persistNodePin(data, probeNativeNode(process.execPath));
 const prior = old.openCoreStore(storePath);

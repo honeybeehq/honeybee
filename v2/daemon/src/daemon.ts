@@ -1,3 +1,4 @@
+import { validateDaemonVault } from "./config.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
@@ -800,6 +801,7 @@ export class HiveDaemon {
   // -------------------------------------------------------------------------
 
   async start(): Promise<void> {
+    validateDaemonVault(this.cfg);
     const runtimeTarget = `${process.platform}-${process.arch}`;
     if (BUILD_IDENTITY.target !== runtimeTarget) throw new Error(`daemon: build target ${BUILD_IDENTITY.target} differs from runtime target ${runtimeTarget}; install an artifact built for this node`);
     mkdirSync(this.cfg.dataDir, { recursive: true, mode: 0o700 });
