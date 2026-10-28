@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { DatabaseSync } from "node:sqlite";
 import { createHmac } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RpcError, type SpawnResult, type ViewResult } from "../src/protocol.ts";
+import { RpcError, type AuditTailResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 
@@ -15,8 +14,6 @@ const rpcClientModule = fileURLToPath(new URL("../../cli/src/client.ts", import.
 const external = "15ecdadc-f4b1-4265-9fac-9516a5ada650";
 interface Output { status: number | null; stdout: string; stderr: string }
 
-// The harness executes CLI children itself: HIVE_BEE_ID is deliberately removed,
-// so successful attribution must come from the Unix peer's actual ancestry.
 test("spawn lineage: runtime ancestry, registered Apiary principal, and local operator", { timeout: 120_000 }, async t => {
   const rig = makeDaemonDir();
   const home = join(rig.dir, "home"), harness = join(rig.dir, "lineage.mjs");
@@ -58,16 +55,15 @@ createInterface({input:process.stdin}).on('line', async line => {
   t.after(async () => {
     client.close();
     await daemon.stop();
-    // Retain disposable evidence in trash instead of deleting fixture trees.
     const trash = join(rig.dir, "..", `.trash-lineage-${process.pid}-${Date.now()}`);
     renameSync(rig.dir, trash);
   });
   const parent = await client.request<SpawnResult>("spawn", { name: "runtime-parent", agent: "lineage", cwd: rig.dir });
-  const other = await client.request<SpawnResult>("spawn", { name: "other-parent", agent: "inbox", cwd: rig.dir });
   await waitFor(async () => {
     const view = await client.request<ViewResult>("view", { beeId: parent.beeId });
     return view.runtime?.state === "idle" || view.runtime?.state === "running";
   }, "parent runtime ready");
+  const other = await client.request<SpawnResult>("spawn", { name: "other-parent", agent: "inbox", cwd: rig.dir });
   let sequence = 0;
   const args = (extra: string[]) => [...extra, "--data-dir", rig.dir, "--socket", daemon.socketPath, "--json"];
   async function runtimeCli(extra: string[]): Promise<Output> {
@@ -86,16 +82,14 @@ createInterface({input:process.stdin}).on('line', async line => {
     console.log(JSON.stringify({ caller: "operator", argv: extra, ...output }));
     return output;
   }
-  function checkProvenance(beeId: string, authority: string, callerBeeId: string | null) {
-    const db = new DatabaseSync(daemon.storePath, { readOnly: true });
-    try {
-      const row = db.prepare("SELECT payload FROM audit WHERE kind='bee.created' AND bee_id=?").get(beeId);
-      assert.ok(row, "child creation audit exists");
-      const provenance = JSON.parse(String(row.payload)).spawnProvenance;
-      assert.equal(provenance?.authority, authority);
-      assert.equal(provenance?.callerBeeId, callerBeeId);
-      assert.ok(Number.isSafeInteger(provenance?.peerPid) && provenance.peerPid > 0);
-    } finally { db.close(); }
+  async function checkProvenance(beeId: string, authority: string, callerBeeId: string | null) {
+    const { rows } = await client.request<AuditTailResult>("audit.tail", { beeId, limit: 100 });
+    const row = rows.find(row => row.kind === "bee.created");
+    assert.ok(row, "child creation audit exists");
+    const provenance = row.payload.spawnProvenance as { authority: string; callerBeeId: string | null; peerPid: number };
+    assert.equal(provenance?.authority, authority);
+    assert.equal(provenance?.callerBeeId, callerBeeId);
+    assert.ok(Number.isSafeInteger(provenance?.peerPid) && provenance.peerPid > 0);
   }
   async function check(output: Output, expected: string | null) {
     assert.equal(output.status, 0, output.stderr || output.stdout);
@@ -106,7 +100,7 @@ createInterface({input:process.stdin}).on('line', async line => {
   }
   await t.test("runtime CLI defaults to its exact process ancestor", async () => {
     const childId = await check(await runtimeCli(["spawn", "default-child", "inbox"]), parent.beeId);
-    checkProvenance(childId, "bee", parent.beeId);
+    await checkProvenance(childId, "bee", parent.beeId);
   });
   for (const flags of [["--parent", other.beeId], ["--no-parent"]]) {
     await t.test(`runtime CLI refuses ${flags[0]}`, async () => {
@@ -131,17 +125,27 @@ createInterface({input:process.stdin}).on('line', async line => {
     assert.equal(view.bee?.parentId, external);
     assert.equal(view.bee?.parentExternal, true);
   });
+  await t.test("unregistered caller cannot assert an Apiary principal", async () => {
+    await assert.rejects(client.request("spawn", { name: "forged-principal", agent: "inbox" }, 5000, { sessionPrincipal: { beeId: parent.beeId } }), error => error instanceof RpcError && error.code === "caller_not_trusted");
+  });
   const challenge = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge");
   const secret = readFileSync(keyFile);
   const token = createHmac("sha256", secret).update(localTrustMessage(challenge)).digest("hex");
   secret.fill(0);
   await client.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge.challengeId, token });
   const context = { sessionPrincipal: { beeId: parent.beeId } };
+  await t.test("replay cannot borrow another authenticated parent's spawn", async () => {
+    const params = { name: "replayed-child", agent: "inbox", idempotencyKey: "lineage-replay" };
+    const first = await client.request<SpawnResult>("spawn", params, 5000, context);
+    assert.equal((await client.request<SpawnResult>("spawn", params, 5000, context)).beeId, first.beeId);
+    await assert.rejects(client.request("spawn", params, 5000, { sessionPrincipal: { beeId: other.beeId } }), error => error instanceof RpcError && error.code === "idempotency_conflict");
+    await assert.rejects(client.request("spawn", { ...params, parentId: other.beeId }, 5000, context), error => error instanceof RpcError && error.code === "caller_not_trusted");
+  });
   await t.test("registered service defaults forwarded principal and permits matching parent", async () => {
     for (const lineage of [{}, { parentId: parent.beeId }]) {
       const child = await client.request<SpawnResult>("spawn", { name: `forwarded-${++sequence}`, agent: "inbox", ...lineage }, 5000, context);
       assert.equal((await client.request<ViewResult>("view", { beeId: child.beeId })).bee?.parentId, parent.beeId);
-      checkProvenance(child.beeId, "bee", parent.beeId);
+      await checkProvenance(child.beeId, "bee", parent.beeId);
     }
   });
   for (const lineage of [{ parentId: other.beeId }, { parentId: null }, { parentId: external, parentExternal: true }]) {
@@ -155,7 +159,7 @@ createInterface({input:process.stdin}).on('line', async line => {
       const view = await client.request<ViewResult>("view", { beeId: child.beeId });
       assert.equal(view.bee?.parentId, lineage.parentId);
       assert.equal(view.bee?.parentExternal, "parentExternal" in lineage);
-      checkProvenance(child.beeId, "registered_service", null);
+      await checkProvenance(child.beeId, "registered_service", null);
     }
   });
 });
