@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdirSync, mkdtempSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, renameSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { openCoreStore } from "../../core/src/index.ts";
@@ -13,11 +13,14 @@ import { loadNodeConfig } from "../src/config.ts";
 import { RpcServer } from "../src/rpc.ts";
 
 test("joint Cell gateway and launcher fixture allows self, masks host sockets and refuses escapes", { skip: process.platform !== "linux", timeout: 30_000 }, async () => {
-  const root = mkdtempSync(join(tmpdir(), "hb-gjoint-"));
+  const customRoot = process.env.HIVE_TEST_GATEWAY_CUSTOM_ROOT === "1";
+  const root = mkdtempSync(join(customRoot ? "/mnt" : tmpdir(), "hb-gjoint-"));
   const cellDir = join(root, "cell");
   mkdirSync(cellDir);
   const store = openCoreStore(join(root, "fixture.sqlite"));
   const config = loadNodeConfig(root);
+  mkdirSync(config.sessionLogDir);
+  writeFileSync(join(config.sessionLogDir, "fixture.jsonl"), "fixture log\n");
   const daemon = new HiveDaemon(config);
   const internal = daemon as unknown as { store: typeof store; cellGateway(id: string, generation: number): { socketPath: string }; cellGateways: Map<string, { server: RpcServer }>; cellGatewaySweep: NodeJS.Timeout | null };
   internal.store = store;
@@ -26,6 +29,10 @@ test("joint Cell gateway and launcher fixture allows self, masks host sockets an
   const gateway = internal.cellGateway(bee.id, runtime.generation);
   const main = new RpcServer({ socketPath: config.socketPath, dataDir: root, log() {}, dispatch() { assert.fail("confined fixture reached the host daemon"); } });
   main.listenFresh();
+  assert.equal(lstatSync(config.socketPath).isSocket(), true);
+  assert.equal(lstatSync(join(root, "fixture.sqlite")).isFile(), true);
+  assert.equal(lstatSync(config.sessionLogDir).isDirectory(), true);
+  const liveSocketPreexisting = existsSync(join(homedir(), ".hive/v2/hived.sock"));
   const probe = join(cellDir, "probe.mjs");
   const ready = join(cellDir, "ready");
   const script = `
@@ -47,7 +54,7 @@ const cli=spawnSync('/run/honeybee/bin/hive',['view',${JSON.stringify(bee.id)},'
 console.log(JSON.stringify({self:self.ok&&self.result.bee.id,other:other.error?.code,cwd:cwd.error?.code,inbox:inbox.error?.code,hostSocket:missing(${JSON.stringify(config.socketPath)}),liveSocket:missing(${JSON.stringify(join(homedir(), ".hive/v2/hived.sock"))}),store:missing(${JSON.stringify(join(root, "fixture.sqlite"))}),sharedLogs:missing(${JSON.stringify(config.sessionLogDir)}),gateway:lstatSync('/run/honeybee/gateway.sock').isSocket(),gatewayEnv:process.env.HIVE_CELL_GATEWAY_SOCKET,cliCode:cli.status,cliOut:cli.stdout,cliError:cli.stderr}));
 `;
   writeFileSync(probe, script);
-  const policy = { cellDir, writablePaths: [], gatewaySocketPath: gateway.socketPath };
+  const policy = { cellDir, writablePaths: [], gatewaySocketPath: gateway.socketPath, protectedPaths: [root] };
   assert.throws(() => wrapWithSandbox({ ...policy, gatewaySocketPath: undefined }, process.execPath, [probe], join(cellDir, "sandbox.sb")), /gateway is required/);
   assert.throws(() => wrapWithSandbox({ ...policy, gatewaySocketPath: join(root, "missing.sock") }, process.execPath, [probe], join(cellDir, "sandbox.sb")), /gateway is missing or unsafe/);
   const wrapped = wrapWithSandbox(policy, process.execPath, [probe], join(cellDir, "sandbox.sb"));
@@ -55,10 +62,10 @@ console.log(JSON.stringify({self:self.ok&&self.result.bee.id,other:other.error?.
   let stdout = "", stderr = "";
   child.stdout.on("data", data => { stdout += data; });
   child.stderr.on("data", data => { stderr += data; });
-  const finished = once(child, "close");
+  const finished = new Promise<[number | null]>(resolve => child.once("close", code => resolve([code])));
   const timeout = setTimeout(() => child.kill("SIGTERM"), 20_000);
   try {
-    await once(child, "spawn");
+    await once(child, "spawn").catch(error => { throw new Error(`fixture launcher unavailable: ${(error as NodeJS.ErrnoException).code ?? "spawn_failed"}`); });
     const identity = inspectProcess(child.pid!);
     assert.equal(identity.kind, "present", "fixture launcher identity must be bound before requests");
     if (identity.kind !== "present") throw new Error("fixture launcher identity unavailable");
@@ -75,7 +82,7 @@ console.log(JSON.stringify({self:self.ok&&self.result.bee.id,other:other.error?.
     assert.equal(result.cliCode, 0, result.cliError);
     assert.equal(JSON.parse(result.cliOut).bee.id, bee.id);
     assert.equal(store.listMessages(inbox.id).length, 0);
-    console.log(JSON.stringify({ fixture: "joint-gateway-launcher", passed: true, self: true, other: result.other, cwdSpawn: result.cwd, inboxForward: result.inbox, hostSocket: result.hostSocket, liveSocket: result.liveSocket, store: result.store, sharedLogs: result.sharedLogs, gateway: result.gateway, cli: true, missingGateway: "refused" }));
+    console.log(JSON.stringify({ fixture: "joint-gateway-launcher", customRoot, hostPathsPreexisting: true, liveSocketPreexisting, passed: true, self: true, other: result.other, cwdSpawn: result.cwd, inboxForward: result.inbox, hostSocket: result.hostSocket, liveSocket: result.liveSocket, store: result.store, sharedLogs: result.sharedLogs, gateway: result.gateway, cli: true, missingGateway: "refused" }));
   } finally {
     clearTimeout(timeout);
     if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await finished; }
@@ -83,7 +90,7 @@ console.log(JSON.stringify({self:self.ok&&self.result.bee.id,other:other.error?.
     await Promise.all([...internal.cellGateways.values()].map(item => item.server.close()));
     await main.close();
     store.close();
-    const trash = join(tmpdir(), "honeybee-test-trash");
+    const trash = join(customRoot ? "/mnt" : tmpdir(), "honeybee-test-trash");
     mkdirSync(trash, { recursive: true });
     renameSync(root, join(trash, root.split("/").at(-1)!));
   }
