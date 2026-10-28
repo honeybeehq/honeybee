@@ -1,14 +1,8 @@
-/**
- * Auth resume, end to end against a real daemon and the fake Claude CLI. The
- * fake reads `$CLAUDE_CONFIG_DIR/.credentials.json` on every provider call
- * (FAKE_CLAUDE_REQUIRE_CREDENTIAL), so an expired file cuts a turn off with
- * the logged-out result a real Claude Code prints, and a valid one lets the
- * next turn through. SAFETY: temp dirs only; fixture tokens; no Keychain; the
- * usage and token endpoints point at local stubs or a dead port.
- */
-import { test } from "node:test";
+import { after, before, test } from "node:test";
+import { createHmac } from "node:crypto";
+import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { dirname, join } from "node:path";
@@ -32,10 +26,44 @@ import { makeDaemonDir, sleep, startDaemon, waitFor, type DaemonHandle } from ".
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FAKE_CLAUDE = join(here, "..", "..", "driver-hsr", "test-agent", "fake-claude.mjs");
-const DEAD_ENDPOINT = "http://127.0.0.1:9/v1/oauth/token";
+let unavailableBase = "";
+const unavailableProvider = createServer((request, response) => {
+  request.resume();
+  response.writeHead(503, {"Content-Type": "application/json"});
+  response.end(JSON.stringify({error: "fixture unavailable"}));
+});
+before(async () => {
+  await new Promise<void>(resolve => unavailableProvider.listen(0, "127.0.0.1", resolve));
+  unavailableBase = "http://127.0.0.1:" + (unavailableProvider.address() as AddressInfo).port;
+});
+after(async () => {
+  unavailableProvider.closeAllConnections();
+  await new Promise<void>(resolve => unavailableProvider.close(() => resolve()));
+});
+
+async function startFixtureDaemon(dir: string, options: Parameters<typeof startDaemon>[1] = {}): Promise<DaemonHandle> {
+  return startDaemon(dir, {...options, env: {
+    HIVE_CLAUDE_OAUTH_TOKEN_URL: unavailableBase + "/v1/oauth/token",
+    HIVE_CLAUDE_USAGE_URL: unavailableBase + "/api/oauth/usage",
+    ...options?.env,
+  }});
+}
+
+async function operatorClient(daemon: DaemonHandle): Promise<RpcClient> {
+  const client = await daemon.client();
+  const health = await client.request<{confinement?: {strict: boolean}}>("health", {});
+  assert.equal(health.confinement?.strict, false, "fixture operator starts on a non-strict satellite");
+  const challenge = await client.request<LocalTrustChallenge>("rpc.localTrust.challenge", {});
+  const key = readFileSync(join(daemon.dir, "rpc-private", "registration.key"));
+  const token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex");
+  key.fill(0);
+  await client.request("rpc.localTrust.register", {pid: process.pid, challengeId: challenge.challengeId, token});
+  return client;
+}
 
 function rig(config: { idleWindowMs?: number } = {}) {
-  return makeDaemonDir({
+  const setup = makeDaemonDir({
+    nodeKind: "satellite", cells: {sandbox: true},
     ...config,
     agents: {
       claude: {
@@ -46,6 +74,11 @@ function rig(config: { idleWindowMs?: number } = {}) {
       },
     },
   });
+  const configPath = join(setup.dir, "config.json");
+  const raw = JSON.parse(readFileSync(configPath, "utf8"));
+  raw.rpcLocalTrust = {requireObservationCaller: true, registrationKeyFile: join(setup.dir, "rpc-private", "registration.key")};
+  writeFileSync(configPath, JSON.stringify(raw));
+  return setup;
 }
 
 /** Write the account's credential in both places a Claude account keeps it. */
@@ -121,8 +154,8 @@ test("auth-resume.1: capture after a logged-out cut — an untouched turn is red
   const { dir, cleanup } = rig();
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: DEAD_ENDPOINT } });
-    const client = await daemon.client();
+    daemon = await startFixtureDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: unavailableBase + "/v1/oauth/token" } });
+    const client = await operatorClient(daemon);
     const account = await addAccount(client, dir, "a");
     const fresh = await spawnWarm(client, dir, "fresh", account);
     const partial = await spawnWarm(client, dir, "partial", account);
@@ -187,8 +220,8 @@ test("auth-resume.2: account.credentialsRestored on a satellite — refused whil
   const { dir, cleanup } = rig();
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: DEAD_ENDPOINT } });
-    let client = await daemon.client();
+    daemon = await startFixtureDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: unavailableBase + "/v1/oauth/token" } });
+    let client = await operatorClient(daemon);
     const account = await addAccount(client, dir, "sat");
     const one = await spawnWarm(client, dir, "one", account);
     const two = await spawnWarm(client, dir, "two", account);
@@ -210,8 +243,8 @@ test("auth-resume.2: account.credentialsRestored on a satellite — refused whil
     client.close();
     await daemon.kill();
 
-    daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: DEAD_ENDPOINT } });
-    client = await daemon.client();
+    daemon = await startFixtureDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: unavailableBase + "/v1/oauth/token" } });
+    client = await operatorClient(daemon);
     for (const [beeId, original, body] of [[one, firstMail, "task one"], [two, secondMail, "task two"]] as const) {
       const done = await interruptionWhere(client, beeId, (row) => row.state === "completed", `${body} finished after the restart`);
       assert.equal(done.restoredBy, "credentials_restored");
@@ -237,8 +270,8 @@ test("auth-resume.3: a bee that cannot authenticate on a credential that validat
   const { dir, cleanup } = rig();
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: DEAD_ENDPOINT } });
-    const client = await daemon.client();
+    daemon = await startFixtureDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: unavailableBase + "/v1/oauth/token" } });
+    const client = await operatorClient(daemon);
     const account = await addAccount(client, dir, "loop");
     const bee = await spawnWarm(client, dir, "stuck", account);
     const original = await cutOff(client, bee, "@authfail every time");
@@ -289,8 +322,8 @@ test("auth-resume.4: the daemon's own refresh and a readable limits probe each r
   const { dir, cleanup } = rig();
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: `${base}/v1/oauth/token`, HIVE_CLAUDE_USAGE_URL: `${base}/api/oauth/usage` } });
-    const client = await daemon.client();
+    daemon = await startFixtureDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: `${base}/v1/oauth/token`, HIVE_CLAUDE_USAGE_URL: `${base}/api/oauth/usage` } });
+    const client = await operatorClient(daemon);
 
     const refreshed = await addAccount(client, dir, "refresh");
     const refreshBee = await spawnWarm(client, dir, "refresh-bee", refreshed);
@@ -321,8 +354,8 @@ test("auth-resume.5: swapping an interrupted bee onto a healthy account continue
   const { dir, cleanup } = rig();
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: DEAD_ENDPOINT } });
-    const client = await daemon.client();
+    daemon = await startFixtureDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: unavailableBase + "/v1/oauth/token" } });
+    const client = await operatorClient(daemon);
     const source = await addAccount(client, dir, "src");
     const target = await addAccount(client, dir, "dst");
     const bee = await spawnWarm(client, dir, "mover", source);
@@ -364,8 +397,8 @@ test("auth-resume.6: recovering a centrally managed account — the login does n
   const { dir, cleanup } = rig({ idleWindowMs: 400 });
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: `http://127.0.0.1:${(provider.address() as AddressInfo).port}/v1/oauth/token` } });
-    const client = await daemon.client();
+    daemon = await startFixtureDaemon(dir, { env: { HIVE_CLAUDE_OAUTH_TOKEN_URL: `http://127.0.0.1:${(provider.address() as AddressInfo).port}/v1/oauth/token` } });
+    const client = await operatorClient(daemon);
     const account = "claude-central";
     writeCredential(dir, account, { ...valid("FIXTURE_ACCESS_central_1"), refreshToken: "FIXTURE_REFRESH_central_1" });
     await client.request("account.add", { harness: "claude", label: "central", importExisting: true });
@@ -406,12 +439,12 @@ test("auth-resume.7: a readable limits probe on an account with 300 bees and not
     });
   });
   await new Promise<void>((resolve) => provider.listen(0, "127.0.0.1", resolve));
-  const env = { HIVE_CLAUDE_OAUTH_TOKEN_URL: DEAD_ENDPOINT, HIVE_CLAUDE_USAGE_URL: `http://127.0.0.1:${(provider.address() as AddressInfo).port}/api/oauth/usage` };
+  const env = { HIVE_CLAUDE_OAUTH_TOKEN_URL: unavailableBase + "/v1/oauth/token", HIVE_CLAUDE_USAGE_URL: `http://127.0.0.1:${(provider.address() as AddressInfo).port}/api/oauth/usage` };
   const { dir, cleanup } = rig();
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir, { env });
-    const setup = await daemon.client();
+    daemon = await startFixtureDaemon(dir, { env });
+    const setup = await operatorClient(daemon);
     const account = await addAccount(setup, dir, "fleet");
     setup.close();
     await daemon.stop();
@@ -426,9 +459,9 @@ test("auth-resume.7: a readable limits probe on an account with 300 bees and not
     seed.archiveBee(flagged.id);
     seed.close();
 
-    daemon = await startDaemon(dir, { env });
-    const client = await daemon.client();
-    const watcher = await daemon.client();
+    daemon = await startFixtureDaemon(dir, { env });
+    const client = await operatorClient(daemon);
+    const watcher = await operatorClient(daemon);
     const frames: WatchFrame[] = [];
     let cursor = -1;
     watcher.onEvent = (frame: WatchFrame) => {
