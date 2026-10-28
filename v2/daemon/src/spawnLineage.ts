@@ -35,6 +35,7 @@ export function bindSpawnParent(params: Record<string, unknown>, callerBeeId: st
     if (!serviceAuthority && (params.parentId !== undefined || params.parentExternal === true)) throw new RpcError("caller_not_trusted", "Explicit, empty, and external parent claims require the registered Apiary service");
     return params;
   }
+  if (params.parentExternal === true && params.parentId === callerBeeId) return { ...params, parentId: callerBeeId, parentExternal: true };
   if (params.parentExternal === true || params.parentId !== undefined && params.parentId !== callerBeeId) {
     throw new RpcError("caller_not_trusted", "A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused");
   }
