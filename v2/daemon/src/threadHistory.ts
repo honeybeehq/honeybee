@@ -1,8 +1,8 @@
 /** Bounded admission, streaming copies, and paged access to native append-only history. */
 import { DatabaseSync } from "node:sqlite";
-import { closeSync, existsSync, fstatSync, openSync, readSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readSync, realpathSync, statSync } from "node:fs";
 import { open, rename, mkdir } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ThreadOperationRow } from "../../core/src/threadOperation.ts";
 
 export class ThreadExecutionError extends Error {
@@ -19,15 +19,34 @@ export function codexHistoryPath(home: string, sessionId: string): string {
   try {
     const row = db.prepare("SELECT rollout_path FROM threads WHERE id = ?").get(sessionId);
     if (typeof row?.rollout_path !== "string") throw new ThreadExecutionError("history_unavailable", "Source has no indexed native rollout");
-    return row.rollout_path;
+    try {
+      const namedRoot = resolve(home, "sessions");
+      const root = join(realpathSync(home), "sessions");
+      const rootStat = lstatSync(root);
+      if (!rootStat.isDirectory() || rootStat.isSymbolicLink() || !isAbsolute(row.rollout_path)) throw new Error("unsafe sessions root");
+      const requested = resolve(row.rollout_path);
+      const namedRelative = relative(namedRoot, requested);
+      const tail = namedRelative !== ".." && !namedRelative.startsWith(`..${sep}`) && !isAbsolute(namedRelative) ? namedRelative : relative(root, requested);
+      if (!tail || tail === ".." || tail.startsWith(`..${sep}`) || isAbsolute(tail)) throw new Error("outside sessions root");
+      let cursor = root;
+      for (const component of tail.split(sep)) {
+        cursor = join(cursor, component);
+        if (lstatSync(cursor).isSymbolicLink()) throw new Error("symlink rollout path");
+      }
+      if (!lstatSync(cursor).isFile()) throw new Error("rollout is not a regular file");
+      return cursor;
+    } catch { throw new ThreadExecutionError("history_unavailable", "Source rollout must be a regular file beneath its sessions root without symlinks"); }
   } finally { db.close(); }
 }
 
-export function pinThreadHistory(path: string, sessionId: string): ThreadOperationRow["source"] {
-  const fd = openSync(path, "r");
+export function pinThreadHistory(path: string, sessionId: string, sessionsRoot?: string): ThreadOperationRow["source"] {
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const stat = fstatSync(fd);
     if (!stat.isFile() || stat.size === 0) throw new ThreadExecutionError("history_unavailable", "Source rollout is empty or not a file");
+    const target = realpathSync(path);
+    const current = statSync(target);
+    if (stat.dev !== current.dev || stat.ino !== current.ino || sessionsRoot && !target.startsWith(`${realpathSync(sessionsRoot)}/`)) throw new ThreadExecutionError("history_unavailable", "Source rollout ownership changed before reading");
     const header = Buffer.alloc(Math.min(stat.size, HEADER_LIMIT));
     const n = readSync(fd, header, 0, header.length, 0);
     const end = header.subarray(0, n).indexOf(10);
@@ -40,7 +59,7 @@ export function pinThreadHistory(path: string, sessionId: string): ThreadOperati
     const count = readSync(fd, tail, 0, tail.length, start);
     const lastNewline = tail.subarray(0, count).lastIndexOf(10);
     if (lastNewline < 0) throw new ThreadExecutionError("history_unavailable", "Source has an unfinished record larger than 1 MiB");
-    return { path, bytes: start + lastNewline + 1, dev: stat.dev, ino: stat.ino, modelProvider: meta.payload.model_provider };
+    return { path: target, bytes: start + lastNewline + 1, dev: stat.dev, ino: stat.ino, modelProvider: meta.payload.model_provider };
   } finally { closeSync(fd); }
 }
 
@@ -59,7 +78,7 @@ export async function copyPinnedHistory(row: ThreadOperationRow): Promise<void> 
     if (existing.bytes !== row.source.bytes) throw new ThreadExecutionError("history_changed", "Owned snapshot length changed");
     return;
   }
-  const input = await open(row.source.path, "r");
+  const input = await open(row.source.path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   const temp = `${row.historyPath}.partial`;
   const output = await open(temp, "w", 0o600);
   try {
@@ -121,10 +140,15 @@ export async function sourceBaseInstructions(row: ThreadOperationRow): Promise<s
   } finally { await fd.close(); }
 }
 
-export async function readThreadHistory(row: ThreadOperationRow, offset: number, limit: number): Promise<{ format: "codex.rollout.jsonl"; encoding: "base64"; data: string; nextOffset: number; eof: boolean }> {
+export async function readThreadHistory(row: ThreadOperationRow, offset: number, limit: number, historyRoot?: string): Promise<{ format: "codex.rollout.jsonl"; encoding: "base64"; data: string; nextOffset: number; eof: boolean }> {
   if (!row.transcriptReady) throw new ThreadExecutionError("history_unavailable", "Inherited transcript is not ready");
-  const fd = await open(row.historyPath, "r");
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > row.source.bytes || !Number.isSafeInteger(limit) || limit < 1 || limit > 1048576) throw new ThreadExecutionError("history_unavailable", "Invalid transcript byte window");
+  const fd = await open(row.historyPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
+    const stat = await fd.stat();
+    const target = realpathSync(row.historyPath);
+    const current = statSync(target);
+    if (!stat.isFile() || stat.size < row.source.bytes || stat.dev !== current.dev || stat.ino !== current.ino || historyRoot && !target.startsWith(`${realpathSync(historyRoot)}/`)) throw new ThreadExecutionError("history_unavailable", "Inherited transcript must be an owned regular file");
     const buffer = Buffer.alloc(Math.min(limit, Math.max(0, row.source.bytes - offset)));
     const { bytesRead } = await fd.read(buffer, 0, buffer.length, offset);
     return { format: "codex.rollout.jsonl", encoding: "base64", data: buffer.subarray(0, bytesRead).toString("base64"), nextOffset: offset + bytesRead, eof: offset + bytesRead >= row.source.bytes };

@@ -2417,7 +2417,7 @@ export class HiveDaemon {
         const offset = params.offset ?? 0;
         const limit = params.limitBytes ?? 262144;
         if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0 || offset > row.source.bytes || typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1 || limit > 1048576) throw new RpcError("invalid_request", "Invalid transcript byte window");
-        return readThreadHistory(row, offset, limit).catch(error => { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); });
+        return readThreadHistory(row, offset, limit, join(this.cfg.dataDir, "thread-operations")).catch(error => { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); });
       }
       case "bee.fork":
         return this.releasingRefusedClaim(() => this.rpcForkWithAdmission(params));
@@ -5563,7 +5563,7 @@ export class HiveDaemon {
     const spec = this.resolveSpawnSpec(source.id);
     const home = spec.env?.CODEX_HOME ?? join(homedir(), ".codex");
     let boundary: ThreadOperationRow["source"];
-    try { boundary = pinThreadHistory(codexHistoryPath(home, sourceProviderSessionId), sourceProviderSessionId); }
+    try { boundary = pinThreadHistory(codexHistoryPath(home, sourceProviderSessionId), sourceProviderSessionId, join(home, "sessions")); }
     catch (error) { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); }
     const id = randomUUID();
     const successorProviderSessionId = randomUUID();
