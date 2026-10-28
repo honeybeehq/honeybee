@@ -1,0 +1,12 @@
+ts	phase	decision	why	evidence	result
+2026-10-28T13:13:28Z	plan	Quiet approved minimal fail-closed policy with amendments	Block persistent host config writes without overlays or credential copies	Project tasks/T11-sandbox-plan.md v2; Quiet 3893 and 3908	implementation authorized; deployment held
+2026-10-28T15:22:00Z	boundary	Replaced writable account/config homes with a Cell-private home	Shared account homes permit persistence across bees	v2/driver-cell/src/harnessHome.ts	RO leaves only; credential refresh limited
+2026-10-28T15:22:00Z	abstract	Required ABI 6 scoped Landlock before bwrap	Mount masks do not isolate abstract sockets	v2/driver-cell/native/cell-scope.c	Own external socket denied; ABI5 launch refused
+2026-10-28T15:22:00Z	sockets	Replaced denylist masks with a full-root allowlist	Custom data roots escaped earlier masks	ad45ee91; .audit/T11-joint-custom-before.txt	Custom fixture flips visible to ENOENT
+2026-10-28T15:22:00Z	namespace	Required explicit user namespace and inner identity assertion	Setuid bwrap and missing nodeKind can otherwise run unconfined	f0596ad7; v2/driver-cell/tests/sandbox-hardening.test.ts	Same-namespace launch refused
+2026-10-28T15:22:00Z	proof	Ran pinned root and sensitive-file metadata probes once	Prove no sockets outside exact gateway	docs/security/t11/root-receipts.json	One gateway; no readable sensitive files
+2026-10-28T15:22:00Z	diagnostic	Stopped on decode mismatch then used renewed pinned GO	Never run changed probe bytes	docs/security/t11/error-receipts.json	All six walk errors EACCES and non-searchable
+2026-10-28T15:22:00Z	compatibility	Used owned readonly Node overlay with production guard unchanged	Host uid appears unmapped in nested Cell	docs/security/t11/codex-resume.json	Two real Codex generations; same session
+2026-10-28T15:22:00Z	refresh	Surface read-only token refresh errors as auth_needed	RO authentication must not cause silent stalls	2bc827e0; docs/security/t11/refresh-boundary.txt	24 adapter tests pass; refresh broker unresolved
+2026-10-28T15:22:00Z	tmux	Integrated actual isolated tmux socket fixture	A raw tmux socket permits host process creation	a59ee490; .audit/T11-joint-custom.txt	Default and custom tmux paths absent
+2026-10-28T15:22:00Z	verification	Ran all sandbox and driver suites in owned overlay	Full-root layout changes launch assumptions	docs/security/t11/sandbox-suites.txt	45pass4skip0fail
