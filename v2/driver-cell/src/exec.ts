@@ -25,6 +25,7 @@ export interface CellExecSpec {
   timeoutMs?: number;
   sandbox: boolean | null;
   nodeKind: NodeKind;
+  nodeKindExplicit?: boolean;
   kvm?: boolean;
   secretEnv?: Record<string, string>;
   signal?: AbortSignal;
@@ -282,6 +283,7 @@ export async function runCellExec(
     HIVE_CELL: "1",
     HIVE_CELL_SPACE: paths.spaceName,
   };
+  if (!sandboxEnabled(spec.nodeKind, spec.sandbox) && spec.nodeKindExplicit === false && spec.sandbox !== false) throw new Error("cell sandbox: nodeKind is missing; explicit cells.sandbox:false is required for an unsandboxed Cell");
   let wrappedCommand = command as string;
   let wrappedArgs = args;
   if (sandboxEnabled(spec.nodeKind, spec.sandbox)) {
