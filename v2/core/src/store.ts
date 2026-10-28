@@ -7906,8 +7906,8 @@ export class CoreStore {
   authenticateCellCredentialProjection(beeId: string, generation: number): void {
     this.tx(() => {
       const runtime = this.currentRuntime(beeId), stamp = runtime?.credentialStamp;
-      if (!runtime || runtime.generation !== generation || runtime.state === "stopped" || !stamp?.cellProjection?.mountedAt || stamp.cellProjection.authenticatedAt !== undefined) return;
-      stamp.cellProjection.authenticatedAt = this.now();
+      if (!runtime || runtime.generation !== generation || runtime.state === "stopped" || !stamp?.cellProjection?.mountedAt || stamp.cellProjection.authenticationHintAt !== undefined) return;
+      stamp.cellProjection.authenticationHintAt = this.now();
       const flag = this.activeFlags(beeId).find(row => row.flag === "auth_needed");
       if (flag?.detail.startsWith("cell_")) this.clearFlag(beeId,"auth_needed","Current Cell generation authenticated");
       this.stmt("UPDATE runtimes SET credential_stamp = ? WHERE bee_id = ? AND generation = ?").run(JSON.stringify(stamp), beeId, generation);

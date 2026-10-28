@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export class CellCredentialRefusal extends Error {
@@ -57,12 +57,21 @@ export function snapshotAccessOnlyCodex(sourceHome: string, source: string, snap
     if (!snapshot.info.isFile() || snapshot.info.isSymbolicLink() || snapshot.info.uid !== process.geteuid?.() || (snapshot.info.mode & 0o222) !== 0) throw new CellCredentialRefusal(snapshot.name);
     unlinkSync(join(root,snapshot.name));
   }
-  let fd: number | undefined;
-  try {
-    fd = openSync(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o400);
-    writeFileSync(fd, raw);
-  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw new CellCredentialRefusal(); }
-  finally { if (fd !== undefined) closeSync(fd); }
+  const existing = lstatSync(target, {throwIfNoEntry:false});
+  if (existing && (!existing.isFile() || existing.isSymbolicLink() || existing.uid !== process.geteuid?.() || (existing.mode & 0o222) !== 0)) throw new CellCredentialRefusal();
+  let valid = false;
+  if (existing) { try { valid = readAccessOnlyCodex(target) === raw; } catch {} }
+  if (!valid) {
+    const temporary = join(root, `.stage-${randomUUID()}`);
+    let fd: number | undefined;
+    try {
+      fd = openSync(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o400);
+      writeFileSync(fd, raw); fsyncSync(fd); closeSync(fd); fd = undefined;
+      renameSync(temporary,target);
+      fd = openSync(root,constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW); fsyncSync(fd);
+    } catch { throw new CellCredentialRefusal(); }
+    finally { if (fd !== undefined) closeSync(fd); if (lstatSync(temporary,{throwIfNoEntry:false})) unlinkSync(temporary); }
+  }
   const pinned = lstatSync(target);
   if (!pinned.isFile() || pinned.isSymbolicLink() || pinned.uid !== process.geteuid?.() || (pinned.mode & 0o222) !== 0 || readAccessOnlyCodex(target) !== raw) throw new CellCredentialRefusal();
   return target;

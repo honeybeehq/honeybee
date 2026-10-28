@@ -236,7 +236,7 @@ export interface AccountMaterialStamp {
 }
 
 export interface RuntimeCredentialStamp {
-  cellProjection?: { digests: Record<string, string>; expiresAt: number; preparedAt: number; mountedAt?: number; authenticatedAt?: number };
+  cellProjection?: { digests: Record<string, string>; expiresAt: number; preparedAt: number; mountedAt?: number; authenticationHintAt?: number };
   material: AccountMaterialStamp;
   revision: string;
   account: string;

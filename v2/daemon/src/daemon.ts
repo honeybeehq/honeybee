@@ -1627,6 +1627,11 @@ export class HiveDaemon {
     if (!active || active.detail.startsWith("cell_") && active.detail !== detail) store.setFlag(beeId,"auth_needed",detail);
   }
 
+  private cellCredentialExpiry(account: AccountRow): number | null {
+    const lease = account.source === "leased" ? knownAccountLease(account) : null;
+    return lease?.expiresAt != null ? lease.expiresAt * 1000 : this.mustAccounts().authorityFor(account)?.status(account)?.expiresAt ?? null;
+  }
+
   private recordCellCredentialProjection(beeId: string, generation: number, sources: readonly {path: string; source: string}[]): void {
     const store = this.mustStore(), accounts = this.mustAccounts(), bee = store.getBee(beeId);
     const account = bee?.account ? store.getAccount(bee.account) : null;
@@ -1636,9 +1641,7 @@ export class HiveDaemon {
     const projected = Object.fromEntries(sources.map(file => [file.path,readAccessOnlyCodex(file.source)]));
     if (Object.keys(projected).length !== Object.keys(current).length || Object.entries(projected).some(([path,raw]) => raw !== current[path])) throw new Error("auth_needed: Cell credential publication changed during projection");
     const material = accounts.authDeathMaterial(account);
-    const authority = accounts.authorityFor(account)?.status(account);
-    const lease = account.source === "leased" ? knownAccountLease(account) : null;
-    const expiresAt = lease?.expiresAt != null ? lease.expiresAt * 1000 : authority?.expiresAt;
+    const expiresAt = this.cellCredentialExpiry(account);
     if (!material || !expiresAt || expiresAt <= (this.deps.cellCredentialNow ?? Date.now)()) throw new Error("auth_needed: access-only material requires a live authority or lease");
     const digests = Object.fromEntries(Object.entries(projected).map(([path,raw]) => [path,createHash("sha256").update(raw).digest("hex")]));
     store.recordCellCredentialProjection(beeId, generation, { material, revision: accounts.credentialRevision(account), account: account.id, agent: bee.agent, cwd: bee.cwd, cellId: bee.cellId, controlFence: bee.authControlFence ?? 0, cellProjection: { digests, expiresAt, preparedAt: (this.deps.cellCredentialNow ?? Date.now)() } });
@@ -1689,7 +1692,9 @@ export class HiveDaemon {
       return false;
     }
     const replacement = material === undefined ? this.mustAccounts().authDeathMaterial(account) : material;
-    const changed = replacement && (replacement.authorityInstanceId !== admitted.material.authorityInstanceId || replacement.scope !== admitted.material.scope || replacement.epoch !== admitted.material.epoch || replacement.generation > admitted.material.generation);
+    const expiry = this.cellCredentialExpiry(account);
+    const extendedExpiry = replacement !== null && expiry !== null && expiry > admitted.cellProjection.expiresAt;
+    const changed = extendedExpiry || replacement && (replacement.authorityInstanceId !== admitted.material.authorityInstanceId || replacement.scope !== admitted.material.scope || replacement.epoch !== admitted.material.epoch || replacement.generation > admitted.material.generation);
     const expired = (this.deps.cellCredentialNow ?? Date.now)() >= admitted.cellProjection.expiresAt;
     if (expired) this.setCellAuthNeeded(beeId, "cell_access_expired: renewed projection required; manual restart if renewal is unavailable");
     const previous = store.latestCellCredentialReplacement(beeId,generation);
@@ -1708,7 +1713,7 @@ export class HiveDaemon {
         changedBytes = Object.keys(digests).length !== Object.keys(admitted.cellProjection.digests).length || Object.entries(digests).some(([path,digest]) => digest !== admitted.cellProjection!.digests[path]);
       } catch { this.setCellAuthNeeded(beeId,"cell_access_only_required"); return false; }
     }
-    if (changed && changedBytes && !bee.activeMoveId && !bee.activeHandoffId && bee.lifecycle === "active") {
+    if (changed && (changedBytes || extendedExpiry) && !bee.activeMoveId && !bee.activeHandoffId && bee.lifecycle === "active") {
       store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: "cell_credentials", cellCredentialFence: bee.authControlFence ?? 0, cellCredentialAccount: account.id, waitForIdle: true, thenRevive: true }, { idempotencyKey: commandKey });
       return false;
     }
@@ -7320,6 +7325,21 @@ export class HiveDaemon {
     const account = accounts.accountForGeneration(bee, ev.generation);
     if (!account) return;
     if (ev.flag === "auth_needed") {
+      const eventRuntime = bee.substrate === "cell" && account.harness === "codex" ? store.listRuntimes(bee.id).find(row => row.generation === ev.generation) : null;
+      const admitted = eventRuntime?.credentialStamp;
+      if (admitted?.cellProjection) {
+        const expired = (this.deps.cellCredentialNow ?? Date.now)() >= admitted.cellProjection.expiresAt;
+        const current = expired ? null : accounts.authDeathMaterial(account);
+        const superseded = current && (current.authorityInstanceId !== admitted.material.authorityInstanceId || current.scope !== admitted.material.scope || current.epoch !== admitted.material.epoch || current.generation > admitted.material.generation);
+        if (expired || superseded) {
+          if (ev.action === "set") {
+            this.setCellAuthNeeded(bee.id,expired ? "cell_access_expired: renewed projection required" : "cell_material_superseded: renewed projection required");
+            this.authResume?.interrupted(ev);
+          } else this.authResume?.turnSucceeded(bee.id);
+          this.log(`cell.credentials.auth_scoped bee=${bee.id} gen=${ev.generation} code=${expired ? "expired" : "superseded"}`);
+          return;
+        }
+      }
       // One bee's turn cannot overrule the credential authority: a session can
       // still authenticate on an old access token after the login itself died.
       // The authority keeps the account's status; the cut-off turn is still

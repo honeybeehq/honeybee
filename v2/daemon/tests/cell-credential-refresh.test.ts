@@ -29,6 +29,8 @@ function fixture(t: import("node:test").TestContext) {
   internal.resolveCellSandboxHarnessHome=()=>({harness:"codex",path:home});
   internal.accounts.credentialRevision=()=>"synthetic";
   internal.accounts.authorityFor=()=>({status:()=>({expiresAt:3_601_000})});
+  internal.accounts.accountForGeneration=()=>store.getAccount(account.id);
+  internal.accounts.centralCredentialInDoubt=()=>false;
   function bee(name:string,expiry=3_601_000) {
     const {bee}=store.createBee({name,agent:"codex",substrate:"cell",account:account.id,cwd:root});
     store.recordCellCredentialProjection(bee.id,1,{material:{...material,kind:"lease"},revision:"synthetic",account:account.id,agent:"codex",cwd:root,cellId:null,controlFence:0,cellProjection:{digests:{"auth.json":createHash("sha256").update(raw).digest("hex")},expiresAt:expiry,preparedAt:1000}});
@@ -55,7 +57,7 @@ test("lease publication queues one replacement per Bee, waits for a safe boundar
 });
 
 test("unchanged material does not churn; expiry and unknown projections are visible auth_needed",t=>{
-  const r=fixture(t), id=r.bee("expired",999);
+  const r=fixture(t), id=r.bee("expired");r.advance(3_601_001);
   assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
   const seq = r.store.lastAuditSeq();
   for(let i=0;i<3;i++) assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
@@ -73,10 +75,10 @@ test("unchanged material does not churn; expiry and unknown projections are visi
 test("projection and authentication receipts are generation-fenced and survive store reads",t=>{
   const r=fixture(t), id=r.bee("receipt");
   r.store.authenticateCellCredentialProjection(id,2);
-  assert.equal(r.store.currentRuntime(id)?.credentialStamp?.cellProjection?.authenticatedAt,undefined);
+  assert.equal(r.store.currentRuntime(id)?.credentialStamp?.cellProjection?.authenticationHintAt,undefined);
   r.store.mountCellCredentialProjection(id,1);
   r.store.authenticateCellCredentialProjection(id,1);
-  assert.equal(r.store.currentRuntime(id)?.credentialStamp?.cellProjection?.authenticatedAt,1000);
+  assert.equal(r.store.currentRuntime(id)?.credentialStamp?.cellProjection?.authenticationHintAt,1000);
   const before=r.store.lastAuditSeq();r.store.authenticateCellCredentialProjection(id,1);assert.equal(r.store.lastAuditSeq(),before);
   assert.throws(()=>r.store.recordCellCredentialProjection(id,2,r.store.currentRuntime(id)!.credentialStamp!));
 });
@@ -139,7 +141,7 @@ test("mooted refresh intent can be replaced without silently wedging the runtime
 });
 
 test("Cell expiry preserves a genuine harness authentication failure",t=>{
-  const r=fixture(t),id=r.bee("real-auth-failure",999);
+  const r=fixture(t),id=r.bee("real-auth-failure");r.advance(3_601_001);
   r.store.setFlag(id,"auth_needed","Provider rejected synthetic fixture");
   const seq=r.store.lastAuditSeq();
   r.internal.admitCellCredentialTurn(id,1);r.internal.admitCellCredentialTurn(id,1);
@@ -199,4 +201,22 @@ test("one missing Cell row cannot stop healthy core work or account maintenance"
   assert.match(r.store.activeFlags(bad)[0]!.detail,/cell_reconciliation_failed/);
   assert.equal(r.store.currentRuntime(healthy.id)?.state,"running");
   assert.equal(r.internal.admitCellCredentialTurn(bad,1),false);
+});
+
+
+test("an expired or superseded Cell 401 stays scoped to its Bee",t=>{
+  const r=fixture(t), expired=r.bee("expired-401",999), sibling=r.bee("sibling");
+  r.internal.applyAccountPolicy({beeId:expired,generation:1,flag:"auth_needed",action:"set",detail:"synthetic 401"});
+  assert.equal(r.store.listAccounts()[0]!.status,"ok");assert.ok(r.store.activeFlags(expired).some(f=>f.flag==="auth_needed"));
+  assert.equal(r.store.activeFlags(sibling).length,0);
+  const superseded=r.bee("superseded-401");r.renew();
+  r.internal.applyAccountPolicy({beeId:superseded,generation:1,flag:"auth_needed",action:"set",detail:"synthetic stale 401"});
+  assert.equal(r.store.listAccounts()[0]!.status,"ok");assert.equal(r.store.currentRuntime(sibling)?.state,"running");
+});
+
+test("extended lease expiry remounts even unchanged access-only bytes",t=>{
+  const r=fixture(t),id=r.bee("extended-expiry");
+  r.internal.accounts.authorityFor=()=>({status:()=>({expiresAt:7_201_000})});
+  assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
+  assert.equal(r.store.latestCellCredentialReplacement(id,1)?.args.waitForIdle,true);
 });

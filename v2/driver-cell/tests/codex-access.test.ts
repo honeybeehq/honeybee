@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { accessOnlyCodexDocument, readAccessOnlyCodex, snapshotAccessOnlyCodex } from "../src/codexAccess.ts";
@@ -53,4 +53,17 @@ test("snapshot maintenance retains live digests across more than 128 publication
   for(let i=0;i<129;i++) {writeFileSync(source,document(`synthetic-${i}`));snapshotAccessOnlyCodex(root,source,undefined,[digest]);}
   assert.equal(readFileSync(pinned,"utf8"),document("pinned"));
   assert.ok(readdirSync(join(root,".honeybee-cell-access")).length<=10);
+});
+
+
+test("atomic snapshot publication repairs a truncated canonical file",t=>{
+  mkdirSync(resolve(".cache/t11g-trash"),{recursive:true});
+  const root=mkdtempSync(resolve(".cache/hb-snapshot-crash-"));
+  t.after(()=>{const r=spawnSync("trash",["--trash-dir",resolve(".cache/t11g-trash"),root],{encoding:"utf8"});assert.equal(r.status,0,r.stderr);});
+  const source=join(root,"auth.json");writeFileSync(source,document());
+  const target=snapshotAccessOnlyCodex(root,source);
+  chmodSync(target,0o600);writeFileSync(target,"{");chmodSync(target,0o400);
+  assert.equal(snapshotAccessOnlyCodex(root,source),target);
+  assert.equal(readFileSync(target,"utf8"),document());
+  assert.ok(readdirSync(join(root,".honeybee-cell-access")).every(name=>!name.startsWith(".stage-")));
 });
