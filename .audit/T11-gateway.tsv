@@ -1,0 +1,4 @@
+ts	phase	decision	why	evidence	result
+2026-10-28T13:48:12Z	design	Bind gateway identity to socket and verified runtime ancestry	Payload identity and uid alone cannot establish Cell identity	v2/daemon/src/rpc.ts	open
+2026-10-28T13:56:07Z	policy	Deny all spawns and restrict sends to the local parent	Confinement inheritance and Project membership are not authoritative in hived; orchestrator confirmed this scope	v2/daemon/src/cellGateway.ts	five gateway fixtures green
+2026-10-28T13:56:07Z	transcript	Read own transcript through bounded RPC pages	Shared daemon logs will be hidden by sandbox masks	v2/daemon/tests/cell-gateway.test.ts	real peer credential and CLI transcript/send fixtures green

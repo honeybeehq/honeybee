@@ -68,6 +68,11 @@ export function resolveDaemonTarget(inputs: DaemonTargetInputs, env: Record<stri
   const dataDirSource: DataDirSource = inputs.dataDirFlag ? "flag" : envDataDir ? "env" : "default";
   const dataDir = resolve(inputs.dataDirFlag ?? envDataDir ?? join(homedir(), ".hive", "v2"));
   const cfg = loadNodeConfig(dataDir, inputs.configPath);
+  if (env.HIVE_CELL_GATEWAY_SOCKET !== undefined) {
+    const gateway = env.HIVE_CELL_GATEWAY_SOCKET;
+    if (!gateway.startsWith("/") || gateway.includes("\0")) throw new RpcError("caller_not_trusted", "Invalid Cell gateway socket path");
+    return { cfg: { ...cfg, socketPath: gateway }, recordInstanceId: null, dataDirSource, socketSource: "env", expectedSocketPath: gateway };
+  }
   const record = readLiveEndpointRecord(dataDir);
   const expectedSocketPath = resolve(record?.socketPath ?? cfg.socketPath);
   const envSocket = envValue(env, "HIVE_V2_SOCKET_PATH");
