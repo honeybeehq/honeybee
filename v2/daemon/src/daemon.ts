@@ -926,13 +926,7 @@ export class HiveDaemon {
       adoptToleranceMs: this.cfg.adoptToleranceMs,
       onWriteLaneReady: () => this.requestTick(),
       runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
-      onRuntimeReady: (beeId: string, pid: number | null) => {
-        if (process.platform === "linux" && store.getBee(beeId)?.substrate === "cell" && sandboxEnabled(this.cfg.nodeKind, this.resolveCellSpec(beeId).sandbox)) {
-          this.cellNamespaces.set(beeId, pid ? runtimeUserNamespace(pid) : "unavailable");
-          if ([...this.cellNamespaces.values()].some(value => value !== "different")) this.confinementReason("cell_userns_unisolated");
-          else if (this.confinementReasons.delete("cell_userns_unisolated")) this.log(`security.confinement strict=${this.confinementReasons.size > 0} reasons=${[...this.confinementReasons].join(",")}`);
-        }
-      },
+      onRuntimeReady: (beeId: string, pid: number | null) => this.observeCellRuntimeNamespace(beeId, pid),
       execution: store.executionRuntimeHooks(),
       executionStartFor: (beeId: string, generation: number) => store.existingExecutionStart(beeId,generation),
       executionHostFor: (start: ExecutionStart) => store.executionStartHost(start),
@@ -2784,6 +2778,22 @@ export class HiveDaemon {
       beeId: bee.id, generation: runtime.generation, parentId: bee.parentExternal ? null : bee.parentId,
       canSend: target => { const parent = store.getBee(target); return !!parent && parent.agent !== INBOX_AGENT; },
     });
+  }
+
+  private observeCellRuntimeNamespace(beeId: string, pid: number | null): void {
+    const store = this.mustStore();
+    if (process.platform !== "linux" || store.getBee(beeId)?.substrate !== "cell") return;
+    let sandboxed = true;
+    try {
+      const cellId = store.getBee(beeId)?.cellId;
+      const cell = cellId ? store.getCell(cellId) : null;
+      if (!cell || cell.state === "removed") throw new Error("cell_unresolved");
+      sandboxed = sandboxEnabled(this.cfg.nodeKind, cell.sandbox ?? this.cfg.cellSandbox);
+    } catch { this.log("security.confinement cell_sandbox_unresolved assumed=sandboxed"); }
+    if (!sandboxed) return;
+    this.cellNamespaces.set(beeId, pid ? runtimeUserNamespace(pid) : "unavailable");
+    if ([...this.cellNamespaces.values()].some(value => value !== "different")) this.confinementReason("cell_userns_unisolated");
+    else if (this.confinementReasons.delete("cell_userns_unisolated")) this.log(`security.confinement strict=${this.confinementReasons.size > 0} reasons=${[...this.confinementReasons].join(",")}`);
   }
 
   private readonly cellNamespaces = new Map<string, "same" | "different" | "unavailable">();
