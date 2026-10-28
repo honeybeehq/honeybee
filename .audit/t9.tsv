@@ -1,0 +1,7 @@
+ts	phase	decision	why	evidence	result
+2026-10-28T07:44:34Z	incident	Leave foreign key and directory untouched	Lazy key reads prevent confidently excluding adoption under read-only limits	Project tasks/T9-vault-incident.md v1	same live PID; status healthy
+2026-10-28T07:47:22Z	incident	Record Needle decision to retain key	Operator chose leaving key to avoid breaking possible handoffs	Project tasks/T9-vault-incident.md v2	sent copy Quiet
+2026-10-28T07:47:22Z	base	Create task branch from origin/main	Inherited Project T5 commits already landed and rebase conflicted	retained/t9-project-base; d00025fb	original head preserved; clean task base
+2026-10-28T07:49:28Z	audit	Accept cross-model incident review and state limits	Relatime supports no ordinary reread; creator attribution remains supplied by brief	Project tasks/T9-vault-incident.md v3; session 616a2d8d	retention sound; shared-vault exposure open until deployment
+2026-10-28T07:59:03Z	implementation	Collect guarded vault startup and preserve socket contract	Require explicit vault outside exact service ownership and default paths	a20fa73b; 6299a054; ea29a902	source reviewed; inherited listen behavior preserved
+2026-10-28T07:59:03Z	verification	Accept final source checks	Prove refusal and explicit paths on fixtures without live vault access	.audit/t9-verification.md; .audit/*-final.log	check v2:check build pass; 70 focused + 12 service + 25 socket pass

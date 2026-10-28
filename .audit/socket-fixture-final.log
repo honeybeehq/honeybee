@@ -1,0 +1,54 @@
+✔ service.1: launchd plist snapshot (1.819458ms)
+✔ service.2: systemd owns only the daemon process so detached bee runtimes survive restart (0.587685ms)
+✔ service.3: launchd manager — install writes the plist; start/stop/status drive launchctl (2.542618ms)
+✔ service.4: launchd start falls back to kickstart when already bootstrapped (0.550015ms)
+✔ service.4b: launchd stop waits through the asynchronous bootout window (0.572455ms)
+✔ service.4c: launchd stop accepts an already-stopped service and confirms absence (0.554995ms)
+✔ service.4d: an already-stopped response still waits until launchd confirms absence (3.609056ms)
+✔ service.4e: launchd stop preserves other bootout failures (1.013807ms)
+✔ service.5: systemd manager — install writes unit + daemon-reload; start/stop/status; uninstall removes (1.400158ms)
+✔ service.6: one factory per platform; anything else refuses (0.631087ms)
+✔ service.7: a failing systemctl surfaces as a typed ServiceError, never silence (0.482743ms)
+✔ service renderers exclude Electron and Node option environment injection (0.455813ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 50.078487
+✔ target resolution: flag > env > live record > config, empty env is unset, dead-pid record is absent (60.812004ms)
+✔ socket_in_use probe is a bare connect: no bytes reach the listener (60.166517ms)
+✔ the endpoint record is written after the socket_in_use probe and before the socket accepts (7.244614ms)
+✔ a daemon that cannot write its endpoint record fails before it listens (858.249341ms)
+▶ socket isolation against throwaway daemons
+  ✔ the endpoint record carries the instance, the socket and the daemon pid (0.943505ms)
+  ✔ HIVE_V2_SOCKET_PATH is honoured and --json names the daemon it reached (9.650877ms)
+  ✔ --socket overrides HIVE_V2_SOCKET_PATH (4.609843ms)
+  ✔ --data-dir alone follows the live endpoint record to a --socket daemon (5.436445ms)
+  ✔ socket_mismatch before connecting: a configured socket that is not the data dir's (5.428865ms)
+  ✔ an explicit --data-dir outranks an inherited env socket: a harness inside a bee reaches its throwaway daemon (18.606747ms)
+  ✔ a harness passing nothing reaches its own bee's daemon through the env socket (348.667032ms)
+  ✔ socket_mismatch after hello: the daemon behind the socket serves another data dir (2.398164ms)
+  ✔ an unreachable configured socket fails loud and never falls back to the default socket or a stale store (3004.436491ms)
+  ✔ every --json error is one JSON line on stdout (8.134657ms)
+  ✔ an honest harness that resolved the throwaway data dir is never foreign, with or without HIVE_V2_DATA_DIR and through a symlinked spelling (532.642465ms)
+  ✔ reaching a daemon that is not the one recorded for the resolved data dir is foreign (313.654187ms)
+  ✔ a deleted endpoint record turns every provider spawn on the live daemon into foreign_daemon_spawn (362.44613ms)
+  ✔ a bee spawning a provider harness into an explicit throwaway dir needs no flag (999.230146ms)
+  ✔ a caller whose env names one dir and whose hello names another is refused by the daemon (data_dir_mismatch) (5.774194ms)
+  ✔ every daemon exports the socket it listens on to its bees, never an inherited one (480.557765ms)
+  ✔ a second daemon refuses a live socket with socket_in_use and the first stays reachable (701.394472ms)
+  ✔ hive daemon run ignores an inherited HIVE_V2_SOCKET_PATH and listens on its data dir's socket (836.549102ms)
+  ✔ an explicit target that is the live daemon is refused from a caller whose env names another dir, unless --allow-foreign-daemon (2322.17059ms)
+  ✔ a clean shutdown removes the record; a restart mints a new instance id and rewrites it (701.058743ms)
+✔ socket isolation against throwaway daemons (12178.23574ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13690.928441
