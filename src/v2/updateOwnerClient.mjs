@@ -11,6 +11,11 @@ function liveEndpoint(dataDir) {
   return record;
 }
 export function recordedSocketPath(dataDir) {
+  if (process.env.HIVE_CELL_GATEWAY_SOCKET !== undefined) {
+    const gateway = process.env.HIVE_CELL_GATEWAY_SOCKET;
+    if (!gateway.startsWith("/") || gateway.includes("\0")) throw new Error("Invalid Cell gateway socket path");
+    return gateway;
+  }
   return liveEndpoint(dataDir)?.socketPath ?? join(dataDir, "hived.sock");
 }
 import { DaemonDownError, RpcClient } from "../../v2/cli/src/client.ts";

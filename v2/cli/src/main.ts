@@ -2374,12 +2374,13 @@ async function cmdSend(ctx: CliContext, parsed: Parsed, options: { humanSender?:
   return withClient(ctx, async (c) => {
     // Exact IDs need no hive-wide list. Explicit sender aliases still use the
     // full resolver, and a UUID-shaped name falls back when no exact bee exists.
-    const exact = parsed.flags.get("--sender") === undefined &&
+    const gateway = process.env.HIVE_CELL_GATEWAY_SOCKET !== undefined;
+    const exact = !gateway && parsed.flags.get("--sender") === undefined &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(needle)
       ? await c.request<ViewResult>("view", { beeId: needle })
       : null;
-    const views = exact?.bee?.id === needle ? [exact] : (await c.request<ListResult>("list")).views;
-    const beeId = resolveBeeIn(views, needle);
+    const views = gateway ? [] : exact?.bee?.id === needle ? [exact] : (await c.request<ListResult>("list")).views;
+    const beeId = gateway ? needle : resolveBeeIn(views, needle);
     const humanSender = options.humanSender?.trim();
     if (options.humanSender !== undefined && !humanSender) {
       throw new Error("buz: --sender-human must be a non-empty name");
@@ -2387,7 +2388,7 @@ async function cmdSend(ctx: CliContext, parsed: Parsed, options: { humanSender?:
     if (humanSender && (process.env.HIVE_BEE_ID?.trim() || process.env.HIVE_BEE?.trim())) {
       throw new Error("buz: a bee runtime cannot claim a human sender");
     }
-    const sender = humanSender
+    const sender = gateway ? parsed.flags.get("--sender") as string | undefined : humanSender
       ? `human:${humanSender}`
       : resolveSendSender(views, parsed.flags.get("--sender") as string | undefined, ctx.cfg.dataDir);
     const result = await c.request<SendRpcResult>("send", {
@@ -4118,6 +4119,60 @@ interface SessionLogSnapshot {
   byteOffset: number;
 }
 
+async function gatewayTranscriptSnapshot(ctx: CliContext, beeId: string, offset = 0): Promise<SessionLogSnapshot> {
+  return withClient(ctx, async client => {
+    const chunks: Buffer[] = [];
+    let position = offset;
+    for (;;) {
+      const result = await client.request<{ bytesBase64: string; nextOffset: number; eof: boolean }>("bee.transcript", { beeId, offset: position });
+      chunks.push(Buffer.from(result.bytesBase64, "base64"));
+      position = result.nextOffset;
+      if (result.eof) break;
+    }
+    const bytes = Buffer.concat(chunks);
+    const end = bytes.lastIndexOf(0x0a) + 1;
+    return { lines: bytes.subarray(0, end).toString("utf8").split("\n").filter(line => line.trim().length > 0), byteOffset: offset + end };
+  });
+}
+
+async function cmdGatewayTranscript(ctx: CliContext, parsed: Parsed, tail: boolean): Promise<number> {
+  const needle = parsed.positional[1];
+  if (!needle) throw new Error("usage: hive transcript <self>");
+  const { result } = await readBee(ctx, needle);
+  if (!result.bee) throw new RpcError("bee_not_found", "Bee not found");
+  const bee = result.bee;
+  const stream = createTranscriptTurnStream(bee.agent);
+  const raw = parsed.flags.get("--raw") === true;
+  const follow = wantsFollow(parsed);
+  const count = tail ? numFlag(parsed, "--tail", 40) : parsed.flags.has("--tail") ? numFlag(parsed, "--tail", 0) : null;
+  const snapshot = await gatewayTranscriptSnapshot(ctx, bee.id);
+  const turns = raw ? [] : snapshot.lines.flatMap(line => stream.pushLine(line));
+  if (!raw && !follow) turns.push(...stream.flush());
+  const lines = raw ? snapshot.lines : turnLines(turns);
+  const shown = count === null ? lines : lines.slice(-count);
+  if (ctx.json) emit(ctx, [], { harness: bee.agent, lines: shown }, false);
+  else for (const line of shown) ctx.io.out(line);
+  if (!follow) return 0;
+  let stopped = false;
+  const stop = () => { stopped = true; };
+  process.once("SIGINT", stop);
+  let offset = snapshot.byteOffset;
+  try {
+    while (!stopped) {
+      await new Promise(resolve => setTimeout(resolve, 250));
+      if (stopped) break;
+      const next = await gatewayTranscriptSnapshot(ctx, bee.id, offset);
+      offset = next.byteOffset;
+      for (const line of next.lines) {
+        if (raw) ctx.io.out(line);
+        else for (const rendered of turnLines(stream.pushLine(line))) ctx.io.out(rendered);
+      }
+    }
+    if (!raw) for (const line of turnLines(stream.flush())) ctx.io.out(line);
+  } finally { process.removeListener("SIGINT", stop); }
+  return 0;
+}
+
 function readSessionLogSnapshot(path: string): SessionLogSnapshot {
   const contents = readFileSync(path);
   const lastNewline = contents.lastIndexOf(0x0a);
@@ -4214,6 +4269,7 @@ async function followTranscriptStream(
  * (only the bee lookup is stale-labeled).
  */
 async function cmdTranscript(ctx: CliContext, parsed: Parsed): Promise<number> {
+  if (process.env.HIVE_CELL_GATEWAY_SOCKET !== undefined) return cmdGatewayTranscript(ctx, parsed, false);
   const needle = parsed.positional[1];
   if (!needle) throw new Error("usage: hive transcript <bee> [-n n] [--raw] [-f|--follow]");
   const { result, stale } = await readBee(ctx, needle);
@@ -4252,6 +4308,7 @@ async function cmdTranscript(ctx: CliContext, parsed: Parsed): Promise<number> {
  * is the same rendering with full history/roles.
  */
 async function cmdTail(ctx: CliContext, parsed: Parsed): Promise<number> {
+  if (process.env.HIVE_CELL_GATEWAY_SOCKET !== undefined) return cmdGatewayTranscript(ctx, parsed, true);
   const needle = parsed.positional[1];
   if (!needle) throw new Error("usage: hive tail <bee> [-n n] [--raw] [-f|--follow]");
   const { result, stale } = await readBee(ctx, needle);
