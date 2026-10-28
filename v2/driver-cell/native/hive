@@ -1,2 +1,2 @@
 #!/bin/sh
-exec node /run/honeybee/hive.mjs "$@"
+exec node --input-type=module -e 'import {runV2Cli} from "/run/honeybee/hive.mjs"; process.exitCode = await runV2Cli(process.argv.slice(1));' -- "$@"

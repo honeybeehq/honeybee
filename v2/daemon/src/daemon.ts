@@ -961,6 +961,7 @@ export class HiveDaemon {
       sandboxKvm: this.cfg.cellKvm,
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
       sandboxProtectedPaths: [this.cfg.dataDir, this.cfg.accounts.homesDir],
+      resolveSandboxGateway: (beeId, generation) => this.cellGateway(beeId, generation),
       resolveSandboxHarnessHome: (beeId: string) => this.resolveCellSandboxHarnessHome(beeId),
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
       log: (op: string) => this.log(op),
@@ -2918,7 +2919,6 @@ export class HiveDaemon {
           const parent = store.getBee(target);
           return !!bee && !!parent && !isInboxAgent(parent.agent) && !bee.parentExternal && bee.parentId === target;
         },
-        ownsTranscript: operationId => store.getThreadOperation(operationId)?.sourceBeeId === beeId,
       },
     });
     server.listenFresh();
@@ -5032,6 +5032,7 @@ export class HiveDaemon {
           sandbox: cell.sandbox,
           nodeKind: this.cfg.nodeKind,
           kvm: this.cfg.cellKvm,
+          ...(sandboxEnabled(this.cfg.nodeKind, cell.sandbox) ? { gatewaySocketPath: this.cellGateway(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0).socketPath } : {}),
           ...(secret ? { secretEnv: secret.outputCapture ? undefined : secret.env, ...(secret.outputCapture ? { outputCapture: { maxBytes: secret.outputCapture.maxBytes, expiresAt: secret.outputCapture.expiresAt, receive: (bytes: Buffer) => captureSecretOutput?.(secret.outputCapture!.leaseId, bytes) } } : {}), signal: controller!.signal } : {}),
 
         },
