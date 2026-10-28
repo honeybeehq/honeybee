@@ -161,3 +161,22 @@ test("operator parking holds replacement without stopping a running Cell",t=>{
   assert.match(r.store.activeFlags(id)[0]!.detail,/cell_access_expired/);
   assert.equal(r.store.currentRuntime(id)?.state,"running");
 });
+
+
+test("changed non-access-only material refuses visibly without replacing or interrupting",t=>{
+  const r=fixture(t),id=r.bee("unsafe-publication");r.renew();
+  writeFileSync(join(r.store.listAccounts()[0]!.homePath,"auth.json"),JSON.stringify({tokens:{access_token:"synthetic",refresh_token:"synthetic-refresh"}}));
+  assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
+  assert.equal(r.store.activeFlags(id)[0]?.detail,"cell_access_only_required");
+  assert.equal(r.store.currentRuntime(id)?.state,"running");
+  assert.equal(r.store.latestCellCredentialReplacement(id,1),null);
+  const seq=r.store.lastAuditSeq();assert.equal(r.internal.admitCellCredentialTurn(id,1),false);assert.equal(r.store.lastAuditSeq(),seq);
+});
+
+test("the next tick refreshes digest cache after material changes without lease installation",t=>{
+  const r=fixture(t),id=r.bee("tick-refresh");r.renew(true);
+  assert.equal(r.internal.admitCellCredentialTurn(id,1),true);
+  writeFileSync(join(r.store.listAccounts()[0]!.homePath,"auth.json"),JSON.stringify({tokens:{access_token:"synthetic-published-later",refresh_token:""}}));
+  r.internal.reconcileCellCredentials();
+  assert.equal(r.store.latestCellCredentialReplacement(id,1)?.status,"queued");
+});

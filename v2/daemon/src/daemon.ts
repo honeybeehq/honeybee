@@ -1687,7 +1687,7 @@ export class HiveDaemon {
         const digests = this.cellCredentialDigests.get(account.id) ?? Object.fromEntries(["auth.json", ".codex/auth.json"].filter(path => existsSync(join(account.homePath,path))).map(path => [path,createHash("sha256").update(readAccessOnlyCodex(join(account.homePath,path))).digest("hex")]));
         this.cellCredentialDigests.set(account.id,digests);
         changedBytes = Object.keys(digests).length !== Object.keys(admitted.cellProjection.digests).length || Object.entries(digests).some(([path,digest]) => digest !== admitted.cellProjection!.digests[path]);
-      } catch { return false; }
+      } catch { this.setCellAuthNeeded(beeId,"cell_access_only_required"); return false; }
     }
     if (changed && changedBytes && !bee.activeMoveId && !bee.activeHandoffId && bee.lifecycle === "active") {
       store.enqueueCommand("stop", beeId, { cause: "stopped_by_system", reason: "cell_credentials", cellCredentialFence: bee.authControlFence ?? 0, cellCredentialAccount: account.id, waitForIdle: true, thenRevive: true }, { idempotencyKey: commandKey });
