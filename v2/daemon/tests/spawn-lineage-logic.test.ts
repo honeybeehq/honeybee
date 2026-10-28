@@ -17,8 +17,10 @@ test("spawn lineage binds authenticated bee and preserves operator delegation", 
     assert.throws(() => bindSpawnParent(params, "caller"), refused);
   }
   for (const params of [{ parentId: "other" }, { parentId: null }, { parentId: "external", parentExternal: true }]) {
-    assert.equal(bindSpawnParent(params, null), params);
+    assert.throws(() => bindSpawnParent(params, null), refused);
+    assert.equal(bindSpawnParent(params, null, true), params);
   }
+  assert.deepEqual(bindSpawnParent({ name: "default-root" }, null), { name: "default-root" });
 });
 
 test("spawn peer authentication follows exact process ancestry and chooses the closest bee", () => {
@@ -28,6 +30,8 @@ test("spawn peer authentication follows exact process ancestry and chooses the c
   assert.equal(spawnCallerBee(peer, [{ beeId: "parent", identity: proc(2, 1) }], inspect), "parent");
   assert.equal(spawnCallerBee(peer, [{ beeId: "parent", identity: proc(2, 1) }, { beeId: "nested", identity: proc(3, 2) }], inspect), "nested");
   assert.equal(spawnCallerBee(peer, [], inspect), null);
+  assert.equal(spawnCallerBee(peer, [{ beeId: "unrelated", identity: null, pid: 99 }], inspect), null);
+  assert.throws(() => spawnCallerBee(peer, [{ beeId: "unresolved", identity: null, pid: 3 }], inspect), refused);
   assert.throws(() => spawnCallerBee({ ...peer, processBirth: "linux:999" }, [], inspect), refused);
   processes.set(3, { ...proc(3, 2), ppid: 4 });
   assert.throws(() => spawnCallerBee(peer, [], inspect), refused);

@@ -3,6 +3,7 @@ import { constants, closeSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openS
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { RpcError } from "./protocol.ts";
 import type { PeerConnection } from "./peerCredentials.ts";
+import { inspectProcess } from "../../harness/src/processIdentity.ts";
 
 export interface LocalTrustConfig { requireObservationCaller: boolean; registrationKeyFile: string }
 export interface LocalTrustChallenge {
@@ -150,6 +151,11 @@ export class LocalRpcTrust {
     expected.fill(0); supplied.fill(0);
     if (!valid) refusal("invalid_token");
     const previous = this.registration;
+    if (previous && previous.expiresAtMs > this.now()
+      && (previous.pid !== verified.peer.pid || previous.birth !== verified.peer.processBirth || previous.uid !== verified.peer.uid)) {
+      const process = inspectProcess(previous.pid);
+      if (process.kind === "unavailable" || process.kind === "present" && process.state === "live" && process.birth === previous.birth && process.uid === previous.uid) refusal("registered_service_still_live");
+    }
     this.registration = {uid: verified.peer.uid, pid: verified.peer.pid, birth: verified.peer.processBirth!, expiresAtMs: this.now() + 300_000, nodeId: params.nodeId as string | undefined ?? null};
     this.audit("rpc.local_registered", {uid: verified.peer.uid, pid: verified.peer.pid, replacedPid: previous?.pid ?? null, expiresAtMs: this.registration.expiresAtMs});
     return {registered: true, uid: verified.peer.uid, pid: verified.peer.pid, expiresAtMs: this.registration.expiresAtMs};

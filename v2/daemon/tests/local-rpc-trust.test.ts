@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, existsSync, symlinkSync, chmodSync, mkdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, existsSync, symlinkSync, chmodSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LocalRpcTrust, localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
@@ -9,8 +9,31 @@ import { LocalRpcRefusals } from "../src/localRpcRefusals.ts";
 import type { PeerConnection } from "../src/peerCredentials.ts";
 import { RPC_ACCESS } from "../src/rpcAccess.ts";
 import { RPC_VERBS } from "../src/protocol.ts";
+import { inspectProcess } from "../../harness/src/processIdentity.ts";
 const peer = (pid: number, birth = "birth"): PeerConnection => ({state: "verified", peer: {uid: process.geteuid!(), pid, processBirth: birth}, current: () => true, close() {}});
 const reason = (value: string) => (error: unknown) => (error as {details?: {reason?: string}}).details?.reason === value;
+
+test("a live registered service cannot be silently replaced by a different process", () => {
+  const root = mkdtempSync(join(tmpdir(), "rpc-trust-owner-"));
+  const file = join(root, "private", "key");
+  const trust = new LocalRpcTrust({ requireObservationCaller: true, registrationKeyFile: file }, root, () => {});
+  const value = inspectProcess(process.pid);
+  assert.equal(value.kind, "present");
+  if (value.kind !== "present") return;
+  const owner = peer(process.pid, value.birth), replacement = peer(process.pid + 1);
+  const key = readFileSync(file);
+  const register = (connection: PeerConnection, pid: number) => {
+    const identity = {};
+    const challenge = trust.challenge(connection, identity, "local_unix");
+    return trust.register({ pid, challengeId: challenge.challengeId, token: createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex") }, connection, identity, "local_unix");
+  };
+  try {
+    register(owner, process.pid);
+    assert.throws(() => register(replacement, process.pid + 1), reason("registered_service_still_live"));
+    trust.require(owner, "local_unix");
+    register(owner, process.pid);
+  } finally { key.fill(0); trust.close(); renameSync(root, `${root}.trash`); }
+});
 
 test("trust off never creates a key and access classification covers every verb", () => {
   const root = mkdtempSync(join(tmpdir(), "rpc-trust-off-"));

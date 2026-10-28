@@ -1096,6 +1096,9 @@ export class HiveDaemon {
     const rpc = this.performance.startSpan("daemon.start.rpc");
     this.activeStartupPhase = rpc;
     this.rpc = new RpcServer({
+      assertServiceCaller: peer => {
+        if (this.spawnPeerBee(peer)) throw new RpcError("caller_not_trusted", "A bee runtime cannot register as the Apiary service");
+      },
       socketPath: this.cfg.socketPath,
       dataDir: this.cfg.dataDir,
       instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
@@ -2748,15 +2751,8 @@ export class HiveDaemon {
   private authenticatedSpawnParams(params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
     const store = this.mustStore();
     let callerBeeId = conn.authenticatedBeeId ?? null;
-    if (!callerBeeId && !conn.spawnServiceAuthority) {
-      if (!conn.localPeer || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Spawn requires a verified local operator, bee, or registered service");
-      const runtimes = store.listBees().flatMap(bee => store.listRuntimes(bee.id).flatMap(runtime => {
-        const binding = store.runtimeProcessIdentity(bee.id, runtime.generation);
-        if (binding.kind === "bound") return [{ beeId: bee.id, identity: binding.identity }];
-        if (runtime.state !== "stopped") throw new RpcError("caller_not_trusted", "Spawn requires resolved runtime process identities");
-        return [];
-      }));
-      callerBeeId = spawnCallerBee(conn.localPeer, runtimes, inspectProcess);
+    if (!callerBeeId && !conn.spawnServiceAuthority && conn.localPeer && conn.ingress === "local_unix") {
+      callerBeeId = this.spawnPeerBee(conn.localPeer);
     }
     if (callerBeeId && !store.getBee(callerBeeId)) throw new RpcError("bee_not_found", "Authenticated spawning bee does not exist");
     const key = this.idempotencyKeyOf(params);
@@ -2766,11 +2762,20 @@ export class HiveDaemon {
       const bee = result.beeId ? store.getBee(result.beeId) : null;
       if (prior.verb !== "spawn" || !bee || bee.parentExternal || bee.parentId !== callerBeeId) throw new RpcError("idempotency_conflict", "Spawn key belongs to a different parent");
     }
-    return { ...bindSpawnParent(params, callerBeeId), spawnProvenance: {
+    return { ...bindSpawnParent(params, callerBeeId, conn.spawnServiceAuthority === true), spawnProvenance: {
       callerBeeId,
-      authority: callerBeeId ? "bee" : conn.spawnServiceAuthority ? "registered_service" : "local_operator",
+      authority: callerBeeId ? "bee" : conn.spawnServiceAuthority ? "registered_service" : "unattributed",
       peerPid: conn.localPeer?.pid ?? null,
     } };
+  }
+
+  private spawnPeerBee(peer: NonNullable<RpcConn["localPeer"]>): string | null {
+    const store = this.mustStore();
+    const runtimes = store.listBees().flatMap(bee => store.listRuntimes(bee.id).map(runtime => {
+      const binding = store.runtimeProcessIdentity(bee.id, runtime.generation);
+      return { beeId: bee.id, identity: binding.kind === "bound" ? binding.identity : null, pid: runtime.state === "stopped" ? null : runtime.pid };
+    }));
+    return spawnCallerBee(peer, runtimes, inspectProcess);
   }
 
   private rpcSpawnEffect(params: Record<string, unknown>): Promise<SpawnResult> {
@@ -2778,7 +2783,8 @@ export class HiveDaemon {
     if (key === null) return this.rpcSpawnWithAccount(params);
     this.mustStore().transact(() => this.mustStore().lookupRpcResult(key));
     const binding = this.phoneRequestBinding(params);
-    const fingerprint = binding.lane === "legacy" ? canonicalDigest(JSON.parse(JSON.stringify(params))) : binding.digest;
+    const { spawnProvenance, ...requestParams } = params;
+    const fingerprint = binding.lane === "legacy" ? canonicalDigest(JSON.parse(JSON.stringify({ ...requestParams, spawnCallerBeeId: (spawnProvenance as { callerBeeId?: string } | undefined)?.callerBeeId ?? null }))) : binding.digest;
     const registry = this.effectInFlight ??= new Map();
     const existing = registry.get(key);
     if (existing) {

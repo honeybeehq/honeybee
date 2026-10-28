@@ -168,6 +168,7 @@ export type RpcDispatch = (
 ) => unknown;
 
 export interface RpcServerOptions {
+  assertServiceCaller?: (peer: NonNullable<RpcConn["localPeer"]>) => void;
   dataDir?: string;
   instance?: {id: string; dataDir: string};
   localTrust?: LocalTrustConfig;
@@ -538,6 +539,8 @@ export class RpcServer {
             if (Object.keys(params).length) throw new RpcError("invalid_request", "Challenge takes no parameters.");
             return this.trust.challenge(peer, conn, conn.ingress);
           }
+          if (peer.state !== "verified") throw new RpcError("caller_not_trusted", "Service registration requires a verified peer");
+          this.opts.assertServiceCaller?.(peer.peer);
           return this.trust.register(params, peer, conn, conn.ingress);
         }
         if (verb === "account.limits.observe" || verb === "account.limits.observation.discard" || (verb === "account.limits.observation" && params.id !== undefined)) {
@@ -624,7 +627,7 @@ export class RpcServer {
           if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Phone envelope requires a LocalRpcTrust-authenticated local caller");
           this.trust.require(peer, conn.ingress);
           if (context.phoneLane !== undefined && context.phoneLane !== "envelope-v1") throw new RpcError("invalid_request", "Phone envelope lane mismatch");
-          return this.opts.dispatch(verb, params, { ...conn, phoneOrigin: parsePhoneOrigin(context.phoneOrigin), phoneCarrierDigest: canonicalDigest(JSON.parse(JSON.stringify(context.phoneOrigin))), phoneLane: "envelope-v1" });
+          return this.opts.dispatch(verb, params, { ...conn, ...(verb === "spawn" ? { spawnServiceAuthority: true as const } : {}), phoneOrigin: parsePhoneOrigin(context.phoneOrigin), phoneCarrierDigest: canonicalDigest(JSON.parse(JSON.stringify(context.phoneOrigin))), phoneLane: "envelope-v1" });
         }
         if (context?.phoneLane !== undefined) {
           if (context.phoneLane !== "interim-v1" || (verb !== "send" && verb !== "spawn")) throw new RpcError("invalid_request", "Invalid phone lane");
