@@ -1,3 +1,5 @@
+import { runCellExec } from "../src/exec.ts";
+import { cellPaths } from "../src/layout.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn, spawnSync } from "node:child_process";
@@ -44,7 +46,7 @@ test("hardening: defaults and overrides cannot reopen protected host paths", () 
   } finally { dispose(root); }
 });
 
-test("hardening: harness projection binds only existing explicit input files", () => {
+test("hardening: harness projection binds only existing explicit input files", { skip: !linux }, () => {
   const root = mkdtempSync("/tmp/hb-harness-inputs-");
   try {
     const home = join(root, "account"), cell = join(root, "cell");
@@ -67,7 +69,7 @@ test("hardening: harness projection binds only existing explicit input files", (
   } finally { dispose(root); }
 });
 
-test("hardening: private directory setup never chmods a symlink target", () => {
+test("hardening: private directory setup never chmods a symlink target", { skip: !linux }, () => {
   const root = mkdtempSync("/tmp/hb-private-directory-");
   try {
     const account = join(root, "account"), cell = join(root, "cell"), target = join(root, "target");
@@ -76,6 +78,21 @@ test("hardening: private directory setup never chmods a symlink target", () => {
     symlinkSync(target, join(cell, "sandbox-state"));
     assert.throws(() => prepareSandboxHarnessHome(cell, "codex", account), /unsafe private harness directory/);
     assert.equal(statSync(target).mode & 0o777, 0o755);
+  } finally { dispose(root); }
+});
+
+test("hardening: retained Cell exec has no controlling terminal", { skip: !linux }, async () => {
+  const root = mkdtempSync("/tmp/hb-cell-tty-");
+  try {
+    const paths = cellPaths(root, "wrap", "repo", "tty");
+    mkdirSync(paths.spaceDir, {recursive: true}); mkdirSync(paths.boxDir, {recursive: true});
+    const gateway = withFixtureGateway({cellDir: paths.wrapperDir, writablePaths: []}).gatewaySocketPath;
+    const result = await runCellExec(paths, {
+      argv: ["/usr/bin/python3", "-I", "-c", "s=open('/proc/self/stat').read(); print(s[s.rfind(')')+2:].split()[4])"],
+      sandbox: true, nodeKind: "satellite", nodeKindExplicit: true, gatewaySocketPath: gateway,
+    });
+    assert.equal(result.status, "ok", result.stderr);
+    assert.equal(result.stdout.trim(), "0");
   } finally { dispose(root); }
 });
 

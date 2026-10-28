@@ -392,6 +392,35 @@ test(
   },
 );
 
+for (const background of [false, true]) test("cell-driver.tty: sandbox runtime and adoption have no controlling terminal, background=" + background, { skip: platform() !== "linux" }, async () => {
+  const rig = makeRig();
+  const first = makeDriver(rig, { sandbox: true, backgroundProvisioning: background });
+  let second: CellDriver | undefined;
+  const assertNoTty = (pid: number): void => {
+    const stat = readFileSync("/proc/" + pid + "/stat", "utf8");
+    assert.equal(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[4], "0");
+    const children = readFileSync("/proc/" + pid + "/task/" + pid + "/children", "utf8").trim().split(/\s+/).filter(Boolean).map(Number);
+    for (const child of children) assertNoTty(child);
+  };
+  try {
+    first.start("bee-1", 1);
+    const bootEvents = await drainUntil(first, events => events.some(event => event.kind === "booted"), 15000);
+    const proc = first.procOf("bee-1", 1);
+    assert.ok(proc, JSON.stringify(bootEvents));
+    assertNoTty(proc.pid);
+    persistFixtureProcess(rig.root, "bee-1", 1, proc);
+    first.detachAll();
+    second = makeDriver(rig, { sandbox: true, backgroundProvisioning: background });
+    assert.equal(second.adopt("bee-1", 1, proc.pid, proc.pidStartedAt, "running"), true);
+    assertNoTty(proc.pid);
+    second.stop("bee-1", 1, "stopped_by_user");
+    await drainUntil(second, events => events.some(event => event.kind === "exited"));
+  } finally {
+    second?.disposeAll(); first.disposeAll();
+    await sleep(10); rig.cleanup();
+  }
+});
+
 test("cell-driver.workstation-default: sandbox stays OFF without an override (A4)", async () => {
   const rig = makeRig();
   const driver = makeDriver(rig); // nodeKind workstation, no override
