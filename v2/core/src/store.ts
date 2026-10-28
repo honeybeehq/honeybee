@@ -299,7 +299,7 @@ export interface CoreStoreOptions {
 }
 
 export interface CreateBeeInput {
-  spawnProvenance?: { callerBeeId: string | null; authority: "bee" | "local_operator" | "registered_service"; peerPid: number | null };
+  spawnProvenance?: { callerBeeId: string | null; authority: "bee" | "unattributed" | "registered_service"; peerPid: number | null };
   phoneOperation?: { origin: PhoneOriginRequest; key: string };
   /** Known process identity at spawn time, so a daemon restart mid-boot can re-adopt (WP2 finding). */
   proc?: { pid: number; pidStartedAt: number };
