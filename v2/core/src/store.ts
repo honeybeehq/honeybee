@@ -10045,6 +10045,8 @@ export class CoreStore {
     return(this.stmt("SELECT body FROM backup_service_state WHERE id >= ? AND id < ? AND id > ? ORDER BY id LIMIT ?").all(prefix,prefix+"\uffff",after,Math.min(1000,Math.max(1,limit))) as Row[]).map(row=>JSON.parse(String(row.body)) as BackupStateRow);
   }
 
+  transactBackupState<T>(mutate:()=>T):T {return this.tx(()=>{const result=mutate();if(result instanceof Promise)throw new CoreError("backup_state_invalid");return result;});}
+
   putBackupState<K extends BackupStateKind>(state:Omit<BackupStateRow<K>,"revision">,expectedRevision:number):BackupStateRow<K> {
     return this.tx(()=>{
       const old=this.backupState(state.id,state.kind,state.role);if((old?.revision??0)!==expectedRevision)throw new CoreError("backup_state_conflict");

@@ -19,10 +19,12 @@ export function createBackupAuthorityGateway(authority:BackupAuthority){
    case '/v1/upload':result=await authority.acquireUpload(principal,body);break;
    case '/v1/heartbeat':result=authority.heartbeat(principal,body);break;
    case '/v1/release':insist(principal.role==='machine','scope_refused');result=authority.release(principal,body);break;
+   case '/v1/integrity/recover':result=await authority.recoverIntegrity(principal,body);break;
+   case '/v1/drill':result=await authority.reportDrill(principal,body);break;
    case '/v1/report':result=await authority.report(principal,body);break;
    case '/v1/pin':result=authority.pin(principal,body);break;
-   case '/v1/maintenance/claim':result=await authority.claimMaintenance(principal);break;
-   case '/v1/maintenance/finish':result=await authority.finishMaintenance(principal,body);break;
+   case '/v1/maintenance/claim':insist(body.integrityProtocol===1,'scope_refused');result=await authority.claimMaintenance(principal);break;
+   case '/v1/maintenance/finish':insist(body.integrityProtocol===1,'scope_refused');result=await authority.finishMaintenance(principal,body);break;
    default:throw new BackupServiceError('scope_refused');
   }
   res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify(result));

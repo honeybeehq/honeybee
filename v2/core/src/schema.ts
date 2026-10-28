@@ -163,7 +163,8 @@
 // v53: verified owner removal intents and fail-closed eviction semantics; older daemons must not replay them.
 // v54: durable owner service scheduling, fleet grants, capacity and maintenance facts.
 // v55: maintenance writer fencing and quota-retally recovery; old owners must not replay it.
-export const SCHEMA_VERSION = 55;
+// v56: failed checks/drills fence eviction; older owners must not ignore holds.
+export const SCHEMA_VERSION = 56;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (

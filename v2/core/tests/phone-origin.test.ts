@@ -38,7 +38,7 @@ test("phone data, shadow, history, audit replay and key bindings survive reopen 
       store.recordRpcResult("k", "send", sent.wakeCommand?.id ?? null, { commandId: sent.wakeCommand?.id ?? null, unarchived: sent.unarchived, messageId: sent.message.id });
       return sent.message;
     });
-    assert.equal(SCHEMA_VERSION, 55);
+    assert.equal(SCHEMA_VERSION, 56);
     assert.equal(message.body, renderPhoneInput(body));
     assert.equal(message.phoneInput?.originalContent, body);
     assert.equal(message.phoneInput?.envelope.contentDigest, phoneDigest(body));

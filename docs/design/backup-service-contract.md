@@ -275,3 +275,7 @@ Unauthorized preflight never takes the writer fence. Failed cleanup retains its 
 On daemon shutdown, a durable held writer fence cannot skip RPC cleanup and runner-host
 detachment; the successor reconciles the persisted fence. The forced shutdown-catch branch
 is NOT_COVERED by a fault-injected daemon test.
+
+## B9 integrity correction
+
+[Backup integrity holds](backup-integrity-contract.md) supersedes earlier failure/drill authority wording: failed checks and signed drills hold repository eviction until a matching trusted success. Physical capacity alone cannot clear the hold. Schema 56 and protocol 1 require a coordinated owner/authority/executor upgrade.

@@ -1,3 +1,4 @@
+import {machineIntegrityHolds,integrityReason,trackIntegrityEffect} from './backupIntegrity.ts';
 import {repoKey} from './backupServiceSupport.ts';
 /** Admission is synchronous; the owner gate is durable before the worker starts. */
 import { Worker } from "node:worker_threads";
@@ -7,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import { canonicalBackupJson, verifyBackupReceipt } from "../../core/src/backupReceipt.ts";
 import type { CoreStore, CellRow } from "../../core/src/index.ts";
 import type { BackupRecord } from "./backupCapture.ts";
-import { checkEvictionPolicy, rollbackUnauthorizedPark, VerifiedEvictionError, type EvictionReason, type EvictionPolicy, type VerifiedEvictionInput, type VerifiedEvictionResult } from "./verifiedEviction.ts";
+import { checkEvictionPolicy, hasEvictionAuthorization, rollbackUnauthorizedPark, VerifiedEvictionError, type EvictionReason, type EvictionPolicy, type VerifiedEvictionInput, type VerifiedEvictionResult } from "./verifiedEviction.ts";
 export interface EvictionOwner {store:CoreStore;dataDir:string;cellsRoot:string;keepRoot:string;machine:string;busy:(cell:CellRow,exceptKey?:string)=>boolean;git:string;signal?:AbortSignal;workerUrl?:URL;pinRecovery?:(record:BackupRecord)=>Promise<void>}
 export type OwnerEvictionResult={status:"deleted";head:string;operationId:string;generation:string}|{status:"refused";reason:EvictionReason;operationId?:string};
 export async function evictThroughOwner(cell:CellRow,mode:"evict"|"remove"|"trim",key:string|undefined,owner:EvictionOwner):Promise<OwnerEvictionResult>{
@@ -38,9 +39,12 @@ export async function evictThroughOwner(cell:CellRow,mode:"evict"|"remove"|"trim
     if(typeof publicKey!=="string")return refuse("receipt_corrupt");
     verifyBackupReceipt(record.receipt,publicKey);
   }catch{return refuse("receipt_corrupt");}
-  try{repository=JSON.parse(readFileSync(join(owner.dataDir,"backup.json"),"utf8")).repository;policy=JSON.parse(readFileSync(join(owner.dataDir,"backup-eviction.json"),"utf8"));if(!prior||!existsSync(prior.completionPath))checkEvictionPolicy(policy,repository,Date.now());}
+  const authorized=prior?hasEvictionAuthorization(prior):false;
+  if(!authorized){const held=integrityReason(machineIntegrityHolds(store,owner.dataDir,record.repository));if(held)return refuse(held);}
+  try{repository=JSON.parse(readFileSync(join(owner.dataDir,"backup.json"),"utf8")).repository;policy=JSON.parse(readFileSync(join(owner.dataDir,"backup-eviction.json"),"utf8"));if(!authorized)checkEvictionPolicy(policy,repository,Date.now());}
   catch(error){return refuse(error instanceof VerifiedEvictionError?error.reason:"unknown_policy");}
-  if((!prior||!existsSync(prior.completionPath))&&existsSync(join(owner.dataDir,'backup-service.json'))){const health=store.backupState('machine:capacity-health:'+repoKey(repository),'capacityHealth','machine');if(!health?.value.valid)return refuse('capacity_stop');}
+  if((!authorized)&&existsSync(join(owner.dataDir,'backup-service.json'))){const health=store.backupState('machine:capacity-health:'+repoKey(repository),'capacityHealth','machine');const capacity=store.backupState('machine:capacity:'+repoKey(repository),'capacity','machine');if(!health?.value.valid||!Array.isArray(capacity?.value.payload.holds))return refuse('capacity_stop');}
+  if(!authorized){const held=integrityReason(machineIntegrityHolds(store,owner.dataDir,repository));if(held)return refuse(held);}
   if(record.repository!==repository)return refuse("receipt_stale");
   // There is no await between the final live-state check and the durable gate.
   if(owner.busy(cell,old?.idempotencyKey))return refuse("gate_busy");
@@ -49,11 +53,12 @@ export async function evictThroughOwner(cell:CellRow,mode:"evict"|"remove"|"trim
   if(prior){input.cellIdentity=prior.cellIdentity;input.runtimeGeneration=prior.runtimeGeneration;}
   store.updateCellOp(op.id,{status:"running",pid:process.pid,stdout:JSON.stringify({format:"honeybee.eviction-intent.v1",input:{...input,publicKey:undefined,abortFlag:undefined},captureGeneration:record.generation})});
   const url=owner.workerUrl??new URL(import.meta.url.endsWith(".ts")?"./evictionWorker.ts":"./eviction-worker.js",import.meta.url);
+  const releaseIntegrityEffect=trackIntegrityEffect(store,repository,input.abortFlag!);
   try{
-    if(!existsSync(input.completionPath)){if(policy.pinRequired&&!owner.pinRecovery)throw new VerifiedEvictionError("pin_unavailable");if(owner.pinRecovery){try{await owner.pinRecovery(record);}catch{throw new VerifiedEvictionError("pin_unavailable");}}}
+    if(!hasEvictionAuthorization(input)){if(policy.pinRequired&&!owner.pinRecovery)throw new VerifiedEvictionError("pin_unavailable");if(owner.pinRecovery){try{await owner.pinRecovery(record);}catch{throw new VerifiedEvictionError("pin_unavailable");}}}
     const result=await new Promise<VerifiedEvictionResult>((accept,reject)=>{
       const worker=new Worker(url,{workerData:input});let settled=false;
-      const abort=()=>{Atomics.store(new Int32Array(input.abortFlag!),0,1);};owner.signal?.addEventListener("abort",abort,{once:true});
+      const abort=()=>{Atomics.compareExchange(new Int32Array(input.abortFlag!),0,0,1);};owner.signal?.addEventListener("abort",abort,{once:true});
       worker.once("message",message=>{settled=true;owner.signal?.removeEventListener("abort",abort);if(message.ok)accept(message.result);else reject(new VerifiedEvictionError(message.reason));});
       worker.once("error",()=>{owner.signal?.removeEventListener("abort",abort);reject(new VerifiedEvictionError("outcome_unknown"));});
       worker.once("exit",()=>{owner.signal?.removeEventListener("abort",abort);if(!settled)reject(new VerifiedEvictionError("outcome_unknown"));});
@@ -68,5 +73,5 @@ export async function evictThroughOwner(cell:CellRow,mode:"evict"|"remove"|"trim
     const parked=join(owner.cellsRoot,"_evicting",dirname(cell.spaceDir).split("/").at(-1)+".verified."+op.id);
     const ambiguous=existsSync(parked)||!existsSync(cell.spaceDir);const response:OwnerEvictionResult={status:"refused",reason:ambiguous?"outcome_unknown":reason,operationId:op.id};
     store.updateCellOp(op.id,{status:ambiguous?"outcome_unknown":"failed",pid:null,failure:response.reason,stdout:JSON.stringify({format:"honeybee.eviction-intent.v1",input:{...input,publicKey:undefined,abortFlag:undefined},lastResult:response})});return response;
-  }
+  }finally{releaseIntegrityEffect();}
 }

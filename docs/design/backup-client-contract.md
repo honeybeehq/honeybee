@@ -106,3 +106,7 @@ or source deletion is part of reconciliation. Shutdown waits for active restore/
 No service, live data, production reader grant or deployment was installed by B8. Dedicated
 Honeybee verification skill remains unavailable; repository checks and disposable drills are
 used. Real macOS/runtime setup remains untested.
+
+## B9 integrity correction
+
+[Backup integrity holds](backup-integrity-contract.md) supersedes earlier failure/drill authority wording: failed checks and signed drills hold repository eviction until a matching trusted success. Physical capacity alone cannot clear the hold. Schema 56 and protocol 1 require a coordinated owner/authority/executor upgrade.

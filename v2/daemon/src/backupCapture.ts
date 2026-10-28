@@ -11,7 +11,8 @@ import type { StoreBackupReceipt } from "../../core/src/storeBackup.ts";
 export type BackupFailure = "invalid_request" | "busy" | "not_retained" | "source_changed" | "sensitive_file" | "database_in_tree" | "scratch_limit" | "secret_unavailable" | "tool_failed" | "interrupted" | "outcome_unknown" | "git_incomplete" | "git_listing_too_large" | "checkpoint_retired" | "service_required";
 export class BackupError extends Error {
   readonly code: BackupFailure;
-  constructor(code: BackupFailure) { super(code); this.code = code; }
+  readonly integrityFailure:boolean;
+  constructor(code: BackupFailure,integrityFailure=false) { super(code); this.code = code;this.integrityFailure=integrityFailure; }
 }
 export interface BackupRequest {
   cellId: string;
@@ -135,7 +136,7 @@ process.once('message',message=>{
   child.once('close',code=>{if(timer)clearTimeout(timer);process.exit(code===0 && !stopping ? 0 : 2);});
 });
 `;
-async function run(command: string, args: string[], owner: Pick<BackupOwner, "tools" | "child" | "signal">, options: { cwd?: string; env?: NodeJS.ProcessEnv; output?: string; limit?: number; input?: string; inputFile?: string; beforeStart?:(pid:number)=>Promise<void>;detachedGuard?:boolean;umask?:number } = {}): Promise<string> {
+async function run(command: string, args: string[], owner: Pick<BackupOwner, "tools" | "child" | "signal">, options: { cwd?: string; env?: NodeJS.ProcessEnv; output?: string; limit?: number; input?: string; inputFile?: string; beforeStart?:(pid:number)=>Promise<void>;detachedGuard?:boolean;umask?:number;checkIntegrityOutput?:boolean } = {}): Promise<string> {
   if (owner.signal?.aborted) throw new BackupError("interrupted");
   return new Promise((accept, reject) => {
     const child = spawn(process.execPath, ["-e", TOOL_GUARD], { detached:options.detachedGuard??false,cwd: options.cwd, env: toolEnv(), stdio: ["pipe", "pipe", "pipe", "ipc"], signal: owner.signal, timeout: 60 * 60_000 });
@@ -158,9 +159,10 @@ async function run(command: string, args: string[], owner: Pick<BackupOwner, "to
       } catch { fail(); }
     });
     // Drain and discard diagnostics: tools and Hem may echo credentials or sensitive source names.
-    stderr.resume();
+    let diagnostic="";const classify=(chunk:Buffer)=>{if(options.checkIntegrityOutput)diagnostic=(diagnostic+chunk.toString("utf8")).slice(-65536);};
+    if(options.checkIntegrityOutput)stderr.on("data",classify);else stderr.resume();
     stdout.on("data", (chunk: Buffer) => {
-      bytes += chunk.length;
+      classify(chunk);bytes += chunk.length;
       if (bytes > (options.limit ?? 16 * 1024 * 1024)) { fail(); return; }
       if (output) { if (!output.write(chunk)) { stdout.pause(); output.once("drain", () => stdout.resume()); } }
       else chunks.push(chunk);
@@ -170,7 +172,7 @@ async function run(command: string, args: string[], owner: Pick<BackupOwner, "to
       input?.destroy();
       try { owner.child(null); } catch { failed = true; }
       const finish = () => owner.signal?.aborted ? reject(new BackupError("interrupted"))
-        : failed || code !== 0 ? reject(new BackupError(bytes > (options.limit ?? 16 * 1024 * 1024) ? options.output ? "scratch_limit" : command === owner.tools.git ? "git_listing_too_large" : "tool_failed" : "tool_failed"))
+        : failed || code !== 0 ? reject(new BackupError(bytes > (options.limit ?? 16 * 1024 * 1024) ? options.output ? "scratch_limit" : command === owner.tools.git ? "git_listing_too_large" : "tool_failed" : "tool_failed",!!options.checkIntegrityOutput&&!failed&&code!==0&&(/(errors? (were )?found|integrity check failed|ciphertext verification failed|does not match|not found in (the )?repository|error for (pack|tree)|invalid data)/i.test(diagnostic)||!/(repository is already locked|unable to create lock|wrong password|no key found|connection refused|connection reset|context cancel|deadline exceeded|i\/o timeout|unexpected.*(403|409|429|50[0-9])|forbidden|unauthorized)/i.test(diagnostic))))
         : accept(Buffer.concat(chunks).toString("utf8"));
       if (output) output.end(finish); else finish();
     });

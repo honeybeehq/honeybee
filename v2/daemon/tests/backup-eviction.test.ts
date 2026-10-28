@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkEvictionPolicy, VerifiedEvictionError } from "../src/verifiedEviction.ts";
+import { checkEvictionPolicy, hasEvictionAuthorization, VerifiedEvictionError } from "../src/verifiedEviction.ts";
 import { deleteCell, CellBackupRequiredError } from "../../driver-cell/src/remove.ts";
 import { evictCellWrapper, parkTrimPaths, sweepEvicting, sweepEvictingSync } from "../../driver-cell/src/retention.ts";
 import { makeOrigin } from "../../driver-cell/tests/helpers.ts";
@@ -112,6 +112,13 @@ test("v52 upgrade preserves removal intent and stamps the v53 daemon compatibili
   const cell=store.putCell({sourceBeeId:bee.id,originRepo:JSON.parse(f.input.cellIdentity).originRepo,sha:f.input.record.receipt!.payload.git.head,wrapper:"wrapper",spaceName:"repo-space-c1",spaceDir:f.space,gitCommonDirRealpath:join(f.space,".git"),objectFormat:"sha1"});
   const op=store.putCellOp({cellId:cell.id,kind:"remove",idempotencyKey:"migration",requestHash:"intent"}),intent=JSON.stringify({format:"honeybee.eviction-intent.v1",input:{...f.input,abortFlag:undefined}});store.updateCellOp(op.id,{status:"running",pid:process.pid,stdout:intent});store.close();
   let db=new DatabaseSync(path);db.exec("UPDATE meta SET value='52' WHERE key='schema_version';DROP INDEX cell_ops_mutation_pending;DROP INDEX cell_ops_backup_latest");db.close();
-  store=openCoreStore(path);assert.equal(store.getCellOp(op.id)!.stdout,intent);assert.equal(store.getCellOp(op.id)!.status,"running");store.close();db=new DatabaseSync(path,{readOnly:true});assert.equal(SCHEMA_VERSION,55);assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value,"55");assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name IN ('cell_ops_mutation_pending','cell_ops_backup_latest')").get()!.n,2);db.close();
+  store=openCoreStore(path);assert.equal(store.getCellOp(op.id)!.stdout,intent);assert.equal(store.getCellOp(op.id)!.status,"running");store.close();db=new DatabaseSync(path,{readOnly:true});assert.equal(SCHEMA_VERSION,56);assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value,"56");assert.equal(db.prepare("SELECT count(*) AS n FROM sqlite_master WHERE name IN ('cell_ops_mutation_pending','cell_ops_backup_latest')").get()!.n,2);db.close();
  }finally{rmSync(f.root,{recursive:true,force:true});}
+});
+
+test("torn or foreign completion markers never bypass owner admission",()=>{
+ const root=mkdtempSync(join(fixtures,"marker-"));try{const completionPath=join(root,"marker.json"),spaceDir=join(root,"wrapper","space"),input={cellsRoot:root,spaceDir,operationId:"fixture-op",completionPath,record:{manifestHash:"manifest",generation:"generation"}} as Parameters<typeof hasEvictionAuthorization>[0];
+ for(const marker of["{",JSON.stringify({operationId:"foreign"}),JSON.stringify({operationId:"fixture-op",manifestHash:"manifest",generation:"generation",parkedDir:"/foreign"})]){writeFileSync(completionPath,marker);assert.equal(hasEvictionAuthorization(input),false);}
+ writeFileSync(completionPath,JSON.stringify({operationId:"fixture-op",manifestHash:"manifest",generation:"generation",parkedDir:join(root,"_evicting","wrapper.verified.fixture-op")}));assert.equal(hasEvictionAuthorization(input),true);
+ }finally{rmSync(root,{recursive:true,force:true});}
 });

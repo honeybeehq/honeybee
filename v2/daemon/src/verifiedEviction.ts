@@ -6,15 +6,17 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { backupDigest, canonicalBackupJson, verifyBackupReceipt, type VerifiedBackupReceipt } from "../../core/src/backupReceipt.ts";
 import { classifyIgnored } from "../../driver-cell/src/retention.ts";
 import type { BackupEntry, BackupManifest, BackupRecord } from "./backupCapture.ts";
-export const EVICTION_REASONS=["receipt_missing","receipt_stale","receipt_corrupt","receipt_unverified","content_changed","capacity_stop","unknown_policy","gate_busy","interrupted","outcome_unknown","pin_unavailable"] as const;
+export const EVICTION_REASONS=["check_failed","drill_failed","receipt_missing","receipt_stale","receipt_corrupt","receipt_unverified","content_changed","capacity_stop","unknown_policy","gate_busy","interrupted","outcome_unknown","pin_unavailable"] as const;
 export type EvictionReason=typeof EVICTION_REASONS[number];
 export class VerifiedEvictionError extends Error { readonly reason:EvictionReason; constructor(reason:EvictionReason){super(reason);this.reason=reason;} }
 function requireThat(value:unknown,reason:EvictionReason):asserts value {if(!value)throw new VerifiedEvictionError(reason);}
-export interface EvictionPolicy {version:1;pinRequired?:boolean;maxReceiptAgeMs:number;capacity:{admission?:"allow"|"stop";repository:string;observedAt:number;maxAgeMs:number;repositoryUsedBytes:number;repositoryLimitBytes:number;fleetUsedBytes:number;fleetLimitBytes:number;stopFraction:number}}
+export interface EvictionPolicy {version:1;integrityHolds?:("check_failed"|"drill_failed")[];pinRequired?:boolean;maxReceiptAgeMs:number;capacity:{admission?:"allow"|"stop";repository:string;observedAt:number;maxAgeMs:number;repositoryUsedBytes:number;repositoryLimitBytes:number;fleetUsedBytes:number;fleetLimitBytes:number;stopFraction:number}}
 export interface VerifiedEvictionInput {operationId:string;cellId:string;machine:string;spaceDir:string;cellsRoot:string;keepRoot:string;record:BackupRecord;publicKey:string;policy:EvictionPolicy;repository:string;mode:"evict"|"remove"|"trim";now:number;git:string;runtimeGeneration:number|null;cellIdentity:string;completionPath:string;policyPath?:string;sourceBeePresent?:boolean;abortFlag?:SharedArrayBuffer}
 export interface VerifiedEvictionResult {status:"deleted";head:string;generation:string;parkedDir:string}
 export function checkEvictionPolicy(policy:EvictionPolicy,repository:string,now:number):void {
   requireThat(policy?.version===1&&Number.isSafeInteger(policy.maxReceiptAgeMs)&&policy.maxReceiptAgeMs>0,"unknown_policy");
+  requireThat(policy.integrityHolds===undefined||Array.isArray(policy.integrityHolds)&&policy.integrityHolds.every(v=>v==='check_failed'||v==='drill_failed'),'unknown_policy');
+  requireThat(!policy.integrityHolds?.includes('check_failed'),'check_failed');requireThat(!policy.integrityHolds?.includes('drill_failed'),'drill_failed');
   const c=policy.capacity;
   requireThat(c&&c.repository===repository&&Number.isSafeInteger(c.observedAt)&&c.observedAt<=now&&Number.isSafeInteger(c.maxAgeMs)&&c.maxAgeMs>0&&now-c.observedAt<=c.maxAgeMs&&c.stopFraction===0.9,"unknown_policy");
   requireThat(c.admission===undefined||c.admission==="allow"||c.admission==="stop","unknown_policy");
@@ -47,6 +49,9 @@ function selectedPaths(root:string,tracked:Set<string>,gitRoot:string):string[]{
 export function performVerifiedEviction(input:VerifiedEvictionInput,hooks:{afterPark?:()=>void;afterAuthorization?:()=>void}={}):VerifiedEvictionResult {
   try{return perform(input,hooks);}catch(error){rollbackUnauthorizedPark(input);throw error;}
 }
+export function hasEvictionAuthorization(input:VerifiedEvictionInput):boolean {
+  try {const park=join(realpathSync(input.cellsRoot),"_evicting",basename(dirname(resolve(input.spaceDir)))+".verified."+input.operationId),m=JSON.parse(readFileSync(input.completionPath,"utf8"));return m.operationId===input.operationId&&m.manifestHash===input.record.manifestHash&&m.generation===input.record.generation&&m.parkedDir===park;}catch{return false;}
+}
 export function rollbackUnauthorizedPark(input:VerifiedEvictionInput):void {
   const wrapper=dirname(resolve(input.spaceDir)),park=join(resolve(input.cellsRoot),"_evicting",basename(wrapper)+".verified."+input.operationId);
   requireThat(dirname(wrapper)===resolve(input.cellsRoot)&&/^[A-Za-z0-9-]+$/.test(input.operationId),"outcome_unknown");
@@ -61,7 +66,7 @@ function perform(input:VerifiedEvictionInput,hooks:{afterPark?:()=>void;afterAut
   const wrapper=dirname(resolve(input.spaceDir)),cells=realpathSync(input.cellsRoot),parkedDir=join(cells,"_evicting",basename(wrapper)+".verified."+input.operationId);
   let completed=false;try{const marker=JSON.parse(readFileSync(input.completionPath,"utf8"));completed=marker.operationId===input.operationId&&marker.manifestHash===p.manifestHash&&marker.generation===p.generation&&marker.parkedDir===parkedDir;}catch{/* A missing marker is not authorization. */}
   if(completed){requireThat(!existsSync(wrapper),"outcome_unknown");finishPark(parkedDir);return{status:"deleted",head:p.git.head,generation:p.generation,parkedDir};}
-  const cancelled=()=>requireThat(!input.abortFlag||Atomics.load(new Int32Array(input.abortFlag),0)===0,"interrupted");cancelled();
+  const cancelled=()=>{const code=input.abortFlag?Atomics.load(new Int32Array(input.abortFlag),0):0;requireThat(code===0,code===2?"check_failed":code===3?"drill_failed":"interrupted");};cancelled();
   checkEvictionPolicy(input.policy,input.repository,input.now);requireThat(input.now>=Date.parse(p.verifiedAt)&&input.now-Date.parse(p.verifiedAt)<=input.policy.maxReceiptAgeMs,"receipt_stale");
   let manifest:BackupManifest;try{const bytes=readFileSync(record.manifestPath);requireThat(backupDigest(bytes)===p.manifestHash,"receipt_corrupt");manifest=JSON.parse(bytes.toString());}catch(error){if(error instanceof VerifiedEvictionError)throw error;throw new VerifiedEvictionError("receipt_corrupt");}
   requireThat(manifest.format==="honeybee.capture.v1"&&manifest.generation===p.generation&&manifest.machine===p.machine&&manifest.cell.id===input.cellId&&manifest.cell.spaceDir===input.spaceDir&&manifest.captureKind==="retained_checkout","receipt_stale");
