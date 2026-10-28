@@ -32,7 +32,7 @@ try {
   writeFileSync(join(tmpdir(), "probe-write"), "ok");
   tmpWritable = true;
 } catch {}
-writeFileSync(join(process.env.PROBE_OUT_DIR ?? process.cwd(), `${process.env.HIVE_BEE_ID}.${process.pid}.json`), JSON.stringify({
+writeFileSync(join(process.env.PROBE_OUT_DIR ?? process.cwd(), `${process.env.HIVE_BEE_ID}.${process.pid}.${Date.now()}.json`), JSON.stringify({
   TMPDIR: process.env.TMPDIR ?? null,
   tmpdir: tmpdir(),
   NODE_COMPILE_CACHE: process.env.NODE_COMPILE_CACHE ?? null,

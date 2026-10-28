@@ -42,6 +42,7 @@ function makeDriver(
     nodeKind?: NodeKind;
     sandboxWritablePaths?: string[];
     resolveSandboxWritablePaths?: (beeId: string) => readonly SandboxWritableDirectory[];
+    resolveSandboxHarnessHome?: (beeId: string) => { harness: string; path: string } | undefined;
     harnessEnv?: Record<string, string>;
     hostCommand?: (configPath: string) => { command: string; args: string[] };
   } = {},
@@ -77,6 +78,7 @@ function makeDriver(
     // dir via the driver, outside the sandboxed child.
     sandboxWritablePaths: opts.sandboxWritablePaths ?? defaultScratchPaths(),
     resolveSandboxWritablePaths: opts.resolveSandboxWritablePaths,
+    resolveSandboxHarnessHome: opts.resolveSandboxHarnessHome,
     disableCow: opts.disableCow ?? true,
     backgroundProvisioning: opts.backgroundProvisioning,
     provisionWorkerUrl: opts.provisionWorkerUrl,
@@ -399,8 +401,8 @@ test("cell-driver.workstation-default: sandbox stays OFF without an override (A4
   }
 });
 
-test("cell-driver.account-home: the bee resolver adds one exact sandbox grant and ignores harness env", {
-  skip: platform() !== "darwin" && platform() !== "linux",
+test("cell-driver.account-home: the bee resolver never grants the shared account home and ignores harness env", {
+  skip: platform() !== "linux",
 }, async () => {
   const rig = makeRig();
   const homesRoot = join(rig.root, "account-homes");
@@ -417,12 +419,13 @@ test("cell-driver.account-home: the bee resolver adds one exact sandbox grant an
   const resolverCalls: string[] = [];
   const driver = makeDriver(rig, {
     sandbox: true,
-    sandboxWritablePaths: [baseline, `${baseline}/.`],
+    sandboxWritablePaths: [],
     harnessEnv: { CODEX_HOME: siblingHome },
     resolveSandboxWritablePaths: (beeId) => {
       resolverCalls.push(beeId);
-      return beeId === "bee-1" ? [accountGrant, accountGrant] : [];
+      return [];
     },
+    resolveSandboxHarnessHome: (beeId) => beeId === "bee-1" ? { harness: "codex", path: accountHome } : undefined,
     hostCommand: (configPath) => {
       runnerConfigs.push(JSON.parse(readFileSync(configPath, "utf8")) as {
         beeId: string;
@@ -444,17 +447,17 @@ test("cell-driver.account-home: the bee resolver adds one exact sandbox grant an
       assert.equal(unbound?.command, "bwrap");
       const bindTrySources = (config: typeof bound): Array<string | undefined> =>
         (config?.args ?? []).flatMap((arg, index, args) => arg === "--bind-try" ? [args[index + 1]] : []);
-      assert.equal(bindTrySources(bound).filter((path) => path === accountGrant.path).length, 1);
+      assert.equal(bindTrySources(bound).filter((path) => path === accountGrant.path).length, 0);
       assert.equal(bindTrySources(bound).includes(canonicalHomesRoot), false);
       assert.equal(bindTrySources(bound).includes(canonicalSiblingHome), false);
       assert.equal(bindTrySources(unbound).includes(accountGrant.path), false);
       assert.equal(bindTrySources(unbound).includes(canonicalSiblingHome), false,
         "an env-supplied CODEX_HOME is not sandbox authority");
-      assert.equal(bindTrySources(unbound).filter((path) => path === baseline).length, 1);
+      assert.equal(bindTrySources(unbound).filter((path) => path === baseline).length, 0);
     } else {
       const boundProfile = readFileSync(driver.cellOf("bee-1")!.paths.sandboxProfilePath, "utf8");
       const unboundProfile = readFileSync(driver.cellOf("bee-2")!.paths.sandboxProfilePath, "utf8");
-      assert.equal(boundProfile.includes(`  (subpath "${accountGrant.path}")`), true);
+      assert.equal(boundProfile.includes(`  (subpath "${accountGrant.path}")`), false);
       assert.equal(boundProfile.includes(`  (subpath "${canonicalHomesRoot}")`), false);
       assert.equal(boundProfile.includes(canonicalSiblingHome), false);
       assert.equal(unboundProfile.includes(accountGrant.path) || unboundProfile.includes(canonicalSiblingHome), false,

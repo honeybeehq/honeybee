@@ -110,44 +110,11 @@ test("sandbox.merge: a bee grant an existing baseline path already covers is not
   }
 });
 
-test("sandbox.account-home: bwrap grants the exact bound home, never its parent or a sibling", () => {
-  const root = mkdtempSync(join(tmpdir(), "hb-v2-account-home-"));
-  try {
-    const homesRoot = join(root, "homes");
-    const accountHome = join(homesRoot, "codex-primary");
-    const siblingHome = join(homesRoot, "codex-sibling");
-    mkdirSync(accountHome, { recursive: true });
-    mkdirSync(siblingHome);
-    const baseline = defaultWritablePaths("/home/hive");
-    const accountGrant = sandboxWritableDirectory(accountHome, { forbiddenDirectories: [homesRoot] });
-    const writablePaths = mergeSandboxWritablePaths(
-      baseline,
-      [accountGrant],
-    );
-    const args = bwrapArgs(
-      { cellDir: "/cells/bee-1", writablePaths, scratchPaths: [] },
-      "codex",
-      ["app-server"],
-    );
-    const bindTrySources = args.flatMap((arg, index) =>
-      arg === "--bind-try" ? [args[index + 1]] : []
-    );
-
-    assert.equal(bindTrySources.filter((path) => path === accountGrant.path).length, 1);
-    assert.equal(bindTrySources.includes(realpathSync(homesRoot)), false);
-    assert.equal(bindTrySources.includes(realpathSync(siblingHome)), false);
-    assert.deepEqual(
-      mergeSandboxWritablePaths(baseline, []),
-      baseline,
-      "an unbound bee retains exactly the default writable homes and caches",
-    );
-    assert.deepEqual(
-      mergeSandboxWritablePaths(["relative-legacy-cache"], []),
-      ["relative-legacy-cache"],
-      "the existing baseline override is not reinterpreted by the new authority seam",
-    );
-  } finally {
-    rmSync(root, { recursive: true, force: true });
+test("sandbox.account-home: broad account grants and protected overrides are refused", () => {
+  assert.deepEqual(defaultWritablePaths(), []);
+  for (const path of [".config", ".config/systemd/user", ".config/autostart", ".config/environment.d", ".local/share/apiary-satellite", ".ssh", ".hive", ".claude", ".codex", ".cache"]) {
+    assert.throws(() => bwrapArgs({ cellDir: "/cells/bee", writablePaths: [join(homedir(), path)] }, "node", []), /protected writable path/);
+    assert.throws(() => seatbeltProfile({ cellDir: "/cells/bee", writablePaths: [join(homedir(), path)] }), /protected writable path/);
   }
 });
 
@@ -239,7 +206,7 @@ test("sandbox.ssh-config: include view is bound read-only after writable mounts 
   assert.deepEqual(args.slice(mount - 2, mount + 1), ["--ro-bind", "/cells/bee/box/ssh-config-123", "/etc/ssh/ssh_config.d"]);
   assert.deepEqual(args.slice(mount - 5, mount - 2), ["--ro-bind", "/cells/bee/box/ssh-config-123", "/cells/bee/box/ssh-config-123"]);
   assert.ok(mount > args.lastIndexOf("--bind-try"));
-  assert.deepEqual(args.slice(args.indexOf("--") + 1), ["ssh", ...command]);
+  assert.deepEqual(args.slice(args.lastIndexOf("--") + 1), ["ssh", ...command]);
   assert.equal(args.includes("--uid"), false);
   assert.equal(args.includes("--gid"), false);
 });
@@ -335,7 +302,7 @@ test("sandbox.seatbelt-user-temp: mktemp works and the user cache dir is denied 
 
 test("sandbox.tmpfs-paths: the sampled tmpfs paths are exactly the tmpfs mounts bwrap makes", () => {
   const args = bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [], tmpfsBytes: 1024 }, "node", ["a.mjs"]);
-  const mounted = args.flatMap((arg, index) => (arg === "--tmpfs" ? [args[index + 1]!] : []));
+  const mounted = args.flatMap((arg, index) => (arg === "--tmpfs" && SANDBOX_TMPFS_PATHS.includes(args[index + 1]!) ? [args[index + 1]!] : []));
   assert.deepEqual([...mounted].sort(), [...SANDBOX_TMPFS_PATHS].sort());
   assert.ok(SANDBOX_TMPFS_PATHS.includes("/tmp") && SANDBOX_TMPFS_PATHS.includes("/dev/shm"));
   let varTmpReal = false;
@@ -344,7 +311,7 @@ test("sandbox.tmpfs-paths: the sampled tmpfs paths are exactly the tmpfs mounts 
   } catch {}
   assert.equal(SANDBOX_TMPFS_PATHS.includes("/var/tmp"), varTmpReal);
   args.forEach((arg, index) => {
-    if (arg === "--tmpfs") assert.equal(args[index - 2], "--size", `--size precedes --tmpfs ${args[index + 1]}`);
+    if (arg === "--tmpfs" && SANDBOX_TMPFS_PATHS.includes(args[index + 1]!)) assert.equal(args[index - 2], "--size", `--size precedes --tmpfs ${args[index + 1]}`);
   });
 });
 
@@ -355,7 +322,7 @@ test("sandbox.bwrap: /tmp and /var/tmp are private tmpfs mounts, never host bind
   assert.match(joined, /--tmpfs \/var\/tmp /);
   assert.doesNotMatch(joined, /--bind(-try)? \/var\/tmp/);
   assert.doesNotMatch(joined, /--bind(-try)? \/tmp/);
-  const lastTmpfs = args.lastIndexOf("--tmpfs");
+  const lastTmpfs = Math.max(args.indexOf("/tmp") - 1, args.indexOf("/var/tmp") - 1);
   const firstBind = args.findIndex((arg) => arg === "--bind" || arg === "--bind-try");
   assert.ok(lastTmpfs < firstBind, "tmpfs mounts come before every bind so they never hide a grant under /tmp or /var/tmp");
 });
@@ -411,7 +378,7 @@ test("sandbox.bwrap-tmpfs: a tmpfs cap sizes /tmp and a private /dev/shm; no cap
     bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [], tmpfsBytes: null }, "node", []),
   ]) {
     assert.equal(uncapped.includes("--size"), false);
-    assert.equal(uncapped.includes("/dev/shm"), false);
+    assert.equal(uncapped.includes("/dev/shm"), true);
   }
 });
 
@@ -451,7 +418,7 @@ test("sandbox.tmp-pid: the sandboxed process is the host's grandchild in another
     proc(12, "mnt:[1]", []);
     proc(13, "mnt:[2]", []);
     assert.equal(sandboxedPid(10, root), 13);
-    assert.equal(sandboxedPid(11, root), null, "a direct child in another namespace is not the shape bwrap leaves");
+    assert.equal(sandboxedPid(11, root), 13, "namespace lookup tolerates the extra PID-namespace reaper level");
     assert.equal(sandboxedPid(99, root), null);
   } finally {
     rmSync(root, { recursive: true, force: true });

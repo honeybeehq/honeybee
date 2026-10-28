@@ -34,6 +34,7 @@ export async function prepareRuntimeTarget(stage: string, target: string): Promi
     await rm(join(pty, "build"), { recursive: true, force: true });
     await chmod(join(prebuilt, "spawn-helper"), 0o755);
   }
+  await stageCellScope(stage, target);
   await stagePeerCredentials(stage, target);
   await stageDeliveryFiles(stage, target);
   await writeFile(identityPath, `${JSON.stringify({ ...identity, target }, null, 2)}\n`);
@@ -85,4 +86,21 @@ async function stagePeerCredentials(stage: string, target: string): Promise<void
 function runtimeHostTarget(): string {
   const kernel = type();
   return `${kernel === "Darwin" ? "darwin" : kernel === "Linux" ? "linux" : "unsupported"}-${process.arch}`;
+}
+
+async function stageCellScope(stage: string, target: string): Promise<void> {
+  if (!target.startsWith("linux-")) return;
+  const directory = join(stage, "dist/v2/cell-scope", target);
+  const manifest = JSON.parse(await readFile(join(directory, "manifest.json"), "utf8"));
+  const proof = JSON.parse(await readFile(join(directory, "proof.json"), "utf8"));
+  const bytes = await readFile(join(directory, "cell-scope"));
+  const hash = createHash("sha256").update(bytes).digest("hex");
+  if (manifest.version !== 1 || manifest.target !== target || manifest.sha256 !== hash || !/^[a-f0-9]{64}$/.test(manifest.sourceSha256)
+    || proof.version !== 1 || proof.passed !== true || proof.target !== target || proof.sha256 !== hash
+    || proof.sourceSha256 !== manifest.sourceSha256 || proof.abi < 6 || proof.outside !== "EPERM" || proof.inside !== "inside"
+    || bytes.length < 64 || bytes.toString("hex", 0, 4) !== "7f454c46" || bytes[4] !== 2 || bytes[5] !== 1
+    || ![2, 3].includes(bytes.readUInt16LE(16)) || bytes.readUInt16LE(18) !== (target.endsWith("arm64") ? 183 : 62)) {
+    throw new Error(`Missing or unproven Cell scope artifact: ${target}`);
+  }
+  await chmod(join(directory, "cell-scope"), 0o755);
 }
