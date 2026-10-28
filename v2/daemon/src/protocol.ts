@@ -339,6 +339,8 @@ export const RPC_ERROR_CODES = [
   "caller_not_trusted",
   "confined_spawn_refused",
   "confined_peer_refused",
+  "cell_gateway_payload_too_large",
+  "cell_gateway_rate_limited",
   "local_peer_credentials_unavailable",
   "local_peer_uid_mismatch",
   "tag_reserved",

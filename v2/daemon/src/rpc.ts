@@ -13,7 +13,7 @@ import { AccountLeaseUnknownError } from "../../core/src/accountLease.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { EffectKeyError } from "../../core/src/effectResolve.ts";
 import { PeerCredentials, type PeerConnection } from "./peerCredentials.ts";
-import { authorizeCellGateway, type CellGatewayPolicy } from "./cellGateway.ts";
+import { authorizeCellGateway, CELL_GATEWAY_LIMITS, type CellGatewayPolicy } from "./cellGateway.ts";
 import { LocalRpcTrust, type LocalTrustConfig } from "./localRpcTrust.ts";
 import { LocalRpcRefusals } from "./localRpcRefusals.ts";
 import { RPC_ACCESS } from "./rpcAccess.ts";
@@ -188,6 +188,7 @@ export interface RpcServerOptions {
 
 interface Connection extends RpcConn {
   confinement: Confinement;
+  gatewayFrameBytes: number;
   peerConnection: PeerConnection | null;
   socket: Socket;
   frames: JsonLineBuffer;
@@ -267,6 +268,7 @@ export class RpcServer {
   private readonly refusals: LocalRpcRefusals;
 
   get localSecurity() { return {peerCredentials: {...this.credentials.status}, localTrust: this.trust.state}; }
+  get accepting(): boolean { return this.server.listening; }
 
   constructor(opts: RpcServerOptions) {
     this.opts = opts;
@@ -303,7 +305,8 @@ export class RpcServer {
       for (const conn of this.conns) conn.socket.destroy();
     });
     this.server.listen(this.opts.socketPath);
-    this.listening = true;
+    this.listening = this.server.listening;
+    if (!this.listening) throw new RpcError("socket_in_use", "Cell gateway could not bind its socket");
   }
 
   close(): Promise<void> {
@@ -377,6 +380,7 @@ export class RpcServer {
   private onConnection(socket: Socket): void {
     const localUnix = socket.remoteAddress === undefined;
     const conn: Connection = {
+      gatewayFrameBytes: 0,
       socket,
       peerConnection: localUnix ? this.credentials.connect(socket) : null,
       get localPeer() { return conn.peerConnection?.state === "verified" ? conn.peerConnection.peer : undefined; },
@@ -414,6 +418,19 @@ export class RpcServer {
   }
 
   private onData(conn: Connection, chunk: string): void {
+    if (this.opts.cellGateway) {
+      const fragments = chunk.split("\n");
+      for (let index = 0; index < fragments.length; index++) {
+        conn.gatewayFrameBytes += Buffer.byteLength(fragments[index]!);
+        if (conn.gatewayFrameBytes > CELL_GATEWAY_LIMITS.frameBytes) {
+          this.refusals.record("cell_gateway_frame_too_large", conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
+          conn.send({ id: -1, ok: false, error: { code: "cell_gateway_payload_too_large", message: "Cell gateway frame exceeds its limits" } });
+          conn.socket.end();
+          return;
+        }
+        if (index < fragments.length - 1) conn.gatewayFrameBytes = 0;
+      }
+    }
     for (const frame of conn.frames.push(chunk)) {
       const line = frame.trim();
       if (line.length > 0) this.onFrame(conn, line);
@@ -466,6 +483,7 @@ export class RpcServer {
     const id = typeof frame.id === "number" ? frame.id : -1;
     const verb = frame.verb;
     if (!isRpcVerb(verb)) {
+      if (this.opts.cellGateway) this.refusals.record("cell_gateway_unknown_verb", conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
       conn.send({ id, ok: false, error: { code: "invalid_request", message: `unknown verb: ${String(verb)}` } });
       return;
     }
@@ -692,7 +710,11 @@ export class RpcServer {
       span.end();
       conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes) });
     } catch (err) {
-      if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
+      if (this.opts.cellGateway) {
+        const error = toRpcError(err);
+        const reason = error.details?.reason;
+        this.refusals.record(`${error.code}:${verb}${typeof reason === "string" ? `:${reason}` : ""}`, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
+      } else if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
       span.end("error");
       conn.send({ id, ok: false, error: publicEnvRecords(projectQuestionDismissalError(toRpcError(err), conn.clientCapabilities)) });
     }
