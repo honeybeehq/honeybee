@@ -3193,11 +3193,15 @@ export class CoreStore {
     return row ? mapRuntime(row) : null;
   }
 
-  creationLineage(beeId: string): { parentId: string | null; parentExternal: boolean } | null {
+  creationLineage(beeId: string): { parentId: string | null; parentExternal: boolean; spawnProvenance: SpawnProvenance | null } | null {
     const row = this.stmt("SELECT payload FROM audit WHERE bee_id = ? AND kind = 'bee.created' ORDER BY seq LIMIT 1").get(beeId) as Row | undefined;
     if (!row) return null;
-    const { bee } = JSON.parse(row.payload as string) as { bee: BeeRow };
-    return { parentId: bee.parentId, parentExternal: bee.parentExternal };
+    const { bee, spawnProvenance } = JSON.parse(row.payload as string) as { bee: BeeRow; spawnProvenance?: unknown };
+    return {
+      parentId: bee.parentId,
+      parentExternal: bee.parentExternal,
+      spawnProvenance: parseSpawnProvenance(bee.spawnProvenance === undefined ? spawnProvenance : bee.spawnProvenance),
+    };
   }
 
   listRuntimes(beeId: string): RuntimeRow[] {
