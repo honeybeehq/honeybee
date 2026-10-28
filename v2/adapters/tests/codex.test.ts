@@ -90,6 +90,7 @@ test("codex: error notification with auth-expiry signature → auth_needed set",
 test("codex: authentication flag details never retain provider credential text", () => {
   const message = 'Token refresh failed Bearer fixture-bearer sk-fixture-secret eyJfixture.eyJpayload.signature refresh_token=fixture-refresh';
   const signals = adapter.parseLine(JSON.stringify({jsonrpc:"2.0", method:"error", params:{error:{message}}}));
+  assert.equal(signals.length, 1);
   const flag = signals.find(signal => signal.kind === "flag" && signal.flag === "auth_needed");
   assert.ok(flag && flag.kind === "flag");
   assert.equal(flag.detail, "Codex authentication failed; refresh credentials outside the Cell before retrying.");
