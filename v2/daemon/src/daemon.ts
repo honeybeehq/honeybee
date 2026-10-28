@@ -945,6 +945,7 @@ export class HiveDaemon {
     const cell = new CellDriver({
       cellsRoot: this.cfg.cellsRoot,
       nodeKind: this.cfg.nodeKind,
+      nodeKindExplicit: this.cfg.nodeKindExplicit,
       resolveHarness: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation),
       sandboxKvm: this.cfg.cellKvm,
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),

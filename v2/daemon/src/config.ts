@@ -329,6 +329,7 @@ export interface ResolvedNodeConfig {
   rpcLocalTrust: {requireObservationCaller: boolean; registrationKeyFile: string};
   configPath: string;
   nodeKind: NodeKind;
+  nodeKindExplicit?: boolean;
   cellsRoot: string;
   /** Node-wide cell-sandbox override; null = node-kind default (A4). */
   cellSandbox: boolean | null;
@@ -1021,6 +1022,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     dataDir,
     configPath: path,
     nodeKind,
+    nodeKindExplicit: raw.nodeKind !== undefined,
     cellsRoot: cells.root ?? join(dataDir, "cells"),
     cellSandbox: cells.sandbox,
     cellKvm: cells.kvm,

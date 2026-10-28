@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,8 @@ import {
   type NodeKind,
   type SandboxWritableDirectory,
 } from "../src/sandbox.ts";
+import { cellPaths } from "../src/layout.ts";
+import { fixtureGatewaySocket } from "./sandboxFixture.ts";
 import { commitInCell, makeRig, type CellTestRig } from "./helpers.ts";
 import { fixtureRuntimeIdentity, persistFixtureProcess, pidAlive } from "../../driver-hsr/tests/helpers.ts";
 
@@ -40,6 +42,7 @@ function makeDriver(
     disableCow?: boolean;
     gitImagesRoot?: string;
     nodeKind?: NodeKind;
+    nodeKindExplicit?: boolean;
     sandboxWritablePaths?: string[];
     resolveSandboxWritablePaths?: (beeId: string) => readonly SandboxWritableDirectory[];
     resolveSandboxHarnessHome?: (beeId: string) => { harness: string; path: string } | undefined;
@@ -50,12 +53,18 @@ function makeDriver(
   return new CellDriver({
     cellsRoot: rig.cellsRoot,
     nodeKind: opts.nodeKind ?? "workstation",
-    resolveHarness: () => ({
+    nodeKindExplicit: opts.nodeKindExplicit,
+    resolveHarness: (beeId) => {
+      const path = cellPaths(rig.cellsRoot, beeId, "fixture", beeId.replaceAll("bee-", "c"));
+      const staged = join(path.boxDir, "fixture-agent.mjs");
+      if (opts.sandbox) { mkdirSync(path.boxDir, { recursive: true }); copyFileSync(AGENT_PATH, staged); }
+      return ({
       adapter: stubAdapter,
       command: process.execPath,
-      args: [AGENT_PATH],
+      args: [opts.sandbox ? staged : AGENT_PATH],
       env: { ...(process.env as Record<string, string>), STUB_TURN_MS: "5", ...(opts.harnessEnv ?? {}) },
-    }),
+    }); },
+    resolveSandboxGateway: () => ({ socketPath: fixtureGatewaySocket }),
     resolveCell: (beeId: string) => ({
       provision: {
         beeId,
@@ -76,7 +85,7 @@ function makeDriver(
     // Sandboxed runs must still reach the OS tmp + the node binary; the
     // default scratch list covers it. Harness "home" writes go to the logs
     // dir via the driver, outside the sandboxed child.
-    sandboxWritablePaths: opts.sandboxWritablePaths ?? defaultScratchPaths(),
+    sandboxWritablePaths: opts.sandboxWritablePaths ?? [],
     resolveSandboxWritablePaths: opts.resolveSandboxWritablePaths,
     resolveSandboxHarnessHome: opts.resolveSandboxHarnessHome,
     disableCow: opts.disableCow ?? true,
@@ -443,8 +452,8 @@ test("cell-driver.account-home: the bee resolver never grants the shared account
     if (platform() === "linux") {
       const bound = runnerConfigs.find((config) => config.beeId === "bee-1");
       const unbound = runnerConfigs.find((config) => config.beeId === "bee-2");
-      assert.equal(bound?.command, "bwrap");
-      assert.equal(unbound?.command, "bwrap");
+      assert.ok(bound?.command.endsWith("/cell-scope"));
+      assert.ok(unbound?.command.endsWith("/cell-scope"));
       const bindTrySources = (config: typeof bound): Array<string | undefined> =>
         (config?.args ?? []).flatMap((arg, index, args) => arg === "--bind-try" ? [args[index + 1]] : []);
       assert.equal(bindTrySources(bound).filter((path) => path === accountGrant.path).length, 0);
@@ -548,3 +557,14 @@ async function waitForJournal(path: string, predicate: (text: string) => boolean
     await sleep(10);
   }
 }
+
+test("cell-driver.node-kind: a missing kind refuses implicit unsandboxed launch but honors explicit false", async () => {
+  const rig = makeRig();
+  const refused = makeDriver(rig, { nodeKindExplicit: false });
+  const explicit = makeDriver(rig, { nodeKindExplicit: false, sandbox: false });
+  try {
+    assert.throws(() => refused.start("bee-1", 1), /nodeKind is missing/);
+    explicit.start("bee-2", 1);
+    await drainUntil(explicit, events => events.some(event => event.kind === "booted"));
+  } finally { refused.disposeAll(); explicit.disposeAll(); await sleep(10); rig.cleanup(); }
+});
