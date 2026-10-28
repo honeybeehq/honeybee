@@ -12,7 +12,6 @@ export interface CellGatewayPolicy {
   readonly limits: CellGatewayLimits;
   current(peer: LocalPeer): boolean;
   canSend(target: string): boolean;
-  ownsTranscript(operationId: string): boolean;
 }
 
 export const CELL_GATEWAY_LIMITS = Object.freeze({ windowMs: 60_000, send: 60, question: 12, seal: 12, bodyBytes: 65_536, textBytes: 8192, titleBytes: 512, options: 32, optionBytes: 256, refs: 32, refBytes: 1024, frameBytes: 1_048_576 });
@@ -49,7 +48,6 @@ const FIELDS: Partial<Record<RpcVerb, readonly string[]>> = {
   list: [],
   "question.ask": ["beeId", "text", "options", "id", "idempotencyKey"],
   "seal.create": ["beeId", "title", "body", "refs", "idempotencyKey"],
-  "thread.transcript": ["operationId", "offset", "limitBytes"],
   send: ["beeId", "body", "sender", "urgency", "idempotencyKey"],
 };
 
@@ -60,7 +58,7 @@ export function authorizeCellGateway(
   params: Record<string, unknown>,
   context: unknown,
 ): Record<string, unknown> {
-  const deny = (reason: "identity" | "context" | "verb" | "arguments" | "send_target_or_sender" | "transcript_owner" | "self"): never => { throw new RpcError("caller_not_trusted", "Cell gateway operation refused", { reason }); };
+  const deny = (reason: "identity" | "context" | "verb" | "arguments" | "send_target_or_sender" | "self"): never => { throw new RpcError("caller_not_trusted", "Cell gateway operation refused", { reason }); };
   if (!peer || !policy.current(peer)) deny("identity");
   if (context !== undefined) deny("context");
   const fields = FIELDS[verb];
@@ -70,15 +68,13 @@ export function authorizeCellGateway(
   if (verb === "send") {
     if (typeof params.beeId !== "string" || !policy.canSend(params.beeId)
       || params.sender !== undefined && params.sender !== beeId) deny("send_target_or_sender");
-  } else if (verb === "thread.transcript") {
-    if (typeof params.operationId !== "string" || !policy.ownsTranscript(params.operationId)) deny("transcript_owner");
   } else if (verb !== "list" && params.beeId !== undefined && params.beeId !== beeId) deny("self");
   policy.limits.admit(verb, params);
   const admitted = { ...params };
   if (verb === "send") {
     admitted.sender = beeId;
     if (admitted.urgency === "now") admitted.urgency = "next";
-  } else if (verb !== "list" && verb !== "thread.transcript") admitted.beeId = beeId;
+  } else if (verb !== "list") admitted.beeId = beeId;
   if (typeof admitted.idempotencyKey === "string") {
     admitted.idempotencyKey = `cell:${createHash("sha256").update(JSON.stringify([beeId, verb, admitted.idempotencyKey])).digest("hex")}`;
   }
