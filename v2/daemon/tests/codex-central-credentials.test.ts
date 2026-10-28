@@ -11,6 +11,7 @@ import type { AddressInfo } from "node:net";
 import { makeDaemonDir, startDaemon, waitFor, sleep, type DaemonHandle } from "./helpers.ts";
 import type { AccountCredentialAuthority } from "../../core/src/index.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
+import { readAccessOnlyCodex } from "../../driver-cell/src/codexAccess.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
 import { RpcError } from "../src/protocol.ts";
 import { CODEX_OAUTH_CLIENT_ID, readCodexCredentialCopy } from "../src/codexCredentialAuthority.ts";
@@ -126,6 +127,19 @@ test("central Codex: isolated daemon rotates once, publishes access-only, refres
     }, "enrollment after native probe");
     assert.equal(enabled.phase, "ready");
     assert.equal(enabled.generation, 2);
+    const minted = await rpc<{files:Array<{homeRelPath:string;contentB64:string;mode:number}>;expiresAt:number}>("account.lease",{account:id});
+    const install = {id:"codex-validator-fixture",harness:"codex",label:"synthetic-validator",authorityNodeId:"fixture-authority",shareId:"fixture-validator",epoch:1,generation:1,expiresAt:minted.expiresAt,files:minted.files};
+    const installed = await rpc<{account:{id:string;homePath:string}}>("account.lease.install",install);
+    assert.doesNotThrow(()=>readAccessOnlyCodex(join(installed.account.homePath,"auth.json")));
+    assert.doesNotThrow(()=>readAccessOnlyCodex(join(installed.account.homePath,".codex","auth.json")));
+    const nullFiles = minted.files.map(file=>{
+      const doc=JSON.parse(Buffer.from(file.contentB64,"base64").toString("utf8"));doc.tokens.refresh_token=null;
+      return {...file,contentB64:Buffer.from(JSON.stringify(doc)).toString("base64")};
+    });
+    const nullInstalled = await rpc<{account:{homePath:string}}>("account.lease.install",{...install,generation:2,files:nullFiles});
+    assert.throws(()=>readAccessOnlyCodex(join(nullInstalled.account.homePath,"auth.json")),/auth_needed/);
+    await rpc("account.lease.install",{...install,generation:3});
+    console.log("real synthetic authority mint/install: access-only primary and mirror accepted; installed null refresh rejected by Cell gate");
     const cliStatus = await cli("status");
     assert.equal(cliStatus.generation, 2);
     const enrolledStatus = await rpc<AccountCredentialAuthority & { supported: boolean }>("account.credentials.status", { id });
