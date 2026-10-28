@@ -299,6 +299,7 @@ export interface CoreStoreOptions {
 }
 
 export interface CreateBeeInput {
+  spawnProvenance?: { callerBeeId: string | null; authority: "bee" | "local_operator" | "registered_service"; peerPid: number | null };
   phoneOperation?: { origin: PhoneOriginRequest; key: string };
   /** Known process identity at spawn time, so a daemon restart mid-boot can re-adopt (WP2 finding). */
   proc?: { pid: number; pidStartedAt: number };
@@ -2874,7 +2875,7 @@ export class CoreStore {
         );
       if (input.phoneOperation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(input.phoneOperation.origin, null, input.phoneOperation.key, id)));
       const bee = this.mustGetBee(id);
-      this.audit("bee.created", id, { bee });
+      this.audit("bee.created", id, { bee, ...(input.spawnProvenance ? { spawnProvenance: input.spawnProvenance } : {}) });
       // v23: segment 0 — the spawn harness owns the session log from generation 1.
       this.insertTranscriptSegment({
         beeId: id,

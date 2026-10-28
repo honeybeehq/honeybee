@@ -6,6 +6,7 @@ import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess} from "../../harness/src/processIdentity.ts";
+import { bindSpawnParent, spawnCallerBee } from "./spawnLineage.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
 import { type PhoneOriginRequest, parsePhoneOrigin } from "../../core/src/phoneOrigin.ts";
@@ -1995,7 +1996,7 @@ export class HiveDaemon {
       case "spawn":
         this.assertApiaryTagWriter(verb, params);
         // The start command is due now; do not wait out the tick cadence.
-        return this.releasingRefusedClaim(() => this.rpcSpawnEffect(params)).then((result) => { this.requestTick(); return result; });
+        return this.releasingRefusedClaim(() => this.rpcSpawnEffect(this.authenticatedSpawnParams(params, conn))).then((result) => { this.requestTick(); return result; });
       case "quota.recovery.wait": {
         const id = this.param(params, "quotaRecoveryId");
         const row = this.mustStore().getQuotaRecovery(id);
@@ -2744,6 +2745,34 @@ export class HiveDaemon {
     });
   }
 
+  private authenticatedSpawnParams(params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
+    const store = this.mustStore();
+    let callerBeeId = conn.authenticatedBeeId ?? null;
+    if (!callerBeeId && !conn.spawnServiceAuthority) {
+      if (!conn.localPeer || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Spawn requires a verified local operator, bee, or registered service");
+      const runtimes = store.listBees().flatMap(bee => store.listRuntimes(bee.id).flatMap(runtime => {
+        const binding = store.runtimeProcessIdentity(bee.id, runtime.generation);
+        if (binding.kind === "bound") return [{ beeId: bee.id, identity: binding.identity }];
+        if (runtime.state !== "stopped") throw new RpcError("caller_not_trusted", "Spawn requires resolved runtime process identities");
+        return [];
+      }));
+      callerBeeId = spawnCallerBee(conn.localPeer, runtimes, inspectProcess);
+    }
+    if (callerBeeId && !store.getBee(callerBeeId)) throw new RpcError("bee_not_found", "Authenticated spawning bee does not exist");
+    const key = this.idempotencyKeyOf(params);
+    const prior = key === null ? null : store.lookupRpcResult(key);
+    if (callerBeeId && prior) {
+      const result = prior.result as { beeId?: string };
+      const bee = result.beeId ? store.getBee(result.beeId) : null;
+      if (prior.verb !== "spawn" || !bee || bee.parentExternal || bee.parentId !== callerBeeId) throw new RpcError("idempotency_conflict", "Spawn key belongs to a different parent");
+    }
+    return { ...bindSpawnParent(params, callerBeeId), spawnProvenance: {
+      callerBeeId,
+      authority: callerBeeId ? "bee" : conn.spawnServiceAuthority ? "registered_service" : "local_operator",
+      peerPid: conn.localPeer?.pid ?? null,
+    } };
+  }
+
   private rpcSpawnEffect(params: Record<string, unknown>): Promise<SpawnResult> {
     const key = this.idempotencyKeyOf(params);
     if (key === null) return this.rpcSpawnWithAccount(params);
@@ -3288,6 +3317,7 @@ export class HiveDaemon {
       tags,
       parentId: parent.parentId,
       parentExternal: parent.parentExternal,
+      spawnProvenance: params.spawnProvenance as import("../../core/src/store.ts").CreateBeeInput["spawnProvenance"],
     });
     const prompt = typeof params.prompt === "string" && params.prompt.length > 0 ? params.prompt : null;
     const sent = prompt == null ? null : store.send(id, prompt, { sender: this.phoneOriginOf(params) ? `remote:${this.phoneOriginOf(params)!.issuerNodeId}/phone` : "operator", origin: "spawn.prompt", ...this.phoneSendOptions(params) });
@@ -3482,6 +3512,7 @@ export class HiveDaemon {
       args: params.args === undefined ? undefined : this.argsParam(params, "spawn", false),
       parentId: parent.parentId,
       parentExternal: parent.parentExternal,
+      spawnProvenance: params.spawnProvenance as import("../../core/src/store.ts").CreateBeeInput["spawnProvenance"],
       env: { ...requestedEnv, ...accountEnv },
       ...(account ? { account: account.id } : {}),
     });
