@@ -950,8 +950,10 @@ function accountsOf(raw: Record<string, unknown>): ResolvedNodeConfig["accounts"
   if (allocationQuotaFreshMs <= 0 || allocationActivityFreshMs <= 0 || allocationRecentGraceMs < 0 || allocationReservationTtlMs <= 0) {
     throw new ConfigError("config: allocation freshness/TTL must be positive and recent grace must be non-negative");
   }
+  const vaultDir = str(a, "vaultDir", join(homedir(), ".hive", "vault"));
+  if (!vaultDir.trim()) throw new ConfigError("config: accounts.vaultDir must be a non-empty path");
   return {
-    vaultDir: str(a, "vaultDir", join(homedir(), ".hive", "vault")),
+    vaultDir,
     homesDir: str(a, "homesDir", join(homedir(), ".hive", "homes")),
     limitsStaleMs: num(a, "limitsStaleMs", DEFAULTS.limitsStaleMs),
     limitsRefreshMs: num(a, "limitsRefreshMs", DEFAULTS.limitsRefreshMs),
@@ -1097,7 +1099,8 @@ export class VaultRootRequiredError extends ConfigError {
 export function validateDaemonVault(cfg: ResolvedNodeConfig): void {
   const defaultRoot = resolve(homedir(), ".hive", "v2");
   if (!cfg.vaultDirExplicit &&
-      (resolve(cfg.dataDir) !== defaultRoot || resolve(cfg.socketPath) !== resolve(defaultRoot, "hived.sock") || !installedServiceOwnsProcess())) {
+      (resolve(cfg.dataDir) !== defaultRoot || resolve(cfg.socketPath) !== resolve(defaultRoot, "hived.sock")
+        || (process.env.HIVE_V2_SOCKET_PATH?.trim() && resolve(process.env.HIVE_V2_SOCKET_PATH) !== resolve(defaultRoot, "hived.sock")) || !installedServiceOwnsProcess())) {
     throw new VaultRootRequiredError();
   }
 }

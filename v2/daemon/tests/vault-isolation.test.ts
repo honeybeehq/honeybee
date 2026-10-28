@@ -46,7 +46,7 @@ for (const mode of ["foreground", "data flag", "data env", "socket flag", "socke
     }
     assert.throws(() => resolveDaemonConfig(args), required);
     const before = readdirSync(root, { recursive: true });
-    const argv = Object.entries(args).flatMap(([key, value]) => [key === "dataDir" ? "--data-dir" : key === "socketPath" ? "--socket" : "--config", value]);
+    const argv: string[] = Object.entries(args).flatMap(([key, value]) => [key === "dataDir" ? "--data-dir" : key === "socketPath" ? "--socket" : "--config", value ?? ""]);
     await assert.rejects(runDaemon(argv), required);
     assert.deepEqual(readdirSync(root, { recursive: true }), before);
   }));
@@ -106,5 +106,35 @@ for (const source of ["flag", "env"] as const) test(`CLI refuses implicit vault 
   const argv = ["daemon", "run", "--data-dir", join(root, "data"), "--json", ...(source === "flag" ? ["--socket", socket] : [])];
   const result = await runV2Cli(argv, { out: line => out.push(line), err: () => undefined });
   assert.equal(result, 1);
-  assert.equal(JSON.parse(out[0]).error.code, "vault_root_required");
+  const line = out[0];
+  assert.ok(line);
+  assert.equal(JSON.parse(line).error.code, "vault_root_required");
+}));
+
+for (const vaultDir of ["", " \t "]) test(`empty config vault ${JSON.stringify(vaultDir)} is refused`, () => fixture(root => {
+  const configPath = join(root, "config.json");
+  writeFileSync(configPath, JSON.stringify({ accounts: { vaultDir } }));
+  assert.throws(() => resolveDaemonConfig({ configPath }), (error: unknown) => error instanceof ConfigError && /vaultDir.*non-empty/.test(error.message));
+}));
+
+for (const failure of ["unavailable", "timeout"]) test(`service ownership ${failure} fails closed`, () => fixture(() => {
+  const owner = mock.method(childProcess, "execFileSync", () => { throw Object.assign(new Error(failure), { code: failure === "timeout" ? "ETIMEDOUT" : "ENOENT" }); });
+  syncBuiltinESMExports();
+  try { assert.throws(() => resolveDaemonConfig({}), required); }
+  finally { owner.mock.restore(); syncBuiltinESMExports(); }
+}));
+
+test("custom socket refuses implicit vault without a service manager query", () => fixture(root => {
+  const owner = mock.method(childProcess, "execFileSync", () => { throw new Error("unexpected service manager query"); });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => resolveDaemonConfig({ socketPath: join(root, "custom.sock") }), required);
+    assert.equal(owner.mock.callCount(), 0);
+  } finally { owner.mock.restore(); syncBuiltinESMExports(); }
+}));
+
+test("explicit isolated vault never makes an inherited socket the listen target", () => fixture(root => {
+  process.env.HIVE_V2_SOCKET_PATH = join(root, "inherited.sock");
+  const dataDir = join(root, "data");
+  assert.equal(resolveDaemonConfig({ dataDir, vaultDir: join(root, "vault") }).socketPath, join(dataDir, "hived.sock"));
 }));
