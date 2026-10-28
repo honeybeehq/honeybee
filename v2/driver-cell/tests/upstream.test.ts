@@ -9,19 +9,43 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { provisionCell, reserveCell, type ProvisionRequest } from "../src/provision.ts";
+import { provisionCell as provisionLocalCell, reserveCell, type ProvisionRequest } from "../src/provision.ts";
 import { dirtyReport } from "../src/remove.ts";
 import { evictCellWrapper } from "../src/retention.ts";
-import { buildPoolMember, claimFromPool, listPoolMembers, repoKeyFor } from "../src/warmPool.ts";
+import { buildPoolMember as buildLocalPoolMember, claimFromPool as claimLocalPoolMember, listPoolMembers, repoKeyFor } from "../src/warmPool.ts";
 import { hasCommit, tryGit } from "../src/git.ts";
 import { holdMirrorLock, mirrorDirFor, readUpstreamMirror, refreshUpstreamMirror, resolveCellBase, syncOriginFromMirror, UPSTREAM_REF } from "../src/upstream.ts";
 import { commitInCell, commitOn, fingerprintOrigin, g, makeOrigin, makeRig } from "./helpers.ts";
+
+const cellOriginUrl = "git@github.com:fixture/upstream.git";
+
+function withCellOrigin<T>(origin: string, operation: () => T): T {
+  const url = g(origin, ["config", "--get", "remote.origin.url"]);
+  g(origin, ["config", "remote.origin.url", cellOriginUrl]);
+  try {
+    return operation();
+  } finally {
+    g(origin, ["config", "remote.origin.url", url]);
+  }
+}
+
+function provisionCell(...args: Parameters<typeof provisionLocalCell>) {
+  return withCellOrigin(args[1].originRepo, () => provisionLocalCell(...args));
+}
+
+function buildPoolMember(...args: Parameters<typeof buildLocalPoolMember>) {
+  return withCellOrigin(args[1].originRepo, () => buildLocalPoolMember(...args));
+}
+
+function claimFromPool(...args: Parameters<typeof claimLocalPoolMember>) {
+  return withCellOrigin(args[1].originRepo, () => claimLocalPoolMember(...args));
+}
 
 function withUpstream() {
   const rig = makeRig();
   const upstream = join(rig.root, "upstream.git");
   g(rig.root, ["clone", "--quiet", "--bare", rig.origin.repo, upstream]);
-  g(rig.origin.repo, ["remote", "add", "origin", upstream]);
+  g(rig.origin.repo, ["remote", "set-url", "origin", upstream]);
   g(rig.origin.repo, ["fetch", "--quiet", "origin"]);
   const cell = provisionCell(
     rig.cellsRoot,
@@ -194,6 +218,7 @@ test("resolveCellBase: no upstream configured is plain HEAD", () => {
   const root = mkdtempSync(join(tmpdir(), "upstream-"));
   try {
     const origin = makeOrigin(root);
+    g(origin.repo, ["remote", "remove", "origin"]);
     assert.deepEqual(resolveCellBase(origin.repo), { sha: origin.sha, source: "head" });
     const synced = syncOriginFromMirror(origin.repo, join(root, "data", "upstream"), { maxAgeMs: 0, timeoutMs: 30_000 });
     assert.equal(synced.refresh.status, "unmirrored");
@@ -243,14 +268,14 @@ test("clone-provisioned Cell points origin at the real upstream, not the local o
     assert.equal(cell.copyMode, "clone");
     const space = cell.paths.spaceDir;
     assert.equal(g(space, ["rev-parse", "HEAD"]), fx.fresh);
-    assert.equal(g(space, ["remote", "get-url", "origin"]), fx.github);
+    assert.equal(g(space, ["remote", "get-url", "origin"]), cellOriginUrl);
     assert.equal(g(space, ["rev-parse", "refs/remotes/origin/main"]), fx.fresh);
     assert.equal(g(space, ["symbolic-ref", "refs/remotes/origin/HEAD"]), "refs/remotes/origin/main");
     assert.equal(g(space, ["rev-parse", "refs/heads/main"]), fx.fresh);
     assert.equal(g(space, ["for-each-ref", "--format=%(refname)", "refs/remotes/origin/"]), "refs/remotes/origin/HEAD\nrefs/remotes/origin/main");
     commitOn(fx.author, "README.md", "# newer\n", "newer");
     g(fx.author, ["push", "--quiet", "github", "main"]);
-    g(space, ["fetch", "--quiet", "origin", "main"]);
+    g(space, ["fetch", "--quiet", fx.github, "main"]);
     assert.notEqual(g(space, ["rev-parse", "FETCH_HEAD"]), fx.fresh);
   } finally {
     fx.cleanup();
@@ -269,7 +294,7 @@ test("pool claim refreshes the Cell's origin/main to the current upstream tip", 
     assert.ok(claimed);
     const space = claimed.paths.spaceDir;
     assert.equal(g(space, ["rev-parse", "HEAD"]), fx.fresh);
-    assert.equal(g(space, ["remote", "get-url", "origin"]), fx.github);
+    assert.equal(g(space, ["remote", "get-url", "origin"]), cellOriginUrl);
     assert.equal(g(space, ["rev-parse", "refs/remotes/origin/main"]), fx.fresh);
   } finally {
     fx.cleanup();
@@ -358,7 +383,7 @@ test("adoptOriginRemote never writes the origin checkout: clone provision and po
     reserveCell(cellsRoot, req);
     const cell = provisionCell(cellsRoot, req, "op-c", OPTS);
     assert.equal(cell.copyMode, "clone");
-    assert.equal(g(cell.paths.spaceDir, ["remote", "get-url", "--push", "origin"]), join(fx.root, "push-only.git"));
+    assert.equal(g(cell.paths.spaceDir, ["remote", "get-url", "--push", "origin"]), cellOriginUrl);
     assert.equal(originRemoteState(fx.origin), before, "clone provision left the origin checkout untouched");
 
     buildPoolMember(cellsRoot, { originRepo: fx.origin, repoName: "material", sha: fx.fresh }, OPTS, { racyIndexWindowMs: 0 });
@@ -366,7 +391,7 @@ test("adoptOriginRemote never writes the origin checkout: clone provision and po
     reserveCell(cellsRoot, claimReq);
     const claimed = claimFromPool(cellsRoot, claimReq);
     assert.ok(claimed);
-    assert.equal(g(claimed.paths.spaceDir, ["remote", "get-url", "origin"]), fx.github);
+    assert.equal(g(claimed.paths.spaceDir, ["remote", "get-url", "origin"]), cellOriginUrl);
     assert.equal(originRemoteState(fx.origin), before, "pool claim left the origin checkout untouched");
   } finally {
     fx.cleanup();
@@ -391,7 +416,7 @@ test("pool claim whose member lacks the origin's new upstream tip still provisio
     assert.ok(claimed, "the claim still succeeds");
     const space = claimed.paths.spaceDir;
     assert.equal(g(space, ["rev-parse", "HEAD"]), fx.stale);
-    assert.equal(g(space, ["remote", "get-url", "origin"]), fx.github);
+    assert.equal(g(space, ["remote", "get-url", "origin"]), cellOriginUrl);
     assert.equal(g(space, ["for-each-ref", "--format=%(refname)", "refs/remotes/origin/leftover"]), "", "stale origin/* refs are dropped");
     assert.equal(g(space, ["rev-parse", "refs/remotes/origin/main"]), fx.stale, "the tracking ref stays put when its new tip is missing");
   } finally {

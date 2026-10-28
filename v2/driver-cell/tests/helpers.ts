@@ -32,6 +32,7 @@ export function makeOrigin(root: string, name = "origin"): FixtureOrigin {
   const repo = join(root, name);
   mkdirSync(repo, { recursive: true });
   g(repo, ["init", "-b", "main"]);
+  g(repo, ["remote", "add", "origin", "git@github.com:fixture/repo.git"]);
   writeFileSync(join(repo, "README.md"), "# fixture\n");
   mkdirSync(join(repo, "src"), { recursive: true });
   writeFileSync(join(repo, "src", "app.ts"), "export const version = 1;\n");
@@ -99,10 +100,11 @@ export function makeRig(): CellTestRig {
   const root = mkdtempSync(join(tmpdir(), "hb-v2-cell-"));
   const cellsRoot = join(root, "cells");
   mkdirSync(cellsRoot, { recursive: true });
+  const origin = makeOrigin(root);
   return {
     root,
     cellsRoot,
-    origin: makeOrigin(root),
+    origin,
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
 }

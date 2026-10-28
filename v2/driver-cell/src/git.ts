@@ -1,3 +1,4 @@
+import { cellGitEnv } from "./gitSafety.ts";
 /**
  * Plain-git plumbing for the cell driver (WP5, spec 05).
  *
@@ -155,7 +156,7 @@ export function hostGitEnv(base: Record<string, string>, overrides: ReadonlyArra
  */
 export function gitEnv(extra: Record<string, string> = {}): Record<string, string> {
   return {
-    ...(process.env as Record<string, string>),
+    ...cellGitEnv(process.env),
     GIT_CONFIG_GLOBAL: devNull,
     GIT_CONFIG_SYSTEM: devNull,
     GIT_CONFIG_NOSYSTEM: "1",
@@ -193,12 +194,12 @@ export function git(cwd: string, args: string[]): string {
 }
 
 export function adoptOriginRemote(originRepo: string, spaceDir: string, opts: { trackingRefs?: boolean } = {}): void {
-  const remote = tryGit(originRepo, ["remote", "get-url", "origin"]);
+  const remote = tryGit(originRepo, ["config", "--get", "remote.origin.url"]);
   const url = remote.status === 0 ? remote.stdout.trim() : "";
   if (url.length === 0) return;
   const existing = tryGit(spaceDir, ["remote", "get-url", "origin"]).status === 0;
   git(spaceDir, ["remote", existing ? "set-url" : "add", "--", "origin", url]);
-  const push = tryGit(originRepo, ["remote", "get-url", "--push", "origin"]);
+  const push = tryGit(originRepo, ["config", "--get", "remote.origin.pushurl"]);
   const pushUrl = push.status === 0 ? push.stdout.trim() : "";
   if (pushUrl.length > 0 && pushUrl !== url) git(spaceDir, ["remote", "set-url", "--push", "--", "origin", pushUrl]);
   if (opts.trackingRefs === true) adoptOriginTrackingRefs(originRepo, spaceDir);

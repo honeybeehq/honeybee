@@ -100,16 +100,16 @@ test("provision.clone: fallback places a fresh .git, records copy_mode=clone, ne
     // Detached at the requested sha, deliberately not on a branch.
     const sym = g(space, ["rev-parse", "--abbrev-ref", "HEAD"]);
     assert.equal(sym, "HEAD");
-    assert.equal(g(space, ["remote", "get-url", "origin"]), rig.origin.repo);
+    assert.equal(g(space, ["remote", "get-url", "origin"]), "git@github.com:fixture/repo.git");
 
-    g(rig.origin.repo, ["remote", "add", "origin", "ssh://git@github.invalid/example/fixture.git"]);
+    g(rig.origin.repo, ["remote", "set-url", "origin", "https://github.com/example/fixture"]);
     const upstreamed = provisionCell(rig.cellsRoot, req(rig, { beeId: "bee-2", wrapper: "bee-2", cellId: "c2" }), "cmd-2", { disableCow: true });
     const upstreamSpace = upstreamed.paths.spaceDir;
     assert.equal(upstreamed.copyMode, "clone");
     assert.equal(g(upstreamSpace, ["rev-parse", "HEAD"]), rig.origin.sha);
     assert.equal(g(upstreamSpace, ["status", "--porcelain"]), "");
-    assert.equal(g(upstreamSpace, ["remote", "get-url", "origin"]), "ssh://git@github.invalid/example/fixture.git");
-    assert.equal(spawnSync("git", ["config", "--get", "remote.origin.pushurl"], { cwd: upstreamSpace }).status, 1);
+    assert.equal(g(upstreamSpace, ["remote", "get-url", "origin"]), "git@github.com:example/fixture.git");
+    assert.equal(g(upstreamSpace, ["config", "--get", "remote.origin.pushurl"]), "git@github.com:example/fixture.git");
     const offline = spawnSync("git", ["fetch", "origin"], { cwd: upstreamSpace, env: { ...process.env, GIT_SSH_COMMAND: "false" } });
     assert.notEqual(offline.status, 0);
     const object = g(upstreamSpace, ["rev-parse", "HEAD:README.md"]);
@@ -119,16 +119,12 @@ test("provision.clone: fallback places a fresh .git, records copy_mode=clone, ne
 
     g(rig.origin.repo, ["remote", "set-url", "--push", "origin", "ssh://git@github.invalid/example/fixture-push.git"]);
     const pushed = provisionCell(rig.cellsRoot, req(rig, { beeId: "bee-3", wrapper: "bee-3", cellId: "c3" }), "cmd-3", { disableCow: true });
-    assert.equal(g(pushed.paths.spaceDir, ["remote", "get-url", "origin"]), "ssh://git@github.invalid/example/fixture.git");
-    assert.equal(g(pushed.paths.spaceDir, ["remote", "get-url", "--push", "origin"]), "ssh://git@github.invalid/example/fixture-push.git");
+    assert.equal(g(pushed.paths.spaceDir, ["remote", "get-url", "origin"]), "git@github.com:example/fixture.git");
+    assert.equal(g(pushed.paths.spaceDir, ["remote", "get-url", "--push", "origin"]), "git@github.com:example/fixture.git");
 
     g(rig.origin.repo, ["remote", "set-url", "--", "origin", "-f"]);
     g(rig.origin.repo, ["remote", "set-url", "--push", "--", "origin", "-p"]);
-    const dashed = provisionCell(rig.cellsRoot, req(rig, { beeId: "bee-4", wrapper: "bee-4", cellId: "c4" }), "cmd-4", { disableCow: true });
-    assert.equal(dashed.copyMode, "clone");
-    assert.equal(g(dashed.paths.spaceDir, ["rev-parse", "HEAD"]), rig.origin.sha);
-    assert.equal(g(dashed.paths.spaceDir, ["remote", "get-url", "origin"]), "-f");
-    assert.equal(g(dashed.paths.spaceDir, ["remote", "get-url", "--push", "origin"]), "-p");
+    assert.throws(() => provisionCell(rig.cellsRoot, req(rig, { beeId: "bee-4", wrapper: "bee-4", cellId: "c4" }), "cmd-4", { disableCow: true }), { code: "cell_git_unsafe", reason: "origin" });
   } finally {
     rig.cleanup();
   }

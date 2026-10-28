@@ -15,6 +15,7 @@ import { stubAdapter } from "../../adapters/src/index.ts";
 import type { DriverObservation } from "../../harness/src/driver.ts";
 import { CellDriver, CellRuntimeLiveError } from "../src/driver.ts";
 import { gitImagesRootForCells, readCurrentGitImage } from "../src/gitImage.ts";
+import { CellGitSafetyError } from "../src/gitSafety.ts";
 import { reserveCell } from "../src/provision.ts";
 import { probeCow } from "../src/cow.ts";
 import {
@@ -23,7 +24,7 @@ import {
   type NodeKind,
   type SandboxWritableDirectory,
 } from "../src/sandbox.ts";
-import { commitInCell, makeRig, type CellTestRig } from "./helpers.ts";
+import { commitInCell, g, makeRig, type CellTestRig } from "./helpers.ts";
 import { fixtureRuntimeIdentity, persistFixtureProcess, pidAlive } from "../../driver-hsr/tests/helpers.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -545,3 +546,43 @@ async function waitForJournal(path: string, predicate: (text: string) => boolean
     await sleep(10);
   }
 }
+
+
+test("cell-driver.git-safety: cached Cell refuses a tampered launch before starting a process", () => {
+  const rig = makeRig();
+  const driver = makeDriver(rig);
+  try {
+    const cell = driver.ensureCell("bee-1", "prepare");
+    g(cell.paths.spaceDir, ["config", "remote.origin.pushurl", "https://github.com/fixture/repo.git"]);
+    assert.throws(() => driver.start("bee-1", 1), (error: unknown) => error instanceof CellGitSafetyError && error.reason === "origin");
+    assert.equal(driver.hasProcess("bee-1", 1), false);
+  } finally {
+    driver.disposeAll();
+    rig.cleanup();
+  }
+});
+
+test("cell-driver.git-safety: runner receives the pinned Git environment", async () => {
+  const rig = makeRig();
+  let checked = false;
+  const driver = makeDriver(rig, {
+    harnessEnv: { GIT_CONFIG_GLOBAL: "/bad", GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "credential.helper", GIT_CONFIG_VALUE_0: "bad" },
+    hostCommand: configPath => {
+      const config = JSON.parse(readFileSync(configPath, "utf8"));
+      assert.equal(config.env.GIT_CONFIG_GLOBAL, "/dev/null");
+      assert.equal(config.env.GIT_CONFIG_NOSYSTEM, "1");
+      assert.equal(config.env.GIT_CONFIG_COUNT, undefined);
+      assert.equal(config.env.GIT_CONFIG_KEY_0, undefined);
+      checked = true;
+      return { command: process.execPath, args: ["-e", "process.exit(0)"] };
+    },
+  });
+  try {
+    driver.start("bee-1", 1);
+    assert.equal(checked, true);
+    await drainUntil(driver, events => events.some(event => event.kind === "exited"));
+  } finally {
+    driver.disposeAll();
+    rig.cleanup();
+  }
+});

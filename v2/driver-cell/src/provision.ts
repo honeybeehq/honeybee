@@ -31,6 +31,7 @@ import { availableParallelism } from "node:os";
 import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { cowCopy, cowPlatform, probeCow, type CowPlatform } from "./cow.ts";
+import { configureCellGit, assertCellGitSafe, cellGitEnv } from "./gitSafety.ts";
 import { adoptOriginRemote, git } from "./git.ts";
 import {
   gitImagesRootForCells,
@@ -331,6 +332,7 @@ function runProvisionOperation(
   // A completed provisioning — this operation's or an earlier one's — makes
   // this call a recorded no-op (idempotent replay).
   if (isProvisioned(ledger)) {
+    assertCellGitSafe(paths.spaceDir, cellGitEnv(process.env));
     const done = Object.values(ledger.operations).find((op) => op.completedAt != null);
     return {
       paths,
@@ -398,6 +400,8 @@ function runProvisionOperation(
     op.steps.hygiene = { at: cfg.now() };
     save();
   }
+
+  configureCellGit(paths.spaceDir);
 
   // ---- step 2: materialize the working tree (always) --------------------
   if (op.steps.checkout == null) {

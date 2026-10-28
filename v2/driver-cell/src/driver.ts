@@ -1,3 +1,4 @@
+import { assertCellGitSafe, cellGitEnv } from "./gitSafety.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { stateDirectory } from "../../harness/src/statePath.ts";
@@ -763,12 +764,13 @@ export class CellDriver implements RuntimeDriver {
     const harness = this.cfg.resolveHarness(beeId, generation);
     const spec = this.cfg.resolveCell(beeId);
     const env: Record<string, string> = {
-      ...(harness.env ?? (process.env as Record<string, string>)),
+      ...cellGitEnv(harness.env ?? process.env),
       // The old runner discipline: in-cell tools detect containment and the
       // space identity through these stamps.
       HIVE_CELL: "1",
       HIVE_CELL_SPACE: cell.paths.spaceName,
     };
+    assertCellGitSafe(cell.paths.spaceDir, env);
     if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
       return { ...harness, cwd: cell.paths.spaceDir, env };
     }

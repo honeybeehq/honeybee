@@ -177,3 +177,5 @@ export {
   type GitImagePointer,
   type GitImageRefreshResult,
 } from "./gitImage.ts";
+
+export { CellGitSafetyError, assertCellGitSafe, cellGitEnv } from "./gitSafety.ts";
