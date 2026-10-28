@@ -234,6 +234,8 @@ export function isAuthNeededMessage(message: string): boolean {
   if (m.includes("please sign out and sign in again")) return true;
   if (m.includes("access token") && m.includes("refresh")) return true;
   if (m.includes("failed to refresh token")) return true;
+  if (m.includes("token refresh")) return true;
+  if ((m.includes("auth.json") || m.includes(".credentials.json")) && (m.includes("read-only") || m.includes("permission denied"))) return true;
   if (m.includes("refresh_token") || m.includes("refresh token")) return true;
   if ((m.includes("token") || m.includes("oauth")) && m.includes("revoked")) return true;
   if (m.includes("401") && (m.includes("oauth") || m.includes("unauthor") || m.includes("authentication"))) return true;
