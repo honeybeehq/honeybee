@@ -2856,6 +2856,8 @@ export class HiveDaemon {
   }
 
   private cellGateway(beeId: string, generation: number): { socketPath: string } {
+    const current = this.mustStore().currentRuntime(beeId);
+    if (!current || current.generation !== generation) throw new RpcError("caller_not_trusted", "Cell gateway requires the current generation");
     const key = `${beeId}:${generation}`;
     const prior = this.cellGateways.get(key);
     if (prior) {
@@ -2921,7 +2923,11 @@ export class HiveDaemon {
         },
       },
     });
-    server.listenFresh();
+    try { server.listenFresh(); }
+    catch (error) {
+      void server.close().catch(closeError => this.log(`rpc.gateway.close_failed ${closeError instanceof Error ? closeError.message : String(closeError)}`));
+      throw error;
+    }
     this.cellGateways.set(key, { beeId, generation, socketPath, server });
     return { socketPath };
   }
@@ -5023,6 +5029,8 @@ export class HiveDaemon {
     if (secret && controller) this.secretExecutions.set(secret.executionId, { beeId: secret.beeId, cellId, nodeId: secret.nodeId, controller });
     try {
       if (secret && (secret.expiresAt <= Date.now() || secret.outputCapture && secret.outputCapture.expiresAt <= Date.now())) throw new Error("secret_execution_expired");
+      const execRuntime = store.currentRuntime(cell.sourceBeeId);
+      const gatewaySocketPath = sandboxEnabled(this.cfg.nodeKind, cell.sandbox) && execRuntime ? this.cellGateway(cell.sourceBeeId, execRuntime.generation).socketPath : undefined;
       const outcome = await runCellExec(
         paths,
         {
@@ -5032,7 +5040,7 @@ export class HiveDaemon {
           sandbox: cell.sandbox,
           nodeKind: this.cfg.nodeKind,
           kvm: this.cfg.cellKvm,
-          ...(sandboxEnabled(this.cfg.nodeKind, cell.sandbox) ? { gatewaySocketPath: this.cellGateway(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId)?.generation ?? 0).socketPath } : {}),
+          gatewaySocketPath,
           ...(secret ? { secretEnv: secret.outputCapture ? undefined : secret.env, ...(secret.outputCapture ? { outputCapture: { maxBytes: secret.outputCapture.maxBytes, expiresAt: secret.outputCapture.expiresAt, receive: (bytes: Buffer) => captureSecretOutput?.(secret.outputCapture!.leaseId, bytes) } } : {}), signal: controller!.signal } : {}),
 
         },

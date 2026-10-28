@@ -710,7 +710,7 @@ export class RpcServer {
       span.end();
       conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes) });
     } catch (err) {
-      if (this.opts.cellGateway) {
+      if (this.opts.cellGateway && err instanceof RpcError && (err.code === "caller_not_trusted" || err.code.startsWith("cell_gateway_") || err.code === "local_peer_uid_mismatch" || err.code === "local_peer_credentials_unavailable")) {
         const error = toRpcError(err);
         const reason = error.details?.reason;
         this.refusals.record(`${error.code}:${verb}${typeof reason === "string" ? `:${reason}` : ""}`, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
