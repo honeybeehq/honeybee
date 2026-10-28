@@ -12,6 +12,7 @@ import { IdentityRecovery } from "../src/identityRecovery.ts";
 import { RpcServer, toRpcError, type RpcDispatch } from "../src/rpc.ts";
 import { RpcClient } from "../../cli/src/client.ts";
 import { PROTOCOL, RpcError } from "../src/protocol.ts";
+import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
 
 const code = (code: string) => (error: unknown) => error instanceof RpcError && error.code === code;
 async function rawRequest(path: string, verb: string): Promise<{ error: { code: string } }> {
@@ -40,7 +41,7 @@ async function fixture(t: TestContext, enabled = true) {
   t.after(async () => { clients.forEach(client => client.close()); await server.close(); store.close(); rmSync(root, { recursive: true, force: true }); });
   const register = async () => store.registerExecutionCoordinator("project-home", process.geteuid!());
   const internal = { request: async <T = unknown>(verb: Parameters<RpcDispatch>[0], params: Record<string, unknown>) => {
-    try { return await (owner.rpcExecution as RpcDispatch).call(owner, verb, params, { executionCoordinatorUid: process.geteuid!() } as Parameters<RpcDispatch>[2]) as T; }
+    try { return await (owner.rpcExecution as RpcDispatch).call(owner, verb, params, { executionCoordinatorUid: process.geteuid!(), ingress: "local_unix", localPeer: { uid: process.geteuid!(), pid: process.pid, processBirth: exactProcessBirth(process.pid) } } as Parameters<RpcDispatch>[2]) as T; }
     catch (error) { const wire = toRpcError(error); throw new RpcError(wire.code, wire.message, wire.details); }
   } };
   const plan = async (verb: "send" | "archive", suffix: string = verb) => {
