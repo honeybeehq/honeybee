@@ -6,7 +6,7 @@ import { isQuotaTextFallback } from "../../adapters/src/quota.ts";
 import { isFableModel, autoswapDisabled } from "../../core/src/index.ts";
 export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
-import {inspectProcess, sameProcess} from "../../harness/src/processIdentity.ts";
+import {inspectProcess, sameProcess, type ProcessInspection} from "../../harness/src/processIdentity.ts";
 import { bindSpawnParent, spawnCallerBee } from "./spawnLineage.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
@@ -2765,6 +2765,7 @@ export class HiveDaemon {
     });
   }
 
+  private lineageInspect(pid: number): ProcessInspection { return inspectProcess(pid); }
   private readonly confinedAdmission = new ConfinedAdmission();
   private admitConfined(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
     const store = this.mustStore();
@@ -2773,7 +2774,7 @@ export class HiveDaemon {
     const runtime = id ? store.currentRuntime(id) : null;
     if (!bee || bee.lifecycle !== "active" || !runtime || runtime.state === "stopped") throw new RpcError("confined_peer_refused", "Confined caller has no live owning bee");
     const binding = store.runtimeProcessIdentity(bee.id, runtime.generation);
-    if (!conn.localPeer || binding.kind !== "bound" || spawnCallerBee(conn.localPeer, [{beeId: bee.id, identity: binding.identity}], inspectProcess) !== bee.id) throw new RpcError("confined_peer_refused", "Confined caller generation is stale");
+    if (!conn.localPeer || binding.kind !== "bound" || spawnCallerBee(conn.localPeer, [{beeId: bee.id, identity: binding.identity}], pid => this.lineageInspect(pid)) !== bee.id) throw new RpcError("confined_peer_refused", "Confined caller generation is stale");
     return this.confinedAdmission.admit(verb, params, {
       beeId: bee.id, generation: runtime.generation, parentId: bee.parentExternal ? null : bee.parentId,
       canSend: target => { const parent = store.getBee(target); return !!parent && parent.agent !== INBOX_AGENT; },
@@ -2834,7 +2835,7 @@ export class HiveDaemon {
       const binding = store.runtimeProcessIdentity(bee.id, runtime.generation);
       return { beeId: bee.id, identity: binding.kind === "bound" ? binding.identity : null, pid: runtime.state === "stopped" ? null : runtime.pid };
     }));
-    return spawnCallerBee(peer, runtimes, inspectProcess);
+    return spawnCallerBee(peer, runtimes, pid => this.lineageInspect(pid));
   }
 
   private rpcSpawnEffect(params: Record<string, unknown>): Promise<SpawnResult> {

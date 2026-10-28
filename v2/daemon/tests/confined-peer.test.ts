@@ -129,3 +129,24 @@ test("Linux confinement follows the kernel rather than a simulated process platf
     assert.equal(peerConfinement(peer, {proc: reader({userns: () => "user:[2]"})}), "confined");
   } finally { Object.defineProperty(process, "platform", platform); }
 });
+
+test("a confined caller whose ancestry is denied before its bee runtime is refused as ownerless", async () => {
+  const {HiveDaemon} = await import("../src/daemon.ts");
+  const {ConfinedAdmission} = await import("../src/confinedPeer.ts");
+  const bootId = "11111111-1111-1111-1111-111111111111";
+  const present = (pid: number, ppid: number) => ({kind: "present", pid, ppid, uid: 1000, pgid: pid, state: "live", birth: `linux:${pid}`, bootId, startedAtMs: 1, waitStatus: null}) as const;
+  const bee = {id: "cell-bee", lifecycle: "active", parentId: "parent", parentExternal: false, agent: "stub", substrate: "cell"};
+  const runtime = {beeId: bee.id, generation: 1, state: "running", pid: 2};
+  const store = {
+    listBees: () => [bee], listRuntimes: () => [runtime], getBee: (id: string) => id === bee.id ? bee : null, currentRuntime: () => runtime,
+    runtimeProcessIdentity: () => ({kind: "bound", identity: {pid: 2, birth: "linux:2", bootId}}),
+  };
+  const conn = {localPeer: {uid: 1000, pid: 4, processBirth: "linux:4"}, ingress: "local_unix", confinement: "confined"};
+  const admit = (denied: boolean) => {
+    const owner = Object.create(HiveDaemon.prototype) as Record<string, unknown>;
+    Object.assign(owner, {store, stopping: false, confinedAdmission: new ConfinedAdmission(), lineageInspect: (pid: number) => pid === 4 ? present(4, 3) : pid === 3 ? (denied ? {kind: "unavailable", reason: "permission_denied"} : present(3, 2)) : pid === 2 ? present(2, 1) : present(1, 0)});
+    return (owner.admitConfined as (verb: string, params: Record<string, unknown>, conn: unknown) => Record<string, unknown>).call(owner, "view", {}, conn);
+  };
+  assert.deepEqual(admit(false), {beeId: bee.id});
+  assert.throws(() => admit(true), error => error instanceof RpcError && error.code === "confined_peer_refused" && /no live owning bee/.test(error.message));
+});

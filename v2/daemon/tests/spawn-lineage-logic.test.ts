@@ -73,3 +73,14 @@ test("macOS ancestry ends at the first other-user ancestor that proc_pidinfo ref
   let reads = 0;
   assert.throws(() => spawnCallerBee(cli, [], pid => pid === 460 && ++reads > 1 ? { ...mac(460, 1) } : terminal(pid)), refused);
 });
+
+test("a permission denial between the caller and its bee runtime never attributes past the denial", () => {
+  const denied: ProcessInspection = { kind: "unavailable", reason: "permission_denied" };
+  const peer = { pid: 4, uid: 1000, processBirth: "linux:4" };
+  const inspect = (pid: number): ProcessInspection => pid === 4 ? proc(4, 3) : pid === 3 ? denied : pid === 2 ? proc(2, 1) : pid === 1 ? proc(1, 0) : { kind: "gone" };
+  assert.equal(spawnCallerBee(peer, [{ beeId: "above", identity: proc(2, 1) }], inspect), null);
+  assert.equal(spawnCallerBee(peer, [{ beeId: "above", identity: proc(2, 1), pid: 2 }], inspect), null);
+  assert.throws(() => spawnCallerBee(peer, [{ beeId: "hidden", identity: proc(3, 2) }], inspect), refused);
+  assert.throws(() => spawnCallerBee(peer, [{ beeId: "hidden", identity: proc(3, 2), pid: 3 }], inspect), refused);
+  assert.equal(spawnCallerBee(peer, [{ beeId: "below", identity: proc(4, 3) }, { beeId: "above", identity: proc(2, 1) }], inspect), "below");
+});
