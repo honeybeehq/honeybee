@@ -7,10 +7,10 @@ export class ProcessIdentityUnavailableError extends Error {
   constructor() { super("stop pending process identity proof"); }
 }
 
-export function pidAlive(pid: number): boolean {
+export function pidAlive(pid: number, inspect: (pid: number) => ProcessInspection = inspectProcess): boolean {
   if (!Number.isSafeInteger(pid) || pid <= 0) return false;
-  const value = inspectProcess(pid);
-  return value.kind === "unavailable" || value.kind === "present" && value.state === "live";
+  const value = inspect(pid);
+  return value.kind === "unavailable" && value.reason !== "permission_denied" || value.kind === "present" && value.state === "live";
 }
 
 export function processDisposition(identity: ProcessIdentity | null, value: ProcessInspection): "live" | "exited" | "unavailable" {

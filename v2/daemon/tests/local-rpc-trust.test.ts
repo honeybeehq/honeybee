@@ -11,7 +11,7 @@ import { LocalRpcRefusals } from "../src/localRpcRefusals.ts";
 import type { PeerConnection } from "../src/peerCredentials.ts";
 import { RPC_ACCESS } from "../src/rpcAccess.ts";
 import { RPC_VERBS } from "../src/protocol.ts";
-import { inspectProcess } from "../../harness/src/processIdentity.ts";
+import { inspectProcess, type ProcessInspection } from "../../harness/src/processIdentity.ts";
 const peer = (pid: number, birth = "birth"): PeerConnection => ({state: "verified", peer: {uid: process.geteuid!(), pid, processBirth: birth}, current: () => true, close() {}});
 const reason = (value: string) => (error: unknown) => (error as {details?: {reason?: string}}).details?.reason === value;
 
@@ -69,7 +69,7 @@ test("birth-bound registration consumes its challenge, replaces another PID, and
   const file = join(root, "private", "key");
   let now = 1000;
   const audits: Array<{kind: string; data: Record<string, unknown>}> = [];
-  const trust = new LocalRpcTrust({requireObservationCaller: true, registrationKeyFile: file}, root, (kind, data) => audits.push({kind, data}), () => now);
+  const trust = new LocalRpcTrust({requireObservationCaller: true, registrationKeyFile: file}, root, (kind, data) => audits.push({kind, data}), () => now, () => ({kind: "gone"}));
   try {
     assert.equal(statSync(file).mode & 0o777, 0o600);
     assert.equal(statSync(join(root, "private")).mode & 0o777, 0o700);
@@ -242,4 +242,38 @@ test("a symlinked ancestor of the dataDir preserves the private-chain boundary",
     assert.equal(trust.state, "registration_key_unavailable");
     bytes.fill(0);
   } finally { trust.close(); rmSync(parent, {recursive: true, force: true}); }
+});
+
+test("replacing a registration treats an other-user pid as reused but keeps refusing an unobservable owner", () => {
+  const root = mkdtempSync(join(tmpdir(), "rpc-trust-reused-"));
+  const file = join(root, "private", "key");
+  const bootId = "11111111-1111-1111-1111-111111111111";
+  const live = (birth: string, uid = process.geteuid!()): Extract<ProcessInspection, {kind: "present"}> => ({kind: "present", pid: 101, birth, bootId, uid, ppid: 1, pgid: 101, state: "live", startedAtMs: 1, waitStatus: null});
+  const cases: Array<[ProcessInspection, boolean]> = [
+    [{kind: "unavailable", reason: "permission_denied"}, true],
+    [{kind: "gone"}, true],
+    [live("linux:999"), true],
+    [live("linux:101", process.geteuid!() + 1), true],
+    [{...live("linux:101"), state: "zombie"}, true],
+    [live("linux:101"), false],
+    [{kind: "unavailable", reason: "native_observation_failed"}, false],
+    [{kind: "unavailable", reason: "artifact_unavailable"}, false],
+    [{kind: "unavailable", reason: "invalid_result"}, false],
+  ];
+  try {
+    for (const [observed, replaced] of cases) {
+      const trust = new LocalRpcTrust({requireObservationCaller: true, registrationKeyFile: file}, root, () => {}, Date.now, () => observed);
+      const key = readFileSync(file);
+      const register = (connection: PeerConnection, pid: number) => {
+        const identity = {};
+        const challenge = trust.challenge(connection, identity, "local_unix");
+        return trust.register({pid, challengeId: challenge.challengeId, token: createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex")}, connection, identity, "local_unix");
+      };
+      try {
+        register(peer(101, "linux:101"), 101);
+        if (replaced) { register(peer(202, "linux:202"), 202); trust.require(peer(202, "linux:202"), "local_unix"); }
+        else { assert.throws(() => register(peer(202, "linux:202"), 202), reason("registered_service_still_live"), JSON.stringify(observed)); trust.require(peer(101, "linux:101"), "local_unix"); }
+      } finally { key.fill(0); trust.close(); }
+    }
+  } finally { rmSync(root, {recursive: true, force: true}); }
 });

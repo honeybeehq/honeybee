@@ -3,7 +3,7 @@ import { constants, closeSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openS
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { RpcError } from "./protocol.ts";
 import type { PeerConnection } from "./peerCredentials.ts";
-import { inspectProcess } from "../../harness/src/processIdentity.ts";
+import { inspectProcess, type ProcessInspection } from "../../harness/src/processIdentity.ts";
 
 export interface LocalTrustConfig { requireObservationCaller: boolean; registrationKeyFile: string }
 export interface LocalTrustChallenge {
@@ -88,8 +88,9 @@ export class LocalRpcTrust {
   private config: LocalTrustConfig;
   private readonly now: () => number;
   private readonly audit: (kind: string, data: Record<string, unknown>) => void;
-  constructor(config: LocalTrustConfig, root: string, audit: (kind: string, data: Record<string, unknown>) => void, now = Date.now) {
-    this.config = config; this.audit = audit; this.now = now;
+  private readonly inspect: (pid: number) => ProcessInspection;
+  constructor(config: LocalTrustConfig, root: string, audit: (kind: string, data: Record<string, unknown>) => void, now = Date.now, inspect: (pid: number) => ProcessInspection = inspectProcess) {
+    this.config = config; this.audit = audit; this.now = now; this.inspect = inspect;
     this.reload(config, root);
   }
   reload(config: LocalTrustConfig, root: string): void {
@@ -153,8 +154,9 @@ export class LocalRpcTrust {
     const previous = this.registration;
     if (previous
       && (previous.pid !== verified.peer.pid || previous.birth !== verified.peer.processBirth || previous.uid !== verified.peer.uid)) {
-      const process = inspectProcess(previous.pid);
-      if (process.kind === "unavailable" || process.kind === "present" && process.state === "live" && process.birth === previous.birth && process.uid === previous.uid) refusal("registered_service_still_live");
+      const process = this.inspect(previous.pid);
+      const reused = process.kind === "unavailable" && process.reason === "permission_denied" && previous.uid === globalThis.process.geteuid?.();
+      if (process.kind === "unavailable" && !reused || process.kind === "present" && process.state === "live" && process.birth === previous.birth && process.uid === previous.uid) refusal("registered_service_still_live");
     }
     this.registration = {uid: verified.peer.uid, pid: verified.peer.pid, birth: verified.peer.processBirth!, expiresAtMs: this.now() + 300_000, nodeId: params.nodeId as string | undefined ?? null};
     this.audit("rpc.local_registered", {uid: verified.peer.uid, pid: verified.peer.pid, replacedPid: previous?.pid ?? null, expiresAtMs: this.registration.expiresAtMs});

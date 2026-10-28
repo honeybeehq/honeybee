@@ -142,3 +142,17 @@ test("native EPERM arm is unavailable and cannot become death or signal permissi
     assert.equal(processDisposition(identity, decodeProcessInspection(value, process.pid)), "unavailable");
   } finally {rmSync(root, {recursive: true, force: true});}
 });
+
+test("pidAlive treats an other-user permission denial as a reused pid but keeps unobservable pids alive", async () => {
+  const { pidAlive } = await import("../src/psutil.ts");
+  const bootId = "11111111-1111-1111-1111-111111111111";
+  const cases = [
+    [{ kind: "unavailable", reason: "permission_denied" }, false],
+    [{ kind: "gone" }, false],
+    [{ kind: "present", pid: 7, ppid: 1, uid: 0, pgid: 7, state: "zombie", birth: "linux:7", bootId, startedAtMs: 1, waitStatus: 0 }, false],
+    [{ kind: "present", pid: 7, ppid: 1, uid: 0, pgid: 7, state: "live", birth: "linux:7", bootId, startedAtMs: 1, waitStatus: null }, true],
+    [{ kind: "unavailable", reason: "native_observation_failed" }, true],
+    [{ kind: "unavailable", reason: "artifact_unavailable" }, true],
+  ] as const;
+  for (const [value, alive] of cases) assert.equal(pidAlive(7, () => value), alive, JSON.stringify(value));
+});
