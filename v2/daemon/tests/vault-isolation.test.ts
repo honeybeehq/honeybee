@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import { mock, test } from "node:test";
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, symlinkSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
-import { ConfigError } from "../src/config.ts";
+import { ConfigError, sameVaultPath } from "../src/config.ts";
 import { parseDaemonRunArgs, resolveDaemonConfig, runDaemon } from "../src/main.ts";
 
 async function fixture(fn: (root: string) => Promise<void> | void): Promise<void> {
@@ -220,3 +220,36 @@ test("custom service with an isolated explicit vault needs no default-service au
     assert.equal(owner.mock.callCount(), 0);
   } finally { owner.mock.restore(); syncBuiltinESMExports(); }
 }));
+
+for (const source of ["flag", "env", "config"] as const) test(`dangling default-vault symlink with trailing slash from ${source} refuses`, () => fixture(root => {
+  const vault = join(root, ".hive", "vault");
+  rmSync(vault, { recursive: true });
+  const alias = join(root, "dangling-slash");
+  symlinkSync(vault, alias);
+  try {
+    const args = explicitVaultArgs(root, source, `${alias}/`);
+    const before = readdirSync(root, { recursive: true });
+    assert.throws(() => resolveDaemonConfig(args), required);
+    assert.deepEqual(readdirSync(root, { recursive: true }), before);
+  } finally {
+    mkdirSync(vault);
+    writeFileSync(join(vault, "sentinel"), "untouched");
+  }
+}));
+
+test("native canonical case aliases cannot bypass the default-vault guard", () => fixture(root => {
+  const vault = join(root, ".hive", "vault"), alias = join(root, ".HIVE", "VAULT");
+  const native = realpathSync.native;
+  const canonical = mock.method(realpathSync, "native", (path: string | Buffer | URL) => native(path === alias ? vault : path));
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => resolveDaemonConfig({ vaultDir: alias }), required);
+    assert.ok(canonical.mock.calls.some(call => call.arguments[0] === alias));
+  } finally { canonical.mock.restore(); syncBuiltinESMExports(); }
+}));
+
+test("Darwin vault identity conservatively folds case including missing leaf names", () => {
+  assert.equal(sameVaultPath("/temporary/.HIVE/VAULT", "/temporary/.hive/vault", "darwin"), true);
+  assert.equal(sameVaultPath("/temporary/.HIVE/VAULT", "/temporary/.hive/vault", "linux"), false);
+  assert.equal(sameVaultPath("/temporary/isolated", "/temporary/.hive/vault", "darwin"), false);
+});
