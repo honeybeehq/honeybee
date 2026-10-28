@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, realpathSync, renameSync, symlinkSync, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ThreadOperationRow } from "../../core/src/threadOperation.ts";
-import { codexHistoryPath, pinThreadHistory, readThreadHistory, ThreadExecutionError } from "../src/threadHistory.ts";
+import { codexHistoryPath, pinThreadHistory, readThreadHistory, seedSuccessorHistory, sourceBaseInstructions, ThreadExecutionError } from "../src/threadHistory.ts";
 
 function trash(path: string): void {
   const destination = join(tmpdir(), "honeybee-test-trash");
@@ -28,22 +28,31 @@ test("indexed Codex rollouts stay beneath the expected sessions root without sym
   const setPath = (path: string): void => { db.prepare("INSERT INTO threads VALUES('session', ?) ON CONFLICT(id) DO UPDATE SET rollout_path=excluded.rollout_path").run(path); };
   try {
     setPath(rollout);
-    assert.equal(codexHistoryPath(home, "session"), realpathSync(rollout));
-    assert.equal(pinThreadHistory(rollout, "session", sessions).bytes, Buffer.byteLength(content));
+    const indexed = codexHistoryPath(home, "session");
+    assert.equal(indexed.path, realpathSync(rollout));
+    assert.equal(pinThreadHistory(indexed.path, "session", indexed.root).bytes, Buffer.byteLength(content));
     symlinkSync(join(root, "foreign.jsonl"), join(sessions, "link.jsonl"));
     symlinkSync(root, join(sessions, "alias"));
     for (const path of [join(root, "foreign.jsonl"), "relative.jsonl", join(sessions, "link.jsonl"), join(sessions, "alias", "foreign.jsonl")]) {
       setPath(path);
       assert.throws(() => codexHistoryPath(home, "session"), /beneath its sessions root without symlinks/);
     }
-    assert.throws(() => pinThreadHistory(join(sessions, "link.jsonl"), "session", sessions));
-    assert.throws(() => pinThreadHistory(join(root, "foreign.jsonl"), "session", sessions), /ownership changed/);
+    assert.throws(() => pinThreadHistory(join(sessions, "link.jsonl"), "session", indexed.root));
+    assert.throws(() => pinThreadHistory(join(root, "foreign.jsonl"), "session", indexed.root), /ownership changed/);
     const fifo = join(sessions, "fifo");
     execFileSync("mkfifo", [fifo]);
     setPath(fifo);
     assert.throws(() => codexHistoryPath(home, "session"), /regular file beneath/);
-    assert.throws(() => pinThreadHistory(fifo, "session", sessions), /not a file/);
+    assert.throws(() => pinThreadHistory(fifo, "session", indexed.root), /not a file/);
+    const directory = join(sessions, "directory");
+    mkdirSync(directory);
+    setPath(directory);
+    assert.throws(() => codexHistoryPath(home, "session"), /regular file beneath/);
     renameSync(sessions, join(home, "saved-sessions"));
+    mkdirSync(sessions);
+    writeFileSync(rollout, content);
+    assert.throws(() => pinThreadHistory(indexed.path, "session", indexed.root), /ownership changed/);
+    renameSync(sessions, join(home, "replacement-sessions"));
     symlinkSync(join(home, "saved-sessions"), sessions);
     setPath(rollout);
     assert.throws(() => codexHistoryPath(home, "session"), /without symlinks/);
@@ -67,6 +76,10 @@ test("inherited history reads reject symlinks, FIFOs, directories, truncation an
     execFileSync("mkfifo", [fifo]);
     for (const candidate of [fifo, root]) {
       await assert.rejects(readThreadHistory({ ...row, historyPath: candidate }, 0, 4, root), error => error instanceof ThreadExecutionError && error.code === "history_unavailable");
+    }
+    for (const candidate of [fifo, root, join(root, "link")]) {
+      await assert.rejects(seedSuccessorHistory({ ...row, historyPath: candidate }));
+      await assert.rejects(sourceBaseInstructions({ ...row, historyPath: candidate }));
     }
     await assert.rejects(readThreadHistory(row, 0, 4, join(root, "absent")));
     writeFileSync(path, "short");
