@@ -103,6 +103,7 @@ export interface SpawnSpec {
 }
 
 export interface HsrDriverConfig {
+  onRuntimeReady?(beeId: string, pid: number | null): void;
   runtimeIdentity?: RuntimeIdentityHooks;
   execution?: ExecutionRuntimeHooks;
   executionStartFor?(beeId: string, generation: number): ExecutionStart | null;
@@ -1965,6 +1966,7 @@ export class HsrDriver implements RuntimeDriver {
         p.reconnectReplies.set(signal.requestId, signal.error ?? null);
         return;
       case "booted": {
+        this.cfg.onRuntimeReady?.(p.beeId, p.agentPid ?? (p.statusPath ? readRunnerStatus(p.statusPath)?.agentPid : null) ?? null);
         if (signal.sessionId) {
           // Late init still carries it (claude emits system/init only after the
           // first user message); the id is a bee fact whenever it is learned.

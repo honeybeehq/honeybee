@@ -1,3 +1,4 @@
+import { assertConfinedVerb, type Confinement } from "./confinedPeer.ts";
 import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
 import { StoreBackupError } from "../../core/src/storeBackup.ts";
 import { HumanOutputError } from "../../core/src/humanOutput.ts";
@@ -85,6 +86,7 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly confinement?: Confinement;
   readonly spawnServiceAuthority?: true;
   readonly operatorLocalHomes?: boolean;
   readonly captureSecretOutput?: (leaseId: string, bytes: Buffer) => void;
@@ -168,6 +170,7 @@ export type RpcDispatch = (
 ) => unknown;
 
 export interface RpcServerOptions {
+  peerConfinement?: (peer: RpcConn["localPeer"], registered: boolean) => Confinement;
   assertServiceCaller?: (peer: NonNullable<RpcConn["localPeer"]>) => void;
   dataDir?: string;
   instance?: {id: string; dataDir: string};
@@ -359,10 +362,16 @@ export class RpcServer {
 
   private onConnection(socket: Socket): void {
     const localUnix = socket.remoteAddress === undefined;
+    const server = this;
     const conn: Connection = {
       socket,
       peerConnection: localUnix ? this.credentials.connect(socket) : null,
       get localPeer() { return conn.peerConnection?.state === "verified" ? conn.peerConnection.peer : undefined; },
+      get confinement() {
+        let registered = false;
+        try { if (conn.peerConnection) { server.trust.require(conn.peerConnection, conn.ingress); registered = true; } } catch {}
+        return server.opts.peerConfinement?.(conn.localPeer, registered) ?? "unknown";
+      },
       frames: new JsonLineBuffer(),
       helloDone: false,
       clientCapabilities: Object.freeze([]),
@@ -470,6 +479,8 @@ export class RpcServer {
         throw new RpcError("caller_not_trusted", "Environment values require an authenticated human operator credential; this protocol has no human-read credential.");
       }
       if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: coordinator installation is NOT_COVERED pending the shared step-up Stage B protected-credential prerequisite");
+      assertConfinedVerb(verb, conn.confinement ?? "unknown");
+      if (verb === "spawn" && frame.context !== undefined && conn.confinement === "confined") throw new RpcError("confined_peer_refused", "Confined callers cannot acquire spawn service authority");
       const peer = conn.peerConnection;
       if (peer?.state === "verified" && peer.peer.uid !== process.geteuid!()) {
         this.refusals.record("local_peer_uid_mismatch", peer.peer.uid, peer.peer.pid);
@@ -618,7 +629,7 @@ export class RpcServer {
             let trusted = false;
             try { this.trust.require(peer, conn.ingress); trusted = true; }
             catch (error) { if (!(error instanceof RpcError) || error.code !== "caller_not_trusted") throw error; }
-            if (trusted) return this.opts.dispatch(verb, params, { ...conn, spawnServiceAuthority: true });
+            if (trusted && conn.confinement !== "confined") return this.opts.dispatch(verb, params, { ...conn, spawnServiceAuthority: true });
           }
         }
         const context = frame.context as Record<string, unknown> | undefined;

@@ -16,7 +16,7 @@ const external = "15ecdadc-f4b1-4265-9fac-9516a5ada650";
 interface Output { status: number | null; stdout: string; stderr: string }
 
 test("spawn lineage: runtime ancestry, registered Apiary principal, and local operator", { timeout: 120_000 }, async t => {
-  const rig = makeDaemonDir();
+  const rig = makeDaemonDir({cells: {sandbox: true}});
   const home = join(rig.dir, "home"), harness = join(rig.dir, "lineage.mjs");
   const readyFile = join(rig.dir, "ready");
   const detachedHelper = join(rig.dir, "detached.mjs");

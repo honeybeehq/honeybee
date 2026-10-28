@@ -1,3 +1,4 @@
+import { assertConfinedSpawn, assertConfinedVerb, bwrapMode, peerConfinement, runtimeUserNamespace, strictConfinementReasons } from "./confinedPeer.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
@@ -907,6 +908,9 @@ export class HiveDaemon {
     });
     services.end();
     this.activeStartupPhase = null;
+    this.confinementBwrap = bwrapMode();
+    for (const reason of strictConfinementReasons(sandboxEnabled(this.cfg.nodeKind, this.cfg.cellSandbox), this.confinementBwrap.setuid)) this.confinementReason(reason);
+    this.log(`security.confinement strict=${this.confinementReasons.size > 0} bwrap=${JSON.stringify(this.confinementBwrap)}`);
     const drivers = this.performance.startSpan("daemon.start.drivers");
     this.activeStartupPhase = drivers;
     // v23: the bee row owns its CURRENT session log file (a handoff opens a
@@ -922,6 +926,11 @@ export class HiveDaemon {
       adoptToleranceMs: this.cfg.adoptToleranceMs,
       onWriteLaneReady: () => this.requestTick(),
       runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
+      onRuntimeReady: (beeId: string, pid: number | null) => {
+        if (process.platform === "linux" && store.getBee(beeId)?.substrate === "cell") {
+          for (const reason of strictConfinementReasons(true, false, pid ? runtimeUserNamespace(pid) : "unavailable")) this.confinementReason(reason);
+        }
+      },
       execution: store.executionRuntimeHooks(),
       executionStartFor: (beeId: string, generation: number) => store.existingExecutionStart(beeId,generation),
       executionHostFor: (start: ExecutionStart) => store.executionStartHost(start),
@@ -1096,6 +1105,10 @@ export class HiveDaemon {
     const rpc = this.performance.startSpan("daemon.start.rpc");
     this.activeStartupPhase = rpc;
     this.rpc = new RpcServer({
+      peerConfinement: (peer, registered) => peerConfinement(peer, {strict: this.confinementReasons.size > 0, registered, substrate: () => {
+        const id = peer ? this.spawnPeerBee(peer) : null;
+        return id ? this.mustStore().getBee(id)?.substrate ?? null : null;
+      }}),
       assertServiceCaller: peer => {
         if (this.spawnPeerBee(peer)) throw new RpcError("caller_not_trusted", "A bee runtime cannot register as the Apiary service");
       },
@@ -1933,6 +1946,7 @@ export class HiveDaemon {
   }
 
   private dispatch(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): unknown {
+    assertConfinedVerb(verb, conn.confinement ?? "unknown");
     if (params.automationKind !== undefined || params.automationRef !== undefined) {
       if (verb !== "send") throw new RpcError("automation_unauthorized", "Automation metadata is only valid for send");
       assertAutomationSend(params, conn);
@@ -2748,7 +2762,16 @@ export class HiveDaemon {
     });
   }
 
+  private readonly confinementReasons = new Set<string>();
+  private confinementBwrap = {path: null as string | null, setuid: false};
+  private confinementReason(reason: string): void {
+    if (process.platform !== "linux" || this.confinementReasons.has(reason)) return;
+    this.confinementReasons.add(reason);
+    this.log(`security.confinement strict=true reasons=${[...this.confinementReasons].join(",")}`);
+  }
+
   private authenticatedSpawnParams(params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
+    assertConfinedSpawn(params, conn);
     const store = this.mustStore();
     let callerBeeId = conn.authenticatedBeeId ?? null;
     if (!callerBeeId && !conn.spawnServiceAuthority && (!conn.localPeer || conn.ingress !== "local_unix")) throw new RpcError("caller_not_trusted", "Spawn requires a verified direct local caller or registered service authority");
@@ -5990,6 +6013,7 @@ export class HiveDaemon {
       socketPath: this.cfg.socketPath,
       storePath: this.cfg.storePath,
       localSecurity: this.rpc?.localSecurity,
+      confinement: {strict: this.confinementReasons.size > 0, reasons: [...this.confinementReasons], bwrap: this.confinementBwrap},
       cellDisk: this.retention?.diskStatus() ?? null,
     };
   }
@@ -6076,6 +6100,7 @@ export class HiveDaemon {
       tickErrors: this.tickErrors,
       stopping: this.stopping,
       localSecurity: this.rpc?.localSecurity,
+      confinement: {strict: this.confinementReasons.size > 0, reasons: [...this.confinementReasons], bwrap: this.confinementBwrap},
       lastBoot: this.lastBoot,
       i1Violations: this.telemetry?.i1Count() ?? 0,
       deliveryHoldUnknown: store.countUnknownMultilineHolds(),

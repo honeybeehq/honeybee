@@ -337,6 +337,8 @@ export const RPC_ERROR_CODES = [
   "react_emoji_invalid",
   "invalid_request",
   "caller_not_trusted",
+  "confined_spawn_refused",
+  "confined_peer_refused",
   "local_peer_credentials_unavailable",
   "local_peer_uid_mismatch",
   "tag_reserved",
@@ -1767,6 +1769,7 @@ export interface HarnessFact {
 }
 
 export interface HealthResult {
+  confinement?: {strict: boolean; reasons: string[]; bwrap: {path: string | null; setuid: boolean}};
   tmuxCleanupRetained?: number;
   tmuxCleanupInformational?: number;
   paneInputUnknown?: number;
