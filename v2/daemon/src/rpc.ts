@@ -170,6 +170,7 @@ export type RpcDispatch = (
 ) => unknown;
 
 export interface RpcServerOptions {
+  admitConfined?: (verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn) => Record<string, unknown>;
   peerConfinement?: (peer: RpcConn["localPeer"], registered: boolean) => Confinement;
   assertServiceCaller?: (peer: NonNullable<RpcConn["localPeer"]>) => void;
   dataDir?: string;
@@ -184,6 +185,7 @@ export interface RpcServerOptions {
 }
 
 interface Connection extends RpcConn {
+  confinement: Confinement;
   peerConnection: PeerConnection | null;
   socket: Socket;
   frames: JsonLineBuffer;
@@ -362,16 +364,11 @@ export class RpcServer {
 
   private onConnection(socket: Socket): void {
     const localUnix = socket.remoteAddress === undefined;
-    const server = this;
     const conn: Connection = {
       socket,
       peerConnection: localUnix ? this.credentials.connect(socket) : null,
       get localPeer() { return conn.peerConnection?.state === "verified" ? conn.peerConnection.peer : undefined; },
-      get confinement() {
-        let registered = false;
-        try { if (conn.peerConnection) { server.trust.require(conn.peerConnection, conn.ingress); registered = true; } } catch {}
-        return server.opts.peerConfinement?.(conn.localPeer, registered) ?? "unknown";
-      },
+      confinement: "unknown",
       frames: new JsonLineBuffer(),
       helloDone: false,
       clientCapabilities: Object.freeze([]),
@@ -461,17 +458,18 @@ export class RpcServer {
       return;
     }
     const span = this.performance.startSpan(rpcPerformanceSpanName(verb));
-    const params =
+    const decodedParams =
       frame.params === undefined
         ? {}
         : frame.params !== null && typeof frame.params === "object" && !Array.isArray(frame.params)
           ? (frame.params as Record<string, unknown>)
           : null;
-    if (params === null) {
+    if (decodedParams === null) {
       span.end("error");
       conn.send({ id, ok: false, error: { code: "invalid_request", message: "params must be an object" } });
       return;
     }
+    let params: Record<string, unknown> = decodedParams;
     if (frame.context !== undefined) conn.operatorLocalWatch = false;
     let includeOperatorLocalHomes = false;
     try {
@@ -479,8 +477,15 @@ export class RpcServer {
         throw new RpcError("caller_not_trusted", "Environment values require an authenticated human operator credential; this protocol has no human-read credential.");
       }
       if (verb.startsWith("rpc.execution.")) throw new RpcError("rpc_execution_fence_unsupported", "Execution fencing is dark: coordinator installation is NOT_COVERED pending the shared step-up Stage B protected-credential prerequisite");
+      let registered = false;
+      try { if (this.trust.enabled && conn.peerConnection) { this.trust.require(conn.peerConnection, conn.ingress); registered = true; } } catch {}
+      conn.confinement = this.opts.peerConfinement?.(conn.localPeer, registered) ?? "unknown";
       assertConfinedVerb(verb, conn.confinement ?? "unknown");
       if (verb === "spawn" && frame.context !== undefined && conn.confinement === "confined") throw new RpcError("confined_peer_refused", "Confined callers cannot acquire spawn service authority");
+      if (conn.confinement === "confined") {
+        if (frame.context !== undefined || !this.opts.admitConfined) throw new RpcError("confined_peer_refused", "Confined caller context refused");
+        params = this.opts.admitConfined(verb, params, conn);
+      }
       const peer = conn.peerConnection;
       if (peer?.state === "verified" && peer.peer.uid !== process.geteuid!()) {
         this.refusals.record("local_peer_uid_mismatch", peer.peer.uid, peer.peer.pid);

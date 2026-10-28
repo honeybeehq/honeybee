@@ -1,4 +1,4 @@
-import { assertConfinedSpawn, assertConfinedVerb, bwrapMode, peerConfinement, runtimeUserNamespace, strictConfinementReasons } from "./confinedPeer.ts";
+import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, peerConfinement, runtimeUserNamespace, strictConfinementReasons } from "./confinedPeer.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
@@ -928,7 +928,9 @@ export class HiveDaemon {
       runtimeIdentity: {...store.runtimeIdentityHooks(), unavailable: (beeId: string, generation: number) => this.retainProcessIdentity(beeId, generation)},
       onRuntimeReady: (beeId: string, pid: number | null) => {
         if (process.platform === "linux" && store.getBee(beeId)?.substrate === "cell") {
-          for (const reason of strictConfinementReasons(true, false, pid ? runtimeUserNamespace(pid) : "unavailable")) this.confinementReason(reason);
+          this.cellNamespaces.set(beeId, pid ? runtimeUserNamespace(pid) : "unavailable");
+          if ([...this.cellNamespaces.values()].some(value => value !== "different")) this.confinementReason("cell_userns_unisolated");
+          else if (this.confinementReasons.delete("cell_userns_unisolated")) this.log(`security.confinement strict=${this.confinementReasons.size > 0} reasons=${[...this.confinementReasons].join(",")}`);
         }
       },
       execution: store.executionRuntimeHooks(),
@@ -1105,6 +1107,7 @@ export class HiveDaemon {
     const rpc = this.performance.startSpan("daemon.start.rpc");
     this.activeStartupPhase = rpc;
     this.rpc = new RpcServer({
+      admitConfined: (verb, params, conn) => this.admitConfined(verb, params, conn),
       peerConfinement: (peer, registered) => peerConfinement(peer, {strict: this.confinementReasons.size > 0, registered, substrate: () => {
         const id = peer ? this.spawnPeerBee(peer) : null;
         return id ? this.mustStore().getBee(id)?.substrate ?? null : null;
@@ -2471,6 +2474,12 @@ export class HiveDaemon {
       case "view":
         return this.viewOf(this.mustStore(), this.param(params, "beeId"));
       case "list":
+        if (conn.confinement === "confined") {
+          const id = conn.localPeer ? this.spawnPeerBee(conn.localPeer) : null;
+          if (!id) throw new RpcError("confined_peer_refused", "Confined caller has no owning bee");
+          const own = this.viewOf(this.mustStore(), id);
+          return {views: [own]};
+        }
         return this.rpcList(params);
       case "mailbox":
         return this.rpcMailbox(params);
@@ -2762,6 +2771,22 @@ export class HiveDaemon {
     });
   }
 
+  private readonly confinedAdmission = new ConfinedAdmission();
+  private admitConfined(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
+    const store = this.mustStore();
+    const id = conn.localPeer && conn.ingress === "local_unix" ? this.spawnPeerBee(conn.localPeer) : null;
+    const bee = id ? store.getBee(id) : null;
+    const runtime = id ? store.currentRuntime(id) : null;
+    if (!bee || bee.lifecycle !== "active" || !runtime || runtime.state === "stopped") throw new RpcError("confined_peer_refused", "Confined caller has no live owning bee");
+    const binding = store.runtimeProcessIdentity(bee.id, runtime.generation);
+    if (!conn.localPeer || binding.kind !== "bound" || spawnCallerBee(conn.localPeer, [{beeId: bee.id, identity: binding.identity}], inspectProcess) !== bee.id) throw new RpcError("confined_peer_refused", "Confined caller generation is stale");
+    return this.confinedAdmission.admit(verb, params, {
+      beeId: bee.id, generation: runtime.generation, parentId: bee.parentExternal ? null : bee.parentId,
+      canSend: target => { const parent = store.getBee(target); return !!parent && parent.agent !== INBOX_AGENT; },
+    });
+  }
+
+  private readonly cellNamespaces = new Map<string, "same" | "different" | "unavailable">();
   private readonly confinementReasons = new Set<string>();
   private confinementBwrap = {path: null as string | null, setuid: false};
   private confinementReason(reason: string): void {
@@ -6013,7 +6038,6 @@ export class HiveDaemon {
       socketPath: this.cfg.socketPath,
       storePath: this.cfg.storePath,
       localSecurity: this.rpc?.localSecurity,
-      confinement: {strict: this.confinementReasons.size > 0, reasons: [...this.confinementReasons], bwrap: this.confinementBwrap},
       cellDisk: this.retention?.diskStatus() ?? null,
     };
   }

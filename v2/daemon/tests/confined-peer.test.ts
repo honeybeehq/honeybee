@@ -66,3 +66,57 @@ test("runtime namespace follows the sandbox child rather than its host wrapper",
     assert.equal(runtimeUserNamespace(1, proc), isolated ? "different" : "same");
   }
 });
+
+test("confined allowlist denies every other verb including transcript and all placement indirections", async () => {
+  const {ConfinedAdmission} = await import("../src/confinedPeer.ts");
+  const {RPC_VERBS} = await import("../src/protocol.ts");
+  const admission = new ConfinedAdmission();
+  const identity = {beeId: "self", generation: 1, parentId: "parent", canSend: (id: string) => id === "parent"};
+  const allowed = new Set(["view", "list", "send", "question.ask", "seal.create"]);
+  for (const verb of [...RPC_VERBS, "bee.transcript", "future.verb"]) {
+    if (allowed.has(verb)) continue;
+    assert.throws(() => admission.admit(verb, {}, identity), error => error instanceof RpcError && error.code === "confined_peer_refused", verb);
+  }
+  for (const verb of ["view", "question.ask", "seal.create"]) {
+    assert.equal(admission.admit(verb, {}, identity).beeId, "self");
+    assert.throws(() => admission.admit(verb, {beeId: "other"}, identity));
+  }
+  assert.deepEqual(admission.admit("list", {}, identity), {});
+  assert.throws(() => admission.admit("list", {beeId: "other"}, identity));
+  assert.throws(() => admission.admit("send", {beeId: "other", body: "x"}, identity));
+  assert.throws(() => admission.admit("send", {beeId: "parent", sender: "operator", body: "x"}, identity));
+  assert.throws(() => admission.admit("send", {beeId: "parent", body: "x"}, {...identity, canSend: () => false}));
+  assert.throws(() => admission.admit("send", {beeId: "parent", body: "x", node: "remote"}, identity));
+  const sent = admission.admit("send", {beeId: "parent", body: "x", urgency: "now", idempotencyKey: "key"}, identity);
+  assert.equal(sent.sender, "self");
+  assert.equal(sent.urgency, "next");
+  assert.notEqual(sent.idempotencyKey, "key");
+  assert.equal(sent.idempotencyKey, admission.admit("send", {beeId: "parent", body: "x", idempotencyKey: "key"}, {...identity, generation: 2}).idempotencyKey);
+});
+
+test("confined writes enforce UTF-8 size and per-bee rate bounds across generations", async () => {
+  const {ConfinedAdmission} = await import("../src/confinedPeer.ts");
+  const identity = {beeId: "self", generation: 1, parentId: "parent", canSend: () => true};
+  for (const [verb, limit, params] of [["send", 60, {beeId: "parent", body: "x"}], ["question.ask", 12, {text: "x"}], ["seal.create", 12, {title: "x"}]] as const) {
+    const policy = new ConfinedAdmission();
+    for (let i = 0; i < limit; i++) policy.admit(verb, params, {...identity, generation: i + 1}, 1000);
+    assert.throws(() => policy.admit(verb, params, identity, 2000));
+    assert.doesNotThrow(() => policy.admit(verb, params, identity, 61000));
+  }
+  const policy = new ConfinedAdmission();
+  for (const [verb, params] of [["send", {beeId: "parent", body: "x".repeat(65537)}], ["question.ask", {text: "ø".repeat(4097)}], ["seal.create", {title: "x".repeat(513)}], ["question.ask", {text: "x", options: Array(33).fill("x")}], ["seal.create", {title: "x", refs: ["x".repeat(1025)]}], ["question.ask", {text: "x", id: "x".repeat(129)}]] as const) assert.throws(() => policy.admit(verb, params, identity));
+});
+
+test("bwrap mode detects the setuid bit on the resolved executable", async () => {
+  const {bwrapMode} = await import("../src/confinedPeer.ts");
+  const {mkdtempSync, writeFileSync, chmodSync, realpathSync} = await import("node:fs");
+  const {tmpdir} = await import("node:os");
+  const {join} = await import("node:path");
+  const dir = mkdtempSync(join(tmpdir(), "hb-bwrap-mode-"));
+  const file = join(dir, "bwrap");
+  writeFileSync(file, "fixture");
+  chmodSync(file, 0o755);
+  assert.deepEqual(bwrapMode(dir), {path: realpathSync(file), setuid: false});
+  chmodSync(file, 0o4755);
+  assert.deepEqual(bwrapMode(dir), {path: realpathSync(file), setuid: true});
+});

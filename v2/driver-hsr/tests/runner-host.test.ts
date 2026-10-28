@@ -180,8 +180,9 @@ function drainUntil(
   return drainDriverUntil(driver, predicate, timeoutMs);
 }
 
-function makeDriver(dir: string, adapter: HarnessAdapter = stubAdapter): HsrDriver {
+function makeDriver(dir: string, adapter: HarnessAdapter = stubAdapter, onRuntimeReady?: (beeId: string, pid: number | null) => void): HsrDriver {
   return new HsrDriver({
+    onRuntimeReady,
     runtimeIdentity: fixtureRuntimeIdentity(dir),
     sessionLogDir: join(dir, "logs"),
     stopKillGraceMs: 400,
@@ -853,4 +854,28 @@ test("runner host preserves explicit harness Node options", (t) => {
   const result = runHostWithStdoutLines(["explicit harness options"], { NODE_OPTIONS: options, ELECTRON_RUN_AS_NODE: "explicit" });
   t.after(result.cleanup);
   assert.deepEqual(JSON.parse(readFileSync(marker, "utf8")), { node: options, electron: "explicit" });
+});
+
+
+test("runtime confinement observes synthetic readiness and adopted runner children", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "hb-v2-confinement-ready-"));
+  const observed: Array<{beeId: string; pid: number | null}> = [];
+  const callback = (beeId: string, pid: number | null) => {observed.push({beeId, pid});};
+  const adapter = {...stubAdapter, readyAtSpawn: true, parseLine: () => []} satisfies HarnessAdapter;
+  const first = makeDriver(dir, adapter, callback);
+  let second: HsrDriver | undefined;
+  try {
+    first.start("bee-confinement", 1);
+    await drainUntil(first, events => events.some(event => event.kind === "booted" && event.synthetic === true));
+    assert.ok(observed.some(value => value.beeId === "bee-confinement" && value.pid !== null));
+    const runtime = first.procOf("bee-confinement", 1)!;
+    persistFixtureProcess(dir, "bee-confinement", 1, runtime);
+    const checkpoint = 0;
+    first.detachAll();
+    const before = observed.length;
+    second = makeDriver(dir, adapter, callback);
+    assert.equal(second.adopt("bee-confinement", 1, runtime.pid, runtime.pidStartedAt, "idle", checkpoint), true);
+    assert.ok(observed.length > before);
+    assert.equal(observed.at(-1)?.pid, observed[0]?.pid);
+  } finally { second?.disposeAll(); first.disposeAll(); }
 });

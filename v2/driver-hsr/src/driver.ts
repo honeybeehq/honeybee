@@ -1230,6 +1230,7 @@ export class HsrDriver implements RuntimeDriver {
             this.connectSocket(p);
           }
           if (p.adapter?.readyAtSpawn) {
+            this.cfg.onRuntimeReady?.(p.beeId, p.agentPid);
             // The OS confirmed the AGENT spawn (v9: synthetic, never boot
             // evidence) — the same edge the direct child's `spawn` event was.
             this.events.push({
@@ -1634,6 +1635,7 @@ export class HsrDriver implements RuntimeDriver {
           };
           if (!pendingStart && execution && status.agentPid && status.agentBirth) { try { this.acceptExecutionStarted(proc,{pid:status.agentPid,birth:status.agentBirth}); } catch { return false; } }
           this.procs.set(beeId,proc);
+          this.cfg.onRuntimeReady?.(beeId, proc.agentPid);
           this.connectSocket(proc);
           return true;
         }
@@ -1687,6 +1689,7 @@ export class HsrDriver implements RuntimeDriver {
       pendingWrites: [],
       socketBroken: false,
     });
+    this.cfg.onRuntimeReady?.(beeId, status?.agentPid ?? null);
     if (receiptHost) this.connectSocket(this.procs.get(beeId)!);
     return true;
   }

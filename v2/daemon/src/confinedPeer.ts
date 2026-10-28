@@ -1,4 +1,5 @@
-import { accessSync, closeSync, constants, openSync, readFileSync, readlinkSync, realpathSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { accessSync, closeSync, constants, openSync, readFileSync, readlinkSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { LocalPeer } from "./peerCredentials.ts";
 import { RpcError } from "./protocol.ts";
@@ -23,7 +24,7 @@ export const procReader: ProcReader = {
   },
   userns: fd => readlinkSync(`/proc/self/fd/${fd}/ns/user`),
   selfUserns: () => readlinkSync("/proc/self/ns/user"),
-  children: (fd, pid) => readFileSync(`/proc/self/fd/${fd}/task/${pid}/children`, "utf8").trim().split(/\s+/).filter(Boolean).map(Number),
+  children: fd => readdirSync(`/proc/self/fd/${fd}/task`).flatMap(tid => readFileSync(`/proc/self/fd/${fd}/task/${tid}/children`, "utf8").trim().split(/\s+/).filter(Boolean).map(Number)),
   close: closeSync,
 };
 export function peerUserNamespace(peer: LocalPeer | undefined, proc: ProcReader = procReader): "same" | "different" | "unavailable" {
@@ -46,6 +47,7 @@ export function runtimeUserNamespace(pid: number, proc: ProcReader = procReader,
     fd = proc.open(pid);
     const birth = proc.birth(fd);
     const own = proc.userns(fd) === proc.selfUserns() ? "same" : "different";
+    if (own === "different") return proc.birth(fd) === birth ? "different" : "unavailable";
     const children = proc.children?.(fd, pid) ?? [];
     const result = children.length ? children.map(child => runtimeUserNamespace(child, proc, seen)) : [own];
     if (proc.birth(fd) !== birth || result.includes("unavailable")) return "unavailable";
@@ -67,13 +69,13 @@ export function peerConfinement(peer: LocalPeer | undefined, options: {
 export function strictConfinementReasons(sandbox: boolean, setuid: boolean, namespace?: "same" | "different" | "unavailable"): string[] {
   return [...(!sandbox ? ["cell_sandbox_off"] : []), ...(setuid ? ["setuid_bwrap"] : []), ...(namespace !== undefined && namespace !== "different" ? ["cell_userns_unisolated"] : [])];
 }
-export function bwrapMode(): {path: string | null; setuid: boolean} {
-  for (const directory of (process.env.PATH ?? "").split(":")) {
+export function bwrapMode(searchPath = process.env.PATH ?? ""): {path: string | null; setuid: boolean} {
+  for (const directory of searchPath.split(":")) {
     try {
       const path = realpathSync(join(directory, "bwrap"));
       accessSync(path, constants.X_OK);
       const stat = statSync(path);
-      if (stat.isFile()) return {path, setuid: (stat.mode & constants.S_ISUID) !== 0};
+      if (stat.isFile()) return {path, setuid: (stat.mode & 0o4000) !== 0};
     } catch {}
   }
   return {path: null, setuid: false};
@@ -89,5 +91,45 @@ export function assertConfinedSpawn(params: Record<string, unknown>, conn: Pick<
   if (params.cwd !== undefined || params.node !== undefined || params.nodeId !== undefined || params.relay !== undefined || conn.ingress === "node_relay" || cell?.sandbox === false
     || (params.agent !== "inbox" && params.substrate !== "cell")) {
     throw new RpcError("confined_spawn_refused", "Confined callers may only spawn sandboxed local Cells without an explicit cwd");
+  }
+}
+
+
+const CONFINED_FIELDS: Record<string, readonly string[]> = {
+  view: ["beeId"], list: [],
+  "question.ask": ["beeId", "text", "options", "id", "idempotencyKey"],
+  "seal.create": ["beeId", "title", "body", "refs", "idempotencyKey"],
+  send: ["beeId", "body", "sender", "urgency", "idempotencyKey"],
+};
+export class ConfinedAdmission {
+  private readonly rates = new Map<string, {at: number; count: number}>();
+  admit(verb: string, params: Record<string, unknown>, identity: {
+    beeId: string; generation: number; parentId: string | null;
+    canSend(id: string): boolean;
+  }, now = Date.now()): Record<string, unknown> {
+    const deny = (): never => { throw new RpcError("confined_peer_refused", "Confined caller operation refused"); };
+    const fields = Object.hasOwn(CONFINED_FIELDS, verb) ? CONFINED_FIELDS[verb] : undefined;
+    if (!fields || Object.keys(params).some(key => !fields.includes(key))) deny();
+    const {beeId} = identity;
+    if (verb === "send") {
+      if (typeof params.beeId !== "string" || params.beeId !== identity.parentId || !identity.canSend(params.beeId)
+        || params.sender !== undefined && params.sender !== beeId) deny();
+    } else if (verb !== "list" && params.beeId !== undefined && params.beeId !== beeId) deny();
+    if (Buffer.byteLength(JSON.stringify(params)) > 1048576) deny();
+    for (const [key, limit] of [["body", 65536], ["text", 8192], ["title", 512], ["id", 128], ["idempotencyKey", 256]] as const) if (typeof params[key] === "string" && Buffer.byteLength(params[key]) > limit) deny();
+    for (const [key, limit] of [["options", 256], ["refs", 1024]] as const) if (params[key] !== undefined && (!Array.isArray(params[key]) || params[key].length > 32 || params[key].some(value => typeof value !== "string" || Buffer.byteLength(value) > limit))) deny();
+    const limit = verb === "send" ? 60 : verb === "question.ask" || verb === "seal.create" ? 12 : null;
+    if (limit !== null) {
+      for (const [key, value] of this.rates) if (now - value.at >= 60000) this.rates.delete(key);
+      const key = JSON.stringify([beeId, verb]);
+      const rate = this.rates.get(key) ?? {at: now, count: 0};
+      if (++rate.count > limit) deny();
+      this.rates.set(key, rate);
+    }
+    const admitted = {...params};
+    if (verb === "send") { admitted.sender = beeId; if (admitted.urgency === "now") admitted.urgency = "next"; }
+    else if (verb !== "list") admitted.beeId = beeId;
+    if (typeof admitted.idempotencyKey === "string") admitted.idempotencyKey = `confined:${createHash("sha256").update(JSON.stringify([beeId, verb, admitted.idempotencyKey])).digest("hex")}`;
+    return admitted;
   }
 }
