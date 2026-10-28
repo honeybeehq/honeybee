@@ -1,73 +1,73 @@
-sourceSha=4e12ddbdf5773b22a309c768c442537062b3cab0
-date=2026-10-28T15:31:29.243166+00:00
+sourceSha=ef61a37de80df0d2394716416b2323515d986cdf
+date=2026-10-28T15:46:28.650742+00:00
 venue=netcup-4 owned Cell; own disposable fixtures only
 command=node --test v2/daemon/tests/confined-peer.test.ts v2/daemon/tests/confined-peer-rpc.test.ts v2/daemon/tests/spawn-lineage.test.ts v2/daemon/tests/spawn-lineage-logic.test.ts v2/driver-hsr/tests/runner-host.test.ts
 
-✔ real unshare peer is refused by a disposable daemon while host CLI still spawns (2242.719099ms)
-✔ strict host with trust disabled cannot treat an unattributed host peer as registered (429.64361ms)
-✔ missing Linux peer credentials fail closed with a diagnostic error: degraded (101.740154ms)
-✔ missing Linux peer credentials fail closed with a diagnostic error: lookup_failed (10.23072ms)
-✔ confinement uses pinned process birth and namespace, failing closed (1.09262ms)
-✔ strict mode triggers and trusted host exceptions (0.963881ms)
-✔ confined spawn refuses every forbidden placement and permits sandboxed Cells and inbox (0.810158ms)
-✔ no false positives: host CLI, registered Apiary service, and host HSR bee (0.331239ms)
-✔ confined credential and service registration verbs are refused (0.320762ms)
-✔ runtime namespace follows the sandbox child rather than its host wrapper (0.561759ms)
-✔ confined allowlist denies every other verb including transcript and all placement indirections (5.954063ms)
-✔ confined writes enforce UTF-8 size and per-bee rate bounds across generations (1.229696ms)
-✔ bwrap mode detects the setuid bit on the resolved executable (1.517456ms)
-✔ spawn lineage binds authenticated bee and preserves operator delegation (2.91246ms)
-✔ spawn peer authentication follows exact process ancestry and chooses the closest bee (0.475704ms)
-✔ spawn refuses missing ancestry evidence and process replacement during inspection (0.276422ms)
-✔ gateway ancestry refuses peer and runtime PID reuse and reparenting during the final fence (0.349106ms)
+✔ real unshare peer is refused by a disposable daemon while host CLI still spawns (2136.331026ms)
+✔ strict host with trust disabled cannot treat an unattributed host peer as registered (604.730103ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: degraded (81.880232ms)
+✔ missing Linux peer credentials fail closed with a diagnostic error: lookup_failed (6.118181ms)
+✔ confinement uses pinned process birth and namespace, failing closed (1.362112ms)
+✔ strict mode triggers and trusted host exceptions (2.100588ms)
+✔ confined spawn refuses every forbidden placement and permits sandboxed Cells and inbox (0.608033ms)
+✔ no false positives: host CLI, registered Apiary service, and host HSR bee (0.305848ms)
+✔ confined credential and service registration verbs are refused (0.238804ms)
+✔ runtime namespace follows the sandbox child rather than its host wrapper (0.722071ms)
+✔ confined allowlist denies every other verb including transcript and all placement indirections (2.377432ms)
+✔ confined writes enforce UTF-8 size and per-bee rate bounds across generations (1.237537ms)
+✔ bwrap mode detects the setuid bit on the resolved executable (1.663325ms)
+✔ spawn lineage binds authenticated bee and preserves operator delegation (2.825034ms)
+✔ spawn peer authentication follows exact process ancestry and chooses the closest bee (0.536349ms)
+✔ spawn refuses missing ancestry evidence and process replacement during inspection (0.239095ms)
+✔ gateway ancestry refuses peer and runtime PID reuse and reparenting during the final fence (0.271937ms)
 ▶ spawn lineage: runtime ancestry, registered Apiary principal, and local operator
-  ✔ unrelated default spawn is accepted while a runtime boots (264.584116ms)
-{"caller":"runtime","argv":["spawn","default-child","inbox"],"status":0,"stdout":"{\"beeId\":\"c46763ef-6f92-4370-93f7-32ae3208de9a\",\"agent\":\"inbox\",\"handle\":\"IN.0002\",\"commandId\":null,\"messageId\":null,\"account\":null,\"substrate\":\"hsr\",\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-D5RYsi/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"89212d28-cbd4-4b5e-b3cc-9bc34ae559b1\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"connected\":true}}\n","stderr":""}
-  ✔ runtime CLI defaults to its exact process ancestor (323.046262ms)
-{"caller":"runtime","argv":["spawn","denied-2","inbox","--parent","ef244829-d16e-4dee-a641-57826eeea694"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-D5RYsi/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"89212d28-cbd4-4b5e-b3cc-9bc34ae559b1\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\n"}
-  ✔ runtime CLI refuses --parent (475.497462ms)
-{"caller":"runtime","argv":["spawn","denied-4","inbox","--no-parent"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-D5RYsi/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"89212d28-cbd4-4b5e-b3cc-9bc34ae559b1\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\n"}
-{"caller":"operator","argv":["spawn","operator-default","inbox"],"status":0,"stdout":"{\"beeId\":\"e4c9a155-4cd8-4b6e-bcbc-632e7d5702dd\",\"agent\":\"inbox\",\"handle\":\"IN.0003\",\"commandId\":null,\"messageId\":null,\"account\":null,\"substrate\":\"hsr\",\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-D5RYsi/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"89212d28-cbd4-4b5e-b3cc-9bc34ae559b1\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"connected\":true}}\n","stderr":""}
-  ✔ runtime CLI refuses --no-parent (281.316718ms)
-{"caller":"operator","argv":["spawn","operator-denied-6","inbox","--parent","ef244829-d16e-4dee-a641-57826eeea694"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-D5RYsi/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"89212d28-cbd4-4b5e-b3cc-9bc34ae559b1\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service\n"}
-{"caller":"operator","argv":["spawn","operator-denied-7","inbox","--no-parent"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-D5RYsi/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"89212d28-cbd4-4b5e-b3cc-9bc34ae559b1\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service\n"}
-  ✔ unregistered operator CLI allows defaults and refuses explicit lineage (713.022599ms)
-{"caller":"detached","pid":2128188,"initialPpid":1258,"detachedPpid":1258,"intermediatePid":2128175,"intermediatePpid":2127863,"runtimePid":2127863,"ancestry":[{"pid":2128188,"ppid":1258},{"pid":1258,"ppid":1}],"outputs":[{"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-D5RYsi/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"89212d28-cbd4-4b5e-b3cc-9bc34ae559b1\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service\n"},{"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-D5RYsi/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"89212d28-cbd4-4b5e-b3cc-9bc34ae559b1\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-D5RYsi\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service\n"}],"rpc":{"code":"caller_not_trusted"},"defaultSpawn":{"result":{"beeId":"f038a2ce-7900-46b8-83b4-9274d040fd43","agent":"inbox","handle":"IN.0004","commandId":null,"messageId":null,"account":null}}}
-  ✔ detached runtime descendant cannot acquire operator lineage authority (533.732922ms)
-  ✔ runtime Unix RPC refuses an external parent (21.436136ms)
-  ✔ runtime cannot escape lineage by declaring node_relay (23.060019ms)
-  ✔ runtime cannot escape lineage by declaring remote (21.671294ms)
-  ✔ runtime cannot register as a service even with the disposable fixture key (20.586175ms)
-  ✔ plain operator RPC refuses an external parent (9.609808ms)
-  ✔ unregistered caller cannot assert an Apiary principal (7.358434ms)
-  ✔ replay cannot borrow another authenticated parent's spawn (35.096326ms)
-  ✔ registered service defaults forwarded principal and permits matching parent (16.915627ms)
-  ✔ forwarded principal refuses {"parentId":"ef244829-d16e-4dee-a641-57826eeea694"} (2.354787ms)
-  ✔ forwarded principal refuses {"parentId":null} (1.995705ms)
-  ✔ forwarded principal refuses {"parentId":"15ecdadc-f4b1-4265-9fac-9516a5ada650","parentExternal":true} (3.21252ms)
-  ✔ registered service without principal can delegate any lineage (24.528058ms)
-✔ spawn lineage: runtime ancestry, registered Apiary principal, and local operator (3549.993604ms)
-✔ runner host logs an item/completed image generation as a file reference (132.170293ms)
-✔ runner host logs every thread/fork image generation as a file reference (96.435146ms)
-✔ runner host keeps an inbound line without image substrings byte-identical (100.385211ms)
-✔ runner host keeps a malformed image generation line byte-identical (84.716357ms)
-✔ runner host keeps image generation bytes verbatim in the observation journal (85.662806ms)
-✔ mail delivery stays unconsumed until the runner socket connects, then sends once (337.61907ms)
-✔ host delivery refuses before encoding and distinguishes write throws from backpressure (1.486208ms)
-✔ a source checkout defaults to the sibling TypeScript runner-host entry (511.449258ms)
-✔ an explicit hostCommand remains a complete caller-owned override (370.537066ms)
-✔ daemon restart: the runtime survives and the successor daemon delivers at full capability (531.395181ms)
-✔ adoption replays a runner-persisted completion missed by the dead daemon (418.036225ms)
-✔ recovery replay after the completion fold is idempotent (459.343497ms)
-✔ recovery preserves journal order when completion is followed by a newer turn start (380.423197ms)
-✔ missing or generation-corrupt recovery evidence fails closed without manufacturing idle (763.507301ms)
-✔ a genuinely long-running silent turn stays running across adoption (630.821661ms)
-✔ Codex thread/status idle plus turn/completed maps through adoption to one turn end (461.637619ms)
-✔ Codex adoption restores the durable thread and active turn, then confirms steer and idle delivery (910.837081ms)
-✔ adoption with dead host artifacts falls back to refusing, never a phantom runtime (373.711599ms)
-✔ quiet final assistant evidence survives a restart before turn completion (1864.110643ms)
-✔ runner host preserves explicit harness Node options (99.70159ms)
-✔ runtime confinement observes synthetic readiness and adopted runner children (230.130968ms)
+  ✔ unrelated default spawn is accepted while a runtime boots (231.017359ms)
+{"caller":"runtime","argv":["spawn","default-child","inbox"],"status":0,"stdout":"{\"beeId\":\"aca0e38f-7544-4217-80e1-c12aff17d1ac\",\"agent\":\"inbox\",\"handle\":\"IN.0002\",\"commandId\":null,\"messageId\":null,\"account\":null,\"substrate\":\"hsr\",\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-6MO9p5/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"ace76426-6d77-4505-af95-9b9371a6e74d\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"connected\":true}}\n","stderr":""}
+  ✔ runtime CLI defaults to its exact process ancestor (258.631889ms)
+{"caller":"runtime","argv":["spawn","denied-2","inbox","--parent","b889ab2b-6448-4e61-ba84-8a7f36235117"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-6MO9p5/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"ace76426-6d77-4505-af95-9b9371a6e74d\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\n"}
+  ✔ runtime CLI refuses --parent (253.848027ms)
+{"caller":"runtime","argv":["spawn","denied-4","inbox","--no-parent"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-6MO9p5/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"ace76426-6d77-4505-af95-9b9371a6e74d\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): A bee spawn must use its authenticated caller as the local parent; --no-parent and external or different parents are refused\n"}
+{"caller":"operator","argv":["spawn","operator-default","inbox"],"status":0,"stdout":"{\"beeId\":\"4fd0ada1-4fd8-4d35-a467-7bf004c228f9\",\"agent\":\"inbox\",\"handle\":\"IN.0003\",\"commandId\":null,\"messageId\":null,\"account\":null,\"substrate\":\"hsr\",\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-6MO9p5/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"ace76426-6d77-4505-af95-9b9371a6e74d\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"connected\":true}}\n","stderr":""}
+  ✔ runtime CLI refuses --no-parent (315.889985ms)
+{"caller":"operator","argv":["spawn","operator-denied-6","inbox","--parent","b889ab2b-6448-4e61-ba84-8a7f36235117"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-6MO9p5/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"ace76426-6d77-4505-af95-9b9371a6e74d\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service\n"}
+{"caller":"operator","argv":["spawn","operator-denied-7","inbox","--no-parent"],"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-6MO9p5/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"ace76426-6d77-4505-af95-9b9371a6e74d\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service\n"}
+  ✔ unregistered operator CLI allows defaults and refuses explicit lineage (897.177121ms)
+{"caller":"detached","pid":2140125,"initialPpid":1258,"detachedPpid":1258,"intermediatePid":2140099,"intermediatePpid":2139771,"runtimePid":2139771,"ancestry":[{"pid":2140125,"ppid":1258},{"pid":1258,"ppid":1}],"outputs":[{"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-6MO9p5/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"ace76426-6d77-4505-af95-9b9371a6e74d\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service\n"},{"status":1,"stdout":"{\"error\":{\"code\":\"caller_not_trusted\",\"message\":\"Explicit, empty, and external parent claims require the registered Apiary service\"},\"daemonTarget\":{\"dataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"dataDirSource\":\"flag\",\"socketPath\":\"/tmp/hb-v2-daemon-6MO9p5/hived.sock\",\"socketSource\":\"flag\",\"instanceId\":\"ace76426-6d77-4505-af95-9b9371a6e74d\",\"daemonDataDir\":\"/tmp/hb-v2-daemon-6MO9p5\",\"connected\":true}}\n","stderr":"hive: error (caller_not_trusted): Explicit, empty, and external parent claims require the registered Apiary service\n"}],"rpc":{"code":"caller_not_trusted"},"defaultSpawn":{"result":{"beeId":"4d3d8429-d8a5-4646-a3f5-2f5500900c36","agent":"inbox","handle":"IN.0004","commandId":null,"messageId":null,"account":null}}}
+  ✔ detached runtime descendant cannot acquire operator lineage authority (597.266589ms)
+  ✔ runtime Unix RPC refuses an external parent (18.821811ms)
+  ✔ runtime cannot escape lineage by declaring node_relay (19.936227ms)
+  ✔ runtime cannot escape lineage by declaring remote (19.700568ms)
+  ✔ runtime cannot register as a service even with the disposable fixture key (18.990836ms)
+  ✔ plain operator RPC refuses an external parent (4.74556ms)
+  ✔ unregistered caller cannot assert an Apiary principal (2.425028ms)
+  ✔ replay cannot borrow another authenticated parent's spawn (32.313758ms)
+  ✔ registered service defaults forwarded principal and permits matching parent (26.757257ms)
+  ✔ forwarded principal refuses {"parentId":"b889ab2b-6448-4e61-ba84-8a7f36235117"} (4.135295ms)
+  ✔ forwarded principal refuses {"parentId":null} (4.410216ms)
+  ✔ forwarded principal refuses {"parentId":"15ecdadc-f4b1-4265-9fac-9516a5ada650","parentExternal":true} (3.727467ms)
+  ✔ registered service without principal can delegate any lineage (33.959475ms)
+✔ spawn lineage: runtime ancestry, registered Apiary principal, and local operator (3425.509122ms)
+✔ runner host logs an item/completed image generation as a file reference (158.041789ms)
+✔ runner host logs every thread/fork image generation as a file reference (79.460483ms)
+✔ runner host keeps an inbound line without image substrings byte-identical (78.803945ms)
+✔ runner host keeps a malformed image generation line byte-identical (81.159603ms)
+✔ runner host keeps image generation bytes verbatim in the observation journal (81.057084ms)
+✔ mail delivery stays unconsumed until the runner socket connects, then sends once (321.67929ms)
+✔ host delivery refuses before encoding and distinguishes write throws from backpressure (1.466607ms)
+✔ a source checkout defaults to the sibling TypeScript runner-host entry (476.862984ms)
+✔ an explicit hostCommand remains a complete caller-owned override (317.105078ms)
+✔ daemon restart: the runtime survives and the successor daemon delivers at full capability (729.303256ms)
+✔ adoption replays a runner-persisted completion missed by the dead daemon (473.048841ms)
+✔ recovery replay after the completion fold is idempotent (481.470449ms)
+✔ recovery preserves journal order when completion is followed by a newer turn start (408.130169ms)
+✔ missing or generation-corrupt recovery evidence fails closed without manufacturing idle (832.760634ms)
+✔ a genuinely long-running silent turn stays running across adoption (670.810296ms)
+✔ Codex thread/status idle plus turn/completed maps through adoption to one turn end (487.911495ms)
+✔ Codex adoption restores the durable thread and active turn, then confirms steer and idle delivery (934.190729ms)
+✔ adoption with dead host artifacts falls back to refusing, never a phantom runtime (356.215828ms)
+✔ quiet final assistant evidence survives a restart before turn completion (1891.008449ms)
+✔ runner host preserves explicit harness Node options (92.1864ms)
+✔ runtime confinement observes synthetic readiness and adopted runner children (256.309422ms)
 ℹ tests 57
 ℹ suites 0
 ℹ pass 57
@@ -75,6 +75,6 @@ command=node --test v2/daemon/tests/confined-peer.test.ts v2/daemon/tests/confin
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 8951.272429
+ℹ duration_ms 9335.943744
 
 exitCode=0
