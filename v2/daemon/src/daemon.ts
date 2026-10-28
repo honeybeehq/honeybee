@@ -1673,7 +1673,11 @@ export class HiveDaemon {
     const changed = replacement && (replacement.authorityInstanceId !== admitted.material.authorityInstanceId || replacement.scope !== admitted.material.scope || replacement.epoch !== admitted.material.epoch || replacement.generation > admitted.material.generation);
     const expired = (this.deps.cellCredentialNow ?? Date.now)() >= admitted.cellProjection.expiresAt;
     if (expired) this.setCellAuthNeeded(beeId, "cell_access_expired: renewed projection required; manual restart if renewal is unavailable");
-    const previous = store.listCommands({beeId}).filter(command => command.targetGeneration === generation && command.args.reason === "cell_credentials").at(-1);
+    const previous = store.latestCellCredentialReplacement(beeId,generation);
+    if (account.status === "paused" && (account.pausedBy ?? "operator") === "operator") {
+      if (!expired && (previous || changed)) this.setCellAuthNeeded(beeId,"cell_replacement_held: operator control");
+      return !expired;
+    }
     if (previous && (previous.status === "queued" || previous.status === "running" || previous.status === "done" && previous.args.thenRevive === true)) return false;
     if (previous?.status === "failed") { this.setCellAuthNeeded(beeId,"cell_replacement_failed: manual restart required"); return false; }
     const commandKey = `cell-credentials:${beeId}:${generation}:${account.id}:${bee.authControlFence ?? 0}:${previous?.id ?? 0}`;

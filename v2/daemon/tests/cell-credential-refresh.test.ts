@@ -16,7 +16,8 @@ function fixture(t: import("node:test").TestContext) {
   const root = mkdtempSync(resolve(".cache/hb-refresh-"));
   const store = openCoreStore(join(root,"core.sqlite"), {now:()=>1000, ephemeral:true});
   t.after(()=> {store.close(); const r=spawnSync("trash",["--trash-dir",resolve(".cache/t11g-trash"),root],{encoding:"utf8"});assert.equal(r.status,0,r.stderr);});
-  const daemon = new HiveDaemon({...loadNodeConfig(root),nodeKind:"satellite"},{cellCredentialNow:()=>1000});
+  let clock=1000;
+  const daemon = new HiveDaemon({...loadNodeConfig(root),nodeKind:"satellite"},{cellCredentialNow:()=>clock});
   const internal = daemon as any;
   internal.store=store; internal.resolveCellSpec=()=>({sandbox:true});
   let material={kind:"lease",scope:"studio:share",epoch:1,generation:1,authorityInstanceId:"studio"};
@@ -34,7 +35,7 @@ function fixture(t: import("node:test").TestContext) {
     store.updateRuntimeState(bee.id,1,"running");
     return bee.id;
   }
-  return {store,internal,bee,renew:(unchanged=false)=>{material={...material,generation:material.generation+1}; if(!unchanged) {raw=JSON.stringify({tokens:{access_token:`synthetic-${material.generation}`,refresh_token:""}});writeFileSync(join(home,"auth.json"),raw);}}};
+  return {store,internal,bee,advance:(at:number)=>{clock=at;},renew:(unchanged=false)=>{material={...material,generation:material.generation+1}; if(!unchanged) {raw=JSON.stringify({tokens:{access_token:`synthetic-${material.generation}`,refresh_token:""}});writeFileSync(join(home,"auth.json"),raw);}}};
 }
 
 test("lease publication queues one replacement per Bee, waits for a safe boundary and preserves mail", t=>{
@@ -144,4 +145,19 @@ test("Cell expiry preserves a genuine harness authentication failure",t=>{
   r.internal.admitCellCredentialTurn(id,1);r.internal.admitCellCredentialTurn(id,1);
   assert.equal(r.store.lastAuditSeq(),seq);
   assert.equal(r.store.activeFlags(id)[0]?.detail,"Provider rejected synthetic fixture");
+});
+
+
+test("operator parking holds replacement without stopping a running Cell",t=>{
+  const r=fixture(t),id=r.bee("parked");r.renew();r.internal.reconcileCellCredentials();
+  r.store.pauseAccount(r.store.listAccounts()[0]!.id,{by:"operator",owner:null});
+  r.store.updateRuntimeState(id,1,"idle");assert.equal(r.store.claimNextCommand(),null);
+  r.store.updateRuntimeState(id,1,"running");
+  assert.equal(r.internal.admitCellCredentialTurn(id,1),true);
+  assert.equal(r.store.listCommands().filter(c=>c.verb==="stop" && c.status==="queued").length,0);
+  assert.equal(r.store.activeFlags(id)[0]?.detail,"cell_replacement_held: operator control");
+  assert.equal(r.store.currentRuntime(id)?.state,"running");
+  r.advance(3_601_000);assert.equal(r.internal.admitCellCredentialTurn(id,1),false);
+  assert.match(r.store.activeFlags(id)[0]!.detail,/cell_access_expired/);
+  assert.equal(r.store.currentRuntime(id)?.state,"running");
 });

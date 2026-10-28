@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 export class CellCredentialRefusal extends Error {
   readonly code = "account_auth_needed";
-  constructor() { super("auth_needed: sandboxed Codex requires access-only credentials; enroll native accounts through the human operator"); }
+  constructor(snapshotName?: string) { super("auth_needed: sandboxed Codex requires access-only credentials; enroll native accounts through the human operator" + (snapshotName ? `; invalid snapshot metadata: ${snapshotName}` : "")); }
 }
 
 export function accessOnlyCodexDocument(raw: string): string {
@@ -54,7 +54,7 @@ export function snapshotAccessOnlyCodex(sourceHome: string, source: string, snap
   snapshots.sort((a,b) => b.info.mtimeMs-a.info.mtimeMs || a.name.localeCompare(b.name));
   for (const snapshot of snapshots.slice(8)) {
     if (retained.has(snapshot.name.slice(0,-5))) continue;
-    if (!snapshot.info.isFile() || snapshot.info.isSymbolicLink() || snapshot.info.uid !== process.geteuid?.() || (snapshot.info.mode & 0o222) !== 0) throw new CellCredentialRefusal();
+    if (!snapshot.info.isFile() || snapshot.info.isSymbolicLink() || snapshot.info.uid !== process.geteuid?.() || (snapshot.info.mode & 0o222) !== 0) throw new CellCredentialRefusal(snapshot.name);
     unlinkSync(join(root,snapshot.name));
   }
   let fd: number | undefined;

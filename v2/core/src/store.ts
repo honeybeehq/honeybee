@@ -5574,6 +5574,11 @@ export class CoreStore {
     ).get(beeId, generation) !== undefined;
   }
 
+  latestCellCredentialReplacement(beeId: string, generation: number): CommandRow | null {
+    const row = this.stmt("SELECT * FROM commands INDEXED BY commands_cell_credentials WHERE bee_id=? AND target_generation=? AND verb='stop' AND json_extract(args,'$.reason')='cell_credentials' ORDER BY id DESC LIMIT 1").get(beeId,generation) as Row | undefined;
+    return row ? mapCommand(row) : null;
+  }
+
   listCommands(filter: { beeId?: string; status?: CommandRow["status"] } = {}): CommandRow[] {
     let sql = "SELECT * FROM commands";
     const where: string[] = [];
