@@ -232,6 +232,7 @@ const VALUE_FLAGS = new Set([
   "--from",
   "--source-build",
   "--command-id",
+  "--service-intent",
   "--agent",
   "--cwd",
   "--title",
@@ -695,7 +696,7 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 // ---------------------------------------------------------------------------
 
 const SPAWN_USAGE =
-  "usage: hive spawn <name> [agent[-account|-auto|-rr]] [--agent <agent[-account|-auto|-rr]>] [--account selector|auto|rr|none] [--only-account id]... [--cwd dir] [--title t] [--tag t]... [--arg a]... [--parent bee|--no-parent] [--idempotency-key k]\n" +
+  "usage: hive spawn <name> [agent[-account|-auto|-rr]] [--agent <agent[-account|-auto|-rr]>] [--account selector|auto|rr|none] [--only-account id]... [--cwd dir] [--title t] [--tag t]... [--arg a]... [--parent bee|--no-parent] [--service-intent service|delegation] [--idempotency-key k]\n" +
   "       hive spawn <name> [agent] --substrate cell --origin <repo> [--sha s] [--warm dir,dir|--warm] [--sandbox|--no-sandbox]\n" +
   "       (agent may be positional — v1 ergonomics — or --agent; default claude)";
 
@@ -714,6 +715,14 @@ export function agentAccountSelection(token: string): AgentAccountSelection {
     }
   }
   return { agent: token };
+}
+
+function spawnRequestContext(c: RpcClient, parsed: Parsed): { serviceIntent: "service" | "delegation" } | undefined {
+  const serviceIntent = parsed.flags.get("--service-intent");
+  if (serviceIntent === undefined) return undefined;
+  if (serviceIntent !== "service" && serviceIntent !== "delegation") throw new Error("--service-intent requires service or delegation");
+  if (!c.capabilities.includes("spawn.provenance.v1")) throw new RpcError("capability_missing", "Update Honeybee: spawn.provenance.v1 is required for --service-intent.");
+  return { serviceIntent };
 }
 
 /** The spawn RPC path (name = positional[1]) — shared by spawn and the x/run/xa sugar. */
@@ -759,6 +768,7 @@ async function spawnBee(
     throw new Error(`${SPAWN_USAGE}\n(--origin/--sha only apply to --substrate cell)`);
   }
   const result = await withClient(ctx, async (c) => {
+    const requestContext = spawnRequestContext(c, parsed);
     // v6 parenting: an explicit --parent (id or unique name) is strict; the
     // ambient HIVE_BEE_ID (this process IS a bee) is used iff that bee exists
     // on this node — a stamp from another node/world is dropped, not an error.
@@ -798,7 +808,7 @@ async function spawnBee(
       ...(onlyAccountIds.length > 0 ? { onlyAccountIds } : {}),
       ...(initialPrompt !== undefined ? { prompt: initialPrompt } : {}),
       idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
-    });
+    }, undefined, requestContext);
   });
   return { ...result, agent: result.agent ?? agent, substrate };
 }
@@ -1521,10 +1531,11 @@ async function cmdThreadOperationControl(ctx: CliContext, parsed: Parsed): Promi
 
 async function cmdThreadOperation(ctx: CliContext, parsed: Parsed): Promise<number> {
   const [command, needle] = parsed.positional;
-  if (!needle) throw new Error("usage: hive thread-fork|thread-handoff <bee> [--instruction text] [--idempotency-key key]");
+  if (!needle) throw new Error("usage: hive thread-fork|thread-handoff <bee> [--instruction text] [--service-intent service|delegation] [--idempotency-key key]");
   const kind = command === "thread-fork" ? "fork" : "handoff";
   validateThreadArgs(parsed, kind === "handoff");
   return withClient(ctx, async c => {
+    const requestContext = spawnRequestContext(c, parsed);
     const list = await c.request<ListResult>("list");
     const beeId = resolveBeeIn(list.views, needle);
     const view = await c.request<ViewResult>("view", { beeId });
@@ -1533,31 +1544,32 @@ async function cmdThreadOperation(ctx: CliContext, parsed: Parsed): Promise<numb
       idempotencyKey: parsed.flags.get("--idempotency-key") ?? randomUUID(),
       ...(parsed.flags.has("--name") ? { name: parsed.flags.get("--name") } : {}),
       ...(kind === "handoff" ? { instruction: parsed.flags.get("--instruction") } : {}),
-    });
+    }, undefined, requestContext);
     emit(ctx, [`${result.operation.id}: ${result.operation.sourceBeeId} → ${result.operation.successorBeeId} (${result.operation.phase})`], result, false);
     return 0;
   });
 }
 
 function validateThreadArgs(parsed: Parsed, handoff: boolean): void {
-  const allowed = new Set(["--name", "--idempotency-key", "--data-dir", "--config", "--socket", "--json", "--allow-foreign-daemon", ...(handoff ? ["--instruction"] : [])]);
+  const allowed = new Set(["--service-intent", "--name", "--idempotency-key", "--data-dir", "--config", "--socket", "--json", "--allow-foreign-daemon", ...(handoff ? ["--instruction"] : [])]);
   for (const flag of parsed.flags.keys()) if (!allowed.has(flag)) throw new Error(`${parsed.positional[0]} does not accept ${flag}`);
   if (parsed.positional.length !== 2 || parsed.tags.length || parsed.args.length || parsed.lists.size || parsed.rest !== null) throw new Error(`${parsed.positional[0]} accepts one source bee and documented options only`);
 }
 
 async function cmdFork(ctx: CliContext, parsed: Parsed): Promise<number> {
   const [, needle, ...promptParts] = parsed.positional;
-  if (!needle) throw new Error("usage: hive fork <bee> [--name n] [--idempotency-key k]");
+  if (!needle) throw new Error("usage: hive fork <bee> [--name n] [--service-intent service|delegation] [--idempotency-key k]");
   if (promptParts.length || parsed.flags.has("--prompt") || parsed.flags.has("--instruction") || parsed.flags.has("--compact")) throw new Error("Fork is a plain conversation copy; use thread-handoff for instructed compaction");
   validateThreadArgs(parsed, false);
   return withClient(ctx, async (c) => {
+    const requestContext = spawnRequestContext(c, parsed);
     const list = await c.request<ListResult>("list");
     const beeId = resolveBeeIn(list.views, needle);
     const r = await c.request<ForkResult>("bee.fork", {
       beeId,
       ...(parsed.flags.has("--name") ? { name: parsed.flags.get("--name") as string } : {}),
       idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
-    });
+    }, undefined, requestContext);
     emit(
       ctx,
       [
@@ -1781,6 +1793,7 @@ async function cmdAction(ctx: CliContext, parsed: Parsed): Promise<number> {
  */
 async function cmdHandoff(ctx: CliContext, parsed: Parsed): Promise<number> {
   const usage = "usage: hive handoff <bee> --to <agent> [--model m] [--args -- <args…>] [--account a|auto|rr|none] [-p instruction] [--now] [--idempotency-key k] [--wait [--timeout ms]] | handoff get <handoffId> | handoff status <bee>";
+  if (parsed.flags.has("--service-intent")) throw new Error("handoff does not accept --service-intent");
   const sub = parsed.positional[1];
   if (sub === "get") {
     const handoffId = parsed.positional[2];
