@@ -231,6 +231,9 @@ renameSync(payload.output+'.pending',payload.output);
     assert.equal((await client.request<SpawnResult>("spawn", params, 5000, context)).beeId, first.beeId);
     await assert.rejects(client.request("spawn", params, 5000, { sessionPrincipal: { beeId: other.beeId } }), error => error instanceof RpcError && error.code === "idempotency_conflict");
     await assert.rejects(client.request("spawn", { ...params, parentId: other.beeId }, 5000, context), error => error instanceof RpcError && error.code === "caller_not_trusted");
+    await client.request("delete", { beeId: first.beeId });
+    assert.equal((await client.request<SpawnResult>("spawn", params, 5000, context)).beeId, first.beeId);
+    await assert.rejects(client.request("spawn", params, 5000, { sessionPrincipal: { beeId: other.beeId } }), error => error instanceof RpcError && error.code === "idempotency_conflict");
   });
   await t.test("registered service defaults forwarded principal and permits matching parent", async () => {
     for (const lineage of [{}, { parentId: parent.beeId }]) {
