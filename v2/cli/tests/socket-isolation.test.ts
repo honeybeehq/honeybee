@@ -381,8 +381,9 @@ test("socket isolation against throwaway daemons", async (t) => {
       try {
         await assert.rejects(client.request("spawn", { name: "raw-foreign", agent: "claude", cwd: scratch }), (err: unknown) =>
           err instanceof RpcError && err.code === "foreign_daemon_spawn" && (err.details as Json).reason === "data_dir_mismatch");
-        await assert.rejects(client.request("spawn", { name: "raw-stub", agent: "stub", cwd: scratch }), (err: unknown) =>
-          err instanceof RpcError && err.code === "workstation_heavy_work_denied");
+        const fallback = await client.request<Json>("spawn", { name: "raw-stub", agent: "stub", cwd: scratch });
+        assert.ok(fallback.beeId);
+        assert.equal(fallback.notice.code, "no_satellite_available");
         const manual = await RpcClient.connect(daemonB!.socketPath, 3000, undefined, { caller: { client: "hive-cli", runtimeBeeId: null, runtimeContext: false, dataDir: canonicalPath(a.dir), expectedInstanceId: infoB.instanceId } });
         try {
           const stub = await manual.request<Json>("spawn", { name: "manual-stub", agent: "stub", cwd: scratch });
