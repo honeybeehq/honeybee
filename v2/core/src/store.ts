@@ -3174,6 +3174,13 @@ export class CoreStore {
     return row ? mapRuntime(row) : null;
   }
 
+  creationLineage(beeId: string): { parentId: string | null; parentExternal: boolean } | null {
+    const row = this.stmt("SELECT payload FROM audit WHERE bee_id = ? AND kind = 'bee.created' ORDER BY seq LIMIT 1").get(beeId) as Row | undefined;
+    if (!row) return null;
+    const { bee } = JSON.parse(row.payload as string) as { bee: BeeRow };
+    return { parentId: bee.parentId, parentExternal: bee.parentExternal };
+  }
+
   listRuntimes(beeId: string): RuntimeRow[] {
     const rows = this.db
       .prepare("SELECT * FROM runtimes WHERE bee_id = ? ORDER BY generation")
