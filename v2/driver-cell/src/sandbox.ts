@@ -433,7 +433,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     "--unsetenv", "DBUS_SESSION_BUS_ADDRESS", "--unsetenv", "DBUS_SYSTEM_BUS_ADDRESS",
     "--unsetenv", "SSH_AUTH_SOCK", "--unsetenv", "XDG_RUNTIME_DIR", "--unsetenv", "NODE_OPTIONS",
     "--setenv", "HIVE_CELL_GATEWAY_SOCKET", "/run/honeybee/gateway.sock",
-    "--setenv", "PATH", `/run/honeybee/bin:${process.env.PATH ?? "/usr/bin:/bin"}`,
+    "--setenv", "PATH", `/run/honeybee/bin:${toolchain ? `${toolchain}/bin:` : ""}/usr/local/bin:/usr/bin:/bin`,
     "--share-net", "--die-with-parent");
   const parent = statSync("/proc/self/ns/user");
   out.push("--", "/run/honeybee/cell-scope", "--assert-userns", `${parent.dev}:${parent.ino}`, "--", command, ...args);
