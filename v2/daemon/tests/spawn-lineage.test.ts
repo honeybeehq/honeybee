@@ -11,29 +11,50 @@ import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 
 const cli = fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url));
 const rpcClientModule = fileURLToPath(new URL("../../cli/src/client.ts", import.meta.url));
+const localTrustModule = fileURLToPath(new URL("../src/localRpcTrust.ts", import.meta.url));
 const external = "15ecdadc-f4b1-4265-9fac-9516a5ada650";
 interface Output { status: number | null; stdout: string; stderr: string }
 
 test("spawn lineage: runtime ancestry, registered Apiary principal, and local operator", { timeout: 120_000 }, async t => {
   const rig = makeDaemonDir();
   const home = join(rig.dir, "home"), harness = join(rig.dir, "lineage.mjs");
+  const readyFile = join(rig.dir, "ready");
+  const detachedHelper = join(rig.dir, "detached.mjs");
+  const intermediate = join(rig.dir, "intermediate.mjs");
   const keyFile = join(rig.dir, "rpc-private", "registration.key");
   mkdirSync(home);
   writeFileSync(harness, `
 import {createInterface} from 'node:readline';
 import {spawnSync} from 'node:child_process';
-import {writeFileSync} from 'node:fs';
+import {writeFileSync,existsSync,readFileSync} from 'node:fs';
+import {createHmac} from 'node:crypto';
+import {localTrustMessage} from ${JSON.stringify(localTrustModule)};
 import {RpcClient} from ${JSON.stringify(rpcClientModule)};
 const emit = value => console.log(JSON.stringify(value));
-emit({event:'ready',sessionId:'lineage-'+process.pid});
+const ready = setInterval(() => { if (existsSync(${JSON.stringify(readyFile)})) { clearInterval(ready); emit({event:'ready',sessionId:'lineage-'+process.pid}); } }, 10);
 createInterface({input:process.stdin}).on('line', async line => {
   const message = JSON.parse(line);
   if (message.type !== 'message') return;
   emit({event:'turn_started',messageId:message.id});
-  const {args,output,rpc} = JSON.parse(message.body);
+  const {args,output,rpc,detach} = JSON.parse(message.body);
+  if (detach) {
+    const result = spawnSync(process.execPath, [${JSON.stringify(intermediate)}, JSON.stringify({...detach,output,runtimePid:process.pid})], {env:process.env,encoding:'utf8',timeout:5000});
+    if (result.status !== 0) writeFileSync(output,JSON.stringify({error:result.stderr}));
+    emit({event:'turn_ended',messageId:message.id,ok:true}); return;
+  }
   if (rpc) {
     const client = await RpcClient.connect(rpc.socket);
-    try { writeFileSync(output, JSON.stringify({result:await client.request('spawn',rpc.params)})); }
+    try {
+      let result;
+      if (rpc.register) {
+        const challenge = await client.request('rpc.localTrust.challenge');
+        const secret = readFileSync(rpc.keyFile);
+        const token = createHmac('sha256',secret).update(localTrustMessage(challenge)).digest('hex');
+        secret.fill(0);
+        result = await client.request('rpc.localTrust.register',{pid:process.pid,challengeId:challenge.challengeId,token});
+      } else result = await client.request('spawn',rpc.params);
+      writeFileSync(output, JSON.stringify({result}));
+    }
     catch (error) { writeFileSync(output,JSON.stringify({code:error.code})); }
     finally { client.close(); }
     emit({event:'turn_ended',messageId:message.id,ok:true}); return;
@@ -44,6 +65,41 @@ createInterface({input:process.stdin}).on('line', async line => {
   writeFileSync(output, JSON.stringify({status:result.status,stdout:result.stdout,stderr:result.stderr}));
   emit({event:'turn_ended',messageId:message.id,ok:true});
 });
+`);
+  writeFileSync(intermediate, `
+import {spawn} from 'node:child_process';
+const payload = JSON.parse(process.argv[2]);
+const child = spawn(process.execPath, [${JSON.stringify(detachedHelper)}, JSON.stringify({...payload,intermediatePid:process.pid,intermediatePpid:process.ppid})], {detached:true,stdio:'ignore',env:process.env});
+child.unref();
+`);
+  writeFileSync(detachedHelper, `
+import {spawnSync} from 'node:child_process';
+import {writeFileSync,renameSync,readFileSync} from 'node:fs';
+import {RpcClient} from ${JSON.stringify(rpcClientModule)};
+const payload = JSON.parse(process.argv[2]);
+const initialPpid = process.ppid;
+const deadline = Date.now()+5000;
+while (process.ppid === payload.intermediatePid && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,10));
+const detachedPpid = process.ppid;
+const ancestry = [];
+let pid = process.pid;
+for (let n=0; pid>1 && n<64; n++) {
+  const stat = readFileSync('/proc/'+pid+'/stat','utf8');
+  const ppid = Number(stat.slice(stat.lastIndexOf(')')+2).split(' ')[1]);
+  ancestry.push({pid,ppid}); pid=ppid;
+}
+const env = {...process.env}; delete env.HIVE_BEE_ID; delete env.HIVE_PARENT_BEE_ID;
+const outputs = payload.commands.map(args => {
+  const result = spawnSync(process.execPath,[${JSON.stringify(cli)},...args],{env,encoding:'utf8',timeout:15000});
+  return {status:result.status,stdout:result.stdout,stderr:result.stderr};
+});
+const client = await RpcClient.connect(payload.socket);
+let rpc;
+try { rpc = {result:await client.request('spawn',payload.params)}; }
+catch(error) { rpc = {code:error.code}; }
+finally { client.close(); }
+writeFileSync(payload.output+'.pending',JSON.stringify({pid:process.pid,initialPpid,detachedPpid,intermediatePid:payload.intermediatePid,intermediatePpid:payload.intermediatePpid,runtimePid:payload.runtimePid,ancestry,outputs,rpc}));
+renameSync(payload.output+'.pending',payload.output);
 `);
   const configPath = join(rig.dir, "config.json");
   const config = JSON.parse(readFileSync(configPath, "utf8"));
@@ -59,6 +115,12 @@ createInterface({input:process.stdin}).on('line', async line => {
     renameSync(rig.dir, trash);
   });
   const parent = await client.request<SpawnResult>("spawn", { name: "runtime-parent", agent: "lineage", cwd: rig.dir });
+  await t.test("unrelated default spawn is accepted while a runtime boots", async () => {
+    await waitFor(async () => (await client.request<ViewResult>("view", { beeId: parent.beeId })).runtime?.state === "booting", "runtime booting");
+    const child = await client.request<SpawnResult>("spawn", { name: "unrelated-during-boot", agent: "inbox" });
+    assert.equal((await client.request<ViewResult>("view", { beeId: child.beeId })).bee?.parentId, null);
+  });
+  writeFileSync(readyFile, "ready");
   await waitFor(async () => {
     const view = await client.request<ViewResult>("view", { beeId: parent.beeId });
     return view.runtime?.state === "idle" || view.runtime?.state === "running";
@@ -109,9 +171,35 @@ createInterface({input:process.stdin}).on('line', async line => {
       assert.match(result.stdout + result.stderr, /caller_not_trusted/);
     });
   }
-  await t.test("operator CLI allows explicit arbitrary and no parent", async () => {
-    await check(operatorCli(["spawn", "operator-parent", "inbox", "--parent", other.beeId]), other.beeId);
-    await check(operatorCli(["spawn", "operator-root", "inbox", "--no-parent"]), null);
+  await t.test("unregistered operator CLI allows defaults and refuses explicit lineage", async () => {
+    await check(operatorCli(["spawn", "operator-default", "inbox"]), null);
+    const outputs = [["--parent", other.beeId], ["--no-parent"]].map(flags => operatorCli(["spawn", `operator-denied-${++sequence}`, "inbox", ...flags]));
+    for (const result of outputs) {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout + result.stderr, /caller_not_trusted/);
+    }
+  });
+  await t.test("detached runtime descendant cannot acquire operator lineage authority", async () => {
+    const output = join(rig.dir, "detached.json");
+    await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output, detach: {
+      commands: [["--parent", other.beeId], ["--no-parent"]].map((flags, index) => args(["spawn", `detached-${index}`, "inbox", ...flags])),
+      socket: daemon.socketPath,
+      params: { name: "detached-external", agent: "inbox", parentId: external, parentExternal: true },
+    } }) });
+    await waitFor(() => existsSync(output), "detached helper completed", 40_000);
+    const receipt = JSON.parse(readFileSync(output, "utf8"));
+    console.log(JSON.stringify({ caller: "detached", ...receipt }));
+    assert.equal(receipt.error, undefined);
+    assert.equal(receipt.intermediatePpid, receipt.runtimePid);
+    assert.notEqual(receipt.detachedPpid, receipt.intermediatePid);
+    assert.notEqual(receipt.detachedPpid, receipt.runtimePid);
+    assert.ok(receipt.ancestry.length > 0);
+    assert.ok(receipt.ancestry.every((row: { pid: number }) => row.pid !== receipt.runtimePid && row.pid !== receipt.intermediatePid));
+    for (const result of receipt.outputs as Output[]) {
+      assert.notEqual(result.status, 0);
+      assert.match(result.stdout + result.stderr, /caller_not_trusted/);
+    }
+    assert.equal(receipt.rpc.code, "caller_not_trusted");
   });
   await t.test("runtime Unix RPC refuses an external parent", async () => {
     const output = join(rig.dir, "external-rpc.json");
@@ -119,11 +207,14 @@ createInterface({input:process.stdin}).on('line', async line => {
     await waitFor(() => existsSync(output), "runtime external RPC receipt");
     assert.equal(JSON.parse(readFileSync(output, "utf8")).code, "caller_not_trusted");
   });
-  await t.test("plain operator RPC can retain an external parent", async () => {
-    const child = await client.request<SpawnResult>("spawn", { name: "operator-external", agent: "inbox", parentId: external, parentExternal: true });
-    const view = await client.request<ViewResult>("view", { beeId: child.beeId });
-    assert.equal(view.bee?.parentId, external);
-    assert.equal(view.bee?.parentExternal, true);
+  await t.test("runtime cannot register as a service even with the disposable fixture key", async () => {
+    const output = join(rig.dir, "runtime-register.json");
+    await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output, rpc: { socket: daemon.socketPath, register: true, keyFile } }) });
+    await waitFor(() => existsSync(output), "runtime registration receipt");
+    assert.equal(JSON.parse(readFileSync(output, "utf8")).code, "caller_not_trusted");
+  });
+  await t.test("plain operator RPC refuses an external parent", async () => {
+    await assert.rejects(client.request("spawn", { name: "operator-external", agent: "inbox", parentId: external, parentExternal: true }), error => error instanceof RpcError && error.code === "caller_not_trusted");
   });
   await t.test("unregistered caller cannot assert an Apiary principal", async () => {
     await assert.rejects(client.request("spawn", { name: "forged-principal", agent: "inbox" }, 5000, { sessionPrincipal: { beeId: parent.beeId } }), error => error instanceof RpcError && error.code === "caller_not_trusted");
