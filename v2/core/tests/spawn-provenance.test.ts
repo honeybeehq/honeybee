@@ -8,6 +8,15 @@ import { harness } from "./helpers.ts";
 const input = { name: "worker", agent: "stub", substrate: "hsr", cwd: "/tmp" };
 const peer: SpawnProvenance = { callerBeeId: "caller", authority: "bee", peerPid: 123 };
 const service: SpawnProvenance = { callerBeeId: null, authority: "registered_service", peerPid: 456 };
+const inconsistent = [
+  { ...peer, callerBeeId: null },
+  { ...peer, serviceIntent: "service" },
+  { ...peer, serviceIntent: "delegation" },
+  { ...peer, authority: "unattributed" },
+  { ...service, authority: "unattributed", serviceIntent: "service" },
+  { ...service, authority: "unattributed", serviceIntent: "delegation" },
+  { ...service, callerBeeId: "caller" },
+];
 
 test("spawn provenance persists independently of parentage through restart, public rows and audit replay", (t) => {
   const h = harness();
@@ -52,7 +61,7 @@ test("spawn provenance rejects malformed creation input atomically", (t) => {
   t.after(() => h.cleanup());
   const store = h.open();
   try {
-    const invalid: unknown[] = [{ ...peer, authority: "operator" }, { ...peer, peerPid: -1 }, { ...peer, peerPid: 1.5 }, { ...peer, peerPid: Number.MAX_SAFE_INTEGER + 1 }, { ...peer, callerBeeId: "" }, { ...peer, callerBeeId: "\ud800" }, { ...peer, callerBeeId: "bad\0id" }, { ...peer, callerBeeId: "x".repeat(257) }, { ...peer, serviceIntent: "unknown" }, { ...peer, extra: true }, { authority: "bee", peerPid: 3 }, [], "bad"];
+    const invalid: unknown[] = [...inconsistent, { ...peer, authority: "operator" }, { ...peer, peerPid: -1 }, { ...peer, peerPid: 1.5 }, { ...peer, peerPid: Number.MAX_SAFE_INTEGER + 1 }, { ...peer, callerBeeId: "" }, { ...peer, callerBeeId: "\ud800" }, { ...peer, callerBeeId: "bad\0id" }, { ...peer, callerBeeId: "x".repeat(257) }, { ...peer, serviceIntent: "unknown" }, { ...peer, extra: true }, { authority: "bee", peerPid: 3 }, [], "bad"];
     const before = store.dumpState();
     const audit = store.auditRows();
     for (const spawnProvenance of invalid) {
@@ -79,8 +88,12 @@ test("legacy creation replay uses only recorded provenance and leaves omitted se
     assert.equal(Object.hasOwn(replayAudit(legacy).bees[0]!.spawnProvenance!, "serviceIntent"), false);
     const missing = legacy.map(row => row.kind === "bee.created" ? { ...row, payload: { bee: row.payload.bee } } : row);
     assert.equal(replayAudit(missing).bees.find(row => row.id === bee.id)?.spawnProvenance, null);
-    const corrupt: AuditRow[] = legacy.map(row => row.kind === "bee.created" ? { ...row, payload: { ...row.payload, spawnProvenance: { ...service, authority: "invented" } } } : row);
-    assert.equal(replayAudit(corrupt).bees[0]?.spawnProvenance, null);
+    for (const spawnProvenance of [...inconsistent, { ...service, authority: "invented" }]) {
+      const corrupt: AuditRow[] = legacy.map(row => row.kind === "bee.created" ? { ...row, payload: { ...row.payload, spawnProvenance } } : row);
+      assert.equal(replayAudit(corrupt).bees[0]?.spawnProvenance, null);
+      const nested: AuditRow[] = rows.map(row => row.kind === "bee.created" ? { ...row, payload: { ...row.payload, bee: { ...bee, spawnProvenance } } } : row);
+      assert.equal(replayAudit(nested).bees[0]?.spawnProvenance, null);
+    }
   } finally { store.close(); }
 });
 
@@ -89,6 +102,7 @@ test("schema 51 backfills only validated matching creation audit evidence, witho
   t.after(() => h.cleanup());
   let store = h.open();
   const records: Array<{ name: string; provenance?: unknown; nested?: unknown; mismatched?: boolean; duplicate?: boolean; expected: SpawnProvenance | null }> = [
+    ...inconsistent.map((provenance, i) => ({ name: `inconsistent-${i}`, provenance, expected: null })),
     { name: "legacy-service", provenance: service, expected: service },
     { name: "delegated", provenance: { ...service, serviceIntent: "delegation" }, expected: { ...service, serviceIntent: "delegation" } },
     { name: "bee", provenance: peer, expected: peer },
@@ -121,7 +135,7 @@ test("schema 51 backfills only validated matching creation audit evidence, witho
     store = h.open();
     const migratedAudit = store.auditRows();
     for (const [i, record] of records.entries()) assert.deepEqual(store.getBee(bees[i]!.id)?.spawnProvenance, record.expected, record.name);
-    assert.equal(Object.hasOwn(store.getBee(bees[0]!.id)!.spawnProvenance!, "serviceIntent"), false);
+    assert.equal(Object.hasOwn(store.getBee(bees[records.findIndex(record => record.name === "legacy-service")]!.id)!.spawnProvenance!, "serviceIntent"), false);
     store.close();
     store = h.open();
     assert.deepEqual(store.auditRows(), migratedAudit);
@@ -130,5 +144,22 @@ test("schema 51 backfills only validated matching creation audit evidence, witho
     const check = new DatabaseSync(h.path, { readOnly: true });
     try { assert.equal(check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get()!.value, String(SCHEMA_VERSION)); }
     finally { check.close(); }
+  } finally { store.close(); }
+});
+
+
+test("durable provenance decoder withholds inconsistent authority claims", (t) => {
+  const h = harness();
+  t.after(() => h.cleanup());
+  let store = h.open();
+  try {
+    const bees = inconsistent.map((_, i) => store.createBee({ ...input, name: `corrupt-${i}`, spawnProvenance: service }).bee);
+    store.close();
+    const db = new DatabaseSync(h.path);
+    try {
+      for (const [i, provenance] of inconsistent.entries()) db.prepare("UPDATE bees SET spawn_provenance = ? WHERE id = ?").run(JSON.stringify(provenance), bees[i]!.id);
+    } finally { db.close(); }
+    store = h.open();
+    for (const bee of bees) assert.equal(store.getBee(bee.id)?.spawnProvenance, null);
   } finally { store.close(); }
 });
