@@ -92,6 +92,13 @@ export const RUNTIME_TRANSITIONS: Readonly<Record<RuntimeState, readonly Runtime
 // Row shapes (as exposed by the API and by dumpState()/replayAudit()).
 // ---------------------------------------------------------------------------
 
+export interface SpawnProvenance {
+  callerBeeId: string | null;
+  authority: "bee" | "registered_service" | "unattributed";
+  peerPid: number | null;
+  serviceIntent?: "service" | "delegation";
+}
+
 export interface BeeRow extends Partial<HumanOutputFacts> {
   phoneOperationOrigin?: PhoneOperationOrigin;
   id: string;
@@ -151,6 +158,7 @@ export interface BeeRow extends Partial<HumanOutputFacts> {
    * forks, imports, and rows migrated from older stores.
    */
   parentExternal: boolean;
+  spawnProvenance: SpawnProvenance | null;
   /** v6 — provenance: the bee this one was forked from (`bee.fork`); null otherwise. */
   forkedFrom: string | null;
   /**

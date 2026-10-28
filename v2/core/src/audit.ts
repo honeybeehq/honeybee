@@ -1,3 +1,4 @@
+import { parseSpawnProvenance } from "./spawnProvenance.ts";
 import type { BeeTellRow, BeeReactionRow } from "./humanOutputTypes.ts";
 import type { MailBatch, MailBatchingPolicy } from "./types.ts";
 import type { HumanFirstPolicy, HumanChatReceipt } from "./types.ts";
@@ -173,6 +174,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
           human_ref: bee.human_ref ?? null,
           issuing_namespace: bee.issuing_namespace ?? null,
           parentExternal: bee.parentExternal ?? false,
+          spawnProvenance: parseSpawnProvenance(bee.spawnProvenance === undefined ? p.spawnProvenance : bee.spawnProvenance),
           placementVersion: bee.placementVersion ?? 0,
           activeMoveId: bee.activeMoveId ?? null,
           cellId: bee.cellId ?? null,
