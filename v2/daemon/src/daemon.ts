@@ -8,6 +8,7 @@ export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess} from "../../harness/src/processIdentity.ts";
 import { bindSpawnParent, spawnCallerBee } from "./spawnLineage.ts";
+import { ownedPrivateDir, requireSocketPathFits, shortSocketDir, socketPathFits } from "../../core/src/socketPath.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
 import { type PhoneOriginRequest, parsePhoneOrigin } from "../../core/src/phoneOrigin.ts";
@@ -50,7 +51,7 @@ import { threadOperationView, type ThreadOperationRow } from "../../core/src/thr
  *  - behavior 6 (service mgmt)     → service.ts (wired by the CLI)
  *  - behavior 7 (config)           → config.ts
  */
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
+import { closeSync, constants, copyFileSync, cpSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
@@ -715,6 +716,8 @@ export class HiveDaemon {
   private core: DaemonCore | null = null;
   private telemetry: TelemetryStore | null = null;
   private rpc: RpcServer | null = null;
+  private readonly cellGateways = new Map<string, { socketPath: string; server: RpcServer }>();
+  private cellGatewayDirectory: string | null = null;
   private tickTimer: NodeJS.Timeout | null = null;
   private tickRequested = false;
   /** Event-loop delay histogram: stalls anywhere (tick, RPC handler, fs) starve the accept loop. */
@@ -1170,6 +1173,8 @@ export class HiveDaemon {
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
       await this.rpc?.close();
+      await Promise.all([...this.cellGateways.values()].map(gateway => gateway.server.close()));
+      this.cellGateways.clear();
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       this.core?.detachReconnectOwner();
       if (options.preserveRuntimes === false) {
@@ -2469,6 +2474,22 @@ export class HiveDaemon {
         );
       case "view":
         return this.viewOf(this.mustStore(), this.param(params, "beeId"));
+      case "bee.transcript": {
+        const beeId = this.requireBee(params);
+        const offset = params.offset ?? 0;
+        const limitBytes = params.limitBytes ?? 262144;
+        if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0 || typeof limitBytes !== "number" || !Number.isSafeInteger(limitBytes) || limitBytes < 1 || limitBytes > 1048576) throw new RpcError("invalid_request", "Invalid transcript byte window");
+        const path = this.ownedSessionLogPath(this.mustStore().getBee(beeId)?.sessionLogPath ?? null);
+        if (!path || !existsSync(path)) return { bytesBase64: "", nextOffset: offset, eof: true };
+        const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+        try {
+          const stat = fstatSync(fd);
+          if (!stat.isFile() || realpathSync(path) !== path) throw new RpcError("caller_not_trusted", "Transcript must be a daemon-owned regular file");
+          const buffer = Buffer.alloc(Math.min(limitBytes, Math.max(0, stat.size - offset)));
+          const bytes = readSync(fd, buffer, 0, buffer.length, offset);
+          return { bytesBase64: buffer.subarray(0, bytes).toString("base64"), nextOffset: offset + bytes, eof: offset + bytes >= stat.size };
+        } finally { closeSync(fd); }
+      }
       case "list":
         if (conn.confinement === "confined") {
           const id = conn.localPeer ? this.spawnPeerBee(conn.localPeer) : null;
@@ -2821,6 +2842,49 @@ export class HiveDaemon {
       return { beeId: bee.id, identity: binding.kind === "bound" ? binding.identity : null, pid: runtime.state === "stopped" ? null : runtime.pid };
     }));
     return spawnCallerBee(peer, runtimes, inspectProcess);
+  }
+
+  private cellGateway(beeId: string, generation: number): { socketPath: string } {
+    const key = `${beeId}:${generation}`;
+    const prior = this.cellGateways.get(key);
+    if (prior) return { socketPath: prior.socketPath };
+    const base = join(this.cfg.dataDir, "cell-gateways");
+    mkdirSync(base, { recursive: true, mode: 0o700 });
+    if (!ownedPrivateDir(base)) throw new RpcError("caller_not_trusted", "Gateway directory must be private");
+    const name = `${createHash("sha256").update(beeId).digest("hex").slice(0, 16)}-${generation}.sock`;
+    const dir = this.cellGatewayDirectory ?? (socketPathFits(join(base, this.instanceId.slice(0, 8), name))
+      ? join(base, this.instanceId.slice(0, 8)) : shortSocketDir("hb-cg-", name, ["/tmp"]));
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (!ownedPrivateDir(dir)) throw new RpcError("caller_not_trusted", "Gateway directory must be private");
+    this.cellGatewayDirectory = dir;
+    const socketPath = requireSocketPathFits(join(dir, name), "Cell gateway");
+    const store = this.mustStore();
+    const server = new RpcServer({
+      socketPath,
+      dataDir: this.cfg.dataDir,
+      instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
+      log: op => this.log(op),
+      dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
+      cellGateway: {
+        identity: Object.freeze({ beeId, generation }),
+        current: peer => {
+          const bee = store.getBee(beeId);
+          const runtime = store.currentRuntime(beeId);
+          if (!bee || bee.lifecycle === "deleted" || bee.substrate !== "cell" || !runtime || runtime.generation !== generation || runtime.state === "stopped") return false;
+          const binding = store.runtimeProcessIdentity(beeId, generation);
+          if (binding.kind !== "bound") return false;
+          return spawnCallerBee(peer, [{ beeId, identity: binding.identity }], inspectProcess) === beeId;
+        },
+        canSend: target => {
+          const bee = store.getBee(beeId);
+          return !!bee && !bee.parentExternal && bee.parentId === target;
+        },
+        ownsTranscript: operationId => store.getThreadOperation(operationId)?.sourceBeeId === beeId,
+      },
+    });
+    server.listenFresh();
+    this.cellGateways.set(key, { socketPath, server });
+    return { socketPath };
   }
 
   private rpcSpawnEffect(params: Record<string, unknown>): Promise<SpawnResult> {
