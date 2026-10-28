@@ -54,6 +54,7 @@ import {
   defaultWritablePaths,
   mergeSandboxWritablePaths,
   sandboxEnabled,
+  sandboxEnvironment,
   wrapWithSandbox,
   type NodeKind,
   type SandboxWritableDirectory,
@@ -80,6 +81,9 @@ export interface CellDriverConfig {
   /** Baseline sandbox-writable paths (defaults: harness homes + caches). */
   sandboxWritablePaths?: string[];
   sandboxKvm?: boolean;
+  sandboxProtectedPaths?: readonly string[];
+  resolveSandboxGateway?(beeId: string, generation: number): { socketPath: string };
+  resolveSandboxHarnessHome?(beeId: string): { harness: string; path: string } | undefined;
   /**
    * Additional authoritative paths for this bee. Callers must derive these
    * from trusted state, never from the harness spawn environment.
@@ -763,7 +767,7 @@ export class CellDriver implements RuntimeDriver {
     if (!cell) throw new Error(`cell driver: bee ${beeId} has no provisioned cell (start() provisions first)`);
     const harness = this.cfg.resolveHarness(beeId, generation);
     const spec = this.cfg.resolveCell(beeId);
-    const env: Record<string, string> = {
+    let env: Record<string, string> = {
       ...(harness.env ?? (process.env as Record<string, string>)),
       // The old runner discipline: in-cell tools detect containment and the
       // space identity through these stamps.
@@ -773,6 +777,11 @@ export class CellDriver implements RuntimeDriver {
     if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
       return { ...harness, cwd: cell.paths.spaceDir, env };
     }
+    env = sandboxEnvironment(cell.paths.wrapperDir, env);
+    const harnessHome = this.cfg.resolveSandboxHarnessHome?.(beeId);
+    const gateway = generation === undefined ? undefined : this.cfg.resolveSandboxGateway?.(beeId, generation);
+    if (platform() === "linux" && !gateway) throw new Error("cell sandbox: per-Cell gateway is required; refusing launch");
+    if (gateway) env.HIVE_CELL_GATEWAY_SOCKET = "/run/honeybee/gateway.sock";
     const cap = this.effectiveSandboxCap();
     if (generation !== undefined) this.cfg.log?.(describeSandboxTmpfs(beeId, generation, cap));
     if (cap.kind === "capped" && platform() === "linux") {
@@ -785,6 +794,9 @@ export class CellDriver implements RuntimeDriver {
     const wrapped = wrapWithSandbox(
       {
         cellDir: cell.paths.wrapperDir,
+        protectedPaths: this.cfg.sandboxProtectedPaths,
+        gatewaySocketPath: gateway?.socketPath,
+        ...(harnessHome ? { harnessHome: { ...harnessHome, cwd: cell.paths.spaceDir } } : {}),
         kvm: this.cfg.sandboxKvm,
         writablePaths: mergeSandboxWritablePaths(
           this.cfg.sandboxWritablePaths ?? defaultWritablePaths(),

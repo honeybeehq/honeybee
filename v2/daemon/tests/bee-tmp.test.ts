@@ -367,11 +367,11 @@ test("satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writabl
     });
     const early = await client.request<ViewResult>("view", { beeId: spawned.beeId });
     const report = await waitForProbeReport(rig.dir, spawned.beeId, early.bee?.cwd as string, "sandboxed probe report");
-    const beeTmp = join(cache, "honeybee", "tmp", spawned.beeId);
+    const beeTmp = process.platform === "linux" ? "/tmp" : join(dirname(early.bee?.cwd as string), "sandbox-state", "tmp");
     assert.equal(report.TMPDIR, beeTmp);
     assert.equal(report.tmpWritable, true, "the per-bee TMPDIR is writable inside the sandbox");
-    assert.equal(readFileSync(join(beeTmp, "probe-write"), "utf8"), "ok");
-    assert.ok(report.cacheEntries > 0, "the shared compile cache is writable inside the sandbox");
+    if (process.platform !== "linux") assert.equal(readFileSync(join(beeTmp, "probe-write"), "utf8"), "ok");
+    assert.ok(report.cacheEntries > 0, "the Cell private compile cache is writable inside the sandbox");
     client.close();
   } finally {
     await daemon.stop();
@@ -604,6 +604,7 @@ async function sandboxedFill(bees: Record<string, unknown>, fillBytes: number, e
     const view = expectFlag
       ? await waitFor(async () => {
         const v = await client.request<ViewResult>("view", { beeId });
+        if (v.runtime?.state === "stopped") throw new Error(sandboxedChildEvidence(rig.dir, beeId));
         return v.view.flags.includes("resource_blocked") ? v : false;
       }, "resource_blocked", 30_000)
       : await new Promise((resolve) => setTimeout(resolve, 7_000)).then(() => client.request<ViewResult>("view", { beeId }));
