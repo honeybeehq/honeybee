@@ -5563,7 +5563,10 @@ export class HiveDaemon {
     const spec = this.resolveSpawnSpec(source.id);
     const home = spec.env?.CODEX_HOME ?? join(homedir(), ".codex");
     let boundary: ThreadOperationRow["source"];
-    try { boundary = pinThreadHistory(codexHistoryPath(home, sourceProviderSessionId), sourceProviderSessionId, join(home, "sessions")); }
+    try {
+      const indexed = codexHistoryPath(home, sourceProviderSessionId);
+      boundary = pinThreadHistory(indexed.path, sourceProviderSessionId, indexed.root);
+    }
     catch (error) { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); }
     const id = randomUUID();
     const successorProviderSessionId = randomUUID();
@@ -7098,10 +7101,11 @@ export class HiveDaemon {
       const home = spec.env?.CODEX_HOME ?? join(homedir(), ".codex");
       const carried = codexSwapHistoryPath(home, bee.id, sessionId);
       const operation = this.mustStore().threadOperationForSuccessor(bee.id);
+      const indexed = !existsSync(carried) && operation?.successorProviderSessionId !== sessionId ? codexHistoryPath(home, sessionId) : null;
       const path = existsSync(carried) ? carried
         : operation?.successorProviderSessionId === sessionId ? operation.sessionPath
-        : codexHistoryPath(home, sessionId);
-      const source = pinThreadHistory(path, sessionId);
+        : indexed!.path;
+      const source = pinThreadHistory(path, sessionId, indexed?.root);
       const destination = codexSwapHistoryPath(target.homePath, bee.id, sessionId);
       const result = carryCodexHistory(source, target.homePath, destination, sessionId);
       this.log(`bee.swapAccount.transcript bee=${bee.id} seed=${sessionId} from=${source.path} to=${destination} bytes=${source.bytes} method=hardlink`);

@@ -1,6 +1,6 @@
 /** Bounded admission, streaming copies, and paged access to native append-only history. */
 import { DatabaseSync } from "node:sqlite";
-import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readSync, realpathSync, statSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readSync, realpathSync, statSync, type Stats } from "node:fs";
 import { open, rename, mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ThreadOperationRow } from "../../core/src/threadOperation.ts";
@@ -11,8 +11,32 @@ export class ThreadExecutionError extends Error {
 }
 const HEADER_LIMIT = 1024 * 1024;
 
+export interface HistoryRoot { readonly path: string; readonly dev: number; readonly ino: number; }
+
+function historyRoot(path: string): HistoryRoot {
+  const canonical = realpathSync(path);
+  const stat = lstatSync(canonical);
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new ThreadExecutionError("history_unavailable", "History root is not a regular directory");
+  return { path: canonical, dev: stat.dev, ino: stat.ino };
+}
+
+function checkOwnedHistory(stat: Stats, path: string, root: HistoryRoot, minimumBytes: number): string {
+  const currentRoot = lstatSync(root.path);
+  const target = realpathSync(path);
+  const current = statSync(target);
+  if (!currentRoot.isDirectory() || currentRoot.isSymbolicLink() || currentRoot.dev !== root.dev || currentRoot.ino !== root.ino || !stat.isFile() || stat.size < minimumBytes || !target.startsWith(`${root.path}/`) || stat.dev !== current.dev || stat.ino !== current.ino) throw new ThreadExecutionError("history_unavailable", "History ownership changed or is not an owned regular file");
+  return target;
+}
+
+async function openOwnedHistory(path: string, minimumBytes: number, expectedRoot?: string) {
+  const root = historyRoot(expectedRoot ?? dirname(path));
+  const fd = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try { checkOwnedHistory(await fd.stat(), path, root, minimumBytes); return fd; }
+  catch (error) { await fd.close(); throw error; }
+}
+
 /** The provider's indexed path lookup is O(1); never scan all account histories on RPC admission. */
-export function codexHistoryPath(home: string, sessionId: string): string {
+export function codexHistoryPath(home: string, sessionId: string): { path: string; root: HistoryRoot } {
   const path = join(home, "state_5.sqlite");
   if (!existsSync(path)) throw new ThreadExecutionError("history_unavailable", "Codex's indexed rollout path is unavailable; resume the source on this node first");
   const db = new DatabaseSync(path, { readOnly: true });
@@ -34,19 +58,18 @@ export function codexHistoryPath(home: string, sessionId: string): string {
         if (lstatSync(cursor).isSymbolicLink()) throw new Error("symlink rollout path");
       }
       if (!lstatSync(cursor).isFile()) throw new Error("rollout is not a regular file");
-      return cursor;
+      return { path: cursor, root: { path: root, dev: rootStat.dev, ino: rootStat.ino } };
     } catch { throw new ThreadExecutionError("history_unavailable", "Source rollout must be a regular file beneath its sessions root without symlinks"); }
   } finally { db.close(); }
 }
 
-export function pinThreadHistory(path: string, sessionId: string, sessionsRoot?: string): ThreadOperationRow["source"] {
+export function pinThreadHistory(path: string, sessionId: string, expectedRoot?: HistoryRoot): ThreadOperationRow["source"] {
+  const root = expectedRoot ?? historyRoot(dirname(path));
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const stat = fstatSync(fd);
     if (!stat.isFile() || stat.size === 0) throw new ThreadExecutionError("history_unavailable", "Source rollout is empty or not a file");
-    const target = realpathSync(path);
-    const current = statSync(target);
-    if (stat.dev !== current.dev || stat.ino !== current.ino || sessionsRoot && !target.startsWith(`${realpathSync(sessionsRoot)}/`)) throw new ThreadExecutionError("history_unavailable", "Source rollout ownership changed before reading");
+    const target = checkOwnedHistory(stat, path, root, 1);
     const header = Buffer.alloc(Math.min(stat.size, HEADER_LIMIT));
     const n = readSync(fd, header, 0, header.length, 0);
     const end = header.subarray(0, n).indexOf(10);
@@ -78,7 +101,7 @@ export async function copyPinnedHistory(row: ThreadOperationRow): Promise<void> 
     if (existing.bytes !== row.source.bytes) throw new ThreadExecutionError("history_changed", "Owned snapshot length changed");
     return;
   }
-  const input = await open(row.source.path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const input = await openOwnedHistory(row.source.path, 0);
   const temp = `${row.historyPath}.partial`;
   const output = await open(temp, "w", 0o600);
   try {
@@ -102,7 +125,7 @@ export async function copyPinnedHistory(row: ThreadOperationRow): Promise<void> 
 
 /** A deterministic native fork identity. Only the session header changes; all conversation items are copied. */
 export async function seedSuccessorHistory(row: ThreadOperationRow): Promise<void> {
-  const input = await open(row.historyPath, "r");
+  const input = await openOwnedHistory(row.historyPath, row.source.bytes);
   const output = await open(`${row.sessionPath}.partial`, "w", 0o600);
   try {
     const header = Buffer.alloc(HEADER_LIMIT);
@@ -128,7 +151,7 @@ export async function seedSuccessorHistory(row: ThreadOperationRow): Promise<voi
 }
 
 export async function sourceBaseInstructions(row: ThreadOperationRow): Promise<string> {
-  const fd = await open(row.historyPath, "r");
+  const fd = await openOwnedHistory(row.historyPath, row.source.bytes);
   try {
     const buffer = Buffer.alloc(HEADER_LIMIT);
     const { bytesRead } = await fd.read(buffer, 0, buffer.length, 0);
@@ -143,12 +166,8 @@ export async function sourceBaseInstructions(row: ThreadOperationRow): Promise<s
 export async function readThreadHistory(row: ThreadOperationRow, offset: number, limit: number, historyRoot?: string): Promise<{ format: "codex.rollout.jsonl"; encoding: "base64"; data: string; nextOffset: number; eof: boolean }> {
   if (!row.transcriptReady) throw new ThreadExecutionError("history_unavailable", "Inherited transcript is not ready");
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > row.source.bytes || !Number.isSafeInteger(limit) || limit < 1 || limit > 1048576) throw new ThreadExecutionError("history_unavailable", "Invalid transcript byte window");
-  const fd = await open(row.historyPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  const fd = await openOwnedHistory(row.historyPath, row.source.bytes, historyRoot);
   try {
-    const stat = await fd.stat();
-    const target = realpathSync(row.historyPath);
-    const current = statSync(target);
-    if (!stat.isFile() || stat.size < row.source.bytes || stat.dev !== current.dev || stat.ino !== current.ino || historyRoot && !target.startsWith(`${realpathSync(historyRoot)}/`)) throw new ThreadExecutionError("history_unavailable", "Inherited transcript must be an owned regular file");
     const buffer = Buffer.alloc(Math.min(limit, Math.max(0, row.source.bytes - offset)));
     const { bytesRead } = await fd.read(buffer, 0, buffer.length, offset);
     return { format: "codex.rollout.jsonl", encoding: "base64", data: buffer.subarray(0, bytesRead).toString("base64"), nextOffset: offset + bytesRead, eof: offset + bytesRead >= row.source.bytes };
