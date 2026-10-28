@@ -6,9 +6,10 @@ const registration = () => ({ daemonInstanceId: "daemon", registrationEpoch: "ep
 const answer = (q: EligibilityQuery, eligible: boolean) => ({ ...q, fields: undefined, eligible, ...(eligible ? { satellite: { nodeId: "worker", name: "Satellite" } } : {}) });
 function reply(q: EligibilityQuery, eligible: boolean) { const { fields: _fields, operation: _operation, ...value } = answer(q, eligible); return value; }
 
-test("no subscriber admits immediately; raw forwarding keeps exact values and field presence", async () => {
+test("no subscriber admits immediately; raw forwarding keeps exact values and field presence", async t => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 1000 });
   const broker = new SatelliteEligibility();
-  assert.deepEqual(await broker.request("spawn", { agent: "stub" }), { eligible: false, reason: "no_subscription" });
+  assert.deepEqual(await Promise.race([broker.request("spawn", { agent: "stub" }), Promise.resolve("unexpected wait")]), { eligible: false, reason: "no_subscription" });
   assert.deepEqual(eligibilityFields({ agent: "stub", account: "auto", requiredCapability: " custom:value ", prompt: "not sent", env: { secret: "not sent" } }), { agent: "stub", account: "auto", requiredCapability: " custom:value " });
   assert.notEqual(eligibilityDigest(registration(), "local", "spawn", {}), eligibilityDigest(registration(), "local", "spawn", { account: null }));
   assert.equal(eligibilityFields({ requiredCapability: "" }), null);

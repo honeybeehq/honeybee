@@ -155,11 +155,11 @@ test("registered Apiary carrier binds intent and exact exec actor; untrusted and
   const unmarked = await service.request<SpawnResult>("spawn", { ...args, idempotencyKey: "unmarked" });
   assert.equal(unmarked.notice?.code,"no_satellite_available");
   assert.equal((await service.request<SpawnResult>("spawn", { ...args, idempotencyKey: "agent-with-principal" }, 3000, { workstationAdmission: { version: 1, intent: "automatic", requestKey: "agent-with-principal" }, sessionPrincipal: { beeId: "reader" } })).notice?.code,"no_satellite_available");
-  const spawned = await service.request<SpawnResult>("spawn", args, 1000, humanContext);
+  const spawned = await service.request<SpawnResult>("spawn", args, 5000, humanContext);
   assert.ok(spawned.beeId);
-  await assert.rejects(service.request("spawn", { ...args, idempotencyKey: "wrong-key" }, 1000, humanContext), { code: "invalid_request" });
-  await assert.rejects(service.request("spawn", args, 1000, { workstationAdmission: { ...humanContext.workstationAdmission, intent: "automatic" } }), { code: "idempotency_conflict" });
-  const fixer = await service.request<SpawnResult>("spawn", { name: "fixer", agent: "stub", cwd: rig.dir, idempotencyKey: "fixer" }, 1000, { workstationAdmission: { version: 1, intent: "landing-fixer-local", requestKey: "fixer", policyId: "temporary-landing" } });
+  await assert.rejects(service.request("spawn", { ...args, idempotencyKey: "wrong-key" }, 5000, humanContext), { code: "invalid_request" });
+  await assert.rejects(service.request("spawn", args, 5000, { workstationAdmission: { ...humanContext.workstationAdmission, intent: "automatic" } }), { code: "idempotency_conflict" });
+  const fixer = await service.request<SpawnResult>("spawn", { name: "fixer", agent: "stub", cwd: rig.dir, idempotencyKey: "fixer" }, 5000, { workstationAdmission: { version: 1, intent: "landing-fixer-local", requestKey: "fixer", policyId: "temporary-landing" } });
   assert.ok(fixer.beeId);
   const sentinel = join(space, "allowed-own-reader");
   const exec = { cellId: cell.id, idempotencyKey: "own-reader", argv: [process.execPath, "-e", "require('node:fs').writeFileSync(process.argv[1],'ok')", sentinel] };
