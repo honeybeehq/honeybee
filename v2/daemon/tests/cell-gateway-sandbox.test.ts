@@ -25,7 +25,10 @@ test("joint Cell gateway and launcher fixture allows self, masks host sockets an
   const internal = daemon as unknown as { store: typeof store; cellGateway(id: string, generation: number): { socketPath: string }; cellGateways: Map<string, { server: RpcServer }>; cellGatewaySweep: NodeJS.Timeout | null };
   internal.store = store;
   const inbox = store.createBee({ name: "inbox-parent", agent: "inbox", substrate: "hsr", cwd: root }).bee;
-  const { bee, runtime } = store.createBee({ name: "confined-self", agent: "stub", substrate: "cell", cwd: cellDir, parentId: inbox.id });
+  const parent = store.createBee({ name: "local-parent", agent: "stub", substrate: "hsr", cwd: root }).bee;
+  const ownLog = join(config.sessionLogDir, "self.jsonl");
+  writeFileSync(ownLog, "joint transcript line\n");
+  const { bee, runtime } = store.createBee({ name: "confined-self", agent: "stub", substrate: "cell", cwd: cellDir, parentId: parent.id, sessionLogPath: ownLog });
   const gateway = internal.cellGateway(bee.id, runtime.generation);
   const main = new RpcServer({ socketPath: config.socketPath, dataDir: root, log() {}, dispatch() { assert.fail("confined fixture reached the host daemon"); } });
   main.listenFresh();
@@ -51,7 +54,9 @@ const cwd=await rpc('spawn',{agent:'stub',cwd:'/tmp'});
 const inbox=await rpc('send',{beeId:${JSON.stringify(inbox.id)},body:'must not forward'});
 const missing=path=>{try{lstatSync(path);return 'VISIBLE';}catch(error){return error.code;}};
 const cli=spawnSync('/run/honeybee/bin/hive',['view',${JSON.stringify(bee.id)},'--json','--data-dir',${JSON.stringify(root)}],{encoding:'utf8',timeout:10000});
-console.log(JSON.stringify({self:self.ok&&self.result.bee.id,other:other.error?.code,cwd:cwd.error?.code,inbox:inbox.error?.code,hostSocket:missing(${JSON.stringify(config.socketPath)}),liveSocket:missing(${JSON.stringify(join(homedir(), ".hive/v2/hived.sock"))}),store:missing(${JSON.stringify(join(root, "fixture.sqlite"))}),sharedLogs:missing(${JSON.stringify(config.sessionLogDir)}),gateway:lstatSync('/run/honeybee/gateway.sock').isSocket(),gatewayEnv:process.env.HIVE_CELL_GATEWAY_SOCKET,cliCode:cli.status,cliOut:cli.stdout,cliError:cli.stderr}));
+const send=spawnSync('/run/honeybee/bin/hive',['send',${JSON.stringify(parent.id)},'joint fixture mail','--json','--data-dir',${JSON.stringify(root)}],{encoding:'utf8',timeout:10000});
+const transcript=spawnSync('/run/honeybee/bin/hive',['transcript',${JSON.stringify(bee.id)},'--raw','--json','--data-dir',${JSON.stringify(root)}],{encoding:'utf8',timeout:10000});
+console.log(JSON.stringify({self:self.ok&&self.result.bee.id,other:other.error?.code,cwd:cwd.error?.code,inbox:inbox.error?.code,hostSocket:missing(${JSON.stringify(config.socketPath)}),liveSocket:missing(${JSON.stringify(join(homedir(), ".hive/v2/hived.sock"))}),store:missing(${JSON.stringify(join(root, "fixture.sqlite"))}),sharedLogs:missing(${JSON.stringify(config.sessionLogDir)}),gateway:lstatSync('/run/honeybee/gateway.sock').isSocket(),gatewayEnv:process.env.HIVE_CELL_GATEWAY_SOCKET,cliCode:cli.status,cliOut:cli.stdout,cliError:cli.stderr,sendCode:send.status,sendError:send.stderr,transcriptCode:transcript.status,transcriptOut:transcript.stdout,transcriptError:transcript.stderr}));
 `;
   writeFileSync(probe, script);
   const policy = { cellDir, writablePaths: [], gatewaySocketPath: gateway.socketPath, protectedPaths: [root] };
@@ -81,8 +86,12 @@ console.log(JSON.stringify({self:self.ok&&self.result.bee.id,other:other.error?.
     assert.equal(result.gatewayEnv, "/run/honeybee/gateway.sock");
     assert.equal(result.cliCode, 0, result.cliError);
     assert.equal(JSON.parse(result.cliOut).bee.id, bee.id);
+    assert.equal(result.sendCode, 0, result.sendError);
+    assert.equal(store.listMessages(parent.id).at(-1)?.sender, bee.id);
+    assert.equal(result.transcriptCode, 0, result.transcriptError);
+    assert.deepEqual(JSON.parse(result.transcriptOut).lines, ["joint transcript line"]);
     assert.equal(store.listMessages(inbox.id).length, 0);
-    console.log(JSON.stringify({ fixture: "joint-gateway-launcher", customRoot, hostPathsPreexisting: true, liveSocketPreexisting, passed: true, self: true, other: result.other, cwdSpawn: result.cwd, inboxForward: result.inbox, hostSocket: result.hostSocket, liveSocket: result.liveSocket, store: result.store, sharedLogs: result.sharedLogs, gateway: result.gateway, cli: true, missingGateway: "refused" }));
+    console.log(JSON.stringify({ fixture: "joint-gateway-launcher", customRoot, hostPathsPreexisting: true, liveSocketPreexisting, passed: true, self: true, other: result.other, cwdSpawn: result.cwd, inboxForward: result.inbox, hostSocket: result.hostSocket, liveSocket: result.liveSocket, store: result.store, sharedLogs: result.sharedLogs, gateway: result.gateway, cli: true, cliSend: true, cliTranscript: true, missingGateway: "refused" }));
   } finally {
     clearTimeout(timeout);
     if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await finished; }

@@ -1,0 +1,25 @@
+﹣ native Codex mock compaction resumes deterministic copy and applies instruction (1.249102ms) # SKIP
+﹣ native Codex remote-mock compaction resumes deterministic copy and applies instruction (0.318789ms) # SKIP
+﹣ native Codex remote-v1 compaction resumes deterministic copy and applies instruction (0.180071ms) # SKIP
+✔ indexed Codex rollouts stay beneath the expected sessions root without symlinks (71.44852ms)
+✔ inherited history reads reject symlinks, FIFOs, directories, truncation and invalid byte windows (19.55072ms)
+✔ thread RPC: prompt receipt, disconnect/restart, history events, native compaction gate, queued mail and owner refusals (2884.453093ms)
+✔ native method refusal is typed, retry keys recover one successor, and plain Fork requests no compaction (2400.4084ms)
+✔ thread pipeline publishes history before compaction; queued messages wait through failure and restart (183.85509ms)
+✔ pinned prefix ignores concurrent output, streams large history, rekeys only the native header, and pages all bytes (519.439719ms)
+✔ copy refuses a truncated pinned source (57.944265ms)
+✔ recovery refuses an unverifiable live worker and bounds automatic attempts (86.283093ms)
+✔ fork never calls compaction and never enqueues continuation (63.375479ms)
+✔ restart after completed copy but lost readiness receipt uses owned history even when the source is gone (75.804164ms)
+✔ startup crashes exhaust the ordinary budget; explicit retry keeps the same compacted successor (86.689699ms)
+✔ restart during compaction retries the same native session without releasing queued mail (107.112269ms)
+✔ fork: replay pre-allocation receipts after reopening, without accepting changed intent (74.482439ms)
+✔ handoff: replay pre-allocation receipts after reopening, without accepting changed intent (55.870086ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 3
+ℹ todo 0
+ℹ duration_ms 5731.410268
