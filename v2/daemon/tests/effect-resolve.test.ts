@@ -116,11 +116,16 @@ test("legacy effect RPC rejects changed in-flight args but replays changed args 
   await seen;
   assert.equal((await f.client.resolveEffect("spawn", key, coverage)).status, "in_flight");
   const duplicate = f.client.request<SpawnResult>("spawn", params);
+  const differentPeer = (f.owner.rpcSpawnEffect as (params: Record<string, unknown>) => Promise<SpawnResult>).call(f.owner, {
+    ...params, spawnProvenance: { callerBeeId: null, authority: "unattributed", peerPid: process.pid + 1 },
+  });
   await assert.rejects(f.client.request("spawn", { ...params, name: "other" }), refusal("idempotency_conflict"));
   release();
   const original = await pending, joined = await duplicate;
   assert.equal(original.beeId, joined.beeId);
   assert.equal(joined.deduped, true);
+  assert.equal((await differentPeer).beeId, original.beeId);
+  assert.equal((await differentPeer).deduped, true);
   assert.equal((await f.client.resolveEffect("spawn", key, coverage)).status, "committed");
   assert.equal(f.store.listBees().length, 1);
   const replayArgs = { ...params, name: "ignored-after-commit", parentExternal: false, prompt: undefined };
