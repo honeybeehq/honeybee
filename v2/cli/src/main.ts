@@ -792,7 +792,7 @@ async function spawnBee(
         ? { args: [...parsed.args, ...(parsed.rest ?? [])] }
         : {}),
       ...(Object.keys(env).length > 0 ? { env } : {}),
-      ...(parentId ? { parentId } : {}),
+      ...(parsed.flags.get("--no-parent") === true ? { parentId: null } : parentId ? { parentId } : {}),
       ...(callerBeeIdFor(ctx.cfg.dataDir) ? { callerBeeId: callerBeeIdFor(ctx.cfg.dataDir) } : {}),
       ...(account !== undefined ? { account } : {}),
       ...(onlyAccountIds.length > 0 ? { onlyAccountIds } : {}),

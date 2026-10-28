@@ -85,6 +85,7 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly spawnServiceAuthority?: true;
   readonly operatorLocalHomes?: boolean;
   readonly captureSecretOutput?: (leaseId: string, bytes: Buffer) => void;
   readonly secretExecution?: import("./protocol.ts").SecretExecutionContext;
@@ -597,6 +598,26 @@ export class RpcServer {
           return this.opts.dispatch(verb, params, { ...conn, humanChat: chat as unknown as HumanChatAdmission });
         }
         if (params.phoneOrigin !== undefined || params.phoneInput !== undefined || params.phoneLane !== undefined) throw new RpcError("invalid_request", "Phone carriers belong in RPC context, not args");
+        if (verb === "spawn") {
+          const rawContext = frame.context;
+          if (rawContext !== undefined && (!rawContext || typeof rawContext !== "object" || Array.isArray(rawContext))) throw new RpcError("caller_not_trusted", "Invalid spawn context");
+          const principal = (rawContext as Record<string, unknown> | undefined)?.sessionPrincipal;
+          if (principal !== undefined) {
+            if (Object.keys(rawContext as Record<string, unknown>).some(key => key !== "sessionPrincipal")) throw new RpcError("caller_not_trusted", "Spawn principal cannot be mixed with other admission contexts");
+            if (!peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "Spawn principals require the registered direct local Apiary service");
+            this.trust.require(peer, conn.ingress);
+            if (!principal || typeof principal !== "object" || Array.isArray(principal) || Object.keys(principal).some(key => key !== "beeId")) throw new RpcError("caller_not_trusted", "Invalid spawn principal");
+            const beeId = (principal as Record<string, unknown>).beeId;
+            if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256 || beeId.includes("\0")) throw new RpcError("caller_not_trusted", "Invalid spawn principal");
+            return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
+          }
+          if (rawContext === undefined && peer && this.trust.enabled && conn.ingress === "local_unix" && conn.relayLane === null) {
+            let trusted = false;
+            try { this.trust.require(peer, conn.ingress); trusted = true; }
+            catch (error) { if (!(error instanceof RpcError) || error.code !== "caller_not_trusted") throw error; }
+            if (trusted) return this.opts.dispatch(verb, params, { ...conn, spawnServiceAuthority: true });
+          }
+        }
         const context = frame.context as Record<string, unknown> | undefined;
         if (context?.phoneOrigin !== undefined) {
           if (verb !== "send" && verb !== "spawn") throw new RpcError("invalid_request", "Phone envelope is only valid for send or spawn");
