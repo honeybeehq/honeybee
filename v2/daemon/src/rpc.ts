@@ -1,3 +1,4 @@
+import { SatelliteEligibility, type SatelliteDecision } from "./satelliteEligibility.ts";
 import { projectWorkstationAdmission } from "./workstationAdmissionProjection.ts";
 import { StoreBackupError } from "../../core/src/storeBackup.ts";
 import { HumanOutputError } from "../../core/src/humanOutput.ts";
@@ -85,6 +86,7 @@ import {
 } from "./protocol.ts";
 
 export interface RpcConn {
+  readonly satelliteEligibility?: (operation: string, params: Record<string, unknown>) => Promise<SatelliteDecision>;
   readonly workstationAdmission?: import("../../core/src/types.ts").WorkstationAdmission;
   readonly registeredApiary?: boolean;
   readonly humanChat?: HumanChatAdmission;
@@ -253,6 +255,9 @@ export class RpcServer {
   private readonly credentials: PeerCredentials;
   private readonly trust: LocalRpcTrust;
   private readonly refusals: LocalRpcRefusals;
+  private readonly eligibility = new SatelliteEligibility();
+
+  get eligibilityStatus() { return this.eligibility.status; }
 
   get localSecurity() { return {peerCredentials: {...this.credentials.status}, localTrust: this.trust.state}; }
 
@@ -288,6 +293,7 @@ export class RpcServer {
     for (const conn of this.conns) conn.socket.destroy();
     this.conns.clear();
     this.credentials.close();
+    this.eligibility.drop("no_subscription");
     this.trust.close();
     this.refusals.close();
     return new Promise((resolve) => {
@@ -369,7 +375,7 @@ export class RpcServer {
     conn.send({ protocol: PROTOCOL, capabilities: this.capabilities, identity: BUILD_IDENTITY, ...(this.opts.instance ? { instance: this.opts.instance } : {}) } satisfies HelloFrame);
     socket.on("data", (chunk: string) => this.onData(conn, chunk));
     socket.on("error", () => socket.destroy());
-    socket.on("close", () => { conn.peerConnection?.close(); this.trust.disconnect(conn); this.conns.delete(conn); });
+    socket.on("close", () => { conn.peerConnection?.close(); this.eligibility.disconnect(conn); this.trust.disconnect(conn); this.conns.delete(conn); });
   }
 
   private onData(conn: Connection, chunk: string): void {
@@ -473,7 +479,7 @@ export class RpcServer {
         if (peer && this.trust.enabled && conn.ingress === "local_unix") {
           try { this.trust.require(peer, conn.ingress); registeredApiary = true; } catch {}
         }
-        if (marker && marker.intent !== "automatic" && !registeredApiary) throw new RpcError("workstation_heavy_work_denied", "Human/fixer admission requires registered direct-local Apiary authority");
+        // Untrusted intent never grants human/fixer authority; automatic admission still works locally.
         if (registeredApiary && principal !== undefined && (!principal || typeof principal.beeId !== "string" || !principal.beeId || principal.beeId.length > 256 || principal.beeId.includes("\0"))) throw new RpcError("invalid_request", "Invalid admission principal");
         return {
           registeredApiary,
@@ -482,7 +488,16 @@ export class RpcServer {
           ...(registeredApiary && principal ? { authenticatedBeeId: principal.beeId as string } : {}),
         };
       })();
-      const dispatch = (v: RpcVerb, p: Record<string, unknown>, c: RpcConn) => this.opts.dispatch(v, p, { ...c, ...admissionFacts });
+      const dispatch = (v: RpcVerb, p: Record<string, unknown>, c: RpcConn) => this.opts.dispatch(v, p, { ...c, ...admissionFacts,
+        satelliteEligibility: (operation, request) => {
+          let registration = null;
+          if (peer && this.trust.enabled && conn.ingress === "local_unix") {
+            try { this.trust.require(peer, conn.ingress); registration = this.trust.eligibilityRegistration; } catch {}
+          }
+          const carried = admissionContext?.satelliteEligibility;
+          return this.eligibility.request(operation, request, registration && carried !== undefined ? { value: carried, registration } : undefined, registration ? "apiary-routed" : "unprepared");
+        },
+      });
       const result = withRpcCaller(caller, () => {
         const automationContext = frame.context as Record<string, unknown> | undefined;
         if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
@@ -520,13 +535,26 @@ export class RpcServer {
           try { this.trust.require(peer, conn.ingress); } catch { throw new RpcError("automation_unauthorized", "Batching policy requires the registered direct local Apiary authority"); }
           return dispatch(verb, params, { ...conn, automationAuthority: true });
         }
+        if (verb === "admission.eligibility.subscribe" || verb === "admission.eligibility.answer") {
+          if (!peer || !this.trust.enabled || conn.ingress !== "local_unix") throw new RpcError("caller_not_trusted", "Eligibility requires registered local Apiary");
+          this.trust.require(peer, conn.ingress);
+          const registration = this.trust.eligibilityRegistration;
+          if (!registration) throw new RpcError("caller_not_trusted", "Eligibility registration expired");
+          if (verb === "admission.eligibility.answer") return this.eligibility.answer(conn, params);
+          if (Object.keys(params).some(key => !["nodeId", "registrationEpoch"].includes(key)) || params.registrationEpoch !== registration.registrationEpoch) throw new RpcError("invalid_request", "Invalid eligibility subscription");
+          return this.eligibility.subscribe(conn, params.nodeId, registration, () => {
+            try { this.trust.require(peer, conn.ingress); return this.trust.eligibilityRegistration?.registrationEpoch === registration.registrationEpoch; } catch { return false; }
+          });
+        }
         if (verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register") {
           if (!peer) throw new RpcError("caller_not_trusted", "Registration requires a local Unix connection.");
           if (verb === "rpc.localTrust.challenge") {
             if (Object.keys(params).length) throw new RpcError("invalid_request", "Challenge takes no parameters.");
             return this.trust.challenge(peer, conn, conn.ingress);
           }
-          return this.trust.register(params, peer, conn, conn.ingress);
+          const result = this.trust.register(params, peer, conn, conn.ingress);
+          this.eligibility.drop("registration_expired");
+          return result;
         }
         if (verb === "account.limits.observe" || verb === "account.limits.observation.discard" || (verb === "account.limits.observation" && params.id !== undefined)) {
           if (!peer && this.trust.enabled) throw new RpcError("caller_not_trusted", "Observation trust requires a local Unix connection.");

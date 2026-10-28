@@ -95,7 +95,7 @@ export const RUNTIME_TRANSITIONS: Readonly<Record<RuntimeState, readonly Runtime
 export interface LandingFixerPolicy { policyId: string; owner: "T114"; expiresAt: number }
 export interface WorkstationAdmission { version: 1; intent: "automatic" | "human" | "landing-fixer-local"; requestKey: string; policyId?: string }
 
-export type AdmissionBasis = "unadmitted" | "continuation" | "human" | "automatic_nonworkstation" | "inbox_only" | `fixer:${string}`;
+export type AdmissionBasis = "unadmitted" | "continuation" | "human" | "automatic_nonworkstation" | "automatic_local_fallback" | "inbox_only" | `fixer:${string}`;
 
 export interface BeeRow extends Partial<HumanOutputFacts> {
   admissionBasis?: AdmissionBasis;

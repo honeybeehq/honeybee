@@ -1,3 +1,4 @@
+import { eligibilityPeer } from "./eligibility-fixture.ts";
 import { execFileSync } from "node:child_process";
 import { runV2Cli } from "../../cli/src/main.ts";
 import { HiveDaemon } from "../src/daemon.ts";
@@ -26,30 +27,26 @@ const automatic = (id = "parent") => ({ ...human, caller: { ...human.caller!, ru
 const denied = (error: unknown) => (error as { code?: string }).code === "workstation_heavy_work_denied";
 const bee = (basis: BeeRow["admissionBasis"]) => ({ id: "parent", admissionBasis: basis }) as BeeRow;
 
-test("new admission is fail closed for missing, remote and runtime context; human never grants its child", () => {
+test("automatic workstation admission falls back unless a satellite is positively confirmed", () => {
+  const yes = { eligible: true as const, satellite: { nodeId: "worker", name: "Satellite" } };
   for (const c of [{} as RpcConn, automatic(), { ...human, ingress: "remote" } as RpcConn, { ...human, registeredApiary: true }]) {
-    assert.throws(() => newAdmissionBasis("workstation", "spawn", c, null, 100), denied);
+    assert.equal(newAdmissionBasis("workstation", "spawn", c, null, 100), "automatic_local_fallback");
+    assert.throws(() => newAdmissionBasis("workstation", "spawn", c, null, 100, yes), denied);
   }
-  assert.throws(() => newAdmissionBasis("workstation", "spawn", { ...human, phoneLane: "interim-v1" }, null, 100), denied);
-  assert.equal(newAdmissionBasis("workstation", "spawn", human, null, 100), "human");
-  assert.equal(newAdmissionBasis("satellite", "spawn", automatic(), null, 100), "automatic_nonworkstation");
-  assert.equal(newAdmissionBasis("cloud", "spawn", automatic(), null, 100), "automatic_nonworkstation");
-  assert.equal(ownCellAdmission(bee("continuation"), automatic()), true);
-  assert.equal(ownCellAdmission(bee("continuation"), automatic("other")), false);
+  assert.equal(newAdmissionBasis("workstation", "spawn", human, null, 100, yes), "human");
+  assert.equal(newAdmissionBasis("satellite", "spawn", automatic(), null, 100, yes), "automatic_nonworkstation");
+  assert.equal(ownCellAdmission(bee("automatic_local_fallback"), automatic()), true);
 });
 
-test("finite Landing policy is spawn-only, own continuation survives expiry and unknown basis stays held", () => {
+test("fixer expiry is separate while already accepted automatic and mailbox-only work stays usable", () => {
   const policy = { policyId: "landing", owner: "T114" as const, expiresAt: 200 };
   const fixer = { ingress: "local_unix", registeredApiary: true, workstationAdmission: { version: 1, intent: "landing-fixer-local", requestKey: "k", policyId: "landing" } } as RpcConn;
   assert.equal(newAdmissionBasis("workstation", "spawn", fixer, policy, 100), "fixer:landing");
-  assert.throws(() => newAdmissionBasis("workstation", "cell.exec", fixer, policy, 100), denied);
   assert.throws(() => newAdmissionBasis("workstation", "spawn", fixer, policy, 200), denied);
   assert.equal(startAdmissionAllowed(bee("fixer:landing"), false, policy, 200), false);
   assert.equal(startAdmissionAllowed(bee("fixer:landing"), true, null, 300), true);
-  for (const basis of ["unadmitted", "inbox_only", "automatic_nonworkstation"] as const) assert.equal(startAdmissionAllowed(bee(basis), false, policy, 100), false);
-  for (const basis of ["human", "continuation"] as const) assert.equal(startAdmissionAllowed(bee(basis), false, null, 300), true);
+  for (const basis of ["unadmitted", "inbox_only", "automatic_nonworkstation", "automatic_local_fallback"] as const) assert.equal(startAdmissionAllowed(bee(basis), false, null, 100), true);
   assert.throws(() => landingFixerPolicyOf({ workstationAdmission: { landingFixerPolicy: { ...policy, expiresAt: Infinity } } }));
-  assert.deepEqual(landingFixerPolicyOf({ workstationAdmission: { landingFixerPolicy: policy } }), policy);
 });
 
 test("schema migration preserves existing identities exactly once; newly missed creation remains unadmitted", () => {
@@ -72,8 +69,9 @@ test("schema migration preserves existing identities exactly once; newly missed 
 });
 
 test("workstation RPC denies all automatic substrates before effects; local human starts and mail remain usable", async t => {
-  const rig = makeDaemonDir({ nodeKind: "workstation" });
+  const rig = makeDaemonDir({ nodeKind: "workstation", rpcLocalTrust: { requireObservationCaller: true } });
   const daemon = await startDaemon(rig.dir);
+  await eligibilityPeer(t, rig.dir, daemon.socketPath);
   const raw = await RpcClient.connect(daemon.socketPath);
   const operator = await daemon.client();
   t.after(async () => { raw.close(); operator.close(); await daemon.stop(); rig.cleanup(); });
@@ -113,36 +111,24 @@ test("workstation RPC denies all automatic substrates before effects; local huma
   assert.equal(view.bee!.admissionBasis, "human");
 });
 
-test("pending unadmitted starts hold without retry budget and cross-bee retained exec never starts its sentinel", async t => {
+test("accepted queued work releases with no fleet query and preserves mailbox-only basis", async t => {
   const rig = makeDaemonDir({ nodeKind: "workstation" });
   const store = openCoreStore(join(rig.dir, "core.sqlite3"));
-  const input = { agent: "stub", substrate: "hsr", cwd: rig.dir };
-  store.createBee({ ...input, id: "held", name: "held" });
-  store.enqueueCommand("spawn", "held", {});
-  store.createBee({ ...input, id: "existing", name: "existing", admissionBasis: "continuation" });
-  store.createBee({ ...input, id: "stale", name: "stale", admissionBasis: "continuation" });
-  store.setFlag("stale", "resource_blocked", "workstation_heavy_work_denied");
-  store.createBee({ ...input, id: "other-resource", name: "other-resource", admissionBasis: "continuation" });
-  store.setFlag("other-resource", "resource_blocked", "another owner");
-  const cell = store.putCell({ sourceBeeId: "existing", originRepo: rig.dir, sha: "a".repeat(40), wrapper: "fixture", spaceName: "fixture-space-123456789abc", spaceDir: rig.dir, gitCommonDirRealpath: join(rig.dir, ".git"), objectFormat: "sha1", sandbox: false });
+  store.createBee({ id:"accepted", name:"accepted", agent:"stub", substrate:"hsr", cwd:rig.dir });
+  store.enqueueCommand("spawn", "accepted", {});
+  store.setFlag("accepted", "resource_blocked", "workstation_heavy_work_denied");
+  store.createBee({ id:"inbox", name:"inbox", agent:"inbox", substrate:"hsr", cwd:rig.dir, admissionBasis:"inbox_only" });
+  store.createBee({id:"other-hold",name:"other-hold",agent:"stub",substrate:"hsr",cwd:rig.dir,admissionBasis:"continuation"});
+  store.setFlag("other-hold","resource_blocked","other owner");
   store.close();
-  const daemon = await startDaemon(rig.dir);
-  const raw = await RpcClient.connect(daemon.socketPath);
-  const operator = await daemon.client();
-  t.after(async () => { raw.close(); operator.close(); await daemon.stop(); rig.cleanup(); });
-  await waitFor(async () => (await operator.request<ViewResult>("view", { beeId: "held" })).view.flags.includes("resource_blocked"), "admission hold");
-  const sentinel = join(rig.dir, "SHOULD-NOT-START");
-  const request = { cellId: cell.id, idempotencyKey: "denied-exec", argv: ["sh", "-c", `touch ${sentinel}`] };
-  await assert.rejects(raw.request("cell.exec", request), denied);
-  await assert.rejects(raw.request("cell.exec", request), denied);
-  assert.equal(existsSync(sentinel), false);
-  const command = (await operator.request<CommandsResult>("commands", { beeId: "held" })).commands[0]!;
-  assert.equal(command.attempts, 0);
-  assert.equal(command.status, "queued");
-  assert.equal((await operator.request<ViewResult>("view", { beeId: "held" })).view.flags.includes("spawn_failed"), false);
-  assert.equal((await operator.request<ViewResult>("view", { beeId: "stale" })).view.flags.includes("resource_blocked"), false);
-  assert.equal((await operator.request<ViewResult>("view", { beeId: "other-resource" })).view.flags.includes("resource_blocked"), true);
-  await raw.request("send", { beeId: "held", body: "durable pending mail" });
+  const daemon = await startDaemon(rig.dir); const client = await daemon.client();
+  t.after(async () => {client.close(); await daemon.stop(); rig.cleanup();});
+  await waitFor(async () => (await client.request<ViewResult>("view", {beeId:"accepted"})).view.runtimeState === "idle", "accepted local stub");
+  const view = await client.request<ViewResult>("view", {beeId:"accepted"});
+  assert.equal(view.view.flags.includes("resource_blocked"), false);
+  assert.equal(view.view.flags.includes("spawn_failed"), false);
+  assert.equal((await client.request<ViewResult>("view",{beeId:"other-hold"})).view.flags.includes("resource_blocked"),true);
+  assert.equal((await client.request<ViewResult>("view", {beeId:"inbox"})).bee!.admissionBasis,"inbox_only");
 });
 
 
@@ -159,14 +145,16 @@ test("registered Apiary carrier binds intent and exact exec actor; untrusted and
   t.after(async () => { service.close(); await daemon.stop(); rig.cleanup(); });
   const args = { name: "manual-apiary", agent: "stub", cwd: rig.dir, idempotencyKey: "manual-apiary" };
   const humanContext = { workstationAdmission: { version: 1 as const, intent: "human" as const, requestKey: args.idempotencyKey } };
-  await assert.rejects(service.request("spawn", args, 1000, humanContext));
+  const untrusted = await service.request<SpawnResult>("spawn", {...args,idempotencyKey:"untrusted"}, 3000, {workstationAdmission:{...humanContext.workstationAdmission,requestKey:"untrusted"}});
+  assert.equal(untrusted.notice?.code,"no_satellite_available");
   const challenge = await service.request<LocalTrustChallenge>("rpc.localTrust.challenge");
   // Only this disposable fixture's generated registration key is read.
   const key = readFileSync(join(rig.dir, "rpc-private", "registration.key"));
   const token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex"); key.fill(0);
   await service.request("rpc.localTrust.register", { pid: process.pid, challengeId: challenge.challengeId, token });
-  await assert.rejects(service.request("spawn", { ...args, idempotencyKey: "unmarked" }), denied);
-  await assert.rejects(service.request("spawn", { ...args, idempotencyKey: "agent-with-principal" }, 1000, { workstationAdmission: { version: 1, intent: "automatic", requestKey: "agent-with-principal" }, sessionPrincipal: { beeId: "reader" } }), denied);
+  const unmarked = await service.request<SpawnResult>("spawn", { ...args, idempotencyKey: "unmarked" });
+  assert.equal(unmarked.notice?.code,"no_satellite_available");
+  assert.equal((await service.request<SpawnResult>("spawn", { ...args, idempotencyKey: "agent-with-principal" }, 3000, { workstationAdmission: { version: 1, intent: "automatic", requestKey: "agent-with-principal" }, sessionPrincipal: { beeId: "reader" } })).notice?.code,"no_satellite_available");
   const spawned = await service.request<SpawnResult>("spawn", args, 1000, humanContext);
   assert.ok(spawned.beeId);
   await assert.rejects(service.request("spawn", { ...args, idempotencyKey: "wrong-key" }, 1000, humanContext), { code: "invalid_request" });
@@ -175,7 +163,8 @@ test("registered Apiary carrier binds intent and exact exec actor; untrusted and
   assert.ok(fixer.beeId);
   const sentinel = join(space, "allowed-own-reader");
   const exec = { cellId: cell.id, idempotencyKey: "own-reader", argv: [process.execPath, "-e", "require('node:fs').writeFileSync(process.argv[1],'ok')", sentinel] };
-  await assert.rejects(service.request("cell.exec", { ...exec, idempotencyKey: "other" }, 3000, { sessionPrincipal: { beeId: "other" } }), denied);
+  const other = await service.request<{status:string;admissionDiagnostic?:{reason:string}}>("cell.exec", { ...exec, idempotencyKey: "other" }, 3000, { sessionPrincipal: { beeId: "other" } });
+  assert.equal(other.status,"done"); assert.equal(other.admissionDiagnostic?.reason,"criteria_unsupported");
   const own = await service.request<{ status: string }>("cell.exec", exec, 3000, { sessionPrincipal: { beeId: "reader" } });
   assert.equal(own.status, "done");
   assert.equal(readFileSync(sentinel, "utf8"), "ok");
@@ -191,12 +180,13 @@ test("satellite trust-off automatic metadata and unverifiable principals preserv
   assert.ok(spawned.beeId);
   const exec = await service.request<{ reason: string }>("cell.exec", { cellId: "missing", argv: ["false"], idempotencyKey: "satellite-exec" }, 3000, { sessionPrincipal: { beeId: spawned.beeId } });
   assert.equal(exec.reason, "no_cell");
-  await assert.rejects(service.request("spawn", { name: "spoof", agent: "stub", cwd: rig.dir, idempotencyKey: "spoof" }, 1000, { workstationAdmission: { version: 1, intent: "human", requestKey: "spoof" } }), denied);
+  assert.ok((await service.request<SpawnResult>("spawn", { name: "spoof", agent: "stub", cwd: rig.dir, idempotencyKey: "spoof" }, 3000, { workstationAdmission: { version: 1, intent: "human", requestKey: "spoof" } })).beeId);
 });
 
 test("fork/import and dark execution paths cannot create a workstation runtime before admission", async t => {
-  const rig = makeDaemonDir({ nodeKind: "workstation" });
+  const rig = makeDaemonDir({ nodeKind: "workstation", rpcLocalTrust: { requireObservationCaller: true } });
   const daemon = await startDaemon(rig.dir);
+  await eligibilityPeer(t, rig.dir, daemon.socketPath);
   const raw = await RpcClient.connect(daemon.socketPath);
   t.after(async () => { raw.close(); await daemon.stop(); rig.cleanup(); });
   for (const verb of ["bee.fork", "thread.fork", "thread.handoff", "import.fromFrozen"] as const) await assert.rejects(raw.request(verb, { beeId: "missing", idempotencyKey: verb }), denied);

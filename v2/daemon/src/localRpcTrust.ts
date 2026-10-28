@@ -81,7 +81,7 @@ function privateKey(file: string, root: string, uid: number): Buffer {
 export class LocalRpcTrust {
   private key: Buffer | null = null;
   private keyUnavailable = false;
-  private registration: {uid: number; pid: number; birth: string; expiresAtMs: number} | null = null;
+  private registration: {uid: number; pid: number; birth: string; expiresAtMs: number; epoch: string} | null = null;
   private readonly challenges = new Map<string, {challenge: LocalTrustChallenge; connection: object; consumed: boolean}>();
   readonly daemonInstanceId = randomUUID();
   private config: LocalTrustConfig;
@@ -132,7 +132,7 @@ export class LocalRpcTrust {
     this.challenges.set(challenge.challengeId, {challenge, connection: identity, consumed: false});
     return challenge;
   }
-  register(params: Record<string, unknown>, connection: PeerConnection, identity: object, ingress: string | undefined): {registered: true; uid: number; pid: number; expiresAtMs: number} {
+  register(params: Record<string, unknown>, connection: PeerConnection, identity: object, ingress: string | undefined): {registered: true; uid: number; pid: number; expiresAtMs: number; daemonInstanceId: string; registrationEpoch: string} {
     const verified = this.peer(connection, ingress);
     if (Object.keys(params).some(key => !["pid", "challengeId", "token"].includes(key)) || params.pid !== verified.peer.pid || typeof params.challengeId !== "string" || typeof params.token !== "string" || !/^[a-f0-9]{64}$/.test(params.token)) refusal("invalid_registration");
     const entry = this.challenges.get(params.challengeId);
@@ -149,9 +149,13 @@ export class LocalRpcTrust {
     expected.fill(0); supplied.fill(0);
     if (!valid) refusal("invalid_token");
     const previous = this.registration;
-    this.registration = {uid: verified.peer.uid, pid: verified.peer.pid, birth: verified.peer.processBirth!, expiresAtMs: this.now() + 300_000};
+    this.registration = {uid: verified.peer.uid, pid: verified.peer.pid, birth: verified.peer.processBirth!, expiresAtMs: this.now() + 300_000, epoch: randomUUID()};
     this.audit("rpc.local_registered", {uid: verified.peer.uid, pid: verified.peer.pid, replacedPid: previous?.pid ?? null, expiresAtMs: this.registration.expiresAtMs});
-    return {registered: true, uid: verified.peer.uid, pid: verified.peer.pid, expiresAtMs: this.registration.expiresAtMs};
+    return {registered: true, uid: verified.peer.uid, pid: verified.peer.pid, expiresAtMs: this.registration.expiresAtMs, daemonInstanceId: this.daemonInstanceId, registrationEpoch: this.registration.epoch};
+  }
+  get eligibilityRegistration() {
+    const r = this.registration;
+    return r && r.expiresAtMs > this.now() ? { daemonInstanceId: this.daemonInstanceId, registrationEpoch: r.epoch, expiresAtMs: r.expiresAtMs } : null;
   }
   require(connection: PeerConnection, ingress: string | undefined): void {
     if (!this.enabled) return;

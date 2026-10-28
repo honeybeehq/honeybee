@@ -90,6 +90,7 @@ export const DAEMON_VERSION = BUILD_IDENTITY.version;
  * client ignores the extra key) and `deployInfo` repeats the list.
  */
 export const DAEMON_CAPABILITIES = [
+  "workstation.eligibility.v1",
   "workstation.admission.v1",
   "mail.humanFirst.v1",
   "mail.batching.v1",
@@ -492,6 +493,8 @@ export const RPC_VERBS = [
   "rpc.effect.status",
   "rpc.localTrust.challenge",
   "rpc.localTrust.register",
+  "admission.eligibility.subscribe",
+  "admission.eligibility.answer",
   "humanRef.status", "humanRef.enroll", "humanRef.registry.status", "humanRef.registry.init", "humanRef.registry.reserve",
   "bee.reconnectTools", "bee.reconnectTools.get",
   "thread.fork", "thread.handoff", "thread.operation.get", "thread.operation.retry", "thread.transcript", "thread.capabilities",
@@ -697,6 +700,7 @@ export type RpcVerb = (typeof RPC_VERBS)[number];
 
 /** Service assertion, accepted only on a registered direct-local RPC connection. */
 export interface RpcRequestContext {
+  satelliteEligibility?: import("./satelliteEligibility.ts").EligibilityAnswer;
   workstationAdmission?: import("../../core/src/types.ts").WorkstationAdmission;
   humanChat?: import("../../core/src/types.ts").HumanChatAdmission;
   sessionPrincipal?: { beeId: string };
@@ -739,6 +743,8 @@ export type WatchFrame =
  * settled outcome, not a new command. Fresh executions omit both fields.
  */
 export interface DedupMarkers {
+  notice?: import("./satelliteEligibility.ts").PlacementFallback["notice"];
+  admissionDiagnostic?: import("./satelliteEligibility.ts").PlacementFallback["admissionDiagnostic"];
   deduped?: boolean;
   status?: CommandStatus;
 }
@@ -1697,7 +1703,7 @@ export interface AuditTailResult {
   rows: AuditRow[];
 }
 
-export interface WorkstationAdmissionStatus { version: number; nodeKind: string; scope: string; provenance: string; landingFixerPolicy: import("../../core/src/types.ts").LandingFixerPolicy | null }
+export interface WorkstationAdmissionStatus { eligibility?: { ready: boolean; registrationEpoch: string | null }; version: number; nodeKind: string; scope: string; provenance: string; landingFixerPolicy: import("../../core/src/types.ts").LandingFixerPolicy | null }
 
 export interface DeployInfoResult {
   workstationAdmission?: WorkstationAdmissionStatus;
@@ -2004,6 +2010,8 @@ export interface CellExecParams {
 }
 
 export interface CellExecResult {
+  notice?: import("./satelliteEligibility.ts").PlacementFallback["notice"];
+  admissionDiagnostic?: import("./satelliteEligibility.ts").PlacementFallback["admissionDiagnostic"];
   id: string;
   cellId: string;
   status: CellOpStatus;

@@ -15,6 +15,8 @@ export const RPC_ACCESS = {
   "rpc.effect.status": "read",
   "rpc.localTrust.challenge": "mutate",
   "rpc.localTrust.register": "mutate",
+  "admission.eligibility.subscribe": "mutate",
+  "admission.eligibility.answer": "mutate",
   "humanRef.status": "read",
   "bee.reconnectTools": "mutate",
   "thread.fork": "mutate",

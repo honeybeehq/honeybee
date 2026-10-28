@@ -634,6 +634,10 @@ function envParams(ctx: CliContext): { revealEnv?: true } {
 }
 
 function emit(ctx: CliContext, human: string[], jsonValue: unknown, stale: boolean): void {
+  if (jsonValue && typeof jsonValue === "object" && "notice" in jsonValue) {
+    const notice = jsonValue.notice as { code?: string; message?: string } | undefined;
+    if (notice?.code === "no_satellite_available") ctx.io.err("No satellite available; running on this computer");
+  }
   if (ctx.json) {
     ctx.io.out(JSON.stringify(withDaemonTarget(ctx, stale ? { stale: true, ...(jsonValue as object) } : jsonValue)));
     return;

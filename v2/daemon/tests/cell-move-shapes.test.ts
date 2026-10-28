@@ -10,10 +10,11 @@ import { CELL_MOVE_ERROR_CODES } from "./fixtures/apiary-cell-move-shapes.ts";
 type Shape<T> = { [K in keyof T]: T[K] };
 type Equal<A, B> = (<T>() => T extends Shape<A> ? 1 : 2) extends
   (<T>() => T extends Shape<B> ? 1 : 2) ? true : false;
+// Placement notices are additive optional fields; the pre-extension consumer shape remains exact.
 const wireShapesMatch: [
   Equal<BeeMoveView, Apiary.BeeMoveView>,
   Equal<BeeMoveResult, Apiary.BeeMoveResult>,
-  Equal<CellExecResult, Apiary.CellExecResult>,
+  Equal<Omit<CellExecResult, "notice" | "admissionDiagnostic">, Apiary.CellExecResult>,
   Equal<CellRow, Apiary.CellRow>,
   Apiary.BeeMoveParams extends BeeMoveParams ? true : false,
   Apiary.CellExecParams extends CellExecParams ? true : false,

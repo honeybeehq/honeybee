@@ -2514,6 +2514,11 @@ export class CoreStore {
     if (row && row.digest !== digest) throw new IdempotencyConflictError(key);
   }
 
+  workstationAdmissionForKey(key: string): Record<string, unknown> | null {
+    const row = this.stmt("SELECT payload FROM audit WHERE kind='workstation.admission' AND json_extract(payload,'$.requestKey')=? ORDER BY seq DESC LIMIT 1").get(key) as Row | undefined;
+    return row ? JSON.parse(String(row.payload)) as Record<string, unknown> : null;
+  }
+
   recordWorkstationAdmission(beeId: string | null, payload: Record<string, unknown>): void {
     this.tx(() => {
       if (typeof payload.requestKey === "string") {
@@ -2917,7 +2922,7 @@ export class CoreStore {
           namespace,
         );
       if (input.admissionBasis !== undefined) {
-        if (!["unadmitted", "continuation", "human", "automatic_nonworkstation", "inbox_only"].includes(input.admissionBasis) && !/^fixer:[^\s]+$/.test(input.admissionBasis)) throw new CoreError("createBee: invalid admission basis");
+        if (!["unadmitted", "continuation", "human", "automatic_nonworkstation", "automatic_local_fallback", "inbox_only"].includes(input.admissionBasis) && !/^fixer:[^\s]+$/.test(input.admissionBasis)) throw new CoreError("createBee: invalid admission basis");
         this.stmt("UPDATE bees SET admission_basis = ? WHERE id = ?").run(input.admissionBasis, id);
       }
       if (input.phoneOperation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(input.phoneOperation.origin, null, input.phoneOperation.key, id)));
@@ -10042,6 +10047,25 @@ export class CoreStore {
     const op = this.getCellOp(id);
     if (!op) throw new CoreError(`cell op not found: ${id}`);
     return op;
+  }
+
+  cellOpHasStartEvidence(id: string): boolean {
+    return this.stmt(`SELECT 1 FROM audit WHERE kind='cell_op.put' AND json_extract(payload,'$.op.id')=?
+      AND (json_extract(payload,'$.op.status') IN ('running','done','outcome_unknown') OR json_extract(payload,'$.op.pid') IS NOT NULL) LIMIT 1`).get(id) !== undefined;
+  }
+
+  requeuePlacementDeniedCellOp(id: string, requestHash: string, argv: string[]): CellOpRow | null {
+    return this.tx(() => {
+      const op = this.mustGetCellOp(id);
+      if (op.requestHash !== requestHash) throw new IdempotencyConflictError();
+      if (op.kind !== "exec" || op.status !== "failed" || op.failure !== "workstation_heavy_work_denied"
+        || op.argv?.length !== 0 || op.pid !== null || op.pidStartedAt !== null || this.cellOpHasStartEvidence(id)) return null;
+      this.stmt("UPDATE cell_ops SET argv_json=?, status='queued', failure=NULL, updated_at=? WHERE id=?").run(JSON.stringify(argv), this.now(), id);
+      const saved = this.mustGetCellOp(id);
+      this.audit("cell_op.put", null, { op: saved });
+      this.recordWorkstationAdmission(null, { operation: "cell.exec", outcome: "requeued", reason: "legacy_no_effect_denial", requestKey: op.idempotencyKey });
+      return saved;
+    });
   }
 
   updateCellOp(id: string, patch: Partial<Pick<CellOpRow, "status" | "pid" | "pidStartedAt" | "exitCode" | "stdout" | "stderr" | "truncated" | "failure">>): CellOpRow {
