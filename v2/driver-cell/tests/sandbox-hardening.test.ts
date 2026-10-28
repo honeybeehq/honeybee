@@ -5,13 +5,17 @@ import { createConnection, createServer } from "node:net";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { bwrapArgs, defaultWritablePaths, sandboxEnvironment, sandboxProtectedPaths, seatbeltProfile, wrapWithSandbox } from "../src/sandbox.ts";
+import { bwrapArgs as productionBwrapArgs, defaultWritablePaths, sandboxEnvironment, sandboxProtectedPaths, seatbeltProfile, wrapWithSandbox as productionWrapWithSandbox } from "../src/sandbox.ts";
 import { inspectProcess } from "../../harness/src/processIdentity.ts";
 import { spawnCallerBee } from "../../daemon/src/spawnLineage.ts";
 import { prepareSandboxHarnessHome } from "../src/harnessHome.ts";
 import { validatedCellScopeBinary } from "../src/cellScope.ts";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+
+import { withFixtureGateway } from "./sandboxFixture.ts";
+const bwrapArgs: typeof productionBwrapArgs = (policy, ...args) => productionBwrapArgs(withFixtureGateway(policy), ...args);
+const wrapWithSandbox: typeof productionWrapWithSandbox = (policy, ...args) => productionWrapWithSandbox(withFixtureGateway(policy), ...args);
 
 const linux = process.platform === "linux";
 const dispose = (path: string): void => { assert.equal(spawnSync("trash", [path]).status, 0); };
@@ -180,6 +184,7 @@ test("hardening: helper integrity and ABI below six refuse execution", { skip: !
   try {
     assert.throws(() => validatedCellScopeBinary(root));
     writeFileSync(join(root, "cell-scope"), "tampered", { mode: 0o700 });
+    writeFileSync(join(root, "hive"), "fixture");
     writeFileSync(join(root, "manifest.json"), JSON.stringify({version: 1, target: `linux-${process.arch}`, sha256: "0".repeat(64), sourceSha256: "0".repeat(64)}));
     assert.throws(() => validatedCellScopeBinary(root), /mismatched Landlock/);
     const mock = join(root, "mock.c");
@@ -248,9 +253,9 @@ test("hardening: fixture systemd private socket is masked and gh token file is h
       client.once('error', error => console.log(JSON.stringify({...report, connected:false, error:error.code})));
     `;
     const wrapped = wrapWithSandbox({ cellDir: cell, writablePaths: [], hiddenPaths: [gh] }, process.execPath, ["-e", script], join(cell, "profile"));
-    const mask = wrapped.args.findIndex((arg, index) => arg === "--tmpfs" && wrapped.args[index + 1] === "/run/user");
+    const mask = wrapped.args.findIndex((arg, index) => arg === "--tmpfs" && wrapped.args[index + 1] === "/run");
     assert.ok(mask > 0);
-    wrapped.args.splice(mask, 0, "--ro-bind", runtime, "/run/user");
+    wrapped.args.splice(mask, 0, "--ro-bind", runtime, "/run");
     const child = spawn(wrapped.command, wrapped.args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "", stderr = "";
     child.stdout.on("data", data => stdout += data); child.stderr.on("data", data => stderr += data);

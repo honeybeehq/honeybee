@@ -43,6 +43,7 @@ export interface SandboxPolicy {
   protectedPaths?: readonly string[];
   hiddenPaths?: readonly string[];
   gatewaySocketPath?: string;
+  homePaths?: readonly string[];
   harnessHome?: { harness: string; path: string; cwd: string };
 }
 
@@ -116,10 +117,11 @@ function hiddenPaths(policy: SandboxPolicy): string[] {
 
 function checkedWritablePaths(policy: SandboxPolicy): string[] {
   const protectedPaths = [...sandboxProtectedPaths(), "/run", ...(policy.protectedPaths ?? []), ...(policy.harnessHome ? [policy.harnessHome.path] : [])].map(canonicalPath);
-  const paths = [...policy.writablePaths, ...(policy.scratchPaths ?? [])];
+  const standardScratch = new Set([...defaultScratchPaths("linux"), ...defaultScratchPaths("darwin")]);
+  const paths = [...policy.writablePaths, ...(policy.scratchPaths ?? []).filter(path => !standardScratch.has(path) && !/^(?:\/private)?\/var\/folders\/[^/]+\/[^/]+\/T\/?$/.test(path))];
   for (const path of paths) {
     const canonical = canonicalPath(path);
-    if (!isAbsolute(path) || protectedPaths.some(protectedPath => containsPath(canonical, protectedPath) || containsPath(protectedPath, canonical))) {
+    if (!isAbsolute(path) || !containsPath(canonicalPath(policy.cellDir), canonical) || protectedPaths.some(protectedPath => containsPath(canonical, protectedPath) || containsPath(protectedPath, canonical))) {
       throw new Error(`cell sandbox: protected writable path refused: ${path}`);
     }
   }
@@ -309,10 +311,10 @@ function isRegularFile(path: string): boolean {
   }
 }
 
-function bwrapLaunchBinds(command: string, args: readonly string[]): string[] {
+function bwrapLaunchBinds(command: string, args: readonly string[], cellDir: string): string[] {
   const roots = new Set<string>();
   for (const input of [command, ...args]) {
-    if (!isAbsolute(input) || !isRegularFile(input)) continue;
+    if (!isAbsolute(input) || !isRegularFile(input) || containsPath(canonicalPath(cellDir), canonicalPath(input))) continue;
     for (const spelling of [input, realpathSync(input)]) {
       const root = maskedLaunchRoot(spelling);
       if (root) roots.add(root);
@@ -364,19 +366,19 @@ export function createSshConfigView(profilePath: string, source = "/etc/ssh/ssh_
  */
 export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[], _sshConfigView?: string): string[] {
   checkedWritablePaths(policy);
-  if (policy.writablePaths.length > 0 || (policy.scratchPaths ?? []).some(path => !["/tmp", "/var/tmp", "/dev"].includes(path))) {
+  if ((policy.scratchPaths ?? []).some(path => !["/tmp", "/var/tmp", "/dev"].includes(path))) {
     throw new Error("cell sandbox: only Cell-owned writable paths are supported");
   }
   const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path) : undefined;
   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
-  const homes = [...new Set([homedir(), userInfo().homedir].map(path => realpathSync(path)))];
+  const homes = [...new Set([homedir(), userInfo().homedir, ...(policy.homePaths ?? [])].map(path => realpathSync(path)))];
   const out: string[] = [
     "--unshare-user", "--unshare-pid", "--unshare-ipc",
     "--ro-bind", "/", "/", "--dev", "/dev", ...size, "--tmpfs", "/dev/shm", "--proc", "/proc",
     ...BWRAP_PRIVATE_MOUNTS.flatMap(mount => [...size, "--tmpfs", mount]),
     ...homes.flatMap(home => ["--tmpfs", home]),
     "--tmpfs", "/run", "--dir", "/run/user", "--dir", "/run/honeybee", "--dir", "/run/honeybee/bin",
-    ...bwrapLaunchBinds(command, args),
+    ...bwrapLaunchBinds(command, args, policy.cellDir),
     "--bind", policy.cellDir, policy.cellDir,
   ];
   if (policy.kvm) out.push("--dev-bind", "/dev/kvm", "/dev/kvm");
@@ -434,7 +436,7 @@ export function wrapWithSandbox(
     if (!socket || !isAbsolute(socket)) throw new Error("cell sandbox: per-Cell gateway is required; refusing launch");
     const info = lstatSync(socket, { throwIfNoEntry: false });
     if (!info?.isSocket() || info.isSymbolicLink() || realpathSync(socket) !== socket) throw new Error("cell sandbox: per-Cell gateway is missing or unsafe; refusing launch");
-    return { command: validatedCellScopeBinary(), args: ["--", "bwrap", ...bwrapArgs(policy, command, args, createSshConfigView(profilePath))] };
+    return { command: validatedCellScopeBinary(), args: ["--", "bwrap", ...bwrapArgs(policy, command, args)] };
   }
   throw new Error(`cell sandbox: unsupported platform '${osPlatform}'`);
 }

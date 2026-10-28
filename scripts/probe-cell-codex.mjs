@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
+import { createServer as createGateway } from "node:net";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CellDriver } from "../v2/driver-cell/src/driver.ts";
@@ -9,6 +10,10 @@ import { makeOrigin, g } from "../v2/driver-cell/tests/helpers.ts";
 import { fixtureRuntimeIdentity } from "../v2/driver-hsr/tests/helpers.ts";
 import { codexAdapter } from "../v2/adapters/src/codex.ts";
 
+const gatewayRoot = mkdtempSync("/tmp/hb-t11-codex-gateway-");
+const gatewayPath = join(gatewayRoot, "gateway.sock");
+const gateway = createGateway(socket => socket.destroy());
+await new Promise(resolve => gateway.listen(gatewayPath, resolve));
 const root = mkdtempSync("/tmp/hb-t11-codex-");
 const origin = makeOrigin(root);
 writeFileSync(join(origin.repo, "AGENTS.md"), "INTERIM SECURITY RULE from Needle9591/orchestrator9592, effective NOW until HB T11 Cell sandbox fix ships: likely escape from satellite Cells via systemd user manager socket. NEW satellite Cells take NO external or untrusted inputs: NO web browsing or fetching; NO third-party repos/packages beyond pinned dependencies; NO content from unverified senders. Trusted work on OUR OWN repositories continues. Put this VERBATIM in EVERY new brief/spawn prompt and forward to EVERY existing worker, checker and child under you. Do not probe/exploit the socket or invent a bypass.\n");
@@ -49,6 +54,7 @@ const driver = new CellDriver({
   cellsRoot, nodeKind: "satellite", disableCow: true,
   resolveHarness: () => ({ adapter: codexAdapter({ cwd: paths.spaceDir, ...(sessionId ? { resumeThreadId: sessionId } : {}) }), command: process.argv[2] ?? "codex", args: ["app-server"], env: { PATH: process.env.PATH, HOME: root, CODEX_HOME: account, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } }),
   resolveCell: () => ({ provision: { beeId: "t11", originRepo: origin.repo, sha: origin.sha, wrapper: "t11", repoName: "fixture", cellId: "t11" }, sandbox: true }),
+  resolveSandboxGateway: () => ({ socketPath: gatewayPath }),
   resolveSandboxHarnessHome: () => ({ harness: "codex", path: account }),
   hsr: { runtimeIdentity: fixtureRuntimeIdentity(root), sessionLogDir: join(root, "logs"), stopKillGraceMs: 500 },
 });
@@ -91,6 +97,7 @@ try {
   console.log(JSON.stringify(receipt));
 } finally {
   driver.disposeAll();
+  await new Promise(resolve => gateway.close(resolve));
   model.closeAllConnections();
   await new Promise(resolve => model.close(resolve));
 }
