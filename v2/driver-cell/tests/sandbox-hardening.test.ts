@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn, spawnSync } from "node:child_process";
 import { createConnection, createServer } from "node:net";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { bwrapArgs as productionBwrapArgs, defaultWritablePaths, sandboxEnvironment, sandboxProtectedPaths, seatbeltProfile, wrapWithSandbox as productionWrapWithSandbox } from "../src/sandbox.ts";
@@ -12,6 +12,7 @@ import { prepareSandboxHarnessHome } from "../src/harnessHome.ts";
 import { validatedCellScopeBinary } from "../src/cellScope.ts";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { assertSandboxToolchainMetadata, sandboxToolchainRoot } from "../src/sandbox.ts";
 
 import { withFixtureGateway } from "./sandboxFixture.ts";
 const bwrapArgs: typeof productionBwrapArgs = (policy, ...args) => productionBwrapArgs(withFixtureGateway(policy), ...args);
@@ -267,4 +268,36 @@ test("hardening: fixture systemd private socket is masked and gh token file is h
     assert.equal(readFileSync(join(gh, "hosts.yml"), "utf8"), "fixture-not-a-token");
     console.log(JSON.stringify({fixture:"T11 manager path and gh", hostFixtureConnected:true, ...report}));
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); dispose(root); }
+});
+
+test("hardening: toolchain owners, modes and escaping symlinks fail closed", { skip: !linux }, () => {
+  const root = mkdtempSync("/tmp/hb-toolchain-owner-");
+  const allowed = new Set([0, process.geteuid()]);
+  try {
+    chmodSync(root, 0o755);
+    assert.doesNotThrow(() => assertSandboxToolchainMetadata(statSync(root), allowed));
+    chmodSync(root, 0o775);
+    assert.throws(() => assertSandboxToolchainMetadata(statSync(root), allowed), /group- or world-writable/);
+    chmodSync(root, 0o757);
+    assert.throws(() => assertSandboxToolchainMetadata(statSync(root), allowed), /group- or world-writable/);
+    assert.throws(() => assertSandboxToolchainMetadata({uid: 23456, mode: 0o755}, allowed), /untrusted owner/);
+    assert.throws(() => assertSandboxToolchainMetadata({uid: 65534, mode: 0o755}, new Set([0, 65534])), /unmapped/);
+    const outside = join(root, "outside"); mkdirSync(outside); mkdirSync(join(outside, "bin"));
+    writeFileSync(join(outside, "bin", "node"), "fixture");
+    const link = join(root, "node-v24.18.0-linux-x64"); symlinkSync(outside, link);
+    assert.throws(() => sandboxToolchainRoot(join(link, "bin", "node")), /unapproved executable install root/);
+  } finally { chmodSync(root, 0o755); dispose(root); }
+});
+
+test("hardening: missing gateway and unchanged user namespace refuse before harness exec", { skip: !linux }, () => {
+  const root = mkdtempSync("/tmp/hb-userns-refusal-");
+  try {
+    assert.throws(() => productionWrapWithSandbox({cellDir:root,writablePaths:[]}, "/bin/true", [], join(root,"profile")), /gateway is required/);
+    assert.throws(() => productionWrapWithSandbox({cellDir:root,writablePaths:[],gatewaySocketPath:join(root,"missing.sock")}, "/bin/true", [], join(root,"profile")), /gateway is missing or unsafe/);
+    const ns = statSync("/proc/self/ns/user"), marker = join(root,"escaped");
+    const run = spawnSync(validatedCellScopeBinary(), ["--assert-userns", `${ns.dev}:${ns.ino}`, "--", "/usr/bin/touch", marker], {encoding:"utf8"});
+    assert.equal(run.status, 125);
+    assert.match(run.stderr, /user namespace unchanged/);
+    assert.equal(existsSync(marker), false);
+  } finally { dispose(root); }
 });
