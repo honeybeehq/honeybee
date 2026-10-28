@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import { mock, test } from "node:test";
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, symlinkSync } from "node:fs";
+import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { ConfigError } from "../src/config.ts";
 import { parseDaemonRunArgs, resolveDaemonConfig, runDaemon } from "../src/main.ts";
 
 async function fixture(fn: (root: string) => Promise<void> | void): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "hb-vault-isolation-"));
-  const keys = ["HOME", "HIVE_V2_DATA_DIR", "HIVE_V2_SOCKET_PATH", "HIVE_V2_VAULT_DIR", "HIVE_V2_INSTALLED_SERVICE"] as const;
+  const keys = ["HOME", "HIVE_V2_DATA_DIR", "HIVE_V2_SOCKET_PATH", "HIVE_V2_VAULT_DIR", "HIVE_V2_INSTALLED_SERVICE", "HIVE_V2_SERVICE_LABEL"] as const;
   const saved = keys.map(key => process.env[key]);
   for (const key of keys) delete process.env[key];
   process.env.HOME = root;
@@ -137,4 +137,86 @@ test("explicit isolated vault never makes an inherited socket the listen target"
   process.env.HIVE_V2_SOCKET_PATH = join(root, "inherited.sock");
   const dataDir = join(root, "data");
   assert.equal(resolveDaemonConfig({ dataDir, vaultDir: join(root, "vault") }).socketPath, join(dataDir, "hived.sock"));
+}));
+
+function explicitVaultArgs(root: string, source: "flag" | "env" | "config", vault: string) {
+  if (source === "flag") return parseDaemonRunArgs(["--vault-dir", vault]);
+  if (source === "env") { process.env.HIVE_V2_VAULT_DIR = vault; return {}; }
+  const configPath = join(root, "explicit-vault-config.json");
+  writeFileSync(configPath, JSON.stringify({ accounts: { vaultDir: vault } }));
+  return { configPath };
+}
+
+const vaultShapes = ["literal", "trailing slash", "relative", "symlink", "symlink parent"] as const;
+function defaultVaultAlias(root: string, shape: (typeof vaultShapes)[number]): string {
+  const vault = join(root, ".hive", "vault");
+  if (shape === "trailing slash") return `${vault}/`;
+  if (shape === "relative") return relative(process.cwd(), vault);
+  if (shape === "symlink") { const alias = join(root, "vault-alias"); symlinkSync(vault, alias); return alias; }
+  if (shape === "symlink parent") { const alias = join(root, "hive-alias"); symlinkSync(join(root, ".hive"), alias); return join(alias, "vault"); }
+  return vault;
+}
+
+for (const source of ["flag", "env", "config"] as const) {
+  for (const shape of vaultShapes) {
+    for (const mode of ["foreground", "custom data", "custom socket"] as const) {
+      test(`explicit default vault ${source}/${shape}/${mode} refuses before writes`, () => fixture(async root => {
+        const args = explicitVaultArgs(root, source, defaultVaultAlias(root, shape));
+        if (mode !== "foreground") process.env.HIVE_V2_INSTALLED_SERVICE = "1";
+        const selected = { ...args, ...(mode === "custom data" ? { dataDir: join(root, "custom-data") } : {}), ...(mode === "custom socket" ? { socketPath: join(root, "custom.sock") } : {}) };
+        const before = readdirSync(root, { recursive: true });
+        assert.throws(() => resolveDaemonConfig(selected), required);
+        const argv = Object.entries(selected).flatMap(([key, value]) => [key === "vaultDir" ? "--vault-dir" : key === "dataDir" ? "--data-dir" : key === "socketPath" ? "--socket" : "--config", value ?? ""]);
+        await assert.rejects(runDaemon(argv), required);
+        assert.deepEqual(readdirSync(root, { recursive: true }), before);
+      }));
+    }
+    test(`default service accepts explicit canonical vault ${source}/${shape}`, () => fixture(root => {
+      process.env.HIVE_V2_INSTALLED_SERVICE = "1";
+      const args = explicitVaultArgs(root, source, defaultVaultAlias(root, shape));
+      assert.doesNotThrow(() => resolveDaemonConfig(args));
+    }));
+  }
+  for (const shape of ["symlink parent", "dangling symlink"] as const) test(`nonexistent default vault leaf via ${source}/${shape} cannot bypass guard`, () => fixture(root => {
+    const vault = join(root, ".hive", "vault");
+    rmSync(vault, { recursive: true });
+    const alias = join(root, "missing-alias");
+    if (shape === "symlink parent") symlinkSync(join(root, ".hive"), alias);
+    else symlinkSync(vault, alias);
+    try {
+      const args = explicitVaultArgs(root, source, shape === "symlink parent" ? join(alias, "vault") : alias);
+      const before = readdirSync(root, { recursive: true });
+      assert.throws(() => resolveDaemonConfig(args), required);
+      assert.deepEqual(readdirSync(root, { recursive: true }), before);
+    } finally {
+      mkdirSync(vault);
+      writeFileSync(join(vault, "sentinel"), "untouched");
+    }
+  }));
+}
+
+test("spoofed service label cannot authorize the default vault", () => fixture(root => {
+  process.env.HIVE_V2_SERVICE_LABEL = "dev.honeybee.spoof";
+  const calls: string[][] = [];
+  const owner = mock.method(childProcess, "execFileSync", (_file: string, args: readonly string[]) => {
+    calls.push([...args]);
+    const spoof = args.some(arg => arg.includes("dev.honeybee.spoof"));
+    return process.platform === "darwin" ? `pid = ${spoof ? process.pid : 1}` : String(spoof ? process.pid : 1);
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => resolveDaemonConfig({ vaultDir: join(root, ".hive", "vault") }), required);
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0]?.some(arg => arg.includes("dev.honeybee.hive.v2")));
+  } finally { owner.mock.restore(); syncBuiltinESMExports(); }
+}));
+
+test("custom service with an isolated explicit vault needs no default-service authority", () => fixture(root => {
+  process.env.HIVE_V2_SERVICE_LABEL = "dev.honeybee.custom";
+  const owner = mock.method(childProcess, "execFileSync", () => { throw new Error("unexpected service manager query"); });
+  syncBuiltinESMExports();
+  try {
+    assert.doesNotThrow(() => resolveDaemonConfig({ dataDir: join(root, "custom-data"), vaultDir: join(root, "isolated-vault") }));
+    assert.equal(owner.mock.callCount(), 0);
+  } finally { owner.mock.restore(); syncBuiltinESMExports(); }
 }));
