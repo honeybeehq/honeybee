@@ -87,6 +87,13 @@ test("codex: error notification with auth-expiry signature → auth_needed set",
   }
 });
 
+test("codex: read-only credential refresh remains a visible authentication boundary", () => {
+  for (const message of ["Token refresh failed: Read-only file system", "Cannot save auth.json: Read-only file system", "Cannot write .credentials.json: Permission denied"]) {
+    const signals = adapter.parseLine(JSON.stringify({jsonrpc:"2.0", method:"error", params:{error:{message}}}));
+    assert.ok(signals.some(signal => signal.kind === "flag" && signal.flag === "auth_needed" && signal.action === "set"));
+  }
+});
+
 test("codex: error notification with rate-limit text → resource_blocked set; generic error → []", () => {
   const rl = adapter.parseLine(JSON.stringify({
     jsonrpc: "2.0",
