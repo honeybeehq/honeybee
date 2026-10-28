@@ -62,6 +62,7 @@ function makeRig(
     | "blockedRuntimeStartBeeIds"
     | "assertRuntimeStartReady"
     | "removeBeeTmp"
+    | "onFlagEvidence"
   > = {},
 ): Rig {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-loops-"));
@@ -2165,6 +2166,28 @@ test("unit.10 (spec 08): the onFlagEvidence hook fires after each applied eviden
     store.close();
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("flag evidence redacts every adapter before storage and account policy", () => {
+  const rig = makeRig({}, {
+    onFlagEvidence: ev => {
+      if (ev.flag === "auth_needed" && ev.action === "set") rig.store.setAccountStatus("redaction-account", "auth_needed", ev.detail);
+    },
+  });
+  try {
+    rig.store.createAccount({id: "redaction-account", harness: "codex", homePath: "/tmp/redaction-account", label: "fixture"});
+    rig.store.createBee({id: "b", name: "b", agent: "stub", substrate: "hsr", cwd: "/tmp"});
+    rig.store.enqueueCommand("spawn", "b");
+    rig.core.step(); rig.core.step();
+    const detail = 'Token refresh failed Bearer fixture-bearer sk-fixture-secret eyJfixture.eyJpayload.signature refresh_token=fixture-refresh';
+    rig.driver.evidence.push({beeId: "b", generation: 1, flag: "auth_needed", action: "set", detail});
+    rig.driver.evidence.push({beeId: "b", generation: 1, flag: "resource_blocked", action: "set", detail});
+    rig.core.step();
+    const stored = JSON.stringify({flags: rig.store.activeFlags("b"), account: rig.store.getAccount("redaction-account"), audit: rig.store.auditRows()});
+    for (const secret of ["fixture-bearer", "sk-fixture-secret", "eyJfixture", "fixture-refresh"]) assert.ok(!stored.includes(secret), secret);
+    assert.equal(rig.store.getAccount("redaction-account")?.statusReason, "Authentication is required; sign in or refresh account credentials.");
+    assert.ok(rig.store.activeFlags("b").find(row => row.flag === "resource_blocked")?.detail.includes("[REDACTED]"));
+  } finally { rig.cleanup(); }
 });
 
 test("sandbox tmp evidence owns only its own resource_blocked row and never reaches account policy", () => {

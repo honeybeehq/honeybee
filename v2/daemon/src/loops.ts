@@ -1,3 +1,4 @@
+import { safeFlagDetail } from "./flagDetail.ts";
 import { automationDeliveryClass } from "../../core/src/types.ts";
 import { renderMailBatch } from "./mailBatch.ts";
 import type { QuotaBoundary } from "../../core/src/quota.ts";
@@ -760,7 +761,8 @@ export class DaemonCore {
 
   private applyEvidence(): void {
     if (typeof this.ext.observeEvidence !== "function") return;
-    for (const ev of this.ext.observeEvidence()) {
+    for (const evidence of this.ext.observeEvidence()) {
+      const ev = { ...evidence, detail: safeFlagDetail(evidence.flag, evidence.action, evidence.detail) };
       if (!this.store.getBee(ev.beeId)) {
         this.log(`flag.skip bee=${ev.beeId} flag=${ev.flag} reason=no_bee`);
         continue;
