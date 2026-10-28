@@ -1,0 +1,35 @@
+sourceSha=04de8e849523554fc9023df038f58e2733acd82e
+command=["node", "--test", "v2/daemon/tests/cell-credential-refresh.test.ts", "v2/daemon/tests/cell-credential-production.test.ts", "v2/driver-cell/tests/codex-access.test.ts"]
+✔ production lease publication, start gate and private projection run on synthetic installed material (220.879136ms)
+✔ lease publication queues one replacement per Bee, waits for a safe boundary and preserves mail (138.182644ms)
+✔ unchanged material does not churn; expiry and unknown projections are visible auth_needed (145.494773ms)
+✔ projection and authentication receipts are generation-fenced and survive store reads (143.429258ms)
+✔ async boot window is quiet and operator control cancels a queued refresh (134.303117ms)
+✔ real input projection records the boot receipt and clears only Cell-owned attention (115.924348ms)
+✔ safe boundary replacement reaches exactly one successor and keeps the pending mailbox (131.070499ms)
+✔ mooted refresh intent can be replaced without silently wedging the runtime (121.801484ms)
+✔ Cell expiry preserves a genuine harness authentication failure (122.363943ms)
+✔ operator parking holds replacement without stopping a running Cell (134.603998ms)
+✔ changed non-access-only material refuses visibly without replacing or interrupting (121.204013ms)
+✔ the next tick refreshes digest cache after material changes without lease installation (143.563758ms)
+✔ one missing Cell row cannot stop healthy core work or account maintenance (132.06336ms)
+✔ an expired or superseded Cell 401 stays scoped to its Bee (141.692896ms)
+✔ same-byte extension updates only the fenced expiry without restart (137.948439ms)
+✔ a distinct second account replacement round is guarded for six durable hours (135.063424ms)
+✔ expiry extension is monotonic, source-bounded and refused by placement or control fences (133.914419ms)
+✔ a between-tick publication cannot extend expiry using stale cached digests (135.450629ms)
+✔ Codex projection accepts only bounded explicit access-only documents (3.057464ms)
+✔ Codex projection snapshots validated bytes and refuses mirrors, symlinks and non-files (135.893291ms)
+✔ snapshot maintenance retains live digests across more than 128 publications (545.746444ms)
+✔ atomic snapshot publication repairs a truncated canonical file (82.308256ms)
+✔ snapshot GC sweeps only old owned regular staging files (81.831592ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2584.740614
+
+exitCode=0

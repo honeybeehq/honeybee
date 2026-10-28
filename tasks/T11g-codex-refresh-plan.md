@@ -63,3 +63,8 @@ The deploy HOLD remains until the listed synthetic-credential verification runs 
 ## Implementation follow-up
 
 Implementation branch review/hdm-T11g-refresh starts at ca5ccb6e. Queen's subsequent Apiary source trace confirms proactive receiver lease renewal at 60 minutes before expiry, not the authority scheduler's three-hour window. account.lease.install completion is the delivery trigger. Runtime receipts and host-side operator recovery are documented in docs/security/t11g/rollout.md. Source review and synthetic verification continue; proof/Project publication wait for the Studio all-clear. Snapshot retention now keeps all live digests and the newest eight unreferenced documents; the temporary 128-publication refusal was removed after review.
+
+
+## Final reviewed behavior
+
+Queen and Quiet source-pass e7ef06bd; 04de8e84 adds only the conservative guard rollout note. Identical valid mounted/current bytes now receive a fenced monotonic host expiry/material update with no new digests or restart, bounded by the published source expiry. New-byte publications use the safe-boundary restart. A durable sliding six-hour guard permits one account/publication round for the whole affected cohort, refusing a distinct second round visibly until the window elapses. Account-wide guard attention is conservative, including still-valid Cells. Expired/superseded 401s stay Bee-local. authenticationHintAt is explicitly a Cell-controlled hint; prepared/mounted remain host proofs. Old owned staging files are swept after ten minutes. Final verification receipts bind 04de8e84 in .audit/T11g-final (174 targeted:170pass4skip0fail; check/v2check/build exit0). Live preflight execution, first-Cell rollout receipts, proof submission and deployment remain separately gated.
