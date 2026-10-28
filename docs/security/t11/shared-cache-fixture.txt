@@ -1,0 +1,18 @@
+sourceSha=dfb0fc6b82def99f57e9e76005934d67833542a8
+date=2026-10-28T20:35:54.271959+00:00
+venue=netcup-4 own new fixtures; outer private home and owned Node code overlay; host assertions stat-only
+command=node scripts/test-cell-shared-cache.mjs
+
+{"fixture":"T11 shared home caches","paths":[".cache",".cache/honeybee/tmp/other-bee",".config",".config/systemd",".config/systemd/user",".npm",".bun",".local/share",".local/share/muse",".local/share/pnpm",".claude",".claude.json",".codex",".gemini",".grok","Library/Caches"],"concurrentCells":2,"protectedWrites":false,"hostMetadataUnchanged":true,"hostPoisonFilesAbsent":true,"hostTempFilesAbsent":true,"ownTmpWorks":true,"crossCellTmpVisible":false,"crossCellCacheVisible":false}
+✔ shared cache: Cells cannot write host homes or another bee's TMPDIR, and each TMPDIR is private (119.300897ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 245.16402
+{"fixture":"T11 shared cache venue","cleanup":"owned fixture tree trashed"}
+
+exitCode=0
