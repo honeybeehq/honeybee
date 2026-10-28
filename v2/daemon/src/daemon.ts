@@ -1499,10 +1499,12 @@ export class HiveDaemon {
     try {
       this.threadOperations?.tick();
       this.performance.measureSync("daemon.tick.core", () => {
-        this.reconcileCellCredentials();
         core.step();
         this.quotaRecovery?.reconcile();
         this.authResume?.reconcile();
+      });
+      this.performance.measureSync("daemon.tick.cell_credentials", () => {
+        try { this.reconcileCellCredentials(); } catch { this.log("cell.credentials.reconcile_deferred code=maintenance_failed"); }
       });
       tStep = Date.now();
       this.ticks += 1;
@@ -1649,14 +1651,31 @@ export class HiveDaemon {
     const materials = new Map<string, ReturnType<AccountsService["authDeathMaterial"]>>();
     for (const bee of store.listBees()) {
       if (bee.substrate !== "cell" || bee.agent !== "codex") continue;
-      const account = bee.account ? store.getAccount(bee.account) : null;
-      if (account && !materials.has(account.id)) materials.set(account.id, this.mustAccounts().authDeathMaterial(account));
-      const runtime = store.currentRuntime(bee.id);
-      if (runtime && runtime.state !== "stopped") this.admitCellCredentialTurn(bee.id, runtime.generation, account ? materials.get(account.id) : null);
+      try {
+        const runtime = store.currentRuntime(bee.id);
+        if (!runtime || runtime.state === "stopped") continue;
+        const account = bee.account ? store.getAccount(bee.account) : null;
+        if (account && !materials.has(account.id)) materials.set(account.id, this.mustAccounts().authDeathMaterial(account));
+        this.admitCellCredentialTurn(bee.id, runtime.generation, account ? materials.get(account.id) : null);
+      } catch { this.noteCellCredentialFailure(bee.id); }
     }
   }
 
+  private noteCellCredentialFailure(beeId: string): void {
+    try {
+      const detail = "cell_reconciliation_failed: host maintenance required";
+      const fresh = !this.mustStore().activeFlags(beeId).some(flag => flag.flag === "auth_needed" && flag.detail === detail);
+      this.setCellAuthNeeded(beeId,detail);
+      if (fresh) this.log(`cell.credentials.refused bee=${beeId} code=reconciliation_failed`);
+    } catch { this.log("cell.credentials.reconcile_deferred code=attention_unavailable"); }
+  }
+
   private admitCellCredentialTurn(beeId: string, generation: number, material?: ReturnType<AccountsService["authDeathMaterial"]>): boolean {
+    try { return this.evaluateCellCredentialTurn(beeId,generation,material); }
+    catch { this.noteCellCredentialFailure(beeId); return false; }
+  }
+
+  private evaluateCellCredentialTurn(beeId: string, generation: number, material?: ReturnType<AccountsService["authDeathMaterial"]>): boolean {
     const store = this.mustStore(), bee = store.getBee(beeId);
     if (!bee || bee.substrate !== "cell" || bee.agent !== "codex" || !sandboxEnabled(this.cfg.nodeKind, this.resolveCellSpec(beeId).sandbox)) return true;
     const runtime = store.currentRuntime(beeId);

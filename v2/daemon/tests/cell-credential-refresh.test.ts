@@ -180,3 +180,23 @@ test("the next tick refreshes digest cache after material changes without lease 
   r.internal.reconcileCellCredentials();
   assert.equal(r.store.latestCellCredentialReplacement(id,1)?.status,"queued");
 });
+
+
+test("one missing Cell row cannot stop healthy core work or account maintenance",t=>{
+  const r=fixture(t),bad=r.bee("missing-cell");
+  delete r.internal.resolveCellSpec;
+  const {bee:healthy}=r.store.createBee({name:"healthy",agent:"stub",substrate:"hsr",cwd:"/fixture"});
+  let steps=0,accountTicks=0;
+  r.internal.accounts.periodicRefreshTick=()=>{accountTicks++;};
+  r.internal.accounts.credentialHandoff={reconcile:async()=>{}};
+  r.internal.accounts.centralRefreshRetryTick=()=>{};r.internal.accounts.centralEarlyRefreshTick=()=>{};
+  r.internal.accounts.claudeKeychainRepairTick=async()=>{};
+  r.internal.enforceWeeklyCeilings=()=>{};
+  const core={step:()=>{steps++;if(r.store.currentRuntime(healthy.id)?.state === "booting") r.store.updateRuntimeState(healthy.id,1,"running");}};
+  const errors=r.internal.tickErrors;
+  r.internal.tickProfiled(core);r.internal.tickProfiled(core);
+  assert.equal(steps,2);assert.equal(accountTicks,2);assert.equal(r.internal.tickErrors,errors);
+  assert.match(r.store.activeFlags(bad)[0]!.detail,/cell_reconciliation_failed/);
+  assert.equal(r.store.currentRuntime(healthy.id)?.state,"running");
+  assert.equal(r.internal.admitCellCredentialTurn(bad,1),false);
+});
