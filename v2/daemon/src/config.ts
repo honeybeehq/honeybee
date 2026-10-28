@@ -7,10 +7,10 @@
  * worse than no config.
  */
 import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readlinkSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/retention.ts";
 import { contextPolicyConfigOf, ContextPolicyError, type ContextPolicyConfig } from "./contextPolicy.ts";
 import { NAMING_HEM_SECRET_PREFIX, parseNamingHemSecretRef } from "./hemSecret.ts";
@@ -1091,14 +1091,16 @@ function localTrustOf(raw: Record<string, unknown>, dataDir: string): {requireOb
 export class VaultRootRequiredError extends ConfigError {
   readonly code = "vault_root_required";
   constructor() {
-    super("daemon run: explicit vault directory required outside the installed service with default paths; use --vault-dir, HIVE_V2_VAULT_DIR, or accounts.vaultDir");
+    super("daemon run: an isolated explicit vault directory is required outside the installed default service with default paths; use --vault-dir, HIVE_V2_VAULT_DIR, or accounts.vaultDir");
     this.name = "VaultRootRequiredError";
   }
 }
 
 export function validateDaemonVault(cfg: ResolvedNodeConfig): void {
   const defaultRoot = resolve(homedir(), ".hive", "v2");
-  if (!cfg.vaultDirExplicit &&
+  const vault = canonicalVaultPath(cfg.accounts.vaultDir);
+  const defaultVault = canonicalVaultPath(join(homedir(), ".hive", "vault"));
+  if ((!cfg.vaultDirExplicit || vault === defaultVault) &&
       (resolve(cfg.dataDir) !== defaultRoot || resolve(cfg.socketPath) !== resolve(defaultRoot, "hived.sock")
         || (process.env.HIVE_V2_SOCKET_PATH?.trim() && resolve(process.env.HIVE_V2_SOCKET_PATH) !== resolve(defaultRoot, "hived.sock")) || !installedServiceOwnsProcess())) {
     throw new VaultRootRequiredError();
@@ -1106,7 +1108,7 @@ export function validateDaemonVault(cfg: ResolvedNodeConfig): void {
 }
 
 export function installedServiceOwnsProcess(): boolean {
-  const label = process.env.HIVE_V2_SERVICE_LABEL ?? "dev.honeybee.hive.v2";
+  const label = "dev.honeybee.hive.v2";
   try {
     if (process.platform === "linux") {
       const pid = execFileSync("systemctl", ["--user", "show", `${label}.service`, "--property=MainPID", "--value"], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -1118,4 +1120,23 @@ export function installedServiceOwnsProcess(): boolean {
     }
   } catch {}
   return false;
+}
+
+function canonicalVaultPath(path: string, links = 0): string {
+  const absolute = isAbsolute(path) ? path : `${process.cwd()}/${path}`;
+  try { return realpathSync(absolute); }
+  catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw new VaultRootRequiredError();
+  }
+  if (links >= 40) throw new VaultRootRequiredError();
+  try {
+    const target = readlinkSync(absolute);
+    return canonicalVaultPath(isAbsolute(target) ? target : `${dirname(absolute)}/${target}`, links + 1);
+  }
+  catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || (error.code !== "ENOENT" && error.code !== "EINVAL")) throw error;
+  }
+  const parent = dirname(absolute);
+  if (parent === absolute) throw new VaultRootRequiredError();
+  return join(canonicalVaultPath(parent, links), basename(absolute));
 }

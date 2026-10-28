@@ -47,8 +47,8 @@ test("daemon start, restart and status expose a held pin without opening the sto
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-test("service environment preserves explicit vault and service label", () => {
+test("service environment preserves explicit vault without propagating a service label", () => {
   const env = serviceEnv("/data", { HIVE_NODE_PATH: process.execPath, HIVE_V2_VAULT_DIR: "/isolated/vault", HIVE_V2_SERVICE_LABEL: "dev.honeybee.fixture" });
   assert.equal(env.HIVE_V2_VAULT_DIR, "/isolated/vault");
-  assert.equal(env.HIVE_V2_SERVICE_LABEL, "dev.honeybee.fixture");
+  assert.equal(env.HIVE_V2_SERVICE_LABEL, undefined);
 });

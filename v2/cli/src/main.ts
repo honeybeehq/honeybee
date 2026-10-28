@@ -4704,7 +4704,7 @@ export function serviceEnv(
   // (2026-08-19 soak finding). Bake the installing shell's PATH into the
   // unit, exactly like the v1 daemon install does.
   const inherited: Record<string, string> = {};
-  for (const key of ["HOME", "PATH", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "HIVE_V2_SERVICE_LABEL"]) {
+  for (const key of ["HOME", "PATH", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]) {
     const value = env[key];
     if (value !== undefined) inherited[key] = value;
   }
