@@ -151,7 +151,7 @@ export class LocalRpcTrust {
     expected.fill(0); supplied.fill(0);
     if (!valid) refusal("invalid_token");
     const previous = this.registration;
-    if (previous && previous.expiresAtMs > this.now()
+    if (previous
       && (previous.pid !== verified.peer.pid || previous.birth !== verified.peer.processBirth || previous.uid !== verified.peer.uid)) {
       const process = inspectProcess(previous.pid);
       if (process.kind === "unavailable" || process.kind === "present" && process.state === "live" && process.birth === previous.birth && process.uid === previous.uid) refusal("registered_service_still_live");

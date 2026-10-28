@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync, existsSync, symlinkSync, chmodSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,14 +15,20 @@ import { inspectProcess } from "../../harness/src/processIdentity.ts";
 const peer = (pid: number, birth = "birth"): PeerConnection => ({state: "verified", peer: {uid: process.geteuid!(), pid, processBirth: birth}, current: () => true, close() {}});
 const reason = (value: string) => (error: unknown) => (error as {details?: {reason?: string}}).details?.reason === value;
 
-test("a live registered service cannot be silently replaced by a different process", () => {
+test("a live registered service cannot be silently replaced; a stopped service can restart", async t => {
   const root = mkdtempSync(join(tmpdir(), "rpc-trust-owner-"));
   const file = join(root, "private", "key");
-  const trust = new LocalRpcTrust({ requireObservationCaller: true, registrationKeyFile: file }, root, () => {});
-  const value = inspectProcess(process.pid);
+  let now = 1;
+  const trust = new LocalRpcTrust({ requireObservationCaller: true, registrationKeyFile: file }, root, () => {}, () => now);
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await once(child, "exit"); }
+  });
+  await once(child, "spawn");
+  const value = inspectProcess(child.pid!);
   assert.equal(value.kind, "present");
   if (value.kind !== "present") return;
-  const owner = peer(process.pid, value.birth), replacement = peer(process.pid + 1);
+  const owner = peer(child.pid!, value.birth), replacement = peer(process.pid);
   const key = readFileSync(file);
   const register = (connection: PeerConnection, pid: number) => {
     const identity = {};
@@ -28,11 +36,20 @@ test("a live registered service cannot be silently replaced by a different proce
     return trust.register({ pid, challengeId: challenge.challengeId, token: createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex") }, connection, identity, "local_unix");
   };
   try {
-    register(owner, process.pid);
-    assert.throws(() => register(replacement, process.pid + 1), reason("registered_service_still_live"));
+    register(owner, child.pid!);
+    assert.throws(() => register(replacement, process.pid), reason("registered_service_still_live"));
     trust.require(owner, "local_unix");
-    register(owner, process.pid);
-  } finally { key.fill(0); trust.close(); renameSync(root, `${root}.trash`); }
+    now += 300_001;
+    assert.throws(() => register(replacement, process.pid), reason("registered_service_still_live"));
+    register(owner, child.pid!);
+    child.kill("SIGTERM");
+    await once(child, "exit");
+    register(replacement, process.pid);
+    trust.require(replacement, "local_unix");
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await once(child, "exit"); }
+    key.fill(0); trust.close(); renameSync(root, `${root}.trash`);
+  }
 });
 
 test("trust off never creates a key and access classification covers every verb", () => {
