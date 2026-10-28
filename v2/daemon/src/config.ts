@@ -1100,7 +1100,7 @@ export function validateDaemonVault(cfg: ResolvedNodeConfig): void {
   const defaultRoot = resolve(homedir(), ".hive", "v2");
   const vault = canonicalVaultPath(cfg.accounts.vaultDir);
   const defaultVault = canonicalVaultPath(join(homedir(), ".hive", "vault"));
-  if ((!cfg.vaultDirExplicit || vault === defaultVault) &&
+  if ((!cfg.vaultDirExplicit || sameVaultPath(vault, defaultVault)) &&
       (resolve(cfg.dataDir) !== defaultRoot || resolve(cfg.socketPath) !== resolve(defaultRoot, "hived.sock")
         || (process.env.HIVE_V2_SOCKET_PATH?.trim() && resolve(process.env.HIVE_V2_SOCKET_PATH) !== resolve(defaultRoot, "hived.sock")) || !installedServiceOwnsProcess())) {
     throw new VaultRootRequiredError();
@@ -1123,8 +1123,8 @@ export function installedServiceOwnsProcess(): boolean {
 }
 
 function canonicalVaultPath(path: string, links = 0): string {
-  const absolute = isAbsolute(path) ? path : `${process.cwd()}/${path}`;
-  try { return realpathSync(absolute); }
+  const absolute = (isAbsolute(path) ? path : `${process.cwd()}/${path}`).replace(/\/+$/, "") || "/";
+  try { return realpathSync.native(absolute); }
   catch (error) {
     if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw new VaultRootRequiredError();
   }
@@ -1139,4 +1139,8 @@ function canonicalVaultPath(path: string, links = 0): string {
   const parent = dirname(absolute);
   if (parent === absolute) throw new VaultRootRequiredError();
   return join(canonicalVaultPath(parent, links), basename(absolute));
+}
+
+export function sameVaultPath(left: string, right: string, platform: NodeJS.Platform = process.platform): boolean {
+  return platform === "darwin" ? left.toLowerCase() === right.toLowerCase() : left === right;
 }
