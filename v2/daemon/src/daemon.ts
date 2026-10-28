@@ -7,6 +7,7 @@ export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess} from "../../harness/src/processIdentity.ts";
 import { bindSpawnParent, spawnCallerBee } from "./spawnLineage.ts";
+import { CellGatewayLimits } from "./cellGateway.ts";
 import { ownedPrivateDir, requireSocketPathFits, shortSocketDir, socketPathFits } from "../../core/src/socketPath.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
@@ -717,8 +718,10 @@ export class HiveDaemon {
   private core: DaemonCore | null = null;
   private telemetry: TelemetryStore | null = null;
   private rpc: RpcServer | null = null;
-  private readonly cellGateways = new Map<string, { socketPath: string; server: RpcServer }>();
+  private readonly cellGateways = new Map<string, { beeId: string; generation: number; socketPath: string; server: RpcServer }>();
+  private readonly cellGatewayLimits = new Map<string, CellGatewayLimits>();
   private cellGatewayDirectory: string | null = null;
+  private cellGatewaySweep: NodeJS.Timeout | null = null;
   private tickTimer: NodeJS.Timeout | null = null;
   private tickRequested = false;
   /** Event-loop delay histogram: stalls anywhere (tick, RPC handler, fs) starve the accept loop. */
@@ -1158,6 +1161,8 @@ export class HiveDaemon {
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
       await this.rpc?.close();
+      if (this.cellGatewaySweep) clearInterval(this.cellGatewaySweep);
+      this.cellGatewaySweep = null;
       await Promise.all([...this.cellGateways.values()].map(gateway => gateway.server.close()));
       this.cellGateways.clear();
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
@@ -2463,6 +2468,7 @@ export class HiveDaemon {
         return this.viewOf(this.mustStore(), this.param(params, "beeId"));
       case "bee.transcript": {
         const beeId = this.requireBee(params);
+        if (conn.authenticatedBeeId !== beeId) throw new RpcError("caller_not_trusted", "Transcript pages require the session's Cell gateway");
         const offset = params.offset ?? 0;
         const limitBytes = params.limitBytes ?? 262144;
         if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0 || typeof limitBytes !== "number" || !Number.isSafeInteger(limitBytes) || limitBytes < 1 || limitBytes > 1048576) throw new RpcError("invalid_request", "Invalid transcript byte window");
@@ -2471,7 +2477,10 @@ export class HiveDaemon {
         const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
         try {
           const stat = fstatSync(fd);
-          if (!stat.isFile() || realpathSync(path) !== path) throw new RpcError("caller_not_trusted", "Transcript must be a daemon-owned regular file");
+          const target = realpathSync(path);
+          const current = statSync(target);
+          if (!stat.isFile() || !target.startsWith(`${realpathSync(this.cfg.sessionLogDir)}/`) || stat.dev !== current.dev || stat.ino !== current.ino) throw new RpcError("caller_not_trusted", "Transcript must be a daemon-owned regular file");
+          if (offset > stat.size) throw new RpcError("transcript_unavailable", "Transcript was truncated; restart the read from offset zero");
           const buffer = Buffer.alloc(Math.min(limitBytes, Math.max(0, stat.size - offset)));
           const bytes = readSync(fd, buffer, 0, buffer.length, offset);
           return { bytesBase64: buffer.subarray(0, bytes).toString("base64"), nextOffset: offset + bytes, eof: offset + bytes >= stat.size };
@@ -2803,7 +2812,16 @@ export class HiveDaemon {
   private cellGateway(beeId: string, generation: number): { socketPath: string } {
     const key = `${beeId}:${generation}`;
     const prior = this.cellGateways.get(key);
-    if (prior) return { socketPath: prior.socketPath };
+    if (prior) {
+      if (!prior.server.accepting) throw new RpcError("caller_not_trusted", "Cell gateway is unavailable");
+      return { socketPath: prior.socketPath };
+    }
+    for (const [oldKey, gateway] of this.cellGateways) {
+      if (gateway.beeId === beeId && gateway.generation !== generation) {
+        this.cellGateways.delete(oldKey);
+        void gateway.server.close().catch(error => this.log(`rpc.gateway.close_failed ${error instanceof Error ? error.message : String(error)}`));
+      }
+    }
     const base = join(this.cfg.dataDir, "cell-gateways");
     mkdirSync(base, { recursive: true, mode: 0o700 });
     if (!ownedPrivateDir(base)) throw new RpcError("caller_not_trusted", "Gateway directory must be private");
@@ -2815,14 +2833,33 @@ export class HiveDaemon {
     this.cellGatewayDirectory = dir;
     const socketPath = requireSocketPathFits(join(dir, name), "Cell gateway");
     const store = this.mustStore();
+    let limits = this.cellGatewayLimits.get(beeId);
+    if (!limits) { limits = new CellGatewayLimits(); this.cellGatewayLimits.set(beeId, limits); }
+    if (!this.cellGatewaySweep) {
+      this.cellGatewaySweep = withoutRpcCaller(() => setInterval(() => {
+        for (const [gatewayKey, gateway] of this.cellGateways) {
+          const runtime = store.currentRuntime(gateway.beeId);
+          const bee = store.getBee(gateway.beeId);
+          if (!bee || bee.lifecycle === "deleted") this.cellGatewayLimits.delete(gateway.beeId);
+          if (!bee || bee.lifecycle === "deleted" || !runtime || runtime.state === "stopped" || runtime.generation !== gateway.generation) {
+            this.cellGateways.delete(gatewayKey);
+            void gateway.server.close().catch(error => this.log(`rpc.gateway.close_failed ${error instanceof Error ? error.message : String(error)}`));
+          }
+        }
+      }, 30_000));
+      this.cellGatewaySweep.unref();
+    }
     const server = new RpcServer({
       socketPath,
       dataDir: this.cfg.dataDir,
       instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
       log: op => this.log(op),
+      performance: this.performance,
+      securityAudit: (kind, payload) => store.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", { ...payload, beeId, generation }),
       dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
       cellGateway: {
         identity: Object.freeze({ beeId, generation }),
+        limits,
         current: peer => {
           const bee = store.getBee(beeId);
           const runtime = store.currentRuntime(beeId);
@@ -2833,13 +2870,14 @@ export class HiveDaemon {
         },
         canSend: target => {
           const bee = store.getBee(beeId);
-          return !!bee && !bee.parentExternal && bee.parentId === target;
+          const parent = store.getBee(target);
+          return !!bee && !!parent && !isInboxAgent(parent.agent) && !bee.parentExternal && bee.parentId === target;
         },
         ownsTranscript: operationId => store.getThreadOperation(operationId)?.sourceBeeId === beeId,
       },
     });
     server.listenFresh();
-    this.cellGateways.set(key, { socketPath, server });
+    this.cellGateways.set(key, { beeId, generation, socketPath, server });
     return { socketPath };
   }
 
