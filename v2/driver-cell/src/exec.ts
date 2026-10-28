@@ -15,10 +15,11 @@ import {
   clampCellExecTimeout,
 } from "../../core/src/cellMove.ts";
 import { processStartTimeMs } from "../../driver-hsr/src/psutil.ts";
-import { defaultWritablePaths, sandboxEnabled, wrapWithSandbox, type NodeKind } from "./sandbox.ts";
+import { defaultWritablePaths, sandboxEnvironment, sandboxEnabled, wrapWithSandbox, type NodeKind } from "./sandbox.ts";
 import type { CellPaths } from "./layout.ts";
 
 export interface CellExecSpec {
+  gatewaySocketPath?: string;
   argv: readonly string[];
   cwd?: string;
   timeoutMs?: number;
@@ -275,7 +276,7 @@ export async function runCellExec(
   const timeoutMs = clampCellExecTimeout(spec.timeoutMs);
   const cwd = containedExecCwd(paths.spaceDir, spec.cwd);
   const [command, ...args] = spec.argv;
-  const env = {
+  let env = {
     ...sanitizedCellExecEnv(),
     ...secretEnv,
     HIVE_CELL: "1",
@@ -284,8 +285,10 @@ export async function runCellExec(
   let wrappedCommand = command as string;
   let wrappedArgs = args;
   if (sandboxEnabled(spec.nodeKind, spec.sandbox)) {
+    env = sandboxEnvironment(paths.wrapperDir, env) as typeof env;
+    (env as Record<string, string>).HIVE_CELL_GATEWAY_SOCKET = "/run/honeybee/gateway.sock";
     const wrapped = wrapWithSandbox(
-      { cellDir: paths.wrapperDir, writablePaths: defaultWritablePaths(), kvm: spec.kvm },
+      { cellDir: paths.wrapperDir, writablePaths: defaultWritablePaths(), kvm: spec.kvm, gatewaySocketPath: spec.gatewaySocketPath },
       command,
       args,
       paths.sandboxProfilePath,
