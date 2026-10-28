@@ -32,3 +32,5 @@ Per Quiet's design approval, running the preflight still requires its full C1–
 
 
 New-byte replacement is limited to one account/publication round per sliding six hours. All Bees needing the same host-digest publication share a round. A distinct second round is refused, its Cells receive visible cell_replacement_rate_limited attention, and one constant-code line is logged. The window derives from durable command history and survives daemon restart; it resumes automatically after the window rather than creating a permanent latch. Operator pause, placement and generation fences remain authoritative. This guard does not count same-byte expiry extensions as replacements.
+
+Guard visibility is deliberately conservative: when a distinct second round is refused, every Codex Cell on that account receives auth_needed, including Cells whose first-round mounted bytes are still valid. No turn is interrupted. The attention makes the account-wide hold visible while the durable six-hour window runs out.
