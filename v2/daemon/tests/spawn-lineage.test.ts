@@ -43,7 +43,7 @@ createInterface({input:process.stdin}).on('line', async line => {
     emit({event:'turn_ended',messageId:message.id,ok:true}); return;
   }
   if (rpc) {
-    const client = await RpcClient.connect(rpc.socket);
+    const client = await RpcClient.connect(rpc.socket,3000,rpc.lane);
     try {
       let result;
       if (rpc.register) {
@@ -212,6 +212,14 @@ renameSync(payload.output+'.pending',payload.output);
     await waitFor(() => existsSync(output), "runtime external RPC receipt");
     assert.equal(JSON.parse(readFileSync(output, "utf8")).code, "caller_not_trusted");
   });
+  for (const lane of ["node_relay", "remote"] as const) {
+    await t.test(`runtime cannot escape lineage by declaring ${lane}`, async () => {
+      const output = join(rig.dir, `${lane}.json`);
+      await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output, rpc: { socket: daemon.socketPath, lane, params: { name: `forged-${lane}`, agent: "inbox" } } }) });
+      await waitFor(() => existsSync(output), "claimed relay lane receipt");
+      assert.equal(JSON.parse(readFileSync(output, "utf8")).code, "caller_not_trusted");
+    });
+  }
   await t.test("runtime cannot register as a service even with the disposable fixture key", async () => {
     const output = join(rig.dir, "runtime-register.json");
     await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output, rpc: { socket: daemon.socketPath, register: true, keyFile } }) });
