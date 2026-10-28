@@ -177,6 +177,7 @@ test("temporary daemon home binds the socket to its own live generation with rea
     store.updateRuntimeState(bee.id, runtime.generation, "stopped", { exitCause: "clean" });
     await assert.rejects(client.request("view", {}), /Cell gateway operation refused/);
     const next = store.reviveBee(bee.id);
+    assert.throws(() => internal.cellGateway(bee.id, runtime.generation), /current generation/);
     store.recordRuntimeProc(bee.id, next.generation, { pid: own.pid, pidStartedAt: own.startedAtMs, processIdentity: { pid: own.pid, birth: own.birth, bootId: own.bootId } });
     await assert.rejects(client.request("view", {}), /Cell gateway operation refused/);
     const fresh = await RpcClient.connect(internal.cellGateway(bee.id, next.generation).socketPath);
