@@ -4,6 +4,7 @@ import { DAEMON_CAPABILITIES, type ForkResult, type SpawnResult, type TagResult,
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
+import { makeRegisteredServiceDir, registerService } from "./registered-service-fixture.ts";
 
 const FAKE_CLAUDE = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "driver-hsr", "test-agent", "fake-claude.mjs");
 
@@ -11,11 +12,12 @@ const reserved = (e: Error & { code?: string }): boolean => e.code === "tag_rese
 
 test("apiary:* tags: refused from a bee caller on spawn and bee.tag, allowed from Apiary and the operator", async () => {
   assert.ok(DAEMON_CAPABILITIES.includes("bee.tag.apiary_reserved.v1"));
-  const { dir, cleanup } = makeDaemonDir();
+  const { dir, cleanup } = makeRegisteredServiceDir();
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(dir);
     const client = await daemon.client();
+    await registerService(client, dir);
     const champion = await client.request<SpawnResult>("spawn", { name: "champ", agent: "stub", cwd: "/tmp", tags: ["apiary:workspace=w1", "apiary:role=champion"] });
     const bee = await client.request<SpawnResult>("spawn", { name: "worker", agent: "stub", cwd: "/tmp", tags: ["apiary:workspace=w1"], parentId: champion.beeId });
 
