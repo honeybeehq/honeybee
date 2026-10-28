@@ -334,6 +334,9 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
   const isolatedHome = mkdtempSync(join(dir, "test-home-"));
   const defaults = { HOME: isolatedHome, XDG_CONFIG_HOME: join(isolatedHome, "config"), XDG_DATA_HOME: join(isolatedHome, "data"), XDG_CACHE_HOME: join(isolatedHome, "cache"), XDG_STATE_HOME: join(isolatedHome, "state"), HIVE_GATEWAYS_DISABLE: "1" };
   const childEnv: NodeJS.ProcessEnv = { ...process.env, ...defaults, ...(opts.env ?? {}) };
+  delete childEnv.HIVE_V2_INSTALLED_SERVICE;
+  if (opts.env?.HIVE_V2_VAULT_DIR === undefined) delete childEnv.HIVE_V2_VAULT_DIR;
+  if (opts.env?.HIVE_V2_SOCKET_PATH === undefined) delete childEnv.HIVE_V2_SOCKET_PATH;
   if (opts.env?.HOME !== undefined) for (const key of ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME"]) if (opts.env[key] === undefined) delete childEnv[key];
   if (resolve(childEnv.HOME!) === resolve(userInfo().homedir) || resolve(childEnv.HOME!) === resolve(process.env.HOME ?? userInfo().homedir)) throw new Error("Test daemon HOME must differ from the invoking user's home");
   for (const path of [childEnv.HOME, childEnv.XDG_CONFIG_HOME, childEnv.XDG_DATA_HOME, childEnv.XDG_CACHE_HOME, childEnv.XDG_STATE_HOME]) if (path !== undefined) mkdirSync(path, { recursive: true });

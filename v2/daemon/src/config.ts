@@ -8,8 +8,9 @@
  */
 import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { homedir } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/retention.ts";
 import { contextPolicyConfigOf, ContextPolicyError, type ContextPolicyConfig } from "./contextPolicy.ts";
 import { NAMING_HEM_SECRET_PREFIX, parseNamingHemSecretRef } from "./hemSecret.ts";
@@ -325,6 +326,7 @@ export interface NodeConfigFile {
 }
 
 export interface ResolvedNodeConfig {
+  vaultDirExplicit?: boolean;
   dataDir: string;
   rpcLocalTrust: {requireObservationCaller: boolean; registrationKeyFile: string};
   configPath: string;
@@ -1049,6 +1051,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     sessionLogDir: str(raw, "sessionLogDir", join(dataDir, "session-logs")),
     agents: { ...BUILTIN_AGENTS, ...agentsOf(raw) },
     accounts: accountsOf(raw),
+    vaultDirExplicit: raw.accounts !== undefined && typeof raw.accounts === "object" && raw.accounts !== null && "vaultDir" in raw.accounts,
     naming: namingOrDisabled(raw, dataDir),
     rpcLocalTrust: localTrustOf(raw, dataDir),
     contextPolicy: resolvedContextPolicyOf(raw),
@@ -1081,4 +1084,35 @@ function localTrustOf(raw: Record<string, unknown>, dataDir: string): {requireOb
   const config = value as Record<string, unknown>;
   if (Object.keys(config).some(key => !["requireObservationCaller", "registrationKeyFile"].includes(key)) || (config.requireObservationCaller !== undefined && typeof config.requireObservationCaller !== "boolean") || (config.registrationKeyFile !== undefined && (typeof config.registrationKeyFile !== "string" || !config.registrationKeyFile.startsWith("/")))) throw new Error("Invalid rpcLocalTrust configuration");
   return {requireObservationCaller: config.requireObservationCaller === true, registrationKeyFile: typeof config.registrationKeyFile === "string" ? config.registrationKeyFile : join(dataDir, "rpc-private", "registration.key")};
+}
+
+export class VaultRootRequiredError extends ConfigError {
+  readonly code = "vault_root_required";
+  constructor() {
+    super("daemon run: explicit vault directory required outside the installed service with default paths; use --vault-dir, HIVE_V2_VAULT_DIR, or accounts.vaultDir");
+    this.name = "VaultRootRequiredError";
+  }
+}
+
+export function validateDaemonVault(cfg: ResolvedNodeConfig): void {
+  const defaultRoot = resolve(homedir(), ".hive", "v2");
+  if (!cfg.vaultDirExplicit &&
+      (resolve(cfg.dataDir) !== defaultRoot || resolve(cfg.socketPath) !== resolve(defaultRoot, "hived.sock") || !installedServiceOwnsProcess())) {
+    throw new VaultRootRequiredError();
+  }
+}
+
+export function installedServiceOwnsProcess(): boolean {
+  const label = process.env.HIVE_V2_SERVICE_LABEL ?? "dev.honeybee.hive.v2";
+  try {
+    if (process.platform === "linux") {
+      const pid = execFileSync("systemctl", ["--user", "show", `${label}.service`, "--property=MainPID", "--value"], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] }).trim();
+      return pid === String(process.pid);
+    }
+    if (process.platform === "darwin") {
+      const unit = execFileSync("launchctl", ["print", `gui/${process.getuid?.() ?? 0}/${label}`], { encoding: "utf8", timeout: 2000, stdio: ["ignore", "pipe", "ignore"] });
+      return unit.match(/^\s*pid = (\d+)\s*$/m)?.[1] === String(process.pid);
+    }
+  } catch {}
+  return false;
 }

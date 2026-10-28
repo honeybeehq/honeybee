@@ -1,3 +1,4 @@
+import { VaultRootRequiredError } from "../../daemon/src/config.ts";
 import { backupStoreOffline, restoreStoreOffline, StoreRestoreError, StoreBackupError } from "../../core/src/storeBackup.ts";
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
@@ -243,6 +244,7 @@ const VALUE_FLAGS = new Set([
   "--lifecycle",
   "--bee",
   "--data-dir",
+  "--vault-dir",
   "--config",
   "--socket",
   "--scope",
@@ -4707,6 +4709,7 @@ export function serviceEnv(
     if (value !== undefined) inherited[key] = value;
   }
   return { HIVE_V2_DATA_DIR: dataDir, ...inherited,
+    ...(env.HIVE_V2_VAULT_DIR ? { HIVE_V2_VAULT_DIR: env.HIVE_V2_VAULT_DIR } : {}),
     ...nodePinEnv(resolveNodePin(dataDir, env, interpreter, true)) };
 }
 
@@ -4753,7 +4756,7 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
   switch (sub) {
     case "run":
       // Foreground daemon — what the service files execute.
-      return runDaemon(["--data-dir", ctx.cfg.dataDir, ...(ctx.target.socketSource === "flag" ? ["--socket", ctx.cfg.socketPath] : [])]);
+      return runDaemon(["--data-dir", ctx.cfg.dataDir, ...(parsed.flags.has("--vault-dir") ? ["--vault-dir", String(parsed.flags.get("--vault-dir"))] : []), ...(parsed.flags.has("--config") ? ["--config", String(parsed.flags.get("--config"))] : []), ...(ctx.target.socketSource === "flag" ? ["--socket", ctx.cfg.socketPath] : [])]);
     case "install": {
       const mgr = buildServiceManager(ctx, true);
       await mgr.install();
@@ -4857,7 +4860,7 @@ function jsonErrorLine(err: unknown, ctx: CliContext | undefined): Record<string
     ? { code: err.code, message: err.message, details: { socketPath: err.socketPath, socketSource: ctx?.target.socketSource ?? null, cause: err.reason } }
     : err instanceof RpcError
       ? { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) }
-      : err instanceof StoreRestoreError || err instanceof StoreBackupError
+      : err instanceof VaultRootRequiredError || err instanceof StoreRestoreError || err instanceof StoreBackupError
         ? { code: err.code, message: err.message }
       : { code: "cli_error", message: err instanceof Error ? err.message : String(err) };
   return { error, daemonTarget: ctx ? daemonTargetJson(ctx.target, ctx.daemon.instance, ctx.daemon.connected) : null };

@@ -9,13 +9,14 @@ import { isTestDaemonEnv, refuseNonLoopbackFetch } from "./testNetworkGuard.ts";
 import { existsSync } from "node:fs";
 import { dirname, parse, resolve } from "node:path";
 import { measureDirectoryBytes } from "../../driver-cell/src/index.ts";
-import { ConfigError, defaultDataDir, loadNodeConfig, type ResolvedNodeConfig } from "./config.ts";
+import { ConfigError, validateDaemonVault, defaultDataDir, loadNodeConfig, type ResolvedNodeConfig } from "./config.ts";
 import { HiveDaemon } from "./daemon.ts";
 
 export interface DaemonRunArgs {
   dataDir?: string;
   configPath?: string;
   socketPath?: string;
+  vaultDir?: string;
 }
 
 export function parseDaemonRunArgs(argv: string[]): DaemonRunArgs {
@@ -26,6 +27,10 @@ export function parseDaemonRunArgs(argv: string[]): DaemonRunArgs {
       const value = argv[++i];
       if (value === undefined || value.startsWith("--")) throw new ConfigError("daemon run: --data-dir requires a non-empty path");
       out.dataDir = value;
+    } else if (a === "--vault-dir") {
+      const value = argv[++i];
+      if (!value || value.startsWith("--")) throw new ConfigError("daemon run: --vault-dir requires a non-empty path");
+      out.vaultDir = value;
     } else if (a === "--config") out.configPath = argv[++i];
     else if (a === "--socket") out.socketPath = argv[++i];
     else throw new Error(`daemon run: unknown argument '${a}'`);
@@ -44,8 +49,13 @@ function resolveDaemonDataDir(args: DaemonRunArgs): string {
 }
 
 function loadDaemonConfig(args: DaemonRunArgs, dataDir: string): ResolvedNodeConfig {
-  const cfg = loadNodeConfig(dataDir, args.configPath);
-  return args.socketPath ? { ...cfg, socketPath: resolve(args.socketPath) } : cfg;
+  const loaded = loadNodeConfig(dataDir, args.configPath);
+  const vaultDir = args.vaultDir ?? process.env.HIVE_V2_VAULT_DIR;
+  if (vaultDir !== undefined && !vaultDir.trim()) throw new ConfigError("daemon run: vault directory must be a non-empty path");
+  const cfg = { ...loaded, vaultDirExplicit: loaded.vaultDirExplicit || vaultDir !== undefined, socketPath: resolve(args.socketPath ?? process.env.HIVE_V2_SOCKET_PATH ?? loaded.socketPath),
+    accounts: { ...loaded.accounts, ...(vaultDir === undefined ? {} : { vaultDir: resolve(vaultDir) }) } };
+  validateDaemonVault(cfg);
+  return cfg;
 }
 
 export function resolveDaemonConfig(args: DaemonRunArgs): ResolvedNodeConfig {
@@ -62,9 +72,9 @@ export async function runDaemon(argv: string[]): Promise<number> {
   if (isTestDaemonEnv()) refuseNonLoopbackFetch((op) => process.stderr.write(`${op}\n`));
   const args = parseDaemonRunArgs(argv);
   const dataDir = resolveDaemonDataDir(args);
+  const cfg = loadDaemonConfig(args, dataDir);
   const held = validateDaemonNode(dataDir, true);
   if (held) { process.stderr.write(`hived held, needs repair: ${held}\n`); return 0; }
-  const cfg = loadDaemonConfig(args, dataDir);
   // Test daemons shorten the delay before the first automatic Cell retention pass.
   const retentionDelay = Number(process.env.HIVE_TEST_RETENTION_INITIAL_DELAY_MS);
   const diskCheckMs = Number(process.env.HIVE_TEST_CELL_DISK_CHECK_MS);
