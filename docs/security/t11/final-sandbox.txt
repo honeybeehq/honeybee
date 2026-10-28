@@ -1,69 +1,74 @@
-sourceSha=4e12ddbdf5773b22a309c768c442537062b3cab0
-date=2026-10-28T15:31:34.692835+00:00
+sourceSha=ef61a37de80df0d2394716416b2323515d986cdf
+date=2026-10-28T15:46:34.156635+00:00
 venue=netcup-4 owned Cell; own disposable fixtures only
 command=node scripts/test-cell-gateway-joint.mjs --sandbox-suites
 
 {"fixture":"owned-node-code-overlay","node":"v24.18.0","sha256":"41a74efb34cbde5c7632cdac0cf8bd1a14d0b8d73dc1e82755014d9a9ce70f5c","credentialsCopied":false}
-✔ cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle (472.486638ms)
-✔ cell-driver.background: start returns before provisioning and later boots from the durable ledger (479.106033ms)
-﹣ cell-driver.background: first Cell ensures the image before boot and the next Cell stays hot (36.381059ms) # filesystem has no local CoW support
-✔ cell-driver.background: satellites do not build the workstation-local Git image (542.895901ms)
-✔ cell-driver.background: worker exit without a result becomes a boot failure (70.182568ms)
-✔ cell-driver.exit-path: work committed in the live cell captures out; removeCell guards (502.217613ms)
-✔ cell-driver.restart-hydration: a fresh driver re-hydrates cells from cell.json (capture + delete work) (555.89742ms)
-✔ cell-driver.reserved-only: a cell reserved (seed ledger) but never started removes outright; sessions delegate; typed live-runtime refusal (432.739679ms)
-﹣ cell-driver.sandboxed: per-cell override ON wraps the spawn in Seatbelt; the turn still works (darwin) (0.477918ms) # SKIP
-✔ cell-driver.workstation-default: sandbox stays OFF without an override (A4) (418.804889ms)
-✔ cell-driver.account-home: the bee resolver never grants the shared account home and ignores harness env (100.323624ms)
-✔ cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability (607.918408ms)
-✔ cell-driver.node-kind: a missing kind refuses implicit unsandboxed launch but honors explicit false (436.604971ms)
+✔ cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle (498.187395ms)
+✔ cell-driver.background: start returns before provisioning and later boots from the durable ledger (555.637835ms)
+﹣ cell-driver.background: first Cell ensures the image before boot and the next Cell stays hot (51.568729ms) # filesystem has no local CoW support
+✔ cell-driver.background: satellites do not build the workstation-local Git image (596.260192ms)
+✔ cell-driver.background: worker exit without a result becomes a boot failure (73.468801ms)
+✔ cell-driver.exit-path: work committed in the live cell captures out; removeCell guards (546.026144ms)
+✔ cell-driver.restart-hydration: a fresh driver re-hydrates cells from cell.json (capture + delete work) (584.880172ms)
+✔ cell-driver.reserved-only: a cell reserved (seed ledger) but never started removes outright; sessions delegate; typed live-runtime refusal (473.007738ms)
+﹣ cell-driver.sandboxed: per-cell override ON wraps the spawn in Seatbelt; the turn still works (darwin) (0.741822ms) # SKIP
+✔ cell-driver.tty: sandbox runtime and adoption have no controlling terminal, background=false (470.679973ms)
+ℹ test-owned parent tty_nr=0
+✔ cell-driver.tty: sandbox runtime and adoption have no controlling terminal, background=true (538.687582ms)
+ℹ test-owned parent tty_nr=0
+✔ cell-driver.workstation-default: sandbox stays OFF without an override (A4) (443.056759ms)
+✔ cell-driver.account-home: the bee resolver never grants the shared account home and ignores harness env (142.515377ms)
+✔ cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability (796.812536ms)
+✔ cell-driver.node-kind: a missing kind refuses implicit unsandboxed launch but honors explicit false (517.037551ms)
+✔ hardening: defaults and overrides cannot reopen protected host paths (126.452616ms)
+✔ hardening: harness projection binds only existing explicit input files (69.196881ms)
+✔ hardening: private directory setup never chmods a symlink target (73.767879ms)
 {"fixture":"T11 autorun/runtime","writes":[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false],"writable":[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false],"runtime":[],"pid":2,"abstract":["@7e0b86c2737a6b9f/bus/systemd/bus-system","@801f1b57223a51/bus/systemd/bus-api-system","@d135e5c11754cd78/bus/systemd/bus-api-user","@f6d33dbcaea48100/bus/systemd-logind/system","@f36dd168df026eb1/bus/systemd-timesyn/bus-api-timesync"],"connected":false,"socketError":"ENOENT"}
-✔ hardening: defaults and overrides cannot reopen protected host paths (107.898216ms)
-✔ hardening: harness projection binds only existing explicit input files (75.617768ms)
-✔ hardening: private directory setup never chmods a symlink target (59.478957ms)
-✔ hardening: launcher protects autorun/config and masks only a test-owned socket (196.828369ms)
-✔ hardening: an old bwrap refuses launch without a fallback (72.815801ms)
-✔ hardening: PID namespace descendants retain host runtime ancestry and fail closed (85.157856ms)
+✔ hardening: retained Cell exec has no controlling terminal (111.791979ms)
+✔ hardening: launcher protects autorun/config and masks only a test-owned socket (196.914718ms)
+✔ hardening: an old bwrap refuses launch without a fallback (76.823975ms)
+✔ hardening: PID namespace descendants retain host runtime ancestry and fail closed (121.044056ms)
 {"fixture":"T11 abstract scope","outside":"EPERM","inside":"inside"}
-✔ hardening: full Cell launcher denies outside abstract sockets and permits its own (137.672258ms)
-✔ hardening: helper integrity and ABI below six refuse execution (133.692216ms)
-✔ hardening: private writes stay local, account inputs stay read only, and symlinks refuse relaunch (136.718215ms)
+✔ hardening: full Cell launcher denies outside abstract sockets and permits its own (116.391862ms)
+✔ hardening: helper integrity and ABI below six refuse execution (151.480554ms)
+✔ hardening: private writes stay local, account inputs stay read only, and symlinks refuse relaunch (119.684948ms)
 {"fixture":"T11 manager path and gh","hostFixtureConnected":true,"managerExists":false,"busExists":false,"tokenExists":false,"connected":false,"error":"ENOENT"}
-✔ hardening: fixture systemd private socket is masked and gh token file is hidden (136.118045ms)
-✔ hardening: toolchain owners, modes and escaping symlinks fail closed (74.409146ms)
-✔ hardening: missing gateway and unchanged user namespace refuse before harness exec (67.368421ms)
-✔ sandbox.defaults: workstation OFF, satellite ON, cloud OFF (A4) (1.21349ms)
-✔ sandbox.override: per-cell override beats the node-kind default (0.273509ms)
-✔ sandbox.profile: Seatbelt profile confines writes to cell + harness paths, allows the rest (5.854337ms)
-✔ sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure, all platforms) (2.108562ms)
-✔ sandbox.merge: a bee grant an existing baseline path already covers is not bound again (1.938486ms)
-✔ sandbox.account-home: broad account grants and protected overrides are refused (11.021058ms)
-✔ sandbox.account-home validation rejects relative, missing, root, OS-home, and broad symlink targets (1.203214ms)
-✔ sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, other throws) (2.929516ms)
-✔ sandbox.ssh-config: materializes symlinked client includes without changing settings or host files (2.567401ms)
-✔ sandbox.ssh-config: the hardened home never restores host SSH keys or include directories (1.344775ms)
-✔ sandbox.ssh-config: missing include targets are ignored and snapshot failures preserve the host view (1.452694ms)
-﹣ sandbox.seatbelt-real: sandbox-exec confines writes to the cell (darwin) (0.109952ms) # SKIP
-✔ sandbox.darwin-scratch: only the user's own temp dir of /private/var/folders is writable (0.799011ms)
-﹣ sandbox.seatbelt-user-temp: mktemp works and the user cache dir is denied (darwin) (0.050009ms) # SKIP
-✔ sandbox.tmpfs-paths: the sampled tmpfs paths are exactly the tmpfs mounts bwrap makes (1.035011ms)
-✔ sandbox.bwrap: /tmp and /var/tmp are private tmpfs mounts, never host binds (1.19441ms)
-✔ sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 gate) (52.148228ms)
-✔ sandbox.bwrap-tmpfs: a tmpfs cap sizes /tmp and a private /dev/shm; no cap keeps the old argv (1.782903ms)
-✔ sandbox.tmpfs-cap: config, darwin and an old bwrap decide the effective cap (0.607641ms)
-✔ sandbox.tmp-full: a nearly full tmpfs yields the typed detail; space left yields nothing (0.254268ms)
-✔ sandbox.tmp-pid: the sandboxed process is the host's grandchild in another mount namespace (1.488781ms)
-✔ sandbox.tmpfs-real: a capped bwrap /tmp and /dev/shm refuse writes past the cap, visible from the host (132.249918ms)
-✔ sandbox.tmp-watch: tracked bees only, set once when full, re-set after a turn clear, clear with hysteresis or on exit (1.376546ms)
-✔ sandbox.tmp-watch: an exit is fenced by generation, so a respawn behind a dying runtime stays watched (0.278526ms)
-✔ sandbox.bwrap-real: a harness launched from under /tmp still runs, read-only, while the rest of /tmp stays private (linux) (98.718001ms)
-ℹ tests 50
+✔ hardening: fixture systemd private socket is masked and gh token file is hidden (127.361209ms)
+✔ hardening: toolchain owners, modes and escaping symlinks fail closed (84.976721ms)
+✔ hardening: missing gateway and unchanged user namespace refuse before harness exec (69.772142ms)
+✔ sandbox.defaults: workstation OFF, satellite ON, cloud OFF (A4) (1.196073ms)
+✔ sandbox.override: per-cell override beats the node-kind default (0.170827ms)
+✔ sandbox.profile: Seatbelt profile confines writes to cell + harness paths, allows the rest (6.046508ms)
+✔ sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure, all platforms) (2.483078ms)
+✔ sandbox.merge: a bee grant an existing baseline path already covers is not bound again (2.129855ms)
+✔ sandbox.account-home: broad account grants and protected overrides are refused (9.341047ms)
+✔ sandbox.account-home validation rejects relative, missing, root, OS-home, and broad symlink targets (1.710178ms)
+✔ sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, other throws) (4.454354ms)
+✔ sandbox.ssh-config: materializes symlinked client includes without changing settings or host files (2.915886ms)
+✔ sandbox.ssh-config: the hardened home never restores host SSH keys or include directories (0.954154ms)
+✔ sandbox.ssh-config: missing include targets are ignored and snapshot failures preserve the host view (1.152313ms)
+﹣ sandbox.seatbelt-real: sandbox-exec confines writes to the cell (darwin) (0.115942ms) # SKIP
+✔ sandbox.darwin-scratch: only the user's own temp dir of /private/var/folders is writable (0.879257ms)
+﹣ sandbox.seatbelt-user-temp: mktemp works and the user cache dir is denied (darwin) (0.069668ms) # SKIP
+✔ sandbox.tmpfs-paths: the sampled tmpfs paths are exactly the tmpfs mounts bwrap makes (0.993286ms)
+✔ sandbox.bwrap: /tmp and /var/tmp are private tmpfs mounts, never host binds (0.909023ms)
+✔ sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 gate) (52.424469ms)
+✔ sandbox.bwrap-tmpfs: a tmpfs cap sizes /tmp and a private /dev/shm; no cap keeps the old argv (2.50958ms)
+✔ sandbox.tmpfs-cap: config, darwin and an old bwrap decide the effective cap (0.540196ms)
+✔ sandbox.tmp-full: a nearly full tmpfs yields the typed detail; space left yields nothing (0.27468ms)
+✔ sandbox.tmp-pid: the sandboxed process is the host's grandchild in another mount namespace (1.755929ms)
+✔ sandbox.tmpfs-real: a capped bwrap /tmp and /dev/shm refuse writes past the cap, visible from the host (135.337206ms)
+✔ sandbox.tmp-watch: tracked bees only, set once when full, re-set after a turn clear, clear with hysteresis or on exit (1.387233ms)
+✔ sandbox.tmp-watch: an exit is fenced by generation, so a respawn behind a dying runtime stays watched (0.223831ms)
+✔ sandbox.bwrap-real: a harness launched from under /tmp still runs, read-only, while the rest of /tmp stays private (linux) (100.69371ms)
+ℹ tests 53
 ℹ suites 0
-ℹ pass 46
+ℹ pass 49
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 4
 ℹ todo 0
-ℹ duration_ms 4970.880482
+ℹ duration_ms 6610.377315
 
 exitCode=0
