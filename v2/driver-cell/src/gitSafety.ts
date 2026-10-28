@@ -38,9 +38,13 @@ const rewrite = /^url\..+\.(?:insteadof|pushinsteadof)$/i;
 const sshOrigin = /^git@github\.com:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git$/;
 
 function credentialCarrier(key: string, value: string): boolean {
+  const split = key.lastIndexOf(".");
+  const remoteName = key.slice("remote.".length, split);
+  const remoteVariable = key.slice(split + 1).toLowerCase();
+  const otherHttpRemote = key.toLowerCase().startsWith("remote.") && remoteName !== "origin"
+    && (remoteVariable === "url" || remoteVariable === "pushurl") && /^https?:/i.test(value);
   return /^http(?:\..+)?\.extraheader$/i.test(key)
-    || /^core\.(?:askpass|sshcommand)$/i.test(key)
-    || (/^remote\.(?!origin\.)[^\n]+\.(?:url|pushurl)$/i.test(key) && /^https?:/i.test(value));
+    || /^core\.(?:askpass|sshcommand)$/i.test(key) || otherHttpRemote;
 }
 
 export function configureCellGit(cwd: string): void {

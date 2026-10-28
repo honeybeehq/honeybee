@@ -51,6 +51,8 @@ test("Cell git safety fixture: hostile HOME, HTTPS origin, SSH output and typed 
       ["http.https://github.com/.extraheader", "Authorization: fixture-only", "credential_helper"],
       ["core.askpass", "/bad", "credential_helper"],
       ["core.sshcommand", "bad", "credential_helper"],
+      ["remote.origin.backup.url", "https://github.com/fixture/other.git", "credential_helper"],
+      ["remote.origin.backup.pushurl", "https://github.com/fixture/other.git", "credential_helper"],
     ]) {
       g(cell.paths.spaceDir, ["config", "--replace-all", key!, value!]);
       assert.throws(() => provisionCell(rig.cellsRoot, req, "replay", { disableCow: true }), (error: unknown) => {
@@ -83,6 +85,8 @@ test("Cell git safety removes copied local/worktree rules and includes without c
     g(repo, ["config", "core.sshCommand", "bad"]);
     g(repo, ["config", "core.askpass", "/bad"]);
     g(repo, ["config", "remote.other.url", "https://github.com/fixture/other.git"]);
+    g(repo, ["config", "remote.origin.backup.url", "https://github.com/fixture/backup.git"]);
+    g(repo, ["config", "remote.origin.backup.pushurl", "https://github.com/fixture/backup.git"]);
     g(repo, ["config", "url.https://github.com/.insteadOf", "git@github.com:"]);
     g(repo, ["config", "extensions.worktreeConfig", "true"]);
     g(repo, ["config", "--worktree", "credential.helper", "bad"]);
@@ -92,7 +96,7 @@ test("Cell git safety removes copied local/worktree rules and includes without c
     assertCellGitSafe(repo, cellGitEnv(process.env));
     assert.equal(g(repo, ["remote", "get-url", "--push", "--all", "origin"]), "git@github.com:fixture/repo.git");
     assert.equal(readFileSync(include, "utf8"), content);
-    for (const key of ["http.https://github.com/.extraheader", "core.sshCommand", "core.askpass", "remote.other.url"]) {
+    for (const key of ["http.https://github.com/.extraheader", "core.sshCommand", "core.askpass", "remote.other.url", "remote.origin.backup.url", "remote.origin.backup.pushurl"]) {
       assert.equal(spawnSync("git", ["config", "--get", key], { cwd: repo, env: cellGitEnv(process.env) }).status, 1);
     }
     g(repo, ["config", "--worktree", "credential.helper", "tampered"]);
