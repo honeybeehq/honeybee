@@ -12,6 +12,7 @@ interface ProvisionWorkerData {
   disableCow: boolean;
   useGitImages: boolean;
   gitImagesRoot?: string;
+  sharedObjectsRoot?: string;
   claimFromPool?: boolean;
 }
 
@@ -69,6 +70,7 @@ try {
     disableCow: data.disableCow,
     useGitImages: data.useGitImages,
     gitImagesRoot: data.gitImagesRoot,
+    sharedObjectsRoot: data.sharedObjectsRoot,
   });
   provisionedFreshImage = !hadProvisionAttempt && !cell.replayed && cell.copyMode === "image-cow";
   parentPort?.postMessage({ ok: true } satisfies ProvisionWorkerResult);

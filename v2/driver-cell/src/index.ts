@@ -14,7 +14,8 @@ export {
   type ProvisionRequest,
   type ReserveRequest,
 } from "./provision.ts";
-export { cellPrivateEnv, cellPrivateStatePaths, CELL_PRIVATE_STATE_DIR } from "./cellState.ts";
+export { cellPnpmStoreDir, cellPnpmStoreEnv, cellPrivateEnv, cellPrivateStatePaths, CELL_PRIVATE_STATE_DIR } from "./cellState.ts";
+export { cellObjectStoreRoot, ensureObjectStore, hasObjectStore, objectStoreDir, type ObjectStore } from "./objectStore.ts";
 export { captureWork, transientRefFor, type CaptureMode, type CaptureReport, type CaptureRequest } from "./capture.ts";
 export {
   CellDeleteRefused,

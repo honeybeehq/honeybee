@@ -31,7 +31,7 @@ import { availableParallelism } from "node:os";
 import { performance } from "node:perf_hooks";
 import { join } from "node:path";
 import { cowCopy, cowPlatform, probeCow, type CowPlatform } from "./cow.ts";
-import { adoptOriginRemote, git } from "./git.ts";
+import { adoptOriginRemote, git, hasCommit } from "./git.ts";
 import {
   gitImagesRootForCells,
   refreshGitImage,
@@ -39,6 +39,7 @@ import {
   type GitImagePlacement,
 } from "./gitImage.ts";
 import { cellPaths, parseSpaceName, type CellPaths } from "./layout.ts";
+import { ensureObjectStore } from "./objectStore.ts";
 import {
   isProvisioned,
   newLedger,
@@ -84,6 +85,7 @@ export interface ProvisionOptions {
   platform?: CowPlatform | null;
   /** Override the Honeybee-owned image root (tests); defaults beside cells/. */
   gitImagesRoot?: string;
+  sharedObjectsRoot?: string;
   /** Bound for waiting on another worker's image publication (tests/ops). */
   gitImageBusyWaitMs?: number;
   now?: () => number;
@@ -307,6 +309,7 @@ export function provisionCell(
     disableCow: opts.disableCow ?? false,
     useGitImages: opts.useGitImages ?? true,
     gitImagesRoot: opts.gitImagesRoot ?? gitImagesRootForCells(cellsRoot),
+    sharedObjectsRoot: opts.sharedObjectsRoot,
     gitImageBusyWaitMs: Number.isFinite(opts.gitImageBusyWaitMs)
       ? Math.max(0, opts.gitImageBusyWaitMs as number)
       : DEFAULT_GIT_IMAGE_BUSY_WAIT_MS,
@@ -324,6 +327,7 @@ function runProvisionOperation(
     disableCow: boolean;
     useGitImages: boolean;
     gitImagesRoot: string;
+    sharedObjectsRoot?: string;
     gitImageBusyWaitMs: number;
     now: () => number;
   },
@@ -378,7 +382,14 @@ function runProvisionOperation(
       }
     }
     if (mode === "clone") {
-      git(paths.boxDir, ["clone", "--local", "--no-checkout", req.originRepo, paths.spaceDir]);
+      const store = cfg.sharedObjectsRoot == null ? null : ensureObjectStore(cfg.sharedObjectsRoot, req.originRepo);
+      if (store?.status === "fetched" && hasCommit(store.dir, req.sha)) {
+        git(paths.boxDir, ["clone", "--local", "--no-checkout", "--shared", "--", store.dir, paths.spaceDir]);
+        git(paths.spaceDir, ["remote", "set-url", "--", "origin", req.originRepo]);
+        mode = "shared-clone";
+      } else {
+        git(paths.boxDir, ["clone", "--local", "--no-checkout", req.originRepo, paths.spaceDir]);
+      }
       adoptOriginRemote(req.originRepo, paths.spaceDir, { trackingRefs: true });
     }
     op.steps.git_placed = { mode, at: cfg.now(), ...(image == null ? {} : { image }) };

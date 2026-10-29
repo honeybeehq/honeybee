@@ -10,7 +10,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-export type CopyMode = "image-cow" | "cow" | "clone";
+export type CopyMode = "image-cow" | "cow" | "clone" | "shared-clone";
 
 export interface GitImageRecord {
   repoKey: string;

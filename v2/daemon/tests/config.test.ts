@@ -510,3 +510,15 @@ test("config.9b: satellites default to a 3-day archive floor, half the Cells vol
     assert.match(fallback.warnings[0] ?? "", /archivedAfterDays/);
   });
 });
+
+test("config.9c: cells.shrink (H1) — every flag off by default, booleans only, invalid values refuse boot", () => {
+  withDir((dir) => {
+    assert.deepEqual(loadNodeConfig(dir).cellShrink, { parkPurge: false, privateTmp: false, sharedPnpmStore: false, sharedGitObjects: false });
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { shrink: { parkPurge: true, privateTmp: true } } }));
+    assert.deepEqual(loadNodeConfig(dir).cellShrink, { parkPurge: true, privateTmp: true, sharedPnpmStore: false, sharedGitObjects: false });
+    for (const shrink of [null, [], "on", { parkPurge: "yes" }, { sharedGitObjects: 1 }]) {
+      writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { shrink } }));
+      assert.throws(() => loadNodeConfig(dir), /cells\.shrink/);
+    }
+  });
+});

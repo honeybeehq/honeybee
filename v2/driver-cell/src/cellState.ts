@@ -1,5 +1,5 @@
 import { lstatSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 export const CELL_PRIVATE_STATE_DIR = "sandbox-state";
 export const CELL_PRIVATE_TMP = join(CELL_PRIVATE_STATE_DIR, "tmp");
@@ -25,6 +25,16 @@ export function cellPrivateEnv(wrapperDir: string, opts: { privateTmpfs: boolean
   for (const path of [root, tmp, cache]) realDirectory(path);
   const scratch = opts.privateTmpfs ? "/tmp" : tmp;
   return { TMPDIR: scratch, TMP: scratch, TEMP: scratch, CLAUDE_CODE_TMPDIR: scratch, NODE_COMPILE_CACHE: join(cache, "node-compile") };
+}
+
+export function cellPnpmStoreDir(cellsRoot: string): string {
+  return join(dirname(resolve(cellsRoot)), "pnpm-store");
+}
+
+export function cellPnpmStoreEnv(cellsRoot: string): Record<string, string> {
+  const store = cellPnpmStoreDir(cellsRoot);
+  realDirectory(store);
+  return { npm_config_store_dir: store };
 }
 
 export function cellPrivateStatePaths(wrapperDir: string): string[] {

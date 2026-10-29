@@ -42,7 +42,7 @@ import {
   type SpawnSpec,
 } from "../../driver-hsr/src/index.ts";
 import { captureWork, type CaptureMode, type CaptureReport } from "./capture.ts";
-import { cellPrivateEnv } from "./cellState.ts";
+import { cellPnpmStoreEnv, cellPrivateEnv } from "./cellState.ts";
 import { cellPaths, looksLikeCellWrapper, type CellPaths } from "./layout.ts";
 import { isProvisioned, readLedger, type CellLedger } from "./ledger.ts";
 import { provisionCell, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
@@ -82,6 +82,8 @@ export interface CellDriverConfig {
   sandboxWritablePaths?: string[];
   sandboxKvm?: boolean;
   privateTmp?: boolean;
+  sharedPnpmStore?: boolean;
+  sharedObjectsRoot?: string;
   /**
    * Additional authoritative paths for this bee. Callers must derive these
    * from trusted state, never from the harness spawn environment.
@@ -228,6 +230,7 @@ export class CellDriver implements RuntimeDriver {
         disableCow: this.cfg.disableCow ?? false,
         useGitImages: this.cfg.nodeKind === "workstation",
         gitImagesRoot: this.cfg.gitImagesRoot,
+        sharedObjectsRoot: this.cfg.sharedObjectsRoot,
         claimFromPool: this.warmPoolEnabled(),
       },
     });
@@ -457,6 +460,7 @@ export class CellDriver implements RuntimeDriver {
       disableCow: this.cfg.disableCow ?? false,
       useGitImages: this.cfg.nodeKind === "workstation",
       gitImagesRoot: this.cfg.gitImagesRoot,
+      sharedObjectsRoot: this.cfg.sharedObjectsRoot,
     });
     this.cells.set(beeId, cell);
     return cell;
@@ -735,6 +739,7 @@ export class CellDriver implements RuntimeDriver {
             disableCow: this.cfg.disableCow ?? false,
             useGitImages: this.cfg.nodeKind === "workstation",
             ...(this.cfg.gitImagesRoot ? { gitImagesRoot: this.cfg.gitImagesRoot } : {}),
+            ...(this.cfg.sharedObjectsRoot ? { sharedObjectsRoot: this.cfg.sharedObjectsRoot } : {}),
           },
           ...(fetchDue && policy != null ? { upstream: { root: policy.root, maxAgeMs: policy.maxAgeMs, timeoutMs: policy.timeoutMs } } : {}),
         },
@@ -773,6 +778,7 @@ export class CellDriver implements RuntimeDriver {
       HIVE_CELL: "1",
       HIVE_CELL_SPACE: cell.paths.spaceName,
       ...(this.cfg.privateTmp ? cellPrivateEnv(cell.paths.wrapperDir, { privateTmpfs: sandboxed && platform() === "linux" }) : {}),
+      ...(this.cfg.sharedPnpmStore && !sandboxed ? cellPnpmStoreEnv(this.cfg.cellsRoot) : {}),
     };
     if (!sandboxed) {
       return { ...harness, cwd: cell.paths.spaceDir, env };

@@ -9,7 +9,7 @@ import { SecretOutput, validateSecretEnv } from "./secretOutput.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, lstatSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import {
   CELL_EXEC_MAX_OUTPUT_BYTES,
   clampCellExecTimeout,
@@ -17,7 +17,7 @@ import {
 import { processStartTimeMs } from "../../driver-hsr/src/psutil.ts";
 import { defaultWritablePaths, sandboxEnabled, wrapWithSandbox, type NodeKind } from "./sandbox.ts";
 import type { CellPaths } from "./layout.ts";
-import { cellPrivateEnv } from "./cellState.ts";
+import { cellPnpmStoreEnv, cellPrivateEnv } from "./cellState.ts";
 
 export interface CellExecSpec {
   argv: readonly string[];
@@ -27,6 +27,7 @@ export interface CellExecSpec {
   nodeKind: NodeKind;
   kvm?: boolean;
   privateTmp?: boolean;
+  sharedPnpmStore?: boolean;
   secretEnv?: Record<string, string>;
   signal?: AbortSignal;
   outputCapture?: { maxBytes: number; expiresAt: number; receive: (bytes: Buffer) => void };
@@ -286,6 +287,7 @@ export async function runCellExec(
     HIVE_CELL: "1",
     HIVE_CELL_SPACE: paths.spaceName,
     ...(spec.privateTmp ? cellPrivateEnv(paths.wrapperDir, { privateTmpfs: sandboxed && process.platform === "linux" }) : {}),
+    ...(spec.sharedPnpmStore && !sandboxed ? cellPnpmStoreEnv(dirname(paths.wrapperDir)) : {}),
   };
   let wrappedCommand = command as string;
   let wrappedArgs = args;
