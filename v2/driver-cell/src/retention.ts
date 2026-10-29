@@ -540,7 +540,21 @@ export function verifyTrimPaths(
   return { confirmed, skipped };
 }
 
-export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: string[], opts: { now?: () => number; purge?: boolean } = {}): TrimResult {
+function quickPurgeRefusal(spaceDir: string, rel: string): string | null {
+  if (!pathExists(join(spaceDir, rel))) return "absent";
+  let path: string;
+  try {
+    path = assertInsideRealDir(spaceDir, rel);
+  } catch {
+    return "unsafe_path";
+  }
+  const st = lstatSync(path);
+  if (st.isSymbolicLink()) return "symlink";
+  if (st.isDirectory() && pathExists(join(path, ".git"))) return "nested_repository";
+  return null;
+}
+
+export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: string[], opts: { now?: () => number; purge?: boolean; rescan?: boolean } = {}): TrimResult {
   const { root, target, spaceDir } = trimTarget(cellsRoot, wrapperDir);
   const result: TrimResult = { parkedDir: null, trimmed: [], skipped: [] };
   const park = (source: string, rel: string): void => {
@@ -552,7 +566,7 @@ export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: 
     result.trimmed.push(rel);
   };
   for (const rel of confirmed) {
-    const why = trimPathRefusal(spaceDir, rel, opts.purge);
+    const why = opts.purge && opts.rescan === false ? quickPurgeRefusal(spaceDir, rel) : trimPathRefusal(spaceDir, rel, opts.purge);
     if (why != null) {
       result.skipped.push({ path: rel, why });
       continue;
@@ -573,6 +587,31 @@ export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: 
   return result;
 }
 
+export interface PurgePlan {
+  status: "planned" | "refused";
+  reason: string | null;
+  report: DirtyReport | null;
+  envFiles: string[];
+  confirmed: string[];
+  skipped: TrimSkip[];
+}
+
+export function planPurge(
+  cellsRoot: string,
+  wrapperDir: string,
+  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
+): PurgePlan {
+  const { root, spaceDir, target } = trimTarget(cellsRoot, wrapperDir);
+  const { report } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
+  const refused = (reason: string): PurgePlan => ({ status: "refused", reason, report, envFiles: [], confirmed: [], skipped: [] });
+  if (report.unpushed || report.stashed) return refused("unlanded_work");
+  if (trackedChanges(spaceDir)) return refused("uncommitted_tracked_changes");
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, { purge: true });
+  const envFiles = preserveEnvFiles(root, spaceDir, ignored.env);
+  const verified = verifyTrimPaths(wrapperDir, ignored.trim, { trimPatterns: opts.trimPatterns, modifiedSinceMs: opts.modifiedSinceMs, purge: true });
+  return { status: "planned", reason: null, report, envFiles, confirmed: verified.confirmed, skipped: verified.skipped };
+}
+
 export interface PurgeResult {
   status: "parked" | "refused" | "nothing_to_purge";
   reason: string | null;
@@ -583,22 +622,19 @@ export interface PurgeResult {
   parkedDir: string | null;
 }
 
+export function applyPurge(cellsRoot: string, wrapperDir: string, plan: PurgePlan, opts: { now?: () => number } = {}): PurgeResult {
+  if (plan.status === "refused") return { status: "refused", reason: plan.reason, report: plan.report, envFiles: [], trimmed: [], skipped: [], parkedDir: null };
+  const parked = parkTrimPaths(cellsRoot, wrapperDir, plan.confirmed, { now: opts.now, purge: true, rescan: false });
+  const skipped = [...plan.skipped, ...parked.skipped];
+  return { status: parked.trimmed.length > 0 ? "parked" : "nothing_to_purge", reason: null, report: plan.report, envFiles: plan.envFiles, trimmed: parked.trimmed, skipped, parkedDir: parked.parkedDir };
+}
+
 export function purgeCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
   opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
 ): PurgeResult {
-  const { root, target, spaceDir } = trimTarget(cellsRoot, wrapperDir);
-  const { report } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
-  const refused = (reason: string): PurgeResult => ({ status: "refused", reason, report, envFiles: [], trimmed: [], skipped: [], parkedDir: null });
-  if (report.unpushed || report.stashed) return refused("unlanded_work");
-  if (trackedChanges(spaceDir)) return refused("uncommitted_tracked_changes");
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, { purge: true });
-  const envFiles = preserveEnvFiles(root, spaceDir, ignored.env);
-  const verified = verifyTrimPaths(wrapperDir, ignored.trim, { trimPatterns: opts.trimPatterns, modifiedSinceMs: opts.modifiedSinceMs, purge: true });
-  const parked = parkTrimPaths(root, wrapperDir, verified.confirmed, { now: opts.now, purge: true });
-  const skipped = [...verified.skipped, ...parked.skipped];
-  return { status: parked.trimmed.length > 0 ? "parked" : "nothing_to_purge", reason: null, report, envFiles, trimmed: parked.trimmed, skipped, parkedDir: parked.parkedDir };
+  return applyPurge(cellsRoot, wrapperDir, planPurge(cellsRoot, wrapperDir, opts), { now: opts.now });
 }
 
 export function trimCellWrapper(

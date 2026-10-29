@@ -494,3 +494,44 @@ test("cell-retention.8: with cells.shrink off, cell.park records the park and ke
     rig.cleanup();
   }
 });
+
+test("cell-retention.9: a runtime start racing a purge never loses files under a live runtime: the park either lands before the start or is refused", { timeout: 180_000 }, async () => {
+  const rig = makeRig({ enabled: false });
+  writeFileSync(join(rig.dir, "config.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(rig.dir, "config.json"), "utf8")), cells: { root: rig.cellsRoot, retention: { enabled: false }, shrink: { parkPurge: true } } }));
+  let daemon: DaemonHandle | null = null;
+  try {
+    writeFileSync(join(rig.origin.repo, ".gitignore"), "node_modules/\n");
+    g(rig.origin.repo, ["add", ".gitignore"]);
+    g(rig.origin.repo, ["commit", "-q", "-m", "ignores"]);
+    daemon = await startDaemon(rig.dir);
+    const client = await daemon.client();
+    const bee = await spawnIdle(client, "racer", rig.origin.repo);
+    const space = bee.view.bee!.cwd;
+    for (let i = 0; i < 3000; i++) {
+      mkdirSync(join(space, "node_modules", `pkg-${i % 30}`), { recursive: true });
+      writeFileSync(join(space, "node_modules", `pkg-${i % 30}`, `f-${i}.js`), "x\n");
+    }
+    await stopped(client, bee.beeId);
+    const park = client.request<CellParkResult>("cell.park", { beeId: bee.beeId, idempotencyKey: "race" }).then((r) => ({ ok: true as const, r }), (e: unknown) => ({ ok: false as const, e }));
+    const sent = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "@sh test -d node_modules && echo present > seen.txt || echo absent > seen.txt" });
+    const outcome = await park;
+    await waitFor(async () => {
+      const { messages } = await client.request<MailboxResult>("mailbox", { beeId: bee.beeId });
+      return messages.find((m) => m.id === sent.messageId)?.deliveredAt != null && existsSync(join(space, "seen.txt"));
+    }, "runtime observed the tree", 60_000);
+    const seen = readFileSync(join(space, "seen.txt"), "utf8").trim();
+    if (outcome.ok) {
+      assert.equal(outcome.r.status, "parked");
+      assert.equal(seen, "absent", "a park that landed happened before the runtime looked");
+      assert.equal(existsSync(join(space, "node_modules")), false);
+    } else {
+      assert.match(String((outcome.e as Error).message), /live runtime|in-flight/);
+      assert.equal(seen, "present", "a refused park left the tree for the runtime");
+    }
+    const log = readFileSync(join(rig.dir, "hived.log"), "utf8");
+    assert.equal(/cell\.park .*purged=true/.test(log), outcome.ok);
+  } finally {
+    await daemon?.stop();
+    rig.cleanup();
+  }
+});

@@ -179,7 +179,7 @@ import {
   defaultScratchPaths,
   defaultWritablePaths,
   sharedStoreRefusal,
-  type PurgeResult,
+  type PurgePlan,
   readUpstreamMirror,
   upstreamRootFor,
   hasCommit,
@@ -4012,25 +4012,26 @@ export class HiveDaemon {
     if (prepared.kind === "result") return this.withIdempotency(verb, params, () => prepared.result);
     const { row, wrapperDir } = prepared;
     const purge = this.cellShrink.parkPurge;
-    let purged: PurgeResult | null = null;
+    let plan: PurgePlan | null = null;
     if (purge && existsSync(row.spaceDir)) {
       const retention = this.retention;
       if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
-      const worked = await retention.purgeWrapper(wrapperDir, {
+      const planned = await retention.planPurge(wrapperDir, {
         receipts: store.listLandingReceipts(beeId),
         upstream: this.cfg.cellRetention.fetchUpstream ? readUpstreamMirror(row.originRepo, upstreamRootFor(this.cfg.dataDir)) : null,
       });
-      if (worked.error != null || worked.result == null) throw new RpcError("runtime_refused", `cell.park: ${worked.error ?? "purge produced no result"}`);
-      purged = worked.result;
-      void retention.sweep();
+      if (planned.error != null || planned.plan == null) throw new RpcError("runtime_refused", `cell.park: ${planned.error ?? "purge produced no plan"}`);
+      plan = planned.plan;
     }
     return this.withIdempotency(verb, params, () => {
       const again = this.parkPreconditions(beeId);
       if (again.kind === "result") return again.result;
-      if (purged?.status === "refused") {
-        this.log(`cell.park bee=${beeId} cell=${row.id} refused=${purged.reason}`);
-        return { cell: row, status: "refused", reason: purged.reason, purged: false, paths: [], skipped: [], envFiles: [], report: purged.report };
+      if (plan?.status === "refused") {
+        this.log(`cell.park bee=${beeId} cell=${row.id} refused=${plan.reason}`);
+        return { cell: row, status: "refused", reason: plan.reason, purged: false, paths: [], skipped: [], envFiles: [], report: plan.report };
       }
+      const purged = plan ? this.retention!.applyPurge(wrapperDir, plan) : null;
+      if (purged?.parkedDir) void this.retention?.sweep();
       const paths = purged?.trimmed ?? [];
       const skipped = purged?.skipped ?? [];
       const envFiles = purged?.envFiles ?? [];

@@ -6,7 +6,7 @@
  */
 import { parentPort, workerData } from "node:worker_threads";
 import type { LandingReceipt } from "./landed.ts";
-import { inspectCellWrapper, purgeCellWrapper, verifyTrimPaths, type CellWrapperInspection, type PurgeResult, type TrimSkip } from "./retention.ts";
+import { inspectCellWrapper, planPurge, verifyTrimPaths, type CellWrapperInspection, type PurgePlan, type TrimSkip } from "./retention.ts";
 import { refreshUpstreamMirror, type UpstreamRef } from "./upstream.ts";
 
 export interface RetentionWorkerRequest {
@@ -63,13 +63,12 @@ export interface PurgeWorkerRequest {
   wrapperDir: string;
   trimPatterns: string[];
   modifiedSinceMs?: number;
-  now: number;
   receipts?: LandingReceipt[];
   upstream?: UpstreamRef | null;
 }
 
 export interface PurgeWorkerResult {
-  result: PurgeResult | null;
+  plan: PurgePlan | null;
   error: string | null;
 }
 
@@ -78,10 +77,9 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 if (request.kind === "purge") {
   let message: PurgeWorkerResult;
   try {
-    const now = request.now;
-    message = { result: purgeCellWrapper(request.cellsRoot, request.wrapperDir, { trimPatterns: request.trimPatterns, modifiedSinceMs: request.modifiedSinceMs, now: () => now, receipts: request.receipts, upstream: request.upstream }), error: null };
+    message = { plan: planPurge(request.cellsRoot, request.wrapperDir, { trimPatterns: request.trimPatterns, modifiedSinceMs: request.modifiedSinceMs, receipts: request.receipts, upstream: request.upstream }), error: null };
   } catch (err) {
-    message = { result: null, error: errorText(err) };
+    message = { plan: null, error: errorText(err) };
   }
   parentPort?.postMessage(message);
 } else if (request.kind === "verifyTrim") {

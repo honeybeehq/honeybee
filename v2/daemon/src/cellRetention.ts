@@ -55,6 +55,7 @@ import {
   type PurgeWorkerRequest,
   type PurgeWorkerResult,
   type PurgeResult,
+  applyPurge,
   type RetentionWorkerResult,
   type UpstreamRef,
   type TrimSkip,
@@ -821,17 +822,20 @@ export class CellRetentionService {
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
   }
 
-  purgeWrapper(wrapperDir: string, opts: { receipts?: LandingReceipt[]; upstream?: UpstreamRef | null; modifiedSinceMs?: number }): Promise<PurgeWorkerResult> {
+  planPurge(wrapperDir: string, opts: { receipts?: LandingReceipt[]; upstream?: UpstreamRef | null; modifiedSinceMs?: number }): Promise<PurgeWorkerResult> {
     return this.runWorker<PurgeWorkerResult>({
       kind: "purge",
       cellsRoot: this.deps.cellsRoot,
       wrapperDir,
       trimPatterns: [...this.deps.policy.trimPatterns],
       modifiedSinceMs: opts.modifiedSinceMs,
-      now: this.deps.now(),
       receipts: opts.receipts,
       upstream: opts.upstream ?? null,
     } satisfies PurgeWorkerRequest);
+  }
+
+  applyPurge(wrapperDir: string, plan: NonNullable<PurgeWorkerResult["plan"]>): PurgeResult {
+    return applyPurge(this.deps.cellsRoot, wrapperDir, plan, { now: this.deps.now });
   }
 
   private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | PurgeWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
@@ -1209,23 +1213,31 @@ export class CellRetentionService {
     const blocked = this.purgeBlocked(item);
     if (blocked != null) return outcome("refused", blocked);
     const store = this.deps.store();
-    let purged: PurgeWorkerResult;
+    let planned: PurgeWorkerResult;
     try {
-      purged = await this.purgeWrapper(item.wrapperDir, { receipts: store.listLandingReceipts(item.beeId), upstream: item.originRepo ? this.upstreamRefs.get(item.originRepo) ?? null : null, modifiedSinceMs });
+      planned = await this.planPurge(item.wrapperDir, { receipts: store.listLandingReceipts(item.beeId), upstream: item.originRepo ? this.upstreamRefs.get(item.originRepo) ?? null : null, modifiedSinceMs });
     } catch (err) {
       return outcome("failed", err instanceof Error ? err.message : String(err));
     }
     this.assertRunning();
-    if (purged.error != null || purged.result == null) {
-      this.deps.log(`cell.retention.purge_failed cell=${item.cellId} bee=${item.beeId} err=${JSON.stringify(purged.error)}`);
-      return outcome("failed", purged.error ?? "purge_missing");
+    if (planned.error != null || planned.plan == null) {
+      this.deps.log(`cell.retention.purge_failed cell=${item.cellId} bee=${item.beeId} err=${JSON.stringify(planned.error)}`);
+      return outcome("failed", planned.error ?? "purge_missing");
     }
-    const res = purged.result;
-    if (res.status === "refused") return outcome("refused", res.reason, res);
-    if (res.status === "nothing_to_purge") return outcome("refused", "nothing_to_trim", res);
+    if (planned.plan.status === "refused") return outcome("refused", planned.plan.reason);
     const blockedAfter = this.purgeBlocked(item);
+    if (blockedAfter != null) return outcome("refused", blockedAfter);
+    let res: PurgeResult;
+    try {
+      res = this.applyPurge(item.wrapperDir, planned.plan);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.deps.log(`cell.retention.purge_failed cell=${item.cellId} bee=${item.beeId} err=${JSON.stringify(detail)}`);
+      return outcome("failed", detail);
+    }
+    if (res.status === "nothing_to_purge") return outcome("refused", "nothing_to_trim", res);
     const result = outcome("trimmed", null, res);
-    if (blockedAfter == null && item.cellId) store.parkCell(item.cellId, { bytes: result.bytes, paths: res.trimmed, reason: "idle" });
+    if (item.cellId) store.parkCell(item.cellId, { bytes: result.bytes, paths: res.trimmed, reason: "idle" });
     this.deps.log(
       `cell.retention.parked cell=${item.cellId} bee=${item.beeId} paths=${res.trimmed.length} skipped=${res.skipped.length} bytes=${result.bytes ?? "?"}` +
         ` parked=${res.parkedDir ?? "-"} env_files=${res.envFiles.length}${res.skipped.length > 0 ? ` first_skip=${JSON.stringify(res.skipped[0])}` : ""}`,

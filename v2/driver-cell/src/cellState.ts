@@ -1,4 +1,4 @@
-import { lstatSync, mkdirSync } from "node:fs";
+import { lstatSync, mkdirSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 export const CELL_PRIVATE_STATE_DIR = "sandbox-state";
@@ -42,11 +42,28 @@ function contains(parent: string, child: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
+function realOrResolved(path: string): string {
+  let cursor = resolve(path);
+  const suffix: string[] = [];
+  for (;;) {
+    try {
+      return join(realpathSync(cursor), ...suffix);
+    } catch {
+      const parent = dirname(cursor);
+      if (parent === cursor) return resolve(path);
+      suffix.unshift(cursor.slice(parent.length + (parent.endsWith("/") ? 0 : 1)));
+      cursor = parent;
+    }
+  }
+}
+
 export function sharedStoreRefusal(storeDir: string, cellsRoot: string, writablePaths: readonly string[]): string | null {
-  const store = resolve(storeDir);
-  if (contains(resolve(cellsRoot), store)) return `${store} lies under the Cells root ${resolve(cellsRoot)}`;
+  const store = realOrResolved(storeDir);
+  const cells = realOrResolved(cellsRoot);
+  if (contains(cells, store)) return `${store} lies under the Cells root ${cells}`;
   for (const path of writablePaths) {
-    if (contains(resolve(path), store)) return `${store} lies under the sandbox-writable path ${resolve(path)}`;
+    const real = realOrResolved(path);
+    if (contains(real, store)) return `${store} lies under the sandbox-writable path ${real}`;
   }
   return null;
 }
