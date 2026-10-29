@@ -27,6 +27,7 @@ import {
   listPreservedEnvFiles,
   measureDirectoryBytes,
   preserveEnvFiles,
+  purgeCellWrapper,
   restoreEnvFiles,
   restoreKeptPaths,
   retentionWorkerUrl,
@@ -593,6 +594,67 @@ test("retention.purge: park mode treats every ignored path except env files as r
     for (const gone of [...purge.trim, "sandbox-state/tmp", "sandbox-state/cache"]) assert.equal(existsSync(join(gone.startsWith("sandbox-state") ? paths.wrapperDir : paths.spaceDir, gone)), false, gone);
     for (const kept of ["README.md", "src/app.ts", ".env", ".DS_Store"]) assert.equal(existsSync(join(paths.spaceDir, kept)), true, kept);
     assert.equal(g(paths.spaceDir, ["status", "--porcelain"]), "");
+    assert.deepEqual((await sweepEvicting(rig.cellsRoot)).removed, [res.parkedDir]);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("retention.purge: a Cell that swaps sandbox-state for a symlink gets nothing purged through it; the link target is untouched", async () => {
+  const rig = makeRig();
+  try {
+    ignoringOrigin(rig);
+    const { paths } = provisioned(rig, "symlink");
+    const victim = join(rig.root, "victim");
+    put(victim, "tmp/precious.txt", "not ours\n");
+    put(victim, "cache/precious.txt", "not ours\n");
+    symlinkSync(victim, join(paths.wrapperDir, "sandbox-state"));
+    const res = trimCellWrapper(rig.cellsRoot, paths.wrapperDir, [], { purge: true });
+    assert.deepEqual(res.trimmed, []);
+    assert.deepEqual(res.skipped, [{ path: "sandbox-state/tmp", why: "symlink" }, { path: "sandbox-state/cache", why: "symlink" }]);
+    assert.equal(readFileSync(join(victim, "tmp", "precious.txt"), "utf8"), "not ours\n");
+    assert.equal(readFileSync(join(victim, "cache", "precious.txt"), "utf8"), "not ours\n");
+    rmSync(join(paths.wrapperDir, "sandbox-state"));
+    cellPrivateEnv(paths.wrapperDir, { privateTmpfs: false });
+    rmSync(join(paths.wrapperDir, "sandbox-state", "tmp"), { recursive: true });
+    symlinkSync(join(victim, "tmp"), join(paths.wrapperDir, "sandbox-state", "tmp"));
+    const leaf = trimCellWrapper(rig.cellsRoot, paths.wrapperDir, [], { purge: true });
+    assert.deepEqual(leaf.skipped, [{ path: "sandbox-state/tmp", why: "symlink" }]);
+    assert.deepEqual(leaf.trimmed, ["sandbox-state/cache"]);
+    assert.equal(readFileSync(join(victim, "tmp", "precious.txt"), "utf8"), "not ours\n");
+    await sweepEvicting(rig.cellsRoot);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("retention.purge: purgeCellWrapper refuses unlanded commits and tracked changes, keeps a nested repository and untracked work, and purges large trees", async () => {
+  const rig = makeRig();
+  try {
+    ignoringOrigin(rig);
+    const { paths } = provisioned(rig, "gate");
+    const space = paths.spaceDir;
+    for (let i = 0; i < 1500; i++) put(space, `node_modules/big/${i}.js`);
+    put(space, "tmp/clone/README", "nested\n");
+    g(join(space, "tmp", "clone"), ["init", "-q"]);
+    put(space, "wip.txt", "untracked\n");
+    put(space, "work.txt", "x\n");
+    g(space, ["add", "work.txt"]);
+    g(space, ["commit", "-q", "-m", "unlanded"]);
+    const sha = g(space, ["rev-parse", "HEAD"]);
+    assert.equal(purgeCellWrapper(rig.cellsRoot, paths.wrapperDir).status, "refused");
+    assert.equal(purgeCellWrapper(rig.cellsRoot, paths.wrapperDir).reason, "unlanded_work");
+    g(space, ["reset", "-q", "--hard", `${sha}~1`]);
+    writeFileSync(join(space, "README.md"), "edited\n");
+    assert.equal(purgeCellWrapper(rig.cellsRoot, paths.wrapperDir).reason, "uncommitted_tracked_changes");
+    g(space, ["checkout", "-q", "--", "README.md"]);
+    const res = purgeCellWrapper(rig.cellsRoot, paths.wrapperDir, { now: () => 11 });
+    assert.equal(res.status, "parked");
+    assert.deepEqual(res.trimmed, ["node_modules"]);
+    assert.deepEqual(res.skipped, [{ path: "tmp", why: "nested_repository" }]);
+    assert.equal(existsSync(join(space, "node_modules")), false);
+    assert.equal(readFileSync(join(space, "tmp", "clone", "README"), "utf8"), "nested\n");
+    assert.equal(readFileSync(join(space, "wip.txt"), "utf8"), "untracked\n");
     assert.deepEqual((await sweepEvicting(rig.cellsRoot)).removed, [res.parkedDir]);
   } finally {
     rig.cleanup();

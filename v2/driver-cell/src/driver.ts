@@ -230,7 +230,7 @@ export class CellDriver implements RuntimeDriver {
         disableCow: this.cfg.disableCow ?? false,
         useGitImages: this.cfg.nodeKind === "workstation",
         gitImagesRoot: this.cfg.gitImagesRoot,
-        sharedObjectsRoot: this.cfg.sharedObjectsRoot,
+        sharedObjectsRoot: sandboxEnabled(this.cfg.nodeKind, spec.sandbox) ? undefined : this.cfg.sharedObjectsRoot,
         claimFromPool: this.warmPoolEnabled(),
       },
     });
@@ -460,7 +460,7 @@ export class CellDriver implements RuntimeDriver {
       disableCow: this.cfg.disableCow ?? false,
       useGitImages: this.cfg.nodeKind === "workstation",
       gitImagesRoot: this.cfg.gitImagesRoot,
-      sharedObjectsRoot: this.cfg.sharedObjectsRoot,
+      sharedObjectsRoot: sandboxEnabled(this.cfg.nodeKind, spec.sandbox) ? undefined : this.cfg.sharedObjectsRoot,
     });
     this.cells.set(beeId, cell);
     return cell;
@@ -739,7 +739,6 @@ export class CellDriver implements RuntimeDriver {
             disableCow: this.cfg.disableCow ?? false,
             useGitImages: this.cfg.nodeKind === "workstation",
             ...(this.cfg.gitImagesRoot ? { gitImagesRoot: this.cfg.gitImagesRoot } : {}),
-            ...(this.cfg.sharedObjectsRoot ? { sharedObjectsRoot: this.cfg.sharedObjectsRoot } : {}),
           },
           ...(fetchDue && policy != null ? { upstream: { root: policy.root, maxAgeMs: policy.maxAgeMs, timeoutMs: policy.timeoutMs } } : {}),
         },

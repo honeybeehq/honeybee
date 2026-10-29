@@ -174,10 +174,12 @@ import {
   dirtyCauses,
   evictCellWrapper,
   unparkCellWrapper,
-  classifyIgnored,
-  parkTrimPaths,
-  preserveEnvFiles,
   cellObjectStoreRoot,
+  cellPnpmStoreDir,
+  defaultScratchPaths,
+  defaultWritablePaths,
+  sharedStoreRefusal,
+  type PurgeResult,
   readUpstreamMirror,
   upstreamRootFor,
   hasCommit,
@@ -249,6 +251,8 @@ import {
   type NamingConfig,
   type ResolvedNamingConfig,
   type ResolvedNodeConfig,
+  type ResolvedCellShrink,
+  CELL_SHRINK_OFF,
 } from "./config.ts";
 import {
   argValue,
@@ -820,6 +824,7 @@ export class HiveDaemon {
     mkdirSync(dirname(this.cfg.logPath), { recursive: true });
     if (this.beeTmp) applyDaemonTmpPolicy(this.beeTmp, process.env, (path, was) => this.log(`tmp.replaced path=${path} was=${was}`));
     this.log(describeBeeTmpPolicy(this.beeTmp));
+    this.cellShrink = this.effectiveCellShrink();
     if (this.cfg.beeTmpRootInvalid) this.log(`tmp.policy_invalid reason=${JSON.stringify(this.cfg.beeTmpRootInvalid)}`);
     if (process.platform === "darwin") {
       const userTemp = darwinUserTempDir();
@@ -954,9 +959,9 @@ export class HiveDaemon {
       nodeKind: this.cfg.nodeKind,
       resolveHarness: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation),
       sandboxKvm: this.cfg.cellKvm,
-      privateTmp: this.cfg.cellShrink.privateTmp,
-      sharedPnpmStore: this.cfg.cellShrink.sharedPnpmStore,
-      ...(this.cfg.cellShrink.sharedGitObjects ? { sharedObjectsRoot: cellObjectStoreRoot(this.cfg.cellsRoot) } : {}),
+      privateTmp: this.cellShrink.privateTmp,
+      sharedPnpmStore: this.cellShrink.sharedPnpmStore,
+      ...(this.cellShrink.sharedGitObjects ? { sharedObjectsRoot: cellObjectStoreRoot(this.cfg.cellsRoot) } : {}),
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
       resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
@@ -1011,7 +1016,7 @@ export class HiveDaemon {
         return this.cellHasInFlightOp(cellId);
       },
       forgetCell: (beeId) => cell.forgetCell(beeId),
-      purgeOnPark: this.cfg.cellShrink.parkPurge,
+      purgeOnPark: this.cellShrink.parkPurge,
       ...(this.deps.retentionWorkerUrl ? { workerUrl: this.deps.retentionWorkerUrl } : {}),
       ...(this.deps.retentionInitialDelayMs !== undefined ? { initialDelayMs: this.deps.retentionInitialDelayMs } : {}),
       ...(this.deps.retentionDiskCheckMs !== undefined ? { diskCheckMs: this.deps.retentionDiskCheckMs } : {}),
@@ -2382,7 +2387,7 @@ export class HiveDaemon {
       case "cell.evict":
         return this.withIdempotency(verb, params, () => this.rpcCellEvict(params));
       case "cell.park":
-        return this.withIdempotency(verb, params, () => this.rpcCellPark(params));
+        return this.rpcCellPark(verb, params, conn);
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
@@ -3997,15 +4002,79 @@ export class HiveDaemon {
     }
   }
 
-  private rpcCellPark(params: Record<string, unknown>): CellParkResult {
+  private async rpcCellPark(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): Promise<CellParkResult> {
     const beeId = this.requireBee(params);
+    if (conn.authenticatedBeeId !== undefined && conn.authenticatedBeeId !== beeId) throw new RpcError("caller_not_trusted", "A bee may only park its own Cell");
+    const store = this.mustStore();
+    const key = this.idempotencyKeyOf(params);
+    if (key != null && store.transact(() => store.lookupRpcResult(key))) return this.withIdempotency(verb, params, () => this.parkRefusal(beeId));
+    const prepared = this.parkPreconditions(beeId);
+    if (prepared.kind === "result") return this.withIdempotency(verb, params, () => prepared.result);
+    const { row, wrapperDir } = prepared;
+    const purge = this.cellShrink.parkPurge;
+    let purged: PurgeResult | null = null;
+    if (purge && existsSync(row.spaceDir)) {
+      const retention = this.retention;
+      if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
+      const worked = await retention.purgeWrapper(wrapperDir, {
+        receipts: store.listLandingReceipts(beeId),
+        upstream: this.cfg.cellRetention.fetchUpstream ? readUpstreamMirror(row.originRepo, upstreamRootFor(this.cfg.dataDir)) : null,
+      });
+      if (worked.error != null || worked.result == null) throw new RpcError("runtime_refused", `cell.park: ${worked.error ?? "purge produced no result"}`);
+      purged = worked.result;
+      void retention.sweep();
+    }
+    return this.withIdempotency(verb, params, () => {
+      const again = this.parkPreconditions(beeId);
+      if (again.kind === "result") return again.result;
+      if (purged?.status === "refused") {
+        this.log(`cell.park bee=${beeId} cell=${row.id} refused=${purged.reason}`);
+        return { cell: row, status: "refused", reason: purged.reason, purged: false, paths: [], skipped: [], envFiles: [], report: purged.report };
+      }
+      const paths = purged?.trimmed ?? [];
+      const skipped = purged?.skipped ?? [];
+      const envFiles = purged?.envFiles ?? [];
+      const cell = store.parkCell(row.id, { bytes: null, paths, reason: "operator" });
+      this.log(`cell.park bee=${beeId} cell=${row.id} purged=${purge} paths=${paths.length} skipped=${skipped.length} env_files=${envFiles.length}`);
+      return { cell, status: "parked", reason: null, purged: purge, paths, skipped, envFiles, report: purged?.report ?? null };
+    });
+  }
+
+  private cellShrink: ResolvedCellShrink = { ...CELL_SHRINK_OFF };
+
+  private effectiveCellShrink(): ResolvedCellShrink {
+    const shrink = { ...this.cfg.cellShrink };
+    const writable = [...defaultWritablePaths(), ...defaultScratchPaths()];
+    const refuse = (flag: "sharedGitObjects" | "sharedPnpmStore", path: string): void => {
+      const why = sharedStoreRefusal(path, this.cfg.cellsRoot, writable);
+      if (why == null) return;
+      shrink[flag] = false;
+      this.log(`config.shrink.refused flag=${flag} reason=${JSON.stringify(why)}`);
+    };
+    if (shrink.sharedGitObjects) {
+      refuse("sharedGitObjects", cellObjectStoreRoot(this.cfg.cellsRoot));
+      if (shrink.sharedGitObjects && sandboxEnabled(this.cfg.nodeKind, this.cfg.cellSandbox)) {
+        shrink.sharedGitObjects = false;
+        this.log("config.shrink.refused flag=sharedGitObjects reason=\"sandboxed Cells cannot read a shared object store until the sandbox binds it read-only\"");
+      }
+    }
+    if (shrink.sharedPnpmStore) refuse("sharedPnpmStore", cellPnpmStoreDir(this.cfg.cellsRoot));
+    this.log(`cell.shrink parkPurge=${shrink.parkPurge} privateTmp=${shrink.privateTmp} sharedPnpmStore=${shrink.sharedPnpmStore} sharedGitObjects=${shrink.sharedGitObjects}`);
+    return shrink;
+  }
+
+  private parkRefusal(beeId: string): CellParkResult {
+    throw new RpcError("idempotency_conflict", `cell.park: replay for ${beeId} was not found`);
+  }
+
+  private parkPreconditions(beeId: string): { kind: "result"; result: CellParkResult } | { kind: "proceed"; row: CellRow; wrapperDir: string } {
     const store = this.mustStore();
     const bee = store.getBee(beeId);
     const row = bee?.cellId ? store.getCell(bee.cellId) : null;
     if (!bee || bee.substrate !== "cell" || !row || row.state === "removed" || row.state === "removing") {
       throw new RpcError("invalid_request", `cell.park: bee ${beeId} has no Cell allocation`);
     }
-    if (row.state === "evicted") return { cell: row, status: "absent", purged: false, paths: [], skipped: [], envFiles: [] };
+    if (row.state === "evicted") return { kind: "result", result: { cell: row, status: "absent", reason: null, purged: false, paths: [], skipped: [], envFiles: [], report: null } };
     if (row.state !== "active") {
       throw new RpcError("invalid_request", `cell.park: cell ${row.id} is ${row.state}; only an active Cell can be parked`);
     }
@@ -4017,22 +4086,7 @@ export class HiveDaemon {
     if ((rt && rt.state !== "stopped") || (rt && this.driver?.hasProcess(beeId, rt.generation))) {
       throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); stop it before parking its cell`);
     }
-    const wrapperDir = dirname(resolve(row.spaceDir));
-    const purge = this.cfg.cellShrink.parkPurge;
-    let paths: string[] = [];
-    let skipped: CellParkResult["skipped"] = [];
-    let envFiles: string[] = [];
-    if (purge && existsSync(row.spaceDir)) {
-      const ignored = classifyIgnored(row.spaceDir, this.cfg.cellRetention.trimPatterns, { purge: true });
-      envFiles = preserveEnvFiles(this.cfg.cellsRoot, row.spaceDir, ignored.env);
-      const res = parkTrimPaths(this.cfg.cellsRoot, wrapperDir, ignored.trim, { purge: true });
-      paths = res.trimmed;
-      skipped = res.skipped;
-      void this.retention?.sweep();
-    }
-    const cell = store.parkCell(row.id, { bytes: null, paths, reason: "operator" });
-    this.log(`cell.park bee=${beeId} cell=${row.id} purged=${purge} paths=${paths.length} skipped=${skipped.length} env_files=${envFiles.length}`);
-    return { cell, status: "parked", purged: purge, paths, skipped, envFiles };
+    return { kind: "proceed", row, wrapperDir: dirname(resolve(row.spaceDir)) };
   }
 
   private backfillCellRegistry(store: CoreStore): void {
@@ -4998,8 +5052,8 @@ export class HiveDaemon {
           sandbox: cell.sandbox,
           nodeKind: this.cfg.nodeKind,
           kvm: this.cfg.cellKvm,
-          privateTmp: this.cfg.cellShrink.privateTmp,
-          sharedPnpmStore: this.cfg.cellShrink.sharedPnpmStore,
+          privateTmp: this.cellShrink.privateTmp,
+          sharedPnpmStore: this.cellShrink.sharedPnpmStore,
           ...(secret ? { secretEnv: secret.outputCapture ? undefined : secret.env, ...(secret.outputCapture ? { outputCapture: { maxBytes: secret.outputCapture.maxBytes, expiresAt: secret.outputCapture.expiresAt, receive: (bytes: Buffer) => captureSecretOutput?.(secret.outputCapture!.leaseId, bytes) } } : {}), signal: controller!.signal } : {}),
 
         },

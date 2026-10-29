@@ -2655,11 +2655,13 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         });
         const detail = r.status === "absent"
           ? `${beeId}'s Cell is evicted; nothing to park`
-          : r.purged
+          : r.status === "refused"
+            ? `${r.reason === "unlanded_work" ? "the Cell holds commits or stashes the origin does not have" : "the Cell has uncommitted changes to tracked files"}; land or discard them before parking`
+            : r.purged
             ? `${r.paths.length} ignored path(s) purged${r.skipped.length > 0 ? `, ${r.skipped.length} skipped` : ""}${r.envFiles.length > 0 ? `; ${r.envFiles.length} env file(s) preserved for restore` : ""}; the next runtime reinstalls what it needs`
             : "recorded only; cells.shrink.parkPurge is off, so the Cell keeps its files";
-        emit(ctx, [confirm("ok", `cell ${r.status}`, detail, r.deduped)], r, false);
-        return 0;
+        emit(ctx, [confirm(r.status === "refused" ? "err" : "ok", `cell ${r.status}`, detail, r.deduped)], r, false);
+        return r.status === "refused" ? 1 : 0;
       });
     }
     case "evict": {

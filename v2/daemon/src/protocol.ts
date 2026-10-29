@@ -2273,11 +2273,13 @@ export interface CellParkParams {
 
 export interface CellParkResult {
   cell: CellRow | null;
-  status: "parked" | "absent";
+  status: "parked" | "refused" | "absent";
+  reason: string | null;
   purged: boolean;
   paths: string[];
   skipped: Array<{ path: string; why: string }>;
   envFiles: string[];
+  report: CellDirtyReport | null;
   deduped?: boolean;
 }
 

@@ -1,5 +1,5 @@
 import { lstatSync, mkdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 export const CELL_PRIVATE_STATE_DIR = "sandbox-state";
 export const CELL_PRIVATE_TMP = join(CELL_PRIVATE_STATE_DIR, "tmp");
@@ -35,6 +35,20 @@ export function cellPnpmStoreEnv(cellsRoot: string): Record<string, string> {
   const store = cellPnpmStoreDir(cellsRoot);
   realDirectory(store);
   return { npm_config_store_dir: store };
+}
+
+function contains(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+export function sharedStoreRefusal(storeDir: string, cellsRoot: string, writablePaths: readonly string[]): string | null {
+  const store = resolve(storeDir);
+  if (contains(resolve(cellsRoot), store)) return `${store} lies under the Cells root ${resolve(cellsRoot)}`;
+  for (const path of writablePaths) {
+    if (contains(resolve(path), store)) return `${store} lies under the sandbox-writable path ${resolve(path)}`;
+  }
+  return null;
 }
 
 export function cellPrivateStatePaths(wrapperDir: string): string[] {

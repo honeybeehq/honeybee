@@ -35,7 +35,7 @@ import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, o
 import { rm } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { GitError, revParse, tryGit } from "./git.ts";
-import { cellPrivateStatePaths } from "./cellState.ts";
+import { CELL_PRIVATE_CACHE, CELL_PRIVATE_STATE_DIR, CELL_PRIVATE_TMP } from "./cellState.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import type { LandingReceipt } from "./landed.ts";
 import type { UpstreamRef } from "./upstream.ts";
@@ -451,7 +451,7 @@ function trimPathRefusal(spaceDir: string, rel: string, purge = false): string |
   }
   const st = lstatSync(path);
   if (st.isSymbolicLink()) return "symlink";
-  if (st.isDirectory() && !purge) {
+  if (st.isDirectory()) {
     const directories = [path];
     let inspected = 0;
     while (directories.length > 0) {
@@ -460,7 +460,7 @@ function trimPathRefusal(spaceDir: string, rel: string, purge = false): string |
         const dir = opendirSync(directory);
         try {
           for (let entry = dir.readSync(); entry !== null; entry = dir.readSync()) {
-            if (++inspected > 1024) return "inspection_limit";
+            if (!purge && ++inspected > 1024) return "inspection_limit";
             if (entry.name === ".git") return "nested_repository";
             if (entry.isDirectory()) directories.push(join(directory, entry.name));
           }
@@ -469,6 +469,30 @@ function trimPathRefusal(spaceDir: string, rel: string, purge = false): string |
     }
   }
   return null;
+}
+
+function privateStateRefusal(wrapperDir: string, rel: string): string | null {
+  const parent = join(wrapperDir, CELL_PRIVATE_STATE_DIR);
+  const parentInfo = lstatSync(parent, { throwIfNoEntry: false });
+  if (!parentInfo) return "absent";
+  if (parentInfo.isSymbolicLink() || !parentInfo.isDirectory()) return "symlink";
+  let path: string;
+  try {
+    path = assertInsideRealDir(wrapperDir, rel);
+  } catch {
+    return "unsafe_path";
+  }
+  const info = lstatSync(path, { throwIfNoEntry: false });
+  if (!info) return "absent";
+  if (info.isSymbolicLink() || !info.isDirectory()) return "symlink";
+  return null;
+}
+
+export function trackedChanges(spaceDir: string): boolean {
+  const args = ["--no-optional-locks", "status", "--porcelain=v1", "--untracked-files=no", "--ignore-submodules=all"];
+  const result = tryGit(spaceDir, args);
+  if (result.status !== 0) throw new GitError(args, result.status, result.stderr);
+  return result.stdout.length > 0;
 }
 
 function newestModification(path: string): number {
@@ -536,18 +560,45 @@ export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: 
     park(join(spaceDir, rel), rel);
   }
   if (opts.purge) {
-    for (const path of cellPrivateStatePaths(target)) {
-      const info = lstatSync(path, { throwIfNoEntry: false });
-      if (!info) continue;
-      const rel = relative(target, path);
-      if (!info.isDirectory() || info.isSymbolicLink()) {
-        result.skipped.push({ path: rel, why: "symlink" });
+    for (const rel of [CELL_PRIVATE_TMP, CELL_PRIVATE_CACHE]) {
+      const why = privateStateRefusal(target, rel);
+      if (why === "absent") continue;
+      if (why != null) {
+        result.skipped.push({ path: rel, why });
         continue;
       }
-      park(path, rel);
+      park(join(target, rel), rel);
     }
   }
   return result;
+}
+
+export interface PurgeResult {
+  status: "parked" | "refused" | "nothing_to_purge";
+  reason: string | null;
+  report: DirtyReport | null;
+  envFiles: string[];
+  trimmed: string[];
+  skipped: TrimSkip[];
+  parkedDir: string | null;
+}
+
+export function purgeCellWrapper(
+  cellsRoot: string,
+  wrapperDir: string,
+  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
+): PurgeResult {
+  const { root, target, spaceDir } = trimTarget(cellsRoot, wrapperDir);
+  const { report } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
+  const refused = (reason: string): PurgeResult => ({ status: "refused", reason, report, envFiles: [], trimmed: [], skipped: [], parkedDir: null });
+  if (report.unpushed || report.stashed) return refused("unlanded_work");
+  if (trackedChanges(spaceDir)) return refused("uncommitted_tracked_changes");
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, { purge: true });
+  const envFiles = preserveEnvFiles(root, spaceDir, ignored.env);
+  const verified = verifyTrimPaths(wrapperDir, ignored.trim, { trimPatterns: opts.trimPatterns, modifiedSinceMs: opts.modifiedSinceMs, purge: true });
+  const parked = parkTrimPaths(root, wrapperDir, verified.confirmed, { now: opts.now, purge: true });
+  const skipped = [...verified.skipped, ...parked.skipped];
+  return { status: parked.trimmed.length > 0 ? "parked" : "nothing_to_purge", reason: null, report, envFiles, trimmed: parked.trimmed, skipped, parkedDir: parked.parkedDir };
 }
 
 export function trimCellWrapper(

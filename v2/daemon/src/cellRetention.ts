@@ -52,6 +52,9 @@ import {
   type RetentionWorkerInspection,
   type RetentionWorkerProgress,
   type RetentionWorkerRequest,
+  type PurgeWorkerRequest,
+  type PurgeWorkerResult,
+  type PurgeResult,
   type RetentionWorkerResult,
   type UpstreamRef,
   type TrimSkip,
@@ -818,7 +821,20 @@ export class CellRetentionService {
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
   }
 
-  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
+  purgeWrapper(wrapperDir: string, opts: { receipts?: LandingReceipt[]; upstream?: UpstreamRef | null; modifiedSinceMs?: number }): Promise<PurgeWorkerResult> {
+    return this.runWorker<PurgeWorkerResult>({
+      kind: "purge",
+      cellsRoot: this.deps.cellsRoot,
+      wrapperDir,
+      trimPatterns: [...this.deps.policy.trimPatterns],
+      modifiedSinceMs: opts.modifiedSinceMs,
+      now: this.deps.now(),
+      receipts: opts.receipts,
+      upstream: opts.upstream ?? null,
+    } satisfies PurgeWorkerRequest);
+  }
+
+  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | PurgeWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
     this.assertRunning();
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
@@ -1104,11 +1120,18 @@ export class CellRetentionService {
     const planned = items.filter((i) => i.trim.planned);
     if (planned.length === 0) return [];
     const after = this.deps.policy.trimAfterMs ?? 0;
+    if (this.deps.purgeOnPark) {
+      const outcomes: CellGcTrimOutcome[] = [];
+      for (const item of planned) {
+        this.assertRunning();
+        outcomes.push(await this.purgeOne(item, this.deps.now() - after));
+      }
+      return outcomes;
+    }
     const verified = await this.runWorker<TrimVerifyWorkerResult>({
       kind: "verifyTrim",
       cells: planned.map((i, index) => ({ key: String(index), wrapperDir: i.wrapperDir, paths: i.trim.entries.map((e) => e.path), modifiedSinceMs: this.deps.now() - after })),
       trimPatterns: [...this.deps.policy.trimPatterns],
-      purge: this.deps.purgeOnPark,
     } satisfies TrimVerifyWorkerRequest);
     this.assertRunning();
     const byKey = new Map(verified.verified.map((v) => [v.key, v] as const));
@@ -1146,16 +1169,11 @@ export class CellRetentionService {
     if (idleSince == null || this.deps.now() - idleSince < (this.deps.policy.trimAfterMs ?? Number.POSITIVE_INFINITY)) return outcome("refused", "not_idle");
     if (verified.confirmed.length === 0) return outcome("refused", "nothing_to_trim");
     try {
-      const purge = this.deps.purgeOnPark;
-      const res = parkTrimPaths(this.deps.cellsRoot, item.wrapperDir, verified.confirmed, { now: this.deps.now, purge });
+      const res = parkTrimPaths(this.deps.cellsRoot, item.wrapperDir, verified.confirmed, { now: this.deps.now });
       const skipped = [...verified.skipped, ...res.skipped];
       const result = outcome(res.trimmed.length > 0 ? "trimmed" : "refused", res.trimmed.length > 0 ? null : "nothing_to_trim", res.trimmed, skipped);
-      if (purge && res.trimmed.length > 0) {
-        store.parkCell(cell.id, { bytes: result.bytes, paths: res.trimmed, reason: "idle" });
-        result.parked = true;
-      }
       this.deps.log(
-        `cell.retention.${result.parked ? "parked" : "trimmed"} cell=${cell.id} bee=${item.beeId} paths=${res.trimmed.length} skipped=${skipped.length} bytes=${result.bytes ?? "?"}` +
+        `cell.retention.trimmed cell=${cell.id} bee=${item.beeId} paths=${res.trimmed.length} skipped=${skipped.length} bytes=${result.bytes ?? "?"}` +
           ` parked=${res.parkedDir ?? "-"}${skipped.length > 0 ? ` first_skip=${JSON.stringify(skipped[0])}` : ""}`,
       );
       return result;
@@ -1164,6 +1182,55 @@ export class CellRetentionService {
       this.deps.log(`cell.retention.trim_failed cell=${cell.id} bee=${item.beeId} err=${JSON.stringify(detail)}`);
       return outcome("failed", detail);
     }
+  }
+
+  private purgeBlocked(item: CellGcItem): string | null {
+    const store = this.deps.store();
+    const cell = item.cellId ? store.getCell(item.cellId) : null;
+    if (!cell || cell.state !== item.cellState) return "cell_state_changed";
+    const bee = store.getBee(item.beeId);
+    if (bee && bee.lifecycle !== item.beeLifecycle) return "lifecycle_changed";
+    const runtime = store.currentRuntime(item.beeId);
+    if (this.deps.cellInUse(item.beeId, runtime, cell.state)) return "runtime_live";
+    if (this.deps.opInFlight(cell.id)) return "op_in_flight";
+    if (bee?.activeMoveId) return "move_in_flight";
+    if (bee?.activeHandoffId) return "handoff_in_flight";
+    const idleSince = this.idleSinceOf({ cell, bee, runtime });
+    if (idleSince == null || this.deps.now() - idleSince < (this.deps.policy.trimAfterMs ?? Number.POSITIVE_INFINITY)) return "not_idle";
+    return null;
+  }
+
+  private async purgeOne(item: CellGcItem, modifiedSinceMs: number): Promise<CellGcTrimOutcome> {
+    const outcome = (status: CellGcTrimOutcome["status"], reason: string | null, result: PurgeResult | null = null): CellGcTrimOutcome => {
+      const trimmed = new Set(result?.trimmed ?? []);
+      const entries = item.trim.entries.filter((e) => trimmed.has(e.path));
+      return { cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, paths: result?.trimmed ?? [], skipped: result?.skipped ?? [], bytes: sumBytes(entries), parked: status === "trimmed" };
+    };
+    const blocked = this.purgeBlocked(item);
+    if (blocked != null) return outcome("refused", blocked);
+    const store = this.deps.store();
+    let purged: PurgeWorkerResult;
+    try {
+      purged = await this.purgeWrapper(item.wrapperDir, { receipts: store.listLandingReceipts(item.beeId), upstream: item.originRepo ? this.upstreamRefs.get(item.originRepo) ?? null : null, modifiedSinceMs });
+    } catch (err) {
+      return outcome("failed", err instanceof Error ? err.message : String(err));
+    }
+    this.assertRunning();
+    if (purged.error != null || purged.result == null) {
+      this.deps.log(`cell.retention.purge_failed cell=${item.cellId} bee=${item.beeId} err=${JSON.stringify(purged.error)}`);
+      return outcome("failed", purged.error ?? "purge_missing");
+    }
+    const res = purged.result;
+    if (res.status === "refused") return outcome("refused", res.reason, res);
+    if (res.status === "nothing_to_purge") return outcome("refused", "nothing_to_trim", res);
+    const blockedAfter = this.purgeBlocked(item);
+    const result = outcome("trimmed", null, res);
+    if (blockedAfter == null && item.cellId) store.parkCell(item.cellId, { bytes: result.bytes, paths: res.trimmed, reason: "idle" });
+    this.deps.log(
+      `cell.retention.parked cell=${item.cellId} bee=${item.beeId} paths=${res.trimmed.length} skipped=${res.skipped.length} bytes=${result.bytes ?? "?"}` +
+        ` parked=${res.parkedDir ?? "-"} env_files=${res.envFiles.length}${res.skipped.length > 0 ? ` first_skip=${JSON.stringify(res.skipped[0])}` : ""}`,
+    );
+    return result;
   }
 
   reconcileKept(): void {

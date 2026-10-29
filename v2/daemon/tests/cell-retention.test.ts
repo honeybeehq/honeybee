@@ -422,6 +422,16 @@ test("cell-retention.7: cells.shrink parkPurge + privateTmp — a parked Cell lo
     assert.equal(readFileSync(join(tmp, "leak", "scratch"), "utf8"), "leak\n");
     await assert.rejects(client.request("cell.park", { beeId: bee.beeId, idempotencyKey: "live" }), /live runtime/);
     await stopped(client, bee.beeId);
+    writeFileSync(join(space, "work.txt"), "x\n");
+    g(space, ["add", "work.txt"]);
+    g(space, ["commit", "-q", "-m", "unlanded"]);
+    const unlanded = g(space, ["rev-parse", "HEAD"]);
+    const refused = await client.request<CellParkResult>("cell.park", { beeId: bee.beeId, idempotencyKey: "park-0" });
+    assert.equal(refused.status, "refused");
+    assert.equal(refused.reason, "unlanded_work");
+    assert.equal(existsSync(join(space, "node_modules", "pkg", "index.js")), true, "a refused park purges nothing");
+    assert.equal(refused.cell?.parkedAt, null);
+    g(space, ["reset", "-q", "--hard", `${unlanded}~1`]);
     const parked = await client.request<CellParkResult>("cell.park", { beeId: bee.beeId, idempotencyKey: "park-1" });
     assert.equal(parked.status, "parked");
     assert.equal(parked.purged, true);

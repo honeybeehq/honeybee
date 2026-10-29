@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { cellPrivateEnv } from "../../v2/driver-cell/src/cellState.ts";
 import { gitEnv } from "../../v2/driver-cell/src/git.ts";
 import { provisionCell } from "../../v2/driver-cell/src/provision.ts";
-import { classifyIgnored, measureDirectoryBytes, sweepEvicting, trimCellWrapper } from "../../v2/driver-cell/src/retention.ts";
+import { measureDirectoryBytes, purgeCellWrapper, sweepEvicting } from "../../v2/driver-cell/src/retention.ts";
 
 const files = Number(process.argv[2] ?? "4000");
 const root = mkdtempSync(join(tmpdir(), "h1-park-fixture-"));
@@ -43,8 +43,7 @@ try {
   for (let i = 0; i < 300; i++) put(env.TMPDIR, `leak-${i}/scratch.txt`, filler);
   const before = measureDirectoryBytes(cell.paths.wrapperDir);
   const gitBytes = measureDirectoryBytes(join(space, ".git"));
-  const ignored = classifyIgnored(space, undefined, { purge: true });
-  const parked = trimCellWrapper(cellsRoot, cell.paths.wrapperDir, ignored.trim, { purge: true });
+  const parked = purgeCellWrapper(cellsRoot, cell.paths.wrapperDir);
   const swept = await sweepEvicting(cellsRoot);
   const after = measureDirectoryBytes(cell.paths.wrapperDir);
   const hostAfter = hostTmpEntries();
@@ -55,6 +54,7 @@ try {
     afterBytes: after,
     gitBytes,
     reclaimedPercent: Math.round((1 - after / before) * 100),
+    status: parked.status,
     parked: parked.trimmed,
     skipped: parked.skipped,
     sweptDirs: swept.removed.length,
