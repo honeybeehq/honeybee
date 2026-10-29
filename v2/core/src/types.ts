@@ -1205,6 +1205,7 @@ export interface CellRow {
   evictedAt: number | null;
   /** v31 — the Cell HEAD at eviction (always reachable from the origin): revive re-provisions here. */
   evictedHead: string | null;
+  parkedAt: number | null;
 }
 
 export const BEE_MOVE_PHASES = ["stopping", "placing", "starting", "complete", "failed"] as const;

@@ -688,6 +688,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       // Recorded no-ops and informational rows: state unchanged by definition.
       // v31: `cell.evicted` is history beside the `cell.put` state change.
       case "cell.evicted":
+      case "cell.parked":
       case "cell.retention.pass":
       case "cell.pressure.floor_unmet":
       case "cell.retention.daily_cap":

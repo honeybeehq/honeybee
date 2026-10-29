@@ -179,6 +179,38 @@ export interface CellsConfig {
   warmPoolMaxSize?: number;
   /** v31 — automatic Cell disk retention. Absent = defaults (enabled). */
   retention?: CellRetentionConfig;
+  shrink?: CellShrinkConfig;
+}
+
+export interface CellShrinkConfig {
+  parkPurge?: boolean;
+  privateTmp?: boolean;
+  sharedPnpmStore?: boolean;
+  sharedGitObjects?: boolean;
+}
+
+export interface ResolvedCellShrink {
+  parkPurge: boolean;
+  privateTmp: boolean;
+  sharedPnpmStore: boolean;
+  sharedGitObjects: boolean;
+}
+
+export const CELL_SHRINK_OFF: ResolvedCellShrink = { parkPurge: false, privateTmp: false, sharedPnpmStore: false, sharedGitObjects: false };
+
+export function cellShrinkOf(raw: unknown): ResolvedCellShrink {
+  if (raw === undefined) return { ...CELL_SHRINK_OFF };
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ConfigError("config: cells.shrink must be an object of {parkPurge?, privateTmp?, sharedPnpmStore?, sharedGitObjects?}");
+  }
+  const out = { ...CELL_SHRINK_OFF };
+  for (const key of Object.keys(out) as (keyof ResolvedCellShrink)[]) {
+    const v = (raw as Record<string, unknown>)[key];
+    if (v === undefined) continue;
+    if (typeof v !== "boolean") throw new ConfigError(`config: cells.shrink.${key} must be a boolean`);
+    out[key] = v;
+  }
+  return out;
 }
 
 /**
@@ -343,6 +375,7 @@ export interface ResolvedNodeConfig {
   cellWarmPoolMaxSize: number;
   /** v31 — Cell disk retention policy. */
   cellRetention: ResolvedCellRetention;
+  cellShrink: ResolvedCellShrink;
   idleWindowMs: number;
   bootHangTimeoutMs: number;
   bootAllowanceMs: number;
@@ -615,17 +648,17 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   return out;
 }
 
-function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: string; sandbox: boolean | null; kvm: boolean; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention } {
+function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: string; sandbox: boolean | null; kvm: boolean; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention; shrink: ResolvedCellShrink } {
   const envFree = Number(process.env.HIVE_CELL_WARMPOOL_FREE);
   const envOverride = Number.isFinite(envFree) && envFree >= 0 ? Math.floor(envFree) : null;
   const defaultWarmPoolFree = nodeKind === "satellite" ? 1 : 0;
   const v = raw.cells;
-  if (v === undefined) return { sandbox: null, kvm: false, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32, retention: cellRetentionOf(undefined, nodeKind) };
+  if (v === undefined) return { sandbox: null, kvm: false, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32, retention: cellRetentionOf(undefined, nodeKind), shrink: { ...CELL_SHRINK_OFF } };
   if (v === null || typeof v !== "object" || Array.isArray(v)) {
-    throw new ConfigError("config: cells must be an object of {root?, sandbox?, warm?, retention?}");
+    throw new ConfigError("config: cells must be an object of {root?, sandbox?, warm?, retention?, shrink?}");
   }
   const c = v as Record<string, unknown>;
-  const out: { root?: string; sandbox: boolean | null; kvm: boolean; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention } = {
+  const out: { root?: string; sandbox: boolean | null; kvm: boolean; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention; shrink: ResolvedCellShrink } = {
     sandbox: null,
     kvm: false,
     warm: {},
@@ -633,6 +666,7 @@ function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: str
     warmPoolFree: defaultWarmPoolFree,
     warmPoolMaxSize: 32,
     retention: cellRetentionOf(c.retention, nodeKind),
+    shrink: cellShrinkOf(c.shrink),
   };
   if (c.warmPoolFree !== undefined) {
     if (typeof c.warmPoolFree !== "number" || !Number.isInteger(c.warmPoolFree) || c.warmPoolFree < 0) {
@@ -1029,6 +1063,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     cellWarmPoolFree: cells.warmPoolFree,
     cellWarmPoolMaxSize: cells.warmPoolMaxSize,
     cellRetention: cells.retention,
+    cellShrink: cells.shrink,
     idleWindowMs: num(raw, "idleWindowMs", DEFAULTS.idleWindowMs),
     bootHangTimeoutMs,
     bootAllowanceMs,

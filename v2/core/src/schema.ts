@@ -934,9 +934,14 @@ CREATE TABLE IF NOT EXISTS cells (
   retained_at     INTEGER,
   removed_at      INTEGER,
   evicted_at      INTEGER,
-  evicted_head    TEXT
+  evicted_head    TEXT,
+  parked_at       INTEGER
 ) STRICT;
 `;
+
+export const CELLS_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
+  ["parked_at", "parked_at INTEGER"],
+];
 
 export const BEE_MOVES_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS bee_moves (

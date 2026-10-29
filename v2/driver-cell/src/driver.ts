@@ -42,6 +42,7 @@ import {
   type SpawnSpec,
 } from "../../driver-hsr/src/index.ts";
 import { captureWork, type CaptureMode, type CaptureReport } from "./capture.ts";
+import { cellPnpmStoreEnv, cellPrivateEnv } from "./cellState.ts";
 import { cellPaths, looksLikeCellWrapper, type CellPaths } from "./layout.ts";
 import { isProvisioned, readLedger, type CellLedger } from "./ledger.ts";
 import { provisionCell, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
@@ -80,6 +81,9 @@ export interface CellDriverConfig {
   /** Baseline sandbox-writable paths (defaults: harness homes + caches). */
   sandboxWritablePaths?: string[];
   sandboxKvm?: boolean;
+  privateTmp?: boolean;
+  sharedPnpmStore?: boolean;
+  sharedObjectsRoot?: string;
   /**
    * Additional authoritative paths for this bee. Callers must derive these
    * from trusted state, never from the harness spawn environment.
@@ -226,6 +230,7 @@ export class CellDriver implements RuntimeDriver {
         disableCow: this.cfg.disableCow ?? false,
         useGitImages: this.cfg.nodeKind === "workstation",
         gitImagesRoot: this.cfg.gitImagesRoot,
+        sharedObjectsRoot: sandboxEnabled(this.cfg.nodeKind, spec.sandbox) ? undefined : this.cfg.sharedObjectsRoot,
         claimFromPool: this.warmPoolEnabled(),
       },
     });
@@ -455,6 +460,7 @@ export class CellDriver implements RuntimeDriver {
       disableCow: this.cfg.disableCow ?? false,
       useGitImages: this.cfg.nodeKind === "workstation",
       gitImagesRoot: this.cfg.gitImagesRoot,
+      sharedObjectsRoot: sandboxEnabled(this.cfg.nodeKind, spec.sandbox) ? undefined : this.cfg.sharedObjectsRoot,
     });
     this.cells.set(beeId, cell);
     return cell;
@@ -763,14 +769,17 @@ export class CellDriver implements RuntimeDriver {
     if (!cell) throw new Error(`cell driver: bee ${beeId} has no provisioned cell (start() provisions first)`);
     const harness = this.cfg.resolveHarness(beeId, generation);
     const spec = this.cfg.resolveCell(beeId);
+    const sandboxed = sandboxEnabled(this.cfg.nodeKind, spec.sandbox);
     const env: Record<string, string> = {
       ...(harness.env ?? (process.env as Record<string, string>)),
       // The old runner discipline: in-cell tools detect containment and the
       // space identity through these stamps.
       HIVE_CELL: "1",
       HIVE_CELL_SPACE: cell.paths.spaceName,
+      ...(this.cfg.privateTmp ? cellPrivateEnv(cell.paths.wrapperDir, { privateTmpfs: sandboxed && platform() === "linux" }) : {}),
+      ...(this.cfg.sharedPnpmStore && !sandboxed ? cellPnpmStoreEnv(this.cfg.cellsRoot) : {}),
     };
-    if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
+    if (!sandboxed) {
       return { ...harness, cwd: cell.paths.spaceDir, env };
     }
     const cap = this.effectiveSandboxCap();

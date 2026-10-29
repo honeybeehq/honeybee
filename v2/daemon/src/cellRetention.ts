@@ -52,6 +52,10 @@ import {
   type RetentionWorkerInspection,
   type RetentionWorkerProgress,
   type RetentionWorkerRequest,
+  type PurgeWorkerRequest,
+  type PurgeWorkerResult,
+  type PurgeResult,
+  applyPurge,
   type RetentionWorkerResult,
   type UpstreamRef,
   type TrimSkip,
@@ -91,6 +95,7 @@ export interface CellRetentionDeps {
   opInFlight: (cellId: string) => boolean;
   /** Drop the driver's cached allocation after a park. */
   forgetCell: (beeId: string) => void;
+  purgeOnPark: boolean;
   /** Tests: substitute the inspection worker entrypoint. */
   workerUrl?: URL;
   /** Delay before the first automatic pass after boot (default 5 min). */
@@ -803,7 +808,7 @@ export class CellRetentionService {
       .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir, receipts: c.receipts, originRepo: c.cell?.originRepo ?? null }));
     if (wrappers.length === 0) return new Map();
     const message = await this.runWorker<RetentionWorkerResult>(
-      { wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns], upstream: this.upstreamRequest(kind), progress: onProgress != null } satisfies RetentionWorkerRequest,
+      { wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns], purge: this.deps.purgeOnPark, upstream: this.upstreamRequest(kind), progress: onProgress != null } satisfies RetentionWorkerRequest,
       onProgress,
     );
     this.noteUpstreams(message.upstreams ?? []);
@@ -817,7 +822,23 @@ export class CellRetentionService {
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
   }
 
-  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
+  planPurge(wrapperDir: string, opts: { receipts?: LandingReceipt[]; upstream?: UpstreamRef | null; modifiedSinceMs?: number }): Promise<PurgeWorkerResult> {
+    return this.runWorker<PurgeWorkerResult>({
+      kind: "purge",
+      cellsRoot: this.deps.cellsRoot,
+      wrapperDir,
+      trimPatterns: [...this.deps.policy.trimPatterns],
+      modifiedSinceMs: opts.modifiedSinceMs,
+      receipts: opts.receipts,
+      upstream: opts.upstream ?? null,
+    } satisfies PurgeWorkerRequest);
+  }
+
+  applyPurge(wrapperDir: string, plan: NonNullable<PurgeWorkerResult["plan"]>): PurgeResult {
+    return applyPurge(this.deps.cellsRoot, wrapperDir, plan, { now: this.deps.now });
+  }
+
+  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | PurgeWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
     this.assertRunning();
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
@@ -1103,6 +1124,14 @@ export class CellRetentionService {
     const planned = items.filter((i) => i.trim.planned);
     if (planned.length === 0) return [];
     const after = this.deps.policy.trimAfterMs ?? 0;
+    if (this.deps.purgeOnPark) {
+      const outcomes: CellGcTrimOutcome[] = [];
+      for (const item of planned) {
+        this.assertRunning();
+        outcomes.push(await this.purgeOne(item, this.deps.now() - after));
+      }
+      return outcomes;
+    }
     const verified = await this.runWorker<TrimVerifyWorkerResult>({
       kind: "verifyTrim",
       cells: planned.map((i, index) => ({ key: String(index), wrapperDir: i.wrapperDir, paths: i.trim.entries.map((e) => e.path), modifiedSinceMs: this.deps.now() - after })),
@@ -1124,7 +1153,7 @@ export class CellRetentionService {
     const outcome = (status: CellGcTrimOutcome["status"], reason: string | null, paths: string[] = [], skipped: TrimSkip[] = verified?.skipped ?? []): CellGcTrimOutcome => {
       const trimmed = new Set(paths);
       const entries = item.trim.entries.filter((e) => trimmed.has(e.path));
-      return { cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, paths, skipped, bytes: sumBytes(entries) };
+      return { cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, paths, skipped, bytes: sumBytes(entries), parked: false };
     };
     if (verified == null) return outcome("failed", "verification_missing");
     if (verified.error != null) {
@@ -1157,6 +1186,63 @@ export class CellRetentionService {
       this.deps.log(`cell.retention.trim_failed cell=${cell.id} bee=${item.beeId} err=${JSON.stringify(detail)}`);
       return outcome("failed", detail);
     }
+  }
+
+  private purgeBlocked(item: CellGcItem): string | null {
+    const store = this.deps.store();
+    const cell = item.cellId ? store.getCell(item.cellId) : null;
+    if (!cell || cell.state !== item.cellState) return "cell_state_changed";
+    const bee = store.getBee(item.beeId);
+    if (bee && bee.lifecycle !== item.beeLifecycle) return "lifecycle_changed";
+    const runtime = store.currentRuntime(item.beeId);
+    if (this.deps.cellInUse(item.beeId, runtime, cell.state)) return "runtime_live";
+    if (this.deps.opInFlight(cell.id)) return "op_in_flight";
+    if (bee?.activeMoveId) return "move_in_flight";
+    if (bee?.activeHandoffId) return "handoff_in_flight";
+    const idleSince = this.idleSinceOf({ cell, bee, runtime });
+    if (idleSince == null || this.deps.now() - idleSince < (this.deps.policy.trimAfterMs ?? Number.POSITIVE_INFINITY)) return "not_idle";
+    return null;
+  }
+
+  private async purgeOne(item: CellGcItem, modifiedSinceMs: number): Promise<CellGcTrimOutcome> {
+    const outcome = (status: CellGcTrimOutcome["status"], reason: string | null, result: PurgeResult | null = null): CellGcTrimOutcome => {
+      const trimmed = new Set(result?.trimmed ?? []);
+      const entries = item.trim.entries.filter((e) => trimmed.has(e.path));
+      return { cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, paths: result?.trimmed ?? [], skipped: result?.skipped ?? [], bytes: sumBytes(entries), parked: status === "trimmed" };
+    };
+    const blocked = this.purgeBlocked(item);
+    if (blocked != null) return outcome("refused", blocked);
+    const store = this.deps.store();
+    let planned: PurgeWorkerResult;
+    try {
+      planned = await this.planPurge(item.wrapperDir, { receipts: store.listLandingReceipts(item.beeId), upstream: item.originRepo ? this.upstreamRefs.get(item.originRepo) ?? null : null, modifiedSinceMs });
+    } catch (err) {
+      return outcome("failed", err instanceof Error ? err.message : String(err));
+    }
+    this.assertRunning();
+    if (planned.error != null || planned.plan == null) {
+      this.deps.log(`cell.retention.purge_failed cell=${item.cellId} bee=${item.beeId} err=${JSON.stringify(planned.error)}`);
+      return outcome("failed", planned.error ?? "purge_missing");
+    }
+    if (planned.plan.status === "refused") return outcome("refused", planned.plan.reason);
+    const blockedAfter = this.purgeBlocked(item);
+    if (blockedAfter != null) return outcome("refused", blockedAfter);
+    let res: PurgeResult;
+    try {
+      res = this.applyPurge(item.wrapperDir, planned.plan);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.deps.log(`cell.retention.purge_failed cell=${item.cellId} bee=${item.beeId} err=${JSON.stringify(detail)}`);
+      return outcome("failed", detail);
+    }
+    if (res.status === "nothing_to_purge") return outcome("refused", "nothing_to_trim", res);
+    const result = outcome("trimmed", null, res);
+    if (item.cellId) store.parkCell(item.cellId, { bytes: result.bytes, paths: res.trimmed, reason: "idle" });
+    this.deps.log(
+      `cell.retention.parked cell=${item.cellId} bee=${item.beeId} paths=${res.trimmed.length} skipped=${res.skipped.length} bytes=${result.bytes ?? "?"}` +
+        ` parked=${res.parkedDir ?? "-"} env_files=${res.envFiles.length}${res.skipped.length > 0 ? ` first_skip=${JSON.stringify(res.skipped[0])}` : ""}`,
+    );
+    return result;
   }
 
   reconcileKept(): void {

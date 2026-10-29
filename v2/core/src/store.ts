@@ -213,7 +213,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_ADDITIVE_COLUMNS, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -821,6 +821,7 @@ function mapCell(r: Row): CellRow {
     removedAt: r.removed_at == null ? null : Number(r.removed_at),
     evictedAt: r.evicted_at == null ? null : Number(r.evicted_at),
     evictedHead: (r.evicted_head as string | null | undefined) ?? null,
+    parkedAt: r.parked_at == null ? null : Number(r.parked_at),
   };
 }
 
@@ -2170,6 +2171,7 @@ export class CoreStore {
     this.db.exec(ACCOUNTS_NATIVE_INDEX_SQL);
     this.addMissingColumns("bees", BEES_ADDITIVE_COLUMNS);
     this.addMissingColumns("mailbox", MAILBOX_ADDITIVE_COLUMNS);
+    this.addMissingColumns("cells", CELLS_ADDITIVE_COLUMNS);
     this.db.function("account_lease_readable", raw => accountLeaseUnknown(readAccountLease(raw, "leased")) ? 0 : 1);
     this.db.exec("UPDATE accounts SET leased_from = json_remove(json_set(leased_from, '$.revokedAt', CASE WHEN json_type(leased_from, '$.revokedAt') IS NOT NULL THEN json_extract(leased_from, '$.revokedAt') ELSE json_extract(leased_from, '$.endedAt') END), '$.endedAt') WHERE CASE WHEN json_valid(leased_from) THEN json_type(leased_from, '$.endedAt') IS NOT NULL AND account_lease_readable(leased_from) = 1 ELSE 0 END");
     if (stored < 42) {
@@ -2219,7 +2221,7 @@ export class CoreStore {
       .run(String(SCHEMA_VERSION));
   }
 
-  private addMissingColumns(table: "bees" | "mailbox", columns: ReadonlyArray<readonly [name: string, ddl: string]>): void {
+  private addMissingColumns(table: "bees" | "mailbox" | "cells", columns: ReadonlyArray<readonly [name: string, ddl: string]>): void {
     const existing = new Set(
       (this.stmt(`SELECT name FROM pragma_table_info('${table}')`).all() as Row[]).map((c) => String(c.name)),
     );
@@ -9024,6 +9026,32 @@ export class CoreStore {
       const cell = this.mustGetCell(cellId);
       if (cell.state !== "evicted") return { cell, applied: false };
       this.stmt("UPDATE cells SET state = 'active', evicted_at = NULL, evicted_head = NULL WHERE id = ?").run(cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      return { cell: next, applied: true };
+    });
+  }
+
+  parkCell(cellId: string, input: { bytes: number | null; paths: string[]; reason: string }): CellRow {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      if (cell.state !== "active") {
+        throw new IllegalTransitionError(`cell ${cellId} is ${cell.state}; only an active Cell can be parked`);
+      }
+      const at = this.now();
+      this.stmt("UPDATE cells SET parked_at = ? WHERE id = ?").run(at, cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      this.audit("cell.parked", cell.sourceBeeId, { cellId, parkedAt: at, bytes: input.bytes, paths: input.paths, reason: input.reason });
+      return next;
+    });
+  }
+
+  unparkCell(cellId: string): { cell: CellRow; applied: boolean } {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      if (cell.parkedAt == null) return { cell, applied: false };
+      this.stmt("UPDATE cells SET parked_at = NULL WHERE id = ?").run(cellId);
       const next = this.mustGetCell(cellId);
       this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
       return { cell: next, applied: true };

@@ -14,6 +14,8 @@ export {
   type ProvisionRequest,
   type ReserveRequest,
 } from "./provision.ts";
+export { cellPnpmStoreDir, cellPnpmStoreEnv, cellPrivateEnv, cellPrivateStatePaths, sharedStoreRefusal, CELL_PRIVATE_STATE_DIR } from "./cellState.ts";
+export { cellObjectStoreRoot, ensureObjectStore, hasObjectStore, objectStoreDir, type ObjectStore } from "./objectStore.ts";
 export { captureWork, transientRefFor, type CaptureMode, type CaptureReport, type CaptureRequest } from "./capture.ts";
 export {
   CellDeleteRefused,
@@ -45,6 +47,10 @@ export {
   listPreservedEnvFiles,
   measureDirectoryBytes,
   parkTrimPaths,
+  applyPurge,
+  planPurge,
+  purgeCellWrapper,
+  trackedChanges,
   preserveEnvFiles,
   preserveKeptPaths,
   restoreEnvFiles,
@@ -56,7 +62,10 @@ export {
   verifyTrimPaths,
   type CellWrapperInspection,
   type EvictResult,
+  type IgnoredOptions,
   type PathBytes,
+  type PurgePlan,
+  type PurgeResult,
   type TrimResult,
   type TrimSkip,
 } from "./retention.ts";
@@ -65,6 +74,8 @@ export type {
   RetentionWorkerInspection,
   RetentionWorkerProgress,
   RetentionWorkerRequest,
+  PurgeWorkerRequest,
+  PurgeWorkerResult,
   RetentionWorkerResult,
   TrimVerifyWorkerRequest,
   TrimVerifyWorkerResult,
@@ -88,6 +99,7 @@ export {
   bwrapArgs,
   darwinUserTempDir,
   DEFAULT_SANDBOX_TMPFS_BYTES,
+  defaultScratchPaths,
   defaultWritablePaths,
   mergeSandboxWritablePaths,
   NODE_KINDS,

@@ -13,7 +13,8 @@ import { provisionCell, provisionRequestOf, reserveCell } from "../src/provision
 import { isProvisioned, readLedger, writeLedger, newLedger } from "../src/ledger.ts";
 import { cellPaths, parseSpaceName } from "../src/layout.ts";
 import { probeCow } from "../src/cow.ts";
-import { fingerprintOrigin, g, makeRig } from "./helpers.ts";
+import { objectStoreDir } from "../src/objectStore.ts";
+import { commitInCell, fingerprintOrigin, g, makeRig } from "./helpers.ts";
 
 const COW_AVAILABLE = (() => {
   if (platform() !== "darwin" && platform() !== "linux") return false;
@@ -292,6 +293,38 @@ test("provision.reserve: reserveCell writes the seed ledger (origin/sha/warm/san
     assert.equal(isProvisioned(done), true);
     assert.equal(done.sandbox, false, "seed fields survive provisioning");
     assert.deepEqual(done.warm, ["node_modules"]);
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("provision.shared-objects: with a shared objects root the Cell borrows every object from a Honeybee-owned, never-pruned store and copies none; a later provision reuses the store; a missing store falls back to the hardlinked clone", () => {
+  const rig = makeRig();
+  try {
+    const storeRoot = join(rig.root, "cell-objects");
+    const cell = provisionCell(rig.cellsRoot, req(rig), "cmd-1", { disableCow: true, sharedObjectsRoot: storeRoot });
+    assert.equal(cell.copyMode, "shared-clone");
+    assert.equal(readLedger(cell.paths.ledgerPath)?.copy_mode, "shared-clone");
+    const space = cell.paths.spaceDir;
+    assert.equal(g(space, ["rev-parse", "HEAD"]), rig.origin.sha);
+    assert.equal(g(space, ["status", "--porcelain"]), "");
+    assert.equal(g(space, ["remote", "get-url", "origin"]), rig.origin.repo);
+    const store = objectStoreDir(storeRoot, rig.origin.repo);
+    assert.equal(readFileSync(join(space, ".git", "objects", "info", "alternates"), "utf8").trim(), join(store, "objects"));
+    assert.equal(g(store, ["config", "gc.auto"]), "0");
+    assert.equal(g(store, ["config", "gc.pruneExpire"]), "never");
+    assert.equal(g(space, ["count-objects", "-v"]).split("\n").filter((line) => /^(count|in-pack): [1-9]/.test(line)).length, 0, "the Cell holds no objects of its own");
+    assert.equal(g(space, ["fsck", "--connectivity-only"]), "");
+    const sha = commitInCell(space, "work.txt", "wip\n", "cell work");
+    assert.equal(g(space, ["rev-parse", "HEAD"]), sha);
+    const before = statSync(store).mtimeMs;
+    const second = provisionCell(rig.cellsRoot, req(rig, { beeId: "bee-2", wrapper: "bee-2", cellId: "c2" }), "cmd-2", { disableCow: true, sharedObjectsRoot: storeRoot });
+    assert.equal(second.copyMode, "shared-clone");
+    assert.equal(statSync(store).mtimeMs >= before, true);
+    assert.equal(g(second.paths.spaceDir, ["rev-parse", "HEAD"]), rig.origin.sha);
+    const plain = provisionCell(rig.cellsRoot, req(rig, { beeId: "bee-3", wrapper: "bee-3", cellId: "c3" }), "cmd-3", { disableCow: true });
+    assert.equal(plain.copyMode, "clone");
+    assert.equal(existsSync(join(plain.paths.spaceDir, ".git", "objects", "info", "alternates")), false);
   } finally {
     rig.cleanup();
   }

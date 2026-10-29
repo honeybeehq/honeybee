@@ -8,6 +8,10 @@
  * The fixture carries the producer's new shape so the drift guard stays exact;
  * Apiary's packages/core/src/cellMove.ts must be refreshed to match (see
  * docs/design/cell-retention-contract.md, "Apiary changes").
+ *
+ * H1 (2026-10-29, Cell shrink): `CellRow` gains `parkedAt` (null unless the
+ * Cell was parked and not yet used again). Apiary's vendored CellRow must be
+ * refreshed to match; the field is additive.
  */
 
 export const HIVE_CAPABILITY_CELL_MOVE_LOCAL = 'cell.move.local.v1'
@@ -102,6 +106,7 @@ export type CellRow = {
   removedAt: number | null
   evictedAt: number | null
   evictedHead: string | null
+  parkedAt: number | null
 }
 
 export type CellExecParams = {

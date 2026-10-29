@@ -84,6 +84,7 @@ import {
   type CellRemoveResult,
   type CellRetainedRemoveResult,
   type CellEvictResult,
+  type CellParkResult,
   type CellDiskStatus,
   type CellGcItem,
   type CellGcProgress,
@@ -2636,12 +2637,32 @@ async function cmdArchive(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--no-measure] | cell evict <bee> [--force]";
+  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--no-measure] | cell evict <bee> [--force] | cell park <bee>";
   switch (sub) {
     case "gc": {
       const apply = parsed.flags.get("--apply") === true;
       const measure = parsed.flags.get("--no-measure") !== true;
       return withClient(ctx, (c) => runCellGc(ctx, c, { dryRun: !apply, measure }));
+    }
+    case "park": {
+      if (!needle) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const list = await c.request<ListResult>("list");
+        const beeId = resolveBeeIn(list.views, needle);
+        const r = await c.request<CellParkResult>("cell.park", {
+          beeId,
+          idempotencyKey: (parsed.flags.get("--idempotency-key") as string | undefined) ?? randomUUID(),
+        });
+        const detail = r.status === "absent"
+          ? `${beeId}'s Cell is evicted; nothing to park`
+          : r.status === "refused"
+            ? `${r.reason === "unlanded_work" ? "the Cell holds commits or stashes the origin does not have" : "the Cell has uncommitted changes to tracked files"}; land or discard them before parking`
+            : r.purged
+            ? `${r.paths.length} ignored path(s) purged${r.skipped.length > 0 ? `, ${r.skipped.length} skipped` : ""}${r.envFiles.length > 0 ? `; ${r.envFiles.length} env file(s) preserved for restore` : ""}; the next runtime reinstalls what it needs`
+            : "recorded only; cells.shrink.parkPurge is off, so the Cell keeps its files";
+        emit(ctx, [confirm(r.status === "refused" ? "err" : "ok", `cell ${r.status}`, detail, r.deduped)], r, false);
+        return r.status === "refused" ? 1 : 0;
+      });
     }
     case "evict": {
       if (!needle) throw new Error(usage);
