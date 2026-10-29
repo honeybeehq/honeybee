@@ -91,6 +91,7 @@ export interface CellRetentionDeps {
   opInFlight: (cellId: string) => boolean;
   /** Drop the driver's cached allocation after a park. */
   forgetCell: (beeId: string) => void;
+  purgeOnPark: boolean;
   /** Tests: substitute the inspection worker entrypoint. */
   workerUrl?: URL;
   /** Delay before the first automatic pass after boot (default 5 min). */
@@ -803,7 +804,7 @@ export class CellRetentionService {
       .map((c) => ({ key: c.key, wrapperDir: c.wrapperDir, receipts: c.receipts, originRepo: c.cell?.originRepo ?? null }));
     if (wrappers.length === 0) return new Map();
     const message = await this.runWorker<RetentionWorkerResult>(
-      { wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns], upstream: this.upstreamRequest(kind), progress: onProgress != null } satisfies RetentionWorkerRequest,
+      { wrappers, measure, trimPatterns: [...this.deps.policy.trimPatterns], purge: this.deps.purgeOnPark, upstream: this.upstreamRequest(kind), progress: onProgress != null } satisfies RetentionWorkerRequest,
       onProgress,
     );
     this.noteUpstreams(message.upstreams ?? []);
@@ -1107,6 +1108,7 @@ export class CellRetentionService {
       kind: "verifyTrim",
       cells: planned.map((i, index) => ({ key: String(index), wrapperDir: i.wrapperDir, paths: i.trim.entries.map((e) => e.path), modifiedSinceMs: this.deps.now() - after })),
       trimPatterns: [...this.deps.policy.trimPatterns],
+      purge: this.deps.purgeOnPark,
     } satisfies TrimVerifyWorkerRequest);
     this.assertRunning();
     const byKey = new Map(verified.verified.map((v) => [v.key, v] as const));
@@ -1124,7 +1126,7 @@ export class CellRetentionService {
     const outcome = (status: CellGcTrimOutcome["status"], reason: string | null, paths: string[] = [], skipped: TrimSkip[] = verified?.skipped ?? []): CellGcTrimOutcome => {
       const trimmed = new Set(paths);
       const entries = item.trim.entries.filter((e) => trimmed.has(e.path));
-      return { cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, paths, skipped, bytes: sumBytes(entries) };
+      return { cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, paths, skipped, bytes: sumBytes(entries), parked: false };
     };
     if (verified == null) return outcome("failed", "verification_missing");
     if (verified.error != null) {
@@ -1144,11 +1146,16 @@ export class CellRetentionService {
     if (idleSince == null || this.deps.now() - idleSince < (this.deps.policy.trimAfterMs ?? Number.POSITIVE_INFINITY)) return outcome("refused", "not_idle");
     if (verified.confirmed.length === 0) return outcome("refused", "nothing_to_trim");
     try {
-      const res = parkTrimPaths(this.deps.cellsRoot, item.wrapperDir, verified.confirmed, { now: this.deps.now });
+      const purge = this.deps.purgeOnPark;
+      const res = parkTrimPaths(this.deps.cellsRoot, item.wrapperDir, verified.confirmed, { now: this.deps.now, purge });
       const skipped = [...verified.skipped, ...res.skipped];
       const result = outcome(res.trimmed.length > 0 ? "trimmed" : "refused", res.trimmed.length > 0 ? null : "nothing_to_trim", res.trimmed, skipped);
+      if (purge && res.trimmed.length > 0) {
+        store.parkCell(cell.id, { bytes: result.bytes, paths: res.trimmed, reason: "idle" });
+        result.parked = true;
+      }
       this.deps.log(
-        `cell.retention.trimmed cell=${cell.id} bee=${item.beeId} paths=${res.trimmed.length} skipped=${skipped.length} bytes=${result.bytes ?? "?"}` +
+        `cell.retention.${result.parked ? "parked" : "trimmed"} cell=${cell.id} bee=${item.beeId} paths=${res.trimmed.length} skipped=${skipped.length} bytes=${result.bytes ?? "?"}` +
           ` parked=${res.parkedDir ?? "-"}${skipped.length > 0 ? ` first_skip=${JSON.stringify(skipped[0])}` : ""}`,
       );
       return result;

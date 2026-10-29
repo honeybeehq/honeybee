@@ -14,6 +14,7 @@ export interface RetentionWorkerRequest {
   wrappers: Array<{ key: string; wrapperDir: string; receipts?: LandingReceipt[]; originRepo?: string | null }>;
   measure: boolean;
   trimPatterns: string[];
+  purge?: boolean;
   /** Refresh each origin's upstream mirror before inspecting; its ref counts as landed by ancestry. */
   upstream?: { root: string; maxAgeMs: number; timeoutMs: number } | null;
   /** Post a `RetentionWorkerProgress` message after each wrapper. */
@@ -49,6 +50,7 @@ export interface TrimVerifyWorkerRequest {
   kind: "verifyTrim";
   cells: Array<{ key: string; wrapperDir: string; paths: string[]; modifiedSinceMs: number }>;
   trimPatterns: string[];
+  purge?: boolean;
 }
 
 export interface TrimVerifyWorkerResult {
@@ -61,7 +63,7 @@ if (request.kind === "verifyTrim") {
   const verified: TrimVerifyWorkerResult["verified"] = [];
   for (const { key, wrapperDir, paths, modifiedSinceMs } of request.cells) {
     try {
-      verified.push({ key, ...verifyTrimPaths(wrapperDir, paths, { trimPatterns: request.trimPatterns, modifiedSinceMs }), error: null });
+      verified.push({ key, ...verifyTrimPaths(wrapperDir, paths, { trimPatterns: request.trimPatterns, modifiedSinceMs, purge: request.purge }), error: null });
     } catch (err) {
       verified.push({ key, confirmed: [], skipped: [], error: errorText(err) });
     }
@@ -84,7 +86,7 @@ if (request.kind === "verifyTrim") {
     let entry: RetentionWorkerInspection;
     try {
       const upstream = originRepo ? upstreams.get(originRepo)?.ref ?? null : null;
-      entry = { key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, receipts, upstream }), error: null };
+      entry = { key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, purge: request.purge, receipts, upstream }), error: null };
     } catch (err) {
       entry = { key, inspection: null, error: errorText(err) };
     }

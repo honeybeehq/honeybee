@@ -20,6 +20,7 @@ import {
   RPC_VERBS,
   type CellEvictResult,
   type CellGcResult,
+  type CellParkResult,
   type MailboxResult,
   type SendRpcResult,
   type SpawnResult,
@@ -392,6 +393,92 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
     assert.equal(readFileSync(join(archivedSpace, ".proof", "shot.png"), "utf8"), "evidence\n");
     assert.equal(existsSync(keepRoot), false, "restored paths leave cell-keep");
     assert.match(readFileSync(join(rig.dir, "hived.log"), "utf8"), /cell\.keep\.restored bee=.* paths=1 conflicts=0/);
+  } finally {
+    await daemon?.stop();
+    rig.cleanup();
+  }
+});
+
+test("cell-retention.7: cells.shrink parkPurge + privateTmp — a parked Cell loses every ignored path and its private tmp, keeps its checkout, records parkedAt, and a message revives it unparked; a live runtime is typed-refused", { timeout: 180_000 }, async () => {
+  const rig = makeRig({ enabled: false, trimAfterHours: 0 });
+  writeFileSync(join(rig.dir, "config.json"), JSON.stringify({ ...JSON.parse(readFileSync(join(rig.dir, "config.json"), "utf8")), cells: { root: rig.cellsRoot, retention: { enabled: false, trimAfterHours: 0 }, shrink: { parkPurge: true, privateTmp: true } } }));
+  let daemon: DaemonHandle | null = null;
+  try {
+    writeFileSync(join(rig.origin.repo, ".gitignore"), "node_modules/\n.proof/\n.env\n");
+    g(rig.origin.repo, ["add", ".gitignore"]);
+    g(rig.origin.repo, ["commit", "-q", "-m", "ignores"]);
+    daemon = await startDaemon(rig.dir);
+    const client = await daemon.client();
+    const bee = await spawnIdle(client, "parkable", rig.origin.repo);
+    const space = bee.view.bee!.cwd;
+    const wrapper = dirname(space);
+    const sent = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "@sh mkdir -p node_modules/pkg .proof && echo x > node_modules/pkg/index.js && echo shot > .proof/shot.png && echo S=1 > .env && echo wip > wip.txt && echo \"$TMPDIR\" > tmpdir.txt && mkdir -p \"$TMPDIR/leak\" && echo leak > \"$TMPDIR/leak/scratch\"" });
+    await waitFor(async () => {
+      const { messages } = await client.request<MailboxResult>("mailbox", { beeId: bee.beeId });
+      return messages.find((m) => m.id === sent.messageId)?.deliveredAt != null && (await client.request<ViewResult>("view", { beeId: bee.beeId })).view.runtimeState === "idle";
+    }, "work done", 60_000);
+    const tmp = readFileSync(join(space, "tmpdir.txt"), "utf8").trim();
+    assert.equal(tmp, join(wrapper, "sandbox-state", "tmp"), "TMPDIR is private to the Cell");
+    assert.equal(readFileSync(join(tmp, "leak", "scratch"), "utf8"), "leak\n");
+    await assert.rejects(client.request("cell.park", { beeId: bee.beeId, idempotencyKey: "live" }), /live runtime/);
+    await stopped(client, bee.beeId);
+    const parked = await client.request<CellParkResult>("cell.park", { beeId: bee.beeId, idempotencyKey: "park-1" });
+    assert.equal(parked.status, "parked");
+    assert.equal(parked.purged, true);
+    assert.deepEqual(parked.paths, [".proof", "node_modules", "sandbox-state/tmp", "sandbox-state/cache"]);
+    assert.deepEqual(parked.envFiles, [".env"]);
+    assert.ok((parked.cell?.parkedAt ?? 0) > 0);
+    for (const gone of ["node_modules", ".proof"]) assert.equal(existsSync(join(space, gone)), false, gone);
+    assert.equal(existsSync(join(wrapper, "sandbox-state", "tmp")), false, "private tmp purged with the park");
+    assert.equal(readFileSync(join(space, "wip.txt"), "utf8"), "wip\n", "untracked work stays");
+    assert.equal(readFileSync(join(space, ".env"), "utf8"), "S=1\n", "env files stay in place");
+    const replay = await client.request<CellParkResult>("cell.park", { beeId: bee.beeId, idempotencyKey: "park-1" });
+    assert.equal(replay.deduped, true);
+    assert.equal((await client.request<ViewResult>("view", { beeId: bee.beeId })).cell?.parkedAt, parked.cell?.parkedAt);
+    const again = await client.request<SendRpcResult>("send", { beeId: bee.beeId, body: "@sh test -d \"$TMPDIR\" && echo back > back.txt" });
+    await waitFor(async () => {
+      const { messages } = await client.request<MailboxResult>("mailbox", { beeId: bee.beeId });
+      return messages.find((m) => m.id === again.messageId)?.deliveredAt != null && existsSync(join(space, "back.txt"));
+    }, "revived in place", 60_000);
+    assert.equal((await client.request<ViewResult>("view", { beeId: bee.beeId })).cell?.parkedAt, null, "a runtime start unparks");
+    assert.equal(existsSync(join(wrapper, "sandbox-state", "tmp")), true, "the private tmp is recreated for the new runtime");
+    const log = readFileSync(join(rig.dir, "hived.log"), "utf8");
+    assert.match(log, /cell\.park bee=.* purged=true paths=4 skipped=0 env_files=1/);
+    assert.match(log, /cell\.unparked bee=/);
+  } finally {
+    await daemon?.stop();
+    rig.cleanup();
+  }
+});
+
+test("cell-retention.8: with cells.shrink off, cell.park records the park and keeps every file; the idle pass still only trims build output", { timeout: 180_000 }, async () => {
+  const rig = makeRig({ enabled: false, trimAfterHours: 0 });
+  let daemon: DaemonHandle | null = null;
+  try {
+    writeFileSync(join(rig.origin.repo, ".gitignore"), "node_modules/\n.next/\n");
+    g(rig.origin.repo, ["add", ".gitignore"]);
+    g(rig.origin.repo, ["commit", "-q", "-m", "ignores"]);
+    daemon = await startDaemon(rig.dir);
+    const client = await daemon.client();
+    const bee = await spawnIdle(client, "kept", rig.origin.repo);
+    const space = bee.view.bee!.cwd;
+    mkdirSync(join(space, "node_modules", "pkg"), { recursive: true });
+    writeFileSync(join(space, "node_modules", "pkg", "index.js"), "x\n");
+    mkdirSync(join(space, ".next"), { recursive: true });
+    writeFileSync(join(space, ".next", "page.js"), "built\n");
+    await stopped(client, bee.beeId);
+    const parked = await client.request<CellParkResult>("cell.park", { beeId: bee.beeId, idempotencyKey: "park-off" });
+    assert.equal(parked.status, "parked");
+    assert.equal(parked.purged, false);
+    assert.deepEqual(parked.paths, []);
+    assert.ok((parked.cell?.parkedAt ?? 0) > 0);
+    assert.equal(existsSync(join(space, "node_modules", "pkg", "index.js")), true, "park keeps files");
+    const applied = await gc(client, { dryRun: false });
+    const trimmed = applied.trimOutcomes!.find((o) => o.beeId === bee.beeId)!;
+    assert.equal(trimmed.status, "trimmed");
+    assert.equal(trimmed.parked, false);
+    assert.deepEqual(trimmed.paths, [".next"]);
+    assert.equal(existsSync(join(space, "node_modules", "pkg", "index.js")), true, "installs are not trimmed with the flag off");
   } finally {
     await daemon?.stop();
     rig.cleanup();

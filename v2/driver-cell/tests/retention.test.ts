@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
+import { cellPrivateEnv } from "../src/cellState.ts";
 import { cellPaths } from "../src/layout.ts";
 import { provisionCell } from "../src/provision.ts";
 import { CellDeleteRefused, CellShapeError } from "../src/remove.ts";
@@ -567,4 +568,33 @@ test("retention.trim: retains trees beyond the bounded repository inspection", (
     assert.deepEqual(result.skipped, [{ path: "build", why: "inspection_limit" }]);
     assert.equal(existsSync(join(paths.spaceDir, "build/output-1099")), true);
   } finally { rig.cleanup(); }
+});
+
+test("retention.purge: park mode treats every ignored path except env files as reproducible, including installs, kept files and large trees, and parks the Cell's private tmp and cache", async () => {
+  const rig = makeRig();
+  try {
+    ignoringOrigin(rig);
+    const { paths } = provisioned(rig, "purge");
+    populateIgnored(paths.spaceDir);
+    for (let i = 0; i < 1100; i++) put(paths.spaceDir, `node_modules/big/${i}.js`);
+    cellPrivateEnv(paths.wrapperDir, { privateTmpfs: false });
+    put(paths.wrapperDir, "sandbox-state/tmp/leak/scratch.txt");
+    put(paths.wrapperDir, "sandbox-state/cache/node-compile/x");
+    const plain = classifyIgnored(paths.spaceDir);
+    assert.deepEqual(plain.keep, [".proof", "out", "tmp"]);
+    const purge = classifyIgnored(paths.spaceDir, undefined, { purge: true });
+    assert.deepEqual(purge.env, [".env"]);
+    assert.deepEqual(purge.keep, []);
+    assert.deepEqual(purge.trim, [".proof", "apps/app/.next", "apps/app/node_modules", "apps/ios/build", "node_modules", "out", "tmp", "tools/.venv", "tsconfig.tsbuildinfo"]);
+    assert.deepEqual(verifyTrimPaths(paths.wrapperDir, ["node_modules"]).skipped, [{ path: "node_modules", why: "not_ignored_build_output" }]);
+    const res = trimCellWrapper(rig.cellsRoot, paths.wrapperDir, purge.trim, { now: () => 9, purge: true });
+    assert.deepEqual(res.skipped, []);
+    assert.deepEqual(res.trimmed, [...purge.trim, "sandbox-state/tmp", "sandbox-state/cache"]);
+    for (const gone of [...purge.trim, "sandbox-state/tmp", "sandbox-state/cache"]) assert.equal(existsSync(join(gone.startsWith("sandbox-state") ? paths.wrapperDir : paths.spaceDir, gone)), false, gone);
+    for (const kept of ["README.md", "src/app.ts", ".env", ".DS_Store"]) assert.equal(existsSync(join(paths.spaceDir, kept)), true, kept);
+    assert.equal(g(paths.spaceDir, ["status", "--porcelain"]), "");
+    assert.deepEqual((await sweepEvicting(rig.cellsRoot)).removed, [res.parkedDir]);
+  } finally {
+    rig.cleanup();
+  }
 });

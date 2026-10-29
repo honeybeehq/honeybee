@@ -35,6 +35,7 @@ import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, o
 import { rm } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { GitError, revParse, tryGit } from "./git.ts";
+import { cellPrivateStatePaths } from "./cellState.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import type { LandingReceipt } from "./landed.ts";
 import type { UpstreamRef } from "./upstream.ts";
@@ -136,7 +137,11 @@ export function matchesTrimPattern(name: string, isDirectory: boolean, patterns:
   return patterns.some((pattern) => (pattern.startsWith("*.") ? !isDirectory && name.endsWith(pattern.slice(1)) : isDirectory && name === pattern));
 }
 
-export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[] = DEFAULT_TRIM_PATTERNS): IgnoredEntries {
+export interface IgnoredOptions {
+  purge?: boolean;
+}
+
+export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[] = DEFAULT_TRIM_PATTERNS, opts: IgnoredOptions = {}): IgnoredEntries {
   const out: IgnoredEntries = { env: [], trim: [], keep: [] };
   if (!existsSync(join(spaceDir, ".git"))) return out;
   const args = ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--ignored=matching", "--untracked-files=normal", "--ignore-submodules=all"];
@@ -151,10 +156,11 @@ export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[
     const isDirectory = entry.endsWith("/");
     const path = isDirectory ? entry.slice(0, -1) : entry;
     const name = basename(path);
-    if ((isDirectory ? path : dirname(path)).split("/").some((part) => INSTALL_DIRECTORY_NAMES.has(part))) continue;
+    const installed = (isDirectory ? path : dirname(path)).split("/").some((part) => INSTALL_DIRECTORY_NAMES.has(part));
+    if (installed && !opts.purge) continue;
     if (!isDirectory && DISPOSABLE_FILE_NAMES.has(name)) continue;
     if (!isDirectory && (name === ".env" || name.startsWith(".env."))) out.env.push(path);
-    else if (matchesTrimPattern(name, isDirectory, trimPatterns)) out.trim.push(path);
+    else if (opts.purge || matchesTrimPattern(name, isDirectory, trimPatterns)) out.trim.push(path);
     else out.keep.push(path);
   }
   out.env.sort();
@@ -435,7 +441,7 @@ export interface TrimSkip {
   why: string;
 }
 
-function trimPathRefusal(spaceDir: string, rel: string): string | null {
+function trimPathRefusal(spaceDir: string, rel: string, purge = false): string | null {
   if (!pathExists(join(spaceDir, rel))) return "absent";
   let path: string;
   try {
@@ -445,7 +451,7 @@ function trimPathRefusal(spaceDir: string, rel: string): string | null {
   }
   const st = lstatSync(path);
   if (st.isSymbolicLink()) return "symlink";
-  if (st.isDirectory()) {
+  if (st.isDirectory() && !purge) {
     const directories = [path];
     let inspected = 0;
     while (directories.length > 0) {
@@ -494,15 +500,15 @@ function trimTarget(cellsRoot: string, wrapperDir: string): { root: string; targ
 export function verifyTrimPaths(
   wrapperDir: string,
   planned: string[],
-  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number } = {},
+  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; purge?: boolean } = {},
 ): { confirmed: string[]; skipped: TrimSkip[] } {
   const spaceDir = spaceDirIn(resolve(wrapperDir));
   if (spaceDir == null) return { confirmed: [], skipped: planned.map((path) => ({ path, why: "absent" })) };
-  const current = new Set(classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS).trim);
+  const current = new Set(classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, { purge: opts.purge }).trim);
   const confirmed: string[] = [];
   const skipped: TrimSkip[] = [];
   for (const rel of planned) {
-    const why = !current.has(rel) ? "not_ignored_build_output" : trimPathRefusal(spaceDir, rel);
+    const why = !current.has(rel) ? "not_ignored_build_output" : trimPathRefusal(spaceDir, rel, opts.purge);
     if (why != null) skipped.push({ path: rel, why });
     else if (opts.modifiedSinceMs != null && newestModification(join(spaceDir, rel)) >= opts.modifiedSinceMs) skipped.push({ path: rel, why: "recently_modified" });
     else confirmed.push(rel);
@@ -510,21 +516,36 @@ export function verifyTrimPaths(
   return { confirmed, skipped };
 }
 
-export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: string[], opts: { now?: () => number } = {}): TrimResult {
+export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: string[], opts: { now?: () => number; purge?: boolean } = {}): TrimResult {
   const { root, target, spaceDir } = trimTarget(cellsRoot, wrapperDir);
   const result: TrimResult = { parkedDir: null, trimmed: [], skipped: [] };
-  for (const rel of confirmed) {
-    const why = trimPathRefusal(spaceDir, rel);
-    if (why != null) {
-      result.skipped.push({ path: rel, why });
-      continue;
-    }
+  const park = (source: string, rel: string): void => {
     if (result.parkedDir == null) {
       result.parkedDir = join(root, EVICTING_DIR, `${basename(target)}.trim.${(opts.now ?? Date.now)()}.${process.pid}`);
       mkdirSync(result.parkedDir, { recursive: true });
     }
-    renameSync(join(spaceDir, rel), join(result.parkedDir, String(result.trimmed.length)));
+    renameSync(source, join(result.parkedDir, String(result.trimmed.length)));
     result.trimmed.push(rel);
+  };
+  for (const rel of confirmed) {
+    const why = trimPathRefusal(spaceDir, rel, opts.purge);
+    if (why != null) {
+      result.skipped.push({ path: rel, why });
+      continue;
+    }
+    park(join(spaceDir, rel), rel);
+  }
+  if (opts.purge) {
+    for (const path of cellPrivateStatePaths(target)) {
+      const info = lstatSync(path, { throwIfNoEntry: false });
+      if (!info) continue;
+      const rel = relative(target, path);
+      if (!info.isDirectory() || info.isSymbolicLink()) {
+        result.skipped.push({ path: rel, why: "symlink" });
+        continue;
+      }
+      park(path, rel);
+    }
   }
   return result;
 }
@@ -533,7 +554,7 @@ export function trimCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
   planned: string[],
-  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number } = {},
+  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number; purge?: boolean } = {},
 ): TrimResult {
   trimTarget(cellsRoot, wrapperDir);
   const verified = verifyTrimPaths(wrapperDir, planned, opts);
@@ -554,7 +575,7 @@ function spaceDirIn(wrapperDir: string): string | null {
 
 export function inspectCellWrapper(
   wrapperDir: string,
-  opts: { measure?: boolean; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
+  opts: { measure?: boolean; trimPatterns?: readonly string[]; purge?: boolean; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
 ): CellWrapperInspection {
   const started = Date.now();
   const target = resolve(wrapperDir);
@@ -565,7 +586,7 @@ export function inspectCellWrapper(
   const provisioned = existsSync(join(spaceDir, ".git"));
   const head = provisioned ? revParse(spaceDir, "HEAD") : null;
   const { report, dirtySubmodules } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS, { purge: opts.purge });
   const measure = opts.measure !== false;
   const sized = (paths: string[]): PathBytes[] => paths.map((path) => ({ path, bytes: measure ? measurePathBytes(join(spaceDir, path)) : null }));
   const bytes = measure ? measureDirectoryBytes(target) : null;

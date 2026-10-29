@@ -17,6 +17,7 @@ import {
 import { processStartTimeMs } from "../../driver-hsr/src/psutil.ts";
 import { defaultWritablePaths, sandboxEnabled, wrapWithSandbox, type NodeKind } from "./sandbox.ts";
 import type { CellPaths } from "./layout.ts";
+import { cellPrivateEnv } from "./cellState.ts";
 
 export interface CellExecSpec {
   argv: readonly string[];
@@ -25,6 +26,7 @@ export interface CellExecSpec {
   sandbox: boolean | null;
   nodeKind: NodeKind;
   kvm?: boolean;
+  privateTmp?: boolean;
   secretEnv?: Record<string, string>;
   signal?: AbortSignal;
   outputCapture?: { maxBytes: number; expiresAt: number; receive: (bytes: Buffer) => void };
@@ -277,15 +279,17 @@ export async function runCellExec(
   const timeoutMs = clampCellExecTimeout(spec.timeoutMs);
   const cwd = containedExecCwd(paths.spaceDir, spec.cwd);
   const [command, ...args] = spec.argv;
+  const sandboxed = sandboxEnabled(spec.nodeKind, spec.sandbox);
   const env = {
     ...sanitizedCellExecEnv(),
     ...secretEnv,
     HIVE_CELL: "1",
     HIVE_CELL_SPACE: paths.spaceName,
+    ...(spec.privateTmp ? cellPrivateEnv(paths.wrapperDir, { privateTmpfs: sandboxed && process.platform === "linux" }) : {}),
   };
   let wrappedCommand = command as string;
   let wrappedArgs = args;
-  if (sandboxEnabled(spec.nodeKind, spec.sandbox)) {
+  if (sandboxed) {
     const wrapped = wrapWithSandbox(
       { cellDir: paths.wrapperDir, writablePaths: defaultWritablePaths(), kvm: spec.kvm },
       command,

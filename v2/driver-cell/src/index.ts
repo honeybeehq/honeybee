@@ -14,6 +14,7 @@ export {
   type ProvisionRequest,
   type ReserveRequest,
 } from "./provision.ts";
+export { cellPrivateEnv, cellPrivateStatePaths, CELL_PRIVATE_STATE_DIR } from "./cellState.ts";
 export { captureWork, transientRefFor, type CaptureMode, type CaptureReport, type CaptureRequest } from "./capture.ts";
 export {
   CellDeleteRefused,
@@ -56,6 +57,7 @@ export {
   verifyTrimPaths,
   type CellWrapperInspection,
   type EvictResult,
+  type IgnoredOptions,
   type PathBytes,
   type TrimResult,
   type TrimSkip,

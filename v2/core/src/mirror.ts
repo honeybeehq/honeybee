@@ -476,6 +476,7 @@ export const MIRROR_CELL_KEYS = [
   // v31: additive — retention eviction facts (null unless state is `evicted`).
   "evictedAt",
   "evictedHead",
+  "parkedAt",
 ] as const;
 export const MIRROR_BEE_MOVE_KEYS = [
   "id",

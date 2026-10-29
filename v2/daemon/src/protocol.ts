@@ -200,6 +200,7 @@ export const DAEMON_CAPABILITIES = [
   "cell.retention.v1",
   "cell.retention.trim.v1",
   "cell.retention.pressure.v1",
+  "cell.park.v1",
   /**
    * v23 (2026-09-13): durable session handoff — `bee.handoff` /
    * `bee.handoff.get`, the `handoff` mirror-row key, the `beeHandoffs` +
@@ -564,6 +565,7 @@ export const RPC_VERBS = [
   // v31: Cell disk retention (plan/apply a pass; evict one bee's Cell).
   "cell.gc",
   "cell.evict",
+  "cell.park",
   // v23: durable session handoff (same-family reset / cross-family change).
   "bee.handoff",
   "bee.handoff.get",
@@ -2136,6 +2138,7 @@ export interface CellGcTrimOutcome {
   paths: string[];
   skipped: Array<{ path: string; why: string }>;
   bytes: number | null;
+  parked: boolean;
 }
 
 export interface CellGcResult {
@@ -2260,6 +2263,21 @@ export interface CellEvictResult {
   bytes: number | null;
   envFiles: string[];
   keptPaths: string[];
+  deduped?: boolean;
+}
+
+export interface CellParkParams {
+  beeId: string;
+  idempotencyKey: string;
+}
+
+export interface CellParkResult {
+  cell: CellRow | null;
+  status: "parked" | "absent";
+  purged: boolean;
+  paths: string[];
+  skipped: Array<{ path: string; why: string }>;
+  envFiles: string[];
   deduped?: boolean;
 }
 

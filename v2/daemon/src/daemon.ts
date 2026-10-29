@@ -174,6 +174,9 @@ import {
   dirtyCauses,
   evictCellWrapper,
   unparkCellWrapper,
+  classifyIgnored,
+  parkTrimPaths,
+  preserveEnvFiles,
   readUpstreamMirror,
   upstreamRootFor,
   hasCommit,
@@ -339,6 +342,7 @@ import {
   type CellCaptureMode,
   type CellCaptureResult,
   type CellEvictResult,
+  type CellParkResult,
   type CellExecResult,
   type CellGcResult,
   type CellRemoveResult,
@@ -698,6 +702,7 @@ const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>([
   "cell.capture",
   "cell.remove",
   "cell.evict",
+  "cell.park",
   "bee.move",
   "cell.exec",
   "cell.retained.remove",
@@ -948,6 +953,7 @@ export class HiveDaemon {
       nodeKind: this.cfg.nodeKind,
       resolveHarness: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation),
       sandboxKvm: this.cfg.cellKvm,
+      privateTmp: this.cfg.cellShrink.privateTmp,
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
       resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
@@ -1002,6 +1008,7 @@ export class HiveDaemon {
         return this.cellHasInFlightOp(cellId);
       },
       forgetCell: (beeId) => cell.forgetCell(beeId),
+      purgeOnPark: this.cfg.cellShrink.parkPurge,
       ...(this.deps.retentionWorkerUrl ? { workerUrl: this.deps.retentionWorkerUrl } : {}),
       ...(this.deps.retentionInitialDelayMs !== undefined ? { initialDelayMs: this.deps.retentionInitialDelayMs } : {}),
       ...(this.deps.retentionDiskCheckMs !== undefined ? { diskCheckMs: this.deps.retentionDiskCheckMs } : {}),
@@ -2371,6 +2378,8 @@ export class HiveDaemon {
         return this.rpcCellGc(params);
       case "cell.evict":
         return this.withIdempotency(verb, params, () => this.rpcCellEvict(params));
+      case "cell.park":
+        return this.withIdempotency(verb, params, () => this.rpcCellPark(params));
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
@@ -3875,6 +3884,8 @@ export class HiveDaemon {
     try {
       const res = store.reactivateCell(bee.cellId);
       if (res.applied) this.log(`cell.reprovisioned bee=${beeId} cell=${bee.cellId} sha=${res.cell.sha}`);
+      const unparked = store.unparkCell(bee.cellId);
+      if (unparked.applied) this.log(`cell.unparked bee=${beeId} cell=${bee.cellId}`);
     } catch (err) {
       this.log(`cell.reprovision_record_failed bee=${beeId} ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -3981,6 +3992,44 @@ export class HiveDaemon {
       if (err instanceof CellHeadMovedError) throw new RpcError("runtime_refused", err.message);
       throw err;
     }
+  }
+
+  private rpcCellPark(params: Record<string, unknown>): CellParkResult {
+    const beeId = this.requireBee(params);
+    const store = this.mustStore();
+    const bee = store.getBee(beeId);
+    const row = bee?.cellId ? store.getCell(bee.cellId) : null;
+    if (!bee || bee.substrate !== "cell" || !row || row.state === "removed" || row.state === "removing") {
+      throw new RpcError("invalid_request", `cell.park: bee ${beeId} has no Cell allocation`);
+    }
+    if (row.state === "evicted") return { cell: row, status: "absent", purged: false, paths: [], skipped: [], envFiles: [] };
+    if (row.state !== "active") {
+      throw new RpcError("invalid_request", `cell.park: cell ${row.id} is ${row.state}; only an active Cell can be parked`);
+    }
+    this.releaseAbsentCellOps(row.id);
+    if (this.cellHasInFlightOp(row.id)) throw new RpcError("runtime_refused", `cell ${row.id} has an in-flight Cell operation`);
+    if (bee.activeMoveId) throw new RpcError("move_in_progress", `bee ${beeId} has a move in flight`);
+    if (bee.activeHandoffId) throw new RpcError("handoff_in_progress", `bee ${beeId} has a handoff in flight`);
+    const rt = store.currentRuntime(beeId);
+    if ((rt && rt.state !== "stopped") || (rt && this.driver?.hasProcess(beeId, rt.generation))) {
+      throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); stop it before parking its cell`);
+    }
+    const wrapperDir = dirname(resolve(row.spaceDir));
+    const purge = this.cfg.cellShrink.parkPurge;
+    let paths: string[] = [];
+    let skipped: CellParkResult["skipped"] = [];
+    let envFiles: string[] = [];
+    if (purge && existsSync(row.spaceDir)) {
+      const ignored = classifyIgnored(row.spaceDir, this.cfg.cellRetention.trimPatterns, { purge: true });
+      envFiles = preserveEnvFiles(this.cfg.cellsRoot, row.spaceDir, ignored.env);
+      const res = parkTrimPaths(this.cfg.cellsRoot, wrapperDir, ignored.trim, { purge: true });
+      paths = res.trimmed;
+      skipped = res.skipped;
+      void this.retention?.sweep();
+    }
+    const cell = store.parkCell(row.id, { bytes: null, paths, reason: "operator" });
+    this.log(`cell.park bee=${beeId} cell=${row.id} purged=${purge} paths=${paths.length} skipped=${skipped.length} env_files=${envFiles.length}`);
+    return { cell, status: "parked", purged: purge, paths, skipped, envFiles };
   }
 
   private backfillCellRegistry(store: CoreStore): void {
@@ -4946,6 +4995,7 @@ export class HiveDaemon {
           sandbox: cell.sandbox,
           nodeKind: this.cfg.nodeKind,
           kvm: this.cfg.cellKvm,
+          privateTmp: this.cfg.cellShrink.privateTmp,
           ...(secret ? { secretEnv: secret.outputCapture ? undefined : secret.env, ...(secret.outputCapture ? { outputCapture: { maxBytes: secret.outputCapture.maxBytes, expiresAt: secret.outputCapture.expiresAt, receive: (bytes: Buffer) => captureSecretOutput?.(secret.outputCapture!.leaseId, bytes) } } : {}), signal: controller!.signal } : {}),
 
         },
