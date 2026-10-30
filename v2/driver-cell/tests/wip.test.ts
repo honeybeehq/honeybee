@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { g, makeOrigin } from "./helpers.ts";
-import { WipError, confirmWip, dropWipRef, pushWip, restoreWip, snapshotWip, wipRefFor, wipTreeMatches } from "../src/wip.ts";
+import { WipError, confirmWip, dropWipRef, operationInProgress, pushWip, restoreWip, snapshotWip, sweepWipRefs, wipRefFor } from "../src/wip.ts";
 
 function clone(origin: string, root: string, name: string): string {
   const dir = join(root, name);
@@ -35,6 +35,7 @@ test("wip.0: snapshot, push, confirm, restore and drop round-trip through the or
     const clean = snapshotWip(space, box, cellId);
     assert.equal(clean.dirty, false);
     assert.equal(clean.sha, head);
+    assert.equal(clean.complete, true);
 
     writeFileSync(join(space, "notes.md"), "draft\n");
     writeFileSync(join(space, "src", "app.ts"), "export const version = 2;\n");
@@ -50,8 +51,9 @@ test("wip.0: snapshot, push, confirm, restore and drop round-trip through the or
     assert.ok(files.includes("notes.md"), "untracked files are WIP");
     assert.ok(!files.includes(".next/built.js"), "ignored files are not");
     assert.equal(g(space, ["rev-parse", `${snap.sha}^`]), head);
-    assert.ok(wipTreeMatches(space, box, snap.tree));
+    assert.equal(snap.complete, true);
     assert.ok(!existsSync(join(box, "wip.index")));
+    assert.equal(g(space, ["status", "--porcelain", "--untracked-files=all"]).includes("wip.index"), false);
 
     assert.equal(confirmWip(origin.repo, cellId, snap.sha), false, "nothing confirmed before the push");
     pushWip(origin.repo, space, cellId, snap.sha);
@@ -59,8 +61,16 @@ test("wip.0: snapshot, push, confirm, restore and drop round-trip through the or
     assert.equal(confirmWip(origin.repo, cellId, snap.sha), true);
     assert.equal(confirmWip(origin.repo, cellId, head), false, "a stale sha is not confirmed");
 
-    writeFileSync(join(space, "notes.md"), "draft 2\n");
-    assert.equal(wipTreeMatches(space, box, snap.tree), false);
+    writeFileSync(join(space, "big.bin"), Buffer.alloc(4096, 1));
+    writeFileSync(join(space, "src", "app.ts"), Buffer.alloc(4096, 2));
+    const capped = snapshotWip(space, box, cellId, Date.now, 1024);
+    assert.equal(capped.complete, false, "oversize changed files make the snapshot incomplete");
+    assert.deepEqual(capped.skipped.map((s) => s.path).sort(), ["big.bin", "src/app.ts"]);
+    const cappedFiles = g(space, ["ls-tree", "-r", "--name-only", capped.tree]).split("\n");
+    assert.ok(!cappedFiles.includes("big.bin"), "an oversize untracked file is left out");
+    assert.equal(g(space, ["rev-parse", `${capped.sha}:src/app.ts`]), g(space, ["rev-parse", `${head}:src/app.ts`]), "an oversize modified tracked file keeps its HEAD content in the tree");
+    rmSync(join(space, "big.bin"));
+    writeFileSync(join(space, "src", "app.ts"), "export const version = 2;\n");
 
     const fresh = clone(origin.repo, root, "b-space-2");
     assert.deepEqual(restoreWip(fresh, origin.repo, cellId, snap.sha), { restored: true, reason: null });
@@ -79,6 +89,9 @@ test("wip.0: snapshot, push, confirm, restore and drop round-trip through the or
     assert.deepEqual(restoreWip(moved, origin.repo, cellId, snap.sha), { restored: false, reason: "head_mismatch" });
     assert.deepEqual(restoreWip(fresh, origin.repo, cellId, head), { restored: false, reason: "nothing_to_restore" });
 
+    pushWip(origin.repo, space, "cell-gone", snap.sha);
+    assert.deepEqual(sweepWipRefs(origin.repo, new Set([cellId])), [wipRefFor("cell-gone")], "refs of Cells that no longer exist are swept, live ones kept");
+    assert.equal(confirmWip(origin.repo, cellId, snap.sha), true);
     assert.equal(dropWipRef(origin.repo, cellId), true);
     assert.equal(dropWipRef(origin.repo, cellId), false);
     assert.equal(confirmWip(origin.repo, cellId, snap.sha), false);
@@ -96,6 +109,10 @@ test("wip.1: a push into something that is not a repository, or of a non-sha, is
     assert.throws(() => pushWip(join(root, "nowhere"), space, "cell-1", head), (err: unknown) => err instanceof WipError && err.stage === "push");
     assert.throws(() => pushWip(origin.repo, space, "cell-1", "HEAD"), (err: unknown) => err instanceof WipError && err.stage === "push");
     assert.equal(wipRefFor("Cell/With Spaces"), "refs/hive/wip/cell-with-spaces");
+    assert.equal(operationInProgress(space), null);
+    writeFileSync(join(space, ".git", "MERGE_HEAD"), `${head}\n`);
+    assert.equal(operationInProgress(space), "MERGE_HEAD");
+    assert.throws(() => snapshotWip(space, join(root, "box"), "cell-1"), (err: unknown) => err instanceof WipError && err.message.includes("operation_in_progress:MERGE_HEAD"));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

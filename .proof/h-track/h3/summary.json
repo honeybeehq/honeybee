@@ -50,5 +50,28 @@
   "h4FollowUpsFoldedIn": {
     "batchedRows": "cutFile inserts pointer rows in one transaction per 100 segments (putTranscriptSegmentObjects) and yields between batches",
     "sweepInWorker": "the orphan walk (readdir + stat + rm) runs in the transcript segment worker; the daemon thread only passes the referenced refs and records the result; cuts that land during a sweep are added to the count"
+  },
+  "roundTwo": {
+    "date": "2026-10-30",
+    "leadFindings": {
+      "1_incompleteSnapshot": "WipSnapshot.complete = no skipped paths; git add runs without --ignore-errors (an unreadable path fails the snapshot); the eviction gate requires confirmed AND complete, otherwise holds the Cell as wip_incomplete (new CellGcReason) with the skipped paths logged; cell-wip.3 proves a 4 KiB file over a 1 KiB cap is left out of the pushed tree, the Cell is held and the file stays on disk",
+      "2_dirtySubmodules": "reasonFor keeps dirty_uncommitted whenever inspection.dirtySubmodules is non-empty, before the evictionRequiresWip lift; cell-wip.5 proves a populated submodule with a local file holds the Cell",
+      "3_admission": "capacityOf: admission.newCells refuses on the disk floor only; wip holds ride on resourceBlocked.reason=wip_unconfirmed and cells.wipBlockedCells; cell-wip.2 now spawns a new Cell while another Cell's push is unconfirmed",
+      "4_restoreInWorker": "restoreCellWip removed from onCellMaterialized; resolveCell adds provision.restoreWip {sha, cellId} for an evicted Cell with a confirmed WIP; provisionCell and the warm-pool claim (worker and sync paths) run restoreWipAfterProvision before the runtime starts and report wipRestore for the driver log; cell-wip.1 still restores on revive",
+      "5_refNamespace": "contract doc documents refs/hive/wip/<cell-id> in the spawn origin; sweepWipRefs runs in the retention worker once a day from the retention tick (when either flag is on) over every origin of a known Cell, dropping refs whose Cell is not in the registry; wip.0 unit-tests the sweep",
+      "6_debounce": "requestWipPush debounces per Cell (wipMinIntervalSeconds, default 60; trailing push coalesces later turn ends; a request during an in-flight push reruns once after it); the worker skips the push when the snapshot tree equals the recorded wip_tree and the ref still reads back (cell.wip.unchanged, no row); git status runs with --no-optional-locks so a live bee's index.lock is never taken; cell-wip.1 proves an unchanged turn writes no row and no cell.put",
+      "7_operationInProgress": "snapshotWip refuses with operation_in_progress:<marker> for MERGE_HEAD, CHERRY_PICK_HEAD, REVERT_HEAD, BISECT_LOG, rebase-merge, rebase-apply (git rev-parse --git-path); cell-wip.4 proves a merge in progress holds as wip_unconfirmed and a stash still holds as dirty_stash",
+      "8_auditChurn": "recordCellWip returns the row untouched when sha, tree and confirmed state are unchanged; together with the unchanged-tree skip a quiet Cell writes no cell.put",
+      "nits": "confirmWip walks the WIP commit's objects with rev-list --objects --missing=error (against the parent when there is one); wipTreeMatches removed; the five mirrored columns are on MIRROR_CELL_KEYS for the Apiary re-pin (lead's side)"
+    },
+    "tests": {
+      "wip.test.ts": "2/2 (adds: complete flag, oversize skip keeps HEAD content for tracked and drops untracked, sweep keeps live refs, in-progress refusal)",
+      "cell-wip (daemon)": "5/5",
+      "config": "20/20 with wipMaxFileBytes and wipMinIntervalSeconds",
+      "v2:test (core)": "620/621 (pre-existing)",
+      "driver-cell suite": "180/198 (the 18 baseline secret-runner containment failures)",
+      "v2:daemon": "475/476 in a run parallel to the core and driver-cell suites; the one failure (accounts-admission-readiness admission.hold) passes 10/10 alone, the same load flake as in round one",
+      "typecheck+build": "green"
+    }
   }
 }

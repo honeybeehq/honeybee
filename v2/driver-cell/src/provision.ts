@@ -27,6 +27,7 @@
  * unrecorded step.
  */
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { restoreWip } from "./wip.ts";
 import { availableParallelism } from "node:os";
 import { performance } from "node:perf_hooks";
 import { join } from "node:path";
@@ -64,6 +65,8 @@ export interface ProvisionRequest {
   cellId: string;
   /** Per-repo opt-in warm artifact dirs, relative to the working tree (A5). */
   warmArtifacts?: string[];
+  /** H3: a confirmed WIP commit to lay back into a freshly provisioned checkout (revive of an evicted Cell). */
+  restoreWip?: { sha: string; cellId: string };
 }
 
 export interface ProvisionedCell {
@@ -74,6 +77,17 @@ export interface ProvisionedCell {
   originRepo: string;
   /** True when this call found a completed provisioning and did nothing. */
   replayed: boolean;
+  wipRestore?: { restored: boolean; reason: string | null };
+}
+
+export function restoreWipAfterProvision(cell: ProvisionedCell, req: ProvisionRequest): ProvisionedCell {
+  if (!req.restoreWip || cell.replayed) return cell;
+  try {
+    const res = restoreWip(cell.paths.spaceDir, req.originRepo, req.restoreWip.cellId, req.restoreWip.sha);
+    return { ...cell, wipRestore: { restored: res.restored, reason: res.reason } };
+  } catch (err) {
+    return { ...cell, wipRestore: { restored: false, reason: err instanceof Error ? err.message : String(err) } };
+  }
 }
 
 export interface ProvisionOptions {
@@ -302,7 +316,7 @@ export function provisionCell(
         `refusing to provision bee=${req.beeId} sha=${req.sha} into it`,
     );
   }
-  return runProvisionOperation(paths, ledger, opId, req, {
+  return restoreWipAfterProvision(runProvisionOperation(paths, ledger, opId, req, {
     platform,
     disableCow: opts.disableCow ?? false,
     useGitImages: opts.useGitImages ?? true,
@@ -311,7 +325,7 @@ export function provisionCell(
       ? Math.max(0, opts.gitImageBusyWaitMs as number)
       : DEFAULT_GIT_IMAGE_BUSY_WAIT_MS,
     now,
-  });
+  }), req);
 }
 
 function runProvisionOperation(

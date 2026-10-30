@@ -60,6 +60,8 @@ import {
   type RetentionWorkerRequest,
   type WipPushWorkerRequest,
   type WipPushWorkerResult,
+  type WipRefSweepWorkerRequest,
+  type WipRefSweepWorkerResult,
   type RetentionWorkerResult,
   type UpstreamRef,
   type TrimSkip,
@@ -232,6 +234,7 @@ function verdictOf(reason: CellGcReason): CellGcVerdict {
     case "too_young":
     case "pass_limit":
     case "wip_unconfirmed":
+    case "wip_incomplete":
     case "dirty_uncommitted":
     case "dirty_unlanded":
     case "dirty_stash":
@@ -282,9 +285,15 @@ export class CellRetentionService {
   private readonly wipInFlight = new Map<string, Promise<WipPushWorkerResult>>();
   private readonly wipBlocked = new Map<string, number>();
   private readonly wipConfirmedForEviction = new Map<string, string>();
+  private readonly wipLastPushAt = new Map<string, number>();
+  private readonly wipTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly wipRerun = new Set<string>();
+  private lastWipRefSweepAt: number | null = null;
 
   async stop(): Promise<void> {
     this.stopping = true;
+    for (const timer of this.wipTimers.values()) clearTimeout(timer);
+    this.wipTimers.clear();
     await Promise.allSettled([...this.workers].map(worker => {
       worker.unref();
       return worker.terminate();
@@ -325,6 +334,7 @@ export class CellRetentionService {
     if (this.stopping) return;
     const now = this.deps.now();
     this.checkPressure(now);
+    this.sweepWipRefsIfDue(now);
     const policy = this.deps.policy;
     if (!policy.enabled || this.passInFlight) return;
     const due = this.lastPassAt == null
@@ -505,7 +515,7 @@ export class CellRetentionService {
         wipBlockedCells: this.wipBlocked.size,
       },
       resourceBlocked: { blocked, since: belowFloor ? this.blockedSince : wipSince, reason: belowFloor ? "disk_floor" : wipSince != null ? "wip_unconfirmed" : null },
-      admission: { newCells: blocked && enforce ? "refuse" : "accept", enforce },
+      admission: { newCells: belowFloor && enforce ? "refuse" : "accept", enforce },
       transcriptObjects: this.deps.transcriptObjects?.() ?? null,
     };
   }
@@ -943,7 +953,7 @@ export class CellRetentionService {
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
   }
 
-  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
+  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
     this.assertRunning();
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
@@ -1077,7 +1087,7 @@ export class CellRetentionService {
     if (c.bee?.activeMoveId) return "move_in_flight";
     if (c.bee?.activeHandoffId) return "handoff_in_flight";
     const report = inspection.report;
-    const wipCovers = policy.evictionRequiresWip && c.cell.state === "active";
+    const wipCovers = policy.evictionRequiresWip && c.cell.state === "active" && inspection.dirtySubmodules.length === 0;
     if (report?.uncommitted && !wipCovers) return "dirty_uncommitted";
     if (report?.unpushed && !wipCovers) return "dirty_unlanded";
     if (report?.stashed) return "dirty_stash";
@@ -1132,42 +1142,99 @@ export class CellRetentionService {
     if (!this.deps.policy.evictionRequiresWip || item.verdict !== "evict" || item.cellId == null) return true;
     const result = await this.pushWip(item.cellId, "eviction");
     this.assertRunning();
-    if (result.confirmed && result.snapshot) {
+    if (result.confirmed && result.snapshot?.complete) {
       this.wipConfirmedForEviction.set(item.cellId, result.snapshot.sha);
       return true;
     }
+    const incomplete = result.confirmed && result.snapshot != null && !result.snapshot.complete;
     item.verdict = "hold";
-    item.reason = "wip_unconfirmed";
+    item.reason = incomplete ? "wip_incomplete" : "wip_unconfirmed";
     this.wipBlocked.set(item.cellId, this.wipBlocked.get(item.cellId) ?? this.deps.now());
-    this.deps.log(`cell.retention.held cell=${item.cellId} bee=${item.beeId} reason=wip_unconfirmed err=${JSON.stringify(result.error ?? "ref_mismatch")}`);
+    const detail = incomplete ? JSON.stringify(result.snapshot!.skipped.map((s) => s.path)) : JSON.stringify(result.error ?? "ref_mismatch");
+    this.deps.log(`cell.retention.held cell=${item.cellId} bee=${item.beeId} reason=${item.reason} ${incomplete ? "skipped" : "err"}=${detail}`);
     return false;
+  }
+
+  requestWipPush(cellId: string, trigger: WipPushTrigger): void {
+    if (this.stopping) return;
+    if (this.wipInFlight.has(cellId)) {
+      this.wipRerun.add(cellId);
+      return;
+    }
+    if (this.wipTimers.has(cellId)) return;
+    const interval = this.deps.policy.wipMinIntervalMs;
+    const since = this.deps.now() - (this.wipLastPushAt.get(cellId) ?? Number.NEGATIVE_INFINITY);
+    if (since >= interval) {
+      void this.pushWip(cellId, trigger);
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.wipTimers.delete(cellId);
+      if (!this.stopping) void this.pushWip(cellId, trigger);
+    }, interval - since);
+    timer.unref();
+    this.wipTimers.set(cellId, timer);
   }
 
   pushWip(cellId: string, trigger: WipPushTrigger): Promise<WipPushWorkerResult> {
     const inFlight = this.wipInFlight.get(cellId);
     if (inFlight) return inFlight;
-    const run = this.pushWipNow(cellId, trigger).finally(() => this.wipInFlight.delete(cellId));
+    const run = this.pushWipNow(cellId, trigger).finally(() => {
+      this.wipInFlight.delete(cellId);
+      if (this.wipRerun.delete(cellId)) this.requestWipPush(cellId, trigger);
+    });
     this.wipInFlight.set(cellId, run);
     return run;
+  }
+
+  private sweepWipRefsIfDue(now: number): void {
+    const policy = this.deps.policy;
+    if (!policy.wipPushOnTurnEnd && !policy.evictionRequiresWip) return;
+    if (this.lastWipRefSweepAt != null && now - this.lastWipRefSweepAt < DAY_WINDOW_MS) return;
+    this.lastWipRefSweepAt = now;
+    void this.sweepWipRefs().catch((err) => {
+      if (!this.stopping) this.deps.log(`cell.wip.sweep_failed ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
+  async sweepWipRefs(): Promise<Array<{ originRepo: string; refs: string[] }>> {
+    const origins = new Map<string, string[]>();
+    for (const cell of this.deps.store().listCells()) {
+      if (cell.state === "removed" || cell.state === "removing") continue;
+      const live = origins.get(cell.originRepo) ?? [];
+      live.push(cell.id);
+      origins.set(cell.originRepo, live);
+    }
+    if (origins.size === 0) return [];
+    const result = await this.runWorker<WipRefSweepWorkerResult>({
+      kind: "sweepWipRefs",
+      origins: [...origins].filter(([originRepo]) => existsSync(originRepo)).map(([originRepo, liveCellIds]) => ({ originRepo, liveCellIds })),
+    } satisfies WipRefSweepWorkerRequest);
+    if (result.error != null) throw new Error(result.error);
+    for (const origin of result.dropped) this.deps.log(`cell.wip.refs_swept origin=${origin.originRepo} dropped=${origin.refs.length}`);
+    return result.dropped;
   }
 
   private async pushWipNow(cellId: string, trigger: WipPushTrigger): Promise<WipPushWorkerResult> {
     const store = this.deps.store();
     const cell = store.getCell(cellId);
-    if (!cell || cell.state !== "active") return { snapshot: null, confirmed: false, error: "cell_not_active" };
+    if (!cell || cell.state !== "active") return { snapshot: null, confirmed: false, unchanged: false, error: "cell_not_active" };
     const spaceDir = resolve(cell.spaceDir);
-    if (!existsSync(spaceDir)) return { snapshot: null, confirmed: false, error: "space_absent" };
+    if (!existsSync(spaceDir)) return { snapshot: null, confirmed: false, unchanged: false, error: "space_absent" };
     const started = Date.now();
+    this.wipLastPushAt.set(cellId, this.deps.now());
     let result: WipPushWorkerResult;
     try {
       result = await this.runWorker<WipPushWorkerResult>({
         kind: "pushWip", spaceDir, boxDir: this.deps.wipBoxDir?.(cell) ?? join(dirname(spaceDir), "box"), originRepo: cell.originRepo, cellId,
+        maxFileBytes: this.deps.policy.wipMaxFileBytes,
+        previous: cell.wipSha && cell.wipTree && cell.wipConfirmedAt != null ? { sha: cell.wipSha, tree: cell.wipTree } : null,
       } satisfies WipPushWorkerRequest);
     } catch (err) {
-      result = { snapshot: null, confirmed: false, error: err instanceof Error ? err.message : String(err) };
+      result = { snapshot: null, confirmed: false, unchanged: false, error: err instanceof Error ? err.message : String(err) };
     }
     const pushedAt = this.deps.now();
-    if (result.snapshot) {
+    if (result.snapshot && !result.unchanged) {
       try {
         store.recordCellWip(cellId, { sha: result.snapshot.sha, tree: result.snapshot.tree, pushedAt, confirmedAt: result.confirmed ? pushedAt : null });
       } catch (err) {
@@ -1175,9 +1242,9 @@ export class CellRetentionService {
       }
     }
     if (result.confirmed) {
-      this.wipBlocked.delete(cellId);
+      if (result.snapshot?.complete) this.wipBlocked.delete(cellId);
       const skipped = result.snapshot?.skipped ?? [];
-      this.deps.log(`cell.wip.pushed cell=${cellId} bee=${cell.sourceBeeId} trigger=${trigger} sha=${result.snapshot?.sha ?? "-"} dirty=${result.snapshot?.dirty ?? "?"} skipped=${skipped.length}${skipped.length > 0 ? ` first_skip=${JSON.stringify(skipped[0])}` : ""} ms=${Date.now() - started}`);
+      this.deps.log(`cell.wip.${result.unchanged ? "unchanged" : "pushed"} cell=${cellId} bee=${cell.sourceBeeId} trigger=${trigger} sha=${result.snapshot?.sha ?? "-"} dirty=${result.snapshot?.dirty ?? "?"} skipped=${skipped.length}${skipped.length > 0 ? ` first_skip=${JSON.stringify(skipped[0])}` : ""} ms=${Date.now() - started}`);
     } else {
       this.deps.log(`cell.wip.push_failed cell=${cellId} bee=${cell.sourceBeeId} trigger=${trigger} err=${JSON.stringify(result.error ?? "ref_mismatch")} ms=${Date.now() - started}`);
     }

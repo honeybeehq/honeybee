@@ -233,6 +233,8 @@ export interface CellRetentionConfig {
   budgetEnforce?: boolean;
   wipPushOnTurnEnd?: boolean;
   evictionRequiresWip?: boolean;
+  wipMaxFileBytes?: number;
+  wipMinIntervalSeconds?: number;
 }
 
 export interface ResolvedCellRetention {
@@ -256,6 +258,8 @@ export interface ResolvedCellRetention {
   budgetEnforce: boolean;
   wipPushOnTurnEnd: boolean;
   evictionRequiresWip: boolean;
+  wipMaxFileBytes: number;
+  wipMinIntervalMs: number;
   /** Invalid keys that fell back to their default, for the boot log. */
   warnings: string[];
 }
@@ -597,6 +601,8 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   budgetEnforce: false,
   wipPushOnTurnEnd: false,
   evictionRequiresWip: false,
+  wipMaxFileBytes: 64 * 1024 * 1024,
+  wipMinIntervalMs: 60_000,
   warnings: [],
 };
 
@@ -677,6 +683,8 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   out.budgetEnforce = read("budgetEnforce", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.budgetEnforce);
   out.wipPushOnTurnEnd = read("wipPushOnTurnEnd", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.wipPushOnTurnEnd);
   out.evictionRequiresWip = read("evictionRequiresWip", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.evictionRequiresWip);
+  out.wipMaxFileBytes = read("wipMaxFileBytes", "an integer of at least 1024", (v) => typeof v === "number" && Number.isInteger(v) && v >= 1024, (v) => v as number, out.wipMaxFileBytes);
+  out.wipMinIntervalMs = read("wipMinIntervalSeconds", "a non-negative number", isNonNegative, (v) => (v as number) * 1000, out.wipMinIntervalMs);
   return out;
 }
 

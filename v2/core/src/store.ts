@@ -8999,6 +8999,7 @@ export class CoreStore {
   recordCellWip(cellId: string, wip: { sha: string; tree: string; pushedAt: number; confirmedAt: number | null }): CellRow {
     return this.tx(() => {
       const cell = this.mustGetCell(cellId);
+      if (cell.wipSha === wip.sha && cell.wipTree === wip.tree && (cell.wipConfirmedAt != null) === (wip.confirmedAt != null)) return cell;
       this.stmt("UPDATE cells SET wip_sha = ?, wip_tree = ?, wip_pushed_at = ?, wip_confirmed_at = ? WHERE id = ?").run(wip.sha, wip.tree, wip.pushedAt, wip.confirmedAt, cellId);
       const next = this.mustGetCell(cellId);
       this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });

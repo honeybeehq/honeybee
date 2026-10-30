@@ -8,7 +8,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import type { LandingReceipt } from "./landed.ts";
 import { inspectCellWrapper, planParkPaths, verifyParkPaths, type CellWrapperInspection, type ParkMode, type ParkPlan, type TrimSkip } from "./retention.ts";
 import { refreshUpstreamMirror, type UpstreamRef } from "./upstream.ts";
-import { confirmWip, pushWip, snapshotWip, type WipSnapshot } from "./wip.ts";
+import { confirmWip, pushWip, snapshotWip, sweepWipRefs, type WipSnapshot } from "./wip.ts";
 
 export interface RetentionWorkerRequest {
   kind?: "inspect";
@@ -75,23 +75,47 @@ export interface WipPushWorkerRequest {
   boxDir: string;
   originRepo: string;
   cellId: string;
+  maxFileBytes: number;
+  previous: { sha: string; tree: string } | null;
 }
 
 export interface WipPushWorkerResult {
   snapshot: WipSnapshot | null;
   confirmed: boolean;
+  unchanged: boolean;
   error: string | null;
 }
 
-const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest;
+export interface WipRefSweepWorkerRequest {
+  kind: "sweepWipRefs";
+  origins: Array<{ originRepo: string; liveCellIds: string[] }>;
+}
+
+export interface WipRefSweepWorkerResult {
+  dropped: Array<{ originRepo: string; refs: string[] }>;
+  error: string | null;
+}
+
+const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 if (request.kind === "pushWip") {
   try {
-    const snapshot = snapshotWip(request.spaceDir, request.boxDir, request.cellId);
-    pushWip(request.originRepo, request.spaceDir, request.cellId, snapshot.sha);
-    parentPort?.postMessage({ snapshot, confirmed: confirmWip(request.originRepo, request.cellId, snapshot.sha), error: null } satisfies WipPushWorkerResult);
+    const snapshot = snapshotWip(request.spaceDir, request.boxDir, request.cellId, Date.now, request.maxFileBytes);
+    if (request.previous && snapshot.tree === request.previous.tree && confirmWip(request.originRepo, request.cellId, request.previous.sha)) {
+      parentPort?.postMessage({ snapshot: { ...snapshot, sha: request.previous.sha }, confirmed: true, unchanged: true, error: null } satisfies WipPushWorkerResult);
+    } else {
+      pushWip(request.originRepo, request.spaceDir, request.cellId, snapshot.sha);
+      parentPort?.postMessage({ snapshot, confirmed: confirmWip(request.originRepo, request.cellId, snapshot.sha), unchanged: false, error: null } satisfies WipPushWorkerResult);
+    }
   } catch (err) {
-    parentPort?.postMessage({ snapshot: null, confirmed: false, error: errorText(err) } satisfies WipPushWorkerResult);
+    parentPort?.postMessage({ snapshot: null, confirmed: false, unchanged: false, error: errorText(err) } satisfies WipPushWorkerResult);
+  }
+} else if (request.kind === "sweepWipRefs") {
+  try {
+    const dropped = request.origins.map((origin) => ({ originRepo: origin.originRepo, refs: sweepWipRefs(origin.originRepo, new Set(origin.liveCellIds)) })).filter((o) => o.refs.length > 0);
+    parentPort?.postMessage({ dropped, error: null } satisfies WipRefSweepWorkerResult);
+  } catch (err) {
+    parentPort?.postMessage({ dropped: [], error: errorText(err) } satisfies WipRefSweepWorkerResult);
   }
 } else if (request.kind === "planPark") {
   try {

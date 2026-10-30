@@ -428,6 +428,8 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
     assert.equal(defaults.purgeIgnoredOnPark, false, "parking keeps everything but the trim patterns unless configured");
     assert.equal(defaults.wipPushOnTurnEnd, false, "H3: WIP push is off until the flag turns it on");
     assert.equal(defaults.evictionRequiresWip, false, "H3: eviction does not gate on a WIP ref until the flag turns it on");
+    assert.equal(defaults.wipMaxFileBytes, 64 * 1024 * 1024);
+    assert.equal(defaults.wipMinIntervalMs, 60_000);
     assert.equal(defaults.pressureIdleAfterMs, 3 * day);
     assert.equal(defaults.fetchUpstream, false, "workstations fetch no upstream mirror unless configured");
     assert.deepEqual(defaults.warnings, []);
@@ -475,6 +477,8 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
       [{ retention: { purgeIgnoredOnPark: "yes" } }, (r) => assert.equal(r.purgeIgnoredOnPark, false)],
       [{ retention: { wipPushOnTurnEnd: 1 } }, (r) => assert.equal(r.wipPushOnTurnEnd, false)],
       [{ retention: { evictionRequiresWip: "true" } }, (r) => assert.equal(r.evictionRequiresWip, false)],
+      [{ retention: { wipMaxFileBytes: 10 } }, (r) => assert.equal(r.wipMaxFileBytes, 64 * 1024 * 1024)],
+      [{ retention: { wipMinIntervalSeconds: -1 } }, (r) => assert.equal(r.wipMinIntervalMs, 60_000)],
       [{ retention: { budgetEnforce: 1 } }, (r) => assert.equal(r.budgetEnforce, false)],
       [{ retention: { pressureIdleAfterDays: -2 } }, (r) => assert.equal(r.pressureIdleAfterMs, 3 * day)],
       [{ retention: { fetchUpstream: "no" } }, (r) => assert.equal(r.fetchUpstream, false)],

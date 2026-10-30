@@ -179,7 +179,6 @@ import {
   upstreamRootFor,
   hasCommit,
   restoreEnvFiles,
-  restoreWip,
   dropWipRef,
   restoreKeptPaths,
   localRepoIdentity,
@@ -1714,6 +1713,9 @@ export class HiveDaemon {
     const sha = cell.state === "evicted" && cell.evictedHead && hasCommit(cell.originRepo, cell.evictedHead)
       ? cell.evictedHead
       : cell.sha;
+    const restoreWip = cell.state === "evicted" && this.cfg.cellRetention.wipPushOnTurnEnd && cell.wipSha && cell.wipConfirmedAt != null && cell.wipSha !== sha
+      ? { sha: cell.wipSha, cellId: cell.id }
+      : null;
     return {
       provision: {
         beeId,
@@ -1722,6 +1724,7 @@ export class HiveDaemon {
         wrapper: cell.wrapper,
         repoName: parsed.repoName,
         cellId: parsed.cellId,
+        ...(restoreWip ? { restoreWip } : {}),
       },
       sandbox: cell.sandbox ?? this.cfg.cellSandbox,
     };
@@ -3888,18 +3891,7 @@ export class HiveDaemon {
     if (!this.cfg.cellRetention.wipPushOnTurnEnd || !this.retention) return;
     const cellId = this.store?.getBee(beeId)?.cellId;
     if (!cellId) return;
-    void this.retention.pushWip(cellId, reason).catch((err) => this.log(`cell.wip.push_failed cell=${cellId} bee=${beeId} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`));
-  }
-
-  private restoreCellWip(beeId: string, cell: CellRow): void {
-    if (!this.cfg.cellRetention.wipPushOnTurnEnd || !cell.wipSha || cell.wipConfirmedAt == null) return;
-    try {
-      const res = restoreWip(cell.spaceDir, cell.originRepo, cell.id, cell.wipSha);
-      if (res.restored) this.log(`cell.wip.restored bee=${beeId} cell=${cell.id} sha=${cell.wipSha}`);
-      else if (res.reason !== "nothing_to_restore") this.log(`cell.wip.restore_skipped bee=${beeId} cell=${cell.id} sha=${cell.wipSha} reason=${res.reason}`);
-    } catch (err) {
-      this.log(`cell.wip.restore_failed bee=${beeId} cell=${cell.id} ${err instanceof Error ? err.message : String(err)}`);
-    }
+    this.retention.requestWipPush(cellId, reason);
   }
 
   private dropCellWip(cell: CellRow): void {
@@ -3921,7 +3913,6 @@ export class HiveDaemon {
       const res = store.reactivateCell(bee.cellId);
       if (res.applied) {
         this.log(`cell.reprovisioned bee=${beeId} cell=${bee.cellId} sha=${res.cell.sha}`);
-        this.restoreCellWip(beeId, res.cell);
       } else if (res.cell.parkedAt != null) {
         store.markCellUnparked(bee.cellId);
       }

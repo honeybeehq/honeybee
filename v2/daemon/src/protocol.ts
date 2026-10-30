@@ -2085,6 +2085,7 @@ export const CELL_GC_REASONS = [
   "pass_limit",
   "disk_pressure",
   "wip_unconfirmed",
+  "wip_incomplete",
 ] as const;
 export type CellGcReason = (typeof CELL_GC_REASONS)[number];
 

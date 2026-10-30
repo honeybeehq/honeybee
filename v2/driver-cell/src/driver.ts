@@ -44,7 +44,7 @@ import {
 import { captureWork, type CaptureMode, type CaptureReport } from "./capture.ts";
 import { cellPaths, looksLikeCellWrapper, type CellPaths } from "./layout.ts";
 import { isProvisioned, readLedger, type CellLedger } from "./ledger.ts";
-import { provisionCell, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
+import { provisionCell, type ProvisionedCell, type ProvisionRequest, restoreWipAfterProvision } from "./provision.ts";
 import { describeSandboxTmpfs, SandboxTmpWatch, sandboxTmpfsCap, type SandboxTmpfsCap } from "./sandboxTmp.ts";
 import { claimFromPool, repoKeyFor } from "./warmPool.ts";
 import type { PoolWorkerResult, RefreshRequest } from "./poolWorker.ts";
@@ -146,6 +146,7 @@ interface PendingProvision {
 interface ProvisionWorkerResult {
   ok: boolean;
   error?: string;
+  wipRestore?: { restored: boolean; reason: string | null };
 }
 
 /** `removeCell` refusal: the bee still has a live runtime — stop it first. */
@@ -233,6 +234,7 @@ export class CellDriver implements RuntimeDriver {
     this.pending.set(beeId, pending);
     worker.once("message", (message: ProvisionWorkerResult) => {
       this.refreshOriginOf(beeId);
+      if (message.wipRestore) this.logWipRestore(beeId, message.wipRestore);
       if (message.ok) {
         // provisionWorker reports Cell-ready before doing image maintenance.
         // Keep it cancellable on driver disposal but do not keep the daemon
@@ -456,8 +458,14 @@ export class CellDriver implements RuntimeDriver {
       useGitImages: this.cfg.nodeKind === "workstation",
       gitImagesRoot: this.cfg.gitImagesRoot,
     });
+    if (cell.wipRestore) this.logWipRestore(beeId, cell.wipRestore);
     this.cells.set(beeId, cell);
     return cell;
+  }
+
+  private logWipRestore(beeId: string, outcome: { restored: boolean; reason: string | null }): void {
+    if (outcome.restored) this.cfg.log?.(`cell.wip.restored bee=${beeId}`);
+    else if (outcome.reason !== "nothing_to_restore") this.cfg.log?.(`cell.wip.restore_skipped bee=${beeId} reason=${outcome.reason ?? "-"}`);
   }
 
   /**
@@ -638,7 +646,11 @@ export class CellDriver implements RuntimeDriver {
       return null;
     }
     try {
-      return claimFromPool(this.cfg.cellsRoot, spec.provision);
+      const claimed = claimFromPool(this.cfg.cellsRoot, spec.provision);
+      if (!claimed) return null;
+      const cell = restoreWipAfterProvision(claimed, spec.provision);
+      if (cell.wipRestore) this.logWipRestore(beeId, cell.wipRestore);
+      return cell;
     } catch {
       // A pool claim is best-effort: any failure falls back to cold provision.
       return null;

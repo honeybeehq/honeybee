@@ -2,7 +2,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import { gitImagesRootForCells, refreshGitImage } from "./gitImage.ts";
 import { cellPaths } from "./layout.ts";
 import { readLedger } from "./ledger.ts";
-import { provisionCell, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
+import { provisionCell, restoreWipAfterProvision, type ProvisionedCell, type ProvisionRequest } from "./provision.ts";
 import { claimFromPool } from "./warmPool.ts";
 
 interface ProvisionWorkerData {
@@ -18,6 +18,7 @@ interface ProvisionWorkerData {
 interface ProvisionWorkerResult {
   ok: boolean;
   error?: string;
+  wipRestore?: { restored: boolean; reason: string | null };
 }
 
 interface MaintenanceStart {
@@ -65,13 +66,13 @@ try {
   // pre-call state so only a genuinely first provisioning can skip its retry.
   const hadProvisionAttempt = ledger != null && Object.keys(ledger.operations).length > 0;
   const claimed = data.claimFromPool === true && !hadProvisionAttempt ? tryClaim(data.cellsRoot, request) : null;
-  const cell = claimed ?? provisionCell(data.cellsRoot, request, data.opId, {
+  const cell = claimed ? restoreWipAfterProvision(claimed, request) : provisionCell(data.cellsRoot, request, data.opId, {
     disableCow: data.disableCow,
     useGitImages: data.useGitImages,
     gitImagesRoot: data.gitImagesRoot,
   });
   provisionedFreshImage = !hadProvisionAttempt && !cell.replayed && cell.copyMode === "image-cow";
-  parentPort?.postMessage({ ok: true } satisfies ProvisionWorkerResult);
+  parentPort?.postMessage({ ok: true, ...(cell.wipRestore ? { wipRestore: cell.wipRestore } : {}) } satisfies ProvisionWorkerResult);
 } catch (error) {
   parentPort?.postMessage({
     ok: false,
