@@ -1,0 +1,14 @@
+{
+  "home": "synthetic: MEMORY.md (12 KB), memory/ with 2000 one-fact files, notes/ with 50 x 64 KiB, one 70 MiB huge.bin",
+  "files": 2051,
+  "skipped": ["huge.bin"],
+  "tarBytes": 7475200,
+  "compressedBytes": 34801,
+  "bundleMs": 2403,
+  "rebundleMs": 2097,
+  "sameRefOnUnchangedHome": true,
+  "restoreMs": 1030,
+  "restoredMemoryFiles": 2000,
+  "restoredHasOversizeFile": false,
+  "how": "tar -cf - streamed through zlib zstd level 3 into a temp file, sha256 of the compressed bytes as the ref, rename into blobs/champion-homes/<ref>; restore is zstd decompress into tar -xf -; both off the event loop (child process + streams)"
+}

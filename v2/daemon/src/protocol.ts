@@ -66,10 +66,12 @@ import type {
   MirrorTaskRow,
   MirrorTaskSupplyRow,
   MirrorTemplateRow,
+  MirrorChampionRow,
   NodeCapacity,
   TaskTransitionAction,
   TranscriptSegmentCursorRow,
   TranscriptSegmentObjectRow,
+  ChampionHomeObjectRow,
   RuntimeRow,
   TemplatePackage,
   TranscriptSegmentRow,
@@ -204,6 +206,7 @@ export const DAEMON_CAPABILITIES = [
   "cell.park.v1",
   "node.capacity.v1",
   "transcript.segments.v1",
+  "champions.v1",
   /**
    * v23 (2026-09-13): durable session handoff — `bee.handoff` /
    * `bee.handoff.get`, the `handoff` mirror-row key, the `beeHandoffs` +
@@ -533,6 +536,12 @@ export const RPC_VERBS = [
   // CLI-alignment (additive read): tail of the audit log for `hive v2 events`
   "audit.tail",
   "transcript.segments",
+  "champion.put",
+  "champion.get",
+  "champion.list",
+  "champion.start",
+  "champion.archive",
+  "champion.delete",
   // watch
   "watch",
   "snapshot",
@@ -1732,6 +1741,39 @@ export interface TranscriptSegmentsParams {
   limit?: number;
 }
 
+export interface ChampionListResult {
+  champions: MirrorChampionRow[];
+}
+
+export interface ChampionGetResult {
+  champion: MirrorChampionRow;
+  bee: ViewResult | null;
+  homeObjects: ChampionHomeObjectRow[];
+}
+
+export interface ChampionPutResult extends DedupMarkers {
+  champion: MirrorChampionRow;
+  outcome: "created" | "updated" | "unchanged";
+}
+
+export interface ChampionStartResult extends DedupMarkers {
+  champion: MirrorChampionRow;
+  beeId: string;
+  commandId: number | null;
+  messageId: number | null;
+  started: "spawned" | "revived" | "running";
+  homeRestored: boolean;
+}
+
+export interface ChampionArchiveResult extends DedupMarkers {
+  champion: MirrorChampionRow;
+  commandId: number | null;
+}
+
+export interface ChampionDeleteResult extends DedupMarkers {
+  champion: MirrorChampionRow;
+}
+
 export interface TranscriptSegmentsResult {
   beeId: string;
   segments: TranscriptSegmentObjectRow[];
@@ -1834,6 +1876,8 @@ export interface SnapshotResult {
   capacity?: NodeCapacity | null;
   /** Mirror-shaped registry rows (WP6a): store rows verbatim, snapshot-consistent with `seq`. */
   templates: MirrorTemplateRow[];
+  /** v54 (additive): Champion identities, store rows verbatim. */
+  champions?: MirrorChampionRow[];
   /** v6 (additive): questions + seals, store rows verbatim, snapshot-consistent with `seq`. */
   questions: MirrorQuestionRow[];
   seals: MirrorSealRow[];

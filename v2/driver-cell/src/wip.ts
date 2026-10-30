@@ -5,9 +5,17 @@ import { gitEnv, revParse, tryGit } from "./git.ts";
 const WIP_NS = "refs/hive/wip";
 const SHA = /^[0-9a-f]{40}$|^[0-9a-f]{64}$/;
 
-export function wipRefFor(cellId: string): string {
-  const safe = cellId.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
-  return `${WIP_NS}/${safe.length > 0 ? safe : "cell"}`;
+function refSegment(value: string, fallback: string): string {
+  const safe = value.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  return safe.length > 0 ? safe : fallback;
+}
+
+export function wipNodeScope(installationId: string | null | undefined, host: string): string {
+  return refSegment(installationId && installationId.length > 0 ? installationId : host, "node");
+}
+
+export function wipRefFor(node: string, cellId: string): string {
+  return `${WIP_NS}/${refSegment(node, "node")}/${refSegment(cellId, "cell")}`;
 }
 
 export interface WipSnapshot {
@@ -114,42 +122,57 @@ export function snapshotWip(spaceDir: string, boxDir: string, cellId: string, no
   }
 }
 
-export function pushWip(originRepo: string, spaceDir: string, cellId: string, sha: string, timeoutMs = 120_000): void {
+export function pushWip(originRepo: string, spaceDir: string, node: string, cellId: string, sha: string, timeoutMs = 120_000): void {
   if (!SHA.test(sha)) throw new WipError("push", `not a commit sha: ${sha}`);
   if (!existsSync(join(originRepo, ".git")) && !existsSync(join(originRepo, "HEAD"))) throw new WipError("push", `origin ${originRepo} is not a local repository`);
-  const res = tryGit(originRepo, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", spaceDir, `+${sha}:${wipRefFor(cellId)}`], { timeoutMs });
+  const res = tryGit(originRepo, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", spaceDir, `+${sha}:${wipRefFor(node, cellId)}`], { timeoutMs });
   if (res.status !== 0) throw new WipError("push", `fetch into origin exited ${res.status}: ${res.stderr.trim()}`);
 }
 
-export function confirmWip(originRepo: string, cellId: string, sha: string): boolean {
-  if (revParse(originRepo, wipRefFor(cellId)) !== sha) return false;
+export function confirmWip(originRepo: string, node: string, cellId: string, sha: string): boolean {
+  if (revParse(originRepo, wipRefFor(node, cellId)) !== sha) return false;
   if (tryGit(originRepo, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) return false;
   const parent = revParse(originRepo, `${sha}^`);
   const connected = tryGit(originRepo, parent ? ["rev-list", "--objects", "--missing=error", "--quiet", sha, `^${parent}`] : ["rev-list", "--objects", "--missing=error", "--quiet", "--max-count=1", sha]);
   return connected.status === 0;
 }
 
-export function sweepWipRefs(originRepo: string, liveCellIds: ReadonlySet<string>): string[] {
-  const listed = tryGit(originRepo, ["for-each-ref", "--format=%(refname)", `${WIP_NS}/`]);
-  if (listed.status !== 0) return [];
-  const live = new Set([...liveCellIds].map((id) => wipRefFor(id)));
-  const dropped: string[] = [];
-  for (const ref of listed.stdout.split("\n").map((l) => l.trim()).filter(Boolean)) {
-    if (live.has(ref)) continue;
-    if (tryGit(originRepo, ["update-ref", "-d", ref]).status === 0) dropped.push(ref);
+export interface WipRefSweep {
+  dropped: string[];
+  migrated: string[];
+}
+
+export function sweepWipRefs(originRepo: string, node: string, liveCellIds: ReadonlySet<string>): WipRefSweep {
+  const out: WipRefSweep = { dropped: [], migrated: [] };
+  const listed = tryGit(originRepo, ["for-each-ref", "--format=%(refname) %(objectname)", `${WIP_NS}/`]);
+  if (listed.status !== 0) return out;
+  const scope = refSegment(node, "node");
+  const live = new Map([...liveCellIds].map((id) => [refSegment(id, "cell"), id] as const));
+  for (const line of listed.stdout.split("\n").map((l) => l.trim()).filter(Boolean)) {
+    const [ref, sha] = line.split(" ") as [string, string];
+    const parts = ref.slice(WIP_NS.length + 1).split("/");
+    if (parts.length === 1) {
+      const cellId = live.get(parts[0]!);
+      if (cellId === undefined) continue;
+      const scoped = wipRefFor(node, cellId);
+      if (tryGit(originRepo, ["update-ref", scoped, sha]).status === 0 && tryGit(originRepo, ["update-ref", "-d", ref, sha]).status === 0) out.migrated.push(ref);
+      continue;
+    }
+    if (parts.length !== 2 || parts[0] !== scope || live.has(parts[1]!)) continue;
+    if (tryGit(originRepo, ["update-ref", "-d", ref]).status === 0) out.dropped.push(ref);
   }
-  return dropped;
+  return out;
 }
 
 export type WipRestoreSkip = "invalid_sha" | "nothing_to_restore" | "no_head" | "wip_unreachable" | "head_mismatch" | "space_dirty";
 
-export function restoreWip(spaceDir: string, originRepo: string, cellId: string, sha: string): { restored: boolean; reason: WipRestoreSkip | null } {
+export function restoreWip(spaceDir: string, originRepo: string, node: string, cellId: string, sha: string): { restored: boolean; reason: WipRestoreSkip | null } {
   if (!SHA.test(sha)) return { restored: false, reason: "invalid_sha" };
   const head = revParse(spaceDir, "HEAD");
   if (head == null) return { restored: false, reason: "no_head" };
   if (sha === head) return { restored: false, reason: "nothing_to_restore" };
   if (tryGit(spaceDir, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) {
-    const fetched = tryGit(spaceDir, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", originRepo, wipRefFor(cellId)], { timeoutMs: 120_000 });
+    const fetched = tryGit(spaceDir, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", originRepo, wipRefFor(node, cellId)], { timeoutMs: 120_000 });
     if (fetched.status !== 0 || tryGit(spaceDir, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) return { restored: false, reason: "wip_unreachable" };
   }
   if (revParse(spaceDir, `${sha}^`) !== head) return { restored: false, reason: "head_mismatch" };
@@ -159,7 +182,7 @@ export function restoreWip(spaceDir: string, originRepo: string, cellId: string,
   return { restored: true, reason: null };
 }
 
-export function dropWipRef(originRepo: string, cellId: string): boolean {
-  if (revParse(originRepo, wipRefFor(cellId)) == null) return false;
-  return tryGit(originRepo, ["update-ref", "-d", wipRefFor(cellId)]).status === 0;
+export function dropWipRef(originRepo: string, node: string, cellId: string): boolean {
+  if (revParse(originRepo, wipRefFor(node, cellId)) == null) return false;
+  return tryGit(originRepo, ["update-ref", "-d", wipRefFor(node, cellId)]).status === 0;
 }

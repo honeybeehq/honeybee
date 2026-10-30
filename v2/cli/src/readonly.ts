@@ -19,6 +19,7 @@ import {
   type AuditRow,
   type TemplateRow,
   type TranscriptSegmentObjectRow,
+  type ChampionRow,
   type BeeHandoffFailure,
   type BeeHandoffPhase,
   type BeeHandoffStopAt,
@@ -402,6 +403,16 @@ export class ReadOnlyStore {
 
   listTemplates(): TemplateRow[] {
     return (this.db.prepare("SELECT * FROM templates ORDER BY id").all() as Row[]).map(mapTemplateRow);
+  }
+
+  listChampions(): ChampionRow[] {
+    if (!this.hasTable("champions")) return [];
+    return (this.db.prepare("SELECT * FROM champions ORDER BY id").all() as Row[]).map((r) => ({
+      id: r.id as string, name: r.name as string, agent: r.agent as string, home: r.home as string,
+      templateId: (r.template_id as string | null) ?? null, model: (r.model as string | null) ?? null, effort: (r.effort as string | null) ?? null,
+      currentBeeId: (r.current_bee_id as string | null) ?? null, createdAt: Number(r.created_at), updatedAt: Number(r.updated_at),
+      archivedAt: r.archived_at == null ? null : Number(r.archived_at),
+    }));
   }
 
   listTranscriptSegmentObjects(beeId: string): TranscriptSegmentObjectRow[] {

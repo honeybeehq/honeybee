@@ -335,6 +335,7 @@ export interface NodeConfigFile {
    */
   bees?: { tmpRoot?: string | null; sandboxTmpBytes?: number | null };
   transcripts?: { segments?: TranscriptSegmentsConfig };
+  champions?: ChampionsConfig;
 }
 
 export interface TranscriptSegmentsConfig {
@@ -377,6 +378,43 @@ export function transcriptSegmentsOf(raw: unknown, dataDir: string): ResolvedTra
   if (c.maxRawBytes !== undefined) {
     if (typeof c.maxRawBytes === "number" && Number.isInteger(c.maxRawBytes) && c.maxRawBytes >= 1024) out.maxRawBytes = c.maxRawBytes;
     else warn("maxRawBytes", "an integer of at least 1024");
+  }
+  return out;
+}
+
+export interface ChampionsConfig {
+  enabled?: boolean;
+  homeSync?: boolean;
+  homesDir?: string;
+}
+
+export interface ResolvedChampions {
+  enabled: boolean;
+  homeSync: boolean;
+  homesDir: string;
+  warnings: string[];
+}
+
+export function championsOf(raw: unknown, dataDir: string): ResolvedChampions {
+  const out: ResolvedChampions = { enabled: false, homeSync: false, homesDir: join(dataDir, "champions"), warnings: [] };
+  if (raw === undefined) return out;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    out.warnings.push(`champions must be an object, got ${JSON.stringify(raw)}; using defaults`);
+    return out;
+  }
+  const c = raw as Record<string, unknown>;
+  const warn = (key: string, expected: string) => out.warnings.push(`champions.${key} must be ${expected}, got ${JSON.stringify(c[key])}; using the default`);
+  if (c.enabled !== undefined) {
+    if (typeof c.enabled === "boolean") out.enabled = c.enabled;
+    else warn("enabled", "a boolean");
+  }
+  if (c.homeSync !== undefined) {
+    if (typeof c.homeSync === "boolean") out.homeSync = c.homeSync;
+    else warn("homeSync", "a boolean");
+  }
+  if (c.homesDir !== undefined) {
+    if (typeof c.homesDir === "string" && (isAbsolute(c.homesDir) || c.homesDir.startsWith("~/"))) out.homesDir = c.homesDir.startsWith("~/") ? join(homedir(), c.homesDir.slice(2)) : c.homesDir;
+    else warn("homesDir", "an absolute path or a ~/ path");
   }
   return out;
 }
@@ -432,6 +470,7 @@ export interface ResolvedNodeConfig {
   beeTmpRoot?: string | null;
   beeTmpRootInvalid?: string;
   transcriptSegments: ResolvedTranscriptSegments;
+  champions: ResolvedChampions;
   beeSandboxTmpBytes?: number | null;
   beeSandboxTmpBytesInvalid?: string;
 }
@@ -1103,6 +1142,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     cellWarmPoolMaxSize: cells.warmPoolMaxSize,
     cellRetention: cells.retention,
     transcriptSegments: transcriptSegmentsOf(raw.transcripts, dataDir),
+    champions: championsOf(raw.champions, dataDir),
     idleWindowMs: num(raw, "idleWindowMs", DEFAULTS.idleWindowMs),
     bootHangTimeoutMs,
     bootAllowanceMs,

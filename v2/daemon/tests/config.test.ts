@@ -18,8 +18,7 @@ import {
   patchNamingConfig,
   publicNamingConfig,
   validateNodeStatePaths,
-  transcriptSegmentsOf,
-} from "../src/config.ts";
+  transcriptSegmentsOf, championsOf } from "../src/config.ts";
 
 function withDir(fn: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-cfg-"));
@@ -537,4 +536,17 @@ test("transcripts.segments: off by default with a data-dir store, every key vali
   assert.deepEqual([invalid.enabled, invalid.storeDir, invalid.maxLines, invalid.maxRawBytes], [false, "/d/v2/transcript-objects", 1024, 1024 * 1024]);
   assert.equal(invalid.warnings.length, 4);
   assert.equal(transcriptSegmentsOf({ segments: 5 }, "/d/v2").warnings.length, 1);
+});
+
+test("config: champions resolves defaults, paths and invalid values", () => {
+  const defaults = championsOf(undefined, "/data");
+  assert.deepEqual(defaults, { enabled: false, homeSync: false, homesDir: "/data/champions", warnings: [] });
+  const on = championsOf({ enabled: true, homeSync: true, homesDir: "~/crew" }, "/data");
+  assert.equal(on.enabled, true);
+  assert.equal(on.homeSync, true);
+  assert.ok(on.homesDir.endsWith("/crew") && !on.homesDir.startsWith("~"));
+  const bad = championsOf({ enabled: "yes", homeSync: 1, homesDir: "relative/dir" }, "/data");
+  assert.deepEqual([bad.enabled, bad.homeSync, bad.homesDir], [false, false, "/data/champions"]);
+  assert.equal(bad.warnings.length, 3);
+  assert.equal(championsOf("nope", "/data").warnings.length, 1);
 });

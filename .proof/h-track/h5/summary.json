@@ -1,0 +1,47 @@
+{
+  "step": "H5",
+  "date": "2026-10-30",
+  "flags": {
+    "champions.enabled": "default false: champion.put/start/archive/delete refuse with capability_missing; list/get answer (empty); the snapshot carries no champions table. On: the verbs work, snapshot.champions is present, champion.put/champion.deleted deltas flow",
+    "champions.homeSync": "default false. On: every turn end of an incarnation bundles its home (tar + zstd, files over cells.retention.wipMaxFileBytes skipped) into <transcripts.segments.storeDir>/blobs/champion-homes/<sha256>, one pointer row per new bundle; champion.start on a fresh home restores the newest bundle or the given homeRef before the first runtime",
+    "champions.homesDir": "<data-dir>/champions by default; where champion.put without home creates the home"
+  },
+  "schema": {
+    "version": 54,
+    "tables": [
+      "champions",
+      "champion_home_objects"
+    ],
+    "beesTouched": false,
+    "measured": ".proof/h-track/h5/migration-v54.json",
+    "mirror": "snapshot.champions (flag on), MIRROR_CHAMPION_AUDIT_KINDS champion.put / champion.deleted with MIRROR_CHAMPION_KEYS; champion_home_object.put informational"
+  },
+  "surfaces": [
+    "verbs champion.put / champion.get / champion.list / champion.start / champion.archive / champion.delete (capability champions.v1)",
+    "hive champion list|get|put|start|archive|delete",
+    "docs/design/champions-contract.md",
+    "bee tags apiary:champion=<id> and apiary:role=champion on the incarnation (Apiary's championIdFromTags keeps working)",
+    "env HIVE_CHAMPION_ID / HIVE_CHAMPION_HOME on the incarnation"
+  ],
+  "residentLifecycle": "archive/delete of a bee that is the current incarnation of an unarchived Champion are invalid_request (use champion.archive); champion.archive archives the incarnation and keeps identity and home; champion.delete removes the row only; stop/revive and mail wakes work as for any bee; champion.start on a stopped incarnation revives it, on a live one is a no-op plus the optional prompt",
+  "gates": {
+    "registryJsonGone": "Honeybee side: identity (id, name, agent, home, template, model, effort, current incarnation, archived) and home bundles live in champions / champion_home_objects; Apiary keeps bio, avatar, scope, pilot settings on Home and reads Honeybee's rows (registry read-only one release) \u2014 Apiary's half, mailed to the lead",
+    "survivesExecutorSwap": "champions.1: executor A runs the Champion, a turn writes MEMORY.md and memory/lab.md, the turn end bundles the home into the shared object directory; A is SIGKILLed; executor B (fresh data dir, own homesDir) champion.put + champion.start {homeRef} restores the bundle before the first runtime (homeRestored true), the incarnation reads its memory (cat MEMORY.md), the pointer is recorded on B; without homeRef B starts from the stub (the pointer is the Home's to hand over)",
+    "homeImmutable": "champion.put that changes home or agent is invalid_request; champion.delete leaves MEMORY.md in place",
+    "bundleCost": ".proof/h-track/h5/bundle-measure.json: 2051 files / 7.5 MB tar -> 35 KB zstd in 2.4 s, restore 1.0 s, oversize file skipped and reported, identical home -> identical ref (no new row)"
+  },
+  "notProven": [
+    "Apiary consuming champions end to end (its half: mirror the rows, drop registry.json writes, hand homeRef over on a swap)",
+    "S3/R2 object store: directory store only, shared between executors by a shared directory in the test",
+    "bundle cost on a very large home (bounded by tar + zstd throughput; the 64 MiB per-file cap applies)",
+    "orphan sweep of champion-home objects (the H4 transcript sweep covers only blobs/transcript-archives)"
+  ],
+  "tests": {
+    "champions (daemon)": "2/2 (flag off refusals and snapshot absence; put/start/tags/args/resident guard/no-op start/bundle/kill/second daemon restore via homeRef/revive/archive/delete)",
+    "config": "21/21 with championsOf defaults, ~ expansion and invalid fallbacks",
+    "v2:test (core)": "620/621 (pre-existing multiline-delivery failure); 18 schema pins moved 53 -> 54",
+    "driver-cell": "180/198 (the 18 baseline containment failures)",
+    "v2:daemon": "567/567 after registering ChampionGetResult in the answer-trigger egress census (its bee field embeds a ViewResult)",
+    "typecheck+build": "green"
+  }
+}

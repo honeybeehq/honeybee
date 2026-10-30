@@ -1,5 +1,5 @@
 import type { BeeTellRow, BeeReactionRow } from "./humanOutputTypes.ts";
-import type { MailBatch, MailBatchingPolicy } from "./types.ts";
+import type { MailBatch, MailBatchingPolicy, ChampionRow } from "./types.ts";
 import type { HumanFirstPolicy, HumanChatReceipt } from "./types.ts";
 import { publicDeliveryConfirmation } from "./deliveryConfirmation.ts";
 import type { DeliveryConfirmationIntent, DeliveryConfirmationDecision } from "./deliveryConfirmationTypes.ts";
@@ -60,6 +60,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   const deliveryHolds = new Map<number, MultilineDeliveryRow>();
   const commands = new Map<number, CommandRow>();
   const templates = new Map<string, TemplateRow>();
+  const champions = new Map<string, ChampionRow>();
   const questions = new Map<string, QuestionRow>();
   const seals = new Map<string, SealRow>();
   const accounts = new Map<string, AccountRow>();
@@ -523,6 +524,17 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         if (!templates.delete(p.templateId as string)) throw new Error(`audit replay: unknown template ${String(p.templateId)}`);
         break;
       }
+      case "champion.put": {
+        const champion = p.champion as ChampionRow;
+        champions.set(champion.id, { ...champion });
+        break;
+      }
+      case "champion.deleted": {
+        if (!champions.delete(p.championId as string)) throw new Error(`audit replay: unknown champion ${String(p.championId)}`);
+        break;
+      }
+      case "champion_home_object.put":
+        break;
       case "question.asked": {
         const question = p.question as QuestionRow;
         questions.set(question.id, { ...question, status: question.status ?? (question.answeredAt == null ? "open" : "answered"), withdrawalReason: question.withdrawalReason ?? null, withdrawnAt: question.withdrawnAt ?? null, dismissedAt: question.dismissedAt ?? null, dismissedBy: question.dismissedBy ?? null, dismissalMessageId: question.dismissalMessageId ?? null, options: question.options === null ? null : [...question.options] });
@@ -755,6 +767,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     mailbox: [...mailbox.values()].sort((a, b) => a.id - b.id),
     commands: [...commands.values()].sort((a, b) => a.id - b.id),
     templates: [...templates.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+    ...(champions.size > 0 ? { champions: [...champions.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)) } : {}),
     questions: [...questions.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     seals: [...seals.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     accounts: [...accounts.values()].sort((a, b) => a.addedAt - b.addedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),

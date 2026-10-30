@@ -66,7 +66,7 @@ export interface ProvisionRequest {
   /** Per-repo opt-in warm artifact dirs, relative to the working tree (A5). */
   warmArtifacts?: string[];
   /** H3: a confirmed WIP commit to lay back into a freshly provisioned checkout (revive of an evicted Cell). */
-  restoreWip?: { sha: string; cellId: string };
+  restoreWip?: { sha: string; node: string; cellId: string };
 }
 
 export interface ProvisionedCell {
@@ -83,7 +83,7 @@ export interface ProvisionedCell {
 export function restoreWipAfterProvision(cell: ProvisionedCell, req: ProvisionRequest): ProvisionedCell {
   if (!req.restoreWip || cell.replayed) return cell;
   try {
-    const res = restoreWip(cell.paths.spaceDir, req.originRepo, req.restoreWip.cellId, req.restoreWip.sha);
+    const res = restoreWip(cell.paths.spaceDir, req.originRepo, req.restoreWip.node, req.restoreWip.cellId, req.restoreWip.sha);
     return { ...cell, wipRestore: { restored: res.restored, reason: res.reason } };
   } catch (err) {
     return { ...cell, wipRestore: { restored: false, reason: err instanceof Error ? err.message : String(err) } };

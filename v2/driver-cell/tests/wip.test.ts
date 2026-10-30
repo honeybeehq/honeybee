@@ -11,7 +11,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { g, makeOrigin } from "./helpers.ts";
-import { WipError, confirmWip, dropWipRef, operationInProgress, pushWip, restoreWip, snapshotWip, sweepWipRefs, wipRefFor } from "../src/wip.ts";
+import { WipError, confirmWip, dropWipRef, operationInProgress, pushWip, restoreWip, snapshotWip, sweepWipRefs, wipNodeScope, wipRefFor } from "../src/wip.ts";
+
+const NODE = "node-a";
 
 function clone(origin: string, root: string, name: string): string {
   const dir = join(root, name);
@@ -55,11 +57,11 @@ test("wip.0: snapshot, push, confirm, restore and drop round-trip through the or
     assert.ok(!existsSync(join(box, "wip.index")));
     assert.equal(g(space, ["status", "--porcelain", "--untracked-files=all"]).includes("wip.index"), false);
 
-    assert.equal(confirmWip(origin.repo, cellId, snap.sha), false, "nothing confirmed before the push");
-    pushWip(origin.repo, space, cellId, snap.sha);
-    assert.equal(g(origin.repo, ["rev-parse", wipRefFor(cellId)]), snap.sha);
-    assert.equal(confirmWip(origin.repo, cellId, snap.sha), true);
-    assert.equal(confirmWip(origin.repo, cellId, head), false, "a stale sha is not confirmed");
+    assert.equal(confirmWip(origin.repo, NODE, cellId, snap.sha), false, "nothing confirmed before the push");
+    pushWip(origin.repo, space, NODE, cellId, snap.sha);
+    assert.equal(g(origin.repo, ["rev-parse", wipRefFor(NODE, cellId)]), snap.sha);
+    assert.equal(confirmWip(origin.repo, NODE, cellId, snap.sha), true);
+    assert.equal(confirmWip(origin.repo, NODE, cellId, head), false, "a stale sha is not confirmed");
 
     writeFileSync(join(space, "big.bin"), Buffer.alloc(4096, 1));
     writeFileSync(join(space, "src", "app.ts"), Buffer.alloc(4096, 2));
@@ -73,28 +75,35 @@ test("wip.0: snapshot, push, confirm, restore and drop round-trip through the or
     writeFileSync(join(space, "src", "app.ts"), "export const version = 2;\n");
 
     const fresh = clone(origin.repo, root, "b-space-2");
-    assert.deepEqual(restoreWip(fresh, origin.repo, cellId, snap.sha), { restored: true, reason: null });
+    assert.deepEqual(restoreWip(fresh, origin.repo, NODE, cellId, snap.sha), { restored: true, reason: null });
     assert.equal(readFileSync(join(fresh, "notes.md"), "utf8"), "draft\n");
     assert.equal(readFileSync(join(fresh, "src", "app.ts"), "utf8"), "export const version = 2;\n");
     assert.equal(g(fresh, ["rev-parse", "HEAD"]), head, "restore leaves HEAD where the Cell was");
     assert.ok(!existsSync(join(fresh, ".next")));
     const status = g(fresh, ["status", "--porcelain", "--untracked-files=all"]).split("\n").map((l) => l.trim()).sort();
     assert.deepEqual(status, ["?? notes.md", "M src/app.ts"], "restored WIP is plain working-tree state");
-    assert.deepEqual(restoreWip(fresh, origin.repo, cellId, snap.sha), { restored: false, reason: "space_dirty" });
+    assert.deepEqual(restoreWip(fresh, origin.repo, NODE, cellId, snap.sha), { restored: false, reason: "space_dirty" });
 
     const moved = clone(origin.repo, root, "c-space-3");
     writeFileSync(join(moved, "other.txt"), "o\n");
     g(moved, ["add", "-A"]);
     g(moved, ["commit", "-q", "-m", "moved on"]);
-    assert.deepEqual(restoreWip(moved, origin.repo, cellId, snap.sha), { restored: false, reason: "head_mismatch" });
-    assert.deepEqual(restoreWip(fresh, origin.repo, cellId, head), { restored: false, reason: "nothing_to_restore" });
+    assert.deepEqual(restoreWip(moved, origin.repo, NODE, cellId, snap.sha), { restored: false, reason: "head_mismatch" });
+    assert.deepEqual(restoreWip(fresh, origin.repo, NODE, cellId, head), { restored: false, reason: "nothing_to_restore" });
 
-    pushWip(origin.repo, space, "cell-gone", snap.sha);
-    assert.deepEqual(sweepWipRefs(origin.repo, new Set([cellId])), [wipRefFor("cell-gone")], "refs of Cells that no longer exist are swept, live ones kept");
-    assert.equal(confirmWip(origin.repo, cellId, snap.sha), true);
-    assert.equal(dropWipRef(origin.repo, cellId), true);
-    assert.equal(dropWipRef(origin.repo, cellId), false);
-    assert.equal(confirmWip(origin.repo, cellId, snap.sha), false);
+    pushWip(origin.repo, space, NODE, "cell-gone", snap.sha);
+    pushWip(origin.repo, space, "node-b", "cell-gone", snap.sha);
+    g(origin.repo, ["update-ref", "refs/hive/wip/cell-1", snap.sha]);
+    g(origin.repo, ["update-ref", "refs/hive/wip/cell-foreign", snap.sha]);
+    const sweep = sweepWipRefs(origin.repo, NODE, new Set([cellId]));
+    assert.deepEqual(sweep, { dropped: [wipRefFor(NODE, "cell-gone")], migrated: ["refs/hive/wip/cell-1"] }, "only this node's stale refs are dropped; an unscoped live ref is renamed under the node");
+    assert.equal(g(origin.repo, ["rev-parse", wipRefFor("node-b", "cell-gone")]), snap.sha, "another node's refs are never touched");
+    assert.equal(g(origin.repo, ["rev-parse", "refs/hive/wip/cell-foreign"]), snap.sha, "an unscoped ref of an unknown Cell is left for its owner");
+    assert.equal(g(origin.repo, ["rev-parse", wipRefFor(NODE, cellId)]), snap.sha);
+    assert.equal(confirmWip(origin.repo, NODE, cellId, snap.sha), true);
+    assert.equal(dropWipRef(origin.repo, NODE, cellId), true);
+    assert.equal(dropWipRef(origin.repo, NODE, cellId), false);
+    assert.equal(confirmWip(origin.repo, NODE, cellId, snap.sha), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -106,9 +115,11 @@ test("wip.1: a push into something that is not a repository, or of a non-sha, is
     const origin = makeOrigin(root);
     const space = clone(origin.repo, root, "a-space-1");
     const head = g(space, ["rev-parse", "HEAD"]);
-    assert.throws(() => pushWip(join(root, "nowhere"), space, "cell-1", head), (err: unknown) => err instanceof WipError && err.stage === "push");
-    assert.throws(() => pushWip(origin.repo, space, "cell-1", "HEAD"), (err: unknown) => err instanceof WipError && err.stage === "push");
-    assert.equal(wipRefFor("Cell/With Spaces"), "refs/hive/wip/cell-with-spaces");
+    assert.throws(() => pushWip(join(root, "nowhere"), space, NODE, "cell-1", head), (err: unknown) => err instanceof WipError && err.stage === "push");
+    assert.throws(() => pushWip(origin.repo, space, NODE, "cell-1", "HEAD"), (err: unknown) => err instanceof WipError && err.stage === "push");
+    assert.equal(wipRefFor("My Mac.local", "Cell/With Spaces"), "refs/hive/wip/my-mac-local/cell-with-spaces");
+    assert.equal(wipNodeScope("0f1e2d3c-aaaa-bbbb-cccc-ddddeeeeffff", "host"), "0f1e2d3c-aaaa-bbbb-cccc-ddddeeeeffff");
+    assert.equal(wipNodeScope(null, "Host.local"), "host-local");
     assert.equal(operationInProgress(space), null);
     writeFileSync(join(space, ".git", "MERGE_HEAD"), `${head}\n`);
     assert.equal(operationInProgress(space), "MERGE_HEAD");

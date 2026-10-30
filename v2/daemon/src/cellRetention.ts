@@ -30,6 +30,7 @@ import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
  */
 import { Worker } from "node:worker_threads";
 import { existsSync, realpathSync, statfsSync } from "node:fs";
+import { hostname } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import type { BeeRow, CellRow, CoreStore, NodeCapacity, RuntimeRow } from "../../core/src/index.ts";
 import {
@@ -62,6 +63,7 @@ import {
   type WipPushWorkerResult,
   type WipRefSweepWorkerRequest,
   type WipRefSweepWorkerResult,
+  wipNodeScope,
   type RetentionWorkerResult,
   type UpstreamRef,
   type TrimSkip,
@@ -116,6 +118,7 @@ export interface CellRetentionDeps {
   clearBeeTmp?: (beeId: string) => boolean;
   transcriptObjects?: () => NodeCapacity["transcriptObjects"];
   wipBoxDir?: (cell: CellRow) => string;
+  wipNode?: () => string;
   /** Times of retention evictions since `sinceTs`, to restore the daily cap's window after a restart. */
   recentEvictionTimes?: (sinceTs: number) => number[];
   /** When the daily cap was last audited, so a restart does not audit it twice in one window. */
@@ -1187,6 +1190,10 @@ export class CellRetentionService {
     return run;
   }
 
+  private wipNodeScope(): string {
+    return this.deps.wipNode?.() ?? wipNodeScope(null, hostname());
+  }
+
   private sweepWipRefsIfDue(now: number): void {
     const policy = this.deps.policy;
     if (!policy.wipPushOnTurnEnd && !policy.evictionRequiresWip) return;
@@ -1197,7 +1204,7 @@ export class CellRetentionService {
     });
   }
 
-  async sweepWipRefs(): Promise<Array<{ originRepo: string; refs: string[] }>> {
+  async sweepWipRefs(): Promise<Array<{ originRepo: string; dropped: string[]; migrated: string[] }>> {
     const origins = new Map<string, string[]>();
     for (const cell of this.deps.store().listCells()) {
       if (cell.state === "removed" || cell.state === "removing") continue;
@@ -1208,11 +1215,12 @@ export class CellRetentionService {
     if (origins.size === 0) return [];
     const result = await this.runWorker<WipRefSweepWorkerResult>({
       kind: "sweepWipRefs",
+      node: this.wipNodeScope(),
       origins: [...origins].filter(([originRepo]) => existsSync(originRepo)).map(([originRepo, liveCellIds]) => ({ originRepo, liveCellIds })),
     } satisfies WipRefSweepWorkerRequest);
     if (result.error != null) throw new Error(result.error);
-    for (const origin of result.dropped) this.deps.log(`cell.wip.refs_swept origin=${origin.originRepo} dropped=${origin.refs.length}`);
-    return result.dropped;
+    for (const origin of result.swept) this.deps.log(`cell.wip.refs_swept origin=${origin.originRepo} node=${this.wipNodeScope()} dropped=${origin.dropped.length} migrated=${origin.migrated.length}`);
+    return result.swept;
   }
 
   private async pushWipNow(cellId: string, trigger: WipPushTrigger): Promise<WipPushWorkerResult> {
@@ -1226,7 +1234,7 @@ export class CellRetentionService {
     let result: WipPushWorkerResult;
     try {
       result = await this.runWorker<WipPushWorkerResult>({
-        kind: "pushWip", spaceDir, boxDir: this.deps.wipBoxDir?.(cell) ?? join(dirname(spaceDir), "box"), originRepo: cell.originRepo, cellId,
+        kind: "pushWip", spaceDir, boxDir: this.deps.wipBoxDir?.(cell) ?? join(dirname(spaceDir), "box"), originRepo: cell.originRepo, node: this.wipNodeScope(), cellId,
         maxFileBytes: this.deps.policy.wipMaxFileBytes,
         previous: cell.wipSha && cell.wipTree && cell.wipConfirmedAt != null ? { sha: cell.wipSha, tree: cell.wipTree } : null,
       } satisfies WipPushWorkerRequest);

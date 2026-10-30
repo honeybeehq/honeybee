@@ -37,6 +37,7 @@ export type MirrorTranscriptSegmentRow = TranscriptSegmentRow;
 
 /** Templates mirror as their store rows, verbatim. */
 export type MirrorTemplateRow = TemplateRow;
+export type MirrorChampionRow = import("./types.ts").ChampionRow;
 
 /** v6: questions mirror as their store rows, verbatim (Apiary's inbox surfaces `status = open`). */
 export type MirrorQuestionRow = QuestionRow;
@@ -108,6 +109,8 @@ export interface MirrorSnapshot {
   bees: MirrorBeeRow[];
   capacity?: NodeCapacity | null;
   templates: MirrorTemplateRow[];
+  /** v54 (additive): Champion identities, store rows verbatim. */
+  champions?: MirrorChampionRow[];
   questions: MirrorQuestionRow[];
   seals: MirrorSealRow[];
   /** v7 (additive): accounts + their latest limits, store rows verbatim. */
@@ -230,6 +233,9 @@ export type MirrorDelta = AuditRow;
  *   mail.delivered  → may carry { senderKind: 'human'|'automation' }     (derived: deliveredSenderKind, automation for automation senders)
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
+export const MIRROR_CHAMPION_AUDIT_KINDS = ["champion.put", "champion.deleted"] as const;
+export const CHAMPION_HOME_OBJECT_AUDIT_KIND = "champion_home_object.put" as const;
+export const MIRROR_CHAMPION_KEYS = ["id", "name", "agent", "home", "templateId", "model", "effort", "currentBeeId", "createdAt", "updatedAt", "archivedAt"] as const;
 export const MIRROR_QUESTION_AUDIT_KINDS = ["question.asked", "question.answered", "question.withdrawn", "question.dismissed"] as const;
 export const MIRROR_SEAL_AUDIT_KINDS = ["seal.created"] as const;
 export const MIRROR_ACCOUNT_AUDIT_KINDS = ["account.put", "account.removed"] as const;

@@ -1087,6 +1087,31 @@ export interface TemplateRow {
   updatedAt: number;
 }
 
+export interface ChampionRow {
+  id: string;
+  name: string;
+  agent: string;
+  home: string;
+  templateId: string | null;
+  model: string | null;
+  effort: string | null;
+  currentBeeId: string | null;
+  createdAt: number;
+  updatedAt: number;
+  archivedAt: number | null;
+}
+
+export interface ChampionHomeObjectRow {
+  id: string;
+  championId: string;
+  ref: string;
+  bytes: number;
+  size: number;
+  files: number;
+  skipped: number;
+  closedAt: number;
+}
+
 /** Deterministic full-store snapshot (audit excluded); comparison target for replay. */
 export interface StateDump {
   tells?: BeeTellRow[];
@@ -1105,6 +1130,8 @@ export interface StateDump {
   mailbox: MessageRow[];
   commands: CommandRow[];
   templates: TemplateRow[];
+  /** v54 */
+  champions?: ChampionRow[];
   /** v6 */
   questions: QuestionRow[];
   seals: SealRow[];

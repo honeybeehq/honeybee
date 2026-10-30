@@ -120,6 +120,12 @@ import {
   type TemplateGetResult,
   type TemplateImportResult,
   type TemplateListResult,
+  type ChampionListResult,
+  type ChampionGetResult,
+  type ChampionPutResult,
+  type ChampionStartResult,
+  type ChampionArchiveResult,
+  type ChampionDeleteResult,
   type TemplatePutResult,
   type ViewResult,
   type WatchFrame,
@@ -146,6 +152,7 @@ import {
   type ImportPlanEntry,
   type NodeCapacity,
   type TemplateRow,
+  type ChampionRow,
 } from "../../core/src/index.ts";
 import { realPreflightProbes } from "../../daemon/src/import-probes.ts";
 import { hostname } from "node:os";
@@ -317,6 +324,7 @@ const VALUE_FLAGS = new Set([
   "--reason",
   "--template",
   "--preamble",
+  "--effort",
   ...LIST_FLAGS,
 ]);
 
@@ -333,6 +341,7 @@ const OPTIONAL_VALUE_FLAGS = new Set(["--warm"]);
  * unknown boolean plus a stray positional and quietly spawned an hsr claude.
  */
 const BOOL_FLAGS = new Set([
+  "--active",
   "--segments", "--from-objects",
   "--json",
   "--allow-foreign-daemon",
@@ -3626,6 +3635,78 @@ async function runTemplateInvocation(ctx: CliContext, parsed: Parsed, mode: Temp
   });
 }
 
+function championLine(prefix: string, c: ChampionRow): string {
+  const state = c.archivedAt != null ? "archived" : c.currentBeeId ? `bee ${c.currentBeeId.slice(0, 8)}` : "no incarnation";
+  return `${prefix}${c.id}  ${c.name}  ${c.agent}${c.model ? ` ${c.model}` : ""}${c.effort ? `/${c.effort}` : ""}  ${state}  ${dim(c.home)}${c.templateId ? ` template=${c.templateId}` : ""}`;
+}
+
+async function cmdChampion(ctx: CliContext, parsed: Parsed): Promise<number> {
+  const sub = parsed.positional[1] ?? "list";
+  const flag = (name: string): string | undefined => parsed.flags.get(name) as string | undefined;
+  switch (sub) {
+    case "list":
+    case "ls": {
+      const { result, stale } = await readPath(
+        ctx,
+        (c) => c.request<ChampionListResult>("champion.list", {}),
+        (store) => ({ champions: store.listChampions() }),
+      );
+      const lines = result.champions.map((c) => championLine(stale ? "stale: " : "", c));
+      emit(ctx, lines.length > 0 ? lines : [`${stale ? "stale: " : ""}${dim("no champions")}`], result, stale);
+      return 0;
+    }
+    case "get":
+    case "show": {
+      const id = parsed.positional[2];
+      if (!id) throw new Error("usage: hive champion get <id>");
+      const result = await withClient(ctx, (c) => c.request<ChampionGetResult>("champion.get", { id }));
+      emit(ctx, [championLine("", result.champion), ...(result.bee ? [`  runtime ${result.bee.view.runtimeState} lifecycle ${result.bee.view.lifecycle}`] : []), ...result.homeObjects.slice(0, 3).map((o) => `  home bundle ${o.ref.slice(0, 12)} ${o.bytes} bytes ${o.files} files ${new Date(o.closedAt).toISOString()}`)], result, false);
+      return 0;
+    }
+    case "put": {
+      const name = flag("--name") ?? parsed.positional[2];
+      if (!name) throw new Error("usage: hive champion put --name <name> --agent <agent> [--id slug] [--home dir] [--template id] [--model m] [--effort e] [--archived|--active]");
+      const result = await withClient(ctx, (c) => c.request<ChampionPutResult>("champion.put", {
+        name,
+        ...(flag("--id") ? { id: flag("--id") } : {}),
+        ...(flag("--agent") ? { agent: flag("--agent") } : {}),
+        ...(flag("--home") ? { home: resolve(flag("--home") as string) } : {}),
+        ...(flag("--template") ? { templateId: flag("--template") } : {}),
+        ...(flag("--model") ? { model: flag("--model") } : {}),
+        ...(flag("--effort") ? { effort: flag("--effort") } : {}),
+        ...(parsed.flags.get("--archived") === true ? { archived: true } : parsed.flags.get("--active") === true ? { archived: false } : {}),
+        idempotencyKey: flag("--idempotency-key") ?? `champion-put-${randomUUID()}`,
+      }));
+      emit(ctx, [confirm("ok", result.outcome, championLine("", result.champion))], result, false);
+      return 0;
+    }
+    case "start": {
+      const id = parsed.positional[2];
+      if (!id) throw new Error("usage: hive champion start <id> [--prompt text]");
+      const result = await withClient(ctx, (c) => c.request<ChampionStartResult>("champion.start", { id, ...(flag("--prompt") ? { prompt: flag("--prompt") } : {}), idempotencyKey: flag("--idempotency-key") ?? `champion-start-${randomUUID()}` }));
+      emit(ctx, [confirm("ok", result.started, `champion ${id} → bee ${result.beeId}${result.homeRestored ? " (home restored from the object store)" : ""}`)], result, false);
+      return 0;
+    }
+    case "archive": {
+      const id = parsed.positional[2];
+      if (!id) throw new Error("usage: hive champion archive <id>");
+      const result = await withClient(ctx, (c) => c.request<ChampionArchiveResult>("champion.archive", { id, idempotencyKey: flag("--idempotency-key") ?? `champion-archive-${randomUUID()}` }));
+      emit(ctx, [confirm("ok", "archived", `champion ${id}${result.commandId != null ? ` (incarnation archive command ${result.commandId})` : ""}; the home directory stays`)], result, false);
+      return 0;
+    }
+    case "delete":
+    case "rm": {
+      const id = parsed.positional[2];
+      if (!id) throw new Error("usage: hive champion delete <id>");
+      const result = await withClient(ctx, (c) => c.request<ChampionDeleteResult>("champion.delete", { id, idempotencyKey: flag("--idempotency-key") ?? `champion-delete-${randomUUID()}` }));
+      emit(ctx, [confirm("ok", "deleted", `champion ${id}; home ${result.champion.home} untouched`)], result, false);
+      return 0;
+    }
+    default:
+      throw new Error("usage: hive champion <list|get|put|start|archive|delete>");
+  }
+}
+
 async function cmdTemplate(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1] ?? "list";
   const scope = parsed.flags.get("--scope") as string | undefined;
@@ -5048,6 +5129,8 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdWatch(ctx, parsed);
       case "template":
         return await cmdTemplate(ctx, parsed);
+      case "champion":
+        return await cmdChampion(ctx, parsed);
       case "packages":
         return await cmdPackages(ctx, parsed);
       case "freeze":

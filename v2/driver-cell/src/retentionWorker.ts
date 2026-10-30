@@ -74,6 +74,7 @@ export interface WipPushWorkerRequest {
   spaceDir: string;
   boxDir: string;
   originRepo: string;
+  node: string;
   cellId: string;
   maxFileBytes: number;
   previous: { sha: string; tree: string } | null;
@@ -88,11 +89,12 @@ export interface WipPushWorkerResult {
 
 export interface WipRefSweepWorkerRequest {
   kind: "sweepWipRefs";
+  node: string;
   origins: Array<{ originRepo: string; liveCellIds: string[] }>;
 }
 
 export interface WipRefSweepWorkerResult {
-  dropped: Array<{ originRepo: string; refs: string[] }>;
+  swept: Array<{ originRepo: string; dropped: string[]; migrated: string[] }>;
   error: string | null;
 }
 
@@ -101,21 +103,21 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 if (request.kind === "pushWip") {
   try {
     const snapshot = snapshotWip(request.spaceDir, request.boxDir, request.cellId, Date.now, request.maxFileBytes);
-    if (request.previous && snapshot.tree === request.previous.tree && confirmWip(request.originRepo, request.cellId, request.previous.sha)) {
+    if (request.previous && snapshot.tree === request.previous.tree && confirmWip(request.originRepo, request.node, request.cellId, request.previous.sha)) {
       parentPort?.postMessage({ snapshot: { ...snapshot, sha: request.previous.sha }, confirmed: true, unchanged: true, error: null } satisfies WipPushWorkerResult);
     } else {
-      pushWip(request.originRepo, request.spaceDir, request.cellId, snapshot.sha);
-      parentPort?.postMessage({ snapshot, confirmed: confirmWip(request.originRepo, request.cellId, snapshot.sha), unchanged: false, error: null } satisfies WipPushWorkerResult);
+      pushWip(request.originRepo, request.spaceDir, request.node, request.cellId, snapshot.sha);
+      parentPort?.postMessage({ snapshot, confirmed: confirmWip(request.originRepo, request.node, request.cellId, snapshot.sha), unchanged: false, error: null } satisfies WipPushWorkerResult);
     }
   } catch (err) {
     parentPort?.postMessage({ snapshot: null, confirmed: false, unchanged: false, error: errorText(err) } satisfies WipPushWorkerResult);
   }
 } else if (request.kind === "sweepWipRefs") {
   try {
-    const dropped = request.origins.map((origin) => ({ originRepo: origin.originRepo, refs: sweepWipRefs(origin.originRepo, new Set(origin.liveCellIds)) })).filter((o) => o.refs.length > 0);
-    parentPort?.postMessage({ dropped, error: null } satisfies WipRefSweepWorkerResult);
+    const swept = request.origins.map((origin) => ({ originRepo: origin.originRepo, ...sweepWipRefs(origin.originRepo, request.node, new Set(origin.liveCellIds)) })).filter((o) => o.dropped.length > 0 || o.migrated.length > 0);
+    parentPort?.postMessage({ swept, error: null } satisfies WipRefSweepWorkerResult);
   } catch (err) {
-    parentPort?.postMessage({ dropped: [], error: errorText(err) } satisfies WipRefSweepWorkerResult);
+    parentPort?.postMessage({ swept: [], error: errorText(err) } satisfies WipRefSweepWorkerResult);
   }
 } else if (request.kind === "planPark") {
   try {

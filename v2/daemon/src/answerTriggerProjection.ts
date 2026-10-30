@@ -12,6 +12,7 @@ export const ANSWER_TRIGGER_RESULTS = {
   SetArgsResult: { verbs: ["bee.setArgs"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
   ReconfigureResult: { verbs: ["bee.reconfigure"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage"], audits: [] },
   ViewResult: { verbs: ["view"], triggers: ["bee.lastTurnTrigger", "bee.unansweredHumanMessage", "view.unansweredHumanMessage"], audits: [] },
+  ChampionGetResult: { verbs: ["champion.get"], triggers: ["bee.bee.lastTurnTrigger", "bee.bee.unansweredHumanMessage", "bee.view.unansweredHumanMessage"], audits: [] },
   ListResult: { verbs: ["list"], triggers: ["views[].bee.lastTurnTrigger", "views[].bee.unansweredHumanMessage", "views[].view.unansweredHumanMessage"], audits: [] },
   SnapshotResult: { verbs: ["snapshot", "watch"], triggers: ["views[].bee.lastTurnTrigger", "views[].bee.unansweredHumanMessage", "views[].view.unansweredHumanMessage", "tells[].turnTrigger", "reactions[].turnTrigger"], audits: [] },
   AuditTailResult: { verbs: ["audit.tail"], triggers: [], audits: ["rows[]"] },

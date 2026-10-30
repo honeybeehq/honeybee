@@ -50,7 +50,7 @@ import { threadOperationView, type ThreadOperationRow } from "../../core/src/thr
  *  - behavior 6 (service mgmt)     → service.ts (wired by the CLI)
  *  - behavior 7 (config)           → config.ts
  */
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync, rmSync, statSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
@@ -123,6 +123,9 @@ import {
   type TranscriptSegmentRow,
   type CellOpRow,
   type CellRow,
+  type ChampionRow,
+  championSlug,
+  type TemplateRow,
   type CommandRow,
   type CoreStore,
   type MirrorAccountRow,
@@ -159,6 +162,7 @@ import type { KeychainReader, KeychainWriter } from "./keychain.ts";
 import type { CellCaptureExecutor, FlagEvidenceLike, UsageEvidenceLike } from "./loops.ts";
 import { CellRetentionService } from "./cellRetention.ts";
 import { TranscriptSegmenter } from "./transcriptSegmenter.ts";
+import { ChampionHomeSync } from "./championHomes.ts";
 import { createDirectoryTranscriptObjectStore, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
 import { TRANSCRIPT_PROJECTION_VERSION } from "../../driver-tmux/src/transcript-projection.ts";
 import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
@@ -180,6 +184,7 @@ import {
   hasCommit,
   restoreEnvFiles,
   dropWipRef,
+  wipNodeScope,
   restoreKeptPaths,
   localRepoIdentity,
   parseSpaceName,
@@ -343,6 +348,12 @@ import {
   type CellEvictResult,
   type CellParkResult,
   type TranscriptSegmentsResult,
+  type ChampionListResult,
+  type ChampionGetResult,
+  type ChampionPutResult,
+  type ChampionStartResult,
+  type ChampionArchiveResult,
+  type ChampionDeleteResult,
   type TranscriptSegmentsStatus,
   type CellExecResult,
   type CellGcResult,
@@ -630,6 +641,7 @@ export interface HiveDaemonDeps {
   retentionWorkerUrl?: URL;
   transcriptSweepDelayMs?: number;
   transcriptMaxWorkers?: number;
+  championHomeMinIntervalMs?: number;
   /** v31 tests: delay before the first automatic retention pass (default 5 min). */
   retentionInitialDelayMs?: number;
   /** P7 tests: free-space check cadence (default 60 s). */
@@ -1015,12 +1027,25 @@ export class HiveDaemon {
       audit: (kind, payload) => this.mustStore().recordCellRetentionEvent(kind, payload),
       clearBeeTmp: (beeId) => this.removeBeeTmp(beeId),
       transcriptObjects: () => this.segmenter?.objects() ?? null,
+      wipNode: () => this.wipNode(),
       lastRecordedPass: (kind) => this.mustStore().latestCellRetentionPass(kind ?? null),
       recentEvictionTimes: (sinceTs) => this.mustStore().cellRetentionEvictionTimes(sinceTs),
       lastDailyCapAt: () => this.mustStore().lastCellRetentionDailyCapAt(),
     });
     for (const warning of this.cfg.cellRetention.warnings) this.log(`config.retention.invalid ${warning}`);
     for (const warning of this.cfg.transcriptSegments.warnings) this.log(`config.transcripts.invalid ${warning}`);
+    for (const warning of this.cfg.champions.warnings) this.log(`config.champions.invalid ${warning}`);
+    if (this.cfg.champions.enabled) this.log(`champions.enabled homes=${this.cfg.champions.homesDir} home_sync=${this.cfg.champions.homeSync} store=${this.cfg.transcriptSegments.storeDir}`);
+    if (this.cfg.champions.enabled && this.cfg.champions.homeSync) {
+      this.championHomes = new ChampionHomeSync({
+        store: () => this.mustStore(),
+        root: this.cfg.transcriptSegments.storeDir,
+        now: () => Date.now(),
+        log: (op) => this.log(op),
+        maxFileBytes: this.cfg.cellRetention.wipMaxFileBytes,
+        ...(this.deps.championHomeMinIntervalMs !== undefined ? { minIntervalMs: this.deps.championHomeMinIntervalMs } : {}),
+      });
+    }
     if (this.cfg.transcriptSegments.enabled) {
       this.transcriptObjects = createDirectoryTranscriptObjectStore(this.cfg.transcriptSegments.storeDir);
       this.segmenter = new TranscriptSegmenter({
@@ -1074,6 +1099,7 @@ export class HiveDaemon {
       onTranscriptQuiet: (beeId, _generation, reason) => {
         void this.segmenter?.requestCut(beeId, reason);
         this.pushCellWip(beeId, reason);
+        this.syncChampionHome(beeId);
       },
       blockedRuntimeStartBeeIds: () => this.prepareRuntimeStartCommands(),
       assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
@@ -1186,6 +1212,7 @@ export class HiveDaemon {
       this.tickTimer = null;
       await this.quotaRecovery?.stop();
       this.segmenter?.stop();
+      this.championHomes?.stop();
       await this.retention?.stop();
       this.titleGenerator?.close();
       this.titleGenerator = null;
@@ -1714,7 +1741,7 @@ export class HiveDaemon {
       ? cell.evictedHead
       : cell.sha;
     const restoreWip = cell.state === "evicted" && this.cfg.cellRetention.wipPushOnTurnEnd && cell.wipSha && cell.wipConfirmedAt != null && cell.wipSha !== sha
-      ? { sha: cell.wipSha, cellId: cell.id }
+      ? { sha: cell.wipSha, node: this.wipNode(), cellId: cell.id }
       : null;
     return {
       provision: {
@@ -2488,6 +2515,7 @@ export class HiveDaemon {
       case "task.supply.set":
         return this.withIdempotency(verb, params, () => this.rpcTaskSupplySet(params));
       case "archive":
+        this.assertNotChampionIncarnation(verb, this.param(params, "beeId"));
         return this.withIdempotency(verb, params, () => {
           const result = this.rpcEnqueue("archive", this.param(params, "beeId"), {}, params);
           for (const execution of this.secretExecutions.values()) if (execution.beeId === params.beeId) execution.controller.abort();
@@ -2498,6 +2526,7 @@ export class HiveDaemon {
           this.rpcEnqueue("unarchive", this.param(params, "beeId"), {}, params),
         );
       case "delete":
+        this.assertNotChampionIncarnation(verb, this.param(params, "beeId"));
         return this.withIdempotency(verb, params, () =>
           this.rpcEnqueue("delete", this.param(params, "beeId"), {}, params),
         );
@@ -2525,6 +2554,18 @@ export class HiveDaemon {
         return this.rpcAuditTail(params);
       case "transcript.segments":
         return this.rpcTranscriptSegments(params);
+      case "champion.list":
+        return { champions: this.mustStore().listChampions() } satisfies ChampionListResult;
+      case "champion.get":
+        return this.rpcChampionGet(params);
+      case "champion.put":
+        return this.withIdempotency(verb, params, () => this.rpcChampionPut(params));
+      case "champion.start":
+        return this.rpcChampionStart(params);
+      case "champion.archive":
+        return this.withIdempotency(verb, params, () => this.rpcChampionArchive(params));
+      case "champion.delete":
+        return this.withIdempotency(verb, params, () => this.rpcChampionDelete(params));
       case "deployInfo":
         return this.rpcDeployInfo();
       case "update.apiarySwap.status":
@@ -3894,9 +3935,13 @@ export class HiveDaemon {
     this.retention.requestWipPush(cellId, reason);
   }
 
+  private wipNode(): string {
+    return wipNodeScope(this.store?.humanRefIssuer()?.installationId ?? null, hostname());
+  }
+
   private dropCellWip(cell: CellRow): void {
     try {
-      if (dropWipRef(cell.originRepo, cell.id)) this.log(`cell.wip.dropped cell=${cell.id} bee=${cell.sourceBeeId}`);
+      if (dropWipRef(cell.originRepo, this.wipNode(), cell.id)) this.log(`cell.wip.dropped cell=${cell.id} bee=${cell.sourceBeeId}`);
     } catch (err) {
       this.log(`cell.wip.drop_failed cell=${cell.id} ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -6077,6 +6122,7 @@ export class HiveDaemon {
   }
 
   private lastObjectSweepAt: number | null = null;
+  private championHomes: ChampionHomeSync | null = null;
 
   private segmenterTick(): void {
     const segmenter = this.segmenter;
@@ -6086,6 +6132,185 @@ export class HiveDaemon {
     if (!due) return;
     this.lastObjectSweepAt = now;
     void segmenter.sweepOrphans().catch((err) => this.log(`transcripts.objects.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
+  }
+
+  private syncChampionHome(beeId: string): void {
+    if (!this.championHomes) return;
+    const champion = this.store?.getChampionByBee(beeId);
+    if (champion && champion.archivedAt == null) this.championHomes.requestSync(champion.id);
+  }
+
+  private requireChampions(verb: string): void {
+    if (!this.cfg.champions.enabled) throw new RpcError("capability_missing", `${verb}: champions are not enabled on this node (config champions.enabled)`);
+  }
+
+  private requireChampion(verb: string, params: Record<string, unknown>): ChampionRow {
+    const id = this.param(params, "id");
+    const champion = this.mustStore().getChampion(id);
+    if (!champion) throw new RpcError("invalid_request", `${verb}: unknown champion ${id}`);
+    return champion;
+  }
+
+  private assertNotChampionIncarnation(verb: string, beeId: string): void {
+    if (!this.cfg.champions.enabled) return;
+    const champion = this.mustStore().getChampionByBee(beeId);
+    if (champion && champion.archivedAt == null) {
+      throw new RpcError("invalid_request", `${verb}: bee ${beeId} is the current incarnation of Champion ${champion.id}; use champion.archive`);
+    }
+  }
+
+  private rpcChampionGet(params: Record<string, unknown>): ChampionGetResult {
+    const store = this.mustStore();
+    const champion = this.requireChampion("champion.get", params);
+    const bee = champion.currentBeeId && store.getBee(champion.currentBeeId) ? this.viewOf(store, champion.currentBeeId) : null;
+    return { champion, bee, homeObjects: store.listChampionHomeObjects(champion.id, { limit: 20 }) };
+  }
+
+  private rpcChampionPut(params: Record<string, unknown>): ChampionPutResult {
+    this.requireChampions("champion.put");
+    const store = this.mustStore();
+    const name = this.param(params, "name").trim();
+    if (name.length === 0 || name.length > 80) throw new RpcError("invalid_request", "champion.put: name must be 1..80 characters");
+    const id = typeof params.id === "string" && params.id.length > 0 ? params.id : championSlug(name);
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(id)) throw new RpcError("invalid_request", `champion.put: id must be a kebab slug, got ${JSON.stringify(id)}`);
+    const existing = store.getChampion(id);
+    const agent = typeof params.agent === "string" ? params.agent : existing?.agent;
+    if (!agent || !this.cfg.agents[agent]) throw new RpcError("invalid_request", `champion.put: unknown agent ${JSON.stringify(agent ?? null)} (no spawn spec configured)`);
+    if (existing && existing.agent !== agent) throw new RpcError("invalid_request", `champion.put: ${id} is a ${existing.agent} Champion; the harness family is immutable`);
+    const home = typeof params.home === "string" && params.home.length > 0 ? params.home : existing?.home ?? join(this.cfg.champions.homesDir, id);
+    if (!isAbsolute(home)) throw new RpcError("invalid_request", "champion.put: home must be an absolute path");
+    if (existing && existing.home !== home) throw new RpcError("invalid_request", `champion.put: ${id} lives in ${existing.home}; the home directory is immutable`);
+    const optional = (key: "templateId" | "model" | "effort"): string | null | undefined => {
+      const value = params[key];
+      if (value === undefined) return existing ? existing[key] : null;
+      if (value === null || value === "") return null;
+      if (typeof value !== "string") throw new RpcError("invalid_request", `champion.put: ${key} must be a string when given`);
+      return value;
+    };
+    const templateId = optional("templateId") ?? null;
+    if (templateId != null && !store.getTemplate(templateId)) throw new RpcError("invalid_request", `champion.put: unknown template ${templateId}`);
+    if (params.archived !== undefined && typeof params.archived !== "boolean") throw new RpcError("invalid_request", "champion.put: archived must be a boolean when given");
+    try {
+      mkdirSync(home, { recursive: true, mode: 0o700 });
+      const memory = join(home, "MEMORY.md");
+      if (!existsSync(memory)) writeFileSync(memory, "# Memory\n", { mode: 0o600 });
+      mkdirSync(join(home, "memory"), { recursive: true, mode: 0o700 });
+    } catch (err) {
+      throw new RpcError("invalid_request", `champion.put: cannot prepare home ${home}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const res = store.putChampion({ id, name, agent, home, templateId, model: optional("model") ?? null, effort: optional("effort") ?? null, ...(params.archived === undefined ? {} : { archived: params.archived as boolean }) });
+    this.log(`champion.put id=${id} outcome=${res.outcome} agent=${agent} home=${home}${templateId ? ` template=${templateId}` : ""}`);
+    return { champion: res.champion, outcome: res.outcome };
+  }
+
+  private championSpawnArgs(champion: ChampionRow, template: TemplateRow | null): string[] {
+    const args = [...(template?.args ?? [])];
+    const model = champion.model ?? template?.model ?? null;
+    const effort = champion.effort ?? template?.effort ?? null;
+    if (model) args.push("--model", model);
+    if (effort) {
+      if (champion.agent === "codex") args.push("-c", `model_reasoning_effort=${JSON.stringify(effort)}`);
+      else args.push("--effort", effort);
+    }
+    if (template?.yolo) {
+      if (champion.agent === "codex") args.push("--dangerously-bypass-approvals-and-sandbox");
+      else if (champion.agent === "claude" || champion.agent === "agy") args.push("--dangerously-skip-permissions");
+      else if (champion.agent === "grok") args.push("--permission-mode", "bypassPermissions");
+      else if (champion.agent === "muse") args.push("--yolo");
+    }
+    return args;
+  }
+
+  private async rpcChampionStart(params: Record<string, unknown>): Promise<ChampionStartResult> {
+    this.requireChampions("champion.start");
+    const store = this.mustStore();
+    const champion = this.requireChampion("champion.start", params);
+    if (champion.archivedAt != null) throw new RpcError("invalid_request", `champion.start: ${champion.id} is archived; champion.put {archived:false} first`);
+    const prompt = params.prompt === undefined || params.prompt === null ? null : this.param(params, "prompt");
+    const key = this.idempotencyKeyOf(params);
+    const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
+    if (current && current.lifecycle !== "deleted") {
+      const runtime = store.currentRuntime(current.id);
+      const live = runtime != null && runtime.state !== "stopped";
+      let commandId: number | null = null;
+      if (current.lifecycle === "archived") commandId = this.rpcEnqueue("unarchive", current.id, {}, params).commandId;
+      else if (!live) commandId = this.rpcEnqueue("revive", current.id, {}, params).commandId;
+      const sent = prompt && prompt.length > 0 ? store.send(current.id, prompt, { sender: "operator", origin: "mail.send" }) : null;
+      this.log(`champion.start id=${champion.id} bee=${current.id} ${live ? "running" : "revived"}`);
+      return { champion, beeId: current.id, commandId, messageId: sent?.message.id ?? null, started: live ? "running" : "revived", homeRestored: false };
+    }
+    const homeRef = params.homeRef === undefined || params.homeRef === null ? null : this.param(params, "homeRef");
+    if (homeRef != null && !/^[a-f0-9]{64}$/.test(homeRef)) throw new RpcError("invalid_request", "champion.start: homeRef must be a sha256 object reference");
+    const homeRestored = await this.restoreChampionHome(champion, homeRef);
+    const template = champion.templateId ? store.getTemplate(champion.templateId) : null;
+    const briefing = template?.prompt?.trim() ?? "";
+    const firstPrompt = [briefing, prompt?.trim() ?? ""].filter((p) => p.length > 0).join("\n\n");
+    const spawnParams: Record<string, unknown> = {
+      name: champion.name,
+      agent: champion.agent,
+      cwd: champion.home,
+      tags: [...new Set([...(template?.tags ?? []), `apiary:champion=${champion.id}`, "apiary:role=champion"])],
+      env: { ...(template?.env ?? {}), HIVE_CHAMPION_ID: champion.id, HIVE_CHAMPION_HOME: champion.home },
+      args: this.championSpawnArgs(champion, template),
+      ...(template?.substrate ? { substrate: template.substrate } : {}),
+      ...(template?.account ? { account: template.account } : {}),
+      ...(firstPrompt.length > 0 ? { prompt: firstPrompt } : {}),
+      ...(key == null ? {} : { idempotencyKey: `${key}:spawn` }),
+    };
+    const spawned = await this.rpcSpawnWithAccount(spawnParams);
+    const bound = store.bindChampionBee(champion.id, spawned.beeId);
+    this.log(`champion.start id=${champion.id} bee=${spawned.beeId} spawned home=${champion.home} home_restored=${homeRestored}`);
+    return { champion: bound, beeId: spawned.beeId, commandId: spawned.commandId, messageId: spawned.messageId ?? null, started: "spawned", homeRestored, ...(spawned.deduped ? { deduped: true } : {}) };
+  }
+
+  private async restoreChampionHome(champion: ChampionRow, homeRef: string | null): Promise<boolean> {
+    if (!this.cfg.champions.homeSync || !this.championHomes) {
+      if (homeRef != null) throw new RpcError("invalid_request", "champion.start: homeRef needs champions.homeSync on this node");
+      return false;
+    }
+    try {
+      const entries = readdirSync(champion.home).filter((entry) => entry !== "MEMORY.md" && entry !== "memory");
+      const memory = join(champion.home, "MEMORY.md");
+      const memoryIsStub = !existsSync(memory) || readFileSync(memory, "utf8") === "# Memory\n";
+      const memoryDirEmpty = !existsSync(join(champion.home, "memory")) || readdirSync(join(champion.home, "memory")).length === 0;
+      if (entries.length > 0 || !memoryIsStub || !memoryDirEmpty) return false;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+    const store = this.mustStore();
+    const pointed = homeRef != null ? this.championHomes.describe(homeRef) : null;
+    if (homeRef != null && !pointed) throw new RpcError("invalid_request", `champion.start: home object ${homeRef} is not in the object store ${this.championHomes.root}`);
+    const latest = pointed ?? store.latestChampionHomeObject(champion.id);
+    if (!latest) return false;
+    const restored = await this.championHomes.restore(champion, latest);
+    if (restored && pointed && !store.listChampionHomeObjects(champion.id, { limit: 1000 }).some((o) => o.ref === pointed.ref)) {
+      store.putChampionHomeObject({ championId: champion.id, ref: pointed.ref, bytes: pointed.bytes, size: pointed.size, files: pointed.files, skipped: pointed.skipped, closedAt: Date.now() });
+    }
+    this.log(`champion.home.${restored ? "restored" : "restore_skipped"} id=${champion.id} ref=${latest.ref} bytes=${latest.bytes}${pointed ? " pointer=given" : ""}`);
+    return restored;
+  }
+
+  private rpcChampionArchive(params: Record<string, unknown>): ChampionArchiveResult {
+    this.requireChampions("champion.archive");
+    const store = this.mustStore();
+    const champion = this.requireChampion("champion.archive", params);
+    let commandId: number | null = null;
+    const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
+    if (current && current.lifecycle === "active") commandId = this.rpcEnqueue("archive", current.id, {}, params).commandId;
+    const archived = store.putChampion({ id: champion.id, name: champion.name, agent: champion.agent, home: champion.home, templateId: champion.templateId, model: champion.model, effort: champion.effort, archived: true }).champion;
+    this.log(`champion.archive id=${champion.id} bee=${current?.id ?? "-"}`);
+    return { champion: archived, commandId };
+  }
+
+  private rpcChampionDelete(params: Record<string, unknown>): ChampionDeleteResult {
+    this.requireChampions("champion.delete");
+    const store = this.mustStore();
+    const champion = this.requireChampion("champion.delete", params);
+    const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
+    if (current && current.lifecycle === "active" && !champion.archivedAt) throw new RpcError("invalid_request", `champion.delete: ${champion.id} has an active incarnation ${current.id}; champion.archive first`);
+    const deleted = store.deleteChampion(champion.id);
+    this.log(`champion.delete id=${champion.id} home_kept=${champion.home}`);
+    return { champion: deleted };
   }
 
   private rpcTranscriptSegments(params: Record<string, unknown>): TranscriptSegmentsResult {
@@ -6279,6 +6504,7 @@ export class HiveDaemon {
       views: store.listBeeViewRows().map((row) => ({ ...row, bee: includeOperatorLocalHomes ? operatorLocalBee(row.bee) : mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
       capacity: this.retention?.capacity() ?? null,
       templates: store.listTemplates(),
+      ...(this.cfg.champions.enabled ? { champions: store.listChampions() } : {}),
       tells: store.listTells(),
       reactions: store.listReactions(),
       questions: store.listQuestions(),

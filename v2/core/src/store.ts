@@ -105,6 +105,8 @@ import {
   type HandoffContext,
   type TranscriptSegmentRow,
   type TranscriptSegmentObjectRow,
+  type ChampionRow,
+  type ChampionHomeObjectRow,
   type TranscriptSegmentCursorRow,
   TranscriptSegmentOrdinalError,
   HandoffInProgressError,
@@ -214,7 +216,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -739,6 +741,58 @@ function mapBee(r: Row): BeeRow {
     lastTurnTrigger: r.last_turn_trigger == null ? null : (JSON.parse(r.last_turn_trigger as string) as TurnTrigger),
     lastHumanOutputAt: r.last_human_output_at == null ? null : Number(r.last_human_output_at),
   };
+}
+
+function mapChampion(r: Row): ChampionRow {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    agent: r.agent as string,
+    home: r.home as string,
+    templateId: (r.template_id as string | null) ?? null,
+    model: (r.model as string | null) ?? null,
+    effort: (r.effort as string | null) ?? null,
+    currentBeeId: (r.current_bee_id as string | null) ?? null,
+    createdAt: Number(r.created_at),
+    updatedAt: Number(r.updated_at),
+    archivedAt: r.archived_at == null ? null : Number(r.archived_at),
+  };
+}
+
+function mapChampionHomeObject(r: Row): ChampionHomeObjectRow {
+  return {
+    id: r.id as string,
+    championId: r.champion_id as string,
+    ref: r.ref as string,
+    bytes: Number(r.bytes),
+    size: Number(r.size),
+    files: Number(r.files),
+    skipped: Number(r.skipped),
+    closedAt: Number(r.closed_at),
+  };
+}
+
+export function championSlug(name: string): string {
+  const slug = name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug.length > 0 ? slug.slice(0, 64) : "champion";
+}
+
+export class ChampionNotFoundError extends Error {
+  constructor(id: string) {
+    super(`champion not found: ${id}`);
+    this.name = "ChampionNotFoundError";
+  }
+}
+
+export interface PutChampionInput {
+  id?: string;
+  name: string;
+  agent: string;
+  home: string;
+  templateId?: string | null;
+  model?: string | null;
+  effort?: string | null;
+  archived?: boolean;
 }
 
 function mapTranscriptSegmentObject(r: Row): TranscriptSegmentObjectRow {
@@ -2110,6 +2164,7 @@ export class CoreStore {
     this.db.exec(BEE_HANDOFFS_TABLE_SQL);
     this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
     this.db.exec(TRANSCRIPT_SEGMENT_OBJECTS_SQL);
+    this.db.exec(CHAMPIONS_SQL);
     // v24: the action queue tables are additive (CREATE IF NOT EXISTS).
     this.db.exec(ACTIONS_TABLE_SQL);
     this.db.exec(THREAD_OPERATIONS_TABLE_SQL);
@@ -9510,6 +9565,103 @@ export class CoreStore {
     return segment;
   }
 
+  getChampion(id: string): ChampionRow | null {
+    const row = this.stmt("SELECT * FROM champions WHERE id = ?").get(id) as Row | undefined;
+    return row ? mapChampion(row) : null;
+  }
+
+  getChampionByBee(beeId: string): ChampionRow | null {
+    const row = this.stmt("SELECT * FROM champions WHERE current_bee_id = ?").get(beeId) as Row | undefined;
+    return row ? mapChampion(row) : null;
+  }
+
+  listChampions(filter: { includeArchived?: boolean } = {}): ChampionRow[] {
+    const rows = (filter.includeArchived === false
+      ? this.stmt("SELECT * FROM champions WHERE archived_at IS NULL ORDER BY id").all()
+      : this.stmt("SELECT * FROM champions ORDER BY id").all()) as Row[];
+    return rows.map(mapChampion);
+  }
+
+  putChampion(input: PutChampionInput): { champion: ChampionRow; outcome: PutOutcome } {
+    return this.tx(() => {
+      const id = input.id ?? championSlug(input.name);
+      const existing = this.getChampion(id);
+      const at = this.now();
+      const next = {
+        name: input.name,
+        agent: input.agent,
+        home: input.home,
+        templateId: input.templateId ?? null,
+        model: input.model ?? null,
+        effort: input.effort ?? null,
+        archivedAt: input.archived === undefined ? existing?.archivedAt ?? null : input.archived ? existing?.archivedAt ?? at : null,
+      };
+      if (existing) {
+        const same = existing.name === next.name && existing.agent === next.agent && existing.home === next.home && existing.templateId === next.templateId
+          && existing.model === next.model && existing.effort === next.effort && existing.archivedAt === next.archivedAt;
+        if (same) return { champion: existing, outcome: "unchanged" };
+        this.stmt("UPDATE champions SET name = ?, agent = ?, home = ?, template_id = ?, model = ?, effort = ?, archived_at = ?, updated_at = ? WHERE id = ?")
+          .run(next.name, next.agent, next.home, next.templateId, next.model, next.effort, next.archivedAt, at, id);
+        const champion = this.getChampion(id) as ChampionRow;
+        this.audit("champion.put", existing.currentBeeId, { champion, outcome: "updated" });
+        return { champion, outcome: "updated" };
+      }
+      this.stmt("INSERT INTO champions(id, name, agent, home, template_id, model, effort, current_bee_id, created_at, updated_at, archived_at) VALUES(?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)")
+        .run(id, next.name, next.agent, next.home, next.templateId, next.model, next.effort, at, at, next.archivedAt);
+      const champion = this.getChampion(id) as ChampionRow;
+      this.audit("champion.put", null, { champion, outcome: "created" });
+      return { champion, outcome: "created" };
+    });
+  }
+
+  bindChampionBee(id: string, beeId: string | null): ChampionRow {
+    return this.tx(() => {
+      const existing = this.getChampion(id);
+      if (!existing) throw new ChampionNotFoundError(id);
+      if (existing.currentBeeId === beeId) return existing;
+      this.stmt("UPDATE champions SET current_bee_id = ?, updated_at = ? WHERE id = ?").run(beeId, this.now(), id);
+      const champion = this.getChampion(id) as ChampionRow;
+      this.audit("champion.put", beeId ?? existing.currentBeeId, { champion, outcome: "updated" });
+      return champion;
+    });
+  }
+
+  deleteChampion(id: string): ChampionRow {
+    return this.tx(() => {
+      const existing = this.getChampion(id);
+      if (!existing) throw new ChampionNotFoundError(id);
+      this.stmt("DELETE FROM champion_home_objects WHERE champion_id = ?").run(id);
+      this.stmt("DELETE FROM champions WHERE id = ?").run(id);
+      this.audit("champion.deleted", existing.currentBeeId, { championId: id, deletedAt: this.now() });
+      return existing;
+    });
+  }
+
+  putChampionHomeObject(input: Omit<ChampionHomeObjectRow, "id">): ChampionHomeObjectRow {
+    return this.tx(() => {
+      if (!this.getChampion(input.championId)) throw new ChampionNotFoundError(input.championId);
+      const id = randomUUID();
+      this.stmt("INSERT INTO champion_home_objects(id, champion_id, ref, bytes, size, files, skipped, closed_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, input.championId, input.ref, input.bytes, input.size, input.files, input.skipped, input.closedAt);
+      const row = mapChampionHomeObject(this.stmt("SELECT * FROM champion_home_objects WHERE id = ?").get(id) as Row);
+      this.audit("champion_home_object.put", this.getChampion(input.championId)?.currentBeeId ?? null, { object: row });
+      return row;
+    });
+  }
+
+  latestChampionHomeObject(championId: string): ChampionHomeObjectRow | null {
+    const row = this.stmt("SELECT * FROM champion_home_objects WHERE champion_id = ? ORDER BY closed_at DESC, id DESC LIMIT 1").get(championId) as Row | undefined;
+    return row ? mapChampionHomeObject(row) : null;
+  }
+
+  listChampionHomeObjects(championId: string, opts: { limit?: number } = {}): ChampionHomeObjectRow[] {
+    return (this.stmt("SELECT * FROM champion_home_objects WHERE champion_id = ? ORDER BY closed_at DESC, id DESC LIMIT ?").all(championId, opts.limit ?? 100) as Row[]).map(mapChampionHomeObject);
+  }
+
+  listChampionHomeObjectRefs(): Set<string> {
+    return new Set((this.stmt("SELECT ref FROM champion_home_objects").all() as Row[]).map((r) => r.ref as string));
+  }
+
   /** All segments (ordinal order within a bee); `beeId` narrows to one bee. */
   listTranscriptSegmentObjects(beeId: string, opts: { afterOrdinal?: number; limit?: number } = {}): TranscriptSegmentObjectRow[] {
     const rows = this.stmt("SELECT * FROM transcript_segment_objects WHERE bee_id = ? AND ordinal > ? ORDER BY ordinal LIMIT ?")
@@ -11292,6 +11444,7 @@ export class CoreStore {
       mailbox: (this.stmt("SELECT * FROM mailbox ORDER BY id").all() as Row[]).map(row => this.mapPhoneMessage(row)),
       commands: (this.stmt("SELECT * FROM commands ORDER BY id").all() as Row[]).map(mapCommand),
       templates: this.listTemplates(),
+      ...(this.listChampions().length > 0 ? { champions: this.listChampions() } : {}),
       tells: this.listTells(),
       reactions: this.listReactions(),
       questions: (this.stmt("SELECT * FROM questions ORDER BY id").all() as Row[]).map(mapQuestion),

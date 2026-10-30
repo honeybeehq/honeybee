@@ -158,8 +158,10 @@
  *        ALTER TABLE ADD COLUMN ×3 (existing paused rows backfill as operator).
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
- * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 53;
+ * and the secret-free last refresh `failure` (table rebuild, rows carried across by name).
+ * v54 — H5 Champions: `champions` (identity, home, template binding, current incarnation) and
+ * `champion_home_objects` (home bundles in the object store); additive CREATE TABLE IF NOT EXISTS. */
+export const SCHEMA_VERSION = 54;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -1051,6 +1053,34 @@ CREATE INDEX IF NOT EXISTS bee_handoffs_bee ON bee_handoffs(bee_id, created_at);
  * Pointer rows Apiary mirrors (same columns as its hive_transcript_segment_objects).
  * Additive: CREATE TABLE IF NOT EXISTS ×2; cascades with the bee.
  */
+export const CHAMPIONS_SQL = `
+CREATE TABLE IF NOT EXISTS champions (
+  id             TEXT PRIMARY KEY,
+  name           TEXT NOT NULL,
+  agent          TEXT NOT NULL,
+  home           TEXT NOT NULL,
+  template_id    TEXT,
+  model          TEXT,
+  effort         TEXT,
+  current_bee_id TEXT,
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL,
+  archived_at    INTEGER
+) STRICT;
+CREATE INDEX IF NOT EXISTS champions_current_bee ON champions(current_bee_id);
+CREATE TABLE IF NOT EXISTS champion_home_objects (
+  id          TEXT PRIMARY KEY,
+  champion_id TEXT NOT NULL,
+  ref         TEXT NOT NULL,
+  bytes       INTEGER NOT NULL,
+  size        INTEGER NOT NULL,
+  files       INTEGER NOT NULL,
+  skipped     INTEGER NOT NULL,
+  closed_at   INTEGER NOT NULL
+) STRICT;
+CREATE INDEX IF NOT EXISTS champion_home_objects_champion ON champion_home_objects(champion_id, closed_at);
+`;
+
 export const TRANSCRIPT_SEGMENT_OBJECTS_SQL = `
 CREATE TABLE IF NOT EXISTS transcript_segment_objects (
   id                 TEXT PRIMARY KEY,

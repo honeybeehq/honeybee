@@ -14,7 +14,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
-import { wipRefFor } from "../../driver-cell/src/wip.ts";
+import { hostname } from "node:os";
+import { wipNodeScope, wipRefFor } from "../../driver-cell/src/wip.ts";
 import { type AuditTailResult, type CellGcResult, type CellRemoveResult, type HealthResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
@@ -98,7 +99,7 @@ test("cell-wip.1: a turn end pushes WIP with read-back; a dirty stopped Cell is 
     const { beeId, view } = await spawnIdle(client, "wip-bee", rig.origin.repo);
     const cell = view.cell!;
     assert.equal(cell.wipSha, null);
-    const ref = wipRefFor(cell.id);
+    const ref = wipRefFor(wipNodeScope(null, hostname()), cell.id);
 
     await shInCell(client, beeId, "printf 'draft\\n' > notes.md && mkdir -p .next && printf 'b\\n' > .next/out.js && printf 'v2\\n' >> README.md");
     const pushed = await wipConfirmed(client, beeId, 0);
@@ -155,7 +156,7 @@ test("cell-wip.1: a turn end pushes WIP with read-back; a dirty stopped Cell is 
 test("cell-wip.2: an origin that refuses the WIP ref holds the eviction as wip_unconfirmed and reports it in capacity without refusing admission; the hold lifts when the push lands", { timeout: 240_000 }, async () => {
   const rig = makeRig(FLAGS);
   let daemon: DaemonHandle | null = null;
-  const wipDir = join(rig.origin.repo, ".git", "refs", "hive", "wip");
+  const wipDir = join(rig.origin.repo, ".git", "refs", "hive", "wip", wipNodeScope(null, hostname()));
   try {
     daemon = await startDaemon(rig.dir);
     const client = await daemon.client();
