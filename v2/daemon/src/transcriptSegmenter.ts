@@ -1,26 +1,25 @@
-import { randomUUID } from "node:crypto";
-import { open, stat } from "node:fs/promises";
-import type { BeeRow, CoreStore, TranscriptSegmentCursorRow } from "../../core/src/index.ts";
-import { createTranscriptProjector, restoreTranscriptProjector } from "../../driver-tmux/src/transcripts.ts";
-import { TRANSCRIPT_PROJECTION_VERSION, type TranscriptProjector } from "../../driver-tmux/src/transcript-projection.ts";
-import {
-  SEGMENT_MAX_LINES,
-  SEGMENT_MAX_RAW_BYTES,
-  compressSegment,
-  encodeProjectedSegment,
-  scanLogLines,
-  segmentDigest,
-  type ProjectedLine,
-  type ScannedLine,
-} from "../../driver-tmux/src/transcript-segment-format.ts";
-import type { TranscriptObjectStore } from "./transcriptObjectStore.ts";
+import { readdirSync, statSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { Worker } from "node:worker_threads";
+import type { CoreStore } from "../../core/src/index.ts";
+import { SEGMENT_MAX_LINES, SEGMENT_MAX_RAW_BYTES } from "../../driver-tmux/src/transcript-segment-format.ts";
+import { TRANSCRIPT_OBJECT_DIR, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
+import { transcriptSegmentWorkerUrl, type SegmentCursor, type TranscriptCutRequest, type TranscriptCutResult } from "./transcriptSegmentWorker.ts";
 
 export type TranscriptCutReason = "turn_ended" | "exited" | "boot" | "manual";
 
 export interface TranscriptCutOutcome {
-  status: "cut" | "nothing" | "no_log" | "no_bee";
+  status: "cut" | "nothing" | "no_log" | "no_bee" | "failed";
   segments: number;
   lines: number;
+}
+
+export interface TranscriptObjectsStatus {
+  root: string;
+  objects: number;
+  bytes: number;
+  orphansSwept: number;
+  measuredAt: number;
 }
 
 export interface TranscriptSegmenterDeps {
@@ -30,20 +29,35 @@ export interface TranscriptSegmenterDeps {
   log: (op: string) => void;
   maxLines?: number;
   maxRawBytes?: number;
-  readChunkBytes?: number;
-  projectorReplayLimitBytes?: number;
+  maxWorkers?: number;
+  pacingMs?: number;
+  chunkBytes?: number;
+  maxChunkBytes?: number;
+  replayLimitBytes?: number;
+  orphanGraceMs?: number;
+  workerUrl?: URL;
 }
 
-const DEFAULT_READ_CHUNK = 8 * 1024 * 1024;
-const DEFAULT_PROJECTOR_REPLAY_LIMIT = 64 * 1024 * 1024;
+const DEFAULT_CHUNK = 1024 * 1024;
+const DEFAULT_MAX_CHUNK = 64 * 1024 * 1024;
+const DEFAULT_REPLAY_LIMIT = 64 * 1024 * 1024;
+const DEFAULT_PACING_MS = 25;
+const DEFAULT_ORPHAN_GRACE_MS = 60 * 60_000;
 
-type Cursor = Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt">;
+interface Pending {
+  beeId: string;
+  reason: TranscriptCutReason;
+  settle: Array<(outcome: TranscriptCutOutcome) => void>;
+}
 
 export class TranscriptSegmenter {
   private readonly deps: TranscriptSegmenterDeps;
-  private readonly inFlight = new Map<string, Promise<TranscriptCutOutcome>>();
-  private readonly again = new Map<string, TranscriptCutReason>();
+  private readonly queue: Pending[] = [];
+  private readonly queued = new Map<string, Pending>();
+  private readonly running = new Map<string, Pending>();
+  private readonly workers = new Set<Worker>();
   private stopping = false;
+  private objectsStatus: TranscriptObjectsStatus | null = null;
   readonly diagnostics = { cuts: 0, segments: 0, lines: 0, failures: 0 };
 
   constructor(deps: TranscriptSegmenterDeps) {
@@ -52,31 +66,33 @@ export class TranscriptSegmenter {
 
   stop(): void {
     this.stopping = true;
+    for (const worker of this.workers) {
+      worker.unref();
+      void worker.terminate();
+    }
+    for (const pending of [...this.queue, ...this.running.values()]) for (const settle of pending.settle) settle({ status: "nothing", segments: 0, lines: 0 });
+    this.queue.length = 0;
+    this.queued.clear();
   }
 
   requestCut(beeId: string, reason: TranscriptCutReason): Promise<TranscriptCutOutcome> {
     if (this.stopping) return Promise.resolve({ status: "nothing", segments: 0, lines: 0 });
-    const running = this.inFlight.get(beeId);
-    if (running) {
-      this.again.set(beeId, reason);
-      return running;
-    }
-    const run = this.cut(beeId, reason)
-      .catch((err) => {
-        this.diagnostics.failures += 1;
-        this.deps.log(`transcripts.segment.cut_failed bee=${beeId} reason=${reason} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`);
-        return { status: "nothing", segments: 0, lines: 0 } as TranscriptCutOutcome;
-      })
-      .finally(() => {
-        this.inFlight.delete(beeId);
-        const next = this.again.get(beeId);
-        if (next !== undefined) {
-          this.again.delete(beeId);
-          void this.requestCut(beeId, next);
-        }
-      });
-    this.inFlight.set(beeId, run);
-    return run;
+    return new Promise((settle) => {
+      const pending = this.queued.get(beeId);
+      if (pending) {
+        if (reason !== "boot") pending.reason = reason;
+        pending.settle.push(settle);
+        return;
+      }
+      const entry: Pending = { beeId, reason, settle: [settle] };
+      this.queued.set(beeId, entry);
+      this.queue.push(entry);
+      this.pump();
+    });
+  }
+
+  backlog(): number {
+    return this.queue.length + this.running.size;
   }
 
   catchUp(): number {
@@ -92,168 +108,168 @@ export class TranscriptSegmenter {
     return scheduled;
   }
 
-  private async cut(beeId: string, reason: TranscriptCutReason): Promise<TranscriptCutOutcome> {
+  private pump(): void {
+    if (this.stopping) return;
+    const max = this.deps.maxWorkers ?? 1;
+    while (this.running.size < max) {
+      const index = this.queue.findIndex((p) => !this.running.has(p.beeId));
+      if (index < 0) return;
+      const pending = this.queue.splice(index, 1)[0]!;
+      this.queued.delete(pending.beeId);
+      this.running.set(pending.beeId, pending);
+      void this.cut(pending)
+        .catch((err): TranscriptCutOutcome => {
+          if (this.stopping) return { status: "nothing", segments: 0, lines: 0 };
+          this.diagnostics.failures += 1;
+          this.deps.log(`transcripts.segment.cut_failed bee=${pending.beeId} reason=${pending.reason} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`);
+          return { status: "failed", segments: 0, lines: 0 };
+        })
+        .then((outcome) => {
+          for (const settle of pending.settle) settle(outcome);
+        })
+        .finally(() => {
+          this.running.delete(pending.beeId);
+          if (this.queue.length === 0) return;
+          setTimeout(() => this.pump(), this.deps.pacingMs ?? DEFAULT_PACING_MS).unref();
+        });
+    }
+  }
+
+  private async cut(pending: Pending): Promise<TranscriptCutOutcome> {
     const store = this.deps.store();
-    const bee = store.getBee(beeId);
+    const bee = store.getBee(pending.beeId);
     if (!bee || bee.lifecycle === "deleted") return { status: "no_bee", segments: 0, lines: 0 };
     const path = bee.sessionLogPath;
     if (!path) return { status: "no_log", segments: 0, lines: 0 };
-    let cursor: Cursor = store.getTranscriptSegmentCursor(beeId) ?? { path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null };
+    let cursor: SegmentCursor = store.getTranscriptSegmentCursor(bee.id) ?? { path, lineNo: 0, byteOffset: 0, epoch: null, projectorCheckpoint: null };
     let total = { segments: 0, lines: 0 };
     if (cursor.path !== path) {
-      const finished = await this.cutFile(bee, cursor, this.harnessFor(store, bee, cursor.path));
+      const finished = await this.cutFile(bee.id, cursor, pending.reason);
       total = { segments: finished.segments, lines: finished.lines };
       cursor = { path, lineNo: finished.cursor.lineNo, byteOffset: 0, epoch: finished.cursor.epoch, projectorCheckpoint: null };
-      store.putTranscriptSegmentCursor(beeId, cursor);
-      this.deps.log(`transcripts.segment.rotated bee=${beeId} from=${finished.cursor.path} to=${path} line=${cursor.lineNo}`);
+      store.putTranscriptSegmentCursor(bee.id, cursor);
+      this.deps.log(`transcripts.segment.rotated bee=${bee.id} from=${finished.cursor.path} to=${path} line=${cursor.lineNo}`);
     }
-    const current = await this.cutFile(bee, cursor, this.harnessFor(store, bee, path));
+    const current = await this.cutFile(bee.id, cursor, pending.reason);
     total = { segments: total.segments + current.segments, lines: total.lines + current.lines };
     if (total.segments > 0) {
       this.diagnostics.cuts += 1;
       this.diagnostics.segments += total.segments;
       this.diagnostics.lines += total.lines;
-      this.deps.log(`transcripts.segment.cut bee=${beeId} reason=${reason} segments=${total.segments} lines=${total.lines} through=${current.cursor.lineNo}`);
+      this.deps.log(`transcripts.segment.cut bee=${bee.id} reason=${pending.reason} segments=${total.segments} lines=${total.lines} through=${current.cursor.lineNo}`);
     }
     return { status: total.segments > 0 ? "cut" : "nothing", ...total };
   }
 
-  private harnessFor(store: CoreStore, bee: BeeRow, path: string): { harness: string; logSegmentId: string | null } {
-    const segment = store.listTranscriptSegments(bee.id).find((s) => s.path === path) ?? store.currentTranscriptSegment(bee.id);
-    return { harness: segment?.harness ?? bee.agent, logSegmentId: segment?.id ?? null };
+  private harnessFor(store: CoreStore, beeId: string, agent: string, path: string): { harness: string; logSegmentId: string | null } {
+    const segment = store.listTranscriptSegments(beeId).find((s) => s.path === path) ?? store.currentTranscriptSegment(beeId);
+    return { harness: segment?.harness ?? agent, logSegmentId: segment?.id ?? null };
   }
 
-  private async cutFile(bee: BeeRow, start: Cursor, source: { harness: string; logSegmentId: string | null }): Promise<{ segments: number; lines: number; cursor: Cursor }> {
+  private async cutFile(beeId: string, cursor: SegmentCursor, reason: TranscriptCutReason): Promise<{ segments: number; lines: number; cursor: SegmentCursor }> {
     const store = this.deps.store();
-    let cursor = start;
-    let size: number;
-    try {
-      size = (await stat(cursor.path)).size;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return { segments: 0, lines: 0, cursor };
-      throw error;
+    const bee = store.getBee(beeId);
+    if (!bee) return { segments: 0, lines: 0, cursor };
+    const source = this.harnessFor(store, beeId, bee.agent, cursor.path);
+    const request: TranscriptCutRequest = {
+      beeId,
+      cursor,
+      harness: source.harness,
+      logSegmentId: source.logSegmentId,
+      storeRoot: this.deps.objectStore.locator.root,
+      maxLines: this.deps.maxLines ?? SEGMENT_MAX_LINES,
+      maxRawBytes: this.deps.maxRawBytes ?? SEGMENT_MAX_RAW_BYTES,
+      chunkBytes: this.deps.chunkBytes ?? DEFAULT_CHUNK,
+      maxChunkBytes: this.deps.maxChunkBytes ?? DEFAULT_MAX_CHUNK,
+      replayLimitBytes: this.deps.replayLimitBytes ?? DEFAULT_REPLAY_LIMIT,
+      observedAt: this.deps.now(),
+    };
+    const result = await this.runWorker(request);
+    if (result.error != null) throw new Error(result.error);
+    this.countWritten(result.written);
+    if (result.missing) return { segments: 0, lines: 0, cursor };
+    if (result.shrunk) {
+      this.deps.log(`transcripts.segment.log_shrunk bee=${beeId} path=${cursor.path} cursor=${cursor.byteOffset}`);
+      if (result.segments.length === 0) store.putTranscriptSegmentCursor(beeId, result.cursor);
     }
-    if (size < cursor.byteOffset) {
-      this.deps.log(`transcripts.segment.log_shrunk bee=${bee.id} path=${cursor.path} size=${size} cursor=${cursor.byteOffset}`);
-      cursor = { ...cursor, byteOffset: 0, epoch: randomUUID(), projectorCheckpoint: null };
-      store.putTranscriptSegmentCursor(bee.id, cursor);
-    }
-    if (size === cursor.byteOffset) return { segments: 0, lines: 0, cursor };
-    const projector = await this.projectorFor(bee, cursor, source.harness);
-    const handle = await open(cursor.path, "r");
-    let segments = 0;
+    if (result.checkpointRejected) this.deps.log(`transcripts.segment.checkpoint_rejected bee=${beeId} reason=${result.checkpointRejected}`);
+    if (result.projectorReset) this.deps.log(`transcripts.segment.projector_reset bee=${beeId} prefix=${cursor.byteOffset}`);
     let lines = 0;
-    try {
-      let chunk = this.deps.readChunkBytes ?? DEFAULT_READ_CHUNK;
-      while (cursor.byteOffset < size) {
-        const chunkStart = cursor.byteOffset;
-        const want = Math.min(chunk, size - chunkStart);
-        const data = Buffer.alloc(want);
-        let read = 0;
-        while (read < want) {
-          const { bytesRead } = await handle.read(data, read, want - read, chunkStart + read);
-          if (bytesRead === 0) break;
-          read += bytesRead;
-        }
-        const scanned = scanLogLines(data.subarray(0, read), cursor.lineNo, chunkStart);
-        if (scanned.lines.length === 0) {
-          if (read < want || chunkStart + read >= size) break;
-          chunk *= 2;
-          continue;
-        }
-        const observedAt = this.deps.now();
-        const projected: ProjectedLine[] = scanned.lines.map((line) => ({
-          line_no: line.lineNo, byte_offset: line.byteOffset, raw_bytes: line.rawBytes, raw_sha256: line.rawSha256, observed_at: observedAt, harness: source.harness,
-          events: JSON.stringify(projector.pushLine(line.text)),
-        }));
-        for (const group of this.groups(scanned.lines)) {
-          if (this.stopping) return { segments, lines, cursor };
-          const first = scanned.lines[group.from]!;
-          const last = scanned.lines[group.to]!;
-          const rawSlice = Buffer.from(data.subarray(first.byteOffset - chunkStart, last.nextByteOffset - chunkStart));
-          const projectedLines = projected.slice(group.from, group.to + 1);
-          const encoded = encodeProjectedSegment(projectedLines, { beeId: bee.id, harness: source.harness, projectionVersion: TRANSCRIPT_PROJECTION_VERSION });
-          const rawObject = this.deps.objectStore.putBytes(compressSegment(rawSlice));
-          const projectedObject = this.deps.objectStore.putBytes(compressSegment(encoded));
-          const next: Cursor = { path: cursor.path, lineNo: last.lineNo, byteOffset: last.nextByteOffset, epoch: cursor.epoch, projectorCheckpoint: projector.checkpoint() };
-          store.putTranscriptSegmentObject({
-            beeId: bee.id,
-            ordinal: (store.lastTranscriptSegmentObject(bee.id)?.ordinal ?? -1) + 1,
-            firstLine: first.lineNo,
-            lastLine: last.lineNo,
-            byteStart: first.byteOffset,
-            byteEnd: last.nextByteOffset,
-            harness: source.harness,
-            rawRef: rawObject.ref,
-            rawSize: rawSlice.length,
-            rawBytes: rawObject.bytes,
-            projectedRef: projectedObject.ref,
-            projectedSize: encoded.length,
-            projectedBytes: projectedObject.bytes,
-            projectionVersion: TRANSCRIPT_PROJECTION_VERSION,
-            digest: segmentDigest(projectedLines),
-            closedAt: this.deps.now(),
-            epoch: cursor.epoch,
-            path: cursor.path,
-            logSegmentId: source.logSegmentId,
-          }, next);
-          cursor = next;
-          segments += 1;
-          lines += projectedLines.length;
-        }
-        if (read < want) break;
-      }
-    } finally {
-      await handle.close();
+    for (const entry of result.segments) {
+      if (this.stopping) break;
+      const ordinal = (store.lastTranscriptSegmentObject(beeId)?.ordinal ?? -1) + 1;
+      store.putTranscriptSegmentObject({ ...entry.segment, ordinal }, entry.cursor, { audit: reason !== "boot" });
+      lines += entry.segment.lastLine - entry.segment.firstLine + 1;
     }
-    return { segments, lines, cursor };
+    return { segments: result.segments.length, lines, cursor: result.segments.length > 0 ? result.segments[result.segments.length - 1]!.cursor : result.cursor };
   }
 
-  private groups(lines: ScannedLine[]): Array<{ from: number; to: number }> {
-    const maxLines = this.deps.maxLines ?? SEGMENT_MAX_LINES;
-    const maxBytes = this.deps.maxRawBytes ?? SEGMENT_MAX_RAW_BYTES;
-    const out: Array<{ from: number; to: number }> = [];
-    let from = 0;
+  private runWorker(request: TranscriptCutRequest): Promise<TranscriptCutResult> {
+    return new Promise((resolve, reject) => {
+      const worker = new Worker(this.deps.workerUrl ?? transcriptSegmentWorkerUrl(), { execArgv: [], workerData: request });
+      this.workers.add(worker);
+      let settled = false;
+      worker.on("message", (message: TranscriptCutResult) => {
+        if (settled) return;
+        settled = true;
+        resolve(message);
+      });
+      worker.once("error", (err) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      });
+      worker.once("exit", (code) => {
+        this.workers.delete(worker);
+        if (settled) return;
+        settled = true;
+        reject(new Error(`transcript segment worker exited with code ${code} without a result`));
+      });
+    });
+  }
+
+  objects(): TranscriptObjectsStatus | null {
+    return this.objectsStatus ? { ...this.objectsStatus } : null;
+  }
+
+  private countWritten(written: { objects: number; bytes: number }): void {
+    if (!this.objectsStatus || written.objects === 0) return;
+    this.objectsStatus = { ...this.objectsStatus, objects: this.objectsStatus.objects + written.objects, bytes: this.objectsStatus.bytes + written.bytes };
+  }
+
+  sweepOrphans(): TranscriptObjectsStatus {
+    const root = this.deps.objectStore.locator.root;
+    const dir = join(root, TRANSCRIPT_OBJECT_DIR);
+    const referenced = this.deps.store().listTranscriptSegmentObjectRefs();
+    const grace = this.deps.orphanGraceMs ?? DEFAULT_ORPHAN_GRACE_MS;
+    const now = this.deps.now();
+    let objects = 0;
     let bytes = 0;
-    for (let i = 0; i < lines.length; i += 1) {
-      bytes += lines[i]!.nextByteOffset - lines[i]!.byteOffset;
-      const count = i - from + 1;
-      if (count >= maxLines || bytes >= maxBytes) {
-        out.push({ from, to: i });
-        from = i + 1;
-        bytes = 0;
-      }
-    }
-    if (from < lines.length) out.push({ from, to: lines.length - 1 });
-    return out;
-  }
-
-  private async projectorFor(bee: BeeRow, cursor: Cursor, harness: string): Promise<TranscriptProjector> {
-    if (cursor.byteOffset === 0) return createTranscriptProjector(harness);
-    if (cursor.projectorCheckpoint != null) {
-      const restored = restoreTranscriptProjector(harness, cursor.projectorCheckpoint);
-      if (restored.ok) return restored.projector;
-      this.deps.log(`transcripts.segment.checkpoint_rejected bee=${bee.id} reason=${restored.reason}`);
-    }
-    const projector = createTranscriptProjector(harness);
-    const limit = this.deps.projectorReplayLimitBytes ?? DEFAULT_PROJECTOR_REPLAY_LIMIT;
-    if (cursor.byteOffset > limit) {
-      this.deps.log(`transcripts.segment.projector_reset bee=${bee.id} prefix=${cursor.byteOffset} limit=${limit}`);
-      return projector;
-    }
-    const handle = await open(cursor.path, "r");
+    let swept = 0;
+    let entries: string[] = [];
     try {
-      const data = Buffer.alloc(cursor.byteOffset);
-      let read = 0;
-      while (read < cursor.byteOffset) {
-        const { bytesRead } = await handle.read(data, read, cursor.byteOffset - read, read);
-        if (bytesRead === 0) break;
-        read += bytesRead;
-      }
-      for (const line of scanLogLines(data.subarray(0, read), 0, 0).lines) projector.pushLine(line.text);
-    } finally {
-      await handle.close();
+      entries = readdirSync(dir);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    return projector;
+    for (const entry of entries) {
+      const path = join(dir, entry);
+      let info;
+      try {
+        info = statSync(path);
+      } catch {
+        continue;
+      }
+      if (!referenced.has(entry) && (entry.endsWith(".partial") || now - info.mtimeMs > grace)) {
+        rmSync(path, { force: true });
+        swept += 1;
+        continue;
+      }
+      objects += 1;
+      bytes += info.size;
+    }
+    this.objectsStatus = { root, objects, bytes, orphansSwept: swept, measuredAt: now };
+    this.deps.log(`transcripts.objects root=${root} objects=${objects} bytes=${bytes} orphans_swept=${swept}`);
+    return this.objectsStatus;
   }
 }

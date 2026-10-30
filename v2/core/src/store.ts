@@ -9474,7 +9474,7 @@ export class CoreStore {
   /** All segments (ordinal order within a bee); `beeId` narrows to one bee. */
   listTranscriptSegmentObjects(beeId: string, opts: { afterOrdinal?: number; limit?: number } = {}): TranscriptSegmentObjectRow[] {
     const rows = this.stmt("SELECT * FROM transcript_segment_objects WHERE bee_id = ? AND ordinal > ? ORDER BY ordinal LIMIT ?")
-      .all(beeId, opts.afterOrdinal ?? -1, opts.limit ?? 100_000) as Row[];
+      .all(beeId, opts.afterOrdinal ?? -1, opts.limit ?? 1000) as Row[];
     return rows.map(mapTranscriptSegmentObject);
   }
 
@@ -9489,9 +9489,19 @@ export class CoreStore {
   }
 
   /** One cut: the pointer row and the advanced cursor land together or not at all. */
+  listTranscriptSegmentObjectRefs(): Set<string> {
+    const refs = new Set<string>();
+    for (const row of this.stmt("SELECT raw_ref, projected_ref FROM transcript_segment_objects").all() as Row[]) {
+      refs.add(row.raw_ref as string);
+      refs.add(row.projected_ref as string);
+    }
+    return refs;
+  }
+
   putTranscriptSegmentObject(
     segment: Omit<TranscriptSegmentObjectRow, "id">,
     cursor: Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt">,
+    opts: { audit?: boolean } = {},
   ): TranscriptSegmentObjectRow {
     return this.tx(() => {
       const previous = this.lastTranscriptSegmentObject(segment.beeId);
@@ -9506,7 +9516,7 @@ export class CoreStore {
         segment.projectedRef, segment.projectedSize, segment.projectedBytes, segment.projectionVersion, segment.digest, segment.closedAt, segment.epoch, segment.path, segment.logSegmentId);
       this.putTranscriptSegmentCursorInTx(segment.beeId, cursor);
       const row = mapTranscriptSegmentObject(this.stmt("SELECT * FROM transcript_segment_objects WHERE id = ?").get(id) as Row);
-      this.audit("transcript_segment_object.put", segment.beeId, { segment: row });
+      if (opts.audit !== false) this.audit("transcript_segment_object.put", segment.beeId, { segment: row });
       return row;
     });
   }

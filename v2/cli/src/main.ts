@@ -2935,7 +2935,8 @@ export function capacityLine(c: NodeCapacity): string {
   const block = c.resourceBlocked.blocked
     ? `resource-blocked since ${new Date(c.resourceBlocked.since ?? c.checkedAt).toISOString().slice(0, 16).replace("T", " ")}Z (${c.resourceBlocked.reason})`
     : "not blocked";
-  return `capacity: new Cells ${c.admission.newCells} (enforce ${c.admission.enforce ? "on" : "off, warn only"}) · ${block} · ${c.cells.cellCount} Cells, ${c.cells.liveCells} live${c.cells.cellBytes == null ? "" : `, ${gib(c.cells.cellBytes)} on disk`}`;
+  const objects = c.transcriptObjects ? ` · transcript objects ${c.transcriptObjects.objects} (${gib(c.transcriptObjects.bytes)}${c.transcriptObjects.orphansSwept > 0 ? `, ${c.transcriptObjects.orphansSwept} orphans swept` : ""})` : "";
+  return `capacity: new Cells ${c.admission.newCells} (enforce ${c.admission.enforce ? "on" : "off, warn only"}) · ${block} · ${c.cells.cellCount} Cells, ${c.cells.liveCells} live${c.cells.cellBytes == null ? "" : `, ${gib(c.cells.cellBytes)} on disk`}${objects}`;
 }
 
 /** `hive cell gc` — the plan (and outcomes after --apply), planned Cells first, then holds grouped by reason. */

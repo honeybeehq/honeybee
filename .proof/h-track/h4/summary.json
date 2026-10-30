@@ -26,9 +26,9 @@
   "deviations": [
     "cut trigger: turn end / runtime exit / rotation / boot catch-up (Apiary cut by 1024 lines, 1 MiB or a 10-minute idle timer); the size caps still apply inside a long turn",
     "observed_at is the cut time for every line of a segment (Honeybee does not follow lines live)",
-    "projection_version is Honeybee's TRANSCRIPT_PROJECTION_VERSION (7), not Apiary's compat counter (11); Apiary must map rather than re-project (mailed to the lead)",
     "line numbers continue across a handoff's new log file; byte offsets restart per file and the row carries path + logSegmentId; epoch marks a shrunk/replaced file",
-    "pointer rows are not in the snapshot (thousands per bee); Apiary mirrors them from transcript_segment_object.put deltas plus the transcript.segments verb"
+    "pointer rows are not in the snapshot (thousands per bee); Apiary mirrors them from transcript_segment_object.put deltas plus the transcript.segments verb",
+    "projection_version is Honeybee's TRANSCRIPT_PROJECTION_VERSION (8); round two folded Apiary's compat repairs into the projector and proved byte equivalence with Apiary compat 11 (projector-equivalence.json); Apiary maps 8 <-> 11"
   ],
   "realLogs": {
     "projectionVersion": 7,
@@ -107,5 +107,26 @@
     "v2:driver2 (cell + tmux)": "326/346; the same 20 containment/tmux failures as the H0 baseline run inside this Cell",
     "typecheck+build": "npm run check, v2:check, build green",
     "schemaAssertions": "18 core tests assert the current schema version and moved from 51 to 52, as every bump before"
+  },
+  "roundTwo": {
+    "date": "2026-10-30",
+    "leadFindings": {
+      "1_bootCatchUpUnbounded": "every cut runs in a worker thread (v2/daemon/src/transcriptSegmentWorker.ts, bundle dist/v2/transcript-segment-worker.js) streaming 1 MiB reads (grows to 64 MiB for one long line), grouping lines across reads; the daemon thread only inserts rows; queue with maxWorkers 1 and 25 ms pacing between bees; catch-up coalesces per bee; proof: v2/daemon/tests/transcript-cut.test.ts 4/4 (cross-chunk grouping, torn tail, checkpoint restore, replay/reset), transcript-segments 3/3 through the real daemon",
+      "2_projectorEquivalence": "ported Apiary transcriptProjectorCompat.ts + contextBaseline/Inventory/Snapshot into v2/driver-tmux/src/transcript-repairs.ts and transcript-context.ts; createTranscriptProjector wraps the harness projector with the repairs; TRANSCRIPT_PROJECTION_VERSION 7 -> 8; byte-compared Honeybee v8 vs Apiary compat 11 on real logs: claude CL.7920 6626/6626 lines identical, codex CO.5875 81/81, grok 03482fb4 8123/8123, flush identical on all three (projector-equivalence.json); checkpoint digest fixture refreshed",
+      "3_bootAudit": "boot cuts pass audit:false to putTranscriptSegmentObject: pointer rows and cursor land, no transcript_segment_object.put delta; turn/exit cuts still audit",
+      "4_deferredTracksDrop": "DEFERRED.md re-targeted: drop tracks in the first schema bump after the H0 release (79de4439) has run on every node for one release cycle; v52 stays additive",
+      "5_orphanSweepAndCapacity": "sweepOrphans deletes unreferenced objects older than 1 h or any .partial, 60 s after boot once the backlog is 0, then daily; status {root, objects, bytes, orphansSwept, measuredAt} on deployInfo.transcriptSegments.objects, capacity.transcriptObjects and hive health; live counts advance per cut from the worker's created-object totals; proof: transcript-segments.1 plants a stale orphan before boot, sees it swept and the 10 live objects counted",
+      "6_rollback": "stated in the seal: a v52 store refuses to open under the previous release (schema_newer); the open path backs the store up before migrating (store.ts), so hive deploy --rollback restores that backup; with the flag off the objects directory is never created",
+      "nits": "zstd resolved lazily with a typed error below Node 22.15 (module loads on Node 20); transcript.segments default limit 1000, cap 10000 (invalid_request above); a final line without a trailing newline is not cut until the newline lands (contract doc)"
+    },
+    "tests": {
+      "transcript-cut": "4/4",
+      "transcript-segments (daemon)": "3/3",
+      "transcript-repairs": "pass",
+      "driver-tmux suite": "149/151; the 2 failures (process-proof.test.ts legacy/fresh tmux) are in the H0 and H1 baseline logs for this Cell",
+      "v2:test (core)": "620/621; multiline-delivery SQL unknown count, pre-existing",
+      "v2:daemon": "567/567 (all daemon + cli files, run after the round-two changes)",
+      "typecheck+build": "v2:check and build green; new bundle dist/v2/transcript-segment-worker.js"
+    }
   }
 }

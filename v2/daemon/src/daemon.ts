@@ -627,6 +627,8 @@ export interface HiveDaemonDeps {
   summarizeHandoff?: (input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>;
   /** v31 tests: substitute the retention inspection worker entrypoint. */
   retentionWorkerUrl?: URL;
+  transcriptSweepDelayMs?: number;
+  transcriptMaxWorkers?: number;
   /** v31 tests: delay before the first automatic retention pass (default 5 min). */
   retentionInitialDelayMs?: number;
   /** P7 tests: free-space check cadence (default 60 s). */
@@ -1011,6 +1013,7 @@ export class HiveDaemon {
       dataDir: this.cfg.dataDir,
       audit: (kind, payload) => this.mustStore().recordCellRetentionEvent(kind, payload),
       clearBeeTmp: (beeId) => this.removeBeeTmp(beeId),
+      transcriptObjects: () => this.segmenter?.objects() ?? null,
       lastRecordedPass: (kind) => this.mustStore().latestCellRetentionPass(kind ?? null),
       recentEvictionTimes: (sinceTs) => this.mustStore().cellRetentionEvictionTimes(sinceTs),
       lastDailyCapAt: () => this.mustStore().lastCellRetentionDailyCapAt(),
@@ -1026,6 +1029,7 @@ export class HiveDaemon {
         log: (op) => this.log(op),
         maxLines: this.cfg.transcriptSegments.maxLines,
         maxRawBytes: this.cfg.transcriptSegments.maxRawBytes,
+        ...(this.deps.transcriptMaxWorkers !== undefined ? { maxWorkers: this.deps.transcriptMaxWorkers } : {}),
       });
       this.log(`transcripts.segments enabled store=${this.cfg.transcriptSegments.storeDir} max_lines=${this.cfg.transcriptSegments.maxLines} max_raw_bytes=${this.cfg.transcriptSegments.maxRawBytes} projection=${TRANSCRIPT_PROJECTION_VERSION}`);
     } else {
@@ -1504,6 +1508,7 @@ export class HiveDaemon {
       );
       // v31: at most one automatic retention pass per interval; the pass itself runs off-tick.
       this.retention?.tick();
+      this.segmenterTick();
       // This span covers synchronous auto-title kickoff only; title generation
       // stays detached. Once a second keeps the roster scan off most ticks.
       const autoTitle = this.autoTitle;
@@ -6036,17 +6041,33 @@ export class HiveDaemon {
    */
   private transcriptSegmentsStatus(): TranscriptSegmentsStatus {
     const cfg = this.cfg.transcriptSegments;
-    return { enabled: cfg.enabled, store: this.transcriptObjects?.locator ?? null, projectionVersion: TRANSCRIPT_PROJECTION_VERSION, maxLines: cfg.maxLines, maxRawBytes: cfg.maxRawBytes };
+    return { enabled: cfg.enabled, store: this.transcriptObjects?.locator ?? null, projectionVersion: TRANSCRIPT_PROJECTION_VERSION, maxLines: cfg.maxLines, maxRawBytes: cfg.maxRawBytes, backlog: this.segmenter?.backlog() ?? 0, objects: this.segmenter?.objects() ?? null };
+  }
+
+  private lastObjectSweepAt: number | null = null;
+
+  private segmenterTick(): void {
+    const segmenter = this.segmenter;
+    if (!segmenter || segmenter.backlog() > 0) return;
+    const now = Date.now();
+    const due = this.lastObjectSweepAt == null ? now - this.startedAt >= (this.deps.transcriptSweepDelayMs ?? 60_000) : now - this.lastObjectSweepAt >= 24 * 60 * 60_000;
+    if (!due) return;
+    this.lastObjectSweepAt = now;
+    try {
+      segmenter.sweepOrphans();
+    } catch (err) {
+      this.log(`transcripts.objects.sweep_failed ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   private rpcTranscriptSegments(params: Record<string, unknown>): TranscriptSegmentsResult {
     const beeId = this.requireBee(params);
     const store = this.mustStore();
     if (params.afterOrdinal !== undefined && (typeof params.afterOrdinal !== "number" || !Number.isInteger(params.afterOrdinal))) throw new RpcError("invalid_request", "transcript.segments: afterOrdinal must be an integer when given");
-    if (params.limit !== undefined && (typeof params.limit !== "number" || !Number.isInteger(params.limit) || params.limit < 1)) throw new RpcError("invalid_request", "transcript.segments: limit must be a positive integer when given");
+    if (params.limit !== undefined && (typeof params.limit !== "number" || !Number.isInteger(params.limit) || params.limit < 1 || params.limit > 10_000)) throw new RpcError("invalid_request", "transcript.segments: limit must be an integer from 1 to 10000 when given");
     return {
       beeId,
-      segments: store.listTranscriptSegmentObjects(beeId, { ...(params.afterOrdinal === undefined ? {} : { afterOrdinal: params.afterOrdinal as number }), ...(params.limit === undefined ? {} : { limit: params.limit as number }) }),
+      segments: store.listTranscriptSegmentObjects(beeId, { ...(params.afterOrdinal === undefined ? {} : { afterOrdinal: params.afterOrdinal as number }), limit: (params.limit as number | undefined) ?? 1000 }),
       store: this.transcriptObjects?.locator ?? null,
       cursor: store.getTranscriptSegmentCursor(beeId),
     };

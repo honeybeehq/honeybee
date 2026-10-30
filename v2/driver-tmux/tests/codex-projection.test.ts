@@ -42,7 +42,7 @@ test("codex projector: captured HSR sequence projects one native turn and folded
   assert.equal(events.some((event) => event.kind === "tool_call" && event.callId === shells[0]?.callId), false);
 
   assert.ok(events.length > 0);
-  assert.equal(events.every((event) => event.ts != null), true);
+  assert.equal(events.filter((event) => !(event.kind === "unknown" && event.nativeType === "context_baseline")).every((event) => event.ts != null), true);
   const end = events.find((event) => event.kind === "turn_end");
   assert.ok(end);
   assert.equal(end.turnId, "01a01f10-70ae-7f03-b1d4-396d8978012a");
@@ -222,8 +222,9 @@ test("codex projector: thread/fork response replays inherited turns once", () =>
     id: 9,
     method: "thread/fork",
     params: { threadId: "thread-parent" },
-  })), []);
+  })), [{ kind: "unknown", nativeType: "context_baseline", ts: null, contextBaseline: { kind: "invalidate" } }]);
 
+  const baseline = (event: TranscriptProjectedEvent): boolean => event.kind === "unknown" && event.nativeType === "context_baseline";
   const events = projector.pushLine(j({
     id: 9,
     result: {
@@ -243,7 +244,7 @@ test("codex projector: thread/fork response replays inherited turns once", () =>
         }],
       },
     },
-  }));
+  })).filter((event) => !baseline(event));
 
   assert.deepEqual(events.map((event) => event.kind), [
     "turn_start",
@@ -270,7 +271,7 @@ test("codex projector: thread/fork response replays inherited turns once", () =>
   assert.deepEqual(projector.pushLine(j({
     id: 10,
     result: { thread: { id: "resumed", turns: [{ id: "old", items: [] }] } },
-  })), []);
+  })), [{ kind: "unknown", nativeType: "context_baseline", ts: null, contextBaseline: { kind: "thread", requestId: "10", providerThreadId: "resumed" } }]);
 });
 
 test("codex projector: interrupted turn completion is an end only and never re-renders nested items", () => {
@@ -322,7 +323,7 @@ test("codex projector: native rollout messages and tools remain projected withou
 
 test("codex projector: app-server tokenUsage.total becomes cumulative usage with uncached input and the thread model", () => {
   const p = createCodexProjector();
-  assert.deepEqual(p.pushLine(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "thread/start", params: { model: "gpt-5.6-luna", cwd: "/w" } })), []);
+  assert.deepEqual(p.pushLine(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "thread/start", params: { model: "gpt-5.6-luna", cwd: "/w" } })), [{ kind: "unknown", nativeType: "context_baseline", ts: null, contextBaseline: { kind: "start", requestId: "2" } }]);
   const events = p.pushLine(JSON.stringify({
     method: "thread/tokenUsage/updated",
     params: {

@@ -21,7 +21,7 @@
 
 ## Honeybee track H0 (2026-10-30)
 
-- **Drop the `tracks` table (expand-contract step 3):** H0 removed every reader and writer of `tracks` and stopped creating it in new stores, but existing stores keep the empty table under `SCHEMA_VERSION` 51. The release that bumps `SCHEMA_VERSION` to 52 drops it with `DROP TABLE IF EXISTS tracks` in the store constructor's explicit migration path; the live studio store holds 5 rows and 5 `track.*` audit rows, so the drop costs nothing measurable. Retired `track.put` / `track.deleted` audit rows stay in the append-only log forever and replay as no-ops through `RETIRED_AUDIT_KINDS`.
+- **Drop the `tracks` table (expand-contract step 3):** H0 removed every reader and writer of `tracks` and stopped creating it in new stores, but existing stores keep the empty table (schema v51 and later; H4's v52 and H3's bumps add only). Drop it with `DROP TABLE IF EXISTS tracks` in the store constructor's explicit migration path in the first schema bump after the H0 release (79de4439) has been deployed to every node and run for one release cycle; the live studio store holds 5 rows and 5 `track.*` audit rows, so the drop costs nothing measurable. Retired `track.put` / `track.deleted` audit rows stay in the append-only log forever and replay as no-ops through `RETIRED_AUDIT_KINDS`.
 
 ## Honeybee track H1/H2 (2026-10-30)
 

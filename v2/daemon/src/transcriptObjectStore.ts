@@ -8,6 +8,7 @@ const REF = /^[a-f0-9]{64}$/;
 export interface TranscriptObject {
   ref: string;
   bytes: number;
+  created: boolean;
 }
 
 export interface TranscriptObjectStore {
@@ -32,7 +33,7 @@ export function createDirectoryTranscriptObjectStore(root: string): TranscriptOb
       const target = transcriptObjectPath(root, ref);
       try {
         const existing = statSync(target);
-        if (existing.size === bytes.length) return { ref, bytes: bytes.length };
+        if (existing.size === bytes.length) return { ref, bytes: bytes.length, created: false };
         rmSync(target, { force: true });
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -52,7 +53,7 @@ export function createDirectoryTranscriptObjectStore(root: string): TranscriptOb
         rmSync(temporary, { force: true });
         throw error;
       }
-      return { ref, bytes: bytes.length };
+      return { ref, bytes: bytes.length, created: true };
     },
     stat(ref) {
       try {

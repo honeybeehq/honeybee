@@ -1195,6 +1195,7 @@ export interface NodeCapacity {
   };
   resourceBlocked: { blocked: boolean; since: number | null; reason: "disk_floor" | null };
   admission: { newCells: "accept" | "refuse"; enforce: boolean };
+  transcriptObjects?: { root: string; objects: number; bytes: number; orphansSwept: number; measuredAt: number } | null;
 }
 
 export const BEE_MOVE_PHASES = ["stopping", "placing", "starting", "complete", "failed"] as const;

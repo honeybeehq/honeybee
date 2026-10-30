@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { constants as zlibConstants, zstdCompressSync, zstdDecompressSync } from "node:zlib";
+import * as zlib from "node:zlib";
 
 export const SEGMENT_FORMAT = "apiary-transcript-segment";
 export const SEGMENT_FORMAT_VERSION = 1;
@@ -66,12 +66,21 @@ export function decodeProjectedSegment(buffer: Buffer): DecodedSegment {
   return { beeId: header[3]!, harness, projectionVersion: Number(header[2]), firstLine: Number(header[4]), lastLine: Number(header[5]), lines };
 }
 
+function zstd(): { compress: typeof zlib.zstdCompressSync; decompress: typeof zlib.zstdDecompressSync; level: number } {
+  const compress = (zlib as Partial<typeof zlib>).zstdCompressSync;
+  const decompress = (zlib as Partial<typeof zlib>).zstdDecompressSync;
+  const level = (zlib.constants as Partial<typeof zlib.constants>).ZSTD_c_compressionLevel;
+  if (!compress || !decompress || level === undefined) throw new Error(`transcript segments need zstd in node:zlib (Node 22.15 or newer); this is ${process.version}`);
+  return { compress, decompress, level };
+}
+
 export function compressSegment(bytes: Buffer): Buffer {
-  return zstdCompressSync(bytes, { params: { [zlibConstants.ZSTD_c_compressionLevel]: ZSTD_LEVEL } });
+  const z = zstd();
+  return z.compress(bytes, { params: { [z.level]: ZSTD_LEVEL } });
 }
 
 export function decompressSegment(bytes: Buffer): Buffer {
-  return zstdDecompressSync(bytes);
+  return zstd().decompress(bytes);
 }
 
 export interface ScannedLine {

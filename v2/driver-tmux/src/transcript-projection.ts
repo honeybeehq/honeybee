@@ -1,4 +1,5 @@
 import type { QuotaBoundary } from "../../core/src/quota.ts";
+import type { ContextBaselineObservation, ContextInventory, ContextSnapshot, ContextSnapshotInvalidation } from "./transcript-context.ts";
 /**
  * Pane-ready transcript projection (G3).
  *
@@ -44,7 +45,7 @@ export type TranscriptProjectedImage = {
   mimeType: string;
 };
 
-type Base = { ts: TranscriptIsoTs; threadId?: string };
+type Base = { ts: TranscriptIsoTs; threadId?: string; parentThreadId?: string };
 
 export type TranscriptProjectedEvent =
   | (Base & { kind: "quota"; quota: QuotaBoundary; sourceId: string; raw: unknown; operational: true })
@@ -56,6 +57,8 @@ export type TranscriptProjectedEvent =
       role: TranscriptMessageRole;
       text: string;
       providerEventId?: string;
+      answerPhase?: "final" | "intermediate";
+      isCompactSummary?: boolean;
     })
   | (Base & { kind: "thinking"; redacted: boolean; text?: string })
   | (Base & { kind: "tool_call"; callId: string; name: string; input?: unknown })
@@ -91,9 +94,21 @@ export type TranscriptProjectedEvent =
       model?: string;
       /** Provider-reported USD for this usage (claude `result` rows), when present. */
       costUsd?: number;
+      contextInputTokens?: number;
+      contextFirstRequest?: boolean;
+      contextTurnId?: string;
+      modelContextWindow?: number;
     })
-  | (Base & { kind: "compaction"; trigger?: string; tokensBefore?: number; tokensAfter?: number })
-  | (Base & { kind: "unknown"; nativeType: string; detail?: string });
+  | (Base & { kind: "compaction"; trigger?: string; tokensBefore?: number; tokensAfter?: number; contextInventory?: ContextInventory; contextSnapshotInvalidation?: ContextSnapshotInvalidation })
+  | (Base & {
+      kind: "unknown";
+      nativeType: string;
+      detail?: string;
+      contextBaseline?: ContextBaselineObservation;
+      contextInventory?: ContextInventory;
+      contextSnapshot?: ContextSnapshot;
+      contextSnapshotInvalidation?: ContextSnapshotInvalidation;
+    });
 
 /**
  * Incremental contract, identical to Apiary TranscriptNormalizer push/flush:
@@ -113,7 +128,7 @@ export type TranscriptProjectorFactory = () => TranscriptProjector;
 
 // checkpoint-digest:start
 /** Bump for event semantic changes; stored projections must then be rebuilt. */
-export const TRANSCRIPT_PROJECTION_VERSION = 7;
+export const TRANSCRIPT_PROJECTION_VERSION = 8;
 /** Bump for checkpoint schema changes. Restore deliberately does not migrate. */
 export const TRANSCRIPT_PROJECTOR_STATE_VERSION = 5;
 export const TRANSCRIPT_CHECKPOINT_MAX_BYTES = 4 * 1024 * 1024;

@@ -1,3 +1,4 @@
+import { withTranscriptRepairs } from "./transcript-repairs.ts";
 import { claudeQuotaBoundary } from "../../adapters/src/quota.ts";
 /**
  * Transcript-file observers (WP5, spec 05 observation source 2 — the
@@ -556,6 +557,10 @@ function projectorFromRenderer(renderer: TranscriptRenderer, checkpointHarness =
 
 /** The single harness registry for pane and CLI transcript projection. */
 export function createTranscriptProjector(harness: string): TranscriptProjector {
+  return withTranscriptRepairs(harness, createNativeTranscriptProjector(harness));
+}
+
+export function createNativeTranscriptProjector(harness: string): TranscriptProjector {
   switch (harness) {
     case "agy":
       return createAgyProjector();
@@ -596,19 +601,19 @@ export function restoreTranscriptProjector(harness: string, checkpoint: unknown)
     const state: unknown = structuredClone(envelope.state);
     switch (harness) {
       case "codex":
-        if (isCodexCheckpointState(state)) return { ok: true, projector: createCodexProjector(state) };
+        if (isCodexCheckpointState(state)) return { ok: true, projector: withTranscriptRepairs(harness, createCodexProjector(state)) };
         break;
       case "grok":
-        if (isGrokCheckpointState(state)) return { ok: true, projector: createGrokProjector(state) };
+        if (isGrokCheckpointState(state)) return { ok: true, projector: withTranscriptRepairs(harness, createGrokProjector(state)) };
         break;
       case "kimi":
-        if (isGrokCheckpointState(state)) return { ok: true, projector: createKimiProjector(state) };
+        if (isGrokCheckpointState(state)) return { ok: true, projector: withTranscriptRepairs(harness, createKimiProjector(state)) };
         break;
       case "agy":
-        if (isAgyCheckpointState(state)) return { ok: true, projector: createAgyProjector(state) };
+        if (isAgyCheckpointState(state)) return { ok: true, projector: withTranscriptRepairs(harness, createAgyProjector(state)) };
         break;
       case "muse":
-        if (isMuseCheckpointState(state)) return { ok: true, projector: createMuseProjector(state) };
+        if (isMuseCheckpointState(state)) return { ok: true, projector: withTranscriptRepairs(harness, createMuseProjector(state)) };
         break;
       default:
         if (checkpointRecord(state, {})) return { ok: true, projector: createTranscriptProjector(harness) };

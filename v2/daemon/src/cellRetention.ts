@@ -110,6 +110,7 @@ export interface CellRetentionDeps {
   /** Append an informational retention audit row. */
   audit?: (kind: "cell.retention.pass" | "cell.pressure.floor_unmet" | "cell.retention.daily_cap" | "cell.parked" | "node.capacity", payload: Record<string, unknown>) => void;
   clearBeeTmp?: (beeId: string) => boolean;
+  transcriptObjects?: () => NodeCapacity["transcriptObjects"];
   /** Times of retention evictions since `sinceTs`, to restore the daily cap's window after a restart. */
   recentEvictionTimes?: (sinceTs: number) => number[];
   /** When the daily cap was last audited, so a restart does not audit it twice in one window. */
@@ -484,6 +485,7 @@ export class CellRetentionService {
       },
       resourceBlocked: { blocked, since: blocked ? this.blockedSince : null, reason: blocked ? "disk_floor" : null },
       admission: { newCells: blocked && enforce ? "refuse" : "accept", enforce },
+      transcriptObjects: this.deps.transcriptObjects?.() ?? null,
     };
   }
 

@@ -1722,6 +1722,8 @@ export interface TranscriptSegmentsStatus {
   projectionVersion: number;
   maxLines: number;
   maxRawBytes: number;
+  backlog: number;
+  objects: { root: string; objects: number; bytes: number; orphansSwept: number; measuredAt: number } | null;
 }
 
 export interface TranscriptSegmentsParams {

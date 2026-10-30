@@ -9,11 +9,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { decodeProjectedSegment, decompressSegment, segmentDigest } from "../../driver-tmux/src/transcript-segment-format.ts";
 import { createDirectoryTranscriptObjectStore } from "../src/transcriptObjectStore.ts";
-import { DAEMON_CAPABILITIES, RPC_VERBS, type AuditTailResult, type DeployInfoResult, type SpawnResult, type TranscriptSegmentsResult, type ViewResult } from "../src/protocol.ts";
+import { DAEMON_CAPABILITIES, RPC_VERBS, type AuditTailResult, type DeployInfoResult, type HealthResult, type SpawnResult, type TranscriptSegmentsResult, type ViewResult } from "../src/protocol.ts";
 import { runV2Cli, type CliIo } from "../../cli/src/main.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
@@ -56,7 +56,13 @@ test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed d
   const { dir, cleanup } = makeDaemonDir({ transcripts: { segments: { enabled: true, maxLines: 3 } } });
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir);
+    const blobs = join(dir, "transcript-objects", "blobs", "transcript-archives");
+    mkdirSync(blobs, { recursive: true });
+    const orphan = join(blobs, "f".repeat(64));
+    writeFileSync(orphan, "stale");
+    const old = new Date(Date.now() - 3 * 3_600_000);
+    utimesSync(orphan, old, old);
+    daemon = await startDaemon(dir, { env: { HIVE_TEST_TRANSCRIPT_SWEEP_DELAY_MS: "0" } });
     let client = await daemon.client();
     const info = await client.request<DeployInfoResult>("deployInfo");
     assert.equal(info.transcriptSegments?.enabled, true);
@@ -106,6 +112,16 @@ test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed d
     }
     const audits = (await client.request<AuditTailResult>("audit.tail", { limit: 500 })).rows.filter((r) => r.kind === "transcript_segment_object.put");
     assert.equal(audits.length, rows.length, "one pointer delta per segment");
+    const swept = await waitFor(async () => {
+      const status = (await client.request<DeployInfoResult>("deployInfo")).transcriptSegments;
+      return status?.objects && !existsSync(orphan) ? status : null;
+    }, "the orphan sweep ran once the backlog drained", 30_000);
+    assert.equal(swept.objects!.orphansSwept, 1, "the stale unreferenced object is gone");
+    assert.equal(swept.objects!.objects, rows.length * 2, "every raw and projected object is counted");
+    assert.ok(swept.objects!.bytes > 0);
+    assert.equal(swept.backlog, 0);
+    const health = await client.request<HealthResult>("health");
+    assert.equal(health.capacity?.transcriptObjects?.objects, rows.length * 2, "the capacity fact carries the object store");
     assert.equal(result.cursor?.lineNo, rows[rows.length - 1]!.lastLine);
     assert.equal(result.cursor?.byteOffset, rows[rows.length - 1]!.byteEnd);
     client.close();
