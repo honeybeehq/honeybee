@@ -1,0 +1,39 @@
+{
+  "harness": "codex",
+  "startedAt": "2026-10-30T16:15:10.846Z",
+  "firstTurnMs": 918,
+  "firstTurnAuthFailed": false,
+  "firstTurnAnsweredOk": false,
+  "sourceProviderSessionId": "01a18d98-00b0-7663-808b-af737a643f11",
+  "bundle": {
+    "ref": "15bf8a79959a39653d9c53a5688a4e1ba75c7fd53d6225f7a63a9087b650bf60",
+    "bytes": 27478,
+    "size": 112640,
+    "files": 1,
+    "stateKey": null,
+    "scope": "account:91320126-5d37-462e-8e2e-258f398356c9",
+    "keyId": "4abe9d18fad118ba",
+    "epoch": 0
+  },
+  "killedAt": "2026-10-30T16:15:17.336Z",
+  "importMs": 53,
+  "import": {
+    "resumed": "native",
+    "reason": null,
+    "epoch": 1,
+    "handle": "CO.0000",
+    "account": null
+  },
+  "answerTurnMs": 4364,
+  "importedProviderSessionId": "01a18d98-1b5e-72a0-a46e-d8157df4af6e",
+  "newSessionId": true,
+  "cwdB": "/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-gate-codex-2HoQxZ/cwd-b",
+  "homeB": "/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-gate-codex-2HoQxZ/home-b",
+  "recalled": true,
+  "authFailed": false,
+  "transcriptTail": "8-1b8b-7993-87c8-6d9ad53cd5ca\",\"tokenUsage\":{\"total\":{\"totalTokens\":29064,\"inputTokens\":29050,\"cachedInputTokens\":24320,\"cacheWriteInputTokens\":0,\"outputTokens\":14,\"reasoningOutputTokens\":0},\"last\":{\"totalTokens\":14881,\"inputTokens\":14872,\"cachedInputTokens\":12160,\"cacheWriteInputTokens\":0,\"outputTokens\":9,\"reasoningOutputTokens\":0},\"modelContextWindow\":258400}},\"emittedAtMs\":1793376922749}\n{\"method\":\"account/rateLimits/updated\",\"params\":{\"rateLimits\":{\"limitId\":\"codex\",\"limitName\":null,\"normalModelSlug\":null,\"primary\":{\"usedPercent\":14,\"windowDurationMins\":10080,\"resetsAt\":1793774127},\"secondary\":null,\"credits\":{\"hasCredits\":true,\"unlimited\":false,\"balance\":\"62500.0000000000\"},\"individualLimit\":null,\"spendControlReached\":null,\"planType\":\"pro\",\"rateLimitReachedType\":null}},\"emittedAtMs\":1793376922749}\n{\"method\":\"thread/status/changed\",\"params\":{\"threadId\":\"01a18d98-1b5e-72a0-a46e-d8157df4af6e\",\"status\":{\"type\":\"idle\"}},\"emittedAtMs\":1793376922752}\n{\"method\":\"turn/completed\",\"params\":{\"threadId\":\"01a18d98-1b5e-72a0-a46e-d8157df4af6e\",\"turn\":{\"id\":\"01a18d98-1b8b-7993-87c8-6d9ad53cd5ca\",\"rootTurnId\":\"01a18d98-1b8b-7993-87c8-6d9ad53cd5ca\",\"items\":[{\"type\":\"agentMessage\",\"id\":\"msg_000689e7a9da3156016ae4c29aaed0819195ea6aad5a8dcb6b\",\"text\":\"PELICAN-42\",\"phase\":\"final_answer\",\"memoryCitation\":null,\"delivery\":null,\"questions\":null}],\"itemsView\":\"summary\",\"status\":\"completed\",\"error\":null,\"startedAt\":1793376918,\"completedAt\":1793376922,\"durationMs\":4338}},\"emittedAtMs\":1793376922752}\n",
+  "logB": [
+    "{\"ts\":1793376917672,\"op\":\"durability.resume_bundle.enabled store=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-gate-codex-2HoQxZ/objects key_file=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-gate-codex-2HoQxZ/ws.key keep=5\"}",
+    "{\"ts\":1793376917744,\"op\":\"bee.import bee=46c1dc0f-205c-4524-83c9-a330400fe486 agent=codex resumed=native reason=- epoch=1 account=- cwd=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-gate-codex-2HoQxZ/cwd-b\"}"
+  ]
+}

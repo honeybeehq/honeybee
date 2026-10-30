@@ -9,7 +9,8 @@ import { claudeProjectKey } from "../../driver-tmux/src/transcripts.ts";
 import { codexHistoryPath } from "./threadHistory.ts";
 
 export const RESUME_BUNDLE_OBJECT_DIR = join("blobs", "resume-bundles");
-const MAGIC = Buffer.from("hbrb1");
+const MAGIC = Buffer.from("hbrb2");
+const KEY_ID_BYTES = 8;
 const SALT_BYTES = 16;
 const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
@@ -88,6 +89,28 @@ export function resumeStateScope(harness: string, accountHome: string | null): s
   return null;
 }
 
+export function resumeKeyId(key: Buffer): string {
+  return createHash("sha256").update(key).digest("hex").slice(0, KEY_ID_BYTES * 2);
+}
+
+function aadFor(beeId: string, epoch: number): Buffer {
+  return Buffer.from(`${beeId}|${epoch}`, "utf8");
+}
+
+function fingerprint(root: string, paths: string[]): string {
+  const parts: string[] = [];
+  const visit = (path: string): void => {
+    const info = statSync(path);
+    if (info.isDirectory()) {
+      for (const entry of readdirSync(path).sort()) visit(join(path, entry));
+      return;
+    }
+    parts.push(`${relative(root, path)}:${info.size}:${info.mtimeMs}`);
+  };
+  for (const path of paths) visit(join(root, path));
+  return createHash("sha256").update(parts.join("\n")).digest("hex");
+}
+
 export function readResumeKey(keyFile: string): Buffer {
   const raw = readFileSync(keyFile);
   const text = raw.toString("utf8").trim();
@@ -120,19 +143,23 @@ export function resumeBundlePath(root: string, ref: string): string {
 export interface ResumeBundleOutcome {
   ref: string;
   digest: string;
+  keyId: string;
   bytes: number;
   size: number;
   files: number;
+  torn: boolean;
 }
 
-export async function bundleResumeState(state: ResumeState, storeRoot: string, workspaceKey: Buffer, beeId: string): Promise<ResumeBundleOutcome> {
+export async function bundleResumeState(state: ResumeState, storeRoot: string, workspaceKey: Buffer, beeId: string, epoch: number): Promise<ResumeBundleOutcome> {
   const dir = join(storeRoot, RESUME_BUNDLE_OBJECT_DIR);
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const temporary = join(dir, `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.partial`);
+  const before = fingerprint(state.root, state.paths);
   const salt = randomBytes(SALT_BYTES);
   const nonce = randomBytes(NONCE_BYTES);
+  const keyId = resumeKeyId(workspaceKey);
   const cipher = createCipheriv("chacha20-poly1305", bundleKey(workspaceKey, salt), nonce, { authTagLength: TAG_BYTES });
-  (cipher as unknown as { setAAD(buffer: Buffer): void }).setAAD(Buffer.from(beeId, "utf8"));
+  (cipher as unknown as { setAAD(buffer: Buffer): void }).setAAD(aadFor(beeId, epoch));
   const tar = spawn("tar", ["-cf", "-", "--no-xattrs", "-C", state.root, ...state.paths], { stdio: ["ignore", "pipe", "pipe"] });
   const stderr: Buffer[] = [];
   tar.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
@@ -146,7 +173,7 @@ export async function bundleResumeState(state: ResumeState, storeRoot: string, w
   }
   const hash = createHash("sha256");
   const out = createWriteStream(temporary, { mode: 0o600 });
-  const header = Buffer.concat([MAGIC, salt, nonce]);
+  const header = Buffer.concat([MAGIC, Buffer.from(keyId, "hex"), salt, nonce]);
   hash.update(header);
   out.write(header);
   let bytes = header.length;
@@ -169,6 +196,10 @@ export async function bundleResumeState(state: ResumeState, storeRoot: string, w
     rmSync(temporary, { force: true });
     throw new Error(`tar exited ${code}: ${Buffer.concat(stderr).toString("utf8").trim()}`);
   }
+  if (fingerprint(state.root, state.paths) !== before) {
+    rmSync(temporary, { force: true });
+    return { ref: "", digest: "", keyId, bytes: 0, size, files, torn: true };
+  }
   const tag = cipher.getAuthTag();
   const fd = openSync(temporary, "a");
   try {
@@ -183,14 +214,25 @@ export async function bundleResumeState(state: ResumeState, storeRoot: string, w
   const target = resumeBundlePath(storeRoot, ref);
   if (existsSync(target)) rmSync(temporary, { force: true });
   else renameSync(temporary, target);
-  return { ref, digest: plain.digest("hex"), bytes, size, files };
+  return { ref, digest: plain.digest("hex"), keyId, bytes, size, files, torn: false };
 }
 
-export async function restoreResumeState(storeRoot: string, ref: string, workspaceKey: Buffer, beeId: string, destinationRoot: string): Promise<void> {
+export class ResumeKeyMismatchError extends Error {
+  readonly expected: string;
+  readonly actual: string;
+  constructor(expected: string, actual: string) {
+    super(`key_mismatch: resume bundle was written under key ${expected}; this node holds key ${actual}`);
+    this.name = "ResumeKeyMismatchError";
+    this.expected = expected;
+    this.actual = actual;
+  }
+}
+
+export async function restoreResumeState(storeRoot: string, ref: string, workspaceKey: Buffer, beeId: string, epoch: number, destinationRoot: string): Promise<void> {
   const object = resumeBundlePath(storeRoot, ref);
   if (!existsSync(object)) throw new Error(`resume bundle ${ref} is missing from ${storeRoot}`);
   const total = statSync(object).size;
-  const headerLength = MAGIC.length + SALT_BYTES + NONCE_BYTES;
+  const headerLength = MAGIC.length + KEY_ID_BYTES + SALT_BYTES + NONCE_BYTES;
   if (total < headerLength + TAG_BYTES) throw new Error(`resume bundle ${ref} is truncated`);
   const fd = openSync(object, "r");
   const header = Buffer.alloc(headerLength);
@@ -202,19 +244,26 @@ export async function restoreResumeState(storeRoot: string, ref: string, workspa
     closeSync(fd);
   }
   if (!header.subarray(0, MAGIC.length).equals(MAGIC)) throw new Error(`resume bundle ${ref} has an unknown format`);
-  const salt = header.subarray(MAGIC.length, MAGIC.length + SALT_BYTES);
-  const nonce = header.subarray(MAGIC.length + SALT_BYTES);
+  const writtenUnder = header.subarray(MAGIC.length, MAGIC.length + KEY_ID_BYTES).toString("hex");
+  const held = resumeKeyId(workspaceKey);
+  if (writtenUnder !== held) throw new ResumeKeyMismatchError(writtenUnder, held);
+  const salt = header.subarray(MAGIC.length + KEY_ID_BYTES, MAGIC.length + KEY_ID_BYTES + SALT_BYTES);
+  const nonce = header.subarray(MAGIC.length + KEY_ID_BYTES + SALT_BYTES);
   const decipher = createDecipheriv("chacha20-poly1305", bundleKey(workspaceKey, salt), nonce, { authTagLength: TAG_BYTES });
-  (decipher as unknown as { setAAD(buffer: Buffer): void }).setAAD(Buffer.from(beeId, "utf8"));
+  (decipher as unknown as { setAAD(buffer: Buffer): void }).setAAD(aadFor(beeId, epoch));
   decipher.setAuthTag(tag);
   mkdirSync(destinationRoot, { recursive: true, mode: 0o700 });
-  const tar = spawn("tar", ["-xf", "-", "-C", destinationRoot], { stdio: ["pipe", "ignore", "pipe"] });
-  const stderr: Buffer[] = [];
-  tar.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
-  const exit = new Promise<number | null>((resolve) => tar.once("close", (code) => resolve(code)));
-  await pipeline(createReadStream(object, { start: headerLength, end: total - TAG_BYTES - 1 }), decipher, zstd().decompress(), tar.stdin);
-  const code = await exit;
-  if (code !== 0) throw new Error(`tar exited ${code}: ${Buffer.concat(stderr).toString("utf8").trim()}`);
+  const verified = join(destinationRoot, `.hive-restore-${process.pid}-${Date.now()}.tar.partial`);
+  try {
+    await pipeline(createReadStream(object, { start: headerLength, end: total - TAG_BYTES - 1 }), decipher, zstd().decompress(), createWriteStream(verified, { mode: 0o600 }));
+    const tar = spawn("tar", ["-xf", verified, "-C", destinationRoot], { stdio: ["ignore", "ignore", "pipe"] });
+    const stderr: Buffer[] = [];
+    tar.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    const code = await new Promise<number | null>((resolve) => tar.once("close", (c) => resolve(c)));
+    if (code !== 0) throw new Error(`tar exited ${code}: ${Buffer.concat(stderr).toString("utf8").trim()}`);
+  } finally {
+    rmSync(verified, { force: true });
+  }
 }
 
 export function rekeyRestoredState(harness: string, destinationRoot: string, fromKey: string | null, toKey: string | null): void {

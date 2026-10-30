@@ -60,10 +60,19 @@ export class BeeResumeSync {
     return { enabled: true, keyFile: this.deps.keyFile, keyPresent: existsSync(this.deps.keyFile), store: this.deps.root, ...counts, objects: this.objectsStatus };
   }
 
-  requestSync(beeId: string): void {
+  requestSync(beeId: string, reason: "turn_ended" | "exited" = "turn_ended"): void {
     if (this.stopping) return;
     if (this.inFlight.has(beeId)) {
       this.rerun.add(beeId);
+      return;
+    }
+    if (reason === "exited") {
+      const pending = this.timers.get(beeId);
+      if (pending) {
+        clearTimeout(pending);
+        this.timers.delete(beeId);
+      }
+      void this.sync(beeId);
       return;
     }
     if (this.timers.has(beeId)) return;
@@ -134,11 +143,15 @@ export class BeeResumeSync {
     this.lastAt.set(beeId, this.deps.now());
     const started = Date.now();
     try {
-      const result = await this.runWorker<ResumeBundleWorkerResult>({ kind: "bundleResume", state, storeRoot: this.deps.root, keyFile: this.deps.keyFile, beeId } satisfies ResumeBundleRequest);
+      const result = await this.runWorker<ResumeBundleWorkerResult>({ kind: "bundleResume", state, storeRoot: this.deps.root, keyFile: this.deps.keyFile, beeId, epoch: epochRow.epoch } satisfies ResumeBundleRequest);
       if (result.error != null) throw new Error(result.error);
       const bundle = result.bundle!;
+      if (bundle.torn) {
+        this.deps.log(`bee.resume.push_refused bee=${beeId} reason=torn ms=${Date.now() - started}`);
+        return null;
+      }
       const latest = store.latestBeeResumeBundle(beeId);
-      if (latest && latest.digest === bundle.digest && latest.epoch === epochRow.epoch) {
+      if (latest && latest.digest === bundle.digest && latest.epoch === epochRow.epoch && latest.keyId === bundle.keyId) {
         if (latest.ref !== bundle.ref) rmSync(resumeBundlePath(this.deps.root, bundle.ref), { force: true });
         this.deps.log(`bee.resume.unchanged bee=${beeId} ref=${latest.ref} ms=${Date.now() - started}`);
         return latest;
@@ -146,9 +159,9 @@ export class BeeResumeSync {
       const generation = store.currentRuntime(beeId)?.generation ?? 0;
       const row = store.putBeeResumeBundle({
         beeId, generation, harness, providerSessionId: bee.providerSessionId, cwd: bee.cwd, stateKey: state.stateKey, scope: resumeStateScope(harness, home),
-        ref: bundle.ref, digest: bundle.digest, bytes: bundle.bytes, size: bundle.size, files: bundle.files, closedAt: this.deps.now(), epoch: epochRow.epoch,
+        ref: bundle.ref, digest: bundle.digest, keyId: bundle.keyId, bytes: bundle.bytes, size: bundle.size, files: bundle.files, closedAt: this.deps.now(), epoch: epochRow.epoch,
       }, { keep: this.deps.keep });
-      this.deps.log(`bee.resume.pushed bee=${beeId} harness=${harness} epoch=${epochRow.epoch} ref=${bundle.ref} bytes=${bundle.bytes} size=${bundle.size} files=${bundle.files} ms=${Date.now() - started}`);
+      this.deps.log(`bee.resume.pushed bee=${beeId} harness=${harness} epoch=${epochRow.epoch} key=${bundle.keyId} ref=${bundle.ref} bytes=${bundle.bytes} size=${bundle.size} files=${bundle.files} ms=${Date.now() - started}`);
       return row;
     } catch (err) {
       this.deps.log(`bee.resume.push_failed bee=${beeId} err=${JSON.stringify(err instanceof Error ? err.message : String(err))} ms=${Date.now() - started}`);
@@ -156,7 +169,7 @@ export class BeeResumeSync {
     }
   }
 
-  async restore(input: { beeId: string; ref: string; destinationRoot: string; harness: string; fromKey: string | null; toKey: string | null }): Promise<{ ok: boolean; error: string | null }> {
+  async restore(input: { beeId: string; ref: string; epoch: number; destinationRoot: string; harness: string; fromKey: string | null; toKey: string | null }): Promise<{ ok: boolean; error: string | null }> {
     const result = await this.runWorker<ResumeRestoreWorkerResult>({ kind: "restoreResume", storeRoot: this.deps.root, keyFile: this.deps.keyFile, ...input } satisfies ResumeRestoreRequest);
     return { ok: result.ok, error: result.error };
   }

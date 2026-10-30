@@ -358,6 +358,7 @@ export const RPC_ERROR_CODES = [
   "runtime_refused",
   "resource_blocked",
   "champion_fenced",
+  "bee_exists",
   /** Registry refusals (WP6a): missing rows and per-scope name collisions. */
   "template_not_found",
   "name_conflict",
@@ -548,6 +549,8 @@ export const RPC_VERBS = [
   "champion.delete",
   "champion.fence",
   "bee.resumeBundles",
+  "bee.import",
+  "bee.fence",
   // watch
   "watch",
   "snapshot",
@@ -1745,6 +1748,57 @@ export interface TranscriptSegmentsParams {
   beeId: string;
   afterOrdinal?: number;
   limit?: number;
+}
+
+export interface BeeImportDescriptor {
+  id: string;
+  name: string;
+  agent: string;
+  args?: string[] | null;
+  env?: Record<string, string>;
+  tags?: string[];
+  title?: string | null;
+  cwd?: string;
+  cell?: { originRepo: string; sha?: string };
+  providerSessionId?: string | null;
+  parentId?: string | null;
+  parentExternal?: boolean;
+  handle?: string;
+  humanRef?: string;
+  issuingNamespace?: string;
+  createdAt?: number;
+}
+
+export interface BeeImportResume {
+  bundleRef: string;
+  epoch: number;
+  providerSessionId: string;
+  stateKey: string | null;
+  scope: string | null;
+}
+
+export type BeeImportResumed = "native" | "reseeded" | "fresh";
+export type BeeImportReason = "account_mismatch" | "bundle_missing" | "no_hook" | "restore_failed" | "no_bundle" | "no_transcript";
+
+export interface BeeImportResult extends DedupMarkers {
+  beeId: string;
+  handle: string | null;
+  humanRef: string | null;
+  commandId: number | null;
+  seedMessageId: number | null;
+  resumed: BeeImportResumed;
+  reason: BeeImportReason | null;
+  epoch: number;
+  account: string | null;
+  lost: { questions: number } | null;
+}
+
+export interface BeeFenceResult extends DedupMarkers {
+  beeId: string;
+  epoch: number;
+  fencedAt: number | null;
+  commandId: number | null;
+  stopped: boolean;
 }
 
 export interface BeeResumeBundlesResult {

@@ -1126,6 +1126,7 @@ export interface BeeResumeBundleRow {
   scope: string | null;
   ref: string;
   digest: string;
+  keyId: string;
   bytes: number;
   size: number;
   files: number;

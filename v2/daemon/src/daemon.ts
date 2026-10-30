@@ -164,7 +164,7 @@ import { CellRetentionService } from "./cellRetention.ts";
 import { TranscriptSegmenter } from "./transcriptSegmenter.ts";
 import { ChampionHomeSync } from "./championHomes.ts";
 import { BeeResumeSync, accountHomeOf } from "./beeResumeSync.ts";
-import { writeResumeKey } from "./resumeBundles.ts";
+import { resumeStateKey, resumeStateScope, writeResumeKey } from "./resumeBundles.ts";
 import { createDirectoryTranscriptObjectStore, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
 import { TRANSCRIPT_PROJECTION_VERSION } from "../../driver-tmux/src/transcript-projection.ts";
 import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
@@ -358,6 +358,11 @@ import {
   type ChampionDeleteResult,
   type ChampionFenceResult,
   type BeeResumeBundlesResult,
+  type BeeImportDescriptor,
+  type BeeImportResume,
+  type BeeImportResult,
+  type BeeImportReason,
+  type BeeFenceResult,
   type TranscriptSegmentsStatus,
   type CellExecResult,
   type CellGcResult,
@@ -1046,11 +1051,14 @@ export class HiveDaemon {
     if (this.cfg.durability.resumeBundle.enabled) {
       const keyFile = this.cfg.durability.resumeBundle.keyFile;
       if (!existsSync(keyFile)) {
-        try {
-          writeResumeKey(keyFile);
-          this.log(`durability.resume_bundle.key_created key_file=${keyFile}`);
-        } catch (err) {
-          this.log(`durability.resume_bundle.key_unavailable key_file=${keyFile} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`);
+        if (this.store?.humanRefIssuer()) this.log(`durability.resume_bundle.key_unavailable key_file=${keyFile} reason=enrolled_node_expects_provisioned_key`);
+        else {
+          try {
+            writeResumeKey(keyFile);
+            this.log(`durability.resume_bundle.key_created key_file=${keyFile} reason=unenrolled_node`);
+          } catch (err) {
+            this.log(`durability.resume_bundle.key_unavailable key_file=${keyFile} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`);
+          }
         }
       }
       this.resumeSync = new BeeResumeSync({
@@ -1131,7 +1139,7 @@ export class HiveDaemon {
         void this.segmenter?.requestCut(beeId, reason);
         this.pushCellWip(beeId, reason);
         this.syncChampionHome(beeId);
-        this.resumeSync?.requestSync(beeId);
+        this.resumeSync?.requestSync(beeId, reason);
       },
       blockedRuntimeStartBeeIds: () => this.prepareRuntimeStartCommands(),
       assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
@@ -1691,6 +1699,8 @@ export class HiveDaemon {
     if (!bee) throw new Error(`resolve: bee ${beeId} not found`);
     const spec = this.cfg.agents[bee.agent];
     if (!spec) throw new Error(`resolve: no agent spec for '${bee.agent}'`);
+    const fence = store.beeEpoch(beeId);
+    if (fence.fencedAt != null) throw new Error(`resolve: bee ${beeId} is fenced at epoch ${fence.epoch}; another executor owns it`);
     const adapterName = spec.adapter ?? bee.agent;
     const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok" || adapterName === "kimi" || adapterName === "muse"
       ? liveGateways().map((gateway) => ({
@@ -2368,6 +2378,7 @@ export class HiveDaemon {
           this.rpcEnqueue("stop", this.param(params, "beeId"), { cause: "stopped_by_user" }, params),
         );
       case "revive": {
+        this.assertBeeNotFenced("revive", this.param(params, "beeId"));
         const bee = this.mustStore().getBee(this.param(params, "beeId"));
         const account = bee?.account ? this.mustStore().getAccount(bee.account) : null;
         if (account?.source === "leased" && knownAccountLease(account)?.revokedAt != null) {
@@ -2601,6 +2612,10 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcChampionDelete(params));
       case "champion.fence":
         return this.withIdempotency(verb, params, () => this.rpcChampionFence(params));
+      case "bee.import":
+        return this.rpcBeeImport(params);
+      case "bee.fence":
+        return this.withIdempotency(verb, params, () => this.rpcBeeFence(params));
       case "bee.resumeBundles": {
         const beeId = this.requireBee(params);
         const store = this.mustStore();
@@ -6177,6 +6192,180 @@ export class HiveDaemon {
     if (segmenter) void segmenter.sweepOrphans().catch((err) => this.log(`transcripts.objects.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
     if (this.championHomes) void this.championHomes.sweepOrphans().catch((err) => this.log(`champion.home.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
     if (this.resumeSync) void this.resumeSync.sweepOrphans().catch((err) => this.log(`bee.resume.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
+  }
+
+  private assertBeeNotFenced(verb: string, beeId: string): void {
+    const fence = this.mustStore().beeEpoch(beeId);
+    if (fence.fencedAt != null) throw new RpcError("champion_fenced", `${verb}: bee ${beeId} is fenced at epoch ${fence.epoch}; another executor owns the incarnation`);
+  }
+
+  private rpcBeeFence(params: Record<string, unknown>): BeeFenceResult {
+    const beeId = this.requireBee(params);
+    const store = this.mustStore();
+    const epoch = params.epoch;
+    if (typeof epoch !== "number" || !Number.isInteger(epoch) || epoch < 0) throw new RpcError("invalid_request", "bee.fence: epoch must be a non-negative integer");
+    const current = store.beeEpoch(beeId);
+    if (epoch < current.epoch) throw new RpcError("champion_fenced", `bee.fence: epoch ${epoch} is older than this node's epoch ${current.epoch} for ${beeId}`);
+    const runtime = store.currentRuntime(beeId);
+    const live = runtime != null && runtime.state !== "stopped";
+    const fenced = store.fenceBee(beeId, epoch);
+    const commandId = live ? this.rpcEnqueue("stop", beeId, { cause: "stopped_by_user" }, params).commandId : null;
+    this.log(`bee.fence bee=${beeId} epoch=${epoch} stopped=${live}`);
+    return { beeId, epoch: fenced.epoch, fencedAt: fenced.fencedAt, commandId, stopped: live };
+  }
+
+  private importDescriptor(params: Record<string, unknown>): BeeImportDescriptor {
+    const raw = params.descriptor;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", "bee.import: descriptor must be an object");
+    const d = raw as Record<string, unknown>;
+    const str = (key: string, required = false): string | undefined => {
+      const value = d[key];
+      if (value === undefined || value === null) {
+        if (required) throw new RpcError("invalid_request", `bee.import: descriptor.${key} is required`);
+        return undefined;
+      }
+      if (typeof value !== "string" || value.length === 0) throw new RpcError("invalid_request", `bee.import: descriptor.${key} must be a non-empty string`);
+      return value;
+    };
+    const id = str("id", true)!;
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw new RpcError("invalid_request", "bee.import: descriptor.id must be a UUID");
+    const tags = d.tags === undefined ? [] : d.tags;
+    if (!Array.isArray(tags) || !tags.every((t) => typeof t === "string")) throw new RpcError("invalid_request", "bee.import: descriptor.tags must be strings");
+    const args = d.args === undefined || d.args === null ? null : d.args;
+    if (args !== null && (!Array.isArray(args) || !args.every((a) => typeof a === "string"))) throw new RpcError("invalid_request", "bee.import: descriptor.args must be strings");
+    const env = d.env === undefined ? {} : d.env;
+    if (!env || typeof env !== "object" || Array.isArray(env) || !Object.values(env as Record<string, unknown>).every((v) => typeof v === "string")) throw new RpcError("invalid_request", "bee.import: descriptor.env must map strings to strings");
+    let cell: BeeImportDescriptor["cell"];
+    if (d.cell !== undefined && d.cell !== null) {
+      if (typeof d.cell !== "object" || Array.isArray(d.cell)) throw new RpcError("invalid_request", "bee.import: descriptor.cell must be an object");
+      const c = d.cell as Record<string, unknown>;
+      if (typeof c.originRepo !== "string" || c.originRepo.length === 0) throw new RpcError("invalid_request", "bee.import: descriptor.cell.originRepo is required");
+      if (c.sha !== undefined && (typeof c.sha !== "string" || !/^[0-9a-f]{40,64}$/.test(c.sha))) throw new RpcError("invalid_request", "bee.import: descriptor.cell.sha must be a commit sha");
+      cell = { originRepo: c.originRepo, ...(typeof c.sha === "string" ? { sha: c.sha } : {}) };
+    }
+    const cwd = str("cwd");
+    if (!cell && !cwd) throw new RpcError("invalid_request", "bee.import: descriptor needs cwd or cell");
+    if ((d.humanRef === undefined) !== (d.issuingNamespace === undefined)) throw new RpcError("invalid_request", "bee.import: humanRef and issuingNamespace go together");
+    if (d.createdAt !== undefined && (typeof d.createdAt !== "number" || !Number.isFinite(d.createdAt))) throw new RpcError("invalid_request", "bee.import: descriptor.createdAt must be a number");
+    if (d.parentExternal !== undefined && typeof d.parentExternal !== "boolean") throw new RpcError("invalid_request", "bee.import: descriptor.parentExternal must be a boolean");
+    return {
+      id, name: str("name", true)!, agent: str("agent", true)!, args, env: env as Record<string, string>, tags: tags as string[],
+      title: str("title") ?? null, ...(cwd ? { cwd } : {}), ...(cell ? { cell } : {}),
+      providerSessionId: str("providerSessionId") ?? null, parentId: str("parentId") ?? null, parentExternal: d.parentExternal as boolean | undefined,
+      ...(str("handle") ? { handle: str("handle") } : {}), ...(str("humanRef") ? { humanRef: str("humanRef"), issuingNamespace: str("issuingNamespace") } : {}),
+      ...(typeof d.createdAt === "number" ? { createdAt: d.createdAt } : {}),
+    };
+  }
+
+  private importResume(params: Record<string, unknown>): BeeImportResume | null {
+    const raw = params.resume;
+    if (raw === undefined || raw === null) return null;
+    if (typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", "bee.import: resume must be an object or null");
+    const r = raw as Record<string, unknown>;
+    if (typeof r.bundleRef !== "string" || !/^[a-f0-9]{64}$/.test(r.bundleRef)) throw new RpcError("invalid_request", "bee.import: resume.bundleRef must be a sha256 reference");
+    if (typeof r.epoch !== "number" || !Number.isInteger(r.epoch) || r.epoch < 0) throw new RpcError("invalid_request", "bee.import: resume.epoch must be a non-negative integer");
+    if (typeof r.providerSessionId !== "string" || r.providerSessionId.length === 0) throw new RpcError("invalid_request", "bee.import: resume.providerSessionId is required");
+    const optional = (key: "stateKey" | "scope"): string | null => {
+      const value = r[key];
+      if (value === undefined || value === null) return null;
+      if (typeof value !== "string") throw new RpcError("invalid_request", `bee.import: resume.${key} must be a string when given`);
+      return value;
+    };
+    return { bundleRef: r.bundleRef, epoch: r.epoch, providerSessionId: r.providerSessionId, stateKey: optional("stateKey"), scope: optional("scope") };
+  }
+
+  private async rpcBeeImport(params: Record<string, unknown>): Promise<BeeImportResult> {
+    if (!this.cfg.durability.import.enabled) throw new RpcError("capability_missing", "bee.import: durability.import.enabled is off on this node");
+    const store = this.mustStore();
+    const key = this.idempotencyKeyOf(params);
+    if (key == null) throw new RpcError("invalid_request", "bee.import: idempotencyKey is required");
+    const recorded = store.lookupRpcResult(key);
+    if (recorded) {
+      if (recorded.verb !== "bee.import") throw new RpcError("idempotency_conflict", `Key belongs to ${recorded.verb}, not bee.import`);
+      return { ...(recorded.result as BeeImportResult), deduped: true };
+    }
+    const descriptor = this.importDescriptor(params);
+    const resume = this.importResume(params);
+    const lostRaw = params.lost;
+    const lost = lostRaw && typeof lostRaw === "object" && !Array.isArray(lostRaw) && typeof (lostRaw as { questions?: unknown }).questions === "number" ? { questions: (lostRaw as { questions: number }).questions } : null;
+    if (store.getBee(descriptor.id)) throw new RpcError("bee_exists", `bee.import: bee ${descriptor.id} already exists on this node`);
+    const agentSpec = this.cfg.agents[descriptor.agent];
+    const adapterName = agentSpec?.adapter ?? descriptor.agent;
+    if (!agentSpec || !(ADAPTER_NAMES as readonly string[]).includes(adapterName)) throw new RpcError("harness_mismatch", `bee.import: agent '${descriptor.agent}' is not configured on this node`);
+    const known = store.beeEpoch(descriptor.id);
+    if (resume && resume.epoch < known.epoch) throw new RpcError("champion_fenced", `bee.import: resume epoch ${resume.epoch} is older than this node's epoch ${known.epoch} for ${descriptor.id}`);
+    if (!resume && known.fencedAt != null) throw new RpcError("champion_fenced", `bee.import: bee ${descriptor.id} is fenced here at epoch ${known.epoch}; pass the handover epoch`);
+    const substrate = descriptor.cell ? "cell" : "hsr";
+    if (substrate === "cell") this.assertCellAdmission("bee.import");
+    const { account, allocation, reservationId, claim } = this.resolveSpawnAccount("auto", descriptor.agent, params, key, "spawn", 0, null, descriptor.id);
+    void allocation;
+    const homeKey = homeEnvFor(adapterName);
+    const accountEnv = account && this.accounts ? this.accounts.homeEnvOf(account) : {};
+    const descriptorHome = homeKey ? descriptor.env?.[homeKey] ?? null : null;
+    const accountHome = account?.homePath ?? descriptorHome;
+    let resumed: BeeImportResult["resumed"] = "fresh";
+    let reason: BeeImportReason | null = resume ? null : "no_bundle";
+    const cell = substrate === "cell" ? this.planCell(descriptor.id, descriptor.name, { originRepo: descriptor.cell!.originRepo, ...(descriptor.cell!.sha ? { sha: descriptor.cell!.sha } : {}) } as SpawnCellParams) : null;
+    const cwd = cell ? cell.spaceDir : descriptor.cwd!;
+    if (resume) {
+      const targetScope = resumeStateScope(adapterName, accountHome);
+      if (resume.scope && targetScope && resume.scope !== targetScope) {
+        reason = "account_mismatch";
+        this.log(`bee.import.scope_mismatch bee=${descriptor.id} bundle_scope=${resume.scope} account_scope=${targetScope}`);
+      } else if (!this.resumeSync) {
+        reason = "no_hook";
+      } else if (!resumeStateKey(adapterName, cwd) && adapterName !== "codex") {
+        reason = "no_hook";
+      } else {
+        const restore = await this.resumeSync.restore({ beeId: descriptor.id, ref: resume.bundleRef, epoch: resume.epoch, destinationRoot: accountHome ?? cwd, harness: adapterName, fromKey: resume.stateKey, toKey: resumeStateKey(adapterName, cwd) });
+        if (restore.ok) resumed = "native";
+        else {
+          reason = /missing/.test(restore.error ?? "") ? "bundle_missing" : "restore_failed";
+          this.log(`bee.import.restore_failed bee=${descriptor.id} ref=${resume.bundleRef} err=${JSON.stringify(restore.error)}`);
+        }
+      }
+    }
+    const env = { ...descriptor.env, ...accountEnv };
+    if (homeKey && account && !(homeKey in accountEnv)) delete env[homeKey];
+    const created = store.createBee({
+      id: descriptor.id,
+      name: descriptor.name,
+      agent: descriptor.agent,
+      substrate,
+      cwd,
+      title: descriptor.title ?? undefined,
+      tags: descriptor.tags ?? [],
+      sessionLogPath: this.driver ? this.driver.sessionLogPath(descriptor.id) : undefined,
+      args: descriptor.args ?? null,
+      parentId: descriptor.parentId ?? null,
+      parentExternal: descriptor.parentExternal ?? false,
+      env,
+      ...(account ? { account: account.id } : {}),
+      ...(descriptor.handle ? { handle: descriptor.handle } : {}),
+      ...(descriptor.humanRef && descriptor.issuingNamespace ? { humanRef: descriptor.humanRef, issuingNamespace: descriptor.issuingNamespace } : {}),
+      ...(descriptor.createdAt !== undefined ? { createdAt: descriptor.createdAt } : {}),
+      ...(resumed === "native" && resume ? { forkSeed: resume.providerSessionId } : {}),
+    }).bee;
+    if (claim) this.consumeAccountClaim(claim, created.id);
+    else if (reservationId) store.bindAccountAdmission(reservationId, created.id);
+    if (cell) {
+      reserveCell(this.cfg.cellsRoot, cell.reserve);
+      const identity = localRepoIdentity(cell.reserve.originRepo);
+      if (!identity) throw new RpcError("invalid_request", `bee.import: cannot read git identity of ${cell.reserve.originRepo}`);
+      store.putCell({ sourceBeeId: created.id, originRepo: cell.reserve.originRepo, sha: cell.reserve.sha, wrapper: cell.reserve.wrapper, spaceName: `${cell.reserve.repoName}-space-${cell.reserve.cellId}`, spaceDir: cell.spaceDir, gitCommonDirRealpath: identity.gitCommonDirRealpath, objectFormat: identity.objectFormat, sandbox: cell.reserve.sandbox });
+    }
+    const epoch = store.takeoverBee(created.id, resume?.epoch ?? known.epoch).epoch;
+    const seedMessageId = resumed === "native" ? null : await this.reseedImportedBee(created, params, reason);
+    if (seedMessageId != null) resumed = "reseeded";
+    const cmd = store.enqueueCommand("spawn", created.id, {}, { idempotencyKey: key });
+    const result: BeeImportResult = { beeId: created.id, handle: created.handle, humanRef: created.human_ref, commandId: cmd.id, seedMessageId, resumed, reason: resumed === "native" ? null : reason, epoch, account: account?.id ?? null, lost };
+    store.recordRpcResult(key, "bee.import", cmd.id, result);
+    this.log(`bee.import bee=${created.id} agent=${descriptor.agent} resumed=${result.resumed} reason=${result.reason ?? "-"} epoch=${epoch} account=${account?.id ?? "-"} cwd=${cwd}${cell ? " cell" : ""}`);
+    return result;
+  }
+
+  private async reseedImportedBee(_bee: BeeRow, _params: Record<string, unknown>, _reason: BeeImportReason | null): Promise<number | null> {
+    return null;
   }
 
   private syncChampionHome(beeId: string): void {

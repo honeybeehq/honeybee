@@ -1,7 +1,7 @@
 {
   "step": "H6",
   "date": "2026-10-30",
-  "status": "H6a built; H6b and H6c pending",
+  "status": "H6a and H6b built; H6c pending",
   "document": "docs/design/bee-durability-plan.md",
   "gate": "kill an executor mid-task; revive elsewhere with context",
   "steps": [
@@ -42,6 +42,48 @@
       "a real claude or codex bee bundling through the daemon (the gate run belongs to H6b, where the bundle is imported)",
       "grok/muse/kimi have no state hook (fallback only)",
       "key provisioning by the Home (Apiary's half)"
+    ],
+    "roundTwo": {
+      "1_verifyBeforeExtract": "restore decrypts and authenticates into a temp tar inside the destination root first; extraction runs only after the tag verified; scratch-roundtrip.ts: wrong key, wrong bee id and wrong epoch all refuse with nothing extracted",
+      "2_keyId": "header is hbrb2 | keyId(8) | salt | nonce; rows carry key_id; a local key with another id is key_mismatch with both ids; an enrolled node never mints a key (key_unavailable reason=enrolled_node_expects_provisioned_key); the unchanged check includes the key id so a key change re-bundles",
+      "3_exitedImmediate": "requestSync(beeId, 'exited') cancels a pending trailing timer and bundles now",
+      "4_torn": "state files are fingerprinted (path, size, mtime) before and after the tar; a changed set is discarded as torn and retried at the next turn end",
+      "nits": "AAD is <beeId>|<epoch>; the contract notes claude todos/ and file-history/ are not bundled"
+    }
+  },
+  "h6b": {
+    "flag": "durability.import.enabled (default false; off = capability_missing)",
+    "verbs": [
+      "bee.import {descriptor, resume|null, lost|null, idempotencyKey (required)} -> {beeId, handle, humanRef, commandId, seedMessageId, resumed native|reseeded|fresh, reason, epoch, account, lost}",
+      "bee.fence {beeId, epoch} -> {epoch, fencedAt, commandId, stopped}",
+      "bee.resumeBundles {beeId} (read)"
+    ],
+    "errorCodes": [
+      "bee_exists (new)",
+      "harness_mismatch, champion_fenced, invalid_request, resource_blocked (reused)"
+    ],
+    "forkPath": "the imported bee gets forkSeed = providerSessionId and no provider session id; its first runtime forks (--resume <seed> --fork-session / thread/fork) so the old executor never shares a session id",
+    "fence": "bee_epochs: import takes epoch+1; bee.fence stops a live runtime, refuses revive with champion_fenced and makes resolveSpawnSpec refuse any runtime start for the bee; a mail wake cannot revive a fenced bee",
+    "gate": {
+      "claim": "kill an executor mid-task; revive elsewhere with context, with real harnesses under a different account home and a different cwd",
+      "claude": ".proof/h-track/h6/gate-claude.json: executor A spawns real claude (CLAUDE_CONFIG_DIR = temp home A) with 'Remember the code word PELICAN-42', first turn 2.7 s answers ok; bundle 27.5 KB; A SIGKILLed; executor B (own store, temp home B, different cwd) bee.import resumed=native in 68 ms, epoch 1; the imported bee answers 'What code word did I ask you to remember?' with PELICAN-42 in 2.1 s under a NEW provider session id",
+      "codex": ".proof/h-track/h6/gate-codex.json: the same flow with the native codex app-server binary (CODEX_HOME = temp home A/B): bundle 27.5 KB (the rollout), import native in 53 ms, the imported bee recalls PELICAN-42 in 4.4 s under a new thread id",
+      "credentials": "the executor homes were temp directories seeded from the user's live claude keychain item / codex auth.json (read-only), deleted after each run; no token refresh happened during the runs (home A's credentials file unchanged) and the user's default claude credentials were verified working afterwards (claude -p answered ok)",
+      "wrapper": "the homebrew codex shim (bun-installed node wrapper) cannot resolve its platform package under the daemon's child environment; the gate used the native binary under @openai/codex-darwin-arm64/vendor; production agent specs should point at the native binary or fix the wrapper's resolution (noted for the handoff)"
+    },
+    "tests": {
+      "resume-import (daemon)": "1/1 (flag off capability_missing; required idempotencyKey; import keeps id/handle/tags, restores the state under the new cwd key, epoch 1, dedup replay, bee_exists, B bundles under epoch 1, older fence refused; A restarted, fenced at 1, revive refused, a mail wake does not revive, resolve refuses)",
+      "resume-bundles": "2/2 with hbrb2 and key id",
+      "config": "22/22",
+      "v2:test": "621/622 (pre-existing)",
+      "v2:daemon": "569/569",
+      "typecheck+build": "green"
+    },
+    "notProven": [
+      "Cell descriptors on import (code path shares spawn's planCell/reserveCell but the gate used plain cwd bees)",
+      "the Home driving bee.fence and replaying mail (Apiary)",
+      "import under a different account (same org) and the account_mismatch reseed (H6c)",
+      "key provisioning by the Home"
     ]
   }
 }

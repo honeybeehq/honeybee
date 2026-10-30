@@ -410,7 +410,7 @@ export class ReadOnlyStore {
     if (!this.hasTable("bee_resume_bundles")) return [];
     return (this.db.prepare("SELECT * FROM bee_resume_bundles WHERE bee_id = ? ORDER BY closed_at DESC, id DESC").all(beeId) as Row[]).map((r) => ({
       id: r.id as string, beeId: r.bee_id as string, generation: Number(r.generation), harness: r.harness as string, providerSessionId: r.provider_session_id as string, cwd: r.cwd as string,
-      stateKey: (r.state_key as string | null) ?? null, scope: (r.scope as string | null) ?? null, ref: r.ref as string, digest: r.digest as string, bytes: Number(r.bytes), size: Number(r.size), files: Number(r.files), closedAt: Number(r.closed_at), epoch: Number(r.epoch ?? 0),
+      stateKey: (r.state_key as string | null) ?? null, scope: (r.scope as string | null) ?? null, ref: r.ref as string, digest: r.digest as string, keyId: String(r.key_id ?? ""), bytes: Number(r.bytes), size: Number(r.size), files: Number(r.files), closedAt: Number(r.closed_at), epoch: Number(r.epoch ?? 0),
     }));
   }
 

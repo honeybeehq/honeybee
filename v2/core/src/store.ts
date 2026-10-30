@@ -790,6 +790,7 @@ function mapBeeResumeBundle(r: Row): BeeResumeBundleRow {
     scope: (r.scope as string | null) ?? null,
     ref: r.ref as string,
     digest: r.digest as string,
+    keyId: String(r.key_id ?? ""),
     bytes: Number(r.bytes),
     size: Number(r.size),
     files: Number(r.files),
@@ -9748,8 +9749,8 @@ export class CoreStore {
     return this.tx(() => {
       if (!this.getBee(input.beeId)) throw new BeeNotFoundError(input.beeId);
       const id = randomUUID();
-      this.stmt("INSERT INTO bee_resume_bundles(id, bee_id, generation, harness, provider_session_id, cwd, state_key, scope, ref, digest, bytes, size, files, closed_at, epoch) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(id, input.beeId, input.generation, input.harness, input.providerSessionId, input.cwd, input.stateKey, input.scope, input.ref, input.digest, input.bytes, input.size, input.files, input.closedAt, input.epoch);
+      this.stmt("INSERT INTO bee_resume_bundles(id, bee_id, generation, harness, provider_session_id, cwd, state_key, scope, ref, digest, key_id, bytes, size, files, closed_at, epoch) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, input.beeId, input.generation, input.harness, input.providerSessionId, input.cwd, input.stateKey, input.scope, input.ref, input.digest, input.keyId, input.bytes, input.size, input.files, input.closedAt, input.epoch);
       const keep = Math.max(1, opts.keep ?? 5);
       this.stmt("DELETE FROM bee_resume_bundles WHERE bee_id = ? AND id NOT IN (SELECT id FROM bee_resume_bundles WHERE bee_id = ? ORDER BY closed_at DESC, id DESC LIMIT ?)").run(input.beeId, input.beeId, keep);
       const row = mapBeeResumeBundle(this.stmt("SELECT * FROM bee_resume_bundles WHERE id = ?").get(id) as Row);

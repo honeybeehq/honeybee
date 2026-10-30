@@ -101,7 +101,9 @@ test("resume-bundles.1: turn ends bundle the harness state encrypted with the ep
     assert.equal(first.epoch, 0);
     assert.equal(first.files, 1);
     const object = readFileSync(join(root, "objects", "blobs", "resume-bundles", first.ref));
-    assert.equal(object.subarray(0, 5).toString(), "hbrb1");
+    assert.equal(object.subarray(0, 5).toString(), "hbrb2");
+    assert.equal(object.subarray(5, 13).toString("hex"), first.keyId, "the header names the key the bundle was written under");
+    assert.equal(first.keyId.length, 16);
     assert.equal(object.includes("PASTED-TOKEN"), false, "the object is ciphertext");
     assert.equal(object.includes("stub-session-1"), false, "not even the file names leak");
 

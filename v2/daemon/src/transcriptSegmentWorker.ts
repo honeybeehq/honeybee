@@ -60,6 +60,7 @@ export interface ResumeBundleRequest {
   storeRoot: string;
   keyFile: string;
   beeId: string;
+  epoch: number;
 }
 
 export interface ResumeBundleWorkerResult {
@@ -73,6 +74,7 @@ export interface ResumeRestoreRequest {
   ref: string;
   keyFile: string;
   beeId: string;
+  epoch: number;
   destinationRoot: string;
   harness: string;
   fromKey: string | null;
@@ -262,13 +264,13 @@ export async function cutTranscript(request: TranscriptCutRequest): Promise<Tran
 if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bundleResume") {
   const request = workerData as ResumeBundleRequest;
   Promise.resolve()
-    .then(() => bundleResumeState(request.state, request.storeRoot, readResumeKey(request.keyFile), request.beeId))
+    .then(() => bundleResumeState(request.state, request.storeRoot, readResumeKey(request.keyFile), request.beeId, request.epoch))
     .then((bundle) => parentPort!.postMessage({ bundle, error: null } satisfies ResumeBundleWorkerResult))
     .catch((error: unknown) => parentPort!.postMessage({ bundle: null, error: error instanceof Error ? error.message : String(error) } satisfies ResumeBundleWorkerResult));
 } else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "restoreResume") {
   const request = workerData as ResumeRestoreRequest;
   Promise.resolve()
-    .then(() => restoreResumeState(request.storeRoot, request.ref, readResumeKey(request.keyFile), request.beeId, request.destinationRoot))
+    .then(() => restoreResumeState(request.storeRoot, request.ref, readResumeKey(request.keyFile), request.beeId, request.epoch, request.destinationRoot))
     .then(() => rekeyRestoredState(request.harness, request.destinationRoot, request.fromKey, request.toKey))
     .then(() => parentPort!.postMessage({ ok: true, error: null } satisfies ResumeRestoreWorkerResult))
     .catch((error: unknown) => parentPort!.postMessage({ ok: false, error: error instanceof Error ? error.message : String(error) } satisfies ResumeRestoreWorkerResult));

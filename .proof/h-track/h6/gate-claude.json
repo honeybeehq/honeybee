@@ -1,0 +1,42 @@
+{
+  "harness": "claude",
+  "startedAt": "2026-10-30T16:00:34.729Z",
+  "credentialsSeededFrom": "default keychain item -> home-a/.credentials.json",
+  "firstTurnMs": 2715,
+  "firstTurnAuthFailed": false,
+  "firstTurnAnsweredOk": true,
+  "sourceProviderSessionId": "a1c24895-bca9-47c7-8560-f48e67faf1a8",
+  "bundle": {
+    "ref": "9d1a3e06f0135922e535817cfef13871df0d9f4467430c3de0916b435c80211c",
+    "bytes": 27511,
+    "size": 184320,
+    "files": 1,
+    "stateKey": "-private-var-folders-y2-lgjk786x2qz6s-gt20x091vc0000gn-T-hb-gate-claude-RJIzHg-cwd-a",
+    "scope": "org:f3f22519-4c1c-4dae-ae10-33850f985984",
+    "keyId": "7f21a2081e43eb25",
+    "epoch": 0
+  },
+  "killedAt": "2026-10-30T16:00:38.029Z",
+  "credentialsCarried": "home-a file -> home-b file",
+  "homeARefreshedFile": false,
+  "importMs": 68,
+  "import": {
+    "resumed": "native",
+    "reason": null,
+    "epoch": 1,
+    "handle": "CL.0000",
+    "account": null
+  },
+  "answerTurnMs": 2080,
+  "importedProviderSessionId": "8def21a3-2cf8-4c9a-8dd2-4d6cc822accf",
+  "newSessionId": true,
+  "cwdB": "/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-gate-claude-RJIzHg/cwd-b",
+  "homeB": "/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-gate-claude-RJIzHg/home-b",
+  "recalled": true,
+  "authFailed": false,
+  "transcriptTail": "cheReadInputTokens\":14522,\"cacheCreationInputTokens\":6332,\"webSearchRequests\":0,\"costUSD\":0.00141632,\"contextWindow\":1000000,\"maxOutputTokens\":128000,\"thinkingTokens\":0,\"cacheCreationEphemeral5mInputTokens\":0,\"cacheCreationEphemeral1hInputTokens\":6332,\"canonicalModel\":\"claude-haiku-5-5\",\"provider\":\"firstParty\",\"costBasis\":\"list\"}},\"permission_denials\":[],\"terminal_reason\":\"completed\",\"fast_mode_state\":\"off\",\"fast_mode_disabled_reason\":\"sdk_opt_in_required\",\"subagent_stats\":{\"spawned\":0,\"requested\":{\"background\":0,\"foreground\":0,\"unset\":0},\"started_in_background\":0,\"max_depth\":0,\"spawned_by_subagents\":0,\"completed\":0,\"failed\":0,\"killed\":{\"parent\":0,\"user\":0,\"system\":0},\"refused\":{\"depth_limit\":0,\"concurrency_limit\":0,\"budget\":0},\"by_type\":{}},\"safety_stops\":0,\"is_error\":false,\"num_turns\":1,\"subtype\":\"success\",\"api_error_status\":null,\"result\":\"PELICAN-42\",\"ttft_ms\":1596,\"type\":\"result\",\"duration_ms\":1615,\"uuid\":\"443b5361-725a-42b1-8291-0a4f0361db01\",\"ttft_stream_ms\":1490,\"time_to_request_ms\":44,\"first_content_frame_ms\":1490,\"queued_turn_count\":0,\"result_index\":0,\"model_usage_since_last_result\":{\"claude-haiku-5-5\":{\"inputTokens\":2,\"outputTokens\":9,\"cacheReadInputTokens\":14522,\"cacheCreationInputTokens\":6332,\"webSearchRequests\":0,\"costUSD\":0.00141632,\"contextWindow\":1000000,\"maxOutputTokens\":128000,\"thinkingTokens\":0,\"cacheCreationEphemeral5mInputTokens\":0,\"cacheCreationEphemeral1hInputTokens\":6332,\"canonicalModel\":\"claude-haiku-5-5\",\"provider\":\"firstParty\",\"costBasis\":\"list\"}}}\n",
+  "logB": [
+    "{\"ts\":1793376038450,\"op\":\"durability.resume_bundle.enabled store=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-gate-claude-RJIzHg/objects key_file=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-gate-claude-RJIzHg/ws.key keep=5\"}",
+    "{\"ts\":1793376038529,\"op\":\"bee.import bee=b3548a27-f117-4713-9c0c-5d59b90bd33a agent=claude resumed=native reason=- epoch=1 account=- cwd=/private/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/hb-gate-claude-RJIzHg/cwd-b\"}"
+  ]
+}

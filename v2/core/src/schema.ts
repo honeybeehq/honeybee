@@ -1098,6 +1098,7 @@ CREATE TABLE IF NOT EXISTS bee_resume_bundles (
   scope               TEXT,
   ref                 TEXT NOT NULL,
   digest              TEXT NOT NULL,
+  key_id              TEXT NOT NULL DEFAULT '',
   bytes               INTEGER NOT NULL,
   size                INTEGER NOT NULL,
   files               INTEGER NOT NULL,
