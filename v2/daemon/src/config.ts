@@ -229,6 +229,20 @@ export interface CellRetentionConfig {
   fetchUpstream?: boolean;
   /** At most this many Cells evicted or removed by retention passes in any rolling 24 h (default 200). null = no cap. */
   maxEvictionsPerDay?: number | null;
+  /**
+   * H1: when a Cell is parked (idle past trimAfterHours, or `cell.park`), purge every
+   * git-ignored path instead of only the trim patterns. Ignored env files are still
+   * copied to cell-env/ and restored on the next runtime start. Default false:
+   * parking keeps everything but the trim patterns.
+   */
+  purgeIgnoredOnPark?: boolean;
+  /**
+   * H2: enforce the disk floor. true runs the pressure pass below the floor and
+   * refuses NEW Cells with a typed `resource_blocked` error while below it;
+   * false only reports (capacity fact, log, audit). Default: satellites true,
+   * other nodes false.
+   */
+  budgetEnforce?: boolean;
 }
 
 export interface ResolvedCellRetention {
@@ -248,6 +262,8 @@ export interface ResolvedCellRetention {
   pressureIdleAfterMs: number | null;
   fetchUpstream: boolean;
   maxEvictionsPerDay: number | null;
+  purgeIgnoredOnPark: boolean;
+  budgetEnforce: boolean;
   /** Invalid keys that fell back to their default, for the boot log. */
   warnings: string[];
 }
@@ -517,6 +533,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 
 export const MIN_FREE_BYTES_DEFAULT = 50 * 1024 ** 3;
+export const WORKSTATION_MIN_FREE_PERCENT = 5;
+export const WORKSTATION_MIN_FREE_BYTES = 20 * 1024 ** 3;
 const SATELLITE_ARCHIVED_AFTER_MS = 3 * DAY_MS;
 const SATELLITE_MIN_FREE_PERCENT = 10;
 const VOLUME_SHARE_DEFAULT = 0.5;
@@ -532,11 +550,13 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   maxPerPass: 100,
   trimAfterMs: 24 * HOUR_MS,
   trimPatterns: [...DEFAULT_TRIM_PATTERNS],
-  minFreePercent: null,
-  minFreeBytes: null,
+  minFreePercent: WORKSTATION_MIN_FREE_PERCENT,
+  minFreeBytes: WORKSTATION_MIN_FREE_BYTES,
   pressureIdleAfterMs: 3 * DAY_MS,
   fetchUpstream: false,
   maxEvictionsPerDay: 200,
+  purgeIgnoredOnPark: false,
+  budgetEnforce: false,
   warnings: [],
 };
 
@@ -550,6 +570,7 @@ export function defaultCellRetention(nodeKind: NodeKind = "workstation"): Resolv
     minFreePercent: SATELLITE_MIN_FREE_PERCENT,
     minFreeBytes: MIN_FREE_BYTES_DEFAULT,
     fetchUpstream: true,
+    budgetEnforce: true,
   };
 }
 
@@ -612,6 +633,8 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
     (v) => v as number | null,
     out.maxEvictionsPerDay,
   );
+  out.purgeIgnoredOnPark = read("purgeIgnoredOnPark", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.purgeIgnoredOnPark);
+  out.budgetEnforce = read("budgetEnforce", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.budgetEnforce);
   return out;
 }
 

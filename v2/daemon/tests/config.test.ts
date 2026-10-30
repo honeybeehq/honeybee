@@ -421,8 +421,10 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
     assert.equal(defaults.intervalMs, 24 * 3_600_000);
     assert.equal(defaults.maxPerPass, 100);
     assert.equal(defaults.trimAfterMs, 24 * 3_600_000);
-    assert.equal(defaults.minFreePercent, null, "workstations have no pressure floor unless configured");
-    assert.equal(defaults.minFreeBytes, null);
+    assert.equal(defaults.minFreePercent, 5, "workstations report a 5% floor by default");
+    assert.equal(defaults.minFreeBytes, 20 * 1024 ** 3);
+    assert.equal(defaults.budgetEnforce, false, "workstations only warn below the floor unless configured");
+    assert.equal(defaults.purgeIgnoredOnPark, false, "parking keeps everything but the trim patterns unless configured");
     assert.equal(defaults.pressureIdleAfterMs, 3 * day);
     assert.equal(defaults.fetchUpstream, false, "workstations fetch no upstream mirror unless configured");
     assert.deepEqual(defaults.warnings, []);
@@ -465,8 +467,10 @@ test("config.9: cells.retention (v31) — defaults on, day/hour units, null disa
       [{ retention: { trimPatterns: [".."] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
       [{ retention: { trimPatterns: ["*"] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
       [{ retention: { trimPatterns: ["build*"] } }, (r) => assert.ok(r.trimPatterns.includes(".next"))],
-      [{ retention: { minFreePercent: 150 } }, (r) => assert.equal(r.minFreePercent, null)],
-      [{ retention: { minFreeBytes: "50G" } }, (r) => assert.equal(r.minFreeBytes, null)],
+      [{ retention: { minFreePercent: 150 } }, (r) => assert.equal(r.minFreePercent, 5)],
+      [{ retention: { minFreeBytes: "50G" } }, (r) => assert.equal(r.minFreeBytes, 20 * 1024 ** 3)],
+      [{ retention: { purgeIgnoredOnPark: "yes" } }, (r) => assert.equal(r.purgeIgnoredOnPark, false)],
+      [{ retention: { budgetEnforce: 1 } }, (r) => assert.equal(r.budgetEnforce, false)],
       [{ retention: { pressureIdleAfterDays: -2 } }, (r) => assert.equal(r.pressureIdleAfterMs, 3 * day)],
       [{ retention: { fetchUpstream: "no" } }, (r) => assert.equal(r.fetchUpstream, false)],
     ];
@@ -490,6 +494,7 @@ test("config.9b: satellites default to a 3-day archive floor, half the Cells vol
     assert.equal(satellite.stoppedAfterMs, 30 * day);
     assert.equal(satellite.minFreePercent, 10);
     assert.equal(satellite.minFreeBytes, 50 * 1024 ** 3);
+    assert.equal(satellite.budgetEnforce, true, "satellites keep enforcing their floor");
     assert.equal(satellite.fetchUpstream, true);
     writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { retention: { minFreeBytes: 1e9, fetchUpstream: true } } }));
     const optedIn = loadNodeConfig(dir).cellRetention;

@@ -70,8 +70,17 @@ async function waitForProbeReport(dataDir: string, beeId: string, dir: string, w
 }
 
 test("policy: bees.tmpRoot wins, absent defaults by nodeKind, null turns it off", () => {
-  assert.equal(resolveBeeTmpPolicy("workstation", undefined, {}, "/h"), null);
+  assert.equal(resolveBeeTmpPolicy("workstation", undefined, {}, "/h"), null, "no data dir, no default");
   assert.equal(resolveBeeTmpPolicy("cloud", undefined, { XDG_CACHE_HOME: "/x" }, "/h"), null);
+  assert.deepEqual(resolveBeeTmpPolicy("workstation", undefined, { XDG_CACHE_HOME: "/x" }, "/h", "/d/v2"), {
+    source: "data_dir_default",
+    root: "/d/v2/tmp",
+    daemonDir: "/d/v2/tmp/daemon",
+    compileCache: "/d/v2/node-compile-cache",
+    ownedFrom: { root: "/d/v2/tmp", compileCache: "/d/v2/node-compile-cache" },
+  }, "workstations and cloud nodes default to a Honeybee-owned tmp beside the Cells, never the shared system tmp");
+  assert.equal(resolveBeeTmpPolicy("satellite", undefined, {}, "/h", "/d/v2")?.source, "satellite_default");
+  assert.equal(resolveBeeTmpPolicy("workstation", null, {}, "/h", "/d/v2"), null, "null still turns it off");
   assert.equal(resolveBeeTmpPolicy("satellite", null, {}, "/h"), null);
   assert.deepEqual(resolveBeeTmpPolicy("satellite", undefined, {}, "/h"), {
     source: "satellite_default",
@@ -249,14 +258,30 @@ test("bees.tmpRoot turns it on for a node whose nodeKind is unset, and null turn
   }
 });
 
-test("workstation daemon: TMPDIR and compile cache are inherited unchanged", { timeout: 90_000 }, async () => {
+test("workstation daemon: bees get a Honeybee-owned tmp beside the Cells and a shared compile cache, never the inherited system tmp", { timeout: 90_000 }, async () => {
   const inherited = makeDaemonDir();
   const inheritedCache = join(inherited.dir, "inherited-compile-cache");
   const run = await runProbe({ env: { NODE_COMPILE_CACHE: inheritedCache }, inheritedTmp: inherited.dir });
   try {
+    const dataDir = realpathSync(run.daemon.dir);
+    assert.equal(run.report.TMPDIR, join(dataDir, "tmp", run.beeId));
+    assert.equal(run.report.NODE_COMPILE_CACHE, join(dataDir, "node-compile-cache"));
+    assert.equal(run.report.tmpWritable, true, "the per-bee tmp is writable");
+    assert.equal(existsSync(join(run.cache, "honeybee")), false, "nothing under XDG cache on a workstation");
+    assert.match(readFileSync(join(run.daemon.dir, "hived.log"), "utf8"), /tmp\.policy beeTmpRoot=\S+\/tmp source=data_dir_default/);
+  } finally {
+    await run.cleanup();
+    inherited.cleanup();
+  }
+});
+
+test("workstation daemon: bees.tmpRoot null keeps the inherited TMPDIR and compile cache", { timeout: 90_000 }, async () => {
+  const inherited = makeDaemonDir();
+  const inheritedCache = join(inherited.dir, "inherited-compile-cache");
+  const run = await runProbe({ bees: { tmpRoot: null }, env: { NODE_COMPILE_CACHE: inheritedCache }, inheritedTmp: inherited.dir });
+  try {
     assert.equal(run.report.TMPDIR, inherited.dir);
     assert.equal(run.report.NODE_COMPILE_CACHE, inheritedCache);
-    assert.equal(existsSync(join(run.cache, "honeybee")), false);
     assert.match(readFileSync(join(run.daemon.dir, "hived.log"), "utf8"), /tmp\.policy beeTmpRoot=off/);
   } finally {
     await run.cleanup();

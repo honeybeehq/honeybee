@@ -133,6 +133,45 @@ Cells are provisioned by APFS clone (`cp -c`) from the origin and warm artifacts
 - Refresh `CellDirtyReport` again: it gains `unlandedCommits: Array<{ sha: string; subject: string }>` and `unlandedCommitCount: number`. Show the commits in the dirty-refusal UI.
 - Optional surface: show `evicted` on the Cell card ("disk reclaimed; a message re-provisions") and offer `hive cell gc --dry-run` output in a settings pane. Any "free disk" affordance in Apiary calls `cell.gc`/`cell.evict`; it never touches the directory.
 
+## H1 — Park (2026-10-30, capability `cell.park.v1`)
+
+A **park** keeps the Cell where it is and removes its reproducible ignored bytes. Two modes, chosen by `cells.retention.purgeIgnoredOnPark`:
+
+| mode | flag | removes | keeps |
+|---|---|---|---|
+| `trim` (default) | `false` | the trim patterns (as before) | installs, env files, every other ignored path |
+| `purge` | `true` | every ignored path: build output, installs (`node_modules`, `.venv`, `venv`, `Pods`), everything else, and env files after copying them to `cell-env/` | tracked files, untracked files, the index, refs, stashes |
+
+Parking happens on the idle pass (the `trim` step: a Cell idle past `trimAfterHours`, never with a live runtime, in-flight operation, move or handoff) and on demand through `cell.park { beeId, idempotencyKey }` → `CellParkResult { status: parked | nothing_to_park | absent, mode, paths, skipped, bytes, envFiles }`. A live runtime is `runtime_refused`; a Cell is never parked mid-turn. Dirty work never blocks a park because parking touches only ignored paths, so the dirty report is unchanged by construction. Every path is re-verified against the space as it is now (`verifyParkPaths`): no longer ignored, a symlink, a symlinked parent, a nested repository outside an install directory, or a write inside the idle window (`recently_modified`) skips the path with its reason; install directories pass a shallow check only, since they legitimately hold nested repositories and thousands of entries. Confirmed paths are renamed into `<cells-root>/_evicting/<wrapper>.park.<ts>.<pid>/` (`.trim.` in trim mode) and deleted by the sweep. The bee's private tmp directory is removed with the park. Env files copied aside come back on the next runtime start (`cell.env.restored`), exactly as after an eviction.
+
+Audit: one informational `cell.parked { cellId, beeId, mode, trigger: idle | operator, paths, bytes, envFiles, tmpCleared }` per park that removed something. Log: `cell.retention.parked mode= cell= bee= paths= skipped= bytes= parked=` (pass) and `cell.park mode= cell= bee= status=` (verb). The mode is reported in every `cell.gc` result (`policy.purgeIgnoredOnPark`).
+
+**Purge report.** Every `cell.gc` result (dry run included) carries `purge: { mode, cells, trimBytes, installBytes, otherIgnoredBytes, otherIgnored: [{ name, cells, paths, bytes }] }` — what parking removes under each class across the inspected Cells, and every ignored path outside the trim and install patterns grouped by its last path component, largest first. `hive cell gc` prints it. Read it before turning `purgeIgnoredOnPark` on: anything listed under `otherIgnored` that is not reproducible belongs in the repository or outside the Cell. Rollback: `purgeIgnoredOnPark: false` restores trim-only parking; nothing already parked comes back (installs and build output are rebuilt, env files are restored, the rest was declared reproducible by the ignore rules).
+
+**Per-bee tmp.** `bees.tmpRoot` now defaults on every node kind: satellites keep `${XDG_CACHE_HOME:-~/.cache}/honeybee/tmp`; workstations and cloud nodes default to `<data-dir>/tmp/<beeId>` with the shared compile cache at `<data-dir>/node-compile-cache` (source `data_dir_default`), beside the Cells on the same volume, counted by the disk budget, removed when the bee is deleted, swept for released bees at boot, and cleared by a park. `bees.tmpRoot: null` turns it off (rollback). The sandbox grants `~/Library/pnpm` so pnpm keeps hard-linking installs from its user store instead of falling back to a per-Cell store.
+
+## H2 — Disk budget and the capacity fact (2026-10-30, capability `node.capacity.v1`)
+
+Every node now has a floor: workstations and cloud nodes default to `minFreePercent: 5`, `minFreeBytes: 20 GiB` (satellites keep 10 % / 50 GiB). `cells.retention.budgetEnforce` decides what the floor does:
+
+| `budgetEnforce` | default | below the floor |
+|---|---|---|
+| `false` | workstation, cloud | report only: `capacity.resourceBlocked.blocked = true`, one `cell.pressure.below_floor_warn` log line per episode, one `node.capacity` audit row per flip; no pressure pass, no refusal |
+| `true` | satellite | the pressure pass runs as before, and `spawn` with `substrate: cell` is refused with the closed error code `resource_blocked` until free space is back above the floor; existing bees, their mail, transcripts and revives are untouched; non-Cell spawns proceed |
+
+The fact itself is additive and nullable on `snapshot`, `watch`, `mirror.local.snapshot`, `deployInfo` and `health`:
+
+```
+capacity: {
+  schema: 1, checkedAt,
+  cells: { root, totalBytes, freeBytes, floorBytes, targetBytes, belowFloor, floorUnmet, cellCount, liveCells, cellBytes },
+  resourceBlocked: { blocked, since, reason: "disk_floor" | null },
+  admission: { newCells: "accept" | "refuse", enforce }
+} | null
+```
+
+`cellBytes` is the last pass's measured `du` sum (null before the first pass). Each flip of `blocked` or `admission.newCells` writes one informational `node.capacity { capacity }` audit row, so the watch stream carries the change as a delta and Apiary can mirror the fact from the snapshot field plus that delta; the row is informational in replay. `hive health` and `hive deploy-info` print one `capacity:` line. Rollback: `budgetEnforce: false` (warn only); `minFreePercent: null, minFreeBytes: null` removes the floor entirely.
+
 ## Not Honeybee's
 
 Checked on the Studio on 2026-09-24: `$TMPDIR/comb-*-review`, `pher-*-review`, `hive-deploy.*`, `apiary-control`, `~/.hive/crew/art` are created by other tools (v1 comb, Pollinate, Apiary/crew); Honeybee v2 removes its own temp scratch (`hive-capture-*`, `hive-naming-*`, `honeybee-deploy-pack-*`) in `finally`. `~/.hive/hsr/` (4,485 runner homes, 65 GB, newest 2026-08-16) is the *v1* runner tree, dead since the cutover; v2 runners live under `~/.hive/v2/runners`. It is safe to trash once no v1 daemon runs; Honeybee v2 never reads it.

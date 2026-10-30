@@ -337,6 +337,7 @@ import {
   type CellCaptureMode,
   type CellCaptureResult,
   type CellEvictResult,
+  type CellParkResult,
   type CellExecResult,
   type CellGcResult,
   type CellRemoveResult,
@@ -690,6 +691,7 @@ const OWN_STATUS_VERBS: ReadonlySet<RpcVerb> = new Set<RpcVerb>([
   "cell.capture",
   "cell.remove",
   "cell.evict",
+  "cell.park",
   "bee.move",
   "cell.exec",
   "cell.retained.remove",
@@ -769,7 +771,7 @@ export class HiveDaemon {
     validateNodeStatePaths(cfg);
     this.cfg = cfg;
     this.deps = deps;
-    this.beeTmp = resolveBeeTmpPolicy(cfg.nodeKind, cfg.beeTmpRoot, process.env);
+    this.beeTmp = resolveBeeTmpPolicy(cfg.nodeKind, cfg.beeTmpRoot, process.env, undefined, cfg.dataDir);
     this.runnerSocketDir = tmpdir();
     this.naming = cfg.naming;
     this.contextPolicy = cfg.contextPolicy;
@@ -1001,6 +1003,7 @@ export class HiveDaemon {
       ...(this.deps.retentionStatfs ? { statfs: this.deps.retentionStatfs } : {}),
       dataDir: this.cfg.dataDir,
       audit: (kind, payload) => this.mustStore().recordCellRetentionEvent(kind, payload),
+      clearBeeTmp: (beeId) => this.removeBeeTmp(beeId),
       lastRecordedPass: (kind) => this.mustStore().latestCellRetentionPass(kind ?? null),
       recentEvictionTimes: (sinceTs) => this.mustStore().cellRetentionEvictionTimes(sinceTs),
       lastDailyCapAt: () => this.mustStore().lastCellRetentionDailyCapAt(),
@@ -1727,10 +1730,11 @@ export class HiveDaemon {
     return env;
   }
 
-  private removeBeeTmp(beeId: string): void {
-    if (!this.beeTmp) return;
+  private removeBeeTmp(beeId: string): boolean {
+    if (!this.beeTmp) return false;
     const removed = removeBeeTmpDir(this.beeTmp, beeId);
     this.log(`tmp.bee_removed bee=${beeId} ok=${removed}`);
+    return removed;
   }
 
   private sweepBeeTmpAtBoot(store: CoreStore): void {
@@ -2363,6 +2367,8 @@ export class HiveDaemon {
         return this.rpcCellGc(params);
       case "cell.evict":
         return this.withIdempotency(verb, params, () => this.rpcCellEvict(params));
+      case "cell.park":
+        return this.withIdempotency(verb, params, () => this.rpcCellPark(params));
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
@@ -3517,6 +3523,7 @@ export class HiveDaemon {
     if (!agentSpec || !(ADAPTER_NAMES as readonly string[]).includes(adapterName)) {
       throw new RpcError("invalid_request", `unknown agent '${agent}' (no spawn spec/adapter configured)`);
     }
+    if (substrate === "cell") this.assertCellAdmission("spawn");
     const tags = Array.isArray(params.tags) && params.tags.every((t) => typeof t === "string")
       ? (params.tags as string[])
       : [];
@@ -3883,6 +3890,45 @@ export class HiveDaemon {
     const retention = this.retention;
     if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
     return retention.run({ dryRun: params.dryRun !== false, measure: params.measure !== false });
+  }
+
+  /** H2: a new Cell is refused with a typed error while the node is below its disk floor with enforcement on. */
+  private assertCellAdmission(verb: string): void {
+    const refusing = this.retention?.refusingNewCells();
+    if (!refusing) return;
+    const free = (refusing.cells.freeBytes / 1024 ** 3).toFixed(1);
+    const floor = ((refusing.cells.floorBytes ?? 0) / 1024 ** 3).toFixed(1);
+    throw new RpcError("resource_blocked", `${verb}: this node is below its disk floor (${free} GiB free, floor ${floor} GiB); new Cells are refused until space is reclaimed (hive cell gc)`);
+  }
+
+  /**
+   * `cell.park` — park ONE bee's Cell now: the checkout, bee, mailbox and
+   * transcript stay; its reproducible ignored paths go (trim patterns, or every
+   * ignored path under `cells.retention.purgeIgnoredOnPark`). A live runtime,
+   * in-flight Cell operation, move or handoff is a typed refusal; dirty work
+   * never blocks a park because parking touches only ignored paths.
+   */
+  private rpcCellPark(params: Record<string, unknown>): CellParkResult {
+    const beeId = this.requireBee(params);
+    const store = this.mustStore();
+    const bee = store.getBee(beeId);
+    const row = bee?.cellId ? store.getCell(bee.cellId) : null;
+    if (!bee || bee.substrate !== "cell" || !row || row.state === "removed" || row.state === "removing") {
+      throw new RpcError("invalid_request", `cell.park: bee ${beeId} has no Cell allocation`);
+    }
+    const retention = this.retention;
+    if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
+    if (row.state === "evicted") return { cell: row, status: "absent", mode: retention.parkMode(), paths: [], skipped: [], bytes: null, envFiles: [] };
+    if (row.state !== "active") throw new RpcError("invalid_request", `cell.park: cell ${row.id} is ${row.state}; only active Cells park`);
+    this.releaseAbsentCellOps(row.id);
+    if (this.cellHasInFlightOp(row.id)) throw new RpcError("runtime_refused", `cell ${row.id} has an in-flight Cell operation`);
+    if (bee.activeMoveId) throw new RpcError("move_in_progress", `bee ${beeId} has a move in flight`);
+    if (bee.activeHandoffId) throw new RpcError("handoff_in_progress", `bee ${beeId} has a handoff in flight`);
+    const rt = store.currentRuntime(beeId);
+    if ((rt && rt.state !== "stopped") || (rt && this.driver?.hasProcess(beeId, rt.generation))) {
+      throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); a Cell is never parked mid-turn`);
+    }
+    return retention.parkNow(row, beeId);
   }
 
   /**
@@ -6023,6 +6069,7 @@ export class HiveDaemon {
       storePath: this.cfg.storePath,
       localSecurity: this.rpc?.localSecurity,
       cellDisk: this.retention?.diskStatus() ?? null,
+      capacity: this.retention?.capacity(true) ?? null,
     };
   }
 
@@ -6120,6 +6167,7 @@ export class HiveDaemon {
         ? { state: "disabled", reason: this.naming.disabledReason }
         : { state: this.naming.auto ? "ok" : "off" },
       cellDisk: this.retention?.diskStatus() ?? null,
+      capacity: this.retention?.capacity(true) ?? null,
     };
   }
 
@@ -6134,6 +6182,7 @@ export class HiveDaemon {
       mailBatchingPolicies: store.listMailBatchingPolicies(),
       mailBatches: store.listMailBatches(),
       views: store.listBeeViewRows().map((row) => ({ ...row, bee: includeOperatorLocalHomes ? operatorLocalBee(row.bee) : mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
+      capacity: this.retention?.capacity() ?? null,
       templates: store.listTemplates(),
       tells: store.listTells(),
       reactions: store.listReactions(),

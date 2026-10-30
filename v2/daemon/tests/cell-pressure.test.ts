@@ -16,7 +16,7 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { commitInCell, g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
 import { measureDirectoryBytes } from "../../driver-cell/src/retention.ts";
-import type { CellGcResult, DeployInfoResult, HealthResult, SpawnResult, ViewResult } from "../src/protocol.ts";
+import { RpcError, type CellGcResult, type DeployInfoResult, type HealthResult, type SnapshotResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { liveRunnerHostPids, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
@@ -69,7 +69,7 @@ test("cell-pressure.1: below the floor, clean archived then idle Cells go oldest
   g(origin.repo, ["commit", "-q", "-m", "payload"]);
   const cellsRoot = join(root, "cells");
   mkdirSync(cellsRoot, { recursive: true });
-  const off = { enabled: true, archivedAfterDays: 30, stoppedAfterDays: null, trimAfterHours: null, fetchUpstream: false, minFreePercent: null, minFreeBytes: null, pressureIdleAfterDays: IDLE_AFTER_MS / 86_400_000 };
+  const off = { enabled: true, archivedAfterDays: 30, stoppedAfterDays: null, trimAfterHours: null, fetchUpstream: false, minFreePercent: null, minFreeBytes: null, pressureIdleAfterDays: IDLE_AFTER_MS / 86_400_000, budgetEnforce: true };
   const { dir, cleanup } = makeDaemonDir({
     bootHangTimeoutMs: 60_000,
     cells: { root: cellsRoot, retention: off },
@@ -155,8 +155,11 @@ test("cell-pressure.1: below the floor, clean archived then idle Cells go oldest
     client = await daemon.client();
     const restored = (await client.request<HealthResult>("health")).cellDisk;
     assert.ok(restored?.lastPass, "the last pass survives a restart");
-    const fresh = await spawnIdle(client, "fresh-stopped", origin.repo);
-    await stop(client, fresh.beeId);
+    await assert.rejects(
+      client.request<SpawnResult>("spawn", { name: "fresh-refused", agent: "cellstub", substrate: "cell", cell: { originRepo: origin.repo } }),
+      (err: unknown) => err instanceof RpcError && err.code === "resource_blocked",
+      "below an enforced floor a NEW Cell is refused with the typed code",
+    );
     const unmet = await waitFor(async () => {
       const health = await client.request<HealthResult>("health");
       return health.cellDisk?.floorUnmet ? health.cellDisk : null;
@@ -166,7 +169,8 @@ test("cell-pressure.1: below the floor, clean archived then idle Cells go oldest
     await new Promise((r) => setTimeout(r, 2_000));
     assert.equal(await cellState(client, a3.beeId), "evicted");
     assert.equal(await cellState(client, idleBee.beeId), "evicted", "a long-idle stopped bee's clean Cell goes after the archived ones");
-    for (const bee of [dirty, unlanded, fresh, live]) assert.equal(await cellState(client, bee.beeId), "active", bee.view.bee!.name);
+    for (const bee of [dirty, unlanded, live]) assert.equal(await cellState(client, bee.beeId), "active", bee.view.bee!.name);
+    assert.equal((await client.request<SnapshotResult>("snapshot")).views.some((v) => v.bee?.name === "fresh-refused"), false, "the refused spawn left no bee");
     await daemon.stop();
     daemon = null;
     const unmetRows = auditRows(dir, "cell.pressure.floor_unmet");
@@ -289,7 +293,8 @@ test("cell-pressure.3: with no retention config a workstation runs no pressure p
         floorBytes: disk.floorBytes,
         floorWarning: disk.floorWarning ?? null,
         lastPassKind: disk.lastPass?.kind ?? null,
-        pressureLogged: /cell\.pressure\.below_floor/.test(log),
+        pressureLogged: /cell\.pressure\.below_floor /.test(log),
+        warnLogged: /cell\.pressure\.below_floor_warn/.test(log),
         mirrorRoot: existsSync(join(dir, "upstream")),
         fetchLogged: /cell\.retention\.upstream_(fetched|failed)/.test(log),
         mirrorRootMode: existsSync(join(dir, "upstream")) ? statSync(join(dir, "upstream")).mode & 0o777 : null,
@@ -301,9 +306,11 @@ test("cell-pressure.3: with no retention config a workstation runs no pressure p
     }
   };
   const workstation = await observe("workstation");
-  assert.equal(workstation.floorBytes, null, "no floor on a workstation by default");
+  assert.equal(workstation.floorBytes, Math.floor((64 * 1024 * 5) / 100), "a workstation reports a 5% floor by default; the 20 GiB term is refused on a 64 KiB volume");
+  assert.match(workstation.floorWarning ?? "", /minFreeBytes .* is not below the Cells volume size/);
   assert.equal(workstation.lastPassKind, null);
-  assert.equal(workstation.pressureLogged, false, "no pressure pass on a workstation by default");
+  assert.equal(workstation.pressureLogged, false, "no pressure pass on a workstation by default: the floor only warns");
+  assert.equal(workstation.warnLogged, true, "the workstation warned once about being below its floor");
   assert.equal(workstation.mirrorRoot, false, "no mirror on a workstation by default");
   assert.equal(workstation.fetchLogged, false);
   const satellite = await observe("satellite");

@@ -31,7 +31,7 @@ import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { Worker } from "node:worker_threads";
 import { existsSync, realpathSync, statfsSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-import type { BeeRow, CellRow, CoreStore, RuntimeRow } from "../../core/src/index.ts";
+import type { BeeRow, CellRow, CoreStore, NodeCapacity, RuntimeRow } from "../../core/src/index.ts";
 import {
   CellDeleteRefused,
   CellHeadMovedError,
@@ -41,7 +41,10 @@ import {
   unparkCellWrapper,
   type EvictResult,
   listPendingKeeps,
-  parkTrimPaths,
+  parkCellWrapper,
+  parkPaths,
+  preserveEnvFiles,
+  type ParkMode,
   restoreKeptPaths,
   retentionWorkerUrl,
   sweepEvicting,
@@ -69,10 +72,12 @@ import {
   type CellGcPassSummary,
   type CellGcPathBytes,
   type CellGcProgress,
+  type CellGcPurgeReport,
   type CellGcReason,
   type CellGcResult,
   type CellGcTrimOutcome,
   type CellGcVerdict,
+  type CellParkResult,
 } from "./protocol.ts";
 
 export interface CellRetentionDeps {
@@ -100,7 +105,9 @@ export interface CellRetentionDeps {
   /** Size and free bytes of the volume holding `path` (default: statfs). */
   statfs?: (path: string) => { totalBytes: number; freeBytes: number };
   /** Append an informational retention audit row. */
-  audit?: (kind: "cell.retention.pass" | "cell.pressure.floor_unmet" | "cell.retention.daily_cap", payload: Record<string, unknown>) => void;
+  audit?: (kind: "cell.retention.pass" | "cell.pressure.floor_unmet" | "cell.retention.daily_cap" | "cell.parked" | "node.capacity", payload: Record<string, unknown>) => void;
+  /** Drop the bee's private tmp directory when its Cell is parked; false when nothing was removed. */
+  clearBeeTmp?: (beeId: string) => boolean;
   /** Times of retention evictions since `sinceTs`, to restore the daily cap's window after a restart. */
   recentEvictionTimes?: (sinceTs: number) => number[];
   /** When the daily cap was last audited, so a restart does not audit it twice in one window. */
@@ -258,6 +265,10 @@ export class CellRetentionService {
   private submoduleHolds: Array<{ cellId: string | null; beeId: string; paths: string[] }> = [];
   private lastCapAuditAt: number | null = null;
   private cappedInPlan = false;
+  private blockedSince: number | null = null;
+  private announcedAdmission: { blocked: boolean; newCells: NodeCapacity["admission"]["newCells"] } | null = null;
+  private warnedBelowFloorAt: number | null = null;
+  private lastPresentBytes: number | null = null;
 
   async stop(): Promise<void> {
     this.stopping = true;
@@ -367,12 +378,22 @@ export class CellRetentionService {
     if (this.lastDiskCheckAt != null && now - this.lastDiskCheckAt < (this.deps.diskCheckMs ?? DEFAULT_DISK_CHECK_MS)) return;
     this.lastDiskCheckAt = now;
     const disk = this.readDisk();
-    if (disk == null || disk.floorBytes == null) return;
+    if (disk == null) return;
+    this.announceCapacity(this.capacityOf(disk));
+    if (disk.floorBytes == null) return;
     if (disk.freeBytes >= disk.floorBytes) {
       if (this.floorUnmet) this.deps.log(`cell.pressure.recovered free=${disk.freeBytes} floor=${disk.floorBytes}`);
       this.floorUnmet = false;
       this.unmetAt = null;
       this.unmetFree = null;
+      this.warnedBelowFloorAt = null;
+      return;
+    }
+    if (!this.deps.policy.budgetEnforce) {
+      if (this.warnedBelowFloorAt == null) {
+        this.warnedBelowFloorAt = now;
+        this.deps.log(`cell.pressure.below_floor_warn free=${disk.freeBytes} floor=${disk.floorBytes} total=${disk.totalBytes} enforce=false (cells.retention.budgetEnforce)`);
+      }
       return;
     }
     if (!this.deps.policy.enabled || this.passInFlight) return;
@@ -400,6 +421,76 @@ export class CellRetentionService {
         this.progress = null;
       });
     this.passInFlight.catch(() => undefined);
+  }
+
+  parkMode(): ParkMode {
+    return this.deps.policy.purgeIgnoredOnPark ? "purge" : "trim";
+  }
+
+  /** H2: the executor's capacity fact. `fresh` re-reads the volume; otherwise the last reading (≤ one disk check old) serves. */
+  capacity(fresh = false): NodeCapacity | null {
+    const disk = fresh ? this.readDisk() : this.lastDisk ?? this.readDisk();
+    return disk == null ? null : this.capacityOf(disk);
+  }
+
+  /** The capacity fact when a NEW Cell must be refused right now; null when admission is open. */
+  refusingNewCells(): NodeCapacity | null {
+    const capacity = this.capacity(true);
+    if (capacity == null) return null;
+    this.announceCapacity(capacity);
+    return capacity.admission.newCells === "refuse" ? capacity : null;
+  }
+
+  private capacityOf(disk: DiskReading): NodeCapacity {
+    const blocked = disk.floorBytes != null && disk.freeBytes < disk.floorBytes;
+    if (blocked) this.blockedSince ??= disk.at;
+    else this.blockedSince = null;
+    const enforce = this.deps.policy.budgetEnforce;
+    let cellCount = 0;
+    let liveCells = 0;
+    try {
+      const store = this.deps.store();
+      for (const cell of store.listCells()) {
+        if (cell.state === "removed" || cell.state === "removing") continue;
+        cellCount += 1;
+        if (cell.state === "active" && this.deps.cellInUse(cell.sourceBeeId, store.currentRuntime(cell.sourceBeeId), cell.state)) liveCells += 1;
+      }
+    } catch (err) {
+      this.deps.log(`cell.capacity.count_failed ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return {
+      schema: 1,
+      checkedAt: disk.at,
+      cells: {
+        root: disk.root,
+        totalBytes: disk.totalBytes,
+        freeBytes: disk.freeBytes,
+        floorBytes: disk.floorBytes,
+        targetBytes: disk.targetBytes,
+        belowFloor: blocked,
+        floorUnmet: this.floorUnmet,
+        cellCount,
+        liveCells,
+        cellBytes: this.lastPresentBytes,
+      },
+      resourceBlocked: { blocked, since: blocked ? this.blockedSince : null, reason: blocked ? "disk_floor" : null },
+      admission: { newCells: blocked && enforce ? "refuse" : "accept", enforce },
+    };
+  }
+
+  /** One `node.capacity` audit row and log line per admission flip, never per check. */
+  private announceCapacity(capacity: NodeCapacity): void {
+    const current = { blocked: capacity.resourceBlocked.blocked, newCells: capacity.admission.newCells };
+    const previous = this.announcedAdmission;
+    if (previous != null && previous.blocked === current.blocked && previous.newCells === current.newCells) return;
+    this.announcedAdmission = current;
+    if (previous == null && !current.blocked) return;
+    this.deps.log(`node.capacity blocked=${current.blocked} new_cells=${current.newCells} free=${capacity.cells.freeBytes} floor=${capacity.cells.floorBytes ?? "-"} enforce=${capacity.admission.enforce}`);
+    try {
+      this.deps.audit?.("node.capacity", { capacity });
+    } catch (err) {
+      this.deps.log(`cell.retention.audit_failed ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** `cellDisk` for `deployInfo` / `health`: a fresh statfs plus the pass state. */
@@ -466,6 +557,7 @@ export class CellRetentionService {
       maxPerPass: policy.maxPerPass,
       trimAfterMs: policy.trimAfterMs,
       trimPatterns: [...policy.trimPatterns],
+      purgeIgnoredOnPark: policy.purgeIgnoredOnPark,
     };
   }
 
@@ -574,7 +666,9 @@ export class CellRetentionService {
       outcomes: null,
       trimOutcomes: null,
       inspectMs,
+      purge: purgeReportOf(items, this.parkMode()),
     };
+    this.lastPresentBytes = result.totals.presentBytes;
     this.deps.log(
       `cell.retention.plan dry_run=${opts.dryRun} kind=${opts.kind} cells=${result.totals.cells} planned=${result.totals.plannedCells}` +
         ` planned_bytes=${result.totals.plannedBytes ?? "?"} held=${result.totals.heldCells} dirty=${result.totals.dirtyCells}` +
@@ -866,8 +960,14 @@ export class CellRetentionService {
       report: inspection?.report ?? null,
       envFiles: inspection?.envFiles ?? [],
       trim: { entries: inspection?.trim ?? [], bytes: sumBytes(inspection?.trim ?? []), planned: false },
+      install: { entries: inspection?.install ?? [], bytes: sumBytes(inspection?.install ?? []) },
       keep: { entries: inspection?.keep ?? [], bytes: sumBytes(inspection?.keep ?? []) },
     };
+  }
+
+  /** The space-relative paths parking removes from this Cell under the node's mode. */
+  private parkPathsOf(item: Pick<CellGcItem, "trim" | "install" | "keep" | "envFiles">): string[] {
+    return parkPathsFor(item, this.parkMode());
   }
 
   private decide(
@@ -915,7 +1015,7 @@ export class CellRetentionService {
 
   private trimDue(item: CellGcItem, now: number): boolean {
     const after = this.deps.policy.trimAfterMs;
-    if (after == null || item.trim.entries.length === 0 || item.idleSince == null) return false;
+    if (after == null || this.parkPathsOf(item).length === 0 || item.idleSince == null) return false;
     if (item.verdict === "evict" || item.verdict === "remove_retained" || TRIM_BLOCKING_REASONS.has(item.reason)) return false;
     return now - item.idleSince >= after;
   }
@@ -1105,8 +1205,9 @@ export class CellRetentionService {
     const after = this.deps.policy.trimAfterMs ?? 0;
     const verified = await this.runWorker<TrimVerifyWorkerResult>({
       kind: "verifyTrim",
-      cells: planned.map((i, index) => ({ key: String(index), wrapperDir: i.wrapperDir, paths: i.trim.entries.map((e) => e.path), modifiedSinceMs: this.deps.now() - after })),
+      cells: planned.map((i, index) => ({ key: String(index), wrapperDir: i.wrapperDir, paths: this.parkPathsOf(i), modifiedSinceMs: this.deps.now() - after })),
       trimPatterns: [...this.deps.policy.trimPatterns],
+      mode: this.parkMode(),
     } satisfies TrimVerifyWorkerRequest);
     this.assertRunning();
     const byKey = new Map(verified.verified.map((v) => [v.key, v] as const));
@@ -1121,9 +1222,10 @@ export class CellRetentionService {
 
   private trimOne(item: CellGcItem, verified: TrimVerifyWorkerResult["verified"][number] | null): CellGcTrimOutcome {
     const store = this.deps.store();
+    const mode = this.parkMode();
     const outcome = (status: CellGcTrimOutcome["status"], reason: string | null, paths: string[] = [], skipped: TrimSkip[] = verified?.skipped ?? []): CellGcTrimOutcome => {
       const trimmed = new Set(paths);
-      const entries = item.trim.entries.filter((e) => trimmed.has(e.path));
+      const entries = [...item.trim.entries, ...(item.install?.entries ?? []), ...item.keep.entries].filter((e) => trimmed.has(e.path));
       return { cellId: item.cellId, beeId: item.beeId, wrapperDir: item.wrapperDir, status, reason, paths, skipped, bytes: sumBytes(entries) };
     };
     if (verified == null) return outcome("failed", "verification_missing");
@@ -1144,19 +1246,50 @@ export class CellRetentionService {
     if (idleSince == null || this.deps.now() - idleSince < (this.deps.policy.trimAfterMs ?? Number.POSITIVE_INFINITY)) return outcome("refused", "not_idle");
     if (verified.confirmed.length === 0) return outcome("refused", "nothing_to_trim");
     try {
-      const res = parkTrimPaths(this.deps.cellsRoot, item.wrapperDir, verified.confirmed, { now: this.deps.now });
+      const envFiles = mode === "purge" ? preserveEnvFiles(this.deps.cellsRoot, cell.spaceDir, verified.confirmed.filter((rel) => item.envFiles.includes(rel))) : [];
+      const res = parkPaths(this.deps.cellsRoot, item.wrapperDir, verified.confirmed, { now: this.deps.now, label: mode === "purge" ? "park" : "trim", shallow: verified.shallow });
       const skipped = [...verified.skipped, ...res.skipped];
       const result = outcome(res.trimmed.length > 0 ? "trimmed" : "refused", res.trimmed.length > 0 ? null : "nothing_to_trim", res.trimmed, skipped);
       this.deps.log(
-        `cell.retention.trimmed cell=${cell.id} bee=${item.beeId} paths=${res.trimmed.length} skipped=${skipped.length} bytes=${result.bytes ?? "?"}` +
-          ` parked=${res.parkedDir ?? "-"}${skipped.length > 0 ? ` first_skip=${JSON.stringify(skipped[0])}` : ""}`,
+        `cell.retention.parked mode=${mode} cell=${cell.id} bee=${item.beeId} paths=${res.trimmed.length} skipped=${skipped.length} bytes=${result.bytes ?? "?"}` +
+          ` parked=${res.parkedDir ?? "-"}${envFiles.length > 0 ? ` env_files=${envFiles.length}` : ""}${skipped.length > 0 ? ` first_skip=${JSON.stringify(skipped[0])}` : ""}`,
       );
+      if (res.trimmed.length > 0) this.recordParked(cell.id, item.beeId, mode, res.trimmed, result.bytes, envFiles, "idle");
       return result;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.deps.log(`cell.retention.trim_failed cell=${cell.id} bee=${item.beeId} err=${JSON.stringify(detail)}`);
       return outcome("failed", detail);
     }
+  }
+
+  private recordParked(cellId: string, beeId: string, mode: ParkMode, paths: string[], bytes: number | null, envFiles: string[], trigger: "idle" | "operator"): void {
+    const tmpCleared = this.deps.clearBeeTmp?.(beeId) ?? false;
+    try {
+      this.deps.audit?.("cell.parked", { cellId, beeId, mode, trigger, paths, bytes, envFiles, tmpCleared, at: this.deps.now() });
+    } catch (err) {
+      this.deps.log(`cell.retention.audit_failed ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * H1 `cell.park`: park ONE bee's Cell now, whatever its idle age. The caller
+   * has already refused a live runtime, an in-flight Cell operation, a move or
+   * a handoff; dirty work never blocks a park because parking touches only
+   * ignored paths.
+   */
+  parkNow(cell: CellRow, beeId: string): CellParkResult {
+    const mode = this.parkMode();
+    const wrapperDir = dirname(resolve(cell.spaceDir));
+    if (!existsSync(wrapperDir)) return { cell, status: "absent", mode, paths: [], skipped: [], bytes: null, envFiles: [] };
+    const parked = parkCellWrapper(this.deps.cellsRoot, wrapperDir, mode, { trimPatterns: this.deps.policy.trimPatterns, now: this.deps.now, measure: true });
+    const status = parked.parked.length > 0 ? "parked" : "nothing_to_park";
+    this.deps.log(`cell.park mode=${mode} cell=${cell.id} bee=${beeId} status=${status} paths=${parked.parked.length} skipped=${parked.skipped.length} bytes=${parked.bytes ?? "?"} parked=${parked.parkedDir ?? "-"} env_files=${parked.envFiles.length}`);
+    if (status === "parked") {
+      this.recordParked(cell.id, beeId, mode, parked.parked, parked.bytes, parked.envFiles, "operator");
+      void this.sweep();
+    }
+    return { cell, status, mode, paths: parked.parked, skipped: parked.skipped, bytes: parked.bytes, envFiles: parked.envFiles };
   }
 
   reconcileKept(): void {
@@ -1177,6 +1310,41 @@ export class CellRetentionService {
       }
     }
   }
+}
+
+/** The space-relative paths parking removes from a Cell under `mode`. */
+export function parkPathsFor(item: Pick<CellGcItem, "trim" | "install" | "keep" | "envFiles">, mode: ParkMode): string[] {
+  const trim = item.trim.entries.map((e) => e.path);
+  if (mode === "trim") return trim;
+  return [...trim, ...(item.install?.entries ?? []).map((e) => e.path), ...item.keep.entries.map((e) => e.path), ...item.envFiles].sort();
+}
+
+/** H1: what parking removes across the inspected Cells, and every ignored path outside the known patterns grouped by name. */
+export function purgeReportOf(items: CellGcItem[], mode: ParkMode): CellGcPurgeReport {
+  const inspected = items.filter((i) => i.cellState === "active" && i.reason !== "absent" && i.reason !== "not_provisioned" && i.reason !== "inspect_failed" && i.reason !== "already_evicted");
+  const measured = inspected.some((i) => i.bytes != null);
+  const sum = (pick: (i: CellGcItem) => number | null) => (measured ? inspected.reduce((acc, i) => acc + (pick(i) ?? 0), 0) : null);
+  const groups = new Map<string, { name: string; cells: Set<string>; paths: number; bytes: number }>();
+  for (const item of inspected) {
+    for (const entry of item.keep.entries) {
+      const name = basename(entry.path);
+      const group = groups.get(name) ?? { name, cells: new Set<string>(), paths: 0, bytes: 0 };
+      group.cells.add(item.beeId);
+      group.paths += 1;
+      group.bytes += entry.bytes ?? 0;
+      groups.set(name, group);
+    }
+  }
+  return {
+    mode,
+    cells: inspected.length,
+    trimBytes: sum((i) => i.trim.bytes),
+    installBytes: sum((i) => i.install?.bytes ?? null),
+    otherIgnoredBytes: sum((i) => i.keep.bytes),
+    otherIgnored: [...groups.values()]
+      .map((g) => ({ name: g.name, cells: g.cells.size, paths: g.paths, bytes: measured ? g.bytes : null }))
+      .sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0) || b.cells - a.cells || (a.name < b.name ? -1 : 1)),
+  };
 }
 
 export function totalsOf(items: CellGcItem[]): CellGcResult["totals"] {

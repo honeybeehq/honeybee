@@ -381,7 +381,7 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
     const keepRoot = join(dirname(rig.cellsRoot), "cell-keep", archivedBee.view.cell!.spaceName);
     assert.equal(readFileSync(join(keepRoot, ".proof", "shot.png"), "utf8"), "evidence\n");
     const log = readFileSync(join(rig.dir, "hived.log"), "utf8");
-    assert.match(log, /cell\.retention\.trimmed cell=.* paths=1 skipped=0/);
+    assert.match(log, /cell\.retention\.parked mode=trim cell=.* paths=1 skipped=0/);
     assert.match(log, /cell\.retention\.evicted cell=.* kept=1/);
 
     const sent = await client.request<SendRpcResult>("send", { beeId: archivedBee.beeId, body: "back to work" });

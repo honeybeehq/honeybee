@@ -341,6 +341,7 @@ export async function startDaemon(dir: string, opts: { env?: Record<string, stri
     // HIVE_NO_KEYCHAIN: the daemon under test never touches the developer's
     // real macOS Keychain (spec 08 keychain bridge is off unless injected).
     env: {
+      HIVE_TEST_CELL_VOLUME_BYTES: String(1024 ** 4),
       ...childEnv,
       HIVE_NODE_PATH: process.execPath,
       HIVE_V2_DATA_DIR: dir,

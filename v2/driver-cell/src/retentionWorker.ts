@@ -6,7 +6,7 @@
  */
 import { parentPort, workerData } from "node:worker_threads";
 import type { LandingReceipt } from "./landed.ts";
-import { inspectCellWrapper, verifyTrimPaths, type CellWrapperInspection, type TrimSkip } from "./retention.ts";
+import { inspectCellWrapper, verifyParkPaths, type CellWrapperInspection, type ParkMode, type TrimSkip } from "./retention.ts";
 import { refreshUpstreamMirror, type UpstreamRef } from "./upstream.ts";
 
 export interface RetentionWorkerRequest {
@@ -49,10 +49,12 @@ export interface TrimVerifyWorkerRequest {
   kind: "verifyTrim";
   cells: Array<{ key: string; wrapperDir: string; paths: string[]; modifiedSinceMs: number }>;
   trimPatterns: string[];
+  /** What parking removes; absent = the trim patterns alone. */
+  mode?: ParkMode;
 }
 
 export interface TrimVerifyWorkerResult {
-  verified: Array<{ key: string; confirmed: string[]; skipped: TrimSkip[]; error: string | null }>;
+  verified: Array<{ key: string; confirmed: string[]; skipped: TrimSkip[]; shallow: string[]; error: string | null }>;
 }
 
 const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest;
@@ -61,9 +63,9 @@ if (request.kind === "verifyTrim") {
   const verified: TrimVerifyWorkerResult["verified"] = [];
   for (const { key, wrapperDir, paths, modifiedSinceMs } of request.cells) {
     try {
-      verified.push({ key, ...verifyTrimPaths(wrapperDir, paths, { trimPatterns: request.trimPatterns, modifiedSinceMs }), error: null });
+      verified.push({ key, ...verifyParkPaths(wrapperDir, paths, request.mode ?? "trim", { trimPatterns: request.trimPatterns, modifiedSinceMs }), error: null });
     } catch (err) {
-      verified.push({ key, confirmed: [], skipped: [], error: errorText(err) });
+      verified.push({ key, confirmed: [], skipped: [], shallow: [], error: errorText(err) });
     }
   }
   parentPort?.postMessage({ verified } satisfies TrimVerifyWorkerResult);

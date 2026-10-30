@@ -7,7 +7,7 @@ import type { NodeKind } from "./config.ts";
 export const DAEMON_TMP_NAME = "daemon";
 
 export interface BeeTmpPolicy {
-  readonly source: "config" | "satellite_default";
+  readonly source: "config" | "satellite_default" | "data_dir_default";
   readonly root: string;
   readonly daemonDir: string;
   readonly compileCache: string;
@@ -28,9 +28,20 @@ export function resolveBeeTmpPolicy(
   configured: string | null | undefined,
   env: Readonly<Record<string, string | undefined>>,
   home: string = homedir(),
+  dataDir: string | null = null,
 ): BeeTmpPolicy | null {
   if (configured === null) return null;
-  if (configured === undefined && nodeKind !== "satellite") return null;
+  if (configured === undefined && nodeKind !== "satellite") {
+    if (dataDir === null) return null;
+    const owned = join(dataDir, "tmp");
+    return {
+      source: "data_dir_default",
+      root: owned,
+      daemonDir: join(owned, DAEMON_TMP_NAME),
+      compileCache: join(dataDir, "node-compile-cache"),
+      ownedFrom: { root: owned, compileCache: join(dataDir, "node-compile-cache") },
+    };
+  }
   const xdg = env.XDG_CACHE_HOME;
   const cacheHome = xdg && isAbsolute(xdg) ? xdg : join(home, ".cache");
   const honeybee = join(cacheHome, "honeybee");

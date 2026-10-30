@@ -15,7 +15,7 @@ import type { ThreadOperationView } from "./threadOperation.ts";
  * Changing anything here is a protocol change (bump PROTOCOL in the daemon).
  * The shape snapshot test (tests/mirror.test.ts) fails on any drift.
  */
-import type { AccountAdmissionReservationRow, AccountLimitsRow, AccountRow, ActionQueueView, ActionView, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TranscriptSegmentRow } from "./types.ts";
+import type { AccountAdmissionReservationRow, AccountLimitsRow, AccountRow, ActionQueueView, ActionView, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, NodeCapacity, TemplateRow, TranscriptSegmentRow } from "./types.ts";
 import { LOGIN_FLOW_KEYS, type LoginFlowRow } from "./loginFlow.ts";
 
 /** One bee as apiaryd stores it: B8 view verbatim + record + current runtime. */
@@ -106,6 +106,8 @@ export interface MirrorSnapshot {
   threadOperations: ThreadOperationView[];
   seq: number;
   bees: MirrorBeeRow[];
+  /** H2 (additive): the executor's capacity fact; null until the daemon has measured its Cells volume. */
+  capacity?: NodeCapacity | null;
   templates: MirrorTemplateRow[];
   questions: MirrorQuestionRow[];
   seals: MirrorSealRow[];
@@ -239,6 +241,10 @@ export const MIRROR_LOGIN_FLOW_AUDIT_KINDS = ["login_flow.put", "login_flow.remo
 export const MIRROR_CELL_AUDIT_KINDS = ["cell.put", "cell.removed"] as const;
 /** v31 — informational history row beside the `cell.put` state change; never a mirror trigger. */
 export const CELL_EVICTED_AUDIT_KIND = "cell.evicted" as const;
+/** H1 — informational: a parked Cell lost its purged paths; the row itself is unchanged. */
+export const CELL_PARKED_AUDIT_KIND = "cell.parked" as const;
+/** H2 — the capacity fact changed admission (blocked flipped); payload is the full NodeCapacity. */
+export const NODE_CAPACITY_AUDIT_KIND = "node.capacity" as const;
 export const MIRROR_BEE_MOVE_AUDIT_KINDS = [
   "bee.move_admitted",
   "bee.move_phase",

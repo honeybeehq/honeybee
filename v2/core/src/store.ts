@@ -2462,7 +2462,7 @@ export class CoreStore {
   }
 
   /** P7: informational Cell retention history (one row per applied pass; one per floor-unmet episode). */
-  recordCellRetentionEvent(kind: "cell.retention.pass" | "cell.pressure.floor_unmet" | "cell.retention.daily_cap", payload: Record<string, unknown>): void {
+  recordCellRetentionEvent(kind: "cell.retention.pass" | "cell.pressure.floor_unmet" | "cell.retention.daily_cap" | "cell.parked" | "node.capacity", payload: Record<string, unknown>): void {
     this.tx(() => this.audit(kind, null, payload));
   }
 

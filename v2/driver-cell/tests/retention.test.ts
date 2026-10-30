@@ -17,6 +17,9 @@ import {
   cellEnvRootForCells,
   cellKeepRootForCells,
   classifyIgnored,
+  parkCandidates,
+  parkCellWrapper,
+  verifyParkPaths,
   evictCellWrapper,
   inspectCellWrapper,
   listEvicting,
@@ -332,13 +335,18 @@ test("retention.classify: ignored entries split into env files, build output and
     assert.deepEqual(classifyIgnored(paths.spaceDir), {
       env: [".env"],
       trim: ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"],
+      install: ["apps/app/node_modules", "node_modules", "tools/.venv"],
       keep: [".proof", "out", "tmp"],
     });
+    assert.deepEqual(parkCandidates(classifyIgnored(paths.spaceDir), "trim"), ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"]);
+    assert.deepEqual(parkCandidates(classifyIgnored(paths.spaceDir), "purge"), [".env", ".proof", "apps/app/.next", "apps/app/node_modules", "apps/ios/build", "node_modules", "out", "tmp", "tools/.venv", "tsconfig.tsbuildinfo"]);
     assert.deepEqual(classifyIgnored(paths.spaceDir, ["*.tsbuildinfo"]).trim, ["tsconfig.tsbuildinfo"]);
     const inspection = inspectCellWrapper(paths.wrapperDir);
     assert.deepEqual(inspection.trim.map((e) => e.path), ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"]);
     assert.ok(inspection.trim.every((e) => (e.bytes ?? 0) > 0));
     assert.deepEqual(inspection.keep.map((e) => e.path), [".proof", "out", "tmp"]);
+    assert.deepEqual(inspection.install.map((e) => e.path), ["apps/app/node_modules", "node_modules", "tools/.venv"]);
+    assert.ok(inspection.install.every((e) => (e.bytes ?? 0) > 0));
     assert.equal(inspection.report?.dirty, false, "ignored files never make a Cell dirty");
     assert.deepEqual(inspectCellWrapper(paths.wrapperDir, { measure: false }).trim.map((e) => e.bytes), [null, null, null]);
     renameSync(join(paths.spaceDir, "README.md"), join(paths.spaceDir, "Rmoved.md"));
@@ -567,4 +575,80 @@ test("retention.trim: retains trees beyond the bounded repository inspection", (
     assert.deepEqual(result.skipped, [{ path: "build", why: "inspection_limit" }]);
     assert.equal(existsSync(join(paths.spaceDir, "build/output-1099")), true);
   } finally { rig.cleanup(); }
+});
+
+test("retention.park (trim mode): only build output goes; installs, kept files, env, source and git state stay", () => {
+  const rig = makeRig();
+  try {
+    ignoringOrigin(rig);
+    const { paths } = provisioned(rig, "parktrim");
+    populateIgnored(paths.spaceDir);
+    const res = parkCellWrapper(rig.cellsRoot, paths.wrapperDir, "trim", { now: () => 1_000 });
+    assert.equal(res.mode, "trim");
+    assert.deepEqual(res.parked, ["apps/app/.next", "apps/ios/build", "tsconfig.tsbuildinfo"]);
+    assert.deepEqual(res.envFiles, []);
+    assert.ok((res.bytes ?? 0) > 0, "parked bytes are measured before the rename");
+    assert.ok(res.parkedDir?.startsWith(join(rig.cellsRoot, EVICTING_DIR, "w-parktrim.trim.1000.")));
+    for (const kept of [".env", "node_modules/pkg/index.js", "apps/app/node_modules/dep/index.js", "tools/.venv/bin/python", ".proof/shot.png", "tmp/promo/final.mp4", "out", "README.md", ".git/HEAD"]) {
+      assert.ok(existsSync(join(paths.spaceDir, kept)), `${kept} stays`);
+    }
+    assert.equal(existsSync(join(paths.spaceDir, "apps/app/.next")), false);
+    assert.equal(g(paths.spaceDir, ["status", "--porcelain"]), "", "parking never changes the dirty report");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("retention.park (purge mode): every ignored path goes, env files are copied aside first, installs with nested repositories park shallowly", () => {
+  const rig = makeRig();
+  try {
+    ignoringOrigin(rig);
+    const { paths } = provisioned(rig, "parkpurge");
+    populateIgnored(paths.spaceDir);
+    put(paths.spaceDir, "node_modules/vendored/.git/HEAD", "ref: refs/heads/main\n");
+    for (let i = 0; i < 1100; i += 1) put(paths.spaceDir, `node_modules/wide/f${i}.js`);
+    const res = parkCellWrapper(rig.cellsRoot, paths.wrapperDir, "purge", { now: () => 2_000 });
+    assert.equal(res.mode, "purge");
+    assert.deepEqual(res.parked, [".env", ".proof", "apps/app/.next", "apps/app/node_modules", "apps/ios/build", "node_modules", "out", "tmp", "tools/.venv", "tsconfig.tsbuildinfo"]);
+    assert.deepEqual(res.skipped, []);
+    assert.deepEqual(res.envFiles, [".env"]);
+    assert.deepEqual(listPreservedEnvFiles(rig.cellsRoot, paths.spaceName), [".env"], "the env file waits under cell-env/ for the next start");
+    assert.ok(res.parkedDir?.startsWith(join(rig.cellsRoot, EVICTING_DIR, "w-parkpurge.park.2000.")));
+    for (const gone of [".env", "node_modules", "apps/app/node_modules", "tools/.venv", ".proof", "tmp", "out", "apps/app/.next"]) {
+      assert.equal(existsSync(join(paths.spaceDir, gone)), false, `${gone} is parked`);
+    }
+    assert.ok(existsSync(join(paths.spaceDir, "README.md")));
+    assert.ok(existsSync(join(paths.spaceDir, ".git", "HEAD")));
+    assert.equal(g(paths.spaceDir, ["status", "--porcelain"]), "", "a purged Cell is still clean");
+    assert.deepEqual(restoreEnvFiles(rig.cellsRoot, paths.spaceDir), [".env"]);
+    assert.equal(readFileSync(join(paths.spaceDir, ".env"), "utf8"), "SECRET=1\n");
+    const again = parkCellWrapper(rig.cellsRoot, paths.wrapperDir, "purge", { now: () => 3_000 });
+    assert.deepEqual(again.parked, [".env"], "a second park finds only what came back");
+  } finally {
+    rig.cleanup();
+  }
+});
+
+test("retention.park verification: a path that left the mode's class, a symlink, a nested repository outside installs, or a recent write is skipped with its reason", () => {
+  const rig = makeRig();
+  try {
+    ignoringOrigin(rig);
+    const { paths } = provisioned(rig, "parkverify");
+    populateIgnored(paths.spaceDir);
+    put(paths.spaceDir, "tmp/nested/.git/HEAD", "ref: refs/heads/main\n");
+    symlinkSync("/", join(paths.spaceDir, "link.tsbuildinfo"));
+    const old = new Date(Date.now() - 48 * 3_600_000);
+    for (const rel of ["apps/app/.next", "apps/app/.next/server", "apps/app/.next/server/page.js", "node_modules", "node_modules/pkg", "node_modules/pkg/index.js", "tmp", "tmp/nested", "tmp/promo"]) utimesSync(join(paths.spaceDir, rel), old, old);
+    const verified = verifyParkPaths(paths.wrapperDir, ["apps/app/.next", "node_modules", "tmp", "link.tsbuildinfo", ".proof", "README.md"], "purge", { modifiedSinceMs: Date.now() - 3_600_000 });
+    assert.deepEqual(verified.confirmed, ["apps/app/.next", "node_modules"]);
+    assert.deepEqual(verified.shallow, ["node_modules"], "install directories skip the deep inspection");
+    assert.deepEqual(
+      verified.skipped.map((s) => [s.path, s.why]),
+      [["tmp", "nested_repository"], ["link.tsbuildinfo", "symlink"], [".proof", "recently_modified"], ["README.md", "not_ignored"]],
+    );
+    const trimOnly = verifyParkPaths(paths.wrapperDir, ["node_modules", ".proof"], "trim");
+    assert.deepEqual(trimOnly.skipped.map((s) => s.why), ["not_ignored_build_output", "not_ignored_build_output"]);
+  } finally {
+    rig.cleanup();
+  }
 });

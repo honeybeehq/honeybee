@@ -84,6 +84,7 @@ import {
   type CellRemoveResult,
   type CellRetainedRemoveResult,
   type CellEvictResult,
+  type CellParkResult,
   type CellDiskStatus,
   type CellGcItem,
   type CellGcProgress,
@@ -142,6 +143,7 @@ import {
   type CommandRow,
   type FrozenImportReport,
   type ImportPlanEntry,
+  type NodeCapacity,
   type TemplateRow,
 } from "../../core/src/index.ts";
 import { realPreflightProbes } from "../../daemon/src/import-probes.ts";
@@ -2630,7 +2632,7 @@ async function cmdArchive(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--no-measure] | cell evict <bee> [--force]";
+  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--no-measure] | cell evict <bee> [--force] | cell park <bee>";
   switch (sub) {
     case "gc": {
       const apply = parsed.flags.get("--apply") === true;
@@ -2655,6 +2657,25 @@ async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
         }
         emit(ctx, lines, { beeId, ...r }, false);
         return ctx.json || r.status !== "refused" ? 0 : 2;
+      });
+    }
+    case "park": {
+      if (!needle) throw new Error(usage);
+      return withClient(ctx, async (c) => {
+        const list = await c.request<ListResult>("list");
+        const beeId = resolveBeeIn(list.views, needle);
+        const r = await c.request<CellParkResult>("cell.park", {
+          beeId,
+          idempotencyKey: (parsed.flags.get("--idempotency-key") as string | undefined) ?? randomUUID(),
+        });
+        const what = r.mode === "purge" ? "every ignored path" : "build output (trim patterns)";
+        const line = r.status === "parked"
+          ? confirm("ok", "cell parked", `${r.paths.length} path(s), ${gib(r.bytes)} (${what}); the checkout, bee, mailbox and transcript stay${r.envFiles.length > 0 ? `; ${r.envFiles.length} env file(s) preserved for the next start` : ""}${r.skipped.length > 0 ? `; ${r.skipped.length} skipped` : ""}`, r.deduped)
+          : r.status === "absent"
+            ? confirm("ok", "cell absent", `${beeId}'s Cell is already evicted; nothing to park`, r.deduped)
+            : confirm("ok", "nothing to park", `${beeId}'s Cell holds no ${what}${r.skipped.length > 0 ? ` (${r.skipped.length} skipped: ${r.skipped.slice(0, 3).map((s) => `${s.path} ${s.why}`).join(", ")})` : ""}`, r.deduped);
+        emit(ctx, [line], { beeId, ...r }, false);
+        return 0;
       });
     }
     case "move":
@@ -2906,6 +2927,14 @@ export function cellDiskLine(d: CellDiskStatus): string {
   return `cells disk: ${gib(d.freeBytes)} free of ${gib(d.totalBytes)} · ${floor}${d.floorUnmet ? " · FLOOR UNMET" : ""} · ${last}`;
 }
 
+/** One line for the H2 capacity fact: admission, the block, and how many Cells the node carries. */
+export function capacityLine(c: NodeCapacity): string {
+  const block = c.resourceBlocked.blocked
+    ? `resource-blocked since ${new Date(c.resourceBlocked.since ?? c.checkedAt).toISOString().slice(0, 16).replace("T", " ")}Z (${c.resourceBlocked.reason})`
+    : "not blocked";
+  return `capacity: new Cells ${c.admission.newCells} (enforce ${c.admission.enforce ? "on" : "off, warn only"}) · ${block} · ${c.cells.cellCount} Cells, ${c.cells.liveCells} live${c.cells.cellBytes == null ? "" : `, ${gib(c.cells.cellBytes)} on disk`}`;
+}
+
 /** `hive cell gc` — the plan (and outcomes after --apply), planned Cells first, then holds grouped by reason. */
 function renderCellGc(r: CellGcResult): string[] {
   const lines: string[] = [];
@@ -2916,8 +2945,16 @@ function renderCellGc(r: CellGcResult): string[] {
   lines.push(
     `policy: ${r.policy.enabled ? "on" : "OFF"} · archived ≥ ${days(r.policy.archivedAfterMs)} · stopped ≥ ${days(r.policy.stoppedAfterMs)} · retained ≥ ${days(r.policy.retainedAfterMs)}` +
       ` · budget ${r.policy.maxBytes == null ? "none" : gib(r.policy.maxBytes)} · max ${r.policy.maxPerPass}/pass` +
-      ` · trim ≥ ${r.policy.trimAfterMs == null ? "never" : `${r.policy.trimAfterMs / 3_600_000}h`} · inspect ${Math.round(r.inspectMs / 1000)}s`,
+      ` · park ≥ ${r.policy.trimAfterMs == null ? "never" : `${r.policy.trimAfterMs / 3_600_000}h`} (${r.policy.purgeIgnoredOnPark ? "purge every ignored path" : "trim patterns only"}) · inspect ${Math.round(r.inspectMs / 1000)}s`,
   );
+  if (r.purge) {
+    lines.push(
+      `ignored bytes across ${r.purge.cells} Cells: build output ${gib(r.purge.trimBytes)} · installs ${gib(r.purge.installBytes)} · outside known patterns ${gib(r.purge.otherIgnoredBytes)}` +
+        ` (parking removes ${r.purge.mode === "purge" ? "all three" : "build output only"})`,
+    );
+    for (const g of r.purge.otherIgnored.slice(0, 15)) lines.push(`  ${gib(g.bytes).padStart(10)}  ${String(g.cells).padStart(4)} Cells  ${String(g.paths).padStart(5)} paths  ${g.name}`);
+    if (r.purge.otherIgnored.length > 15) lines.push(`  … ${r.purge.otherIgnored.length - 15} more names (use --json)`);
+  }
   const planned = r.items.filter((i) => i.verdict === "evict" || i.verdict === "remove_retained").sort((a, b) => (b.bytes ?? 0) - (a.bytes ?? 0));
   const envCells = planned.filter((i) => i.envFiles.length > 0).length;
   lines.push(`planned: ${planned.length} Cells, ${gib(t.plannedBytes)} · held: ${t.heldCells} Cells, ${gib(t.heldBytes)} (${t.dirtyCells} dirty)${envCells > 0 ? ` · ${envCells} planned Cells carry ignored env files (preserved under cell-env/, restored on revive)` : ""}`);
@@ -2926,7 +2963,7 @@ function renderCellGc(r: CellGcResult): string[] {
   }
   const trims = r.items.filter((i) => i.trim.planned).sort((a, b) => (b.trim.bytes ?? 0) - (a.trim.bytes ?? 0));
   if (trims.length > 0) {
-    lines.push(`trim: ${trims.length} Cells, ${gib(t.trimBytes)} of build output (the Cells stay; ignored files outside the trim patterns are never touched)`);
+    lines.push(`park: ${trims.length} Cells, ${gib(t.trimBytes)} of build output${r.policy.purgeIgnoredOnPark ? " plus their installs and other ignored paths" : " (the Cells stay; ignored files outside the trim patterns are never touched)"}`);
     for (const i of trims.slice(0, 25)) {
       const paths = i.trim.entries.map((e) => e.path);
       lines.push(`  ${gib(i.trim.bytes).padStart(10)}  ${ageDays(i.idleSince, r.plannedAt).padStart(5)}  ${i.beeLifecycle.padEnd(8)} ${i.beeName || i.beeId}  ${paths.slice(0, 3).join(", ")}${paths.length > 3 ? ` (+${paths.length - 3})` : ""}`);
@@ -3322,7 +3359,8 @@ async function cmdDeployInfo(ctx: CliContext): Promise<number> {
   const daemon = await withClient(ctx, (c) => c.request<Record<string, unknown>>("deployInfo"));
   const result = { ...daemon, cliIdentity: BUILD_IDENTITY, daemonIdentity: daemon.identity ?? null };
   const disk = daemon.cellDisk as CellDiskStatus | null | undefined;
-  emit(ctx, [...(disk ? [cellDiskLine(disk)] : []), JSON.stringify(result, null, 2)], result, false);
+  const capacity = daemon.capacity as NodeCapacity | null | undefined;
+  emit(ctx, [...(disk ? [cellDiskLine(disk)] : []), ...(capacity ? [capacityLine(capacity)] : []), JSON.stringify(result, null, 2)], result, false);
   return 0;
 }
 
@@ -3355,7 +3393,7 @@ async function cmdHumanRef(ctx: CliContext, parsed: Parsed): Promise<number> {
 
 async function cmdHealth(ctx: CliContext): Promise<number> {
   const result = await withClient(ctx, (c) => c.request<HealthResult>("health"));
-  emit(ctx, [...renderHealth(result), ...(result.cellDisk ? [cellDiskLine(result.cellDisk)] : [])], result, false);
+  emit(ctx, [...renderHealth(result), ...(result.cellDisk ? [cellDiskLine(result.cellDisk)] : []), ...(result.capacity ? [capacityLine(result.capacity)] : [])], result, false);
   return 0;
 }
 

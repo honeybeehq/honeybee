@@ -1178,6 +1178,26 @@ export interface CellRow {
   evictedHead: string | null;
 }
 
+/** H2: the executor's disk capacity fact, mirrored into the snapshot and audited on every admission flip. */
+export interface NodeCapacity {
+  schema: 1;
+  checkedAt: number;
+  cells: {
+    root: string;
+    totalBytes: number;
+    freeBytes: number;
+    floorBytes: number | null;
+    targetBytes: number | null;
+    belowFloor: boolean;
+    floorUnmet: boolean;
+    cellCount: number;
+    liveCells: number;
+    cellBytes: number | null;
+  };
+  resourceBlocked: { blocked: boolean; since: number | null; reason: "disk_floor" | null };
+  admission: { newCells: "accept" | "refuse"; enforce: boolean };
+}
+
 export const BEE_MOVE_PHASES = ["stopping", "placing", "starting", "complete", "failed"] as const;
 export type BeeMovePhase = (typeof BEE_MOVE_PHASES)[number];
 
