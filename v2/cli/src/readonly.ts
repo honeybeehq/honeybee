@@ -454,6 +454,11 @@ export class ReadOnlyStore {
       removedAt: r.removed_at == null ? null : Number(r.removed_at),
       evictedAt: r.evicted_at == null ? null : Number(r.evicted_at),
       evictedHead: (r.evicted_head as string | null | undefined) ?? null,
+      parkedAt: r.parked_at == null ? null : Number(r.parked_at),
+      wipSha: (r.wip_sha as string | null | undefined) ?? null,
+      wipTree: (r.wip_tree as string | null | undefined) ?? null,
+      wipPushedAt: r.wip_pushed_at == null ? null : Number(r.wip_pushed_at),
+      wipConfirmedAt: r.wip_confirmed_at == null ? null : Number(r.wip_confirmed_at),
     };
   }
 

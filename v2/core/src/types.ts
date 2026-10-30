@@ -1176,6 +1176,11 @@ export interface CellRow {
   evictedAt: number | null;
   /** v31 — the Cell HEAD at eviction (always reachable from the origin): revive re-provisions here. */
   evictedHead: string | null;
+  parkedAt: number | null;
+  wipSha: string | null;
+  wipTree: string | null;
+  wipPushedAt: number | null;
+  wipConfirmedAt: number | null;
 }
 
 export interface NodeCapacity {
@@ -1190,10 +1195,11 @@ export interface NodeCapacity {
     belowFloor: boolean;
     floorUnmet: boolean;
     cellCount: number;
+    wipBlockedCells?: number;
     liveCells: number;
     cellBytes: number | null;
   };
-  resourceBlocked: { blocked: boolean; since: number | null; reason: "disk_floor" | null };
+  resourceBlocked: { blocked: boolean; since: number | null; reason: "disk_floor" | "wip_unconfirmed" | null };
   admission: { newCells: "accept" | "refuse"; enforce: boolean };
   transcriptObjects?: { root: string; objects: number; bytes: number; orphansSwept: number; measuredAt: number } | null;
 }

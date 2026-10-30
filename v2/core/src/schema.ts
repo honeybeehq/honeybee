@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 52;
+export const SCHEMA_VERSION = 53;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -921,9 +921,22 @@ CREATE TABLE IF NOT EXISTS cells (
   retained_at     INTEGER,
   removed_at      INTEGER,
   evicted_at      INTEGER,
-  evicted_head    TEXT
+  evicted_head    TEXT,
+  parked_at       INTEGER,
+  wip_sha         TEXT,
+  wip_tree        TEXT,
+  wip_pushed_at   INTEGER,
+  wip_confirmed_at INTEGER
 ) STRICT;
 `;
+
+export const CELLS_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: string]> = [
+  ["parked_at", "parked_at INTEGER"],
+  ["wip_sha", "wip_sha TEXT"],
+  ["wip_tree", "wip_tree TEXT"],
+  ["wip_pushed_at", "wip_pushed_at INTEGER"],
+  ["wip_confirmed_at", "wip_confirmed_at INTEGER"],
+];
 
 export const BEE_MOVES_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS bee_moves (

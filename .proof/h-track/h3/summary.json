@@ -1,0 +1,54 @@
+{
+  "step": "H3",
+  "date": "2026-10-30",
+  "flags": {
+    "cells.retention.wipPushOnTurnEnd": "default false. On: every turn end / runtime exit of a Cell bee snapshots the WIP (tracked modifications, deletions, staged changes, untracked files; ignored paths never) in the retention worker, pushes it to refs/hive/wip/<cell-id> in the origin, reads it back and records wip_sha/wip_tree/wip_pushed_at/wip_confirmed_at on the cells row; a revive of an evicted Cell restores the confirmed WIP into the fresh checkout as working-tree state",
+    "cells.retention.evictionRequiresWip": "default false. On: an eviction pushes again and proceeds only when the push is confirmed (then forces past the dirty guard: dirty_uncommitted and dirty_unlanded no longer hold a Cell, the ref carries the work); an unconfirmed push holds the Cell as wip_unconfirmed, sets capacity.resourceBlocked.reason = wip_unconfirmed and, under budgetEnforce, refuses new Cells with resource_blocked; nothing is deleted"
+  },
+  "alwaysOn": [
+    "parked-first eviction ranking: parked Cells (parked_at set by cell.park and idle trims, cleared when a runtime starts in the Cell) rank before archived bees, then by idle time, in the byte-budget and pressure passes",
+    "cell.remove / cell.retained.remove drop the WIP ref; eviction keeps it"
+  ],
+  "schema": {
+    "version": 53,
+    "columns": [
+      "cells.parked_at",
+      "cells.wip_sha",
+      "cells.wip_tree",
+      "cells.wip_pushed_at",
+      "cells.wip_confirmed_at"
+    ],
+    "nullable": true,
+    "measured": ".proof/h-track/h3/migration-v53.json: live store copy (1.15 GB, 3554 cells) 51 -> 53 open+migrate 11.15 s, of which the five ADD COLUMNs 41 ms and the open path's pre-migration backup copy the rest",
+    "mirror": "MIRROR_CELL_KEYS gained the five fields; cell.put deltas carry them"
+  },
+  "capacityShape": {
+    "resourceBlocked.reason": "\"disk_floor\" | \"wip_unconfirmed\" | null (was \"disk_floor\" | null)",
+    "cells.wipBlockedCells": "number, optional, count of Cells whose eviction-time push is unconfirmed"
+  },
+  "gates": {
+    "wipPushMeasured": ".proof/h-track/h3/wip-measure.json: this Cell (5801 tracked files, 90 changed paths) snapshot 177 ms, push 1.6 s, read-back 41 ms after seeding the temp index from .git/index and excluding files over 64 MiB (before the fix: 94 s / 28 s because every tracked file was rehashed and a 1.15 GB untracked store copy was pushed)",
+    "neverMidTurn": "pushes run at turn end or exit; eviction keeps its runtime_live / op_in_flight / move / handoff preconditions and re-checks them at the rename",
+    "unconfirmedBlocksNeverDeletes": "cell-wip.2: an origin whose refs dir refuses writes holds the Cell (reason wip_unconfirmed), the unpushed file stays on disk, health.capacity.resourceBlocked = {blocked: true, reason: wip_unconfirmed}, wipBlockedCells 1, admission refuse, spawn of a Cell bee refused with resource_blocked; the next confirmed push evicts and clears the block",
+    "readBackBeforeDelete": "cell-wip.1: a dirty stopped Cell is evicted only after the eviction-time push is confirmed (ref in origin == recorded sha, commit and tree present); the WIP commit's parent is the Cell's HEAD; revive brings notes.md and the README change back at the same HEAD with .next absent; cell.remove drops the ref",
+    "thirtyDayGate": "zero evictions without a confirmed ref in 30 days is a deployment observation, not provable here; every eviction under the flag logs cell.retention.evicted ... wip=<sha>"
+  },
+  "notProven": [
+    "a remote (non-local) origin: Cells clone from local repositories and pushWip fetches into the origin repository on disk; a network origin needs a push-based transport behind the same functions",
+    "WIP restore cost on revive runs synchronously in onCellMaterialized (read-tree -m -u of the WIP delta only); not measured on a large delta",
+    "the 30-day gate; a fleet soak"
+  ],
+  "tests": {
+    "driver-cell wip.test.ts": "2/2 (snapshot excludes ignored, includes untracked, leaves HEAD and index alone; push/confirm/stale sha; restore into a clean clone, refuses dirty or moved HEAD; drop; typed refusals)",
+    "daemon cell-wip.test.ts": "2/2 through the real daemon (see gates)",
+    "config": "20/20 with the two flag defaults and invalid-value fallbacks",
+    "v2:test (core)": "620/621; multiline-delivery SQL unknown count, pre-existing",
+    "driver-cell suite": "180/198; the 18 failures are secret-runner containment tests present in the H0 baseline log for this Cell",
+    "v2:daemon": "567/567 (all daemon + cli files, run alone after the H3 changes; a run in parallel with two other suites flaked 5 accounts-admission-readiness tests that pass 10/10 alone)",
+    "typecheck+build": "v2:check and build green"
+  },
+  "h4FollowUpsFoldedIn": {
+    "batchedRows": "cutFile inserts pointer rows in one transaction per 100 segments (putTranscriptSegmentObjects) and yields between batches",
+    "sweepInWorker": "the orphan walk (readdir + stat + rm) runs in the transcript segment worker; the daemon thread only passes the referenced refs and records the result; cuts that land during a sweep are added to the count"
+  }
+}

@@ -2084,11 +2084,13 @@ export const CELL_GC_REASONS = [
   "bee_deleted",
   "pass_limit",
   "disk_pressure",
+  "wip_unconfirmed",
 ] as const;
 export type CellGcReason = (typeof CELL_GC_REASONS)[number];
 
 export interface CellGcItem {
   cellId: string | null;
+  parkedAt?: number | null;
   beeId: string;
   beeName: string;
   beeLifecycle: Lifecycle;

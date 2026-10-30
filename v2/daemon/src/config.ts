@@ -231,6 +231,8 @@ export interface CellRetentionConfig {
   maxEvictionsPerDay?: number | null;
   purgeIgnoredOnPark?: boolean;
   budgetEnforce?: boolean;
+  wipPushOnTurnEnd?: boolean;
+  evictionRequiresWip?: boolean;
 }
 
 export interface ResolvedCellRetention {
@@ -252,6 +254,8 @@ export interface ResolvedCellRetention {
   maxEvictionsPerDay: number | null;
   purgeIgnoredOnPark: boolean;
   budgetEnforce: boolean;
+  wipPushOnTurnEnd: boolean;
+  evictionRequiresWip: boolean;
   /** Invalid keys that fell back to their default, for the boot log. */
   warnings: string[];
 }
@@ -591,6 +595,8 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   maxEvictionsPerDay: 200,
   purgeIgnoredOnPark: false,
   budgetEnforce: false,
+  wipPushOnTurnEnd: false,
+  evictionRequiresWip: false,
   warnings: [],
 };
 
@@ -669,6 +675,8 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   );
   out.purgeIgnoredOnPark = read("purgeIgnoredOnPark", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.purgeIgnoredOnPark);
   out.budgetEnforce = read("budgetEnforce", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.budgetEnforce);
+  out.wipPushOnTurnEnd = read("wipPushOnTurnEnd", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.wipPushOnTurnEnd);
+  out.evictionRequiresWip = read("evictionRequiresWip", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.evictionRequiresWip);
   return out;
 }
 

@@ -172,6 +172,25 @@ capacity: {
 
 `cellBytes` is the last pass's measured `du` sum (null before the first pass). Each flip of `blocked` or `admission.newCells` writes one informational `node.capacity { capacity }` audit row, so the watch stream carries the change as a delta and Apiary can mirror the fact from the snapshot field plus that delta; the row is informational in replay. `hive health` and `hive deploy-info` print one `capacity:` line. Rollback: `budgetEnforce: false` (warn only); `minFreePercent: null, minFreeBytes: null` removes the floor entirely.
 
+## H3 — WIP push with read-back, parked-first eviction (2026-10-30)
+
+A Cell's WIP is everything `git status` shows: modified and deleted tracked files, untracked files, staged changes. Ignored paths are reproducible and are never WIP. Two flags under `cells.retention`, both default `false`:
+
+| flag | on |
+|---|---|
+| `wipPushOnTurnEnd` | every turn end and runtime exit of a Cell bee snapshots the WIP and pushes it to `refs/hive/wip/<cell-id>` in the origin; a revive of an evicted Cell restores the last confirmed WIP into the fresh checkout |
+| `evictionRequiresWip` | eviction (automatic, `cell.gc --apply`, pressure) requires a push confirmed at eviction time; `dirty_uncommitted` and `dirty_unlanded` stop holding a Cell, the WIP ref carries the work instead |
+
+**Snapshot.** In the retention worker, never on the event loop: a temporary index seeded from the Cell's `.git/index` (so unchanged files keep their stat cache), `git add -A` with files over 64 MiB excluded by pathspec and reported as `skipped`, `write-tree`, and when the tree differs from HEAD's a `commit-tree` with HEAD as parent. The Cell's HEAD, index and working tree are untouched. Measured on a 5801-file checkout with 90 changed paths: snapshot 177 ms, push 1.6 s, read-back 41 ms (`.proof/h-track/h3/wip-measure.json`).
+
+**Push and read-back.** `git fetch` from the Cell into the origin repository, `+<sha>:refs/hive/wip/<cell-id>`; the read-back resolves the ref in the origin and checks the commit and tree are present. Only a confirmed read-back counts: the row gets `wip_sha`, `wip_tree`, `wip_pushed_at` and `wip_confirmed_at` (null when the push failed or the ref does not match). A clean Cell's WIP sha is its HEAD.
+
+**Eviction.** Before an eviction is applied the gate pushes again (the Cell is stopped, so the snapshot is the final state) and evicts only when that push is confirmed; the eviction then forces past the dirty guard because the WIP is on the origin. An unconfirmed push holds the Cell with reason `wip_unconfirmed`, sets `capacity.resourceBlocked = { blocked: true, reason: "wip_unconfirmed" }` and, under `budgetEnforce`, refuses new Cells with `resource_blocked`; the next confirmed push for that Cell lifts the block. Nothing is ever deleted on a failed push. Ranking: parked Cells first (`parked_at`, set by `cell.park` and idle trims, cleared when a runtime starts in the Cell), then archived bees, then by idle time, in both the byte-budget pass and the pressure pass.
+
+**Revive.** When an evicted Cell re-provisions at its evicted HEAD and the row has a confirmed WIP whose parent is that HEAD, the WIP tree is read into the clean checkout as plain working-tree state (`read-tree -m -u` then `reset`): HEAD stays, the files come back modified or untracked. A dirty checkout, a moved HEAD or an unreachable commit skips the restore and logs `cell.wip.restore_skipped`. `cell.remove` and `cell.retained.remove` drop the ref; eviction keeps it.
+
+Schema v53 adds five nullable columns to `cells` (`parked_at`, `wip_sha`, `wip_tree`, `wip_pushed_at`, `wip_confirmed_at`), mirrored through `cell.put` deltas and `MIRROR_CELL_KEYS`. Measured on a copy of the live 1.15 GB store with 3554 Cells: the five `ADD COLUMN`s take 41 ms; the open path's pre-migration backup copy is the rest of an 11 s open (`.proof/h-track/h3/migration-v53.json`). Rollback: both flags off restore today's behaviour (dirty Cells hold, no refs are written, the columns stay null); a v53 store does not open under a pre-v53 release, `hive deploy --rollback` restores the backup.
+
 ## Not Honeybee's
 
 Checked on the Studio on 2026-09-24: `$TMPDIR/comb-*-review`, `pher-*-review`, `hive-deploy.*`, `apiary-control`, `~/.hive/crew/art` are created by other tools (v1 comb, Pollinate, Apiary/crew); Honeybee v2 removes its own temp scratch (`hive-capture-*`, `hive-naming-*`, `honeybee-deploy-pack-*`) in `finally`. `~/.hive/hsr/` (4,485 runner homes, 65 GB, newest 2026-08-16) is the *v1* runner tree, dead since the cutover; v2 runners live under `~/.hive/v2/runners`. It is safe to trash once no v1 daemon runs; Honeybee v2 never reads it.

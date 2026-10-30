@@ -1,0 +1,12 @@
+{
+  "store": "read-only copy of ~/.hive/v2/core.sqlite3 (1.15 GB, 3554 cells: 1962 active, 1591 evicted, 1 removed) taken 2026-10-30 14:45",
+  "from": "schema_version 51 (the live store; H4's v52 is not deployed yet)",
+  "to": 53,
+  "openAndMigrateMs": 11154,
+  "ofWhichAddColumnsMs": 41,
+  "ofWhichBackupCopy": "the open path copies the 1.1 GB store into <store>.backups/ before migrating; that copy is the rest of the 11 s",
+  "addedColumns": ["parked_at", "wip_sha", "wip_tree", "wip_pushed_at", "wip_confirmed_at"],
+  "nullable": true,
+  "listCellsAfterMs": 10,
+  "rollback": "a v53 store refuses to open under a pre-v53 release (schema_newer); hive deploy --rollback restores the backup the open path made"
+}

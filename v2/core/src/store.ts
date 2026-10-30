@@ -214,7 +214,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -852,6 +852,11 @@ function mapCell(r: Row): CellRow {
     removedAt: r.removed_at == null ? null : Number(r.removed_at),
     evictedAt: r.evicted_at == null ? null : Number(r.evicted_at),
     evictedHead: (r.evicted_head as string | null | undefined) ?? null,
+    parkedAt: r.parked_at == null ? null : Number(r.parked_at),
+    wipSha: (r.wip_sha as string | null | undefined) ?? null,
+    wipTree: (r.wip_tree as string | null | undefined) ?? null,
+    wipPushedAt: r.wip_pushed_at == null ? null : Number(r.wip_pushed_at),
+    wipConfirmedAt: r.wip_confirmed_at == null ? null : Number(r.wip_confirmed_at),
   };
 }
 
@@ -2099,6 +2104,7 @@ export class CoreStore {
       this.db.exec(`INSERT INTO cells(${carried}) SELECT ${carried} FROM cells_v30`);
       this.db.exec("DROP TABLE cells_v30");
     }
+    this.addMissingColumns("cells", CELLS_ADDITIVE_COLUMNS);
     this.db.exec(BEE_MOVES_TABLE_SQL);
     this.db.exec(CELL_OPS_TABLE_SQL);
     this.db.exec(BEE_HANDOFFS_TABLE_SQL);
@@ -2232,7 +2238,7 @@ export class CoreStore {
       .run(String(SCHEMA_VERSION));
   }
 
-  private addMissingColumns(table: "bees" | "mailbox", columns: ReadonlyArray<readonly [name: string, ddl: string]>): void {
+  private addMissingColumns(table: "bees" | "mailbox" | "cells", columns: ReadonlyArray<readonly [name: string, ddl: string]>): void {
     const existing = new Set(
       (this.stmt(`SELECT name FROM pragma_table_info('${table}')`).all() as Row[]).map((c) => String(c.name)),
     );
@@ -8968,12 +8974,44 @@ export class CoreStore {
     });
   }
 
+  markCellParked(cellId: string): CellRow {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      if (cell.state !== "active" || cell.parkedAt != null) return cell;
+      this.stmt("UPDATE cells SET parked_at = ? WHERE id = ?").run(this.now(), cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      return next;
+    });
+  }
+
+  markCellUnparked(cellId: string): CellRow {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      if (cell.parkedAt == null) return cell;
+      this.stmt("UPDATE cells SET parked_at = NULL WHERE id = ?").run(cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      return next;
+    });
+  }
+
+  recordCellWip(cellId: string, wip: { sha: string; tree: string; pushedAt: number; confirmedAt: number | null }): CellRow {
+    return this.tx(() => {
+      const cell = this.mustGetCell(cellId);
+      this.stmt("UPDATE cells SET wip_sha = ?, wip_tree = ?, wip_pushed_at = ?, wip_confirmed_at = ? WHERE id = ?").run(wip.sha, wip.tree, wip.pushedAt, wip.confirmedAt, cellId);
+      const next = this.mustGetCell(cellId);
+      this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
+      return next;
+    });
+  }
+
   /** v31 — the driver materialized an evicted Cell again: `evicted → active`. No-op otherwise. */
   reactivateCell(cellId: string): { cell: CellRow; applied: boolean } {
     return this.tx(() => {
       const cell = this.mustGetCell(cellId);
       if (cell.state !== "evicted") return { cell, applied: false };
-      this.stmt("UPDATE cells SET state = 'active', evicted_at = NULL, evicted_head = NULL WHERE id = ?").run(cellId);
+      this.stmt("UPDATE cells SET state = 'active', evicted_at = NULL, evicted_head = NULL, parked_at = NULL WHERE id = ?").run(cellId);
       const next = this.mustGetCell(cellId);
       this.audit("cell.put", cell.sourceBeeId, { cell: next, previous: cell });
       return { cell: next, applied: true };
@@ -9496,6 +9534,16 @@ export class CoreStore {
       refs.add(row.projected_ref as string);
     }
     return refs;
+  }
+
+  putTranscriptSegmentObjects(
+    entries: ReadonlyArray<{ segment: Omit<TranscriptSegmentObjectRow, "id" | "ordinal">; cursor: Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt"> }>,
+    opts: { audit?: boolean } = {},
+  ): TranscriptSegmentObjectRow[] {
+    return this.tx(() => entries.map(({ segment, cursor }) => {
+      const ordinal = (this.lastTranscriptSegmentObject(segment.beeId)?.ordinal ?? -1) + 1;
+      return this.putTranscriptSegmentObject({ ...segment, ordinal }, cursor, opts);
+    }));
   }
 
   putTranscriptSegmentObject(

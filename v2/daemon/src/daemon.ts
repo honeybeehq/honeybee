@@ -179,6 +179,8 @@ import {
   upstreamRootFor,
   hasCommit,
   restoreEnvFiles,
+  restoreWip,
+  dropWipRef,
   restoreKeptPaths,
   localRepoIdentity,
   parseSpaceName,
@@ -1070,7 +1072,10 @@ export class HiveDaemon {
       relocateSession: (move, bee) => this.relocateMoveSession(move, bee),
       validatePlacement: (move, bee) => this.validateMoveDestination(move, bee),
       onIdentityUnresolved: (beeId, generation) => this.retainProcessIdentity(beeId, generation),
-      onTranscriptQuiet: (beeId, _generation, reason) => { void this.segmenter?.requestCut(beeId, reason); },
+      onTranscriptQuiet: (beeId, _generation, reason) => {
+        void this.segmenter?.requestCut(beeId, reason);
+        this.pushCellWip(beeId, reason);
+      },
       blockedRuntimeStartBeeIds: () => this.prepareRuntimeStartCommands(),
       assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
       readHandoffTranscript: (bee, segments) => this.readHandoffTranscript(bee, segments),
@@ -3868,11 +3873,41 @@ export class HiveDaemon {
       if (err instanceof CellRuntimeLiveError) throw new RpcError("runtime_refused", err.message);
       throw err;
     }
+    if (result.status === "deleted") {
+      const row = store.getCell(cellId);
+      if (row) this.dropCellWip(row);
+    }
     const key = this.idempotencyKeyOf(params);
     const cmd = store.enqueueCommand("delete", beeId, {}, key == null ? {} : { idempotencyKey: key });
     result.commandId = cmd.id;
     this.log(`cell.remove bee=${beeId} status=${result.status} forced=${result.forced} delete=${cmd.id}`);
     return result;
+  }
+
+  private pushCellWip(beeId: string, reason: "turn_ended" | "exited"): void {
+    if (!this.cfg.cellRetention.wipPushOnTurnEnd || !this.retention) return;
+    const cellId = this.store?.getBee(beeId)?.cellId;
+    if (!cellId) return;
+    void this.retention.pushWip(cellId, reason).catch((err) => this.log(`cell.wip.push_failed cell=${cellId} bee=${beeId} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`));
+  }
+
+  private restoreCellWip(beeId: string, cell: CellRow): void {
+    if (!this.cfg.cellRetention.wipPushOnTurnEnd || !cell.wipSha || cell.wipConfirmedAt == null) return;
+    try {
+      const res = restoreWip(cell.spaceDir, cell.originRepo, cell.id, cell.wipSha);
+      if (res.restored) this.log(`cell.wip.restored bee=${beeId} cell=${cell.id} sha=${cell.wipSha}`);
+      else if (res.reason !== "nothing_to_restore") this.log(`cell.wip.restore_skipped bee=${beeId} cell=${cell.id} sha=${cell.wipSha} reason=${res.reason}`);
+    } catch (err) {
+      this.log(`cell.wip.restore_failed bee=${beeId} cell=${cell.id} ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private dropCellWip(cell: CellRow): void {
+    try {
+      if (dropWipRef(cell.originRepo, cell.id)) this.log(`cell.wip.dropped cell=${cell.id} bee=${cell.sourceBeeId}`);
+    } catch (err) {
+      this.log(`cell.wip.drop_failed cell=${cell.id} ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /** v31 — the driver put a checkout back under an evicted allocation: `evicted → active`. */
@@ -3884,7 +3919,12 @@ export class HiveDaemon {
     if (execution) store.executionRuntimeHooks().check(execution,"reactivate_cell");
     try {
       const res = store.reactivateCell(bee.cellId);
-      if (res.applied) this.log(`cell.reprovisioned bee=${beeId} cell=${bee.cellId} sha=${res.cell.sha}`);
+      if (res.applied) {
+        this.log(`cell.reprovisioned bee=${beeId} cell=${bee.cellId} sha=${res.cell.sha}`);
+        this.restoreCellWip(beeId, res.cell);
+      } else if (res.cell.parkedAt != null) {
+        store.markCellUnparked(bee.cellId);
+      }
     } catch (err) {
       this.log(`cell.reprovision_record_failed bee=${beeId} ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -5115,6 +5155,7 @@ export class HiveDaemon {
       }
       const res = deleteCell(paths.wrapperDir, { force, receipts: store.listLandingReceipts(cell.sourceBeeId) });
       const marked = store.markCellRemoved(cellId);
+      if (res.deleted) this.dropCellWip(cell);
       const status = res.deleted ? "deleted" : "absent";
       const saved = store.updateCellOp(op.id, {
         status: "done",
@@ -6053,11 +6094,7 @@ export class HiveDaemon {
     const due = this.lastObjectSweepAt == null ? now - this.startedAt >= (this.deps.transcriptSweepDelayMs ?? 60_000) : now - this.lastObjectSweepAt >= 24 * 60 * 60_000;
     if (!due) return;
     this.lastObjectSweepAt = now;
-    try {
-      segmenter.sweepOrphans();
-    } catch (err) {
-      this.log(`transcripts.objects.sweep_failed ${err instanceof Error ? err.message : String(err)}`);
-    }
+    void segmenter.sweepOrphans().catch((err) => this.log(`transcripts.objects.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
   }
 
   private rpcTranscriptSegments(params: Record<string, unknown>): TranscriptSegmentsResult {

@@ -1,10 +1,11 @@
 import { parentPort, workerData } from "node:worker_threads";
-import { open, stat } from "node:fs/promises";
+import { open, readdir, rm, stat } from "node:fs/promises";
+import { join } from "node:path";
 import type { TranscriptSegmentCursorRow, TranscriptSegmentObjectRow } from "../../core/src/types.ts";
 import { createTranscriptProjector, restoreTranscriptProjector } from "../../driver-tmux/src/transcripts.ts";
 import { TRANSCRIPT_PROJECTION_VERSION, type TranscriptProjector } from "../../driver-tmux/src/transcript-projection.ts";
 import { compressSegment, encodeProjectedSegment, scanLogLines, segmentDigest, type ProjectedLine, type ScannedLine } from "../../driver-tmux/src/transcript-segment-format.ts";
-import { createDirectoryTranscriptObjectStore } from "./transcriptObjectStore.ts";
+import { TRANSCRIPT_OBJECT_DIR, createDirectoryTranscriptObjectStore } from "./transcriptObjectStore.ts";
 
 export type SegmentCursor = Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt">;
 export type CutSegment = Omit<TranscriptSegmentObjectRow, "id" | "ordinal">;
@@ -32,6 +33,51 @@ export interface TranscriptCutResult {
   checkpointRejected: string | null;
   projectorReset: boolean;
   error: string | null;
+}
+
+export interface TranscriptSweepRequest {
+  kind: "sweep";
+  storeRoot: string;
+  referenced: string[];
+  graceMs: number;
+  now: number;
+}
+
+export interface TranscriptSweepResult {
+  objects: number;
+  bytes: number;
+  swept: number;
+  error: string | null;
+}
+
+export async function sweepTranscriptObjects(request: TranscriptSweepRequest): Promise<TranscriptSweepResult> {
+  const dir = join(request.storeRoot, TRANSCRIPT_OBJECT_DIR);
+  const referenced = new Set(request.referenced);
+  const result: TranscriptSweepResult = { objects: 0, bytes: 0, swept: 0, error: null };
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return result;
+    throw error;
+  }
+  for (const entry of entries) {
+    const path = join(dir, entry);
+    let info;
+    try {
+      info = await stat(path);
+    } catch {
+      continue;
+    }
+    if (!referenced.has(entry) && (entry.endsWith(".partial") || request.now - info.mtimeMs > request.graceMs)) {
+      await rm(path, { force: true });
+      result.swept += 1;
+      continue;
+    }
+    result.objects += 1;
+    result.bytes += info.size;
+  }
+  return result;
 }
 
 export function transcriptSegmentWorkerUrl(): URL {
@@ -166,7 +212,11 @@ export async function cutTranscript(request: TranscriptCutRequest): Promise<Tran
   return result;
 }
 
-if (parentPort && workerData && typeof (workerData as { beeId?: unknown }).beeId === "string") {
+if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "sweep") {
+  sweepTranscriptObjects(workerData as TranscriptSweepRequest)
+    .then((result) => parentPort!.postMessage(result))
+    .catch((error: unknown) => parentPort!.postMessage({ objects: 0, bytes: 0, swept: 0, error: error instanceof Error ? error.message : String(error) } satisfies TranscriptSweepResult));
+} else if (parentPort && workerData && typeof (workerData as { beeId?: unknown }).beeId === "string") {
   cutTranscript(workerData as TranscriptCutRequest)
     .then((result) => parentPort!.postMessage(result))
     .catch((error: unknown) => parentPort!.postMessage({ segments: [], cursor: (workerData as TranscriptCutRequest).cursor, written: { objects: 0, bytes: 0 }, shrunk: false, missing: false, checkpointRejected: null, projectorReset: false, error: error instanceof Error ? error.message : String(error) } satisfies TranscriptCutResult));

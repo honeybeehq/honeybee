@@ -1,0 +1,7 @@
+{
+  "cell": "this Cell (honeybee checkout, 5801 tracked files, 90 status lines, 85 WIP files after 5 oversize skips)",
+  "before": { "snapshotMs": 93665, "pushMs": 28154, "verifyMs": 134267, "why": "temp index built by read-tree HEAD has no stat cache, so git add -A rehashed every tracked file; untracked 1.15 GB store copies under .proof were hashed and pushed" },
+  "after": { "snapshotMs": 177, "pushMs": 1642, "confirmMs": 41, "verifyMs": 100, "confirmed": true },
+  "fix": "the temp index is seeded from .git/index (stat cache valid), files over WIP_MAX_FILE_BYTES (64 MiB) are excluded from the add by pathspec and reported as skipped in the snapshot and the cell.wip.pushed log line",
+  "pushTarget": "a bare clone of this Cell in a temp dir (never the real origin)"
+}

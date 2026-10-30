@@ -83,6 +83,8 @@ export type {
   TrimVerifyWorkerResult,
   ParkPlanWorkerRequest,
   ParkPlanWorkerResult,
+  WipPushWorkerRequest,
+  WipPushWorkerResult,
 } from "./retentionWorker.ts";
 export {
   UPSTREAM_REF,
@@ -141,6 +143,7 @@ export {
   type WarmRecord,
 } from "./ledger.ts";
 export { cowCopy, cowPlatform, probeCow, probeCowWritable, type CowPlatform } from "./cow.ts";
+export { WipError, confirmWip, dropWipRef, pushWip, restoreWip, snapshotWip, wipRefFor, wipTreeMatches, type WipRestoreSkip, type WipSnapshot, type WipStage } from "./wip.ts";
 export {
   claimFromPool,
   buildPoolMember,

@@ -102,6 +102,11 @@ export type CellRow = {
   removedAt: number | null
   evictedAt: number | null
   evictedHead: string | null
+  parkedAt: number | null
+  wipSha: string | null
+  wipTree: string | null
+  wipPushedAt: number | null
+  wipConfirmedAt: number | null
 }
 
 export type CellExecParams = {

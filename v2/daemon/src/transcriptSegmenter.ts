@@ -1,10 +1,8 @@
-import { readdirSync, statSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import type { CoreStore } from "../../core/src/index.ts";
 import { SEGMENT_MAX_LINES, SEGMENT_MAX_RAW_BYTES } from "../../driver-tmux/src/transcript-segment-format.ts";
-import { TRANSCRIPT_OBJECT_DIR, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
-import { transcriptSegmentWorkerUrl, type SegmentCursor, type TranscriptCutRequest, type TranscriptCutResult } from "./transcriptSegmentWorker.ts";
+import type { TranscriptObjectStore } from "./transcriptObjectStore.ts";
+import { transcriptSegmentWorkerUrl, type SegmentCursor, type TranscriptCutRequest, type TranscriptCutResult, type TranscriptSweepRequest, type TranscriptSweepResult } from "./transcriptSegmentWorker.ts";
 
 export type TranscriptCutReason = "turn_ended" | "exited" | "boot" | "manual";
 
@@ -43,6 +41,7 @@ const DEFAULT_MAX_CHUNK = 64 * 1024 * 1024;
 const DEFAULT_REPLAY_LIMIT = 64 * 1024 * 1024;
 const DEFAULT_PACING_MS = 25;
 const DEFAULT_ORPHAN_GRACE_MS = 60 * 60_000;
+const ROW_BATCH = 100;
 
 interface Pending {
   beeId: string;
@@ -58,6 +57,8 @@ export class TranscriptSegmenter {
   private readonly workers = new Set<Worker>();
   private stopping = false;
   private objectsStatus: TranscriptObjectsStatus | null = null;
+  private sweepInFlight: Promise<TranscriptObjectsStatus> | null = null;
+  private writtenDuringSweep: { objects: number; bytes: number } | null = null;
   readonly diagnostics = { cuts: 0, segments: 0, lines: 0, failures: 0 };
 
   constructor(deps: TranscriptSegmenterDeps) {
@@ -184,7 +185,7 @@ export class TranscriptSegmenter {
       replayLimitBytes: this.deps.replayLimitBytes ?? DEFAULT_REPLAY_LIMIT,
       observedAt: this.deps.now(),
     };
-    const result = await this.runWorker(request);
+    const result = await this.runWorker<TranscriptCutResult>(request);
     if (result.error != null) throw new Error(result.error);
     this.countWritten(result.written);
     if (result.missing) return { segments: 0, lines: 0, cursor };
@@ -195,21 +196,23 @@ export class TranscriptSegmenter {
     if (result.checkpointRejected) this.deps.log(`transcripts.segment.checkpoint_rejected bee=${beeId} reason=${result.checkpointRejected}`);
     if (result.projectorReset) this.deps.log(`transcripts.segment.projector_reset bee=${beeId} prefix=${cursor.byteOffset}`);
     let lines = 0;
-    for (const entry of result.segments) {
-      if (this.stopping) break;
-      const ordinal = (store.lastTranscriptSegmentObject(beeId)?.ordinal ?? -1) + 1;
-      store.putTranscriptSegmentObject({ ...entry.segment, ordinal }, entry.cursor, { audit: reason !== "boot" });
-      lines += entry.segment.lastLine - entry.segment.firstLine + 1;
+    let inserted = 0;
+    for (let at = 0; at < result.segments.length && !this.stopping; at += ROW_BATCH) {
+      const batch = result.segments.slice(at, at + ROW_BATCH);
+      store.putTranscriptSegmentObjects(batch, { audit: reason !== "boot" });
+      inserted += batch.length;
+      for (const entry of batch) lines += entry.segment.lastLine - entry.segment.firstLine + 1;
+      if (at + ROW_BATCH < result.segments.length) await new Promise<void>((r) => setImmediate(r));
     }
-    return { segments: result.segments.length, lines, cursor: result.segments.length > 0 ? result.segments[result.segments.length - 1]!.cursor : result.cursor };
+    return { segments: inserted, lines, cursor: inserted > 0 ? result.segments[inserted - 1]!.cursor : result.cursor };
   }
 
-  private runWorker(request: TranscriptCutRequest): Promise<TranscriptCutResult> {
+  private runWorker<T>(request: TranscriptCutRequest | TranscriptSweepRequest): Promise<T> {
     return new Promise((resolve, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? transcriptSegmentWorkerUrl(), { execArgv: [], workerData: request });
       this.workers.add(worker);
       let settled = false;
-      worker.on("message", (message: TranscriptCutResult) => {
+      worker.on("message", (message: T) => {
         if (settled) return;
         settled = true;
         resolve(message);
@@ -233,43 +236,39 @@ export class TranscriptSegmenter {
   }
 
   private countWritten(written: { objects: number; bytes: number }): void {
-    if (!this.objectsStatus || written.objects === 0) return;
+    if (written.objects === 0) return;
+    if (this.writtenDuringSweep) {
+      this.writtenDuringSweep.objects += written.objects;
+      this.writtenDuringSweep.bytes += written.bytes;
+    }
+    if (!this.objectsStatus) return;
     this.objectsStatus = { ...this.objectsStatus, objects: this.objectsStatus.objects + written.objects, bytes: this.objectsStatus.bytes + written.bytes };
   }
 
-  sweepOrphans(): TranscriptObjectsStatus {
+  sweepOrphans(): Promise<TranscriptObjectsStatus> {
+    if (this.sweepInFlight) return this.sweepInFlight;
+    this.sweepInFlight = this.sweepNow().finally(() => {
+      this.sweepInFlight = null;
+    });
+    return this.sweepInFlight;
+  }
+
+  private async sweepNow(): Promise<TranscriptObjectsStatus> {
     const root = this.deps.objectStore.locator.root;
-    const dir = join(root, TRANSCRIPT_OBJECT_DIR);
-    const referenced = this.deps.store().listTranscriptSegmentObjectRefs();
-    const grace = this.deps.orphanGraceMs ?? DEFAULT_ORPHAN_GRACE_MS;
     const now = this.deps.now();
-    let objects = 0;
-    let bytes = 0;
-    let swept = 0;
-    let entries: string[] = [];
-    try {
-      entries = readdirSync(dir);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-    for (const entry of entries) {
-      const path = join(dir, entry);
-      let info;
-      try {
-        info = statSync(path);
-      } catch {
-        continue;
-      }
-      if (!referenced.has(entry) && (entry.endsWith(".partial") || now - info.mtimeMs > grace)) {
-        rmSync(path, { force: true });
-        swept += 1;
-        continue;
-      }
-      objects += 1;
-      bytes += info.size;
-    }
-    this.objectsStatus = { root, objects, bytes, orphansSwept: swept, measuredAt: now };
-    this.deps.log(`transcripts.objects root=${root} objects=${objects} bytes=${bytes} orphans_swept=${swept}`);
+    this.writtenDuringSweep = { objects: 0, bytes: 0 };
+    const result = await this.runWorker<TranscriptSweepResult>({
+      kind: "sweep",
+      storeRoot: root,
+      referenced: [...this.deps.store().listTranscriptSegmentObjectRefs()],
+      graceMs: this.deps.orphanGraceMs ?? DEFAULT_ORPHAN_GRACE_MS,
+      now,
+    } satisfies TranscriptSweepRequest);
+    if (result.error != null) throw new Error(result.error);
+    const late = this.writtenDuringSweep ?? { objects: 0, bytes: 0 };
+    this.writtenDuringSweep = null;
+    this.objectsStatus = { root, objects: result.objects + late.objects, bytes: result.bytes + late.bytes, orphansSwept: result.swept, measuredAt: now };
+    this.deps.log(`transcripts.objects root=${root} objects=${result.objects} bytes=${result.bytes} orphans_swept=${result.swept}`);
     return this.objectsStatus;
   }
 }

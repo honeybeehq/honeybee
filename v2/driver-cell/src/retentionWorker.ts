@@ -8,6 +8,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import type { LandingReceipt } from "./landed.ts";
 import { inspectCellWrapper, planParkPaths, verifyParkPaths, type CellWrapperInspection, type ParkMode, type ParkPlan, type TrimSkip } from "./retention.ts";
 import { refreshUpstreamMirror, type UpstreamRef } from "./upstream.ts";
+import { confirmWip, pushWip, snapshotWip, type WipSnapshot } from "./wip.ts";
 
 export interface RetentionWorkerRequest {
   kind?: "inspect";
@@ -68,9 +69,31 @@ export interface ParkPlanWorkerResult {
   error: string | null;
 }
 
-const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest;
+export interface WipPushWorkerRequest {
+  kind: "pushWip";
+  spaceDir: string;
+  boxDir: string;
+  originRepo: string;
+  cellId: string;
+}
+
+export interface WipPushWorkerResult {
+  snapshot: WipSnapshot | null;
+  confirmed: boolean;
+  error: string | null;
+}
+
+const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
-if (request.kind === "planPark") {
+if (request.kind === "pushWip") {
+  try {
+    const snapshot = snapshotWip(request.spaceDir, request.boxDir, request.cellId);
+    pushWip(request.originRepo, request.spaceDir, request.cellId, snapshot.sha);
+    parentPort?.postMessage({ snapshot, confirmed: confirmWip(request.originRepo, request.cellId, snapshot.sha), error: null } satisfies WipPushWorkerResult);
+  } catch (err) {
+    parentPort?.postMessage({ snapshot: null, confirmed: false, error: errorText(err) } satisfies WipPushWorkerResult);
+  }
+} else if (request.kind === "planPark") {
   try {
     parentPort?.postMessage({ plan: planParkPaths(request.wrapperDir, request.mode, { trimPatterns: request.trimPatterns, measure: true }), error: null } satisfies ParkPlanWorkerResult);
   } catch (err) {

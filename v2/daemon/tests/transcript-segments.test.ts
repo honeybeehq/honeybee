@@ -119,7 +119,7 @@ test("transcript-segments.1: turn ends cut dense byte-exact segments; a killed d
     assert.equal(swept.objects!.orphansSwept, 1, "the stale unreferenced object is gone");
     assert.equal(swept.objects!.objects, rows.length * 2, "every raw and projected object is counted");
     assert.ok(swept.objects!.bytes > 0);
-    assert.equal(swept.backlog, 0);
+    await waitFor(async () => ((await client.request<DeployInfoResult>("deployInfo")).transcriptSegments?.backlog === 0 ? true : null), "the cut queue drains", 30_000);
     const health = await client.request<HealthResult>("health");
     assert.equal(health.capacity?.transcriptObjects?.objects, rows.length * 2, "the capacity fact carries the object store");
     assert.equal(result.cursor?.lineNo, rows[rows.length - 1]!.lastLine);

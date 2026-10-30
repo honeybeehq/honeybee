@@ -30,7 +30,7 @@ import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
  */
 import { Worker } from "node:worker_threads";
 import { existsSync, realpathSync, statfsSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { BeeRow, CellRow, CoreStore, NodeCapacity, RuntimeRow } from "../../core/src/index.ts";
 import {
   CellDeleteRefused,
@@ -58,6 +58,8 @@ import {
   type RetentionWorkerInspection,
   type RetentionWorkerProgress,
   type RetentionWorkerRequest,
+  type WipPushWorkerRequest,
+  type WipPushWorkerResult,
   type RetentionWorkerResult,
   type UpstreamRef,
   type TrimSkip,
@@ -111,6 +113,7 @@ export interface CellRetentionDeps {
   audit?: (kind: "cell.retention.pass" | "cell.pressure.floor_unmet" | "cell.retention.daily_cap" | "cell.parked" | "node.capacity", payload: Record<string, unknown>) => void;
   clearBeeTmp?: (beeId: string) => boolean;
   transcriptObjects?: () => NodeCapacity["transcriptObjects"];
+  wipBoxDir?: (cell: CellRow) => string;
   /** Times of retention evictions since `sinceTs`, to restore the daily cap's window after a restart. */
   recentEvictionTimes?: (sinceTs: number) => number[];
   /** When the daily cap was last audited, so a restart does not audit it twice in one window. */
@@ -158,6 +161,8 @@ const DEFAULT_UPSTREAM_TIMEOUT_MS = 60_000;
 const PRESSURE_BATCH = 16;
 const DAY_WINDOW_MS = 24 * 60 * 60_000;
 const GIB = 1024 ** 3;
+
+export type WipPushTrigger = "turn_ended" | "exited" | "eviction" | "manual";
 
 const AGE_REASONS: ReadonlySet<CellGcReason> = new Set(["archived_age", "stopped_age", "too_young", "policy_disabled"]);
 
@@ -226,6 +231,7 @@ function verdictOf(reason: CellGcReason): CellGcVerdict {
       return "remove_retained";
     case "too_young":
     case "pass_limit":
+    case "wip_unconfirmed":
     case "dirty_uncommitted":
     case "dirty_unlanded":
     case "dirty_stash":
@@ -273,6 +279,9 @@ export class CellRetentionService {
   private warnedBelowFloorAt: number | null = null;
   private lastPresentBytes: number | null = null;
   private cellCounts: { cellCount: number; liveCells: number; at: number } | null = null;
+  private readonly wipInFlight = new Map<string, Promise<WipPushWorkerResult>>();
+  private readonly wipBlocked = new Map<string, number>();
+  private readonly wipConfirmedForEviction = new Map<string, string>();
 
   async stop(): Promise<void> {
     this.stopping = true;
@@ -462,10 +471,21 @@ export class CellRetentionService {
     return this.cellCounts;
   }
 
+  private wipBlockedSince(): number | null {
+    const store = this.deps.store();
+    for (const cellId of [...this.wipBlocked.keys()]) {
+      if (store.getCell(cellId)?.state !== "active") this.wipBlocked.delete(cellId);
+    }
+    if (this.wipBlocked.size === 0) return null;
+    return Math.min(...this.wipBlocked.values());
+  }
+
   private capacityOf(disk: DiskReading): NodeCapacity {
-    const blocked = disk.floorBytes != null && disk.freeBytes < disk.floorBytes;
-    if (blocked) this.blockedSince ??= disk.at;
+    const belowFloor = disk.floorBytes != null && disk.freeBytes < disk.floorBytes;
+    if (belowFloor) this.blockedSince ??= disk.at;
     else this.blockedSince = null;
+    const wipSince = this.wipBlockedSince();
+    const blocked = belowFloor || wipSince != null;
     const enforce = this.deps.policy.budgetEnforce;
     const { cellCount, liveCells } = this.countCells(disk.at);
     return {
@@ -477,13 +497,14 @@ export class CellRetentionService {
         freeBytes: disk.freeBytes,
         floorBytes: disk.floorBytes,
         targetBytes: disk.targetBytes,
-        belowFloor: blocked,
+        belowFloor,
         floorUnmet: this.floorUnmet,
         cellCount,
         liveCells,
         cellBytes: this.lastPresentBytes,
+        wipBlockedCells: this.wipBlocked.size,
       },
-      resourceBlocked: { blocked, since: blocked ? this.blockedSince : null, reason: blocked ? "disk_floor" : null },
+      resourceBlocked: { blocked, since: belowFloor ? this.blockedSince : wipSince, reason: belowFloor ? "disk_floor" : wipSince != null ? "wip_unconfirmed" : null },
       admission: { newCells: blocked && enforce ? "refuse" : "accept", enforce },
       transcriptObjects: this.deps.transcriptObjects?.() ?? null,
     };
@@ -732,7 +753,7 @@ export class CellRetentionService {
         return startedAt - idle(c) >= idleAfter;
       })
       .sort((a, b) => {
-        const rank = (c: Candidate) => (c.bee?.lifecycle === "archived" ? 0 : 1);
+        const rank = (c: Candidate) => (c.cell?.parkedAt != null ? 0 : c.bee?.lifecycle === "archived" ? 1 : 2);
         return rank(a) - rank(b) || idle(a) - idle(b);
       });
     const floor = disk.floorBytes as number;
@@ -767,6 +788,7 @@ export class CellRetentionService {
         items.push(item);
         this.countProgress(progress, item.reason, item.bytes);
         if (item.verdict !== "evict") continue;
+        if (!(await this.wipGate(item))) continue;
         const outcome = this.applyCapped(item);
         if (outcome == null) {
           capped = true;
@@ -921,7 +943,7 @@ export class CellRetentionService {
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
   }
 
-  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
+  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
     this.assertRunning();
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
@@ -957,6 +979,7 @@ export class CellRetentionService {
   private baseOf(c: Candidate, inspection: CellWrapperInspection | null): Omit<CellGcItem, "verdict" | "reason"> {
     return {
       cellId: c.cell?.id ?? null,
+      parkedAt: c.cell?.parkedAt ?? null,
       beeId: c.beeId,
       beeName: c.bee?.name ?? "",
       beeLifecycle: c.bee?.lifecycle ?? "deleted",
@@ -1054,8 +1077,9 @@ export class CellRetentionService {
     if (c.bee?.activeMoveId) return "move_in_flight";
     if (c.bee?.activeHandoffId) return "handoff_in_flight";
     const report = inspection.report;
-    if (report?.uncommitted) return "dirty_uncommitted";
-    if (report?.unpushed) return "dirty_unlanded";
+    const wipCovers = policy.evictionRequiresWip && c.cell.state === "active";
+    if (report?.uncommitted && !wipCovers) return "dirty_uncommitted";
+    if (report?.unpushed && !wipCovers) return "dirty_unlanded";
     if (report?.stashed) return "dirty_stash";
     if (report?.originUnknown) return "dirty_origin_unknown";
     if (c.bee == null || c.bee.lifecycle === "deleted") return "bee_deleted";
@@ -1080,7 +1104,7 @@ export class CellRetentionService {
     const young = items
       .filter((i) => i.verdict === "hold" && i.reason === "too_young" && i.cellState === "active" && i.bytes != null)
       .sort((a, b) => {
-        const rank = (i: CellGcItem) => (i.beeLifecycle === "archived" ? 0 : 1);
+        const rank = (i: CellGcItem) => (i.parkedAt != null ? 0 : i.beeLifecycle === "archived" ? 1 : 2);
         return rank(a) - rank(b) || (a.idleSince ?? 0) - (b.idleSince ?? 0);
       });
     for (const item of young) {
@@ -1096,11 +1120,68 @@ export class CellRetentionService {
     for (const item of items) {
       this.assertRunning();
       if (item.verdict !== "evict" && item.verdict !== "remove_retained") continue;
+      if (!(await this.wipGate(item))) continue;
       const outcome = this.applyCapped(item);
       if (outcome) outcomes.push(outcome);
       await new Promise<void>((r) => setImmediate(r));
     }
     return outcomes;
+  }
+
+  private async wipGate(item: CellGcItem): Promise<boolean> {
+    if (!this.deps.policy.evictionRequiresWip || item.verdict !== "evict" || item.cellId == null) return true;
+    const result = await this.pushWip(item.cellId, "eviction");
+    this.assertRunning();
+    if (result.confirmed && result.snapshot) {
+      this.wipConfirmedForEviction.set(item.cellId, result.snapshot.sha);
+      return true;
+    }
+    item.verdict = "hold";
+    item.reason = "wip_unconfirmed";
+    this.wipBlocked.set(item.cellId, this.wipBlocked.get(item.cellId) ?? this.deps.now());
+    this.deps.log(`cell.retention.held cell=${item.cellId} bee=${item.beeId} reason=wip_unconfirmed err=${JSON.stringify(result.error ?? "ref_mismatch")}`);
+    return false;
+  }
+
+  pushWip(cellId: string, trigger: WipPushTrigger): Promise<WipPushWorkerResult> {
+    const inFlight = this.wipInFlight.get(cellId);
+    if (inFlight) return inFlight;
+    const run = this.pushWipNow(cellId, trigger).finally(() => this.wipInFlight.delete(cellId));
+    this.wipInFlight.set(cellId, run);
+    return run;
+  }
+
+  private async pushWipNow(cellId: string, trigger: WipPushTrigger): Promise<WipPushWorkerResult> {
+    const store = this.deps.store();
+    const cell = store.getCell(cellId);
+    if (!cell || cell.state !== "active") return { snapshot: null, confirmed: false, error: "cell_not_active" };
+    const spaceDir = resolve(cell.spaceDir);
+    if (!existsSync(spaceDir)) return { snapshot: null, confirmed: false, error: "space_absent" };
+    const started = Date.now();
+    let result: WipPushWorkerResult;
+    try {
+      result = await this.runWorker<WipPushWorkerResult>({
+        kind: "pushWip", spaceDir, boxDir: this.deps.wipBoxDir?.(cell) ?? join(dirname(spaceDir), "box"), originRepo: cell.originRepo, cellId,
+      } satisfies WipPushWorkerRequest);
+    } catch (err) {
+      result = { snapshot: null, confirmed: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    const pushedAt = this.deps.now();
+    if (result.snapshot) {
+      try {
+        store.recordCellWip(cellId, { sha: result.snapshot.sha, tree: result.snapshot.tree, pushedAt, confirmedAt: result.confirmed ? pushedAt : null });
+      } catch (err) {
+        result = { ...result, confirmed: false, error: `registry write failed: ${err instanceof Error ? err.message : String(err)}` };
+      }
+    }
+    if (result.confirmed) {
+      this.wipBlocked.delete(cellId);
+      const skipped = result.snapshot?.skipped ?? [];
+      this.deps.log(`cell.wip.pushed cell=${cellId} bee=${cell.sourceBeeId} trigger=${trigger} sha=${result.snapshot?.sha ?? "-"} dirty=${result.snapshot?.dirty ?? "?"} skipped=${skipped.length}${skipped.length > 0 ? ` first_skip=${JSON.stringify(skipped[0])}` : ""} ms=${Date.now() - started}`);
+    } else {
+      this.deps.log(`cell.wip.push_failed cell=${cellId} bee=${cell.sourceBeeId} trigger=${trigger} err=${JSON.stringify(result.error ?? "ref_mismatch")} ms=${Date.now() - started}`);
+    }
+    return result;
   }
 
   /** Evictions still allowed in the rolling 24 h window; null = no cap. */
@@ -1156,8 +1237,13 @@ export class CellRetentionService {
     if (this.deps.opInFlight(cell.id)) return outcome("refused", "op_in_flight");
     if (bee?.activeMoveId) return outcome("refused", "move_in_flight");
     if (bee?.activeHandoffId) return outcome("refused", "handoff_in_flight");
+    const wipSha = item.cellId ? this.wipConfirmedForEviction.get(item.cellId) ?? null : null;
+    if (item.cellId) this.wipConfirmedForEviction.delete(item.cellId);
+    const wipConfirmed = wipSha != null && cell.wipSha === wipSha && cell.wipConfirmedAt != null;
+    if (this.deps.policy.evictionRequiresWip && item.verdict === "evict" && !wipConfirmed) return outcome("refused", "wip_unconfirmed");
     try {
       const parked = evictCellWrapper(this.deps.cellsRoot, item.wrapperDir, {
+        force: wipConfirmed,
         expectedHead: item.head,
         now: this.deps.now,
         trimPatterns: this.deps.policy.trimPatterns,
@@ -1180,7 +1266,7 @@ export class CellRetentionService {
         this.deps.log(`cell.retention.removed cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}`);
         return outcome("removed", item.reason, parked.envFiles, parked.keptPaths);
       }
-      this.deps.log(`cell.retention.evicted cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}`);
+      this.deps.log(`cell.retention.evicted cell=${cell.id} bee=${item.beeId} reason=${item.reason} head=${parked.head ?? "-"} bytes=${item.bytes ?? "?"} parked=${parked.parkedDir}${env}${kept}${wipSha ? ` wip=${wipSha}${parked.forced ? " dirty" : ""}` : ""}`);
       return outcome("evicted", item.reason, parked.envFiles, parked.keptPaths);
     } catch (err) {
       if (err instanceof CellDeleteRefused) return outcome("refused", "dirty");
@@ -1274,6 +1360,11 @@ export class CellRetentionService {
 
   private recordParked(cellId: string, beeId: string, mode: ParkMode, paths: string[], bytes: number | null, envFiles: string[], trigger: "idle" | "operator"): void {
     const tmpCleared = this.deps.clearBeeTmp?.(beeId) ?? false;
+    try {
+      this.deps.store().markCellParked(cellId);
+    } catch (err) {
+      this.deps.log(`cell.retention.park_record_failed cell=${cellId} ${err instanceof Error ? err.message : String(err)}`);
+    }
     try {
       this.deps.audit?.("cell.parked", { cellId, beeId, mode, trigger, paths, bytes, envFiles, tmpCleared, at: this.deps.now() });
     } catch (err) {
