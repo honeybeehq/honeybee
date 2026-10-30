@@ -1,0 +1,67 @@
+src/comb/attachment.ts:300:    "Review, human verification, and landing are driven by the track after your seal.",
+src/daemon/credentialSyncController.ts:23: * Strict single-flight wrapper for the recurring credential track. Timing out
+src/daemon/install.ts:225:// Staleness compare ignores the burned-in PATH value: it tracks the
+src/daemon/run.ts:260:  // Chain sync runs on its OWN track, never inside the tick path: a keychain
+src/daemon/run.ts:514:    // the chain-sync track (which keys on it) winds down instead of keeping
+src/daemon/tick.ts:267:   * track so a keychain prompt or a sweep over hundreds of homes can never
+src/daemon/tick.ts:474: * own track in runDaemon, outside the tick path entirely.
+src/drivers.ts:204:    // (Churned / Brewed / Cooked / Percolating …) that no word list can track,
+src/flow/background.ts:193:      // listRuns/cancelRun can track it.
+src/flow/hive_facade.ts:4://   - spawn (delegates to spawnBeeForFlow; tracks BeeHandle bindings)
+src/flow/hive_facade.ts:387:    // BeeHandle: spawn always tracks by name; prefer name lookup first since
+src/limits/autoPick.ts:65: * an account ahead of pace is on track to exhaust early, so it scores
+src/limits/window.ts:11: * the window refills (on track to exhaust before reset); negative = headroom.
+src/loop/spawn.ts:57:  // facade.spawn tracks internally; resolve the freshly-saved record.
+src/proProjects.ts:7: * rather than reading pro's private index file, so we track whatever `pro`
+src/spend/extract.ts:44: * SPEND_SPEC). isSubagent tracks claude's isSidechain flag.
+src/spend/format.ts:208:/** A proportional bar of `width` cells for a 0..1 fraction: painted fill + dim track. */
+src/substrates/remote-hsr.ts:470:  // would never broadcast again (HIVE-11). So we track what we observe and
+src/substrates/stop.ts:63:  // HSR liveness tracks the host, not its detached child. A false observation
+tests/comb-human.test.ts:1973:    assert.match(attached.trackPostscript, /Review, human verification, and landing are driven by the track/);
+tests/daemon-tick.test.ts:1254:test("tick: never calls syncChains — chain sync runs on runDaemon's own track", async () => {
+tests/flow-run.test.ts:227:        // The facade tracks spawned records internally; we tap the protected
+tests/hsr-node-status.test.ts:203:  assert.deepEqual(await track(nodes, new Set(), NOW), []);
+tests/hsr-node-status.test.ts:207:  const off = await track(nodes, new Set(["n1"]), NOW + 1_000);
+tests/hsr-node-status.test.ts:215:  assert.deepEqual(await track(nodes, new Set(["n1"]), NOW + 2_000), []);
+tests/hsr-node-status.test.ts:219:  const on = await track(nodes, new Set(), NOW + 3_000);
+tests/hsr-remote-mirror.test.ts:1413:    // track the mirror's substrates so we can close their tunnels at the end.
+tests/loop.test.ts:496: * + tracks it on the facade; send schedules a recordSeal so waitForSeal
+tests/release-inventory.test.mjs:9:test('extraction is stable, tracks input/output/commands, and records dynamic coverage', () => {
+v2/cli/tests/registry-cli.test.ts:73:    assert.notEqual(await runV2Cli(["track", "list", ...base], tp.io), 0, "hive track is no longer a verb");
+v2/core/src/accountSelect.ts:92: * the window refills (on track to exhaust before reset); negative = headroom.
+v2/core/src/accountSelect.ts:191: * an account ahead of pace is on track to exhaust early, so it scores
+v2/core/src/audit.ts:44:export const RETIRED_AUDIT_KINDS: ReadonlySet<string> = new Set(["track.put", "track.deleted"]);
+v2/core/tests/mirror.test.ts:385:    const rows = store.auditRows().filter((r) => r.kind.startsWith("template.") || r.kind.startsWith("track."));
+v2/core/tests/packages.test.ts:143:    assert.throws(() => importTemplate(store, { ...doc, kind: "hive.track" }), PackageError);
+v2/core/tests/packages.test.ts:282:  mkdirSync(join(dir, "tracks", "definitions", "demo", "versions"), { recursive: true });
+v2/core/tests/packages.test.ts:283:  mkdirSync(join(dir, "tracks", "attachments"), { recursive: true });
+v2/core/tests/packages.test.ts:314:    join(dir, "tracks", "definitions", "demo.json"),
+v2/core/tests/packages.test.ts:335:  writeFileSync(join(dir, "tracks", "definitions", "demo", "versions", "000001.json"), "{}");
+v2/core/tests/packages.test.ts:349:    assert.equal("tracks" in r1, false, "legacy track definitions are ignored, not imported");
+v2/core/tests/packages.test.ts:566:test("pkg.13: a store written before tracks were removed still opens, replays its retired track audit rows and snapshots without a tracks key", () => {
+v2/core/tests/packages.test.ts:573:    db.exec(`CREATE TABLE IF NOT EXISTS tracks (
+v2/core/tests/packages.test.ts:576:    db.prepare("INSERT INTO tracks(id, name, scope, source, description, steps, tags, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+v2/core/tests/packages.test.ts:578:    const track = { id: "trk-1", name: "ship", scope: "personal", source: "api", description: null, steps: [], tags: [], createdAt: 1, updatedAt: 1 };
+v2/core/tests/packages.test.ts:579:    db.prepare("INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, NULL, ?)").run(2, "track.put", JSON.stringify({ track, outcome: "created" }));
+v2/core/tests/packages.test.ts:580:    db.prepare("INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, NULL, ?)").run(3, "track.deleted", JSON.stringify({ trackId: "trk-1", deletedAt: 3 }));
+v2/core/tests/packages.test.ts:585:    assert.ok(kinds.includes("track.put") && kinds.includes("track.deleted"), "retired rows stay in the append-only audit log");
+v2/core/tests/packages.test.ts:589:    assert.equal("tracks" in dump, false);
+v2/core/tests/packages.test.ts:591:    assert.throws(() => replayAudit([...store.auditRows(), { seq: 999, ts: 4, kind: "track.wat", beeId: null, payload: {} }]), /unknown audit kind track\.wat/);
+v2/daemon/tests/registry.test.ts:33:test("reg.1: template verb round-trips — put/get/list/export/import/delete, typed refusals; track verbs are gone", async () => {
+v2/daemon/tests/registry.test.ts:70:    for (const verb of ["track.list", "track.get", "track.put", "track.delete", "track.export", "track.import"]) {
+v2/daemon/tests/registry.test.ts:100:test("reg.2: snapshot carries mirror-shaped template rows and no tracks; watch deltas stream registry audit rows seq-ordered", async () => {
+v2/daemon/tests/registry.test.ts:123:    assert.equal("tracks" in snap, false);
+v2/daemon/tests/registry.test.ts:132:    const regEvents = events.filter((e) => e.kind.startsWith("template.") || e.kind.startsWith("track."));
+v2/daemon/tests/registry.test.ts:163:    mkdirSync(join(hiveDir, "tracks", "definitions"), { recursive: true });
+v2/daemon/tests/registry.test.ts:165:      join(hiveDir, "tracks", "definitions", "demo.json"),
+v2/daemon/tests/registry.test.ts:173:    assert.equal("tracks" in r1, false, "legacy track definitions are no longer imported");
+v2/driver-cell/src/sandboxTmp.ts:159:  track(beeId: string, generation: number | null): void {
+v2/driver-cell/tests/sandbox.test.ts:508:  watch.track("a", 1);
+v2/driver-cell/tests/sandbox.test.ts:509:  watch.track("b", 3);
+v2/driver-cell/tests/sandbox.test.ts:544:  watch.track("b", 1);
+v2/driver-cell/tests/sandbox.test.ts:545:  watch.track("b", 2);
+v2/driver-cell/tests/sandbox.test.ts:548:  watch.track("c", null);
+v2/driver-cell/tests/sandbox.test.ts:551:  watch.track("d", 4);
+v2/driver-cell/tests/sandbox.test.ts:552:  watch.track("d", null);
+v2/driver-cell/tests/upstream.test.ts:224:    g(fx.origin, ["checkout", "--quiet", "-b", "feature", "--track", "origin/feature"]);
+v2/driver-tmux/tests/multiline-probe.test.ts:16:test("supported version tracks a pane going 0 to 1 and rechecks each pane", () => {

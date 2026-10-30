@@ -1,0 +1,746 @@
+src/cli.ts:46:import { cmdTrack } from "./commands/track.js";
+src/cli.ts:302:    case "track":
+src/cli.ts:303:      await cmdTrack(parsed);
+src/cli.ts:415:        ["track", "<define|attach|status|…>", "expected step sequences attached to one bee"],
+src/comb/attachment.ts:300:    "Review, human verification, and landing are driven by the track after your seal.",
+src/commands/run.ts:27:import { loadTrackAttachment } from "../track.js";
+src/commands/run.ts:211:  const requestedTrack = typeof flag(parsed, "track") === "string";
+src/commands/run.ts:217:      // A track's standing postscript is the first turn. Let spawn wait for a
+src/commands/run.ts:225:        // case the track adds only its standing postscript as a second turn.
+src/commands/run.ts:226:        if (!attachedComb) flags.set("track-prompt", true);
+src/commands/run.ts:231:  const attachedTrack = requestedTrack && Boolean(await loadTrackAttachment(record.name));
+src/commands/spawn.ts:74:import { attachTrack, loadTrack } from "../track.js";
+src/commands/spawn.ts:96:  if (flag(parsed, "track") !== undefined && (frameName || count > 1)) {
+src/commands/spawn.ts:97:    throw new Error("hive spawn --track attaches exactly one bee; --frame and --count > 1 are not supported");
+src/commands/spawn.ts:1602:        await attachTrack(trackAttachment.name, {
+src/commands/spawn.ts:1607:            const prompt = truthy(flag(parsed, "track-prompt")) && briefText
+src/commands/spawn.ts:1616:      }, { operation: "spawn track attach" });
+src/commands/spawn.ts:1620:        type: "track.attach_failed",
+src/commands/spawn.ts:1621:        track: trackAttachment.name,
+src/commands/spawn.ts:1629:      if (isPretty()) console.error(actionLine("warn", "track", [warning]));
+src/commands/spawn.ts:1630:      else console.error(`warn\ttrack.attach_failed\t${record.name}\t${trackAttachment.name}\t${message}`);
+src/commands/spawn.ts:1643:  const rawName = flag(parsed, "track");
+src/commands/spawn.ts:1646:    throw new Error("--track requires a track name");
+src/commands/spawn.ts:1648:  const rawVersion = flag(parsed, "track-version");
+src/commands/spawn.ts:1653:      : (() => { throw new Error("--track-version must be an integer >= 1"); })();
+src/commands/spawn.ts:1654:  const track = await loadTrack(rawName, version);
+src/commands/spawn.ts:1655:  if (!track) throw new Error(version ? `track not found: ${rawName}@${version}` : `track not found: ${rawName}`);
+src/commands/track.ts:1:// `hive track` — reusable advisory work sequences attached to one live bee.
+src/commands/track.ts:11:  attachTrack,
+src/commands/track.ts:17:  listTracks,
+src/commands/track.ts:18:  loadTrack,
+src/commands/track.ts:19:  loadTrackAttachment,
+src/commands/track.ts:22:  updateTrackStep,
+src/commands/track.ts:28:  type TrackStepState,
+src/commands/track.ts:30:} from "../track.js";
+src/commands/track.ts:34:  "  hive track define <file.json|->",
+src/commands/track.ts:35:  "  hive track list [--json]",
+src/commands/track.ts:36:  "  hive track show <name> [--version <n>] [--json]",
+src/commands/track.ts:37:  "  hive track attach <track> <bee> [--version <n>] [--start-at <stepId>]",
+src/commands/track.ts:38:  "  hive track queue <track> <bee> [--version <n>] [--queued-by <who>]",
+src/commands/track.ts:39:  "  hive track queue-list <bee> [--json]",
+src/commands/track.ts:40:  "  hive track status [<bee>] [--json]",
+src/commands/track.ts:41:  "  hive track detach <bee> [--exception <why>] [--step <id>]",
+src/commands/track.ts:42:  "  hive track step <id> done|skip [--note <text>]",
+src/commands/track.ts:43:  "  hive track subtask <name> queued|running|done [--step <id>]",
+src/commands/track.ts:44:  '  hive track exception "<why>" [--step <id>]',
+src/commands/track.ts:47:export async function cmdTrack(parsed: Parsed): Promise<void> {
+src/commands/track.ts:74:      throw new Error(`Unknown track subcommand: ${sub ?? ""}\n${TRACK_USAGE}`);
+src/commands/track.ts:80:  if (!source) throw new Error("Usage: hive track define <file.json|->");
+src/commands/track.ts:81:  const track = await defineTrackFromFile(source);
+src/commands/track.ts:82:  const count = flattenTrackNodes(track.items).length;
+src/commands/track.ts:84:    console.log(JSON.stringify(track, null, 2));
+src/commands/track.ts:86:    console.log(actionLine("ok", "track", [bold(`${track.name}@${track.version}`), `${count} nodes`]));
+src/commands/track.ts:88:    console.log(`defined\t${track.name}\t${track.version}\t${count}`);
+src/commands/track.ts:93:  const tracks = await listTracks();
+src/commands/track.ts:95:    console.log(JSON.stringify(tracks, null, 2));
+src/commands/track.ts:98:  if (tracks.length === 0) {
+src/commands/track.ts:99:    console.log(isPretty() ? note("no tracks defined") : "no-tracks");
+src/commands/track.ts:103:    for (const track of tracks) {
+src/commands/track.ts:104:      console.log(`${track.name}\t${track.version}\t${flattenTrackNodes(track.items).length}\t${track.description ?? ""}`);
+src/commands/track.ts:110:    tracks.map((track) => [
+src/commands/track.ts:111:      bold(track.name),
+src/commands/track.ts:112:      String(track.version),
+src/commands/track.ts:113:      String(flattenTrackNodes(track.items).length),
+src/commands/track.ts:114:      dim(track.description ?? ""),
+src/commands/track.ts:121:  if (!name) throw new Error("Usage: hive track show <name> [--version <n>]");
+src/commands/track.ts:123:  const track = await loadTrack(name, version);
+src/commands/track.ts:124:  if (!track) throw new Error(version ? `Unknown track: ${name}@${version}` : `Unknown track: ${name}`);
+src/commands/track.ts:126:    console.log(JSON.stringify(track, null, 2));
+src/commands/track.ts:129:  console.log(`${bold(`${track.name}@${track.version}`)}${track.description ? `  ${dim(track.description)}` : ""}`);
+src/commands/track.ts:130:  renderDefinition(track).forEach((line) => console.log(line));
+src/commands/track.ts:133:function renderDefinition(track: Track): string[] {
+src/commands/track.ts:136:  for (const item of track.items) {
+src/commands/track.ts:158:    throw new Error("Usage: hive track attach <track> <bee> [--version <n>] [--start-at <stepId>]");
+src/commands/track.ts:165:    attachTrack(trackName, {
+src/commands/track.ts:171:    }), { operation: "hive track attach" });
+src/commands/track.ts:176:    console.log(actionLine("ok", "track", [
+src/commands/track.ts:177:      bold(`${attachment.track}@${attachment.version}`),
+src/commands/track.ts:182:    console.log(`attached\t${attachment.track}\t${attachment.version}\t${attachment.bee}\t${attachment.steps.length}`);
+src/commands/track.ts:190:    throw new Error("Usage: hive track queue <track> <bee> [--version <n>] [--queued-by <who>]");
+src/commands/track.ts:201:    console.log(actionLine("ok", "queue", [bold(entry.track), `for ${bold(attachment.bee)}`, `position ${attachment.queue.length}`]));
+src/commands/track.ts:203:    console.log(`queued\t${entry.track}\t${attachment.bee}\t${attachment.queue.length}`);
+src/commands/track.ts:214:    queueTrack(trackName, admitted.name, options), { operation: "hive track queue" });
+src/commands/track.ts:219:  if (!beeRef) throw new Error("Usage: hive track queue-list <bee>");
+src/commands/track.ts:221:  const attachment = await loadTrackAttachment(bee.name);
+src/commands/track.ts:222:  if (!attachment) throw new Error(`Bee ${bee.name} has no active track`);
+src/commands/track.ts:228:    console.log(isPretty() ? note(`no queued tracks for ${bee.name}`) : "no-queued-tracks");
+src/commands/track.ts:233:      console.log(`${index + 1}\t${entry.track}\t${entry.version ?? ""}\t${entry.queuedAt}\t${entry.queuedBy}`)
+src/commands/track.ts:241:      bold(entry.track),
+src/commands/track.ts:270: * Deliver track standing instructions as a real next turn. Queued-track
+src/commands/track.ts:288:  const bee = parsed.args[1] ? await resolveSession(parsed.args[1]!) : await requireSelf("track status");
+src/commands/track.ts:289:  const attachment = await loadTrackAttachment(bee.name);
+src/commands/track.ts:290:  if (!attachment) throw new Error(`Bee ${bee.name} has no active track`);
+src/commands/track.ts:300:  if (!beeRef) throw new Error("Usage: hive track detach <bee> [--exception <why>] [--step <id>]");
+src/commands/track.ts:307:    }), { operation: "hive track detach" });
+src/commands/track.ts:308:  const active = await loadTrackAttachment(bee.name);
+src/commands/track.ts:312:    console.log(actionLine("ok", "track", [
+src/commands/track.ts:313:      bold(`${attachment.track}@${attachment.version}`),
+src/commands/track.ts:315:      ...(active ? [`next ${bold(`${active.track}@${active.version}`)}`] : []),
+src/commands/track.ts:318:    console.log(`detached\t${attachment.track}\t${attachment.bee}${active ? `\tattached\t${active.track}\t${active.version}` : ""}`);
+src/commands/track.ts:326:    throw new Error("Usage: hive track step <id> done|skip [--note <text>]");
+src/commands/track.ts:329:  const bee = await requireSelf("track step");
+src/commands/track.ts:331:    updateTrackStep(
+src/commands/track.ts:338:    ), { operation: "hive track step" });
+src/commands/track.ts:343:  if (!node) throw new Error(`Track ${attachment.track} has no step "${stepId}"`);
+src/commands/track.ts:346:  const active = await loadTrackAttachment(bee.name);
+src/commands/track.ts:354:      ...(active && (active.track !== attachment.track || active.version !== attachment.version)
+src/commands/track.ts:355:        ? [`next ${bold(`${active.track}@${active.version}`)}`]
+src/commands/track.ts:359:    console.log(`track.step\t${attachment.track}\t${output.id}\t${output.status}\t${output.updatedAt}`);
+src/commands/track.ts:367:    throw new Error("Usage: hive track subtask <name> queued|running|done [--step <id>]");
+src/commands/track.ts:369:  const bee = await requireSelf("track subtask");
+src/commands/track.ts:381:    console.log(`track.subtask\t${attachment.track}\t${subTask.stepId}\t${name}\t${status}`);
+src/commands/track.ts:387:  if (!why) throw new Error('Usage: hive track exception "<why>" [--step <id>]');
+src/commands/track.ts:388:  const bee = await requireSelf("track exception");
+src/commands/track.ts:395:    console.log(actionLine("ok", "except", [bold(attachment.track), ...(stepId ? [dim(`step ${stepId}`)] : []), why]));
+src/commands/track.ts:397:    console.log(`track.exception\t${attachment.track}\t${exception.at}\t${stepId ?? ""}\t${why}`);
+src/commands/track.ts:420:    `${bold("Track")} ${bold(`${attachment.track}@${attachment.version}`)} ${dim("·")} ${attachment.bee} ${dim(`· ${done} done${skipped ? `, ${skipped} skipped` : ""}/${attachment.steps.length}`)}`,
+src/commands/track.ts:443:      lines.push(`  ${index + 1}. ${entry.track}${entry.version ? `@${entry.version}` : ""} ${dim(`· ${entry.queuedBy}`)}`);
+src/commands/track.ts:449:function renderStep(step: TrackStepState, now: number): string {
+src/completion/engine.ts:15:import { listTracks, type Track } from "../track.js";
+src/completion/engine.ts:51:  tracks?: Track[];
+src/completion/engine.ts:112:    const [records, live, colonies, swarms, frames, tracks, templates, nodes, flows, runs, accounts] = await Promise.all([
+src/completion/engine.ts:118:      listTracks().catch(() => []),
+src/completion/engine.ts:131:      tracks,
+src/completion/engine.ts:165:    case "track":
+src/completion/engine.ts:166:      return (state.tracks ?? []).map((track) => track.name);
+src/completion/engine.ts:226:    if (command === "track" && sub === "define") {
+src/completion/tables.ts:9:  "buz", "track",
+src/completion/tables.ts:83:  spawn: ["--name", "--cwd", "--pool", "--no-keep", "--home", "--profile", "--account", "--ttl", "--env", "--autoswap", "--colony", "--count", "--frame", "--template", "--swarm-id", "--track", "--track-version", "--brief", "--briefed", "--contract", "--preamble", "--no-preamble", "--node", "--substrate", "--here", "--yolo", "--no-yolo", "--dangerous", "--no-accept-trust", "--no-wait", "--include-paused", "--yes"],
+src/completion/tables.ts:112:    "--node", "--substrate", "--track", "--track-version",
+src/completion/tables.ts:119:    "--yolo", "--dangerous", "--boot-ms", "--node", "--substrate", "--track", "--track-version", "--here", "--include-paused", "--yes",
+src/completion/tables.ts:159:  track: ["--json", "--note", "--version", "--start-at", "--queued-by", "--exception", "--step"],
+src/completion/tables.ts:179:export type FlagValueKind = "colony" | "swarm" | "frame" | "template" | "track" | "shell" | "node" | "node-kind" | "bee" | "agent" | "search-type" | "seal-status" | "hive-state" | "display-state" | "flow" | "buz-tier" | "buz-accept" | "task-status" | "run" | "loop-context" | "loop-summarizer" | "account" | "account-or-meta" | "fork-seed";
+src/completion/tables.ts:193:  "--track": "track",
+src/completion/tables.ts:250:  track: TRACK_SUBCOMMANDS,
+src/completion/tables.ts:260:export type NounSubArgKind = "colony" | "swarm" | "frame" | "template" | "track" | "node" | "flow" | "session-any" | "run" | "account";
+src/completion/tables.ts:286:  track: {
+src/completion/tables.ts:287:    show: "track",
+src/completion/tables.ts:288:    attach: "track",
+src/completion/tables.ts:289:    queue: "track",
+src/daemon/credentialSyncController.ts:23: * Strict single-flight wrapper for the recurring credential track. Timing out
+src/daemon/install.ts:225:// Staleness compare ignores the burned-in PATH value: it tracks the
+src/daemon/run.ts:260:  // Chain sync runs on its OWN track, never inside the tick path: a keychain
+src/daemon/run.ts:514:    // the chain-sync track (which keys on it) winds down instead of keeping
+src/daemon/tick.ts:267:   * track so a keychain prompt or a sweep over hundreds of homes can never
+src/daemon/tick.ts:474: * own track in runDaemon, outside the tick path entirely.
+src/drivers.ts:204:    // (Churned / Brewed / Cooked / Percolating …) that no word list can track,
+src/flow/background.ts:193:      // listRuns/cancelRun can track it.
+src/flow/hive_facade.ts:4://   - spawn (delegates to spawnBeeForFlow; tracks BeeHandle bindings)
+src/flow/hive_facade.ts:387:    // BeeHandle: spawn always tracks by name; prefer name lookup first since
+src/limits/autoPick.ts:65: * an account ahead of pace is on track to exhaust early, so it scores
+src/limits/window.ts:11: * the window refills (on track to exhaust before reset); negative = headroom.
+src/loop/spawn.ts:57:  // facade.spawn tracks internally; resolve the freshly-saved record.
+src/parse.ts:113:        !(command === "track" && key === "version") &&
+src/parse.ts:125:        !(command === "track" && key === "version") &&
+src/proProjects.ts:7: * rather than reading pro's private index file, so we track whatever `pro`
+src/spend/extract.ts:44: * SPEND_SPEC). isSubagent tracks claude's isSidechain flag.
+src/spend/format.ts:208:/** A proportional bar of `width` cells for a 0..1 fraction: painted fill + dim track. */
+src/substrates/remote-hsr.ts:470:  // would never broadcast again (HIVE-11). So we track what we observe and
+src/substrates/stop.ts:63:  // HSR liveness tracks the host, not its detached child. A false observation
+src/track.ts:13:export type TrackStepStatus = (typeof TRACK_STEP_STATUSES)[number];
+src/track.ts:81:// Compatibility projection consumed by the shipped Apiary track card.
+src/track.ts:82:export type TrackStep = {
+src/track.ts:88:export type TrackStepChange = {
+src/track.ts:89:  status: TrackStepStatus;
+src/track.ts:100:  status: TrackStepStatus;
+src/track.ts:104:  history: TrackStepChange[];
+src/track.ts:119:export type TrackStepState = TrackStep & {
+src/track.ts:120:  status: TrackStepStatus;
+src/track.ts:124:  history: TrackStepChange[];
+src/track.ts:135:  track: string;
+src/track.ts:143:  track: string;
+src/track.ts:150:  steps: TrackStepState[];
+src/track.ts:180:  return join(storeRoot(), "tracks");
+src/track.ts:218:  const object = objectAt(value, "Invalid track: expected an object");
+src/track.ts:221:    throw new Error("Invalid track: name must contain only letters, numbers, dots, dashes, and underscores");
+src/track.ts:227:  const version = forcedVersion ?? validateVersion(object.version, `Invalid track ${name}: version`, 1);
+src/track.ts:230:    if (object.items.length === 0) throw new Error(`Invalid track ${name}: items must be a non-empty array`);
+src/track.ts:245:    throw new Error(`Invalid track ${name}: items must be a non-empty array`);
+src/track.ts:249:    const step = objectAt(entry, `Invalid step #${index + 1} in track ${name}: expected an object`);
+src/track.ts:252:      throw new Error(`Invalid step ${id} in track ${name}: title must be a non-empty string`);
+src/track.ts:280:        throw new Error(`Invalid node id in track ${trackName}: id must be command-safe`);
+src/track.ts:282:      if (this.used.has(id)) throw new Error(`Invalid track ${trackName}: duplicate step id "${id}"`);
+src/track.ts:290:        throw new Error(`Invalid ${location} in track ${this.trackName}: id must be command-safe`);
+src/track.ts:325:  const object = objectAt(value, `Invalid item #${index + 1} in track ${trackName}: expected an object`);
+src/track.ts:327:    if (object.branch.length === 0) throw new Error(`Invalid branch #${index + 1} in track ${trackName}: lanes must be non-empty`);
+src/track.ts:330:        throw new Error(`Invalid lane #${laneIndex + 1} in branch #${index + 1} of track ${trackName}: nodes must be non-empty`);
+src/track.ts:347:  const object = objectAt(value, `Invalid ${location} in track ${trackName}: expected an object`);
+src/track.ts:350:    throw new Error(`Invalid ${location} in track ${trackName}: unsupported node type "${String(type)}"`);
+src/track.ts:354:    throw new Error(`Invalid node ${id} in track ${trackName}: name must be a non-empty string`);
+src/track.ts:371:        throw new Error(`Invalid orchestrate node ${id} in track ${trackName}: instruction must be a non-empty string`);
+src/track.ts:375:        const raw = objectAt(object.subAgents, `Invalid orchestrate node ${id} in track ${trackName}: subAgents must be an object`);
+src/track.ts:377:          throw new Error(`Invalid orchestrate node ${id} in track ${trackName}: subAgents needs max >= 1 and a harness`);
+src/track.ts:401:        throw new Error(`Invalid ask node ${id} in track ${trackName}: question and blocking:boolean are required`);
+src/track.ts:407:      throw new Error(`Invalid ${location} in track ${trackName}: unsupported node type "${String(type)}"`);
+src/track.ts:420:    throw new Error(`Invalid review node ${reviewId} in track ${trackName}: ${arm} must be an array`);
+src/track.ts:428:  const target = objectAt(value, `Invalid deploy node ${id} in track ${trackName}: target must be an object`);
+src/track.ts:431:      throw new Error(`Invalid deploy node ${id} in track ${trackName}: nectar target needs a label`);
+src/track.ts:441:      throw new Error(`Invalid deploy node ${id} in track ${trackName}: named target needs a name`);
+src/track.ts:447:      throw new Error(`Invalid deploy node ${id} in track ${trackName}: text target needs a description`);
+src/track.ts:451:  throw new Error(`Invalid deploy node ${id} in track ${trackName}: target kind must be nectar, named, or text`);
+src/track.ts:488:    throw new Error(`Invalid track JSON from ${source}: ${error instanceof Error ? error.message : String(error)}`);
+src/track.ts:493:    const latest = await loadTrack(candidate.name);
+src/track.ts:496:    const track: Track = { ...candidate, version };
+src/track.ts:497:    await mkdir(join(trackDefinitionsRoot(), safeName(track.name), "versions"), { recursive: true });
+src/track.ts:498:    await atomicWriteFile(trackDefinitionVersionPath(track.name, version), `${JSON.stringify(track, null, 2)}\n`, { mode: 0o600 });
+src/track.ts:499:    await atomicWriteFile(trackDefinitionPath(track.name), `${JSON.stringify(track, null, 2)}\n`, { mode: 0o600 });
+src/track.ts:500:    await appendLedger({ type: "track.define", track: track.name, source });
+src/track.ts:501:    return track;
+src/track.ts:505:async function persistTrackVersionIfMissing(track: Track): Promise<void> {
+src/track.ts:506:  const path = trackDefinitionVersionPath(track.name, track.version);
+src/track.ts:511:    await mkdir(join(trackDefinitionsRoot(), safeName(track.name), "versions"), { recursive: true });
+src/track.ts:512:    await atomicWriteFile(path, `${JSON.stringify(track, null, 2)}\n`, { mode: 0o600 });
+src/track.ts:524:export async function loadTrack(name: string, version?: number): Promise<Track | null> {
+src/track.ts:535:    const latest = await loadTrack(name);
+src/track.ts:540:export async function listTracks(): Promise<Track[]> {
+src/track.ts:544:  const tracks: Track[] = [];
+src/track.ts:547:    const track = await loadTrack(name);
+src/track.ts:548:    if (track) tracks.push(track);
+src/track.ts:550:  return tracks.sort((left, right) => left.name.localeCompare(right.name));
+src/track.ts:581:export function trackPostscript(track: Track): string {
+src/track.ts:584:  for (const item of track.items) {
+src/track.ts:601:    "--- TRACK v2 (hive track) ---",
+src/track.ts:602:    `Track: ${track.name}@${track.version}${track.description ? ` — ${track.description}` : ""}`,
+src/track.ts:608:    "Report: hive track step <id> done|skip [--note \"...\"]",
+src/track.ts:609:    "Sub-task: hive track subtask <name> queued|running|done",
+src/track.ts:610:    "Exception: hive track exception \"<why>\" [--step <id>]",
+src/track.ts:611:    "Status: hive track status",
+src/track.ts:674:export async function attachTrack(trackName: string, options: AttachTrackOptions): Promise<TrackAttachment> {
+src/track.ts:675:  const track = await loadTrack(trackName, options.version);
+src/track.ts:676:  if (!track) throw new Error(options.version ? `Unknown track: ${trackName}@${options.version}` : `Unknown track: ${trackName}`);
+src/track.ts:679:    const existing = await loadTrackAttachment(options.bee);
+src/track.ts:681:      throw new Error(`Bee ${options.bee} already has active track ${existing.track}; detach it first`);
+src/track.ts:684:    const attachment = createAttachment(track, {
+src/track.ts:693:      await options.deliver?.(trackPostscript(track), attachment);
+src/track.ts:704:  track: Track,
+src/track.ts:707:  const flat = flattenTrackNodes(track.items);
+src/track.ts:710:    throw new Error(`Track ${track.name}@${track.version} has no step "${options.startAt}"`);
+src/track.ts:713:  const items = track.items.map((item): TrackStateItem => {
+src/track.ts:725:    track: track.name,
+src/track.ts:726:    version: track.version,
+src/track.ts:767:export async function loadTrackAttachment(bee: string): Promise<TrackAttachment | null> {
+src/track.ts:776:export async function updateTrackStep(
+src/track.ts:779:  status: Exclude<TrackStepStatus, "pending">,
+src/track.ts:785:    const attachment = await loadTrackAttachment(bee);
+src/track.ts:786:    if (!attachment) throw new Error(`Bee ${bee} has no active track`);
+src/track.ts:788:    if (!node) throw new Error(`Track ${attachment.track} has no step "${stepId}"`);
+src/track.ts:801:      type: "track.step",
+src/track.ts:802:      track: attachment.track,
+src/track.ts:824:  if (!TRACK_SUBTASK_STATUSES.includes(status)) throw new Error(`Invalid track sub-task status: ${status}`);
+src/track.ts:826:    const attachment = await loadTrackAttachment(bee);
+src/track.ts:827:    if (!attachment) throw new Error(`Bee ${bee} has no active track`);
+src/track.ts:834:        ? `Track ${attachment.track} has no step "${options.stepId}"`
+src/track.ts:835:        : `Track ${attachment.track} has no pending orchestrate step`);
+src/track.ts:851:      type: "track.subtask",
+src/track.ts:852:      track: attachment.track,
+src/track.ts:872:    const attachment = await loadTrackAttachment(bee);
+src/track.ts:873:    if (!attachment) throw new Error(`Bee ${bee} has no active track`);
+src/track.ts:875:      throw new Error(`Track ${attachment.track} has no step "${options.stepId}"`);
+src/track.ts:891:  const track = await loadTrack(trackName, options.version);
+src/track.ts:892:  if (!track) throw new Error(options.version ? `Unknown track: ${trackName}@${options.version}` : `Unknown track: ${trackName}`);
+src/track.ts:894:    const attachment = await loadTrackAttachment(bee);
+src/track.ts:895:    if (!attachment) throw new Error(`Bee ${bee} has no active track`);
+src/track.ts:898:      track: trackName,
+src/track.ts:907:      type: "track.queue",
+src/track.ts:908:      track: trackName,
+src/track.ts:924:    const attachment = await loadTrackAttachment(bee);
+src/track.ts:925:    if (!attachment) throw new Error(`Bee ${bee} has no active track`);
+src/track.ts:929:        throw new Error(`Track ${attachment.track} has no step "${options.stepId}"`);
+src/track.ts:957:  const track = await loadTrack(entry.track, entry.version);
+src/track.ts:958:  if (!track) {
+src/track.ts:960:      ? `Queued track no longer exists: ${entry.track}@${entry.version}`
+src/track.ts:961:      : `Queued track no longer exists: ${entry.track}`);
+src/track.ts:963:  const next = createAttachment(track, {
+src/track.ts:971:    await deliver?.(trackPostscript(track), next);
+src/track.ts:989:    type: "track.attach",
+src/track.ts:990:    track: attachment.track,
+src/track.ts:999:    type: "track.detach",
+src/track.ts:1000:    track: attachment.track,
+src/track.ts:1013:    type: "track.exception",
+src/track.ts:1014:    track: attachment.track,
+src/track.ts:1032:function projectLegacySteps(items: TrackStateItem[]): TrackStepState[] {
+src/track.ts:1061:  const object = objectAt(value, `Invalid track attachment for ${expectedBee}: expected an object`);
+src/track.ts:1062:  for (const key of ["track", "bee", "attachedAt", "updatedAt"] as const) {
+src/track.ts:1064:      throw new Error(`Invalid track attachment for ${expectedBee}: missing string ${key}`);
+src/track.ts:1071:    throw new Error(`Invalid track attachment for ${expectedBee}: exceptions must be an array`);
+src/track.ts:1076:    if (object.items.length === 0) throw new Error(`Invalid track attachment for ${expectedBee}: items must be non-empty`);
+src/track.ts:1077:    const ids = new NodeIdAllocator(object.items, String(object.track));
+src/track.ts:1078:    items = object.items.map((item, index) => validateTrackStateItem(item, index, expectedBee, String(object.track), ids));
+src/track.ts:1081:    const ids = new NodeIdAllocator(object.steps, String(object.track));
+src/track.ts:1082:    items = object.steps.map((step, index) => migrateLegacyStepState(step, index, expectedBee, String(object.track), ids));
+src/track.ts:1084:    throw new Error(`Invalid track attachment for ${expectedBee}: items or steps must be an array`);
+src/track.ts:1089:    track: object.track as string,
+src/track.ts:1090:    version: validateVersion(object.version, `Invalid track attachment version for ${expectedBee}`, 1),
+src/track.ts:1113:  const object = objectAt(value, `Invalid track attachment item #${index + 1} for ${bee}`);
+src/track.ts:1115:    if (object.branch.length === 0) throw new Error(`Invalid track attachment branch #${index + 1} for ${bee}`);
+src/track.ts:1119:          throw new Error(`Invalid track attachment lane #${laneIndex + 1} for ${bee}`);
+src/track.ts:1137:  const object = objectAt(value, `Invalid track attachment node ${location} for ${bee}`);
+src/track.ts:1139:  const runtime = validateRuntimeState(object, `track node ${node.id}`, bee);
+src/track.ts:1172:  const object = objectAt(value, `Invalid track attachment step #${index + 1} for ${bee}`);
+src/track.ts:1174:  if (typeof object.title !== "string") throw new Error(`Invalid track attachment step #${index + 1} for ${bee}`);
+src/track.ts:1180:    ...validateRuntimeState(object, `track step ${id}`, bee, true),
+src/track.ts:1191:    !TRACK_STEP_STATUSES.includes(object.status as TrackStepStatus) ||
+src/track.ts:1199:    if (!TRACK_STEP_STATUSES.includes(raw.status as TrackStepStatus) || typeof raw.at !== "string") {
+src/track.ts:1203:      status: raw.status as TrackStepStatus,
+src/track.ts:1210:    status: object.status as TrackStepStatus,
+src/track.ts:1232:  const object = objectAt(value, `Invalid track exception #${index + 1} for ${bee}`);
+src/track.ts:1234:    throw new Error(`Invalid track exception #${index + 1} for ${bee}`);
+src/track.ts:1244:  const object = objectAt(value, `Invalid track queue entry #${index + 1} for ${bee}`);
+src/track.ts:1246:    typeof object.track !== "string" ||
+src/track.ts:1247:    !validTrackName(object.track) ||
+src/track.ts:1251:    throw new Error(`Invalid track queue entry #${index + 1} for ${bee}`);
+src/track.ts:1254:    track: object.track,
+tests/comb-human.test.ts:1973:    assert.match(attached.trackPostscript, /Review, human verification, and landing are driven by the track/);
+tests/daemon-tick.test.ts:1254:test("tick: never calls syncChains — chain sync runs on runDaemon's own track", async () => {
+tests/flow-run.test.ts:227:        // The facade tracks spawned records internally; we tap the protected
+tests/hsr-node-status.test.ts:203:  assert.deepEqual(await track(nodes, new Set(), NOW), []);
+tests/hsr-node-status.test.ts:207:  const off = await track(nodes, new Set(["n1"]), NOW + 1_000);
+tests/hsr-node-status.test.ts:215:  assert.deepEqual(await track(nodes, new Set(["n1"]), NOW + 2_000), []);
+tests/hsr-node-status.test.ts:219:  const on = await track(nodes, new Set(), NOW + 3_000);
+tests/hsr-remote-mirror.test.ts:1413:    // track the mirror's substrates so we can close their tunnels at the end.
+tests/loop.test.ts:496: * + tracks it on the facade; send schedules a recordSeal so waitForSeal
+tests/parse.test.ts:48:test("--track and track --version consume values", () => {
+tests/parse.test.ts:50:    ["spawn", "codex", "--track", "release"],
+tests/parse.test.ts:51:    ["x", "codex", "do work", "--track", "release"],
+tests/parse.test.ts:54:    assert.equal(flag(parsed, "track"), "release");
+tests/parse.test.ts:56:  const shown = parse(["track", "show", "release", "--version", "2"]);
+tests/release-inventory.test.mjs:9:test('extraction is stable, tracks input/output/commands, and records dynamic coverage', () => {
+tests/track.test.ts:8:import { deliverTrackFollowUp, queueTrackForBee, renderTrackStatus } from "../src/commands/track.js";
+tests/track.test.ts:14:  attachTrack,
+tests/track.test.ts:18:  loadTrack,
+tests/track.test.ts:19:  loadTrackAttachment,
+tests/track.test.ts:26:  updateTrackStep,
+tests/track.test.ts:29:} from "../src/track.js";
+tests/track.test.ts:45:    probeId: `track-fixture:${record.name}`,
+tests/track.test.ts:46:    observerId: "track-fixture",
+tests/track.test.ts:102:  const store = await mkdtemp(join(tmpdir(), "hive-track-"));
+tests/track.test.ts:115:  const source = join(store, "track-source.json");
+tests/track.test.ts:120:test("track define/attach/status lifecycle persists timestamps, history, exceptions, and ledger events", async () => {
+tests/track.test.ts:126:    const initial = await attachTrack(TRACK.name, {
+tests/track.test.ts:127:      bee: "CO.track",
+tests/track.test.ts:128:      beeId: "CO.track",
+tests/track.test.ts:136:    assert.match(delivered, /hive track step <id> done\|skip/);
+tests/track.test.ts:137:    await assert.rejects(() => attachTrack(TRACK.name, { bee: "CO.track" }), /already has active track/);
+tests/track.test.ts:139:    await updateTrackStep("CO.track", "inspect", "done", "diff read", now);
+tests/track.test.ts:140:    await updateTrackStep("CO.track", "verify", "skipped", "manual smoke", now);
+tests/track.test.ts:141:    await recordTrackException("CO.track", "Used the smoke harness instead of the full suite.", now);
+tests/track.test.ts:142:    const active = await loadTrackAttachment("CO.track");
+tests/track.test.ts:155:      "track.define",
+tests/track.test.ts:156:      "track.attach",
+tests/track.test.ts:157:      "track.step",
+tests/track.test.ts:158:      "track.step",
+tests/track.test.ts:159:      "track.exception",
+tests/track.test.ts:163:    const detached = await detachTrack("CO.track", now);
+tests/track.test.ts:164:    assert.equal(detached.track, TRACK.name);
+tests/track.test.ts:165:    assert.equal(await loadTrackAttachment("CO.track"), null);
+tests/track.test.ts:167:    assert.match(finalLedger, /"type":"track\.detach"/);
+tests/track.test.ts:171:test("track attachment rolls back when standing-postscript delivery fails", async () => {
+tests/track.test.ts:175:      () => attachTrack(TRACK.name, {
+tests/track.test.ts:183:    assert.equal(await loadTrackAttachment("CO.failed"), null);
+tests/track.test.ts:185:    assert.doesNotMatch(ledger, /track\.attach/);
+tests/track.test.ts:189:test("track queue loses to fresh lifecycle stop doubt with zero queue and ledger writes", async () => {
+tests/track.test.ts:211:    await attachTrack(active.name, { bee: bee.name, beeId: bee.id });
+tests/track.test.ts:224:    assert.deepEqual((await loadTrackAttachment(bee.name))?.queue, []);
+tests/track.test.ts:226:    assert.doesNotMatch(ledger, /"type":"track\.queue"/);
+tests/track.test.ts:231:test("track follow-up retires the completed-turn boundary and re-enters the active index", async () => {
+tests/track.test.ts:234:      name: "CO.track-follow-up",
+tests/track.test.ts:235:      id: "CO.track-follow-up",
+tests/track.test.ts:239:      tmuxTarget: "CO.track-follow-up",
+tests/track.test.ts:247:    await recordSeal(record.name, validateSealArtifact({ status: "done", summary: "previous track turn" }));
+tests/track.test.ts:251:    await deliverTrackFollowUp(record, "next standing track instructions", {
+tests/track.test.ts:264:    assert.equal(stored?.lastPrompt, "next standing track instructions");
+tests/track.test.ts:285:test("track follow-up hive-state mirror failure after acceptance is repair-only", async () => {
+tests/track.test.ts:288:      name: "CO.track-mirror-fault",
+tests/track.test.ts:289:      id: "CO.track-mirror-fault",
+tests/track.test.ts:293:      tmuxTarget: "CO.track-mirror-fault",
+tests/track.test.ts:300:    await deliverTrackFollowUp(record, "track exactly once", {
+tests/track.test.ts:302:      writeState: async () => { throw new Error("injected track mirror failure"); },
+tests/track.test.ts:305:    assert.equal((await loadSession(record.name))?.lastPrompt, "track exactly once");
+tests/track.test.ts:309:test("track validation rejects duplicate ids and the injected postscript carries the whole agent contract", () => {
+tests/track.test.ts:318:  assert.match(postscript, /hive track step <id> done\|skip \[--note "\.\.\."\]/);
+tests/track.test.ts:319:  assert.match(postscript, /hive track subtask <name> queued\|running\|done/);
+tests/track.test.ts:320:  assert.match(postscript, /hive track exception "<why>" \[--step <id>\]/);
+tests/track.test.ts:321:  assert.match(postscript, /hive track status/);
+tests/track.test.ts:329:    await attachTrack(TRACK.name, { bee: "CO.self", beeId: "CO.self" });
+tests/track.test.ts:332:    await hive(store, ["track", "step", "inspect", "done", "--note", "self update"], env);
+tests/track.test.ts:333:    await hive(store, ["track", "exception", "Changed the verification order."], env);
+tests/track.test.ts:334:    const { stdout } = await hive(store, ["track", "status", "--json"], env);
+tests/track.test.ts:348:test("CLI defines a track from stdin and exposes list/show JSON", async () => {
+tests/track.test.ts:349:  const store = await mkdtemp(join(tmpdir(), "hive-track-cli-"));
+tests/track.test.ts:351:    const define = await hiveWithInput(store, ["track", "define", "-", "--json"], JSON.stringify(TRACK));
+tests/track.test.ts:353:    const listed = await hive(store, ["track", "list", "--json"]);
+tests/track.test.ts:355:    const shown = await hive(store, ["track", "show", TRACK.name, "--json"]);
+tests/track.test.ts:437:    await mkdir(join(store, "tracks", "definitions"), { recursive: true });
+tests/track.test.ts:439:    const loaded = await loadTrack(TRACK.name);
+tests/track.test.ts:445:    await mkdir(join(store, "tracks", "attachments"), { recursive: true });
+tests/track.test.ts:447:      track: TRACK.name,
+tests/track.test.ts:459:    const attachment = await loadTrackAttachment("CO.legacy");
+tests/track.test.ts:490:    const v1 = await loadTrack("versioned", 1);
+tests/track.test.ts:491:    const v2 = await loadTrack("versioned", 2);
+tests/track.test.ts:502:    const track = await defineValue(store, V2_TRACK);
+tests/track.test.ts:503:    assert.equal(track.items[0] && "id" in track.items[0] ? track.items[0].id : null, "n1");
+tests/track.test.ts:504:    const attachment = await attachTrack(track.name, { bee: "CO.branch" });
+tests/track.test.ts:522:    await updateTrackStep("CO.branch", "fix-review", "done", "denied arm exercised");
+tests/track.test.ts:523:    const updated = await loadTrackAttachment("CO.branch");
+tests/track.test.ts:534:    const attachment = await attachTrack(V2_TRACK.name, { bee: "CO.start", startAt: "question" });
+tests/track.test.ts:560:    await attachTrack(one.name, { bee: "CO.complete" });
+tests/track.test.ts:562:    await updateTrackStep("CO.complete", "one", "done", undefined, () => new Date("2026-07-31T06:00:00.000Z"), {
+tests/track.test.ts:567:    const afterComplete = await loadTrackAttachment("CO.complete");
+tests/track.test.ts:568:    assert.equal(afterComplete?.track, two.name);
+tests/track.test.ts:572:    await attachTrack(one.name, { bee: "CO.detach" });
+tests/track.test.ts:580:    assert.equal(detached.track, one.name);
+tests/track.test.ts:581:    const afterDetach = await loadTrackAttachment("CO.detach");
+tests/track.test.ts:582:    assert.equal(afterDetach?.track, three.name);
+tests/track.test.ts:595:    await attachTrack("runtime-v2", { bee: "CO.runtime" });
+tests/track.test.ts:606:    const attachment = await loadTrackAttachment("CO.runtime");
+tests/track.test.ts:615:    const subtask = events.find((event) => event.type === "track.subtask");
+tests/track.test.ts:616:    const exception = events.find((event) => event.type === "track.exception");
+tests/track.test.ts:624:  const track = validateTrack(V2_TRACK);
+tests/track.test.ts:625:  const postscript = trackPostscript(track);
+tests/track.test.ts:659:    await attachTrack("cli-runtime-v2", { bee: "CO.cli-v2", beeId: "CO.cli-v2" });
+tests/track.test.ts:661:    await hive(store, ["track", "subtask", "pkg/core", "done"], env);
+tests/track.test.ts:662:    await hive(store, ["track", "exception", "Used a focused suite.", "--step", "work"], env);
+tests/track.test.ts:664:      "track",
+tests/track.test.ts:676:    const { stdout } = await hive(store, ["track", "status", "--json"], env);
+v2/cli/src/help.ts:106:    title: "Templates & tracks",
+v2/cli/src/help.ts:110:      ["track", "list|get|put|delete|…", "expected step sequences"],
+v2/cli/src/help.ts:111:      ["packages", "import-local [--dir d]", "import ~/.hive templates & tracks"],
+v2/cli/src/main.ts:122:  type TrackDeleteResult,
+v2/cli/src/main.ts:123:  type TrackExportResult,
+v2/cli/src/main.ts:124:  type TrackGetResult,
+v2/cli/src/main.ts:125:  type TrackImportResult,
+v2/cli/src/main.ts:126:  type TrackListResult,
+v2/cli/src/main.ts:127:  type TrackPutResult,
+v2/cli/src/main.ts:3413:// templates + tracks + packages (WP6a)
+v2/cli/src/main.ts:3699:async function cmdTrack(ctx: CliContext, parsed: Parsed): Promise<number> {
+v2/cli/src/main.ts:3707:        (c) => c.request<TrackListResult>("track.list", scope ? { scope } : {}),
+v2/cli/src/main.ts:3708:        (store) => ({ tracks: store.listTracks().filter((t) => scope == null || t.scope === scope) }),
+v2/cli/src/main.ts:3710:      const lines = result.tracks.map((t) => registryLine(stale ? "stale: " : "", t, `steps=${t.steps.length}`));
+v2/cli/src/main.ts:3711:      emit(ctx, lines.length > 0 ? lines : [`${stale ? "stale: " : ""}${dim("no tracks")}`], result, stale);
+v2/cli/src/main.ts:3717:      if (!needle) throw new Error("usage: hive track get <id|name>");
+v2/cli/src/main.ts:3721:          const { tracks } = await c.request<TrackListResult>("track.list");
+v2/cli/src/main.ts:3722:          return c.request<TrackGetResult>("track.get", { id: resolveRegistryRow(tracks, needle, "track").id });
+v2/cli/src/main.ts:3724:        (store) => ({ track: resolveRegistryRow(store.listTracks(), needle, "track") }),
+v2/cli/src/main.ts:3726:      emit(ctx, [JSON.stringify(result.track, null, 2)], result, stale);
+v2/cli/src/main.ts:3731:      if (!file) throw new Error("usage: hive track put --file fields.json [--id id]");
+v2/cli/src/main.ts:3733:        c.request<TrackPutResult>("track.put", {
+v2/cli/src/main.ts:3738:      emit(ctx, [confirm("ok", result.outcome, `track ${result.track.id} (${result.track.name})`)], result, false);
+v2/cli/src/main.ts:3744:      if (!needle) throw new Error("usage: hive track delete <id|name>");
+v2/cli/src/main.ts:3746:        const { tracks } = await c.request<TrackListResult>("track.list");
+v2/cli/src/main.ts:3747:        return c.request<TrackDeleteResult>("track.delete", { id: resolveRegistryRow(tracks, needle, "track").id });
+v2/cli/src/main.ts:3749:      emit(ctx, [confirm("ok", "deleted", `track ${result.track.id} (${result.track.name})`)], result, false);
+v2/cli/src/main.ts:3754:      if (!needle) throw new Error("usage: hive track export <id|name> [--out file.json]");
+v2/cli/src/main.ts:3756:        const { tracks } = await c.request<TrackListResult>("track.list");
+v2/cli/src/main.ts:3757:        return c.request<TrackExportResult>("track.export", { id: resolveRegistryRow(tracks, needle, "track").id });
+v2/cli/src/main.ts:3762:        emit(ctx, [`exported track package to ${resolve(out)}`], result, false);
+v2/cli/src/main.ts:3770:      if (!file) throw new Error("usage: hive track import <package.json> [--scope s] [--source label]");
+v2/cli/src/main.ts:3773:        c.request<TrackImportResult>("track.import", {
+v2/cli/src/main.ts:3780:      emit(ctx, [confirm("ok", result.outcome, `track ${result.track.id} (${result.track.name}) from ${path}`)], result, false);
+v2/cli/src/main.ts:3784:      throw new Error("usage: hive track <list|get|put|delete|export|import>");
+v2/cli/src/main.ts:3804:        ...result.tracks.map((t) => `  track ${t.name}: ${t.outcome} (${t.id})`),
+v2/cli/src/main.ts:5061:      case "track":
+v2/cli/src/main.ts:5062:        return await cmdTrack(ctx, parsed);
+v2/cli/src/readonly.ts:21:  type TrackRow,
+v2/cli/src/readonly.ts:299:function mapTrackRow(r: Row): TrackRow {
+v2/cli/src/readonly.ts:303:    scope: r.scope as TrackRow["scope"],
+v2/cli/src/readonly.ts:304:    source: r.source as TrackRow["source"],
+v2/cli/src/readonly.ts:306:    steps: JSON.parse(r.steps as string) as TrackRow["steps"],
+v2/cli/src/readonly.ts:421:  listTracks(): TrackRow[] {
+v2/cli/src/readonly.ts:422:    return (this.db.prepare("SELECT * FROM tracks ORDER BY id").all() as Row[]).map(mapTrackRow);
+v2/cli/tests/registry-cli.test.ts:2: * WP6a CLI tier — `hive v2 template|track|packages …`: RPC against a live
+v2/cli/tests/registry-cli.test.ts:23:test("regcli.1: template/track/packages against a live daemon — put, list, export → import, import-local", async () => {
+v2/cli/tests/registry-cli.test.ts:72:    // track put + get by name
+v2/cli/tests/registry-cli.test.ts:73:    const trackFields = join(scratch, "track.json");
+v2/cli/tests/registry-cli.test.ts:76:    assert.equal(await runV2Cli(["track", "put", "--file", trackFields, ...base], tp.io), 0);
+v2/cli/tests/registry-cli.test.ts:78:    assert.equal(await runV2Cli(["track", "get", "ship", "--json", ...base], tg.io), 0);
+v2/cli/tests/registry-cli.test.ts:79:    const track = JSON.parse(tg.out[0] ?? "{}") as { track: { steps: Array<{ templateId: string }> } };
+v2/cli/tests/registry-cli.test.ts:80:    assert.equal(track.track.steps[0]?.templateId, id);
+v2/cli/tests/registry-cli.test.ts:163:test("regcli.2: template/track reads fall back to the read-only store labeled stale; mutations refuse", async () => {
+v2/cli/tests/registry-cli.test.ts:168:    store.putTrack({ id: "trk-1", fields: { name: "route", steps: [{ id: "s1", name: "One" }] } });
+v2/cli/tests/registry-cli.test.ts:178:    assert.equal(await runV2Cli(["track", "list", "--data-dir", dir], h.io), 0);
+v2/core/src/accountSelect.ts:92: * the window refills (on track to exhaust before reset); negative = headroom.
+v2/core/src/accountSelect.ts:191: * an account ahead of pace is on track to exhaust early, so it scores
+v2/core/src/audit.ts:39:  TrackRow,
+v2/core/src/audit.ts:62:  const tracks = new Map<string, TrackRow>();
+v2/core/src/audit.ts:526:      case "track.put": {
+v2/core/src/audit.ts:527:        const track = p.track as TrackRow;
+v2/core/src/audit.ts:528:        tracks.set(track.id, { ...track });
+v2/core/src/audit.ts:531:      case "track.deleted": {
+v2/core/src/audit.ts:532:        if (!tracks.delete(p.trackId as string)) throw new Error(`audit replay: unknown track ${String(p.trackId)}`);
+v2/core/src/audit.ts:760:    tracks: [...tracks.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+v2/core/src/index.ts:64:  normalizeTrack,
+v2/core/src/index.ts:70:  type TrackFields,
+v2/core/src/mirror.ts:12: * tracks mirror as their store rows. Deltas are audit rows; the mirror is
+v2/core/src/mirror.ts:18:import type { AccountAdmissionReservationRow, AccountLimitsRow, AccountRow, ActionQueueView, ActionView, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow, TranscriptSegmentRow } from "./types.ts";
+v2/core/src/mirror.ts:42:export type MirrorTrackRow = TrackRow;
+v2/core/src/mirror.ts:113:  tracks: MirrorTrackRow[];
+v2/core/src/mirror.ts:147: * Audit kinds that touch the template/track mirror tables. Payload shapes:
+v2/core/src/mirror.ts:150: *   track.put        → { track: TrackRow, outcome: "created" | "updated" }
+v2/core/src/mirror.ts:151: *   track.deleted    → { trackId: string, deletedAt: number }
+v2/core/src/mirror.ts:238:export const MIRROR_TRACK_AUDIT_KINDS = ["track.put", "track.deleted"] as const;
+v2/core/src/mirror.ts:269:export type MirrorTrackAuditKind = (typeof MIRROR_TRACK_AUDIT_KINDS)[number];
+v2/core/src/mirror.ts:372:export const MIRROR_TRACK_KEYS = ["id", "name", "scope", "source", "description", "steps", "tags", "createdAt", "updatedAt"] as const;
+v2/core/src/mirror.ts:373:export const MIRROR_TRACK_STEP_KEYS = ["id", "name", "kind", "templateId", "instruction", "note", "status"] as const;
+v2/core/src/packages.ts:4: * A template or track exports to / imports from a stable, human-editable JSON
+v2/core/src/packages.ts:10: * Local config files (`~/.hive/templates`, `~/.hive/tracks/definitions`) are a
+v2/core/src/packages.ts:21:import { PackageError, type RowSource, type Scope, type TemplateRow, type TrackRow, type TrackStep } from "./types.ts";
+v2/core/src/packages.ts:22:import { isScope, normalizeTemplate, normalizeTrack } from "./registry.ts";
+v2/core/src/packages.ts:26:export const TRACK_PACKAGE_KIND = "hive.track" as const;
+v2/core/src/packages.ts:53:/** The portable track document. */
+v2/core/src/packages.ts:54:export interface TrackPackage {
+v2/core/src/packages.ts:62:  steps: TrackStep[];
+v2/core/src/packages.ts:65:export type Package = TemplatePackage | TrackPackage;
+v2/core/src/packages.ts:110:export function exportTrack(row: TrackRow): TrackPackage {
+v2/core/src/packages.ts:206:/** Validate a track package (object or json text) into its canonical document. */
+v2/core/src/packages.ts:207:export function parseTrackPackage(input: unknown, label?: string): TrackPackage {
+v2/core/src/packages.ts:211:  const fields = normalizeTrack(rest, { label });
+v2/core/src/packages.ts:239:export function importTrack(store: CoreStore, input: unknown, opts: ImportOptions = {}): ImportResult<TrackRow> {
+v2/core/src/packages.ts:240:  const doc = parseTrackPackage(input, opts.label);
+v2/core/src/packages.ts:242:  const res = store.putTrack({
+v2/core/src/packages.ts:247:  return { row: res.track, outcome: res.outcome };
+v2/core/src/packages.ts:251:// local config source (~/.hive/templates, ~/.hive/tracks/definitions)
+v2/core/src/packages.ts:269:  tracks: LocalConfigImportEntry[];
+v2/core/src/packages.ts:316: * Convert an OLD-layout track definition (`~/.hive/tracks/definitions/<name>.json`,
+v2/core/src/packages.ts:317: * schemaVersion 2) to a v1 track package. Nodes become ordered steps
+v2/core/src/packages.ts:323:export function legacyTrackToPackage(value: unknown, label?: string): TrackPackage {
+v2/core/src/packages.ts:325:    throw new PackageError(`${label ? `${label}: ` : ""}legacy track must be an object`);
+v2/core/src/packages.ts:368:  return parseTrackPackage(
+v2/core/src/packages.ts:384: * `<dir>/templates/*.json` and `<dir>/tracks/definitions/*.json` (top-level
+v2/core/src/packages.ts:392:  const report: LocalConfigImportReport = { dir, templates: [], tracks: [], skipped: [] };
+v2/core/src/packages.ts:406:  const tracksDir = join(dir, "tracks", "definitions");
+v2/core/src/packages.ts:411:      report.tracks.push({ path, name: res.row.name, id: res.row.id, outcome: res.outcome });
+v2/core/src/registry.ts:2: * Template + track input normalization — the ONE validator both the store's
+v2/core/src/registry.ts:17:  type TrackRow,
+v2/core/src/registry.ts:18:  type TrackStep,
+v2/core/src/registry.ts:19:  type TrackStepStatus,
+v2/core/src/registry.ts:22:/** Names: portable, filename-safe (matches the old template/track name rule). */
+v2/core/src/registry.ts:28:/** The content fields of a track — everything except id/timestamps. */
+v2/core/src/registry.ts:29:export type TrackFields = Omit<TrackRow, "id" | "createdAt" | "updatedAt">;
+v2/core/src/registry.ts:154:function normalizeStep(value: unknown, index: number, seen: Set<string>, label?: string): TrackStep {
+v2/core/src/registry.ts:174:    status: status as TrackStepStatus,
+v2/core/src/registry.ts:178:/** Validate + canonicalize a track input. Throws PackageError on any violation. */
+v2/core/src/registry.ts:179:export function normalizeTrack(value: unknown, opts: NormalizeOptions = {}): TrackFields {
+v2/core/src/registry.ts:180:  if (!isObject(value)) fail(opts.label, "track must be an object");
+v2/core/src/registry.ts:186:  if (!Array.isArray(rawSteps)) fail(label, `track ${name}: steps must be an array`);
+v2/core/src/schema.ts:775:-- Templates + tracks (spec 06 §1.4.1): hive-owned registries; scope + source are
+v2/core/src/schema.ts:803:CREATE TABLE IF NOT EXISTS tracks (
+v2/core/src/store.ts:168:  type TrackRow,
+v2/core/src/store.ts:191:  TrackNotFoundError,
+v2/core/src/store.ts:263:  normalizeTrack,
+v2/core/src/store.ts:267:  type TrackFields,
+v2/core/src/store.ts:1508:function mapTrack(r: Row): TrackRow {
+v2/core/src/store.ts:1512:    scope: r.scope as TrackRow["scope"],
+v2/core/src/store.ts:1513:    source: r.source as TrackRow["source"],
+v2/core/src/store.ts:1515:    steps: JSON.parse(r.steps as string) as TrackRow["steps"],
+v2/core/src/store.ts:1528:function trackFieldsOf(row: TrackRow): TrackFields {
+v2/core/src/store.ts:6690:  // Templates + tracks (spec 06 §1.4.1) — hive-owned registries
+v2/core/src/store.ts:6771:  getTrack(id: string): TrackRow | null {
+v2/core/src/store.ts:6772:    const row = this.stmt("SELECT * FROM tracks WHERE id = ?").get(id) as Row | undefined;
+v2/core/src/store.ts:6776:  getTrackByName(scope: TrackRow["scope"], name: string): TrackRow | null {
+v2/core/src/store.ts:6777:    const row = this.stmt("SELECT * FROM tracks WHERE scope = ? AND name = ?").get(scope, name) as Row | undefined;
+v2/core/src/store.ts:6781:  listTracks(filter: { scope?: TrackRow["scope"] } = {}): TrackRow[] {
+v2/core/src/store.ts:6784:        ? this.stmt("SELECT * FROM tracks WHERE scope = ? ORDER BY id").all(filter.scope)
+v2/core/src/store.ts:6785:        : this.stmt("SELECT * FROM tracks ORDER BY id").all()
+v2/core/src/store.ts:6791:  putTrack(input: PutTrackInput): { track: TrackRow; outcome: PutOutcome } {
+v2/core/src/store.ts:6793:      const fields = normalizeTrack(input.fields, input);
+v2/core/src/store.ts:6796:        () => (input.id ? this.getTrack(input.id) : null),
+v2/core/src/store.ts:6797:        () => this.getTrackByName(fields.scope, fields.name),
+v2/core/src/store.ts:6798:        "track",
+v2/core/src/store.ts:6802:        if (fieldsEqual(trackFieldsOf(target), fields)) return { track: target, outcome: "unchanged" };
+v2/core/src/store.ts:6805:            "UPDATE tracks SET name = ?, scope = ?, source = ?, description = ?, steps = ?, tags = ?, updated_at = ? WHERE id = ?",
+v2/core/src/store.ts:6808:        const track = this.getTrack(target.id) as TrackRow;
+v2/core/src/store.ts:6809:        this.audit("track.put", null, { track, outcome: "updated" });
+v2/core/src/store.ts:6810:        return { track, outcome: "updated" };
+v2/core/src/store.ts:6815:          "INSERT INTO tracks(name, scope, source, description, steps, tags, updated_at, id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+v2/core/src/store.ts:6818:      const track = this.getTrack(id) as TrackRow;
+v2/core/src/store.ts:6819:      this.audit("track.put", null, { track, outcome: "created" });
+v2/core/src/store.ts:6820:      return { track, outcome: "created" };
+v2/core/src/store.ts:6824:  deleteTrack(id: string): TrackRow {
+v2/core/src/store.ts:6826:      const track = this.getTrack(id);
+v2/core/src/store.ts:6827:      if (!track) throw new TrackNotFoundError(id);
+v2/core/src/store.ts:6828:      this.stmt("DELETE FROM tracks WHERE id = ?").run(id);
+v2/core/src/store.ts:6829:      this.audit("track.deleted", null, { trackId: id, deletedAt: this.now() });
+v2/core/src/store.ts:6830:      return track;
+v2/core/src/store.ts:11235:      tracks: this.listTracks(),
+v2/core/src/store.ts:11286:function trackBindings(f: TrackFields): Array<string | number | null> {
+v2/core/src/types.ts:1035:// Templates + tracks — hive concepts (spec 06 §1.4.1 ownership table).
+v2/core/src/types.ts:1091:export type TrackStepStatus = (typeof TRACK_STEP_STATUSES)[number];
+v2/core/src/types.ts:1093:/** One ordered step of a track: references a template by stable id, or is free-form. */
+v2/core/src/types.ts:1094:export interface TrackStep {
+v2/core/src/types.ts:1103:  status: TrackStepStatus;
+v2/core/src/types.ts:1106:export interface TrackRow {
+v2/core/src/types.ts:1112:  steps: TrackStep[];
+v2/core/src/types.ts:1136:  tracks: TrackRow[];
+v2/core/src/types.ts:1755:export class TrackNotFoundError extends CoreError {
+v2/core/src/types.ts:1757:    super(`track not found: ${id}`);
+v2/core/tests/fixtures/mirror-question-dismissed-v1.json:112:  "tracks": [
+v2/core/tests/mirror.test.ts:36:  MIRROR_TRACK_AUDIT_KINDS,
+v2/core/tests/mirror.test.ts:37:  MIRROR_TRACK_KEYS,
+v2/core/tests/mirror.test.ts:38:  MIRROR_TRACK_STEP_KEYS,
+v2/core/tests/mirror.test.ts:48:test("mirror.1: live rows carry exactly the declared keys — bees (view/bee/runtime), templates, tracks", () => {
+v2/core/tests/mirror.test.ts:75:    const track = store.putTrack({
+v2/core/tests/mirror.test.ts:77:    }).track;
+v2/core/tests/mirror.test.ts:78:    assert.deepEqual(keysOf(track), [...MIRROR_TRACK_KEYS].sort());
+v2/core/tests/mirror.test.ts:79:    assert.deepEqual(keysOf(track.steps[0] as object), [...MIRROR_TRACK_STEP_KEYS].sort());
+v2/core/tests/mirror.test.ts:145:    const track = store.putTrack({
+v2/core/tests/mirror.test.ts:152:    }).track;
+v2/core/tests/mirror.test.ts:175:      tracks: [track],
+v2/core/tests/mirror.test.ts:304:  "tracks": [
+v2/core/tests/mirror.test.ts:418:test("mirror.3: template/track audit kinds are exactly the declared mirror kinds with the declared payloads", () => {
+v2/core/tests/mirror.test.ts:425:    const k = store.putTrack({ fields: { name: "k" } }).track;
+v2/core/tests/mirror.test.ts:426:    store.deleteTrack(k.id);
+v2/core/tests/mirror.test.ts:427:    const rows = store.auditRows().filter((r) => r.kind.startsWith("template.") || r.kind.startsWith("track."));
+v2/core/tests/mirror.test.ts:430:      ["template.put", "template.put", "template.deleted", "track.put", "track.deleted"],
+v2/core/tests/mirror.test.ts:433:      const known = [...MIRROR_TEMPLATE_AUDIT_KINDS, ...MIRROR_TRACK_AUDIT_KINDS] as string[];
+v2/core/tests/mirror.test.ts:452:    assert.deepEqual(keysOf((putK?.payload ?? {}) as object), ["outcome", "track"]);
+v2/core/tests/packages.test.ts:2: * WP6a — templates + tracks as hive concepts, and the package format
+v2/core/tests/packages.test.ts:15:  TrackNotFoundError,
+v2/core/tests/packages.test.ts:28:  type TrackPackage,
+v2/core/tests/packages.test.ts:115:    const k = store.putTrack({ fields: baseTrack }).track;
+v2/core/tests/packages.test.ts:117:    store.deleteTrack(k.id);
+v2/core/tests/packages.test.ts:119:    assert.equal(store.getTrack(k.id), null);
+v2/core/tests/packages.test.ts:121:    assert.throws(() => store.deleteTrack(k.id), TrackNotFoundError);
+v2/core/tests/packages.test.ts:131:    assert.throws(() => store.putTrack({ fields: { ...baseTrack, steps: [{ id: "a", name: "x" }, { id: "a", name: "y" }] } }), PackageError);
+v2/core/tests/packages.test.ts:132:    assert.throws(() => store.putTrack({ fields: { ...baseTrack, steps: [{ id: "a", name: "x", status: "blocked" }] } }), PackageError);
+v2/core/tests/packages.test.ts:164:    assert.throws(() => importTemplate(store, { ...doc, kind: "hive.track" }), PackageError);
+v2/core/tests/packages.test.ts:168:    const td: TrackPackage = { kind: "hive.track", formatVersion: 1, id: null, name: "ship-it", scope: "personal", description: null, tags: [], steps: baseTrack.steps.map((s) => ({ id: s.id, name: s.name, kind: s.kind ?? "action", templateId: s.templateId ?? null, instruction: s.instruction ?? null, note: null, status: "pending" as const })) };
+v2/core/tests/packages.test.ts:173:    assert.equal(store.listTracks().length, 1);
+v2/core/tests/packages.test.ts:226:function randomTrackFields(rnd: () => number, i: number): Record<string, unknown> {
+v2/core/tests/packages.test.ts:246:test("pkg.5: property — export→import→export is byte-identical (templates + tracks, 60 seeds)", () => {
+v2/core/tests/packages.test.ts:266:        const fields = randomTrackFields(rnd, i);
+v2/core/tests/packages.test.ts:267:        const row = a.putTrack({ fields }).track;
+v2/core/tests/packages.test.ts:271:        assert.equal(text2, text1, `seed ${seed} track ${i}`);
+v2/core/tests/packages.test.ts:327:    const track = store.putTrack({ id: "trk-ship", fields: baseTrack }).track;
+v2/core/tests/packages.test.ts:328:    const ttext = serializePackage(exportTrack(track));
+v2/core/tests/packages.test.ts:329:    assert.ok(ttext.startsWith('{\n  "kind": "hive.track",\n  "formatVersion": 1,\n  "id": "trk-ship",\n  "name": "ship-it",\n  "scope": "personal",'));
+v2/core/tests/packages.test.ts:344:  mkdirSync(join(dir, "tracks", "definitions", "demo", "versions"), { recursive: true });
+v2/core/tests/packages.test.ts:345:  mkdirSync(join(dir, "tracks", "attachments"), { recursive: true });
+v2/core/tests/packages.test.ts:376:    join(dir, "tracks", "definitions", "demo.json"),
+v2/core/tests/packages.test.ts:397:  writeFileSync(join(dir, "tracks", "definitions", "demo", "versions", "000001.json"), "{}");
+v2/core/tests/packages.test.ts:411:    assert.deepEqual(r1.tracks.map((t) => [t.name, t.outcome]), [["demo", "created"]]);
+v2/core/tests/packages.test.ts:431:    const demo = store.getTrackByName("personal", "demo");
+v2/core/tests/packages.test.ts:452:    assert.ok(r2.tracks.every((t) => t.outcome === "unchanged"));
+v2/core/tests/packages.test.ts:454:    assert.equal(store.listTracks().length, 1);
+v2/core/tests/packages.test.ts:461:    assert.deepEqual([r4.templates, r4.tracks, r4.skipped], [[], [], []]);
+v2/core/tests/packages.test.ts:485:test("pkg.9: fuzz — random put/import/delete on templates+tracks keeps names unique per scope and replays exactly", () => {
+v2/core/tests/packages.test.ts:500:            store.putTrack({ id: rnd() < 0.5 ? pick(ids) : undefined, fields: { ...randomTrackFields(rnd, op), name: pick(names) } });
+v2/core/tests/packages.test.ts:507:            const k = pick(store.listTracks());
+v2/core/tests/packages.test.ts:508:            if (k) store.deleteTrack(k.id);
+v2/core/tests/packages.test.ts:528:        for (const k of dump.tracks) {
+v2/core/tests/packages.test.ts:530:          assert.ok(!seenK.has(key), `dup track ${key}`);
+v2/daemon/src/daemon.ts:397:  type TrackDeleteResult,
+v2/daemon/src/daemon.ts:398:  type TrackExportResult,
+v2/daemon/src/daemon.ts:399:  type TrackGetResult,
+v2/daemon/src/daemon.ts:400:  type TrackImportResult,
+v2/daemon/src/daemon.ts:401:  type TrackListResult,
+v2/daemon/src/daemon.ts:402:  type TrackPutResult,
+v2/daemon/src/daemon.ts:2571:      case "track.list":
+v2/daemon/src/daemon.ts:2572:        return this.rpcTrackList(params);
+v2/daemon/src/daemon.ts:2573:      case "track.get":
+v2/daemon/src/daemon.ts:2574:        return { track: this.requireTrack(params) } satisfies TrackGetResult;
+v2/daemon/src/daemon.ts:2575:      case "track.put":
+v2/daemon/src/daemon.ts:2576:        return this.withIdempotency(verb, params, () => this.rpcTrackPut(params));
+v2/daemon/src/daemon.ts:2577:      case "track.delete":
+v2/daemon/src/daemon.ts:2581:          () => ({ track: this.mustStore().deleteTrack(this.param(params, "id")) }) satisfies TrackDeleteResult,
+v2/daemon/src/daemon.ts:2583:      case "track.export": {
+v2/daemon/src/daemon.ts:2585:        return { package: doc, text: serializePackage(doc) } satisfies TrackExportResult;
+v2/daemon/src/daemon.ts:2587:      case "track.import":
+v2/daemon/src/daemon.ts:2590:          return { track: res.row, outcome: res.outcome } satisfies TrackImportResult;
+v2/daemon/src/daemon.ts:6167:      tracks: store.listTracks(),
+v2/daemon/src/daemon.ts:7429:  // WP6a — templates, tracks, packages (spec 06 §1.4.1)
+v2/daemon/src/daemon.ts:7464:    const track = store.getTrack(id);
+v2/daemon/src/daemon.ts:7465:    if (!track) throw new RpcError("track_not_found", `track not found: ${id}`);
+v2/daemon/src/daemon.ts:7466:    return track;
+v2/daemon/src/daemon.ts:7484:  private rpcTrackList(params: Record<string, unknown>): TrackListResult {
+v2/daemon/src/daemon.ts:7486:    return { tracks: this.mustStore().listTracks(scope ? { scope } : {}) };
+v2/daemon/src/daemon.ts:7489:  private rpcTrackPut(params: Record<string, unknown>): TrackPutResult {
+v2/daemon/src/daemon.ts:7491:    const res = store.putTrack({
+v2/daemon/src/daemon.ts:7496:    return { track: res.track, outcome: res.outcome };
+v2/daemon/src/protocol.ts:69:  MirrorTrackRow,
+v2/daemon/src/protocol.ts:73:  TrackPackage,
+v2/daemon/src/protocol.ts:536:  // templates + tracks + packages (WP6a, spec 06 §1.4.1)
+v2/daemon/src/protocol.ts:543:  "track.list",
+v2/daemon/src/protocol.ts:544:  "track.get",
+v2/daemon/src/protocol.ts:545:  "track.put",
+v2/daemon/src/protocol.ts:546:  "track.delete",
+v2/daemon/src/protocol.ts:547:  "track.export",
+v2/daemon/src/protocol.ts:548:  "track.import",
+v2/daemon/src/protocol.ts:1810:  tracks: MirrorTrackRow[];
+v2/daemon/src/protocol.ts:1837:// Template / track / package verb shapes (WP6a)
+v2/daemon/src/protocol.ts:1869:export interface TrackListResult {
+v2/daemon/src/protocol.ts:1870:  tracks: MirrorTrackRow[];
+v2/daemon/src/protocol.ts:1873:export interface TrackGetResult {
+v2/daemon/src/protocol.ts:1874:  track: MirrorTrackRow;
+v2/daemon/src/protocol.ts:1877:export interface TrackPutResult extends DedupMarkers {
+v2/daemon/src/protocol.ts:1878:  track: MirrorTrackRow;
+v2/daemon/src/protocol.ts:1882:export interface TrackDeleteResult extends DedupMarkers {
+v2/daemon/src/protocol.ts:1883:  track: MirrorTrackRow;
+v2/daemon/src/protocol.ts:1886:export interface TrackExportResult {
+v2/daemon/src/protocol.ts:1887:  package: TrackPackage;
+v2/daemon/src/protocol.ts:1891:export interface TrackImportResult extends DedupMarkers {
+v2/daemon/src/protocol.ts:1892:  track: MirrorTrackRow;
+v2/daemon/src/rpc.ts:65:  TrackNotFoundError,
+v2/daemon/src/rpc.ts:218:  if (err instanceof TrackNotFoundError) return { code: "track_not_found", message: err.message };
+v2/daemon/src/rpcAccess.ts:54:  "track.list": "read",
+v2/daemon/src/rpcAccess.ts:55:  "track.get": "read",
+v2/daemon/src/rpcAccess.ts:56:  "track.put": "mutate",
+v2/daemon/src/rpcAccess.ts:57:  "track.delete": "mutate",
+v2/daemon/src/rpcAccess.ts:58:  "track.export": "read",
+v2/daemon/src/rpcAccess.ts:59:  "track.import": "mutate",
+v2/daemon/tests/registry.test.ts:2: * WP6a integration tier — template/track/package RPC verbs over the real
+v2/daemon/tests/registry.test.ts:4: * materialize templates/tracks exactly like bees (spec 06 §1.4.1, §2).
+v2/daemon/tests/registry.test.ts:18:  TrackImportResult,
+v2/daemon/tests/registry.test.ts:19:  TrackListResult,
+v2/daemon/tests/registry.test.ts:20:  TrackPutResult,
+v2/daemon/tests/registry.test.ts:36:test("reg.1: template/track verb round-trips — put/get/list/export/import/delete, typed refusals", async () => {
+v2/daemon/tests/registry.test.ts:74:    const tput = await c.request<TrackPutResult>("track.put", {
+v2/daemon/tests/registry.test.ts:78:    const tlist = await c.request<TrackListResult>("track.list");
+v2/daemon/tests/registry.test.ts:79:    assert.equal(tlist.tracks.length, 1);
+v2/daemon/tests/registry.test.ts:80:    const timp = await c.request<TrackImportResult>("track.import", {
+v2/daemon/tests/registry.test.ts:81:      package: { kind: "hive.track", formatVersion: 1, name: "ship-2", steps: [] },
+v2/daemon/tests/registry.test.ts:85:    assert.equal(timp.track.scope, "repo");
+v2/daemon/tests/registry.test.ts:86:    assert.equal(timp.track.source, "package:x.json");
+v2/daemon/tests/registry.test.ts:90:    await assert.rejects(c.request("track.delete", { id: "nope" }), (err: unknown) => err instanceof RpcError && err.code === "track_not_found");
+v2/daemon/tests/registry.test.ts:115:test("reg.2: snapshot carries mirror-shaped template/track rows; watch deltas stream registry audit rows seq-ordered", async () => {
+v2/daemon/tests/registry.test.ts:135:    // The snapshot IS the mirror: bees + templates + tracks at one seq.
+v2/daemon/tests/registry.test.ts:138:    assert.deepEqual(snap.tracks, []);
+v2/daemon/tests/registry.test.ts:143:    const tput = await writer.request<TrackPutResult>("track.put", { fields: { name: "ship" } });
+v2/daemon/tests/registry.test.ts:144:    await writer.request("track.delete", { id: tput.track.id });
+v2/daemon/tests/registry.test.ts:145:    await waitFor(() => events.filter((e) => e.kind.startsWith("template.") || e.kind.startsWith("track.")).length >= 3, "registry deltas", 8000);
+v2/daemon/tests/registry.test.ts:147:    const regEvents = events.filter((e) => e.kind.startsWith("template.") || e.kind.startsWith("track."));
+v2/daemon/tests/registry.test.ts:148:    assert.deepEqual(regEvents.map((e) => e.kind), ["template.put", "track.put", "track.deleted"]);
+v2/daemon/tests/registry.test.ts:173:    mkdirSync(join(hiveDir, "tracks", "definitions"), { recursive: true });
+v2/daemon/tests/registry.test.ts:180:      join(hiveDir, "tracks", "definitions", "demo.json"),
+v2/daemon/tests/registry.test.ts:188:    assert.deepEqual(r1.tracks.map((t) => [t.name, t.outcome]), [["demo", "created"]]);
+v2/daemon/tests/registry.test.ts:192:    assert.ok(r2.tracks.every((t) => t.outcome === "unchanged"));
+v2/driver-cell/src/sandboxTmp.ts:159:  track(beeId: string, generation: number | null): void {
+v2/driver-cell/tests/sandbox.test.ts:508:  watch.track("a", 1);
+v2/driver-cell/tests/sandbox.test.ts:509:  watch.track("b", 3);
+v2/driver-cell/tests/sandbox.test.ts:544:  watch.track("b", 1);
+v2/driver-cell/tests/sandbox.test.ts:545:  watch.track("b", 2);
+v2/driver-cell/tests/sandbox.test.ts:548:  watch.track("c", null);
+v2/driver-cell/tests/sandbox.test.ts:551:  watch.track("d", 4);
+v2/driver-cell/tests/sandbox.test.ts:552:  watch.track("d", null);
+v2/driver-cell/tests/upstream.test.ts:224:    g(fx.origin, ["checkout", "--quiet", "-b", "feature", "--track", "origin/feature"]);
+v2/driver-tmux/tests/multiline-probe.test.ts:16:test("supported version tracks a pane going 0 to 1 and rechecks each pane", () => {

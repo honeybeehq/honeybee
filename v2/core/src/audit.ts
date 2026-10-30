@@ -36,11 +36,12 @@ import type {
   TaskRow,
   TaskSupplyRow,
   TemplateRow,
-  TrackRow,
   TranscriptSegmentRow,
   TurnTrigger,
 } from "./types.ts";
 import type { LoginFlowRow } from "./loginFlow.ts";
+
+export const RETIRED_AUDIT_KINDS: ReadonlySet<string> = new Set(["track.put", "track.deleted"]);
 
 export function replayAudit(rows: AuditRow[]): StateDump {
   const mailBatchingPolicies = new Map<string, MailBatchingPolicy>();
@@ -59,7 +60,6 @@ export function replayAudit(rows: AuditRow[]): StateDump {
   const deliveryHolds = new Map<number, MultilineDeliveryRow>();
   const commands = new Map<number, CommandRow>();
   const templates = new Map<string, TemplateRow>();
-  const tracks = new Map<string, TrackRow>();
   const questions = new Map<string, QuestionRow>();
   const seals = new Map<string, SealRow>();
   const accounts = new Map<string, AccountRow>();
@@ -523,15 +523,6 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         if (!templates.delete(p.templateId as string)) throw new Error(`audit replay: unknown template ${String(p.templateId)}`);
         break;
       }
-      case "track.put": {
-        const track = p.track as TrackRow;
-        tracks.set(track.id, { ...track });
-        break;
-      }
-      case "track.deleted": {
-        if (!tracks.delete(p.trackId as string)) throw new Error(`audit replay: unknown track ${String(p.trackId)}`);
-        break;
-      }
       case "question.asked": {
         const question = p.question as QuestionRow;
         questions.set(question.id, { ...question, status: question.status ?? (question.answeredAt == null ? "open" : "answered"), withdrawalReason: question.withdrawalReason ?? null, withdrawnAt: question.withdrawnAt ?? null, dismissedAt: question.dismissedAt ?? null, dismissedBy: question.dismissedBy ?? null, dismissalMessageId: question.dismissalMessageId ?? null, options: question.options === null ? null : [...question.options] });
@@ -729,6 +720,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "action.report_rejected":
         break;
       default:
+        if (RETIRED_AUDIT_KINDS.has(row.kind)) break;
         throw new Error(`audit replay: unknown audit kind ${row.kind}`);
     }
   }
@@ -757,7 +749,6 @@ export function replayAudit(rows: AuditRow[]): StateDump {
     mailbox: [...mailbox.values()].sort((a, b) => a.id - b.id),
     commands: [...commands.values()].sort((a, b) => a.id - b.id),
     templates: [...templates.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
-    tracks: [...tracks.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     questions: [...questions.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     seals: [...seals.values()].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
     accounts: [...accounts.values()].sort((a, b) => a.addedAt - b.addedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),

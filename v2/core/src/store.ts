@@ -165,7 +165,6 @@ import {
   type SelectionCursorRow,
   type StateDump,
   type TemplateRow,
-  type TrackRow,
   type Urgency,
   type Verb,
   ACCOUNT_PAUSE_OWNERS,
@@ -188,7 +187,6 @@ import {
   TaskNotFoundError,
   TemplateEnvWipeError,
   TemplateNotFoundError,
-  TrackNotFoundError,
   type TaskRow,
   type TaskStatus,
   type TaskSupplyRow,
@@ -260,11 +258,9 @@ import { carriesBeeEnvRecord, publicBeeResult } from "./envRedaction.ts";
 import {
   fieldsEqual,
   normalizeTemplate,
-  normalizeTrack,
   stableStringify,
   type NormalizeOptions,
   type TemplateFields,
-  type TrackFields,
 } from "./registry.ts";
 
 export interface CoreStoreOptions {
@@ -659,11 +655,6 @@ export interface PutTemplateInput extends NormalizeOptions {
   /** Stable id to match/create; absent = match by (scope, name), else mint one. */
   id?: string;
   /** Raw template fields — validated by registry.normalizeTemplate. */
-  fields: unknown;
-}
-
-export interface PutTrackInput extends NormalizeOptions {
-  id?: string;
   fields: unknown;
 }
 
@@ -1505,27 +1496,8 @@ function mapTemplate(r: Row): TemplateRow {
   };
 }
 
-function mapTrack(r: Row): TrackRow {
-  return {
-    id: r.id as string,
-    name: r.name as string,
-    scope: r.scope as TrackRow["scope"],
-    source: r.source as TrackRow["source"],
-    description: (r.description as string | null) ?? null,
-    steps: JSON.parse(r.steps as string) as TrackRow["steps"],
-    tags: JSON.parse(r.tags as string) as string[],
-    createdAt: Number(r.created_at),
-    updatedAt: Number(r.updated_at),
-  };
-}
-
 /** Content fields of a stored row (drops id + timestamps) for the unchanged test. */
 function templateFieldsOf(row: TemplateRow): TemplateFields {
-  const { id: _id, createdAt: _c, updatedAt: _u, ...fields } = row;
-  return fields;
-}
-
-function trackFieldsOf(row: TrackRow): TrackFields {
   const { id: _id, createdAt: _c, updatedAt: _u, ...fields } = row;
   return fields;
 }
@@ -6687,7 +6659,7 @@ export class CoreStore {
   }
 
   // -------------------------------------------------------------------------
-  // Templates + tracks (spec 06 §1.4.1) — hive-owned registries
+  // Templates (spec 06 §1.4.1) — hive-owned registry
   // -------------------------------------------------------------------------
 
   getTemplate(id: string): TemplateRow | null {
@@ -6765,69 +6737,6 @@ export class CoreStore {
       this.stmt("DELETE FROM templates WHERE id = ?").run(id);
       this.audit("template.deleted", null, { templateId: id, deletedAt: this.now() });
       return template;
-    });
-  }
-
-  getTrack(id: string): TrackRow | null {
-    const row = this.stmt("SELECT * FROM tracks WHERE id = ?").get(id) as Row | undefined;
-    return row ? mapTrack(row) : null;
-  }
-
-  getTrackByName(scope: TrackRow["scope"], name: string): TrackRow | null {
-    const row = this.stmt("SELECT * FROM tracks WHERE scope = ? AND name = ?").get(scope, name) as Row | undefined;
-    return row ? mapTrack(row) : null;
-  }
-
-  listTracks(filter: { scope?: TrackRow["scope"] } = {}): TrackRow[] {
-    const rows = (
-      filter.scope
-        ? this.stmt("SELECT * FROM tracks WHERE scope = ? ORDER BY id").all(filter.scope)
-        : this.stmt("SELECT * FROM tracks ORDER BY id").all()
-    ) as Row[];
-    return rows.map(mapTrack);
-  }
-
-  /** Same idempotent upsert contract as putTemplate. */
-  putTrack(input: PutTrackInput): { track: TrackRow; outcome: PutOutcome } {
-    return this.tx(() => {
-      const fields = normalizeTrack(input.fields, input);
-      const target = this.resolvePutTarget(
-        input.id,
-        () => (input.id ? this.getTrack(input.id) : null),
-        () => this.getTrackByName(fields.scope, fields.name),
-        "track",
-      );
-      const at = this.now();
-      if (target) {
-        if (fieldsEqual(trackFieldsOf(target), fields)) return { track: target, outcome: "unchanged" };
-        this.db
-          .prepare(
-            "UPDATE tracks SET name = ?, scope = ?, source = ?, description = ?, steps = ?, tags = ?, updated_at = ? WHERE id = ?",
-          )
-          .run(...trackBindings(fields), at, target.id);
-        const track = this.getTrack(target.id) as TrackRow;
-        this.audit("track.put", null, { track, outcome: "updated" });
-        return { track, outcome: "updated" };
-      }
-      const id = input.id ?? randomUUID();
-      this.db
-        .prepare(
-          "INSERT INTO tracks(name, scope, source, description, steps, tags, updated_at, id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        )
-        .run(...trackBindings(fields), at, id, at);
-      const track = this.getTrack(id) as TrackRow;
-      this.audit("track.put", null, { track, outcome: "created" });
-      return { track, outcome: "created" };
-    });
-  }
-
-  deleteTrack(id: string): TrackRow {
-    return this.tx(() => {
-      const track = this.getTrack(id);
-      if (!track) throw new TrackNotFoundError(id);
-      this.stmt("DELETE FROM tracks WHERE id = ?").run(id);
-      this.audit("track.deleted", null, { trackId: id, deletedAt: this.now() });
-      return track;
     });
   }
 
@@ -11232,7 +11141,6 @@ export class CoreStore {
       mailbox: (this.stmt("SELECT * FROM mailbox ORDER BY id").all() as Row[]).map(row => this.mapPhoneMessage(row)),
       commands: (this.stmt("SELECT * FROM commands ORDER BY id").all() as Row[]).map(mapCommand),
       templates: this.listTemplates(),
-      tracks: this.listTracks(),
       tells: this.listTells(),
       reactions: this.listReactions(),
       questions: (this.stmt("SELECT * FROM questions ORDER BY id").all() as Row[]).map(mapQuestion),
@@ -11281,10 +11189,6 @@ function templateBindings(f: TemplateFields): Array<string | number | null> {
     f.yolo ? 1 : 0,
     JSON.stringify(f.tags),
   ];
-}
-
-function trackBindings(f: TrackFields): Array<string | number | null> {
-  return [f.name, f.scope, f.source, f.description, JSON.stringify(f.steps), JSON.stringify(f.tags)];
 }
 
 /** Open (or create) the node's core store. The returned object is the single writer (B9). */

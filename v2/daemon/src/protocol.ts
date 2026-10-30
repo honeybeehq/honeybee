@@ -66,11 +66,9 @@ import type {
   MirrorTaskRow,
   MirrorTaskSupplyRow,
   MirrorTemplateRow,
-  MirrorTrackRow,
   TaskTransitionAction,
   RuntimeRow,
   TemplatePackage,
-  TrackPackage,
   TranscriptSegmentRow,
   Urgency,
 } from "../../core/src/index.ts";
@@ -348,7 +346,6 @@ export const RPC_ERROR_CODES = [
   "runtime_refused",
   /** Registry refusals (WP6a): missing rows and per-scope name collisions. */
   "template_not_found",
-  "track_not_found",
   "name_conflict",
   "template_env_wipe_refused",
   /** A package document failed header/field validation. */
@@ -533,19 +530,13 @@ export const RPC_VERBS = [
   "snapshot",
   "mirror.local.snapshot",
   "mirror.local.watch",
-  // templates + tracks + packages (WP6a, spec 06 §1.4.1)
+  // templates + packages (WP6a, spec 06 §1.4.1)
   "template.list",
   "template.get",
   "template.put",
   "template.delete",
   "template.export",
   "template.import",
-  "track.list",
-  "track.get",
-  "track.put",
-  "track.delete",
-  "track.export",
-  "track.import",
   "packages.importLocalConfig",
   // WP7 (spec 07 B4): import the operator's active old-world bees from a frozen store
   "import.fromFrozen",
@@ -1807,7 +1798,6 @@ export interface SnapshotResult {
   views: ViewResult[];
   /** Mirror-shaped registry rows (WP6a): store rows verbatim, snapshot-consistent with `seq`. */
   templates: MirrorTemplateRow[];
-  tracks: MirrorTrackRow[];
   /** v6 (additive): questions + seals, store rows verbatim, snapshot-consistent with `seq`. */
   questions: MirrorQuestionRow[];
   seals: MirrorSealRow[];
@@ -1834,7 +1824,7 @@ export interface SnapshotResult {
 }
 
 // ---------------------------------------------------------------------------
-// Template / track / package verb shapes (WP6a)
+// Template / package verb shapes (WP6a)
 // ---------------------------------------------------------------------------
 
 export interface TemplateListResult {
@@ -1863,33 +1853,6 @@ export interface TemplateExportResult {
 
 export interface TemplateImportResult extends DedupMarkers {
   template: MirrorTemplateRow;
-  outcome: "created" | "updated" | "unchanged";
-}
-
-export interface TrackListResult {
-  tracks: MirrorTrackRow[];
-}
-
-export interface TrackGetResult {
-  track: MirrorTrackRow;
-}
-
-export interface TrackPutResult extends DedupMarkers {
-  track: MirrorTrackRow;
-  outcome: "created" | "updated" | "unchanged";
-}
-
-export interface TrackDeleteResult extends DedupMarkers {
-  track: MirrorTrackRow;
-}
-
-export interface TrackExportResult {
-  package: TrackPackage;
-  text: string;
-}
-
-export interface TrackImportResult extends DedupMarkers {
-  track: MirrorTrackRow;
   outcome: "created" | "updated" | "unchanged";
 }
 

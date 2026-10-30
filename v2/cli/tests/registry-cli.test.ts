@@ -1,5 +1,5 @@
 /**
- * WP6a CLI tier — `hive v2 template|track|packages …`: RPC against a live
+ * WP6a CLI tier — `hive v2 template|packages …`: RPC against a live
  * daemon, read-only fallback labeled stale when it is down, file-based
  * export/import round-trip. Temp dirs only; no agents spawned.
  */
@@ -20,7 +20,7 @@ function capture(): { io: CliIo; out: string[]; err: string[] } {
   return { io: { out: (l) => out.push(stripAnsi(l)), err: (l) => err.push(stripAnsi(l)) }, out, err };
 }
 
-test("regcli.1: template/track/packages against a live daemon — put, list, export → import, import-local", async () => {
+test("regcli.1: template/packages against a live daemon — put, list, export → import, import-local", async () => {
   const { dir, cleanup } = makeDaemonDir();
   const scratch = mkdtempSync(join(tmpdir(), "hb-v2-regcli-"));
   let daemon: DaemonHandle | null = null;
@@ -69,15 +69,8 @@ test("regcli.1: template/track/packages against a live daemon — put, list, exp
     assert.equal(await runV2Cli(["template", "import", pkgPath, "--json", ...base], i2.io), 0);
     assert.equal((JSON.parse(i2.out[0] ?? "{}") as { outcome: string }).outcome, "unchanged");
 
-    // track put + get by name
-    const trackFields = join(scratch, "track.json");
-    writeFileSync(trackFields, JSON.stringify({ name: "ship", steps: [{ id: "s1", name: "Build", templateId: id }] }));
     const tp = capture();
-    assert.equal(await runV2Cli(["track", "put", "--file", trackFields, ...base], tp.io), 0);
-    const tg = capture();
-    assert.equal(await runV2Cli(["track", "get", "ship", "--json", ...base], tg.io), 0);
-    const track = JSON.parse(tg.out[0] ?? "{}") as { track: { steps: Array<{ templateId: string }> } };
-    assert.equal(track.track.steps[0]?.templateId, id);
+    assert.notEqual(await runV2Cli(["track", "list", ...base], tp.io), 0, "hive track is no longer a verb");
 
     // packages import-local from an explicit dir
     const hiveDir = join(scratch, "fake-hive");
@@ -160,12 +153,11 @@ test("regcli.template-prompt: interpolation replaces placeholders and otherwise 
   assert.equal(interpolateTemplatePrompt("Do it", ""), "Do it");
 });
 
-test("regcli.2: template/track reads fall back to the read-only store labeled stale; mutations refuse", async () => {
+test("regcli.2: template reads fall back to the read-only store labeled stale; mutations refuse", async () => {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-regcli-"));
   try {
     const store = openCoreStore(join(dir, "core.sqlite3"));
     store.putTemplate({ id: "tpl-1", fields: { name: "offline", agent: "claude", prompt: "p" } });
-    store.putTrack({ id: "trk-1", fields: { name: "route", steps: [{ id: "s1", name: "One" }] } });
     store.close();
 
     const l = capture();
@@ -173,11 +165,6 @@ test("regcli.2: template/track reads fall back to the read-only store labeled st
     const listed = JSON.parse(l.out[0] ?? "{}") as { stale?: boolean; templates: Array<{ id: string }> };
     assert.equal(listed.stale, true);
     assert.equal(listed.templates[0]?.id, "tpl-1");
-
-    const h = capture();
-    assert.equal(await runV2Cli(["track", "list", "--data-dir", dir], h.io), 0);
-    assert.ok(h.err[0]?.startsWith("STALE"));
-    assert.ok(h.out[0]?.startsWith("stale: trk-1"));
 
     const g = capture();
     assert.equal(await runV2Cli(["template", "get", "offline", "--data-dir", dir, "--json"], g.io), 0);

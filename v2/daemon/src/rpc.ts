@@ -62,7 +62,6 @@ import {
   TaskNotFoundError,
   TemplateEnvWipeError,
   TemplateNotFoundError,
-  TrackNotFoundError,
 } from "../../core/src/index.ts";
 import { LeaseRefusal } from "./accountsService.ts";
 import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
@@ -215,7 +214,6 @@ export function toRpcError(err: unknown): { code: RpcErrorCode; message: string;
   if (err instanceof BeeNotFoundError) return { code: "bee_not_found", message: err.message };
   if (err instanceof DeliveryNotHeldError) return { code: "delivery_not_held", message: err.message };
   if (err instanceof TemplateNotFoundError) return { code: "template_not_found", message: err.message };
-  if (err instanceof TrackNotFoundError) return { code: "track_not_found", message: err.message };
   if (err instanceof QuestionNotOwnerError) return { code: "question_not_owner", message: err.message };
   if (err instanceof QuestionDismissedError) return { code: "question_dismissed", message: err.message };
   if (err instanceof QuestionAlreadyAnsweredError) return { code: "question_already_answered", message: err.message };

@@ -8,14 +8,14 @@ import type { ThreadOperationView } from "./threadOperation.ts";
  * `snapshot()` / `watch()` results are built from them verbatim.
  *
  * "No derivation in apiaryd": a bee mirror row is hive's `view()` output plus
- * the raw bee + current runtime rows — never an interpretation. Templates and
- * tracks mirror as their store rows. Deltas are audit rows; the mirror is
+ * the raw bee + current runtime rows — never an interpretation. Templates
+ * mirror as their store rows. Deltas are audit rows; the mirror is
  * always exactly "hive at seq N".
  *
  * Changing anything here is a protocol change (bump PROTOCOL in the daemon).
  * The shape snapshot test (tests/mirror.test.ts) fails on any drift.
  */
-import type { AccountAdmissionReservationRow, AccountLimitsRow, AccountRow, ActionQueueView, ActionView, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TrackRow, TranscriptSegmentRow } from "./types.ts";
+import type { AccountAdmissionReservationRow, AccountLimitsRow, AccountRow, ActionQueueView, ActionView, AuditRow, BeeHandoffView, BeeMoveView, BeeRow, BeeView, CellRow, CredentialHealth, QuestionRow, RuntimeRow, SealRow, TaskRow, TaskSupplyRow, TemplateRow, TranscriptSegmentRow } from "./types.ts";
 import { LOGIN_FLOW_KEYS, type LoginFlowRow } from "./loginFlow.ts";
 
 /** One bee as apiaryd stores it: B8 view verbatim + record + current runtime. */
@@ -37,9 +37,6 @@ export type MirrorTranscriptSegmentRow = TranscriptSegmentRow;
 
 /** Templates mirror as their store rows, verbatim. */
 export type MirrorTemplateRow = TemplateRow;
-
-/** Tracks mirror as their store rows, verbatim. */
-export type MirrorTrackRow = TrackRow;
 
 /** v6: questions mirror as their store rows, verbatim (Apiary's inbox surfaces `status = open`). */
 export type MirrorQuestionRow = QuestionRow;
@@ -110,7 +107,6 @@ export interface MirrorSnapshot {
   seq: number;
   bees: MirrorBeeRow[];
   templates: MirrorTemplateRow[];
-  tracks: MirrorTrackRow[];
   questions: MirrorQuestionRow[];
   seals: MirrorSealRow[];
   /** v7 (additive): accounts + their latest limits, store rows verbatim. */
@@ -144,11 +140,9 @@ export type MirrorActionQueueRow = ActionQueueView;
 export type MirrorDelta = AuditRow;
 
 /**
- * Audit kinds that touch the template/track mirror tables. Payload shapes:
+ * Audit kinds that touch the template mirror table. Payload shapes:
  *   template.put     → { template: TemplateRow, outcome: "created" | "updated" }
  *   template.deleted → { templateId: string, deletedAt: number }
- *   track.put        → { track: TrackRow, outcome: "created" | "updated" }
- *   track.deleted    → { trackId: string, deletedAt: number }
  * Every other kind (bee.*, runtime.*, flag.*, mail.*, command.*, output.*, boot.*)
  * touches bee mirror rows; a materializer that cannot re-derive a bee row from
  * the delta re-reads that bee (view) — or takes the snapshot path.
@@ -235,7 +229,6 @@ export type MirrorDelta = AuditRow;
  *   mail.delivered  → may carry { senderKind: 'human'|'automation' }     (derived: deliveredSenderKind, automation for automation senders)
  */
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
-export const MIRROR_TRACK_AUDIT_KINDS = ["track.put", "track.deleted"] as const;
 export const MIRROR_QUESTION_AUDIT_KINDS = ["question.asked", "question.answered", "question.withdrawn", "question.dismissed"] as const;
 export const MIRROR_SEAL_AUDIT_KINDS = ["seal.created"] as const;
 export const MIRROR_ACCOUNT_AUDIT_KINDS = ["account.put", "account.removed"] as const;
@@ -266,7 +259,6 @@ export const MIRROR_ACTION_QUEUE_AUDIT_KINDS = ["action_queue.put", "bee.deleted
 export type MirrorAccountAuditKind = (typeof MIRROR_ACCOUNT_AUDIT_KINDS)[number];
 export type MirrorAccountLimitsAuditKind = (typeof MIRROR_ACCOUNT_LIMITS_AUDIT_KINDS)[number];
 export type MirrorTemplateAuditKind = (typeof MIRROR_TEMPLATE_AUDIT_KINDS)[number];
-export type MirrorTrackAuditKind = (typeof MIRROR_TRACK_AUDIT_KINDS)[number];
 export type MirrorQuestionAuditKind = (typeof MIRROR_QUESTION_AUDIT_KINDS)[number];
 export type MirrorSealAuditKind = (typeof MIRROR_SEAL_AUDIT_KINDS)[number];
 export type MirrorTaskAuditKind = (typeof MIRROR_TASK_AUDIT_KINDS)[number];
@@ -369,8 +361,6 @@ export const MIRROR_TEMPLATE_KEYS = [
   "createdAt",
   "updatedAt",
 ] as const;
-export const MIRROR_TRACK_KEYS = ["id", "name", "scope", "source", "description", "steps", "tags", "createdAt", "updatedAt"] as const;
-export const MIRROR_TRACK_STEP_KEYS = ["id", "name", "kind", "templateId", "instruction", "note", "status"] as const;
 export const MIRROR_QUESTION_KEYS = [
   "id",
   "beeId",

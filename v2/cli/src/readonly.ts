@@ -18,7 +18,6 @@ import {
   type AccountRow,
   type AuditRow,
   type TemplateRow,
-  type TrackRow,
   type BeeHandoffFailure,
   type BeeHandoffPhase,
   type BeeHandoffStopAt,
@@ -296,20 +295,6 @@ function mapTemplateRow(r: Row): TemplateRow {
   };
 }
 
-function mapTrackRow(r: Row): TrackRow {
-  return {
-    id: r.id as string,
-    name: r.name as string,
-    scope: r.scope as TrackRow["scope"],
-    source: r.source as TrackRow["source"],
-    description: (r.description as string | null) ?? null,
-    steps: JSON.parse(r.steps as string) as TrackRow["steps"],
-    tags: JSON.parse(r.tags as string) as string[],
-    createdAt: Number(r.created_at),
-    updatedAt: Number(r.updated_at),
-  };
-}
-
 export interface StaleViewResult {
   view: BeeView;
   bee: PublicBeeRow | null;
@@ -416,10 +401,6 @@ export class ReadOnlyStore {
 
   listTemplates(): TemplateRow[] {
     return (this.db.prepare("SELECT * FROM templates ORDER BY id").all() as Row[]).map(mapTemplateRow);
-  }
-
-  listTracks(): TrackRow[] {
-    return (this.db.prepare("SELECT * FROM tracks ORDER BY id").all() as Row[]).map(mapTrackRow);
   }
 
   commands(beeId: string): CommandRow[] {

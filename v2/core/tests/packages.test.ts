@@ -1,5 +1,5 @@
 /**
- * WP6a — templates + tracks as hive concepts, and the package format
+ * WP6a — templates as hive concepts, and the package format
  * (spec 06 §1.4.1 "rows are truth, files are packages"). Temp dirs only.
  */
 import { test } from "node:test";
@@ -7,25 +7,21 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import {
   NameConflictError,
   PackageError,
   TemplateEnvWipeError,
   TemplateNotFoundError,
-  TrackNotFoundError,
   exportTemplate,
-  exportTrack,
   importLocalConfig,
   importTemplate,
-  importTrack,
   legacyTemplateToPackage,
-  legacyTrackToPackage,
   parseTemplatePackage,
   replayAudit,
   serializePackage,
   type CoreStore,
   type TemplatePackage,
-  type TrackPackage,
 } from "../src/index.ts";
 import { harness } from "./helpers.ts";
 
@@ -38,17 +34,6 @@ const baseTemplate = {
   model: "gpt-5.6-sol",
   effort: "medium",
   tags: ["git"],
-};
-
-const baseTrack = {
-  name: "ship-it",
-  description: "build → review → land",
-  steps: [
-    { id: "n1", name: "Build", instruction: "Implement the smallest slice." },
-    { id: "n2", name: "Review", kind: "review" },
-    { id: "n3", name: "Land", templateId: "tpl-land" },
-  ],
-  tags: ["release"],
 };
 
 test("pkg.1: putTemplate is idempotent — same fields twice = one row, unchanged, no extra audit", () => {
@@ -112,13 +97,9 @@ test("pkg.3: delete removes the row, audits, and not-found is typed; validation 
   try {
     const store = h.open();
     const t = store.putTemplate({ fields: baseTemplate }).template;
-    const k = store.putTrack({ fields: baseTrack }).track;
     store.deleteTemplate(t.id);
-    store.deleteTrack(k.id);
     assert.equal(store.getTemplate(t.id), null);
-    assert.equal(store.getTrack(k.id), null);
     assert.throws(() => store.deleteTemplate(t.id), TemplateNotFoundError);
-    assert.throws(() => store.deleteTrack(k.id), TrackNotFoundError);
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     // Closed lists / required fields.
     assert.throws(() => store.putTemplate({ fields: { ...baseTemplate, scope: "global" } }), PackageError);
@@ -128,8 +109,6 @@ test("pkg.3: delete removes the row, audits, and not-found is typed; validation 
     assert.throws(() => store.putTemplate({ fields: { ...baseTemplate, cwdPolicy: "fixed" } }), PackageError);
     assert.throws(() => store.putTemplate({ fields: { ...baseTemplate, cwd: "/x" } }), PackageError);
     assert.throws(() => store.putTemplate({ fields: { ...baseTemplate, preambleEnabled: false, preamble: "x" } }), PackageError);
-    assert.throws(() => store.putTrack({ fields: { ...baseTrack, steps: [{ id: "a", name: "x" }, { id: "a", name: "y" }] } }), PackageError);
-    assert.throws(() => store.putTrack({ fields: { ...baseTrack, steps: [{ id: "a", name: "x", status: "blocked" }] } }), PackageError);
     // Unknown fields are dropped, not stored.
     const u = store.putTemplate({ fields: { ...baseTemplate, name: "u", bogus: 1 } }).template;
     assert.equal("bogus" in u, false);
@@ -164,13 +143,6 @@ test("pkg.4: package import is idempotent and records source; missing id matches
     assert.throws(() => importTemplate(store, { ...doc, kind: "hive.track" }), PackageError);
     assert.throws(() => importTemplate(store, { ...doc, formatVersion: 2 }), PackageError);
     assert.throws(() => importTemplate(store, "{not json"), PackageError);
-    // Track import: same contract.
-    const td: TrackPackage = { kind: "hive.track", formatVersion: 1, id: null, name: "ship-it", scope: "personal", description: null, tags: [], steps: baseTrack.steps.map((s) => ({ id: s.id, name: s.name, kind: s.kind ?? "action", templateId: s.templateId ?? null, instruction: s.instruction ?? null, note: null, status: "pending" as const })) };
-    const t1 = importTrack(store, td, { source: "package:/x.json" });
-    const t2 = importTrack(store, td, { source: "package:/x.json" });
-    assert.equal(t1.outcome, "created");
-    assert.equal(t2.outcome, "unchanged");
-    assert.equal(store.listTracks().length, 1);
     store.close();
   } finally {
     h.cleanup();
@@ -223,27 +195,7 @@ function randomTemplateFields(rnd: () => number, i: number): Record<string, unkn
   };
 }
 
-function randomTrackFields(rnd: () => number, i: number): Record<string, unknown> {
-  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rnd() * xs.length)] as T;
-  const maybe = <T>(v: T): T | null => (rnd() < 0.3 ? null : v);
-  return {
-    name: `k${i}-${Math.floor(rnd() * 1000)}`,
-    scope: pick(SCOPES),
-    description: maybe(pick(WORDS)),
-    tags: Array.from({ length: Math.floor(rnd() * 3) }, () => pick(WORDS)),
-    steps: Array.from({ length: Math.floor(rnd() * 5) }, (_, j) => ({
-      id: `s${j}`,
-      name: `${pick(WORDS)}!`,
-      kind: pick(["action", "orchestrate", "review", "ask", "deploy"]),
-      templateId: maybe(`tpl-${Math.floor(rnd() * 3)}`),
-      instruction: maybe(pick(WORDS)),
-      note: maybe(pick(WORDS)),
-      status: pick(["pending", "running", "done", "skipped"]),
-    })),
-  };
-}
-
-test("pkg.5: property — export→import→export is byte-identical (templates + tracks, 60 seeds)", () => {
+test("pkg.5: property — export→import→export is byte-identical (templates, 60 seeds)", () => {
   for (let seed = 1; seed <= 60; seed++) {
     const rnd = mulberry32(seed);
     const src = harness();
@@ -261,15 +213,6 @@ test("pkg.5: property — export→import→export is byte-identical (templates 
         // Re-import on the source store itself: unchanged (source differs → updated once, then unchanged).
         importTemplate(a, text1, { source: "package:/pkg.json" });
         assert.equal(importTemplate(a, text1, { source: "package:/pkg.json" }).outcome, "unchanged");
-      }
-      for (let i = 0; i < 4; i++) {
-        const fields = randomTrackFields(rnd, i);
-        const row = a.putTrack({ fields }).track;
-        const text1 = serializePackage(exportTrack(row));
-        const imported = importTrack(b, text1, { source: "package:/pkg.json" });
-        const text2 = serializePackage(exportTrack(imported.row));
-        assert.equal(text2, text1, `seed ${seed} track ${i}`);
-        assert.equal(importTrack(b, text1, { source: "package:/pkg.json" }).outcome, "unchanged");
       }
       // Ids are carried by the package, so both stores hold identical id sets.
       assert.deepEqual(b.listTemplates().map((t) => t.id).sort(), a.listTemplates().map((t) => t.id).sort());
@@ -324,11 +267,6 @@ test("pkg.6: serialized package is stable — fixed key order, 2-space json, tra
 }
 `,
     );
-    const track = store.putTrack({ id: "trk-ship", fields: baseTrack }).track;
-    const ttext = serializePackage(exportTrack(track));
-    assert.ok(ttext.startsWith('{\n  "kind": "hive.track",\n  "formatVersion": 1,\n  "id": "trk-ship",\n  "name": "ship-it",\n  "scope": "personal",'));
-    assert.ok(ttext.includes('"templateId": "tpl-land"'));
-    assert.ok(ttext.endsWith("}\n"));
     store.close();
   } finally {
     h.cleanup();
@@ -408,7 +346,7 @@ test("pkg.7: importLocalConfig reads today's ~/.hive layout read-only, maps old 
       ["commit", "created"],
       ["reviewer", "created"],
     ]);
-    assert.deepEqual(r1.tracks.map((t) => [t.name, t.outcome]), [["demo", "created"]]);
+    assert.equal("tracks" in r1, false, "legacy track definitions are ignored, not imported");
     assert.deepEqual(r1.skipped.map((s) => s.path.split("/").pop()).sort(), ["broken.json", "fancy.ts"]);
 
     const commit = store.getTemplateByName("personal", "commit");
@@ -428,37 +366,17 @@ test("pkg.7: importLocalConfig reads today's ~/.hive layout read-only, maps old 
     assert.equal(reviewer.account, "work");
     assert.deepEqual(reviewer.env, { REVIEW: "1" });
 
-    const demo = store.getTrackByName("personal", "demo");
-    assert.ok(demo);
-    assert.equal(demo.source, "local-config");
-    assert.deepEqual(
-      demo.steps.map((s) => [s.id, s.kind, s.instruction, s.note]),
-      [
-        ["n1", "action", "Grep call sites.", null],
-        ["n2", "orchestrate", "Coordinate.", null],
-        ["n3a", "action", null, "when: docs changed"],
-        ["n3b", "action", null, "lockstep"],
-        ["n4", "review", null, null],
-        ["n4d", "action", null, null],
-        ["n5", "ask", "Keep the cookie path?", null],
-        ["n6", "deploy", "deploy: nectar preview", null],
-      ],
-    );
-    assert.ok(demo.steps.every((s) => s.status === "pending"));
-
     // Second import: nothing changes.
     const r2 = importLocalConfig(store, dir);
     assert.ok(r2.templates.every((t) => t.outcome === "unchanged"));
-    assert.ok(r2.tracks.every((t) => t.outcome === "unchanged"));
     assert.equal(store.listTemplates().length, 2);
-    assert.equal(store.listTracks().length, 1);
     // Edit a file → updated on the next manual import; nothing else moves.
     writeFileSync(join(dir, "templates", "commit.json"), JSON.stringify({ name: "commit", bee: "codex-auto", prompt: "Commit the tree, v2." }));
     const r3 = importLocalConfig(store, dir);
     assert.deepEqual(r3.templates.map((t) => t.outcome), ["updated", "unchanged"]);
     // Missing dir: empty report, no throw.
     const r4 = importLocalConfig(store, join(dir, "nope"));
-    assert.deepEqual([r4.templates, r4.tracks, r4.skipped], [[], [], []]);
+    assert.deepEqual([r4.templates, r4.skipped], [[], []]);
     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
     store.close();
   } finally {
@@ -470,8 +388,6 @@ test("pkg.7: importLocalConfig reads today's ~/.hive layout read-only, maps old 
 test("pkg.8: legacy converters reject garbage with PackageError", () => {
   assert.throws(() => legacyTemplateToPackage(null), PackageError);
   assert.throws(() => legacyTemplateToPackage({ name: "x" }), PackageError);
-  assert.throws(() => legacyTrackToPackage([]), PackageError);
-  assert.throws(() => legacyTrackToPackage({ name: "bad name" }), PackageError);
   const t = legacyTemplateToPackage({ name: "ok", bee: "claude", prompt: "p", preamble: "custom" });
   assert.equal(t.preamble, "custom");
   assert.equal(t.preambleEnabled, true);
@@ -482,7 +398,7 @@ test("pkg.8: legacy converters reject garbage with PackageError", () => {
 // replay always reproduces it.
 // ---------------------------------------------------------------------------
 
-test("pkg.9: fuzz — random put/import/delete on templates+tracks keeps names unique per scope and replays exactly", () => {
+test("pkg.9: fuzz — random put/import/delete on templates keeps names unique per scope and replays exactly", () => {
   for (let seed = 1; seed <= 25; seed++) {
     const rnd = mulberry32(seed * 7919);
     const h = harness();
@@ -496,16 +412,12 @@ test("pkg.9: fuzz — random put/import/delete on templates+tracks keeps names u
         try {
           if (roll < 0.3) {
             store.putTemplate({ id: rnd() < 0.5 ? pick(ids) : undefined, fields: { ...randomTemplateFields(rnd, op), name: pick(names) } });
-          } else if (roll < 0.5) {
-            store.putTrack({ id: rnd() < 0.5 ? pick(ids) : undefined, fields: { ...randomTrackFields(rnd, op), name: pick(names) } });
           } else if (roll < 0.65) {
             const t = pick(store.listTemplates());
             if (t) importTemplate(store, serializePackage(exportTemplate({ ...t, scope: pick(SCOPES) })), { source: "package:/f" });
           } else if (roll < 0.8) {
             const t = pick(store.listTemplates());
             if (t) store.deleteTemplate(t.id);
-            const k = pick(store.listTracks());
-            if (k) store.deleteTrack(k.id);
           } else if (roll < 0.9) {
             store.deleteTemplate("id-9"); // always throws (not found)
           } else {
@@ -523,12 +435,6 @@ test("pkg.9: fuzz — random put/import/delete on templates+tracks keeps names u
           seen.add(key);
           assert.ok(t.updatedAt >= t.createdAt);
           assert.equal(t.cwdPolicy === "fixed", t.cwd !== null);
-        }
-        const seenK = new Set<string>();
-        for (const k of dump.tracks) {
-          const key = `${k.scope}/${k.name}`;
-          assert.ok(!seenK.has(key), `dup track ${key}`);
-          seenK.add(key);
         }
       }
       assert.deepEqual(replayAudit(store.auditRows()), store.dumpState(), `seed ${seed} replay`);
@@ -654,5 +560,37 @@ test("pkg.11: re-importing a package or local config without env over a template
   } finally {
     h.cleanup();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("pkg.13: a store written before tracks were removed still opens, replays its retired track audit rows and snapshots without a tracks key", () => {
+  const h = harness();
+  try {
+    const first = h.open();
+    first.putTemplate({ id: "tpl-1", fields: baseTemplate });
+    first.close();
+    const db = new DatabaseSync(h.path);
+    db.exec(`CREATE TABLE IF NOT EXISTS tracks (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, scope TEXT NOT NULL, source TEXT NOT NULL, description TEXT,
+      steps TEXT NOT NULL DEFAULT '[]', tags TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, UNIQUE (scope, name)) STRICT`);
+    db.prepare("INSERT INTO tracks(id, name, scope, source, description, steps, tags, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+      .run("trk-1", "ship", "personal", "api", null, "[]", "[]", 1, 1);
+    const track = { id: "trk-1", name: "ship", scope: "personal", source: "api", description: null, steps: [], tags: [], createdAt: 1, updatedAt: 1 };
+    db.prepare("INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, NULL, ?)").run(2, "track.put", JSON.stringify({ track, outcome: "created" }));
+    db.prepare("INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, NULL, ?)").run(3, "track.deleted", JSON.stringify({ trackId: "trk-1", deletedAt: 3 }));
+    db.close();
+
+    const store = h.open();
+    const kinds = store.auditRows().map((row) => row.kind);
+    assert.ok(kinds.includes("track.put") && kinds.includes("track.deleted"), "retired rows stay in the append-only audit log");
+    assert.doesNotThrow(() => replayAudit(store.auditRows()));
+    const dump = store.dumpState();
+    assert.deepEqual(replayAudit(store.auditRows()), dump);
+    assert.equal("tracks" in dump, false);
+    assert.equal(store.listTemplates().length, 1);
+    assert.throws(() => replayAudit([...store.auditRows(), { seq: 999, ts: 4, kind: "track.wat", beeId: null, payload: {} }]), /unknown audit kind track\.wat/);
+    store.close();
+  } finally {
+    h.cleanup();
   }
 });

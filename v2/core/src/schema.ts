@@ -772,8 +772,8 @@ CREATE TABLE IF NOT EXISTS audit (
 CREATE INDEX IF NOT EXISTS audit_by_bee
   ON audit(bee_id) WHERE bee_id IS NOT NULL;
 
--- Templates + tracks (spec 06 §1.4.1): hive-owned registries; scope + source are
--- data on the row; names are unique per scope; steps are an ordered JSON array.
+-- Templates (spec 06 §1.4.1): hive-owned registry; scope + source are data on the
+-- row; names are unique per scope.
 CREATE TABLE IF NOT EXISTS templates (
   id               TEXT PRIMARY KEY,
   name             TEXT NOT NULL,
@@ -797,19 +797,6 @@ CREATE TABLE IF NOT EXISTS templates (
   created_at       INTEGER NOT NULL,
   updated_at       INTEGER NOT NULL,
   CHECK ((cwd_policy = 'fixed') = (cwd IS NOT NULL)),
-  UNIQUE (scope, name)
-) STRICT;
-
-CREATE TABLE IF NOT EXISTS tracks (
-  id          TEXT PRIMARY KEY,
-  name        TEXT NOT NULL,
-  scope       TEXT NOT NULL CHECK (scope IN ('personal','team','repo')),
-  source      TEXT NOT NULL,
-  description TEXT,
-  steps       TEXT NOT NULL DEFAULT '[]',
-  tags        TEXT NOT NULL DEFAULT '[]',
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL,
   UNIQUE (scope, name)
 ) STRICT;
 

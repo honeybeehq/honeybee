@@ -34,7 +34,6 @@ export {
   type LivePid,
   type PutOutcome,
   type PutTemplateInput,
-  type PutTrackInput,
   type EnqueuedCommand,
   type RpcIdempotencyRecord,
   type RpcIdempotencyRedactionReceipt,
@@ -61,20 +60,18 @@ export * from "./accountLimitsParse.ts";
 export * from "./envRedaction.ts";
 export {
   normalizeTemplate,
-  normalizeTrack,
   stableStringify,
   isRowSource,
   isScope,
   type NormalizeOptions,
   type TemplateFields,
-  type TrackFields,
 } from "./registry.ts";
 export * from "./packages.ts";
 export * from "./import-frozen.ts";
 export * from "./mirror.ts";
 export * from "./tasks.ts";
 export * from "./automation.ts";
-export { replayAudit } from "./audit.ts";
+export { replayAudit, RETIRED_AUDIT_KINDS } from "./audit.ts";
 export { deriveBeeView } from "./view.ts";
 export { SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 export * from "./cellMove.ts";

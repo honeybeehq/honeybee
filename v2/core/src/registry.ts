@@ -1,5 +1,5 @@
 /**
- * Template + track input normalization — the ONE validator both the store's
+ * Template input normalization — the ONE validator both the store's
  * put verbs and the package importer go through, so a row can only ever hold
  * a canonical field set (unknown fields dropped, defaults applied, closed
  * lists enforced). Timestamps and ids are owned by the store, never by input.
@@ -9,24 +9,17 @@ import {
   CWD_POLICIES,
   PackageError,
   SCOPES,
-  TRACK_STEP_STATUSES,
   type CwdPolicy,
   type RowSource,
   type Scope,
   type TemplateRow,
-  type TrackRow,
-  type TrackStep,
-  type TrackStepStatus,
 } from "./types.ts";
 
-/** Names: portable, filename-safe (matches the old template/track name rule). */
+/** Names: portable, filename-safe (matches the old template name rule). */
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
-const STEP_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]*$/;
 
 /** The content fields of a template — everything except id/timestamps. */
 export type TemplateFields = Omit<TemplateRow, "id" | "createdAt" | "updatedAt">;
-/** The content fields of a track — everything except id/timestamps. */
-export type TrackFields = Omit<TrackRow, "id" | "createdAt" | "updatedAt">;
 
 export interface NormalizeOptions {
   /** Applied when the input carries no scope. Default `personal`. */
@@ -147,51 +140,6 @@ export function normalizeTemplate(value: unknown, opts: NormalizeOptions = {}): 
     env: stringRecord(o, "env", label),
     account: optString(o, "account", label),
     yolo: optBool(o, "yolo", false, label),
-    tags: stringArray(o, "tags", label),
-  };
-}
-
-function normalizeStep(value: unknown, index: number, seen: Set<string>, label?: string): TrackStep {
-  if (!isObject(value)) fail(label, `steps[${index}] must be an object`);
-  const o = value;
-  const id = o.id === undefined || o.id === null ? `s${index + 1}` : o.id;
-  if (typeof id !== "string" || !STEP_ID_RE.test(id)) fail(label, `steps[${index}].id must match ${STEP_ID_RE.source}`);
-  if (seen.has(id)) fail(label, `steps[${index}].id '${id}' is duplicated`);
-  seen.add(id);
-  if (typeof o.name !== "string" || o.name.trim().length === 0) fail(label, `steps[${index}].name must be a non-empty string`);
-  const kind = optString(o, "kind", label) ?? "action";
-  const status = o.status === undefined || o.status === null ? "pending" : o.status;
-  if (typeof status !== "string" || !(TRACK_STEP_STATUSES as readonly string[]).includes(status)) {
-    fail(label, `steps[${index}].status must be one of ${TRACK_STEP_STATUSES.join("|")}`);
-  }
-  return {
-    id,
-    name: o.name,
-    kind,
-    templateId: optString(o, "templateId", label),
-    instruction: optString(o, "instruction", label),
-    note: optString(o, "note", label),
-    status: status as TrackStepStatus,
-  };
-}
-
-/** Validate + canonicalize a track input. Throws PackageError on any violation. */
-export function normalizeTrack(value: unknown, opts: NormalizeOptions = {}): TrackFields {
-  if (!isObject(value)) fail(opts.label, "track must be an object");
-  const o = value;
-  const label = opts.label;
-  const name = requireName(o, label);
-  const { scope, source } = scopeAndSource(o, opts);
-  const rawSteps = o.steps === undefined || o.steps === null ? [] : o.steps;
-  if (!Array.isArray(rawSteps)) fail(label, `track ${name}: steps must be an array`);
-  const seen = new Set<string>();
-  const steps = rawSteps.map((s, i) => normalizeStep(s, i, seen, label));
-  return {
-    name,
-    scope,
-    source,
-    description: optString(o, "description", label),
-    steps,
     tags: stringArray(o, "tags", label),
   };
 }

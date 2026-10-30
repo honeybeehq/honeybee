@@ -33,9 +33,6 @@ import {
   MIRROR_TASK_SUPPLY_KEYS,
   MIRROR_TEMPLATE_AUDIT_KINDS,
   MIRROR_TEMPLATE_KEYS,
-  MIRROR_TRACK_AUDIT_KINDS,
-  MIRROR_TRACK_KEYS,
-  MIRROR_TRACK_STEP_KEYS,
   type MirrorBeeRow,
   type MirrorSnapshot,
 } from "../src/index.ts";
@@ -45,7 +42,7 @@ function keysOf(o: object): string[] {
   return Object.keys(o).sort();
 }
 
-test("mirror.1: live rows carry exactly the declared keys — bees (view/bee/runtime), templates, tracks", () => {
+test("mirror.1: live rows carry exactly the declared keys — bees (view/bee/runtime), templates", () => {
   const h = harness();
   try {
     const store = h.open();
@@ -72,11 +69,6 @@ test("mirror.1: live rows carry exactly the declared keys — bees (view/bee/run
     }).template;
     assert.deepEqual(keysOf(template), [...MIRROR_TEMPLATE_KEYS].sort());
 
-    const track = store.putTrack({
-      fields: { name: "k", steps: [{ id: "s1", name: "one", templateId: template.id }] },
-    }).track;
-    assert.deepEqual(keysOf(track), [...MIRROR_TRACK_KEYS].sort());
-    assert.deepEqual(keysOf(track.steps[0] as object), [...MIRROR_TRACK_STEP_KEYS].sort());
 
     // v6: questions + seals mirror as store rows, verbatim.
     const question = store.askQuestion(bee.id, { text: "which branch?", options: ["main", "dev"] });
@@ -142,14 +134,6 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       id: "tpl-1",
       fields: { name: "commit", agent: "codex", prompt: "Commit.", scope: "team", tags: ["git"], env: { A: "1" } },
     }).template;
-    const track = store.putTrack({
-      id: "trk-1",
-      fields: {
-        name: "ship",
-        description: "d",
-        steps: [{ id: "s1", name: "Build", kind: "action", templateId: "tpl-1", instruction: "go", note: null, status: "pending" }],
-      },
-    }).track;
     const question = store.askQuestion(bee.id, { id: "q-1", text: "ship it?", options: ["yes", "no"] });
     store.answerQuestion(question.id, "yes", { answeredBy: "operator" });
     const seal = store.createSeal(bee.id, { id: "seal-1", title: "shipped", body: "landed on main", refs: ["main@abc"] });
@@ -172,7 +156,6 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       actions: [],
       actionQueues: [],
       templates: [template],
-      tracks: [track],
       questions: [store.getQuestion(question.id)!],
       seals: [seal],
       accounts: [{ ...wireAccount, credentialHealth: "absent", loginDueAt: null, nativeLogin: null }],
@@ -192,7 +175,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       text,
       `{
   "threadOperations": [],
-  "seq": 11,
+  "seq": 10,
   "bees": [
     {
       "view": {
@@ -301,29 +284,6 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "updatedAt": 1006000
     }
   ],
-  "tracks": [
-    {
-      "id": "trk-1",
-      "name": "ship",
-      "scope": "personal",
-      "source": "api",
-      "description": "d",
-      "steps": [
-        {
-          "id": "s1",
-          "name": "Build",
-          "kind": "action",
-          "templateId": "tpl-1",
-          "instruction": "go",
-          "note": null,
-          "status": "pending"
-        }
-      ],
-      "tags": [],
-      "createdAt": 1008000,
-      "updatedAt": 1008000
-    }
-  ],
   "questions": [
     {
       "id": "q-1",
@@ -338,8 +298,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "withdrawalReason": null,
       "withdrawnAt": null,
       "answer": "yes",
-      "askedAt": 1010000,
-      "answeredAt": 1012000,
+      "askedAt": 1008000,
+      "answeredAt": 1010000,
       "answeredBy": "operator",
       "deliveryMessageId": 1
     }
@@ -354,7 +314,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "refs": [
         "main@abc"
       ],
-      "createdAt": 1016000
+      "createdAt": 1014000
     }
   ],
   "accounts": [
@@ -375,8 +335,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
       "pausedBy": null,
       "pausedOwner": null,
       "pausedAt": null,
-      "addedAt": 1018000,
-      "updatedAt": 1018000,
+      "addedAt": 1016000,
+      "updatedAt": 1016000,
       "credentialHealth": "absent",
       "loginDueAt": null,
       "nativeLogin": null
@@ -385,7 +345,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
   "accountLimits": [
     {
       "account": "codex-work",
-      "fetchedAt": 1020000,
+      "fetchedAt": 1018000,
       "readable": true,
       "unreadableReason": null,
       "error": null,
@@ -415,22 +375,20 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
   }
 });
 
-test("mirror.3: template/track audit kinds are exactly the declared mirror kinds with the declared payloads", () => {
+test("mirror.3: template audit kinds are exactly the declared mirror kinds with the declared payloads", () => {
   const h = harness();
   try {
     const store = h.open();
     const t = store.putTemplate({ fields: { name: "t", agent: "claude", prompt: "p" } }).template;
     store.putTemplate({ fields: { name: "t", agent: "claude", prompt: "p2" } });
     store.deleteTemplate(t.id);
-    const k = store.putTrack({ fields: { name: "k" } }).track;
-    store.deleteTrack(k.id);
     const rows = store.auditRows().filter((r) => r.kind.startsWith("template.") || r.kind.startsWith("track."));
     assert.deepEqual(
       rows.map((r) => r.kind),
-      ["template.put", "template.put", "template.deleted", "track.put", "track.deleted"],
+      ["template.put", "template.put", "template.deleted"],
     );
     for (const r of rows) {
-      const known = [...MIRROR_TEMPLATE_AUDIT_KINDS, ...MIRROR_TRACK_AUDIT_KINDS] as string[];
+      const known = [...MIRROR_TEMPLATE_AUDIT_KINDS] as string[];
       assert.ok(known.includes(r.kind));
     }
     // v6: question/seal audit kinds + payload shapes (the mirror's delta contract).
@@ -444,13 +402,11 @@ test("mirror.3: template/track audit kinds are exactly the declared mirror kinds
     assert.deepEqual(keysOf(v6[0]!.payload), ["question"]);
     assert.deepEqual(keysOf(v6[1]!.payload), ["answer", "answeredAt", "answeredBy", "beeId", "deliveryMessageId", "questionId"]);
     assert.deepEqual(keysOf(v6[2]!.payload), ["seal"]);
-    const [putA, putB, delA, putK, delK] = rows;
+    const [putA, putB, delA] = rows;
     assert.deepEqual(keysOf((putA?.payload ?? {}) as object), ["outcome", "template"]);
     assert.equal(putA?.payload.outcome, "created");
     assert.equal(putB?.payload.outcome, "updated");
     assert.deepEqual(keysOf((delA?.payload ?? {}) as object), ["deletedAt", "templateId"]);
-    assert.deepEqual(keysOf((putK?.payload ?? {}) as object), ["outcome", "track"]);
-    assert.deepEqual(keysOf((delK?.payload ?? {}) as object), ["deletedAt", "trackId"]);
     // v7: account / limits audit kinds + payload shapes.
     store.createAccount({ id: "claude-x", harness: "claude", homePath: "/tmp/x", label: "x" });
     store.setAccountPenalty("claude-x", 10);

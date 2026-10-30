@@ -68,11 +68,9 @@ import {
   matchAccount,
   homeEnvFor,
   exportTemplate,
-  exportTrack,
   importFromFrozen,
   importLocalConfig,
   importTemplate,
-  importTrack,
   beeTaskList,
   isTaskStatus,
   isTaskTransitionAction,
@@ -394,12 +392,6 @@ import {
   type TemplateImportResult,
   type TemplateListResult,
   type TemplatePutResult,
-  type TrackDeleteResult,
-  type TrackExportResult,
-  type TrackGetResult,
-  type TrackImportResult,
-  type TrackListResult,
-  type TrackPutResult,
   type ViewResult,
 } from "./protocol.ts";
 
@@ -2567,27 +2559,6 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => {
           const res = importTemplate(this.mustStore(), params.package, this.importOptions(params));
           return { template: res.row, outcome: res.outcome } satisfies TemplateImportResult;
-        });
-      case "track.list":
-        return this.rpcTrackList(params);
-      case "track.get":
-        return { track: this.requireTrack(params) } satisfies TrackGetResult;
-      case "track.put":
-        return this.withIdempotency(verb, params, () => this.rpcTrackPut(params));
-      case "track.delete":
-        return this.withIdempotency(
-          verb,
-          params,
-          () => ({ track: this.mustStore().deleteTrack(this.param(params, "id")) }) satisfies TrackDeleteResult,
-        );
-      case "track.export": {
-        const doc = exportTrack(this.requireTrack(params));
-        return { package: doc, text: serializePackage(doc) } satisfies TrackExportResult;
-      }
-      case "track.import":
-        return this.withIdempotency(verb, params, () => {
-          const res = importTrack(this.mustStore(), params.package, this.importOptions(params));
-          return { track: res.row, outcome: res.outcome } satisfies TrackImportResult;
         });
       case "packages.importLocalConfig":
         return this.withIdempotency(verb, params, () => this.rpcImportLocalConfig(params));
@@ -6164,7 +6135,6 @@ export class HiveDaemon {
       mailBatches: store.listMailBatches(),
       views: store.listBeeViewRows().map((row) => ({ ...row, bee: includeOperatorLocalHomes ? operatorLocalBee(row.bee) : mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
       templates: store.listTemplates(),
-      tracks: store.listTracks(),
       tells: store.listTells(),
       reactions: store.listReactions(),
       questions: store.listQuestions(),
@@ -7426,7 +7396,7 @@ export class HiveDaemon {
   }
 
   // -------------------------------------------------------------------------
-  // WP6a — templates, tracks, packages (spec 06 §1.4.1)
+  // WP6a — templates, packages (spec 06 §1.4.1)
   // -------------------------------------------------------------------------
 
   private scopeParam(params: Record<string, unknown>): Scope | undefined {
@@ -7458,14 +7428,6 @@ export class HiveDaemon {
     return template;
   }
 
-  private requireTrack(params: Record<string, unknown>) {
-    const store = this.mustStore();
-    const id = this.param(params, "id");
-    const track = store.getTrack(id);
-    if (!track) throw new RpcError("track_not_found", `track not found: ${id}`);
-    return track;
-  }
-
   private rpcTemplateList(params: Record<string, unknown>): TemplateListResult {
     const scope = this.scopeParam(params);
     return { templates: this.mustStore().listTemplates(scope ? { scope } : {}) };
@@ -7479,21 +7441,6 @@ export class HiveDaemon {
       defaultSource: "api",
     });
     return { template: res.template, outcome: res.outcome };
-  }
-
-  private rpcTrackList(params: Record<string, unknown>): TrackListResult {
-    const scope = this.scopeParam(params);
-    return { tracks: this.mustStore().listTracks(scope ? { scope } : {}) };
-  }
-
-  private rpcTrackPut(params: Record<string, unknown>): TrackPutResult {
-    const store = this.mustStore();
-    const res = store.putTrack({
-      id: typeof params.id === "string" && params.id.length > 0 ? params.id : undefined,
-      fields: params.fields,
-      defaultSource: "api",
-    });
-    return { track: res.track, outcome: res.outcome };
   }
 
   /**

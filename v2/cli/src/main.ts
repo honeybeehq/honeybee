@@ -119,12 +119,6 @@ import {
   type TemplateImportResult,
   type TemplateListResult,
   type TemplatePutResult,
-  type TrackDeleteResult,
-  type TrackExportResult,
-  type TrackGetResult,
-  type TrackImportResult,
-  type TrackListResult,
-  type TrackPutResult,
   type ViewResult,
   type WatchFrame,
 } from "../../daemon/src/protocol.ts";
@@ -3410,7 +3404,7 @@ async function cmdWatch(ctx: CliContext, parsed: Parsed): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
-// templates + tracks + packages (WP6a)
+// templates + packages (WP6a)
 // ---------------------------------------------------------------------------
 
 interface RegistryRowLike {
@@ -3696,95 +3690,6 @@ async function cmdTemplate(ctx: CliContext, parsed: Parsed): Promise<number> {
   }
 }
 
-async function cmdTrack(ctx: CliContext, parsed: Parsed): Promise<number> {
-  const sub = parsed.positional[1] ?? "list";
-  const scope = parsed.flags.get("--scope") as string | undefined;
-  switch (sub) {
-    case "list":
-    case "ls": {
-      const { result, stale } = await readPath(
-        ctx,
-        (c) => c.request<TrackListResult>("track.list", scope ? { scope } : {}),
-        (store) => ({ tracks: store.listTracks().filter((t) => scope == null || t.scope === scope) }),
-      );
-      const lines = result.tracks.map((t) => registryLine(stale ? "stale: " : "", t, `steps=${t.steps.length}`));
-      emit(ctx, lines.length > 0 ? lines : [`${stale ? "stale: " : ""}${dim("no tracks")}`], result, stale);
-      return 0;
-    }
-    case "get":
-    case "show": {
-      const needle = parsed.positional[2];
-      if (!needle) throw new Error("usage: hive track get <id|name>");
-      const { result, stale } = await readPath(
-        ctx,
-        async (c) => {
-          const { tracks } = await c.request<TrackListResult>("track.list");
-          return c.request<TrackGetResult>("track.get", { id: resolveRegistryRow(tracks, needle, "track").id });
-        },
-        (store) => ({ track: resolveRegistryRow(store.listTracks(), needle, "track") }),
-      );
-      emit(ctx, [JSON.stringify(result.track, null, 2)], result, stale);
-      return 0;
-    }
-    case "put": {
-      const file = parsed.flags.get("--file") as string | undefined;
-      if (!file) throw new Error("usage: hive track put --file fields.json [--id id]");
-      const result = await withClient(ctx, (c) =>
-        c.request<TrackPutResult>("track.put", {
-          fields: JSON.parse(readFileSync(resolve(file), "utf8")),
-          id: parsed.flags.get("--id") as string | undefined,
-        }),
-      );
-      emit(ctx, [confirm("ok", result.outcome, `track ${result.track.id} (${result.track.name})`)], result, false);
-      return 0;
-    }
-    case "delete":
-    case "rm": {
-      const needle = parsed.positional[2];
-      if (!needle) throw new Error("usage: hive track delete <id|name>");
-      const result = await withClient(ctx, async (c) => {
-        const { tracks } = await c.request<TrackListResult>("track.list");
-        return c.request<TrackDeleteResult>("track.delete", { id: resolveRegistryRow(tracks, needle, "track").id });
-      });
-      emit(ctx, [confirm("ok", "deleted", `track ${result.track.id} (${result.track.name})`)], result, false);
-      return 0;
-    }
-    case "export": {
-      const needle = parsed.positional[2];
-      if (!needle) throw new Error("usage: hive track export <id|name> [--out file.json]");
-      const result = await withClient(ctx, async (c) => {
-        const { tracks } = await c.request<TrackListResult>("track.list");
-        return c.request<TrackExportResult>("track.export", { id: resolveRegistryRow(tracks, needle, "track").id });
-      });
-      const out = parsed.flags.get("--out") as string | undefined;
-      if (out) {
-        writeFileSync(resolve(out), result.text);
-        emit(ctx, [`exported track package to ${resolve(out)}`], result, false);
-      } else {
-        ctx.io.out(result.text.trimEnd());
-      }
-      return 0;
-    }
-    case "import": {
-      const file = parsed.flags.get("--file") as string | undefined ?? parsed.positional[2];
-      if (!file) throw new Error("usage: hive track import <package.json> [--scope s] [--source label]");
-      const path = resolve(file);
-      const result = await withClient(ctx, (c) =>
-        c.request<TrackImportResult>("track.import", {
-          package: JSON.parse(readFileSync(path, "utf8")),
-          source: (parsed.flags.get("--source") as string | undefined) ?? path,
-          scope,
-          label: path,
-        }),
-      );
-      emit(ctx, [confirm("ok", result.outcome, `track ${result.track.id} (${result.track.name}) from ${path}`)], result, false);
-      return 0;
-    }
-    default:
-      throw new Error("usage: hive track <list|get|put|delete|export|import>");
-  }
-}
-
 async function cmdPackages(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   switch (sub) {
@@ -3801,7 +3706,6 @@ async function cmdPackages(ctx: CliContext, parsed: Parsed): Promise<number> {
       const lines = [
         `imported local config from ${result.dir}`,
         ...result.templates.map((t) => `  template ${t.name}: ${t.outcome} (${t.id})`),
-        ...result.tracks.map((t) => `  track ${t.name}: ${t.outcome} (${t.id})`),
         ...result.skipped.map((s) => `  skipped ${s.path}: ${s.reason}`),
       ];
       emit(ctx, lines, result, false);
@@ -5058,8 +4962,6 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdWatch(ctx, parsed);
       case "template":
         return await cmdTemplate(ctx, parsed);
-      case "track":
-        return await cmdTrack(ctx, parsed);
       case "packages":
         return await cmdPackages(ctx, parsed);
       case "freeze":

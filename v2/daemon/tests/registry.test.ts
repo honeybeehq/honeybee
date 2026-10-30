@@ -1,7 +1,7 @@
 /**
- * WP6a integration tier — template/track/package RPC verbs over the real
+ * WP6a integration tier — template/package RPC verbs over the real
  * socket, and the watch stream carrying registry audit rows so apiaryd can
- * materialize templates/tracks exactly like bees (spec 06 §1.4.1, §2).
+ * materialize templates exactly like bees (spec 06 §1.4.1, §2).
  * SAFETY: temp dirs only; no agents are spawned in this file.
  */
 import { test } from "node:test";
@@ -15,9 +15,6 @@ import type {
   TemplateImportResult,
   TemplateListResult,
   TemplatePutResult,
-  TrackImportResult,
-  TrackListResult,
-  TrackPutResult,
   ImportLocalConfigResult,
   WatchFrame,
 } from "../src/protocol.ts";
@@ -33,7 +30,7 @@ const templateFields = {
   tags: ["git"],
 };
 
-test("reg.1: template/track verb round-trips — put/get/list/export/import/delete, typed refusals", async () => {
+test("reg.1: template verb round-trips — put/get/list/export/import/delete, typed refusals; track verbs are gone", async () => {
   const { dir, cleanup } = makeDaemonDir();
   let daemon: DaemonHandle | null = null;
   try {
@@ -70,24 +67,12 @@ test("reg.1: template/track verb round-trips — put/get/list/export/import/dele
     });
     assert.equal(reimported.outcome, "unchanged", "same package twice = one row");
 
-    // Tracks: same surface.
-    const tput = await c.request<TrackPutResult>("track.put", {
-      fields: { name: "ship", steps: [{ id: "s1", name: "Build", templateId: put.template.id }] },
-    });
-    assert.equal(tput.outcome, "created");
-    const tlist = await c.request<TrackListResult>("track.list");
-    assert.equal(tlist.tracks.length, 1);
-    const timp = await c.request<TrackImportResult>("track.import", {
-      package: { kind: "hive.track", formatVersion: 1, name: "ship-2", steps: [] },
-      source: "x.json",
-      scope: "repo",
-    });
-    assert.equal(timp.track.scope, "repo");
-    assert.equal(timp.track.source, "package:x.json");
+    for (const verb of ["track.list", "track.get", "track.put", "track.delete", "track.export", "track.import"]) {
+      await assert.rejects(c.request(verb as never, { id: "nope", fields: { name: "ship" } }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && err.message === `unknown verb: ${verb}`, verb);
+    }
 
     // Typed refusals from the closed list.
     await assert.rejects(c.request("template.get", { id: "nope" }), (err: unknown) => err instanceof RpcError && err.code === "template_not_found");
-    await assert.rejects(c.request("track.delete", { id: "nope" }), (err: unknown) => err instanceof RpcError && err.code === "track_not_found");
     await assert.rejects(
       c.request("template.put", { id: "other-id", fields: templateFields }),
       (err: unknown) => err instanceof RpcError && err.code === "name_conflict",
@@ -112,7 +97,7 @@ test("reg.1: template/track verb round-trips — put/get/list/export/import/dele
   }
 });
 
-test("reg.2: snapshot carries mirror-shaped template/track rows; watch deltas stream registry audit rows seq-ordered", async () => {
+test("reg.2: snapshot carries mirror-shaped template rows and no tracks; watch deltas stream registry audit rows seq-ordered", async () => {
   const { dir, cleanup } = makeDaemonDir({ tickMs: 40 });
   let daemon: DaemonHandle | null = null;
   try {
@@ -132,20 +117,20 @@ test("reg.2: snapshot carries mirror-shaped template/track rows; watch deltas st
     };
     const snap = await watcher.request<SnapshotResult>("watch");
     cursor = snap.seq;
-    // The snapshot IS the mirror: bees + templates + tracks at one seq.
+    // The snapshot IS the mirror: bees + templates at one seq.
     assert.equal(snap.templates.length, 1);
     assert.equal(snap.templates[0]?.name, "commit");
-    assert.deepEqual(snap.tracks, []);
+    assert.equal("tracks" in snap, false);
     assert.ok(Object.keys(snap.templates[0] as object).includes("source"));
 
     // Mutations after the snapshot arrive as audit-row deltas.
     const put2 = await writer.request<TemplatePutResult>("template.put", { fields: { ...templateFields, effort: "high" } });
-    const tput = await writer.request<TrackPutResult>("track.put", { fields: { name: "ship" } });
-    await writer.request("track.delete", { id: tput.track.id });
-    await waitFor(() => events.filter((e) => e.kind.startsWith("template.") || e.kind.startsWith("track.")).length >= 3, "registry deltas", 8000);
+    const deleted = await writer.request<TemplatePutResult>("template.put", { fields: { ...templateFields, name: "throwaway" } });
+    await writer.request("template.delete", { id: deleted.template.id });
+    await waitFor(() => events.filter((e) => e.kind.startsWith("template.")).length >= 3, "registry deltas", 8000);
     assert.equal(chainBroken, false, "seq chain stays contiguous");
     const regEvents = events.filter((e) => e.kind.startsWith("template.") || e.kind.startsWith("track."));
-    assert.deepEqual(regEvents.map((e) => e.kind), ["template.put", "track.put", "track.deleted"]);
+    assert.deepEqual(regEvents.map((e) => e.kind), ["template.put", "template.put", "template.deleted"]);
     const puttedTemplate = regEvents[0]?.payload.template as { id: string; effort: string };
     assert.equal(puttedTemplate.id, put2.template.id);
     assert.equal(puttedTemplate.effort, "high", "delta payload carries the full mirror row");
@@ -170,12 +155,12 @@ test("reg.3: packages.importLocalConfig over RPC — explicit dir, idempotent, r
     // A fake ~/.hive layout inside the temp daemon dir.
     const hiveDir = join(dir, "fake-hive");
     mkdirSync(join(hiveDir, "templates"), { recursive: true });
-    mkdirSync(join(hiveDir, "tracks", "definitions"), { recursive: true });
     writeFileSync(
       join(hiveDir, "templates", "commit.json"),
       JSON.stringify({ name: "commit", bee: "codex-auto", prompt: "Commit.", cwd: "caller" }),
     );
     writeFileSync(join(hiveDir, "templates", "bad.json"), "{broken");
+    mkdirSync(join(hiveDir, "tracks", "definitions"), { recursive: true });
     writeFileSync(
       join(hiveDir, "tracks", "definitions", "demo.json"),
       JSON.stringify({ schemaVersion: 2, name: "demo", version: 1, items: [{ id: "n1", name: "One", type: "action" }] }),
@@ -185,11 +170,10 @@ test("reg.3: packages.importLocalConfig over RPC — explicit dir, idempotent, r
     const c = await daemon.client();
     const r1 = await c.request<ImportLocalConfigResult>("packages.importLocalConfig", { dir: hiveDir });
     assert.deepEqual(r1.templates.map((t) => [t.name, t.outcome]), [["commit", "created"]]);
-    assert.deepEqual(r1.tracks.map((t) => [t.name, t.outcome]), [["demo", "created"]]);
+    assert.equal("tracks" in r1, false, "legacy track definitions are no longer imported");
     assert.equal(r1.skipped.length, 1);
     const r2 = await c.request<ImportLocalConfigResult>("packages.importLocalConfig", { dir: hiveDir });
     assert.ok(r2.templates.every((t) => t.outcome === "unchanged"));
-    assert.ok(r2.tracks.every((t) => t.outcome === "unchanged"));
     const list = await c.request<TemplateListResult>("template.list");
     assert.equal(list.templates[0]?.source, "local-config");
     c.close();

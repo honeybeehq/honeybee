@@ -1032,7 +1032,7 @@ export interface BeeView extends Partial<HumanOutputFacts> {
 }
 
 // ---------------------------------------------------------------------------
-// Templates + tracks — hive concepts (spec 06 §1.4.1 ownership table).
+// Templates — hive concepts (spec 06 §1.4.1 ownership table).
 // "Rows are truth, files are packages": these tables are the registry; the
 // package format in packages.ts is the portable artifact.
 // ---------------------------------------------------------------------------
@@ -1087,34 +1087,6 @@ export interface TemplateRow {
   updatedAt: number;
 }
 
-export const TRACK_STEP_STATUSES = ["pending", "running", "done", "skipped"] as const;
-export type TrackStepStatus = (typeof TRACK_STEP_STATUSES)[number];
-
-/** One ordered step of a track: references a template by stable id, or is free-form. */
-export interface TrackStep {
-  id: string;
-  name: string;
-  /** Free-form step kind (old system node type: action|orchestrate|review|ask|deploy); default `action`. */
-  kind: string;
-  /** Stable template id this step spawns from; null = free-form. Not validated at import (loosely coupled). */
-  templateId: string | null;
-  instruction: string | null;
-  note: string | null;
-  status: TrackStepStatus;
-}
-
-export interface TrackRow {
-  id: string;
-  name: string;
-  scope: Scope;
-  source: RowSource;
-  description: string | null;
-  steps: TrackStep[];
-  tags: string[];
-  createdAt: number;
-  updatedAt: number;
-}
-
 /** Deterministic full-store snapshot (audit excluded); comparison target for replay. */
 export interface StateDump {
   tells?: BeeTellRow[];
@@ -1133,7 +1105,6 @@ export interface StateDump {
   mailbox: MessageRow[];
   commands: CommandRow[];
   templates: TemplateRow[];
-  tracks: TrackRow[];
   /** v6 */
   questions: QuestionRow[];
   seals: SealRow[];
@@ -1749,12 +1720,6 @@ export class SchemaVersionError extends CoreError {
 export class TemplateNotFoundError extends CoreError {
   constructor(id: string) {
     super(`template not found: ${id}`);
-  }
-}
-
-export class TrackNotFoundError extends CoreError {
-  constructor(id: string) {
-    super(`track not found: ${id}`);
   }
 }
 

@@ -1,0 +1,160 @@
+{
+  "step": "H0",
+  "date": "2026-10-30",
+  "honeybeeBase": "36173c79",
+  "apiaryMainChecked": "7afdee6a89",
+  "surfacesRemoved": {
+    "rpcVerbs": [
+      "track.list",
+      "track.get",
+      "track.put",
+      "track.delete",
+      "track.export",
+      "track.import"
+    ],
+    "rpcErrorCode": "track_not_found",
+    "cliV2": [
+      "hive track <list|get|put|delete|export|import>",
+      "tracks half of hive packages import-local"
+    ],
+    "cliLegacy": [
+      "hive track <define|attach|status|\u2026>",
+      "hive spawn --track/--track-version/--track-prompt",
+      "hive x --track",
+      "track completions"
+    ],
+    "snapshotFields": [
+      "snapshot.tracks",
+      "watch snapshot tracks",
+      "dumpState.tracks",
+      "LocalConfigImportReport.tracks"
+    ],
+    "auditKindsRetired": [
+      "track.put",
+      "track.deleted"
+    ],
+    "schema": "CREATE TABLE tracks removed from the DDL for new stores; existing stores keep the table untouched at SCHEMA_VERSION 51; DROP scheduled for the SCHEMA_VERSION 52 release (DEFERRED.md)",
+    "filesDeleted": [
+      "src/track.ts",
+      "src/commands/track.ts",
+      "tests/track.test.ts"
+    ]
+  },
+  "grepCensus": {
+    "before_code_lines_matching": 746,
+    "after_code_lines_matching": 67,
+    "after_breakdown": "every remaining hit is prose using the word track (tracking/on track), the sandboxTmp.track() method, git --track, or the new tests asserting absence"
+  },
+  "apiaryMain": {
+    "readsSnapshotTracks": false,
+    "foldsTrackAuditKinds": false,
+    "residual": "hive_tracks table definition still declared in tables.ts, wire.ts, projection.ts, sqliteLabelTables.ts and a vendored mirror.ts copy; nothing feeds it (consumer.ts only maps hive_templates). Dropping it is Apiary's A0 follow-up; re-vendoring mirror.ts will fail tables.test.ts until hive_tracks goes.",
+    "protocol": "PROTOCOL stays v2/2; Apiary accepts v2/1 or v2/2 exactly, so no bump"
+  },
+  "productionCopy": {
+    "before": {
+      "bytes": 1154269184,
+      "schemaVersion": "51",
+      "tracksTablePresent": true,
+      "trackRows": 5,
+      "auditRows": 2340925,
+      "retiredAuditRows": 5,
+      "bees": 5013
+    },
+    "openMs": 2,
+    "replayMs": 5003,
+    "auditRowsRead": 2340925,
+    "registryRowsReplayed": 12,
+    "retiredKindsReplayedAsNoop": 5,
+    "trackKindsInLog": [
+      "track.put"
+    ],
+    "everyTrackKindRetired": true,
+    "dumpHasTracksKey": false,
+    "replayHasTracksKey": false,
+    "replayTemplatesEqualDump": true,
+    "after": {
+      "schemaVersion": "51",
+      "tracksTablePresent": true,
+      "trackRows": 5,
+      "templates": 2
+    }
+  },
+  "checks": {
+    "npm run check": "pass",
+    "npm run v2:check": "pass",
+    "npm run build": "pass",
+    "npm run release:test": "pass (16/16)",
+    "v2:test (core)": {
+      "pass": 619,
+      "fail": 1,
+      "failing": [
+        "SQL unknown count agrees with decoder for outer and fallback shape boundaries without normalization"
+      ],
+      "classification": "pre-existing: fails identically on pristine HEAD 36173c79"
+    },
+    "v2:daemon": {
+      "failingInFullRun": [
+        "cell-retention.6: idle Cells lose build output and keep everything else; eviction moves kept files aside and revive brings them back"
+      ],
+      "classification": "cell-retention.6 passes 7/7 when the file runs alone in this tree and on pristine; concurrency flake under the full run, unrelated to tracks"
+    },
+    "v2:driver (adapters + hsr)": "pass",
+    "v2:driver2 (cell + tmux)": {
+      "failing": [
+        "child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure and truncation before capture",
+        "fresh tmux retries a transient unavailable capture through its retained socket and pane",
+        "legacy tmux binds derived single-pane proof to the stored pid once",
+        "private stdout capture releases only bounded successful bytes and suppresses both ordinary streams",
+        "real runner masks overlapping synthetic values in both streams (sandbox=false)",
+        "real runner mid-value cancel masks or drops both stream tails (sandbox=false)",
+        "real runner mid-value exit7 masks or drops both stream tails (sandbox=false)",
+        "real runner mid-value normal masks or drops both stream tails (sandbox=false)",
+        "real runner mid-value signal masks or drops both stream tails (sandbox=false)",
+        "real runner mid-value supervisor-kill masks or drops both stream tails (sandbox=false)",
+        "real runner mid-value timeout masks or drops both stream tails (sandbox=false)",
+        "secret runner lease kills child and grandchild on cancel-frozen (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on deadline (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on kill (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on normal (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on stop (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on supervisor-kill (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on supervisor-only-kill (detached=false, sandbox=false)",
+        "supervisor preserves command exit codes and fragmented unicode configuration",
+        "unavailable containment refuses before sending configuration or executing argv"
+      ],
+      "classification": "environmental: secret_execution_containment_unavailable / tmux proof inside this Cell sandbox; pristine fails the same files"
+    },
+    "targeted": "v2/daemon/tests/registry.test.ts 4/4, v2/cli/tests/registry-cli.test.ts 5/5, v2/core/tests/packages.test.ts + mirror.test.ts 18/18, tests/parse.test.ts 7/7",
+    "legacy npm test (clean env)": {
+      "failing": [
+        ".test-dist/tests/cli-helpers.unit.test.js",
+        ".test-dist/tests/hsr-default-policy.test.js",
+        ".test-dist/tests/hsr-promote.test.js",
+        "a recorded real executable replaced by a symlink cannot silently move the pin",
+        "aliases to the recorded executable cannot migrate changed bytes",
+        "bees sidebar toggle is quiet for tmux hotkeys",
+        "external Apiary current reconciles history and restores its exact link on failure",
+        "external Apiary current reconciles history and rolls back to an installed history build",
+        "foreground helpers discover the persisted pin without inherited service environment",
+        "fresh verified activation executes installed current v2 CLI with scoped data directory",
+        "hive-x preserves cmdX validation errors",
+        "hive-x with no args reports the same usage as hive x",
+        "only an explicit different HIVE_NODE_PATH permits installer migration",
+        "pin persists resolved executable identity and refuses version or byte drift",
+        "rollback checks store schema 44 before changing current or history",
+        "rollback from an external current retains it for a second rollback back",
+        "status query follows a live endpoint record to a relocated socket and ignores a dead one",
+        "the dedicated source entry and __hsr-run fallback both remain executable under tsx",
+        "x rejects swarm flags with a helpful hint"
+      ],
+      "classification": "pre-existing: the identical 19 tests fail on pristine HEAD 36173c79 with the same clean environment (frozen-node routing to a missing .test-dist v2 artifact, HIVE_NODE_PATH identity probe, deploy rollback fixtures)"
+    },
+    "legacy npm test (cell env)": "120 failures, all from running inside a Cell (brokered verbs, HIVE_V2_DATA_DIR deploy refusal); not used for classification"
+  },
+  "cliProbe": {
+    "hive v2 track list": "unknown command: track (exit 1)",
+    "legacy hive track list": "Unknown command: track (exit 1)"
+  },
+  "rollback": "git revert of the H0 commits; no data was deleted (tracks rows and track.* audit rows remain in every store), so the old release reads them back unchanged"
+}

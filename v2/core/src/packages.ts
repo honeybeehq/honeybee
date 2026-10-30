@@ -1,13 +1,13 @@
 /**
  * Package format — "rows are truth, files are packages" (spec 06 §1.4.1).
  *
- * A template or track exports to / imports from a stable, human-editable JSON
+ * A template exports to / imports from a stable, human-editable JSON
  * document with a `kind` + `formatVersion` header. Both directions are
  * deterministic: `serializePackage(exportTemplate(row))` is byte-stable, and
  * import is idempotent (same package twice = one row, updated — or left alone
  * when nothing changed). Import records the row's `source`.
  *
- * Local config files (`~/.hive/templates`, `~/.hive/tracks/definitions`) are a
+ * Local config files (`~/.hive/templates`) are a
  * first-class local package source: `importLocalConfig(store, dir)` reads
  * today's on-disk layout, converts each file to a package and imports it with
  * source `local-config`. Manual invocation only in v1 — see
@@ -18,12 +18,11 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join } from "node:path";
 import type { CoreStore, PutOutcome } from "./store.ts";
-import { PackageError, type RowSource, type Scope, type TemplateRow, type TrackRow, type TrackStep } from "./types.ts";
-import { isScope, normalizeTemplate, normalizeTrack } from "./registry.ts";
+import { PackageError, type RowSource, type Scope, type TemplateRow } from "./types.ts";
+import { isScope, normalizeTemplate } from "./registry.ts";
 
 export const PACKAGE_FORMAT_VERSION = 1 as const;
 export const TEMPLATE_PACKAGE_KIND = "hive.template" as const;
-export const TRACK_PACKAGE_KIND = "hive.track" as const;
 
 /** The portable template document. Key order below IS the serialized order. */
 export interface TemplatePackage {
@@ -50,19 +49,7 @@ export interface TemplatePackage {
   tags: string[];
 }
 
-/** The portable track document. */
-export interface TrackPackage {
-  kind: typeof TRACK_PACKAGE_KIND;
-  formatVersion: typeof PACKAGE_FORMAT_VERSION;
-  id: string | null;
-  name: string;
-  scope: Scope;
-  description: string | null;
-  tags: string[];
-  steps: TrackStep[];
-}
-
-export type Package = TemplatePackage | TrackPackage;
+export type Package = TemplatePackage;
 
 export interface ImportOptions {
   /** Recorded on the row. Default `package:rpc`. */
@@ -104,27 +91,6 @@ export function exportTemplate(row: TemplateRow): TemplatePackage {
     account: row.account,
     yolo: row.yolo,
     tags: [...row.tags],
-  };
-}
-
-export function exportTrack(row: TrackRow): TrackPackage {
-  return {
-    kind: TRACK_PACKAGE_KIND,
-    formatVersion: PACKAGE_FORMAT_VERSION,
-    id: row.id,
-    name: row.name,
-    scope: row.scope,
-    description: row.description,
-    tags: [...row.tags],
-    steps: row.steps.map((s) => ({
-      id: s.id,
-      name: s.name,
-      kind: s.kind,
-      templateId: s.templateId,
-      instruction: s.instruction,
-      note: s.note,
-      status: s.status,
-    })),
   };
 }
 
@@ -203,24 +169,6 @@ export function parseTemplatePackage(input: unknown, label?: string): TemplatePa
   };
 }
 
-/** Validate a track package (object or json text) into its canonical document. */
-export function parseTrackPackage(input: unknown, label?: string): TrackPackage {
-  const doc = parseDoc(input, label);
-  checkHeader(doc, TRACK_PACKAGE_KIND, label);
-  const { source: _source, ...rest } = doc;
-  const fields = normalizeTrack(rest, { label });
-  return {
-    kind: TRACK_PACKAGE_KIND,
-    formatVersion: PACKAGE_FORMAT_VERSION,
-    id: optionalId(doc, label),
-    name: fields.name,
-    scope: fields.scope,
-    description: fields.description,
-    tags: fields.tags,
-    steps: fields.steps,
-  };
-}
-
 // ---------------------------------------------------------------------------
 // import
 // ---------------------------------------------------------------------------
@@ -236,19 +184,8 @@ export function importTemplate(store: CoreStore, input: unknown, opts: ImportOpt
   return { row: res.template, outcome: res.outcome };
 }
 
-export function importTrack(store: CoreStore, input: unknown, opts: ImportOptions = {}): ImportResult<TrackRow> {
-  const doc = parseTrackPackage(input, opts.label);
-  const { kind: _k, formatVersion: _v, id, ...fields } = doc;
-  const res = store.putTrack({
-    id: id ?? undefined,
-    fields: { ...fields, scope: opts.scope ?? fields.scope, source: opts.source ?? "package:rpc" },
-    label: opts.label,
-  });
-  return { row: res.track, outcome: res.outcome };
-}
-
 // ---------------------------------------------------------------------------
-// local config source (~/.hive/templates, ~/.hive/tracks/definitions)
+// local config source (~/.hive/templates)
 // ---------------------------------------------------------------------------
 
 export interface LocalConfigImportEntry {
@@ -266,7 +203,6 @@ export interface LocalConfigSkip {
 export interface LocalConfigImportReport {
   dir: string;
   templates: LocalConfigImportEntry[];
-  tracks: LocalConfigImportEntry[];
   skipped: LocalConfigSkip[];
 }
 
@@ -313,83 +249,14 @@ export function legacyTemplateToPackage(value: unknown, label?: string): Templat
 }
 
 /**
- * Convert an OLD-layout track definition (`~/.hive/tracks/definitions/<name>.json`,
- * schemaVersion 2) to a v1 track package. Nodes become ordered steps
- * (kind = old node type); branches are flattened in order; review
- * approved/denied sub-nodes follow their review node; ask/deploy nodes carry
- * their question/target as the instruction; `when`/`note` fold into `note`.
- * The old `version` counter is dropped (rows carry updatedAt + audit seq).
- */
-export function legacyTrackToPackage(value: unknown, label?: string): TrackPackage {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    throw new PackageError(`${label ? `${label}: ` : ""}legacy track must be an object`);
-  }
-  const o = value as Record<string, unknown>;
-  const steps: Record<string, unknown>[] = [];
-  const visit = (item: unknown): void => {
-    if (item === null || typeof item !== "object") return;
-    const node = item as Record<string, unknown>;
-    if (Array.isArray(node.branch)) {
-      for (const lane of node.branch as unknown[]) if (Array.isArray(lane)) for (const n of lane) visit(n);
-      return;
-    }
-    const type = typeof node.type === "string" ? node.type : "action";
-    let instruction: unknown = null;
-    switch (type) {
-      case "ask":
-        instruction = node.question ?? null;
-        break;
-      case "deploy": {
-        const t = node.target as Record<string, unknown> | undefined;
-        instruction = t ? `deploy: ${t.kind === "text" ? String(t.description ?? "") : t.kind === "named" ? String(t.name ?? "") : `${String(t.kind ?? "")} ${String(t.label ?? "")}`.trim()}` : null;
-        break;
-      }
-      default:
-        instruction = node.instruction ?? null;
-    }
-    const noteParts = [typeof node.note === "string" ? node.note : null, typeof node.when === "string" ? `when: ${node.when}` : null].filter(
-      (x): x is string => x !== null,
-    );
-    steps.push({
-      id: node.id,
-      name: node.name,
-      kind: type,
-      templateId: null,
-      instruction,
-      note: noteParts.length > 0 ? noteParts.join(" | ") : null,
-      status: "pending",
-    });
-    if (type === "review") {
-      for (const n of Array.isArray(node.approved) ? (node.approved as unknown[]) : []) visit(n);
-      for (const n of Array.isArray(node.denied) ? (node.denied as unknown[]) : []) visit(n);
-    }
-  };
-  for (const item of Array.isArray(o.items) ? (o.items as unknown[]) : []) visit(item);
-  return parseTrackPackage(
-    {
-      kind: TRACK_PACKAGE_KIND,
-      formatVersion: PACKAGE_FORMAT_VERSION,
-      name: o.name,
-      scope: "personal",
-      description: o.description ?? null,
-      tags: [],
-      steps,
-    },
-    label,
-  );
-}
-
-/**
  * Import today's `~/.hive`-style local config as a package source. Reads
- * `<dir>/templates/*.json` and `<dir>/tracks/definitions/*.json` (top-level
- * files only — `versions/` snapshots and `attachments/` are per-bee state, not
- * definitions). Per-file failures are reported as `skipped`, never thrown.
+ * `<dir>/templates/*.json` (top-level files only). Per-file failures are reported as `skipped`, never thrown.
  * Rows are recorded with source `local-config`. Read-only on the filesystem.
  */
 export function importLocalConfig(store: CoreStore, dir: string, opts: LocalConfigImportOptions = {}): LocalConfigImportReport {
   const scope: Scope = opts.scope ?? "personal";
   if (!isScope(scope)) throw new PackageError(`scope must be personal|team|repo`);
-  const report: LocalConfigImportReport = { dir, templates: [], tracks: [], skipped: [] };
+  const report: LocalConfigImportReport = { dir, templates: [], skipped: [] };
   const source: RowSource = "local-config";
 
   const templatesDir = join(dir, "templates");
@@ -403,16 +270,6 @@ export function importLocalConfig(store: CoreStore, dir: string, opts: LocalConf
     }
   }
 
-  const tracksDir = join(dir, "tracks", "definitions");
-  for (const path of listJsonFiles(tracksDir, report)) {
-    try {
-      const doc = legacyTrackToPackage(JSON.parse(readFileSync(path, "utf8")), path);
-      const res = importTrack(store, doc, { source, scope, label: path });
-      report.tracks.push({ path, name: res.row.name, id: res.row.id, outcome: res.outcome });
-    } catch (err) {
-      report.skipped.push({ path, reason: err instanceof Error ? err.message : String(err) });
-    }
-  }
   return report;
 }
 

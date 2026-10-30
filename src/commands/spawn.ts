@@ -71,7 +71,6 @@ import { readHsrMetaStrict, removeConfirmedStoppedHsrRunDir } from "../hsr/runDi
 import { stopHsrIncarnationByPid } from "../hsr/substrate.js";
 import { transactionalRetire } from "../kill.js";
 import { SpawnAfterForkError, type SpawnedRuntimeHandle } from "../spawnRuntime.js";
-import { attachTrack, loadTrack } from "../track.js";
 
 async function persistSpawnTiming(timer: SpawnTimer, label: string): Promise<void> {
   const report = timer.report(label);
@@ -92,9 +91,6 @@ export async function cmdSpawn(parsed: Parsed): Promise<SessionRecord> {
   const count = resolveSpawnCount(parsed);
   if (flag(parsed, "comb") !== undefined && (frameName || count > 1)) {
     throw new Error("hive spawn --comb attaches exactly one bee; --frame and --count > 1 are not supported");
-  }
-  if (flag(parsed, "track") !== undefined && (frameName || count > 1)) {
-    throw new Error("hive spawn --track attaches exactly one bee; --frame and --count > 1 are not supported");
   }
   let records: SessionRecord[];
   if (frameName) {
@@ -1357,7 +1353,6 @@ export async function spawnSingleBee(
   const requested = parsed.args[0];
   if (!requested) throw new Error("Usage: hive spawn <bee> [--template <name>] [--name name] [--cwd dir] [--account <name|auto>] [--env KEY=VALUE] [--kit-profile <p>] [--contract completion=seal[,sealType=<t>][,taskId=<id>][,attempt=<n>]] [--preamble <text>|--no-preamble] [--sandbox-write <abs-dir>]... [--yolo] [-- <bee-args...>]  (e.g. --account auto -- -m gpt-5.5; --sandbox-write adds Cell-sandbox write roots, repeatable)");
   const combAttachment = await prepareSpawnCombAttachment(parsed);
-  const trackAttachment = await prepareSpawnTrackAttachment(parsed);
   // Opt-in spawn timing (HIVE_DEBUG_SPAWN). No-op object when disabled.
   const timer = startSpawnTimer(requested);
   // Local overlays: <tool>-<account> shorthand, thin profiles (config
@@ -1595,65 +1590,8 @@ export async function spawnSingleBee(
     await confirmSpawnReady(parsed, record);
     timer.mark("ready");
   }
-  if (trackAttachment) {
-    try {
-      await withRunnableSessionAdmission(record, async (lifecycle, admitted) => {
-        record = admitted;
-        await attachTrack(trackAttachment.name, {
-          bee: record.name,
-          ...(record.id ? { beeId: record.id } : {}),
-          ...(trackAttachment.version !== undefined ? { version: trackAttachment.version } : {}),
-          deliver: async (postscript) => {
-            const prompt = truthy(flag(parsed, "track-prompt")) && briefText
-              ? `${briefText}\n\n${postscript}`
-              : postscript;
-            record = (await deliverSessionTextInAdmission(lifecycle, record, prompt, {
-              deliver: deliverPromptText,
-            })).record;
-            await writeHiveState(record, "working");
-          },
-        });
-      }, { operation: "spawn track attach" });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      await appendLedger({
-        type: "track.attach_failed",
-        track: trackAttachment.name,
-        ...(trackAttachment.version !== undefined ? { version: trackAttachment.version } : {}),
-        bee: record.name,
-        beeId: record.id,
-        error: message,
-        at: new Date().toISOString(),
-      });
-      const warning = `spawned ${record.name}, but track ${trackAttachment.name} failed to attach: ${message}; bee remains live and untracked`;
-      if (isPretty()) console.error(actionLine("warn", "track", [warning]));
-      else console.error(`warn\ttrack.attach_failed\t${record.name}\t${trackAttachment.name}\t${message}`);
-    }
-  }
   await persistSpawnTiming(timer, record.name);
   return record;
-}
-
-type PreparedSpawnTrackAttachment = {
-  name: string;
-  version?: number;
-};
-
-async function prepareSpawnTrackAttachment(parsed: Parsed): Promise<PreparedSpawnTrackAttachment | undefined> {
-  const rawName = flag(parsed, "track");
-  if (rawName === undefined) return undefined;
-  if (typeof rawName !== "string" || rawName.trim().length === 0) {
-    throw new Error("--track requires a track name");
-  }
-  const rawVersion = flag(parsed, "track-version");
-  const version = rawVersion === undefined
-    ? undefined
-    : typeof rawVersion === "string" && Number.isSafeInteger(Number(rawVersion)) && Number(rawVersion) >= 1
-      ? Number(rawVersion)
-      : (() => { throw new Error("--track-version must be an integer >= 1"); })();
-  const track = await loadTrack(rawName, version);
-  if (!track) throw new Error(version ? `track not found: ${rawName}@${version}` : `track not found: ${rawName}`);
-  return { name: rawName, ...(version !== undefined ? { version } : {}) };
 }
 
 type PreparedSpawnCombAttachment = {
