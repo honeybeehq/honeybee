@@ -1,0 +1,9 @@
+{
+  "step": "H6",
+  "date": "2026-10-30",
+  "status": "plan only; nothing built (separate project per the architecture)",
+  "document": "docs/design/bee-durability-plan.md",
+  "gate": "kill an executor mid-task; revive elsewhere with context",
+  "steps": ["H6a resume bundle (durability.resumeBundle.enabled)", "H6b bee.import (durability.import.enabled)", "H6c transcript re-seed fallback (same flag)", "Apiary half: mirror pointers, drive bee.import and bee.fence from the Home"],
+  "reuses": ["H4 segments and object store", "H5 bundle code, secrets scan and epoch fence", "H3 WIP restore", "bee.swapAccount thread copy", "handoff context artifact and seed row", "native resume via resolveSpawnSpec"]
+}
