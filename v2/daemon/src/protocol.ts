@@ -72,6 +72,8 @@ import type {
   TranscriptSegmentCursorRow,
   TranscriptSegmentObjectRow,
   ChampionHomeObjectRow,
+  BeeResumeBundleRow,
+  BeeEpochRow,
   RuntimeRow,
   TemplatePackage,
   TranscriptSegmentRow,
@@ -207,6 +209,7 @@ export const DAEMON_CAPABILITIES = [
   "node.capacity.v1",
   "transcript.segments.v1",
   "champions.v1",
+  "bee.resume_bundle.v1",
   /**
    * v23 (2026-09-13): durable session handoff — `bee.handoff` /
    * `bee.handoff.get`, the `handoff` mirror-row key, the `beeHandoffs` +
@@ -544,6 +547,7 @@ export const RPC_VERBS = [
   "champion.archive",
   "champion.delete",
   "champion.fence",
+  "bee.resumeBundles",
   // watch
   "watch",
   "snapshot",
@@ -1743,6 +1747,23 @@ export interface TranscriptSegmentsParams {
   limit?: number;
 }
 
+export interface BeeResumeBundlesResult {
+  beeId: string;
+  epoch: BeeEpochRow;
+  bundles: BeeResumeBundleRow[];
+}
+
+export interface ResumeBundlesStatus {
+  enabled: boolean;
+  keyFile: string;
+  keyPresent: boolean;
+  store: string;
+  bees: number;
+  bundles: number;
+  bytes: number;
+  objects: { objects: number; bytes: number; orphansSwept: number; measuredAt: number } | null;
+}
+
 export interface ChampionListResult {
   champions: MirrorChampionRow[];
 }
@@ -1794,6 +1815,7 @@ export interface DeployInfoResult {
   localSecurity?: {peerCredentials: import("./peerCredentials.ts").PeerCredentialStatus; localTrust: "off" | "ready" | "registration_key_unavailable"};
   identity?: BuildIdentity;
   transcriptSegments?: TranscriptSegmentsStatus;
+  resumeBundles?: ResumeBundlesStatus;
   protocol: string;
   /** v16 (additive): the capability tags this daemon offers (also in the hello). */
   capabilities: readonly DaemonCapability[];

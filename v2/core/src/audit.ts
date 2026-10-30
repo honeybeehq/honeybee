@@ -534,6 +534,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         break;
       }
       case "champion_home_object.put":
+      case "bee_resume_bundle.put":
+      case "bee.epoch":
         break;
       case "question.asked": {
         const question = p.question as QuestionRow;

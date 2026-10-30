@@ -160,8 +160,10 @@
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name).
  * v54 — H5 Champions: `champions` (identity, home, template binding, current incarnation) and
- * `champion_home_objects` (home bundles in the object store); additive CREATE TABLE IF NOT EXISTS. */
-export const SCHEMA_VERSION = 54;
+ * `champion_home_objects` (home bundles in the object store); additive CREATE TABLE IF NOT EXISTS.
+ * v55 — H6a bee durability: `bee_resume_bundles` (encrypted harness-state bundles in the object store)
+ * and `bee_epochs` (import fence); additive CREATE TABLE IF NOT EXISTS. */
+export const SCHEMA_VERSION = 55;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -1082,6 +1084,32 @@ CREATE TABLE IF NOT EXISTS champion_home_objects (
   epoch       INTEGER NOT NULL DEFAULT 0
 ) STRICT;
 CREATE INDEX IF NOT EXISTS champion_home_objects_champion ON champion_home_objects(champion_id, closed_at);
+`;
+
+export const BEE_RESUME_BUNDLES_SQL = `
+CREATE TABLE IF NOT EXISTS bee_resume_bundles (
+  id                  TEXT PRIMARY KEY,
+  bee_id              TEXT NOT NULL,
+  generation          INTEGER NOT NULL,
+  harness             TEXT NOT NULL,
+  provider_session_id TEXT NOT NULL,
+  cwd                 TEXT NOT NULL,
+  state_key           TEXT,
+  scope               TEXT,
+  ref                 TEXT NOT NULL,
+  digest              TEXT NOT NULL,
+  bytes               INTEGER NOT NULL,
+  size                INTEGER NOT NULL,
+  files               INTEGER NOT NULL,
+  closed_at           INTEGER NOT NULL,
+  epoch               INTEGER NOT NULL DEFAULT 0
+) STRICT;
+CREATE INDEX IF NOT EXISTS bee_resume_bundles_bee ON bee_resume_bundles(bee_id, closed_at);
+CREATE TABLE IF NOT EXISTS bee_epochs (
+  bee_id    TEXT PRIMARY KEY,
+  epoch     INTEGER NOT NULL DEFAULT 0,
+  fenced_at INTEGER
+) STRICT;
 `;
 
 export const TRANSCRIPT_SEGMENT_OBJECTS_SQL = `

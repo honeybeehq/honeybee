@@ -18,7 +18,7 @@ import {
   patchNamingConfig,
   publicNamingConfig,
   validateNodeStatePaths,
-  transcriptSegmentsOf, championsOf } from "../src/config.ts";
+  transcriptSegmentsOf, championsOf, durabilityOf } from "../src/config.ts";
 
 function withDir(fn: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), "hb-v2-cfg-"));
@@ -549,4 +549,18 @@ test("config: champions resolves defaults, paths and invalid values", () => {
   assert.deepEqual([bad.enabled, bad.homeSync, bad.homesDir], [false, false, "/data/champions"]);
   assert.equal(bad.warnings.length, 3);
   assert.equal(championsOf("nope", "/data").warnings.length, 1);
+});
+
+test("config: durability resolves defaults and invalid values", () => {
+  const defaults = durabilityOf(undefined, "/data");
+  assert.deepEqual(defaults, { resumeBundle: { enabled: false, keyFile: "/data/keys/resume-bundle.key", keep: 5 }, import: { enabled: false }, warnings: [] });
+  const on = durabilityOf({ resumeBundle: { enabled: true, keyFile: "~/ws.key", keep: 3 }, import: { enabled: true } }, "/data");
+  assert.equal(on.resumeBundle.enabled, true);
+  assert.equal(on.resumeBundle.keep, 3);
+  assert.ok(on.resumeBundle.keyFile.endsWith("/ws.key") && !on.resumeBundle.keyFile.startsWith("~"));
+  assert.equal(on.import.enabled, true);
+  const bad = durabilityOf({ resumeBundle: { enabled: "yes", keyFile: "relative.key", keep: 0 }, import: "nope" }, "/data");
+  assert.deepEqual(bad.resumeBundle, defaults.resumeBundle);
+  assert.equal(bad.import.enabled, false);
+  assert.equal(bad.warnings.length, 4);
 });

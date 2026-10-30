@@ -25,7 +25,7 @@ test("runtime identity migration is additive, once-only and ignores malformed co
     (store as unknown as {db: DatabaseSync}).db.prepare("UPDATE runtimes SET process_identity=NULL WHERE bee_id=?").run(bee.id);
     store.close();
     const db = new DatabaseSync(h.path);
-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "54");
+    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "55");
     assert.equal(db.prepare("SELECT value FROM meta WHERE key='runtime_process_identity_schema'").get()!.value, "1");
     installRuntimeProcessIdentity(db); installRuntimeProcessIdentity(db);
     assert.equal(db.prepare("PRAGMA table_info(runtimes)").all().filter(r => r.name === "process_identity").length, 1);

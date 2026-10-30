@@ -1,6 +1,6 @@
 # Bee durability (H6) — plan
 
-Status: proposal, 2026-10-30. Separate project per the Apiary target architecture; nothing here is built. Gate: **kill an executor mid-task; revive the bee elsewhere with its context.**
+Status: approved plan, revised 2026-10-30 after design review; built in three sealed steps (H6a, H6b, H6c). Gate: **kill an executor mid-task; revive the bee elsewhere with its context**, claimed with a real claude run (import under a different account home and a different cwd than the source) and one codex run, recorded in `.proof/h-track/h6/`.
 
 ## What exists
 
@@ -15,11 +15,20 @@ Status: proposal, 2026-10-30. Separate project per the Apiary target architectur
 
 What is missing: the harness-native state (the provider's own session file) does not leave the executor, a bee cannot be re-created on another executor under its own id, and nothing decides between resuming natively and re-seeding.
 
+## Decisions from the design review
+
+1. **The session file is the secret, and the object store is the trust boundary.** A claude `projects/<key>/<id>.jsonl` holds every pasted token, tool output and the harness's startup env dump; the H5 name scan cannot see that. Resume bundles are therefore **encrypted at rest**: `chacha20-poly1305` from `node:crypto`, a per-bundle key derived with HKDF-SHA256 from a 32-byte workspace key and a random 16-byte salt, random 96-bit nonce, the bee id as associated data; the object is `hbrb1 | salt | nonce | ciphertext | tag` and the ref is the sha256 of the object. The workspace key lives in a 0600 file named by `durability.resumeBundle.keyFile`, which the Home provisions onto every executor of the workspace and hands to an importing executor with the import; the key is never in the store, never in a bundle, never logged. Every executor of the workspace may read the store (the architecture's write-scoped credentials already imply that), so encryption is what keeps a bundle from a dead executor private to the workspace. Chosen over a point-to-point transfer because the transfer would need a new transport and a live old executor, which is exactly what the gate takes away; the cost is one key file per executor.
+2. **Account scope.** A bundle records the scope of the account it was taken under (claude: `organizationUuid`, else `accountUuid`, from the home's `.claude.json`; codex: the account id in `auth.json`; otherwise null). `bee.import` resumes natively only when the resolved account's scope equals the bundle's; a mismatch falls straight to H6c and records `resumed: reseeded, reason: account_mismatch`.
+3. **Provider session ids.** A restore always takes the fork path the account swap already uses: the bundle's session id becomes the bee's `forkSeed` (`--resume <seed> --fork-session` for claude, `thread/fork` for codex), so the imported bee gets a fresh provider id and a still-running old executor never shares one. Plain `--resume` is never used across executors.
+4. **Racing a live old executor.** `bee.import` carries the epoch of the bee's last bundle and takes `epoch + 1`; `bee_epochs` fences per bee exactly as `champions.epoch` does; the Home calls `bee.fence {beeId, epoch}` on the old executor (stopping a live runtime) before or right after the import, and an import whose epoch is older than the row's is `champion_fenced` (the same closed code). Bundles written under an older epoch are never restored.
+5. **Per-harness state key.** The adapter hook is two functions: `resumeStatePaths(home, cwd, sessionId)` and `resumeStateKey(cwd)`. The bundle stores paths relative to the account home with the source key; the restore renames them into the importing cwd's key (`claudeProjectKey(newCwd)` for claude; codex rollouts are keyed by session id, not cwd, and keep their path).
+6. **Mail and questions on the dead executor; pointer growth.** `bee.import` creates an empty mailbox. Undelivered mail is the Home's to replay from its mirror with ordinary `send` after the import (same order, same senders); open questions cannot be re-asked by Honeybee and are reported in the import result as `lost: { questions }` from the descriptor so the Home withdraws them typed. Pointer rows are capped: `durability.resumeBundle.keep` (default 5) bundles per bee, older rows deleted on insert so the daily sweep reclaims their objects.
+
 ## Design
 
 ### H6a — resume bundle (flag `durability.resumeBundle.enabled`, default false)
 
-At every turn end and runtime exit, debounced per bee like the home sync, bundle the harness-native conversation state as one opaque zstd tar in the object store under `blobs/resume-bundles/<sha256>`:
+At every turn end and runtime exit, debounced per bee like the home sync, bundle the harness-native conversation state as one opaque, encrypted zstd tar in the object store under `blobs/resume-bundles/<sha256>` (decision 1):
 
 | harness | paths bundled (relative to the account home) |
 |---|---|
@@ -27,7 +36,7 @@ At every turn end and runtime exit, debounced per bee like the home sync, bundle
 | codex | the rollout file for the thread id under `.codex/sessions/` |
 | grok, muse, others | an adapter hook `resumeStatePaths(bee, providerSessionId)`; no hook, no bundle (the fallback covers them) |
 
-Opaque means Honeybee never parses the files; it copies them. The bundle is refused when the paths include credential material (the H5 secrets scan applies: `.claude/.credentials.json`, `.codex/auth.json` live beside the state and are never in the path list). Pointer rows: `bee_resume_bundles { id, bee_id, generation, harness, provider_session_id, cwd, ref, bytes, files, closed_at, epoch }` (schema v55, additive). Capability `bee.resume_bundle.v1`; informational audit `bee_resume_bundle.put` the Home mirrors as a pointer.
+Opaque means Honeybee never parses the files; it copies them. Credential files beside the state (`.claude/.credentials.json`, `.codex/auth.json`) are never in the path list, and the whole bundle is encrypted. Pointer rows: `bee_resume_bundles { id, bee_id, generation, harness, provider_session_id, cwd, state_key, scope, ref, bytes, size, files, closed_at, epoch }` (schema v55, additive) plus `bee_epochs { bee_id, epoch, fenced_at }`. Capability `bee.resume_bundle.v1`; informational audit `bee_resume_bundle.put` the Home mirrors as a pointer; `deployInfo.resumeBundles` reports the flag, the key file presence and the object count.
 
 Cost: a claude session file grows with the conversation (tens of MB after a long day); the walk, tar and compression run in the segment worker; an unchanged file set writes no row; the same debounce as homes (one per bee per minute, trailing coalesce). Sweep: unreferenced objects daily with the other object kinds; bee deletion cascades the pointer rows.
 
@@ -38,16 +47,17 @@ A new executor re-creates a bee it never had:
 ```
 bee.import {
   descriptor: { id, name, agent, args, env (minus the account home), tags, cwd | cell: { originRepo, sha, wipSha? }, providerSessionId, parentId, parentExternal, human_ref, issuing_namespace },
-  resume: { bundleRef, epoch } | null,
+  resume: { bundleRef, epoch, providerSessionId, stateKey, scope } | null,
   transcript: { segmentRefs: [...] } | null,
+  lost: { questions: number } | null,
   idempotencyKey
-} → { beeId, generation, commandId, resumed: "native" | "reseeded" | "fresh", epoch }
+} → { beeId, generation, commandId, resumed: "native" | "reseeded" | "fresh", reason: null | "account_mismatch" | "bundle_missing" | "no_hook" | "boot_failed", epoch }
 ```
 
 - The descriptor comes from the Home's mirror of the dead executor's rows; the bee keeps its id, handle and `human_ref` (issuing namespace stays the issuer's; the importing node records itself as the placement). Refusals, all before anything changes: `bee_exists`, `harness_mismatch` (agent not configured here), `bundle_missing`, `champion_fenced` for a stale epoch (the same epoch rule as H5: the import takes `epoch + 1`, the Home fences the old executor with `bee.fence`).
 - Account: `account: auto` for the harness on the importing node; a leased account that exists only on the dead executor is out of scope.
 - Cell: when the descriptor carries a Cell, the import re-provisions it from the origin at `sha` (origin must be reachable from the new node) and lays the H3 WIP back when `wipSha` is confirmed; otherwise `cwd` is a fresh checkout.
-- Native resume: the bundle is restored under the new account home keyed by the new cwd (claude keys projects by cwd), then generation N+1 starts exactly as a local revive does (`--resume <providerSessionId>`, codex `thread/resume`).
+- Native resume: the bundle is decrypted with the executor's key file and restored under the new account home, renamed into `resumeStateKey(newCwd)`; the bee row gets `forkSeed = providerSessionId` and no `providerSessionId`, so the first runtime forks the conversation into a fresh provider session (decision 3). Account scope must match the bundle's (decision 2), and the import epoch must not be older than the bee's known epoch (decision 4).
 
 ### H6c — transcript re-seed fallback (same flag as H6b)
 

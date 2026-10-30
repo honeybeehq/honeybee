@@ -1115,6 +1115,30 @@ export interface ChampionHomeObjectRow {
   epoch: number;
 }
 
+export interface BeeResumeBundleRow {
+  id: string;
+  beeId: string;
+  generation: number;
+  harness: string;
+  providerSessionId: string;
+  cwd: string;
+  stateKey: string | null;
+  scope: string | null;
+  ref: string;
+  digest: string;
+  bytes: number;
+  size: number;
+  files: number;
+  closedAt: number;
+  epoch: number;
+}
+
+export interface BeeEpochRow {
+  beeId: string;
+  epoch: number;
+  fencedAt: number | null;
+}
+
 /** Deterministic full-store snapshot (audit excluded); comparison target for replay. */
 export interface StateDump {
   tells?: BeeTellRow[];

@@ -336,6 +336,7 @@ export interface NodeConfigFile {
   bees?: { tmpRoot?: string | null; sandboxTmpBytes?: number | null };
   transcripts?: { segments?: TranscriptSegmentsConfig };
   champions?: ChampionsConfig;
+  durability?: DurabilityConfig;
 }
 
 export interface TranscriptSegmentsConfig {
@@ -425,6 +426,58 @@ export function championsOf(raw: unknown, dataDir: string): ResolvedChampions {
   return out;
 }
 
+export interface DurabilityConfig {
+  resumeBundle?: { enabled?: boolean; keyFile?: string; keep?: number };
+  import?: { enabled?: boolean };
+}
+
+export interface ResolvedDurability {
+  resumeBundle: { enabled: boolean; keyFile: string; keep: number };
+  import: { enabled: boolean };
+  warnings: string[];
+}
+
+export function durabilityOf(raw: unknown, dataDir: string): ResolvedDurability {
+  const out: ResolvedDurability = { resumeBundle: { enabled: false, keyFile: join(dataDir, "keys", "resume-bundle.key"), keep: 5 }, import: { enabled: false }, warnings: [] };
+  if (raw === undefined) return out;
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    out.warnings.push(`durability must be an object, got ${JSON.stringify(raw)}; using defaults`);
+    return out;
+  }
+  const d = raw as Record<string, unknown>;
+  const section = (key: "resumeBundle" | "import"): Record<string, unknown> | null => {
+    const value = d[key];
+    if (value === undefined) return null;
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      out.warnings.push(`durability.${key} must be an object, got ${JSON.stringify(value)}; using defaults`);
+      return null;
+    }
+    return value as Record<string, unknown>;
+  };
+  const rb = section("resumeBundle");
+  if (rb) {
+    const warn = (key: string, expected: string) => out.warnings.push(`durability.resumeBundle.${key} must be ${expected}, got ${JSON.stringify(rb[key])}; using the default`);
+    if (rb.enabled !== undefined) {
+      if (typeof rb.enabled === "boolean") out.resumeBundle.enabled = rb.enabled;
+      else warn("enabled", "a boolean");
+    }
+    if (rb.keyFile !== undefined) {
+      if (typeof rb.keyFile === "string" && (isAbsolute(rb.keyFile) || rb.keyFile.startsWith("~/"))) out.resumeBundle.keyFile = rb.keyFile.startsWith("~/") ? join(homedir(), rb.keyFile.slice(2)) : rb.keyFile;
+      else warn("keyFile", "an absolute path or a ~/ path");
+    }
+    if (rb.keep !== undefined) {
+      if (typeof rb.keep === "number" && Number.isInteger(rb.keep) && rb.keep >= 1 && rb.keep <= 100) out.resumeBundle.keep = rb.keep;
+      else warn("keep", "an integer from 1 to 100");
+    }
+  }
+  const im = section("import");
+  if (im && im.enabled !== undefined) {
+    if (typeof im.enabled === "boolean") out.import.enabled = im.enabled;
+    else out.warnings.push(`durability.import.enabled must be a boolean, got ${JSON.stringify(im.enabled)}; using the default`);
+  }
+  return out;
+}
+
 export interface ResolvedNodeConfig {
   dataDir: string;
   rpcLocalTrust: {requireObservationCaller: boolean; registrationKeyFile: string};
@@ -477,6 +530,7 @@ export interface ResolvedNodeConfig {
   beeTmpRootInvalid?: string;
   transcriptSegments: ResolvedTranscriptSegments;
   champions: ResolvedChampions;
+  durability: ResolvedDurability;
   beeSandboxTmpBytes?: number | null;
   beeSandboxTmpBytesInvalid?: string;
 }
@@ -1149,6 +1203,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     cellRetention: cells.retention,
     transcriptSegments: transcriptSegmentsOf(raw.transcripts, dataDir),
     champions: championsOf(raw.champions, dataDir),
+    durability: durabilityOf(raw.durability, dataDir),
     idleWindowMs: num(raw, "idleWindowMs", DEFAULTS.idleWindowMs),
     bootHangTimeoutMs,
     bootAllowanceMs,

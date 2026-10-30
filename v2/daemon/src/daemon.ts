@@ -163,6 +163,8 @@ import type { CellCaptureExecutor, FlagEvidenceLike, UsageEvidenceLike } from ".
 import { CellRetentionService } from "./cellRetention.ts";
 import { TranscriptSegmenter } from "./transcriptSegmenter.ts";
 import { ChampionHomeSync } from "./championHomes.ts";
+import { BeeResumeSync, accountHomeOf } from "./beeResumeSync.ts";
+import { writeResumeKey } from "./resumeBundles.ts";
 import { createDirectoryTranscriptObjectStore, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
 import { TRANSCRIPT_PROJECTION_VERSION } from "../../driver-tmux/src/transcript-projection.ts";
 import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
@@ -355,6 +357,7 @@ import {
   type ChampionArchiveResult,
   type ChampionDeleteResult,
   type ChampionFenceResult,
+  type BeeResumeBundlesResult,
   type TranscriptSegmentsStatus,
   type CellExecResult,
   type CellGcResult,
@@ -643,6 +646,7 @@ export interface HiveDaemonDeps {
   transcriptSweepDelayMs?: number;
   transcriptMaxWorkers?: number;
   championHomeMinIntervalMs?: number;
+  resumeBundleMinIntervalMs?: number;
   /** v31 tests: delay before the first automatic retention pass (default 5 min). */
   retentionInitialDelayMs?: number;
   /** P7 tests: free-space check cadence (default 60 s). */
@@ -1038,6 +1042,30 @@ export class HiveDaemon {
     for (const warning of this.cfg.transcriptSegments.warnings) this.log(`config.transcripts.invalid ${warning}`);
     for (const warning of this.cfg.champions.warnings) this.log(`config.champions.invalid ${warning}`);
     if (this.cfg.champions.enabled) this.log(`champions.enabled homes=${this.cfg.champions.homesDir} home_sync=${this.cfg.champions.homeSync} store=${this.cfg.transcriptSegments.storeDir}`);
+    for (const warning of this.cfg.durability.warnings) this.log(`config.durability.invalid ${warning}`);
+    if (this.cfg.durability.resumeBundle.enabled) {
+      const keyFile = this.cfg.durability.resumeBundle.keyFile;
+      if (!existsSync(keyFile)) {
+        try {
+          writeResumeKey(keyFile);
+          this.log(`durability.resume_bundle.key_created key_file=${keyFile}`);
+        } catch (err) {
+          this.log(`durability.resume_bundle.key_unavailable key_file=${keyFile} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`);
+        }
+      }
+      this.resumeSync = new BeeResumeSync({
+        store: () => this.mustStore(),
+        root: this.cfg.transcriptSegments.storeDir,
+        keyFile,
+        keep: this.cfg.durability.resumeBundle.keep,
+        now: () => Date.now(),
+        log: (op) => this.log(op),
+        accountHome: (bee) => accountHomeOf(this.mustStore(), bee),
+        harness: (bee) => this.cfg.agents[bee.agent]?.adapter ?? bee.agent,
+        ...(this.deps.resumeBundleMinIntervalMs !== undefined ? { minIntervalMs: this.deps.resumeBundleMinIntervalMs } : {}),
+      });
+      this.log(`durability.resume_bundle.enabled store=${this.cfg.transcriptSegments.storeDir} key_file=${keyFile} keep=${this.cfg.durability.resumeBundle.keep}`);
+    }
     if (this.cfg.champions.enabled && this.cfg.champions.homeSync) {
       this.championHomes = new ChampionHomeSync({
         store: () => this.mustStore(),
@@ -1103,6 +1131,7 @@ export class HiveDaemon {
         void this.segmenter?.requestCut(beeId, reason);
         this.pushCellWip(beeId, reason);
         this.syncChampionHome(beeId);
+        this.resumeSync?.requestSync(beeId);
       },
       blockedRuntimeStartBeeIds: () => this.prepareRuntimeStartCommands(),
       assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
@@ -1216,6 +1245,7 @@ export class HiveDaemon {
       await this.quotaRecovery?.stop();
       this.segmenter?.stop();
       this.championHomes?.stop();
+      this.resumeSync?.stop();
       await this.retention?.stop();
       this.titleGenerator?.close();
       this.titleGenerator = null;
@@ -2571,6 +2601,11 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcChampionDelete(params));
       case "champion.fence":
         return this.withIdempotency(verb, params, () => this.rpcChampionFence(params));
+      case "bee.resumeBundles": {
+        const beeId = this.requireBee(params);
+        const store = this.mustStore();
+        return { beeId, epoch: store.beeEpoch(beeId), bundles: store.listBeeResumeBundles(beeId, { limit: 100 }) } satisfies BeeResumeBundlesResult;
+      }
       case "deployInfo":
         return this.rpcDeployInfo();
       case "update.apiarySwap.status":
@@ -6129,6 +6164,7 @@ export class HiveDaemon {
 
   private lastObjectSweepAt: number | null = null;
   private championHomes: ChampionHomeSync | null = null;
+  private resumeSync: BeeResumeSync | null = null;
 
   private segmenterTick(): void {
     const now = Date.now();
@@ -6136,10 +6172,11 @@ export class HiveDaemon {
     if (!due) return;
     const segmenter = this.segmenter;
     if (segmenter && segmenter.backlog() > 0) return;
-    if (!segmenter && !this.championHomes) return;
+    if (!segmenter && !this.championHomes && !this.resumeSync) return;
     this.lastObjectSweepAt = now;
     if (segmenter) void segmenter.sweepOrphans().catch((err) => this.log(`transcripts.objects.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
     if (this.championHomes) void this.championHomes.sweepOrphans().catch((err) => this.log(`champion.home.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
+    if (this.resumeSync) void this.resumeSync.sweepOrphans().catch((err) => this.log(`bee.resume.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
   }
 
   private syncChampionHome(beeId: string): void {
@@ -6444,6 +6481,7 @@ export class HiveDaemon {
       cellDisk: this.retention?.diskStatus() ?? null,
       capacity: this.retention?.capacity(true) ?? null,
       transcriptSegments: this.transcriptSegmentsStatus(),
+      ...(this.resumeSync ? { resumeBundles: this.resumeSync.status() } : {}),
     };
   }
 

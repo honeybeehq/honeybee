@@ -7,6 +7,7 @@ import { TRANSCRIPT_PROJECTION_VERSION, type TranscriptProjector } from "../../d
 import { compressSegment, encodeProjectedSegment, scanLogLines, segmentDigest, type ProjectedLine, type ScannedLine } from "../../driver-tmux/src/transcript-segment-format.ts";
 import { TRANSCRIPT_OBJECT_DIR, createDirectoryTranscriptObjectStore } from "./transcriptObjectStore.ts";
 import { bundleChampionHome, type ChampionHomeBundle } from "./championHomes.ts";
+import { bundleResumeState, readResumeKey, rekeyRestoredState, restoreResumeState, type ResumeBundleOutcome, type ResumeState } from "./resumeBundles.ts";
 
 export type SegmentCursor = Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt">;
 export type CutSegment = Omit<TranscriptSegmentObjectRow, "id" | "ordinal">;
@@ -51,6 +52,36 @@ export interface HomeBundleRequest {
   storeRoot: string;
   maxFileBytes: number;
   includeSecrets: boolean;
+}
+
+export interface ResumeBundleRequest {
+  kind: "bundleResume";
+  state: ResumeState;
+  storeRoot: string;
+  keyFile: string;
+  beeId: string;
+}
+
+export interface ResumeBundleWorkerResult {
+  bundle: ResumeBundleOutcome | null;
+  error: string | null;
+}
+
+export interface ResumeRestoreRequest {
+  kind: "restoreResume";
+  storeRoot: string;
+  ref: string;
+  keyFile: string;
+  beeId: string;
+  destinationRoot: string;
+  harness: string;
+  fromKey: string | null;
+  toKey: string | null;
+}
+
+export interface ResumeRestoreWorkerResult {
+  ok: boolean;
+  error: string | null;
 }
 
 export interface HomeBundleResult {
@@ -228,7 +259,20 @@ export async function cutTranscript(request: TranscriptCutRequest): Promise<Tran
   return result;
 }
 
-if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bundleHome") {
+if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bundleResume") {
+  const request = workerData as ResumeBundleRequest;
+  Promise.resolve()
+    .then(() => bundleResumeState(request.state, request.storeRoot, readResumeKey(request.keyFile), request.beeId))
+    .then((bundle) => parentPort!.postMessage({ bundle, error: null } satisfies ResumeBundleWorkerResult))
+    .catch((error: unknown) => parentPort!.postMessage({ bundle: null, error: error instanceof Error ? error.message : String(error) } satisfies ResumeBundleWorkerResult));
+} else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "restoreResume") {
+  const request = workerData as ResumeRestoreRequest;
+  Promise.resolve()
+    .then(() => restoreResumeState(request.storeRoot, request.ref, readResumeKey(request.keyFile), request.beeId, request.destinationRoot))
+    .then(() => rekeyRestoredState(request.harness, request.destinationRoot, request.fromKey, request.toKey))
+    .then(() => parentPort!.postMessage({ ok: true, error: null } satisfies ResumeRestoreWorkerResult))
+    .catch((error: unknown) => parentPort!.postMessage({ ok: false, error: error instanceof Error ? error.message : String(error) } satisfies ResumeRestoreWorkerResult));
+} else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bundleHome") {
   const request = workerData as HomeBundleRequest;
   bundleChampionHome(request.home, request.storeRoot, { maxFileBytes: request.maxFileBytes, includeSecrets: request.includeSecrets })
     .then((result) => parentPort!.postMessage(result satisfies HomeBundleResult))

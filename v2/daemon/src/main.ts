@@ -72,12 +72,14 @@ export async function runDaemon(argv: string[]): Promise<number> {
   const pressureRetryMs = Number(process.env.HIVE_TEST_CELL_PRESSURE_RETRY_MS);
   const transcriptSweepDelayMs = Number(process.env.HIVE_TEST_TRANSCRIPT_SWEEP_DELAY_MS);
   const championHomeMinIntervalMs = Number(process.env.HIVE_TEST_CHAMPION_HOME_MIN_INTERVAL_MS);
+  const resumeBundleMinIntervalMs = Number(process.env.HIVE_TEST_RESUME_BUNDLE_MIN_INTERVAL_MS);
   const daemon = new HiveDaemon(cfg, {
     ...(Number.isFinite(retentionDelay) && retentionDelay >= 0 ? { retentionInitialDelayMs: retentionDelay } : {}),
     ...(Number.isFinite(diskCheckMs) && diskCheckMs > 0 ? { retentionDiskCheckMs: diskCheckMs } : {}),
     ...(Number.isFinite(pressureRetryMs) && pressureRetryMs > 0 ? { retentionPressureRetryMs: pressureRetryMs } : {}),
     ...(Number.isFinite(transcriptSweepDelayMs) && transcriptSweepDelayMs >= 0 ? { transcriptSweepDelayMs } : {}),
     ...(Number.isFinite(championHomeMinIntervalMs) && championHomeMinIntervalMs >= 0 ? { championHomeMinIntervalMs } : {}),
+    ...(Number.isFinite(resumeBundleMinIntervalMs) && resumeBundleMinIntervalMs >= 0 ? { resumeBundleMinIntervalMs } : {}),
     ...(Number.isFinite(volumeBytes) && volumeBytes > 0 ? { retentionStatfs: simulatedCellVolume(cfg.cellsRoot, volumeBytes) } : {}),
   });
   // Test daemons deliberately own disposable stub runtimes. Production omits

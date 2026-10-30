@@ -108,6 +108,8 @@ import {
   type TranscriptSegmentObjectRow,
   type ChampionRow,
   type ChampionHomeObjectRow,
+  type BeeResumeBundleRow,
+  type BeeEpochRow,
   type TranscriptSegmentCursorRow,
   TranscriptSegmentOrdinalError,
   HandoffInProgressError,
@@ -217,7 +219,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -771,6 +773,26 @@ function mapChampionHomeObject(r: Row): ChampionHomeObjectRow {
     size: Number(r.size),
     files: Number(r.files),
     skipped: Number(r.skipped),
+    closedAt: Number(r.closed_at),
+    epoch: Number(r.epoch ?? 0),
+  };
+}
+
+function mapBeeResumeBundle(r: Row): BeeResumeBundleRow {
+  return {
+    id: r.id as string,
+    beeId: r.bee_id as string,
+    generation: Number(r.generation),
+    harness: r.harness as string,
+    providerSessionId: r.provider_session_id as string,
+    cwd: r.cwd as string,
+    stateKey: (r.state_key as string | null) ?? null,
+    scope: (r.scope as string | null) ?? null,
+    ref: r.ref as string,
+    digest: r.digest as string,
+    bytes: Number(r.bytes),
+    size: Number(r.size),
+    files: Number(r.files),
     closedAt: Number(r.closed_at),
     epoch: Number(r.epoch ?? 0),
   };
@@ -2169,6 +2191,7 @@ export class CoreStore {
     this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
     this.db.exec(TRANSCRIPT_SEGMENT_OBJECTS_SQL);
     this.db.exec(CHAMPIONS_SQL);
+    this.db.exec(BEE_RESUME_BUNDLES_SQL);
     // v24: the action queue tables are additive (CREATE IF NOT EXISTS).
     this.db.exec(ACTIONS_TABLE_SQL);
     this.db.exec(THREAD_OPERATIONS_TABLE_SQL);
@@ -9719,6 +9742,64 @@ export class CoreStore {
 
   listChampionHomeObjects(championId: string, opts: { limit?: number } = {}): ChampionHomeObjectRow[] {
     return (this.stmt("SELECT * FROM champion_home_objects WHERE champion_id = ? ORDER BY closed_at DESC, id DESC LIMIT ?").all(championId, opts.limit ?? 100) as Row[]).map(mapChampionHomeObject);
+  }
+
+  putBeeResumeBundle(input: Omit<BeeResumeBundleRow, "id">, opts: { keep?: number } = {}): BeeResumeBundleRow {
+    return this.tx(() => {
+      if (!this.getBee(input.beeId)) throw new BeeNotFoundError(input.beeId);
+      const id = randomUUID();
+      this.stmt("INSERT INTO bee_resume_bundles(id, bee_id, generation, harness, provider_session_id, cwd, state_key, scope, ref, digest, bytes, size, files, closed_at, epoch) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, input.beeId, input.generation, input.harness, input.providerSessionId, input.cwd, input.stateKey, input.scope, input.ref, input.digest, input.bytes, input.size, input.files, input.closedAt, input.epoch);
+      const keep = Math.max(1, opts.keep ?? 5);
+      this.stmt("DELETE FROM bee_resume_bundles WHERE bee_id = ? AND id NOT IN (SELECT id FROM bee_resume_bundles WHERE bee_id = ? ORDER BY closed_at DESC, id DESC LIMIT ?)").run(input.beeId, input.beeId, keep);
+      const row = mapBeeResumeBundle(this.stmt("SELECT * FROM bee_resume_bundles WHERE id = ?").get(id) as Row);
+      this.audit("bee_resume_bundle.put", input.beeId, { bundle: row });
+      return row;
+    });
+  }
+
+  latestBeeResumeBundle(beeId: string): BeeResumeBundleRow | null {
+    const row = this.stmt("SELECT * FROM bee_resume_bundles WHERE bee_id = ? ORDER BY closed_at DESC, id DESC LIMIT 1").get(beeId) as Row | undefined;
+    return row ? mapBeeResumeBundle(row) : null;
+  }
+
+  listBeeResumeBundles(beeId: string, opts: { limit?: number } = {}): BeeResumeBundleRow[] {
+    return (this.stmt("SELECT * FROM bee_resume_bundles WHERE bee_id = ? ORDER BY closed_at DESC, id DESC LIMIT ?").all(beeId, opts.limit ?? 20) as Row[]).map(mapBeeResumeBundle);
+  }
+
+  listBeeResumeBundleRefs(): Set<string> {
+    return new Set((this.stmt("SELECT ref FROM bee_resume_bundles").all() as Row[]).map((r) => r.ref as string));
+  }
+
+  countBeeResumeBundles(): { bees: number; bundles: number; bytes: number } {
+    const row = this.stmt("SELECT COUNT(DISTINCT bee_id) AS bees, COUNT(*) AS bundles, COALESCE(SUM(bytes), 0) AS bytes FROM bee_resume_bundles").get() as Row;
+    return { bees: Number(row.bees), bundles: Number(row.bundles), bytes: Number(row.bytes) };
+  }
+
+  beeEpoch(beeId: string): BeeEpochRow {
+    const row = this.stmt("SELECT * FROM bee_epochs WHERE bee_id = ?").get(beeId) as Row | undefined;
+    return row ? { beeId, epoch: Number(row.epoch), fencedAt: row.fenced_at == null ? null : Number(row.fenced_at) } : { beeId, epoch: 0, fencedAt: null };
+  }
+
+  takeoverBee(beeId: string, handoverEpoch: number): BeeEpochRow {
+    return this.tx(() => {
+      const current = this.beeEpoch(beeId);
+      const epoch = Math.max(current.epoch, handoverEpoch + 1);
+      this.stmt("INSERT INTO bee_epochs(bee_id, epoch, fenced_at) VALUES(?, ?, NULL) ON CONFLICT(bee_id) DO UPDATE SET epoch = excluded.epoch, fenced_at = NULL").run(beeId, epoch);
+      this.audit("bee.epoch", beeId, { beeId, epoch, fencedAt: null });
+      return { beeId, epoch, fencedAt: null };
+    });
+  }
+
+  fenceBee(beeId: string, epoch: number): BeeEpochRow {
+    return this.tx(() => {
+      const current = this.beeEpoch(beeId);
+      const next = Math.max(current.epoch, epoch);
+      const at = this.now();
+      this.stmt("INSERT INTO bee_epochs(bee_id, epoch, fenced_at) VALUES(?, ?, ?) ON CONFLICT(bee_id) DO UPDATE SET epoch = excluded.epoch, fenced_at = excluded.fenced_at").run(beeId, next, at);
+      this.audit("bee.epoch", beeId, { beeId, epoch: next, fencedAt: at });
+      return { beeId, epoch: next, fencedAt: at };
+    });
   }
 
   listChampionHomeObjectRefs(): Set<string> {
