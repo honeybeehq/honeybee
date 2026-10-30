@@ -1874,6 +1874,7 @@ export interface DeployInfoResult {
   identity?: BuildIdentity;
   transcriptSegments?: TranscriptSegmentsStatus;
   resumeBundles?: ResumeBundlesStatus;
+  champions?: { enabled: boolean; homeSync: boolean; homes: { objects: number; bytes: number; orphansSwept: number; staleHomes: number; staleHomesSwept: number; measuredAt: number } | null };
   protocol: string;
   /** v16 (additive): the capability tags this daemon offers (also in the hello). */
   capabilities: readonly DaemonCapability[];

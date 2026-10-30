@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { rm, readdir, stat } from "node:fs/promises";
+import { basename, dirname } from "node:path";
 import { join, relative } from "node:path";
 import { pipeline } from "node:stream/promises";
 import * as zlib from "node:zlib";
@@ -22,7 +24,17 @@ export interface ChampionHomeSyncDeps {
   minIntervalMs?: number;
   includeSecrets?: boolean;
   orphanGraceMs?: number;
+  staleHomeRetentionMs?: number;
   workerUrl?: URL;
+}
+
+export interface ChampionHomesStatus {
+  objects: number;
+  bytes: number;
+  orphansSwept: number;
+  staleHomes: number;
+  staleHomesSwept: number;
+  measuredAt: number;
 }
 
 export interface ChampionHomeBundle {
@@ -165,6 +177,7 @@ export class ChampionHomeSync {
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly rerun = new Set<string>();
   private stopping = false;
+  private lastStatus: ChampionHomesStatus | null = null;
 
   constructor(deps: ChampionHomeSyncDeps) {
     this.deps = deps;
@@ -263,18 +276,59 @@ export class ChampionHomeSync {
     }
   }
 
-  async sweepOrphans(): Promise<{ objects: number; bytes: number; swept: number }> {
+  status(): ChampionHomesStatus | null {
+    return this.lastStatus ? { ...this.lastStatus } : null;
+  }
+
+  async sweepStaleHomes(): Promise<{ staleHomes: number; swept: number }> {
+    const retention = this.deps.staleHomeRetentionMs ?? 7 * 24 * 60 * 60_000;
+    const now = this.deps.now();
+    let staleHomes = 0;
+    let swept = 0;
+    for (const champion of this.deps.store().listChampions()) {
+      const parent = dirname(champion.home);
+      const prefix = `${basename(champion.home)}.stale-`;
+      let entries: string[];
+      try {
+        entries = await readdir(parent);
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (!entry.startsWith(prefix)) continue;
+        const path = join(parent, entry);
+        let info;
+        try {
+          info = await stat(path);
+        } catch {
+          continue;
+        }
+        if (!info.isDirectory()) continue;
+        if (now - info.mtimeMs > retention) {
+          await rm(path, { recursive: true, force: true });
+          swept += 1;
+          this.deps.log(`champion.home.stale_swept id=${champion.id} path=${path}`);
+        } else staleHomes += 1;
+      }
+    }
+    return { staleHomes, swept };
+  }
+
+  async sweepOrphans(): Promise<ChampionHomesStatus> {
+    const now = this.deps.now();
     const result = await this.runWorker<TranscriptSweepResult>({
       kind: "sweep",
       storeRoot: this.deps.root,
       dir: CHAMPION_HOME_OBJECT_DIR,
       referenced: [...this.deps.store().listChampionHomeObjectRefs()],
       graceMs: this.deps.orphanGraceMs ?? 60 * 60_000,
-      now: this.deps.now(),
+      now,
     } satisfies TranscriptSweepRequest);
     if (result.error != null) throw new Error(result.error);
-    this.deps.log(`champion.home.objects root=${this.deps.root} objects=${result.objects} bytes=${result.bytes} orphans_swept=${result.swept}`);
-    return { objects: result.objects, bytes: result.bytes, swept: result.swept };
+    const stale = await this.sweepStaleHomes();
+    this.lastStatus = { objects: result.objects, bytes: result.bytes, orphansSwept: result.swept, staleHomes: stale.staleHomes, staleHomesSwept: stale.swept, measuredAt: now };
+    this.deps.log(`champion.home.objects root=${this.deps.root} objects=${result.objects} bytes=${result.bytes} orphans_swept=${result.swept} stale_homes=${stale.staleHomes} stale_homes_swept=${stale.swept}`);
+    return this.lastStatus;
   }
 
   describe(ref: string): Pick<ChampionHomeObjectRow, "ref" | "bytes" | "size" | "files" | "skipped"> | null {

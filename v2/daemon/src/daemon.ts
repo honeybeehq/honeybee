@@ -654,6 +654,7 @@ export interface HiveDaemonDeps {
   transcriptSweepDelayMs?: number;
   transcriptMaxWorkers?: number;
   championHomeMinIntervalMs?: number;
+  championStaleHomeRetentionMs?: number;
   resumeBundleMinIntervalMs?: number;
   /** v31 tests: delay before the first automatic retention pass (default 5 min). */
   retentionInitialDelayMs?: number;
@@ -1086,6 +1087,7 @@ export class HiveDaemon {
         maxFileBytes: this.cfg.cellRetention.wipMaxFileBytes,
         includeSecrets: this.cfg.champions.homeSyncIncludeSecrets,
         ...(this.deps.championHomeMinIntervalMs !== undefined ? { minIntervalMs: this.deps.championHomeMinIntervalMs } : {}),
+        ...(this.deps.championStaleHomeRetentionMs !== undefined ? { staleHomeRetentionMs: this.deps.championStaleHomeRetentionMs } : {}),
       });
     }
     if (this.cfg.transcriptSegments.enabled) {
@@ -6383,9 +6385,10 @@ export class HiveDaemon {
     else if (resumed !== "native" && reason === null) reason = "no_transcript";
     else if (resumed === "fresh" && reason === "no_bundle" && (this.importTranscriptRefs(params).length > 0 || this.importTranscriptTurns(params).length > 0)) reason = "no_transcript";
     const cmd = store.enqueueCommand("spawn", created.id, {}, { idempotencyKey: key });
-    if (resumed === "native") {
+    if (resumed === "native" && resume) {
       this.pendingImports.set(created.id, { params, reason });
-      store.recordRpcResult(`bee.import.pending:${created.id}`, "bee.import", null, { beeId: created.id, transcript: params.transcript ?? null, lost: params.lost ?? null, reason });
+      const markerKey = `bee.import.pending:${created.id}:${resume.providerSessionId}`;
+      if (!store.lookupRpcResult(markerKey)) store.recordRpcResult(markerKey, "bee.import", null, { beeId: created.id, forkSeed: resume.providerSessionId, transcript: params.transcript ?? null, lost: params.lost ?? null, reason });
     }
     const result: BeeImportResult = { beeId: created.id, handle: created.handle, humanRef: created.human_ref, commandId: cmd.id, seedMessageId, resumed, reason: resumed === "native" ? null : reason, epoch, account: account?.id ?? null, lost, unfenced, wipRestore };
     store.recordRpcResult(key, "bee.import", cmd.id, result);
@@ -6393,12 +6396,13 @@ export class HiveDaemon {
     return result;
   }
 
-  private pendingImportOf(beeId: string): { params: Record<string, unknown>; reason: BeeImportReason | null } | null {
+  private pendingImportOf(beeId: string, forkSeed: string): { params: Record<string, unknown>; reason: BeeImportReason | null } | null {
     const cached = this.pendingImports.get(beeId);
     if (cached) return cached;
-    const marker = this.mustStore().lookupRpcResult(`bee.import.pending:${beeId}`);
+    const marker = this.mustStore().lookupRpcResult(`bee.import.pending:${beeId}:${forkSeed}`);
     if (!marker || marker.verb !== "bee.import") return null;
-    const payload = marker.result as { transcript?: unknown; lost?: unknown; reason?: BeeImportReason | null };
+    const payload = marker.result as { forkSeed?: unknown; transcript?: unknown; lost?: unknown; reason?: BeeImportReason | null };
+    if (payload.forkSeed !== forkSeed) return null;
     return { params: { transcript: payload.transcript ?? null, lost: payload.lost ?? null }, reason: payload.reason ?? null };
   }
 
@@ -6409,7 +6413,7 @@ export class HiveDaemon {
       this.pendingImports.delete(beeId);
       return;
     }
-    const pending = this.pendingImportOf(beeId);
+    const pending = this.pendingImportOf(beeId, bee.forkSeed);
     if (!pending) return;
     this.pendingImports.delete(beeId);
     store.clearForkSeed(beeId);
@@ -6850,6 +6854,7 @@ export class HiveDaemon {
       capacity: this.retention?.capacity(true) ?? null,
       transcriptSegments: this.transcriptSegmentsStatus(),
       ...(this.resumeSync ? { resumeBundles: this.resumeSync.status() } : {}),
+      ...(this.cfg.champions.enabled ? { champions: { enabled: true, homeSync: this.cfg.champions.homeSync, homes: this.championHomes?.status() ?? null } } : {}),
     };
   }
 

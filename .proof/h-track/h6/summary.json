@@ -129,5 +129,18 @@
       "v2:daemon": "569/569 alone (a run parallel to the core suite and build flaked account-config-rpc once; it passes 1/1 alone)"
     },
     "credentials": "no live-credential reads"
+  },
+  "final": {
+    "1_pendingMarker": "fixed without deleting ledger rows: the marker is keyed bee.import.pending:<beeId>:<forkSeed> and carries the seed; pendingImportOf requires the bee's current fork seed to match, so a consumed seed (first boot) or a later import with its own seed never re-seeds from a stale marker; a duplicate key is not re-recorded",
+    "2_staleHomes": "ChampionHomeSync.sweepStaleHomes removes <home>.stale-* directories older than 7 days (test hook HIVE_TEST_CHAMPION_STALE_HOME_RETENTION_MS) in the daily pass and counts the younger ones; deployInfo.champions {enabled, homeSync, homes: {objects, bytes, orphansSwept, staleHomes, staleHomesSwept, measuredAt}}; champion-stale-homes.test.ts 1/1",
+    "3_docs": "champions contract: a handover stops a live incarnation mid-turn; set-aside homes swept after 7 days and counted; durability contract: marker scoping",
+    "tests": {
+      "champion-stale-homes": "1/1",
+      "champions": "2/2",
+      "resume-import": "1/1",
+      "resume-reseed": "1/1",
+      "v2:daemon": "569/569",
+      "typecheck+build": "green"
+    }
   }
 }
