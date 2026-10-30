@@ -89,8 +89,8 @@ export interface WipPushWorkerResult {
 
 export interface WipRefSweepWorkerRequest {
   kind: "sweepWipRefs";
-  node: string;
-  origins: Array<{ originRepo: string; liveCellIds: string[] }>;
+  scopes: string[];
+  origins: Array<{ originRepo: string; liveCellIds: string[]; ownedCellIds: string[] }>;
 }
 
 export interface WipRefSweepWorkerResult {
@@ -114,7 +114,7 @@ if (request.kind === "pushWip") {
   }
 } else if (request.kind === "sweepWipRefs") {
   try {
-    const swept = request.origins.map((origin) => ({ originRepo: origin.originRepo, ...sweepWipRefs(origin.originRepo, request.node, new Set(origin.liveCellIds)) })).filter((o) => o.dropped.length > 0 || o.migrated.length > 0);
+    const swept = request.origins.map((origin) => ({ originRepo: origin.originRepo, ...sweepWipRefs(origin.originRepo, request.scopes, new Set(origin.liveCellIds), new Set(origin.ownedCellIds)) })).filter((o) => o.dropped.length > 0 || o.migrated.length > 0);
     parentPort?.postMessage({ swept, error: null } satisfies WipRefSweepWorkerResult);
   } catch (err) {
     parentPort?.postMessage({ swept: [], error: errorText(err) } satisfies WipRefSweepWorkerResult);

@@ -1,7 +1,9 @@
 {
   "home": "synthetic: MEMORY.md (12 KB), memory/ with 2000 one-fact files, notes/ with 50 x 64 KiB, one 70 MiB huge.bin",
   "files": 2051,
-  "skipped": ["huge.bin"],
+  "skipped": [
+    "huge.bin"
+  ],
   "tarBytes": 7475200,
   "compressedBytes": 34801,
   "bundleMs": 2403,
@@ -10,5 +12,12 @@
   "restoreMs": 1030,
   "restoredMemoryFiles": 2000,
   "restoredHasOversizeFile": false,
-  "how": "tar -cf - streamed through zlib zstd level 3 into a temp file, sha256 of the compressed bytes as the ref, rename into blobs/champion-homes/<ref>; restore is zstd decompress into tar -xf -; both off the event loop (child process + streams)"
+  "how": "tar -cf - streamed through zlib zstd level 3 into a temp file, sha256 of the compressed bytes as the ref, rename into blobs/champion-homes/<ref>; restore is zstd decompress into tar -xf -; both off the event loop (child process + streams)",
+  "roundTwo": {
+    "bundleMs": 779,
+    "rebundleMs": 748,
+    "restoreMs": 742,
+    "compressedBytes": 34975,
+    "note": "same synthetic home; the walk now runs twice (before and after the tar) for the torn check and inside the transcript segment worker; the first-round 2.4 s was a cold cache"
+  }
 }

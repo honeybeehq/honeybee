@@ -119,6 +119,7 @@ export interface CellRetentionDeps {
   transcriptObjects?: () => NodeCapacity["transcriptObjects"];
   wipBoxDir?: (cell: CellRow) => string;
   wipNode?: () => string;
+  wipNodeScopes?: () => string[];
   /** Times of retention evictions since `sinceTs`, to restore the daily cap's window after a restart. */
   recentEvictionTimes?: (sinceTs: number) => number[];
   /** When the daily cap was last audited, so a restart does not audit it twice in one window. */
@@ -1205,18 +1206,19 @@ export class CellRetentionService {
   }
 
   async sweepWipRefs(): Promise<Array<{ originRepo: string; dropped: string[]; migrated: string[] }>> {
-    const origins = new Map<string, string[]>();
+    const origins = new Map<string, { live: string[]; owned: string[] }>();
     for (const cell of this.deps.store().listCells()) {
-      if (cell.state === "removed" || cell.state === "removing") continue;
-      const live = origins.get(cell.originRepo) ?? [];
-      live.push(cell.id);
-      origins.set(cell.originRepo, live);
+      const entry = origins.get(cell.originRepo) ?? { live: [], owned: [] };
+      entry.owned.push(cell.id);
+      if (cell.state !== "removed" && cell.state !== "removing") entry.live.push(cell.id);
+      origins.set(cell.originRepo, entry);
     }
     if (origins.size === 0) return [];
+    const scope = this.wipNodeScope();
     const result = await this.runWorker<WipRefSweepWorkerResult>({
       kind: "sweepWipRefs",
-      node: this.wipNodeScope(),
-      origins: [...origins].filter(([originRepo]) => existsSync(originRepo)).map(([originRepo, liveCellIds]) => ({ originRepo, liveCellIds })),
+      scopes: [scope, ...(this.deps.wipNodeScopes?.() ?? []).filter((s) => s !== scope)],
+      origins: [...origins].filter(([originRepo]) => existsSync(originRepo)).map(([originRepo, ids]) => ({ originRepo, liveCellIds: ids.live, ownedCellIds: ids.owned })),
     } satisfies WipRefSweepWorkerRequest);
     if (result.error != null) throw new Error(result.error);
     for (const origin of result.swept) this.deps.log(`cell.wip.refs_swept origin=${origin.originRepo} node=${this.wipNodeScope()} dropped=${origin.dropped.length} migrated=${origin.migrated.length}`);

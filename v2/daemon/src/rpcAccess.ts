@@ -48,6 +48,7 @@ export const RPC_ACCESS = {
   "champion.start": "mutate",
   "champion.archive": "mutate",
   "champion.delete": "mutate",
+  "champion.fence": "mutate",
   "watch": "read",
   "snapshot": "read",
   "mirror.local.snapshot": "read",

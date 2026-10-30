@@ -1099,6 +1099,8 @@ export interface ChampionRow {
   createdAt: number;
   updatedAt: number;
   archivedAt: number | null;
+  epoch: number;
+  fencedAt: number | null;
 }
 
 export interface ChampionHomeObjectRow {
@@ -1110,6 +1112,7 @@ export interface ChampionHomeObjectRow {
   files: number;
   skipped: number;
   closedAt: number;
+  epoch: number;
 }
 
 /** Deterministic full-store snapshot (audit excluded); comparison target for replay. */
@@ -1130,7 +1133,6 @@ export interface StateDump {
   mailbox: MessageRow[];
   commands: CommandRow[];
   templates: TemplateRow[];
-  /** v54 */
   champions?: ChampionRow[];
   /** v6 */
   questions: QuestionRow[];

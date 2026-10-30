@@ -540,7 +540,7 @@ test("transcripts.segments: off by default with a data-dir store, every key vali
 
 test("config: champions resolves defaults, paths and invalid values", () => {
   const defaults = championsOf(undefined, "/data");
-  assert.deepEqual(defaults, { enabled: false, homeSync: false, homesDir: "/data/champions", warnings: [] });
+  assert.deepEqual(defaults, { enabled: false, homeSync: false, homeSyncIncludeSecrets: false, homesDir: "/data/champions", warnings: [] });
   const on = championsOf({ enabled: true, homeSync: true, homesDir: "~/crew" }, "/data");
   assert.equal(on.enabled, true);
   assert.equal(on.homeSync, true);

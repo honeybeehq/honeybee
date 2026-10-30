@@ -109,7 +109,6 @@ export interface MirrorSnapshot {
   bees: MirrorBeeRow[];
   capacity?: NodeCapacity | null;
   templates: MirrorTemplateRow[];
-  /** v54 (additive): Champion identities, store rows verbatim. */
   champions?: MirrorChampionRow[];
   questions: MirrorQuestionRow[];
   seals: MirrorSealRow[];
@@ -235,7 +234,7 @@ export type MirrorDelta = AuditRow;
 export const MIRROR_TEMPLATE_AUDIT_KINDS = ["template.put", "template.deleted"] as const;
 export const MIRROR_CHAMPION_AUDIT_KINDS = ["champion.put", "champion.deleted"] as const;
 export const CHAMPION_HOME_OBJECT_AUDIT_KIND = "champion_home_object.put" as const;
-export const MIRROR_CHAMPION_KEYS = ["id", "name", "agent", "home", "templateId", "model", "effort", "currentBeeId", "createdAt", "updatedAt", "archivedAt"] as const;
+export const MIRROR_CHAMPION_KEYS = ["id", "name", "agent", "home", "templateId", "model", "effort", "currentBeeId", "createdAt", "updatedAt", "archivedAt", "epoch", "fencedAt"] as const;
 export const MIRROR_QUESTION_AUDIT_KINDS = ["question.asked", "question.answered", "question.withdrawn", "question.dismissed"] as const;
 export const MIRROR_SEAL_AUDIT_KINDS = ["seal.created"] as const;
 export const MIRROR_ACCOUNT_AUDIT_KINDS = ["account.put", "account.removed"] as const;

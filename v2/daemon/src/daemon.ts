@@ -354,6 +354,7 @@ import {
   type ChampionStartResult,
   type ChampionArchiveResult,
   type ChampionDeleteResult,
+  type ChampionFenceResult,
   type TranscriptSegmentsStatus,
   type CellExecResult,
   type CellGcResult,
@@ -1028,6 +1029,7 @@ export class HiveDaemon {
       clearBeeTmp: (beeId) => this.removeBeeTmp(beeId),
       transcriptObjects: () => this.segmenter?.objects() ?? null,
       wipNode: () => this.wipNode(),
+      wipNodeScopes: () => this.mustStore().wipNodeScopes(this.wipNode()),
       lastRecordedPass: (kind) => this.mustStore().latestCellRetentionPass(kind ?? null),
       recentEvictionTimes: (sinceTs) => this.mustStore().cellRetentionEvictionTimes(sinceTs),
       lastDailyCapAt: () => this.mustStore().lastCellRetentionDailyCapAt(),
@@ -1043,6 +1045,7 @@ export class HiveDaemon {
         now: () => Date.now(),
         log: (op) => this.log(op),
         maxFileBytes: this.cfg.cellRetention.wipMaxFileBytes,
+        includeSecrets: this.cfg.champions.homeSyncIncludeSecrets,
         ...(this.deps.championHomeMinIntervalMs !== undefined ? { minIntervalMs: this.deps.championHomeMinIntervalMs } : {}),
       });
     }
@@ -2566,6 +2569,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcChampionArchive(params));
       case "champion.delete":
         return this.withIdempotency(verb, params, () => this.rpcChampionDelete(params));
+      case "champion.fence":
+        return this.withIdempotency(verb, params, () => this.rpcChampionFence(params));
       case "deployInfo":
         return this.rpcDeployInfo();
       case "update.apiarySwap.status":
@@ -2633,6 +2638,7 @@ export class HiveDaemon {
       case "template.put":
         return this.withIdempotency(verb, params, () => this.rpcTemplatePut(params));
       case "template.delete":
+        this.assertTemplateUnbound(this.param(params, "id"));
         return this.withIdempotency(
           verb,
           params,
@@ -3936,7 +3942,7 @@ export class HiveDaemon {
   }
 
   private wipNode(): string {
-    return wipNodeScope(this.store?.humanRefIssuer()?.installationId ?? null, hostname());
+    return wipNodeScope(this.mustStore().nodeId(), hostname());
   }
 
   private dropCellWip(cell: CellRow): void {
@@ -6125,13 +6131,15 @@ export class HiveDaemon {
   private championHomes: ChampionHomeSync | null = null;
 
   private segmenterTick(): void {
-    const segmenter = this.segmenter;
-    if (!segmenter || segmenter.backlog() > 0) return;
     const now = Date.now();
     const due = this.lastObjectSweepAt == null ? now - this.startedAt >= (this.deps.transcriptSweepDelayMs ?? 60_000) : now - this.lastObjectSweepAt >= 24 * 60 * 60_000;
     if (!due) return;
+    const segmenter = this.segmenter;
+    if (segmenter && segmenter.backlog() > 0) return;
+    if (!segmenter && !this.championHomes) return;
     this.lastObjectSweepAt = now;
-    void segmenter.sweepOrphans().catch((err) => this.log(`transcripts.objects.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
+    if (segmenter) void segmenter.sweepOrphans().catch((err) => this.log(`transcripts.objects.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
+    if (this.championHomes) void this.championHomes.sweepOrphans().catch((err) => this.log(`champion.home.sweep_failed ${err instanceof Error ? err.message : String(err)}`));
   }
 
   private syncChampionHome(beeId: string): void {
@@ -6149,6 +6157,11 @@ export class HiveDaemon {
     const champion = this.mustStore().getChampion(id);
     if (!champion) throw new RpcError("invalid_request", `${verb}: unknown champion ${id}`);
     return champion;
+  }
+
+  private assertTemplateUnbound(templateId: string): void {
+    const bound = this.mustStore().listChampions().filter((c) => c.templateId === templateId).map((c) => c.id);
+    if (bound.length > 0) throw new RpcError("invalid_request", `template.delete: template ${templateId} is bound by Champion(s) ${bound.join(", ")}; rebind them with champion.put first`);
   }
 
   private assertNotChampionIncarnation(verb: string, beeId: string): void {
@@ -6228,6 +6241,10 @@ export class HiveDaemon {
     if (champion.archivedAt != null) throw new RpcError("invalid_request", `champion.start: ${champion.id} is archived; champion.put {archived:false} first`);
     const prompt = params.prompt === undefined || params.prompt === null ? null : this.param(params, "prompt");
     const key = this.idempotencyKeyOf(params);
+    const handoverEpoch = params.epoch === undefined || params.epoch === null ? null : params.epoch;
+    if (handoverEpoch !== null && (typeof handoverEpoch !== "number" || !Number.isInteger(handoverEpoch) || handoverEpoch < 0)) throw new RpcError("invalid_request", "champion.start: epoch must be a non-negative integer when given");
+    if (handoverEpoch !== null && handoverEpoch < champion.epoch) throw new RpcError("champion_fenced", `champion.start: handover epoch ${handoverEpoch} is older than this node's epoch ${champion.epoch} for ${champion.id}`);
+    if (handoverEpoch === null && champion.fencedAt != null) throw new RpcError("champion_fenced", `champion.start: ${champion.id} is fenced at epoch ${champion.epoch}; another executor owns the incarnation (pass the handover epoch to take it back)`);
     const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
     if (current && current.lifecycle !== "deleted") {
       const runtime = store.currentRuntime(current.id);
@@ -6237,12 +6254,14 @@ export class HiveDaemon {
       else if (!live) commandId = this.rpcEnqueue("revive", current.id, {}, params).commandId;
       const sent = prompt && prompt.length > 0 ? store.send(current.id, prompt, { sender: "operator", origin: "mail.send" }) : null;
       this.log(`champion.start id=${champion.id} bee=${current.id} ${live ? "running" : "revived"}`);
-      return { champion, beeId: current.id, commandId, messageId: sent?.message.id ?? null, started: live ? "running" : "revived", homeRestored: false };
+      return { champion, beeId: current.id, commandId, messageId: sent?.message.id ?? null, started: live ? "running" : "revived", homeRestored: false, epoch: champion.epoch };
     }
     const homeRef = params.homeRef === undefined || params.homeRef === null ? null : this.param(params, "homeRef");
     if (homeRef != null && !/^[a-f0-9]{64}$/.test(homeRef)) throw new RpcError("invalid_request", "champion.start: homeRef must be a sha256 object reference");
-    const homeRestored = await this.restoreChampionHome(champion, homeRef);
     const template = champion.templateId ? store.getTemplate(champion.templateId) : null;
+    if (champion.templateId && !template) throw new RpcError("invalid_request", `champion.start: ${champion.id} binds template ${champion.templateId}, which no longer exists; rebind with champion.put`);
+    const owned = handoverEpoch !== null ? store.takeoverChampion(champion.id, handoverEpoch) : champion;
+    const homeRestored = await this.restoreChampionHome(owned, homeRef, handoverEpoch);
     const briefing = template?.prompt?.trim() ?? "";
     const firstPrompt = [briefing, prompt?.trim() ?? ""].filter((p) => p.length > 0).join("\n\n");
     const spawnParams: Record<string, unknown> = {
@@ -6259,11 +6278,27 @@ export class HiveDaemon {
     };
     const spawned = await this.rpcSpawnWithAccount(spawnParams);
     const bound = store.bindChampionBee(champion.id, spawned.beeId);
-    this.log(`champion.start id=${champion.id} bee=${spawned.beeId} spawned home=${champion.home} home_restored=${homeRestored}`);
-    return { champion: bound, beeId: spawned.beeId, commandId: spawned.commandId, messageId: spawned.messageId ?? null, started: "spawned", homeRestored, ...(spawned.deduped ? { deduped: true } : {}) };
+    this.log(`champion.start id=${champion.id} bee=${spawned.beeId} spawned home=${champion.home} home_restored=${homeRestored} epoch=${bound.epoch}`);
+    return { champion: bound, beeId: spawned.beeId, commandId: spawned.commandId, messageId: spawned.messageId ?? null, started: "spawned", homeRestored, epoch: bound.epoch, ...(spawned.deduped ? { deduped: true } : {}) };
   }
 
-  private async restoreChampionHome(champion: ChampionRow, homeRef: string | null): Promise<boolean> {
+  private rpcChampionFence(params: Record<string, unknown>): ChampionFenceResult {
+    this.requireChampions("champion.fence");
+    const store = this.mustStore();
+    const champion = this.requireChampion("champion.fence", params);
+    const epoch = params.epoch;
+    if (typeof epoch !== "number" || !Number.isInteger(epoch) || epoch < 0) throw new RpcError("invalid_request", "champion.fence: epoch must be a non-negative integer");
+    if (epoch < champion.epoch) throw new RpcError("champion_fenced", `champion.fence: epoch ${epoch} is older than this node's epoch ${champion.epoch} for ${champion.id}`);
+    const fenced = store.fenceChampion(champion.id, epoch);
+    const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
+    const runtime = current ? store.currentRuntime(current.id) : null;
+    const live = runtime != null && runtime.state !== "stopped";
+    const commandId = current && live ? this.rpcEnqueue("stop", current.id, { cause: "stopped_by_user" }, params).commandId : null;
+    this.log(`champion.fence id=${champion.id} epoch=${epoch} bee=${current?.id ?? "-"} stopped=${live}`);
+    return { champion: fenced, commandId, stopped: live };
+  }
+
+  private async restoreChampionHome(champion: ChampionRow, homeRef: string | null, handoverEpoch: number | null): Promise<boolean> {
     if (!this.cfg.champions.homeSync || !this.championHomes) {
       if (homeRef != null) throw new RpcError("invalid_request", "champion.start: homeRef needs champions.homeSync on this node");
       return false;
@@ -6273,20 +6308,30 @@ export class HiveDaemon {
       const memory = join(champion.home, "MEMORY.md");
       const memoryIsStub = !existsSync(memory) || readFileSync(memory, "utf8") === "# Memory\n";
       const memoryDirEmpty = !existsSync(join(champion.home, "memory")) || readdirSync(join(champion.home, "memory")).length === 0;
-      if (entries.length > 0 || !memoryIsStub || !memoryDirEmpty) return false;
+      if (entries.length > 0 || !memoryIsStub || !memoryDirEmpty) {
+        this.log(`champion.home.restore_skipped id=${champion.id} reason=home_not_empty${homeRef ? ` ref=${homeRef}` : ""}`);
+        return false;
+      }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
     const store = this.mustStore();
     const pointed = homeRef != null ? this.championHomes.describe(homeRef) : null;
     if (homeRef != null && !pointed) throw new RpcError("invalid_request", `champion.start: home object ${homeRef} is not in the object store ${this.championHomes.root}`);
-    const latest = pointed ?? store.latestChampionHomeObject(champion.id);
-    if (!latest) return false;
+    const latest = pointed ? { ...pointed, epoch: handoverEpoch ?? champion.epoch } : store.latestChampionHomeObject(champion.id);
+    if (!latest) {
+      this.log(`champion.home.restore_skipped id=${champion.id} reason=no_bundle`);
+      return false;
+    }
+    if (latest.epoch < champion.epoch && !pointed) {
+      this.log(`champion.home.restore_skipped id=${champion.id} reason=stale_epoch bundle_epoch=${latest.epoch} epoch=${champion.epoch} ref=${latest.ref}`);
+      return false;
+    }
     const restored = await this.championHomes.restore(champion, latest);
     if (restored && pointed && !store.listChampionHomeObjects(champion.id, { limit: 1000 }).some((o) => o.ref === pointed.ref)) {
-      store.putChampionHomeObject({ championId: champion.id, ref: pointed.ref, bytes: pointed.bytes, size: pointed.size, files: pointed.files, skipped: pointed.skipped, closedAt: Date.now() });
+      store.putChampionHomeObject({ championId: champion.id, ref: pointed.ref, bytes: pointed.bytes, size: pointed.size, files: pointed.files, skipped: pointed.skipped, closedAt: Date.now(), epoch: latest.epoch });
     }
-    this.log(`champion.home.${restored ? "restored" : "restore_skipped"} id=${champion.id} ref=${latest.ref} bytes=${latest.bytes}${pointed ? " pointer=given" : ""}`);
+    this.log(`champion.home.${restored ? "restored" : "restore_skipped"} id=${champion.id} ref=${latest.ref} bytes=${latest.bytes} epoch=${latest.epoch}${pointed ? " pointer=given" : ""}`);
     return restored;
   }
 

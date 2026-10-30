@@ -756,6 +756,8 @@ function mapChampion(r: Row): ChampionRow {
     createdAt: Number(r.created_at),
     updatedAt: Number(r.updated_at),
     archivedAt: r.archived_at == null ? null : Number(r.archived_at),
+    epoch: Number(r.epoch ?? 0),
+    fencedAt: r.fenced_at == null ? null : Number(r.fenced_at),
   };
 }
 
@@ -769,6 +771,7 @@ function mapChampionHomeObject(r: Row): ChampionHomeObjectRow {
     files: Number(r.files),
     skipped: Number(r.skipped),
     closedAt: Number(r.closed_at),
+    epoch: Number(r.epoch ?? 0),
   };
 }
 
@@ -9626,6 +9629,47 @@ export class CoreStore {
     });
   }
 
+  takeoverChampion(id: string, handoverEpoch: number): ChampionRow {
+    return this.tx(() => {
+      const existing = this.getChampion(id);
+      if (!existing) throw new ChampionNotFoundError(id);
+      const epoch = Math.max(existing.epoch, handoverEpoch + 1);
+      this.stmt("UPDATE champions SET epoch = ?, fenced_at = NULL, updated_at = ? WHERE id = ?").run(epoch, this.now(), id);
+      const champion = this.getChampion(id) as ChampionRow;
+      this.audit("champion.put", existing.currentBeeId, { champion, outcome: "updated" });
+      return champion;
+    });
+  }
+
+  fenceChampion(id: string, epoch: number): ChampionRow {
+    return this.tx(() => {
+      const existing = this.getChampion(id);
+      if (!existing) throw new ChampionNotFoundError(id);
+      if (epoch <= existing.epoch && existing.fencedAt != null) return existing;
+      this.stmt("UPDATE champions SET epoch = ?, fenced_at = ?, updated_at = ? WHERE id = ?").run(Math.max(epoch, existing.epoch), this.now(), this.now(), id);
+      const champion = this.getChampion(id) as ChampionRow;
+      this.audit("champion.put", existing.currentBeeId, { champion, outcome: "updated" });
+      return champion;
+    });
+  }
+
+  nodeId(): string {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'node_id'").get() as Row | undefined;
+    if (row) return String(row.value);
+    const minted = randomUUID();
+    this.stmt("INSERT INTO meta(key, value) VALUES('node_id', ?) ON CONFLICT(key) DO NOTHING").run(minted);
+    return String((this.stmt("SELECT value FROM meta WHERE key = 'node_id'").get() as Row).value);
+  }
+
+  wipNodeScopes(current: string): string[] {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'wip_node_scopes'").get() as Row | undefined;
+    const known: string[] = row ? (JSON.parse(String(row.value)) as string[]) : [];
+    if (known.includes(current)) return known;
+    const next = [...known, current];
+    this.stmt("INSERT INTO meta(key, value) VALUES('wip_node_scopes', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(next));
+    return next;
+  }
+
   deleteChampion(id: string): ChampionRow {
     return this.tx(() => {
       const existing = this.getChampion(id);
@@ -9641,8 +9685,8 @@ export class CoreStore {
     return this.tx(() => {
       if (!this.getChampion(input.championId)) throw new ChampionNotFoundError(input.championId);
       const id = randomUUID();
-      this.stmt("INSERT INTO champion_home_objects(id, champion_id, ref, bytes, size, files, skipped, closed_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(id, input.championId, input.ref, input.bytes, input.size, input.files, input.skipped, input.closedAt);
+      this.stmt("INSERT INTO champion_home_objects(id, champion_id, ref, bytes, size, files, skipped, closed_at, epoch) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, input.championId, input.ref, input.bytes, input.size, input.files, input.skipped, input.closedAt, input.epoch);
       const row = mapChampionHomeObject(this.stmt("SELECT * FROM champion_home_objects WHERE id = ?").get(id) as Row);
       this.audit("champion_home_object.put", this.getChampion(input.championId)?.currentBeeId ?? null, { object: row });
       return row;
@@ -9679,7 +9723,6 @@ export class CoreStore {
     return row ? mapTranscriptSegmentCursor(row) : null;
   }
 
-  /** One cut: the pointer row and the advanced cursor land together or not at all. */
   listTranscriptSegmentObjectRefs(): Set<string> {
     const refs = new Set<string>();
     for (const row of this.stmt("SELECT raw_ref, projected_ref FROM transcript_segment_objects").all() as Row[]) {

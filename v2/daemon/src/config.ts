@@ -385,18 +385,20 @@ export function transcriptSegmentsOf(raw: unknown, dataDir: string): ResolvedTra
 export interface ChampionsConfig {
   enabled?: boolean;
   homeSync?: boolean;
+  homeSyncIncludeSecrets?: boolean;
   homesDir?: string;
 }
 
 export interface ResolvedChampions {
   enabled: boolean;
   homeSync: boolean;
+  homeSyncIncludeSecrets: boolean;
   homesDir: string;
   warnings: string[];
 }
 
 export function championsOf(raw: unknown, dataDir: string): ResolvedChampions {
-  const out: ResolvedChampions = { enabled: false, homeSync: false, homesDir: join(dataDir, "champions"), warnings: [] };
+  const out: ResolvedChampions = { enabled: false, homeSync: false, homeSyncIncludeSecrets: false, homesDir: join(dataDir, "champions"), warnings: [] };
   if (raw === undefined) return out;
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     out.warnings.push(`champions must be an object, got ${JSON.stringify(raw)}; using defaults`);
@@ -411,6 +413,10 @@ export function championsOf(raw: unknown, dataDir: string): ResolvedChampions {
   if (c.homeSync !== undefined) {
     if (typeof c.homeSync === "boolean") out.homeSync = c.homeSync;
     else warn("homeSync", "a boolean");
+  }
+  if (c.homeSyncIncludeSecrets !== undefined) {
+    if (typeof c.homeSyncIncludeSecrets === "boolean") out.homeSyncIncludeSecrets = c.homeSyncIncludeSecrets;
+    else warn("homeSyncIncludeSecrets", "a boolean");
   }
   if (c.homesDir !== undefined) {
     if (typeof c.homesDir === "string" && (isAbsolute(c.homesDir) || c.homesDir.startsWith("~/"))) out.homesDir = c.homesDir.startsWith("~/") ? join(homedir(), c.homesDir.slice(2)) : c.homesDir;

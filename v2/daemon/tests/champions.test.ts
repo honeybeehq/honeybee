@@ -9,11 +9,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DAEMON_CAPABILITIES, RPC_VERBS, RpcError, type ChampionGetResult, type ChampionListResult, type ChampionPutResult, type ChampionStartResult, type SendRpcResult, type SnapshotResult, type ViewResult } from "../src/protocol.ts";
+import { DAEMON_CAPABILITIES, RPC_VERBS, RpcError, type ChampionFenceResult, type ChampionGetResult, type ChampionListResult, type ChampionPutResult, type ChampionStartResult, type SendRpcResult, type SnapshotResult, type TemplatePutResult, type ViewResult } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
@@ -77,8 +77,14 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
   let a: DaemonHandle | null = null;
   let b: DaemonHandle | null = null;
   try {
-    a = await startDaemon(rigA.dir, { env: { HIVE_TEST_CHAMPION_HOME_MIN_INTERVAL_MS: "0" } });
+    a = await startDaemon(rigA.dir, { env: { HIVE_TEST_CHAMPION_HOME_MIN_INTERVAL_MS: "0", HIVE_TEST_TRANSCRIPT_SWEEP_DELAY_MS: "0" } });
     const client = await a.client();
+    mkdirSync(join(objects, "blobs", "champion-homes"), { recursive: true });
+    const orphan = join(objects, "blobs", "champion-homes", "f".repeat(64));
+    writeFileSync(orphan, "stale");
+    const old = Date.now() - 3 * 60 * 60_000;
+    const { utimesSync } = await import("node:fs");
+    utimesSync(orphan, old / 1000, old / 1000);
     const put = await client.request<ChampionPutResult>("champion.put", { name: "Vera Lund", agent: "cellstub", model: "stub-1", idempotencyKey: "put-1" });
     assert.equal(put.outcome, "created");
     assert.equal(put.champion.id, "vera-lund");
@@ -89,8 +95,14 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
     assert.equal(again.outcome, "unchanged");
     await assert.rejects(client.request("champion.put", { id: "vera-lund", name: "Vera Lund", agent: "cellstub", home: join(root, "elsewhere"), idempotencyKey: "put-3" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && /immutable/.test(err.message));
 
+    const template = await client.request<TemplatePutResult>("template.put", { fields: { name: "crew-role", agent: "cellstub", prompt: "You are the crew." }, idempotencyKey: "tpl-1" });
+    await client.request<ChampionPutResult>("champion.put", { id: "vera-lund", name: "Vera Lund", templateId: template.template.id, idempotencyKey: "put-tpl" });
+    await assert.rejects(client.request("template.delete", { id: template.template.id, idempotencyKey: "tpl-del" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && /bound by Champion/.test(err.message));
+    await client.request<ChampionPutResult>("champion.put", { id: "vera-lund", name: "Vera Lund", templateId: null, idempotencyKey: "put-untpl" });
+    await client.request("template.delete", { id: template.template.id, idempotencyKey: "tpl-del-2" });
     const started = await client.request<ChampionStartResult>("champion.start", { id: "vera-lund", prompt: "hello", idempotencyKey: "start-1" });
     assert.equal(started.started, "spawned");
+    assert.equal(started.epoch, 0);
     const view = await idle(client, started.beeId);
     assert.equal(view.bee?.cwd, put.champion.home, "the incarnation runs in the Champion's home");
     assert.ok(view.bee?.tags.includes("apiary:champion=vera-lund") && view.bee?.tags.includes("apiary:role=champion"), JSON.stringify(view.bee?.tags));
@@ -104,7 +116,10 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
     assert.equal(running.started, "running");
     assert.equal(running.beeId, started.beeId, "start on a live incarnation is a no-op");
 
-    await shIn(client, started.beeId, "printf 'Vera remembers the lab.\\n' >> MEMORY.md && printf 'fact\\n' > memory/lab.md");
+    await shIn(client, started.beeId, "printf 'TOKEN=1\\n' > .env && printf 'Vera remembers the lab.\\n' >> MEMORY.md && printf 'fact\\n' > memory/lab.md");
+    await waitFor(async () => (/champion\.home\.push_refused id=vera-lund reason=secrets paths=\[\\?".env\\?"\]/.test(readFileSync(join(rigA.dir, "hived.log"), "utf8")) ? true : null), "a home holding a secret is refused", 30_000);
+    assert.equal((await client.request<ChampionGetResult>("champion.get", { id: "vera-lund" })).homeObjects.some((o) => o.files >= 2), false, "nothing with the secret was bundled");
+    await shIn(client, started.beeId, "rm .env");
     const bundled = await waitFor(async () => {
       const g = await client.request<ChampionGetResult>("champion.get", { id: "vera-lund" });
       return g.homeObjects.some((o) => o.files >= 2) ? g : null;
@@ -112,7 +127,9 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
     const object = bundled.homeObjects[0]!;
     assert.ok(object.files >= 2 && object.bytes > 0, JSON.stringify(object));
     assert.ok(existsSync(join(objects, "blobs", "champion-homes", object.ref)), "the bundle is in the shared object store");
-    assert.ok(bundled.homeObjects.length >= 2, "the greeting turn bundled the stub home first; the memory turn bundled again");
+    assert.equal(object.epoch, 0);
+    await waitFor(async () => (!existsSync(orphan) ? true : null), "the daily sweep removed the planted orphan bundle", 30_000);
+    assert.ok(existsSync(join(objects, "blobs", "champion-homes", object.ref)), "referenced bundles survive the sweep");
 
     await a.kill();
     a = null;
@@ -125,9 +142,10 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
     const homeObjectsBefore = (await clientB.request<ChampionGetResult>("champion.get", { id: "vera-lund" })).homeObjects;
     assert.equal(homeObjectsBefore.length, 0, "the second store knows no bundles yet");
     await assert.rejects(clientB.request("champion.start", { id: "vera-lund", homeRef: "0".repeat(64), idempotencyKey: "start-b0" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && /not in the object store/.test(err.message));
-    const startedB = await clientB.request<ChampionStartResult>("champion.start", { id: "vera-lund", homeRef: object.ref, idempotencyKey: "start-b" });
+    const startedB = await clientB.request<ChampionStartResult>("champion.start", { id: "vera-lund", homeRef: object.ref, epoch: object.epoch, idempotencyKey: "start-b" });
     assert.equal(startedB.started, "spawned");
     assert.equal(startedB.homeRestored, true, "the Home's pointer restores the bundle before the first runtime");
+    assert.equal(startedB.epoch, 1, "the takeover owns the next epoch");
     assert.equal(readFileSync(join(putB.champion.home, "MEMORY.md"), "utf8"), "# Memory\nVera remembers the lab.\n", "the memory the first executor wrote is in the new home");
     assert.equal(readFileSync(join(putB.champion.home, "memory", "lab.md"), "utf8"), "fact\n");
     await idle(clientB, startedB.beeId);
@@ -136,6 +154,25 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
     assert.ok(seeded.homeObjects.some((o) => o.ref === object.ref), "the restored bundle is recorded as a pointer on this store");
     await shIn(clientB, startedB.beeId, "cat MEMORY.md > seen.txt");
     assert.equal(readFileSync(join(putB.champion.home, "seen.txt"), "utf8"), "# Memory\nVera remembers the lab.\n", "the incarnation reads its restored memory");
+    const epochBundle = await waitFor(async () => {
+      const g = await clientB.request<ChampionGetResult>("champion.get", { id: "vera-lund" });
+      return g.homeObjects.find((o) => o.epoch === 1) ?? null;
+    }, "B's bundles carry B's epoch", 30_000);
+    assert.ok(epochBundle);
+
+    a = await startDaemon(rigA.dir, { env: { HIVE_TEST_CHAMPION_HOME_MIN_INTERVAL_MS: "0" } });
+    const clientA = await a.client();
+    const stale = await clientA.request<ChampionGetResult>("champion.get", { id: "vera-lund" });
+    assert.equal(stale.champion.epoch, 0, "the dead executor comes back believing it still owns the incarnation");
+    await assert.rejects(clientA.request("champion.fence", { id: "vera-lund", epoch: -1, idempotencyKey: "fence-bad" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request");
+    const fenced = await clientA.request<ChampionFenceResult>("champion.fence", { id: "vera-lund", epoch: 1, idempotencyKey: "fence-1" });
+    assert.equal(fenced.champion.epoch, 1);
+    assert.ok(fenced.champion.fencedAt != null);
+    await assert.rejects(clientA.request("champion.start", { id: "vera-lund", idempotencyKey: "start-a-fenced" }), (err: unknown) => err instanceof RpcError && err.code === "champion_fenced");
+    await assert.rejects(clientA.request("champion.start", { id: "vera-lund", epoch: 0, idempotencyKey: "start-a-old" }), (err: unknown) => err instanceof RpcError && err.code === "champion_fenced", "an older handover epoch cannot take the incarnation back");
+    await assert.rejects(clientA.request("champion.fence", { id: "vera-lund", epoch: 0, idempotencyKey: "fence-old" }), (err: unknown) => err instanceof RpcError && err.code === "champion_fenced");
+    await a.stop();
+    a = null;
 
     await clientB.request("stop", { beeId: startedB.beeId, idempotencyKey: "stop-b" });
     await waitFor(async () => (await clientB.request<ViewResult>("view", { beeId: startedB.beeId })).view.runtimeState === "stopped", "stopped");

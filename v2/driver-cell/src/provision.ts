@@ -65,7 +65,6 @@ export interface ProvisionRequest {
   cellId: string;
   /** Per-repo opt-in warm artifact dirs, relative to the working tree (A5). */
   warmArtifacts?: string[];
-  /** H3: a confirmed WIP commit to lay back into a freshly provisioned checkout (revive of an evicted Cell). */
   restoreWip?: { sha: string; node: string; cellId: string };
 }
 

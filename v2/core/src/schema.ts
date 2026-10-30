@@ -1065,7 +1065,9 @@ CREATE TABLE IF NOT EXISTS champions (
   current_bee_id TEXT,
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL,
-  archived_at    INTEGER
+  archived_at    INTEGER,
+  epoch          INTEGER NOT NULL DEFAULT 0,
+  fenced_at      INTEGER
 ) STRICT;
 CREATE INDEX IF NOT EXISTS champions_current_bee ON champions(current_bee_id);
 CREATE TABLE IF NOT EXISTS champion_home_objects (
@@ -1076,7 +1078,8 @@ CREATE TABLE IF NOT EXISTS champion_home_objects (
   size        INTEGER NOT NULL,
   files       INTEGER NOT NULL,
   skipped     INTEGER NOT NULL,
-  closed_at   INTEGER NOT NULL
+  closed_at   INTEGER NOT NULL,
+  epoch       INTEGER NOT NULL DEFAULT 0
 ) STRICT;
 CREATE INDEX IF NOT EXISTS champion_home_objects_champion ON champion_home_objects(champion_id, closed_at);
 `;

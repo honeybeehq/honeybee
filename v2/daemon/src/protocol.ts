@@ -354,6 +354,7 @@ export const RPC_ERROR_CODES = [
   /** Verb-specific refusal: the runtime state forbids the operation. */
   "runtime_refused",
   "resource_blocked",
+  "champion_fenced",
   /** Registry refusals (WP6a): missing rows and per-scope name collisions. */
   "template_not_found",
   "name_conflict",
@@ -542,6 +543,7 @@ export const RPC_VERBS = [
   "champion.start",
   "champion.archive",
   "champion.delete",
+  "champion.fence",
   // watch
   "watch",
   "snapshot",
@@ -1763,6 +1765,7 @@ export interface ChampionStartResult extends DedupMarkers {
   messageId: number | null;
   started: "spawned" | "revived" | "running";
   homeRestored: boolean;
+  epoch: number;
 }
 
 export interface ChampionArchiveResult extends DedupMarkers {
@@ -1772,6 +1775,12 @@ export interface ChampionArchiveResult extends DedupMarkers {
 
 export interface ChampionDeleteResult extends DedupMarkers {
   champion: MirrorChampionRow;
+}
+
+export interface ChampionFenceResult extends DedupMarkers {
+  champion: MirrorChampionRow;
+  commandId: number | null;
+  stopped: boolean;
 }
 
 export interface TranscriptSegmentsResult {
@@ -1876,7 +1885,6 @@ export interface SnapshotResult {
   capacity?: NodeCapacity | null;
   /** Mirror-shaped registry rows (WP6a): store rows verbatim, snapshot-consistent with `seq`. */
   templates: MirrorTemplateRow[];
-  /** v54 (additive): Champion identities, store rows verbatim. */
   champions?: MirrorChampionRow[];
   /** v6 (additive): questions + seals, store rows verbatim, snapshot-consistent with `seq`. */
   questions: MirrorQuestionRow[];

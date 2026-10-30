@@ -95,8 +95,10 @@ test("wip.0: snapshot, push, confirm, restore and drop round-trip through the or
     pushWip(origin.repo, space, "node-b", "cell-gone", snap.sha);
     g(origin.repo, ["update-ref", "refs/hive/wip/cell-1", snap.sha]);
     g(origin.repo, ["update-ref", "refs/hive/wip/cell-foreign", snap.sha]);
-    const sweep = sweepWipRefs(origin.repo, NODE, new Set([cellId]));
-    assert.deepEqual(sweep, { dropped: [wipRefFor(NODE, "cell-gone")], migrated: ["refs/hive/wip/cell-1"] }, "only this node's stale refs are dropped; an unscoped live ref is renamed under the node");
+    g(origin.repo, ["update-ref", "refs/hive/wip/cell-dead", snap.sha]);
+    pushWip(origin.repo, space, "node-old", "cell-dead", snap.sha);
+    const sweep = sweepWipRefs(origin.repo, [NODE, "node-old"], new Set([cellId]), new Set([cellId, "cell-dead"]));
+    assert.deepEqual({ ...sweep, dropped: [...sweep.dropped].sort() }, { dropped: [wipRefFor("node-old", "cell-dead"), "refs/hive/wip/cell-dead", wipRefFor(NODE, "cell-gone")].sort(), migrated: ["refs/hive/wip/cell-1"] }, "stale refs under any prefix this node owned and unscoped refs of its dead Cells are dropped; an unscoped live ref is renamed under the node");
     assert.equal(g(origin.repo, ["rev-parse", wipRefFor("node-b", "cell-gone")]), snap.sha, "another node's refs are never touched");
     assert.equal(g(origin.repo, ["rev-parse", "refs/hive/wip/cell-foreign"]), snap.sha, "an unscoped ref of an unknown Cell is left for its owner");
     assert.equal(g(origin.repo, ["rev-parse", wipRefFor(NODE, cellId)]), snap.sha);

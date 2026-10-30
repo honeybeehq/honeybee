@@ -6,6 +6,7 @@ import { createTranscriptProjector, restoreTranscriptProjector } from "../../dri
 import { TRANSCRIPT_PROJECTION_VERSION, type TranscriptProjector } from "../../driver-tmux/src/transcript-projection.ts";
 import { compressSegment, encodeProjectedSegment, scanLogLines, segmentDigest, type ProjectedLine, type ScannedLine } from "../../driver-tmux/src/transcript-segment-format.ts";
 import { TRANSCRIPT_OBJECT_DIR, createDirectoryTranscriptObjectStore } from "./transcriptObjectStore.ts";
+import { bundleChampionHome, type ChampionHomeBundle } from "./championHomes.ts";
 
 export type SegmentCursor = Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt">;
 export type CutSegment = Omit<TranscriptSegmentObjectRow, "id" | "ordinal">;
@@ -38,9 +39,24 @@ export interface TranscriptCutResult {
 export interface TranscriptSweepRequest {
   kind: "sweep";
   storeRoot: string;
+  dir?: string;
   referenced: string[];
   graceMs: number;
   now: number;
+}
+
+export interface HomeBundleRequest {
+  kind: "bundleHome";
+  home: string;
+  storeRoot: string;
+  maxFileBytes: number;
+  includeSecrets: boolean;
+}
+
+export interface HomeBundleResult {
+  bundle: ChampionHomeBundle | null;
+  refused: { reason: "secrets" | "torn"; paths: string[] } | null;
+  error: string | null;
 }
 
 export interface TranscriptSweepResult {
@@ -51,7 +67,7 @@ export interface TranscriptSweepResult {
 }
 
 export async function sweepTranscriptObjects(request: TranscriptSweepRequest): Promise<TranscriptSweepResult> {
-  const dir = join(request.storeRoot, TRANSCRIPT_OBJECT_DIR);
+  const dir = join(request.storeRoot, request.dir ?? TRANSCRIPT_OBJECT_DIR);
   const referenced = new Set(request.referenced);
   const result: TranscriptSweepResult = { objects: 0, bytes: 0, swept: 0, error: null };
   let entries: string[];
@@ -212,7 +228,12 @@ export async function cutTranscript(request: TranscriptCutRequest): Promise<Tran
   return result;
 }
 
-if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "sweep") {
+if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "bundleHome") {
+  const request = workerData as HomeBundleRequest;
+  bundleChampionHome(request.home, request.storeRoot, { maxFileBytes: request.maxFileBytes, includeSecrets: request.includeSecrets })
+    .then((result) => parentPort!.postMessage(result satisfies HomeBundleResult))
+    .catch((error: unknown) => parentPort!.postMessage({ bundle: null, refused: null, error: error instanceof Error ? error.message : String(error) } satisfies HomeBundleResult));
+} else if (parentPort && workerData && (workerData as { kind?: unknown }).kind === "sweep") {
   sweepTranscriptObjects(workerData as TranscriptSweepRequest)
     .then((result) => parentPort!.postMessage(result))
     .catch((error: unknown) => parentPort!.postMessage({ objects: 0, bytes: 0, swept: 0, error: error instanceof Error ? error.message : String(error) } satisfies TranscriptSweepResult));

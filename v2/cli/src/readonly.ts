@@ -411,7 +411,7 @@ export class ReadOnlyStore {
       id: r.id as string, name: r.name as string, agent: r.agent as string, home: r.home as string,
       templateId: (r.template_id as string | null) ?? null, model: (r.model as string | null) ?? null, effort: (r.effort as string | null) ?? null,
       currentBeeId: (r.current_bee_id as string | null) ?? null, createdAt: Number(r.created_at), updatedAt: Number(r.updated_at),
-      archivedAt: r.archived_at == null ? null : Number(r.archived_at),
+      archivedAt: r.archived_at == null ? null : Number(r.archived_at), epoch: Number(r.epoch ?? 0), fencedAt: r.fenced_at == null ? null : Number(r.fenced_at),
     }));
   }
 

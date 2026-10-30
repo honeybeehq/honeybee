@@ -14,8 +14,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
-import { hostname } from "node:os";
-import { wipNodeScope, wipRefFor } from "../../driver-cell/src/wip.ts";
+
 import { type AuditTailResult, type CellGcResult, type CellRemoveResult, type HealthResult, type SendRpcResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import type { RpcClient } from "../../cli/src/client.ts";
 import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
@@ -81,6 +80,13 @@ async function stopped(client: RpcClient, beeId: string): Promise<void> {
   await waitFor(async () => (await client.request<ViewResult>("view", { beeId })).view.runtimeState === "stopped", "stopped");
 }
 
+function wipRefIn(originRepo: string, cellId: string): string {
+  const refs = g(originRepo, ["for-each-ref", "--format=%(refname)", "refs/hive/wip/"]).split("\n").map((l) => l.trim()).filter(Boolean);
+  const ref = refs.find((r) => r.endsWith(`/${cellId}`));
+  if (!ref) throw new Error(`no WIP ref for ${cellId} among ${JSON.stringify(refs)}`);
+  return ref;
+}
+
 async function wipConfirmed(client: RpcClient, beeId: string, after: number): Promise<ViewResult> {
   return waitFor(async () => {
     const v = await client.request<ViewResult>("view", { beeId });
@@ -99,12 +105,13 @@ test("cell-wip.1: a turn end pushes WIP with read-back; a dirty stopped Cell is 
     const { beeId, view } = await spawnIdle(client, "wip-bee", rig.origin.repo);
     const cell = view.cell!;
     assert.equal(cell.wipSha, null);
-    const ref = wipRefFor(wipNodeScope(null, hostname()), cell.id);
 
     await shInCell(client, beeId, "printf 'draft\\n' > notes.md && mkdir -p .next && printf 'b\\n' > .next/out.js && printf 'v2\\n' >> README.md");
     const pushed = await wipConfirmed(client, beeId, 0);
     const wip = pushed.cell!;
     assert.ok(wip.wipSha && wip.wipTree && wip.wipPushedAt, "the row carries the WIP commit");
+    const ref = wipRefIn(rig.origin.repo, cell.id);
+    assert.match(ref, /^refs\/hive\/wip\/[0-9a-f-]{36}\//, "the ref is scoped by this node's minted id");
     assert.equal(g(rig.origin.repo, ["rev-parse", ref]), wip.wipSha, "the origin holds the WIP ref at the pushed sha");
     const files = g(rig.origin.repo, ["ls-tree", "-r", "--name-only", wip.wipTree!]).split("\n");
     assert.ok(files.includes("notes.md"), "untracked WIP is in the tree");
@@ -156,7 +163,7 @@ test("cell-wip.1: a turn end pushes WIP with read-back; a dirty stopped Cell is 
 test("cell-wip.2: an origin that refuses the WIP ref holds the eviction as wip_unconfirmed and reports it in capacity without refusing admission; the hold lifts when the push lands", { timeout: 240_000 }, async () => {
   const rig = makeRig(FLAGS);
   let daemon: DaemonHandle | null = null;
-  const wipDir = join(rig.origin.repo, ".git", "refs", "hive", "wip", wipNodeScope(null, hostname()));
+  let wipDir: string | null = null;
   try {
     daemon = await startDaemon(rig.dir);
     const client = await daemon.client();
@@ -164,6 +171,7 @@ test("cell-wip.2: an origin that refuses the WIP ref holds the eviction as wip_u
     const cell = view.cell!;
     await shInCell(client, beeId, "printf 'one\\n' > a.txt");
     const first = await wipConfirmed(client, beeId, 0);
+    wipDir = join(rig.origin.repo, ".git", dirname(wipRefIn(rig.origin.repo, cell.id)));
     chmodSync(wipDir, 0o555);
     await shInCell(client, beeId, "printf 'two\\n' > b.txt");
     await stopped(client, beeId);
@@ -198,7 +206,7 @@ test("cell-wip.2: an origin that refuses the WIP ref holds the eviction as wip_u
     assert.equal(clear.capacity?.resourceBlocked.blocked, false);
     assert.equal(clear.capacity?.admission.newCells, "accept");
   } finally {
-    if (existsSync(wipDir)) chmodSync(wipDir, 0o755);
+    if (wipDir && existsSync(wipDir)) chmodSync(wipDir, 0o755);
     await daemon?.stop();
     rig.cleanup();
   }

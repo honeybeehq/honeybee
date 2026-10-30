@@ -43,5 +43,28 @@
     "driver-cell": "180/198 (the 18 baseline containment failures)",
     "v2:daemon": "567/567 after registering ChampionGetResult in the answer-trigger egress census (its bee field embeds a ViewResult)",
     "typecheck+build": "green"
+  },
+  "roundTwo": {
+    "date": "2026-10-30",
+    "leadFindings": {
+      "1_secrets": "bundleChampionHome walks the home first and refuses (reason=secrets, paths logged, up to 20) when any credential-like file is present: .env*, *.pem/*.key/*.p12/*.pfx/*.jks/*.keystore/*.secret/*.token, .netrc/.npmrc/.pypirc/.yarnrc*/.git-credentials, auth.json, credentials*, id_rsa and friends, token/tokens.json/secrets.json, anything under .ssh/.gnupg/.aws/.kube/.docker/.config/gcloud, .claude/*credential*, .codex/auth.json; champions.homeSyncIncludeSecrets (default false) bundles anyway; contract doc says so; champions.1 plants a .env and sees the refusal and no bundle until it is removed",
+      "2_epochFence": "champions.epoch + fenced_at and champion_home_objects.epoch (v54 DDL edited before any deploy); champion.start {homeRef, epoch} takes epoch+1 (a handover older than the row is champion_fenced, a new closed error code); bundles carry the row epoch; restores skip bundles older than the row epoch (restore_skipped reason=stale_epoch); new verb champion.fence {id, epoch}: the Home tells the stale executor, which takes the epoch, stops a live incarnation, stops bundling (push_skipped reason=fenced) and refuses champion.start with champion_fenced until a newer handover; champions.1 restarts the killed executor, fences it at epoch 1 and proves start / older handover / older fence all refuse",
+      "3_orphanSweep": "ChampionHomeSync.sweepOrphans runs the shared worker sweep over blobs/champion-homes with the pointer refs, daily in the same tick as transcript objects (and alone when segments are off); deleteChampion already removed pointer rows (no FK, done in the same tx); champions.1 plants a 3 h old orphan and sees it swept while referenced bundles stay",
+      "4_restoreSkippedLog": "restoreChampionHome logs restore_skipped with reason home_not_empty | no_bundle | stale_epoch before returning",
+      "5_templateBinding": "template.delete refuses (invalid_request naming the Champions) while a Champion binds the template; champion.start with a bound template that no longer exists refuses instead of spawning argless; champions.1 covers both",
+      "6_nodeId": "store.nodeId() mints a uuid once into meta.node_id; the WIP scope is that id (hostname only as the sanitising fallback); store.wipNodeScopes remembers every scope this store used; the sweep drops stale refs under any of them and, for unscoped refs, drops those of this store's dead Cells (any row incl. removed) and migrates live ones; wip.0 covers an old prefix, a dead unscoped ref and a foreign unscoped ref",
+      "7_walkInWorker": "the walk, secrets scan, tar, zstd and the torn check run in the transcript segment worker (kind bundleHome); the daemon thread only inserts the pointer row",
+      "nits": "comment lines removed from mirror.ts, protocol.ts, types.ts, provision.ts and the misplaced one in store.ts (the SCHEMA_VERSION history block keeps its house-style version notes); torn bundles: the walk fingerprint (path, size, mtime) is compared before and after the tar and a changed home discards the object (reason=torn); every skipped-over-cap path is logged (up to 20)"
+    },
+    "tests": {
+      "champions (daemon)": "2/2 (adds: template.delete guard and missing-template refusal, secrets refusal, planted orphan swept, epochs on bundles, takeover epoch 1, fence on the revived old executor with three refusals)",
+      "config": "21/21 with homeSyncIncludeSecrets",
+      "wip.test.ts": "2/2 (owned prefixes, dead unscoped refs)",
+      "cell-wip (daemon)": "5/5 with the minted node id",
+      "v2:test (core)": "620/621 (pre-existing)",
+      "driver-cell": "180/198 (baseline)",
+      "v2:daemon": "568/568",
+      "typecheck+build": "green"
+    }
   }
 }

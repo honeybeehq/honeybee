@@ -142,23 +142,30 @@ export interface WipRefSweep {
   migrated: string[];
 }
 
-export function sweepWipRefs(originRepo: string, node: string, liveCellIds: ReadonlySet<string>): WipRefSweep {
+export function sweepWipRefs(originRepo: string, scopes: readonly string[], liveCellIds: ReadonlySet<string>, ownedCellIds: ReadonlySet<string> = liveCellIds): WipRefSweep {
   const out: WipRefSweep = { dropped: [], migrated: [] };
   const listed = tryGit(originRepo, ["for-each-ref", "--format=%(refname) %(objectname)", `${WIP_NS}/`]);
-  if (listed.status !== 0) return out;
-  const scope = refSegment(node, "node");
+  if (listed.status !== 0 || scopes.length === 0) return out;
+  const current = refSegment(scopes[0]!, "node");
+  const owned = new Set(scopes.map((scope) => refSegment(scope, "node")));
   const live = new Map([...liveCellIds].map((id) => [refSegment(id, "cell"), id] as const));
+  const mine = new Set([...ownedCellIds].map((id) => refSegment(id, "cell")));
   for (const line of listed.stdout.split("\n").map((l) => l.trim()).filter(Boolean)) {
     const [ref, sha] = line.split(" ") as [string, string];
     const parts = ref.slice(WIP_NS.length + 1).split("/");
     if (parts.length === 1) {
-      const cellId = live.get(parts[0]!);
-      if (cellId === undefined) continue;
-      const scoped = wipRefFor(node, cellId);
+      const segment = parts[0]!;
+      if (!mine.has(segment)) continue;
+      const cellId = live.get(segment);
+      if (cellId === undefined) {
+        if (tryGit(originRepo, ["update-ref", "-d", ref, sha]).status === 0) out.dropped.push(ref);
+        continue;
+      }
+      const scoped = wipRefFor(current, cellId);
       if (tryGit(originRepo, ["update-ref", scoped, sha]).status === 0 && tryGit(originRepo, ["update-ref", "-d", ref, sha]).status === 0) out.migrated.push(ref);
       continue;
     }
-    if (parts.length !== 2 || parts[0] !== scope || live.has(parts[1]!)) continue;
+    if (parts.length !== 2 || !owned.has(parts[0]!) || live.has(parts[1]!)) continue;
     if (tryGit(originRepo, ["update-ref", "-d", ref]).status === 0) out.dropped.push(ref);
   }
   return out;
