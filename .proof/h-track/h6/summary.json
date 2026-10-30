@@ -1,7 +1,7 @@
 {
   "step": "H6",
   "date": "2026-10-30",
-  "status": "H6a and H6b built; H6c pending",
+  "status": "H6a, H6b, H6c built; durability flags default off",
   "document": "docs/design/bee-durability-plan.md",
   "gate": "kill an executor mid-task; revive elsewhere with context",
   "steps": [
@@ -84,6 +84,33 @@
       "the Home driving bee.fence and replaying mail (Apiary)",
       "import under a different account (same org) and the account_mismatch reseed (H6c)",
       "key provisioning by the Home"
+    ]
+  },
+  "h6c": {
+    "reseed": "bee.import {transcript: {segmentRefs?, turns?}}: projected segments read from the object store plus Home-supplied turns build a handoff-style context (task = first user turn, completed = last assistant message, 40 recent turns, lost questions outstanding, the reason in the instruction) rendered with renderHandoffSeed and enqueued as one handoff.seed row before any mail; resumed=reseeded; no turns -> fresh with reason no_transcript",
+    "leadItemsFromH6bReview": {
+      "1_homeKeyStrip": "fixed: CLAUDE_CONFIG_DIR, CODEX_HOME, GROK_HOME, KIMI_HOME, MUSE_HOME, HOME and the harness's own key are stripped from descriptor.env unconditionally; the bundle restores into the resolved account home or the cwd",
+      "2_fenceRule": "fixed in the contract and the wire: the Home is the only legal caller, bee.fence precedes bee.import, imports of one bee are serialised by the Home, the import carries fence {epoch, fencedAt} and returns unfenced: true (plus a log line) when it is missing",
+      "3_reseedImplemented": "fixed: reseedImportedBee is real (above); resumed=reseeded occurs (resume-reseed.1)",
+      "4_cellWip": "fixed: descriptor.cell carries wipSha + wipTree; the import adopts the WIP commit under this node's ref scope (adoptWipRef), records it confirmed on the new registry row, and resolveCell restores it on the first provisioning (not only after an eviction); resume-import-cell.1 proves notes.md comes back in B's fresh Cell with ignored output absent; wipRestore: adopted | unreachable in the result",
+      "5_bootFailed": "implemented: native imports are remembered until their first turn end; a spawn failure before that clears the fork seed, re-seeds from the import's transcript when given, records {resumed, reason: boot_failed} under bee.import.boot_failed:<bee>:<gen> and revives a flagged bee; not exercised by a test (the stub never fails to boot) and the memory does not survive a daemon restart (documented)",
+      "6_mailReplay": "fixed in the contract: only pending (undelivered) rows are replayed by the Home; lost.questions are withdrawn by the Home"
+    },
+    "credentials": "no live-credential reads happened after the lead's rule (mail 84941): H6c used the stub harness only; the lab scripts that seeded credentials in the H6b gate were deleted from the Cell",
+    "tests": {
+      "resume-reseed (daemon)": "1/1 (bundle_missing -> reseeded with the transcript text, reason and lost questions in the seed, seed first and delivered first; a transcript with no turns -> fresh with no_transcript)",
+      "resume-import-cell (daemon)": "1/1",
+      "resume-import": "1/1",
+      "resume-bundles": "2/2",
+      "v2:test": "621/622 (pre-existing)",
+      "driver-cell wip": "2/2",
+      "v2:daemon": "569/569 (the four durability files also run green on their own: resume-bundles 2, resume-import 1, resume-import-cell 1, resume-reseed 1)",
+      "typecheck+build": "green"
+    },
+    "notProven": [
+      "boot_failed with a real harness refusing a resume",
+      "account_mismatch end to end (needs two provisioned accounts; the scope compare and the reseed path are unit-covered by bundle_missing)",
+      "the Home's half: fence receipt, serialisation, mail replay, question withdrawal"
     ]
   }
 }

@@ -7712,6 +7712,16 @@ export class CoreStore {
    * session id via `--resume <seed> --fork-session`, exactly like bee.fork).
    * Audited `bee.session_rekeyed {beeId, forkSeed, previousProviderSessionId}`.
    */
+  clearForkSeed(beeId: string): { bee: BeeRow; applied: boolean } {
+    return this.tx(() => {
+      const bee = this.mustGetBee(beeId);
+      if (!bee.forkSeed) return { bee, applied: false };
+      this.stmt("UPDATE bees SET fork_seed = NULL WHERE id = ?").run(beeId);
+      this.audit("bee.session_rekeyed", beeId, { beeId, forkSeed: null, previousProviderSessionId: null, droppedForkSeed: bee.forkSeed });
+      return { bee: this.mustGetBee(beeId), applied: true };
+    });
+  }
+
   rekeyBeeSession(beeId: string): { bee: BeeRow; applied: boolean } {
     return this.tx(() => {
       const bee = this.mustGetBee(beeId);

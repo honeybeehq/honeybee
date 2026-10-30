@@ -164,6 +164,8 @@ import { CellRetentionService } from "./cellRetention.ts";
 import { TranscriptSegmenter } from "./transcriptSegmenter.ts";
 import { ChampionHomeSync } from "./championHomes.ts";
 import { BeeResumeSync, accountHomeOf } from "./beeResumeSync.ts";
+import { HANDOFF_SEED_SENDER, renderHandoffSeed } from "../../core/src/handoff.ts";
+import { decodeProjectedSegment, decompressSegment } from "../../driver-tmux/src/transcript-segment-format.ts";
 import { resumeStateKey, resumeStateScope, writeResumeKey } from "./resumeBundles.ts";
 import { createDirectoryTranscriptObjectStore, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
 import { TRANSCRIPT_PROJECTION_VERSION } from "../../driver-tmux/src/transcript-projection.ts";
@@ -186,6 +188,7 @@ import {
   hasCommit,
   restoreEnvFiles,
   dropWipRef,
+  adoptWipRef,
   wipNodeScope,
   restoreKeptPaths,
   localRepoIdentity,
@@ -1140,7 +1143,9 @@ export class HiveDaemon {
         this.pushCellWip(beeId, reason);
         this.syncChampionHome(beeId);
         this.resumeSync?.requestSync(beeId, reason);
+        this.pendingImports.delete(beeId);
       },
+      onSpawnFailure: (beeId, generation, flagged) => { void this.importBootFailed(beeId, generation, flagged); },
       blockedRuntimeStartBeeIds: () => this.prepareRuntimeStartCommands(),
       assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
       readHandoffTranscript: (bee, segments) => this.readHandoffTranscript(bee, segments),
@@ -1783,7 +1788,7 @@ export class HiveDaemon {
     const sha = cell.state === "evicted" && cell.evictedHead && hasCommit(cell.originRepo, cell.evictedHead)
       ? cell.evictedHead
       : cell.sha;
-    const restoreWip = cell.state === "evicted" && this.cfg.cellRetention.wipPushOnTurnEnd && cell.wipSha && cell.wipConfirmedAt != null && cell.wipSha !== sha
+    const restoreWip = (cell.state === "evicted" || !existsSync(cell.spaceDir)) && this.cfg.cellRetention.wipPushOnTurnEnd && cell.wipSha && cell.wipConfirmedAt != null && cell.wipSha !== sha
       ? { sha: cell.wipSha, node: this.wipNode(), cellId: cell.id }
       : null;
     return {
@@ -6180,6 +6185,7 @@ export class HiveDaemon {
   private lastObjectSweepAt: number | null = null;
   private championHomes: ChampionHomeSync | null = null;
   private resumeSync: BeeResumeSync | null = null;
+  private readonly pendingImports = new Map<string, { params: Record<string, unknown>; reason: BeeImportReason | null }>();
 
   private segmenterTick(): void {
     const now = Date.now();
@@ -6240,8 +6246,11 @@ export class HiveDaemon {
       if (typeof d.cell !== "object" || Array.isArray(d.cell)) throw new RpcError("invalid_request", "bee.import: descriptor.cell must be an object");
       const c = d.cell as Record<string, unknown>;
       if (typeof c.originRepo !== "string" || c.originRepo.length === 0) throw new RpcError("invalid_request", "bee.import: descriptor.cell.originRepo is required");
-      if (c.sha !== undefined && (typeof c.sha !== "string" || !/^[0-9a-f]{40,64}$/.test(c.sha))) throw new RpcError("invalid_request", "bee.import: descriptor.cell.sha must be a commit sha");
-      cell = { originRepo: c.originRepo, ...(typeof c.sha === "string" ? { sha: c.sha } : {}) };
+      for (const field of ["sha", "wipSha", "wipTree"] as const) {
+        if (c[field] !== undefined && (typeof c[field] !== "string" || !/^[0-9a-f]{40,64}$/.test(c[field] as string))) throw new RpcError("invalid_request", `bee.import: descriptor.cell.${field} must be a git object id`);
+      }
+      if ((c.wipSha === undefined) !== (c.wipTree === undefined)) throw new RpcError("invalid_request", "bee.import: descriptor.cell.wipSha and wipTree go together");
+      cell = { originRepo: c.originRepo, ...(typeof c.sha === "string" ? { sha: c.sha } : {}), ...(typeof c.wipSha === "string" ? { wipSha: c.wipSha, wipTree: c.wipTree as string } : {}) };
     }
     const cwd = str("cwd");
     if (!cell && !cwd) throw new RpcError("invalid_request", "bee.import: descriptor needs cwd or cell");
@@ -6299,12 +6308,16 @@ export class HiveDaemon {
     if (substrate === "cell") this.assertCellAdmission("bee.import");
     const { account, allocation, reservationId, claim } = this.resolveSpawnAccount("auto", descriptor.agent, params, key, "spawn", 0, null, descriptor.id);
     void allocation;
+    const fenceRaw = params.fence;
+    if (fenceRaw !== undefined && fenceRaw !== null && (typeof fenceRaw !== "object" || Array.isArray(fenceRaw) || typeof (fenceRaw as { epoch?: unknown }).epoch !== "number")) throw new RpcError("invalid_request", "bee.import: fence must be the bee.fence receipt {epoch, fencedAt} when given");
+    const unfenced = fenceRaw === undefined || fenceRaw === null;
+    if (unfenced) this.log(`bee.import.unfenced bee=${descriptor.id} note=no fence receipt; the Home must have fenced the old executor`);
     const homeKey = homeEnvFor(adapterName);
     const accountEnv = account && this.accounts ? this.accounts.homeEnvOf(account) : {};
-    const descriptorHome = homeKey ? descriptor.env?.[homeKey] ?? null : null;
-    const accountHome = account?.homePath ?? descriptorHome;
+    const accountHome = account?.homePath ?? null;
     let resumed: BeeImportResult["resumed"] = "fresh";
     let reason: BeeImportReason | null = resume ? null : "no_bundle";
+    let wipRestore: BeeImportResult["wipRestore"] = null;
     const cell = substrate === "cell" ? this.planCell(descriptor.id, descriptor.name, { originRepo: descriptor.cell!.originRepo, ...(descriptor.cell!.sha ? { sha: descriptor.cell!.sha } : {}) } as SpawnCellParams) : null;
     const cwd = cell ? cell.spaceDir : descriptor.cwd!;
     if (resume) {
@@ -6325,8 +6338,9 @@ export class HiveDaemon {
         }
       }
     }
-    const env = { ...descriptor.env, ...accountEnv };
-    if (homeKey && account && !(homeKey in accountEnv)) delete env[homeKey];
+    const env: Record<string, string> = { ...descriptor.env };
+    for (const key of ["CLAUDE_CONFIG_DIR", "CODEX_HOME", "GROK_HOME", "KIMI_HOME", "MUSE_HOME", "HOME", ...(homeKey ? [homeKey] : [])]) delete env[key];
+    Object.assign(env, accountEnv);
     const created = store.createBee({
       id: descriptor.id,
       name: descriptor.name,
@@ -6352,20 +6366,150 @@ export class HiveDaemon {
       reserveCell(this.cfg.cellsRoot, cell.reserve);
       const identity = localRepoIdentity(cell.reserve.originRepo);
       if (!identity) throw new RpcError("invalid_request", `bee.import: cannot read git identity of ${cell.reserve.originRepo}`);
-      store.putCell({ sourceBeeId: created.id, originRepo: cell.reserve.originRepo, sha: cell.reserve.sha, wrapper: cell.reserve.wrapper, spaceName: `${cell.reserve.repoName}-space-${cell.reserve.cellId}`, spaceDir: cell.spaceDir, gitCommonDirRealpath: identity.gitCommonDirRealpath, objectFormat: identity.objectFormat, sandbox: cell.reserve.sandbox });
+      const row = store.putCell({ sourceBeeId: created.id, originRepo: cell.reserve.originRepo, sha: cell.reserve.sha, wrapper: cell.reserve.wrapper, spaceName: `${cell.reserve.repoName}-space-${cell.reserve.cellId}`, spaceDir: cell.spaceDir, gitCommonDirRealpath: identity.gitCommonDirRealpath, objectFormat: identity.objectFormat, sandbox: cell.reserve.sandbox });
+      if (descriptor.cell?.wipSha && descriptor.cell.wipTree) {
+        const adopted = adoptWipRef(cell.reserve.originRepo, this.wipNode(), row.id, descriptor.cell.wipSha);
+        if (adopted) {
+          const at = Date.now();
+          store.recordCellWip(row.id, { sha: descriptor.cell.wipSha, tree: descriptor.cell.wipTree, pushedAt: at, confirmedAt: at });
+          wipRestore = "adopted";
+        } else wipRestore = "unreachable";
+        this.log(`bee.import.wip bee=${created.id} cell=${row.id} sha=${descriptor.cell.wipSha} outcome=${wipRestore}`);
+      }
     }
     const epoch = store.takeoverBee(created.id, resume?.epoch ?? known.epoch).epoch;
     const seedMessageId = resumed === "native" ? null : await this.reseedImportedBee(created, params, reason);
     if (seedMessageId != null) resumed = "reseeded";
+    else if (resumed !== "native" && reason === null) reason = "no_transcript";
+    else if (resumed === "fresh" && reason === "no_bundle" && (this.importTranscriptRefs(params).length > 0 || this.importTranscriptTurns(params).length > 0)) reason = "no_transcript";
     const cmd = store.enqueueCommand("spawn", created.id, {}, { idempotencyKey: key });
-    const result: BeeImportResult = { beeId: created.id, handle: created.handle, humanRef: created.human_ref, commandId: cmd.id, seedMessageId, resumed, reason: resumed === "native" ? null : reason, epoch, account: account?.id ?? null, lost };
+    if (resumed === "native") this.pendingImports.set(created.id, { params, reason });
+    const result: BeeImportResult = { beeId: created.id, handle: created.handle, humanRef: created.human_ref, commandId: cmd.id, seedMessageId, resumed, reason: resumed === "native" ? null : reason, epoch, account: account?.id ?? null, lost, unfenced, wipRestore };
     store.recordRpcResult(key, "bee.import", cmd.id, result);
     this.log(`bee.import bee=${created.id} agent=${descriptor.agent} resumed=${result.resumed} reason=${result.reason ?? "-"} epoch=${epoch} account=${account?.id ?? "-"} cwd=${cwd}${cell ? " cell" : ""}`);
     return result;
   }
 
-  private async reseedImportedBee(_bee: BeeRow, _params: Record<string, unknown>, _reason: BeeImportReason | null): Promise<number | null> {
-    return null;
+  private async importBootFailed(beeId: string, generation: number, flagged: boolean): Promise<void> {
+    const pending = this.pendingImports.get(beeId);
+    if (!pending) return;
+    const store = this.mustStore();
+    const bee = store.getBee(beeId);
+    if (!bee || !bee.forkSeed) {
+      this.pendingImports.delete(beeId);
+      return;
+    }
+    this.pendingImports.delete(beeId);
+    store.clearForkSeed(beeId);
+    const seedMessageId = await this.reseedImportedBee(bee, pending.params, "boot_failed");
+    store.recordRpcResult(`bee.import.boot_failed:${beeId}:${generation}`, "bee.import", null, { beeId, resumed: seedMessageId != null ? "reseeded" : "fresh", reason: "boot_failed", seedMessageId });
+    this.log(`bee.import.boot_failed bee=${beeId} gen=${generation} resumed=${seedMessageId != null ? "reseeded" : "fresh"} seed=${seedMessageId ?? "-"} flagged=${flagged}`);
+    if (flagged) this.rpcEnqueue("revive", beeId, {}, {});
+  }
+
+  private importTranscriptRefs(params: Record<string, unknown>): string[] {
+    const raw = params.transcript;
+    if (raw === undefined || raw === null) return [];
+    if (typeof raw !== "object" || Array.isArray(raw)) throw new RpcError("invalid_request", "bee.import: transcript must be an object or null");
+    const refs = (raw as { segmentRefs?: unknown }).segmentRefs;
+    if (refs === undefined) return [];
+    if (!Array.isArray(refs) || refs.length > 200 || !refs.every((r) => typeof r === "string" && /^[a-f0-9]{64}$/.test(r))) throw new RpcError("invalid_request", "bee.import: transcript.segmentRefs must be up to 200 sha256 references");
+    return refs as string[];
+  }
+
+  private importTranscriptTurns(params: Record<string, unknown>): Array<{ role: "user" | "assistant" | "tool" | "system"; text: string }> {
+    const raw = params.transcript;
+    if (raw === undefined || raw === null || typeof raw !== "object") return [];
+    const turns = (raw as { turns?: unknown }).turns;
+    if (turns === undefined) return [];
+    if (!Array.isArray(turns) || turns.length > 500) throw new RpcError("invalid_request", "bee.import: transcript.turns must be up to 500 {role, text} entries");
+    return turns.map((t) => {
+      const turn = t as { role?: unknown; text?: unknown };
+      if ((turn.role !== "user" && turn.role !== "assistant" && turn.role !== "tool" && turn.role !== "system") || typeof turn.text !== "string" || turn.text.length > 20_000) throw new RpcError("invalid_request", "bee.import: transcript.turns entries need role user|assistant|tool|system and text up to 20000 chars");
+      return { role: turn.role, text: turn.text };
+    });
+  }
+
+  private reseedTurns(refs: string[]): { turns: Array<{ role: "user" | "assistant" | "tool" | "system"; text: string }>; missing: string[]; lines: number } {
+    const objects = createDirectoryTranscriptObjectStore(this.cfg.transcriptSegments.storeDir);
+    const turns: Array<{ role: "user" | "assistant" | "tool" | "system"; text: string }> = [];
+    const missing: string[] = [];
+    let lines = 0;
+    for (const ref of refs) {
+      const bytes = objects.read(ref);
+      if (!bytes) {
+        missing.push(ref);
+        continue;
+      }
+      let decoded;
+      try {
+        decoded = decodeProjectedSegment(decompressSegment(bytes));
+      } catch (err) {
+        this.log(`bee.import.reseed_segment_unreadable ref=${ref} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`);
+        continue;
+      }
+      for (const line of decoded.lines) {
+        lines += 1;
+        let events: unknown;
+        try {
+          events = JSON.parse(line.events);
+        } catch {
+          continue;
+        }
+        if (!Array.isArray(events)) continue;
+        for (const event of events as Array<Record<string, unknown>>) {
+          const role = event.role;
+          const text = event.text;
+          if ((event.kind === "message" || event.kind === undefined) && (role === "user" || role === "assistant" || role === "tool" || role === "system") && typeof text === "string" && text.trim().length > 0) {
+            turns.push({ role, text: text.trim() });
+          }
+        }
+      }
+    }
+    return { turns, missing, lines };
+  }
+
+  private async reseedImportedBee(bee: BeeRow, params: Record<string, unknown>, reason: BeeImportReason | null): Promise<number | null> {
+    const refs = this.importTranscriptRefs(params);
+    const given = this.importTranscriptTurns(params);
+    if (refs.length === 0 && given.length === 0) return null;
+    const store = this.mustStore();
+    const read = this.reseedTurns(refs);
+    const turns = [...read.turns, ...given.map((t) => ({ role: t.role, text: t.text.trim() })).filter((t) => t.text.length > 0)];
+    const { missing, lines } = read;
+    if (turns.length === 0) {
+      this.log(`bee.import.reseed_empty bee=${bee.id} refs=${refs.length} missing=${missing.length} lines=${lines}`);
+      return null;
+    }
+    const lostRaw = params.lost as { questions?: unknown } | null | undefined;
+    const lostQuestions = lostRaw && typeof lostRaw.questions === "number" ? lostRaw.questions : 0;
+    const clip = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1)}…`);
+    const recent = turns.slice(-40).map((t) => ({ role: t.role, text: clip(t.text, 2000) }));
+    const firstUser = turns.find((t) => t.role === "user");
+    const lastAssistant = [...turns].reverse().find((t) => t.role === "assistant");
+    const why = reason === "account_mismatch" ? "the account on this executor belongs to another organisation, so the native session could not be resumed"
+      : reason === "bundle_missing" || reason === "restore_failed" ? "the harness-native session state could not be restored"
+      : reason === "no_hook" ? "this harness has no native resume path across executors"
+      : reason === "boot_failed" ? "the harness refused to resume the restored session on this executor"
+      : "no resume bundle existed";
+    const context = {
+      version: 1 as const,
+      summarizer: "import-reseed",
+      generatedAt: Date.now(),
+      task: firstUser ? clip(firstUser.text, 2000) : bee.title,
+      instruction: `The executor that ran you was lost and you were revived on another machine; ${why}. The transcript below is what you had said and heard before the loss. Continue from it; re-read the files you were working on before trusting your memory of them.${lostQuestions > 0 ? ` ${lostQuestions} question(s) you had asked were lost with the old executor; ask again if they still matter.` : ""}`,
+      constraints: [`Working directory: ${bee.cwd}${bee.substrate === "cell" ? " (an isolated Cell checkout; keep changes inside it)" : ""}`],
+      decisions: [],
+      completedWork: lastAssistant ? [`Last assistant message before the loss: ${clip(lastAssistant.text, 2000)}`] : [],
+      outstandingWork: lostQuestions > 0 ? [`${lostQuestions} question(s) to the operator were lost and may need asking again.`] : [],
+      recentTurns: recent,
+      transcript: { segments: [], truncated: turns.length > recent.length || missing.length > 0 },
+      mailbox: { summarizedMessageIds: [], queuedMessageIds: [] },
+    };
+    const body = renderHandoffSeed(context, { beeName: bee.name, fromAgent: bee.agent, toAgent: bee.agent });
+    const sent = store.send(bee.id, body, { sender: HANDOFF_SEED_SENDER, origin: "handoff.seed" });
+    this.log(`bee.import.reseeded bee=${bee.id} refs=${refs.length} missing=${missing.length} turns=${turns.length} seed=${sent.message.id}`);
+    return sent.message.id;
   }
 
   private syncChampionHome(beeId: string): void {

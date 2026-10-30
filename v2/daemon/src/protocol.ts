@@ -1759,7 +1759,7 @@ export interface BeeImportDescriptor {
   tags?: string[];
   title?: string | null;
   cwd?: string;
-  cell?: { originRepo: string; sha?: string };
+  cell?: { originRepo: string; sha?: string; wipSha?: string; wipTree?: string };
   providerSessionId?: string | null;
   parentId?: string | null;
   parentExternal?: boolean;
@@ -1778,7 +1778,7 @@ export interface BeeImportResume {
 }
 
 export type BeeImportResumed = "native" | "reseeded" | "fresh";
-export type BeeImportReason = "account_mismatch" | "bundle_missing" | "no_hook" | "restore_failed" | "no_bundle" | "no_transcript";
+export type BeeImportReason = "account_mismatch" | "bundle_missing" | "no_hook" | "restore_failed" | "no_bundle" | "no_transcript" | "boot_failed";
 
 export interface BeeImportResult extends DedupMarkers {
   beeId: string;
@@ -1791,6 +1791,8 @@ export interface BeeImportResult extends DedupMarkers {
   epoch: number;
   account: string | null;
   lost: { questions: number } | null;
+  unfenced: boolean;
+  wipRestore: "adopted" | "unreachable" | null;
 }
 
 export interface BeeFenceResult extends DedupMarkers {

@@ -259,6 +259,7 @@ export interface DaemonCoreOptions {
   blockedRuntimeStartBeeIds?: () => ReadonlySet<string>;
   onIdentityUnresolved?: (beeId: string, generation: number) => void;
   onTranscriptQuiet?: (beeId: string, generation: number, reason: "turn_ended" | "exited") => void;
+  onSpawnFailure?: (beeId: string, generation: number, flagged: boolean) => void;
   /** Throws at the start boundary to use the normal bounded command retry path. */
   assertRuntimeStartReady?: (command: CommandRow) => void;
   /**
@@ -332,6 +333,7 @@ export class DaemonCore {
   private readonly blockedRuntimeStartBeeIds: () => ReadonlySet<string>;
   private readonly onIdentityUnresolved: (beeId: string, generation: number) => void;
   private readonly onTranscriptQuiet: (beeId: string, generation: number, reason: "turn_ended" | "exited") => void;
+  private readonly onSpawnFailure: (beeId: string, generation: number, flagged: boolean) => void;
   private readonly assertRuntimeStartReady: (command: CommandRow) => void;
   private readonly readHandoffTranscript: ((bee: BeeRow, segments: TranscriptSegmentRow[]) => { turns: HandoffContextTurn[]; truncated: boolean }) | null;
   private readonly summarizeHandoff: ((input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>) | null;
@@ -373,6 +375,7 @@ export class DaemonCore {
     this.blockedRuntimeStartBeeIds = opts.blockedRuntimeStartBeeIds ?? (() => new Set());
     this.onIdentityUnresolved = opts.onIdentityUnresolved ?? (() => undefined);
     this.onTranscriptQuiet = opts.onTranscriptQuiet ?? (() => undefined);
+    this.onSpawnFailure = opts.onSpawnFailure ?? (() => undefined);
     this.assertRuntimeStartReady = opts.assertRuntimeStartReady ?? (() => undefined);
     this.readHandoffTranscript = opts.readHandoffTranscript ?? null;
     this.summarizeHandoff = opts.summarizeHandoff ?? null;
@@ -645,6 +648,11 @@ export class DaemonCore {
         if (failures > failuresBefore) {
           const flagged = this.store.activeFlags(obs.beeId).some((f) => f.flag === "spawn_failed");
           this.log(`spawn.failure bee=${obs.beeId} gen=${obs.generation} failures=${failures} flagged=${flagged}`);
+          try {
+            this.onSpawnFailure(obs.beeId, obs.generation, flagged);
+          } catch (err) {
+            this.log(`spawn.failure_hook_error bee=${obs.beeId} ${err instanceof Error ? err.message : String(err)}`);
+          }
           bootRetryNeeded = !flagged;
         }
       }

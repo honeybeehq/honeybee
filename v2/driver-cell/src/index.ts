@@ -145,7 +145,7 @@ export {
   type WarmRecord,
 } from "./ledger.ts";
 export { cowCopy, cowPlatform, probeCow, probeCowWritable, type CowPlatform } from "./cow.ts";
-export { WIP_MAX_FILE_BYTES, WipError, confirmWip, dropWipRef, operationInProgress, pushWip, restoreWip, snapshotWip, sweepWipRefs, wipNodeScope, wipRefFor, type WipRefSweep, type WipRestoreSkip, type WipSnapshot, type WipStage } from "./wip.ts";
+export { WIP_MAX_FILE_BYTES, WipError, adoptWipRef, confirmWip, dropWipRef, operationInProgress, pushWip, restoreWip, snapshotWip, sweepWipRefs, wipNodeScope, wipRefFor, type WipRefSweep, type WipRestoreSkip, type WipSnapshot, type WipStage } from "./wip.ts";
 export {
   claimFromPool,
   buildPoolMember,

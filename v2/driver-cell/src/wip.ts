@@ -173,6 +173,12 @@ export function sweepWipRefs(originRepo: string, scopes: readonly string[], live
 
 export type WipRestoreSkip = "invalid_sha" | "nothing_to_restore" | "no_head" | "wip_unreachable" | "head_mismatch" | "space_dirty";
 
+export function adoptWipRef(originRepo: string, node: string, cellId: string, sha: string): boolean {
+  if (!SHA.test(sha)) return false;
+  if (tryGit(originRepo, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) return false;
+  return tryGit(originRepo, ["update-ref", wipRefFor(node, cellId), sha]).status === 0;
+}
+
 export function restoreWip(spaceDir: string, originRepo: string, node: string, cellId: string, sha: string): { restored: boolean; reason: WipRestoreSkip | null } {
   if (!SHA.test(sha)) return { restored: false, reason: "invalid_sha" };
   const head = revParse(spaceDir, "HEAD");
