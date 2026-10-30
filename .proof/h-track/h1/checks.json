@@ -1,0 +1,61 @@
+{
+  "v2:test (core)": {
+    "pass": 619,
+    "fail": 1,
+    "failing": [
+      "SQL unknown count agrees with decoder for outer and fallback shape boundaries without normalization"
+    ],
+    "exit": "1"
+  },
+  "v2:daemon (all daemon + cli)": {
+    "pass": 714,
+    "fail": 3,
+    "failing": [
+      "confinement uses pinned process birth and namespace, failing closed",
+      "no false positives: host CLI, registered Apiary service, and host HSR bee",
+      "strict mode triggers and trusted host exceptions"
+    ],
+    "exit": "1"
+  },
+  "v2:driver2 (cell + tmux)": {
+    "pass": 324,
+    "fail": 20,
+    "failing": [
+      "child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure and truncation before capture",
+      "fresh tmux retries a transient unavailable capture through its retained socket and pane",
+      "legacy tmux binds derived single-pane proof to the stored pid once",
+      "private stdout capture releases only bounded successful bytes and suppresses both ordinary streams",
+      "real runner masks overlapping synthetic values in both streams (sandbox=false)",
+      "real runner mid-value cancel masks or drops both stream tails (sandbox=false)",
+      "real runner mid-value exit7 masks or drops both stream tails (sandbox=false)",
+      "real runner mid-value normal masks or drops both stream tails (sandbox=false)",
+      "real runner mid-value signal masks or drops both stream tails (sandbox=false)",
+      "real runner mid-value supervisor-kill masks or drops both stream tails (sandbox=false)",
+      "real runner mid-value timeout masks or drops both stream tails (sandbox=false)",
+      "secret runner lease kills child and grandchild on cancel-frozen (detached=false, sandbox=false)",
+      "secret runner lease kills child and grandchild on deadline (detached=false, sandbox=false)",
+      "secret runner lease kills child and grandchild on kill (detached=false, sandbox=false)",
+      "secret runner lease kills child and grandchild on normal (detached=false, sandbox=false)",
+      "secret runner lease kills child and grandchild on stop (detached=false, sandbox=false)",
+      "secret runner lease kills child and grandchild on supervisor-kill (detached=false, sandbox=false)",
+      "secret runner lease kills child and grandchild on supervisor-only-kill (detached=false, sandbox=false)",
+      "supervisor preserves command exit codes and fragmented unicode configuration",
+      "unavailable containment refuses before sending configuration or executing argv"
+    ],
+    "exit": "1"
+  },
+  "v2:driver (adapters + hsr)": {
+    "pass": 191,
+    "fail": 0,
+    "failing": [],
+    "exit": "0"
+  },
+  "targeted retention/pressure/capacity": {
+    "pass": 6,
+    "fail": 1,
+    "failing": [
+      "cell-pressure.1: below the floor, clean archived then idle Cells go oldest first until the target; held, dirty, unlanded, live and fresh Cells stay; an unreachable floor is reported once"
+    ],
+    "exit": "1"
+  }
+}

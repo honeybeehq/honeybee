@@ -1,0 +1,217 @@
+{
+  "step": "H1",
+  "commit": "0fb5d7fa",
+  "date": "2026-10-30",
+  "flags": {
+    "cells.retention.purgeIgnoredOnPark": "default false (trim patterns only, as before); true = purge every ignored path on park",
+    "bees.tmpRoot": "now defaults on workstations/cloud to <data-dir>/tmp (source data_dir_default); null = off"
+  },
+  "surfaces": [
+    "cell.park RPC + hive cell park",
+    "cell.gc purge report (policy.purgeIgnoredOnPark, purge.{mode,cells,trimBytes,installBytes,otherIgnoredBytes,otherIgnored[]})",
+    "cell.parked audit kind",
+    "classifyIgnored install class, verifyParkPaths, parkPaths, parkCellWrapper",
+    "sandbox grant ~/Library/pnpm",
+    "capability cell.park.v1"
+  ],
+  "census": {
+    "scope": "read-only census of ~/.hive/v2/cells on the studio workstation, 2026-10-30; du -sk semantics (APFS clones counted in full), git status --ignored=matching per space",
+    "cellDirs": 1955,
+    "gitCells": 1953,
+    "bytes": {
+      "totalGB": 2907.3,
+      "medianGB": 0.403,
+      "meanGB": 1.489,
+      "p90GB": 3.68,
+      "maxGB": 53.7
+    },
+    "shares": {
+      "ignoredPct": 78.6,
+      "nodeModulesPct": 62.0,
+      "gitDirPct": 7.9,
+      "untrackedGB": 99.51
+    },
+    "ignoredByClassGB": {
+      "install": 1829.7,
+      "build": 173.8,
+      "other": 281.9,
+      "env": 0.0
+    },
+    "ignoredByTopLevelNameGB": [
+      [
+        "node_modules",
+        1829.6
+      ],
+      [
+        ".next",
+        166.9
+      ],
+      [
+        ".proof",
+        128.7
+      ],
+      [
+        ".scratch",
+        67.0
+      ],
+      [
+        ".build",
+        32.9
+      ],
+      [
+        ".artifacts",
+        7.9
+      ],
+      [
+        ".dgt1987",
+        7.0
+      ],
+      [
+        ".vercel",
+        5.8
+      ],
+      [
+        "build",
+        5.2
+      ],
+      [
+        ".runtime",
+        4.8
+      ],
+      [
+        ".t1",
+        3.6
+      ],
+      [
+        "verification",
+        3.3
+      ],
+      [
+        ".dgt1987-tools",
+        3.1
+      ],
+      [
+        ".s1",
+        2.2
+      ],
+      [
+        "worktrees",
+        2.2
+      ]
+    ],
+    "projectedAfterPurgeOnPark": {
+      "medianGB": 0.28,
+      "meanGB": 0.318,
+      "p90GB": 0.39,
+      "gateMedianGB": 0.5,
+      "gateMet": true
+    },
+    "projectedWithGitAlternatesToo": {
+      "medianGB": 0.182,
+      "meanGB": 0.201
+    },
+    "gitDirPerCell": {
+      "medianGB": 0.123,
+      "p90GB": 0.155,
+      "maxGB": 1.51
+    },
+    "repos": [
+      [
+        "digitech-next.git",
+        897
+      ],
+      [
+        "apiary.git",
+        544
+      ],
+      [
+        "asterlode.git",
+        196
+      ],
+      [
+        "foundation.git",
+        78
+      ],
+      [
+        "honeybee.git",
+        66
+      ],
+      [
+        "homely-wp-theme.git",
+        40
+      ],
+      [
+        "loggit-monorepo.git",
+        32
+      ],
+      [
+        "nectar.git",
+        19
+      ]
+    ],
+    "tmpInsideCells": {
+      "cellsWithTmpDir": 15,
+      "inodes": 90989
+    }
+  },
+  "gateMedianLiveCell": {
+    "target": "<= 0.5 GB",
+    "todayMedianGB": 0.403,
+    "materializedCellsMedianGB": 0.412,
+    "projectedAfterPurgeMedianGB": 0.28,
+    "projectedAfterPurgeMeanGB": 0.318,
+    "method": "projection from the census (bytes minus git-ignored bytes per Cell); not measured on live Cells because purge is flag-off and live Cells are never written by this track",
+    "caveat": "du semantics: node_modules are pnpm hard-links from the user store and CoW clones, so the physical bytes freed are lower than the du figures"
+  },
+  "tmpdir": {
+    "before": {
+      "tmpdir": "/var/folders/y2/lgjk786x2qz6s_gt20x091vc0000gn/T/",
+      "topLevelEntries": 2003,
+      "totalInodes": 253186,
+      "largest": [
+        {
+          "entry": "node-compile-cache",
+          "inodes": 206433
+        },
+        {
+          "entry": "apiary-perf-fixture",
+          "inodes": 12055
+        },
+        {
+          "entry": "foundation-h3-studio-real-app-mk2y0jx3",
+          "inodes": 7989
+        },
+        {
+          "entry": "tsx-501",
+          "inodes": 5576
+        },
+        {
+          "entry": "t137-doc-jhcn6uxk",
+          "inodes": 3303
+        },
+        {
+          "entry": "hb-capture-parity-hCyagf",
+          "inodes": 1269
+        },
+        {
+          "entry": "t84-final-gates-vbe1asxr",
+          "inodes": 1173
+        },
+        {
+          "entry": "YM2BiocRuPdqMG7PcOLYH",
+          "inodes": 1128
+        }
+      ],
+      "runnerSocketDirs": 226,
+      "nodeCompileCacheInodes": 206433,
+      "note": "node-compile-cache is Node's default compile cache in the user tmp; bees now get NODE_COMPILE_CACHE=<data-dir>/node-compile-cache and TMPDIR=<data-dir>/tmp/<bee> (bees.tmpRoot data_dir_default)"
+    },
+    "change": "bees on this node will write TMPDIR=<data-dir>/tmp/<bee> and NODE_COMPILE_CACHE=<data-dir>/node-compile-cache; the per-bee dir is removed on bee delete, swept for released bees at boot and cleared on park",
+    "notProven": "the inode-leak class is gone only after deploy; this track never touches the live runtime, so the after-state is for Tormod to read with the same script after a deploy"
+  },
+  "notBuilt": {
+    "gitAlternates": "see DEFERRED.md: .git is 7.9% of Cell bytes (median 123 MB); purge alone meets the gate",
+    "honeybeeOwnedPnpmStore": "see DEFERRED.md: installs already hard-link from pnpm's user store on the same volume (114/118 sampled)"
+  },
+  "cliSmoke": "cli-smoke.txt"
+}

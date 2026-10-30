@@ -1,0 +1,25 @@
+$ hive cell gc
+cell gc: planning (dry run) — inspecting every Cell; progress follows
+cell gc (dry run — nothing was changed): 1 Cells, 196 KiB on disk (du semantics; APFS clones share blocks with their origin, so freed space is lower)
+policy: OFF · archived ≥ 7d · stopped ≥ 30d · retained ≥ 14d · budget none · max 100/pass · park ≥ 0h (trim patterns only) · inspect 0s
+ignored bytes across 1 Cells: build output 4 KiB · installs 8 KiB · outside known patterns 24 KiB (parking removes build output only)
+      16 KiB     1 Cells      1 paths  .proof
+       8 KiB     1 Cells      1 paths  .scratch
+planned: 0 Cells, 0 KiB · held: 1 Cells, 196 KiB (0 dirty)
+park: 1 Cells, 4 KiB of build output (the Cells stay; ignored files outside the trim patterns are never touched)
+       4 KiB     0d  active   demo  .next
+held too_young: 1 Cells, 196 KiB
+
+$ hive cell park demo
+✓  cell parked 1 path(s), 4 KiB (build output (trim patterns)); the checkout, bee, mailbox and transcript stay
+
+$ hive health
+daemon  ·  pid 33418  ·  up 2s  ·  ticks 81  ·  tickErrors=0
+bees  ·  1 total  ·  1 active  ·  0 archived
+i1  ·  0 violations
+naming: off
+cells disk: 0 KiB free of 64 KiB · floor 32 KiB (BELOW) · no sweep recorded
+capacity: new Cells accept (enforce off, warn only) · resource-blocked since 2026-10-30 11:07Z (disk_floor) · 1 Cells, 0 live, 196 KiB on disk
+
+$ hive spawn refused? (warn-only node admits)
+✓  spawned CE.0001 (df3b29a5-0dc9-48a8-854e-d8815ec643b9; cellstub/cell; command 3)

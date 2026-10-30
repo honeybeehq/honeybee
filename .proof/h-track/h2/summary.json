@@ -1,0 +1,86 @@
+{
+  "step": "H2",
+  "commit": "0fb5d7fa",
+  "date": "2026-10-30",
+  "flags": {
+    "cells.retention.budgetEnforce": "default false on workstations/cloud (warn only), true on satellites; the rollback is false",
+    "cells.retention.minFreePercent/minFreeBytes": "workstation defaults 5% / 20 GiB (were null); null removes the floor"
+  },
+  "surfaces": [
+    "capacity field on snapshot/watch/mirror.local.snapshot/deployInfo/health (NodeCapacity, additive nullable)",
+    "node.capacity audit kind on admission flips",
+    "resource_blocked closed error code on spawn substrate=cell",
+    "hive health / deploy-info capacity line",
+    "capability node.capacity.v1"
+  ],
+  "thisNodeToday": {
+    "volumeTiB": 3.6,
+    "freeGiB": 48,
+    "freePct": 1.3,
+    "floorWithDefaults": "max(5% = 184 GiB, 20 GiB) = 184 GiB",
+    "consequence": "on deploy this workstation reports resourceBlocked=true, admission accept (enforce off); with budgetEnforce true it would refuse new Cells until the pressure pass reclaims space"
+  },
+  "gate30Days": "cannot be proven yet: it needs the deploy plus 30 days of capacity readings; the typed refusal is proven in cell-park.3, cell-pressure.1 and cell-capacity.*",
+  "tests": {
+    "v2:test (core)": {
+      "pass": 619,
+      "fail": 1,
+      "failing": [
+        "SQL unknown count agrees with decoder for outer and fallback shape boundaries without normalization"
+      ],
+      "exit": "1"
+    },
+    "v2:daemon (all daemon + cli)": {
+      "pass": 714,
+      "fail": 3,
+      "failing": [
+        "confinement uses pinned process birth and namespace, failing closed",
+        "no false positives: host CLI, registered Apiary service, and host HSR bee",
+        "strict mode triggers and trusted host exceptions"
+      ],
+      "exit": "1"
+    },
+    "v2:driver2 (cell + tmux)": {
+      "pass": 324,
+      "fail": 20,
+      "failing": [
+        "child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure and truncation before capture",
+        "fresh tmux retries a transient unavailable capture through its retained socket and pane",
+        "legacy tmux binds derived single-pane proof to the stored pid once",
+        "private stdout capture releases only bounded successful bytes and suppresses both ordinary streams",
+        "real runner masks overlapping synthetic values in both streams (sandbox=false)",
+        "real runner mid-value cancel masks or drops both stream tails (sandbox=false)",
+        "real runner mid-value exit7 masks or drops both stream tails (sandbox=false)",
+        "real runner mid-value normal masks or drops both stream tails (sandbox=false)",
+        "real runner mid-value signal masks or drops both stream tails (sandbox=false)",
+        "real runner mid-value supervisor-kill masks or drops both stream tails (sandbox=false)",
+        "real runner mid-value timeout masks or drops both stream tails (sandbox=false)",
+        "secret runner lease kills child and grandchild on cancel-frozen (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on deadline (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on kill (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on normal (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on stop (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on supervisor-kill (detached=false, sandbox=false)",
+        "secret runner lease kills child and grandchild on supervisor-only-kill (detached=false, sandbox=false)",
+        "supervisor preserves command exit codes and fragmented unicode configuration",
+        "unavailable containment refuses before sending configuration or executing argv"
+      ],
+      "exit": "1"
+    },
+    "v2:driver (adapters + hsr)": {
+      "pass": 191,
+      "fail": 0,
+      "failing": [],
+      "exit": "0"
+    },
+    "targeted retention/pressure/capacity": {
+      "pass": "cell-park 4/4, cell-pressure 4/4 (after adapting cell-pressure.1 to the typed refusal), cell-retention 7/7, cell-capacity 3/3, driver retention 26/26, driver submodule+sandbox 52/52",
+      "note": "daemon-tests-4.log is the run before the cell-pressure.1 adaptation; the later single-file reruns are green"
+    },
+    "classification": {
+      "core": "1 pre-existing failure, identical on pristine HEAD (multiline-delivery SQL unknown count)",
+      "daemon": "3 confined-peer failures are environmental: the same 3 fail on a pristine 36173c79 worktree run at the same time (they passed earlier today); unrelated to Cells",
+      "driver2": "20 failures identical to the H0 baseline run in this Cell: secret_execution_containment_unavailable / tmux proof inside this Cell sandbox"
+    }
+  }
+}

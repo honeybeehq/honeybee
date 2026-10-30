@@ -1,0 +1,140 @@
+{
+  "scope": "read-only census of ~/.hive/v2/cells on the studio workstation, 2026-10-30; du -sk semantics (APFS clones counted in full), git status --ignored=matching per space",
+  "cellDirs": 1955,
+  "gitCells": 1953,
+  "bytes": {
+    "totalGB": 2907.3,
+    "medianGB": 0.403,
+    "meanGB": 1.489,
+    "p90GB": 3.68,
+    "maxGB": 53.7
+  },
+  "shares": {
+    "ignoredPct": 78.6,
+    "nodeModulesPct": 62.0,
+    "gitDirPct": 7.9,
+    "untrackedGB": 99.51
+  },
+  "ignoredByClassGB": {
+    "install": 1829.7,
+    "build": 173.8,
+    "other": 281.9,
+    "env": 0.0
+  },
+  "ignoredByTopLevelNameGB": [
+    [
+      "node_modules",
+      1829.6
+    ],
+    [
+      ".next",
+      166.9
+    ],
+    [
+      ".proof",
+      128.7
+    ],
+    [
+      ".scratch",
+      67.0
+    ],
+    [
+      ".build",
+      32.9
+    ],
+    [
+      ".artifacts",
+      7.9
+    ],
+    [
+      ".dgt1987",
+      7.0
+    ],
+    [
+      ".vercel",
+      5.8
+    ],
+    [
+      "build",
+      5.2
+    ],
+    [
+      ".runtime",
+      4.8
+    ],
+    [
+      ".t1",
+      3.6
+    ],
+    [
+      "verification",
+      3.3
+    ],
+    [
+      ".dgt1987-tools",
+      3.1
+    ],
+    [
+      ".s1",
+      2.2
+    ],
+    [
+      "worktrees",
+      2.2
+    ]
+  ],
+  "projectedAfterPurgeOnPark": {
+    "medianGB": 0.28,
+    "meanGB": 0.318,
+    "p90GB": 0.39,
+    "gateMedianGB": 0.5,
+    "gateMet": true
+  },
+  "projectedWithGitAlternatesToo": {
+    "medianGB": 0.182,
+    "meanGB": 0.201
+  },
+  "gitDirPerCell": {
+    "medianGB": 0.123,
+    "p90GB": 0.155,
+    "maxGB": 1.51
+  },
+  "repos": [
+    [
+      "digitech-next.git",
+      897
+    ],
+    [
+      "apiary.git",
+      544
+    ],
+    [
+      "asterlode.git",
+      196
+    ],
+    [
+      "foundation.git",
+      78
+    ],
+    [
+      "honeybee.git",
+      66
+    ],
+    [
+      "homely-wp-theme.git",
+      40
+    ],
+    [
+      "loggit-monorepo.git",
+      32
+    ],
+    [
+      "nectar.git",
+      19
+    ]
+  ],
+  "tmpInsideCells": {
+    "cellsWithTmpDir": 15,
+    "inodes": 90989
+  }
+}
