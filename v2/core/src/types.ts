@@ -1178,7 +1178,6 @@ export interface CellRow {
   evictedHead: string | null;
 }
 
-/** H2: the executor's disk capacity fact, mirrored into the snapshot and audited on every admission flip. */
 export interface NodeCapacity {
   schema: 1;
   checkedAt: number;
@@ -1310,6 +1309,39 @@ export interface TranscriptSegmentRow {
   handoffId: string | null;
   createdAt: number;
   closedAt: number | null;
+}
+
+export interface TranscriptSegmentObjectRow {
+  id: string;
+  beeId: string;
+  ordinal: number;
+  firstLine: number;
+  lastLine: number;
+  byteStart: number;
+  byteEnd: number;
+  harness: string;
+  rawRef: string;
+  rawSize: number;
+  rawBytes: number;
+  projectedRef: string;
+  projectedSize: number;
+  projectedBytes: number;
+  projectionVersion: number;
+  digest: string;
+  closedAt: number;
+  epoch: string | null;
+  path: string;
+  logSegmentId: string | null;
+}
+
+export interface TranscriptSegmentCursorRow {
+  beeId: string;
+  path: string;
+  lineNo: number;
+  byteOffset: number;
+  epoch: string | null;
+  projectorCheckpoint: unknown | null;
+  updatedAt: number;
 }
 
 export const BEE_HANDOFF_PHASES = ["stopping", "summarizing", "starting", "complete", "failed"] as const;
@@ -1734,6 +1766,12 @@ export class SchemaVersionError extends CoreError {
   constructor(kind: "schema_newer" | "schema_migration_required", message: string) {
     super(message);
     this.kind = kind;
+  }
+}
+
+export class TranscriptSegmentOrdinalError extends CoreError {
+  constructor(beeId: string, expected: number, got: number) {
+    super(`transcript segment objects for ${beeId} must be dense: expected ordinal ${expected}, got ${got}`);
   }
 }
 

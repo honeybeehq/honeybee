@@ -161,7 +161,7 @@
     "projectedAfterPurgeMedianGB": 0.28,
     "projectedAfterPurgeMeanGB": 0.318,
     "method": "projection from the census (bytes minus git-ignored bytes per Cell); not measured on live Cells because purge is flag-off and live Cells are never written by this track",
-    "caveat": "du semantics: node_modules are pnpm hard-links from the user store and CoW clones, so the physical bytes freed are lower than the du figures"
+    "caveat": "du semantics, an upper bound on what a purge frees: node_modules here are pnpm clones (APFS copy-on-write; nlink stays 1) so the census cannot see shared blocks; a 50-Cell nlink sample finds only 2.3 % of node_modules bytes hard-linked (node-modules-hardlink-sample.json). Reclaimed physical bytes are lower than the du projection while the pnpm store still holds the cloned blocks; the volume's free-space delta after a pass is the truthful measure, as the retention contract already states."
   },
   "tmpdir": {
     "before": {
@@ -213,5 +213,8 @@
     "gitAlternates": "see DEFERRED.md: .git is 7.9% of Cell bytes (median 123 MB); purge alone meets the gate",
     "honeybeeOwnedPnpmStore": "see DEFERRED.md: installs already hard-link from pnpm's user store on the same volume (114/118 sampled)"
   },
-  "cliSmoke": "cli-smoke.txt"
+  "cliSmoke": "cli-smoke.txt",
+  "followUp": {
+    "leadReview": "GO with defaults; three should-fixes folded in: cell.park plans in the retention worker and only re-checks and renames on the main thread; measurePathBytesDetailed splits hard-linked bytes out as sharedBytes (purge report installSharedBytes, cell.park sharedBytes); capacity counts are cached per disk check instead of O(cells) per snapshot/health/spawn. Nits: added comment lines removed; recently_modified now scans keep directories deeply (bounded at 4096 entries), installs stay shallow."
+  }
 }

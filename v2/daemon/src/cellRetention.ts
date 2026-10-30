@@ -41,10 +41,13 @@ import {
   unparkCellWrapper,
   type EvictResult,
   listPendingKeeps,
-  parkCellWrapper,
+  applyParkPlan,
   parkPaths,
   preserveEnvFiles,
   type ParkMode,
+  type ParkPlan,
+  type ParkPlanWorkerRequest,
+  type ParkPlanWorkerResult,
   restoreKeptPaths,
   retentionWorkerUrl,
   sweepEvicting,
@@ -106,7 +109,6 @@ export interface CellRetentionDeps {
   statfs?: (path: string) => { totalBytes: number; freeBytes: number };
   /** Append an informational retention audit row. */
   audit?: (kind: "cell.retention.pass" | "cell.pressure.floor_unmet" | "cell.retention.daily_cap" | "cell.parked" | "node.capacity", payload: Record<string, unknown>) => void;
-  /** Drop the bee's private tmp directory when its Cell is parked; false when nothing was removed. */
   clearBeeTmp?: (beeId: string) => boolean;
   /** Times of retention evictions since `sinceTs`, to restore the daily cap's window after a restart. */
   recentEvictionTimes?: (sinceTs: number) => number[];
@@ -269,6 +271,7 @@ export class CellRetentionService {
   private announcedAdmission: { blocked: boolean; newCells: NodeCapacity["admission"]["newCells"] } | null = null;
   private warnedBelowFloorAt: number | null = null;
   private lastPresentBytes: number | null = null;
+  private cellCounts: { cellCount: number; liveCells: number; at: number } | null = null;
 
   async stop(): Promise<void> {
     this.stopping = true;
@@ -427,13 +430,11 @@ export class CellRetentionService {
     return this.deps.policy.purgeIgnoredOnPark ? "purge" : "trim";
   }
 
-  /** H2: the executor's capacity fact. `fresh` re-reads the volume; otherwise the last reading (≤ one disk check old) serves. */
   capacity(fresh = false): NodeCapacity | null {
     const disk = fresh ? this.readDisk() : this.lastDisk ?? this.readDisk();
     return disk == null ? null : this.capacityOf(disk);
   }
 
-  /** The capacity fact when a NEW Cell must be refused right now; null when admission is open. */
   refusingNewCells(): NodeCapacity | null {
     const capacity = this.capacity(true);
     if (capacity == null) return null;
@@ -441,11 +442,9 @@ export class CellRetentionService {
     return capacity.admission.newCells === "refuse" ? capacity : null;
   }
 
-  private capacityOf(disk: DiskReading): NodeCapacity {
-    const blocked = disk.floorBytes != null && disk.freeBytes < disk.floorBytes;
-    if (blocked) this.blockedSince ??= disk.at;
-    else this.blockedSince = null;
-    const enforce = this.deps.policy.budgetEnforce;
+  private countCells(now: number): { cellCount: number; liveCells: number } {
+    const maxAge = this.deps.diskCheckMs ?? DEFAULT_DISK_CHECK_MS;
+    if (this.cellCounts && now - this.cellCounts.at < maxAge) return this.cellCounts;
     let cellCount = 0;
     let liveCells = 0;
     try {
@@ -458,6 +457,16 @@ export class CellRetentionService {
     } catch (err) {
       this.deps.log(`cell.capacity.count_failed ${err instanceof Error ? err.message : String(err)}`);
     }
+    this.cellCounts = { cellCount, liveCells, at: now };
+    return this.cellCounts;
+  }
+
+  private capacityOf(disk: DiskReading): NodeCapacity {
+    const blocked = disk.floorBytes != null && disk.freeBytes < disk.floorBytes;
+    if (blocked) this.blockedSince ??= disk.at;
+    else this.blockedSince = null;
+    const enforce = this.deps.policy.budgetEnforce;
+    const { cellCount, liveCells } = this.countCells(disk.at);
     return {
       schema: 1,
       checkedAt: disk.at,
@@ -478,7 +487,6 @@ export class CellRetentionService {
     };
   }
 
-  /** One `node.capacity` audit row and log line per admission flip, never per check. */
   private announceCapacity(capacity: NodeCapacity): void {
     const current = { blocked: capacity.resourceBlocked.blocked, newCells: capacity.admission.newCells };
     const previous = this.announcedAdmission;
@@ -911,7 +919,7 @@ export class CellRetentionService {
     return new Map(message.inspections.map((i) => [i.key, { inspection: i.inspection, error: i.error }] as const));
   }
 
-  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
+  private runWorker<T>(request: RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest, onProgress?: (entry: RetentionWorkerInspection) => void): Promise<T> {
     this.assertRunning();
     return new Promise((resolvePromise, reject) => {
       const worker = new Worker(this.deps.workerUrl ?? retentionWorkerUrl(), { execArgv: [], workerData: request });
@@ -965,7 +973,6 @@ export class CellRetentionService {
     };
   }
 
-  /** The space-relative paths parking removes from this Cell under the node's mode. */
   private parkPathsOf(item: Pick<CellGcItem, "trim" | "install" | "keep" | "envFiles">): string[] {
     return parkPathsFor(item, this.parkMode());
   }
@@ -1272,24 +1279,26 @@ export class CellRetentionService {
     }
   }
 
-  /**
-   * H1 `cell.park`: park ONE bee's Cell now, whatever its idle age. The caller
-   * has already refused a live runtime, an in-flight Cell operation, a move or
-   * a handoff; dirty work never blocks a park because parking touches only
-   * ignored paths.
-   */
-  parkNow(cell: CellRow, beeId: string): CellParkResult {
+  async planPark(cell: CellRow): Promise<ParkPlan | null> {
+    const wrapperDir = dirname(resolve(cell.spaceDir));
+    if (!existsSync(wrapperDir)) return null;
+    const result = await this.runWorker<ParkPlanWorkerResult>({ kind: "planPark", wrapperDir, mode: this.parkMode(), trimPatterns: [...this.deps.policy.trimPatterns] } satisfies ParkPlanWorkerRequest);
+    if (result.error != null) throw new Error(result.error);
+    return result.plan;
+  }
+
+  applyPark(cell: CellRow, beeId: string, plan: ParkPlan | null): CellParkResult {
     const mode = this.parkMode();
     const wrapperDir = dirname(resolve(cell.spaceDir));
-    if (!existsSync(wrapperDir)) return { cell, status: "absent", mode, paths: [], skipped: [], bytes: null, envFiles: [] };
-    const parked = parkCellWrapper(this.deps.cellsRoot, wrapperDir, mode, { trimPatterns: this.deps.policy.trimPatterns, now: this.deps.now, measure: true });
+    if (plan == null || !existsSync(wrapperDir)) return { cell, status: "absent", mode, paths: [], skipped: [], bytes: null, sharedBytes: null, envFiles: [] };
+    const parked = applyParkPlan(this.deps.cellsRoot, wrapperDir, plan, { now: this.deps.now });
     const status = parked.parked.length > 0 ? "parked" : "nothing_to_park";
-    this.deps.log(`cell.park mode=${mode} cell=${cell.id} bee=${beeId} status=${status} paths=${parked.parked.length} skipped=${parked.skipped.length} bytes=${parked.bytes ?? "?"} parked=${parked.parkedDir ?? "-"} env_files=${parked.envFiles.length}`);
+    this.deps.log(`cell.park mode=${mode} cell=${cell.id} bee=${beeId} status=${status} paths=${parked.parked.length} skipped=${parked.skipped.length} bytes=${parked.bytes ?? "?"} shared_bytes=${parked.sharedBytes ?? "?"} parked=${parked.parkedDir ?? "-"} env_files=${parked.envFiles.length}`);
     if (status === "parked") {
       this.recordParked(cell.id, beeId, mode, parked.parked, parked.bytes, parked.envFiles, "operator");
       void this.sweep();
     }
-    return { cell, status, mode, paths: parked.parked, skipped: parked.skipped, bytes: parked.bytes, envFiles: parked.envFiles };
+    return { cell, status, mode, paths: parked.parked, skipped: parked.skipped, bytes: parked.bytes, sharedBytes: parked.sharedBytes, envFiles: parked.envFiles };
   }
 
   reconcileKept(): void {
@@ -1312,14 +1321,12 @@ export class CellRetentionService {
   }
 }
 
-/** The space-relative paths parking removes from a Cell under `mode`. */
 export function parkPathsFor(item: Pick<CellGcItem, "trim" | "install" | "keep" | "envFiles">, mode: ParkMode): string[] {
   const trim = item.trim.entries.map((e) => e.path);
   if (mode === "trim") return trim;
   return [...trim, ...(item.install?.entries ?? []).map((e) => e.path), ...item.keep.entries.map((e) => e.path), ...item.envFiles].sort();
 }
 
-/** H1: what parking removes across the inspected Cells, and every ignored path outside the known patterns grouped by name. */
 export function purgeReportOf(items: CellGcItem[], mode: ParkMode): CellGcPurgeReport {
   const inspected = items.filter((i) => i.cellState === "active" && i.reason !== "absent" && i.reason !== "not_provisioned" && i.reason !== "inspect_failed" && i.reason !== "already_evicted");
   const measured = inspected.some((i) => i.bytes != null);
@@ -1340,6 +1347,7 @@ export function purgeReportOf(items: CellGcItem[], mode: ParkMode): CellGcPurgeR
     cells: inspected.length,
     trimBytes: sum((i) => i.trim.bytes),
     installBytes: sum((i) => i.install?.bytes ?? null),
+    installSharedBytes: sum((i) => (i.install?.entries ?? []).reduce((acc, e) => acc + (e.sharedBytes ?? 0), 0)),
     otherIgnoredBytes: sum((i) => i.keep.bytes),
     otherIgnored: [...groups.values()]
       .map((g) => ({ name: g.name, cells: g.cells.size, paths: g.paths, bytes: measured ? g.bytes : null }))

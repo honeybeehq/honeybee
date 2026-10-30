@@ -199,18 +199,7 @@ export const DAEMON_CAPABILITIES = [
   "cell.retention.v1",
   "cell.retention.trim.v1",
   "cell.retention.pressure.v1",
-  /**
-   * H1 (2026-10-30): `cell.park` parks one bee's Cell now (typed refusal while
-   * its runtime is live), `cell.gc` results carry `purge` (what parking would
-   * remove under each mode, and every ignored path outside the known build and
-   * dependency patterns), and the `cell.parked` audit kind.
-   */
   "cell.park.v1",
-  /**
-   * H2 (2026-10-30): the executor's capacity fact — `capacity` on snapshot /
-   * watch / deployInfo / health, the `node.capacity` audit kind on admission
-   * flips, and the `resource_blocked` refusal of new Cells below the floor.
-   */
   "node.capacity.v1",
   /**
    * v23 (2026-09-13): durable session handoff — `bee.handoff` /
@@ -358,7 +347,6 @@ export const RPC_ERROR_CODES = [
   "lifecycle_refused",
   /** Verb-specific refusal: the runtime state forbids the operation. */
   "runtime_refused",
-  /** H2: the executor is below its disk floor with enforcement on; new Cells are refused. */
   "resource_blocked",
   /** Registry refusals (WP6a): missing rows and per-scope name collisions. */
   "template_not_found",
@@ -571,7 +559,6 @@ export const RPC_VERBS = [
   // v31: Cell disk retention (plan/apply a pass; evict one bee's Cell).
   "cell.gc",
   "cell.evict",
-  // H1: park one bee's Cell now (purge or trim its ignored paths; the checkout stays).
   "cell.park",
   // v23: durable session handoff (same-family reset / cross-family change).
   "bee.handoff",
@@ -1741,7 +1728,6 @@ export interface DeployInfoResult {
   storePath: string;
   /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
   cellDisk?: CellDiskStatus | null;
-  /** H2 (additive): the executor's capacity fact. */
   capacity?: NodeCapacity | null;
 }
 
@@ -1803,7 +1789,6 @@ export interface HealthResult {
   naming?: NamingHealth;
   /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
   cellDisk?: CellDiskStatus | null;
-  /** H2 (additive): the executor's capacity fact. */
   capacity?: NodeCapacity | null;
 }
 
@@ -1818,7 +1803,6 @@ export interface SnapshotResult {
   threadOperations: ThreadOperationView[];
   seq: number;
   views: ViewResult[];
-  /** H2 (additive): the executor's capacity fact; null until the Cells volume has been measured. */
   capacity?: NodeCapacity | null;
   /** Mirror-shaped registry rows (WP6a): store rows verbatim, snapshot-consistent with `seq`. */
   templates: MirrorTemplateRow[];
@@ -2094,9 +2078,7 @@ export interface CellGcItem {
   report: CellDirtyReport | null;
   /** Git-ignored `.env` / `.env.*` files eviction preserves under `<data-dir>/cell-env/` and revive restores. */
   envFiles: string[];
-  /** `planned` = this pass parks the Cell (its idle age passed `trimAfterMs`); what is removed depends on `policy.purgeIgnoredOnPark`. */
   trim: { entries: CellGcPathBytes[]; bytes: number | null; planned: boolean };
-  /** H1 (additive): ignored install directories (node_modules, .venv, …), purged on park when the policy says so. */
   install?: { entries: CellGcPathBytes[]; bytes: number | null };
   keep: { entries: CellGcPathBytes[]; bytes: number | null };
 }
@@ -2104,6 +2086,7 @@ export interface CellGcItem {
 export interface CellGcPathBytes {
   path: string;
   bytes: number | null;
+  sharedBytes?: number | null;
 }
 
 export interface CellGcOutcome {
@@ -2141,11 +2124,9 @@ export interface CellGcResult {
     maxPerPass: number;
     trimAfterMs: number | null;
     trimPatterns: string[];
-    /** H1 (additive): what parking removes on this node. Absent on older daemons. */
     purgeIgnoredOnPark?: boolean;
   };
   items: CellGcItem[];
-  /** H1 (additive): the purge report over `items`. Absent on older daemons. */
   purge?: CellGcPurgeReport;
   totals: {
     cells: number;
@@ -2257,11 +2238,9 @@ export interface CellEvictResult {
   deduped?: boolean;
 }
 
-/** What parking removes: only the trim patterns, or every git-ignored path (env files are copied aside either way). */
 export const CELL_PARK_MODES = ["trim", "purge"] as const;
 export type CellParkMode = (typeof CELL_PARK_MODES)[number];
 
-/** `cell.park` — park ONE bee's Cell now: the checkout stays, its reproducible ignored paths go. */
 export interface CellParkParams {
   beeId: string;
   idempotencyKey: string;
@@ -2271,28 +2250,21 @@ export interface CellParkResult {
   cell: CellRow | null;
   status: "parked" | "nothing_to_park" | "absent";
   mode: CellParkMode;
-  /** Space-relative paths parked for deletion. */
   paths: string[];
   skipped: Array<{ path: string; why: string }>;
   bytes: number | null;
-  /** Ignored env files copied to cell-env/ before the park; the next runtime start restores them. */
+  sharedBytes: number | null;
   envFiles: string[];
   deduped?: boolean;
 }
 
-/** H1: the per-pass purge report — what parking removes under each mode, plus every ignored path outside the known patterns. */
 export interface CellGcPurgeReport {
-  /** The mode parking uses on this node (`cells.retention.purgeIgnoredOnPark`). */
   mode: CellParkMode;
-  /** Cells inspected with a provisioned checkout. */
   cells: number;
-  /** Bytes the trim patterns alone would remove across those Cells; null when not measured. */
   trimBytes: number | null;
-  /** Bytes install directories (node_modules, .venv, …) hold; null when not measured. */
   installBytes: number | null;
-  /** Bytes of ignored paths outside the trim and install patterns; null when not measured. */
+  installSharedBytes: number | null;
   otherIgnoredBytes: number | null;
-  /** Every ignored path outside the known patterns, grouped by its last path component, largest first. */
   otherIgnored: Array<{ name: string; cells: number; paths: number; bytes: number | null }>;
 }
 

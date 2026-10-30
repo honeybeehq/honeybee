@@ -106,7 +106,6 @@ export interface MirrorSnapshot {
   threadOperations: ThreadOperationView[];
   seq: number;
   bees: MirrorBeeRow[];
-  /** H2 (additive): the executor's capacity fact; null until the daemon has measured its Cells volume. */
   capacity?: NodeCapacity | null;
   templates: MirrorTemplateRow[];
   questions: MirrorQuestionRow[];
@@ -241,9 +240,7 @@ export const MIRROR_LOGIN_FLOW_AUDIT_KINDS = ["login_flow.put", "login_flow.remo
 export const MIRROR_CELL_AUDIT_KINDS = ["cell.put", "cell.removed"] as const;
 /** v31 — informational history row beside the `cell.put` state change; never a mirror trigger. */
 export const CELL_EVICTED_AUDIT_KIND = "cell.evicted" as const;
-/** H1 — informational: a parked Cell lost its purged paths; the row itself is unchanged. */
 export const CELL_PARKED_AUDIT_KIND = "cell.parked" as const;
-/** H2 — the capacity fact changed admission (blocked flipped); payload is the full NodeCapacity. */
 export const NODE_CAPACITY_AUDIT_KIND = "node.capacity" as const;
 export const MIRROR_BEE_MOVE_AUDIT_KINDS = [
   "bee.move_admitted",
@@ -260,6 +257,8 @@ export const MIRROR_BEE_HANDOFF_AUDIT_KINDS = [
   "bee.handoff_failed",
 ] as const;
 export const MIRROR_TRANSCRIPT_SEGMENT_AUDIT_KINDS = ["transcript_segment.put", "bee.deleted"] as const;
+export const MIRROR_TRANSCRIPT_SEGMENT_OBJECT_AUDIT_KINDS = ["transcript_segment_object.put", "bee.deleted"] as const;
+export const MIRROR_TRANSCRIPT_SEGMENT_OBJECT_KEYS = ["id", "beeId", "ordinal", "firstLine", "lastLine", "byteStart", "byteEnd", "harness", "rawRef", "rawSize", "rawBytes", "projectedRef", "projectedSize", "projectedBytes", "projectionVersion", "digest", "closedAt", "epoch", "path", "logSegmentId"] as const;
 export const MIRROR_ACTION_AUDIT_KINDS = ["action.put", "bee.deleted"] as const;
 export const MIRROR_ACTION_QUEUE_AUDIT_KINDS = ["action_queue.put", "bee.deleted"] as const;
 export type MirrorAccountAuditKind = (typeof MIRROR_ACCOUNT_AUDIT_KINDS)[number];

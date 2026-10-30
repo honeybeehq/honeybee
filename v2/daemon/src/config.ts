@@ -229,19 +229,7 @@ export interface CellRetentionConfig {
   fetchUpstream?: boolean;
   /** At most this many Cells evicted or removed by retention passes in any rolling 24 h (default 200). null = no cap. */
   maxEvictionsPerDay?: number | null;
-  /**
-   * H1: when a Cell is parked (idle past trimAfterHours, or `cell.park`), purge every
-   * git-ignored path instead of only the trim patterns. Ignored env files are still
-   * copied to cell-env/ and restored on the next runtime start. Default false:
-   * parking keeps everything but the trim patterns.
-   */
   purgeIgnoredOnPark?: boolean;
-  /**
-   * H2: enforce the disk floor. true runs the pressure pass below the floor and
-   * refuses NEW Cells with a typed `resource_blocked` error while below it;
-   * false only reports (capacity fact, log, audit). Default: satellites true,
-   * other nodes false.
-   */
   budgetEnforce?: boolean;
 }
 

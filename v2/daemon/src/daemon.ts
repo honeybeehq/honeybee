@@ -2368,7 +2368,7 @@ export class HiveDaemon {
       case "cell.evict":
         return this.withIdempotency(verb, params, () => this.rpcCellEvict(params));
       case "cell.park":
-        return this.withIdempotency(verb, params, () => this.rpcCellPark(params));
+        return this.rpcCellPark(verb, params);
       case "bee.rename":
         return this.withIdempotency(verb, params, () => this.rpcRename(params));
       case "bee.tag":
@@ -3892,7 +3892,6 @@ export class HiveDaemon {
     return retention.run({ dryRun: params.dryRun !== false, measure: params.measure !== false });
   }
 
-  /** H2: a new Cell is refused with a typed error while the node is below its disk floor with enforcement on. */
   private assertCellAdmission(verb: string): void {
     const refusing = this.retention?.refusingNewCells();
     if (!refusing) return;
@@ -3901,14 +3900,17 @@ export class HiveDaemon {
     throw new RpcError("resource_blocked", `${verb}: this node is below its disk floor (${free} GiB free, floor ${floor} GiB); new Cells are refused until space is reclaimed (hive cell gc)`);
   }
 
-  /**
-   * `cell.park` — park ONE bee's Cell now: the checkout, bee, mailbox and
-   * transcript stay; its reproducible ignored paths go (trim patterns, or every
-   * ignored path under `cells.retention.purgeIgnoredOnPark`). A live runtime,
-   * in-flight Cell operation, move or handoff is a typed refusal; dirty work
-   * never blocks a park because parking touches only ignored paths.
-   */
-  private rpcCellPark(params: Record<string, unknown>): CellParkResult {
+  private async rpcCellPark(verb: RpcVerb, params: Record<string, unknown>): Promise<CellParkResult> {
+    const retention = this.retention;
+    if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
+    const row = this.parkableCell(params);
+    if (row.state === "evicted") return { cell: row, status: "absent", mode: retention.parkMode(), paths: [], skipped: [], bytes: null, sharedBytes: null, envFiles: [] };
+    const key = this.idempotencyKeyOf(params);
+    const plan = key != null && this.mustStore().lookupRpcResult(key) ? null : await retention.planPark(row);
+    return this.withIdempotency(verb, params, () => retention.applyPark(this.parkableCell(params), row.sourceBeeId, plan));
+  }
+
+  private parkableCell(params: Record<string, unknown>): CellRow {
     const beeId = this.requireBee(params);
     const store = this.mustStore();
     const bee = store.getBee(beeId);
@@ -3916,9 +3918,7 @@ export class HiveDaemon {
     if (!bee || bee.substrate !== "cell" || !row || row.state === "removed" || row.state === "removing") {
       throw new RpcError("invalid_request", `cell.park: bee ${beeId} has no Cell allocation`);
     }
-    const retention = this.retention;
-    if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
-    if (row.state === "evicted") return { cell: row, status: "absent", mode: retention.parkMode(), paths: [], skipped: [], bytes: null, envFiles: [] };
+    if (row.state === "evicted") return row;
     if (row.state !== "active") throw new RpcError("invalid_request", `cell.park: cell ${row.id} is ${row.state}; only active Cells park`);
     this.releaseAbsentCellOps(row.id);
     if (this.cellHasInFlightOp(row.id)) throw new RpcError("runtime_refused", `cell ${row.id} has an in-flight Cell operation`);
@@ -3928,7 +3928,7 @@ export class HiveDaemon {
     if ((rt && rt.state !== "stopped") || (rt && this.driver?.hasProcess(beeId, rt.generation))) {
       throw new RpcError("runtime_refused", `bee ${beeId} has a live runtime (${rt.state}); a Cell is never parked mid-turn`);
     }
-    return retention.parkNow(row, beeId);
+    return row;
   }
 
   /**

@@ -67,7 +67,6 @@ export interface CellWrapperInspection {
   /** Allocated bytes (du -sk semantics); null when absent. */
   bytes: number | null;
   trim: PathBytes[];
-  /** Ignored install directories (node_modules, .venv, venv, Pods): deleted with the wrapper, purged on park. */
   install: PathBytes[];
   keep: PathBytes[];
   /** Fastest wall-clock cost of this inspection, for pass telemetry. */
@@ -77,6 +76,42 @@ export interface CellWrapperInspection {
 export interface PathBytes {
   path: string;
   bytes: number | null;
+  sharedBytes?: number | null;
+}
+
+export interface MeasuredBytes {
+  bytes: number;
+  sharedBytes: number;
+}
+
+export function measurePathBytesDetailed(path: string): MeasuredBytes {
+  const st = lstatSync(path);
+  if (!st.isDirectory()) return { bytes: st.blocks * 512, sharedBytes: st.nlink > 1 ? st.blocks * 512 : 0 };
+  let bytes = st.blocks * 512;
+  let sharedBytes = 0;
+  const stack = [path];
+  while (stack.length > 0) {
+    const current = stack.pop() as string;
+    let entries: string[];
+    try {
+      entries = readdirSync(current);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const child = join(current, entry);
+      let info;
+      try {
+        info = lstatSync(child);
+      } catch {
+        continue;
+      }
+      bytes += info.blocks * 512;
+      if (info.isDirectory()) stack.push(child);
+      else if (info.nlink > 1) sharedBytes += info.blocks * 512;
+    }
+  }
+  return { bytes, sharedBytes };
 }
 
 /** `du -sk`-equivalent: allocated blocks of every entry beneath `dir`, symlinks not followed. */
@@ -137,7 +172,6 @@ export interface IgnoredEntries {
   keep: string[];
 }
 
-/** What parking removes from a space: the trim patterns alone, or every ignored path (env files are copied aside first). */
 export function parkCandidates(ignored: IgnoredEntries, mode: ParkMode): string[] {
   return mode === "purge" ? [...ignored.trim, ...ignored.install, ...ignored.keep, ...ignored.env].sort() : [...ignored.trim];
 }
@@ -487,13 +521,28 @@ function trimPathRefusal(spaceDir: string, rel: string, shallow = false): string
   return null;
 }
 
-function newestModification(path: string): number {
+const MODIFICATION_SCAN_LIMIT = 4096;
+
+function newestModification(path: string, deep: boolean): number {
   const st = lstatSync(path);
   let newest = st.mtimeMs;
-  if (st.isDirectory()) {
-    for (const entry of readdirSync(path)) {
+  if (!st.isDirectory()) return newest;
+  const stack = [path];
+  let scanned = 0;
+  while (stack.length > 0 && scanned < MODIFICATION_SCAN_LIMIT) {
+    const current = stack.pop() as string;
+    let entries: string[];
+    try {
+      entries = readdirSync(current);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      scanned += 1;
       try {
-        newest = Math.max(newest, lstatSync(join(path, entry)).mtimeMs);
+        const info = lstatSync(join(current, entry));
+        newest = Math.max(newest, info.mtimeMs);
+        if (deep && info.isDirectory()) stack.push(join(current, entry));
       } catch {
         continue;
       }
@@ -516,16 +565,9 @@ function trimTarget(cellsRoot: string, wrapperDir: string): { root: string; targ
 export interface ParkVerification {
   confirmed: string[];
   skipped: TrimSkip[];
-  /** Confirmed paths that are install directories: parked after a shallow check only (they hold thousands of entries and nested repositories). */
   shallow: string[];
 }
 
-/**
- * Re-classify a planned park set against the space as it is NOW. A path that is
- * no longer ignored, no longer in the mode's class, a symlink, under a symlinked
- * parent, a nested repository (outside install directories), or modified inside
- * the idle window is skipped with the reason.
- */
 export function verifyParkPaths(
   wrapperDir: string,
   planned: string[],
@@ -543,13 +585,54 @@ export function verifyParkPaths(
   for (const rel of planned) {
     const why = !current.has(rel) ? (mode === "trim" ? "not_ignored_build_output" : "not_ignored") : trimPathRefusal(spaceDir, rel, install.has(rel));
     if (why != null) skipped.push({ path: rel, why });
-    else if (opts.modifiedSinceMs != null && newestModification(join(spaceDir, rel)) >= opts.modifiedSinceMs) skipped.push({ path: rel, why: "recently_modified" });
+    else if (opts.modifiedSinceMs != null && newestModification(join(spaceDir, rel), !install.has(rel)) >= opts.modifiedSinceMs) skipped.push({ path: rel, why: "recently_modified" });
     else {
       confirmed.push(rel);
       if (install.has(rel)) shallow.push(rel);
     }
   }
   return { confirmed, skipped, shallow };
+}
+
+export interface ParkPlan {
+  mode: ParkMode;
+  planned: string[];
+  shallow: string[];
+  skipped: TrimSkip[];
+  envFiles: string[];
+  bytes: number | null;
+  sharedBytes: number | null;
+}
+
+export function planParkPaths(
+  wrapperDir: string,
+  mode: ParkMode,
+  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; measure?: boolean } = {},
+): ParkPlan {
+  const spaceDir = spaceDirIn(resolve(wrapperDir));
+  if (spaceDir == null) return { mode, planned: [], shallow: [], skipped: [], envFiles: [], bytes: null, sharedBytes: null };
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
+  const verified = verifyParkPaths(wrapperDir, parkCandidates(ignored, mode), mode, { trimPatterns: opts.trimPatterns, ...(opts.modifiedSinceMs == null ? {} : { modifiedSinceMs: opts.modifiedSinceMs }) });
+  const env = new Set(ignored.env);
+  let bytes: number | null = null;
+  let sharedBytes: number | null = null;
+  if (opts.measure !== false) {
+    bytes = 0;
+    sharedBytes = 0;
+    for (const rel of verified.confirmed) {
+      const measured = measurePathBytesDetailed(join(spaceDir, rel));
+      bytes += measured.bytes;
+      sharedBytes += measured.sharedBytes;
+    }
+  }
+  return { mode, planned: verified.confirmed, shallow: verified.shallow, skipped: verified.skipped, envFiles: mode === "purge" ? verified.confirmed.filter((rel) => env.has(rel)) : [], bytes, sharedBytes };
+}
+
+export function applyParkPlan(cellsRoot: string, wrapperDir: string, plan: ParkPlan, opts: { now?: () => number } = {}): ParkResult {
+  const { root, spaceDir } = trimTarget(cellsRoot, wrapperDir);
+  const envFiles = plan.mode === "purge" ? preserveEnvFiles(root, spaceDir, plan.envFiles) : [];
+  const parked = parkPaths(cellsRoot, wrapperDir, plan.planned, { now: opts.now, label: plan.mode === "purge" ? "park" : "trim", shallow: plan.shallow });
+  return { mode: plan.mode, parkedDir: parked.parkedDir, parked: parked.trimmed, skipped: [...plan.skipped, ...parked.skipped], envFiles, bytes: plan.bytes, sharedBytes: plan.sharedBytes };
 }
 
 export function verifyTrimPaths(
@@ -561,7 +644,6 @@ export function verifyTrimPaths(
   return { confirmed, skipped };
 }
 
-/** Rename confirmed space-relative paths into one parked directory under `_evicting/`; the sweep deletes it. */
 export function parkPaths(
   cellsRoot: string,
   wrapperDir: string,
@@ -596,33 +678,19 @@ export interface ParkResult {
   parkedDir: string | null;
   parked: string[];
   skipped: TrimSkip[];
-  /** Ignored env files copied to cell-env/ before a purge park; the next runtime start restores them. */
   envFiles: string[];
-  /** Allocated bytes of the parked paths measured before the rename; null when not measured. */
   bytes: number | null;
+  sharedBytes: number | null;
 }
 
-/**
- * Park ONE Cell in place: the checkout stays, its reproducible ignored paths go.
- * `trim` removes the build-output patterns; `purge` removes every ignored path
- * after copying env files aside. Every path is re-verified against the space as
- * it is now and parked by rename into `_evicting/`, so the Cell is never half
- * deleted and the sweep reclaims the bytes off the event loop.
- */
 export function parkCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
   mode: ParkMode,
   opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number; measure?: boolean } = {},
 ): ParkResult {
-  const { root, spaceDir } = trimTarget(cellsRoot, wrapperDir);
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
-  const envFiles = mode === "purge" ? preserveEnvFiles(root, spaceDir, ignored.env) : [];
-  const planned = parkCandidates(ignored, mode);
-  const verified = verifyParkPaths(wrapperDir, planned, mode, { trimPatterns: opts.trimPatterns, ...(opts.modifiedSinceMs == null ? {} : { modifiedSinceMs: opts.modifiedSinceMs }) });
-  const bytes = opts.measure === false ? null : verified.confirmed.reduce((sum, rel) => sum + measurePathBytes(join(spaceDir, rel)), 0);
-  const parked = parkPaths(cellsRoot, wrapperDir, verified.confirmed, { now: opts.now, label: mode === "purge" ? "park" : "trim", shallow: verified.shallow });
-  return { mode, parkedDir: parked.parkedDir, parked: parked.trimmed, skipped: [...verified.skipped, ...parked.skipped], envFiles, bytes };
+  trimTarget(cellsRoot, wrapperDir);
+  return applyParkPlan(cellsRoot, wrapperDir, planParkPaths(wrapperDir, mode, opts), { now: opts.now });
 }
 
 export function trimCellWrapper(
@@ -663,7 +731,11 @@ export function inspectCellWrapper(
   const { report, dirtySubmodules } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
   const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
   const measure = opts.measure !== false;
-  const sized = (paths: string[]): PathBytes[] => paths.map((path) => ({ path, bytes: measure ? measurePathBytes(join(spaceDir, path)) : null }));
+  const sized = (paths: string[]): PathBytes[] => paths.map((path) => {
+    if (!measure) return { path, bytes: null, sharedBytes: null };
+    const measured = measurePathBytesDetailed(join(spaceDir, path));
+    return { path, bytes: measured.bytes, sharedBytes: measured.sharedBytes };
+  });
   const bytes = measure ? measureDirectoryBytes(target) : null;
   return { wrapperDir: target, envFiles: ignored.env, present: true, provisioned, head, report, dirtySubmodules, bytes, trim: sized(ignored.trim), install: sized(ignored.install), keep: sized(ignored.keep), elapsedMs: Date.now() - started };
 }

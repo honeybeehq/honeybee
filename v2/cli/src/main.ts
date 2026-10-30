@@ -2927,7 +2927,6 @@ export function cellDiskLine(d: CellDiskStatus): string {
   return `cells disk: ${gib(d.freeBytes)} free of ${gib(d.totalBytes)} · ${floor}${d.floorUnmet ? " · FLOOR UNMET" : ""} · ${last}`;
 }
 
-/** One line for the H2 capacity fact: admission, the block, and how many Cells the node carries. */
 export function capacityLine(c: NodeCapacity): string {
   const block = c.resourceBlocked.blocked
     ? `resource-blocked since ${new Date(c.resourceBlocked.since ?? c.checkedAt).toISOString().slice(0, 16).replace("T", " ")}Z (${c.resourceBlocked.reason})`
@@ -2949,7 +2948,7 @@ function renderCellGc(r: CellGcResult): string[] {
   );
   if (r.purge) {
     lines.push(
-      `ignored bytes across ${r.purge.cells} Cells: build output ${gib(r.purge.trimBytes)} · installs ${gib(r.purge.installBytes)} · outside known patterns ${gib(r.purge.otherIgnoredBytes)}` +
+      `ignored bytes across ${r.purge.cells} Cells: build output ${gib(r.purge.trimBytes)} · installs ${gib(r.purge.installBytes)}${(r.purge.installSharedBytes ?? 0) > 0 ? ` (${gib(r.purge.installSharedBytes)} hard-linked, not freed)` : ""} · outside known patterns ${gib(r.purge.otherIgnoredBytes)}` +
         ` (parking removes ${r.purge.mode === "purge" ? "all three" : "build output only"})`,
     );
     for (const g of r.purge.otherIgnored.slice(0, 15)) lines.push(`  ${gib(g.bytes).padStart(10)}  ${String(g.cells).padStart(4)} Cells  ${String(g.paths).padStart(5)} paths  ${g.name}`);
