@@ -66,5 +66,20 @@
       "v2:daemon": "568/568",
       "typecheck+build": "green"
     }
+  },
+  "roundThree": {
+    "date": "2026-10-30",
+    "1_secrets": "name scan gains .envrc, *.key.json, service-account*.json, any kubeconfig (name or *.kubeconfig), .terraform/, *.tfstate, *.tfvars, .config/hive/, and matches protected directories at any depth; contract doc states content is never scanned; champion.put refuses a home that equals or contains the data dir, the store file or ~/.hive (champions.1 tries the data dir and its parent); champion-secrets.test.ts covers 21 positive and 8 negative paths",
+    "2_nodeIdBirth": "meta.node_id is bound to meta.node_id_birth = hostname|installation id|store path; a mismatch at nodeId() re-mints the id and pushes the old scope onto meta.wip_node_scopes so its refs are still swept; core node-id.test.ts proves stability across reopen and the re-mint after a simulated move",
+    "accepted": "fence stops a live incarnation mid-turn; concurrent handovers must be serialised by the Home; pre-fence bundles keep their pointer rows (all three in the contract doc)",
+    "tests": {
+      "champions": "2/2",
+      "champion-secrets": "1/1",
+      "cell-wip": "5/5",
+      "node-id (core)": "1/1",
+      "v2:test": "621/622 (pre-existing)",
+      "v2:daemon": "568/568",
+      "typecheck+build": "green"
+    }
   }
 }

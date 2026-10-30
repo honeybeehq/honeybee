@@ -39,19 +39,21 @@ export interface ChampionHomeBundleOutcome {
   error: string | null;
 }
 
-const SECRET_FILES = new Set([".netrc", ".npmrc", ".pypirc", ".git-credentials", ".yarnrc", ".yarnrc.yml", "auth.json", "credentials", "credentials.json", ".credentials.json", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "token", "tokens.json", "secrets.json"]);
-const SECRET_DIRS = new Set([".ssh", ".gnupg", ".aws", ".config/gcloud", ".kube", ".docker"]);
-const SECRET_SUFFIXES = [".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".secret", ".token"];
+const SECRET_FILES = new Set([".netrc", ".npmrc", ".pypirc", ".git-credentials", ".yarnrc", ".yarnrc.yml", ".envrc", "auth.json", "credentials", "credentials.json", ".credentials.json", "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", "token", "tokens.json", "secrets.json", "kubeconfig", "config.json.enc"]);
+const SECRET_DIRS = new Set([".ssh", ".gnupg", ".aws", ".config/gcloud", ".config/hive", ".kube", ".docker", ".terraform"]);
+const SECRET_SUFFIXES = [".pem", ".key", ".p12", ".pfx", ".jks", ".keystore", ".secret", ".token", ".key.json", ".kubeconfig", ".tfstate", ".tfvars"];
 
 export function looksLikeSecret(relativePath: string): boolean {
   const base = relativePath.split("/").pop() ?? relativePath;
   if (base === ".env" || base.startsWith(".env.")) return true;
   if (SECRET_FILES.has(base)) return true;
   if (SECRET_SUFFIXES.some((suffix) => base.endsWith(suffix))) return true;
+  if (/^service[-_]?account.*\.json$/i.test(base)) return true;
+  if (/kubeconfig/i.test(base)) return true;
   if (relativePath.startsWith(".claude/") && /credential/i.test(base)) return true;
   if (relativePath.startsWith(".codex/") && base === "auth.json") return true;
   const segments = relativePath.split("/");
-  for (let i = 1; i <= Math.min(2, segments.length - 1); i++) if (SECRET_DIRS.has(segments.slice(0, i).join("/"))) return true;
+  for (let i = 1; i < segments.length; i++) if (SECRET_DIRS.has(segments.slice(0, i).join("/")) || SECRET_DIRS.has(segments[i - 1]!)) return true;
   return false;
 }
 

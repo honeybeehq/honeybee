@@ -94,6 +94,8 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
     const again = await client.request<ChampionPutResult>("champion.put", { name: "Vera Lund", agent: "cellstub", model: "stub-1", idempotencyKey: "put-2" });
     assert.equal(again.outcome, "unchanged");
     await assert.rejects(client.request("champion.put", { id: "vera-lund", name: "Vera Lund", agent: "cellstub", home: join(root, "elsewhere"), idempotencyKey: "put-3" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && /immutable/.test(err.message));
+    await assert.rejects(client.request("champion.put", { name: "Greedy", agent: "cellstub", home: rigA.dir, idempotencyKey: "put-greedy" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && /must not hold the hive data dir/.test(err.message));
+    await assert.rejects(client.request("champion.put", { name: "Greedier", agent: "cellstub", home: dirname(rigA.dir), idempotencyKey: "put-greedier" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && /must not hold/.test(err.message));
 
     const template = await client.request<TemplatePutResult>("template.put", { fields: { name: "crew-role", agent: "cellstub", prompt: "You are the crew." }, idempotencyKey: "tpl-1" });
     await client.request<ChampionPutResult>("champion.put", { id: "vera-lund", name: "Vera Lund", templateId: template.template.id, idempotencyKey: "put-tpl" });

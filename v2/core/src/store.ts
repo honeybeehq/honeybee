@@ -41,6 +41,7 @@ import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
  */
 import type { CredentialHandoffIdentity } from "./types.ts";
 import { DatabaseSync } from "node:sqlite";
+import { hostname } from "node:os";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { humanRefAuthorityId, signHumanRefReceipt, verifyHumanRefReceipt, type HumanRefIssuer, type HumanRefReceipt, type HumanRefRegistry } from "./humanRefs.ts";
 import { TextDecoder, isDeepStrictEqual } from "node:util";
@@ -9654,11 +9655,29 @@ export class CoreStore {
   }
 
   nodeId(): string {
+    const birth = this.nodeIdBirth();
     const row = this.stmt("SELECT value FROM meta WHERE key = 'node_id'").get() as Row | undefined;
-    if (row) return String(row.value);
-    const minted = randomUUID();
-    this.stmt("INSERT INTO meta(key, value) VALUES('node_id', ?) ON CONFLICT(key) DO NOTHING").run(minted);
-    return String((this.stmt("SELECT value FROM meta WHERE key = 'node_id'").get() as Row).value);
+    const bornAs = this.stmt("SELECT value FROM meta WHERE key = 'node_id_birth'").get() as Row | undefined;
+    if (row && bornAs && String(bornAs.value) === birth) return String(row.value);
+    return this.tx(() => {
+      if (row) this.rememberWipNodeScope(String(row.value));
+      const minted = randomUUID();
+      this.stmt("INSERT INTO meta(key, value) VALUES('node_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(minted);
+      this.stmt("INSERT INTO meta(key, value) VALUES('node_id_birth', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(birth);
+      return minted;
+    });
+  }
+
+  private nodeIdBirth(): string {
+    const install = this.stmt("SELECT value FROM meta WHERE key = 'human_ref_installation_id'").get() as Row | undefined;
+    return `${hostname()}|${install ? String(install.value) : "-"}|${this.path}`;
+  }
+
+  private rememberWipNodeScope(scope: string): void {
+    const row = this.stmt("SELECT value FROM meta WHERE key = 'wip_node_scopes'").get() as Row | undefined;
+    const known: string[] = row ? (JSON.parse(String(row.value)) as string[]) : [];
+    if (known.includes(scope)) return;
+    this.stmt("INSERT INTO meta(key, value) VALUES('wip_node_scopes', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify([...known, scope]));
   }
 
   wipNodeScopes(current: string): string[] {

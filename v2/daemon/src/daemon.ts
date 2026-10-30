@@ -55,7 +55,7 @@ import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
 import { homedir, tmpdir, hostname } from "node:os";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { canonicalPath, removeEndpointRecord, samePath, writeEndpointRecord } from "./endpointRecord.ts";
 import { placeDaemonSockets } from "./socketPath.ts";
@@ -6159,6 +6159,14 @@ export class HiveDaemon {
     return champion;
   }
 
+  private assertChampionHomeOutsideHive(home: string): void {
+    const normalized = resolve(home);
+    const contains = (ancestor: string, path: string): boolean => path === ancestor || path.startsWith(ancestor.endsWith(sep) ? ancestor : ancestor + sep);
+    for (const protectedPath of [resolve(this.cfg.dataDir), resolve(this.cfg.storePath), resolve(join(homedir(), ".hive"))]) {
+      if (contains(normalized, protectedPath)) throw new RpcError("invalid_request", `champion.put: home ${home} contains ${protectedPath}; a Champion home must not hold the hive data dir or the store`);
+    }
+  }
+
   private assertTemplateUnbound(templateId: string): void {
     const bound = this.mustStore().listChampions().filter((c) => c.templateId === templateId).map((c) => c.id);
     if (bound.length > 0) throw new RpcError("invalid_request", `template.delete: template ${templateId} is bound by Champion(s) ${bound.join(", ")}; rebind them with champion.put first`);
@@ -6192,6 +6200,7 @@ export class HiveDaemon {
     if (existing && existing.agent !== agent) throw new RpcError("invalid_request", `champion.put: ${id} is a ${existing.agent} Champion; the harness family is immutable`);
     const home = typeof params.home === "string" && params.home.length > 0 ? params.home : existing?.home ?? join(this.cfg.champions.homesDir, id);
     if (!isAbsolute(home)) throw new RpcError("invalid_request", "champion.put: home must be an absolute path");
+    this.assertChampionHomeOutsideHive(home);
     if (existing && existing.home !== home) throw new RpcError("invalid_request", `champion.put: ${id} lives in ${existing.home}; the home directory is immutable`);
     const optional = (key: "templateId" | "model" | "effort"): string | null | undefined => {
       const value = params[key];
