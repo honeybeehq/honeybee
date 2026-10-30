@@ -16,6 +16,7 @@ import { writeHiveState } from "../hiveState.js";
 import { transactionalRetire } from "../kill.js";
 import { LOCAL_NODE_NAME } from "../node.js";
 import { flag, numberFlag, truthy, type Parsed } from "../parse.js";
+import { refuseRemovedTrackFlags } from "./removedFlags.js";
 import { AgentReadinessError, waitForAgentReady } from "../readiness.js";
 import { appendLedger, type SessionRecord } from "../store.js";
 import { substrateFor } from "../substrates/index.js";
@@ -202,6 +203,7 @@ export async function cmdX(parsed: Parsed) {
     const { runTemplateFlag } = await import("./template.js");
     return runTemplateFlag(parsed, "x");
   }
+  refuseRemovedTrackFlags(parsed, "x");
   const agent = parsed.args[0];
   const prompt = stringFlag(parsed, ["prompt", "p"]) ?? parsed.args.slice(1).join(" ");
   if (!agent || !prompt) throw new Error("Usage: hive x <bee> <prompt> [--template <name>] [--cwd <dir>] [--account <name|auto>] [--env KEY=VALUE] [--name <id>] [--preamble <text>|--no-preamble] [--yolo] [-- <bee-args...>]");

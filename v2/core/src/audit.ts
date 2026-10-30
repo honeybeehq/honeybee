@@ -718,6 +718,9 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "auth_death.released_legacy":
       case "auth_death.resumed":
       case "action.report_rejected":
+      case "runtime.identity_unresolved":
+      case "legacy_birth_bound":
+      case "account.quota_probe":
         break;
       default:
         if (RETIRED_AUDIT_KINDS.has(row.kind)) break;

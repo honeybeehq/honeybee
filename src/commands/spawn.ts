@@ -32,6 +32,7 @@ import {
 } from "../launchPublication.js";
 import { isWellFormedPaneId } from "../paneId.js";
 import { flag, truthy, type Parsed } from "../parse.js";
+import { refuseRemovedTrackFlags } from "./removedFlags.js";
 import { planSpawnPreamble } from "../spawnPreamble.js";
 import { parseEnvAssignments } from "../spawnEnv.js";
 import { allocatePoolMembers, bindPoolClaim, releasePoolClaim, resolvePoolRef, type PoolAllocation, type ResolvedPool } from "../pool.js";
@@ -1350,6 +1351,7 @@ export async function spawnSingleBee(
     runtimeDependencies?: SpawnRuntimeDependencies;
   } = {},
 ): Promise<SessionRecord> {
+  refuseRemovedTrackFlags(parsed, "spawn");
   const requested = parsed.args[0];
   if (!requested) throw new Error("Usage: hive spawn <bee> [--template <name>] [--name name] [--cwd dir] [--account <name|auto>] [--env KEY=VALUE] [--kit-profile <p>] [--contract completion=seal[,sealType=<t>][,taskId=<id>][,attempt=<n>]] [--preamble <text>|--no-preamble] [--sandbox-write <abs-dir>]... [--yolo] [-- <bee-args...>]  (e.g. --account auto -- -m gpt-5.5; --sandbox-write adds Cell-sandbox write roots, repeatable)");
   const combAttachment = await prepareSpawnCombAttachment(parsed);

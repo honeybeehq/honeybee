@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BOOLEAN_FLAGS, flag, numberFlag, parse, truthy } from "../src/parse.js";
+import { RemovedFlagError, refuseRemovedTrackFlags } from "../src/commands/removedFlags.js";
 
 test("parse separates command args flags and passthrough rest", () => {
   const parsed = parse(["run", "claude", "--cwd", "/tmp/work", "-p", "hello", "--", "--model", "sonnet"]);
@@ -43,6 +44,18 @@ test("--comb consumes a registry name for comb filters and attached spawn/x comm
     const parsed = parse(argv);
     assert.equal(flag(parsed, "comb"), "human-last");
   }
+});
+
+test("removed --track flags are refused with a typed error instead of being swallowed", () => {
+  for (const argv of [
+    ["spawn", "codex", "--track", "release"],
+    ["spawn", "codex", "--track-version", "2"],
+    ["x", "codex", "do work", "--track", "release", "--track-prompt"],
+  ]) {
+    const parsed = parse(argv);
+    assert.throws(() => refuseRemovedTrackFlags(parsed, parsed.command), (err: unknown) => err instanceof RemovedFlagError && err.message.includes("--track") && err.message.includes("removed with tracks"));
+  }
+  assert.doesNotThrow(() => refuseRemovedTrackFlags(parse(["spawn", "codex", "--name", "track"]), "spawn"));
 });
 
 test("BOOLEAN_FLAGS is exported so completion can skip value-less flags", () => {

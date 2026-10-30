@@ -61,10 +61,10 @@
       "retiredAuditRows": 5,
       "bees": 5013
     },
-    "openMs": 2,
-    "replayMs": 5003,
+    "openMs": 3,
+    "replayMs": 5642,
     "auditRowsRead": 2340925,
-    "registryRowsReplayed": 12,
+    "registryRowsReplayed": 2340925,
     "retiredKindsReplayedAsNoop": 5,
     "trackKindsInLog": [
       "track.put"
@@ -156,5 +156,10 @@
     "hive v2 track list": "unknown command: track (exit 1)",
     "legacy hive track list": "Unknown command: track (exit 1)"
   },
-  "rollback": "git revert of the H0 commits; no data was deleted (tracks rows and track.* audit rows remain in every store), so the old release reads them back unchanged"
+  "rollback": "git revert of the H0 commits; no data was deleted (tracks rows and track.* audit rows remain in every store), so the old release reads them back unchanged",
+  "followUp": {
+    "leadReview": "GO, two should-fixes folded in",
+    "removedTrackFlags": "hive spawn/x --track, --track-version, --track-prompt now refuse with RemovedFlagError (src/commands/removedFlags.ts); tests/parse.test.ts asserts the refusal",
+    "replayKnownKinds": "runtime.identity_unresolved, legacy_birth_bound, account.quota_probe added as informational kinds; replayAudit now covers the whole production log (2,340,925 rows, 5.6 s)"
+  }
 }
