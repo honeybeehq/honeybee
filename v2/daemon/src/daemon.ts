@@ -158,6 +158,9 @@ import type { PtySpawner } from "./loginWorker.ts";
 import type { KeychainReader, KeychainWriter } from "./keychain.ts";
 import type { CellCaptureExecutor, FlagEvidenceLike, UsageEvidenceLike } from "./loops.ts";
 import { CellRetentionService } from "./cellRetention.ts";
+import { TranscriptSegmenter } from "./transcriptSegmenter.ts";
+import { createDirectoryTranscriptObjectStore, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
+import { TRANSCRIPT_PROJECTION_VERSION } from "../../driver-tmux/src/transcript-projection.ts";
 import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
 import { realPreflightProbes } from "./import-probes.ts";
 import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
@@ -338,6 +341,8 @@ import {
   type CellCaptureResult,
   type CellEvictResult,
   type CellParkResult,
+  type TranscriptSegmentsResult,
+  type TranscriptSegmentsStatus,
   type CellExecResult,
   type CellGcResult,
   type CellRemoveResult,
@@ -735,6 +740,8 @@ export class HiveDaemon {
   private authResume: AuthResume | null = null;
   /** v31 — Cell disk retention pass + `cell.gc` / `cell.evict`. */
   private retention: CellRetentionService | null = null;
+  private segmenter: TranscriptSegmenter | null = null;
+  private transcriptObjects: TranscriptObjectStore | null = null;
   /** Tracked filesystem readiness; no lock wait runs inside the core/store writer. */
   private readonly accountActivations = new Map<string, AccountActivationState>();
   private accountActivationCandidates = new Map<string, { commandId: number; attempts: number; enqueuedAt: number }>();
@@ -1009,6 +1016,21 @@ export class HiveDaemon {
       lastDailyCapAt: () => this.mustStore().lastCellRetentionDailyCapAt(),
     });
     for (const warning of this.cfg.cellRetention.warnings) this.log(`config.retention.invalid ${warning}`);
+    for (const warning of this.cfg.transcriptSegments.warnings) this.log(`config.transcripts.invalid ${warning}`);
+    if (this.cfg.transcriptSegments.enabled) {
+      this.transcriptObjects = createDirectoryTranscriptObjectStore(this.cfg.transcriptSegments.storeDir);
+      this.segmenter = new TranscriptSegmenter({
+        store: () => this.mustStore(),
+        objectStore: this.transcriptObjects,
+        now: () => Date.now(),
+        log: (op) => this.log(op),
+        maxLines: this.cfg.transcriptSegments.maxLines,
+        maxRawBytes: this.cfg.transcriptSegments.maxRawBytes,
+      });
+      this.log(`transcripts.segments enabled store=${this.cfg.transcriptSegments.storeDir} max_lines=${this.cfg.transcriptSegments.maxLines} max_raw_bytes=${this.cfg.transcriptSegments.maxRawBytes} projection=${TRANSCRIPT_PROJECTION_VERSION}`);
+    } else {
+      this.log("transcripts.segments disabled (transcripts.segments.enabled)");
+    }
     this.core = new DaemonCore({
       store,
       driver,
@@ -1044,6 +1066,7 @@ export class HiveDaemon {
       relocateSession: (move, bee) => this.relocateMoveSession(move, bee),
       validatePlacement: (move, bee) => this.validateMoveDestination(move, bee),
       onIdentityUnresolved: (beeId, generation) => this.retainProcessIdentity(beeId, generation),
+      onTranscriptQuiet: (beeId, _generation, reason) => { void this.segmenter?.requestCut(beeId, reason); },
       blockedRuntimeStartBeeIds: () => this.prepareRuntimeStartCommands(),
       assertRuntimeStartReady: (command) => this.assertRuntimeStartReady(command),
       readHandoffTranscript: (bee, segments) => this.readHandoffTranscript(bee, segments),
@@ -1081,6 +1104,7 @@ export class HiveDaemon {
     // v31: wrappers parked by an earlier pass are already evicted; finish deleting them.
     void this.retention.sweep();
     this.retention.reconcileKept();
+    if (this.segmenter) setImmediate(() => { const scheduled = this.segmenter?.catchUp() ?? 0; this.log(`transcripts.segment.catch_up scheduled=${scheduled}`); });
     // v16: login workers do not survive a daemon restart (a PTY cannot be
     // re-adopted): settle their flows as interrupted, then remove the
     // retired tmux login seats this node's own daemons created.
@@ -1153,6 +1177,7 @@ export class HiveDaemon {
       this.loopDelay?.disable();
       this.tickTimer = null;
       await this.quotaRecovery?.stop();
+      this.segmenter?.stop();
       await this.retention?.stop();
       this.titleGenerator?.close();
       this.titleGenerator = null;
@@ -2485,6 +2510,8 @@ export class HiveDaemon {
         return { commands: this.mustStore().listCommands({ beeId: this.requireBee(params) }) };
       case "audit.tail":
         return this.rpcAuditTail(params);
+      case "transcript.segments":
+        return this.rpcTranscriptSegments(params);
       case "deployInfo":
         return this.rpcDeployInfo();
       case "update.apiarySwap.status":
@@ -6007,6 +6034,24 @@ export class HiveDaemon {
    * is a follow cursor (rows with seq > afterSeq only); `limit` keeps the
    * LAST n rows after the bee filter (default 100, capped at 1000).
    */
+  private transcriptSegmentsStatus(): TranscriptSegmentsStatus {
+    const cfg = this.cfg.transcriptSegments;
+    return { enabled: cfg.enabled, store: this.transcriptObjects?.locator ?? null, projectionVersion: TRANSCRIPT_PROJECTION_VERSION, maxLines: cfg.maxLines, maxRawBytes: cfg.maxRawBytes };
+  }
+
+  private rpcTranscriptSegments(params: Record<string, unknown>): TranscriptSegmentsResult {
+    const beeId = this.requireBee(params);
+    const store = this.mustStore();
+    if (params.afterOrdinal !== undefined && (typeof params.afterOrdinal !== "number" || !Number.isInteger(params.afterOrdinal))) throw new RpcError("invalid_request", "transcript.segments: afterOrdinal must be an integer when given");
+    if (params.limit !== undefined && (typeof params.limit !== "number" || !Number.isInteger(params.limit) || params.limit < 1)) throw new RpcError("invalid_request", "transcript.segments: limit must be a positive integer when given");
+    return {
+      beeId,
+      segments: store.listTranscriptSegmentObjects(beeId, { ...(params.afterOrdinal === undefined ? {} : { afterOrdinal: params.afterOrdinal as number }), ...(params.limit === undefined ? {} : { limit: params.limit as number }) }),
+      store: this.transcriptObjects?.locator ?? null,
+      cursor: store.getTranscriptSegmentCursor(beeId),
+    };
+  }
+
   private rpcAuditTail(params: Record<string, unknown>): AuditTailResult {
     const store = this.mustStore();
     const afterSeq = typeof params.afterSeq === "number" && Number.isFinite(params.afterSeq) ? params.afterSeq : 0;
@@ -6070,6 +6115,7 @@ export class HiveDaemon {
       localSecurity: this.rpc?.localSecurity,
       cellDisk: this.retention?.diskStatus() ?? null,
       capacity: this.retention?.capacity(true) ?? null,
+      transcriptSegments: this.transcriptSegmentsStatus(),
     };
   }
 

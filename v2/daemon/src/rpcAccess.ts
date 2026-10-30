@@ -41,6 +41,7 @@ export const RPC_ACCESS = {
   "doctor.integrity": "read",
   "node.harnesses": "read",
   "audit.tail": "read",
+  "transcript.segments": "read",
   "watch": "read",
   "snapshot": "read",
   "mirror.local.snapshot": "read",

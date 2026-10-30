@@ -104,6 +104,9 @@ import {
   type BeeHandoffView,
   type HandoffContext,
   type TranscriptSegmentRow,
+  type TranscriptSegmentObjectRow,
+  type TranscriptSegmentCursorRow,
+  TranscriptSegmentOrdinalError,
   HandoffInProgressError,
   HandoffNotFoundError,
   StaleGenerationError,
@@ -211,7 +214,7 @@ import {
   TASK_TRANSITIONS,
 } from "./tasks.ts";
 import { deliveredSenderKind } from "./automation.ts";
-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
 import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
 import {
   ACTION_DISPATCH_SENDER,
@@ -735,6 +738,43 @@ function mapBee(r: Row): BeeRow {
     activeHandoffId: (r.active_handoff_id as string | null) ?? null,
     lastTurnTrigger: r.last_turn_trigger == null ? null : (JSON.parse(r.last_turn_trigger as string) as TurnTrigger),
     lastHumanOutputAt: r.last_human_output_at == null ? null : Number(r.last_human_output_at),
+  };
+}
+
+function mapTranscriptSegmentObject(r: Row): TranscriptSegmentObjectRow {
+  return {
+    id: r.id as string,
+    beeId: r.bee_id as string,
+    ordinal: Number(r.ordinal),
+    firstLine: Number(r.first_line),
+    lastLine: Number(r.last_line),
+    byteStart: Number(r.byte_start),
+    byteEnd: Number(r.byte_end),
+    harness: r.harness as string,
+    rawRef: r.raw_ref as string,
+    rawSize: Number(r.raw_size),
+    rawBytes: Number(r.raw_bytes),
+    projectedRef: r.projected_ref as string,
+    projectedSize: Number(r.projected_size),
+    projectedBytes: Number(r.projected_bytes),
+    projectionVersion: Number(r.projection_version),
+    digest: r.digest as string,
+    closedAt: Number(r.closed_at),
+    epoch: (r.epoch as string | null) ?? null,
+    path: r.path as string,
+    logSegmentId: (r.log_segment_id as string | null) ?? null,
+  };
+}
+
+function mapTranscriptSegmentCursor(r: Row): TranscriptSegmentCursorRow {
+  return {
+    beeId: r.bee_id as string,
+    path: r.path as string,
+    lineNo: Number(r.line_no),
+    byteOffset: Number(r.byte_offset),
+    epoch: (r.epoch as string | null) ?? null,
+    projectorCheckpoint: r.projector_checkpoint == null ? null : JSON.parse(r.projector_checkpoint as string) as unknown,
+    updatedAt: Number(r.updated_at),
   };
 }
 
@@ -2063,6 +2103,7 @@ export class CoreStore {
     this.db.exec(CELL_OPS_TABLE_SQL);
     this.db.exec(BEE_HANDOFFS_TABLE_SQL);
     this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
+    this.db.exec(TRANSCRIPT_SEGMENT_OBJECTS_SQL);
     // v24: the action queue tables are additive (CREATE IF NOT EXISTS).
     this.db.exec(ACTIONS_TABLE_SQL);
     this.db.exec(THREAD_OPERATIONS_TABLE_SQL);
@@ -9431,6 +9472,57 @@ export class CoreStore {
   }
 
   /** All segments (ordinal order within a bee); `beeId` narrows to one bee. */
+  listTranscriptSegmentObjects(beeId: string, opts: { afterOrdinal?: number; limit?: number } = {}): TranscriptSegmentObjectRow[] {
+    const rows = this.stmt("SELECT * FROM transcript_segment_objects WHERE bee_id = ? AND ordinal > ? ORDER BY ordinal LIMIT ?")
+      .all(beeId, opts.afterOrdinal ?? -1, opts.limit ?? 100_000) as Row[];
+    return rows.map(mapTranscriptSegmentObject);
+  }
+
+  lastTranscriptSegmentObject(beeId: string): TranscriptSegmentObjectRow | null {
+    const row = this.stmt("SELECT * FROM transcript_segment_objects WHERE bee_id = ? ORDER BY ordinal DESC LIMIT 1").get(beeId) as Row | undefined;
+    return row ? mapTranscriptSegmentObject(row) : null;
+  }
+
+  getTranscriptSegmentCursor(beeId: string): TranscriptSegmentCursorRow | null {
+    const row = this.stmt("SELECT * FROM transcript_segment_cursors WHERE bee_id = ?").get(beeId) as Row | undefined;
+    return row ? mapTranscriptSegmentCursor(row) : null;
+  }
+
+  /** One cut: the pointer row and the advanced cursor land together or not at all. */
+  putTranscriptSegmentObject(
+    segment: Omit<TranscriptSegmentObjectRow, "id">,
+    cursor: Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt">,
+  ): TranscriptSegmentObjectRow {
+    return this.tx(() => {
+      const previous = this.lastTranscriptSegmentObject(segment.beeId);
+      const expected = (previous?.ordinal ?? -1) + 1;
+      if (segment.ordinal !== expected) throw new TranscriptSegmentOrdinalError(segment.beeId, expected, segment.ordinal);
+      const id = `${segment.beeId}:seg:${segment.ordinal}`;
+      this.stmt(
+        `INSERT INTO transcript_segment_objects(id, bee_id, ordinal, first_line, last_line, byte_start, byte_end, harness, raw_ref, raw_size, raw_bytes,
+           projected_ref, projected_size, projected_bytes, projection_version, digest, closed_at, epoch, path, log_segment_id)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, segment.beeId, segment.ordinal, segment.firstLine, segment.lastLine, segment.byteStart, segment.byteEnd, segment.harness, segment.rawRef, segment.rawSize, segment.rawBytes,
+        segment.projectedRef, segment.projectedSize, segment.projectedBytes, segment.projectionVersion, segment.digest, segment.closedAt, segment.epoch, segment.path, segment.logSegmentId);
+      this.putTranscriptSegmentCursorInTx(segment.beeId, cursor);
+      const row = mapTranscriptSegmentObject(this.stmt("SELECT * FROM transcript_segment_objects WHERE id = ?").get(id) as Row);
+      this.audit("transcript_segment_object.put", segment.beeId, { segment: row });
+      return row;
+    });
+  }
+
+  putTranscriptSegmentCursor(beeId: string, cursor: Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt">): void {
+    this.tx(() => this.putTranscriptSegmentCursorInTx(beeId, cursor));
+  }
+
+  private putTranscriptSegmentCursorInTx(beeId: string, cursor: Omit<TranscriptSegmentCursorRow, "beeId" | "updatedAt">): void {
+    this.stmt(
+      `INSERT INTO transcript_segment_cursors(bee_id, path, line_no, byte_offset, epoch, projector_checkpoint, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(bee_id) DO UPDATE SET path = excluded.path, line_no = excluded.line_no, byte_offset = excluded.byte_offset, epoch = excluded.epoch,
+         projector_checkpoint = excluded.projector_checkpoint, updated_at = excluded.updated_at`,
+    ).run(beeId, cursor.path, cursor.lineNo, cursor.byteOffset, cursor.epoch, cursor.projectorCheckpoint == null ? null : JSON.stringify(cursor.projectorCheckpoint), this.now());
+  }
+
   listTranscriptSegments(beeId?: string): TranscriptSegmentRow[] {
     const rows = beeId === undefined
       ? (this.stmt("SELECT * FROM transcript_segments ORDER BY bee_id, ordinal").all() as Row[])

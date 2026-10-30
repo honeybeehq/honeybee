@@ -1,0 +1,111 @@
+{
+  "step": "H4",
+  "date": "2026-10-30",
+  "flag": {
+    "transcripts.segments.enabled": "default false: nothing is cut, the session log stays the only copy (rollback). On: cut at turn end / exit / rotation / boot catch-up, raw+projected objects to the directory store, pointer rows + transcript_segment_object.put deltas"
+  },
+  "schema": {
+    "version": 52,
+    "tables": [
+      "transcript_segment_objects",
+      "transcript_segment_cursors"
+    ],
+    "migration": "additive CREATE TABLE IF NOT EXISTS \u00d72; measured on a copy of the live 1.15 GB store: open+migrate 10 ms"
+  },
+  "surfaces": [
+    "transcript.segments RPC (read)",
+    "deployInfo.transcriptSegments status",
+    "capability transcript.segments.v1",
+    "hive transcript <bee> --segments | --from-objects [--raw]",
+    "docs/design/transcript-segments-contract.md"
+  ],
+  "matchesApiaryS4": {
+    "projectedFormat": "identical header and line encoding (apiary-transcript-segment v1), zstd level 3, refs = sha256 of compressed bytes, digest = sha256 of per-line raw_sha256 digests, line numbering (blank lines skipped, CR stripped, byte offsets per file), store layout blobs/transcript-archives/<ref>",
+    "pointerColumns": "same columns as hive_transcript_segment_objects plus path and log_segment_id"
+  },
+  "deviations": [
+    "cut trigger: turn end / runtime exit / rotation / boot catch-up (Apiary cut by 1024 lines, 1 MiB or a 10-minute idle timer); the size caps still apply inside a long turn",
+    "observed_at is the cut time for every line of a segment (Honeybee does not follow lines live)",
+    "projection_version is Honeybee's TRANSCRIPT_PROJECTION_VERSION (7), not Apiary's compat counter (11); Apiary must map rather than re-project (mailed to the lead)",
+    "line numbers continue across a handoff's new log file; byte offsets restart per file and the row carries path + logSegmentId; epoch marks a shrunk/replaced file",
+    "pointer rows are not in the snapshot (thousands per bee); Apiary mirrors them from transcript_segment_object.put deltas plus the transcript.segments verb"
+  ],
+  "realLogs": {
+    "projectionVersion": 7,
+    "sessionLogs": 5996,
+    "logs": [
+      {
+        "bee": "785432c2-66ed-4040-9934-8f7999956862",
+        "harness": "codex",
+        "logBytes": 79981493,
+        "lines": 39250,
+        "events": 7435,
+        "segments": 80,
+        "rawCompressedBytes": 9047888,
+        "rawRatio": 0.113,
+        "projectedBytes": 26141137,
+        "projectedCompressedBytes": 5973084,
+        "projectMs": 294,
+        "encodeCompressWriteMs": 1127,
+        "totalMs": 1421,
+        "msPerMiB": 18.6
+      },
+      {
+        "bee": "62048357-7ca7-4f1e-9856-f95978a7d5f1",
+        "harness": "codex",
+        "logBytes": 5480615,
+        "lines": 6487,
+        "events": 1274,
+        "segments": 7,
+        "rawCompressedBytes": 666680,
+        "rawRatio": 0.122,
+        "projectedBytes": 3174558,
+        "projectedCompressedBytes": 867944,
+        "projectMs": 31,
+        "encodeCompressWriteMs": 125,
+        "totalMs": 155,
+        "msPerMiB": 29.7
+      },
+      {
+        "bee": "6cfb306f-f5b7-4d07-a1da-62bbac19da98",
+        "harness": "codex",
+        "logBytes": 2002449,
+        "lines": 1375,
+        "events": 365,
+        "segments": 2,
+        "rawCompressedBytes": 182556,
+        "rawRatio": 0.091,
+        "projectedBytes": 882728,
+        "projectedCompressedBytes": 223412,
+        "projectMs": 10,
+        "encodeCompressWriteMs": 36,
+        "totalMs": 46,
+        "msPerMiB": 23.8
+      }
+    ]
+  },
+  "sessionLogsOnThisNode": {
+    "files": 5996,
+    "bytes": "31 GB",
+    "largestBytes": 1383633607,
+    "note": "projected cost from the measured 19-30 ms/MiB: the whole corpus would take roughly 10-15 minutes of CPU spread over its turn ends; raw objects compress to 9-12 % of the log"
+  },
+  "gate": {
+    "statement": "a killed executor's bees read to their last segment",
+    "proof": "transcript-segments.1: segments cut at turn ends are byte-exact log ranges; daemon.kill(); hive transcript <bee> --from-objects --raw --data-dir reproduces every non-blank line through the last segment from the read-only store and the object directory alone, labeled STALE; a restart resumes the cursor at the next line with dense ordinals and no duplicate line"
+  },
+  "notProven": [
+    "push to S3/R2: only the directory store exists behind the TranscriptObjectStore interface",
+    "Apiary consuming Honeybee's rows end to end (Apiary-side change; the format and columns match S4)",
+    "handoff rotation on a live two-harness bee (the rotation path is exercised by path-change detection logic and unit-level reasoning, not by a handoff integration test)"
+  ],
+  "tests": {
+    "targeted": "transcript-segment-format 2/2, core transcript-segment-objects 1/1, config transcripts.segments 1/1, daemon transcript-segments 3/3 (byte-exact segments, killed-daemon read from objects alone via hive transcript --from-objects --raw, restart resumes dense, flag off cuts nothing)",
+    "v2:test (core)": "620/621; the one failure (multiline-delivery SQL unknown count) is pre-existing and fails on pristine HEAD",
+    "v2:daemon (all daemon + cli)": "714/717; the 3 confined-peer failures are environmental and fail identically on a pristine 36173c79 worktree run today",
+    "v2:driver (adapters + hsr)": "191/191",
+    "v2:driver2 (cell + tmux)": "326/346; the same 20 containment/tmux failures as the H0 baseline run inside this Cell",
+    "typecheck+build": "npm run check, v2:check, build green",
+    "schemaAssertions": "18 core tests assert the current schema version and moved from 51 to 52, as every bump before"
+  }
+}

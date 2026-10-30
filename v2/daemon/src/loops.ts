@@ -258,6 +258,7 @@ export interface DaemonCoreOptions {
    */
   blockedRuntimeStartBeeIds?: () => ReadonlySet<string>;
   onIdentityUnresolved?: (beeId: string, generation: number) => void;
+  onTranscriptQuiet?: (beeId: string, generation: number, reason: "turn_ended" | "exited") => void;
   /** Throws at the start boundary to use the normal bounded command retry path. */
   assertRuntimeStartReady?: (command: CommandRow) => void;
   /**
@@ -330,6 +331,7 @@ export class DaemonCore {
   private readonly validatePlacement: ((move: BeeMoveRow, bee: BeeRow) => void) | null;
   private readonly blockedRuntimeStartBeeIds: () => ReadonlySet<string>;
   private readonly onIdentityUnresolved: (beeId: string, generation: number) => void;
+  private readonly onTranscriptQuiet: (beeId: string, generation: number, reason: "turn_ended" | "exited") => void;
   private readonly assertRuntimeStartReady: (command: CommandRow) => void;
   private readonly readHandoffTranscript: ((bee: BeeRow, segments: TranscriptSegmentRow[]) => { turns: HandoffContextTurn[]; truncated: boolean }) | null;
   private readonly summarizeHandoff: ((input: { handoff: BeeHandoffRow; bee: BeeRow; base: HandoffContext }) => Promise<HandoffContext>) | null;
@@ -370,6 +372,7 @@ export class DaemonCore {
     this.validatePlacement = opts.validatePlacement ?? null;
     this.blockedRuntimeStartBeeIds = opts.blockedRuntimeStartBeeIds ?? (() => new Set());
     this.onIdentityUnresolved = opts.onIdentityUnresolved ?? (() => undefined);
+    this.onTranscriptQuiet = opts.onTranscriptQuiet ?? (() => undefined);
     this.assertRuntimeStartReady = opts.assertRuntimeStartReady ?? (() => undefined);
     this.readHandoffTranscript = opts.readHandoffTranscript ?? null;
     this.summarizeHandoff = opts.summarizeHandoff ?? null;
@@ -675,6 +678,7 @@ export class DaemonCore {
         obs.kind === "turn_ended" && obs.synthetic !== true ? { recordOutput: true, endedQuiet: obs.endedQuiet } : this.turnOpenerOf(obs),
       );
       this.log(`obs.${obs.kind} bee=${obs.beeId} gen=${obs.generation}${obs.synthetic ? " synthetic" : ""}`);
+      if ((obs.kind === "turn_ended" && obs.synthetic !== true) || obs.kind === "exited") this.onTranscriptQuiet(obs.beeId, obs.generation, obs.kind);
     }
   }
 

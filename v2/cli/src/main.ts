@@ -85,6 +85,7 @@ import {
   type CellRetainedRemoveResult,
   type CellEvictResult,
   type CellParkResult,
+  type TranscriptSegmentsResult,
   type CellDiskStatus,
   type CellGcItem,
   type CellGcProgress,
@@ -156,6 +157,8 @@ import {
   type TranscriptTurnStream,
 } from "../../driver-tmux/src/transcripts.ts";
 import { sessionNameFor } from "../../driver-tmux/src/driver.ts";
+import { decodeProjectedSegment, decompressSegment } from "../../driver-tmux/src/transcript-segment-format.ts";
+import { createDirectoryTranscriptObjectStore } from "../../daemon/src/transcriptObjectStore.ts";
 import { localRepoIdentity, revParse } from "../../driver-cell/src/git.ts";
 import {
   agyArgGrammar,
@@ -330,6 +333,7 @@ const OPTIONAL_VALUE_FLAGS = new Set(["--warm"]);
  * unknown boolean plus a stray positional and quietly spawned an hsr claude.
  */
 const BOOL_FLAGS = new Set([
+  "--segments", "--from-objects",
   "--json",
   "--allow-foreign-daemon",
   "--unread",
@@ -4156,9 +4160,10 @@ async function followTranscriptStream(
  */
 async function cmdTranscript(ctx: CliContext, parsed: Parsed): Promise<number> {
   const needle = parsed.positional[1];
-  if (!needle) throw new Error("usage: hive transcript <bee> [-n n] [--raw] [-f|--follow]");
+  if (!needle) throw new Error("usage: hive transcript <bee> [-n n] [--raw] [-f|--follow] [--segments] [--from-objects]");
   const { result, stale } = await readBee(ctx, needle);
   const bee = result.bee;
+  if (parsed.flags.get("--segments") === true || parsed.flags.get("--from-objects") === true) return transcriptFromObjects(ctx, parsed, result, stale);
   const path = sessionLogOf(bee, needle);
   const harness = bee?.agent ?? "";
   const raw = parsed.flags.get("--raw") === true;
@@ -4183,6 +4188,49 @@ async function cmdTranscript(ctx: CliContext, parsed: Parsed): Promise<number> {
   else for (const line of turnLines(shown)) ctx.io.out(line);
   if (follow) await followTranscriptStream(ctx, path, snapshot.byteOffset, stream);
   return 0;
+}
+
+async function transcriptFromObjects(ctx: CliContext, parsed: Parsed, view: ViewResult, staleBee: boolean): Promise<number> {
+  const beeId = view.view.beeId;
+  const { result, stale } = await readPath(
+    ctx,
+    (c) => c.request<TranscriptSegmentsResult>("transcript.segments", { beeId }),
+    (store) => ({ beeId, segments: store.listTranscriptSegmentObjects(beeId), store: null, cursor: null }),
+  );
+  const root = result.store?.root ?? ctx.cfg.transcriptSegments.storeDir;
+  const anyStale = stale || staleBee;
+  if (parsed.flags.get("--segments") === true) {
+    const lines = result.segments.map((s) => `${String(s.ordinal).padStart(5)}  lines ${s.firstLine}-${s.lastLine}  bytes ${s.byteStart}-${s.byteEnd}  raw ${s.rawRef.slice(0, 12)} (${s.rawSize}>${s.rawBytes})  projected ${s.projectedRef.slice(0, 12)} (${s.projectedSize}>${s.projectedBytes})  v${s.projectionVersion}  ${new Date(s.closedAt).toISOString()}${s.epoch ? `  epoch ${s.epoch.slice(0, 8)}` : ""}`);
+    emit(ctx, [`${anyStale ? "stale: " : ""}${result.segments.length} segment objects for ${beeId} in ${root}`, ...lines], { ...result, store: result.store ?? { kind: "directory", root } }, anyStale);
+    return 0;
+  }
+  const objects = createDirectoryTranscriptObjectStore(root);
+  const raw = parsed.flags.get("--raw") === true;
+  const out: string[] = [];
+  let missing = 0;
+  for (const segment of result.segments) {
+    const blob = objects.read(raw ? segment.rawRef : segment.projectedRef);
+    if (!blob) {
+      missing += 1;
+      continue;
+    }
+    const bytes = decompressSegment(blob);
+    if (raw) {
+      for (const line of bytes.toString("utf8").split("\n")) if (line.replace(/\r$/, "").trim().length > 0) out.push(line.replace(/\r$/, ""));
+      continue;
+    }
+    for (const line of decodeProjectedSegment(bytes).lines) {
+      for (const event of JSON.parse(line.events) as Array<{ kind: string; role?: string; text?: string; nativeType?: string }>) {
+        if (event.kind === "message") out.push(`${line.line_no}\t${event.role}: ${event.text ?? ""}`);
+        else out.push(`${line.line_no}\t[${event.kind}${event.nativeType ? ` ${event.nativeType}` : ""}]`);
+      }
+    }
+  }
+  const last = result.segments[result.segments.length - 1];
+  if (!ctx.json) ctx.io.err(`${anyStale ? "STALE " : ""}objects: ${result.segments.length} segments${last ? `, lines 1-${last.lastLine}` : ""} from ${root}${missing > 0 ? ` (${missing} blobs missing)` : ""}`);
+  if (ctx.json) emit(ctx, [], { beeId, root, segments: result.segments.length, missing, lines: out }, anyStale);
+  else for (const line of out) ctx.io.out(line);
+  return missing > 0 ? 2 : 0;
 }
 
 /**

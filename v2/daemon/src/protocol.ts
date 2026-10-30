@@ -68,6 +68,8 @@ import type {
   MirrorTemplateRow,
   NodeCapacity,
   TaskTransitionAction,
+  TranscriptSegmentCursorRow,
+  TranscriptSegmentObjectRow,
   RuntimeRow,
   TemplatePackage,
   TranscriptSegmentRow,
@@ -201,6 +203,7 @@ export const DAEMON_CAPABILITIES = [
   "cell.retention.pressure.v1",
   "cell.park.v1",
   "node.capacity.v1",
+  "transcript.segments.v1",
   /**
    * v23 (2026-09-13): durable session handoff — `bee.handoff` /
    * `bee.handoff.get`, the `handoff` mirror-row key, the `beeHandoffs` +
@@ -529,6 +532,7 @@ export const RPC_VERBS = [
   "node.harnesses",
   // CLI-alignment (additive read): tail of the audit log for `hive v2 events`
   "audit.tail",
+  "transcript.segments",
   // watch
   "watch",
   "snapshot",
@@ -1712,9 +1716,31 @@ export interface AuditTailResult {
   rows: AuditRow[];
 }
 
+export interface TranscriptSegmentsStatus {
+  enabled: boolean;
+  store: { kind: "directory"; root: string } | null;
+  projectionVersion: number;
+  maxLines: number;
+  maxRawBytes: number;
+}
+
+export interface TranscriptSegmentsParams {
+  beeId: string;
+  afterOrdinal?: number;
+  limit?: number;
+}
+
+export interface TranscriptSegmentsResult {
+  beeId: string;
+  segments: TranscriptSegmentObjectRow[];
+  store: { kind: "directory"; root: string } | null;
+  cursor: TranscriptSegmentCursorRow | null;
+}
+
 export interface DeployInfoResult {
   localSecurity?: {peerCredentials: import("./peerCredentials.ts").PeerCredentialStatus; localTrust: "off" | "ready" | "registration_key_unavailable"};
   identity?: BuildIdentity;
+  transcriptSegments?: TranscriptSegmentsStatus;
   protocol: string;
   /** v16 (additive): the capability tags this daemon offers (also in the hello). */
   capabilities: readonly DaemonCapability[];

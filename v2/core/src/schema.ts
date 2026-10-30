@@ -159,7 +159,7 @@
  * v35 — a dying login is visible: `accounts.status_reason` + `accounts.refresh_token_expires_at`;
  * the credential authority gains the terminal `login_required` phase, `refresh_token_expires_at`
  * and the secret-free last refresh `failure` (table rebuild, rows carried across by name). */
-export const SCHEMA_VERSION = 51;
+export const SCHEMA_VERSION = 52;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -1029,6 +1029,49 @@ CREATE TABLE IF NOT EXISTS bee_handoffs (
   updated_at                 INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX IF NOT EXISTS bee_handoffs_bee ON bee_handoffs(bee_id, created_at);
+`;
+
+/**
+ * v52 (H4) — transcript segment objects: the content-addressed raw + projected
+ * chunks of a bee's session log that Honeybee cuts at turn end and on rotation
+ * and pushes to the workspace object store, plus the per-bee cut cursor.
+ * Pointer rows Apiary mirrors (same columns as its hive_transcript_segment_objects).
+ * Additive: CREATE TABLE IF NOT EXISTS ×2; cascades with the bee.
+ */
+export const TRANSCRIPT_SEGMENT_OBJECTS_SQL = `
+CREATE TABLE IF NOT EXISTS transcript_segment_objects (
+  id                 TEXT PRIMARY KEY,
+  bee_id             TEXT NOT NULL REFERENCES bees(id) ON DELETE CASCADE,
+  ordinal            INTEGER NOT NULL CHECK (ordinal >= 0),
+  first_line         INTEGER NOT NULL,
+  last_line          INTEGER NOT NULL,
+  byte_start         INTEGER NOT NULL,
+  byte_end           INTEGER NOT NULL,
+  harness            TEXT NOT NULL,
+  raw_ref            TEXT NOT NULL,
+  raw_size           INTEGER NOT NULL,
+  raw_bytes          INTEGER NOT NULL,
+  projected_ref      TEXT NOT NULL,
+  projected_size     INTEGER NOT NULL,
+  projected_bytes    INTEGER NOT NULL,
+  projection_version INTEGER NOT NULL,
+  digest             TEXT NOT NULL,
+  closed_at          INTEGER NOT NULL,
+  epoch              TEXT,
+  path               TEXT NOT NULL,
+  log_segment_id     TEXT,
+  UNIQUE (bee_id, ordinal)
+) STRICT;
+CREATE INDEX IF NOT EXISTS transcript_segment_objects_bee_last ON transcript_segment_objects(bee_id, last_line);
+CREATE TABLE IF NOT EXISTS transcript_segment_cursors (
+  bee_id               TEXT PRIMARY KEY REFERENCES bees(id) ON DELETE CASCADE,
+  path                 TEXT NOT NULL,
+  line_no              INTEGER NOT NULL,
+  byte_offset          INTEGER NOT NULL,
+  epoch                TEXT,
+  projector_checkpoint TEXT,
+  updated_at           INTEGER NOT NULL
+) STRICT;
 `;
 
 /**

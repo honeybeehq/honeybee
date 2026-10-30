@@ -326,6 +326,51 @@ export interface NodeConfigFile {
    * knob has no effect and spawns log cap=none reason=seatbelt.
    */
   bees?: { tmpRoot?: string | null; sandboxTmpBytes?: number | null };
+  transcripts?: { segments?: TranscriptSegmentsConfig };
+}
+
+export interface TranscriptSegmentsConfig {
+  enabled?: boolean;
+  storeDir?: string;
+  maxLines?: number;
+  maxRawBytes?: number;
+}
+
+export interface ResolvedTranscriptSegments {
+  enabled: boolean;
+  storeDir: string;
+  maxLines: number;
+  maxRawBytes: number;
+  warnings: string[];
+}
+
+export function transcriptSegmentsOf(raw: unknown, dataDir: string): ResolvedTranscriptSegments {
+  const out: ResolvedTranscriptSegments = { enabled: false, storeDir: join(dataDir, "transcript-objects"), maxLines: 1024, maxRawBytes: 1024 * 1024, warnings: [] };
+  const section = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>).segments : undefined;
+  if (section === undefined) return out;
+  if (section === null || typeof section !== "object" || Array.isArray(section)) {
+    out.warnings.push(`transcripts.segments must be an object, got ${JSON.stringify(section)}; using defaults`);
+    return out;
+  }
+  const c = section as Record<string, unknown>;
+  const warn = (key: string, expected: string) => out.warnings.push(`transcripts.segments.${key} must be ${expected}, got ${JSON.stringify(c[key])}; using the default`);
+  if (c.enabled !== undefined) {
+    if (typeof c.enabled === "boolean") out.enabled = c.enabled;
+    else warn("enabled", "a boolean");
+  }
+  if (c.storeDir !== undefined) {
+    if (typeof c.storeDir === "string" && (isAbsolute(c.storeDir) || c.storeDir.startsWith("~/"))) out.storeDir = c.storeDir.startsWith("~/") ? join(homedir(), c.storeDir.slice(2)) : c.storeDir;
+    else warn("storeDir", "an absolute path or a ~/ path");
+  }
+  if (c.maxLines !== undefined) {
+    if (typeof c.maxLines === "number" && Number.isInteger(c.maxLines) && c.maxLines >= 1) out.maxLines = c.maxLines;
+    else warn("maxLines", "a positive integer");
+  }
+  if (c.maxRawBytes !== undefined) {
+    if (typeof c.maxRawBytes === "number" && Number.isInteger(c.maxRawBytes) && c.maxRawBytes >= 1024) out.maxRawBytes = c.maxRawBytes;
+    else warn("maxRawBytes", "an integer of at least 1024");
+  }
+  return out;
 }
 
 export interface ResolvedNodeConfig {
@@ -378,6 +423,7 @@ export interface ResolvedNodeConfig {
   contextPolicy: ContextPolicyConfig;
   beeTmpRoot?: string | null;
   beeTmpRootInvalid?: string;
+  transcriptSegments: ResolvedTranscriptSegments;
   beeSandboxTmpBytes?: number | null;
   beeSandboxTmpBytesInvalid?: string;
 }
@@ -1040,6 +1086,7 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
     cellWarmPoolFree: cells.warmPoolFree,
     cellWarmPoolMaxSize: cells.warmPoolMaxSize,
     cellRetention: cells.retention,
+    transcriptSegments: transcriptSegmentsOf(raw.transcripts, dataDir),
     idleWindowMs: num(raw, "idleWindowMs", DEFAULTS.idleWindowMs),
     bootHangTimeoutMs,
     bootAllowanceMs,

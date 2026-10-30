@@ -18,6 +18,7 @@ import {
   type AccountRow,
   type AuditRow,
   type TemplateRow,
+  type TranscriptSegmentObjectRow,
   type BeeHandoffFailure,
   type BeeHandoffPhase,
   type BeeHandoffStopAt,
@@ -401,6 +402,20 @@ export class ReadOnlyStore {
 
   listTemplates(): TemplateRow[] {
     return (this.db.prepare("SELECT * FROM templates ORDER BY id").all() as Row[]).map(mapTemplateRow);
+  }
+
+  listTranscriptSegmentObjects(beeId: string): TranscriptSegmentObjectRow[] {
+    if (!this.hasTable("transcript_segment_objects")) return [];
+    return (this.db.prepare("SELECT * FROM transcript_segment_objects WHERE bee_id = ? ORDER BY ordinal").all(beeId) as Row[]).map((r) => ({
+      id: r.id as string, beeId: r.bee_id as string, ordinal: Number(r.ordinal), firstLine: Number(r.first_line), lastLine: Number(r.last_line),
+      byteStart: Number(r.byte_start), byteEnd: Number(r.byte_end), harness: r.harness as string, rawRef: r.raw_ref as string, rawSize: Number(r.raw_size), rawBytes: Number(r.raw_bytes),
+      projectedRef: r.projected_ref as string, projectedSize: Number(r.projected_size), projectedBytes: Number(r.projected_bytes), projectionVersion: Number(r.projection_version),
+      digest: r.digest as string, closedAt: Number(r.closed_at), epoch: (r.epoch as string | null) ?? null, path: r.path as string, logSegmentId: (r.log_segment_id as string | null) ?? null,
+    }));
+  }
+
+  private hasTable(name: string): boolean {
+    return this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) !== undefined;
   }
 
   commands(beeId: string): CommandRow[] {
