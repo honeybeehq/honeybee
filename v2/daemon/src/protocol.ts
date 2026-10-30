@@ -1792,7 +1792,7 @@ export interface BeeImportResult extends DedupMarkers {
   account: string | null;
   lost: { questions: number } | null;
   unfenced: boolean;
-  wipRestore: "adopted" | "unreachable" | null;
+  wipRestore: "adopted" | "unreachable" | "parent_mismatch" | null;
 }
 
 export interface BeeFenceResult extends DedupMarkers {
@@ -1842,7 +1842,9 @@ export interface ChampionStartResult extends DedupMarkers {
   messageId: number | null;
   started: "spawned" | "revived" | "running";
   homeRestored: boolean;
+  restoreSkipped: "home_not_empty" | "no_bundle" | "stale_epoch" | "restore_failed" | "home_sync_off" | null;
   epoch: number;
+  replacedBeeId: string | null;
 }
 
 export interface ChampionArchiveResult extends DedupMarkers {

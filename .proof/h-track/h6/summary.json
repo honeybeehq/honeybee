@@ -1,7 +1,7 @@
 {
   "step": "H6",
   "date": "2026-10-30",
-  "status": "H6a, H6b, H6c built; durability flags default off",
+  "status": "H6a, H6b, H6c built and reviewed; round two folds the H6c review and the H5 takeover item; the H track is complete, every flag default off",
   "document": "docs/design/bee-durability-plan.md",
   "gate": "kill an executor mid-task; revive elsewhere with context",
   "steps": [
@@ -112,5 +112,22 @@
       "account_mismatch end to end (needs two provisioned accounts; the scope compare and the reseed path are unit-covered by bundle_missing)",
       "the Home's half: fence receipt, serialisation, mail replay, question withdrawal"
     ]
+  },
+  "roundTwo": {
+    "h6cReview": {
+      "1_segmentRefsBoundToBee": "fixed: a projected segment whose header beeId differs from the imported bee is skipped and logged (bee.import.reseed_segment_foreign), counted as foreign",
+      "2_evidenceWording": "fixed: the seed says the transcript was reconstructed by the Home from its mirror and the stored projected transcript, names how many turns the Home supplied, and tells the bee to treat it as evidence, not memory",
+      "3_adoptWipRefParent": "fixed: adoptWipRef adopts only when the origin has the commit and sha^ equals the Cell's sha; otherwise wipRestore reports unreachable or parent_mismatch and nothing is recorded as confirmed",
+      "4_pendingImportsDurable": "fixed: a native import records bee.import.pending:<beeId> in the idempotency ledger; after a daemon restart a spawn failure on a bee that still carries its fork seed re-derives the pending import from the marker (the in-memory map is a cache)"
+    },
+    "h5Takeover": "fixed: champion.start with homeRef + an epoch not older than the row on a node that still binds a stale incarnation takes over: epoch+1, fence cleared, the stale bee stopped/archived/unbound (replacedBeeId), the non-empty home set aside as <home>.stale-<epoch>-<ts> and the bundle restored before the new incarnation spawns (started: spawned, homeRestored: true); plain starts on a bound node revive as before and on a fenced row stay champion_fenced; every start reports restoreSkipped (home_not_empty | no_bundle | stale_epoch | restore_failed | home_sync_off | null). champions.1 drives the round trip A -> B -> A: A takes epoch 2, seen.txt from B's home is present, the old home is set aside, the stale incarnation is archived",
+    "tests": {
+      "champions": "2/2",
+      "resume-import": "1/1",
+      "resume-import-cell": "1/1",
+      "resume-reseed": "1/1",
+      "v2:daemon": "569/569 alone (a run parallel to the core suite and build flaked account-config-rpc once; it passes 1/1 alone)"
+    },
+    "credentials": "no live-credential reads"
   }
 }

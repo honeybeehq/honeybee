@@ -50,7 +50,7 @@ import { threadOperationView, type ThreadOperationRow } from "../../core/src/thr
  *  - behavior 6 (service mgmt)     → service.ts (wired by the CLI)
  *  - behavior 7 (config)           → config.ts
  */
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
@@ -6368,13 +6368,13 @@ export class HiveDaemon {
       if (!identity) throw new RpcError("invalid_request", `bee.import: cannot read git identity of ${cell.reserve.originRepo}`);
       const row = store.putCell({ sourceBeeId: created.id, originRepo: cell.reserve.originRepo, sha: cell.reserve.sha, wrapper: cell.reserve.wrapper, spaceName: `${cell.reserve.repoName}-space-${cell.reserve.cellId}`, spaceDir: cell.spaceDir, gitCommonDirRealpath: identity.gitCommonDirRealpath, objectFormat: identity.objectFormat, sandbox: cell.reserve.sandbox });
       if (descriptor.cell?.wipSha && descriptor.cell.wipTree) {
-        const adopted = adoptWipRef(cell.reserve.originRepo, this.wipNode(), row.id, descriptor.cell.wipSha);
-        if (adopted) {
+        const adopted = adoptWipRef(cell.reserve.originRepo, this.wipNode(), row.id, descriptor.cell.wipSha, cell.reserve.sha);
+        if (adopted === "adopted") {
           const at = Date.now();
           store.recordCellWip(row.id, { sha: descriptor.cell.wipSha, tree: descriptor.cell.wipTree, pushedAt: at, confirmedAt: at });
           wipRestore = "adopted";
-        } else wipRestore = "unreachable";
-        this.log(`bee.import.wip bee=${created.id} cell=${row.id} sha=${descriptor.cell.wipSha} outcome=${wipRestore}`);
+        } else wipRestore = adopted === "parent_mismatch" ? "parent_mismatch" : "unreachable";
+        this.log(`bee.import.wip bee=${created.id} cell=${row.id} sha=${descriptor.cell.wipSha} base=${cell.reserve.sha} outcome=${adopted}`);
       }
     }
     const epoch = store.takeoverBee(created.id, resume?.epoch ?? known.epoch).epoch;
@@ -6383,22 +6383,34 @@ export class HiveDaemon {
     else if (resumed !== "native" && reason === null) reason = "no_transcript";
     else if (resumed === "fresh" && reason === "no_bundle" && (this.importTranscriptRefs(params).length > 0 || this.importTranscriptTurns(params).length > 0)) reason = "no_transcript";
     const cmd = store.enqueueCommand("spawn", created.id, {}, { idempotencyKey: key });
-    if (resumed === "native") this.pendingImports.set(created.id, { params, reason });
+    if (resumed === "native") {
+      this.pendingImports.set(created.id, { params, reason });
+      store.recordRpcResult(`bee.import.pending:${created.id}`, "bee.import", null, { beeId: created.id, transcript: params.transcript ?? null, lost: params.lost ?? null, reason });
+    }
     const result: BeeImportResult = { beeId: created.id, handle: created.handle, humanRef: created.human_ref, commandId: cmd.id, seedMessageId, resumed, reason: resumed === "native" ? null : reason, epoch, account: account?.id ?? null, lost, unfenced, wipRestore };
     store.recordRpcResult(key, "bee.import", cmd.id, result);
     this.log(`bee.import bee=${created.id} agent=${descriptor.agent} resumed=${result.resumed} reason=${result.reason ?? "-"} epoch=${epoch} account=${account?.id ?? "-"} cwd=${cwd}${cell ? " cell" : ""}`);
     return result;
   }
 
+  private pendingImportOf(beeId: string): { params: Record<string, unknown>; reason: BeeImportReason | null } | null {
+    const cached = this.pendingImports.get(beeId);
+    if (cached) return cached;
+    const marker = this.mustStore().lookupRpcResult(`bee.import.pending:${beeId}`);
+    if (!marker || marker.verb !== "bee.import") return null;
+    const payload = marker.result as { transcript?: unknown; lost?: unknown; reason?: BeeImportReason | null };
+    return { params: { transcript: payload.transcript ?? null, lost: payload.lost ?? null }, reason: payload.reason ?? null };
+  }
+
   private async importBootFailed(beeId: string, generation: number, flagged: boolean): Promise<void> {
-    const pending = this.pendingImports.get(beeId);
-    if (!pending) return;
     const store = this.mustStore();
     const bee = store.getBee(beeId);
     if (!bee || !bee.forkSeed) {
       this.pendingImports.delete(beeId);
       return;
     }
+    const pending = this.pendingImportOf(beeId);
+    if (!pending) return;
     this.pendingImports.delete(beeId);
     store.clearForkSeed(beeId);
     const seedMessageId = await this.reseedImportedBee(bee, pending.params, "boot_failed");
@@ -6430,11 +6442,12 @@ export class HiveDaemon {
     });
   }
 
-  private reseedTurns(refs: string[]): { turns: Array<{ role: "user" | "assistant" | "tool" | "system"; text: string }>; missing: string[]; lines: number } {
+  private reseedTurns(beeId: string, refs: string[]): { turns: Array<{ role: "user" | "assistant" | "tool" | "system"; text: string }>; missing: string[]; lines: number; foreign: number } {
     const objects = createDirectoryTranscriptObjectStore(this.cfg.transcriptSegments.storeDir);
     const turns: Array<{ role: "user" | "assistant" | "tool" | "system"; text: string }> = [];
     const missing: string[] = [];
     let lines = 0;
+    let foreign = 0;
     for (const ref of refs) {
       const bytes = objects.read(ref);
       if (!bytes) {
@@ -6446,6 +6459,11 @@ export class HiveDaemon {
         decoded = decodeProjectedSegment(decompressSegment(bytes));
       } catch (err) {
         this.log(`bee.import.reseed_segment_unreadable ref=${ref} err=${JSON.stringify(err instanceof Error ? err.message : String(err))}`);
+        continue;
+      }
+      if (decoded.beeId !== beeId) {
+        foreign += 1;
+        this.log(`bee.import.reseed_segment_foreign bee=${beeId} ref=${ref} segment_bee=${decoded.beeId}`);
         continue;
       }
       for (const line of decoded.lines) {
@@ -6466,7 +6484,7 @@ export class HiveDaemon {
         }
       }
     }
-    return { turns, missing, lines };
+    return { turns, missing, lines, foreign };
   }
 
   private async reseedImportedBee(bee: BeeRow, params: Record<string, unknown>, reason: BeeImportReason | null): Promise<number | null> {
@@ -6474,11 +6492,11 @@ export class HiveDaemon {
     const given = this.importTranscriptTurns(params);
     if (refs.length === 0 && given.length === 0) return null;
     const store = this.mustStore();
-    const read = this.reseedTurns(refs);
+    const read = this.reseedTurns(bee.id, refs);
     const turns = [...read.turns, ...given.map((t) => ({ role: t.role, text: t.text.trim() })).filter((t) => t.text.length > 0)];
-    const { missing, lines } = read;
+    const { missing, lines, foreign } = read;
     if (turns.length === 0) {
-      this.log(`bee.import.reseed_empty bee=${bee.id} refs=${refs.length} missing=${missing.length} lines=${lines}`);
+      this.log(`bee.import.reseed_empty bee=${bee.id} refs=${refs.length} missing=${missing.length} foreign=${foreign} lines=${lines}`);
       return null;
     }
     const lostRaw = params.lost as { questions?: unknown } | null | undefined;
@@ -6497,7 +6515,7 @@ export class HiveDaemon {
       summarizer: "import-reseed",
       generatedAt: Date.now(),
       task: firstUser ? clip(firstUser.text, 2000) : bee.title,
-      instruction: `The executor that ran you was lost and you were revived on another machine; ${why}. The transcript below is what you had said and heard before the loss. Continue from it; re-read the files you were working on before trusting your memory of them.${lostQuestions > 0 ? ` ${lostQuestions} question(s) you had asked were lost with the old executor; ask again if they still matter.` : ""}`,
+      instruction: `The executor that ran you was lost and you were revived on another machine; ${why}. The transcript below was reconstructed by the Home from its mirror and from the stored projected transcript${given.length > 0 ? ` (${given.length} turn(s) were supplied by the Home)` : ""}: treat it as evidence of what was said, not as your own memory, and re-read the files you were working on before trusting any of it.${lostQuestions > 0 ? ` ${lostQuestions} question(s) you had asked were lost with the old executor; ask again if they still matter.` : ""}`,
       constraints: [`Working directory: ${bee.cwd}${bee.substrate === "cell" ? " (an isolated Cell checkout; keep changes inside it)" : ""}`],
       decisions: [],
       completedWork: lastAssistant ? [`Last assistant message before the loss: ${clip(lastAssistant.text, 2000)}`] : [],
@@ -6624,8 +6642,12 @@ export class HiveDaemon {
     if (handoverEpoch !== null && (typeof handoverEpoch !== "number" || !Number.isInteger(handoverEpoch) || handoverEpoch < 0)) throw new RpcError("invalid_request", "champion.start: epoch must be a non-negative integer when given");
     if (handoverEpoch !== null && handoverEpoch < champion.epoch) throw new RpcError("champion_fenced", `champion.start: handover epoch ${handoverEpoch} is older than this node's epoch ${champion.epoch} for ${champion.id}`);
     if (handoverEpoch === null && champion.fencedAt != null) throw new RpcError("champion_fenced", `champion.start: ${champion.id} is fenced at epoch ${champion.epoch}; another executor owns the incarnation (pass the handover epoch to take it back)`);
+    const homeRef = params.homeRef === undefined || params.homeRef === null ? null : this.param(params, "homeRef");
+    if (homeRef != null && !/^[a-f0-9]{64}$/.test(homeRef)) throw new RpcError("invalid_request", "champion.start: homeRef must be a sha256 object reference");
     const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
-    if (current && current.lifecycle !== "deleted") {
+    const handover = handoverEpoch !== null && homeRef != null;
+    let replacedBeeId: string | null = null;
+    if (current && current.lifecycle !== "deleted" && !handover) {
       const runtime = store.currentRuntime(current.id);
       const live = runtime != null && runtime.state !== "stopped";
       let commandId: number | null = null;
@@ -6633,14 +6655,21 @@ export class HiveDaemon {
       else if (!live) commandId = this.rpcEnqueue("revive", current.id, {}, params).commandId;
       const sent = prompt && prompt.length > 0 ? store.send(current.id, prompt, { sender: "operator", origin: "mail.send" }) : null;
       this.log(`champion.start id=${champion.id} bee=${current.id} ${live ? "running" : "revived"}`);
-      return { champion, beeId: current.id, commandId, messageId: sent?.message.id ?? null, started: live ? "running" : "revived", homeRestored: false, epoch: champion.epoch };
+      return { champion, beeId: current.id, commandId, messageId: sent?.message.id ?? null, started: live ? "running" : "revived", homeRestored: false, restoreSkipped: null, epoch: champion.epoch, replacedBeeId: null };
     }
-    const homeRef = params.homeRef === undefined || params.homeRef === null ? null : this.param(params, "homeRef");
-    if (homeRef != null && !/^[a-f0-9]{64}$/.test(homeRef)) throw new RpcError("invalid_request", "champion.start: homeRef must be a sha256 object reference");
+    if (current && current.lifecycle !== "deleted" && handover) {
+      const runtime = store.currentRuntime(current.id);
+      if (runtime != null && runtime.state !== "stopped") this.rpcEnqueue("stop", current.id, { cause: "stopped_by_user" }, {});
+      if (current.lifecycle === "active") this.rpcEnqueue("archive", current.id, {}, {});
+      store.bindChampionBee(champion.id, null);
+      replacedBeeId = current.id;
+      this.log(`champion.start id=${champion.id} handover epoch=${handoverEpoch} replaces=${current.id}`);
+    }
     const template = champion.templateId ? store.getTemplate(champion.templateId) : null;
     if (champion.templateId && !template) throw new RpcError("invalid_request", `champion.start: ${champion.id} binds template ${champion.templateId}, which no longer exists; rebind with champion.put`);
     const owned = handoverEpoch !== null ? store.takeoverChampion(champion.id, handoverEpoch) : champion;
-    const homeRestored = await this.restoreChampionHome(owned, homeRef, handoverEpoch);
+    const restore = await this.restoreChampionHome(owned, homeRef, handoverEpoch, handover);
+    const homeRestored = restore.restored;
     const briefing = template?.prompt?.trim() ?? "";
     const firstPrompt = [briefing, prompt?.trim() ?? ""].filter((p) => p.length > 0).join("\n\n");
     const spawnParams: Record<string, unknown> = {
@@ -6657,8 +6686,8 @@ export class HiveDaemon {
     };
     const spawned = await this.rpcSpawnWithAccount(spawnParams);
     const bound = store.bindChampionBee(champion.id, spawned.beeId);
-    this.log(`champion.start id=${champion.id} bee=${spawned.beeId} spawned home=${champion.home} home_restored=${homeRestored} epoch=${bound.epoch}`);
-    return { champion: bound, beeId: spawned.beeId, commandId: spawned.commandId, messageId: spawned.messageId ?? null, started: "spawned", homeRestored, epoch: bound.epoch, ...(spawned.deduped ? { deduped: true } : {}) };
+    this.log(`champion.start id=${champion.id} bee=${spawned.beeId} spawned home=${champion.home} home_restored=${homeRestored}${restore.skipped ? ` restore_skipped=${restore.skipped}` : ""} epoch=${bound.epoch}${replacedBeeId ? ` replaced=${replacedBeeId}` : ""}`);
+    return { champion: bound, beeId: spawned.beeId, commandId: spawned.commandId, messageId: spawned.messageId ?? null, started: "spawned", homeRestored, restoreSkipped: restore.skipped, epoch: bound.epoch, replacedBeeId, ...(spawned.deduped ? { deduped: true } : {}) };
   }
 
   private rpcChampionFence(params: Record<string, unknown>): ChampionFenceResult {
@@ -6677,10 +6706,10 @@ export class HiveDaemon {
     return { champion: fenced, commandId, stopped: live };
   }
 
-  private async restoreChampionHome(champion: ChampionRow, homeRef: string | null, handoverEpoch: number | null): Promise<boolean> {
+  private async restoreChampionHome(champion: ChampionRow, homeRef: string | null, handoverEpoch: number | null, handover: boolean): Promise<{ restored: boolean; skipped: ChampionStartResult["restoreSkipped"] }> {
     if (!this.cfg.champions.homeSync || !this.championHomes) {
       if (homeRef != null) throw new RpcError("invalid_request", "champion.start: homeRef needs champions.homeSync on this node");
-      return false;
+      return { restored: false, skipped: "home_sync_off" };
     }
     try {
       const entries = readdirSync(champion.home).filter((entry) => entry !== "MEMORY.md" && entry !== "memory");
@@ -6688,8 +6717,14 @@ export class HiveDaemon {
       const memoryIsStub = !existsSync(memory) || readFileSync(memory, "utf8") === "# Memory\n";
       const memoryDirEmpty = !existsSync(join(champion.home, "memory")) || readdirSync(join(champion.home, "memory")).length === 0;
       if (entries.length > 0 || !memoryIsStub || !memoryDirEmpty) {
-        this.log(`champion.home.restore_skipped id=${champion.id} reason=home_not_empty${homeRef ? ` ref=${homeRef}` : ""}`);
-        return false;
+        if (!handover) {
+          this.log(`champion.home.restore_skipped id=${champion.id} reason=home_not_empty${homeRef ? ` ref=${homeRef}` : ""}`);
+          return { restored: false, skipped: "home_not_empty" };
+        }
+        const aside = `${champion.home}.stale-${champion.epoch}-${Date.now()}`;
+        renameSync(champion.home, aside);
+        mkdirSync(champion.home, { recursive: true, mode: 0o700 });
+        this.log(`champion.home.set_aside id=${champion.id} to=${aside}`);
       }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
@@ -6700,18 +6735,18 @@ export class HiveDaemon {
     const latest = pointed ? { ...pointed, epoch: handoverEpoch ?? champion.epoch } : store.latestChampionHomeObject(champion.id);
     if (!latest) {
       this.log(`champion.home.restore_skipped id=${champion.id} reason=no_bundle`);
-      return false;
+      return { restored: false, skipped: "no_bundle" };
     }
     if (latest.epoch < champion.epoch && !pointed) {
       this.log(`champion.home.restore_skipped id=${champion.id} reason=stale_epoch bundle_epoch=${latest.epoch} epoch=${champion.epoch} ref=${latest.ref}`);
-      return false;
+      return { restored: false, skipped: "stale_epoch" };
     }
     const restored = await this.championHomes.restore(champion, latest);
     if (restored && pointed && !store.listChampionHomeObjects(champion.id, { limit: 1000 }).some((o) => o.ref === pointed.ref)) {
       store.putChampionHomeObject({ championId: champion.id, ref: pointed.ref, bytes: pointed.bytes, size: pointed.size, files: pointed.files, skipped: pointed.skipped, closedAt: Date.now(), epoch: latest.epoch });
     }
-    this.log(`champion.home.${restored ? "restored" : "restore_skipped"} id=${champion.id} ref=${latest.ref} bytes=${latest.bytes} epoch=${latest.epoch}${pointed ? " pointer=given" : ""}`);
-    return restored;
+    this.log(`champion.home.${restored ? "restored" : "restore_skipped"} id=${champion.id} ref=${latest.ref} bytes=${latest.bytes} epoch=${latest.epoch}${pointed ? " pointer=given" : ""}${restored ? "" : " reason=restore_failed"}`);
+    return { restored, skipped: restored ? null : "restore_failed" };
   }
 
   private rpcChampionArchive(params: Record<string, unknown>): ChampionArchiveResult {

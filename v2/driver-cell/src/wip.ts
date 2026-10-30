@@ -173,10 +173,11 @@ export function sweepWipRefs(originRepo: string, scopes: readonly string[], live
 
 export type WipRestoreSkip = "invalid_sha" | "nothing_to_restore" | "no_head" | "wip_unreachable" | "head_mismatch" | "space_dirty";
 
-export function adoptWipRef(originRepo: string, node: string, cellId: string, sha: string): boolean {
-  if (!SHA.test(sha)) return false;
-  if (tryGit(originRepo, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) return false;
-  return tryGit(originRepo, ["update-ref", wipRefFor(node, cellId), sha]).status === 0;
+export function adoptWipRef(originRepo: string, node: string, cellId: string, sha: string, parentSha: string): "adopted" | "missing" | "parent_mismatch" | "failed" {
+  if (!SHA.test(sha) || !SHA.test(parentSha)) return "failed";
+  if (tryGit(originRepo, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) return "missing";
+  if (sha !== parentSha && revParse(originRepo, `${sha}^`) !== parentSha) return "parent_mismatch";
+  return tryGit(originRepo, ["update-ref", wipRefFor(node, cellId), sha]).status === 0 ? "adopted" : "failed";
 }
 
 export function restoreWip(spaceDir: string, originRepo: string, node: string, cellId: string, sha: string): { restored: boolean; reason: WipRestoreSkip | null } {

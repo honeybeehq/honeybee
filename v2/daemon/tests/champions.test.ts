@@ -173,6 +173,21 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
     await assert.rejects(clientA.request("champion.start", { id: "vera-lund", idempotencyKey: "start-a-fenced" }), (err: unknown) => err instanceof RpcError && err.code === "champion_fenced");
     await assert.rejects(clientA.request("champion.start", { id: "vera-lund", epoch: 0, idempotencyKey: "start-a-old" }), (err: unknown) => err instanceof RpcError && err.code === "champion_fenced", "an older handover epoch cannot take the incarnation back");
     await assert.rejects(clientA.request("champion.fence", { id: "vera-lund", epoch: 0, idempotencyKey: "fence-old" }), (err: unknown) => err instanceof RpcError && err.code === "champion_fenced");
+    const backHome = await clientA.request<ChampionStartResult>("champion.start", { id: "vera-lund", homeRef: epochBundle!.ref, epoch: epochBundle!.epoch, idempotencyKey: "start-a-takeover" });
+    assert.equal(backHome.started, "spawned", "a handover on a node that still binds a stale incarnation takes over instead of reviving it");
+    assert.equal(backHome.epoch, 2);
+    assert.equal(backHome.homeRestored, true);
+    assert.equal(backHome.restoreSkipped, null);
+    assert.equal(backHome.replacedBeeId, started.beeId, "the stale incarnation is replaced");
+    assert.notEqual(backHome.beeId, started.beeId);
+    const rowA = await clientA.request<ChampionGetResult>("champion.get", { id: "vera-lund" });
+    assert.equal(rowA.champion.fencedAt, null, "the takeover clears the fence");
+    assert.equal(rowA.champion.currentBeeId, backHome.beeId);
+    assert.equal(readFileSync(join(put.champion.home, "seen.txt"), "utf8"), "# Memory\nVera remembers the lab.\n", "B's home came back to A with the handover");
+    const { readdirSync } = await import("node:fs");
+    assert.ok(readdirSync(join(root, "homes-a")).some((d) => d.startsWith("vera-lund.stale-")), "the pre-move home is set aside, not deleted");
+    await waitFor(async () => (await clientA.request<ViewResult>("view", { beeId: started.beeId })).view.lifecycle === "archived" ? true : null, "stale incarnation archived");
+    await idle(clientA, backHome.beeId);
     await a.stop();
     a = null;
 
