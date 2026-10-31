@@ -5,19 +5,20 @@ import { RpcError } from "../src/protocol.ts";
 
 const peer = {uid: 1000, pid: 42, processBirth: "linux:99"};
 const reader = (changes: Partial<ProcReader> = {}): ProcReader => ({open: () => 7, birth: () => "linux:99", userns: () => "user:[1]", selfUserns: () => "user:[1]", close: () => {}, ...changes});
+const onLinux = (options: Parameters<typeof peerConfinement>[1]) => peerConfinement(peer, {platform: "linux", ...options});
 const refused = (error: unknown) => error instanceof RpcError && error.code === "confined_spawn_refused";
 
 test("confinement uses pinned process birth and namespace, failing closed", () => {
-  assert.equal(peerConfinement(peer, {proc: reader()}), "unconfined");
-  assert.equal(peerConfinement(peer, {proc: reader({userns: () => "user:[2]"})}), "confined");
-  assert.equal(peerConfinement(peer, {proc: reader(), substrate: () => "cell"}), "confined");
-  assert.equal(peerConfinement(peer, {proc: reader({open: () => {throw new Error("gone");}})}), "confined");
-  assert.equal(peerConfinement(peer, {proc: reader({birth: () => "linux:100"})}), "confined");
+  assert.equal(onLinux({proc: reader()}), "unconfined");
+  assert.equal(onLinux({proc: reader({userns: () => "user:[2]"})}), "confined");
+  assert.equal(onLinux({proc: reader(), substrate: () => "cell"}), "confined");
+  assert.equal(onLinux({proc: reader({open: () => {throw new Error("gone");}})}), "confined");
+  assert.equal(onLinux({proc: reader({birth: () => "linux:100"})}), "confined");
   let closed = false;
   assert.equal(peerUserNamespace(peer, reader({birth: () => {throw new Error("exited after open");}, close: fd => {assert.equal(fd, 7); closed = true;}})), "unavailable");
   assert.equal(closed, true);
   let reads = 0;
-  assert.equal(peerConfinement(peer, {proc: reader({birth: () => ++reads === 1 ? "linux:99" : "linux:100"})}), "confined");
+  assert.equal(onLinux({proc: reader({birth: () => ++reads === 1 ? "linux:99" : "linux:100"})}), "confined");
   assert.equal(peerConfinement(peer, {platform: "darwin", proc: reader({open: () => {throw new Error("must not read proc");}})}), "unknown");
 });
 
@@ -27,9 +28,9 @@ test("strict mode triggers and trusted host exceptions", () => {
   assert.deepEqual(strictConfinementReasons(true), ["setuid_bwrap"]);
   assert.deepEqual(strictConfinementReasons(false, "same"), ["cell_userns_unisolated"]);
   assert.deepEqual(strictConfinementReasons(false, "unavailable"), ["cell_userns_unisolated"]);
-  assert.equal(peerConfinement(peer, {proc: reader(), strict: true}), "confined");
+  assert.equal(onLinux({proc: reader(), strict: true}), "confined");
   for (const options of [{registered: true}, {substrate: () => "hsr"}, {substrate: () => "tmux"}]) {
-    assert.equal(peerConfinement(peer, {proc: reader(), strict: true, ...options}), "unconfined");
+    assert.equal(onLinux({proc: reader(), strict: true, ...options}), "unconfined");
   }
 });
 
@@ -42,7 +43,7 @@ test("confined spawn refuses every forbidden placement and permits sandboxed Cel
 
 test("no false positives: host CLI, registered Apiary service, and host HSR bee", () => {
   for (const attribution of [undefined, "hsr"]) {
-    const confinement = peerConfinement(peer, {proc: reader(), substrate: () => attribution ?? null});
+    const confinement = onLinux({proc: reader(), substrate: () => attribution ?? null});
     assert.equal(confinement, "unconfined");
     for (const params of forbidden) assert.doesNotThrow(() => assertConfinedSpawn(params, {confinement}));
   }
