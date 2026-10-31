@@ -27,13 +27,24 @@ export class DaemonDownError extends Error {
   }
 }
 
+/** The protocol the previously deployed daemon speaks; see legacyProtocolVerbs. */
+export const LEGACY_PROTOCOL = "v2/1";
+
 export interface DaemonInstance {
   id: string;
   dataDir: string;
 }
 
 export interface ConnectOptions {
+  /** Shorthand for `legacyProtocolVerbs: ["update.status"]`. */
   updateOwnerCompatibility?: true;
+  /**
+   * Verbs this client may still issue when the daemon speaks the previous
+   * protocol (v2/1). Deploys run the newly installed CLI against the daemon
+   * that is about to be replaced; the store backup and identity reads it needs
+   * are unchanged across that boundary, everything else stays refused.
+   */
+  legacyProtocolVerbs?: readonly RpcVerb[];
   capabilities?: readonly string[];
   caller?: { dataDir?: string; liveTarget?: boolean; expectedInstanceId: string | null; allowForeignDaemon?: boolean };
   verifyInstance?: (instance: DaemonInstance | null) => void;
@@ -50,7 +61,7 @@ export class RpcClient {
   private readonly frames = new JsonLineBuffer();
   private nextId = 1;
   private closed = false;
-  private legacyUpdateOwner = false;
+  private legacyVerbs: readonly RpcVerb[] | null = null;
   capabilities: readonly string[] = [];
   instance: DaemonInstance | null = null;
   /** Watch push frames (deltas/gaps) land here. */
@@ -91,8 +102,9 @@ export class RpcClient {
             reject(new RpcError("protocol_mismatch", "server hello is not json"));
             return;
           }
-          client.legacyUpdateOwner = options.updateOwnerCompatibility === true && hello.protocol === "v2/1";
-          if (hello.protocol !== PROTOCOL && !client.legacyUpdateOwner) {
+          const legacyVerbs = options.updateOwnerCompatibility === true ? ["update.status" as const] : options.legacyProtocolVerbs ?? [];
+          client.legacyVerbs = hello.protocol === LEGACY_PROTOCOL && legacyVerbs.length > 0 ? legacyVerbs : null;
+          if (hello.protocol !== PROTOCOL && !client.legacyVerbs) {
             socket.destroy();
             reject(
               new RpcError(
@@ -143,7 +155,7 @@ export class RpcClient {
   }
 
   request<T = unknown>(verb: RpcVerb, params: Record<string, unknown> = {}, timeoutMs = 10_000, context?: RpcRequestContext): Promise<T> {
-    if (this.legacyUpdateOwner && verb !== "update.status") return Promise.reject(new RpcError("protocol_mismatch", "Legacy update-owner compatibility permits only update.status"));
+    if (this.legacyVerbs && !this.legacyVerbs.includes(verb)) return Promise.reject(new RpcError("protocol_mismatch", `Legacy ${LEGACY_PROTOCOL} compatibility permits only ${this.legacyVerbs.join(", ")}`));
     if (verb.startsWith("rpc.execution.")) return Promise.reject(new RpcError("rpc_execution_fence_unsupported", "Owner does not support archive/send execution fencing; do not fall back"));
     if ((verb === "rpc.effect.resolve" || verb === "rpc.effect.status") && !this.capabilities.includes("rpc-effect-resolve.v1")) return Promise.reject(new RpcError("rpc_effect_resolve_unsupported", "Owner does not support effect resolution"));
     if (verb === "question.dismiss" && !this.capabilities.includes("question.dismiss.v1")) return Promise.reject(new RpcError("question_dismiss_unsupported", "Question dismissal is unsupported by this Honeybee."));

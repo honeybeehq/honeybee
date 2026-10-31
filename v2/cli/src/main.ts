@@ -130,7 +130,7 @@ import {
   type ViewResult,
   type WatchFrame,
 } from "../../daemon/src/protocol.ts";
-import { DaemonDownError, RpcClient, type DaemonInstance } from "./client.ts";
+import { DaemonDownError, RpcClient, type ConnectOptions, type DaemonInstance } from "./client.ts";
 import { assertInstanceMatchesDataDir, assertSameInstance, assertSocketMatchesDataDir, callerHelloFor, daemonTargetJson, resolveDaemonTarget, socketConfigured, type ResolvedDaemonTarget } from "./target.ts";
 import { ReadOnlyStore } from "./readonly.ts";
 import {
@@ -566,9 +566,10 @@ function withDaemonTarget(ctx: CliContext, value: unknown): unknown {
   return { ...(value as object), daemonTarget: daemonTargetJson(ctx.target, ctx.daemon.instance, ctx.daemon.connected) };
 }
 
-async function connectDaemon(ctx: CliContext): Promise<RpcClient> {
+async function connectDaemon(ctx: CliContext, options: Pick<ConnectOptions, "legacyProtocolVerbs"> = {}): Promise<RpcClient> {
   assertSocketMatchesDataDir(ctx.target);
   const client = await RpcClient.connect(ctx.cfg.socketPath, 3000, undefined, {
+    ...options,
     capabilities: ["question.dismissed.v1", "mail.delivery.confirmation.v1"],
     caller: callerHelloFor(ctx.target, ctx.allowForeignDaemon),
     verifyInstance: (instance) => {
@@ -645,8 +646,8 @@ function emit(ctx: CliContext, human: string[], jsonValue: unknown, stale: boole
 // RPC/fallback plumbing
 // ---------------------------------------------------------------------------
 
-async function withClient<T>(ctx: CliContext, fn: (client: RpcClient) => Promise<T>): Promise<T> {
-  const client = await connectDaemon(ctx);
+async function withClient<T>(ctx: CliContext, fn: (client: RpcClient) => Promise<T>, options: Pick<ConnectOptions, "legacyProtocolVerbs"> = {}): Promise<T> {
+  const client = await connectDaemon(ctx, options);
   try {
     return await fn(client);
   } finally {
@@ -3369,7 +3370,7 @@ async function cmdCommands(ctx: CliContext, parsed: Parsed): Promise<number> {
 }
 
 async function cmdDeployInfo(ctx: CliContext): Promise<number> {
-  const daemon = await withClient(ctx, (c) => c.request<Record<string, unknown>>("deployInfo"));
+  const daemon = await withClient(ctx, (c) => c.request<Record<string, unknown>>("deployInfo"), { legacyProtocolVerbs: ["deployInfo"] });
   const result = { ...daemon, cliIdentity: BUILD_IDENTITY, daemonIdentity: daemon.identity ?? null };
   const disk = daemon.cellDisk as CellDiskStatus | null | undefined;
   const capacity = daemon.capacity as NodeCapacity | null | undefined;
@@ -5091,7 +5092,7 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
           return 0;
         }
         let result;
-        try { result = await withClient(ctx, client => client.request("store.backup", {})); }
+        try { result = await withClient(ctx, client => client.request("store.backup", {}), { legacyProtocolVerbs: ["store.backup"] }); }
         catch (error) {
           if (!(error instanceof DaemonDownError) || socketConfigured(ctx.target)) throw error;
           result = backupStoreOffline(ctx.cfg.storePath, String(parsed.flags.get("--source-build") ?? "unknown: offline store; supply --source-build with the previous build identity"));
