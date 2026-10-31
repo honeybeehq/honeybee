@@ -1,4 +1,6 @@
-import { existsSync, rmSync } from "node:fs";
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 import { homeEnvFor } from "../../core/src/accountRecipes.ts";
 import type { BeeResumeBundleRow, BeeRow, CoreStore } from "../../core/src/index.ts";
@@ -167,6 +169,28 @@ export class BeeResumeSync {
       this.deps.log(`bee.resume.push_failed bee=${beeId} err=${JSON.stringify(err instanceof Error ? err.message : String(err))} ms=${Date.now() - started}`);
       return null;
     }
+  }
+
+  adoptBundle(ref: string, bytes: Buffer): { created: boolean } {
+    const target = resumeBundlePath(this.deps.root, ref);
+    if (existsSync(target) && statSync(target).size === bytes.length) return { created: false };
+    mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+    const temporary = join(dirname(target), `${randomUUID()}.partial`);
+    const fd = openSync(temporary, "wx", 0o600);
+    try {
+      let written = 0;
+      while (written < bytes.length) written += writeSync(fd, bytes, written, bytes.length - written);
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    try {
+      renameSync(temporary, target);
+    } catch (error) {
+      rmSync(temporary, { force: true });
+      throw error;
+    }
+    return { created: true };
   }
 
   async restore(input: { beeId: string; ref: string; epoch: number; destinationRoot: string; harness: string; fromKey: string | null; toKey: string | null }): Promise<{ ok: boolean; error: string | null }> {

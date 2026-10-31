@@ -1775,7 +1775,9 @@ export interface BeeImportResume {
   providerSessionId: string;
   stateKey: string | null;
   scope: string | null;
+  bundleBytes: Buffer | null;
 }
+export const BEE_IMPORT_BUNDLE_BYTES_MAX = 8 * 1024 * 1024;
 
 export type BeeImportResumed = "native" | "reseeded" | "fresh";
 export type BeeImportReason = "account_mismatch" | "bundle_missing" | "no_hook" | "restore_failed" | "no_bundle" | "no_transcript" | "boot_failed";

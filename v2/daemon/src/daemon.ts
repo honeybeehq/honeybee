@@ -294,7 +294,7 @@ import {
 } from "./performance.ts";
 import { RpcServer, assertAutomationSend, assertLocalHandoffRpc, type RpcConn } from "./rpc.ts";
 import { applyDaemonTmpPolicy, beeTmpPaths, describeBeeTmpPolicy, ensureBeeTmpEnv, removeBeeTmpDir, resolveBeeTmpPolicy, sweepBeeTmpDirs, type BeeTmpPolicy } from "./beeTmp.ts";
-import {
+import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   DAEMON_VERSION,
   BUILD_IDENTITY,
   UPDATE_RECOVERY_CONTRACT,
@@ -6282,7 +6282,14 @@ export class HiveDaemon {
       if (typeof value !== "string") throw new RpcError("invalid_request", `bee.import: resume.${key} must be a string when given`);
       return value;
     };
-    return { bundleRef: r.bundleRef, epoch: r.epoch, providerSessionId: r.providerSessionId, stateKey: optional("stateKey"), scope: optional("scope") };
+    let bundleBytes: Buffer | null = null;
+    if (r.bundleBytes !== undefined && r.bundleBytes !== null) {
+      if (typeof r.bundleBytes !== "string" || r.bundleBytes.length > Math.ceil(BEE_IMPORT_BUNDLE_BYTES_MAX / 3) * 4) throw new RpcError("invalid_request", `bee.import: resume.bundleBytes must be base64 of at most ${BEE_IMPORT_BUNDLE_BYTES_MAX} bytes`);
+      bundleBytes = Buffer.from(r.bundleBytes, "base64");
+      if (bundleBytes.length === 0 || bundleBytes.length > BEE_IMPORT_BUNDLE_BYTES_MAX) throw new RpcError("invalid_request", `bee.import: resume.bundleBytes must decode to 1..${BEE_IMPORT_BUNDLE_BYTES_MAX} bytes`);
+      if (createHash("sha256").update(bundleBytes).digest("hex") !== r.bundleRef) throw new RpcError("invalid_request", "bee.import: resume.bundleBytes do not hash to resume.bundleRef");
+    }
+    return { bundleRef: r.bundleRef, epoch: r.epoch, providerSessionId: r.providerSessionId, stateKey: optional("stateKey"), scope: optional("scope"), bundleBytes };
   }
 
   private async rpcBeeImport(params: Record<string, unknown>): Promise<BeeImportResult> {
@@ -6332,6 +6339,10 @@ export class HiveDaemon {
       } else if (!resumeStateKey(adapterName, cwd) && adapterName !== "codex") {
         reason = "no_hook";
       } else {
+        if (resume.bundleBytes) {
+          const adopted = this.resumeSync.adoptBundle(resume.bundleRef, resume.bundleBytes);
+          this.log(`bee.import.bundle_adopted bee=${descriptor.id} ref=${resume.bundleRef} bytes=${resume.bundleBytes.length} created=${adopted.created}`);
+        }
         const restore = await this.resumeSync.restore({ beeId: descriptor.id, ref: resume.bundleRef, epoch: resume.epoch, destinationRoot: accountHome ?? cwd, harness: adapterName, fromKey: resume.stateKey, toKey: resumeStateKey(adapterName, cwd) });
         if (restore.ok) resumed = "native";
         else {
