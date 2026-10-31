@@ -181,7 +181,7 @@ renameSync(payload.output+'.pending',payload.output);
       assert.match(result.stdout + result.stderr, /caller_not_trusted/);
     }
   });
-  await t.test("detached runtime descendant cannot acquire operator lineage authority", async () => {
+  await t.test("detached runtime descendant cannot acquire operator lineage authority", { skip: process.platform !== "linux" && "the detached helper walks /proc ancestry" }, async () => {
     const output = join(rig.dir, "detached.json");
     await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output, detach: {
       commands: [["--parent", other.beeId], ["--no-parent"]].map((flags, index) => args(["spawn", `detached-${index}`, "inbox", ...flags])),

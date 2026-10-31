@@ -5,9 +5,16 @@ import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { readLiveEndpointRecord } from "../src/endpointRecord.ts";
 import { RpcError } from "../src/protocol.ts";
-import { ownedPrivateDir, placeDaemonSockets, shortSocketDir, socketPathBytes, socketPathFits, SOCKET_DIR_RECORD_FILE, UNIX_SOCKET_PATH_LIMIT } from "../src/socketPath.ts";
+import { ownedPrivateDir, placeDaemonSockets, RUNNER_SOCKET_SAMPLE, shortSocketDir, socketPathBytes, socketPathFits, SOCKET_DIR_RECORD_FILE, UNIX_SOCKET_PATH_LIMIT } from "../src/socketPath.ts";
 import { resolveDaemonTarget } from "../../cli/src/target.ts";
 import { makeDaemonDir, startDaemon, type DaemonHandle } from "./helpers.ts";
+
+function shortRoot(prefix: string, ...socketBase: string[]): string {
+  for (const base of [tmpdir(), "/tmp"]) {
+    if (socketPathFits(join(base, `${prefix}XXXXXX`, ...socketBase, "0".repeat(12), RUNNER_SOCKET_SAMPLE))) return mkdtempSync(join(base, prefix));
+  }
+  throw new Error(`no temp base leaves room for a short socket dir under ${prefix}`);
+}
 
 function deepDir(root: string): string {
   let dir = root;
@@ -28,7 +35,7 @@ test("socket placement: a data dir whose sockets fit keeps them in place", () =>
 });
 
 test("socket placement: a deep data dir moves every socket into one short dir that survives a restart", () => {
-  const root = mkdtempSync(join(tmpdir(), "hb-sp-deep-"));
+  const root = shortRoot("hb-sp-deep-", "s");
   try {
     const dir = deepDir(root);
     assert.equal(socketPathFits(join(dir, "hived.sock")), false);
@@ -54,7 +61,7 @@ test("socket placement: a deep data dir moves every socket into one short dir th
 });
 
 test("socket placement: a recorded dir that is world-writable or a symlink to a foreign dir is never reused", () => {
-  const root = mkdtempSync(join(tmpdir(), "hb-sp-trust-"));
+  const root = shortRoot("hb-sp-trust-", "s");
   try {
     const dir = deepDir(root);
     const place = () => placeDaemonSockets(dir, join(dir, "hived.sock"), { runnerSocketDir: dir, bases: [join(root, "s")] });
@@ -120,9 +127,10 @@ test("a daemon on a deep data dir listens on a short socket that clients find th
   const d = makeDaemonDir();
   const dir = deepDir(d.dir);
   writeFileSync(join(dir, "config.json"), readFileSync(join(d.dir, "config.json")));
+  const home = shortRoot("hb-sp-home-", ".hive", "s");
   let daemon: DaemonHandle | null = null;
   try {
-    daemon = await startDaemon(dir, { env: { HOME: join(d.dir, "h") } });
+    daemon = await startDaemon(dir, { env: { HOME: home } });
     const record = readLiveEndpointRecord(dir);
     assert.ok(record, "endpoint record");
     assert.ok(socketPathFits(record.socketPath), `${record.socketPath} fits`);
@@ -143,6 +151,7 @@ test("a daemon on a deep data dir listens on a short socket that clients find th
     const socketDir = daemon ? dirname(daemon.socketPath) : null;
     await daemon?.stop();
     if (socketDir && socketDir !== dir) rmSync(socketDir, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
     d.cleanup();
   }
 });
