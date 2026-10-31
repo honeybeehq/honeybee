@@ -9,7 +9,7 @@ import { RpcClient } from "../../cli/src/client.ts";
 import { currentRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { ANSWER_TRIGGER_AUDITS, ANSWER_TRIGGER_RESULTS, projectAnswerTriggerResult, projectAnswerTriggerDelta } from "../src/answerTriggerProjection.ts";
 import type { AuditRow } from "../../core/src/index.ts";
-import type { ViewResult, WatchFrame } from "../src/protocol.ts";
+import type { ChampionGetResult, ViewResult, WatchFrame } from "../src/protocol.ts";
 import { waitFor } from "./helpers.ts";
 import { harness, makeBee, bootToRunning } from "../../core/tests/helpers.ts";
 import { replayAudit } from "../../core/src/index.ts";
@@ -31,6 +31,7 @@ test("answer trigger negotiation: simultaneous legacy and capable sockets get in
     if (verb === "list") return { views: [result] };
     if (verb === "bee.children") return { children: [result] };
     if (verb === "audit.tail") return { rows: events };
+    if (verb === "champion.get") return { champion: {}, bee: result, homeObjects: [] };
     return verb === "view" ? result : Promise.resolve(result);
   } });
   const clients: RpcClient[] = [];
@@ -45,6 +46,8 @@ test("answer trigger negotiation: simultaneous legacy and capable sockets get in
     assert.equal((await modern.request<ViewResult>("bee.setArgs")).bee!.lastTurnTrigger!.kind, "answer");
     assert.deepEqual(callers[0], callers[1]);
     assert.deepEqual(callers[2], callers[3]);
+    assert.equal((await old.request<ChampionGetResult>("champion.get")).bee!.bee!.lastTurnTrigger!.kind, "human");
+    assert.equal((await modern.request<ChampionGetResult>("champion.get")).bee!.bee!.lastTurnTrigger!.kind, "answer");
     const unknown = await RpcClient.connect(join(dir, "rpc.sock"), 3000, undefined, { capabilities: ["unknown-format.v1"] }); clients.push(unknown);
     assert.equal((await unknown.request<ViewResult>("view", { capabilities: ["turn-trigger.answer.v1"] })).bee!.lastTurnTrigger!.kind, "human");
     const phone = await RpcClient.connect(join(dir, "rpc.sock"), 3000, undefined, { capabilities: [] }); clients.push(phone);
@@ -153,8 +156,9 @@ test("answer wire replay is legacy-compatible while durable audit replay stays c
 test("answer egress projection preserves canonical objects and arbitrary outputs at every covered path", () => {
   const trigger = Object.freeze({ kind: "answer", from: "rpc", messageId: 7, generation: 1, startedAt: 10, humanAt: 10, endedAt: 20 });
   const pending = Object.freeze({ messageId: 7, generation: 1, humanAt: 10, triggerKind: "answer" });
-  const bee = Object.freeze({ lastTurnTrigger: trigger, unansweredHumanMessage: pending });
+  const row = Object.freeze({ lastTurnTrigger: trigger, unansweredHumanMessage: pending });
   const view = Object.freeze({ unansweredHumanMessage: pending });
+  const bee = Object.freeze({ ...row, bee: row, view });
   const business = Object.freeze({ lastTurnTrigger: trigger, turnTrigger: trigger });
   const tell = Object.freeze({ turnTrigger: trigger });
   const reaction = Object.freeze({ turnTrigger: trigger });
