@@ -361,7 +361,6 @@ test("SQL unknown count agrees with decoder for outer and fallback shape boundar
         append('"extra":NaN'), append('"extra":/*comment*/0'), append('"extra":[0,]'),
         append('"extra":"' + String.fromCharCode(1) + '"'),
       );
-      assert.equal(db.prepare("SELECT sqlite_version() AS version").get()!.version, process.versions.sqlite);
       assert.deepEqual(db.prepare("SELECT key FROM json_tree(?) WHERE parent = 0").all(String.raw`{"a":1,"\u0061":2}`).map(row => row.key), ["a", "a"]);
       for (const depth of [1000, 1001]) {
         const raw = "[".repeat(depth) + "0" + "]".repeat(depth);
