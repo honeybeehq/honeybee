@@ -146,6 +146,7 @@ function stageRuntime(dir: string, releaseBHost: "poison" | "missing"): StagedRu
     mkdirSync(join(release, "v2"), { recursive: true });
     writeFileSync(join(release, "package.json"), `${JSON.stringify({ type: "module" })}\n`);
     copyFileSync(BUILT_CLI, join(release, "v2", EMBEDDED_ENTRY));
+    for (const chunk of readdirSync(dirname(BUILT_CLI)).filter((name) => /^cli-chunk-[A-Z0-9]+\.js$/.test(name))) copyFileSync(join(dirname(BUILT_CLI), chunk), join(release, "v2", chunk));
     copyFileSync(BUILT_PROVISION_WORKER, join(release, "v2", "provision-worker.js"));
     cpSync(join(ROOT, "dist", "v2", "peercred"), join(release, "v2", "peercred"), { recursive: true });
   }
