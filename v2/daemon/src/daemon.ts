@@ -239,6 +239,7 @@ import {
   grokSpawnPlan,
   codexSpawnPlan,
   composeArgv,
+  parseClaudeLine,
   stubAdapter,
   type ArgGrammar,
   type HarnessAdapter,
@@ -7850,27 +7851,62 @@ export class HiveDaemon {
    * rekey has not been consumed yet (a stopped bee swapped twice).
    */
   private carryClaudeTranscript(bee: BeeRow, from: string | null, target: AccountRow): SwapAccountResult["transcript"] {
-    const seed = bee.providerSessionId ?? bee.forkSeed;
-    if (!seed) return "none";
+    const recovered = bee.providerSessionId || bee.forkSeed ? null : this.recoverClaudeSessionId(bee);
+    const seed = bee.providerSessionId ?? bee.forkSeed ?? recovered?.sessionId;
+    if (!seed) {
+      if (!this.beeHasRun(bee)) return "none";
+      throw new RpcError(
+        "transcript_unavailable",
+        `bee ${bee.name}: no recorded Claude conversation can be carried to ${target.id} (no session id in the store and none in the bee's session log); swapping would resume nothing`,
+      );
+    }
     const key = homeEnvFor("claude");
     const boundHome = key ? bee.env[key] : undefined;
     const sourceHome = boundHome ?? (from ? this.mustStore().getAccount(from)?.homePath : undefined) ?? join(homedir(), ".claude");
     const projectKey = claudeProjectKey(bee.cwd);
     const destDir = join(target.homePath, "projects", projectKey);
     const destFile = join(destDir, `${seed}.jsonl`);
-    if (existsSync(destFile)) return "present";
-    const source = findClaudeTranscript(sourceHome, projectKey, seed);
-    if (!source) {
+    const source = existsSync(destFile) ? null : findClaudeTranscript(sourceHome, projectKey, seed);
+    if (!existsSync(destFile) && !source) {
       throw new RpcError(
         "transcript_unavailable",
         `bee ${bee.name}: conversation ${seed} was not found under ${sourceHome} (projects/${projectKey}); swapping to ${target.id} would resume nothing`,
       );
     }
+    if (recovered) {
+      this.mustStore().recordProviderSessionId(bee.id, recovered.sessionId);
+      this.log(`bee.swapAccount.session_recovered bee=${bee.id} id=${recovered.sessionId} from=${recovered.path}`);
+    }
+    if (!source) return "present";
     mkdirSync(destDir, { recursive: true });
     copyFileSync(source.file, destFile);
     if (source.dir && !existsSync(join(destDir, seed))) cpSync(source.dir, join(destDir, seed), { recursive: true });
     this.log(`bee.swapAccount.transcript bee=${bee.id} seed=${seed} from=${source.file} to=${destFile}${source.dir ? " +dir" : ""}`);
     return "copied";
+  }
+
+  /**
+   * The last `system/init` session id in the bee's own Honeybee session log:
+   * every Claude generation echoes its id there, so a bee whose store row lost
+   * it (HON-22: seven generations, `providerSessionId` null) still names its
+   * conversation unambiguously. Only this bee's log is read; never a project
+   * directory listing.
+   */
+  private recoverClaudeSessionId(bee: BeeRow): { sessionId: string; path: string } | null {
+    const path = this.ownedSessionLogPath(bee.sessionLogPath) ?? this.canonicalSessionLogPath(bee.id);
+    if (!existsSync(path)) return null;
+    let sessionId: string | null = null;
+    for (const line of readFileSync(path, "utf8").split("\n")) {
+      if (!line.includes('"init"')) continue;
+      for (const signal of parseClaudeLine(line)) if (signal.kind === "booted" && signal.sessionId) sessionId = signal.sessionId;
+    }
+    return sessionId ? { sessionId, path } : null;
+  }
+
+  /** Every bee row carries a generation-1 runtime from creation, so "has run" means the harness wrote to its session log. */
+  private beeHasRun(bee: BeeRow): boolean {
+    const path = this.ownedSessionLogPath(bee.sessionLogPath) ?? this.canonicalSessionLogPath(bee.id);
+    try { return statSync(path).size > 0; } catch { return false; }
   }
 
   /** Observed subscription usage lands on the account the generation ran with. */
