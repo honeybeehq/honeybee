@@ -1952,6 +1952,7 @@ export interface HealthResult {
   /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
   cellDisk?: CellDiskStatus | null;
   capacity?: NodeCapacity | null;
+  scheduling?: import("../../../src/processScheduling.ts").SchedulingStatus;
 }
 
 export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };

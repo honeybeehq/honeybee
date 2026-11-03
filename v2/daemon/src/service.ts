@@ -142,6 +142,8 @@ ${cwdLine}${envLines}# Honeybee owns detached runner process groups; daemon stop
 # Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
 KillMode=process
 UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
+Nice=0
+IOSchedulingClass=best-effort
 Restart=on-failure
 RestartSec=2
 StandardOutput=append:${spec.logPath}

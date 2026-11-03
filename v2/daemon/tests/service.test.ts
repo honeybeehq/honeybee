@@ -80,6 +80,8 @@ Environment="HIVE_V2_DATA_DIR=/data/v2"
 # Ephemeral workers are stopped during clean daemon shutdown, and explicit bee stop/delete reaps its runner group.
 KillMode=process
 UnsetEnvironment=ELECTRON_RUN_AS_NODE NODE_OPTIONS
+Nice=0
+IOSchedulingClass=best-effort
 Restart=on-failure
 RestartSec=2
 StandardOutput=append:/data/v2/hived.log

@@ -4,6 +4,7 @@ import { DeliveryReceipts, DELIVERY_FRAME_MAX_BYTES, DELIVERY_STATUS_CAPABILITY,
 import { stateFile, runnerStateFiles } from "../../harness/src/statePath.ts";
 import type { ExecutionStart, ExecutionProcess } from "../../core/src/executionStart.ts";
 import { nativeNodeEnv } from "../../../src/runtimeEnvironment.ts";
+import { describeRepair, promoteScheduling } from "../../../src/processScheduling.ts";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -178,6 +179,13 @@ export function runRunnerHost(configPath: string): void {
   runnerStateFiles(cfg);
   mkdirSync(dirname(cfg.socketPath), { recursive: true, mode: 0o700 });
   bindToTestFixtureLease(process.env.HIVE_TEST_FIXTURE_LEASE);
+  const scheduling = promoteScheduling({ probeIo: false });
+  if (scheduling.before.demoted) {
+    try {
+      mkdirSync(dirname(cfg.sidecarPath), { recursive: true });
+      appendFileSync(cfg.sidecarPath, `runner host scheduling: ${describeRepair(scheduling)}\n`);
+    } catch {}
+  }
   if (Object.hasOwn(cfg,"executionStart") || Object.hasOwn(cfg,"executionOwner")) {
     if (!cfg.executionStart || !cfg.executionOwner) throw new Error("Missing fenced host origin");
     runGatedRunnerHost(cfg,sessionLogLine); return;

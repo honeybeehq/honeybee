@@ -1,4 +1,5 @@
 import { validateDaemonNode } from "../../../src/nodeRuntime.ts";
+import { ForegroundScheduling } from "../../../src/processScheduling.ts";
 /**
  * Foreground daemon entry: `hive v2 daemon run [--data-dir d] [--config p]
  * [--socket s]`. This is what the rendered launchd plist / systemd unit
@@ -11,6 +12,8 @@ import { dirname, parse, resolve } from "node:path";
 import { measureDirectoryBytes } from "../../driver-cell/src/index.ts";
 import { ConfigError, defaultDataDir, loadNodeConfig, type ResolvedNodeConfig } from "./config.ts";
 import { HiveDaemon } from "./daemon.ts";
+
+const SCHEDULING_RECHECK_MS = 60_000;
 
 export interface DaemonRunArgs {
   dataDir?: string;
@@ -87,6 +90,14 @@ export async function runDaemon(argv: string[]): Promise<number> {
   // Test daemons deliberately own disposable stub runtimes. Production omits
   // this test-only flag so deploy/restart continues to preserve live bees.
   const reapTestRuntimes = process.env.HIVE_TEST_REAP_RUNTIMES_ON_SHUTDOWN === "1";
+  const scheduling = new ForegroundScheduling();
+  process.stdout.write(`hived scheduling: ${scheduling.describe()}\n`);
+  const recheck = setInterval(() => {
+    const line = scheduling.check();
+    if (line) process.stdout.write(`hived scheduling: ${line}\n`);
+  }, SCHEDULING_RECHECK_MS);
+  recheck.unref();
+  daemon.scheduling = () => scheduling.current();
   await daemon.start();
   process.stdout.write(`hived v2 listening on ${daemon.cfg.socketPath} (store ${cfg.storePath})\n`);
   await new Promise<void>((resolve) => {

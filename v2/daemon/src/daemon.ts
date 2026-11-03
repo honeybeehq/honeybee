@@ -1,3 +1,4 @@
+import type { SchedulingStatus } from "../../../src/processScheduling.ts";
 import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, peerConfinement, runtimeUserNamespace, strictConfinementReasons } from "./confinedPeer.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
@@ -784,6 +785,7 @@ export class HiveDaemon {
   private tickEpoch = 0;
   private readonly accountConfigImport: AccountConfigImportService;
   private readonly deps: HiveDaemonDeps;
+  scheduling: (() => SchedulingStatus) | null = null;
   /** v7 rotation bound: one attempt per (bee, generation) exhaustion event. */
   private readonly rotatedGenerations = new Map<string, number>();
   private lastWeeklyCeilingSweepAt = 0;
@@ -6964,6 +6966,7 @@ export class HiveDaemon {
         : { state: this.naming.auto ? "ok" : "off" },
       cellDisk: this.retention?.diskStatus() ?? null,
       capacity: this.retention?.capacity(true) ?? null,
+      ...(this.scheduling ? { scheduling: this.scheduling() } : {}),
     };
   }
 

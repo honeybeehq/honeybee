@@ -22,6 +22,7 @@ const runnerHostInputs = [
   "v2/harness/src/processIdentity.ts",
   "v2/harness/src/statePath.ts",
   "src/runtimeEnvironment.ts",
+  "src/processScheduling.ts",
   "v2/driver-hsr/src/runner-host-main.ts",
   "v2/driver-hsr/src/runner-host.ts",
   "v2/driver-hsr/src/runner-exit.ts",
