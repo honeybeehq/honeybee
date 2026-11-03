@@ -312,7 +312,9 @@ export function makeDaemonDir(overrides: DaemonConfigOverrides = {}): { dir: str
   writeFileSync(join(dir, "config.json"), JSON.stringify(config, null, 2));
   return {
     dir,
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    // A runtime or fixture that is still shutting down can drop one more file
+    // into the walk; retry instead of failing the whole test at cleanup.
+    cleanup: () => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }),
   };
 }
 
@@ -456,25 +458,59 @@ function pidAlive(pid: number): boolean {
   }
 }
 
-export async function forceStopTestDaemon(handle: DaemonHandle): Promise<void> {
-  const rows = execFileSync("ps", ["-axo", "pid=,ppid=,lstart=,args="], { encoding: "utf8" }).trim().split("\n").map(line => {
+interface ProcessRow { pid: number; parent: number; zombie: boolean; birth: string; command: string }
+
+function processRows(): ProcessRow[] {
+  return execFileSync("ps", ["-axo", "pid=,ppid=,stat=,lstart=,args="], { encoding: "utf8" }).trim().split("\n").map(line => {
     const fields = line.trim().split(/\s+/);
-    return { pid: Number(fields[0]), parent: Number(fields[1]), birth: fields.slice(2, 7).join(" "), command: fields.slice(7).join(" ") };
+    return { pid: Number(fields[0]), parent: Number(fields[1]), zombie: (fields[2] ?? "").startsWith("Z"), birth: fields.slice(3, 8).join(" "), command: fields.slice(8).join(" ") };
   });
-  const roots = new Set(liveRunnerHostPids(handle.dir).filter(pid => rows.some(row => row.pid === pid && row.command.includes(handle.dir))));
-  if (handle.proc.exitCode === null && handle.proc.signalCode === null && handle.proc.pid) roots.add(handle.proc.pid);
-  for (;;) {
-    const before = roots.size;
-    for (const row of rows) if (roots.has(row.parent)) roots.add(row.pid);
-    if (roots.size === before) break;
+}
+
+function sameBirth(pid: number, birth: string): boolean {
+  try {
+    return execFileSync("ps", ["-p", String(pid), "-o", "lstart="], { encoding: "utf8" }).trim().replace(/\s+/g, " ") === birth;
+  } catch {
+    return false;
   }
-  for (const row of rows.filter(row => roots.has(row.pid)).reverse()) {
-    try {
-      if (execFileSync("ps", ["-p", String(row.pid), "-o", "lstart="], { encoding: "utf8" }).trim().replace(/\s+/g, " ") !== row.birth) continue;
-      process.kill(row.pid, "SIGKILL");
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH" && !(error as { status?: number }).status) throw error;
+}
+
+/**
+ * SIGKILL the test daemon and everything it spawned, then wait until every
+ * one of them has actually exited. One `ps` snapshot is not enough: a runner
+ * host or agent the daemon spawned after the snapshot kept writing into the
+ * data dir while cleanup walked it (ENOTEMPTY on the deploy gate, 2026-11-03),
+ * so the tree is re-snapshotted until nothing of it is left. Anything whose
+ * command line names the data dir counts as part of the tree even after its
+ * parent is gone.
+ */
+export async function forceStopTestDaemon(handle: DaemonHandle): Promise<void> {
+  const killed = new Map<number, string>();
+  for (let round = 0; round < 40; round++) {
+    const rows = processRows();
+    const own = new Set<number>();
+    for (let pid = process.pid; pid > 1 && !own.has(pid); pid = rows.find(row => row.pid === pid)?.parent ?? 0) own.add(pid);
+    const roots = new Set<number>();
+    if (handle.proc.exitCode === null && handle.proc.signalCode === null && handle.proc.pid) roots.add(handle.proc.pid);
+    for (const row of rows) if (row.command.includes(handle.dir) && !own.has(row.pid)) roots.add(row.pid);
+    for (;;) {
+      const before = roots.size;
+      for (const row of rows) if (roots.has(row.parent) && !own.has(row.pid)) roots.add(row.pid);
+      if (roots.size === before) break;
     }
+    const targets = rows.filter(row => roots.has(row.pid) && !row.zombie).reverse();
+    if (targets.length === 0) break;
+    for (const row of targets) {
+      if (!sameBirth(row.pid, row.birth)) continue;
+      try {
+        process.kill(row.pid, "SIGKILL");
+        killed.set(row.pid, row.birth);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      }
+    }
+    await sleep(25);
   }
+  await waitFor(() => [...killed].every(([pid, birth]) => !sameBirth(pid, birth)), `force-stopped test daemon tree exited (${[...killed.keys()].join(", ")})`, 10_000, 25);
   if (handle.proc.exitCode === null && handle.proc.signalCode === null) await waitFor(() => handle.proc.exitCode !== null || handle.proc.signalCode !== null, "owned test daemon force-stopped", 10_000);
 }
