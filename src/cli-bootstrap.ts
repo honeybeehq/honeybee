@@ -8,6 +8,7 @@
  * the selected implementation.
  */
 import { v2IsDefault } from "./cliRoute.js";
+import { honeybeeBuildIdentity } from "./release/buildIdentity.js";
 
 type V2Module = {
   runV2Cli(argv: string[]): Promise<number>;
@@ -22,13 +23,25 @@ async function loadV2(): Promise<V2Module> {
   return (await import(specifier)) as V2Module;
 }
 
+function printsPlainVersion(argv: string[]): boolean {
+  return argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version");
+}
+
+async function runV2(argv: string[]): Promise<void> {
+  if (printsPlainVersion(argv)) {
+    process.stdout.write(`honeybee ${honeybeeBuildIdentity().version}\n`);
+    return;
+  }
+  process.exitCode = await (await loadV2()).runV2Cli(argv);
+}
+
 async function main(argv: string[]): Promise<void> {
   if (argv[0] === "v2") {
-    process.exitCode = await (await loadV2()).runV2Cli(argv.slice(1));
+    await runV2(argv.slice(1));
     return;
   }
   if (v2IsDefault(argv[0])) {
-    process.exitCode = await (await loadV2()).runV2Cli(argv);
+    await runV2(argv);
     return;
   }
 

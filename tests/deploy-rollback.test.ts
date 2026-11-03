@@ -97,6 +97,22 @@ for (const bundle of ["", "var SCHEMA_VERSION = 48;\nvar SCHEMA_VERSION2 = 48;\n
   } finally { await rm(f.dir, { recursive: true, force: true }); }
 });
 
+test("schema capability is read across the split cli bundle chunks", async () => {
+  const f = await fixture();
+  try {
+    await mkdir(join(f.dir, "v2"));
+    const db = new DatabaseSync(join(f.dir, "v2", "core.sqlite3"));
+    db.exec("CREATE TABLE meta(key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES('schema_version','44')");
+    db.close();
+    await writeFile(join(f.root, previous, "dist", "v2", "cli.js"), "import './cli-chunk-ABC123.js';\n");
+    await writeFile(join(f.root, previous, "dist", "v2", "cli-chunk-ABC123.js"), "var SCHEMA_VERSION = 44;\n");
+    await writeFile(join(f.root, previous, "dist", "v2", "provision-worker.js"), "var SCHEMA_VERSION = 12;\n");
+    await assertRollbackStoreCompatible(f.root, join(f.root, previous));
+    await writeFile(join(f.root, previous, "dist", "v2", "cli-chunk-DEF456.js"), "var SCHEMA_VERSION = 44;\n");
+    await assert.rejects(assertRollbackStoreCompatible(f.root, join(f.root, previous)), error => error instanceof DeployRollbackError && error.code === "ROLLBACK_SCHEMA_UNKNOWN");
+  } finally { await rm(f.dir, { recursive: true, force: true }); }
+});
+
 test("schema 29 requires an explicit store restore even when the target schema is newer", async () => {
   const f = await fixture();
   try {

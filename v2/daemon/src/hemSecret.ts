@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { resolveExecutable } from "../../core/src/index.ts";
+import { resolveExecutable } from "../../core/src/executables.ts";
 
 export const HEM_DEFAULT_FIELD = "api_key";
 export const NAMING_HEM_SECRET_PREFIX = "global/hive-naming-";

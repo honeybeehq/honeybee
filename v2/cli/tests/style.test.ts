@@ -19,6 +19,22 @@ test("style.stripAnsi / visibleLength ignore SGR and count cells", () => {
   assert.equal(truncate("abcdefghij", 5), "abcd…");
 });
 
+test("style.visibleLength / truncate agree with grapheme segmentation for plain, wide, and clustered text", () => {
+  const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+  const clusters = (value: string): number => [...segmenter.segment(value)].length;
+  assert.equal(visibleLength("plain ascii 123"), 15);
+  assert.equal(visibleLength("● running…"), 10);
+  assert.equal(visibleLength("日本語"), 6);
+  assert.equal(visibleLength("e\u0301"), 1);
+  assert.equal(clusters("👨\u200d👩\u200d👧"), 1);
+  assert.equal(visibleLength("👨\u200d👩\u200d👧"), 2);
+  assert.equal(visibleLength("🇳🇴"), 2);
+  assert.equal(truncate("●●●●●●", 4), "●●●…");
+  assert.equal(truncate("e\u0301e\u0301e\u0301", 2), "e\u0301…");
+  assert.equal(truncate("日本語テキスト", 5), "日本…");
+  assert.equal(truncate(`\x1b[1mabcdef\x1b[0m`, 4), `\x1b[1mabc\x1b[0m…`);
+});
+
 test("style.actionLine: live mutations get an icon; deduped keeps the one-key prefix", () => {
   const live = stripAnsi(actionLine("ok", "spawned", "CL.a3f2 (bee-1)"));
   assert.match(live, /^✓ {2}spawned CL\.a3f2 \(bee-1\)$/);

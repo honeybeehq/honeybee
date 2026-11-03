@@ -10,7 +10,7 @@ import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
-import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/retention.ts";
+import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/trimPatterns.ts";
 import { contextPolicyConfigOf, ContextPolicyError, type ContextPolicyConfig } from "./contextPolicy.ts";
 import { NAMING_HEM_SECRET_PREFIX, parseNamingHemSecretRef } from "./hemSecret.ts";
 
