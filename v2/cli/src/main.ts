@@ -1,4 +1,3 @@
-import { backupStoreOffline, restoreStoreOffline, StoreRestoreError, StoreBackupError } from "../../core/src/storeBackup.ts";
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
@@ -22,8 +21,6 @@ import { createInterface } from "node:readline";
 import { closeSync, existsSync, openSync, readSync, statSync, fsyncSync, unlinkSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { type ResolvedNodeConfig } from "../../daemon/src/config.ts";
-import { runDaemon } from "../../daemon/src/main.ts";
-import { runRunnerHost } from "../../driver-hsr/src/runner-host.ts";
 import {
   createServiceManager,
   type ExecRunner,
@@ -132,41 +129,15 @@ import {
 } from "../../daemon/src/protocol.ts";
 import { DaemonDownError, RpcClient, type ConnectOptions, type DaemonInstance } from "./client.ts";
 import { assertInstanceMatchesDataDir, assertSameInstance, assertSocketMatchesDataDir, callerHelloFor, daemonTargetJson, resolveDaemonTarget, socketConfigured, type ResolvedDaemonTarget } from "./target.ts";
-import { ReadOnlyStore } from "./readonly.ts";
-import {
-  beeTaskList,
-  freezeRoot,
-  filterMailbox,
-  INBOX_AGENT,
-  isInboxAgent,
-  isTaskStatus,
-  isTaskTransitionAction,
-  matchAccount,
-  parseTaskListRef,
-  publicAuditRow,
-  publicEnvRecords,
-  TASK_STATUSES,
-  type AuditRow,
-  type CommandRow,
-  type FrozenImportReport,
-  type ImportPlanEntry,
-  type NodeCapacity,
-  type TemplateRow,
-  type ChampionRow,
-} from "../../core/src/index.ts";
-import { realPreflightProbes } from "../../daemon/src/import-probes.ts";
+import type { ReadOnlyStore } from "./readonly.ts";
+import { beeTaskList, isTaskStatus, isTaskTransitionAction, parseTaskListRef } from "../../core/src/tasks.ts";
+import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow, type CommandRow, type NodeCapacity, type TemplateRow, type ChampionRow } from "../../core/src/types.ts";
+import { matchAccount } from "../../core/src/accountMatch.ts";
+import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
+import type { FrozenImportReport, ImportPlanEntry } from "../../core/src/import-frozen.ts";
 import { hostname } from "node:os";
 import type { AuditTailResult } from "../../daemon/src/protocol.ts";
-import {
-  createTranscriptTurnStream,
-  lastAssistantText,
-  renderTranscriptLines,
-  type TranscriptTurnStream,
-} from "../../driver-tmux/src/transcripts.ts";
-import { sessionNameFor } from "../../driver-tmux/src/driver.ts";
-import { decodeProjectedSegment, decompressSegment } from "../../driver-tmux/src/transcript-segment-format.ts";
-import { createDirectoryTranscriptObjectStore } from "../../daemon/src/transcriptObjectStore.ts";
-import { localRepoIdentity, revParse } from "../../driver-cell/src/git.ts";
+import type { TranscriptTurnStream } from "../../driver-tmux/src/transcripts.ts";
 import {
   agyArgGrammar,
   claudeArgGrammar,
@@ -634,13 +605,13 @@ export function resolveBeeIn(views: ViewResult[], needle: string): string {
 // output
 // ---------------------------------------------------------------------------
 
-function emit(ctx: CliContext, human: string[], jsonValue: unknown, stale: boolean): void {
+function emit(ctx: CliContext, human: string[] | (() => string[]), jsonValue: unknown, stale: boolean): void {
   if (ctx.json) {
     ctx.io.out(JSON.stringify(withDaemonTarget(ctx, stale ? { stale: true, ...(jsonValue as object) } : jsonValue)));
     return;
   }
   if (stale) ctx.io.err(staleBanner(ctx.cfg.storePath));
-  for (const line of human) ctx.io.out(line);
+  for (const line of typeof human === "function" ? human() : human) ctx.io.out(line);
 }
 
 // ---------------------------------------------------------------------------
@@ -672,7 +643,7 @@ async function readPath<T>(
     }
     let store: ReadOnlyStore;
     try {
-      store = new ReadOnlyStore(ctx.cfg.storePath);
+      store = new (await import("./readonly.ts")).ReadOnlyStore(ctx.cfg.storePath);
     } catch (openErr) {
       // The store is exclusively locked → a live daemon holds it (B9), so
       // "daemon down" was a misdiagnosis — the rpc failed some other way
@@ -1036,7 +1007,7 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
         (c) => c.request<AccountListResult>("account.list", harness ? { harness } : {}),
         (store) => ({ accounts: store.accounts(harness).map(({ native: _native, ...account }) => account), limits: store.accountLimits() }),
       );
-      emit(ctx, renderAccountList(result.accounts, result.limits, stale), result, stale);
+      emit(ctx, () => renderAccountList(result.accounts, result.limits, stale), result, stale);
       return 0;
     }
     case "get":
@@ -1897,7 +1868,7 @@ async function cmdChildren(ctx: CliContext, parsed: Parsed): Promise<number> {
       return { beeId, children: store.children(beeId) };
     },
   );
-  emit(ctx, renderBeeList(result.children, stale, "children"), result, stale);
+  emit(ctx, () => renderBeeList(result.children, stale, "children"), result, stale);
   return 0;
 }
 
@@ -3049,6 +3020,7 @@ async function cmdBee(ctx: CliContext, parsed: Parsed): Promise<number> {
         throw new Error("cell move: --cell-id must be a nonempty Cell UUID");
       }
       const cwd = resolve(to);
+      const { localRepoIdentity, revParse } = await import("../../driver-cell/src/git.ts");
       const identity = localRepoIdentity(cwd);
       if (!identity) throw new Error(`bee move: ${cwd} is not a git checkout`);
       const observedHead = (parsed.flags.get("--observed-head") as string | undefined) ?? (parsed.flags.get("--head") as string | undefined) ?? revParse(cwd, "HEAD");
@@ -3175,7 +3147,7 @@ async function cmdView(ctx: CliContext, parsed: Parsed): Promise<number> {
       return store.view(beeId);
     },
   );
-  emit(ctx, renderBeeView(result, stale), publicEnvRecords(result), stale);
+  emit(ctx, () => renderBeeView(result, stale), publicEnvRecords(result), stale);
   return 0;
 }
 
@@ -3191,7 +3163,7 @@ async function cmdList(ctx: CliContext, parsed: Parsed): Promise<number> {
     (c) => c.request<ListResult>("list", { ...(lifecycle == null ? {} : { lifecycle }) }),
     (store) => ({ views: store.list(lifecycle) }),
   );
-  emit(ctx, renderBeeList(result.views, stale), publicEnvRecords(result), stale);
+  emit(ctx, () => renderBeeList(result.views, stale), publicEnvRecords(result), stale);
   return 0;
 }
 
@@ -3234,7 +3206,7 @@ async function cmdMailbox(ctx: CliContext, parsed: Parsed): Promise<number> {
       return { messages: filterMailbox(store.mailbox(beeId), filters) };
     },
   );
-  emit(ctx, renderMailbox(result.messages, stale), result, stale);
+  emit(ctx, () => renderMailbox(result.messages, stale), result, stale);
   return 0;
 }
 
@@ -3366,7 +3338,7 @@ async function cmdCommands(ctx: CliContext, parsed: Parsed): Promise<number> {
       return { commands: store.commands(beeId) };
     },
   );
-  emit(ctx, renderCommands(result.commands, stale), publicEnvRecords(result), stale);
+  emit(ctx, () => renderCommands(result.commands, stale), publicEnvRecords(result), stale);
   return 0;
 }
 
@@ -3375,7 +3347,7 @@ async function cmdDeployInfo(ctx: CliContext): Promise<number> {
   const result = { ...daemon, cliIdentity: BUILD_IDENTITY, daemonIdentity: daemon.identity ?? null };
   const disk = daemon.cellDisk as CellDiskStatus | null | undefined;
   const capacity = daemon.capacity as NodeCapacity | null | undefined;
-  emit(ctx, [...(disk ? [cellDiskLine(disk)] : []), ...(capacity ? [capacityLine(capacity)] : []), JSON.stringify(result, null, 2)], result, false);
+  emit(ctx, () => [...(disk ? [cellDiskLine(disk)] : []), ...(capacity ? [capacityLine(capacity)] : []), JSON.stringify(result, null, 2)], result, false);
   return 0;
 }
 
@@ -3408,7 +3380,7 @@ async function cmdHumanRef(ctx: CliContext, parsed: Parsed): Promise<number> {
 
 async function cmdHealth(ctx: CliContext): Promise<number> {
   const result = await withClient(ctx, (c) => c.request<HealthResult>("health"));
-  emit(ctx, [...renderHealth(result), ...(result.cellDisk ? [cellDiskLine(result.cellDisk)] : []), ...(result.capacity ? [capacityLine(result.capacity)] : [])], result, false);
+  emit(ctx, () => [...renderHealth(result), ...(result.cellDisk ? [cellDiskLine(result.cellDisk)] : []), ...(result.capacity ? [capacityLine(result.capacity)] : [])], result, false);
   return 0;
 }
 
@@ -4099,7 +4071,7 @@ async function cmdRun(ctx: CliContext, parsed: Parsed): Promise<number> {
     }
     const logPath = view.bee?.sessionLogPath ?? null;
     const reply = logPath && existsSync(logPath)
-      ? lastAssistantText(renderTranscriptLines(view.bee?.agent ?? "", readSessionLogLines(logPath)))
+      ? await lastAssistantReply(view.bee?.agent ?? "", logPath)
       : null;
     let archiveCommandId: number | null = null;
     if (!keep) {
@@ -4155,6 +4127,11 @@ function readSessionLogSnapshot(path: string): SessionLogSnapshot {
     lines: contents.subarray(0, byteOffset).toString("utf8").split("\n").filter((line) => line.trim().length > 0),
     byteOffset,
   };
+}
+
+async function lastAssistantReply(agent: string, logPath: string): Promise<string | null> {
+  const { lastAssistantText, renderTranscriptLines } = await import("../../driver-tmux/src/transcripts.ts");
+  return lastAssistantText(renderTranscriptLines(agent, readSessionLogLines(logPath)));
 }
 
 function readSessionLogLines(path: string): string[] {
@@ -4264,7 +4241,7 @@ async function cmdTranscript(ctx: CliContext, parsed: Parsed): Promise<number> {
     return 0;
   }
 
-  const stream = createTranscriptTurnStream(harness);
+  const stream = (await import("../../driver-tmux/src/transcripts.ts")).createTranscriptTurnStream(harness);
   const turns = lines.flatMap((line) => stream.pushLine(line));
   if (!follow) turns.push(...stream.flush());
   const shown = tailN != null ? turns.slice(-tailN) : turns;
@@ -4288,7 +4265,8 @@ async function transcriptFromObjects(ctx: CliContext, parsed: Parsed, view: View
     emit(ctx, [`${anyStale ? "stale: " : ""}${result.segments.length} segment objects for ${beeId} in ${root}`, ...lines], { ...result, store: result.store ?? { kind: "directory", root } }, anyStale);
     return 0;
   }
-  const objects = createDirectoryTranscriptObjectStore(root);
+  const objects = (await import("../../daemon/src/transcriptObjectStore.ts")).createDirectoryTranscriptObjectStore(root);
+  const { decodeProjectedSegment, decompressSegment } = await import("../../driver-tmux/src/transcript-segment-format.ts");
   const raw = parsed.flags.get("--raw") === true;
   const out: string[] = [];
   let missing = 0;
@@ -4347,7 +4325,7 @@ async function cmdTail(ctx: CliContext, parsed: Parsed): Promise<number> {
     return 0;
   }
 
-  const stream = createTranscriptTurnStream(harness);
+  const stream = (await import("../../driver-tmux/src/transcripts.ts")).createTranscriptTurnStream(harness);
   const turns = lines.flatMap((line) => stream.pushLine(line));
   if (!follow) turns.push(...stream.flush());
   for (const line of turnLines(turns).slice(-backlog)) ctx.io.out(line);
@@ -4385,7 +4363,7 @@ async function cmdLast(ctx: CliContext, parsed: Parsed): Promise<number> {
 
   const path = bee.sessionLogPath;
   const text = path && existsSync(path)
-    ? lastAssistantText(renderTranscriptLines(bee.agent, readSessionLogLines(path)))
+    ? await lastAssistantReply(bee.agent, path)
     : null;
   if (text != null) {
     if (!ctx.json && path) ctx.io.err(sessionLogBanner(path, bee.agent, stale));
@@ -4637,7 +4615,7 @@ async function attachToBee(
   }
   const generation = result.view.generation;
   if (generation == null) throw new Error(`hive attach: ${bee.id} has no recorded runtime generation`);
-  const session = sessionNameFor(bee.id, generation);
+  const session = (await import("../../driver-tmux/src/driver.ts")).sessionNameFor(bee.id, generation);
   const socket = readLiveEndpointRecord(ctx.cfg.dataDir)?.tmuxSocketPath ?? join(ctx.cfg.dataDir, "tmux.sock");
   const quote = (value: string) => "'" + value.replaceAll("'", "'\"'\"'") + "'";
   const command = `tmux -S ${quote(socket)} attach-session -t ${quote(`=${session}`)}`;
@@ -4667,6 +4645,7 @@ function frozenRootOf(parsed: Parsed): string {
  */
 async function cmdFreeze(ctx: CliContext, parsed: Parsed): Promise<number> {
   const root = frozenRootOf(parsed);
+  const [{ freezeRoot }, { realPreflightProbes }] = await Promise.all([import("../../core/src/import-frozen.ts"), import("../../daemon/src/import-probes.ts")]);
   const result = freezeRoot(root, {
     probes: realPreflightProbes(),
     force: parsed.flags.get("--force") === true,
@@ -4826,7 +4805,7 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
   switch (sub) {
     case "run":
       // Foreground daemon — what the service files execute.
-      return runDaemon(["--data-dir", ctx.cfg.dataDir, ...(ctx.target.socketSource === "flag" ? ["--socket", ctx.cfg.socketPath] : [])]);
+      return (await import("../../daemon/src/main.ts")).runDaemon(["--data-dir", ctx.cfg.dataDir, ...(ctx.target.socketSource === "flag" ? ["--socket", ctx.cfg.socketPath] : [])]);
     case "install": {
       const mgr = buildServiceManager(ctx, true);
       await mgr.install();
@@ -4930,8 +4909,8 @@ function jsonErrorLine(err: unknown, ctx: CliContext | undefined): Record<string
     ? { code: err.code, message: err.message, details: { socketPath: err.socketPath, socketSource: ctx?.target.socketSource ?? null, cause: err.reason } }
     : err instanceof RpcError
       ? { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) }
-      : err instanceof StoreRestoreError || err instanceof StoreBackupError
-        ? { code: err.code, message: err.message }
+      : err instanceof Error && (err.name === "StoreRestoreError" || err.name === "StoreBackupError")
+        ? { code: (err as Error & { code: string }).code, message: err.message }
       : { code: "cli_error", message: err instanceof Error ? err.message : String(err) };
   return { error, daemonTarget: ctx ? daemonTargetJson(ctx.target, ctx.daemon.instance, ctx.daemon.connected) : null };
 }
@@ -4947,6 +4926,10 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
     io.out(argv.includes("--json") ? JSON.stringify({ ...BUILD_IDENTITY, daemonTarget: versionDaemonTarget() }) : `honeybee ${hiveVersion()}`);
     return 0;
   }
+  if (argv[0] === "--help" || argv[0] === "-h") {
+    io.out(helpText(hiveVersion()));
+    return 0;
+  }
   let parsed: Parsed;
   try {
     parsed = parseArgs(argv);
@@ -4956,6 +4939,10 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
     return 1;
   }
   const command = parsed.positional[0] ?? "help";
+  if (command === "help") {
+    io.out(helpText(hiveVersion()));
+    return 0;
+  }
   let ctx: CliContext | undefined;
   try {
     ctx = makeContext(parsed, io);
@@ -5084,6 +5071,7 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       case "store": {
         const operation = parsed.positional[1];
         if (parsed.positional.length !== 2 || !["backup", "restore"].includes(operation ?? "")) throw new Error("Usage: hive v2 store backup | restore --from <receipt> --data-dir <dir>");
+        const { backupStoreOffline, restoreStoreOffline, StoreRestoreError } = await import("../../core/src/storeBackup.ts");
         if (operation === "restore") {
           const from = parsed.flags.get("--from");
           if (typeof from !== "string") throw new Error("store restore requires --from <receipt>");
@@ -5150,14 +5138,10 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
           io.err(errorLine("runner-host: missing config path"));
           return 2;
         }
-        runRunnerHost(configPath);
+        (await import("../../driver-hsr/src/runner-host.ts")).runRunnerHost(configPath);
         // The host stays alive until its agent exits; keep this promise open.
         return await new Promise<number>(() => undefined);
       }
-      case "help":
-      case "--help":
-        io.out(helpText(hiveVersion()));
-        return 0;
       default:
         io.err(errorLine(`unknown command: ${command}`));
         io.out(helpText(hiveVersion()));

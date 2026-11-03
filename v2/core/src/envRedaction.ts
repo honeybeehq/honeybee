@@ -61,13 +61,25 @@ export function publicBeeResult(result: unknown): unknown {
 }
 
 export function publicEnvRecords(value: unknown, includeOperatorLocalHomes = false): unknown {
-  if (Array.isArray(value)) return value.map(entry => publicEnvRecords(entry, includeOperatorLocalHomes));
+  if (Array.isArray(value)) {
+    let out: unknown[] | null = null;
+    for (let i = 0; i < value.length; i += 1) {
+      const entry = publicEnvRecords(value[i], includeOperatorLocalHomes);
+      if (entry !== value[i] && out === null) out = value.slice(0, i);
+      if (out !== null) out.push(entry);
+    }
+    return out ?? value;
+  }
   if (typeof value !== "object" || value === null) return value;
   const source = value as Record<string, unknown>;
   const envSibling = isStringRecord(source.env);
-  const out: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(source)) {
+  let out: Record<string, unknown> | null = null;
+  const keys = Object.keys(source);
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i]!;
+    const entry = source[key];
     if (key === "operatorLocalHomes") {
+      out ??= copyEntries(source, keys, i);
       if (includeOperatorLocalHomes && entry && typeof entry === "object") {
         const homes = entry as Record<string, unknown>;
         out[key] = operatorLocalHomesOf({
@@ -79,11 +91,20 @@ export function publicEnvRecords(value: unknown, includeOperatorLocalHomes = fal
       continue;
     }
     if ((ENV_FIELDS.has(key) || key === "previous" && envSibling) && isStringRecord(entry)) {
+      out ??= copyEntries(source, keys, i);
       const field = key === "previous" ? "previousEnvKeys" : `${key}Keys`;
       out[field] = Object.keys(entry).sort();
-    } else {
-      out[key] = publicEnvRecords(entry, includeOperatorLocalHomes);
+      continue;
     }
+    const next = publicEnvRecords(entry, includeOperatorLocalHomes);
+    if (next !== entry) out ??= copyEntries(source, keys, i);
+    if (out !== null) out[key] = next;
   }
+  return out ?? value;
+}
+
+function copyEntries(source: Record<string, unknown>, keys: string[], count: number): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (let i = 0; i < count; i += 1) out[keys[i]!] = source[keys[i]!];
   return out;
 }

@@ -6,7 +6,8 @@ import { LEASE_UNKNOWN_MESSAGE } from "../../core/src/accountLease.ts";
  * surface: aligned columns, status color, and the tokens tests/scripts grep
  * (`stale:`, `id=`, `stopped(crashed)`, `deduped:`). Full argv lives on `view`, not `ls`.
  */
-import { CLAUDE_LOGIN_DUE_MS, INBOX_AGENT, isInboxAgent, type AccountCredentialAuthority, type AccountCredentialAuthorityStatus, type AuditRow } from "../../core/src/index.ts";
+import { CLAUDE_LOGIN_DUE_MS } from "../../core/src/mirror.ts";
+import { INBOX_AGENT, isInboxAgent, type AccountCredentialAuthority, type AccountCredentialAuthorityStatus, type AuditRow } from "../../core/src/types.ts";
 import type { TranscriptTurn } from "../../driver-tmux/src/transcripts.ts";
 import type {
   AccountGetResult,

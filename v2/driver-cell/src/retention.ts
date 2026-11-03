@@ -35,6 +35,7 @@ import { chmodSync, constants, copyFileSync, existsSync, lstatSync, mkdirSync, o
 import { rm } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { GitError, revParse, tryGit } from "./git.ts";
+import { DEFAULT_TRIM_PATTERNS } from "./trimPatterns.ts";
 import { CELL_SPACE_DIRECTORY, looksLikeCellWrapper } from "./layout.ts";
 import type { LandingReceipt } from "./landed.ts";
 import type { UpstreamRef } from "./upstream.ts";
@@ -146,21 +147,7 @@ export function measureDirectoryBytes(dir: string): number {
   return total;
 }
 
-export const DEFAULT_TRIM_PATTERNS: readonly string[] = [
-  ".next",
-  ".nuxt",
-  ".svelte-kit",
-  ".turbo",
-  ".parcel-cache",
-  ".gradle",
-  ".test-dist",
-  "DerivedData",
-  "target",
-  "build",
-  "dist",
-  "out",
-  "*.tsbuildinfo",
-];
+export { DEFAULT_TRIM_PATTERNS };
 
 const INSTALL_DIRECTORY_NAMES = new Set(["node_modules", ".venv", "venv", "Pods"]);
 const DISPOSABLE_FILE_NAMES = new Set([".DS_Store"]);
