@@ -25,6 +25,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RpcError, type ListResult, type MailboxResult, type SendRpcResult, type SnapshotResult, type SpawnResult, type ViewResult, type WatchFrame } from "../src/protocol.ts";
@@ -1344,5 +1345,106 @@ test("lease account ids share core validation: retained @ ids renew, revoke and 
   } finally {
     client.close();
     await daemon.stop();
+  }
+});
+
+test("rpc.accounts.2c: bee.swapAccount (fake-claude) recovers a lost session id from the bee's session log, refuses typed when nothing can be carried, and stays \"none\" only for a bee that never ran", async () => {
+  const argvLog = join(makeDaemonDir().dir, "argv.jsonl");
+  const { dir, cleanup } = makeDaemonDir({
+    agents: {
+      claude: {
+        command: process.execPath,
+        args: [FAKE_CLAUDE, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"],
+        adapter: "claude",
+        env: { FAKE_CLAUDE_ARGV_LOG: argvLog },
+      },
+    },
+  });
+  const forget = (beeId: string) => {
+    const db = new DatabaseSync(join(dir, "core.sqlite3"));
+    try { db.prepare("UPDATE bees SET provider_session_id = NULL, fork_seed = NULL WHERE id = ?").run(beeId); } finally { db.close(); }
+  };
+  let daemon: DaemonHandle | null = null;
+  try {
+    seedVault(dir, "claude", "claude-a", ".credentials.json", '{"claudeAiOauth":{"accessToken":"a","expiresAt":4102444800000}}');
+    seedVault(dir, "claude", "claude-b", ".credentials.json", '{"claudeAiOauth":{"accessToken":"b","expiresAt":4102444800000}}');
+    daemon = await startDaemon(dir);
+    let client = await daemon.client();
+    await client.request("account.add", { harness: "claude", label: "a", importExisting: true });
+    await client.request("account.add", { harness: "claude", label: "b", importExisting: true });
+    const homeA = join(dir, "homes", "claude-a");
+    const homeB = join(dir, "homes", "claude-b");
+    const projectKey = claudeProjectKey(dir);
+
+    const spawned = await client.request<SpawnResult>("spawn", { name: "amnesiac", agent: "claude", cwd: dir, account: "claude-a" });
+    const first = await client.request<SendRpcResult>("send", { beeId: spawned.beeId, body: "hello" });
+    await waitDelivered(client, spawned.beeId, first.messageId, "first delivered");
+    await waitState(client, spawned.beeId, "idle", "idle after hello");
+    const sid1 = (await client.request<ViewResult>("view", { beeId: spawned.beeId })).bee?.providerSessionId as string;
+    assert.ok(sid1, "session id recorded");
+    assert.ok(existsSync(join(homeA, "projects", projectKey, `${sid1}.jsonl`)), "fake-claude wrote the source transcript");
+    const sessionLog = join(dir, "session-logs", `${spawned.beeId}.jsonl`);
+    assert.match(readFileSync(sessionLog, "utf8"), new RegExp(`"subtype":"init".*${sid1}`), "the bee's own session log carries the init session id");
+    await client.request("stop", { beeId: spawned.beeId });
+    await waitState(client, spawned.beeId, "stopped", "stopped");
+    client.close();
+    await daemon.stop();
+
+    // HON-22 shape: the store holds no session id for a bee that has run, although its conversation exists.
+    forget(spawned.beeId);
+    daemon = await startDaemon(dir);
+    client = await daemon.client();
+    const amnesiac = await client.request<ViewResult>("view", { beeId: spawned.beeId });
+    assert.equal(amnesiac.bee?.providerSessionId, null);
+    assert.equal(amnesiac.bee?.forkSeed, null);
+    const swap = await client.request<SwapAccountResult>("bee.swapAccount", { beeId: spawned.beeId, account: "claude-b" });
+    assert.equal(swap.action, "rebind_only");
+    assert.equal(swap.transcript, "copied", "the conversation named by the session log is carried, not silently skipped");
+    assert.equal(swap.rekeyed, true, "the recovered id is persisted and then rekeyed for the fork");
+    assert.ok(existsSync(join(homeB, "projects", projectKey, `${sid1}.jsonl`)), "the transcript was carried into home B");
+    const recovered = await client.request<ViewResult>("view", { beeId: spawned.beeId });
+    assert.equal(recovered.bee?.account, "claude-b");
+    assert.equal(recovered.bee?.forkSeed, sid1, "the next wake forks the recovered conversation");
+    assert.match(readFileSync(join(dir, "hived.log"), "utf8"), /bee\.swapAccount\.session_recovered bee=\S+ id=\S+ from=\S+session-logs/);
+    // the next generation really resumes it in home B
+    const second = await client.request<SendRpcResult>("send", { beeId: spawned.beeId, body: "again" });
+    assert.equal(await waitDelivered(client, spawned.beeId, second.messageId, "second delivered"), 2);
+    await waitState(client, spawned.beeId, "idle", "idle on generation 2");
+    const boots = jsonl<{ env: { CLAUDE_CONFIG_DIR: string | null }; resumed: string | null; forked: boolean }>(argvLog);
+    assert.equal(boots.length, 2);
+    assert.equal(boots[1]?.env.CLAUDE_CONFIG_DIR, homeB);
+    assert.equal(boots[1]?.resumed, sid1, "generation 2 resumes the recovered conversation");
+    assert.equal(boots[1]?.forked, true);
+    const sid2 = (await client.request<ViewResult>("view", { beeId: spawned.beeId })).bee?.providerSessionId as string;
+    assert.ok(sid2 && sid2 !== sid1, "generation 2 reported its own id");
+
+    // No session id anywhere (store cleared, session log kept but without its init lines) for a bee that has run: refused typed, bee untouched.
+    await client.request("stop", { beeId: spawned.beeId });
+    await waitState(client, spawned.beeId, "stopped", "stopped again");
+    client.close();
+    await daemon.stop();
+    forget(spawned.beeId);
+    writeFileSync(sessionLog, readFileSync(sessionLog, "utf8").split("\n").filter((line) => !line.includes('"init"')).join("\n"));
+    assert.ok(readFileSync(sessionLog, "utf8").trim().length > 0, "the bee still has harness output on record");
+    // ...and a bee that never ran: created directly in the store, no runtime, no session log.
+    const store = openCoreStore(join(dir, "core.sqlite3"));
+    try { store.createBee({ id: "never-ran", name: "never-ran", agent: "claude", substrate: "hsr", cwd: dir, account: "claude-a" }); } finally { store.close(); }
+    daemon = await startDaemon(dir);
+    client = await daemon.client();
+    await rejects(() => client.request("bee.swapAccount", { beeId: spawned.beeId, account: "claude-a" }), "transcript_unavailable");
+    const untouched = await client.request<ViewResult>("view", { beeId: spawned.beeId });
+    assert.equal(untouched.bee?.account, "claude-b");
+    assert.equal(untouched.bee?.providerSessionId, null);
+    assert.equal(untouched.bee?.forkSeed, null);
+    const fresh = await client.request<SwapAccountResult>("bee.swapAccount", { beeId: "never-ran", account: "claude-b" });
+    assert.equal(fresh.action, "rebind_only");
+    assert.equal(fresh.transcript, "none");
+    assert.equal(fresh.rekeyed, false);
+    assert.equal((await client.request<ViewResult>("view", { beeId: "never-ran" })).bee?.account, "claude-b");
+    client.close();
+  } finally {
+    if (process.env.HB_DEBUG && existsSync(join(dir, "hived.log"))) process.stderr.write(readFileSync(join(dir, "hived.log"), "utf8"));
+    if (daemon) await daemon.stop();
+    cleanup();
   }
 });
