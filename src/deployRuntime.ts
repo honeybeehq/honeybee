@@ -283,8 +283,10 @@ export class DeployRollbackError extends Error {
 export async function assertRollbackStoreCompatible(root: string, installedDir: string): Promise<void> {
   const dataDir = join(root, "..", "v2"), store = join(dataDir, "core.sqlite3");
   if (!existsSync(store)) return;
-  const bundle = await readFile(join(installedDir, "dist", "v2", "cli.js"), "utf8").catch(() => "");
-  const versions = [...bundle.matchAll(/^(?:var|let|const) SCHEMA_VERSION\d* = (\d+);$/gm)].map(match => Number(match[1]));
+  const bundleDir = join(installedDir, "dist", "v2");
+  const bundleNames = await readdir(bundleDir).catch(() => [] as string[]);
+  const bundles = await Promise.all(bundleNames.filter(name => name === "cli.js" || /^cli-chunk-[A-Z0-9]+\.js$/.test(name)).sort().map(name => readFile(join(bundleDir, name), "utf8").catch(() => "")));
+  const versions = bundles.flatMap(bundle => [...bundle.matchAll(/^(?:var|let|const) SCHEMA_VERSION\d* = (\d+);$/gm)].map(match => Number(match[1])));
   if (versions.length !== 1 || !Number.isSafeInteger(versions[0])) {
     throw new DeployRollbackError("ROLLBACK_SCHEMA_UNKNOWN", `missing unambiguous store schema capability in ${installedDir}/dist/v2/cli.js; verify the matching runtime and store backup before rollback`);
   }

@@ -1,0 +1,15 @@
+export const DEFAULT_TRIM_PATTERNS: readonly string[] = [
+  ".next",
+  ".nuxt",
+  ".svelte-kit",
+  ".turbo",
+  ".parcel-cache",
+  ".gradle",
+  ".test-dist",
+  "DerivedData",
+  "target",
+  "build",
+  "dist",
+  "out",
+  "*.tsbuildinfo",
+];

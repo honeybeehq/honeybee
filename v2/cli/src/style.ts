@@ -145,7 +145,19 @@ export function codePointWidth(codePoint: number): number {
   return 1;
 }
 
-const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+let graphemes: Intl.Segmenter | null = null;
+
+const CLUSTER_FORMING_RE = /[\p{M}\r\u200d\ufe0e\ufe0f\u1100-\u11ff\ua960-\ua97f\ud7b0-\ud7ff\u{1f1e6}-\u{1f1ff}\u{1f3fb}-\u{1f3ff}\u{e0020}-\u{e007f}]/u;
+
+function* codePointSegments(value: string): Iterable<{ segment: string }> {
+  for (const segment of value) yield { segment };
+}
+
+function graphemeSegments(value: string): Iterable<{ segment: string }> {
+  if (!CLUSTER_FORMING_RE.test(value)) return codePointSegments(value);
+  graphemes ??= new Intl.Segmenter(undefined, { granularity: "grapheme" });
+  return graphemes.segment(value);
+}
 
 export function graphemeWidth(cluster: string): number {
   let width = 0;
@@ -153,9 +165,12 @@ export function graphemeWidth(cluster: string): number {
   return width;
 }
 
+const PLAIN_ASCII_RE = /^[\x20-\x7e]*$/;
+
 export function displayWidth(value: string): number {
+  if (PLAIN_ASCII_RE.test(value)) return value.length;
   let width = 0;
-  for (const { segment } of GRAPHEMES.segment(value)) width += graphemeWidth(segment);
+  for (const { segment } of graphemeSegments(value)) width += graphemeWidth(segment);
   return width;
 }
 
@@ -169,11 +184,12 @@ export function padCell(value: string, width: number, align: "left" | "right" = 
 const ANSI_PREFIX_RE = /^\x1b\[[0-9;]*m/;
 
 function firstGrapheme(value: string): string {
-  for (const { segment } of GRAPHEMES.segment(value)) return segment;
+  for (const { segment } of graphemeSegments(value)) return segment;
   return value;
 }
 
 function stripAnsiSlice(value: string, maxVisible: number): string {
+  if (PLAIN_ASCII_RE.test(value)) return value.slice(0, maxVisible);
   let out = "";
   let visible = 0;
   let i = 0;

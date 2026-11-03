@@ -5,7 +5,7 @@
  * immutable release must spawn that release's host without re-entering the
  * full CLI bundle.
  */
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -14,6 +14,7 @@ import { collectBuildIdentity } from "../dist/release/buildIdentityProducer.js";
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const outDir = join(root, "dist", "v2");
 const runnerHostOutput = join(outDir, "runner-host.js");
+const CLI_CHUNK_RE = /^cli-chunk-[A-Z0-9]+\.js$/;
 const runnerHostInputs = [
   "src/comb/canonical.ts",
   "v2/core/src/processIdentity.ts",
@@ -40,10 +41,14 @@ await build({
   target: "node22",
   logLevel: "silent",
 });
+for (const stale of (await readdir(outDir)).filter((name) => CLI_CHUNK_RE.test(name))) await rm(join(outDir, stale));
 await build({
   absWorkingDir: root,
-  entryPoints: [join(root, "v2", "cli", "src", "main.ts")],
-  outfile: join(outDir, "cli.js"),
+  entryPoints: { cli: join(root, "v2", "cli", "src", "main.ts") },
+  outdir: outDir,
+  entryNames: "[name]",
+  chunkNames: "cli-chunk-[hash]",
+  splitting: true,
   bundle: true,
   platform: "node",
   format: "esm",
