@@ -21,7 +21,7 @@ function identity(pid: number): Identity {
 function alive(p: Identity): boolean { return verifyProcessIdentity(p.pid, p); }
 
 for (const mode of ["natural", "retention", "backstop"] as const) test(`daemon shutdown ${mode}: exits promptly and preserves detached bees`, { timeout: 90_000 }, async () => {
-  const rig = makeDaemonDir({ cells: { retention: { enabled: mode === "retention" } } });
+  const rig = makeDaemonDir({ cells: { retention: { enabled: mode === "retention", archivedAfterDays: 0 } } });
   const configPath = join(rig.dir, "config.json");
   const config = JSON.parse(readFileSync(configPath, "utf8"));
   config.cells.root = join(rig.dir, "cells");
@@ -35,6 +35,8 @@ for (const mode of ["natural", "retention", "backstop"] as const) test(`daemon s
     const store = openCoreStore(join(rig.dir, "core.sqlite3"));
     store.createBee({ id: "retention-candidate", name: "retention-candidate", agent: "stub", substrate: "cell", cwd });
     store.updateRuntimeState("retention-candidate", 1, "stopped", { exitCause: "stopped_by_user" });
+    store.putCell({ sourceBeeId: "retention-candidate", originRepo: join(rig.dir, "origin"), sha: "0".repeat(40), wrapper: "candidate", spaceName: "repo-space-candidate", spaceDir: cwd, gitCommonDirRealpath: join(rig.dir, "origin", ".git"), objectFormat: "sha1" });
+    store.archiveBee("retention-candidate");
     store.close();
   }
   const children: ChildProcess[] = [];
