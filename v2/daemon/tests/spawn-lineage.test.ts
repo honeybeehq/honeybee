@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RpcError, type AuditTailResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
+import { RpcError, type AuditTailResult, type HealthResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 
@@ -229,6 +229,9 @@ renameSync(payload.output+'.pending',payload.output);
   await t.test("plain operator RPC refuses an external parent", async () => {
     await assert.rejects(client.request("spawn", { name: "operator-external", agent: "inbox", parentId: external, parentExternal: true }), error => error instanceof RpcError && error.code === "caller_not_trusted");
   });
+  await t.test("with local trust enabled, an unregistered direct local peer still cannot claim a local parent", async () => {
+    await assert.rejects(client.request("spawn", { name: "operator-parented", agent: "inbox", parentId: other.beeId }), error => error instanceof RpcError && error.code === "caller_not_trusted");
+  });
   await t.test("unregistered caller cannot assert an Apiary principal", async () => {
     await assert.rejects(client.request("spawn", { name: "forged-principal", agent: "inbox" }, 5000, { sessionPrincipal: { beeId: parent.beeId } }), error => error instanceof RpcError && error.code === "caller_not_trusted");
   });
@@ -269,4 +272,24 @@ renameSync(payload.output+'.pending',payload.output);
       await checkProvenance(child.beeId, "registered_service", null);
     }
   });
+});
+
+test("spawn lineage: with local RPC trust off, an unconfined direct local peer keeps its parent claims as unattributed provenance", { timeout: 60_000 }, async t => {
+  const rig = makeDaemonDir();
+  const daemon = await startDaemon(rig.dir);
+  const client = await daemon.client();
+  t.after(async () => { client.close(); await daemon.stop(); rig.cleanup(); });
+  assert.equal((await client.request<HealthResult>("health", {})).localSecurity?.localTrust, "off");
+  const parent = await client.request<SpawnResult>("spawn", { name: "trust-off-parent", agent: "inbox" });
+  for (const lineage of [{ parentId: parent.beeId }, { parentId: null }, { parentId: external, parentExternal: true }]) {
+    const child = await client.request<SpawnResult>("spawn", { name: `trust-off-${JSON.stringify(lineage).length}`, agent: "inbox", ...lineage });
+    const view = await client.request<ViewResult>("view", { beeId: child.beeId });
+    assert.equal(view.bee?.parentId, lineage.parentId);
+    assert.equal(view.bee?.parentExternal, "parentExternal" in lineage);
+    const { rows } = await client.request<AuditTailResult>("audit.tail", { beeId: child.beeId, limit: 100 });
+    const provenance = rows.find(row => row.kind === "bee.created")?.payload.spawnProvenance as { authority: string; callerBeeId: string | null } | undefined;
+    assert.equal(provenance?.authority, "unattributed");
+    assert.equal(provenance?.callerBeeId, null);
+  }
+  await assert.rejects(client.request("spawn", { name: "trust-off-forged-principal", agent: "inbox" }, 5000, { sessionPrincipal: { beeId: parent.beeId } }), error => error instanceof RpcError && error.code === "caller_not_trusted");
 });

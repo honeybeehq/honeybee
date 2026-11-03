@@ -2947,7 +2947,8 @@ export class HiveDaemon {
       const bee = result.beeId ? store.creationLineage(result.beeId) : null;
       if (prior.verb !== "spawn" || !bee || bee.parentExternal || bee.parentId !== callerBeeId) throw new RpcError("idempotency_conflict", "Spawn key belongs to a different parent");
     }
-    return { ...bindSpawnParent(params, callerBeeId, conn.spawnServiceAuthority === true), spawnProvenance: {
+    const parentClaimsAllowed = conn.spawnServiceAuthority === true || (!this.cfg.rpcLocalTrust.requireObservationCaller && conn.localPeer != null && conn.ingress === "local_unix" && conn.confinement !== "confined");
+    return { ...bindSpawnParent(params, callerBeeId, parentClaimsAllowed), spawnProvenance: {
       callerBeeId,
       authority: callerBeeId ? "bee" : conn.spawnServiceAuthority ? "registered_service" : "unattributed",
       peerPid: conn.localPeer?.pid ?? null,

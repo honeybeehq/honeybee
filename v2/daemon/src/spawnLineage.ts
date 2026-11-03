@@ -37,7 +37,7 @@ function verifiedAncestry(chain: Extract<ProcessInspection, { kind: "present" }>
 
 export function bindSpawnParent(params: Record<string, unknown>, callerBeeId: string | null, serviceAuthority = false): Record<string, unknown> {
   if (callerBeeId === null) {
-    if (!serviceAuthority && (params.parentId !== undefined || params.parentExternal === true)) throw new RpcError("caller_not_trusted", "Explicit, empty, and external parent claims require the registered Apiary service");
+    if (!serviceAuthority && (params.parentId !== undefined || params.parentExternal === true)) throw new RpcError("caller_not_trusted", "Explicit, empty, and external parent claims require the registered Apiary service while local RPC trust is enabled, or an unconfined direct local caller while it is disabled");
     return params;
   }
   if (params.parentExternal === true || params.parentId !== undefined && params.parentId !== callerBeeId) {
