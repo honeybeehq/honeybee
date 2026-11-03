@@ -107,7 +107,7 @@ test("cell-pressure.1: below the floor, clean archived then idle Cells go oldest
       await archive(client, bee.beeId);
       await new Promise((r) => setTimeout(r, 30));
     }
-    const plan = await client.request<CellGcResult>("cell.gc", {}, 120_000);
+    const plan = await client.request<CellGcResult>("cell.gc", { measure: true }, 120_000);
     const bytesOf = (beeId: string) => plan.items.find((i) => i.beeId === beeId)!.bytes!;
     assert.equal(plan.items.find((i) => i.beeId === dirty.beeId)!.reason, "dirty_uncommitted");
     assert.equal(plan.items.find((i) => i.beeId === unlanded.beeId)!.reason, "dirty_unlanded");
@@ -285,7 +285,7 @@ test("cell-pressure.3: with no retention config a workstation runs no pressure p
       const client = await daemon.client();
       const spawned = await client.request<SpawnResult>("spawn", { name: `${nodeKind}-bee`, agent: "cellstub", substrate: "cell", cell: { originRepo: origin.repo } });
       await waitFor(async () => (await client.request<ViewResult>("view", { beeId: spawned.beeId })).cell != null, "cell registered", 60_000);
-      await client.request<CellGcResult>("cell.gc", {}, 120_000);
+      await client.request<CellGcResult>("cell.gc", { measure: true }, 120_000);
       await new Promise((r) => setTimeout(r, 1_500));
       const disk = (await client.request<HealthResult>("health")).cellDisk!;
       const log = readFileSync(join(dir, "hived.log"), "utf8");

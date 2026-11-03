@@ -2189,7 +2189,11 @@ export interface CellRetainedRemoveResult {
  */
 export interface CellGcParams {
   dryRun?: boolean;
-  /** Skip the du walk (faster plan; `bytes` come back null). */
+  /**
+   * `true`: a census — every present Cell inspected and its bytes walked.
+   * `false`: never walk bytes. Absent: inspect only Cells a verdict can act on;
+   * bytes are walked only when the byte budget can bind by `statfs`.
+   */
   measure?: boolean;
 }
 

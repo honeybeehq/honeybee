@@ -158,9 +158,9 @@ test("cell-park.2: purge mode parks every ignored path, copies env files aside, 
     assert.equal(readFileSync(join(space, ".env"), "utf8"), "SECRET=1\n");
     assert.equal(existsSync(join(dirname(rig.cellsRoot), "cell-env", explicit.view.cell!.spaceName, ".env")), false, "a restored copy leaves the stash");
 
-    const plan = await client.request<CellGcResult>("cell.gc", {}, 120_000);
+    const plan = await client.request<CellGcResult>("cell.gc", { measure: true }, 120_000);
     assert.equal(plan.policy.purgeIgnoredOnPark, true);
-    assert.ok(plan.purge, "every gc result carries the purge report");
+    assert.ok(plan.purge, "every census carries the purge report");
     assert.equal(plan.purge!.mode, "purge");
     assert.ok((plan.purge!.installBytes ?? 0) > 0, "installs are measured");
     assert.deepEqual(plan.purge!.otherIgnored.map((g) => g.name).sort(), [".proof", "tmp"], "ignored paths outside the known patterns are named");

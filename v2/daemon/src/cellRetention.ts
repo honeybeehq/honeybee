@@ -9,9 +9,13 @@ import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
  * pass (daily by default, `hive cell gc` on demand) that:
  *
  *  1. gathers registry facts synchronously (cells × bees × runtimes × in-flight
- *     operations) — cheap, on the main thread;
- *  2. inspects every wrapper in a worker thread (git status, HEAD, du walk) —
- *     seconds to minutes on a big root, never on the RPC lane;
+ *     operations) — cheap, on the main thread — and settles from those facts
+ *     alone every Cell no verdict could act on (live, in flight, younger than
+ *     every age floor) or whose last judgment still stands (same registry
+ *     facts since it was found dirty, absent, or without anything to trim);
+ *  2. inspects the rest in a worker thread (git status, HEAD), never on the
+ *     RPC lane; bytes are walked only for a census (`measure: true`, or the
+ *     byte budget possibly binding by statfs);
  *  3. decides per Cell with a closed verdict/reason vocabulary;
  *  4. optionally applies: each eviction re-checks its preconditions at the
  *     moment it happens, parks the wrapper by an atomic rename
@@ -156,6 +160,12 @@ interface Candidate {
   runtime: RuntimeRow | null;
   wrapperDir: string;
   receipts: LandingReceipt[];
+  skip: CellGcReason | null;
+}
+
+interface Judgment {
+  reason: CellGcReason;
+  facts: string;
 }
 
 const DEFAULT_INITIAL_DELAY_MS = 5 * 60_000;
@@ -171,6 +181,8 @@ const GIB = 1024 ** 3;
 export type WipPushTrigger = "turn_ended" | "exited" | "eviction" | "manual";
 
 const AGE_REASONS: ReadonlySet<CellGcReason> = new Set(["archived_age", "stopped_age", "too_young", "policy_disabled"]);
+
+const SETTLED_REASONS: ReadonlySet<CellGcReason> = new Set(["too_young", "policy_disabled", "dirty_uncommitted", "dirty_stash", "absent", "not_provisioned"]);
 
 function defaultStatfs(path: string): { totalBytes: number; freeBytes: number } {
   const st = statfsSync(path);
@@ -285,6 +297,7 @@ export class CellRetentionService {
   private announcedAdmission: { blocked: boolean; newCells: NodeCapacity["admission"]["newCells"] } | null = null;
   private warnedBelowFloorAt: number | null = null;
   private lastPresentBytes: number | null = null;
+  private readonly judged = new Map<string, Judgment>();
   private cellCounts: { cellCount: number; liveCells: number; at: number } | null = null;
   private readonly wipInFlight = new Map<string, Promise<WipPushWorkerResult>>();
   private readonly wipBlocked = new Map<string, number>();
@@ -346,7 +359,7 @@ export class CellRetentionService {
       : now - this.lastPassAt >= policy.intervalMs;
     if (!due) return;
     this.lastPassAt = now;
-    void withoutRpcCaller(() => this.run({ dryRun: false, measure: true, kind: "scheduled" })).catch((err) => {
+    void withoutRpcCaller(() => this.run({ dryRun: false, kind: "scheduled" })).catch((err) => {
       if (!this.stopping) this.deps.log(`cell.retention.error ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
     });
   }
@@ -581,7 +594,7 @@ export class CellRetentionService {
   }
 
   /** Plan (and with `dryRun: false` apply) one pass. Concurrent callers share the in-flight pass. */
-  run(opts: { dryRun: boolean; measure: boolean; kind?: CellGcPassKind }): Promise<CellGcResult> {
+  run(opts: { dryRun: boolean; measure?: boolean; kind?: CellGcPassKind }): Promise<CellGcResult> {
     if (this.stopping) return Promise.reject(new Error("Cell retention stopped"));
     if (this.passInFlight) return this.passInFlight;
     this.passInFlight = this.pass({ ...opts, kind: opts.kind ?? "manual" }).finally(() => {
@@ -646,7 +659,7 @@ export class CellRetentionService {
     }
   }
 
-  private async pass(opts: { dryRun: boolean; measure: boolean; kind: CellGcPassKind }): Promise<CellGcResult> {
+  private async pass(opts: { dryRun: boolean; measure?: boolean; kind: CellGcPassKind }): Promise<CellGcResult> {
     const startedAt = this.deps.now();
     const before = this.readDisk();
     try {
@@ -684,13 +697,24 @@ export class CellRetentionService {
     }
   }
 
-  private async planAndApply(opts: { dryRun: boolean; measure: boolean; kind: CellGcPassKind }, startedAt: number, disk: DiskReading | null): Promise<CellGcResult> {
+  private async planAndApply(opts: { dryRun: boolean; measure?: boolean; kind: CellGcPassKind }, startedAt: number, disk: DiskReading | null): Promise<CellGcResult> {
     const candidates = this.gather();
+    const census = opts.measure ?? this.budgetMayBind(disk);
     const progress = this.startProgress(opts.kind, opts.dryRun, candidates.length);
     const byKey = new Map(candidates.map((c) => [c.key, c] as const));
-    for (const c of candidates) if (c.cell?.state === "evicted") this.countProgress(progress, "already_evicted", null);
+    for (const c of candidates) {
+      if (c.cell?.state === "evicted") {
+        c.skip = "already_evicted";
+        this.countProgress(progress, "already_evicted", null);
+        continue;
+      }
+      if (census) continue;
+      c.skip = this.skipReason(c, startedAt);
+      if (c.skip != null) this.countProgress(progress, c.skip, null);
+    }
+    const inspected = candidates.filter((c) => c.skip == null);
     const inspectStarted = Date.now();
-    const inspections = await this.inspect(candidates, opts.measure, opts.kind, (entry) => {
+    const inspections = await this.inspect(inspected, census, opts.kind, (entry) => {
       const c = byKey.get(entry.key);
       if (!c) return;
       const base = this.baseOf(c, entry.inspection);
@@ -701,6 +725,7 @@ export class CellRetentionService {
     const plannedAt = this.deps.now();
     this.cappedInPlan = false;
     const items = this.decide(candidates, inspections, plannedAt, this.effectiveMaxBytes(disk));
+    this.judge(candidates, items);
     if (this.cappedInPlan && !opts.dryRun) this.auditDailyCap(plannedAt);
     const result: CellGcResult = {
       dryRun: opts.dryRun,
@@ -711,11 +736,11 @@ export class CellRetentionService {
       outcomes: null,
       trimOutcomes: null,
       inspectMs,
-      purge: purgeReportOf(items, this.parkMode()),
+      ...(census ? { purge: purgeReportOf(items, this.parkMode()) } : {}),
     };
-    this.lastPresentBytes = result.totals.presentBytes;
+    if (result.totals.presentBytes != null) this.lastPresentBytes = result.totals.presentBytes;
     this.deps.log(
-      `cell.retention.plan dry_run=${opts.dryRun} kind=${opts.kind} cells=${result.totals.cells} planned=${result.totals.plannedCells}` +
+      `cell.retention.plan dry_run=${opts.dryRun} kind=${opts.kind} census=${census} cells=${result.totals.cells} inspected=${inspected.length} planned=${result.totals.plannedCells}` +
         ` planned_bytes=${result.totals.plannedBytes ?? "?"} held=${result.totals.heldCells} dirty=${result.totals.dirtyCells}` +
         ` present_bytes=${result.totals.presentBytes ?? "?"} trim_cells=${result.totals.trimCells} trim_bytes=${result.totals.trimBytes ?? "?"}` +
         ` inspect_ms=${inspectMs} gather_ms=${plannedAt - startedAt - inspectMs}`,
@@ -747,9 +772,10 @@ export class CellRetentionService {
   /**
    * Disk pressure: free space is under the floor. Clean Cells of archived
    * bees, then of active bees stopped at least `pressureIdleAfterMs`, oldest
-   * idle first, inspected and evicted in small batches until the measured
-   * free space reaches the target. Live, held and dirty Cells (including
-   * unlanded work) are never evicted and never forced.
+   * idle first, inspected in small batches and evicted one at a time, each
+   * eviction swept and `statfs` read again, until the measured free space
+   * reaches the target. Live, held and dirty Cells (including unlanded work)
+   * are never evicted and never forced.
    */
   private async pressurePass(disk: DiskReading): Promise<CellGcResult> {
     const startedAt = this.deps.now();
@@ -783,15 +809,18 @@ export class CellRetentionService {
     let capped = false;
     while (!capped && cursor < eligible.length && reading.freeBytes < target && evicted < policy.maxPerPass) {
       const batch = eligible.slice(cursor, cursor + PRESSURE_BATCH);
+      for (const c of batch) {
+        const settled = this.settledReason(c);
+        c.skip = settled != null && settled.startsWith("dirty_") ? settled : null;
+      }
       const inspectStarted = Date.now();
-      const inspections = await this.inspect(batch, true, "pressure");
+      const inspections = await this.inspect(batch.filter((c) => c.skip == null), false, "pressure");
       inspectionErrors += [...inspections.values()].filter(i => i.error != null || i.inspection == null).length;
       inspectMs += Date.now() - inspectStarted;
       this.assertRunning();
       const now = this.deps.now();
-      let projectedFree = reading.freeBytes;
       for (const c of batch) {
-        if (projectedFree >= target || evicted >= policy.maxPerPass) break;
+        if (reading.freeBytes >= target || evicted >= policy.maxPerPass) break;
         cursor += 1;
         const found = inspections.get(c.key);
         const inspection = found?.inspection ?? null;
@@ -811,13 +840,12 @@ export class CellRetentionService {
         outcomes.push(outcome);
         if (outcome.status === "evicted") {
           evicted += 1;
-          projectedFree += item.bytes ?? 0;
+          await this.sweepAfterParks();
+          reading = this.readDisk() ?? reading;
         }
         await new Promise<void>((r) => setImmediate(r));
         this.assertRunning();
       }
-      await this.sweepAfterParks();
-      reading = this.readDisk() ?? reading;
     }
     const met = reading.freeBytes >= floor;
     const summary: CellGcPassSummary = {
@@ -901,13 +929,14 @@ export class CellRetentionService {
         runtime: bee ? store.currentRuntime(bee.id) : null,
         wrapperDir: dirname(resolve(cell.spaceDir)),
         receipts: store.listLandingReceipts(cell.sourceBeeId),
+        skip: null,
       });
     }
     for (const bee of store.listBees()) {
       if (bee.substrate !== "cell" || bee.lifecycle === "deleted" || bee.cellId || registeredBees.has(bee.id)) continue;
       const wrapperDir = dirname(resolve(bee.cwd));
       if (dirname(wrapperDir) !== root) continue;
-      out.push({ key: `bee:${bee.id}`, cell: null, bee, beeId: bee.id, runtime: store.currentRuntime(bee.id), wrapperDir, receipts: store.listLandingReceipts(bee.id) });
+      out.push({ key: `bee:${bee.id}`, cell: null, bee, beeId: bee.id, runtime: store.currentRuntime(bee.id), wrapperDir, receipts: store.listLandingReceipts(bee.id), skip: null });
     }
     return out;
   }
@@ -1083,6 +1112,7 @@ export class CellRetentionService {
     const policy = this.deps.policy;
     if (c.cell?.state === "evicted") return "already_evicted";
     if (c.cell == null) return "unregistered";
+    if (c.skip != null) return c.skip;
     if (inspectError != null || inspection == null) return "inspect_failed";
     if (!inspection.present) return "absent";
     if (!inspection.provisioned) return "not_provisioned";
@@ -1107,6 +1137,60 @@ export class CellRetentionService {
     }
     if (policy.stoppedAfterMs == null) return "policy_disabled";
     return idleFor >= policy.stoppedAfterMs ? "stopped_age" : "too_young";
+  }
+
+  private budgetMayBind(disk: DiskReading | null): boolean {
+    const maxBytes = this.effectiveMaxBytes(disk);
+    if (maxBytes == null) return false;
+    if (disk == null) return true;
+    return disk.totalBytes - disk.freeBytes > maxBytes;
+  }
+
+  private factsOf(c: Candidate): string {
+    const last = c.receipts[c.receipts.length - 1] ?? null;
+    const upstream = c.cell?.originRepo ? this.upstreamRefs.get(c.cell.originRepo)?.sha ?? null : null;
+    return JSON.stringify([c.cell?.state ?? null, c.cell?.parkedAt ?? null, c.cell?.wipConfirmedAt ?? null, c.bee?.lifecycle ?? null, this.idleSinceOf(c), c.receipts.length, last?.cellHead ?? null, last?.resultSha ?? null, upstream]);
+  }
+
+  private settledReason(c: Candidate): CellGcReason | null {
+    const judgment = this.judged.get(c.key);
+    return judgment != null && judgment.facts === this.factsOf(c) ? judgment.reason : null;
+  }
+
+  private skipReason(c: Candidate, now: number): CellGcReason | null {
+    if (c.cell == null) return "unregistered";
+    if (this.deps.cellInUse(c.beeId, c.runtime, c.cell.state)) return "runtime_live";
+    if (this.deps.opInFlight(c.cell.id)) return "op_in_flight";
+    if (c.bee?.activeMoveId) return "move_in_flight";
+    if (c.bee?.activeHandoffId) return "handoff_in_flight";
+    if (c.bee == null || c.bee.lifecycle === "deleted") return null;
+    const settled = this.settledReason(c);
+    if (settled != null) return settled;
+    const policy = this.deps.policy;
+    const idleFor = now - (this.idleSinceOf(c) ?? now);
+    if (policy.trimAfterMs != null && idleFor >= policy.trimAfterMs) return null;
+    if (c.cell.state === "retained") {
+      if (policy.retainedAfterMs == null) return "policy_disabled";
+      return idleFor >= policy.retainedAfterMs ? null : "too_young";
+    }
+    if (c.bee.lifecycle === "archived") return idleFor >= policy.archivedAfterMs ? null : "too_young";
+    if (policy.stoppedAfterMs == null) return "policy_disabled";
+    return idleFor >= policy.stoppedAfterMs ? null : "too_young";
+  }
+
+  private judge(candidates: Candidate[], items: CellGcItem[]): void {
+    const keys = new Set(candidates.map((c) => c.key));
+    for (const key of [...this.judged.keys()]) if (!keys.has(key)) this.judged.delete(key);
+    for (const [index, item] of items.entries()) {
+      const c = candidates[index]!;
+      if (c.skip != null || c.cell == null) continue;
+      if (SETTLED_REASONS.has(item.reason) && item.verdict !== "evict" && !item.trim.planned) this.judged.set(c.key, { reason: item.reason, facts: this.factsOf(c) });
+      else this.judged.delete(c.key);
+    }
+  }
+
+  noteCellTouched(cellId: string): void {
+    this.judged.delete(cellId);
   }
 
   /** Over budget: promote clean-but-young Cells, archived before stopped, oldest idle first. */

@@ -4062,7 +4062,7 @@ export class HiveDaemon {
     }
     const retention = this.retention;
     if (!retention) throw new RpcError("node_stopped", "daemon is shutting down");
-    return retention.run({ dryRun: params.dryRun !== false, measure: params.measure !== false });
+    return retention.run({ dryRun: params.dryRun !== false, ...(params.measure === undefined ? {} : { measure: params.measure }) });
   }
 
   private assertCellAdmission(verb: string): void {
@@ -5143,6 +5143,7 @@ export class HiveDaemon {
           store.updateCellOp(op.id, { pid: spawned.pid, pidStartedAt: spawned.pidStartedAt });
         },
       );
+      this.retention?.noteCellTouched(cellId);
       const saved = store.updateCellOp(op.id, {
         status: outcome.status === "timeout" || outcome.status === "interrupted" ? "failed" : "done",
         pid: outcome.pid,

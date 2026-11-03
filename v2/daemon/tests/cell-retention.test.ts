@@ -112,7 +112,14 @@ test("cell-retention.1: plan holds young and dirty Cells, keeps live ones; apply
     assert.equal(itemFor(plan, clean.beeId).verdict, "evict");
     assert.equal(itemFor(plan, clean.beeId).reason, "archived_age");
     assert.equal(itemFor(plan, clean.beeId).head, rig.origin.sha);
-    assert.ok((itemFor(plan, clean.beeId).bytes ?? 0) > 0);
+    assert.equal(itemFor(plan, clean.beeId).bytes, null, "a default pass walks no bytes");
+    assert.equal(itemFor(plan, live.beeId).head, null, "a live Cell is settled from registry facts, never inspected");
+    assert.equal(plan.purge, undefined, "the purge report belongs to a census");
+    const census = await gc(client, { measure: true });
+    assert.equal(itemFor(census, clean.beeId).verdict, "evict");
+    assert.ok((itemFor(census, clean.beeId).bytes ?? 0) > 0, "a census walks bytes");
+    assert.equal(itemFor(census, live.beeId).head, rig.origin.sha, "a census inspects live Cells too");
+    assert.ok(census.purge, "a census carries the purge report");
     assert.equal(plan.totals.plannedCells, 1);
     assert.equal(plan.totals.dirtyCells, 1);
     assert.equal(existsSync(cleanSpace), true, "dry run changed nothing");
@@ -350,7 +357,7 @@ test("cell-retention.6: idle Cells lose build output and keep everything else; e
     await stopped(client, archivedBee.beeId);
     await archived(client, archivedBee.beeId);
 
-    const plan = await gc(client);
+    const plan = await gc(client, { measure: true });
     const stoppedItem = itemFor(plan, stoppedBee.beeId);
     assert.equal(stoppedItem.reason, "dirty_uncommitted");
     assert.equal(stoppedItem.trim.planned, true, "dirty Cells still lose build output");

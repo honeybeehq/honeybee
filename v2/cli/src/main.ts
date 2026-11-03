@@ -359,7 +359,8 @@ const BOOL_FLAGS = new Set([
   "--replace",
   "--enrol",
   "--force",
-  // v31 (cell gc): skip the per-Cell du walk.
+  // v31 (cell gc): a full census with the per-Cell du walk, or never walk.
+  "--measure",
   "--no-measure",
   "--tree",
   "--wait",
@@ -2646,12 +2647,12 @@ async function cmdArchive(ctx: CliContext, parsed: Parsed): Promise<number> {
 async function cmdCell(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   const needle = parsed.positional[2];
-  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--no-measure] | cell evict <bee> [--force] | cell park <bee>";
+  const usage = "usage: hive cell move <bee> --cwd <dir> | cell move-get <moveId> | cell capture <bee> --onto <branch> [--rebase] [--idempotency-key k] | cell remove <bee> [--force] [--idempotency-key k] | cell exec <cellId> -- <argv…> | cell retained-remove <cellId> [--force] | cell gc [--apply] [--measure|--no-measure] | cell evict <bee> [--force] | cell park <bee>";
   switch (sub) {
     case "gc": {
       const apply = parsed.flags.get("--apply") === true;
-      const measure = parsed.flags.get("--no-measure") !== true;
-      return withClient(ctx, (c) => runCellGc(ctx, c, { dryRun: !apply, measure }));
+      const measure = parsed.flags.get("--measure") === true ? true : parsed.flags.get("--no-measure") === true ? false : undefined;
+      return withClient(ctx, (c) => runCellGc(ctx, c, { dryRun: !apply, ...(measure === undefined ? {} : { measure }) }));
     }
     case "evict": {
       if (!needle) throw new Error(usage);
@@ -2861,8 +2862,8 @@ const CELL_GC_PROGRESS_MS = 2_000;
  * SIGINT, SIGTERM or the client timeout still prints the partial plan. The
  * daemon's pass carries on either way.
  */
-async function runCellGc(ctx: CliContext, client: RpcClient, params: { dryRun: boolean; measure: boolean }): Promise<number> {
-  ctx.io.err(`cell gc: ${params.dryRun ? "planning (dry run)" : "planning and applying"} — inspecting every Cell; progress follows`);
+async function runCellGc(ctx: CliContext, client: RpcClient, params: { dryRun: boolean; measure?: boolean }): Promise<number> {
+  ctx.io.err(`cell gc: ${params.dryRun ? "planning (dry run)" : "planning and applying"} — ${params.measure === true ? "inspecting and measuring every Cell" : "inspecting the Cells a verdict can act on"}; progress follows`);
   let latest: CellGcProgress | null = null;
   let lastLine = "";
   let poller: RpcClient | null = null;
