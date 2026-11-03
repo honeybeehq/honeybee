@@ -629,9 +629,9 @@ export class RpcServer {
             if (typeof beeId !== "string" || !beeId.trim() || beeId.length > 256 || beeId.includes("\0")) throw new RpcError("caller_not_trusted", "Invalid spawn principal");
             return this.opts.dispatch(verb, params, { ...conn, authenticatedBeeId: beeId });
           }
-          if (rawContext === undefined && peer && this.trust.enabled && conn.ingress === "local_unix" && conn.relayLane === null) {
+          if (rawContext === undefined && peer && this.trust.enabled && (conn.ingress === "local_unix" || conn.ingress === "node_relay")) {
             let trusted = false;
-            try { this.trust.require(peer, conn.ingress); trusted = true; }
+            try { this.trust.require(peer, "local_unix"); trusted = true; }
             catch (error) { if (!(error instanceof RpcError) || error.code !== "caller_not_trusted") throw error; }
             if (trusted && conn.confinement !== "confined") return this.opts.dispatch(verb, params, { ...conn, spawnServiceAuthority: true });
           }

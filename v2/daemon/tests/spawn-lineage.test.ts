@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { RpcError, type AuditTailResult, type HealthResult, type SpawnResult, type ViewResult } from "../src/protocol.ts";
 import { localTrustMessage, type LocalTrustChallenge } from "../src/localRpcTrust.ts";
 import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
+import { RpcClient } from "../../cli/src/client.ts";
 
 const cli = fileURLToPath(new URL("../../cli/src/bin.ts", import.meta.url));
 const rpcClientModule = fileURLToPath(new URL("../../cli/src/client.ts", import.meta.url));
@@ -212,14 +213,25 @@ renameSync(payload.output+'.pending',payload.output);
     await waitFor(() => existsSync(output), "runtime external RPC receipt");
     assert.equal(JSON.parse(readFileSync(output, "utf8")).code, "caller_not_trusted");
   });
-  for (const lane of ["node_relay", "remote"] as const) {
-    await t.test(`runtime cannot escape lineage by declaring ${lane}`, async () => {
-      const output = join(rig.dir, `${lane}.json`);
-      await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output, rpc: { socket: daemon.socketPath, lane, params: { name: `forged-${lane}`, agent: "inbox" } } }) });
-      await waitFor(() => existsSync(output), "claimed relay lane receipt");
-      assert.equal(JSON.parse(readFileSync(output, "utf8")).code, "caller_not_trusted");
-    });
-  }
+  await t.test("a runtime declaring node_relay is still attributed by ancestry: parented to itself, never to another bee", async () => {
+    const own = join(rig.dir, "node_relay-own.json");
+    await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output: own, rpc: { socket: daemon.socketPath, lane: "node_relay", params: { name: "relayed-own", agent: "inbox" } } }) });
+    await waitFor(() => existsSync(own), "relayed own-lineage receipt");
+    const receipt = JSON.parse(readFileSync(own, "utf8")) as { result?: SpawnResult; code?: string };
+    assert.equal(receipt.code, undefined, "spawn accepted");
+    assert.equal((await client.request<ViewResult>("view", { beeId: receipt.result!.beeId })).bee?.parentId, parent.beeId);
+    await checkProvenance(receipt.result!.beeId, "bee", parent.beeId);
+    const foreign = join(rig.dir, "node_relay-foreign.json");
+    await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output: foreign, rpc: { socket: daemon.socketPath, lane: "node_relay", params: { name: "relayed-foreign", agent: "inbox", parentId: other.beeId } } }) });
+    await waitFor(() => existsSync(foreign), "relayed foreign-parent receipt");
+    assert.equal(JSON.parse(readFileSync(foreign, "utf8")).code, "caller_not_trusted");
+  });
+  await t.test("runtime cannot escape lineage by declaring remote", async () => {
+    const output = join(rig.dir, "remote.json");
+    await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output, rpc: { socket: daemon.socketPath, lane: "remote", params: { name: "forged-remote", agent: "inbox" } } }) });
+    await waitFor(() => existsSync(output), "claimed remote lane receipt");
+    assert.equal(JSON.parse(readFileSync(output, "utf8")).code, "caller_not_trusted");
+  });
   await t.test("runtime cannot register as a service even with the disposable fixture key", async () => {
     const output = join(rig.dir, "runtime-register.json");
     await client.request("send", { beeId: parent.beeId, body: JSON.stringify({ output, rpc: { socket: daemon.socketPath, register: true, keyFile } }) });
@@ -231,6 +243,13 @@ renameSync(payload.output+'.pending',payload.output);
   });
   await t.test("with local trust enabled, an unregistered direct local peer still cannot claim a local parent", async () => {
     await assert.rejects(client.request("spawn", { name: "operator-parented", agent: "inbox", parentId: other.beeId }), error => error instanceof RpcError && error.code === "caller_not_trusted");
+  });
+  await t.test("with local trust enabled, an unregistered peer relaying over node_relay cannot spawn at all", async () => {
+    for (const lane of ["node_relay", "remote"] as const) {
+      const relay = await RpcClient.connect(daemon.socketPath, 3000, lane);
+      try { await assert.rejects(relay.request("spawn", { name: `unregistered-${lane}`, agent: "inbox" }), error => error instanceof RpcError && error.code === "caller_not_trusted"); }
+      finally { relay.close(); }
+    }
   });
   await t.test("unregistered caller cannot assert an Apiary principal", async () => {
     await assert.rejects(client.request("spawn", { name: "forged-principal", agent: "inbox" }, 5000, { sessionPrincipal: { beeId: parent.beeId } }), error => error instanceof RpcError && error.code === "caller_not_trusted");
@@ -263,6 +282,18 @@ renameSync(payload.output+'.pending',payload.output);
       await assert.rejects(client.request("spawn", { name: `denied-service-${++sequence}`, agent: "inbox", ...lineage }, 5000, context), error => error instanceof RpcError && error.code === "caller_not_trusted");
     });
   }
+  await t.test("the registered service relaying a Studio spawn over node_relay keeps its authority; the remote lane does not", async () => {
+    const relay = await RpcClient.connect(daemon.socketPath, 3000, "node_relay");
+    try {
+      const child = await relay.request<SpawnResult>("spawn", { name: `relayed-${++sequence}`, agent: "inbox", parentId: other.beeId });
+      assert.equal((await client.request<ViewResult>("view", { beeId: child.beeId })).bee?.parentId, other.beeId);
+      await checkProvenance(child.beeId, "registered_service", null);
+      await assert.rejects(relay.request("spawn", { name: `relayed-principal-${++sequence}`, agent: "inbox" }, 5000, { sessionPrincipal: { beeId: parent.beeId } }), error => error instanceof RpcError && error.code === "caller_not_trusted");
+    } finally { relay.close(); }
+    const remote = await RpcClient.connect(daemon.socketPath, 3000, "remote");
+    try { await assert.rejects(remote.request("spawn", { name: `remote-${++sequence}`, agent: "inbox" }), error => error instanceof RpcError && error.code === "caller_not_trusted"); }
+    finally { remote.close(); }
+  });
   await t.test("registered service without principal can delegate any lineage", async () => {
     for (const lineage of [{ parentId: other.beeId }, { parentId: null }, { parentId: external, parentExternal: true }]) {
       const child = await client.request<SpawnResult>("spawn", { name: `delegated-${++sequence}`, agent: "inbox", ...lineage });
@@ -276,13 +307,35 @@ renameSync(payload.output+'.pending',payload.output);
 
 test("spawn lineage: with local RPC trust off, an unconfined direct local peer keeps its parent claims as unattributed provenance", { timeout: 60_000 }, async t => {
   const rig = makeDaemonDir();
+  const harness = join(rig.dir, "relay-bee.mjs");
+  writeFileSync(harness, `
+import {createInterface} from 'node:readline';
+import {writeFileSync} from 'node:fs';
+import {RpcClient} from ${JSON.stringify(rpcClientModule)};
+const emit = value => console.log(JSON.stringify(value));
+emit({event:'ready',sessionId:'relay-bee-'+process.pid});
+createInterface({input:process.stdin}).on('line', async line => {
+  const message = JSON.parse(line);
+  if (message.type !== 'message') return;
+  emit({event:'turn_started',messageId:message.id});
+  const {output, socket, lane, params} = JSON.parse(message.body);
+  const client = await RpcClient.connect(socket, 3000, lane);
+  try { writeFileSync(output, JSON.stringify({result: await client.request('spawn', params)})); }
+  catch (error) { writeFileSync(output, JSON.stringify({code: error.code})); }
+  finally { client.close(); }
+  emit({event:'turn_ended',messageId:message.id,ok:true});
+});
+`);
+  const configPath = join(rig.dir, "config.json");
+  const config = JSON.parse(readFileSync(configPath, "utf8"));
+  config.agents.relaybee = { command: process.execPath, args: [harness], adapter: "stub" };
+  writeFileSync(configPath, JSON.stringify(config));
   const daemon = await startDaemon(rig.dir);
   const client = await daemon.client();
   t.after(async () => { client.close(); await daemon.stop(); rig.cleanup(); });
   assert.equal((await client.request<HealthResult>("health", {})).localSecurity?.localTrust, "off");
   const parent = await client.request<SpawnResult>("spawn", { name: "trust-off-parent", agent: "inbox" });
-  for (const lineage of [{ parentId: parent.beeId }, { parentId: null }, { parentId: external, parentExternal: true }]) {
-    const child = await client.request<SpawnResult>("spawn", { name: `trust-off-${JSON.stringify(lineage).length}`, agent: "inbox", ...lineage });
+  const unattributed = async (child: SpawnResult, lineage: { parentId: string | null; parentExternal?: boolean }) => {
     const view = await client.request<ViewResult>("view", { beeId: child.beeId });
     assert.equal(view.bee?.parentId, lineage.parentId);
     assert.equal(view.bee?.parentExternal, "parentExternal" in lineage);
@@ -290,6 +343,40 @@ test("spawn lineage: with local RPC trust off, an unconfined direct local peer k
     const provenance = rows.find(row => row.kind === "bee.created")?.payload.spawnProvenance as { authority: string; callerBeeId: string | null } | undefined;
     assert.equal(provenance?.authority, "unattributed");
     assert.equal(provenance?.callerBeeId, null);
+  };
+  for (const lineage of [{ parentId: parent.beeId }, { parentId: null }, { parentId: external, parentExternal: true }]) {
+    await unattributed(await client.request<SpawnResult>("spawn", { name: `trust-off-${JSON.stringify(lineage).length}`, agent: "inbox", ...lineage }), lineage);
   }
+  // The Studio's top-level spawn and a local bee's child spawn both reach a satellite through that node's own
+  // apiaryd, which connects over the local socket but declares node_relay and attaches no spawn context.
+  const relay = await RpcClient.connect(daemon.socketPath, 3000, "node_relay");
+  try {
+    const relayed = await Promise.allSettled([
+      relay.request<SpawnResult>("spawn", { name: "trust-off-relayed-top-level", agent: "inbox" }),
+      relay.request<SpawnResult>("spawn", { name: "trust-off-relayed-child", agent: "inbox", parentId: parent.beeId }),
+    ]);
+    assert.deepEqual(relayed.map(outcome => outcome.status === "rejected" ? `${(outcome.reason as RpcError).code}: ${(outcome.reason as Error).message}` : "accepted"), ["accepted", "accepted"]);
+    const [topLevel, child] = relayed.map(outcome => (outcome as PromiseFulfilledResult<SpawnResult>).value);
+    await unattributed(topLevel!, { parentId: null });
+    await unattributed(child!, { parentId: parent.beeId });
+  } finally { relay.close(); }
+  // A bee process cannot dodge ancestry attribution by declaring node_relay: it is parented to itself, never to another bee.
+  const bee = await client.request<SpawnResult>("spawn", { name: "relay-bee", agent: "relaybee", cwd: rig.dir });
+  await waitFor(async () => {
+    const view = await client.request<ViewResult>("view", { beeId: bee.beeId });
+    return view.runtime?.state === "idle" || view.runtime?.state === "running";
+  }, "relay bee ready");
+  const own = join(rig.dir, "relay-own.json"), foreign = join(rig.dir, "relay-foreign.json");
+  await client.request("send", { beeId: bee.beeId, body: JSON.stringify({ output: own, socket: daemon.socketPath, lane: "node_relay", params: { name: "relay-bee-own", agent: "inbox" } }) });
+  await waitFor(() => existsSync(own), "relay bee own receipt", 25_000);
+  const ownReceipt = JSON.parse(readFileSync(own, "utf8")) as { result?: SpawnResult; code?: string };
+  assert.equal(ownReceipt.code, undefined);
+  assert.equal((await client.request<ViewResult>("view", { beeId: ownReceipt.result!.beeId })).bee?.parentId, bee.beeId);
+  await client.request("send", { beeId: bee.beeId, body: JSON.stringify({ output: foreign, socket: daemon.socketPath, lane: "node_relay", params: { name: "relay-bee-foreign", agent: "inbox", parentId: parent.beeId } }) });
+  await waitFor(() => existsSync(foreign), "relay bee foreign receipt", 25_000);
+  assert.equal(JSON.parse(readFileSync(foreign, "utf8")).code, "caller_not_trusted");
+  const remote = await RpcClient.connect(daemon.socketPath, 3000, "remote");
+  try { await assert.rejects(remote.request("spawn", { name: "trust-off-remote", agent: "inbox" }), error => error instanceof RpcError && error.code === "caller_not_trusted"); }
+  finally { remote.close(); }
   await assert.rejects(client.request("spawn", { name: "trust-off-forged-principal", agent: "inbox" }, 5000, { sessionPrincipal: { beeId: parent.beeId } }), error => error instanceof RpcError && error.code === "caller_not_trusted");
 });

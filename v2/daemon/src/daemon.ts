@@ -2936,10 +2936,13 @@ export class HiveDaemon {
     assertConfinedSpawn(params, conn);
     const store = this.mustStore();
     let callerBeeId = conn.authenticatedBeeId ?? null;
-    if (!callerBeeId && !conn.spawnServiceAuthority && (!conn.localPeer || conn.ingress !== "local_unix")) throw new RpcError("caller_not_trusted", "Spawn requires a verified direct local caller or registered service authority");
-    if (!callerBeeId && !conn.spawnServiceAuthority && conn.localPeer && conn.ingress === "local_unix") {
+    const trustOff = !this.cfg.rpcLocalTrust.requireObservationCaller;
+    const localLane = conn.localPeer != null && (conn.ingress === "local_unix" || conn.ingress === "node_relay");
+    if (!callerBeeId && !conn.spawnServiceAuthority && conn.localPeer && localLane) {
       callerBeeId = this.spawnPeerBee(conn.localPeer);
     }
+    const localService = localLane && (conn.ingress === "local_unix" || trustOff);
+    if (!callerBeeId && !conn.spawnServiceAuthority && !localService) throw new RpcError("caller_not_trusted", "Spawn requires a verified direct local caller or registered service authority");
     if (callerBeeId && !store.getBee(callerBeeId)) throw new RpcError("bee_not_found", "Authenticated spawning bee does not exist");
     const key = this.idempotencyKeyOf(params);
     const prior = key === null ? null : store.lookupRpcResult(key);
@@ -2948,7 +2951,7 @@ export class HiveDaemon {
       const bee = result.beeId ? store.creationLineage(result.beeId) : null;
       if (prior.verb !== "spawn" || !bee || bee.parentExternal || bee.parentId !== callerBeeId) throw new RpcError("idempotency_conflict", "Spawn key belongs to a different parent");
     }
-    const parentClaimsAllowed = conn.spawnServiceAuthority === true || (!this.cfg.rpcLocalTrust.requireObservationCaller && conn.localPeer != null && conn.ingress === "local_unix" && conn.confinement !== "confined");
+    const parentClaimsAllowed = conn.spawnServiceAuthority === true || (trustOff && localService && conn.confinement !== "confined");
     return { ...bindSpawnParent(params, callerBeeId, parentClaimsAllowed), spawnProvenance: {
       callerBeeId,
       authority: callerBeeId ? "bee" : conn.spawnServiceAuthority ? "registered_service" : "unattributed",

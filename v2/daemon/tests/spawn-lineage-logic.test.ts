@@ -15,6 +15,7 @@ test("spawn lineage binds authenticated bee and preserves operator delegation", 
   assert.deepEqual(bindSpawnParent({ parentId: "caller" }, "caller"), { parentId: "caller", parentExternal: false });
   for (const params of [{ parentId: "other" }, { parentId: null }, { parentId: "caller", parentExternal: true }]) {
     assert.throws(() => bindSpawnParent(params, "caller"), refused);
+    assert.throws(() => bindSpawnParent(params, "caller", true), refused);
   }
   for (const params of [{ parentId: "other" }, { parentId: null }, { parentId: "external", parentExternal: true }]) {
     assert.throws(() => bindSpawnParent(params, null), error => refused(error) && /local RPC trust/.test((error as RpcError).message));

@@ -79,6 +79,8 @@ try {
   ['transcript','bee.transcript',{}], ['fork','bee.fork',{}],
   ['context','view',{}, {sessionPrincipal:{beeId:${JSON.stringify(parent.beeId)}}}]
  ]) {try {results[name] = await c.request(verb,params,5000,context);} catch(e) {results[name] = e.code;}}
+ const relay = await RpcClient.connect(${JSON.stringify(daemon.socketPath)}, 3000, 'node_relay');
+ try { results.relaySpawn = await relay.request('spawn', {name:'relayed', agent:'inbox', parentId:${JSON.stringify(parent.beeId)}}); } catch(e) { results.relaySpawn = e.code; } finally { relay.close(); }
  console.log(JSON.stringify(results));
 } finally {c.close();}`;
   writeFileSync(harness, `import {createInterface} from 'node:readline';
@@ -107,7 +109,7 @@ createInterface({input:process.stdin}).on('line', line => {
   assert.equal(own.question.question.beeId, child.beeId);
   assert.equal(own.seal.seal.beeId, child.beeId);
   assert.equal(typeof own.send.messageId, "number");
-  for (const key of ["foreign", "thread", "fork", "context"]) assert.equal(own[key], "confined_peer_refused");
+  for (const key of ["foreign", "thread", "fork", "context", "relaySpawn"]) assert.equal(own[key], "confined_peer_refused");
   assert.equal(own.transcript, "invalid_request");
 
 });
