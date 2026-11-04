@@ -67,6 +67,7 @@ export type HsrRunPayload = {
  */
 export const EXECUTION_CELL_AMBIENT_ENV_KEYS = [
   "PATH",
+  "npm_config_yes",
   // Runner-host only credential discovery. hsrHarnessEnvironment removes all
   // three before the provider child and the Cell sandbox installs scratch HOME.
   "HOME",
@@ -230,6 +231,7 @@ export function hsrHarnessEnvironment(
   // sandbox into a discoverable control-plane database. Cells reach exactly
   // the authenticated broker socket instead; non-brokered hive reads resolve
   // against the isolated HOME created by the sandbox.
+  env.npm_config_yes = "false";
   const storeRoot = env.HIVE_STORE_ROOT;
   delete env.HIVE_STORE_ROOT;
   delete env.HOME;
