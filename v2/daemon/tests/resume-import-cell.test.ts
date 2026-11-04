@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,19 +22,23 @@ const CELL_AGENT_PATH = join(here, "..", "..", "driver-cell", "test-agent", "age
 function makeRig(root: string, name: string, durability: Record<string, unknown>) {
   const cellsRoot = join(root, `cells-${name}`);
   mkdirSync(cellsRoot, { recursive: true });
+  const codeRoot = mkdtempSync(join(tmpdir(), "hb-import-code-"));
+  const agent = join(codeRoot, "agent.mjs");
+  copyFileSync(CELL_AGENT_PATH, agent);
   const { dir, cleanup } = makeDaemonDir({
+    nodeKind: "satellite",
     bootHangTimeoutMs: 60_000,
     durability: { resumeBundle: { enabled: true, keyFile: join(root, "ws.key") }, ...durability },
     transcripts: { segments: { storeDir: join(root, "objects") } },
-    cells: { root: cellsRoot, retention: { enabled: true, wipPushOnTurnEnd: true, wipMinIntervalSeconds: 0 } },
+    cells: { root: cellsRoot, sandbox: true, retention: { enabled: true, wipPushOnTurnEnd: true, wipMinIntervalSeconds: 0 } },
     agents: {
       cellstub: {
-        command: process.execPath, args: [CELL_AGENT_PATH], adapter: "stub",
+        command: process.execPath, args: [agent], adapter: "stub",
         env: { GIT_AUTHOR_NAME: "cell-bee", GIT_AUTHOR_EMAIL: "bee@hive.invalid", GIT_COMMITTER_NAME: "cell-bee", GIT_COMMITTER_EMAIL: "bee@hive.invalid", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
       },
     },
   });
-  return { dir, cleanup };
+  return { dir, cleanup: () => {cleanup(); rmSync(codeRoot, {recursive: true, force: true});} };
 }
 
 async function shInCell(client: RpcClient, beeId: string, cmd: string): Promise<void> {

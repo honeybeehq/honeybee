@@ -17,7 +17,7 @@ async function retainedFixture(t: TestContext) {
   const cellsRoot = join(root, "cells");
   mkdirSync(cellsRoot);
   const rig = makeDaemonDir({
-    cells: { root: cellsRoot, allowStubMove: true },
+    cells: { root: cellsRoot, allowStubMove: true, sandbox: false },
     agents: { stub: { command: process.execPath, adapter: "stub", args: [fileURLToPath(new URL("../../driver-cell/test-agent/agent.mjs", import.meta.url))] } },
   });
   let daemon = await startDaemon(rig.dir);
