@@ -2,7 +2,7 @@ import { serviceDirectory } from "../../core/src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../core/src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
 import { pidAlive, readLiveEndpointRecord, samePath } from "../../daemon/src/endpointRecord.ts";
-import { assertServiceOwned, resolveServiceScope, ServiceScopeError, type ServiceScope } from "./serviceScope.ts";
+import { assertServiceOwned, isNodeDataDir, refuseNodeDaemon, resolveServiceScope, ServiceScopeError, type ServiceScope } from "./serviceScope.ts";
 /**
  * The thin v2 CLI (spec 04 "CLI"). Ships inside the existing `hive` binary as
  * `hive <verb>` (src/cli.ts routes here) and as a standalone bin for tests.
@@ -4848,6 +4848,7 @@ function ownedServiceManager(ctx: CliContext, verb: string): ServiceManager {
 const SCRATCH_STOP_TIMEOUT_MS = 15_000;
 
 async function stopScratchDaemon(ctx: CliContext, scope: ServiceScope): Promise<number> {
+  if (scope.socketOwned && isNodeDataDir(scope, ctx.cfg.dataDir)) throw refuseNodeDaemon(scope, ctx.target, "stop", ctx.cfg.dataDir);
   let health: HealthResult;
   try {
     health = await withClient(ctx, (c) => c.request<HealthResult>("health"));
@@ -4859,8 +4860,7 @@ async function stopScratchDaemon(ctx: CliContext, scope: ServiceScope): Promise<
   const instance = ctx.daemon.instance;
   const details = { dataDir: ctx.cfg.dataDir, socketPath: ctx.cfg.socketPath, daemonDataDir: instance?.dataDir ?? null, instanceId: instance?.id ?? null, pid: health.pid, serviceDataDir: scope.unitDataDir };
   if (!instance) throw new ServiceScopeError("daemon_identity_mismatch", `hive daemon stop: the daemon at ${ctx.cfg.socketPath} did not identify itself; refusing to signal it`, details);
-  const nodeDataDir = scope.unitDataDir ?? join(homedir(), ".hive", "v2");
-  if (samePath(instance.dataDir, nodeDataDir)) {
+  if (isNodeDataDir(scope, instance.dataDir)) {
     throw new ServiceScopeError("service_data_dir_mismatch", `hive daemon stop: the daemon at ${ctx.cfg.socketPath} is the node's daemon for ${instance.dataDir}, not a scratch daemon; refusing to signal it`, details);
   }
   const record = readLiveEndpointRecord(instance.dataDir);
@@ -4951,7 +4951,7 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
       const repair = readNodeRepair(ctx.cfg.dataDir);
       if (repair) { emit(ctx, ["daemon held, needs repair: invalid Node pin"], { running: false, repair }, false); return 0; }
       const scope = serviceScopeOf(ctx);
-      if (scope.installed && serviceOwned(scope) && !scope.inCell) {
+      if (scope.installed && serviceOwned(scope) && !scope.inCell && !scope.homeRedirected) {
         const status = await buildServiceManager(ctx).status();
         emit(
           ctx,
@@ -4960,7 +4960,7 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
           false,
         );
       } else {
-        const why = scope.inCell ? "the background service is not consulted inside a Cell" : !scope.installed ? "no service installed" : `the background service runs data dir ${scope.unitDataDir ?? "(unknown)"}, not this one`;
+        const why = scope.inCell ? "the background service is not consulted inside a Cell" : scope.homeRedirected ? "the background service is not consulted under a redirected HOME" : !scope.installed ? "no service installed" : `the background service runs data dir ${scope.unitDataDir ?? "(unknown)"}, not this one`;
         emit(
           ctx,
           [confirm("warn", "daemon:", `not running (socket ${ctx.cfg.socketPath}; ${why})`)],
