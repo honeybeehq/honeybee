@@ -24,6 +24,7 @@ export {
   type I1RuntimeFact,
   type I1PendingBee,
   type DaemonStepInputs,
+  type StoreChange,
   type CommittedMailboxMembership,
   type MailboxMembership,
   type CreateBeeInput,

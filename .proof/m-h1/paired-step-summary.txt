@@ -1,0 +1,8 @@
+paired-step: before = origin/main 59a1d66d, after = M-H1 tree; median quiet step cpu ms per scenario (15 rounds), writes = rename-every-tick
+empty              quiet before   0.501  after   0.042   write-tick before  15.252  after  13.506
+retained-1000      quiet before   0.366  after   0.020   write-tick before  12.121  after  11.538
+retained-10000     quiet before   0.340  after   0.019   write-tick before  13.407  after  11.451
+sparse-live        quiet before   0.386  after   0.017   write-tick before  11.505  after  11.802
+all-live           quiet before   6.353  after   0.022   write-tick before  10.692  after  10.859
+held-mail          quiet before   1.573  after   1.298   write-tick before  10.337  after  10.774
+write-every-tick   quiet before   0.542  after   0.528   write-tick before  11.682  after  11.974

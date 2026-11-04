@@ -1,0 +1,318 @@
+✔ reminder reads: fix, 0 bees, round 0 (62.21853ms)
+✔ reminder reads: fix, 0 bees, round 1 (37.943313ms)
+✔ reminder reads: fix, 0 bees, round 2 (35.729393ms)
+✔ reminder reads: fix, 1 bees, round 0 (76.080151ms)
+✔ reminder reads: fix, 1 bees, round 1 (55.634094ms)
+✔ reminder reads: fix, 1 bees, round 2 (58.059829ms)
+✔ reminder reads: fix, 12 bees, round 0 (222.437808ms)
+✔ reminder reads: fix, 12 bees, round 1 (190.897325ms)
+✔ reminder reads: fix, 12 bees, round 2 (208.6995ms)
+✔ reminder reads: fix, 120 bees, round 0 (1435.70637ms)
+✔ reminder reads: fix, 120 bees, round 1 (1347.608548ms)
+✔ reminder reads: fix, 120 bees, round 2 (1268.060834ms)
+✔ reminder reads: already-reminded, 0 bees, round 0 (33.999007ms)
+✔ reminder reads: already-reminded, 0 bees, round 1 (203.372759ms)
+✔ reminder reads: already-reminded, 0 bees, round 2 (33.537384ms)
+✔ reminder reads: already-reminded, 1 bees, round 0 (49.47351ms)
+✔ reminder reads: already-reminded, 1 bees, round 1 (46.663836ms)
+✔ reminder reads: already-reminded, 1 bees, round 2 (54.391701ms)
+✔ reminder reads: already-reminded, 12 bees, round 0 (181.490604ms)
+✔ reminder reads: already-reminded, 12 bees, round 1 (181.157665ms)
+✔ reminder reads: already-reminded, 12 bees, round 2 (182.127521ms)
+✔ reminder reads: already-reminded, 120 bees, round 0 (1481.784146ms)
+✔ reminder reads: already-reminded, 120 bees, round 1 (1672.963127ms)
+✔ reminder reads: already-reminded, 120 bees, round 2 (1427.29437ms)
+✔ eligible answered commit keeps reading current answer time and sends only one reminder (49.108451ms)
+✔ auth death central: evidence-first, one durable claim, same identity and no idle instruction (97.654126ms)
+✔ auth death central: exit-first, one durable claim, same identity and no idle instruction (57.34708ms)
+✔ auth death central: install-first, one durable claim, same identity and no idle instruction (63.63898ms)
+✔ auth death lease: evidence-first, one durable claim, same identity and no idle instruction (58.696327ms)
+✔ auth death lease: exit-first, one durable claim, same identity and no idle instruction (58.732467ms)
+✔ auth death lease: install-first, one durable claim, same identity and no idle instruction (57.140236ms)
+✔ auth death: partial and untouched turns reuse the sole AuthResume continuation owner (130.454732ms)
+✔ auth death: fixed exit deadline expires durably; late evidence or installation never extends it (61.712177ms)
+✔ auth death: operator stop even already stopped, archive/unarchive, reconfigure and account changes cancel at admission (272.839663ms)
+✔ auth death: unavailable material cannot claim; restart inside deadline resumes once (63.32483ms)
+✔ auth death: each new runtime death requires material newer than that runtime used (59.096927ms)
+✔ auth death: cancellation after claim removes recovery continuation and its sole wake (114.394553ms)
+✔ auth death: accepted user mail stays FIFO while held, deadline releases ordinary wake, explicit resume cancels (158.415398ms)
+✔ auth death: the normal core start/delivery path holds accepted mail, then install/deadline/manual resume releases FIFO once (203.364337ms)
+✔ auth death: account pause at admission cancels even a claimed queued start and late evidence cannot undo it (114.553398ms)
+✔ auth death: automatic quota and lease pauses hold rather than cancel, including a queued claim, and remain deadline-bounded (218.389488ms)
+✔ auth death: expired pause-held claims preserve continuation until quota or lease unpause (147.813136ms)
+✔ auth death: a claim accepted just before its deadline survives ordinary executor delay and runs once (74.126218ms)
+✔ auth death: newer published authority restores a delayed account auth verdict atomically, but login_required never qualifies (121.902613ms)
+✔ auth death: automatic recovery preserves boot-failure count/backoff and cannot override the exhausted budget (116.660894ms)
+✔ auth death compatibility: live args, env and session changes retain ordinary late-evidence continuation (174.326033ms)
+✔ auth death compatibility: verified same material releases immediately; repeat failure remains revision-blocked (114.749382ms)
+✔ auth death compatibility: a healthy account swap preserves the held continuation (56.275083ms)
+✔ auth death compatibility: a remembered validation survives the deadline and provenance changes preserve an already owed turn (165.713392ms)
+✔ auth death compatibility: an accepted queued claim keeps its validated continuation after an args change (59.007625ms)
+✔ auth death compatibility: machine-restart exits opt out without losing the ordinary continuation (58.725187ms)
+✔ auth death central: new authority instance recovers a lower generation from scoped admission once (72.756902ms)
+✔ auth death central: new authority instance recovers a lower generation from legacy admission once (62.498558ms)
+✔ auth death lease: new authority instance recovers a lower generation from scoped admission once (54.718811ms)
+✔ auth death lease: new authority instance recovers a lower generation from legacy admission once (52.650666ms)
+✔ auth death: stale instance verdict cannot claim current published material (51.579077ms)
+✔ auth death: admitted remembered legacy scope requires returning instance to exceed its floor (52.484511ms)
+✔ auth death: higher epoch does not turn a same-instance lower generation into new material (54.247888ms)
+✔ OS-level file read outside cwd: hsr; tool-policy read UNVERIFIED (OS-level only) (411.833902ms)
+ℹ fixture max socket path bytes: 100
+ℹ SCG_READ_RESULT={"substrate":"hsr","expectedDigest":"e564e36ca2b232ca49493ef96eda54a7dd68828983d04bcfc57eb804269c8f28","observedDigest":"e564e36ca2b232ca49493ef96eda54a7dd68828983d04bcfc57eb804269c8f28","expectedHeaderSha256":"5561a8ea92921203d1e7b337acca7903fe39ce1e966077b42c1eb0f0eb4fb6db","observedHeaderSha256":"5561a8ea92921203d1e7b337acca7903fe39ce1e966077b42c1eb0f0eb4fb6db","readClass":"read","writeDenied":null}
+ℹ write denied: NOT APPLICABLE (unsandboxed by design)
+ℹ Claude: tool-policy read UNVERIFIED (OS-level only)
+ℹ Codex: tool-policy read UNVERIFIED (OS-level only)
+ℹ Grok: tool-policy read UNVERIFIED (OS-level only)
+ℹ Kimi: tool-policy read UNVERIFIED (OS-level only)
+ℹ Muse: tool-policy read UNVERIFIED (OS-level only)
+ℹ Agy: tool-policy read UNVERIFIED (OS-level only)
+✔ OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (406.717036ms)
+ℹ fixture max socket path bytes: 100
+ℹ SCG_READ_RESULT={"substrate":"cell-sandbox","expectedDigest":"03e86b071f1ee55892c41b22fa8ea5a13fe2fd4a64926456f053433fafd5ef3e","observedDigest":"03e86b071f1ee55892c41b22fa8ea5a13fe2fd4a64926456f053433fafd5ef3e","expectedHeaderSha256":"4f30e758a712237632807a278d000ed3fe809bebc12e7b5d8b74a1e01465bd0a","observedHeaderSha256":"4f30e758a712237632807a278d000ed3fe809bebc12e7b5d8b74a1e01465bd0a","readClass":"read","writeDenied":true}
+ℹ write denied: cell-sandbox; errno=EROFS; scratchPaths:[] fixture narrowing; all other SBPL rules byte-for-byte production
+ℹ Claude: tool-policy read UNVERIFIED (OS-level only)
+ℹ Codex: tool-policy read UNVERIFIED (OS-level only)
+ℹ Grok: tool-policy read UNVERIFIED (OS-level only)
+ℹ Kimi: tool-policy read UNVERIFIED (OS-level only)
+ℹ Muse: tool-policy read UNVERIFIED (OS-level only)
+ℹ Agy: tool-policy read UNVERIFIED (OS-level only)
+✔ OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (401.570749ms)
+ℹ fixture max socket path bytes: 100
+ℹ SCG_READ_RESULT={"substrate":"satellite-default","expectedDigest":"e382f51c22c1bb74384e9a599b79edacebeb162fc696f1b0620dae72685a2502","observedDigest":"e382f51c22c1bb74384e9a599b79edacebeb162fc696f1b0620dae72685a2502","expectedHeaderSha256":"f95bec6b8009bd5a1d01e86ea396c267fb94e200805f6f885a63527facc080f6","observedHeaderSha256":"f95bec6b8009bd5a1d01e86ea396c267fb94e200805f6f885a63527facc080f6","readClass":"read","writeDenied":true}
+ℹ write denied: satellite-default; errno=EROFS; scratchPaths:[] fixture narrowing; all other SBPL rules byte-for-byte production
+ℹ Claude: tool-policy read UNVERIFIED (OS-level only)
+ℹ Codex: tool-policy read UNVERIFIED (OS-level only)
+ℹ Grok: tool-policy read UNVERIFIED (OS-level only)
+ℹ Kimi: tool-policy read UNVERIFIED (OS-level only)
+ℹ Muse: tool-policy read UNVERIFIED (OS-level only)
+ℹ Agy: tool-policy read UNVERIFIED (OS-level only)
+✔ default Darwin dataDir and delivery-content for a /Users home are outside default scratch paths and TMPDIR (1.862909ms)
+✔ real HSR asynchronous confirmation settles from durable confirmation (567.763254ms)
+✔ real HSR asynchronous confirmation with lost outbound-attempt state settles from durable intent (559.642067ms)
+✔ real codex pointer confirmation stays pending without UNKNOWN notices (546.379683ms)
+✔ real codex pointer confirmation refusal retries the saved publication (562.636447ms)
+✔ real muse pointer confirmation stays pending without UNKNOWN notices (475.543782ms)
+✔ real muse pointer confirmation refusal retries the saved publication (499.716597ms)
+✔ SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and later mail flows (894.560106ms)
+✔ human-first holds tool-turn input, then runs humans FIFO one turn each before background (103.560424ms)
+✔ unique admission keeps one row and timestamp; conflicting key/body/authority refuses (56.639101ms)
+✔ daemon/store restart while waiting preserves pending order and policy (78.331771ms)
+✔ policy off retains native next accept point and eligible FIFO; senderKind grants no priority (52.549353ms)
+✔ explicit human now retains interrupt semantics under policy (48.74347ms)
+✔ held oldest human blocks younger human and ordinary background (49.264935ms)
+✔ a newer explicit now interrupts without overtaking the oldest human (55.07475ms)
+✔ a policy enabled before a substrate change holds fresh human delivery on tmux (52.566013ms)
+✔ schema 47 migration adds human policy without upgrading legacy senderKind provenance (98.199681ms)
+✔ human policy and admission receipts replay exactly and delete with their bee (52.780339ms)
+✔ I1 suspends intended human-first holds then measures a genuinely eligible delivery refusal (55.986524ms)
+✔ trusted quota recovery delivery gate keeps precedence over pending human chat (52.286025ms)
+✔ core-owned spawn.prompt context precedes human chat; forged sender/body does not (57.943897ms)
+✔ core-owned auth.resume context precedes human chat; forged sender/body does not (58.925822ms)
+✔ trusted auth.resume replay preserves human provenance and one-turn isolation without a new admission (59.96229ms)
+✔ trusted quota.resume replay preserves human provenance and one-turn isolation without a new admission (57.028473ms)
+✔ core next context waits for the active human turn to end (52.721027ms)
+✔ core idle context waits for the active human turn to end (52.982085ms)
+✔ an ineligible spawn.prompt seed holds younger next background mail (48.785642ms)
+✔ an ineligible auth.resume seed holds younger next background mail (61.420309ms)
+✔ held background confirmation states do not wedge the next human turn (172.828583ms)
+✔ human-first wait has a durable bounded diagnostic without interrupting the turn (68.758375ms)
+✔ an active human turn with no pending mailbox row is still wait-bounded (56.984081ms)
+✔ late background confirmation preserves the newer active human turn trigger (56.339053ms)
+✔ late human confirmation never reopens a superseding ended human turn (60.371411ms)
+✔ late now-steer acceptance cannot reopen the human turn it joined (50.821937ms)
+✔ identity recovery is bounded, fair, retries failures and warns at ten minutes (2.845856ms)
+✔ stop intent remains queued and deduplicated across restart until proof, without signaling (76.815181ms)
+✔ archive intent remains queued and deduplicated across restart until proof, without signaling (49.571053ms)
+✔ proven gone still reconciles to stopped while unresolved rows stay reachable (37.136001ms)
+✔ resolved RPC results omit diagnostics; overdue unresolved rows carry doctor and CLI text (43.544262ms)
+✔ identity loss during stop holds the same durable command without a signal or retry exhaustion (43.721148ms)
+✔ a queued unresolved stop settles after restart when the process is proven gone (50.104667ms)
+✔ boot absence cannot settle a malformed or unbound persisted identity (48.032141ms)
+✔ recovery persists an owned late capture through the store and never replaces malformed content (38.883798ms)
+✔ health omits zero cleanup counts and distinguishes retained from informational (41.18202ms)
+✔ shutdown preserves default ordering and confines early disposal (preserve=true) (1.925531ms)
+✔ shutdown preserves default ordering and confines early disposal (preserve=false) (1.12858ms)
+✔ active-human holds unmarked urgent peers then releases one deterministic digest (136.717989ms)
+✔ human followup and authenticated controls each get own clean turn ahead of background (77.086508ms)
+✔ restart before and after freeze preserves membership and newer mail joins later group (103.743979ms)
+✔ unknown written group reconciles same members atomically across restart (85.001649ms)
+✔ paged digest keeps all UTF8 originals and frozen mutations refuse (93.310811ms)
+✔ policy off keeps individual legacy now and next delivery (47.641942ms)
+✔ held stopped mail defers wake until release and restart enqueues one wake (77.703304ms)
+✔ a new human holds a frozen but unwritten batch until next window closes (60.35569ms)
+✔ batch size is bounded and a held core seed preserves precedence (156.079976ms)
+✔ oversized overview shrinks before freeze and sender paging preserves originals (175.962307ms)
+✔ a generation-changed unknown group requires explicit whole-group recovery (84.281459ms)
+✔ whole-group drop is explicit, idempotent and unblocks later background (54.417913ms)
+✔ max age releases ordinary group after ten minutes despite a renewed human window (123.787143ms)
+✔ release reasons distinguish idle and window close and raw sender metadata is untrusted (57.113524ms)
+✔ held-only mail never causes release wake churn (64.713858ms)
+✔ a ready file fallback head joins the digest and settles with its immutable original (61.506221ms)
+✔ Honeybee receipt notices and action instructions never become digest members (73.223765ms)
+✔ legacy frozen action members cannot be removed by cancel or complete (109.958445ms)
+✔ unwritten whole groups can be retried or dropped without a confirmation intent (57.414352ms)
+✔ a frozen unwritten group still reaches max age after a renewed human admission (64.636555ms)
+✔ reorder prefixes share the digest byte budget (54.786003ms)
+✔ internal resend strips privileged reference snapshots and preserves ordinary and control kinds (50.520028ms)
+✔ a legacy group missing a member is recoverable and never stops another bee (119.49316ms)
+✔ multiline busy waits without fallback and delivers inline; telemetry=false (76.182193ms)
+✔ mixed busy and unsupported counts only unsupported then resumes main FIFO; telemetry=false (52.779619ms)
+✔ unsupported or unknown retains main delivery: multiline_bracketed_paste_version_unsupported; telemetry=false (48.534306ms)
+✔ unsupported or unknown retains main delivery: multiline_bracketed_paste_unknown; telemetry=false (45.095923ms)
+✔ multiline busy waits without fallback and delivers inline; telemetry=true (50.126899ms)
+✔ mixed busy and unsupported counts only unsupported then resumes main FIFO; telemetry=true (50.634971ms)
+✔ unsupported or unknown retains main delivery: multiline_bracketed_paste_version_unsupported; telemetry=true (46.526452ms)
+✔ unsupported or unknown retains main delivery: multiline_bracketed_paste_unknown; telemetry=true (46.44951ms)
+✔ thirty-second type expiry holds accepted mail without further driver calls; telemetry=false (52.566163ms)
+✔ thirty-second type expiry holds accepted mail without further driver calls; telemetry=true (53.55096ms)
+✔ long busy turn produces no extra multiline writes or audit; telemetry=false (244.434994ms)
+✔ long busy turn produces no extra multiline writes or audit; telemetry=true (216.143999ms)
+✔ unsupported time pauses across no_process without resetting attempts (43.110141ms)
+✔ unsupported time pauses across ineligible without resetting attempts (44.294302ms)
+✔ held phone frame falls back to one exact pointer with original escaped labels and a publication nonce (105.994319ms)
+✔ retained holds drain in original live mailbox order and canceled holds stay inert (79.175134ms)
+✔ uncertain pointer survives restart without re-paste, exposes its path, and later runtime proof settles it (71.080978ms)
+✔ missing native helper gives a typed visible hold while later mail continues (51.854953ms)
+✔ UNKNOWN fallback sender and recipient notices are cautious even with an intact type-mode detail (61.817809ms)
+✔ ready retry reuses the published bytes and pointer when the current envelope changes (56.056917ms)
+✖ archive retains content and bee deletion cleans it durably (66.490674ms)
+✔ reopen after prepared preserves publication identity and fences uncertain injection (58.400399ms)
+✔ reopen after published preserves publication identity and fences uncertain injection (61.4074ms)
+✔ reopen after in_flight preserves publication identity and fences uncertain injection (65.998711ms)
+✔ missing descriptor after prepared with valid prepare audit stays UNKNOWN without republication (80.498959ms)
+✔ missing descriptor after prepared with malformed prepare audit stays UNKNOWN without republication (78.817884ms)
+✔ missing descriptor after prepared with unreadable prepare audit stays UNKNOWN without republication (77.718584ms)
+✔ missing descriptor after published with valid prepare audit stays UNKNOWN without republication (76.8238ms)
+✔ missing descriptor after published with malformed prepare audit stays UNKNOWN without republication (75.772733ms)
+✔ missing descriptor after published with unreadable prepare audit stays UNKNOWN without republication (74.366236ms)
+✔ missing descriptor after in_flight with valid prepare audit stays UNKNOWN without republication (71.108018ms)
+✔ missing descriptor after in_flight with malformed prepare audit stays UNKNOWN without republication (75.983698ms)
+✔ missing descriptor after in_flight with unreadable prepare audit stays UNKNOWN without republication (81.008192ms)
+✔ intact fallback descriptor never consults prepare audits (58.82869ms)
+✔ unattributable malformed prepare audits count in doctor without blocking unrelated fallback (62.58457ms)
+✔ file and pointer effects wait for an outer transaction to commit (56.725835ms)
+✔ over-limit file gives a typed hold while later mail continues (1145.37523ms)
+✔ proof for an older consuming generation settles mail without attributing a turn to its successor (58.661475ms)
+✖ runtime-area content pins Cell retention through archive and cleans after worktree removal (49.405578ms)
+✔ read fixture keeps Darwin tmpdir and moves sandboxed Linux roots outside private mounts (0.600046ms)
+✔ default Linux dataDir and delivery-content for a /home user are outside private temporary mounts (1.301985ms)
+✔ Cell private mount policy chooses only the own runtime area or a typed unreadable hold (0.37461ms)
+✔ whole-row corruption after in_flight is UNKNOWN and never creates a fresh pointer (95.304884ms)
+✔ whole-row corruption after unknown is UNKNOWN and never creates a fresh pointer (93.804754ms)
+✔ whole-row corruption after not_attempted is UNKNOWN and never creates a fresh pointer (69.189356ms)
+✖ stopped fallback reconciles exact proof without a successor or another injection (49.269794ms)
+✔ stopped fallback reconciles none proof without a successor or another injection (48.551386ms)
+✔ stopped fallback reconciles other_generation proof without a successor or another injection (50.153318ms)
+✔ stopped fallback reconciles other_pointer proof without a successor or another injection (48.051133ms)
+✖ deleted-bee cleanup retries converge while another archived bee still references its file (63.105944ms)
+✔ corrupt held hold notice stays cautious exactly once and never republishes (69.831953ms)
+✔ corrupt prepared-crash hold notice stays cautious exactly once and never republishes (64.035979ms)
+✔ nineteen UNKNOWN rows are each announced once across bounded later deliveries (117.930948ms)
+✔ deferred fallback valid represented-id snapshot never marks the unrendered seventeenth UNKNOWN (136.094243ms)
+✔ deferred fallback missing represented-id snapshot never marks the unrendered seventeenth UNKNOWN (148.36986ms)
+✔ deferred fallback malformed represented-id snapshot never marks the unrendered seventeenth UNKNOWN (142.572825ms)
+✔ valid waiting outer row with malformed nested fallback becomes visible UNKNOWN outside FIFO (64.301806ms)
+✔ SIGKILL after prepared, corrupt=false, preserves one publication and never re-pastes (281.144214ms)
+✔ SIGKILL after prepared, corrupt=true, preserves one publication and never re-pastes (292.004724ms)
+✔ SIGKILL after published, corrupt=false, preserves one publication and never re-pastes (308.390541ms)
+✔ SIGKILL after published, corrupt=true, preserves one publication and never re-pastes (306.744027ms)
+✔ reconnect RPC/CLI: active-turn acceptance, send race, daemon adoption and authoritative receipt (2849.013952ms)
+✔ idle policy cannot stop reconnect work; racing mail waits durably for completion (84.930747ms)
+✔ authenticated pending recovery gets a durable readiness budget (stale stop=false) (82.224604ms)
+✔ authenticated pending recovery gets a durable readiness budget (stale stop=true) (59.177889ms)
+✔ a recovered but never-ready generation times out once after the same budget across restart (62.892158ms)
+✔ a deferred hang stop cannot block an explicit stop or cross into a new generation (51.637739ms)
+✔ skipping a hang stop on synthetic readiness does not miscount a later system stop as a boot failure (44.842296ms)
+✔ bind-time memoization follows committed binding, rollback, generation and deletion (54.480985ms)
+✔ turn-trigger.daemon.1: the delivery loop records human for operator mail and mail with the sender for peer mail (102.077424ms)
+✔ turn-trigger.daemon.2: a driver-opened turn keeps its opener when the store has not folded the previous turn_ended (74.173681ms)
+✔ turn-trigger.daemon.3: system origins and automation are other, a child's spawn prompt is mail from its parent, people are human (0.551205ms)
+✔ turn-trigger.daemon.answer: a question answer is delivered with the answer marker, mail.delivered names the question, and the turn is an answer with unchanged human bookkeeping (59.248891ms)
+✔ turn-trigger.daemon.automation: an automated send is delivered with the automation marker and mail.delivered carries its senderKind (56.95737ms)
+✔ turn-trigger.daemon.automation-sender: task-supply mail is delivered with the automation marker, mail.delivered reports automation, and an interrupting automated send carries its notice (57.515396ms)
+✔ quiet turn observations preserve the spoken human output cursor (53.58043ms)
+ℹ tests 206
+ℹ suites 0
+ℹ pass 202
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10958.215282
+
+✖ failing tests:
+
+test at v2/daemon/tests/multiline-fallback.test.ts:135:1
+✖ archive retains content and bee deletion cleans it durably (66.490674ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h1-dirty-sets-9f6e294bd207/github-com-honeybeehq-honeybee-a9015b303498-space-9f6e294bd207/v2/daemon/tests/multiline-fallback.test.ts:140:49)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/multiline-fallback.test.ts:252:1
+✖ runtime-area content pins Cell retention through archive and cleans after worktree removal (49.405578ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h1-dirty-sets-9f6e294bd207/github-com-honeybeehq-honeybee-a9015b303498-space-9f6e294bd207/v2/daemon/tests/multiline-fallback.test.ts:261:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/multiline-fallback.test.ts:333:86
+✖ stopped fallback reconciles exact proof without a successor or another injection (49.269794ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'unknown'
+  - 'delivered'
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h1-dirty-sets-9f6e294bd207/github-com-honeybeehq-honeybee-a9015b303498-space-9f6e294bd207/v2/daemon/tests/multiline-fallback.test.ts:341:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'unknown',
+    expected: 'delivered',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/multiline-fallback.test.ts:348:1
+✖ deleted-bee cleanup retries converge while another archived bee still references its file (63.105944ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  true !== false
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h1-dirty-sets-9f6e294bd207/github-com-honeybeehq-honeybee-a9015b303498-space-9f6e294bd207/v2/daemon/tests/multiline-fallback.test.ts:364:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+exit 1

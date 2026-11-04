@@ -1,0 +1,70 @@
+{
+  "timestamp": "2026-11-04T19:44:30.875Z",
+  "hostname": "trmd-metal-2",
+  "node": "v24.21.0",
+  "revision": "59a1d66d352b250ba1623f539b13f4bcfbf17f9c",
+  "dirty": true,
+  "workload": {
+    "bees": 1000,
+    "generations": 5,
+    "activeBees": 100,
+    "policyBees": 100,
+    "live": 30,
+    "hung": 5,
+    "tickMs": 200,
+    "settleMs": 10000,
+    "seconds": 20,
+    "pendingHeldObserved": 5,
+    "namingAuto": true
+  },
+  "idle": {
+    "cpuSeconds": 4.419999999999998,
+    "wallSeconds": 20.003663235,
+    "cpuPercent": 22.095952866605025,
+    "ticks": 80,
+    "cpuMsPerTick": 55.24999999999998,
+    "tickErrors": 0,
+    "loadBefore": [
+      1.42,
+      1.38,
+      1.28
+    ],
+    "loadAfter": [
+      1.08,
+      1.3,
+      1.26
+    ]
+  },
+  "listRpcMs": {
+    "n": 10,
+    "p50": 287.1208289999995,
+    "p95": 325.57359200000064,
+    "max": 325.57359200000064,
+    "mean": 289.6904354000006
+  },
+  "hiveLsCliMs": {
+    "n": 3,
+    "p50": 329.6859409999961,
+    "p95": 358.5332810000036,
+    "max": 358.5332810000036,
+    "mean": 332.8013696666676
+  },
+  "rawListRpcMs": [
+    287.1208289999995,
+    283.42477099999815,
+    269.44146300000284,
+    325.57359200000064,
+    314.85764900000504,
+    273.4441580000057,
+    280.6230279999945,
+    265.61172200000146,
+    300.14050199999474,
+    296.6666400000031
+  ],
+  "rawHiveLsCliMs": [
+    329.6859409999961,
+    310.1848870000031,
+    358.5332810000036
+  ],
+  "scope": "Real hived scratch daemon in a temp dir with its own socket, stopped seeded bees, live stub runtimes (hung ones holding idle mail), mail batching and human-first on the policy bees, auto-title on. CPU from /proc utime+stime over the idle window. RPC list latency in-process; hive ls wall time includes CLI process startup."
+}

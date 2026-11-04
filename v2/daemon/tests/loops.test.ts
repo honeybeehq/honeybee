@@ -3657,18 +3657,16 @@ test("z01.j: huge pending metadata with a tiny tracked set probes O(tracked), ne
     core.step();
     assert.deepEqual(violations.map((v) => v.messageId), [tracked.id], "exactly one tracked id among 5000 pending");
     for (let i = 0; i < 255; i++) core.step();
-    // 256th committed tick: cadence sweep. The tracked id is still pending,
-    // so basis subtraction empties the candidates and NO probe runs.
-    assert.deepEqual(probeCalls, [], "a pending tracked id is resolved by basis subtraction alone");
+    assert.deepEqual(probeCalls, [[tracked.id]], "the cadence sweep probes the tracked id alone");
     assert.equal(dedupSets(core).reportedI1.has(tracked.id), true);
 
     assert.deepEqual(store.cancelMessage("z01-wide", tracked.id), { canceled: true });
     for (let i = 0; i < 255; i++) core.step();
-    assert.deepEqual(probeCalls, [], "no probes between sweeps");
+    assert.deepEqual(probeCalls, [[tracked.id]], "no probes between sweeps");
     assert.equal(dedupSets(core).reportedI1.has(tracked.id), true);
-    core.step(); // next cadence sweep: the canceled id survives subtraction and is probed alone
-    assert.equal(probeCalls.length, 1, "one probe pass for the terminal candidate");
-    assert.deepEqual(probeCalls[0], [tracked.id], "probe args are the tracked candidate only — not the 5000 pending");
+    core.step();
+    assert.equal(probeCalls.length, 2, "one probe pass per cadence sweep");
+    assert.deepEqual([...probeCalls[1]!].sort((a, b) => a - b), [...dedupSets(core).reportedI1, tracked.id].sort((a, b) => a - b), "probe args are the tracked candidates only — not the 5000 pending");
     assert.equal(dedupSets(core).reportedI1.has(tracked.id), false, "confirmed-terminal id deleted");
     // Canceling position 0 promoted the next message into an overdue position,
     // so exactly one LIVE id is now tracked — and the passing probe-args

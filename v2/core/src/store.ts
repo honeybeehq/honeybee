@@ -400,6 +400,11 @@ export interface I1PendingBee {
   pending: readonly DaemonPendingMessageMeta[];
 }
 
+export interface StoreChange {
+  kind: string;
+  beeId: string | null;
+}
+
 /** One same-step acquisition shared by daemon work and I1 telemetry. */
 export interface DaemonStepInputs {
   readonly work: readonly DaemonWorkRow[];
@@ -1486,11 +1491,12 @@ function mapDaemonPendingMessage(
 
 function daemonStatementArrayRows(
   statement: ReturnType<DatabaseSync["prepare"]>,
+  args: readonly string[] = [],
 ): readonly (readonly unknown[])[] {
   statement.setReturnArrays(true);
   // Node guarantees array rows in this mode, but its declarations do not
   // refine all() accordingly. Individual values remain untrusted below.
-  const rows: unknown = statement.all();
+  const rows: unknown = statement.all(...args);
   return rows as readonly (readonly unknown[])[];
 }
 
@@ -1753,6 +1759,9 @@ export class CoreStore {
   private readonly pendingStartBoundAtCache = new Map<string, {generation: number; at: number | null}>();
   private txDepth = 0;
   private commitCallbacks: Array<() => void> = [];
+  private readonly changeListeners = new Set<(change: StoreChange) => void>();
+  private cachedAuditSeq: number | null = null;
+  private mailHistoryProjectionSeq: number | null = null;
   private closed = false;
   private rpcIdempotencyRedaction: RpcIdempotencyRedactionReceipt | null = null;
   /** Commands requeued running→queued by open() (B5 boot replay); reported by reconcileAtBoot. */
@@ -1891,6 +1900,8 @@ export class CoreStore {
       return result;
     } catch (err) {
       this.commitCallbacks = [];
+      this.cachedAuditSeq = null;
+      this.mailHistoryProjectionSeq = null;
       try {
         this.db.exec("ROLLBACK");
       } catch {
@@ -2635,7 +2646,15 @@ export class CoreStore {
     const inserted = this.db
       .prepare("INSERT INTO audit(ts, kind, bee_id, payload) VALUES(?, ?, ?, ?)")
       .run(at, kind, beeId, JSON.stringify(currentRpcCaller() ? {...payload, rpcCaller: currentRpcCaller()} : payload));
-    return Number(inserted.lastInsertRowid);
+    const seq = Number(inserted.lastInsertRowid);
+    this.cachedAuditSeq = seq;
+    for (const listener of this.changeListeners) listener({ kind, beeId });
+    return seq;
+  }
+
+  onChange(listener: (change: StoreChange) => void): () => void {
+    this.changeListeners.add(listener);
+    return () => { this.changeListeners.delete(listener); };
   }
 
   private auditMailCanceled(message: MessageRow, reason: MailCancellationReason, canceledAt: number, cancellation?: { owner: string; confirmation: DeliveryConfirmation }): void {
@@ -2673,10 +2692,11 @@ export class CoreStore {
 
   /** One-time bounded-memory projection fill for stores created by older builds. */
   private backfillMailHistoryEnqueues(): void {
+    const targetSeq = this.lastAuditSeq();
+    if (this.mailHistoryProjectionSeq === targetSeq) return;
     const highWaterRow = this.stmt(
       "SELECT value FROM meta WHERE key = 'mail_history_projection_seq'",
     ).get() as Row | undefined;
-    const targetSeq = this.lastAuditSeq();
     let cursor = highWaterRow === undefined ? 0 : Math.max(0, Math.min(targetSeq, Number(highWaterRow.value)));
     let legacySpawnMessages: Set<string> | null = null;
     while (cursor < targetSeq) {
@@ -2769,6 +2789,7 @@ export class CoreStore {
       `INSERT INTO meta(key, value) VALUES('mail_history_projection_seq', ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ).run(String(targetSeq));
+    this.mailHistoryProjectionSeq = targetSeq;
   }
 
   private mustGetBee(beeId: string): BeeRow {
@@ -4678,12 +4699,27 @@ export class CoreStore {
     return !hold || hold.heldSince === null || hold.fallback?.state === "ready";
   }
 
-  mailBatchReleaseReason(beeId: string): MailBatch["releaseReason"] | null {
+  private oldestMailBatchCandidateEnqueuedAt(beeId: string): number | null {
     const candidates = this.stmt("SELECT id,enqueued_at,mail_batch_id FROM mailbox WHERE bee_id=? AND delivered_at IS NULL AND human_chat IS NULL AND (automation_kind IS NULL OR automation_kind IN ('obligation-notice','proof-notice')) AND (mail_batch_id IS NOT NULL OR (NOT EXISTS (SELECT 1 FROM delivery_confirmation_intents WHERE message_id=mailbox.id) AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id=mailbox.id AND held.held_since IS NOT NULL AND COALESCE(json_extract(held.row_json,'$.fallback.state'),'') != 'ready'))) ORDER BY enqueued_at,id").all(beeId) as Row[];
     const oldest = candidates.find(row => row.mail_batch_id != null || !this.mailBatchControl(Number(row.id)));
-    if (oldest && this.now() - Number(oldest.enqueued_at) > 600_000) return "max-age";
+    return oldest ? Number(oldest.enqueued_at) : null;
+  }
+
+  mailBatchReleaseReason(beeId: string): MailBatch["releaseReason"] | null {
+    const oldest = this.oldestMailBatchCandidateEnqueuedAt(beeId);
+    if (oldest !== null && this.now() - oldest > 600_000) return "max-age";
     if (this.activeHumanWindow(beeId)) return null;
     return this.humanFirstPolicy(beeId).lastHumanReceivedAt === null ? "idle" : "window-close";
+  }
+
+  mailBatchingWakeDueAt(beeId: string): number | null {
+    const now = this.now();
+    const due: number[] = [];
+    const received = this.humanFirstPolicy(beeId).lastHumanReceivedAt;
+    if (received !== null && received + 120_000 > now) due.push(received + 120_000);
+    const oldest = this.oldestMailBatchCandidateEnqueuedAt(beeId);
+    if (oldest !== null && oldest + 600_001 > now) due.push(oldest + 600_001);
+    return due.length === 0 ? null : Math.min(...due);
   }
 
   listMailBatches(beeId?: string): MailBatch[] {
@@ -4793,14 +4829,6 @@ export class CoreStore {
       const resolved = this.putMailBatch({...batch,...(action === "drop" ? {droppedAt:at} : {}),resolution:{action,key,generation,at}});
       if (action === "resend_anyway") this.enqueueWake(beeId);
       return resolved;
-    });
-  }
-
-  releaseBatchingWakes(): void {
-    this.tx(() => {
-      for (const policy of this.listMailBatchingPolicies()) {
-        if (policy.enabled) this.enqueueWake(policy.beeId);
-      }
     });
   }
 
@@ -6449,23 +6477,27 @@ export class CoreStore {
   // B8 — derived reads (the ONLY place these questions are answered)
   // -------------------------------------------------------------------------
 
-  private readDaemonLiveRuntimes(): DaemonLiveRuntime[] {
-    const rows: Row[] = this.stmt(
-      `SELECT runtime.bee_id,
+  private readDaemonLiveRuntimes(beeIds: readonly string[] | null): DaemonLiveRuntime[] {
+    const select = `SELECT runtime.bee_id,
               runtime.generation,
               runtime.state,
               runtime.started_at,
               runtime.updated_at,
               runtime.boot_evidence
        FROM runtimes AS runtime
-       WHERE runtime.state != 'stopped'
-         AND runtime.generation = (
+       WHERE runtime.state != 'stopped'`;
+    const latest = `AND runtime.generation = (
            SELECT MAX(latest.generation)
            FROM runtimes AS latest
            WHERE latest.bee_id = runtime.bee_id
          )
-       ORDER BY runtime.bee_id`,
-    ).all();
+       ORDER BY runtime.bee_id`;
+    const rows: Row[] = beeIds === null
+      ? this.stmt(`${select}
+         ${latest}`).all()
+      : this.stmt(`${select}
+         AND runtime.bee_id IN (SELECT value FROM json_each(?))
+         ${latest}`).all(JSON.stringify(beeIds));
     return rows.map(mapDaemonLiveRuntime);
   }
 
@@ -6477,8 +6509,8 @@ export class CoreStore {
     return (this.stmt("SELECT message.id,message.bee_id,message.urgency,message.enqueued_at,message.queue_order,message.human_chat FROM mail_batching_policies AS policy JOIN multiline_delivery AS held ON held.bee_id=policy.bee_id JOIN mailbox AS message ON message.id=held.message_id WHERE policy.enabled=1 AND message.delivered_at IS NULL AND held.held_since IS NOT NULL AND CASE WHEN json_valid(held.row_json) THEN json_extract(held.row_json,'$.fallback.state') = 'ready' ELSE 0 END").all() as Row[]).filter(row => this.multilineDelivery(Number(row.id))?.fallback?.state === "ready");
   }
 
-  readDaemonWork(): DaemonWorkRow[] {
-    const runtimes = this.readDaemonLiveRuntimes();
+  readDaemonWork(beeIds: readonly string[] | null = null): DaemonWorkRow[] {
+    const runtimes = this.readDaemonLiveRuntimes(beeIds);
     const work: Array<{
       runtime: DaemonLiveRuntime;
       pending: DaemonPendingMessageMeta[];
@@ -6491,8 +6523,9 @@ export class CoreStore {
     const workByBee = new Map(work.map((row) => [row.runtime.beeId, row]));
     // CROSS JOIN deliberately keeps the sparse live-runtime scan outermost;
     // each live bee then seeks only its own undelivered mailbox prefix.
-    const messageStatement = this.stmt(
-      `SELECT message.id,
+    const messageStatement = beeIds === null
+      ? this.stmt(
+        `SELECT message.id,
               message.bee_id,
               message.urgency,
               message.enqueued_at, message.queue_order, message.human_chat
@@ -6508,9 +6541,29 @@ export class CoreStore {
          AND message.delivered_at IS NULL
          AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id = message.id AND held.held_since IS NOT NULL)
        ORDER BY runtime.bee_id, COALESCE(message.queue_order,message.id), message.id`,
-    );
+      )
+      : this.stmt(
+        `SELECT message.id,
+              message.bee_id,
+              message.urgency,
+              message.enqueued_at, message.queue_order, message.human_chat
+       FROM runtimes AS runtime
+       CROSS JOIN mailbox AS message
+       WHERE runtime.state != 'stopped'
+         AND runtime.bee_id IN (SELECT value FROM json_each(?))
+         AND runtime.generation = (
+           SELECT MAX(latest.generation)
+           FROM runtimes AS latest
+           WHERE latest.bee_id = runtime.bee_id
+         )
+         AND message.bee_id = runtime.bee_id
+         AND message.delivered_at IS NULL
+         AND NOT EXISTS (SELECT 1 FROM multiline_delivery AS held WHERE held.message_id = message.id AND held.held_since IS NOT NULL)
+       ORDER BY runtime.bee_id, COALESCE(message.queue_order,message.id), message.id`,
+      );
+    const messageArgs = beeIds === null ? [] : [JSON.stringify(beeIds)];
     if (typeof messageStatement.setReturnArrays === "function") {
-      const messageRows = daemonStatementArrayRows(messageStatement);
+      const messageRows = daemonStatementArrayRows(messageStatement, messageArgs);
       for (const raw of messageRows) {
         const beeId = daemonText(raw[1], "pending bee_id");
         const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }), ...(raw[5] == null ? {} : { humanChat: JSON.parse(String(raw[5])) as HumanChatProvenance }) };
@@ -6519,7 +6572,7 @@ export class CoreStore {
         row.pending.push(message);
       }
     } else {
-      const messageRows: Row[] = messageStatement.all();
+      const messageRows: Row[] = messageStatement.all(...messageArgs);
       for (const raw of messageRows) {
         const beeId = daemonText(raw.bee_id, "pending bee_id");
         const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }), ...(raw.human_chat == null ? {} : { humanChat: JSON.parse(String(raw.human_chat)) as HumanChatProvenance }) };
@@ -6542,9 +6595,9 @@ export class CoreStore {
    * exact pending arrays already built for I1, so mailbox metadata is read and
    * allocated once. Callers must not retain this result across daemon steps.
    */
-  readDaemonStepInputs(): DaemonStepInputs {
-    const runtimes = this.readDaemonLiveRuntimes();
-    const i1 = this.readI1PendingSnapshotData();
+  readDaemonStepInputs(beeIds: readonly string[] | null = null): DaemonStepInputs {
+    const runtimes = this.readDaemonLiveRuntimes(beeIds);
+    const i1 = this.readI1PendingSnapshotData(beeIds);
     const held = new Set((this.stmt("SELECT held.message_id FROM multiline_delivery AS held JOIN mailbox AS message ON message.id = held.message_id WHERE held.held_since IS NOT NULL AND message.delivered_at IS NULL").all() as Row[]).map(row => Number(row.message_id)));
     for (const ready of this.batchingReadyFallbackMessages()) held.delete(Number(ready.id));
     const work: DaemonWorkRow[] = runtimes.map((runtime) => {
@@ -6559,13 +6612,15 @@ export class CoreStore {
    * listBeeViewRows/listUndeliveredMessages order without hydrating either
    * complete bee rows or mailbox bodies.
    */
-  readI1PendingSnapshot(): I1PendingBee[] {
-    return this.readI1PendingSnapshotData().rows;
+  readI1PendingSnapshot(beeIds: readonly string[] | null = null): I1PendingBee[] {
+    return this.readI1PendingSnapshotData(beeIds).rows;
   }
 
-  private readI1PendingSnapshotData(): I1PendingSnapshotData {
+  private readI1PendingSnapshotData(beeIds: readonly string[] | null): I1PendingSnapshotData {
+    const args = beeIds === null ? [] : [JSON.stringify(beeIds)];
     const factRows: Row[] = this.stmt(
-      `WITH pending_bees AS (
+      beeIds === null
+        ? `WITH pending_bees AS (
          SELECT DISTINCT bee_id
          FROM mailbox
          WHERE delivered_at IS NULL
@@ -6588,8 +6643,32 @@ export class CoreStore {
           FROM runtimes AS latest
           WHERE latest.bee_id = target.bee_id
         )
+       ORDER BY target.bee_id`
+        : `WITH pending_bees AS (
+         SELECT DISTINCT bee_id
+         FROM mailbox
+         WHERE delivered_at IS NULL AND bee_id IN (SELECT value FROM json_each(?))
+       )
+       SELECT target.bee_id,
+              runtime.state AS runtime_state,
+              runtime.boot_evidence AS runtime_boot_evidence,
+              runtime.updated_at AS runtime_updated_at,
+              EXISTS (
+                SELECT 1
+                FROM flags AS flag
+                WHERE flag.bee_id = target.bee_id
+                  AND flag.cleared_at IS NULL
+              ) AS has_active_flag
+       FROM pending_bees AS target
+       LEFT JOIN runtimes AS runtime
+         ON runtime.bee_id = target.bee_id
+        AND runtime.generation = (
+          SELECT MAX(latest.generation)
+          FROM runtimes AS latest
+          WHERE latest.bee_id = target.bee_id
+        )
        ORDER BY target.bee_id`,
-    ).all();
+    ).all(...args);
     const groups: MutableI1PendingBee[] = factRows.map((row) => ({
       beeId: daemonText(row.bee_id, "I1 bee_id"),
       runtime: mapI1RuntimeFact(row),
@@ -6599,13 +6678,18 @@ export class CoreStore {
     const groupByBee = new Map(groups.map((group) => [group.beeId, group]));
 
     const messageStatement = this.stmt(
-      `SELECT id, bee_id, urgency, enqueued_at, queue_order, human_chat
+      beeIds === null
+        ? `SELECT id, bee_id, urgency, enqueued_at, queue_order, human_chat
        FROM mailbox
        WHERE delivered_at IS NULL
+       ORDER BY bee_id, COALESCE(queue_order,id), id`
+        : `SELECT id, bee_id, urgency, enqueued_at, queue_order, human_chat
+       FROM mailbox
+       WHERE delivered_at IS NULL AND bee_id IN (SELECT value FROM json_each(?))
        ORDER BY bee_id, COALESCE(queue_order,id), id`,
     );
     if (typeof messageStatement.setReturnArrays === "function") {
-      const messageRows = daemonStatementArrayRows(messageStatement);
+      const messageRows = daemonStatementArrayRows(messageStatement, args);
       for (const raw of messageRows) {
         const beeId = daemonText(raw[1], "pending bee_id");
         const message = { ...mapDaemonPendingMessage(raw[0], raw[2], raw[3]), ...(raw[4] == null ? {} : { queueOrder: Number(raw[4]) }), ...(raw[5] == null ? {} : { humanChat: JSON.parse(String(raw[5])) as HumanChatProvenance }) };
@@ -6614,7 +6698,7 @@ export class CoreStore {
         group.pending.push(message);
       }
     } else {
-      const messageRows: Row[] = messageStatement.all();
+      const messageRows: Row[] = messageStatement.all(...args);
       for (const raw of messageRows) {
         const beeId = daemonText(raw.bee_id, "pending bee_id");
         const message = { ...mapDaemonPendingMessage(raw.id, raw.urgency, raw.enqueued_at), ...(raw.queue_order == null ? {} : { queueOrder: Number(raw.queue_order) }), ...(raw.human_chat == null ? {} : { humanChat: JSON.parse(String(raw.human_chat)) as HumanChatProvenance }) };
@@ -6641,12 +6725,22 @@ export class CoreStore {
     ).get() !== undefined;
   }
 
+  nextFlagResetAt(): number | null {
+    const row = this.stmt("SELECT MIN(resets_at) AS at FROM flags WHERE cleared_at IS NULL AND resets_at IS NOT NULL").get() as Row | undefined;
+    return row?.at == null ? null : Number(row.at);
+  }
+
+  nextCommandAttemptAt(): number | null {
+    const row = this.stmt("SELECT MIN(next_attempt_at) AS at FROM commands WHERE status = 'queued'").get() as Row | undefined;
+    return row?.at == null ? null : Number(row.at);
+  }
+
   /**
    * Whether ANY mailbox message remains undelivered — one LIMIT-1 probe on
-   * the mailbox_pending_metadata covering partial index. The mail half of
-   * hasStepSnapshotInputs, exposed alone: the daemon's dedup pruning must
-   * clear on a zero-pending hive even while runtimes are live, and sparse
-   * work rows omit stopped-target mail so they cannot answer this.
+   * the mailbox_pending_metadata covering partial index. Exposed alone: the
+   * daemon's dedup pruning must clear on a zero-pending hive even while
+   * runtimes are live, and sparse work rows omit stopped-target mail so they
+   * cannot answer this.
    */
   hasUndeliveredMessages(): boolean {
     return this.stmt("SELECT 1 FROM mailbox WHERE delivered_at IS NULL LIMIT 1").get() !== undefined;
@@ -8951,8 +9045,11 @@ export class CoreStore {
 
   /** Highest audit seq written so far (0 for an empty log) — the store's change version. */
   lastAuditSeq(): number {
+    if (this.cachedAuditSeq !== null) return this.cachedAuditSeq;
     const row = this.stmt("SELECT MAX(seq) AS seq FROM audit").get() as Row | undefined;
-    return row?.seq == null ? 0 : Number(row.seq);
+    const seq = row?.seq == null ? 0 : Number(row.seq);
+    this.cachedAuditSeq = seq;
+    return seq;
   }
 
   auditRows(fromSeq = 0, limit?: number): AuditRow[] {

@@ -129,6 +129,7 @@ import {
   type CommandRow,
   type CoreStore,
   type MirrorAccountRow,
+  type StoreChange,
   pauseLabel,
   publicAuditRow,
   mirrorBeeRow,
@@ -284,7 +285,7 @@ import {
   type ContextPolicyScope,
   type ContextRole,
 } from "./contextPolicy.ts";
-import { createStoreAutoTitleDispatcher, type AutoTitleOutcome } from "./autoTitle.ts";
+import { createStoreAutoTitleDispatcher, type AutoTitleDispatcher } from "./autoTitle.ts";
 import { TitleGeneratorService } from "./namingService.ts";
 import { TelemetryStore, formatI1Violation } from "./telemetry.ts";
 import {
@@ -616,6 +617,25 @@ const BOOTING_TICK_MS = 25;
 /** How often the tick runs the (synchronous, roster-wide) auto-title scan. */
 const AUTO_TITLE_SCAN_MS = 1000;
 const WEEKLY_CEILING_SWEEP_MS = 15_000;
+const AUTO_TITLE_KEY = "daemon:autoTitle";
+const WEEKLY_CEILING_KEY = "daemon:weeklyCeiling";
+const ACCOUNTS_PERIODIC_KEY = "daemon:accounts.periodic";
+const ACCOUNTS_CENTRAL_KEY = "daemon:accounts.central";
+const KEYCHAIN_REPAIR_KEY = "daemon:accounts.keychain";
+const CREDENTIAL_HANDOFF_KEY = "daemon:accounts.handoff";
+const CREDENTIAL_HANDOFF_SWEEP_MS = 1000;
+const QUIET_DAEMON_CHANGE_PREFIXES = ["rpc.", "cell.retention.", "cell.pressure.", "cell.parked", "node.capacity", "login_flow.", "template.", "selection_cursor."];
+
+interface DaemonChanges {
+  any: boolean;
+  accounts: boolean;
+  titleBees: Set<string>;
+  runtimeBees: Set<string>;
+}
+
+function emptyChanges(): DaemonChanges {
+  return { any: false, accounts: false, titleBees: new Set(), runtimeBees: new Set() };
+}
 const WEEKLY_CEILING_RETRY_MS = 10 * 60_000;
 
 export function weeklyCeilingMoveNote(from: string, to: string, why: string): string {
@@ -767,6 +787,11 @@ export class HiveDaemon {
   private tickErrors = 0;
   private lastTickAt: number | null = null;
   private lastAutoTitleAt = 0;
+  private readonly autoTitleCandidates = new Set<string>();
+  private changes = emptyChanges();
+  private bootingRuntime: boolean | null = null;
+  private threadOperationsLive = true;
+  private quotaRecoveryLive = true;
   private lastBoot: BootReport | null = null;
   private stopping = false;
   private publishedSeq = 0;
@@ -804,7 +829,7 @@ export class HiveDaemon {
   private readonly asyncInFlight = new Map<string, Promise<object>>();
   private naming: ResolvedNamingConfig;
   private contextPolicy: ContextPolicyConfig;
-  private autoTitle: ((bees?: BeeRow[]) => Promise<AutoTitleOutcome[]>) | null = null;
+  private autoTitle: AutoTitleDispatcher | null = null;
   private titleGenerator: TitleGeneratorService | null = null;
   private readonly performance: PerformanceProfiler;
   private activeStartupPhase: PerformanceSpan | null = null;
@@ -893,6 +918,8 @@ export class HiveDaemon {
       backoffBaseMs: this.cfg.backoffBaseMs,
     });
     this.store = store;
+    store.onChange(change => this.noteChange(change));
+    for (const candidate of store.listAutoTitleCandidates()) this.autoTitleCandidates.add(candidate.id);
     const redaction = store.rpcIdempotencyRedactionReceipt;
     if (redaction) {
       this.log(`store.migration.rpc_idempotency_env seen=${redaction.seen} redacted=${redaction.redacted} skipped_unparseable=${redaction.skippedUnparseable} skipped_unrecognised=${redaction.skippedUnrecognised} complete=${redaction.complete} ms=${redaction.wallMs}`);
@@ -915,6 +942,7 @@ export class HiveDaemon {
       statePath: join(this.cfg.dataDir, "auto-title.json"),
       log: (op) => this.log(op),
       generate: (context) => this.titleGenerator!.generate(context, this.naming),
+      onSettled: () => this.core?.schedule(AUTO_TITLE_KEY, Date.now()),
     });
     this.titleGenerator.warm(this.naming);
     this.accounts = new AccountsService({
@@ -1306,7 +1334,24 @@ export class HiveDaemon {
    * boundary. A tick is synchronous, so a caller can never observe one in
    * progress: a null timer only means the daemon is not running.
    */
+  private noteChange(change: StoreChange): void {
+    const kind = change.kind;
+    if (QUIET_DAEMON_CHANGE_PREFIXES.some(prefix => kind.startsWith(prefix))) return;
+    this.changes.any = true;
+    if (kind.startsWith("account")) this.changes.accounts = true;
+    if (kind.startsWith("runtime.") || kind === "boot.reconciled" || kind === "bee.created" || kind === "bee.deleted") this.bootingRuntime = null;
+    if (change.beeId === null) return;
+    if (kind.startsWith("runtime.") || kind === "bee.deleted") this.changes.runtimeBees.add(change.beeId);
+    if (kind.startsWith("bee.") || kind === "mail.enqueued" || kind === "mail.replaced" || kind.startsWith("question.")) this.changes.titleBees.add(change.beeId);
+  }
+
+  private hasBootingRuntime(): boolean {
+    if (this.bootingRuntime === null) this.bootingRuntime = this.store?.hasBootingRuntime() ?? false;
+    return this.bootingRuntime;
+  }
+
   private requestTick(): void {
+    this.core?.wakeCommands();
     if (this.stopping || !this.tickTimer || this.tickRequested) return;
     this.tickRequested = true;
     clearTimeout(this.tickTimer);
@@ -1320,7 +1365,7 @@ export class HiveDaemon {
       if (this.stopping) return;
       this.tick();
       if (!this.stopping) {
-        this.scheduleTick(nextTickDelayMs(this.runtimeStartHolds.size > 0 ? Math.min(1000, this.cfg.tickMs) : this.store?.hasBootingRuntime() ? Math.min(BOOTING_TICK_MS, this.cfg.tickMs) : this.cfg.tickMs));
+        this.scheduleTick(nextTickDelayMs(this.runtimeStartHolds.size > 0 ? Math.min(1000, this.cfg.tickMs) : this.hasBootingRuntime() ? Math.min(BOOTING_TICK_MS, this.cfg.tickMs) : this.cfg.tickMs));
       }
     }, delayMs));
   }
@@ -1440,6 +1485,7 @@ export class HiveDaemon {
           if (this.accountActivations.get(beeId) !== state) return;
           state.status = "ready";
           // The blocked start command can claim immediately.
+          this.core?.wakeBee(beeId);
           this.requestTick();
         },
         (error: unknown) => {
@@ -1570,24 +1616,49 @@ export class HiveDaemon {
     const t0 = Date.now();
     let tStep = t0;
     let tAccounts = t0;
+    const first = this.ticks === 0;
+    const previous = this.changes;
+    this.changes = emptyChanges();
+    const changed = (pick: (changes: DaemonChanges) => boolean): boolean => pick(previous) || pick(this.changes);
     try {
-      this.threadOperations?.tick();
+      if (this.threadOperationsLive || changed(changes => changes.any)) this.threadOperationsLive = (this.threadOperations?.tick() ?? 0) > 0;
+      this.authResume?.reconcile();
       this.performance.measureSync("daemon.tick.core", () => {
         core.step();
-        this.quotaRecovery?.reconcile();
-        this.authResume?.reconcile();
+        if (this.quotaRecoveryLive || changed(changes => changes.any)) this.quotaRecoveryLive = (this.quotaRecovery?.reconcile() ?? 0) > 0;
       });
       tStep = Date.now();
       this.ticks += 1;
       this.lastTickAt = tStep;
       // v7: bounded in-daemon limits refresh; v16: login-flow expiry + credential landing.
       this.performance.measureSync("daemon.tick.accounts", () => {
-        this.accounts?.periodicRefreshTick();
-        void this.accounts?.credentialHandoff.reconcile().catch(() => this.log("account.credentials.handoff_reconcile_failed"));
-        this.accounts?.centralRefreshRetryTick();
-        this.accounts?.centralEarlyRefreshTick();
-        this.enforceWeeklyCeilings();
-        void this.accounts?.claudeKeychainRepairTick();
+        const accounts = this.accounts;
+        if (!accounts) return;
+        const accountsChanged = changed(changes => changes.accounts);
+        if (first || core.takeDue(ACCOUNTS_PERIODIC_KEY)) {
+          accounts.periodicRefreshTick();
+          const at = accounts.nextPeriodicRefreshAt();
+          if (at !== null) core.schedule(ACCOUNTS_PERIODIC_KEY, at);
+        }
+        if (first || accountsChanged || core.takeDue(CREDENTIAL_HANDOFF_KEY)) {
+          void accounts.credentialHandoff.reconcile().then(ran => {
+            if (!ran || accounts.credentialHandoff.pendingCount > 0) this.core?.schedule(CREDENTIAL_HANDOFF_KEY, Date.now() + CREDENTIAL_HANDOFF_SWEEP_MS);
+          }).catch(() => this.log("account.credentials.handoff_reconcile_failed"));
+        }
+        if (first || accountsChanged || core.takeDue(ACCOUNTS_CENTRAL_KEY)) {
+          accounts.centralRefreshRetryTick();
+          accounts.centralEarlyRefreshTick();
+          const at = accounts.centralTicksNextDueAt(tStep);
+          if (at !== null) core.schedule(ACCOUNTS_CENTRAL_KEY, at);
+        }
+        const runtimeBees = new Set([...previous.runtimeBees, ...this.changes.runtimeBees]);
+        this.enforceWeeklyCeilings(core, runtimeBees, first || accountsChanged || core.takeDue(WEEKLY_CEILING_KEY));
+        if (first || accountsChanged || core.takeDue(KEYCHAIN_REPAIR_KEY)) {
+          const scheduleRepair = (): void => { const at = accounts.nextKeychainRepairAt(); if (at !== null) this.core?.schedule(KEYCHAIN_REPAIR_KEY, at); };
+          const flight = accounts.claudeKeychainRepairTick();
+          if (flight) void flight.finally(scheduleRepair);
+          scheduleRepair();
+        }
       });
       tAccounts = Date.now();
       this.performance.measureSync("daemon.tick.login", () =>
@@ -1599,19 +1670,31 @@ export class HiveDaemon {
       // This span covers synchronous auto-title kickoff only; title generation
       // stays detached. Once a second keeps the roster scan off most ticks.
       const autoTitle = this.autoTitle;
-      if (autoTitle && tAccounts - this.lastAutoTitleAt >= AUTO_TITLE_SCAN_MS) {
-        this.lastAutoTitleAt = tAccounts;
-        this.performance.measureSync("daemon.tick.auto_title", () => {
-          void autoTitle()
-            .then((outcomes) => {
-              for (const outcome of outcomes) {
-                if (outcome.error) this.log(`autoTitle.error bee=${outcome.beeId} ${outcome.error}`);
-              }
-            })
-            .catch((error) => {
-              this.log(`autoTitle.error ${error instanceof Error ? error.message : String(error)}`);
-            });
-        });
+      const store = this.store;
+      const titleDue = core.takeDue(AUTO_TITLE_KEY);
+      for (const beeId of previous.titleBees) this.autoTitleCandidates.add(beeId);
+      for (const beeId of this.changes.titleBees) this.autoTitleCandidates.add(beeId);
+      if (autoTitle && store && (titleDue || this.autoTitleCandidates.size > 0)) {
+        if (tAccounts - this.lastAutoTitleAt >= AUTO_TITLE_SCAN_MS) {
+          this.lastAutoTitleAt = tAccounts;
+          const bees = [...this.autoTitleCandidates].map(beeId => store.getBee(beeId)).filter((bee): bee is BeeRow => bee !== null);
+          this.autoTitleCandidates.clear();
+          this.performance.measureSync("daemon.tick.auto_title", () => {
+            void autoTitle(bees)
+              .then((outcomes) => {
+                for (const outcome of outcomes) {
+                  if (outcome.error) this.log(`autoTitle.error bee=${outcome.beeId} ${outcome.error}`);
+                }
+              })
+              .catch((error) => {
+                this.log(`autoTitle.error ${error instanceof Error ? error.message : String(error)}`);
+              });
+          });
+          const at = autoTitle.nextDueAt();
+          if (at !== null) core.schedule(AUTO_TITLE_KEY, Math.max(at, tAccounts + AUTO_TITLE_SCAN_MS));
+        } else {
+          core.schedule(AUTO_TITLE_KEY, this.lastAutoTitleAt + AUTO_TITLE_SCAN_MS);
+        }
       }
     } catch (err) {
       // A tick error is a bug, never a reason to abandon the node: the loops
@@ -7323,7 +7406,7 @@ export class HiveDaemon {
     }
     const res = this.mustStore().setAccountWeeklyCeiling(account.id, ceiling);
     this.log(`account.setWeeklyCeiling id=${account.id} ceiling=${ceiling ?? "off"} applied=${res.applied}`);
-    if (res.applied) this.lastWeeklyCeilingSweepAt = 0;
+    if (res.applied) { this.lastWeeklyCeilingSweepAt = 0; this.core?.schedule(WEEKLY_CEILING_KEY, Date.now()); }
     return { account: this.mirrorAccount(res.account), applied: res.applied };
   }
 
@@ -8347,13 +8430,15 @@ export class HiveDaemon {
     }
   }
 
-  private enforceWeeklyCeilings(): void {
+  private enforceWeeklyCeilings(core: DaemonCore, runtimeBees: ReadonlySet<string>, sweepDue: boolean): void {
     const store = this.store;
     if (!store || !this.accounts) return;
-    this.sendWeeklyCeilingNotes();
+    this.sendWeeklyCeilingNotes(sweepDue ? null : runtimeBees);
+    if (!sweepDue) return;
     const now = Date.now();
-    if (now - this.lastWeeklyCeilingSweepAt < WEEKLY_CEILING_SWEEP_MS) return;
+    if (now - this.lastWeeklyCeilingSweepAt < WEEKLY_CEILING_SWEEP_MS) { core.schedule(WEEKLY_CEILING_KEY, this.lastWeeklyCeilingSweepAt + WEEKLY_CEILING_SWEEP_MS); return; }
     this.lastWeeklyCeilingSweepAt = now;
+    core.schedule(WEEKLY_CEILING_KEY, now + WEEKLY_CEILING_SWEEP_MS);
     for (const account of store.listAccounts()) {
       if (this.accounts.weeklyCeilingBreaches(account).length === 0) continue;
       for (const bee of store.beesOnAccount(account.id)) {
@@ -8398,9 +8483,10 @@ export class HiveDaemon {
     }
   }
 
-  private sendWeeklyCeilingNotes(): void {
+  private sendWeeklyCeilingNotes(only: ReadonlySet<string> | null): void {
     const store = this.mustStore();
     for (const [beeId, note] of this.weeklyCeilingNotes) {
+      if (only !== null && !only.has(beeId)) continue;
       const runtime = store.currentRuntime(beeId);
       if (!store.getBee(beeId)) {
         this.weeklyCeilingNotes.delete(beeId);

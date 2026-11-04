@@ -74,6 +74,7 @@ export class CredentialHandoffService {
   private identityReplacing = false;
   private startupReconciled = false;
   private lastSweepAt = 0;
+  pendingCount = 0;
   constructor(store: CoreStore, accounts: AccountsService, root: string, now: () => number, log: (message: string) => void) {
     this.store = store; this.accounts = accounts; this.root = root; this.now = now; this.log = log;
   }
@@ -812,6 +813,7 @@ export class CredentialHandoffService {
     try {
       this.lastSweepAt = this.now();
       const pending = this.store.pendingCredentialHandoffs();
+      this.pendingCount = pending.length;
       for (const row of pending.filter(row => row.role === "source" && row.state === "exported" && this.now() >= row.binding.prepareBy)) {
         try { await this.exportAbort({ handoffId: row.handoffId }); }
         catch { this.log(`account.credentials.handoff_reconcile_pending account=${row.account} handoff=${row.handoffId}`); }
