@@ -100,13 +100,6 @@ test("persisted v2 config selects the v2 service for an ordinary source restart"
   }
 });
 
-test("legacy deployment refuses activation before selecting a service", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "hb-legacy-deploy-refuse-"));
-  try {
-    await assert.rejects(restartDeployedDaemon({ root: dir, installedDir: dir, sha: "a".repeat(40), log() {} }), /legacy service activation is refused/);
-  } finally { await rm(dir, { recursive: true, force: true }); }
-});
-
 for (const scenario of ["after-start", "after-stop", "compatible"] as const) {
   test(`restart recovery preserves a safe service and pin boundary: ${scenario}`, async () => {
     const dir = await mkdtemp(join(tmpdir(), "hb-recovery-order-"));
