@@ -1,0 +1,96 @@
+sandbox: $SB=/tmp/hb-guard-bNmgJ9 (HOME, PATH shim, unit dir, label hb.guard.test); unit bound to $SB/.hive/v2
+which systemctl: $SB/bin/systemctl
+
+### 1. default path: data dir is the unit's own data dir -> the unit is targeted (stop, start, restart)
+{"label":"hb.guard.test","daemonTarget":{"dataDir":"$SB/.hive/v2","dataDirSource":"default","socketPath":"$SB/.hive/v2/hived.sock","socketSource":"config","instanceId":null,"daemonDataDir":null,"connected":false}}
+[exit 0]
+{"label":"hb.guard.test","daemonTarget":{"dataDir":"$SB/.hive/v2","dataDirSource":"flag","socketPath":"$SB/.hive/v2/hived.sock","socketSource":"config","instanceId":null,"daemonDataDir":null,"connected":false}}
+[exit 0]
+{"label":"hb.guard.test","daemonTarget":{"dataDir":"$SB/.hive/v2","dataDirSource":"env","socketPath":"$SB/.hive/v2/hived.sock","socketSource":"config","instanceId":null,"daemonDataDir":null,"connected":false}}
+[exit 0]
+--- fake systemctl calls so far: 4
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+
+### 2. the incident shape: a scratch data dir with no daemon -> nothing to stop, unit untouched
+{"running":false,"stopped":false,"service":null,"daemonTarget":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"config","instanceId":null,"daemonDataDir":null,"connected":false}}
+[exit 0]
+✓  not running no daemon at $SB/scratch/hived.sock (data dir $SB/scratch); the background service was not touched
+[exit 0]
+--- fake systemctl calls so far: 4
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+
+### 3. start/restart/install/uninstall with a scratch data dir -> typed refusal, unit untouched
+{"error":{"code":"service_data_dir_mismatch","message":"hive daemon start: the background service runs data dir $SB/.hive/v2, not $SB/scratch; refusing to touch it. A daemon for $SB/scratch runs in the foreground with: hive daemon run --data-dir $SB/scratch","details":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"config","servicePath":"$SB/units/hb.guard.test.service","serviceInstalled":true,"serviceDataDir":"$SB/.hive/v2"}},"daemonTarget":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"config","instanceId":null,"daemonDataDir":null,"connected":false}}
+hive: error (service_data_dir_mismatch): hive daemon start: the background service runs data dir $SB/.hive/v2, not $SB/scratch; refusing to touch it. A daemon for $SB/scratch runs in the foreground with: hive daemon run --data-dir $SB/scratch
+[exit 1]
+{"error":{"code":"service_data_dir_mismatch","message":"hive daemon restart: the background service runs data dir $SB/.hive/v2, not $SB/scratch; refusing to touch it. A daemon for $SB/scratch runs in the foreground with: hive daemon run --data-dir $SB/scratch","details":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"config","servicePath":"$SB/units/hb.guard.test.service","serviceInstalled":true,"serviceDataDir":"$SB/.hive/v2"}},"daemonTarget":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"config","instanceId":null,"daemonDataDir":null,"connected":false}}
+hive: error (service_data_dir_mismatch): hive daemon restart: the background service runs data dir $SB/.hive/v2, not $SB/scratch; refusing to touch it. A daemon for $SB/scratch runs in the foreground with: hive daemon run --data-dir $SB/scratch
+[exit 1]
+{"error":{"code":"service_data_dir_mismatch","message":"hive daemon install: the background service runs data dir $SB/.hive/v2, not $SB/scratch; refusing to touch it. A daemon for $SB/scratch runs in the foreground with: hive daemon run --data-dir $SB/scratch","details":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"config","servicePath":"$SB/units/hb.guard.test.service","serviceInstalled":true,"serviceDataDir":"$SB/.hive/v2"}},"daemonTarget":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"config","instanceId":null,"daemonDataDir":null,"connected":false}}
+hive: error (service_data_dir_mismatch): hive daemon install: the background service runs data dir $SB/.hive/v2, not $SB/scratch; refusing to touch it. A daemon for $SB/scratch runs in the foreground with: hive daemon run --data-dir $SB/scratch
+[exit 1]
+{"error":{"code":"service_data_dir_mismatch","message":"hive daemon uninstall: the background service runs data dir $SB/.hive/v2, not $SB/scratch; refusing to touch it. A daemon for $SB/scratch runs in the foreground with: hive daemon run --data-dir $SB/scratch","details":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"config","servicePath":"$SB/units/hb.guard.test.service","serviceInstalled":true,"serviceDataDir":"$SB/.hive/v2"}},"daemonTarget":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"config","instanceId":null,"daemonDataDir":null,"connected":false}}
+hive: error (service_data_dir_mismatch): hive daemon uninstall: the background service runs data dir $SB/.hive/v2, not $SB/scratch; refusing to touch it. A daemon for $SB/scratch runs in the foreground with: hive daemon run --data-dir $SB/scratch
+[exit 1]
+hive: error (service_data_dir_mismatch): hive daemon start: the background service runs data dir $SB/.hive/v2, not $SB/scratch; refusing to touch it. A daemon for $SB/scratch runs in the foreground with: hive daemon run --data-dir $SB/scratch
+[exit 1]
+--- fake systemctl calls so far: 4
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+
+### 4. inside a Cell (HIVE_CELL=1), even the unit's own data dir is refused
+{"error":{"code":"service_refused_in_cell","message":"hive daemon stop: refused inside a Cell (HIVE_CELL=1); the background service belongs to the node, not to a Cell. Run a scratch daemon with: hive daemon run --data-dir <dir>","details":{"dataDir":"$SB/.hive/v2","dataDirSource":"default","socketPath":"$SB/.hive/v2/hived.sock","socketSource":"config","servicePath":"$SB/units/hb.guard.test.service","serviceInstalled":true,"serviceDataDir":"$SB/.hive/v2"}},"daemonTarget":{"dataDir":"$SB/.hive/v2","dataDirSource":"default","socketPath":"$SB/.hive/v2/hived.sock","socketSource":"config","instanceId":null,"daemonDataDir":null,"connected":false}}
+hive: error (service_refused_in_cell): hive daemon stop: refused inside a Cell (HIVE_CELL=1); the background service belongs to the node, not to a Cell. Run a scratch daemon with: hive daemon run --data-dir <dir>
+[exit 1]
+hive: error (service_refused_in_cell): hive daemon restart: refused inside a Cell (HIVE_CELL=1); the background service belongs to the node, not to a Cell. Run a scratch daemon with: hive daemon run --data-dir <dir>
+[exit 1]
+{"running":false,"service":null,"daemonTarget":{"dataDir":"$SB/.hive/v2","dataDirSource":"flag","socketPath":"$SB/.hive/v2/hived.sock","socketSource":"config","instanceId":null,"daemonDataDir":null,"connected":false}}
+[exit 0]
+--- fake systemctl calls so far: 4
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+
+### 5. a foreign socket with the unit's data dir -> treated as a scratch target (nothing there), unit untouched
+{"running":false,"stopped":false,"service":null,"daemonTarget":{"dataDir":"$SB/.hive/v2","dataDirSource":"default","socketPath":"$SB/other.sock","socketSource":"flag","instanceId":null,"daemonDataDir":null,"connected":false}}
+[exit 0]
+--- fake systemctl calls so far: 4
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+
+### 6. a real scratch daemon: hive daemon stop --data-dir <scratch> stops that daemon by its own pid
+scratch daemon pid 3682297; endpoint record: {"schema":1,"instanceId":"…","dataDir":"$SB/scratch","socketPath":"$SB/scratch/hived.sock","tmuxSocketPath":"$SB/scratch/tmux.sock","pid":3682297,"startedAt":1793793107280,"processBirth":"…","bootId":"…"}
+{"running":true,"health":{"protocol":"v2/2","pid":3682297,"startedAt":1793793107280,"uptimeMs":212,"ticks":0,"lastTickAt":null,"tickErrors":0,"stopping":false,"
+[exit 0]
+{"running":false,"stopped":true,"pid":3682297,"instanceId":"ec27cfd6-0c46-480f-ac72-948a7a5b0a9a","dataDir":"$SB/scratch","service":null,"daemonTarget":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"record","instanceId":"ec27cfd6-0c46-480f-ac72-948a7a5b0a9a","daemonDataDir":"$SB/scratch","connected":true}}
+[exit 0]
+scratch daemon exit code: 0
+scratch daemon pid 3682297 is gone
+✓  not running no daemon at $SB/scratch/hived.sock (data dir $SB/scratch); the background service was not touched
+[exit 0]
+--- fake systemctl calls so far: 4
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+
+### 7. the targeted unit path still works after all of the above
+✓  stopped hb.guard.test
+[exit 0]
+--- fake systemctl calls so far: 5
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+systemctl --user stop hb.guard.test.service

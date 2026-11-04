@@ -1,7 +1,8 @@
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
-import { readLiveEndpointRecord } from "../../daemon/src/endpointRecord.ts";
+import { pidAlive, readLiveEndpointRecord, samePath } from "../../daemon/src/endpointRecord.ts";
+import { assertServiceOwned, resolveServiceScope, ServiceScopeError, type ServiceScope } from "./serviceScope.ts";
 /**
  * The thin v2 CLI (spec 04 "CLI"). Ships inside the existing `hive` binary as
  * `hive <verb>` (src/cli.ts routes here) and as a standalone bin for tests.
@@ -4826,6 +4827,58 @@ function buildServiceManager(ctx: CliContext, installing = false): ServiceManage
   );
 }
 
+function serviceFilePath(): string {
+  const platform = process.platform;
+  return join(serviceDirectory(platform), `${serviceLabel()}.${platform === "darwin" ? "plist" : "service"}`);
+}
+
+function serviceScopeOf(ctx: CliContext): ServiceScope {
+  return resolveServiceScope(ctx.target, serviceFilePath());
+}
+
+function serviceOwned(scope: ServiceScope): boolean {
+  return scope.dataDirOwned && scope.socketOwned;
+}
+
+function ownedServiceManager(ctx: CliContext, verb: string): ServiceManager {
+  assertServiceOwned(serviceScopeOf(ctx), ctx.target, verb);
+  return buildServiceManager(ctx, verb === "install");
+}
+
+const SCRATCH_STOP_TIMEOUT_MS = 15_000;
+
+async function stopScratchDaemon(ctx: CliContext, scope: ServiceScope): Promise<number> {
+  let health: HealthResult;
+  try {
+    health = await withClient(ctx, (c) => c.request<HealthResult>("health"));
+  } catch (err) {
+    if (!(err instanceof DaemonDownError)) throw err;
+    emit(ctx, [confirm("ok", "not running", `no daemon at ${ctx.cfg.socketPath} (data dir ${ctx.cfg.dataDir}); the background service was not touched`)], { running: false, stopped: false, service: null }, false);
+    return 0;
+  }
+  const instance = ctx.daemon.instance;
+  const details = { dataDir: ctx.cfg.dataDir, socketPath: ctx.cfg.socketPath, daemonDataDir: instance?.dataDir ?? null, instanceId: instance?.id ?? null, pid: health.pid, serviceDataDir: scope.unitDataDir };
+  if (!instance) throw new ServiceScopeError("daemon_identity_mismatch", `hive daemon stop: the daemon at ${ctx.cfg.socketPath} did not identify itself; refusing to signal it`, details);
+  const nodeDataDir = scope.unitDataDir ?? join(homedir(), ".hive", "v2");
+  if (samePath(instance.dataDir, nodeDataDir)) {
+    throw new ServiceScopeError("service_data_dir_mismatch", `hive daemon stop: the daemon at ${ctx.cfg.socketPath} is the node's daemon for ${instance.dataDir}, not a scratch daemon; refusing to signal it`, details);
+  }
+  const record = readLiveEndpointRecord(instance.dataDir);
+  if (!record || record.instanceId !== instance.id || record.pid !== health.pid || !samePath(record.socketPath, ctx.cfg.socketPath)) {
+    throw new ServiceScopeError("daemon_identity_mismatch", `hive daemon stop: the daemon at ${ctx.cfg.socketPath} (pid ${health.pid}, instance ${instance.id}) does not match the endpoint record in ${instance.dataDir}; refusing to signal it`, { ...details, recordPid: record?.pid ?? null, recordInstanceId: record?.instanceId ?? null });
+  }
+  process.kill(record.pid, "SIGTERM");
+  const deadline = Date.now() + SCRATCH_STOP_TIMEOUT_MS;
+  while (pidAlive(record.pid)) {
+    if (Date.now() >= deadline) {
+      throw new ServiceScopeError("daemon_stop_timeout", `hive daemon stop: daemon pid ${record.pid} (data dir ${instance.dataDir}) is still running ${SCRATCH_STOP_TIMEOUT_MS}ms after SIGTERM`, details);
+    }
+    await new Promise<void>((resolveSleep) => setTimeout(resolveSleep, 50));
+  }
+  emit(ctx, [confirm("ok", "stopped", `daemon pid ${record.pid} (data dir ${instance.dataDir}); the background service was not touched`)], { running: false, stopped: true, pid: record.pid, instanceId: instance.id, dataDir: instance.dataDir, service: null }, false);
+  return 0;
+}
+
 async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
   const sub = parsed.positional[1];
   switch (sub) {
@@ -4833,14 +4886,14 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
       // Foreground daemon — what the service files execute.
       return (await import("../../daemon/src/main.ts")).runDaemon(["--data-dir", ctx.cfg.dataDir, ...(ctx.target.socketSource === "flag" ? ["--socket", ctx.cfg.socketPath] : [])]);
     case "install": {
-      const mgr = buildServiceManager(ctx, true);
+      const mgr = ownedServiceManager(ctx, "install");
       await mgr.install();
       persistNodePin(ctx.cfg.dataDir, resolveNodePin(ctx.cfg.dataDir, process.env, serviceExecArgs(ctx.cfg.dataDir)[0], true));
       emit(ctx, [confirm("ok", "installed", `${mgr.platform} service at ${mgr.servicePath}`)], { servicePath: mgr.servicePath }, false);
       return 0;
     }
     case "uninstall": {
-      const mgr = buildServiceManager(ctx);
+      const mgr = ownedServiceManager(ctx, "uninstall");
       await mgr.uninstall();
       emit(ctx, [confirm("ok", "uninstalled", `${mgr.platform} service`)], { servicePath: mgr.servicePath }, false);
       return 0;
@@ -4848,12 +4901,15 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
     case "start": {
       const held = validateDaemonNode(ctx.cfg.dataDir);
       if (held) { emit(ctx, [`daemon held, needs repair: ${held}`], { running: false, repair: readNodeRepair(ctx.cfg.dataDir) }, false); return 0; }
-      const mgr = buildServiceManager(ctx);
+      const mgr = ownedServiceManager(ctx, "start");
       await mgr.start();
       emit(ctx, [confirm("ok", "started", serviceLabel())], { label: serviceLabel() }, false);
       return 0;
     }
     case "stop": {
+      const scope = serviceScopeOf(ctx);
+      if (!serviceOwned(scope)) return await stopScratchDaemon(ctx, scope);
+      assertServiceOwned(scope, ctx.target, "stop");
       const mgr = buildServiceManager(ctx);
       await mgr.stop();
       emit(ctx, [confirm("ok", "stopped", serviceLabel())], { label: serviceLabel() }, false);
@@ -4864,7 +4920,7 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
       // Stop may fail when nothing is loaded; start still bootstraps.
       const held = validateDaemonNode(ctx.cfg.dataDir);
       if (held) { emit(ctx, [`daemon held, needs repair: ${held}`], { running: false, repair: readNodeRepair(ctx.cfg.dataDir) }, false); return 0; }
-      const mgr = buildServiceManager(ctx);
+      const mgr = ownedServiceManager(ctx, "restart");
       try {
         await mgr.stop();
       } catch {
@@ -4894,9 +4950,9 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
       }
       const repair = readNodeRepair(ctx.cfg.dataDir);
       if (repair) { emit(ctx, ["daemon held, needs repair: invalid Node pin"], { running: false, repair }, false); return 0; }
-      const mgr = buildServiceManager(ctx);
-      if (existsSync(mgr.servicePath)) {
-        const status = await mgr.status();
+      const scope = serviceScopeOf(ctx);
+      if (scope.installed && serviceOwned(scope) && !scope.inCell) {
+        const status = await buildServiceManager(ctx).status();
         emit(
           ctx,
           [confirm("warn", "daemon:", `not reachable at ${ctx.cfg.socketPath}; service ${status.detail}`)],
@@ -4904,9 +4960,10 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
           false,
         );
       } else {
+        const why = scope.inCell ? "the background service is not consulted inside a Cell" : !scope.installed ? "no service installed" : `the background service runs data dir ${scope.unitDataDir ?? "(unknown)"}, not this one`;
         emit(
           ctx,
-          [confirm("warn", "daemon:", `not running (socket ${ctx.cfg.socketPath}; no service installed)`)],
+          [confirm("warn", "daemon:", `not running (socket ${ctx.cfg.socketPath}; ${why})`)],
           { running: false, service: null },
           false,
         );
@@ -4933,7 +4990,7 @@ function versionDaemonTarget(): unknown {
 function jsonErrorLine(err: unknown, ctx: CliContext | undefined): Record<string, unknown> {
   const error = err instanceof DaemonDownError
     ? { code: err.code, message: err.message, details: { socketPath: err.socketPath, socketSource: ctx?.target.socketSource ?? null, cause: err.reason } }
-    : err instanceof RpcError
+    : err instanceof RpcError || err instanceof ServiceScopeError
       ? { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) }
       : err instanceof Error && (err.name === "StoreRestoreError" || err.name === "StoreBackupError")
         ? { code: (err as Error & { code: string }).code, message: err.message }
@@ -5179,7 +5236,7 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
       io.err(errorLine(`${err.message} — start it with: hive daemon run (or daemon start)`));
       return 1;
     }
-    if (err instanceof RpcError) {
+    if (err instanceof RpcError || err instanceof ServiceScopeError) {
       io.err(errorLine(`error (${err.code}): ${err.message}`));
       return 1;
     }
