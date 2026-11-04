@@ -791,17 +791,28 @@ export class CellDriver implements RuntimeDriver {
     if (fetchDue) origin.lastFetchAt = now;
     this.poolWorkers.set(repoKey, worker);
     return new Promise<void>(resolve => {
-      const clear = (failed: boolean): void => {
-        if (this.poolWorkers.get(repoKey) !== worker) return;
-        this.poolWorkers.delete(repoKey);
+      let settled = false;
+      const clear = (failed: boolean): boolean => {
+        if (settled) return false;
+        settled = true;
+        clearTimeout(watchdog);
+        if (this.poolWorkers.get(repoKey) === worker) this.poolWorkers.delete(repoKey);
         if (fetchDue && policy) {
           origin.failures = failed ? Math.min(origin.failures + 1, 30) : 0;
           origin.nextFetchAt = Date.now() + upstreamFailureDelay(policy.intervalMs, origin.failures);
         }
         resolve();
+        return true;
       };
+      const timeoutMs = (policy?.timeoutMs ?? DEFAULT_UPSTREAM_REFRESH.timeoutMs) * 3 + 30_000 + target * 60_000;
+      const watchdog = setTimeout(() => {
+        if (!clear(true)) return;
+        this.cfg.log?.(`cell.upstream.worker_timeout repoKey=${repoKey} timeoutMs=${timeoutMs}`);
+        void worker.terminate().catch(() => {});
+      }, timeoutMs);
+      watchdog.unref();
       worker.once("message", (result: PoolWorkerResult) => {
-        clear(result.ok === false || result.sync?.refresh.status === "failed");
+        if (!clear(result.ok === false || result.sync?.refresh.status === "failed")) return;
         if (result.sync != null) this.cfg.onUpstreamRefreshed?.(request.originRepo, result);
       });
       worker.once("error", () => clear(true));

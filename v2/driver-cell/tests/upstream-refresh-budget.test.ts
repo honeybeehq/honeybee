@@ -134,3 +134,36 @@ test("consecutive origin failures back off to an hour and reset after success",a
     }
   } finally {for(const w of internal.poolWorkers.values())await w.terminate();driver.disposeAll();rig.cleanup();provisional.cleanup();}
 });
+
+test("a hung pool worker times out once and the round advances to its next origin", async t => {
+  const provisional = makeRig(), worker = join(provisional.root, "hung.mjs");
+  writeFileSync(worker, "setInterval(()=>{},1000);");
+  const logs: string[] = [];
+  const { rig, driver, internal } = setup({ poolWorkerUrl: pathToFileURL(worker), log: (message: string) => logs.push(message) });
+  const workers: Worker[] = [];
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 2_000_000_000_000 });
+  try {
+    driver.trackOrigins([{ originRepo: rig.origin.repo, repoName: "fixture", usedAt: Date.now() }, { originRepo: provisional.origin.repo, repoName: "other", usedAt: Date.now() }]);
+    internal.refreshRecentOrigins();
+    workers.push(...internal.poolWorkers.values());
+    assert.equal(internal.poolWorkers.size, 1);
+    const timeout = DEFAULT_UPSTREAM_REFRESH.timeoutMs * 3 + 30_000;
+    t.mock.timers.tick(timeout - 1);
+    assert.equal(internal.poolWorkers.size, 1);
+    t.mock.timers.tick(1);
+    await new Promise(setImmediate);
+    assert.equal(internal.poolWorkers.size, 0);
+    assert.equal(internal.origins.get(rig.origin.repo)!.failures, 1);
+    assert.equal(logs.filter(line => line.includes("worker_timeout")).length, 1);
+    t.mock.timers.tick(1000);
+    await new Promise(setImmediate);
+    workers.push(...internal.poolWorkers.values());
+    assert.equal(internal.poolWorkers.size, 1);
+    assert.equal(internal.origins.get(rig.origin.repo)!.failures, 1);
+  } finally {
+    for (const running of workers) await running.terminate();
+    driver.disposeAll();
+    t.mock.timers.reset();
+    rig.cleanup(); provisional.cleanup();
+  }
+});
