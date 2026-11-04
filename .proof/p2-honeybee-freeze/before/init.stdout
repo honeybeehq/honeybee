@@ -1,0 +1,20 @@
+hive deploy --init — migrate the global `hive` onto ~/.hive/runtime/current
+
+  runtime root:    /tmp/hb-freeze-capture/usage/runtime (NOTHING DEPLOYED YET)
+  global package:  /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/lib/node_modules/honeybee [missing]
+  global bin:      /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/hive [missing]
+
+This step is print-only (it never rewires the live tree itself). Run, in order:
+
+  1. hive deploy
+     # install a first version under ~/.hive/runtime before switching resolution
+  2. ln -s "/tmp/hb-freeze-capture/usage/runtime/current" "/home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/lib/node_modules/honeybee.new" && mv -h "/home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/lib/node_modules/honeybee.new" "/home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/lib/node_modules/honeybee"
+     # atomic swap (BSD mv -h: replace the link itself, never follow it)
+  3. ln -sfn "../lib/node_modules/honeybee/dist/cli.js" "/home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/hive"
+     # npm-style relative bin shim; resolves through the package symlink, i.e. through runtime/current
+  4. hive daemon install --force && hive daemon restart
+     # rebind the LaunchAgent plist to the runtime/current CLI path
+  5. readlink "/home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/lib/node_modules/honeybee" && hive deploy --list
+     # verify: the package resolves through runtime/current and history shows the active sha
+
+hive: warning: any future `npm i -g honeybee` / `npm update -g` will clobber the symlink — redo the ln/mv step after such commands (or simply never run them again; `hive deploy` replaces them).

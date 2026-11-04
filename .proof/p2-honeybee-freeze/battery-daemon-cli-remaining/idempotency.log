@@ -1,0 +1,14 @@
+✔ idem-rpc.1: spawn replay returns the original bee/command — one bee, marked deduped (726.63587ms)
+✔ idem-rpc.1b: spawn atomically admits its first message and replays one receipt (692.472869ms)
+✔ idem-rpc.2: send replay returns the original message — mailbox has exactly one row (963.957206ms)
+✔ idem-rpc.3: stop replay dedups (queued and settled); bad keys are typed invalid_request (941.690607ms)
+✔ idem-rpc.4: keys survive a daemon SIGKILL + restart — replay still answers with the original (1129.822999ms)
+✔ idem-rpc.5: registry verbs dedup — template.put replays its outcome; delete replay never not_found (503.910472ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5099.640789

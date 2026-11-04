@@ -1,0 +1,13 @@
+✔ rpc.login.1: capability tags, start/rejoin/alias, snapshot + watch rows, typed errors, idempotent replay, secret sentinel absent from sqlite/log/stdout, no tmux seat (1240.253488ms)
+✔ rpc.login.2: browser-style landing over RPC with a real daemon: restart marks the live flow interrupted (no worker survives), retry issues revision 2 and completes; a sentinel credential is absent from sqlite, daemon log and stdout (2126.786491ms)
+✔ rpc.login.3: a completed login survives a restart as succeeded; account.remove stops the flow's worker and drops its rows (1285.029728ms)
+✔ rpc.redaction: actual snapshot and watch projection never carry CLI URL credentials (1795.729929ms)
+✔ rpc.redaction: repeated encoded provider errors are absent from real snapshot and watch (303.990839ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7037.184284

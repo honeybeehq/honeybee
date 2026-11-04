@@ -1,0 +1,12 @@
+✔ reg.1: template verb round-trips — put/get/list/export/import/delete, typed refusals; track verbs are gone (584.885192ms)
+✔ reg.2: snapshot carries mirror-shaped template rows and no tracks; watch deltas stream registry audit rows seq-ordered (528.587398ms)
+✔ reg.3: packages.importLocalConfig over RPC — explicit dir, idempotent, reports skips (495.170245ms)
+✔ reg.4: template.put and template.import refuse an empty env over a template that has env with a typed code; a put that omits env keeps it (536.41241ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2284.33799

@@ -1,0 +1,44 @@
+✔ Muse authority linux: one shared mint, anchored leases, private bootstrap, T21 recreation and no T15 (63.024173ms)
+✔ Muse authority darwin: one shared mint, anchored leases, private bootstrap, T21 recreation and no T15 (29.000933ms)
+✔ Muse renewal is shared, paced across restart, one generation per operation; provider auth alone requires login (29.436989ms)
+✔ Muse idle authorities never mint on ticks, even past expiry; lease demand renews once (27.973326ms)
+✔ Muse publication preserves external login/key changes; held login is not a lease (24.657414ms)
+✔ Muse mint transport default: exact central request and secret-free outcomes (20.868773ms)
+✔ Muse mint transport observed: exact central request and secret-free outcomes (0.341393ms)
+✔ Muse mint transport invalid: exact central request and secret-free outcomes (0.335893ms)
+✔ Muse mint transport auth: exact central request and secret-free outcomes (0.262079ms)
+✔ Muse mint transport quota: exact central request and secret-free outcomes (0.449433ms)
+✔ Muse mint transport malformed: exact central request and secret-free outcomes (0.261158ms)
+✔ Muse retryable attempts retain pacing and provider backoff through restart (27.800611ms)
+✔ Muse unknown_outcome attempts retain pacing and provider backoff through restart (32.682825ms)
+✔ Muse relogin requires explicit replacement, mints once, preserves the previous login on refusal and supports cancellation (28.322004ms)
+✔ Muse linux static or native login cannot be enrolled or minted as a bootstrap (22.138519ms)
+✔ Muse darwin static or native login cannot be enrolled or minted as a bootstrap (21.687334ms)
+✔ Muse failed enrollment obeys retry-after across restart without changing native copies (25.138338ms)
+✔ Muse linux device login replaces an enabled authority in place without publishing the bootstrap (38.427156ms)
+✔ Muse darwin device login replaces an enabled authority in place without publishing the bootstrap (27.529033ms)
+✔ Muse a lost disabled authority can enroll a newly supplied native login (26.119104ms)
+✔ Muse linux disable restores native copies byte for byte, including schema and other providers (26.113844ms)
+✔ Muse darwin disable restores native copies byte for byte, including schema and other providers (24.695278ms)
+✔ Muse elective margin request keeps a usable key through backoff; forced mint remains paced (24.054923ms)
+✔ Muse forgetDisabled and missing authority relogin keep the persisted mint floor (26.025382ms)
+✔ Muse rollback never overwrites an external login, including where the native snapshot was absent (25.417891ms)
+✔ Muse an old authority without a snapshot disables without fabricating native material (23.924239ms)
+✔ Muse paced approved grant is dropped on cancel without another device request or mint (27.973737ms)
+✔ Muse paced approved grant is dropped on timeout without another device request or mint (26.571924ms)
+✔ Muse paced approved grant is dropped on shutdown without another device request or mint (25.444053ms)
+✔ Muse corrupt renewal marker fails closed; removing it re-paces from the authority watermark (25.892103ms)
+✔ Muse an approved grant that expires during pacing fails without a mint or changing the held login (26.175584ms)
+✔ Muse linux: disable after uncertain mint restores the exact native snapshot and allows later enable (27.573279ms)
+✔ Muse darwin: disable after uncertain mint restores the exact native snapshot and allows later enable (26.613003ms)
+✔ Muse forgetDisabled tolerates corrupt authority while preserving the durable pacing floor (25.075546ms)
+✔ Muse forgetDisabled tolerates corrupt authority while preserving the durable pacing floor (24.529686ms)
+✔ Muse forgetDisabled tolerates corrupt authority while preserving the durable pacing floor (24.435243ms)
+ℹ tests 36
+ℹ suites 0
+ℹ pass 36
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1077.199785

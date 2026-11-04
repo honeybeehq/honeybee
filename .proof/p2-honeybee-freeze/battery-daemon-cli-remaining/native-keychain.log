@@ -1,0 +1,19 @@
+✔ claude keychain service embeds sha256(config dir)[0..8]; default home is unsuffixed (1.472621ms)
+✔ HIVE_NO_KEYCHAIN disables the bridge entirely (0.965145ms)
+✔ keychain reads distinguish explicit absence from unreadable and preserve present raw bytes (1.538309ms)
+✔ keychain reads prefer the current user's item over a same-service item under another account (0.573123ms)
+✔ buildAddGenericPasswordCommand stores compact Claude JSON as a plain password (0.355691ms)
+✔ security hex rendering is normalized to JSON at the bridge boundary (0.286136ms)
+✔ buildAddGenericPasswordCommand compacts oversize JSON, fails closed when even that overflows (0.527826ms)
+✔ buildAddGenericPasswordCommand rejects account/service values that break the line protocol (0.170962ms)
+﹣ security -i writes Claude-format credentials as raw JSON, not hex text (macOS only) (0.129311ms) # SKIP
+✔ identityOnlyCredentials extracts the claudeAiOauth identity and drops siblings (0.424885ms)
+✔ credentialDigest is a stable content hash (0.199658ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 140.468151

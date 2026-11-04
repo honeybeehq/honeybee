@@ -1,0 +1,38 @@
+✔ verbs.agent-account-selector: auto/rr suffixes collapse without hijacking ordinary hyphenated agents (1.794727ms)
+✔ verbs.login-flow: interactive logins are driven from the terminal; json/no-wait just start; the rendered flow carries no secret and no attach target (0.709459ms)
+✔ verbs.x: spawn + first send in one shot (fire-and-forget); prompt lands in the mailbox; usage error without a prompt (1138.400409ms)
+✔ verbs.run: spawn + send + wait + print the reply + archive; --keep leaves the bee (2197.320915ms)
+✔ verbs.wait: blocks until idle with no queued mail; a hung turn times out with exit 1 (3064.209702ms)
+✔ verbs.here: the HIVE_BEE_ID stamp — full line, --json, and the loud unset error (702.299084ms)
+✔ verbs.transcript+last: stub session log rendered as turns; --raw verbatim; --tail bounds; last = newest assistant text (1918.856375ms)
+✔ verbs.transcript: claude-format fixture — text turns kept, tool traffic one-lined, thinking/result elided; stale offline read (65.792562ms)
+✔ verbs.tail: rendered backlog with -n (--raw for verbatim); -f/--follow streams appends until SIGINT (285.920615ms)
+✔ verbs.transcript: -f/--follow streams appended lines until SIGINT (567.977404ms)
+✔ verbs.transcript: agy follow keeps projector state across appended lines (305.224929ms)
+✔ verbs.transcript: follow completes a torn agy record with one projector (303.721288ms)
+✔ verbs.transcript: follow flushes one live agy fragment once on SIGINT (60.774723ms)
+✔ verbs.transcript: follow starts at the backlog snapshot boundary (289.897882ms)
+✔ verbs.last: falls back to the latest seal when the log has no assistant text; --seal skips straight there (66.491138ms)
+✔ verbs.events: audit-row tail with --kind glob and --bee filters; stale fallback when the daemon is down (978.683461ms)
+▶ verbs.set-model: arg surgery — grammar-aware for claude/codex, conservative in-place for unknown harnesses; CLI applies via bee.setArgs
+  ✔ withModelArg unit surface (0.756129ms)
+✔ verbs.set-model: arg surgery — grammar-aware for claude/codex, conservative in-place for unknown harnesses; CLI applies via bee.setArgs (723.656025ms)
+✔ verbs.aliases: ls and ps are list; usage is limits-shaped over account_limits; login/swap-account top-level route through (728.702138ms)
+✔ verbs.account-capture: an already-authenticated home is validated, backed up, and marked logged in (490.400477ms)
+✔ verbs.usage: renders the cached account_limits rows (stale, read-only) with pct + resets, v1-usage style (59.045243ms)
+✔ verbs.xa: v1 shape is <agent> (not a bee name); refuses pane-less substrates; tmux spawn + --print (977.265035ms)
+✔ verbs.attach: refuses hsr/cell bees with the v2 guidance; tmux bees get the recorded session (via --print) (976.851181ms)
+✔ verbs.help: the grouped v1-style overview lists the new verbs under their sections (2.583359ms)
+✔ handles.ladder: exact id → exact handle (case-insensitive) → exact name → unique prefix; ambiguity lists candidates (1.582965ms)
+✔ handles.live: spawn returns the minted handle; ls leads with it and keeps id= tail; every verb takes the handle (712.174839ms)
+✔ verbs.send-sender: hive send binds the ambient bee identity while operator sends stay human (1154.831299ms)
+✔ verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz inbox = mailbox; retired subs guide loudly (1321.841216ms)
+✔ verbs.tag: a bee cannot write apiary:* tags; the operator can (768.289849ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 20099.786433

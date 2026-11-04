@@ -1,0 +1,33 @@
+✔ deploy admits exact v2 Honeybee forward and rollback identities with a foreign caller (456.550635ms)
+✔ v2 admission preserves refusal for unrelated Honeybee (7.704669ms)
+✔ v2 admission preserves refusal for caller artifact (5.147881ms)
+✔ v2 admission preserves refusal for changed caller (4.855594ms)
+✔ v2 admission preserves refusal for mixed versions (5.194933ms)
+✔ v2 admission preserves refusal for unknown version (4.638241ms)
+✔ v2 admission preserves refusal for missing evidence (4.516194ms)
+✔ v2 admission preserves refusal for released reservation (200.369367ms)
+✔ v2 admission preserves refusal for active authority (208.211944ms)
+✔ v2 admission preserves refusal for locked storage (215.755579ms)
+✔ v2 admission preserves refusal for unverified storage (6.157593ms)
+✔ v2 admission preserves refusal for unknown requirement (5.220001ms)
+✔ a live owner for another store cannot authorize the local reservation (204.695501ms)
+✔ admission refuses unknown requirement (5.444518ms)
+✔ admission refuses custom offline store (3.976195ms)
+✔ admission refuses released reservation (206.352191ms)
+✔ admission refuses live runtime mismatch (207.020198ms)
+✔ status query explicitly targets this node's data directory and socket (212.515806ms)
+✔ status query follows a live endpoint record to a relocated socket and ignores a dead one (416.29121ms)
+✔ offline admission refuses while a daemon owns SQLite exclusively (205.616591ms)
+✔ the live owner's initial unreserved status cannot be used for recovery (207.981606ms)
+✔ schema 28 offline owner does not widen recovery (205.789837ms)
+✔ schema 28 live owner does not widen recovery (204.371081ms)
+✔ schema 30 offline owner does not widen recovery (209.76453ms)
+✔ schema 30 live owner does not widen recovery (209.050603ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3839.287306

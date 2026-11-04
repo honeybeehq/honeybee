@@ -1,0 +1,364 @@
+Script started on 2026-11-04 12:02:24+01:00 [COMMAND="bash /tmp/hb-session.sh" <not executed on terminal>]
+
+$ hive --version
+honeybee 0.0.1-dev.87699fb6734b.dirty
+[exit 0]
+
+$ hive deploy --list
+hive: no deploys recorded under /tmp/hb-freeze-session/runtime — run: hive deploy
+[exit 0]
+
+$ hive deploy --artifact /home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/release/honeybee-runtime-ffffffffffffffffffffffffffffffffffffffff.tar.gz --identity /home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/identity.json --admission /home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/admission.json --expected-current none --bin-dir /tmp/hb-freeze-session/bin
+(node:1409245) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/dist/cli.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1409253) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/dist/cli.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1409260) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/dist/cli.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"sha":"ffffffffffffffffffffffffffffffffffffffff","artifactHash":"646a32b3389501bbbb340a13a87a6ec376f36a493f9e5838e34d3fff9125a04b","installedDir":"/tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff","previousSha":null,"pruned":[],"entry":{"sha":"ffffffffffffffffffffffffffffffffffffffff","at":"2026-11-04T11:02:25.244Z","artifactHash":"646a32b3389501bbbb340a13a87a6ec376f36a493f9e5838e34d3fff9125a04b","by":"trmd"}}
+[exit 0]
+
+$ hive deploy --list
+ffffffffffffffffffffffffffffffffffffffff	2026-11-04T11:02:25.244Z	646a32b3389501bbbb340a13a87a6ec376f36a493f9e5838e34d3fff9125a04b	trmd	current
+[exit 0]
+
+$ readlink /tmp/hb-freeze-session/runtime/current
+ffffffffffffffffffffffffffffffffffffffff
+
+$ cat /tmp/hb-freeze-session/runtime/runtime-mode.json
+{"schemaVersion":1,"runtime":"v2"}
+
+$ /tmp/hb-freeze-session/bin/hive --version (through the owner shim)
+(node:1409322) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/dist/cli.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+fixture cli: unsupported --version
+[exit 2]
+
+$ hive deploy --list
+ffffffffffffffffffffffffffffffffffffffff	2026-11-04T11:02:25.244Z	646a32b3389501bbbb340a13a87a6ec376f36a493f9e5838e34d3fff9125a04b	trmd	current
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	2026-08-01T00:00:00.000Z	1111111111111111111111111111111111111111111111111111111111111111	op	
+[exit 0]
+
+$ hive deploy --rollback
+deploy: rollback planned ffffffffffffffffffffffffffffffffffffffff → aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+deploy: no prior store; absence receipt /tmp/hb-freeze-session/runtime/.store-absence/1793790146557-1409367.json
+deploy: rolled back ffffffffffff → aaaaaaaaaaaa
+deploy: /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node /tmp/hb-freeze-session/runtime/current/dist/cli.js v2 daemon install --data-dir /tmp/hb-freeze-session/v2
+deploy: /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node /tmp/hb-freeze-session/runtime/current/dist/cli.js v2 daemon stop --data-dir /tmp/hb-freeze-session/v2
+deploy: /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node /tmp/hb-freeze-session/runtime/current/dist/cli.js v2 daemon start --data-dir /tmp/hb-freeze-session/v2
+rollback	ffffffffffffffffffffffffffffffffffffffff	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+[exit 0]
+
+$ hive deploy --list
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	2026-11-04T11:02:26.558Z	1111111111111111111111111111111111111111111111111111111111111111	trmd	current
+ffffffffffffffffffffffffffffffffffffffff	2026-11-04T11:02:25.244Z	646a32b3389501bbbb340a13a87a6ec376f36a493f9e5838e34d3fff9125a04b	trmd	
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	2026-08-01T00:00:00.000Z	1111111111111111111111111111111111111111111111111111111111111111	op	
+[exit 0]
+
+$ readlink /tmp/hb-freeze-session/runtime/current
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+$ hive deploy --rollback
+deploy: rollback planned aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa → ffffffffffffffffffffffffffffffffffffffff
+deploy: no prior store; absence receipt /tmp/hb-freeze-session/runtime/.store-absence/1793790147164-1409434.json
+deploy: rolled back aaaaaaaaaaaa → ffffffffffff
+deploy: /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node /tmp/hb-freeze-session/runtime/current/dist/cli.js v2 daemon install --data-dir /tmp/hb-freeze-session/v2
+(node:1409480) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/dist/cli.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+deploy: /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node /tmp/hb-freeze-session/runtime/current/dist/cli.js v2 daemon stop --data-dir /tmp/hb-freeze-session/v2
+(node:1409487) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/dist/cli.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+deploy: /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node /tmp/hb-freeze-session/runtime/current/dist/cli.js v2 daemon start --data-dir /tmp/hb-freeze-session/v2
+(node:1409495) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/dist/cli.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /tmp/hb-freeze-session/runtime/ffffffffffffffffffffffffffffffffffffffff/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+rollback	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa	ffffffffffffffffffffffffffffffffffffffff
+[exit 0]
+
+$ readlink /tmp/hb-freeze-session/runtime/current
+ffffffffffffffffffffffffffffffffffffffff
+
+$ hive completion bash
+# hive bash completion
+# Install: eval "$(hive completion bash)"
+# Or add to ~/.bashrc: hive completion bash > ~/.hive.bash && source ~/.hive.bash
+_hive_complete() {
+  local IFS=$'\n'
+  local response
+  response=$("${COMP_WORDS[0]}" __complete "${COMP_WORDS[@]}" 2>/dev/null)
+  COMPREPLY=( $(compgen -W "$response" -- "${COMP_WORDS[COMP_CWORD]}") )
+}
+complete -F _hive_complete hive
+
+[exit 0]
+
+$ hive __complete hive dep
+account
+ack
+action
+answer
+archive
+ask
+attach
+bee
+buz
+cell
+children
+commands
+completion
+daemon
+delete
+deploy
+deploy-info
+events
+fork
+freeze
+handoff
+harnesses
+health
+help
+here
+human-ref
+import
+interrupt
+last
+limits
+list
+login
+ls
+mailbox
+packages
+ps
+question
+reconnect-tools
+rename
+revive
+run
+seal
+send
+set-model
+spawn
+stop
+swap-account
+tag
+tail
+task
+template
+thread-fork
+thread-handoff
+thread-operation
+transcript
+tx
+unarchive
+usage
+view
+wait
+watch
+x
+xa
+[exit 0]
+
+$ hive __complete hive deploy --
+--rollback
+--list
+--init
+--json
+--keep
+--skip-tests
+--allow-non-descendant
+--provision-question-withdrawal
+--artifact
+--identity
+--admission
+--expected-current
+--bin-dir
+--help
+[exit 0]
+
+$ hive __complete hive send --urgency
+--account
+--action
+--active
+--add
+--after
+--agent
+--all
+--allow-foreign-daemon
+--apply
+--archived
+--arg
+--ask
+--attach
+--attempt
+--auto
+--bee
+--before
+--body
+--by
+--cell
+--cell-id
+--check-only
+--clear
+--code
+--command-id
+--config
+--confirm
+--context-json
+--credit-id
+--cwd
+--data-dir
+--detail
+--dir
+--discard-native
+--discard-retained-chain
+--dry-run
+--effort
+--enrol
+--env
+--epoch
+--executor
+--expected-version
+--failed
+--field
+--file
+--follow
+--force
+--from
+--from-frozen
+--from-objects
+--git-common-dir
+--handoff-id
+--harness
+--head
+--home
+--id
+--idempotency-key
+--idle-ms
+--import-existing
+--input
+--instruction
+--items-json
+--json
+--keep
+--kind
+--lifecycle
+--limit
+--measure
+--method
+--model
+--move
+--name
+--native
+--native-recovery
+--no-attach
+--no-auto
+--no-follow
+--no-measure
+--no-parent
+--no-preamble
+--no-sandbox
+--no-wait
+--no-yolo
+--now
+--object-format
+--observed-head
+--off
+--offset
+--on
+--only-account
+--onto
+--open
+--option
+--origin
+--out
+--output
+--parent
+--penalty
+--placement-version
+--preamble
+--print
+--progress
+--prompt
+--quest
+--raw
+--reason
+--rebase
+--ref
+--remote
+--remove
+--replace
+--replace-account
+--retained-generation
+--root
+--sandbox
+--scope
+--seal
+--segments
+--sender
+--sender-human
+--sender-kind
+--sha
+--since
+--socket
+--source
+--source-build
+--status
+--substrate
+--succeeded
+--tag
+--tail
+--takeover-id
+--template
+--tier
+--timeout
+--title
+--to
+--token
+--tree
+--uncertain
+--unread
+--urgency
+--use-retained-chain
+--verbose
+--wait
+--warm
+--yolo
+[exit 0]
+
+$ hive deploy --dry-run
+hive: deploy: unknown flag --dry-run
+Usage: hive deploy [<sha>] [--keep <n>] [--skip-tests]   build+verify <sha> (default HEAD) in a temp checkout, install to ~/.hive/runtime/<sha>, retarget current, restart daemon
+       --provision-question-withdrawal provisions registered local service trust for an approved host; explicit false in config remains disabled
+       --skip-tests skips tests with a not release-grade warning; release artifacts cannot skip tests
+       refuses a <sha> that does not contain the deployed commit (silent-revert guard); --allow-non-descendant overrides
+       hive deploy --rollback             retarget current to the previous deploy and restart the daemon
+       hive deploy --artifact <archive> --identity <json> --admission <json> --expected-current <sha|none> [--bin-dir <directory>]   install exact verified release bytes
+       hive deploy --list [--json]        show the deploy history
+       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current
+[exit 1]
+
+$ hive deploy --help
+Usage: hive deploy [<sha>] [--keep <n>] [--skip-tests]   build+verify <sha> (default HEAD) in a temp checkout, install to ~/.hive/runtime/<sha>, retarget current, restart daemon
+       --provision-question-withdrawal provisions registered local service trust for an approved host; explicit false in config remains disabled
+       --skip-tests skips tests with a not release-grade warning; release artifacts cannot skip tests
+       refuses a <sha> that does not contain the deployed commit (silent-revert guard); --allow-non-descendant overrides
+       hive deploy --rollback             retarget current to the previous deploy and restart the daemon
+       hive deploy --artifact <archive> --identity <json> --admission <json> --expected-current <sha|none> [--bin-dir <directory>]   install exact verified release bytes
+       hive deploy --list [--json]        show the deploy history
+       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current
+[exit 0]
+
+Script done on 2026-11-04 12:02:28+01:00 [COMMAND_EXIT_CODE="0"]

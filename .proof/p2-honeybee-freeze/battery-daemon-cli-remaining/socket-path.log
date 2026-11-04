@@ -1,0 +1,15 @@
+✔ socket placement: a data dir whose sockets fit keeps them in place (1.731975ms)
+✔ socket placement: a deep data dir moves every socket into one short dir that survives a restart (2.403489ms)
+✔ socket placement: a recorded dir that is world-writable or a symlink to a foreign dir is never reused (1.661668ms)
+✔ socket placement: the fit check uses the real path of the base (2.102514ms)
+✔ socket placement: the refusal names the path when no base can hold a short socket (0.866243ms)
+✔ a daemon on a deep data dir listens on a short socket that clients find through the endpoint record (476.603845ms)
+✔ a daemon refuses an explicit socket path past the platform limit and names it (394.352338ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1013.7814

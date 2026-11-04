@@ -1,0 +1,20 @@
+✔ a live registered service cannot be silently replaced; a stopped service can restart (15.057083ms)
+✔ trust off never creates a key and access classification covers every verb (1.181094ms)
+✔ birth-bound registration consumes its challenge, replaces another PID, and expires (1.216242ms)
+✔ a corrupt key is never regenerated and unavailable credentials fail phase two (0.464813ms)
+✔ refusal audits have at most 128 keys and one overflow per window (2.179214ms)
+✔ reload invalidates registration, closes the owned key buffer, and keeps the stored key (0.955887ms)
+✔ registration refuses a symlink or permissive parent without replacing the key (0.661125ms)
+✔ other connections cannot exhaust challenge capacity before a fresh registration (93.774974ms)
+✔ global eviction chooses a busy process before a lone legitimate challenge (3.078401ms)
+✔ a symlinked dataDir accepts canonical and configured key paths without relaxing private symlink checks (1.102041ms)
+✔ a symlinked ancestor of the dataDir preserves the private-chain boundary (1.745341ms)
+✔ replacing a registration treats an other-user pid as reused but keeps refusing an unobservable owner (2.95459ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 270.476337

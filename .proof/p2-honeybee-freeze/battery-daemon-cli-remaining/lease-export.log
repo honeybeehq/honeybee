@@ -1,0 +1,45 @@
+✔ leased export claude: ephemeral current access only, original scope/expiry, one redacted audit per call (39.049245ms)
+✔ leased export codex: ephemeral current access only, original scope/expiry, one redacted audit per call (24.31015ms)
+✔ leased export grok: ephemeral current access only, original scope/expiry, one redacted audit per call (23.824115ms)
+✔ leased export refuses revoked without effects (24.006359ms)
+✔ leased export refuses expired without effects (23.368189ms)
+✔ leased export refuses publication_pending without effects (23.188831ms)
+✔ leased export refuses generation_missing without effects (23.194431ms)
+✔ leased export refuses instance_missing without effects (23.082704ms)
+✔ leased export refuses unbounded_expiry without effects (22.897835ms)
+✔ leased export refuses paused without effects (23.468084ms)
+✔ leased export refuses account_auth_needed without effects (24.513034ms)
+✔ leased export refuses local/native/central/static claude (21.573352ms)
+✔ leased export refuses local/native/central/static kimi (20.703783ms)
+✔ leased export refuses local/native/central/static muse (20.850669ms)
+✔ leased export fails closed on missing primary (21.495862ms)
+✔ leased export fails closed on corrupt primary (21.005529ms)
+✔ leased export fails closed on mismatch primary (21.005019ms)
+✔ leased export fails closed on refresh primary (20.932948ms)
+✔ leased export fails closed on symlink primary (20.884043ms)
+✔ leased export fails closed on expiry primary (21.041169ms)
+✔ leased export refuses handoff source/exported/false (21.382411ms)
+✔ leased export refuses handoff source/prepared/false (20.973568ms)
+✔ leased export refuses handoff source/committed/false (20.990881ms)
+✔ leased export refuses handoff destination/preparing/false (20.989788ms)
+✔ leased export refuses handoff destination/prepared/false (21.054314ms)
+✔ leased export refuses handoff destination/adopting/false (21.097268ms)
+✔ leased export refuses handoff destination/adopting/true (20.903331ms)
+✔ leased export refuses handoff destination/failed/false (21.00557ms)
+✔ leased export refuses a live authority lane then succeeds after it settles (21.516001ms)
+✔ leased export waits for install publication and remove, and never reads their stale pre-lane origin (29.584066ms)
+✔ leased export refuses unclaimed auth recovery, permits claimed idle or spawn-failed receipt and deadline-released legacy (32.301746ms)
+✔ leased export ingress is direct local Unix only, missing facts fail closed (0.368345ms)
+✔ leased export enrolled live row generationless coverage pending (21.275895ms)
+✔ leased export enrolled live row scoped coverage pending (21.160821ms)
+✔ leased export permits a deadline-released unclaimed candidate and does not require historical auth receipt settlement (22.894629ms)
+✔ leased export refuses the current known-failed legacy revision, then permits a changed publication (28.168946ms)
+✔ leased export copies only stored bounded fence provenance and refuses a forwarded row (22.913827ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1073.417932
