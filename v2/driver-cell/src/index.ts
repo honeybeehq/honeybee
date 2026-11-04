@@ -111,7 +111,7 @@ export {
   mergeSandboxWritablePaths,
   NODE_KINDS,
   sandboxDefaultFor,
-  sandboxEnabled,
+  sandboxEnabled, resolveCellSandboxPolicy,
   sandboxEnvironment,
   sandboxProtectedPaths,
   sandboxWritableDirectory,

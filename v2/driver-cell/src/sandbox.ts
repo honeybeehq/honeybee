@@ -29,8 +29,13 @@ export function sandboxDefaultFor(kind: NodeKind): boolean {
 }
 
 /** Effective sandbox decision: per-cell override > node-kind default. */
+export function resolveCellSandboxPolicy(kind: NodeKind | undefined, cellOverride: boolean | null | undefined, configuredOverride: boolean | null | undefined = null): {enabled: boolean; override: boolean | null} {
+  const override = cellOverride ?? configuredOverride ?? null;
+  return {enabled: override ?? sandboxDefaultFor(kind ?? "workstation"), override};
+}
+
 export function sandboxEnabled(kind: NodeKind, cellOverride: boolean | null | undefined): boolean {
-  return cellOverride ?? sandboxDefaultFor(kind);
+  return resolveCellSandboxPolicy(kind, cellOverride).enabled;
 }
 
 export interface SandboxPolicy {

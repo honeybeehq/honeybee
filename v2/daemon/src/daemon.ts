@@ -205,7 +205,7 @@ import {
   type CellBase,
   isAncestor,
   currentBranch,
-  sandboxEnabled,
+  sandboxEnabled, resolveCellSandboxPolicy,
   DEFAULT_SANDBOX_TMPFS_BYTES,
   runCellExec,
   sanitizeComponent,
@@ -1818,7 +1818,7 @@ export class HiveDaemon {
         cellId: parsed.cellId,
         ...(restoreWip ? { restoreWip } : {}),
       },
-      sandbox: cell.sandbox ?? this.cfg.cellSandbox,
+      sandbox: resolveCellSandboxPolicy(this.cfg.nodeKind, cell.sandbox, this.cfg.cellSandbox).override,
     };
   }
 
@@ -2942,7 +2942,7 @@ export class HiveDaemon {
       if (bee?.substrate !== "cell") return;
       const cell = bee.cellId ? this.store.getCell(bee.cellId) : null;
       if (!cell || cell.state === "removed") throw new Error("cell_unresolved");
-      sandboxed = sandboxEnabled(this.cfg.nodeKind, cell.sandbox ?? this.cfg.cellSandbox);
+      sandboxed = resolveCellSandboxPolicy(this.cfg.nodeKind, cell.sandbox, this.cfg.cellSandbox).enabled;
     } catch { this.log("security.confinement cell_sandbox_unresolved assumed=sandboxed"); }
     try {
       if (!sandboxed) return;
@@ -5239,14 +5239,15 @@ export class HiveDaemon {
     try {
       if (secret && (secret.expiresAt <= Date.now() || secret.outputCapture && secret.outputCapture.expiresAt <= Date.now())) throw new Error("secret_execution_expired");
       const execRuntime = store.currentRuntime(cell.sourceBeeId);
-      const gatewaySocketPath = sandboxEnabled(this.cfg.nodeKind, cell.sandbox) && execRuntime ? this.cellGateway(cell.sourceBeeId, execRuntime.generation).socketPath : undefined;
+      const sandboxPolicy = resolveCellSandboxPolicy(this.cfg.nodeKind, cell.sandbox, this.cfg.cellSandbox);
+      const gatewaySocketPath = sandboxPolicy.enabled && execRuntime ? this.cellGateway(cell.sourceBeeId, execRuntime.generation).socketPath : undefined;
       const outcome = await runCellExec(
         paths,
         {
           argv: argv as string[],
           cwd,
           timeoutMs,
-          sandbox: cell.sandbox,
+          sandbox: sandboxPolicy.override,
           nodeKind: this.cfg.nodeKind,
           nodeKindExplicit: this.cfg.nodeKindExplicit,
           kvm: this.cfg.cellKvm,
