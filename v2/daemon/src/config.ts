@@ -10,6 +10,7 @@ import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
+import { resolveUpstreamSshPolicy, type UpstreamSshPolicy } from "../../driver-cell/src/upstreamFetch.ts";
 import { DEFAULT_TRIM_PATTERNS } from "../../driver-cell/src/trimPatterns.ts";
 import { contextPolicyConfigOf, ContextPolicyError, type ContextPolicyConfig } from "./contextPolicy.ts";
 import { NAMING_HEM_SECRET_PREFIX, parseNamingHemSecretRef } from "./hemSecret.ts";
@@ -228,6 +229,7 @@ export interface CellRetentionConfig {
   /** Fetch each origin's upstream into a Honeybee-owned mirror and use its HEAD as a landing target (satellites true; other nodes false). */
   fetchUpstream?: boolean;
   upstreamRefreshMinutes?: number;
+  upstreamSsh?: UpstreamSshPolicy;
   /** At most this many Cells evicted or removed by retention passes in any rolling 24 h (default 200). null = no cap. */
   maxEvictionsPerDay?: number | null;
   purgeIgnoredOnPark?: boolean;
@@ -255,6 +257,7 @@ export interface ResolvedCellRetention {
   pressureIdleAfterMs: number | null;
   fetchUpstream: boolean;
   upstreamRefreshMs: number;
+  upstreamSsh?: UpstreamSshPolicy;
   maxEvictionsPerDay: number | null;
   purgeIgnoredOnPark: boolean;
   budgetEnforce: boolean;
@@ -726,8 +729,9 @@ const isNonNegative = (v: unknown): v is number => typeof v === "number" && Numb
 const validTrimPattern = (p: unknown) =>
   typeof p === "string" && p.length > 0 && !p.includes("/") && p !== "." && p !== ".." && (!p.includes("*") || /^\*\.[^*]+$/.test(p));
 
-export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"): ResolvedCellRetention {
+export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation", configDir = "."): ResolvedCellRetention {
   const out = defaultCellRetention(nodeKind);
+  out.upstreamSsh = resolveUpstreamSshPolicy(undefined, configDir);
   if (raw === undefined) return out;
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     out.warnings.push(`cells.retention must be an object, got ${JSON.stringify(raw)}; using defaults`);
@@ -775,6 +779,9 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   out.pressureIdleAfterMs = read("pressureIdleAfterDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.pressureIdleAfterMs);
   out.upstreamRefreshMs = read("upstreamRefreshMinutes", "a number from 5 to 1440", (v) => typeof v === "number" && Number.isFinite(v) && v >= 5 && v <= 1440, (v) => (v as number) * 60_000, out.upstreamRefreshMs);
   out.fetchUpstream = read("fetchUpstream", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.fetchUpstream);
+  if (c.upstreamSsh !== undefined) {
+    out.upstreamSsh = resolveUpstreamSshPolicy(c.upstreamSsh, configDir);
+  }
   out.maxEvictionsPerDay = read(
     "maxEvictionsPerDay",
     "a positive integer or null",
@@ -791,12 +798,12 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   return out;
 }
 
-function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: string; sandbox: boolean | null; kvm: boolean; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention } {
+function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind, configDir = "."): { root?: string; sandbox: boolean | null; kvm: boolean; warm: Record<string, string[]>; allowStubMove: boolean; warmPoolFree: number; warmPoolMaxSize: number; retention: ResolvedCellRetention } {
   const envFree = Number(process.env.HIVE_CELL_WARMPOOL_FREE);
   const envOverride = Number.isFinite(envFree) && envFree >= 0 ? Math.floor(envFree) : null;
   const defaultWarmPoolFree = nodeKind === "satellite" ? 1 : 0;
   const v = raw.cells;
-  if (v === undefined) return { sandbox: null, kvm: false, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32, retention: cellRetentionOf(undefined, nodeKind) };
+  if (v === undefined) return { sandbox: null, kvm: false, warm: {}, allowStubMove: false, warmPoolFree: envOverride ?? defaultWarmPoolFree, warmPoolMaxSize: 32, retention: cellRetentionOf(undefined, nodeKind, configDir) };
   if (v === null || typeof v !== "object" || Array.isArray(v)) {
     throw new ConfigError("config: cells must be an object of {root?, sandbox?, warm?, retention?}");
   }
@@ -808,7 +815,7 @@ function cellsOf(raw: Record<string, unknown>, nodeKind: NodeKind): { root?: str
     allowStubMove: false,
     warmPoolFree: defaultWarmPoolFree,
     warmPoolMaxSize: 32,
-    retention: cellRetentionOf(c.retention, nodeKind),
+    retention: cellRetentionOf(c.retention, nodeKind, configDir),
   };
   if (c.warmPoolFree !== undefined) {
     if (typeof c.warmPoolFree !== "number" || !Number.isInteger(c.warmPoolFree) || c.warmPoolFree < 0) {
@@ -1192,7 +1199,9 @@ export function loadNodeConfig(dataDir: string, configPath?: string): ResolvedNo
   const i1DeadlineMs = Math.max(num(raw, "i1DeadlineMs", i1FloorMs), i1FloorMs);
 
   const nodeKind = nodeKindOf(raw);
-  const cells = cellsOf(raw, nodeKind);
+  const cells = cellsOf(raw, nodeKind, dirname(path));
+  const retentionRaw = (raw.cells as {retention?: {upstreamSsh?: unknown}} | undefined)?.retention;
+  if (cells.retention.fetchUpstream && retentionRaw?.upstreamSsh === undefined) cells.retention.warnings.push("cells.retention.upstreamSsh absent; using standard private host identity and known_hosts paths with strict host-key checking");
   const resolved: ResolvedNodeConfig = {
     dataDir,
     configPath: path,

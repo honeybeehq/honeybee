@@ -49,6 +49,7 @@ import { provisionCell, type ProvisionedCell, type ProvisionRequest, restoreWipA
 import { describeSandboxTmpfs, SandboxTmpWatch, sandboxTmpfsCap, type SandboxTmpfsCap } from "./sandboxTmp.ts";
 import { claimFromPool, repoKeyFor } from "./warmPool.ts";
 import type { PoolWorkerResult, RefreshRequest } from "./poolWorker.ts";
+import type { UpstreamSshPolicy } from "./upstreamFetch.ts";
 import { deleteCell, type DeleteResult, type DirtyReportOptions } from "./remove.ts";
 import {
   DEFAULT_SANDBOX_TMPFS_BYTES,
@@ -118,6 +119,7 @@ export interface CellDriverConfig {
 }
 
 export interface UpstreamRefreshPolicy {
+  ssh?: UpstreamSshPolicy;
   intervalMs: number;
   maxAgeMs: number;
   recentMs: number;
@@ -776,7 +778,7 @@ export class CellDriver implements RuntimeDriver {
             useGitImages: this.cfg.nodeKind === "workstation",
             ...(this.cfg.gitImagesRoot ? { gitImagesRoot: this.cfg.gitImagesRoot } : {}),
           },
-          ...(fetchDue && policy != null ? { upstream: { root: policy.root, maxAgeMs: policy.maxAgeMs, timeoutMs: policy.timeoutMs } } : {}),
+          ...(fetchDue && policy != null ? { upstream: { root: policy.root, maxAgeMs: policy.maxAgeMs, timeoutMs: policy.timeoutMs, ssh: policy.ssh } } : {}),
         },
       });
     } catch {

@@ -996,7 +996,7 @@ export class HiveDaemon {
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
       log: (op: string) => this.log(op),
       onCellMaterialized: (beeId: string, execution?: ExecutionStart) => this.onCellMaterialized(beeId,execution),
-      ...(this.cfg.cellRetention.fetchUpstream ? { upstreamRefresh: { root: upstreamRootFor(this.cfg.dataDir), intervalMs: this.cfg.cellRetention.upstreamRefreshMs, nodeKey: store.nodeId() ?? hostname() } } : {}),
+      ...(this.cfg.cellRetention.fetchUpstream ? { upstreamRefresh: { root: upstreamRootFor(this.cfg.dataDir), intervalMs: this.cfg.cellRetention.upstreamRefreshMs, nodeKey: store.nodeId() ?? hostname(), ssh: this.cfg.cellRetention.upstreamSsh } } : {}),
       onUpstreamRefreshed: (originRepo, result) => {
         const sync = result.sync;
         if (sync == null) return;
