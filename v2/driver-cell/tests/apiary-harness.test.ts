@@ -29,7 +29,15 @@ test("projection fixes the launched identity and refuses unsupported or missing 
     assert.equal(projection.executable, f.executable);
     assert.equal(projection.alias, "/run/honeybee/tools/bin/codex");
     assert.equal(apiaryHarnessProjection("codex", [], f.home, f.uid)!.leaf, f.leaf);
+    assert.equal(apiaryHarnessProjection("/usr/bin/node", [f.command], f.home, f.uid, "codex")!.leaf, f.leaf);
+    const javascript = join(f.leaf, "bin", "codex.js");
+    writeFileSync(javascript, "console.log('fixture')", {mode: 0o700});
+    rmSync(f.command); symlinkSync(javascript, f.command);
+    assert.equal(apiaryHarnessProjection("/usr/bin/node", [javascript], f.home, f.uid, "codex")!.executable, javascript);
+    rmSync(f.command); symlinkSync(f.executable, f.command);
     assert.equal(apiaryHarnessProjection("/usr/bin/node", [], f.home, f.uid), null);
+    assert.equal(apiaryHarnessProjection("/usr/bin/node", ["-e", "console.log(1)"], f.home, f.uid, "codex"), null);
+    assert.throws(() => apiaryHarnessProjection(f.command, [], f.home, f.uid, "claude"), /identities disagree/);
     for (const name of ["grok", "opencode", "kimi", "muse", "unreviewed"]) assert.throws(() => apiaryHarnessProjection(join(f.base, "bin", name), [], f.home, f.uid), /excluded/);
     assert.throws(() => apiaryHarnessProjection("claude", [], f.home, f.uid), /approved Apiary-managed/);
     rmSync(f.leaf, {recursive: true});

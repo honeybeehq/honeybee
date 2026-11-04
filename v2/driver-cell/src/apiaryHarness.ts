@@ -42,7 +42,7 @@ export interface ApiaryHarnessProjection { id: "codex" | "claude"; leaf: string;
 
 export function apiaryHarnessProjection(command: string, args: readonly string[], home: string, uid: number, hint?: string): ApiaryHarnessProjection | null {
   const base = join(home, ".local", "share", "apiary-satellite");
-  let id = hint;
+  let id: string | undefined;
   if (!id && (Object.hasOwn(HARNESSES, basename(command)) || EXCLUDED.has(basename(command)))) id = basename(command);
   for (const input of [command, ...args]) {
     if (!isAbsolute(input) || !inside(base, input)) continue;
@@ -54,6 +54,7 @@ export function apiaryHarnessProjection(command: string, args: readonly string[]
     }
   }
   if (!id) return null;
+  if (hint && hint !== id) throw new Error("cell sandbox: executable and input projection identities disagree");
   if (!Object.hasOwn(HARNESSES, id)) throw new Error(`cell sandbox: harness '${id}' is excluded from sandboxed Cells; only codex and claude are supported`);
   const refusal = () => new Error(`cell sandbox: ${id} requires an approved Apiary-managed harness leaf; refusing launch`);
   for (const path of [home, join(home, ".local"), join(home, ".local", "share"), base, join(base, "bin"), join(base, "tools"), join(base, "tools", id)]) {

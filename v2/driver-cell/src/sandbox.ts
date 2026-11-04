@@ -323,7 +323,7 @@ function isRegularFile(path: string): boolean {
 function bwrapLaunchBinds(command: string, args: readonly string[], cellDir: string, projected: readonly string[] = []): string[] {
   const roots = new Set<string>();
   for (const input of [command, ...args]) {
-    if (!isAbsolute(input) || !isRegularFile(input) || containsPath(canonicalPath(cellDir), canonicalPath(input)) || projected.some(root => containsPath(root, realpathSync(input)))) continue;
+    if (!isAbsolute(input) || !isRegularFile(input) || containsPath(canonicalPath(cellDir), canonicalPath(input)) || projected.some(root => containsPath(root, input) || containsPath(root, realpathSync(input)))) continue;
     for (const spelling of [input, realpathSync(input)]) {
       const root = maskedLaunchRoot(spelling);
       if (root) roots.add(root);
@@ -427,7 +427,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     ...BWRAP_PRIVATE_MOUNTS.flatMap(mount => [...size, "--tmpfs", mount]),
     ...homes.flatMap(home => ["--tmpfs", home]),
     "--tmpfs", "/run", "--dir", "/run/user", "--dir", "/run/honeybee", "--dir", "/run/honeybee/bin", "--dir", "/run/honeybee/tools", "--dir", "/run/honeybee/tools/bin",
-    ...bwrapLaunchBinds(command, args, policy.cellDir, harness ? [harness.leaf] : []),
+    ...bwrapLaunchBinds(command, args, policy.cellDir, [join(userInfo().homedir, ".local", "share", "apiary-satellite"), ...(harness ? [harness.leaf] : [])]),
     "--bind", policy.cellDir, policy.cellDir,
   ];
   if (toolchain && node) {
