@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { HostGitRefused } from "../../../src/hostGitRuntime.ts";
+import { assertHostGitVersion, HostGitRefused } from "../../../src/hostGitRuntime.ts";
 import { gitEnv, hostGitEnv, tryGit } from "../src/git.ts";
 import { provisionCell } from "../src/provision.ts";
 import { deleteCell } from "../src/remove.ts";
@@ -64,6 +64,7 @@ test("host Git pins object flags through wrappers and refuses unsupported versio
     assert.throws(() => tryGit(rig.origin.repo, ["rev-list", "HEAD"]), (error: unknown) => error instanceof HostGitRefused && error.reason === "unsupported_version" && error.message.includes(">=2.44"));
     assert.equal(existsSync(unexpected), false);
     writeWrapper("2.44.0");
+    assert.equal(assertHostGitVersion(rig.origin.repo, gitEnv()), realpathSync(wrapper));
     assert.equal(tryGit(rig.origin.repo, ["rev-list", "HEAD"], { env: { GIT_NO_LAZY_FETCH: "0", GIT_NO_REPLACE_OBJECTS: "0" } }).status, 0);
     assert.equal(existsSync(unexpected), true);
     const checked=readFileSync(versions,"utf8");
