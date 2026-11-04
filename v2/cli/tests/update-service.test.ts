@@ -15,7 +15,7 @@ test("service environment records native pin and drops Electron mode", () => {
 });
 
 test("service entry follows selected node current, independent of ambient home", () => {
-  const dir = mkdtempSync(join(tmpdir(), "hon8-service-"));
+  const dir = mkdtempSync(join(process.platform === "win32" ? tmpdir() : "/tmp", "hon8-service-"));
   try {
     const entry = join(dir, "runtime", "current", "dist", "cli.js");
     mkdirSync(join(dir, "runtime", "current", "dist"), { recursive: true });
@@ -51,7 +51,7 @@ test("daemon start, restart and status expose a held pin without opening the sto
 });
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-const SERVICE_ENV_KEYS = ["PATH", "HOME", "HIVE_V2_SERVICE_DIR", "HIVE_V2_SERVICE_LABEL", "HIVE_CELL", "HIVE_V2_DATA_DIR", "HIVE_V2_SOCKET_PATH", "HIVE_NODE_PATH"] as const;
+const SERVICE_ENV_KEYS = ["PATH", "HOME", "HIVE_V2_SERVICE_DIR", "HIVE_V2_SERVICE_LABEL", "HIVE_CELL", "HIVE_V2_DATA_DIR", "HIVE_V2_SOCKET_PATH", "HIVE_NODE_PATH", "HIVE_NODE_VERSION", "HIVE_NODE_SHA256"] as const;
 
 function serviceSandbox(): { root: string; nodeDir: string; scratch: string; units: string; calls: () => string[]; resetCalls: () => void; installUnit: (dir: string, label: string, dataDir: string) => Promise<void>; restore: () => void } {
   const root = mkdtempSync(join(tmpdir(), "hb-service-guard-"));
@@ -65,7 +65,7 @@ function serviceSandbox(): { root: string; nodeDir: string; scratch: string; uni
   process.env.PATH = `${shim}:${process.env.PATH ?? ""}`;
   process.env.HIVE_V2_SERVICE_DIR = units;
   process.env.HIVE_V2_SERVICE_LABEL = "hb.guard.test";
-  process.env.HIVE_NODE_PATH = process.execPath;
+  Object.assign(process.env, nodePinEnv(probeNativeNode(process.execPath)));
   delete process.env.HIVE_CELL; delete process.env.HIVE_V2_DATA_DIR; delete process.env.HIVE_V2_SOCKET_PATH;
   const noExec = async () => ({ code: 0, stdout: "", stderr: "" });
   return {
