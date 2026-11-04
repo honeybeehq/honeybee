@@ -1,5 +1,8 @@
 import { executeCellRepoBatch } from "./cellRepoExecutor.ts";
 import { CELL_REPO_REQUEST_BYTES, CellRepoRefusal } from "./cellRepoProtocol.ts";
+import { isMainThread } from "node:worker_threads";
+
+if (!isMainThread) process.exit(2);
 
 let input = "";
 let started = false;
