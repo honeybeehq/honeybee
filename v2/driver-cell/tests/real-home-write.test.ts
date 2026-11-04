@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { sandboxEnvironment, wrapWithSandbox } from "../src/sandbox.ts";
 import { fixtureGatewaySocket } from "./sandboxFixture.ts";
 
-test("real home and nearest systemd ancestor refuse one exclusive create inside a Cell", {skip: process.platform !== "linux"}, () => {
+test("real home and nearest systemd ancestor refuse one exclusive create inside a Cell", {skip: process.platform !== "linux"}, t => {
   const root = mkdtempSync("/tmp/hb-real-home-probe-");
   const cell = join(root, "cell");
   mkdirSync(cell);
@@ -35,15 +35,35 @@ test("real home and nearest systemd ancestor refuse one exclusive create inside 
       try { fs.closeSync(fd); } finally { fs.unlinkSync(target); }
       return {directory, result:'CREATED_AND_REMOVED'};
     };
-    console.log(JSON.stringify({requestedSystemd:requested, home:attempt(home,'-home'), systemd:attempt(ancestor,'-systemd')}));
+    if (process.argv[1] === 'select') console.log(JSON.stringify({requestedSystemd:requested, directories:[home,ancestor]}));
+    else {
+      const directories=JSON.parse(process.argv[2]);
+      console.log(JSON.stringify({home:attempt(directories[0],'-home'),systemd:attempt(directories[1],'-systemd')}));
+    }
   `;
   try {
-    const wrapped = wrapWithSandbox({cellDir: cell, writablePaths: [], gatewaySocketPath: fixtureGatewaySocket}, process.execPath, ["-e", script], join(cell, "profile"));
-    const result = spawnSync(wrapped.command, wrapped.args, {cwd: cell, env: sandboxEnvironment(cell, process.env as Record<string, string>), encoding: "utf8", timeout: 10000});
-    assert.equal(result.status, 0, result.stderr);
-    const report = JSON.parse(result.stdout);
-    console.log(JSON.stringify({fixture: "T11 real home exclusive create", ...report}));
-    for (const attempt of [report.home, report.systemd]) assert.ok(["EROFS", "EACCES"].includes(attempt.result), JSON.stringify(attempt));
+    const env = sandboxEnvironment(cell, {});
+    const runInside = (mode: string, directories: string[] = []) => {
+      const wrapped = wrapWithSandbox({cellDir: cell, writablePaths: [], gatewaySocketPath: fixtureGatewaySocket}, process.execPath, ["-e", script, mode, JSON.stringify(directories)], join(cell, "profile"));
+      const result = spawnSync(wrapped.command, wrapped.args, {cwd: cell, env, encoding: "utf8", timeout: 10000});
+      assert.equal(result.status, 0, result.stderr);
+      return JSON.parse(result.stdout);
+    };
+    const selected = runInside("select");
+    assert.deepEqual(selected.directories.slice(0, 1), [home]);
+    assert.ok([home, join(home, ".config"), join(home, ".config/systemd"), join(home, ".config/systemd/user")].includes(selected.directories[1]));
+    const control = spawnSync(process.execPath, ["-e", script, "attempt", JSON.stringify(selected.directories)], {cwd: cell, env, encoding: "utf8", timeout: 10000});
+    assert.equal(control.status, 0, control.stderr);
+    const controls = JSON.parse(control.stdout);
+    const inner = runInside("attempt", selected.directories);
+    const report = {fixture: "T11 real home exclusive create", requestedSystemd: selected.requestedSystemd, controls, inner,
+      attribution: [controls.home, controls.systemd].every(attempt => attempt.result === "CREATED_AND_REMOVED") ? "proven by successful outer controls" : "unproven (outer layer denies)"};
+    console.log(JSON.stringify(report));
+    for (const key of ["home", "systemd"] as const) {
+      assert.notEqual(inner[key].result, "CREATED_AND_REMOVED", "inner Cell created a forbidden home file (removed immediately)");
+      if (controls[key].result === "CREATED_AND_REMOVED") assert.ok(["EROFS", "EACCES"].includes(inner[key].result), JSON.stringify(inner[key]));
+    }
+    if (report.attribution === "unproven (outer layer denies)") t.todo(report.attribution);
   } finally {
     const trash = join(tmpdir(), "honeybee-test-trash");
     mkdirSync(trash, {recursive: true, mode: 0o700});
