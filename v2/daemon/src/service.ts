@@ -154,6 +154,26 @@ WantedBy=default.target
 `;
 }
 
+function xmlUnescape(s: string): string {
+  return s.replaceAll("&quot;", '"').replaceAll("&gt;", ">").replaceAll("&lt;", "<").replaceAll("&amp;", "&");
+}
+
+function unitUnescape(s: string): string {
+  return s.replaceAll('\\"', '"').replaceAll("\\\\", "\\");
+}
+
+export function serviceFileDataDir(contents: string): string | null {
+  const unitArg = /"--data-dir" "((?:[^"\\]|\\.)*)"/.exec(contents);
+  if (unitArg) return unitUnescape(unitArg[1] ?? "");
+  const unitEnv = /^Environment="HIVE_V2_DATA_DIR=((?:[^"\\]|\\.)*)"/m.exec(contents);
+  if (unitEnv) return unitUnescape(unitEnv[1] ?? "");
+  const plistArg = /<string>--data-dir<\/string>\s*<string>([^<]*)<\/string>/.exec(contents);
+  if (plistArg) return xmlUnescape(plistArg[1] ?? "");
+  const plistEnv = /<key>HIVE_V2_DATA_DIR<\/key>\s*<string>([^<]*)<\/string>/.exec(contents);
+  if (plistEnv) return xmlUnescape(plistEnv[1] ?? "");
+  return null;
+}
+
 async function must(run: ExecRunner, cmd: string, args: string[]): Promise<ExecResult> {
   const res = await run(cmd, args);
   if (res.code !== 0) {
