@@ -7170,6 +7170,10 @@ export class CoreStore {
     });
   }
 
+  recordAccountLeaseGrant(grant: { account: string; harness: string; nodeId: string; authorityNodeId: string; shareId: string; epoch: number; ttlMs: number; expiresAt: number; materialExpiresAt: number | null; authorityInstanceId?: string; generation?: number; fileCount: number }): void {
+    this.tx(() => { this.audit("account.lease.granted", null, { ...grant, grantedAt: this.now() }); });
+  }
+
   recordAccountLeaseExport(id: string, fileCount: number): void {
     this.tx(() => {
       const account = this.getAccount(id);

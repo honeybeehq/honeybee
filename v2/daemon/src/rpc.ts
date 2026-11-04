@@ -153,6 +153,14 @@ const LOCAL_HANDOFF_VERBS = new Set<RpcVerb>([
 ]);
 
 export function assertLocalHandoffRpc(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): void {
+  if (verb === "account.lease.batch" && Array.isArray(params.items)) {
+    for (const item of params.items as unknown[]) {
+      if (!item || typeof item !== "object") continue;
+      const { op, ...rest } = item as Record<string, unknown>;
+      if (op === "install") assertLocalHandoffRpc("account.lease.install", rest, conn);
+      else if (op === "release") assertLocalHandoffRpc("account.lease.remove", rest, conn);
+    }
+  }
   if (["account.limits.observe","account.limits.observation","account.limits.observation.discard"].includes(verb) && conn.ingress !== "local_unix") throw new RpcError("account_limits_observation_refused", "Limits observations require a direct local Unix-socket call.", {reason:"local_required"});
   if (verb === "account.lease.install" && LEASE_FENCE_FIELDS.some(key => params[key] !== undefined) && conn.ingress !== "local_unix") throw new RpcError("account_lease_conflict", "Forwarded lease fences require a direct local Unix-socket call from the lease issuer.", { reason: "local_required" });
   if (verb === "account.lease.remove" && (params.discardNative !== undefined || params.confirm !== undefined) && conn.ingress !== "local_unix") throw new RpcError("account_lease_remove_unavailable", "Native credential discard requires a direct local Unix-socket call.", { reason: "local_required" });

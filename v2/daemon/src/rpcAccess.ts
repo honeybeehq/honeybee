@@ -161,6 +161,8 @@ export const RPC_ACCESS = {
   "account.lease.install": "mutate",
   "account.lease.export": "mutate",
   "account.lease.remove": "mutate",
+  "account.lease.grant": "mutate",
+  "account.lease.batch": "mutate",
   "account.admission.acquire": "mutate",
   "account.admission.confirm": "mutate",
   "account.admission.release": "mutate",

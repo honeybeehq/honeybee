@@ -97,6 +97,7 @@ const GROUPS: Group[] = [
       ["account", "remove|pause|unpause <selector>", "lifecycle · penalty <selector> <0-100> · ceiling <selector> <1-100|off>"],
       ["login", "<account>", "sign in (browser / code / API key — driven from this terminal; --no-wait just starts it)"],
       ["account", "capture <selector>", "snapshot an already-authenticated home/provider credential into the vault"],
+      ["account", "lease grant <id> --node <nodeId>", "mint one account for another node (--share, --epoch, [--ttl-ms], --json) · lease batch --file items.json"],
       ["swap-account", "<bee> <account>", "move a bee to another account of the SAME harness"],
       ["account", "limits [<selector>]", "refresh + show provider limits (feeds auto; rr uses registration order)"],
       ["account", "import [--root ~/.hive]", "import the old vault · account backfill [--dry-run]"],

@@ -730,6 +730,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
       case "rpc.local_refused":
       case "rpc.local_registered":
       case "account.lease.exported":
+      case "account.lease.granted":
       case "account.credentials.instance":
       case "auth_death.released":
       case "auth_death.released_legacy":

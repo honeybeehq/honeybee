@@ -226,6 +226,10 @@ const VALUE_FLAGS = new Set([
   "--source",
   "--file",
   "--epoch",
+  "--node",
+  "--share",
+  "--ttl-ms",
+  "--authority",
   "--takeover-id",
   "--handoff-id",
   "--retained-generation",
@@ -836,6 +840,7 @@ const ACCOUNT_USAGE =
   "       hive account credentials handoff-status [--file payload.json]\n" +
   "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|export-settle|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace] [--retained-generation N] [--discard-retained-chain --confirm]\n" +
   "       hive account lease install [--enrol] --file payload.json | lease remove <id> [--check-only | --discard-native --confirm] | lease export <id> --json\n" +
+  "       hive account lease grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>] --json | lease batch --file items.json [--idempotency-key key] --json\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
@@ -971,7 +976,28 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
         emit(ctx, [`leased material exported for ${id}`], result, false);
         return 0;
       }
-      if (action !== "install" && action !== "remove") throw new Error("usage: hive account lease install [--enrol] --file payload.json | remove <id>");
+      if (action === "grant" || action === "batch") {
+        if (!ctx.json) throw new Error(`usage: hive account lease ${action === "grant" ? "grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>]" : "batch --file items.json [--idempotency-key key]"} --json`);
+        let params: Record<string, unknown>;
+        if (action === "grant") {
+          const id = parsed.positional[3], nodeId = parsed.flags.get("--node"), shareId = parsed.flags.get("--share"), epoch = parsed.flags.get("--epoch");
+          if (!id || typeof nodeId !== "string" || typeof shareId !== "string" || typeof epoch !== "string") throw new Error("usage: hive account lease grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>] --json");
+          params = { id, nodeId, shareId, epoch: Number(epoch), ...(parsed.flags.has("--ttl-ms") ? { ttlMs: Number(parsed.flags.get("--ttl-ms")) } : {}), ...(typeof parsed.flags.get("--authority") === "string" ? { authorityNodeId: parsed.flags.get("--authority") } : {}) };
+        } else {
+          const file = parsed.flags.get("--file");
+          if (typeof file !== "string") throw new Error("usage: hive account lease batch --file items.json [--idempotency-key key] --json");
+          let items: unknown;
+          try { items = JSON.parse(readFileSync(resolve(file), "utf8")); } catch { throw new Error("Could not read lease batch JSON."); }
+          params = { items: Array.isArray(items) ? items : (items as { items?: unknown })?.items, ...(typeof parsed.flags.get("--idempotency-key") === "string" ? { idempotencyKey: parsed.flags.get("--idempotency-key") } : {}) };
+        }
+        const result = await withClient(ctx, client => {
+          if (!client.capabilities.includes("account.lease.grant.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.grant.v1 is required.");
+          return client.request(`account.lease.${action}`, params, 120_000);
+        });
+        emit(ctx, [action === "grant" ? `lease granted for ${params.id}` : "lease batch"], result, false);
+        return 0;
+      }
+      if (action !== "install" && action !== "remove") throw new Error("usage: hive account lease install [--enrol] --file payload.json | remove <id> | grant <id> … | batch --file items.json");
       let params: Record<string, unknown>;
       if (action === "install") {
         const file = parsed.flags.get("--file");

@@ -273,6 +273,15 @@ export const DAEMON_CAPABILITIES = [
   "context.policy.v1",
   "context.policy.roles.v1",
   "bee.tag.apiary_reserved.v1",
+  /**
+   * 2026-11-04 (additive, no schema change): per-node lease grants for the
+   * Apiary lease grid — `account.lease.grant` (the owning node mints one
+   * account for one named node with a lease window and returns the complete
+   * `account.lease.install` payload) and `account.lease.batch` (grant /
+   * install / release items under one idempotency key with per-item
+   * results). The audit kind `account.lease.granted` is secret-free.
+   */
+  "account.lease.grant.v1",
 ] as const;
 export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
 
@@ -678,6 +687,8 @@ export const RPC_VERBS = [
   "account.lease.install",
   "account.lease.export",
   "account.lease.remove",
+  "account.lease.grant",
+  "account.lease.batch",
   "account.admission.acquire",
   "account.admission.confirm",
   "account.admission.release",
@@ -1219,6 +1230,90 @@ export interface AccountLeaseResult {
   env?: Record<string, string>;
   kindNote: string;
   expiresAt?: number;
+}
+
+/** `account.lease.grant` lease window: 36 h by default, never more than 30 days. */
+export const DEFAULT_LEASE_GRANT_TTL_MS = 36 * 60 * 60_000;
+export const MAX_LEASE_GRANT_TTL_MS = 30 * 24 * 60 * 60_000;
+export const MIN_LEASE_GRANT_TTL_MS = 60_000;
+
+/**
+ * `account.lease.grant` (capability `account.lease.grant.v1`) — on the node
+ * that OWNS the account: mint its refresh-blanked material for one named
+ * node and answer with the complete `account.lease.install` payload for that
+ * node. `shareId` and `epoch` are the carrier's share facts (Apiary's org
+ * account-authority record; genesis epoch 1, +1 on take-over); the same
+ * share and epoch with a later `expiresAt` is a renewal. `ttlMs` is the
+ * lease window (default 36 h); `authorityNodeId` defaults to this node's id.
+ * Typed refusals: `account_not_found`, `account_leased` (this node is not
+ * the authority), `account_paused`, `account_credential_missing` (signed
+ * out: no credential on the authority node), `credential_login_required`
+ * (the central login itself is dead), `lease_unsupported`, `lease_unavailable`,
+ * `credential_handoff_decided`, `invalid_request` (shape, self-grant, window).
+ *
+ * SENSITIVE: `install.files` carries the secret bytes; like `account.lease`
+ * the result is never recorded, logged or audited.
+ */
+export interface AccountLeaseGrantParams {
+  id: string;
+  nodeId: string;
+  shareId: string;
+  epoch: number;
+  ttlMs?: number;
+  authorityNodeId?: string;
+}
+
+export interface AccountLeaseGrant {
+  account: string;
+  harness: string;
+  nodeId: string;
+  authorityNodeId: string;
+  shareId: string;
+  epoch: number;
+  ttlMs: number;
+  grantedAt: number;
+  /** Unix seconds; the lease window carried as `install.expiresAt`. */
+  expiresAt: number;
+  /** Unix seconds; when the shipped access material itself dies (re-grant before then). */
+  materialExpiresAt: number | null;
+  authorityInstanceId?: string;
+  generation?: number;
+}
+
+export interface AccountLeaseGrantResult {
+  grant: AccountLeaseGrant;
+  install: AccountLeaseInstallParams;
+  env?: Record<string, string>;
+  kindNote: string;
+}
+
+/**
+ * `account.lease.batch {items, idempotencyKey?}` — several lease operations
+ * on THIS node in one call: `grant` items run on the owning node, `install`
+ * and `release` items on the receiving node. Items run in order; one item's
+ * refusal never stops the others and never fails the call. A replayed key
+ * answers `deduped: true` with the recorded per-item outcomes; grant items
+ * are minted again on replay because their material is never recorded.
+ */
+export type AccountLeaseBatchItem =
+  | ({ op: "grant" } & AccountLeaseGrantParams)
+  | ({ op: "install" } & AccountLeaseInstallParams)
+  | ({ op: "release" } & AccountLeaseRemoveParams);
+
+export interface AccountLeaseBatchParams {
+  items: AccountLeaseBatchItem[];
+  idempotencyKey?: string;
+}
+
+export type AccountLeaseBatchItemResult =
+  | { index: number; op: "grant"; id: string; nodeId: string; ok: true; result: AccountLeaseGrantResult }
+  | { index: number; op: "install"; id: string; ok: true; result: AccountLeaseInstallResult }
+  | { index: number; op: "release"; id: string; ok: true; result: AccountLeaseRemoveResult }
+  | { index: number; op: AccountLeaseBatchItem["op"]; id: string; nodeId?: string; ok: false; error: RpcErrorShape };
+
+export interface AccountLeaseBatchResult extends DedupMarkers {
+  results: AccountLeaseBatchItemResult[];
+  counts: { ok: number; failed: number };
 }
 
 /**

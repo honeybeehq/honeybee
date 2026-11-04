@@ -1,0 +1,29 @@
+scratch break applied: window regress check removed from installLease
+ v2/cli/src/help.ts               |   1 +
+ v2/cli/src/main.ts               |  28 +++++++-
+ v2/core/src/audit.ts             |   1 +
+ v2/core/src/store.ts             |   4 ++
+ v2/daemon/src/accountsService.ts |   2 +-
+ v2/daemon/src/daemon.ts          | 137 +++++++++++++++++++++++++++++++++++++--
+ v2/daemon/src/protocol.ts        |  95 +++++++++++++++++++++++++++
+ v2/daemon/src/rpc.ts             |   8 +++
+ v2/daemon/src/rpcAccess.ts       |   2 +
+ 9 files changed, 270 insertions(+), 8 deletions(-)
+ℹ todo 0
+ℹ duration_ms 1978.198149
+
+✖ failing tests:
+
+test at v2/daemon/tests/lease-grant-rpc.test.ts:20:1
+✖ account.lease.grant / account.lease.batch: two daemons — grant, install, renew, release, move, bulk with one key, typed refusals, ingress gates, capability tag (1868.22326ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+--- scratch break reverted; rerun:
+✔ account.lease.grant / account.lease.batch: two daemons — grant, install, renew, release, move, bulk with one key, typed refusals, ingress gates, capability tag (1616.566136ms)
+ℹ pass 1
+ℹ fail 0

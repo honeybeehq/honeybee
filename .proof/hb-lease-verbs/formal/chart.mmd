@@ -1,0 +1,46 @@
+---
+title: "One shared account on one satellite: lease window, epoch, release and the bulk key"
+---
+stateDiagram-v2
+  direction LR
+  state "Legend" as legend {
+    lg0: empty
+    lg1: held
+    lg2: released
+  }
+  class lg0 tan
+  class lg1 teal
+  class lg2 orange
+  state "At the same time" as all {
+    state "Lease" as r0 {
+      s0: No lease on the satellite
+      s1: Lease held (epoch 1, window 1)
+      s2: Lease held (epoch 1, window 2)
+      s3: Released (epoch 1, window 1)
+      s4: Released (epoch 1, window 2)
+      [*] --> s0
+      s0 --> s1: a lease installs or the bulk call runs under its key
+      s0 --> s2: a lease installs
+      s1 --> s3: the lease is released
+      s2 --> s4: the lease is released
+      s1 --> s2: a lease installs
+      s3 --> s1: a fresh lease installs again
+      s3 --> s1: the bulk call runs under its key [when Bulk key unused]
+      s4 --> s2: a fresh lease installs again
+      s3 --> s2: a fresh lease installs again
+    }
+    --
+    state "BulkKey" as r1 {
+      s5: Bulk key unused
+      s6: Bulk key recorded
+      s7: Bulk key replayed
+      [*] --> s5
+      s5 --> s6: the bulk call runs under its key
+      s6 --> s7: the same key is sent again
+    }
+  }
+  class s0 tan
+  class s1 teal
+  class s2 teal
+  class s3 orange
+  class s4 orange
