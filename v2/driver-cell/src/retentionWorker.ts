@@ -35,6 +35,8 @@ export interface RetentionUpstreamStatus {
   ref: UpstreamRef | null;
   error: string | null;
   code?: UpstreamFetchFailure;
+  parked?: boolean;
+  nextAttemptAt?: number;
 }
 
 export interface RetentionWorkerProgress {
@@ -143,7 +145,7 @@ if (request.kind === "pushWip") {
     for (const originRepo of new Set(request.wrappers.map((w) => w.originRepo).filter((o): o is string => typeof o === "string"))) {
       try {
         const refreshed = refreshUpstreamMirror(originRepo, request.upstream.root, request.upstream);
-        upstreams.set(originRepo, { originRepo, status: refreshed.status, url: refreshed.url, ref: refreshed.ref, error: refreshed.status === "failed" ? refreshed.error : null, ...(refreshed.status === "failed" ? { code: refreshed.code } : {}) });
+        upstreams.set(originRepo, { originRepo, status: refreshed.status, url: refreshed.url, ref: refreshed.ref, error: refreshed.status === "failed" ? refreshed.error : null, ...(refreshed.status === "failed" ? { code: refreshed.code, parked: refreshed.parked, nextAttemptAt: refreshed.nextAttemptAt } : {}) });
       } catch (err) {
         upstreams.set(originRepo, { originRepo, status: "failed", url: null, ref: null, error: errorText(err) });
       }

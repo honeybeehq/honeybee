@@ -14,9 +14,10 @@ import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync
 import { join, resolve } from "node:path";
 import { isAncestor, tryGit } from "./git.ts";
 import { upstreamFetchEnv, upstreamFetchFailure, UpstreamFetchError, type UpstreamFetchFailure, type UpstreamSshPolicy } from "./upstreamFetch.ts";
+import { failedUpstreamState, readUpstreamFailure, upstreamPolicyFingerprint, writeUpstreamFailure } from "./upstreamFetchState.ts";
+import { verifiedUpstreamUrl } from "./upstreamUrl.ts";
 
 export const UPSTREAM_REF = "refs/upstream/head";
-const MIN_FAILURE_BACKOFF_MS = 5 * 60_000;
 const MIRROR_LOCK_STALE_MS = 5 * 60_000;
 const MIRROR_LOCK_HEARTBEAT_MS = 30_000;
 const LOCK_HEARTBEAT_SOURCE = `const fs = require("node:fs");
@@ -27,7 +28,6 @@ process.stdin.on("end", () => process.exit(0));
 process.stdin.on("error", () => process.exit(0));
 process.stdin.resume();`;
 const FETCHED_AT_FILE = "honeybee-fetched-at";
-const FAILED_AT_FILE = "honeybee-fetch-failed-at";
 
 export interface UpstreamRef {
   objectsDir: string;
@@ -37,23 +37,25 @@ export interface UpstreamRef {
 export type UpstreamRefresh =
   | { status: "fetched" | "fresh"; url: string; ref: UpstreamRef }
   | { status: "unmirrored"; url: null; ref: null }
-  | { status: "failed"; url: string; ref: UpstreamRef | null; error: string; code?: UpstreamFetchFailure };
+  | { status: "failed"; url: string; ref: UpstreamRef | null; error: string; code?: UpstreamFetchFailure; parked?: boolean; nextAttemptAt?: number };
 
 export interface UpstreamFetchOptions {
   maxAgeMs: number;
   timeoutMs: number;
   now?: () => number;
   ssh?: UpstreamSshPolicy;
+  allowLocalFixture?: boolean;
 }
 
 export function upstreamRootFor(dataDir: string): string {
   return join(dataDir, "upstream");
 }
 
-export function originFetchUrl(originRepo: string): string | null {
-  const res = tryGit(originRepo, ["config", "--get", "remote.origin.url"]);
-  const url = res.status === 0 ? res.stdout.trim() : "";
-  return url.length > 0 ? url : null;
+export function originFetchUrl(originRepo: string, allowLocalFixture = false): string | null {
+  const res = tryGit(originRepo, ["config", "--get-all", "remote.origin.url"]);
+  if (res.status === 1) return null;
+  if (res.status !== 0) throw new UpstreamFetchError("provenance_refused", "upstream URL configuration cannot be read");
+  return verifiedUpstreamUrl(originRepo, res.stdout.replace(/\n$/u, "").split("\n"), allowLocalFixture);
 }
 
 export function mirrorDirFor(upstreamRoot: string, url: string): string {
@@ -117,8 +119,10 @@ export function refreshUpstreamMirror(
   upstreamRoot: string,
   opts: UpstreamFetchOptions,
 ): UpstreamRefresh {
-  const url = originFetchUrl(originRepo);
-  if (url == null) return { status: "unmirrored", url: null, ref: null };
+  let url: string | null;
+  try { url = originFetchUrl(originRepo, opts.allowLocalFixture); }
+  catch (error) { return { status: "failed", url: "", ref: null, code: "provenance_refused", error: error instanceof Error ? error.message : String(error), parked: true }; }
+  if (url == null) return opts.allowLocalFixture ? { status: "unmirrored", url: null, ref: null } : { status: "failed", url: "", ref: null, code: "provenance_refused", error: "no upstream URL is configured; leaving the cache unchanged", parked: true };
   const mirrorDir = mirrorDirFor(upstreamRoot, url);
   try {
     privateDirectory(upstreamRoot);
@@ -127,9 +131,6 @@ export function refreshUpstreamMirror(
     return { status: "failed", url, ref: null, code: "transport_refused", error: error instanceof Error ? error.message : String(error) };
   }
   const now = opts.now ?? Date.now;
-  const last = fetchedAt(mirrorDir);
-  const existing = mirrorRef(mirrorDir);
-  if (existing && last != null && now() - last < opts.maxAgeMs) return { status: "fresh", url, ref: existing };
   const lockDir = `${mirrorDir}.lock`;
   if (!acquireMirrorLock(lockDir, opts.timeoutMs)) {
     return { status: "failed", url, ref: mirrorRef(mirrorDir), error: "another refresh of this mirror is still running" };
@@ -185,49 +186,43 @@ function refreshLocked(
   const now = opts.now;
   const last = fetchedAt(mirrorDir);
   const existing = mirrorRef(mirrorDir);
-  if (existing && last != null && now() - last < opts.maxAgeMs) return { status: "fresh", url, ref: existing };
-  const failedAt = mtimeOf(join(mirrorDir, FAILED_AT_FILE));
-  if (failedAt != null && (last == null || failedAt > last) && now() - failedAt < Math.max(opts.maxAgeMs, MIN_FAILURE_BACKOFF_MS)) {
-    return { status: "failed", url, ref: existing, error: `previous fetch failed at ${new Date(failedAt).toISOString()}; not retried yet` };
-  }
+  const fingerprint = upstreamPolicyFingerprint(opts.ssh);
+  let previous: ReturnType<typeof readUpstreamFailure> = null;
   try {
+    previous = readUpstreamFailure(mirrorDir);
+    if (previous?.fingerprint === fingerprint && (previous.parked || now() < previous.nextAttemptAt)) return { status: "failed", url, ref: existing, code: previous.code, parked: previous.parked, nextAttemptAt: previous.parked ? undefined : previous.nextAttemptAt, error: previous.parked ? `upstream parked (${previous.code}); change trusted fetch policy or credential/known-hosts metadata before retrying: ${previous.error}` : `upstream not retried yet; next attempt at ${new Date(previous.nextAttemptAt).toISOString()}: ${previous.error}` };
     const originObjects = originObjectsDir(originRepo);
     if (originObjects == null) throw new Error("origin object directory unresolvable");
     ensureMirror(mirrorDir, url, originObjects);
+    upstreamFetchEnv(originRepo, mirrorDir, opts.ssh);
+    if (opts.maxAgeMs > 0 && existing && last != null && now() - last < opts.maxAgeMs) return { status: "fresh", url, ref: existing };
     const fetch = (cwd: string) => {
-      const args = ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-gc", url, `+HEAD:${UPSTREAM_REF}`];
+      const args = ["fetch", "--upload-pack=git-upload-pack", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-gc", url, `+HEAD:${UPSTREAM_REF}`];
       const res = spawnSync("git", args, { cwd, encoding: "utf8", env: upstreamFetchEnv(cwd, url, opts.ssh), timeout: opts.timeoutMs, maxBuffer: 16 * 1024 * 1024 });
       if (res.error) throw res.error;
       if (res.status !== 0) throw new UpstreamFetchError(upstreamFetchFailure(res.stderr ?? ""), `upstream fetch refused: ${(res.stderr ?? "").trim().slice(0, 400)}`);
     };
-    try { fetch(mirrorDir); } catch (error) {
-      if (!(error instanceof UpstreamFetchError) || error.code !== "invalid_objects") throw error;
-      const recovery = `${mirrorDir}.recover-${process.pid}`;
-      const quarantine = `${mirrorDir}.quarantine-${Date.now()}-${process.pid}`;
-      rmSync(recovery, { recursive: true, force: true });
-      try {
-        ensureMirror(recovery, url, null);
-        fetch(recovery);
-        renameSync(mirrorDir, quarantine);
-        try { renameSync(recovery, mirrorDir); } catch (replacementError) { renameSync(quarantine, mirrorDir); throw replacementError; }
-      } finally { rmSync(recovery, { recursive: true, force: true }); }
-    }
+    fetch(mirrorDir);
     const ref = mirrorRef(mirrorDir);
     if (ref == null) throw new Error(`${UPSTREAM_REF} missing after fetch`);
     writeFileSync(join(mirrorDir, FETCHED_AT_FILE), `${new Date(now()).toISOString()}\n`);
+    writeUpstreamFailure(mirrorDir, null);
     return { status: "fetched", url, ref };
   } catch (err) {
+    const failure = failedUpstreamState(fingerprint, previous, err instanceof UpstreamFetchError ? err.code : "fetch_failed", err instanceof Error ? err.message : String(err), now(), opts.maxAgeMs);
     try {
-      if (existsSync(mirrorDir)) writeFileSync(join(mirrorDir, FAILED_AT_FILE), `${new Date(now()).toISOString()}\n`);
+      if (existsSync(mirrorDir)) writeUpstreamFailure(mirrorDir, failure);
     } catch {}
-    return { status: "failed", url, ref: existing, code: err instanceof UpstreamFetchError ? err.code : "fetch_failed", error: err instanceof Error ? err.message : String(err) };
+    return { status: "failed", url, ref: existing, code: failure.code, parked: failure.parked, nextAttemptAt: failure.parked ? undefined : failure.nextAttemptAt, error: failure.error };
   }
 }
 
 /** The last fetched ref for `originRepo`, without touching the network. */
-export function readUpstreamMirror(originRepo: string, upstreamRoot: string): UpstreamRef | null {
-  const url = originFetchUrl(originRepo);
-  return url == null ? null : mirrorRef(mirrorDirFor(upstreamRoot, url));
+export function readUpstreamMirror(originRepo: string, upstreamRoot: string, allowLocalFixture = false): UpstreamRef | null {
+  try {
+    const url = originFetchUrl(originRepo, allowLocalFixture);
+    return url == null ? null : mirrorRef(mirrorDirFor(upstreamRoot, url));
+  } catch { return null; }
 }
 
 export type CellBaseSource = "pinned" | "head" | "upstream";
@@ -321,16 +316,30 @@ export function syncOriginFromMirror(
   if (tracking == null || refresh.ref == null || refresh.url == null) {
     return done(tracking?.sha ?? null);
   }
+  if (refresh.status === "failed") return done(tracking.sha, `upstream refresh refused (${refresh.code ?? "fetch_failed"})`);
   const busy = originBusyReason(originRepo, tracking.ref);
   if (busy != null) return done(tracking.sha, `origin busy: ${busy}`);
   const mirrorDir = mirrorDirFor(upstreamRoot, refresh.url);
+  const refusal = (code: UpstreamFetchFailure): OriginSync => {
+    const lock = `${mirrorDir}.lock`;
+    const fingerprint = upstreamPolicyFingerprint(opts.ssh), error = `mirror transfer refused (${code})`;
+    let failure = failedUpstreamState(fingerprint, null, code, error, (opts.now ?? Date.now)(), opts.maxAgeMs);
+    if (acquireMirrorLock(lock, opts.timeoutMs)) {
+      try { failure = failedUpstreamState(fingerprint, readUpstreamFailure(mirrorDir), code, error, (opts.now ?? Date.now)(), opts.maxAgeMs); writeUpstreamFailure(mirrorDir, failure); }
+      finally { rmSync(lock, { recursive: true, force: true }); }
+    }
+    return { ...done(tracking.sha, error), refresh: { status: "failed", url: refresh.url ?? "", ref: refresh.ref, error, code, parked: failure.parked, nextAttemptAt: failure.parked ? undefined : failure.nextAttemptAt } };
+  };
+  let env;
+  try { env = upstreamFetchEnv(originRepo, mirrorDir, undefined); }
+  catch (error) { return refusal(error instanceof UpstreamFetchError ? error.code : "fetch_failed"); }
   const transferred = spawnSync("git", [
     "-c", "fetch.writeCommitGraph=false",
     "-c", "fetch.fsckObjects=true", "-c", "transfer.fsckObjects=true",
-    "fetch", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-prune", "--no-auto-gc",
+    "fetch", "--upload-pack=git-upload-pack", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-prune", "--no-auto-gc",
     mirrorDir, `+${UPSTREAM_REF}:${tracking.ref}`,
-  ], { cwd: originRepo, encoding: "utf8", env: upstreamFetchEnv(originRepo, mirrorDir, undefined), timeout: opts.timeoutMs, maxBuffer: 16 * 1024 * 1024 });
-  if (transferred.error || transferred.status !== 0) return done(tracking.sha, `mirror transfer refused (${upstreamFetchFailure(transferred.stderr ?? "")})`);
+  ], { cwd: originRepo, encoding: "utf8", env, timeout: opts.timeoutMs, maxBuffer: 16 * 1024 * 1024 });
+  if (transferred.error || transferred.status !== 0) return refusal(upstreamFetchFailure(transferred.stderr ?? ""));
   const after = tryGit(originRepo, ["rev-parse", "--verify", "--quiet", tracking.ref]);
   return done(after.status === 0 ? after.stdout.trim() : tracking.sha);
 }
