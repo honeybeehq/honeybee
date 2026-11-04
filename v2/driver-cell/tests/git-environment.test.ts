@@ -1,3 +1,4 @@
+import {CellGitRefused} from "../src/cellGit.ts";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -38,7 +39,7 @@ test("host Git does not fetch missing objects implicitly through local transport
     assert.equal(protectedResult.missingObjects,true);
     assert.equal(existsSync(marker), false);
     assert.equal(readFileSync(head, "utf8"), before);
-    assert.throws(() => deleteCell(cell.paths.wrapperDir,{cellGit:fixtureCellGit(space)}), HostGitRefused);
+    assert.throws(() => deleteCell(cell.paths.wrapperDir,{cellGit:fixtureCellGit(space)}), CellGitRefused);
     assert.equal(existsSync(cell.paths.wrapperDir), true);
     assert.equal(existsSync(marker), false);
   } finally {

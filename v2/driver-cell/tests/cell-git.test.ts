@@ -70,7 +70,9 @@ test("missing objects refuse without changing refs or attempting hydration", () 
   try {
     const head = join(git,"HEAD"), missing="a".repeat(40)+"\n";
     writeFileSync(head,missing);
-    assert.throws(()=>cellGit(identity,["rev-list","HEAD"]), (error:unknown)=> error instanceof Error && "reason" in error && error.reason === "missing_objects");
+    const result=cellGit(identity,["rev-list","HEAD"]);
+    assert.notEqual(result.status,0);
+    assert.equal(result.missingObjects,true);
     assert.equal(readFileSync(head,"utf8"),missing);
   } finally {rig.cleanup();}
 });
@@ -96,5 +98,19 @@ test("sandboxed submodule context refuses and unconfined paths cannot escape", (
   try {
     assert.throws(()=>cellGit(identity,["rev-parse","HEAD"],{submodulePath:"vendor/lib"}),CellGitRefused);
     assert.throws(()=>cellGit({...identity,sandboxed:false},["rev-parse","HEAD"],{submodulePath:"../other"}),CellGitRefused);
+  } finally {rig.cleanup();}
+});
+
+test("Cell Git disables transport except an explicit local-file operation",()=>{
+  const {rig,identity}=fixture();
+  try {
+    g(rig.origin.repo,["commit","--allow-empty","-m","next fixture"]);
+    const next=g(rig.origin.repo,["rev-parse","HEAD"]);
+    const refused=cellGit(identity,["fetch","--no-tags",rig.origin.repo,next]);
+    assert.notEqual(refused.status,0);
+    assert.match(refused.stderr,/transport.*not allowed/i);
+    const allowed=cellGit(identity,["fetch","--no-tags",rig.origin.repo,next],{allowFileTransport:true});
+    assert.equal(allowed.status,0);
+    assert.equal(cellGit(identity,["rev-parse","HEAD"]).stdout.trim(),rig.origin.sha);
   } finally {rig.cleanup();}
 });

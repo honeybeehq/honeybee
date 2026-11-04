@@ -183,7 +183,7 @@ export function restoreWip(spaceDir: string, originRepo: string, node: string, c
   if (head == null) return { restored: false, reason: "no_head" };
   if (sha === head) return { restored: false, reason: "nothing_to_restore" };
   if (cellGit(identity, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) {
-    const fetched = cellGit(identity, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", originRepo, wipRefFor(node, cellId)], { timeoutMs: 15000 });
+    const fetched = cellGit(identity, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", originRepo, wipRefFor(node, cellId)], { timeoutMs: 15000,allowFileTransport:true });
     if (fetched.status !== 0 || cellGit(identity, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) return { restored: false, reason: "wip_unreachable" };
   }
   if (cellMust(spaceDir,["rev-parse",`${sha}^`],"restore",identity) !== head) return { restored: false, reason: "head_mismatch" };

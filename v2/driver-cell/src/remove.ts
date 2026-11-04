@@ -1,4 +1,4 @@
-import {cellGit, requireCellGitIdentity, type CellGitIdentity} from "./cellGit.ts";
+import {cellGit, requireCellGitIdentity, CellGitRefused, type CellGitIdentity} from "./cellGit.ts";
 /**
  * Cell deletion (WP5, spec 05 point 6 — the A2 ruling).
  *
@@ -121,7 +121,7 @@ export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions
   };
   const identity=requireCellGitIdentity(opts.cellGit,spaceDir);
   if (!existsSync(join(spaceDir, ".git"))) return { report: clean, dirtySubmodules: [] }; // half-provisioned: nothing to lose
-  const run=(args:string[])=>{const r=cellGit(identity,args);if(r.status!==0)throw new Error("Cell repository read failed");return r.stdout.trim();};
+  const run=(args:string[])=>{const r=cellGit(identity,args);if(r.status!==0)throw new CellGitRefused("Cell repository read failed");return r.stdout.trim();};
   const dirtySubmodules = submodulesWithLocalState(spaceDir,identity);
   const uncommitted = run(["status", "--porcelain", "--ignore-submodules=all"]).length > 0 || dirtySubmodules.length > 0;
   const stashed = run(["stash", "list"]).length > 0;

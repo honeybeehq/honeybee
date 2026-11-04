@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { devNull } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { assertHostGitVersion, refuseMissingGitObjects } from "../../../src/hostGitRuntime.ts";
+import { assertHostGitVersion, hasMissingGitObjects } from "../../../src/hostGitRuntime.ts";
 import { gitEnv, hostGitEnv, type GitResult } from "./git.ts";
 
 export interface CellGitIdentity {
@@ -91,17 +91,19 @@ function environment(cell: CellGitIdentity): Record<string, string> {
     GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull, GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_COUNT: "0",
     GIT_DIR: dirs.git, GIT_COMMON_DIR: dirs.common, GIT_WORK_TREE: cell.spaceDir,
     GIT_OBJECT_DIRECTORY: dirs.objects, GIT_CEILING_DIRECTORIES: cell.cellsRoot,
-    GIT_EDITOR: "true", GIT_SEQUENCE_EDITOR: "true", GIT_PAGER: "cat", PAGER: "cat", GIT_NO_LAZY_FETCH: "1", GIT_NO_REPLACE_OBJECTS: "1", GIT_TERMINAL_PROMPT: "0", GIT_ALLOW_PROTOCOL: "file",
+    GIT_EDITOR: "true", GIT_SEQUENCE_EDITOR: "true", GIT_PAGER: "cat", PAGER: "cat", GIT_NO_LAZY_FETCH: "1", GIT_NO_REPLACE_OBJECTS: "1", GIT_TERMINAL_PROMPT: "0", GIT_ALLOW_PROTOCOL: "",
     GIT_AUTHOR_NAME: "hive-cell", GIT_AUTHOR_EMAIL: "cell@hive.invalid", GIT_COMMITTER_NAME: "hive-cell", GIT_COMMITTER_EMAIL: "cell@hive.invalid",
   });
   return hostGitEnv(env, [["core.worktree", cell.spaceDir], ["core.bare", "false"], ["core.sharedRepository", "false"], ["safe.bareRepository", "explicit"], ["gc.auto", "0"]]);
 }
 
-function invoke(cell: CellGitIdentity, args: string[], env: Record<string, string>, input?: string, timeout = TIMEOUT): GitResult {
-  const result = spawnSync("git", args, { cwd: cell.spaceDir, env, input, encoding: "utf8", timeout, maxBuffer: 16 * 1024 * 1024 });
+function invoke(cell: CellGitIdentity, args: string[], env: Record<string, string>, input?: string, timeout = TIMEOUT,allowFileTransport=false): GitResult {
+  const commandEnv=hostGitEnv(env,[["protocol.allow","never"]]);
+  if(allowFileTransport)commandEnv.GIT_ALLOW_PROTOCOL="file";else delete commandEnv.GIT_ALLOW_PROTOCOL;
+  const result = spawnSync("git", args, { cwd: cell.spaceDir, env:commandEnv, input, encoding: "utf8", timeout, maxBuffer: 16 * 1024 * 1024 });
   if (result.error || result.signal) throw new CellGitRefused("repository command failed or exceeded its bound");
-  refuseMissingGitObjects(result.status, result.stderr ?? "");
-  return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+  const missingObjects=hasMissingGitObjects(result.status,result.stderr??"");
+  return { ...(missingObjects?{missingObjects:true}:{}), status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
 }
 
 function validateConfig(cell: CellGitIdentity, env: Record<string, string>): Array<readonly [string, string]> {
@@ -128,7 +130,7 @@ function validateConfig(cell: CellGitIdentity, env: Record<string, string>): Arr
   return overrides;
 }
 
-export function withCellGit<T>(cell: CellGitIdentity, operation: (run: (args: string[], opts?: {input?: string; timeoutMs?: number; indexFile?: string}) => GitResult) => T, context: {submodulePath?:string} = {}): T {
+export function withCellGit<T>(cell: CellGitIdentity, operation: (run: (args: string[], opts?: {input?: string; timeoutMs?: number; indexFile?: string; allowFileTransport?:boolean}) => GitResult) => T, context: {submodulePath?:string} = {}): T {
   if(context.submodulePath !== undefined) {
     layout(cell);
     if(cell.sandboxed || !context.submodulePath || isAbsolute(context.submodulePath) || context.submodulePath.includes("\0") || context.submodulePath.split(sep).some(part=>part===".."||part==="."||part==="")) throw new CellGitRefused("submodule context is unsupported");
@@ -156,7 +158,7 @@ export function withCellGit<T>(cell: CellGitIdentity, operation: (run: (args: st
         if (index && (!index.isFile() || index.isSymbolicLink() || index.nlink !== 1)) throw new CellGitRefused("index layout is unsupported");
         currentEnv.GIT_INDEX_FILE = opts.indexFile;
       }
-      return invoke(cell, safeArgs, currentEnv, opts.input, timeout);
+      return invoke(cell, safeArgs, currentEnv, opts.input, timeout,opts.allowFileTransport===true);
     });
     if (result && (typeof result === "object" || typeof result === "function") && "then" in result) throw new CellGitRefused("operation must complete synchronously");
     return result;
@@ -167,7 +169,7 @@ export function withCellGit<T>(cell: CellGitIdentity, operation: (run: (args: st
   }
 }
 
-export function cellGit(cell: CellGitIdentity, args: string[], opts: {input?: string; timeoutMs?: number; indexFile?: string; submodulePath?:string} = {}): GitResult {
+export function cellGit(cell: CellGitIdentity, args: string[], opts: {input?: string; timeoutMs?: number; indexFile?: string; allowFileTransport?:boolean; submodulePath?:string} = {}): GitResult {
   return withCellGit(cell, run => run(args, opts),{submodulePath:opts.submodulePath});
 }
 

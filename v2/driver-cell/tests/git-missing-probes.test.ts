@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {test} from "node:test";
 import {tryGit,revParse,hasCommit} from "../src/git.ts";
 import {confirmWip,wipRefFor} from "../src/wip.ts";
-import {describeCommits,unlandedCommitsByTip} from "../src/landed.ts";
+import {describeCommits,unlandedCommitsByTip} from "./fixture-operations.ts";
 import {g,makeRig} from "./helpers.ts";
 
 test("missing Git object probes stay nonthrowing and preserve conservative results",()=>{
