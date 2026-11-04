@@ -30,6 +30,21 @@ function withDir(fn: (dir: string) => void): void {
   }
 }
 
+test("upstream SSH paths resolve from the node config directory with strict defaults", () => {
+  withDir((dir) => {
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ nodeKind: "satellite" }));
+    const defaults = loadNodeConfig(dir).cellRetention;
+    assert.deepEqual(defaults.upstreamSsh, { identityFiles: [join(homedir(), ".ssh/id_ed25519"), join(homedir(), ".ssh/id_rsa")], knownHostsFile: join(homedir(), ".ssh/known_hosts") });
+    assert.ok(defaults.warnings.some((warning) => warning.includes("upstreamSsh absent")));
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { retention: { fetchUpstream: true, upstreamSsh: { identityFiles: ["keys/one", "/fixture/two"], knownHostsFile: "keys/known_hosts" } } } }));
+    const configured = loadNodeConfig(dir).cellRetention;
+    assert.deepEqual(configured.upstreamSsh, { identityFiles: [join(dir, "keys/one"), "/fixture/two"], knownHostsFile: join(dir, "keys/known_hosts") });
+    assert.equal(configured.warnings.length, 0);
+    writeFileSync(join(dir, "config.json"), JSON.stringify({ cells: { retention: { upstreamSsh: { identityFiles: [], knownHostsFile: "known_hosts" } } } }));
+    assert.throws(() => loadNodeConfig(dir), /identityFiles/u);
+  });
+});
+
 test("node state roots refuse missing or relative paths before filesystem effects",()=>{
   const invalid=(error:unknown)=>error instanceof StatePathError&&error.code==="invalid_runtime_root";
   for(const root of [undefined,"","relative","/","/tmp/.."]){

@@ -945,6 +945,7 @@ export class CellRetentionService {
     if (!this.deps.dataDir || !this.deps.policy.fetchUpstream) return null;
     return {
       root: upstreamRootFor(this.deps.dataDir),
+      ssh: this.deps.policy.upstreamSsh,
       maxAgeMs: kind === "manual" ? MANUAL_UPSTREAM_MAX_AGE_MS : this.deps.upstreamMaxAgeMs ?? DEFAULT_UPSTREAM_MAX_AGE_MS,
       timeoutMs: this.deps.upstreamTimeoutMs ?? DEFAULT_UPSTREAM_TIMEOUT_MS,
     };

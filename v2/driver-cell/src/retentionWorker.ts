@@ -1,3 +1,4 @@
+import type { UpstreamFetchFailure, UpstreamSshPolicy } from "./upstreamFetch.ts";
 /**
  * Worker entrypoint for the retention pass: `inspectCellWrapper` over many
  * wrappers (git status + HEAD + a full du walk each) is seconds-to-minutes of
@@ -16,7 +17,7 @@ export interface RetentionWorkerRequest {
   measure: boolean;
   trimPatterns: string[];
   /** Refresh each origin's upstream mirror before inspecting; its ref counts as landed by ancestry. */
-  upstream?: { root: string; maxAgeMs: number; timeoutMs: number } | null;
+  upstream?: { root: string; maxAgeMs: number; timeoutMs: number; ssh?: UpstreamSshPolicy } | null;
   /** Post a `RetentionWorkerProgress` message after each wrapper. */
   progress?: boolean;
 }
@@ -33,6 +34,7 @@ export interface RetentionUpstreamStatus {
   url: string | null;
   ref: UpstreamRef | null;
   error: string | null;
+  code?: UpstreamFetchFailure;
 }
 
 export interface RetentionWorkerProgress {
@@ -140,8 +142,8 @@ if (request.kind === "pushWip") {
   if (request.upstream) {
     for (const originRepo of new Set(request.wrappers.map((w) => w.originRepo).filter((o): o is string => typeof o === "string"))) {
       try {
-        const refreshed = refreshUpstreamMirror(originRepo, request.upstream.root, { maxAgeMs: request.upstream.maxAgeMs, timeoutMs: request.upstream.timeoutMs });
-        upstreams.set(originRepo, { originRepo, status: refreshed.status, url: refreshed.url, ref: refreshed.ref, error: refreshed.status === "failed" ? refreshed.error : null });
+        const refreshed = refreshUpstreamMirror(originRepo, request.upstream.root, request.upstream);
+        upstreams.set(originRepo, { originRepo, status: refreshed.status, url: refreshed.url, ref: refreshed.ref, error: refreshed.status === "failed" ? refreshed.error : null, ...(refreshed.status === "failed" ? { code: refreshed.code } : {}) });
       } catch (err) {
         upstreams.set(originRepo, { originRepo, status: "failed", url: null, ref: null, error: errorText(err) });
       }

@@ -1,3 +1,4 @@
+import type { UpstreamSshPolicy } from "./upstreamFetch.ts";
 /**
  * Warm-pool and upstream refresh worker. Runs OFF the daemon event loop
  * (worker_threads) so the bounded upstream fetch and building a member — a
@@ -22,7 +23,7 @@ export interface PoolWorkerData {
   target: number;
   maxSize: number;
   provisionOpts: ProvisionOptions;
-  upstream?: { root: string; maxAgeMs: number; timeoutMs: number };
+  upstream?: { root: string; maxAgeMs: number; timeoutMs: number; ssh?: UpstreamSshPolicy };
 }
 
 export interface PoolWorkerResult {
