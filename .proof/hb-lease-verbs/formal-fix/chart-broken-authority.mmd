@@ -1,0 +1,35 @@
+---
+title: "One shared account on one satellite: lease window, epoch, release and the bulk key"
+---
+stateDiagram-v2
+  direction LR
+  state "Legend" as legend {
+    lg0: empty
+    lg1: held
+    lg2: Breaks AuthorityMatchesEpoch
+    lg3: Path to the AuthorityMatchesEpoch bug
+  }
+  class lg0 tan
+  class lg1 teal
+  class lg2 breaks
+  class lg3 bugPath
+  state "At the same time" as all {
+    state "Lease" as r0 {
+      s0: No lease on the satellite
+      s1: Lease held (epoch 1, window 1)
+      [*] --> s0
+      s0 --> s1: a lease installs
+    }
+    --
+    state "BulkKey" as r1 {
+      s2: Bulk key unused
+      [*] --> s2
+    }
+  }
+  classDef breaks fill:#ffecee,stroke:#e72e3b,stroke-width:2.5px,color:#cd2834
+  class s0 tan
+  class s0 bugPath
+  class s1 teal
+  class s1 breaks
+  class s1 bugPath
+  class s2 bugPath

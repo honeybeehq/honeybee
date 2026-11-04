@@ -1,0 +1,86 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 0 and seed -7346255899379370956 with 1 worker on 64 cores with 30688MB heap and 64MB offheap memory [pid: 1578652] (Linux 6.12.94+deb13-amd64 amd64, Debian 21.0.12.1 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /tmp/lease-fix-tlc/LeaseVerbs.tla
+Parsing file /home/trmd/.hive/v2/tmp/2925010c-c1b3-40c7-b404-8ce3904fd83f/statechart-5zFgwa/statechart-vIEFZ3/tmp-verdict-1/Naturals.tla
+Parsing file /home/trmd/.hive/v2/tmp/2925010c-c1b3-40c7-b404-8ce3904fd83f/statechart-5zFgwa/statechart-vIEFZ3/tmp-verdict-1/FiniteSets.tla
+Parsing file /home/trmd/.hive/v2/tmp/2925010c-c1b3-40c7-b404-8ce3904fd83f/statechart-5zFgwa/statechart-vIEFZ3/tmp-verdict-1/Sequences.tla
+Semantic processing of module Naturals
+Semantic processing of module Sequences
+Semantic processing of module FiniteSets
+Semantic processing of module LeaseVerbs
+Starting... (2026-11-04 13:31:11)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-04 13:31:11.
+Error: Invariant EveryMintAudited is violated.
+Error: The behavior up to this point is:
+State 1: <Initial predicate>
+/\ audits = 0
+/\ installRuns = 0
+/\ authority = "none"
+/\ window = 0
+/\ revoked = FALSE
+/\ epoch = 0
+/\ keyState = "none"
+/\ payloads = {}
+/\ replayWindow = 0
+/\ ownerEpoch = 1
+/\ replayAsked = 0
+/\ accepted = {}
+/\ mints = 0
+/\ receipt = [grantWindow |-> 0, installOk |-> FALSE]
+
+State 2: <GrantWindow line 56, col 3 to line 58, col 133 of module LeaseVerbs>
+/\ audits = 1
+/\ installRuns = 0
+/\ authority = "none"
+/\ window = 0
+/\ revoked = FALSE
+/\ epoch = 0
+/\ keyState = "none"
+/\ payloads = {[epoch |-> 1, window |-> 1, node |-> "A"]}
+/\ replayWindow = 0
+/\ ownerEpoch = 1
+/\ replayAsked = 0
+/\ accepted = {}
+/\ mints = 1
+/\ receipt = [grantWindow |-> 0, installOk |-> FALSE]
+
+State 3: <BatchFirstWindow line 92, col 3 to line 101, col 56 of module LeaseVerbs>
+/\ audits = 2
+/\ installRuns = 1
+/\ authority = "A"
+/\ window = 1
+/\ revoked = FALSE
+/\ epoch = 1
+/\ keyState = "recorded"
+/\ payloads = {[epoch |-> 1, window |-> 1, node |-> "A"]}
+/\ replayWindow = 0
+/\ ownerEpoch = 1
+/\ replayAsked = 0
+/\ accepted = {<<1, 1>>}
+/\ mints = 2
+/\ receipt = [grantWindow |-> 1, installOk |-> TRUE]
+
+State 4: <BatchReplayWindow line 107, col 3 to line 121, col 48 of module LeaseVerbs>
+/\ audits = 2
+/\ installRuns = 1
+/\ authority = "A"
+/\ window = 1
+/\ revoked = FALSE
+/\ epoch = 1
+/\ keyState = "recorded"
+/\ payloads = {[epoch |-> 1, window |-> 1, node |-> "A"]}
+/\ replayWindow = 1
+/\ ownerEpoch = 1
+/\ replayAsked = 1
+/\ accepted = {<<1, 1>>}
+/\ mints = 3
+/\ receipt = [grantWindow |-> 1, installOk |-> TRUE]
+
+47 states generated, 34 distinct states found, 24 states left on queue.
+The depth of the complete state graph search is 4.
+The average outdegree of the complete state graph is 4 (minimum is 1, the maximum 6 and the 95th percentile is 6).
+Finished in 00s at (2026-11-04 13:31:11)
+

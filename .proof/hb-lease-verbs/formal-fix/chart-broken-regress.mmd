@@ -1,0 +1,91 @@
+---
+title: "One shared account on one satellite: lease window, epoch, release and the bulk key"
+---
+stateDiagram-v2
+  direction LR
+  state "Legend" as legend {
+    lg0: empty
+    lg1: held
+    lg2: released
+    lg3: Breaks WindowNeverShrinks in some cases
+    lg4: Path to the WindowNeverShrinks bug
+  }
+  class lg0 tan
+  class lg1 teal
+  class lg2 orange
+  class lg3 mayBreak
+  class lg4 bugPath
+  state "At the same time" as all {
+    state "Lease" as r0 {
+      s0: No lease on the satellite
+      s1: Lease held (epoch 1, window 1)
+      s2: Lease held (epoch 1, window 2)
+      s3: Released (epoch 1, window 1)
+      s4: Released (epoch 1, window 2)
+      s5: Lease held (epoch 2, window 1)
+      s6: Lease held (epoch 2, window 2)
+      s7: Released (epoch 2, window 1)
+      s8: Released (epoch 2, window 2)
+      [*] --> s0
+      s0 --> s1: a lease installs or the bulk call runs under its key
+      s0 --> s2: a lease installs
+      s0 --> s5: a lease installs
+      s0 --> s6: a lease installs
+      s1 --> s3: the lease is released
+      s2 --> s4: the lease is released
+      s1 --> s2: a lease installs
+      s3 --> s1: a fresh lease installs again
+      s3 --> s1: the bulk call runs under its key [when Bulk key unused]
+      s4 --> s2: a fresh lease installs again
+      s2 --> s1: a lease installs
+      s2 --> s1: the bulk call runs under its key [when Bulk key unused]
+      s3 --> s2: a fresh lease installs again
+      s1 --> s5: a lease from the new authority installs
+      s1 --> s6: a lease from the new authority installs
+      s5 --> s7: the lease is released
+      s6 --> s8: the lease is released
+      s4 --> s1: a fresh lease installs again
+      s4 --> s1: the bulk call runs under its key [when Bulk key unused]
+      s2 --> s5: a lease from the new authority installs [unless Bulk key replayed]
+      s2 --> s6: a lease from the new authority installs [unless Bulk key replayed]
+      s3 --> s5: a lease from the new authority installs
+      s3 --> s6: a lease from the new authority installs
+      s7 --> s5: a fresh lease installs again
+      s5 --> s6: a lease installs [unless Bulk key replayed]
+      s8 --> s6: a fresh lease installs again
+      s6 --> s5: a lease installs [unless Bulk key replayed]
+      s4 --> s5: a lease from the new authority installs [unless Bulk key replayed]
+      s4 --> s6: a lease from the new authority installs [unless Bulk key replayed]
+      s7 --> s6: a fresh lease installs again [unless Bulk key replayed]
+      s8 --> s5: a fresh lease installs again [unless Bulk key replayed]
+    }
+    --
+    state "BulkKey" as r1 {
+      s9: Bulk key unused
+      s10: Bulk key recorded
+      s11: Bulk key replayed
+      [*] --> s9
+      s9 --> s10: the bulk call runs under its key
+      s10 --> s11: the same key is sent again
+    }
+  }
+  classDef mayBreak fill:#fff3e6,stroke:#e8730c,stroke-width:2.5px,color:#b85a06
+  class s0 tan
+  class s0 bugPath
+  class s1 teal
+  class s1 mayBreak
+  class s1 bugPath
+  class s2 teal
+  class s2 bugPath
+  class s3 orange
+  class s3 mayBreak
+  class s4 orange
+  class s5 teal
+  class s5 mayBreak
+  class s6 teal
+  class s7 orange
+  class s7 mayBreak
+  class s8 orange
+  class s9 mayBreak
+  class s9 bugPath
+  class s10 mayBreak
