@@ -150,7 +150,7 @@ export function sandboxEnvironment(cellDir: string, original: Readonly<Record<st
   }
   const scratch = sandboxed && platform() === "linux" ? "/tmp" : temp;
   const env = { ...withoutCellHostRoutes(original), HOME: home, TMPDIR: scratch, TMP: scratch, TEMP: scratch, CLAUDE_CODE_TMPDIR: scratch,
-    XDG_CACHE_HOME: cache, NODE_COMPILE_CACHE: join(cache, "node-compile"), npm_config_cache: join(cache, "npm"),
+    XDG_CACHE_HOME: cache, NODE_COMPILE_CACHE: join(cache, "node-compile"), npm_config_cache: join(cache, "npm"), npm_config_yes: "false",
     npm_config_store_dir: join(cache, "pnpm"), YARN_CACHE_FOLDER: join(cache, "yarn"), PIP_CACHE_DIR: join(cache, "pip"),
     UV_CACHE_DIR: join(cache, "uv"), GOCACHE: join(cache, "go-build"), GOMODCACHE: join(cache, "go-mod"),
     GRADLE_USER_HOME: join(cache, "gradle") };
