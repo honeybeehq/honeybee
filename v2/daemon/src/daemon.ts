@@ -6876,6 +6876,7 @@ export class HiveDaemon {
       pid: process.pid,
       startedAt: this.startedAt,
       instanceId: this.instanceId,
+      ...(this.store ? { nodeId: this.store.nodeId() } : {}),
       dataDir: this.cfg.dataDir,
       socketPath: this.cfg.socketPath,
       storePath: this.cfg.storePath,
@@ -7590,6 +7591,11 @@ export class HiveDaemon {
     if (params.adopt !== undefined && typeof params.adopt !== "boolean" && params.adopt !== "explicit") throw invalid();
     if (params.enrol !== undefined && typeof params.enrol !== "boolean" || params.enrol && params.adopt !== undefined || params.enrol && !safeId(params.viaNodeId) || params.viaNodeId !== undefined && !safeId(params.viaNodeId)) throw invalid();
     if (params.authorityInstanceId !== undefined && !safeId(params.authorityInstanceId)) throw invalid();
+    if (params.nodeId !== undefined) {
+      if (!safeId(params.nodeId)) throw invalid();
+      const own = this.ownNodeIds();
+      if (!own.includes(params.nodeId)) throw new RpcError("account_lease_conflict", `This lease was granted for node ${params.nodeId}, not this node (${own.join(" or ")}).`, { reason: "node_mismatch", nodeId: params.nodeId });
+    }
     if (params.generation !== undefined && (typeof params.generation !== "number" || !Number.isSafeInteger(params.generation) || params.generation < 0)) throw invalid();
     if (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 0) throw invalid();
     if (params.expiresAt !== null && (typeof params.expiresAt !== "number" || !Number.isSafeInteger(params.expiresAt) || params.expiresAt * 1000 <= Date.now())) throw invalid();
@@ -7625,6 +7631,12 @@ export class HiveDaemon {
     return this.mustAccounts().removeLease(id, { checkOnly: params.checkOnly === true, discardNative: params.discardNative === true, confirm: params.confirm === true });
   }
 
+  /** The node ids this daemon answers to: its durable store id and, when the local Apiary service registered with one, that id. */
+  private ownNodeIds(): string[] {
+    const registered = this.rpc?.registeredNodeId ?? null;
+    return registered ? [this.mustStore().nodeId(), registered] : [this.mustStore().nodeId()];
+  }
+
   private leaseGrantParams(params: Record<string, unknown>): AccountLeaseGrantParams {
     const safeId = (value: unknown): value is string => typeof value === "string" && /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(value);
     const id = this.accountIdParam(params);
@@ -7632,26 +7644,27 @@ export class HiveDaemon {
     if (!safeId(params.shareId) || params.shareId.length < 8) throw new RpcError("invalid_request", "account.lease.grant: shareId must be a safe share identity of at least 8 characters.", { reason: "share_id" });
     if (typeof params.epoch !== "number" || !Number.isSafeInteger(params.epoch) || params.epoch < 0) throw new RpcError("invalid_request", "account.lease.grant: epoch must be a non-negative integer.", { reason: "epoch" });
     if (params.ttlMs !== undefined && params.ttlMs !== null && (typeof params.ttlMs !== "number" || !Number.isSafeInteger(params.ttlMs) || params.ttlMs < MIN_LEASE_GRANT_TTL_MS || params.ttlMs > MAX_LEASE_GRANT_TTL_MS)) throw new RpcError("invalid_request", `account.lease.grant: ttlMs must be an integer from ${MIN_LEASE_GRANT_TTL_MS} to ${MAX_LEASE_GRANT_TTL_MS}.`, { reason: "ttl" });
-    if (params.authorityNodeId !== undefined && params.authorityNodeId !== null && !safeId(params.authorityNodeId)) throw new RpcError("invalid_request", "account.lease.grant: authorityNodeId must be a safe node identity.", { reason: "authority_node_id" });
-    const authorityNodeId = typeof params.authorityNodeId === "string" ? params.authorityNodeId : this.mustStore().nodeId();
-    if (params.nodeId === authorityNodeId) throw new RpcError("invalid_request", `account.lease.grant: ${params.nodeId} is the authority node itself; a lease is for another node.`, { reason: "self_grant" });
+    const own = this.ownNodeIds();
+    if (params.authorityNodeId !== undefined && params.authorityNodeId !== null && (!safeId(params.authorityNodeId) || !own.includes(params.authorityNodeId))) throw new RpcError("invalid_request", `account.lease.grant: authorityNodeId must be this node (${own.join(" or ")}).`, { reason: "authority_node_id" });
+    const authorityNodeId = typeof params.authorityNodeId === "string" ? params.authorityNodeId : own[0]!;
+    if (own.includes(params.nodeId)) throw new RpcError("invalid_request", `account.lease.grant: ${params.nodeId} is the authority node itself; a lease is for another node.`, { reason: "self_grant" });
     return { id, nodeId: params.nodeId, shareId: params.shareId, epoch: params.epoch, ttlMs: typeof params.ttlMs === "number" ? params.ttlMs : DEFAULT_LEASE_GRANT_TTL_MS, authorityNodeId };
   }
 
   /**
    * One grant: the owning node mints for one named node and answers the
    * complete install payload. `window` pins a replayed batch item to its
-   * recorded window instead of opening a new one; it never audits again.
+   * recorded window instead of opening a new one; the re-mint audits as a replay.
    */
   private async mintLeaseGrant(input: AccountLeaseGrantParams, window?: { grantedAt: number; expiresAt: number }): Promise<AccountLeaseGrantResult> {
     const account = this.requireAccount({ id: input.id }, "id");
     if (account.source === "leased") throw new RpcError("account_leased", `account ${account.id} is leased from ${knownAccountLease(account)?.authorityNodeId}; only its authority node grants it.`);
     if (account.status === "paused") throw new RpcError("account_paused", `account ${account.id} is paused; unpause it before granting a lease`);
     if (this.mustAccounts().credentialHealthOf(account) === "absent") throw new RpcError("account_credential_missing", `account ${account.id} has no credential on its authority node; log in before granting a lease`);
-    const lease = await this.mustAccounts().mintLease(account, {});
     const grantedAt = window?.grantedAt ?? Date.now();
     const expiresAt = window?.expiresAt ?? Math.floor((grantedAt + input.ttlMs!) / 1000);
     if (expiresAt * 1000 <= Date.now()) throw new RpcError("invalid_request", "account.lease.grant: the lease window has already closed.", { reason: "ttl" });
+    const lease = await this.mustAccounts().mintLease(account, {});
     const grant: AccountLeaseGrant = {
       account: account.id, harness: account.harness, nodeId: input.nodeId, authorityNodeId: input.authorityNodeId!, shareId: input.shareId, epoch: input.epoch, ttlMs: input.ttlMs!, grantedAt, expiresAt,
       materialExpiresAt: lease.expiresAt ?? null,
@@ -7659,11 +7672,11 @@ export class HiveDaemon {
       ...(lease.generation !== undefined ? { generation: lease.generation } : {}),
     };
     const install: AccountLeaseInstallParams = {
-      id: account.id, harness: account.harness, label: account.label, shareId: input.shareId, authorityNodeId: input.authorityNodeId!, epoch: input.epoch, expiresAt, files: lease.files,
+      id: account.id, harness: account.harness, label: account.label, shareId: input.shareId, authorityNodeId: input.authorityNodeId!, epoch: input.epoch, expiresAt, files: lease.files, nodeId: input.nodeId,
       ...(lease.authorityInstanceId !== undefined ? { authorityInstanceId: lease.authorityInstanceId } : {}),
       ...(lease.generation !== undefined ? { generation: lease.generation } : {}),
     };
-    if (!window) this.mustStore().recordAccountLeaseGrant({ ...grant, fileCount: lease.files.length });
+    this.mustStore().recordAccountLeaseGrant({ ...grant, fileCount: lease.files.length, replay: window !== undefined });
     return { grant, install, ...(lease.env ? { env: lease.env } : {}), kindNote: lease.kindNote };
   }
 
@@ -7682,16 +7695,24 @@ export class HiveDaemon {
       return { op: op as "grant" | "install" | "release", index, params: rest, id: rest.id };
     });
     const store = this.mustStore();
-    type Receipt = Array<AccountLeaseBatchItemResult | { index: number; op: "grant"; id: string; nodeId: string; ok: true; replay: AccountLeaseGrantParams; grant: AccountLeaseGrant }>;
+    const principal = conn.leasePrincipal ?? "-";
+    const canonical = (value: unknown): unknown => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value as object).sort().map(k => [k, canonical((value as Record<string, unknown>)[k])])) : value;
+    const itemsDigest = createHash("sha256").update(JSON.stringify(canonical(params.items))).digest("hex");
+    type Entry = AccountLeaseBatchItemResult | { index: number; op: "grant"; id: string; nodeId: string; ok: true; replay: AccountLeaseGrantParams; grant: AccountLeaseGrant };
+    type Receipt = { principal: string; itemsDigest: string; pending?: true; entries?: Entry[] };
     const finish = (results: AccountLeaseBatchItemResult[], deduped: boolean): AccountLeaseBatchResult => ({ results, counts: { ok: results.filter(r => r.ok).length, failed: results.filter(r => !r.ok).length }, ...(deduped ? { deduped: true } : {}) });
     if (key !== null) {
       if (this.leaseBatchesInFlight.has(key)) throw new RpcError("idempotency_conflict", "Key belongs to an in-flight account.lease.batch");
       const hit = store.lookupRpcResult(key);
       if (hit) {
         if (hit.verb !== "account.lease.batch") throw new RpcError("idempotency_conflict", `Key belongs to ${hit.verb}, not account.lease.batch`);
+        const receipt = hit.result as Receipt;
+        if (receipt.principal !== principal) throw new RpcError("idempotency_conflict", "Key belongs to another caller", { reason: "principal" });
+        if (receipt.itemsDigest !== itemsDigest) throw new RpcError("idempotency_conflict", "Key was recorded for different items", { reason: "items" });
+        if (receipt.pending || !receipt.entries) throw new RpcError("idempotency_conflict", "The first run under this key never finished; use a new key", { reason: "interrupted" });
         this.log(`rpc.dedup verb=account.lease.batch key=${key}`);
         const results: AccountLeaseBatchItemResult[] = [];
-        for (const entry of hit.result as Receipt) {
+        for (const entry of receipt.entries) {
           if (entry.ok && entry.op === "grant" && "replay" in entry) {
             try { results.push({ index: entry.index, op: "grant", id: entry.id, nodeId: entry.nodeId, ok: true, result: await this.mintLeaseGrant(entry.replay, { grantedAt: entry.grant.grantedAt, expiresAt: entry.grant.expiresAt }) }); }
             catch (error) { results.push({ index: entry.index, op: "grant", id: entry.id, nodeId: entry.nodeId, ok: false, error: toRpcError(error) }); }
@@ -7700,10 +7721,11 @@ export class HiveDaemon {
         return finish(results, true);
       }
       this.leaseBatchesInFlight.add(key);
+      store.recordRpcResult(key, "account.lease.batch", null, { principal, itemsDigest, pending: true } satisfies Receipt);
     }
     try {
       const results: AccountLeaseBatchItemResult[] = [];
-      const receipt: Receipt = [];
+      const entries: Entry[] = [];
       for (const item of items) {
         const nodeId = typeof item.params.nodeId === "string" ? { nodeId: item.params.nodeId } : {};
         try {
@@ -7711,22 +7733,22 @@ export class HiveDaemon {
             const input = this.leaseGrantParams(item.params);
             const result = await this.mintLeaseGrant(input);
             results.push({ index: item.index, op: "grant", id: result.grant.account, nodeId: input.nodeId, ok: true, result });
-            receipt.push({ index: item.index, op: "grant", id: result.grant.account, nodeId: input.nodeId, ok: true, replay: { ...input, id: result.grant.account }, grant: result.grant });
+            entries.push({ index: item.index, op: "grant", id: result.grant.account, nodeId: input.nodeId, ok: true, replay: { ...input, id: result.grant.account }, grant: result.grant });
           } else if (item.op === "install") {
             const result = await this.rpcAccountLeaseInstall(item.params, conn);
             const entry: AccountLeaseBatchItemResult = { index: item.index, op: "install", id: result.account.id, ok: true, result };
-            results.push(entry); receipt.push(entry);
+            results.push(entry); entries.push(entry);
           } else {
             const result = await this.rpcAccountLeaseRemove(item.params);
             const entry: AccountLeaseBatchItemResult = { index: item.index, op: "release", id: item.id, ok: true, result };
-            results.push(entry); receipt.push(entry);
+            results.push(entry); entries.push(entry);
           }
         } catch (error) {
           const entry: AccountLeaseBatchItemResult = { index: item.index, op: item.op, id: item.id, ...nodeId, ok: false, error: toRpcError(error) };
-          results.push(entry); receipt.push(entry);
+          results.push(entry); entries.push(entry);
         }
       }
-      if (key !== null) store.recordRpcResult(key, "account.lease.batch", null, receipt);
+      if (key !== null) store.updateRpcResult(key, { principal, itemsDigest, entries } satisfies Receipt);
       return finish(results, false);
     } finally {
       if (key !== null) this.leaseBatchesInFlight.delete(key);

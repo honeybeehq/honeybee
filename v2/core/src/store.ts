@@ -7170,8 +7170,16 @@ export class CoreStore {
     });
   }
 
-  recordAccountLeaseGrant(grant: { account: string; harness: string; nodeId: string; authorityNodeId: string; shareId: string; epoch: number; ttlMs: number; expiresAt: number; materialExpiresAt: number | null; authorityInstanceId?: string; generation?: number; fileCount: number }): void {
-    this.tx(() => { this.audit("account.lease.granted", null, { ...grant, grantedAt: this.now() }); });
+  recordAccountLeaseGrant(grant: { account: string; harness: string; nodeId: string; authorityNodeId: string; shareId: string; epoch: number; ttlMs: number; expiresAt: number; materialExpiresAt: number | null; authorityInstanceId?: string; generation?: number; fileCount: number; replay?: boolean }): void {
+    this.tx(() => { this.audit("account.lease.granted", null, { ...grant, replay: grant.replay === true, mintedAt: this.now() }); });
+  }
+
+  /** Replace a recorded RPC result in place (a reserved key settling to its final receipt). */
+  updateRpcResult(key: string, result: unknown): void {
+    this.tx(() => {
+      const changed = this.db.prepare("UPDATE rpc_idempotency SET result = ? WHERE key = ?").run(JSON.stringify(result ?? null), key).changes;
+      if (changed !== 1) throw new CoreError(`rpc result ${key} is not recorded`);
+    });
   }
 
   recordAccountLeaseExport(id: string, fileCount: number): void {

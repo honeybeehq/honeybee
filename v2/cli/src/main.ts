@@ -317,6 +317,7 @@ const OPTIONAL_VALUE_FLAGS = new Set(["--warm"]);
  * unknown boolean plus a stray positional and quietly spawned an hsr claude.
  */
 const BOOL_FLAGS = new Set([
+  "--register",
   "--active",
   "--segments", "--from-objects",
   "--json",
@@ -610,6 +611,31 @@ export function resolveBeeIn(views: ViewResult[], needle: string): string {
 // output
 // ---------------------------------------------------------------------------
 
+/** Lease material never reaches stdout: credential files become their names and sizes, env its key names. */
+function redactLeaseMaterial(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactLeaseMaterial);
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(record)) {
+    if (key === "files" && Array.isArray(child)) out.files = child.map(file => file && typeof file === "object" ? { homeRelPath: (file as { homeRelPath?: unknown }).homeRelPath, mode: (file as { mode?: unknown }).mode, bytes: typeof (file as { contentB64?: unknown }).contentB64 === "string" ? Buffer.from((file as { contentB64: string }).contentB64, "base64").length : null } : file);
+    else if (key === "env" && child && typeof child === "object" && !Array.isArray(child)) out.env = { keys: Object.keys(child as object) };
+    else out[key] = redactLeaseMaterial(child);
+  }
+  return out;
+}
+
+/** Register this CLI process as the daemon's trusted local caller (scratch and operator use; refused while a live Apiary service holds the registration). */
+async function registerLocalTrust(ctx: CliContext, client: RpcClient): Promise<void> {
+  const { localTrustMessage } = await import("../../daemon/src/localRpcTrust.ts");
+  const { createHmac } = await import("node:crypto");
+  const challenge = await client.request<import("../../daemon/src/localRpcTrust.ts").LocalTrustChallenge>("rpc.localTrust.challenge");
+  const key = readFileSync(ctx.cfg.rpcLocalTrust.registrationKeyFile);
+  const token = createHmac("sha256", key).update(localTrustMessage(challenge)).digest("hex");
+  key.fill(0);
+  await client.request("rpc.localTrust.register", { pid: challenge.pid, challengeId: challenge.challengeId, token });
+}
+
 function emit(ctx: CliContext, human: string[] | (() => string[]), jsonValue: unknown, stale: boolean): void {
   if (ctx.json) {
     ctx.io.out(JSON.stringify(withDaemonTarget(ctx, stale ? { stale: true, ...(jsonValue as object) } : jsonValue)));
@@ -841,7 +867,7 @@ const ACCOUNT_USAGE =
   "       hive account credentials handoff-status [--file payload.json]\n" +
   "       hive account credentials <export|adopt-prepare|export-prepare|export-commit|adopt|adopt-abort|export-abort|export-confirm|export-settle|stand-down|handoff-status|handoff-key-rotate|handoff-identity-set|stand-down-receipt|take-over-apply|take-over-complete|take-over-cancel> --file protected-payload.json [--out protected-material.json] [--replace] [--retained-generation N] [--discard-retained-chain --confirm]\n" +
   "       hive account lease install [--enrol] --file payload.json | lease remove <id> [--check-only | --discard-native --confirm] | lease export <id> --json\n" +
-  "       hive account lease grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>] --json | lease batch --file items.json [--idempotency-key key] --json\n" +
+  "       hive account lease grant <id> --node <nodeId> --share <shareId> --epoch <n> [--ttl-ms <ms>] [--authority <nodeId>] [--out material.json] [--register] --json | lease batch --file items.json [--idempotency-key key] [--out material.json] [--register] --json\n" +
   "       hive account capture <selector> | verify <selector> | limits [<selector>] | reset <selector> [--credit-id id] --idempotency-key key\n" +
   "       hive account restored <selector> | interruptions [<selector>]\n" +
   "       hive account import [--root ~/.hive] [--dry-run] | backfill [--dry-run]";
@@ -991,11 +1017,18 @@ async function cmdAccount(ctx: CliContext, parsed: Parsed): Promise<number> {
           try { items = JSON.parse(readFileSync(resolve(file), "utf8")); } catch { throw new Error("Could not read lease batch JSON."); }
           params = { items: Array.isArray(items) ? items : (items as { items?: unknown })?.items, ...(typeof parsed.flags.get("--idempotency-key") === "string" ? { idempotencyKey: parsed.flags.get("--idempotency-key") } : {}) };
         }
-        const result = await withClient(ctx, client => {
+        const out = parsed.flags.get("--out");
+        if (out !== undefined && typeof out !== "string") throw new Error("--out requires a file path.");
+        const result = await withClient(ctx, async client => {
           if (!client.capabilities.includes("account.lease.grant.v1")) throw new RpcError("capability_missing", "Update Honeybee: account.lease.grant.v1 is required.");
+          if (parsed.flags.get("--register") === true) await registerLocalTrust(ctx, client);
           return client.request(`account.lease.${action}`, params, 120_000);
         });
-        emit(ctx, [action === "grant" ? `lease granted for ${params.id}` : "lease batch"], result, false);
+        if (typeof out === "string") {
+          const fd = openSync(resolve(out), "w", 0o600);
+          try { writeFileSync(fd, JSON.stringify(result)); fsyncSync(fd); } finally { closeSync(fd); }
+        }
+        emit(ctx, [action === "grant" ? `lease granted for ${params.id}` : "lease batch"], { ...(typeof out === "string" ? { materialWrittenTo: resolve(out) } : { materialOmitted: true }), ...(redactLeaseMaterial(result) as object) }, false);
         return 0;
       }
       if (action !== "install" && action !== "remove") throw new Error("usage: hive account lease install [--enrol] --file payload.json | remove <id> | grant <id> … | batch --file items.json");

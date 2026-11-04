@@ -1174,6 +1174,8 @@ export interface AccountLeaseInstallParams extends AccountLeaseFences {
   files: EphemeralCredentialFile[];
   expiresAt: number | null;
   adopt?: boolean | "explicit";
+  /** The node this payload was granted for; the receiving node refuses a payload addressed elsewhere (`account_lease_conflict`, reason `node_mismatch`). */
+  nodeId?: string;
 }
 
 export interface AccountLeaseInstallResult {
@@ -1244,7 +1246,14 @@ export const MIN_LEASE_GRANT_TTL_MS = 60_000;
  * node. `shareId` and `epoch` are the carrier's share facts (Apiary's org
  * account-authority record; genesis epoch 1, +1 on take-over); the same
  * share and epoch with a later `expiresAt` is a renewal. `ttlMs` is the
- * lease window (default 36 h); `authorityNodeId` defaults to this node's id.
+ * lease window (default 36 h). `authorityNodeId` defaults to this node's id
+ * (`deployInfo.nodeId`) and may only name that id or the node id the local
+ * Apiary service registered with; any other value is `invalid_request`
+ * (reason `authority_node_id`). `nodeId` is the receiving node's id by the
+ * same rule on that node and is carried in the payload. Only the registered
+ * local Apiary authority on a direct Unix-socket connection may call this
+ * verb or `account.lease.batch` (`caller_not_trusted` otherwise; confined
+ * peers and relayed lanes are refused).
  * Typed refusals: `account_not_found`, `account_leased` (this node is not
  * the authority), `account_paused`, `account_credential_missing` (signed
  * out: no credential on the authority node), `credential_login_required`
@@ -1291,9 +1300,13 @@ export interface AccountLeaseGrantResult {
  * `account.lease.batch {items, idempotencyKey?}` — several lease operations
  * on THIS node in one call: `grant` items run on the owning node, `install`
  * and `release` items on the receiving node. Items run in order; one item's
- * refusal never stops the others and never fails the call. A replayed key
- * answers `deduped: true` with the recorded per-item outcomes; grant items
- * are minted again on replay because their material is never recorded.
+ * refusal never stops the others and never fails the call. A key is bound to
+ * the calling principal and to a digest of its items: the same key with other
+ * items, another caller, or a key whose first run never finished answers
+ * `idempotency_conflict`. A replayed key answers `deduped: true` with the
+ * recorded per-item outcomes; grant items are minted again on replay because
+ * their material is never recorded, under the recorded window, and every
+ * re-mint audits `account.lease.granted` with `replay: true`.
  */
 export type AccountLeaseBatchItem =
   | ({ op: "grant" } & AccountLeaseGrantParams)
@@ -1975,6 +1988,8 @@ export interface DeployInfoResult {
   protocol: string;
   /** v16 (additive): the capability tags this daemon offers (also in the hello). */
   capabilities: readonly DaemonCapability[];
+  /** Additive: this node's durable id (the `authorityNodeId` / `nodeId` the lease verbs accept for it). */
+  nodeId?: string;
   daemonVersion: string;
   nodeVersion: string;
   pid: number;
