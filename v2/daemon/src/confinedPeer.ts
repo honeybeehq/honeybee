@@ -82,7 +82,7 @@ export function bwrapMode(searchPath = process.env.PATH ?? ""): {path: string | 
   return {path: null, setuid: false};
 }
 export function assertConfinedVerb(verb: string, confinement: Confinement): void {
-  if (confinement === "confined" && (verb.startsWith("account.credentials.") || verb === "account.lease.export" || verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register")) {
+  if (confinement === "confined" && (verb.startsWith("account.credentials.") || verb === "account.lease.export" || verb === "account.lease.grant" || verb === "account.lease.batch" || verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register")) {
     throw new RpcError("confined_peer_refused", "Confined callers cannot acquire service authority or access host credentials");
   }
 }

@@ -10,6 +10,8 @@ description: Check the account-lease ordering rules and the bulk-key replay of a
 - **A lease window never shrinks within an epoch.** Harm if broken: a stale or replayed payload shortens a live lease on a satellite, and bees there lose their account before the grid says they will.
 - **Epochs only rise and the row's authority is the epoch's owner.** Harm: after a take-over, an old authority's payload resurrects itself on a satellite and two machines renew the same login.
 - **A replayed bulk key is quiet.** Harm: a retried `account.lease.batch` installs or releases twice, or opens a second lease window for the same grant.
+- **A replayed key answers only its own items, and every mint is audited.** Harm if broken: anyone holding a key (it appears in the `rpc.dedup` log line) pulls fresh credential material for other items, unaudited.
+- **The owner signs the authority.** Harm if broken: a caller names another node as `authorityNodeId`, and node X's material renews node Q's lease on a satellite while the audit blames Q.
 
 ## Does my change touch the verified code?
 
@@ -20,9 +22,10 @@ The model describes these places. If a diff touches any of them, run the check a
 | `Admits(p)` | `v2/daemon/src/accountsService.ts`, `installLease`, the `throw new RpcError("account_lease_conflict", "Lease origin conflicts with the installed lease.")` rule (shareId / epoch / authorityNodeId / expiresAt comparison) |
 | `Apply(p)` | same function: `this.store.setAccountLease(id, origin)` with `revokedAt: null` |
 | `Release` | `v2/daemon/src/accountsService.ts`, `removeLease` (disposition `revoked`, row kept) |
-| `GrantWindow(w)` | `v2/daemon/src/daemon.ts`, `mintLeaseGrant` (window = `grantedAt + ttlMs`, carried as `install.expiresAt`) |
+| `GrantWindow(w)` | `v2/daemon/src/daemon.ts`, `leaseGrantParams` (authorityNodeId must be `ownNodeIds()`) and `mintLeaseGrant` (window = `grantedAt + ttlMs`, carried as `install.expiresAt`; audits `account.lease.granted`) |
+| caller gate (not modelled) | `v2/daemon/src/rpc.ts`, the `account.lease.grant` / `account.lease.batch` branch (registered local authority only) and `v2/daemon/src/confinedPeer.ts`, `assertConfinedVerb` |
 | `TakeOver` | Apiary's authority record epoch bump (not Honeybee code); the model only assumes epoch+1 with a new owner |
-| `BatchFirstWindow` / `BatchReplayWindow` | `v2/daemon/src/daemon.ts`, `rpcAccountLeaseBatch`: receipt recorded under the key, replay answers from it, grants re-minted under the recorded window |
+| `BatchFirstWindow` / `BatchReplayWindow` | `v2/daemon/src/daemon.ts`, `rpcAccountLeaseBatch`: receipt `{principal, itemsDigest, entries}` reserved under the key before items run, replay refused on another principal / other items / an unfinished first run, grants re-minted under the recorded window with `replay: true` audits |
 
 Sync commit: the commit that added this skill (`git log -1 --format=%H -- .agents/skills/verify-lease-verbs/SKILL.md`) describes the code at the time of the last confirmation. After a change to the files above, re-read the model, rerun, and only then move this line forward by committing the updated skill.
 
@@ -36,17 +39,15 @@ Two parts, both from the repository root.
    java -cp "$TLA2TOOLS" tlc2.TLC -workers 1 -config LeaseVerbs.cfg LeaseVerbs.tla
    ```
 
-   where `TLA2TOOLS` points at a `tla2tools.jar` (TLA+ tools 1.8.x, Java 11+). Expected: `Model checking completed. No error has been found.` with about 672 distinct states, in a few seconds.
+   where `TLA2TOOLS` points at a `tla2tools.jar` (TLA+ tools 1.8.x, Java 11+). Expected: `Model checking completed. No error has been found.` with about 378 distinct states (the `Bounded` constraint caps mints at 3), in a few seconds.
 
-2. The real code. The Project that added these verbs keeps new test files out of the tree, so the two-daemon driver lives as evidence at `.proof/hb-lease-verbs/lease-grant-rpc.e2e-driver.ts.txt` (its recorded run: `.proof/hb-lease-verbs/e2e-two-daemons.md`). To rerun it locally without committing it (needs the native bridge once: `node scripts/build-peercred.mjs`):
+2. The real code. The security cases (caller gate, owner-signed authority, node-bound payloads, key binding, audited replays, redacted CLI) are the `hb-lease-fix` test in `v2/daemon/tests/lease-export-rpc.test.ts`; run it under the fixture warden (needs the native bridge once: `node scripts/build-peercred.mjs`):
 
    ```sh
-   cp .proof/hb-lease-verbs/lease-grant-rpc.e2e-driver.ts.txt v2/daemon/tests/lease-grant-rpc.test.ts
-   HB_LEASE_PROOF_LOG=/tmp/lease-run.md node scripts/with-fixture-warden.mjs node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/lease-grant-rpc.test.ts
-   rm v2/daemon/tests/lease-grant-rpc.test.ts
+   HB_LEASE_PROOF_LOG=/tmp/lease-run.md node scripts/with-fixture-warden.mjs node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/lease-export-rpc.test.ts
    ```
 
-   Expected: `pass 1`, and `/tmp/lease-run.md` holds the readable transcript.
+   Expected: `pass 2`, and `/tmp/lease-run.md` holds the readable transcript. The original grant/install/renew/release/move/bulk driver stays as evidence at `.proof/hb-lease-verbs/lease-grant-rpc.e2e-driver.ts.txt` (recorded run: `.proof/hb-lease-verbs/e2e-two-daemons.md`); copy it into `v2/daemon/tests/` to rerun it, do not commit it.
 
 ## Make sure the check can still fail
 
@@ -54,6 +55,9 @@ Each rule has a broken variant of the model that must fail:
 
 - `LeaseVerbs-broken-regress.cfg` (`RegressCheck = FALSE`, the expiresAt comparison removed from `Admits`) must break **WindowNeverShrinks** with a 4-step path: mint window 2, mint window 1, install 2, install 1.
 - `LeaseVerbs-broken-replay.cfg` (`ReplayReusesReceipt = FALSE`, replay re-executes) must break **ReplayIsQuiet** in 3 steps.
+- `LeaseVerbs-broken-authority.cfg` (`OwnerSignsAuthority = FALSE`, the caller's authorityNodeId is copied in) must break **AuthorityMatchesEpoch** in 2 steps.
+- `LeaseVerbs-broken-items.cfg` (`ReplayChecksItems = FALSE`, a key answers for other items) must break **ReplayAnswersOwnItems** in 3 steps.
+- `LeaseVerbs-broken-audit.cfg` (`AuditReplay = FALSE`, re-mints on replay are silent) must break **EveryMintAudited** in 3 steps.
 
 The same break in the real code (delete the `input.expiresAt < knownAccountLease(account)!.expiresAt!` clause in `installLease`) makes the two-daemon driver fail at "a shorter window at the same epoch is refused". Last seen: `.proof/hb-lease-verbs/formal/scratch-break-run.log`.
 
@@ -70,6 +74,7 @@ When the contract changes (for example a release that frees the window for a sho
 
 ## Scope and bounds
 
-- One share, one satellite row, one bulk key; windows 1..2, epochs 1..2 (`W = 2`, `MaxEpoch = 2`). Payloads may be delivered in any order and any number of times.
+- One share, one satellite row, one bulk key; windows 1..2, epochs 1..2 (`W = 2`, `MaxEpoch = 2`), at most 3 mints per behaviour. Payloads may be delivered in any order and any number of times.
+- The caller gate (registered local authority, confined peers, relayed lanes) and the principal binding of a key are checked by the test, not the model.
 - Not modelled: adoption / enrolment / forwarded fences / native backups in `installLease`, keychain state, authority-instance and generation floors, interleaving of other RPCs inside one batch, time (a window is an ordinal, not a clock).
 - The model's `TakeOver` is Apiary's epoch bump as an assumption, not Honeybee code.

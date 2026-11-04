@@ -91,6 +91,8 @@ export interface RpcConn {
   readonly captureSecretOutput?: (leaseId: string, bytes: Buffer) => void;
   readonly secretExecution?: import("./protocol.ts").SecretExecutionContext;
   readonly secretExecutionNodeId?: string;
+  /** Set by the lease-grant gate: the registered caller a batch idempotency key is bound to. */
+  readonly leasePrincipal?: string;
   readonly humanChat?: HumanChatAdmission;
   readonly humanPolicyAuthority?: true;
   readonly automationAuthority?: true;
@@ -271,6 +273,8 @@ export class RpcServer {
   private readonly refusals: LocalRpcRefusals;
 
   get localSecurity() { return {peerCredentials: {...this.credentials.status}, localTrust: this.trust.state}; }
+  /** The node id the registered local Apiary service bound itself to, when one is registered. */
+  get registeredNodeId(): string | null { return this.trust.nodeId; }
 
   constructor(opts: RpcServerOptions) {
     this.opts = opts;
@@ -520,6 +524,11 @@ export class RpcServer {
           this.trust.require(peer, conn.ingress);
           if (!this.trust.nodeId) throw new RpcError("caller_not_trusted", "Secret execution requires registered node binding");
           return this.opts.dispatch(verb, params, { ...conn, captureSecretOutput: (leaseId, bytes) => { secretCapture = { leaseId, bytesBase64: bytes.toString("base64") }; captureExpiresAt = (automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext).outputCapture?.expiresAt ?? 0; }, secretExecutionNodeId: this.trust.nodeId, secretExecution: automationContext.secretExecution as import("./protocol.ts").SecretExecutionContext });
+        }
+        if (verb === "account.lease.grant" || verb === "account.lease.batch") {
+          if (!peer || peer.state !== "verified" || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", "Lease grants require the registered direct local Apiary authority");
+          this.trust.require(peer, conn.ingress);
+          return this.opts.dispatch(verb, params, { ...conn, leasePrincipal: `${peer.peer.uid}:${this.trust.nodeId ?? "-"}` });
         }
         if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
         if (params.automationKind !== undefined || params.automationRef !== undefined || automationContext?.automationReference !== undefined) {
