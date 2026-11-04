@@ -4,6 +4,12 @@ import { assertHostGitVersion } from "./hostGitRuntime.js";
 
 const hostGitConfig: ReadonlyArray<readonly [string, string]> = [
   ["core.fsmonitor", "false"],
+  ["core.gitProxy", ""],
+  ["core.askPass", ""],
+  ["credential.helper", ""],
+  ["gpg.program", "/bin/false"],
+  ["gpg.ssh.program", "/bin/false"],
+  ["commit.gpgsign", "false"],
   ["core.hooksPath", devNull],
   ["submodule.recurse", "false"],
   ["diff.ignoreSubmodules", "all"],
