@@ -257,7 +257,7 @@ test("execution Cells refuse credential-bearing proxy URLs while preserving publ
 
   const publicProxy = { PATH: "/usr/bin", HTTPS_PROXY: "http://node-proxy.example:8080", NO_PROXY: "localhost" };
   assert.doesNotThrow(() => assertExecutionCellProxyEnvironment(publicProxy));
-  assert.deepEqual(hsrHarnessEnvironment(envPayload(), publicProxy), publicProxy);
+  assert.deepEqual(hsrHarnessEnvironment(envPayload(), publicProxy), {...publicProxy,npm_config_yes:"false"});
 });
 
 test("execution Cell payload accepts only the signed account's exact provider identity env", () => {
@@ -299,6 +299,7 @@ test("execution harness sees the broker socket but not the canonical store or am
     AWS_ACCESS_KEY_ID: "ambient-aws",
   });
   assert.deepEqual(env, {
+    npm_config_yes: "false",
     PATH: "/reviewed/bin",
     CLAUDE_CONFIG_DIR: "/accounts/claude-1",
     HIVE_CELL_BROKER_SOCKET: "/canonical/hive/daemon/hsr-control.sock",
@@ -561,4 +562,12 @@ test("the built runner-host bundle routes __hsr-run into the bee host, not 'unkn
     // consumeHsrRunPayload removes the handoff on success; force covers that.
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+
+test("execution Cell pins package confirmation without forcing offline mode", () => {
+  const env=hsrHarnessEnvironment(envPayload(),{npm_config_yes:"true"});
+  assert.equal(env.npm_config_yes,"false");
+  assert.equal(env.npm_config_offline,undefined);
+  assert.ok(EXECUTION_CELL_AMBIENT_ENV_KEYS.includes("npm_config_yes"));
 });

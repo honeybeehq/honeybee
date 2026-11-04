@@ -838,6 +838,7 @@ export class CellDriver implements RuntimeDriver {
       // space identity through these stamps.
       HIVE_CELL: "1",
       HIVE_CELL_SPACE: cell.paths.spaceName,
+      npm_config_yes: "false",
     };
     if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
       return { ...harness, cwd: cell.paths.spaceDir, env };

@@ -91,6 +91,8 @@ test("Cell policy permits only the Cell, provider state, and per-run scratch out
       "pnpm's effective store-dir key points at per-run scratch",
     );
     assert.equal(built.env.PNPM_STORE_DIR, built.env.npm_config_store_dir);
+    assert.equal(built.env.npm_config_yes,"false");
+    assert.equal(built.env.npm_config_offline,undefined);
     assert.ok(
       built.state.packageManagerWriteTrees.includes(join(await realpath(cell), "**", "node_modules")),
       "nested workspace dependency trees receive the narrow materialization carve-out",
