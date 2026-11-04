@@ -575,7 +575,7 @@ test("upstream refresh budget resolves configured minutes without changing the f
     const configured = cellRetentionOf({ upstreamRefreshMinutes: 20, fetchUpstream: false }, nodeKind);
     assert.equal(configured.upstreamRefreshMs, 1200000);
     assert.equal(configured.fetchUpstream, false);
-    for (const value of [0, -1, "10", null, 1441]) {
+    for (const value of [0, 1, 4.9, -1, "10", null, 1441]) {
       const invalid = cellRetentionOf({ upstreamRefreshMinutes: value }, nodeKind);
       assert.equal(invalid.upstreamRefreshMs, 600000);
       assert.ok(invalid.warnings.some(warning => warning.includes("upstreamRefreshMinutes")));

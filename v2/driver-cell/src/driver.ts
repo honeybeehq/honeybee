@@ -136,10 +136,16 @@ export function upstreamRefreshDelay(intervalMs: number, nodeKey: string, first:
   return Math.floor(intervalMs + offset + Math.max(0, Math.min(1, random)) * intervalMs * 0.2);
 }
 
+export function upstreamFailureDelay(intervalMs: number, failures: number): number {
+  return Math.max(intervalMs, Math.min(60 * 60_000, intervalMs * 2 ** Math.min(failures, 30)));
+}
+
 interface TrackedOrigin {
   request: RefreshRequest;
   lastUsedAt: number;
   lastFetchAt: number;
+  nextFetchAt: number;
+  failures: number;
 }
 
 interface PendingProvision {
@@ -181,6 +187,8 @@ export class CellDriver implements RuntimeDriver {
   private readonly origins = new Map<string, TrackedOrigin>();
   private readonly upstreamPolicy: (UpstreamRefreshPolicy & { root: string }) | null;
   private upstreamTimer: ReturnType<typeof setTimeout> | null = null;
+  private upstreamRoundRunning = false;
+  private upstreamDisposed = false;
 
   constructor(cfg: CellDriverConfig) {
     stateDirectory(cfg.cellsRoot, "cellsRoot");
@@ -621,6 +629,7 @@ export class CellDriver implements RuntimeDriver {
   }
 
   private cancelPending(): void {
+    this.upstreamDisposed = true;
     for (const pending of this.pending.values()) {
       pending.settled = true;
       void pending.worker.terminate();
@@ -677,7 +686,7 @@ export class CellDriver implements RuntimeDriver {
       if (request.warmArtifacts != null) known.request = request;
       return known;
     }
-    const tracked: TrackedOrigin = { request, lastUsedAt: usedAt, lastFetchAt: 0 };
+    const tracked: TrackedOrigin = { request, lastUsedAt: usedAt, lastFetchAt: 0, nextFetchAt: 0, failures: 0 };
     this.origins.set(request.originRepo, tracked);
     this.ensureUpstreamTimer();
     return tracked;
@@ -695,15 +704,23 @@ export class CellDriver implements RuntimeDriver {
   }
 
   private refreshRecentOrigins(): void {
-    if (this.upstreamPolicy == null) return;
+    if (this.upstreamPolicy == null || this.upstreamRoundRunning || this.upstreamDisposed) return;
     const now = Date.now();
+    const origins: TrackedOrigin[] = [];
     for (const [originRepo, origin] of this.origins) {
-      if (now - origin.lastUsedAt > this.upstreamPolicy.recentMs) {
-        this.origins.delete(originRepo);
-        continue;
-      }
-      this.scheduleRefresh(origin);
+      if (now - origin.lastUsedAt > this.upstreamPolicy.recentMs) this.origins.delete(originRepo);
+      else if (now >= origin.nextFetchAt) origins.push(origin);
     }
+    this.upstreamRoundRunning = true;
+    void (async () => {
+      for (let index = 0; index < origins.length; index++) {
+        if (this.upstreamDisposed) break;
+        await this.scheduleRefresh(origins[index]!);
+        if (index + 1 < origins.length && !this.upstreamDisposed) {
+          await new Promise<void>(resolve => { const timer = setTimeout(resolve, 1_000); timer.unref(); });
+        }
+      }
+    })().catch(() => {}).finally(() => { this.upstreamRoundRunning = false; });
   }
 
   private refreshOriginOf(beeId: string): void {
@@ -728,20 +745,20 @@ export class CellDriver implements RuntimeDriver {
    * resulting Cell base, in a worker off the event loop. Single-flight per
    * repoKey: a burst of spawns for one repo shares one in-flight worker.
    */
-  private scheduleRefresh(origin: TrackedOrigin, allowUpstreamFetch = true): void {
+  private scheduleRefresh(origin: TrackedOrigin, allowUpstreamFetch = true): Promise<void> {
     const now = Date.now();
     const policy = this.upstreamPolicy;
-    const fetchDue = allowUpstreamFetch && policy != null && now - origin.lastFetchAt >= policy.maxAgeMs;
+    const fetchDue = allowUpstreamFetch && policy != null && now >= origin.nextFetchAt && now - origin.lastFetchAt >= policy.maxAgeMs;
     const target = this.warmPoolEnabled() ? this.cfg.warmPool?.targetFree ?? 0 : 0;
-    if (!fetchDue && target === 0) return;
+    if (!fetchDue && target === 0) return Promise.resolve();
     const request = origin.request;
     let repoKey: string;
     try {
       repoKey = repoKeyFor(request.originRepo, request.repoName);
     } catch {
-      return;
+      return Promise.resolve();
     }
-    if (this.poolWorkers.has(repoKey)) return;
+    if (this.poolWorkers.has(repoKey)) return Promise.resolve();
     const workerUrl = this.cfg.poolWorkerUrl ?? (import.meta.url.endsWith(".ts")
       ? new URL("./poolWorker.ts", import.meta.url)
       : new URL("./pool-worker.js", import.meta.url));
@@ -763,18 +780,32 @@ export class CellDriver implements RuntimeDriver {
         },
       });
     } catch {
-      return; // never let a refresh failure affect the spawn
+      if (fetchDue && policy) {
+        origin.failures = Math.min(origin.failures + 1, 30);
+        origin.nextFetchAt = now + upstreamFailureDelay(policy.intervalMs, origin.failures);
+      }
+      return Promise.resolve();
     }
     if (fetchDue) origin.lastFetchAt = now;
     this.poolWorkers.set(repoKey, worker);
-    const clear = (): void => { if (this.poolWorkers.get(repoKey) === worker) this.poolWorkers.delete(repoKey); };
-    worker.once("message", (result: PoolWorkerResult) => {
-      clear();
-      if (result.sync != null) this.cfg.onUpstreamRefreshed?.(request.originRepo, result);
+    return new Promise<void>(resolve => {
+      const clear = (failed: boolean): void => {
+        if (this.poolWorkers.get(repoKey) !== worker) return;
+        this.poolWorkers.delete(repoKey);
+        if (fetchDue && policy) {
+          origin.failures = failed ? Math.min(origin.failures + 1, 30) : 0;
+          origin.nextFetchAt = Date.now() + upstreamFailureDelay(policy.intervalMs, origin.failures);
+        }
+        resolve();
+      };
+      worker.once("message", (result: PoolWorkerResult) => {
+        clear(result.ok === false || result.sync?.refresh.status === "failed");
+        if (result.sync != null) this.cfg.onUpstreamRefreshed?.(request.originRepo, result);
+      });
+      worker.once("error", () => clear(true));
+      worker.once("exit", () => clear(true));
+      worker.unref();
     });
-    worker.once("error", clear);
-    worker.once("exit", clear);
-    worker.unref();
   }
 
   private resolveCellSpawn(beeId: string, generation?: number): SpawnSpec {
