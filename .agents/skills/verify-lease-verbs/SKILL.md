@@ -38,13 +38,15 @@ Two parts, both from the repository root.
 
    where `TLA2TOOLS` points at a `tla2tools.jar` (TLA+ tools 1.8.x, Java 11+). Expected: `Model checking completed. No error has been found.` with about 672 distinct states, in a few seconds.
 
-2. The real code. Run the two-daemon test (needs the native bridge once: `node scripts/build-peercred.mjs`):
+2. The real code. The Project that added these verbs keeps new test files out of the tree, so the two-daemon driver lives as evidence at `.proof/hb-lease-verbs/lease-grant-rpc.e2e-driver.ts.txt` (its recorded run: `.proof/hb-lease-verbs/e2e-two-daemons.md`). To rerun it locally without committing it (needs the native bridge once: `node scripts/build-peercred.mjs`):
 
    ```sh
-   node scripts/with-fixture-warden.mjs node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/lease-grant-rpc.test.ts
+   cp .proof/hb-lease-verbs/lease-grant-rpc.e2e-driver.ts.txt v2/daemon/tests/lease-grant-rpc.test.ts
+   HB_LEASE_PROOF_LOG=/tmp/lease-run.md node scripts/with-fixture-warden.mjs node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/lease-grant-rpc.test.ts
+   rm v2/daemon/tests/lease-grant-rpc.test.ts
    ```
 
-   Expected: `pass 1`. Set `HB_LEASE_PROOF_LOG=<file>` to get the readable transcript.
+   Expected: `pass 1`, and `/tmp/lease-run.md` holds the readable transcript.
 
 ## Make sure the check can still fail
 
@@ -53,18 +55,18 @@ Each rule has a broken variant of the model that must fail:
 - `LeaseVerbs-broken-regress.cfg` (`RegressCheck = FALSE`, the expiresAt comparison removed from `Admits`) must break **WindowNeverShrinks** with a 4-step path: mint window 2, mint window 1, install 2, install 1.
 - `LeaseVerbs-broken-replay.cfg` (`ReplayReusesReceipt = FALSE`, replay re-executes) must break **ReplayIsQuiet** in 3 steps.
 
-The same break in the real code (delete the `input.expiresAt < knownAccountLease(account)!.expiresAt!` clause in `installLease`) makes the test fail at "a shorter window at the same epoch is refused". Last seen: `.proof/hb-lease-verbs/formal/scratch-break-run.log`.
+The same break in the real code (delete the `input.expiresAt < knownAccountLease(account)!.expiresAt!` clause in `installLease`) makes the two-daemon driver fail at "a shorter window at the same epoch is refused". Last seen: `.proof/hb-lease-verbs/formal/scratch-break-run.log`.
 
 ## Reading a failure
 
 - A rule breaks on the main config: that is a finding against the code (or an intended contract change). Do not weaken the rule. Report the path in the code's words: which payload (epoch, window, authority) installed after which.
 - A rule passes on the main config but not on its broken variant: the model is fine.
 - A broken variant passes: the model no longer models that rule; fix the model, not the code.
-- The test fails but the model passes: the daemon's handler diverged from the model (parameter validation, ingress gate, receipt shape); read the assertion message and the transcript.
+- The two-daemon driver fails but the model passes: the daemon's handler diverged from the model (parameter validation, ingress gate, receipt shape); read the assertion message and the transcript.
 
 ## Change the verification on purpose
 
-When the contract changes (for example a release that frees the window for a shorter re-grant), change `Admits`/`Release` in the model to match the new code first, update the rule text above, confirm the broken variants still fail, rerun the test, and commit the skill with the code.
+When the contract changes (for example a release that frees the window for a shorter re-grant), change `Admits`/`Release` in the model to match the new code first, update the rule text above, confirm the broken variants still fail, rerun the driver, and commit the skill with the code.
 
 ## Scope and bounds
 
