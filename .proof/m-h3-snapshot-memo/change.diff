@@ -1,0 +1,238 @@
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index f685d49c..0335771a 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -772,7 +772,6 @@ export class HiveDaemon {
+   private lastAutoTitleAt = 0;
+   private lastBoot: BootReport | null = null;
+   private stopping = false;
+-  private publishedSeq = 0;
+   private readonly opLog: string[] = [];
+   private accounts: AccountsService | null = null;
+   private loginFlows: LoginFlowService | null = null;
+@@ -1208,7 +1207,6 @@ export class HiveDaemon {
+     // periodic limits sweep.
+     this.accounts?.scheduleRecoveryForAuthNeededClaude();
+     store.pruneAuthInterruptions(Date.now() - AUTH_INTERRUPTION_RETENTION_MS);
+-    this.publishedSeq = store.lastAuditSeq();
+     reconcile.end();
+     this.activeStartupPhase = null;
+     const rpc = this.performance.startSpan("daemon.start.rpc");
+@@ -1644,7 +1642,6 @@ export class HiveDaemon {
+     const rpc = this.rpc;
+     if (!store || !rpc) return;
+     const latest = store.lastAuditSeq();
+-    if (latest > this.publishedSeq) this.publishedSeq = latest;
+     // maxBatch+1: one extra row is exactly enough to detect a gap without
+     // materializing the backlog (the 2026-08-21 flush stall).
+     rpc.flushWatch(latest, (fromSeq, includeHomes) => this.mirrorAuditRows(store.auditRows(fromSeq, this.cfg.watchMaxBatch + 1), includeHomes), this.cfg.watchMaxBatch);
+@@ -6988,25 +6985,32 @@ export class HiveDaemon {
+     };
+   }
+ 
++  private readonly snapshots: { public?: { seq: number; stamp: string; snapshot: SnapshotResult }; operatorLocal?: { seq: number; stamp: string; snapshot: SnapshotResult } } = {};
++
+   private snapshot(includeOperatorLocalHomes = false): SnapshotResult {
+     const store = this.mustStore();
+     // Single-threaded: reading the seq and the rows is atomic w.r.t. writes.
+     const seq = store.lastAuditSeq();
+-    this.publishedSeq = seq;
+-    return {
++    const capacity = this.retention?.capacity() ?? null;
++    const accounts = store.listAccounts().map((account) => this.mirrorAccount(account));
++    const stamp = JSON.stringify({ identity: this.identityRecovery.stamp(Date.now()), capacity, accounts });
++    const variant = includeOperatorLocalHomes ? "operatorLocal" : "public";
++    const hit = this.snapshots[variant];
++    if (hit && hit.seq === seq && hit.stamp === stamp) return hit.snapshot;
++    const snapshot: SnapshotResult = {
+       seq,
+       humanFirstPolicies: store.listHumanFirstPolicies(),
+       mailBatchingPolicies: store.listMailBatchingPolicies(),
+       mailBatches: store.listMailBatches(),
+       views: store.listBeeViewRows().map((row) => ({ ...row, bee: includeOperatorLocalHomes ? operatorLocalBee(row.bee) : mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
+-      capacity: this.retention?.capacity() ?? null,
++      capacity,
+       templates: store.listTemplates(),
+       ...(this.cfg.champions.enabled ? { champions: store.listChampions() } : {}),
+       tells: store.listTells(),
+       reactions: store.listReactions(),
+       questions: store.listQuestions(),
+       seals: store.listSeals(),
+-      accounts: store.listAccounts().map((account) => this.mirrorAccount(account)),
++      accounts,
+       accountLimits: store.listAccountLimits(),
+       accountAdmissions: store.listAccountAdmissions(),
+       quotaRecoveries: store.listQuotaRecoveries(),
+@@ -7021,6 +7025,8 @@ export class HiveDaemon {
+       actions: store.listActionViews(),
+       actionQueues: store.listActionQueueViews(),
+     };
++    this.snapshots[variant] = { seq, stamp, snapshot };
++    return snapshot;
+   }
+ 
+   // -------------------------------------------------------------------------
+diff --git a/v2/daemon/src/identityRecovery.ts b/v2/daemon/src/identityRecovery.ts
+index 26639c91..0c28b1f8 100644
+--- a/v2/daemon/src/identityRecovery.ts
++++ b/v2/daemon/src/identityRecovery.ts
+@@ -10,6 +10,7 @@ export class IdentityRecovery {
+     return row ? {message: "identity unresolved", warning: now - row.since >= 600000} : undefined;
+   }
+   entries(): UnresolvedRuntime[] { return [...this.rows.values()]; }
++  stamp(now: number): string { return this.entries().map(row => `${row.beeId}:${row.generation}:${now - row.since >= 600000 ? "warning" : "open"}`).join(","); }
+   counts(now: number): {count: number; overdue: number} { return {count: this.rows.size, overdue: this.entries().filter(row => now - row.since >= 600000).length}; }
+   retry(now: number, recover: (row: UnresolvedRuntime) => boolean): void {
+     if (now - this.lastAttempt < 1000) return;
+diff --git a/v2/daemon/src/jsonl.ts b/v2/daemon/src/jsonl.ts
+index 35cd4890..1fe9d566 100644
+--- a/v2/daemon/src/jsonl.ts
++++ b/v2/daemon/src/jsonl.ts
+@@ -21,3 +21,51 @@ export class JsonLineBuffer {
+     return lines;
+   }
+ }
++
++const JSON_CHUNK_CHARS = 256 * 1024;
++
++export function jsonChunks(value: unknown): Buffer[] {
++  const chunks: Buffer[] = [];
++  let parts: string[] = [];
++  let size = 0;
++  const push = (text: string): void => {
++    parts.push(text);
++    size += text.length;
++    if (size >= JSON_CHUNK_CHARS) flush();
++  };
++  const flush = (): void => {
++    if (size === 0) return;
++    chunks.push(Buffer.from(parts.join(""), "utf8"));
++    parts = [];
++    size = 0;
++  };
++  const emit = (entry: unknown): void => {
++    if (Array.isArray(entry)) {
++      push("[");
++      for (let i = 0; i < entry.length; i += 1) {
++        if (i > 0) push(",");
++        push(JSON.stringify(entry[i]) ?? "null");
++      }
++      push("]");
++      return;
++    }
++    if (entry !== null && typeof entry === "object") {
++      push("{");
++      let first = true;
++      for (const [key, item] of Object.entries(entry)) {
++        const text = Array.isArray(item) ? null : JSON.stringify(item);
++        if (text === undefined) continue;
++        push(`${first ? "" : ","}${JSON.stringify(key)}:`);
++        first = false;
++        if (text === null) emit(item);
++        else push(text);
++      }
++      push("}");
++      return;
++    }
++    push(JSON.stringify(entry) ?? "null");
++  };
++  emit(value);
++  flush();
++  return chunks;
++}
+diff --git a/v2/daemon/src/rpc.ts b/v2/daemon/src/rpc.ts
+index 6d95aee4..70edecc8 100644
+--- a/v2/daemon/src/rpc.ts
++++ b/v2/daemon/src/rpc.ts
+@@ -4,9 +4,9 @@ import { StoreBackupError } from "../../core/src/storeBackup.ts";
+ import { HumanOutputError } from "../../core/src/humanOutput.ts";
+ import { createHash } from "node:crypto";
+ import type { AutomationReference, AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
+-import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
+-import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
+-import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
++import { MAIL_DELIVERY_CONFIRMATION_CAPABILITY, projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
++import { QUESTION_DISMISSED_CAPABILITY, projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
++import { ANSWER_TRIGGER_CAPABILITY, projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
+ import { canonicalDigest } from "../../core/src/canonical.ts";
+ import { parsePhoneOrigin, type PhoneOriginRequest } from "../../core/src/phoneOrigin.ts";
+ import { AccountLeaseUnknownError } from "../../core/src/accountLease.ts";
+@@ -25,7 +25,7 @@ import { withRpcCaller } from "../../core/src/rpcAuditContext.ts";
+  * errors onto the closed list, and owns the per-connection watch cursors.
+  * Verb semantics live in the daemon's dispatch function.
+  */
+-import { JsonLineBuffer } from "./jsonl.ts";
++import { JsonLineBuffer, jsonChunks } from "./jsonl.ts";
+ import { createConnection, createServer, type Server, type Socket } from "node:net";
+ import { existsSync, unlinkSync } from "node:fs";
+ import type { AuditRow } from "../../core/src/index.ts";
+@@ -207,6 +207,8 @@ interface Connection extends RpcConn {
+ }
+ 
+ const RPC_VERB_SET = new Set<string>(RPC_VERBS);
++const SNAPSHOT_VERBS = new Set<RpcVerb>(["snapshot", "watch", "mirror.local.snapshot", "mirror.local.watch"]);
++const LEGACY_CAPABILITIES: readonly string[] = [MAIL_DELIVERY_CONFIRMATION_CAPABILITY, ANSWER_TRIGGER_CAPABILITY, QUESTION_DISMISSED_CAPABILITY];
+ 
+ function isRpcVerb(value: unknown): value is RpcVerb {
+   return typeof value === "string" && RPC_VERB_SET.has(value);
+@@ -267,6 +269,7 @@ export class RpcServer {
+   private readonly performance: PerformanceRecorder;
+   private readonly server: Server;
+   private readonly conns = new Set<Connection>();
++  private readonly snapshotChunks = new WeakMap<object, Map<string, readonly Buffer[]>>();
+   private listening = false;
+   private readonly credentials: PeerCredentials;
+   private readonly trust: LocalRpcTrust;
+@@ -372,6 +375,32 @@ export class RpcServer {
+ 
+   }
+ 
++  private sendSnapshot(conn: Connection, id: number, verb: RpcVerb, result: unknown, includeOperatorLocalHomes: boolean): void {
++    const key = `${verb}:${includeOperatorLocalHomes}:${LEGACY_CAPABILITIES.filter((capability) => !conn.clientCapabilities.includes(capability)).join(",")}`;
++    const shared = result !== null && typeof result === "object" ? result : null;
++    let variants = shared ? this.snapshotChunks.get(shared) : undefined;
++    let chunks = variants?.get(key);
++    if (!chunks) {
++      chunks = jsonChunks(publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes));
++      if (shared) {
++        if (!variants) {
++          variants = new Map();
++          this.snapshotChunks.set(shared, variants);
++        }
++        variants.set(key, chunks);
++      }
++    }
++    const socket = conn.socket;
++    if (socket.destroyed) return;
++    this.performance.measureSync("rpc.serialize", () => {
++      socket.cork();
++      socket.write(`{"id":${id},"ok":true,"result":`);
++      for (const chunk of chunks) socket.write(chunk);
++      socket.write("}\n");
++      socket.uncork();
++    });
++  }
++
+   private onConnection(socket: Socket): void {
+     const localUnix = socket.remoteAddress === undefined;
+     const conn: Connection = {
+@@ -686,6 +715,10 @@ export class RpcServer {
+         return;
+       }
+       span.end();
++      if (SNAPSHOT_VERBS.has(verb)) {
++        this.sendSnapshot(conn, id, verb, result, includeOperatorLocalHomes);
++        return;
++      }
+       conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes) });
+     } catch (err) {
+       if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
+@@ -741,7 +774,7 @@ export const ENV_TRANSFER_VERBS: ReadonlySet<RpcVerb> = new Set([
+ 
+ export function publicBeeResponse(verb: RpcVerb, result: unknown, includeOperatorLocalHomes = false): unknown {
+   if (ENV_TRANSFER_VERBS.has(verb)) return result;
+-  if ((verb === "snapshot" || verb === "watch" || verb === "mirror.local.snapshot" || verb === "mirror.local.watch") && result && typeof result === "object" && "templates" in result) {
++  if (SNAPSHOT_VERBS.has(verb) && result && typeof result === "object" && "templates" in result) {
+     const { templates, ...observation } = result;
+     return { ...publicEnvRecords(observation, includeOperatorLocalHomes) as object, templates };
+   }

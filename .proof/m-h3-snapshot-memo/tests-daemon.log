@@ -1,0 +1,325 @@
+✔ int.1: verb round-trips over the real socket — the full bee lifecycle (1816.508408ms)
+✔ int.2: typed errors — closed list only (bee_not_found, invalid_request, protocol_mismatch) (628.970875ms)
+✔ int.3: watch — snapshot + contiguous seq deltas; induced gap forces a snapshot refetch (1985.789582ms)
+✔ int.4: daemon SIGKILL mid-turn → restart → zero failed states (B7) + runtime re-adopted (1867.26897ms)
+✔ int.4b: runner-persisted completion recovers after SIGKILL and releases idle-urgency mail (2836.545257ms)
+✔ int.5: scale-to-zero with a tiny window → stopped_by_system → revive-on-message (1822.963685ms)
+✔ int.6: induced I1 breach — a boot-hanging agent leaves mail undelivered past the deadline → violation row (1693.719936ms)
+✔ int.7: immediate-exit agent → bounded revives on backoff, spawn_failed at the budget; the counter survives a daemon SIGKILL; operator revive recovers once the agent is fixed (6339.912421ms)
+✔ int.urgency.1: mid-turn `now` — the turn is interrupted, the message delivers immediately, and the bee keeps working (1205.776847ms)
+✔ int.urgency.2: mid-turn `idle` — held while the turn runs, delivered only after it ends (1534.918794ms)
+✔ int.urgency.3: an unknown urgency is a typed invalid_request, and nothing is enqueued (1071.824885ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22908.238233
+✔ every RPC reply is projected unless it is an explicit env transfer (4.578318ms)
+✔ private watch rechecks registration, expires, downgrades and isolates connections (163.878037ms)
+✔ private feed fails closed: disabled (3.893209ms)
+✔ private feed fails closed: missing-key (3.461745ms)
+✔ private feed fails closed: degraded (14.725357ms)
+✔ private feed fails closed: lookup-failed (9.540463ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 400.753919
+✔ env privacy: full RPC bytes, old replay rows, public and registered private mirrors (951.461489ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1132.53498
+✔ v6.rpc.1: rename / tag / children round-trips, idempotent replays, typed refusals; snapshot + watch carry the new rows/kinds (1393.447896ms)
+✔ v6.rpc.2: bee.interrupt — idle no-op; mid-turn (hung) interrupt → turn_ended, runtime live, next message delivers to the same generation; replay dedups (1455.565876ms)
+✔ v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (--resume <src> --fork-session), records the fork's own id (seed consumed), parentId/forkedFrom set, HIVE_* env stamps; revive resumes the fork's own id; copy has no prompt; replay dedups (2092.841235ms)
+✔ v6.rpc.4: bee.fork (codex) — the fork's handshake sends thread/fork {threadId: source}; the NEW thread id is recorded; delivery targets the new thread (1798.099059ms)
+✔ daemon restart: adopted Codex keeps its thread id and confirms queued mail (1784.805185ms)
+✔ v6.rpc.5: parenting policy over RPC — archive parent leaves children; delete parent orphans (bee.orphaned in the watch stream, children alive, parentId null); fork of a cell bee refused (2353.771517ms)
+✔ v6.rpc.6: questions + seals — ask → open row → answer → delivered as mailbox message → answered; list filters; seals CRUD; typed not-found; idempotent replays; snapshot carries them (1639.798779ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12668.624637
+✔ profiling is inert without HIVE_PERF_DIR (2.680164ms)
+✔ profiling IO failures are fail-open and log one generic diagnostic (1.27429ms)
+✔ event caps preserve exact recorded aggregates and count drops (3.945469ms)
+✔ artifact byte caps bound both files and report dropped events (2.889601ms)
+✔ RPC serialization profiling covers responses and watcher frames (45.304454ms)
+✔ storage startup failures end the active phase as an error (455.603524ms)
+✔ RPC profiling preserves sync ordering and async success and failure (7.995192ms)
+✔ an isolated daemon emits a usable startup, tick, RPC, and resource trace (620.824557ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1342.928519
+{"questionDismissalTypeCensus":{"results":{"WatchFrame":{"values":[],"audits":["events[]"]},"QuestionAskResult":{"values":["question"],"audits":[]},"QuestionAnswerResult":{"values":["question"],"audits":[]},"QuestionDismissResult":{"values":["question"],"audits":[]},"QuestionWithdrawResult":{"values":["question"],"audits":[]},"QuestionListResult":{"values":["questions[]"],"audits":[]},"AuditTailResult":{"values":[],"audits":["rows[]"]},"SnapshotResult":{"values":["questions[]"],"audits":[]},"ActionReportResult":{"values":["question"],"audits":[]}},"audits":{"question.asked":["question"],"question.dismissed":[""]},"dispatch":{"action.report":{"values":["question"],"audits":[]},"question.ask":{"values":["question"],"audits":[]},"question.answer":{"values":["question"],"audits":[]},"question.dismiss":{"values":["question"],"audits":[]},"question.withdraw":{"values":["question"],"audits":[]},"question.list":{"values":["questions[]"],"audits":[]},"audit.tail":{"values":[],"audits":["rows[]"]},"snapshot":{"values":["questions[]"],"audits":[]},"watch":{"values":["questions[]"],"audits":[]}},"modules":{"mirror":{"MirrorQuestionRow":{"values":[""],"audits":[]},"MirrorSnapshot":{"values":["questions[]"],"audits":[]},"MirrorDelta":{"values":[],"audits":[""]},"QuestionDismissedEvent":{"values":[""],"audits":[]}}}}}
+✔ dismissal census covers every typed result, dispatch and inferred row/event audit payload (3298.929255ms)
+✔ dismissal census rejects uncovered question/result, dispatch and dismissal event paths (11504.215062ms)
+✔ legacy projection removes new fields, transforms dismissal rows/events and never mutates shared objects or user output (1.548237ms)
+✔ dismissal notice has its dedicated envelope and file pointer, separate from byte-stable answer delivery (1.426928ms)
+✔ absence of the owner mutation capability refuses before the client sends a dismissal (51.824593ms)
+✔ legacy errors project dismissal refusals immutably and withdrawal no-op markers remain canonical only (0.650014ms)
+✔ sync and async dismissal errors stay compatible on simultaneous legacy and modern connections (8.269299ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15317.701672
+{"questionEgressCensus":{"productionFiles":254,"consumers":[{"file":"v2/core/src/store.ts","line":6917,"scope":"askQuestion","call":"this.audit","typedArguments":[2],"policy":"canonical audit"},{"file":"v2/core/src/store.ts","line":6989,"scope":"withdrawQuestionWithKey","call":"JSON.stringify","typedArguments":[0],"policy":"canonical private SQLite receipt"},{"file":"v2/core/src/store.ts","line":7017,"scope":"dismissQuestionWithKey","call":"this.audit","typedArguments":[2],"policy":"canonical audit"},{"file":"v2/core/src/store.ts","line":7022,"scope":"dismissQuestionWithKey","call":"JSON.stringify","typedArguments":[0],"policy":"canonical private SQLite receipt"},{"file":"v2/core/src/store.ts","line":11400,"scope":"reportAction","call":"finish","typedArguments":[2],"policy":"canonical internal result; RPC dispatch census covers egress"},{"file":"v2/core/src/store.ts","line":11406,"scope":"reportAction","call":"finish","typedArguments":[2],"policy":"canonical internal result; RPC dispatch census covers egress"},{"file":"v2/core/src/audit.ts","line":542,"scope":"replayAudit","call":"questions.set","typedArguments":[1],"policy":"canonical internal replay map, not external serialization"},{"file":"v2/daemon/src/loops.ts","line":1345,"scope":"buildHandoffContext","call":"buildExtractiveHandoffContext","typedArguments":[0],"policy":"text-only handoff; no question-row serialization"},{"file":"v2/cli/src/client.ts","line":205,"scope":"onFrame","call":"this.onEvent","typedArguments":[0],"policy":"already projected owner frame"},{"file":"v2/daemon/src/rpc.ts","line":351,"scope":"flushWatch","call":"byCursor.set","typedArguments":[1],"policy":"canonical private cursor batch"},{"file":"v2/daemon/src/rpc.ts","line":362,"scope":"flushWatch","call":"publicEnvRecords","typedArguments":[0],"policy":"env projection before mandatory outer question delta projector"},{"file":"v2/daemon/src/rpc.ts","line":363,"scope":"flushWatch","call":"projectMailDeliveryDelta","typedArguments":[0],"policy":"delivery capability projection before outer question projector"},{"file":"v2/daemon/src/daemon.ts","line":1647,"scope":"flushWatchers","call":"this.mirrorAuditRows","typedArguments":[0],"policy":"canonical audit batch; RPC delta projection next"},{"file":"v2/daemon/src/daemon.ts","line":1653,"scope":"mirrorAuditRows","call":"this.publicConfirmationAudit","typedArguments":[0],"policy":"delivery-confirmation redaction; RPC question delta projection next"},{"file":"v2/daemon/src/daemon.ts","line":1653,"scope":"mirrorAuditRows","call":"publicAuditRow","typedArguments":[0],"policy":"canonical audit redaction; RPC delta projection next"},{"file":"v2/daemon/src/daemon.ts","line":4792,"scope":"rpcActionReportIdempotent","call":"store.recordRpcResult","typedArguments":[3],"policy":"canonical private SQLite receipt; result projection next"},{"file":"v2/daemon/src/daemon.ts","line":6825,"scope":"rpcAuditTail","call":"this.publicConfirmationAudit","typedArguments":[0],"policy":"delivery-confirmation redaction; RPC question result projection next"},{"file":"v2/cli/src/main.ts","line":1791,"scope":"cmdAction","call":"emit","typedArguments":[2],"policy":"current CLI advertises new reader capability; projected RPC result"},{"file":"v2/cli/src/main.ts","line":1959,"scope":"cmdAsk","call":"emit","typedArguments":[2],"policy":"current CLI advertises new reader capability; projected RPC result"},{"file":"v2/cli/src/main.ts","line":1997,"scope":"cmdQuestion","call":"questionLine","typedArguments":[0],"policy":"feature-aware CLI text"},{"file":"v2/cli/src/main.ts","line":1998,"scope":"cmdQuestion","call":"emit","typedArguments":[2],"policy":"current CLI projected RPC or feature-aware stale local row"},{"file":"v2/cli/src/main.ts","line":2018,"scope":"cmdAnswer","call":"emit","typedArguments":[2],"policy":"current CLI advertises new reader capability; projected RPC result"},{"file":"v2/cli/src/main.ts","line":3480,"scope":"cmdWatch","call":"printSnapshot","typedArguments":[0],"policy":"view-only text; no question rows emitted"},{"file":"v2/cli/src/main.ts","line":4473,"scope":"readRows","call":"publicAuditRow","typedArguments":[0],"policy":"current CLI projected RPC or feature-aware stale local audit"},{"file":"v2/cli/src/main.ts","line":4478,"scope":"cmdEvents","call":"emit","typedArguments":[2],"policy":"current CLI projected RPC or feature-aware stale local audit"},{"file":"v2/cli/src/main.ts","line":4480,"scope":"cmdEvents","call":"auditLine","typedArguments":[0],"policy":"feature-aware CLI text"},{"file":"v2/cli/src/main.ts","line":4501,"scope":"cmdEvents","call":"withDaemonTarget","typedArguments":[1],"policy":"feature-aware CLI JSON follow; projected RPC or stale local audit"},{"file":"v2/cli/src/main.ts","line":4501,"scope":"cmdEvents","call":"auditLine","typedArguments":[0],"policy":"feature-aware CLI text"},{"file":"v2/harness/src/invariants.ts","line":114,"scope":"checkStep","call":"this.checkModel","typedArguments":[1],"policy":"in-process harness invariant"},{"file":"v2/harness/src/invariants.ts","line":115,"scope":"checkStep","call":"this.checkI1","typedArguments":[2],"policy":"in-process harness invariant"},{"file":"v2/harness/src/invariants.ts","line":116,"scope":"checkStep","call":"this.checkQueue","typedArguments":[2],"policy":"in-process harness invariant"},{"file":"v2/harness/src/invariants.ts","line":385,"scope":"checkReplay","call":"replayAudit","typedArguments":[0],"policy":"in-process harness invariant"},{"file":"v2/harness/src/invariants.ts","line":390,"scope":"checkReplay","call":"isDeepStrictEqual","typedArguments":[0,1],"policy":"in-process harness invariant"}],"boundaries":[{"file":"v2/daemon/src/rpc.ts","line":356,"scope":"flushWatch","coverage":"gap, no question rows"},{"file":"v2/daemon/src/rpc.ts","line":363,"scope":"flushWatch","coverage":"projected delta"},{"file":"v2/daemon/src/rpc.ts","line":437,"scope":"onConnection","coverage":"hello, no question rows"},{"file":"v2/daemon/src/rpc.ts","line":457,"scope":"onFrame","coverage":"literal request validation error"},{"file":"v2/daemon/src/rpc.ts","line":462,"scope":"onFrame","coverage":"literal request validation error"},{"file":"v2/daemon/src/rpc.ts","line":474,"scope":"onFrame","coverage":"literal request validation error"},{"file":"v2/daemon/src/rpc.ts","line":484,"scope":"onFrame","coverage":"literal request validation error"},{"file":"v2/daemon/src/rpc.ts","line":496,"scope":"onFrame","coverage":"literal request validation error"},{"file":"v2/daemon/src/rpc.ts","line":508,"scope":"onFrame","coverage":"literal request validation error"},{"file":"v2/daemon/src/rpc.ts","line":706,"scope":"onFrame","coverage":"projected RPC result"},{"file":"v2/daemon/src/rpc.ts","line":712,"scope":"onFrame","coverage":"projected RPC error"},{"file":"v2/daemon/src/rpc.ts","line":722,"scope":"onFrame","coverage":"projected RPC result"},{"file":"v2/daemon/src/rpc.ts","line":726,"scope":"onFrame","coverage":"projected RPC error"}]}}
+✔ question egress census classifies all typed consumers and RPC serialization boundaries (9447.950654ms)
+✔ question egress census rejects raw mirror row/snapshot serializers and unprojected RPC replies (56540.607128ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 66359.882891
+{"answerTriggerTypeCensus":{"results":{"BeeTellResult":{"values":["tell.turnTrigger"],"audits":[]},"BeeReactResult":{"values":["reaction.turnTrigger"],"audits":[]},"SetHumanOutputModeResult":{"values":["unansweredHumanMessage"],"audits":[]},"WatchFrame":{"values":[],"audits":["events[]"]},"RenameResult":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"audits":[]},"TagResult":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"audits":[]},"ForkResult":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"audits":[]},"ChildrenResult":{"values":["children[].bee.lastTurnTrigger","children[].bee.unansweredHumanMessage","children[].view.unansweredHumanMessage"],"audits":[]},"SetArgsResult":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"audits":[]},"ReconfigureResult":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"audits":[]},"ViewResult":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage","view.unansweredHumanMessage"],"audits":[]},"ListResult":{"values":["views[].bee.lastTurnTrigger","views[].bee.unansweredHumanMessage","views[].view.unansweredHumanMessage"],"audits":[]},"AuditTailResult":{"values":[],"audits":["rows[]"]},"ChampionGetResult":{"values":["bee.bee.lastTurnTrigger","bee.bee.unansweredHumanMessage","bee.view.unansweredHumanMessage"],"audits":[]},"SnapshotResult":{"values":["reactions[].turnTrigger","tells[].turnTrigger","views[].bee.lastTurnTrigger","views[].bee.unansweredHumanMessage","views[].view.unansweredHumanMessage"],"audits":[]}},"audits":{"bee.human_output_mode_changed":["unansweredHumanMessage"],"bee.told":["tell.turnTrigger","unansweredHumanMessage"],"bee.reacted":["reaction.turnTrigger","unansweredHumanMessage"],"bee.created":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"runtime.updated":["turnTrigger"],"mail.delivered":["turnTrigger","unansweredHumanMessage"]},"dispatch":{"bee.setArgs":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"audits":[]},"bee.reconfigure":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"audits":[]},"bee.rename":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"audits":[]},"bee.tag":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"audits":[]},"bee.fork":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage"],"audits":[]},"bee.children":{"values":["children[].bee.lastTurnTrigger","children[].bee.unansweredHumanMessage","children[].view.unansweredHumanMessage"],"audits":[]},"bee.tell":{"values":["tell.turnTrigger"],"audits":[]},"bee.react":{"values":["reaction.turnTrigger"],"audits":[]},"bee.setHumanOutputMode":{"values":["unansweredHumanMessage"],"audits":[]},"view":{"values":["bee.lastTurnTrigger","bee.unansweredHumanMessage","view.unansweredHumanMessage"],"audits":[]},"list":{"values":["views[].bee.lastTurnTrigger","views[].bee.unansweredHumanMessage","views[].view.unansweredHumanMessage"],"audits":[]},"audit.tail":{"values":[],"audits":["rows[]"]},"champion.get":{"values":["bee.bee.lastTurnTrigger","bee.bee.unansweredHumanMessage","bee.view.unansweredHumanMessage"],"audits":[]},"snapshot":{"values":["reactions[].turnTrigger","tells[].turnTrigger","views[].bee.lastTurnTrigger","views[].bee.unansweredHumanMessage","views[].view.unansweredHumanMessage"],"audits":[]},"watch":{"values":["reactions[].turnTrigger","tells[].turnTrigger","views[].bee.lastTurnTrigger","views[].bee.unansweredHumanMessage","views[].view.unansweredHumanMessage"],"audits":[]}},"modules":{}}}
+✔ answer trigger egress coverage enumerates all protocol, dispatch and inferred audit payload types (3358.956761ms)
+✔ answer trigger census fails for a new result, dispatch path or audit carrying a trigger (9961.872459ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13662.436935
+✔ answer trigger negotiation: simultaneous legacy and capable sockets get independent formats (77.379375ms)
+✔ answer wire replay is legacy-compatible while durable audit replay stays canonical (101.793468ms)
+✔ answer egress projection preserves canonical objects and arbitrary outputs at every covered path (2.343107ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 423.546428
+✔ reg.1: template verb round-trips — put/get/list/export/import/delete, typed refusals; track verbs are gone (743.922901ms)
+✔ reg.2: snapshot carries mirror-shaped template rows and no tracks; watch deltas stream registry audit rows seq-ordered (561.489148ms)
+✔ reg.3: packages.importLocalConfig over RPC — explicit dir, idempotent, reports skips (547.295941ms)
+✔ reg.4: template.put and template.import refuse an empty env over a template that has env with a typed code; a put that omits env keeps it (509.827559ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2497.367453
+✔ human-ref two-daemon smoke: serial reserve/enroll, colliding aliases, deltas, CLI, offline issuance and restart (2601.534744ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2790.205674
+✔ champions.0: verbs and capability are published; everything but list/get refuses while the flag is off (502.725483ms)
+✔ champions.1: put prepares the home, start spawns in it with the Apiary tags, the incarnation is resident, a turn end bundles the home, a second daemon restores it before its first runtime, archive and delete keep the home (3834.458983ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4461.143636
+✔ wake requests coalesce and committed work after a tick schedules another wake (6.025376ms)
+✔ committed send publishes its keyed mail event without waiting for the idle tick (168.943744ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 477.972993
+✔ rpc.accounts.1: CRUD verbs, typed errors, idempotent add, spawn binding (explicit / paused / mismatch / auto / unbound), snapshot + watch carry accounts (1270.954777ms)
+✔ rpc.accounts.fuzzy: one selector works across account verbs, spawn agent shorthand, explicit override, and swap (987.462674ms)
+✔ rpc account.resetLimits: duplicate keys return one effect; uncertain and wrong-harness failures stay typed (823.347197ms)
+✔ rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → rebind → revive with resume under a NEW session id in the new home; cross-harness refused; stopped bee rebound only (1451.218812ms)
+✔ rpc allocation owner: acquire is authoritative, claim swap is atomic, and all-protected returns account_wait (2156.374304ms)
+✔ rpc allocation owner serializes concurrent node admissions and a remote node consumes one claim once (2073.995234ms)
+✔ rpc allocation owner claim gates active automatic spawn while shadow acquisition remains observational (1284.583322ms)
+✔ rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the replacement generation presents as working (1445.251316ms)
+✔ rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delayed) — swap to the untried account and continue automatically; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status (3222.390625ms)
+✔ rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit work, idle bees move off with a note, and stopped bees move off when they wake (2126.260875ms)
+✔ rpc.accounts.f2: add refuses pre-existing credentials by default; importExisting adopts as unverified; health is validation evidence, never file-existence; a fresh add is auth_needed, never ok (705.370236ms)
+✔ rpc.accounts.v18: importExisting imports the MACHINE's vendor home (the field finding); nothing importable is `no_credentials_to_import` naming the paths; snapshot + watch deltas carry credentialHealth; login success flips status (596.507994ms)
+✔ rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries until successful recovery (1175.858193ms)
+✔ rpc central credentials: per-account opt-in/status/lease/disable, idempotent enable, in-place login, native capture fenced, expired and refused candidates rejected (657.747674ms)
+retained @ account and @ label: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid charset/overflow typed invalid_request
+✔ lease account ids share core validation: retained @ ids renew, revoke and reinstall without suffix rewriting (646.125791ms)
+✔ rpc.accounts.2c: bee.swapAccount (fake-claude) recovers a lost session id from the bee's session log, refuses typed when nothing can be carried, and stays "none" only for a bee that never ran (2871.488411ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 23721.383178
+✔ actions.rpc.ship: Commit → Land → Archive over a real daemon + real Cell — capability, durable acceptance, mailbox dispatch, SIGKILL mid-sequence, real landing receipt, archive, mirror shapes (4994.684448ms)
+✔ actions.rpc.controls: pause/resume, cancel, invalid reorder, a question that holds the lane, retry after a conflict, external claim (2808.169785ms)
+✔ actions.rpc.external-land: destination Land holds Archive across an uncertain result and daemon restart (1241.980113ms)
+✔ actions.rpc.complete: the operator completes an unreported commit — HEAD filled from the Cell space (or the checkout), Land proceeds, late report dedupes; refusals are typed (2616.415762ms)
+✔ actions.rpc.failed-exits: a failed Commit is completed (HEAD filled, failure kept in the receipt, Land proceeds) or cancelled (a $ref Land fails input_unresolved); keys replay; late reports are refused (1646.417641ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 13493.95684
+✔ cell-pressure.1: below the floor, clean archived then idle Cells go oldest first until the target; held, dirty, unlanded, live and fresh Cells stay; an unreachable floor is reported once (22435.683573ms)
+✔ cell-pressure.2: a Cell whose work landed upstream, past a stale origin checkout, is planned once the daemon's mirror fetched it (3356.837012ms)
+✔ cell-pressure.3: with no retention config a workstation runs no pressure pass and fetches no mirror, while a satellite does both; a byte floor above the volume is refused with a warning (5456.731593ms)
+✔ cell-pressure.4: retention passes evict at most maxEvictionsPerDay Cells in a rolling day, audit the cap once, and the window survives a restart (4530.720248ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 35926.256566
+✔ cell-park.0: verb, capability and error code are published (1.14641ms)
+✔ cell-park.1: trim mode parks only build output; a live runtime is a typed refusal; replaying the key returns the same report (1805.700942ms)
+✔ cell-park.2: purge mode parks every ignored path, copies env files aside, and the next runtime start restores them; the idle pass does the same (3661.212683ms)
+✔ cell-park.3: below the floor, enforcement off reports resource-blocked and still admits Cells; enforcement on refuses new Cells with resource_blocked and keeps non-Cell spawns, snapshots and health working (2345.150322ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7985.744696
+✔ spawn external-parent validation, mirroring, replay, restart, and delete policy (2271.452173ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2585.833716
+✔ handoff.rpc.replay-defaults: omitted target defaults stay bound to the original source after later switches (1782.097816ms)
+✔ handoff.rpc: capability, validation, idempotency, typed refusals, and unavailable target accounts (1538.455412ms)
+✔ handoff.rpc.cross-family: claude → codex on an idle hsr bee keeps identity, mailbox order, and publishes parseable segments (1605.333423ms)
+✔ handoff.rpc.same-family: a context reset keeps args unless replaced, opens a fresh thread, and stays on the account (1942.609204ms)
+✔ handoff.rpc.working+stopped: stopAt=idle waits for the running turn, stopAt=now stops a hung turn, a stopped source hands off (5645.835511ms)
+✔ handoff.rpc.disconnect+crash: a lost response replays to the same operation; SIGKILL during stopping and starting resumes (2851.604443ms)
+✔ handoff.rpc.cell: a Cell bee hands off in place — same Cell, cwd, dirty files, one runtime in the checkout (2105.162191ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17672.157448
+{"tells":1,"reactions":1,"reconnectReceiptIntact":true,"oldPendingCleared":true}
+✔ human output daemon: explicit output, exact replies, strict validation, mirror reconnect and durable key replay (1380.753026ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1534.191394
+✔ rpc.login.1: capability tags, start/rejoin/alias, snapshot + watch rows, typed errors, idempotent replay, secret sentinel absent from sqlite/log/stdout, no tmux seat (1318.404917ms)
+✔ rpc.login.2: browser-style landing over RPC with a real daemon: restart marks the live flow interrupted (no worker survives), retry issues revision 2 and completes; a sentinel credential is absent from sqlite, daemon log and stdout (2359.788862ms)
+✔ rpc.login.3: a completed login survives a restart as succeeded; account.remove stops the flow's worker and drops its rows (1379.061176ms)
+✔ rpc.redaction: actual snapshot and watch projection never carry CLI URL credentials (1748.894242ms)
+✔ rpc.redaction: repeated encoded provider errors are absent from real snapshot and watch (263.651369ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7406.36052
+✔ batching RPC requires registered direct authority, trust=false (17.854662ms)
+✔ batching RPC requires registered direct authority, trust=true (18.430781ms)
+✔ daemon automation guard rejects forged authority and mixed origins (0.776963ms)
+✔ daemon keeps policy off by default, protects policy, and rejects tmux enable (40.359294ms)
+✔ daemon sends metadata once and rejects replay classification changes before effect (32.870073ms)
+✔ batch reads validate paging before accessing the bee-scoped core reader (29.532093ms)
+✔ frozen group mutation refusals remain typed at the RPC boundary (33.811813ms)
+✔ frozen delivery resolution errors remain typed (0.33869ms)
+✔ bypass requires protected live-reference binding before effect (28.427157ms)
+✔ daemon batch reads allow only the owning principal or direct Apiary authority (27.50089ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 486.72304
+✔ Muse central linux: real socket, fake Meta, key-only renewal and durable saved mint across SIGKILL (1918.145164ms)
+✔ Muse central darwin: real socket, fake Meta, key-only renewal and durable saved mint across SIGKILL (1921.257274ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3989.22444
+✔ thread RPC: prompt receipt, disconnect/restart, history events, native compaction gate, queued mail and owner refusals (2973.813399ms)
+✔ native method refusal is typed, retry keys recover one successor, and plain Fork requests no compaction (2624.409444ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5757.094442
+✔ auth-resume.1: capture after a logged-out cut — an untouched turn is redelivered, a half-done turn gets one continue message, a bee the user stopped stays stopped (4000.214226ms)
+✔ auth-resume.2: account.credentialsRestored on a satellite — refused while the credential is expired, one continuation per bee across a daemon kill, repeat calls send nothing (2894.41479ms)
+✔ auth-resume.3: a bee that cannot authenticate on a credential that validates is continued once, then left flagged until the credential changes (1638.197113ms)
+✔ auth-resume.4: the daemon's own refresh and a readable limits probe each resume the bee with no operator action (1852.299843ms)
+✔ auth-resume.5: swapping an interrupted bee onto a healthy account continues its turn there; the old account's later restore does not touch it (1953.065065ms)
+✔ auth-resume.6: recovering a centrally managed account — the login does not wake its bees on the native chain; enabling central credentials resumes them (2626.258298ms)
+✔ auth-resume.7: a readable limits probe on an account with 300 bees and nothing open reaches a watcher as deltas, never a gap (1640.639576ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16871.273173

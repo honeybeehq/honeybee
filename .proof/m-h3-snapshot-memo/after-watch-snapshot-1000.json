@@ -1,0 +1,138 @@
+{
+  "protocol": 1,
+  "host": "netcup-3",
+  "runtime": "v24.18.0",
+  "model": "linux",
+  "loadBefore": [
+    0.78,
+    1.06,
+    0.71
+  ],
+  "fixture": "/tmp/hb-v2-daemon-gXAxeZ",
+  "seededSeq": 6900,
+  "samples": [],
+  "warmups": [
+    {
+      "mode": "accumulate",
+      "bytes": 21057461,
+      "callbacks": 325,
+      "scannedChars": 3441074293,
+      "firstByteMs": 230.276157,
+      "lastByteMs": 1222.7796959999998,
+      "parseMs": 23.193727000000308
+    }
+  ],
+  "errors": [
+    "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ 'dae567d10772078b158dd8b5ea1de16bf47a5dc06dbac294900a05b5517f357f'\n- 'a2768fdf7976c31215ad5623a12f1b1d1b7a3755fdac7cef0f7ae824bdac4b9c'\n\n    at validate (file:///home/trmd/.hive/v2/cells/rebuild-m-h3-snapshot-memo-16762bfc699b/github-com-honeybeehq-honeybee-a9015b303498-space-16762bfc699b/scripts/perf/watch-snapshot.mjs:40:10)\n    at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h3-snapshot-memo-16762bfc699b/github-com-honeybeehq-honeybee-a9015b303498-space-16762bfc699b/scripts/perf/watch-snapshot.mjs:82:22)\n    at Socket.emit (node:events:509:28)\n    at addChunk (node:internal/streams/readable:563:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)\n    at Readable.push (node:internal/streams/readable:394:5)\n    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)"
+  ],
+  "daemonPid": 414681,
+  "breakdown": {
+    "seq": {
+      "rows": null,
+      "bytes": 4
+    },
+    "humanFirstPolicies": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "mailBatchingPolicies": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "mailBatches": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "views": {
+      "rows": 1000,
+      "bytes": 1308151
+    },
+    "capacity": {
+      "rows": null,
+      "bytes": 427
+    },
+    "tells": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "reactions": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "questions": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "seals": {
+      "rows": 1000,
+      "bytes": 19541671
+    },
+    "accounts": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "accountLimits": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "accountAdmissions": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "quotaRecoveries": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "tasks": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "taskSupply": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "loginFlows": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "cells": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "beeMoves": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "beeHandoffs": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "transcriptSegments": {
+      "rows": 1000,
+      "bytes": 206781
+    },
+    "threadOperations": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "actions": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "actionQueues": {
+      "rows": 0,
+      "bytes": 2
+    },
+    "templates": {
+      "rows": 0,
+      "bytes": 2
+    }
+  },
+  "loadAfter": [
+    0.8,
+    1.06,
+    0.72
+  ],
+  "hash": "a2768fdf7976c31215ad5623a12f1b1d1b7a3755fdac7cef0f7ae824bdac4b9c",
+  "daemonStopped": true
+}
