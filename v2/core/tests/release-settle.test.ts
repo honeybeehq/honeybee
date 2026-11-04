@@ -1,5 +1,5 @@
 import { parseNpmPackResult } from "../../cli/src/deploy/npmPack.ts";
-// Deploy settling (scripts/deploy-settle.mjs): the daemon must never restart
+// Deploy settling: the daemon must never restart
 // over a half-copied or mid-rebuild global module tree. The settle barrier
 // proves content equality between the local build and the installed tree —
 // stamp AND re-hash — with bounded retries.
@@ -251,7 +251,7 @@ test("a local repack record must be byte-identical to the installed one", async 
 test("the tree digest preserves historical host-locale ordering for rollback", async () => {
   await withTempDir(async (root) => {
     for (const name of ["aa.js", "ab.js", "z.js", "Ab.js", "\u00e6.js", "I.js", "\u0131.js"]) await writeFile(join(root, name), name);
-    const moduleUrl = new URL("../src/deploySettle.js", import.meta.url).href;
+    const moduleUrl = new URL("../src/release/settle.ts", import.meta.url).href;
     const script = `const { hashDirectoryTree } = await import(${JSON.stringify(moduleUrl)}); process.stdout.write(await hashDirectoryTree(${JSON.stringify(root)}));`;
     const digests = new Set(["en_US.UTF-8", "nb_NO.UTF-8", "da_DK.UTF-8", "tr_TR.UTF-8"].map((locale) =>
       execFileSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", env: { ...process.env, LANG: locale, LC_ALL: locale } })));
@@ -271,59 +271,6 @@ test("settling without a local stamp is a caller error, not a wait", async () =>
   });
 });
 
-test("deploy orchestrator rebinds launchd to the verified installed CLI before restart", async () => {
-  const source = await readFile(join(process.cwd(), "scripts", "deploy-settle.mjs"), "utf8");
-  assert.match(source, /const installedCli = join\(installedDist, "cli\.js"\)/);
-  assert.match(source, /\[installedCli, "daemon", "install", "--force"\]/);
-  assert.match(source, /\[installedCli, "daemon", "restart"\]/);
-  assert.doesNotMatch(source, /run\("hive", \["daemon", "restart"\]\)/);
-});
-
-test("frozen node hands npm deploy off to hive deploy before any global install", async () => {
-  const source = await readFile(join(process.cwd(), "scripts", "deploy-settle.mjs"), "utf8");
-  assert.match(source, /existsSync\(join\(hiveStoreRoot\(\), "FROZEN"\)\)/);
-  assert.match(source, /run\("hive", \["deploy", \.\.\.extra\]\)/);
-  assert.ok(
-    source.indexOf('run("hive", ["deploy"') < source.indexOf('run("npm", ["run", "build"])'),
-    "frozen handoff must precede the local build / npm i -g path",
-  );
-  assert.ok(
-    source.indexOf('run("hive", ["deploy"') < source.indexOf('[installedCli, "daemon", "restart"]'),
-    "frozen handoff must never reach the v1 daemon-restart step",
-  );
-
-  await withTempDir(async (dir) => {
-    await writeFile(join(dir, "FROZEN"), "{}\n");
-    const bin = join(dir, "bin");
-    await mkdir(bin);
-    const hive = join(bin, "hive");
-    await writeFile(hive, "#!/bin/sh\necho hive-stub \"$@\"\n");
-    await chmod(hive, 0o755);
-    const output = execFileSync(process.execPath, [join(process.cwd(), "scripts", "deploy-settle.mjs"), "--list"], {
-      cwd: process.cwd(),
-      encoding: "utf8",
-      env: { ...process.env, HIVE_STORE_ROOT: dir, PATH: `${bin}:${process.env.PATH ?? ""}` },
-    });
-    assert.match(output, /handing off to hive deploy/);
-    assert.match(output, /hive deploy --list/);
-    assert.match(output, /hive-stub deploy --list/);
-    assert.doesNotMatch(output, /npm run build/);
-    assert.doesNotMatch(output, /npm i -g/);
-  });
-});
-
-test("deploy installs an immutable package archive, never a worktree symlink", async () => {
-  const source = await readFile(join(process.cwd(), "scripts", "deploy-settle.mjs"), "utf8");
-  assert.match(source, /\["pack", "--json", "--pack-destination", packRoot\]/);
-  assert.match(source, /run\("npm", \["i", "-g", join\(packRoot, filename\)\]\)/);
-  assert.doesNotMatch(source, /run\("npm", \["i", "-g", "\."\]\)/);
-  assert.match(source, /installedPackageRoot === realpathSync\(repoRoot\)/);
-  assert.ok(
-    source.indexOf("writeBuildStamp(localDist)") < source.indexOf('["pack", "--json"'),
-    "the packed archive must contain the certified build stamp",
-  );
-});
-
 test("the deploy archive allowlist excludes workstation state and retains runtime assets", () => {
   const packed = parseNpmPackResult(execFileSync(
     "npm",
@@ -335,15 +282,12 @@ test("the deploy archive allowlist excludes workstation state and retains runtim
   for (const required of [
     "package.json",
     "dist/cli.js",
-    "dist/cli-legacy.js",
+    "dist/build-identity.json",
     "dist/v2/cli.js",
     "dist/v2/provision-worker.js",
     "dist/v2/runner-host.js",
-    "dist/hsr/runner-entry.js",
-    "dist/hsr/artifacts/runner-host.mjs",
-    "dist/hsr/artifacts/runner-host.manifest.json",
-    "dist/execution/service.js",
     "contracts/execution/v1/profile.json",
+    "contracts/release/v1/schema.json",
     "docs/honeybee.tmux.conf",
   ]) {
     assert.ok(paths.has(required), `deploy archive is missing ${required}`);
@@ -355,26 +299,3 @@ test("the deploy archive allowlist excludes workstation state and retains runtim
   }
 });
 
-test("deploy preflight certifies candidate corpus bytes before the global install mutates", async () => {
-  const source = await readFile(join(process.cwd(), "scripts", "deploy-settle.mjs"), "utf8");
-  assert.match(source, /computeExecutionValidationSurfaceDigest\(executionContract\)/);
-  assert.match(source, /executionBaselineFeatures\(executionContract\)/);
-  assert.match(source, /\["status", "--porcelain=v1", "--untracked-files=all", "--", contractCorpusPath\]/);
-  assert.match(source, /\["log", "-1", "--format=%H", "--", contractCorpusPath\]/);
-  assert.doesNotMatch(source, /APIARY_EXECUTION_CONTRACT_CONSUMER/);
-  assert.match(source, /process\.env\.APIARY_APP_BUNDLE !== undefined/);
-  assert.match(source, /loadExecutionContract\(\s*join\(installedPackageRoot, "contracts", "execution", "v1"\)/);
-  assert.match(source, /assertExecutionMaterializationMatches\(\s*executionCandidate/);
-  assert.match(source, /schemaDigest: installedExecutionDigest/);
-  assert.match(source, /validationSurfaceDigest: installedExecutionSurface/);
-  assert.ok(
-    source.indexOf("preflightInstalledExecutionConsumer(executionCandidate") <
-      source.indexOf('["pack", "--json", "--pack-destination", packRoot]'),
-    "consumer preflight must finish before npm mutates the installed Honeybee tree",
-  );
-  assert.ok(
-    source.indexOf("installed execution corpus verified") <
-      source.indexOf('[installedCli, "daemon", "restart"]'),
-    "installed contract bytes must be verified before daemon restart",
-  );
-});

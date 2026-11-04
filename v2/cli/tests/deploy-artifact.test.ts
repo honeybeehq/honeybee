@@ -52,7 +52,7 @@ async function release(dir: string, sha = "a".repeat(40), gate: "full" | "tests-
 }
 
 async function reserve(dir: string, identity: ComponentIdentity): Promise<UpdateAdmission> {
-  const recovery = parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v1/fixtures/recovery-plan.json", import.meta.url), "utf8")));
+  const recovery = parseRecoveryPlan(JSON.parse(await readFile(new URL("../../../contracts/release/v1/fixtures/recovery-plan.json", import.meta.url), "utf8")));
   recovery.subject.to.honeybee = { ...identity, component: "honeybee" };
   recovery.subject.storageRequirements = [UPDATE_RECOVERY_CONTRACT];
   recovery.subjectDigest = recoverySubjectDigest(recovery.subject);
@@ -131,7 +131,7 @@ test("v2 recovery admits artifact deployment and rollback while preserving the f
     const hooks = { async backupStore() { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() { activations.push((await currentDeployTarget(root))!); } };
     await deployArtifact({ ...previous, root, admission: { fresh: true }, expectedCurrent: null, hooks });
     const { reservation } = await reserve(dir, next.identity);
-    const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
+    const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../../../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
     recovery.subject.from.honeybee = { ...previous.identity, component: "honeybee" };
     recovery.subject.to.honeybee = { ...next.identity, component: "honeybee" };
     recovery.subject.storageRequirements = [UPDATE_RECOVERY_CONTRACT];

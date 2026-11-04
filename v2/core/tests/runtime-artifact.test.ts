@@ -1,4 +1,4 @@
-// Redistributable runtime artifact (src/runtimeArtifact.ts, driven by
+// Redistributable runtime artifact (v2/core/src/release/runtimeArtifact.ts, driven by
 // scripts/build-runtime-artifact.mjs). Exercises the manifest / hash / tar
 // layout over a fake stage directory: no git, npm, or build ever runs here.
 // The one invariant that matters most: the manifest's artifactHash must be
@@ -240,13 +240,13 @@ test("manifest parsing rejects malformed manifests", () => {
 
 test("the artifact script reuses buildDeployArtifact and packRuntimeArtifact instead of forking them", async () => {
   const source = await readFile(join(process.cwd(), "scripts", "build-runtime-artifact.mjs"), "utf8");
-  assert.match(source, /import \{ buildDeployArtifact \} from "\.\.\/src\/commands\/deploy\.ts"/);
-  assert.match(source, /import \{ packRuntimeArtifact \} from "\.\.\/src\/runtimeArtifact\.ts"/);
+  assert.match(source, /import \{ buildDeployArtifact \} from "\.\.\/v2\/cli\/src\/deploy\/command\.ts"/);
+  assert.match(source, /import \{ packRuntimeArtifact \} from "\.\.\/v2\/core\/src\/release\/runtimeArtifact\.ts"/);
   assert.match(source, /\["-C", repoRoot, "rev-parse", "--verify", `\$\{ref\}\^\{commit\}`\]/);
   assert.match(source, /gate: options\.skipTests \? "tests-skipped" : "full"/);
   assert.doesNotMatch(source, /npm", \["ci"\]|git", \["archive"/, "the script must not re-implement the deploy build steps");
   const pkg = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")) as { scripts: Record<string, string> };
-  assert.equal(pkg.scripts["runtime:artifact"], "tsx scripts/build-runtime-artifact.mjs");
+  assert.equal(pkg.scripts["runtime:artifact"], "node scripts/build-runtime-artifact.mjs");
 });
 
 test("artifact identity comes from its packaged bytes and rejects a mismatched requested revision", async () => {
