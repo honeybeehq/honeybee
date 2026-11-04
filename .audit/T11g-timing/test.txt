@@ -1,0 +1,25 @@
+✔ lease publication queues one replacement per Bee, waits for a safe boundary and preserves mail (204.818539ms)
+✔ unchanged material does not churn; expiry and unknown projections are visible auth_needed (119.242397ms)
+✔ projection and authentication receipts are generation-fenced and survive store reads (111.93759ms)
+✔ async boot window is quiet and operator control cancels a queued refresh (120.073065ms)
+✔ real input projection records the boot receipt and clears only Cell-owned attention (113.103782ms)
+✔ safe boundary replacement reaches exactly one successor and keeps the pending mailbox (126.411223ms)
+✔ mooted refresh intent can be replaced without silently wedging the runtime (112.639907ms)
+✔ Cell expiry preserves a genuine harness authentication failure (131.932314ms)
+✔ operator parking holds replacement without stopping a running Cell (123.446563ms)
+✔ changed non-access-only material refuses visibly without replacing or interrupting (109.778087ms)
+✔ the next tick refreshes digest cache after material changes without lease installation (115.912908ms)
+✔ one missing Cell row cannot stop healthy core work or account maintenance (115.046555ms)
+✔ an expired or superseded Cell 401 stays scoped to its Bee (134.640144ms)
+✔ same-byte extension updates only the fenced expiry without restart (125.074635ms)
+✔ a distinct second account replacement round is guarded for six durable hours (125.853182ms)
+✔ expiry extension is monotonic, source-bounded and refused by placement or control fences (97.371583ms)
+✔ a between-tick publication cannot extend expiry using stale cached digests (120.654852ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2505.510984
