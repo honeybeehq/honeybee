@@ -56,7 +56,7 @@ async function fixture(t: TestContext): Promise<Fixture> {
   mkdirSync(cellsRoot);
   const rig = makeDaemonDir({
     bootHangTimeoutMs: 60_000,
-    cells: { root: cellsRoot },
+    cells: { root: cellsRoot, sandbox: false },
     agents: {
       cellstub: {
         command: process.execPath,
