@@ -67,7 +67,6 @@ export {
   type TemplateFields,
 } from "./registry.ts";
 export * from "./packages.ts";
-export * from "./import-frozen.ts";
 export * from "./mirror.ts";
 export * from "./tasks.ts";
 export * from "./automation.ts";

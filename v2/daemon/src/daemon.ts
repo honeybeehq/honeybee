@@ -69,7 +69,6 @@ import {
   matchAccount,
   homeEnvFor,
   exportTemplate,
-  importFromFrozen,
   importLocalConfig,
   importTemplate,
   beeTaskList,
@@ -171,7 +170,6 @@ import { resumeStateKey, resumeStateScope, writeResumeKey } from "./resumeBundle
 import { createDirectoryTranscriptObjectStore, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
 import { TRANSCRIPT_PROJECTION_VERSION } from "../../driver-tmux/src/transcript-projection.ts";
 import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
-import { realPreflightProbes } from "./import-probes.ts";
 import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
 import {
   darwinUserTempDir,
@@ -420,7 +418,6 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type TaskTransitionResult,
   type SetArgsResult,
   type TagResult,
-  type ImportFromFrozenResult,
   type ImportLocalConfigResult,
   type SendRpcResult,
   type SnapshotResult,
@@ -2726,8 +2723,6 @@ export class HiveDaemon {
         });
       case "packages.importLocalConfig":
         return this.withIdempotency(verb, params, () => this.rpcImportLocalConfig(params));
-      case "import.fromFrozen":
-        return this.withIdempotency(verb, params, () => this.rpcImportFromFrozen(params));
       case "mirror.local.snapshot":
       case "snapshot": {
         const includeHomes = verb === "mirror.local.snapshot" && conn.operatorLocalHomes === true;
@@ -8478,31 +8473,6 @@ export class HiveDaemon {
       defaultSource: "api",
     });
     return { template: res.template, outcome: res.outcome };
-  }
-
-  /**
-   * WP7 (spec 07 B4): import active old-world bees from the frozen store.
-   * The daemon is the sole writer (contract §3.5), so the import runs here;
-   * the preflight probes real pids/tmux (A2). Refusals come back as a report
-   * (`applied:false`, `refusal`), not as RPC errors — the CLI prints them.
-   */
-  private rpcImportFromFrozen(params: Record<string, unknown>): ImportFromFrozenResult {
-    const store = this.mustStore();
-    const root = typeof params.root === "string" && params.root.length > 0 ? params.root : join(homedir(), ".hive");
-    const dryRun = params.dryRun === true;
-    const force = params.force === true;
-    const report = importFromFrozen(store, root, {
-      dryRun,
-      force,
-      knownAgents: Object.keys(this.cfg.agents),
-      probes: realPreflightProbes(),
-    });
-    this.log(
-      `import.fromFrozen root=${root} dryRun=${dryRun} force=${force} applied=${report.applied} ` +
-        `import=${report.plan.counts.import} skip=${report.plan.counts.skip} live=${report.preflight.live.length}` +
-        (report.refusal ? ` refusal=${JSON.stringify(report.refusal.split("\n")[0])}` : ""),
-    );
-    return report;
   }
 
   private rpcImportLocalConfig(params: Record<string, unknown>): ImportLocalConfigResult {

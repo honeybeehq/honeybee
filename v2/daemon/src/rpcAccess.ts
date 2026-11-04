@@ -63,7 +63,6 @@ export const RPC_ACCESS = {
   "template.export": "read",
   "template.import": "mutate",
   "packages.importLocalConfig": "mutate",
-  "import.fromFrozen": "mutate",
   "bee.setArgs": "mutate",
   "bee.reconfigure": "mutate",
   "cell.capture": "mutate",

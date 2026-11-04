@@ -15,7 +15,6 @@ import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../da
 import { makeRegisteredServiceDir, registerService } from "../../daemon/tests/registered-service-fixture.ts";
 import { runV2Cli, serviceEnv, serviceExecArgs, serviceLabel, type CliIo } from "../src/main.ts";
 import { stripAnsi } from "../src/style.ts";
-import { claudeHsrRecord, makeFrozenFixture } from "../../core/tests/frozen-fixture.ts";
 import { commitInCell, g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
 
 function capture(): { io: CliIo; out: string[]; err: string[] } {
@@ -833,76 +832,6 @@ test("cli.6: service glue — label never the live daemon's, exec args env overr
   // daemon a bare PATH that cannot resolve claude/codex — 2026-08-19 soak).
   assert.deepEqual(serviceEnv("/data", { PATH: "/a:/b", HIVE_NODE_PATH: process.execPath }), { HIVE_V2_DATA_DIR: "/data", PATH: "/a:/b", ...nodePinEnv(probeNativeNode(process.execPath)) });
   assert.deepEqual(serviceEnv("/data", { HIVE_NODE_PATH: process.execPath }), { HIVE_V2_DATA_DIR: "/data", ...nodePinEnv(probeNativeNode(process.execPath)) });
-});
-
-test("cli.7: cutover verbs — `freeze` writes/refuses locally; `import --from-frozen` reports (dry-run, marker refusal, real import, idempotent) over RPC", async () => {
-  const fx = makeFrozenFixture();
-  const { dir, cleanup } = makeDaemonDir();
-  let daemon: DaemonHandle | null = null;
-  try {
-    fx.writeRecord("a.json", claudeHsrRecord(fx.root, { runnerPid: 4_190_000, runnerFingerprint: { pgid: 4_190_000, startedAt: "Tue Aug 18 07:42:57 2026" } }));
-    fx.writeRecord("kf.json", claudeHsrRecord(fx.root, { id: "CL.kf", name: "kf-bee", status: "kill_failed" }));
-    daemon = await startDaemon(dir);
-
-    // import before freeze → refused (marker missing), exit 1, nothing written
-    const r0 = capture();
-    assert.equal(await runV2Cli(["import", "--from-frozen", "--root", fx.root, "--data-dir", dir], r0.io), 1);
-    assert.ok(r0.out.some((l) => l.includes("FROZEN MISSING")), r0.out.join("\n"));
-    assert.ok(r0.out.some((l) => l.startsWith("REFUSED:") && l.includes("hive v2 freeze")), r0.out.join("\n"));
-
-    // usage guard
-    const bad = capture();
-    assert.equal(await runV2Cli(["import", "--data-dir", dir], bad.io), 1);
-    assert.ok(bad.err[0]?.includes("usage: hive import --from-frozen"));
-
-    // freeze: lock pid alive → refused; impossible pid → written; again → already frozen
-    // This test can run more than a minute after the test process starts.
-    // The real preflight verifies process birth, so the fixture must too.
-    fx.writeDaemonLock({ pid: process.pid, startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString() });
-    const f0 = capture();
-    assert.equal(await runV2Cli(["freeze", "--root", fx.root, "--data-dir", dir], f0.io), 1);
-    assert.ok(f0.out[0]?.includes("refused") && f0.out[0]?.includes(String(process.pid)), f0.out[0]);
-    fx.writeDaemonLock({ pid: 4_190_001, startedAt: "2026-08-17T12:22:29.035Z" });
-    const f1 = capture();
-    assert.equal(await runV2Cli(["freeze", "--root", fx.root, "--data-dir", dir, "--json"], f1.io), 0);
-    assert.equal((JSON.parse(f1.out[0] ?? "{}") as { outcome: string }).outcome, "written");
-    const f2 = capture();
-    assert.equal(await runV2Cli(["freeze", "--root", fx.root, "--data-dir", dir], f2.io), 0);
-    assert.ok(f2.out[0]?.startsWith("already frozen"));
-
-    // dry-run: plan listed, nothing written, exit 0
-    const d = capture();
-    assert.equal(await runV2Cli(["import", "--from-frozen", "--root", fx.root, "--dry-run", "--data-dir", dir], d.io), 0);
-    assert.ok(d.out.some((l) => l.startsWith("dry-run: import --from-frozen")), d.out.join("\n"));
-    assert.ok(d.out.some((l) => l.includes("would import 1, skip 1")), d.out.join("\n"));
-    assert.ok(d.out.some((l) => l.includes("import CL.fe6f") && l.includes("resume=native(9aa1f08d")), d.out.join("\n"));
-    assert.ok(d.out.some((l) => l.includes("skip   CL.kf") && l.includes("reason=kill_failed")), d.out.join("\n"));
-    assert.ok(d.out.some((l) => l === "dry-run: nothing written"));
-    const l0 = capture();
-    await runV2Cli(["list", "--all", "--data-dir", dir, "--json"], l0.io);
-    assert.equal((JSON.parse(l0.out[0] ?? "{}") as { views: unknown[] }).views.length, 0);
-
-    // real import, json
-    const i1 = capture();
-    assert.equal(await runV2Cli(["import", "--from-frozen", "--root", fx.root, "--data-dir", dir, "--json"], i1.io), 0);
-    const report = JSON.parse(i1.out[0] ?? "{}") as { applied: boolean; imported: Array<{ beeId: string; resume: string }> };
-    assert.equal(report.applied, true);
-    assert.deepEqual(report.imported, [{ beeId: "CL.fe6f", name: "apiary-waggle-msx67afb-1", agent: "claude", resume: "harness_native" }]);
-    // the bee is visible + stopped + reachable through the normal read path
-    const v = capture();
-    assert.equal(await runV2Cli(["view", "CL.fe6f", "--data-dir", dir], v.io), 0);
-    assert.ok(v.out[0]?.includes("stopped(stopped_by_system)"), v.out[0]);
-
-    // idempotent re-run through the CLI
-    const i2 = capture();
-    assert.equal(await runV2Cli(["import", "--from-frozen", "--root", fx.root, "--data-dir", dir], i2.io), 0);
-    assert.ok(i2.out.some((l) => l.includes("already_imported=1")), i2.out.join("\n"));
-    assert.ok(i2.out.some((l) => l.includes("imported 0 bee(s)")));
-  } finally {
-    await daemon?.stop().catch(() => {});
-    cleanup();
-    fx.cleanup();
-  }
 });
 
 test("cli.urgency: send --urgency passes through to the row; the mailbox read surfaces it; an unknown value is a typed error", async () => {

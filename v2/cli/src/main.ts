@@ -111,7 +111,6 @@ import {
   type ReconfigureResult,
   type SpawnResult,
   type TagResult,
-  type ImportFromFrozenResult,
   type ImportLocalConfigResult,
   type TemplateDeleteResult,
   type TemplateExportResult,
@@ -135,7 +134,6 @@ import { beeTaskList, isTaskStatus, isTaskTransitionAction, parseTaskListRef } f
 import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow, type CommandRow, type NodeCapacity, type TemplateRow, type ChampionRow } from "../../core/src/types.ts";
 import { matchAccount } from "../../core/src/accountMatch.ts";
 import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
-import type { FrozenImportReport, ImportPlanEntry } from "../../core/src/import-frozen.ts";
 import { hostname } from "node:os";
 import type { AuditTailResult } from "../../daemon/src/protocol.ts";
 import type { TranscriptTurnStream } from "../../driver-tmux/src/transcripts.ts";
@@ -357,7 +355,6 @@ const BOOL_FLAGS = new Set([
   "--clear",
   "--apply",
   "--rebase",
-  "--from-frozen",
   "--no-parent",
   "--sandbox",
   "--no-sandbox",
@@ -4689,103 +4686,6 @@ async function attachToBee(
 }
 
 // ---------------------------------------------------------------------------
-// WP7 cutover: freeze the old world, import its active bees (spec 07 B3/B4)
-// ---------------------------------------------------------------------------
-
-/** The old-world store root: --root, else HIVE_STORE_ROOT (the old CLI's own override, src/fsx.ts), else ~/.hive. */
-function frozenRootOf(parsed: Parsed): string {
-  const flag = parsed.flags.get("--root") as string | undefined;
-  return resolve(flag ?? process.env.HIVE_STORE_ROOT ?? join(homedir(), ".hive"));
-}
-
-/**
- * `hive freeze [--root r] [--force]` — B3. Local: writes `<root>/FROZEN`
- * (the ONE write into the old root, the operator's), refusing while the old
- * daemon's lock pid is alive. Does not need the v2 daemon.
- */
-async function cmdFreeze(ctx: CliContext, parsed: Parsed): Promise<number> {
-  const root = frozenRootOf(parsed);
-  const [{ freezeRoot }, { realPreflightProbes }] = await Promise.all([import("../../core/src/import-frozen.ts"), import("../../daemon/src/import-probes.ts")]);
-  const result = freezeRoot(root, {
-    probes: realPreflightProbes(),
-    force: parsed.flags.get("--force") === true,
-    by: `hive freeze (host ${hostname()}, pid ${process.pid})`,
-  });
-  const lines =
-    result.outcome === "written"
-      ? [`${cyan(bold("frozen:"))} ${result.markerPath} written — the old-world store at ${root} is now read-only by convention (remove the marker to unfreeze, spec 07 §C)`]
-      : result.outcome === "already_frozen"
-        ? [`${yellow("already frozen:")} ${result.markerPath} exists`]
-        : [`${red("refused:")} ${result.refusal}`];
-  emit(ctx, lines, result, false);
-  return result.outcome === "refused" ? 1 : 0;
-}
-
-function planEntryLine(e: ImportPlanEntry): string {
-  if (e.action === "import") {
-    const bee = e.bee;
-    const resume =
-      e.resume === "harness_native"
-        ? `resume=native(${bee?.providerSessionId ?? "?"})`
-        : e.resume === "fresh_no_session_id"
-          ? "resume=FRESH(no provider session id)"
-          : "resume=FRESH(no v2 resume path)";
-    const notes = e.notes.length > 0 ? `  [${e.notes.join("; ")}]` : "";
-    return `  ${cyan("import")} ${e.originalId}  ${e.name}  agent=${e.agent} substrate=${bee?.substrate ?? "?"}  ${resume}${notes}`;
-  }
-  const notes = e.notes.length > 0 ? `  (${e.notes.join("; ")})` : "";
-  return `  ${dim("skip  ")} ${e.originalId}  ${e.name}  agent=${e.agent}  reason=${e.reason}${notes}`;
-}
-
-function importReportLines(report: FrozenImportReport, verbose: boolean): string[] {
-  const c = report.plan.counts;
-  const lines: string[] = [];
-  lines.push(`${report.dryRun ? "dry-run: " : ""}import --from-frozen ${report.frozenRoot}`);
-  lines.push(`  marker: ${report.preflight.markerPresent ? "FROZEN present" : "FROZEN MISSING"}`);
-  lines.push(
-    `  preflight: ${report.preflight.ok ? "no live old-world runtimes" : `${report.preflight.live.length} live old-world runtime(s)`}`,
-  );
-  for (const l of report.preflight.live) lines.push(`    - ${l.detail}`);
-  lines.push(`  plan: would import ${c.import}, skip ${c.skip}`);
-  const byReason = Object.entries(c.byReason).map(([k, v]) => `${k}=${v}`).join(" ");
-  if (byReason) lines.push(`    skipped by reason: ${byReason}`);
-  const byResume = Object.entries(c.byResume).map(([k, v]) => `${k}=${v}`).join(" ");
-  if (byResume) lines.push(`    resume modes:      ${byResume}`);
-  const shown = verbose ? report.plan.entries : report.plan.entries.filter((e) => e.action === "import" || (e.reason !== "done" && e.reason !== "already_imported"));
-  for (const e of shown) lines.push(planEntryLine(e));
-  if (!verbose) {
-    const hidden = report.plan.entries.length - shown.length;
-    if (hidden > 0) lines.push(`  (… ${hidden} done/already-imported rows hidden; --verbose lists all)`);
-  }
-  if (report.refusal) lines.push(`${red(bold("REFUSED:"))} ${report.refusal}`);
-  else if (report.dryRun) lines.push(dim("dry-run: nothing written"));
-  else lines.push(confirm("ok", "imported", `${report.imported.length} bee(s)`));
-  return lines;
-}
-
-/**
- * `hive import --from-frozen [--root r] [--dry-run] [--force] [--verbose]`
- * — B4. RPC only (the daemon is the sole writer); refusals are reports, not
- * errors, and exit 1.
- */
-async function cmdImport(ctx: CliContext, parsed: Parsed): Promise<number> {
-  if (parsed.flags.get("--from-frozen") !== true) {
-    throw new Error("usage: hive import --from-frozen [--root r] [--dry-run] [--force] [--verbose] [--idempotency-key k]");
-  }
-  const root = frozenRootOf(parsed);
-  const result = await withClient(ctx, (c) =>
-    c.request<ImportFromFrozenResult>("import.fromFrozen", {
-      root,
-      dryRun: parsed.flags.get("--dry-run") === true,
-      force: parsed.flags.get("--force") === true,
-      idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
-    }),
-  );
-  emit(ctx, importReportLines(result, parsed.flags.get("--verbose") === true), result, false);
-  return result.applied || result.dryRun ? 0 : 1;
-}
-
-// ---------------------------------------------------------------------------
 // daemon service subcommands
 // ---------------------------------------------------------------------------
 
@@ -5250,10 +5150,6 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
         return await cmdChampion(ctx, parsed);
       case "packages":
         return await cmdPackages(ctx, parsed);
-      case "freeze":
-        return await cmdFreeze(ctx, parsed);
-      case "import":
-        return await cmdImport(ctx, parsed);
       case "daemon":
         return await cmdDaemon(ctx, parsed);
       case "runner-host": {

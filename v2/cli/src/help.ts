@@ -112,13 +112,6 @@ export const GROUPS: Group[] = [
     ],
   },
   {
-    title: "Cutover",
-    rows: [
-      ["freeze", "[--root r] [--force]", "write <root>/FROZEN (refuses while the old daemon is alive)"],
-      ["import", "--from-frozen", "import active bees from the frozen old-world store"],
-    ],
-  },
-  {
     title: "Daemon",
     rows: [
       ["daemon", "run", "run the daemon in the foreground"],

@@ -8,8 +8,20 @@
  * not logged in (the rest are supporting snapshots). `configFiles` are
  * preserved when present but never gate anything.
  */
-import { HARNESS_HOME_ENV } from "./import-frozen.ts";
 import type { LoginAuthorizationPolicy, LoginFieldDescriptor, LoginMethodDescriptor } from "./loginFlow.ts";
+
+/** Harness → the env var that relocates its config/session home. */
+export const HARNESS_HOME_ENV: Readonly<Record<string, string>> = {
+  claude: "CLAUDE_CONFIG_DIR",
+  codex: "CODEX_HOME",
+  opencode: "OPENCODE_CONFIG_DIR",
+  grok: "GROK_HOME",
+  kimi: "KIMI_CODE_HOME",
+  cursor: "CURSOR_CONFIG_DIR",
+  // Muse has no home variable of its own: its config root (auth.json,
+  // settings, trust) is $XDG_CONFIG_HOME/muse, set only in the muse child env.
+  muse: "XDG_CONFIG_HOME",
+};
 
 export interface IdentityRecipe {
   /** Home-relative credential files; the same relative paths are used inside the vault. */
