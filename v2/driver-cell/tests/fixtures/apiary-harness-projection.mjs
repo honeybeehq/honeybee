@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import { readFileSync, mkdtempSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { userInfo } from "node:os";
+import { spawnSync } from "node:child_process";
+import { wrapWithSandbox } from "../../src/sandbox.ts";
+import { withFixtureGateway } from "../sandboxFixture.ts";
+const home = userInfo().homedir;
+assert.equal(readFileSync(join(home, ".projection-fixture"), "utf8"), "owned fixture");
+const cell = mkdtempSync("/tmp/hb-projected-cell-");
+const command = join(home, ".local", "share", "apiary-satellite", "bin", "codex");
+const wrapped = wrapWithSandbox(withFixtureGateway({cellDir: cell, writablePaths: []}), command, [], join(cell, "profile"));
+const result = spawnSync(wrapped.command, wrapped.args, {encoding: "utf8", timeout: 15000});
+assert.equal(result.status, 0, result.stdout + result.stderr);
+assert.match(result.stdout, /projection-fixture-ok/);
+assert.match(result.stdout, /PATH=\/run\/honeybee\/bin:\/run\/honeybee\/tools\/bin:\/run\/honeybee\/node\/bin:\/usr\/bin:\/bin/);
+console.log(result.stdout.trim());
+
+const install = dirname(dirname(process.execPath));
+const hidden = [join(install, "bin", "extra-cli"), join(install, "lib", "node_modules", "extra-package"), join(install, "include")];
+const probe = wrapWithSandbox(withFixtureGateway({cellDir: cell, writablePaths: []}), process.execPath, ["-e", `const fs=require('node:fs');if(${JSON.stringify(hidden)}.some(p=>fs.existsSync(p)))process.exit(1);console.log('fixed-node-projection-ok')`], join(cell, "profile"));
+const checked = spawnSync(probe.command, probe.args, {encoding: "utf8", timeout: 15000});
+assert.equal(checked.status, 0, checked.stdout + checked.stderr);
+console.log(checked.stdout.trim());

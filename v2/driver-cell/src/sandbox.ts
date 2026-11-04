@@ -1,3 +1,4 @@
+import { apiaryHarnessProjection, nodeReadOnlyProjection } from "./apiaryHarness.ts";
 import { apiaryToolchainRoot } from "./apiaryToolchain.ts";
 import { withoutCellHostRoutes } from "./runtimeEnvironment.ts";
 import { ensureCellPrivateDirectory, prepareSandboxHarnessHome } from "./harnessHome.ts";
@@ -319,10 +320,10 @@ function isRegularFile(path: string): boolean {
   }
 }
 
-function bwrapLaunchBinds(command: string, args: readonly string[], cellDir: string): string[] {
+function bwrapLaunchBinds(command: string, args: readonly string[], cellDir: string, projected: readonly string[] = []): string[] {
   const roots = new Set<string>();
   for (const input of [command, ...args]) {
-    if (!isAbsolute(input) || !isRegularFile(input) || containsPath(canonicalPath(cellDir), canonicalPath(input))) continue;
+    if (!isAbsolute(input) || !isRegularFile(input) || containsPath(canonicalPath(cellDir), canonicalPath(input)) || projected.some(root => containsPath(root, realpathSync(input)))) continue;
     for (const spelling of [input, realpathSync(input)]) {
       const root = maskedLaunchRoot(spelling);
       if (root) roots.add(root);
@@ -415,19 +416,31 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
   const homes = [...new Set([homedir(), userInfo().homedir, ...(policy.homePaths ?? [])].map(path => realpathSync(path)))];
   const toolchain = sandboxToolchainRoot(process.execPath, policy.log);
-  const homeToolchain = toolchain !== null && containsPath(userInfo().homedir, toolchain);
+  const uid = process.geteuid?.() ?? userInfo().uid;
+  const harness = apiaryHarnessProjection(command, args, userInfo().homedir, uid, policy.harnessHome?.harness);
+  const node = toolchain ? nodeReadOnlyProjection(toolchain, uid) : null;
+  const nodeDestination = "/run/honeybee/node";
   const out: string[] = [
     "--unshare-user", "--unshare-pid", "--unshare-ipc",
     "--tmpfs", "/", ...systemReadOnlyMounts(),
-    ...(toolchain && !homeToolchain ? ["--ro-bind", toolchain, toolchain] : []),
     "--dev", "/dev", ...size, "--tmpfs", "/dev/shm", "--proc", "/proc",
     ...BWRAP_PRIVATE_MOUNTS.flatMap(mount => [...size, "--tmpfs", mount]),
     ...homes.flatMap(home => ["--tmpfs", home]),
-    "--tmpfs", "/run", "--dir", "/run/user", "--dir", "/run/honeybee", "--dir", "/run/honeybee/bin",
-    ...(homeToolchain ? ["--ro-bind", toolchain!, toolchain!] : []),
-    ...bwrapLaunchBinds(command, args, policy.cellDir),
+    "--tmpfs", "/run", "--dir", "/run/user", "--dir", "/run/honeybee", "--dir", "/run/honeybee/bin", "--dir", "/run/honeybee/tools", "--dir", "/run/honeybee/tools/bin",
+    ...bwrapLaunchBinds(command, args, policy.cellDir, harness ? [harness.leaf] : []),
     "--bind", policy.cellDir, policy.cellDir,
   ];
+  if (toolchain && node) {
+    out.push("--tmpfs", toolchain, "--tmpfs", nodeDestination);
+    for (const source of [...node.files, ...node.packages]) {
+      out.push("--ro-bind", source, source, "--ro-bind", source, join(nodeDestination, relative(toolchain, source)));
+    }
+    for (const link of node.links) {
+      out.push("--symlink", link.target, link.path, "--symlink", join(nodeDestination, relative(toolchain, link.target)), join(nodeDestination, relative(toolchain, link.path)));
+    }
+    out.push("--remount-ro", toolchain, "--remount-ro", nodeDestination);
+  }
+  if (harness) out.push("--ro-bind", harness.leaf, harness.leaf, "--symlink", harness.executable, harness.alias);
   if (policy.kvm) out.push("--dev-bind", "/dev/kvm", "/dev/kvm");
   if (projection) {
     for (const file of projection.files) out.push("--ro-bind", file.source, file.destination);
@@ -444,10 +457,12 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     "--unsetenv", "DBUS_SESSION_BUS_ADDRESS", "--unsetenv", "DBUS_SYSTEM_BUS_ADDRESS",
     "--unsetenv", "SSH_AUTH_SOCK", "--unsetenv", "XDG_RUNTIME_DIR", "--unsetenv", "NODE_OPTIONS",
     "--setenv", "HIVE_CELL_GATEWAY_SOCKET", "/run/honeybee/gateway.sock",
-    "--setenv", "PATH", `/run/honeybee/bin:${toolchain ? `${toolchain}/bin:` : ""}/usr/local/bin:/usr/bin:/bin`,
+    "--setenv", "PATH", `/run/honeybee/bin:/run/honeybee/tools/bin:${toolchain ? `${nodeDestination}/bin:` : ""}/usr/bin:/bin`,
     "--share-net", "--die-with-parent");
   const parent = statSync("/proc/self/ns/user");
-  out.push("--", "/run/honeybee/cell-scope", "--assert-userns", `${parent.dev}:${parent.ino}`, "--", command, ...args);
+  const projectInput = (input: string) => harness && isAbsolute(input) && isRegularFile(input) && containsPath(harness.leaf, realpathSync(input)) ? realpathSync(input) : input;
+  const launchCommand = harness && command === harness.id ? harness.alias : projectInput(command);
+  out.push("--", "/run/honeybee/cell-scope", "--assert-userns", `${parent.dev}:${parent.ino}`, "--", launchCommand, ...args.map(projectInput));
   return out;
 }
 
