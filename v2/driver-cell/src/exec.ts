@@ -302,7 +302,9 @@ export async function runCellExec(
   const confinedLinux = process.platform === "linux" && sandboxEnabled(spec.nodeKind, spec.sandbox);
   let wrappedCommand = command as string;
   let wrappedArgs = args;
-  env = sandboxEnvironment(paths.wrapperDir, env, sandboxEnabled(spec.nodeKind, spec.sandbox)) as typeof env;
+  if (sandboxEnabled(spec.nodeKind, spec.sandbox) && process.platform === "darwin") throw new CellExecContainmentError("Sandboxed Cell exec is unsupported on darwin");
+  if (sandboxEnabled(spec.nodeKind, spec.sandbox)) env = sandboxEnvironment(paths.wrapperDir, env, true) as typeof env;
+  else (env as Record<string, string>).npm_config_yes = "false";
   if (sandboxEnabled(spec.nodeKind, spec.sandbox)) {
     (env as Record<string, string>).HIVE_CELL_GATEWAY_SOCKET = "/run/honeybee/gateway.sock";
     const wrapped = wrapWithSandbox(

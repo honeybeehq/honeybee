@@ -788,8 +788,11 @@ export class CellDriver implements RuntimeDriver {
       HIVE_CELL: "1",
       HIVE_CELL_SPACE: cell.paths.spaceName,
     };
-    env = sandboxEnvironment(cell.paths.wrapperDir, env, sandboxEnabled(this.cfg.nodeKind, spec.sandbox));
-    if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
+    const effectiveSandbox = sandboxEnabled(this.cfg.nodeKind, spec.sandbox);
+    if (effectiveSandbox && platform() === "darwin") throw new Error("cell sandbox: sandboxed Cells are unsupported on darwin; configure cells.sandbox:false");
+    if (effectiveSandbox) env = sandboxEnvironment(cell.paths.wrapperDir, env, true);
+    else env.npm_config_yes = "false";
+    if (!effectiveSandbox) {
       if (this.cfg.nodeKindExplicit === false && spec.sandbox !== false) {
         this.cfg.log?.("cell.sandbox.refused reason=nodeKind_missing implicit_workstation_default");
         throw new Error("cell sandbox: nodeKind is missing; explicit cells.sandbox:false is required for an unsandboxed Cell");

@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, truncateSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, mkdirSync, writeFileSync, symlinkSync, truncateSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { DeliveryFiles } from "../src/deliveryFile.ts";
 
 test("rooted reads are bounded regular files with no followed components", () => {
-  const root = mkdtempSync(join(tmpdir(), "hb-rooted-file-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hb-rooted-file-")));
   const reader = new DeliveryFiles();
   try {
     mkdirSync(join(root, "nested"));

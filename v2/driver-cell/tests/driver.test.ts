@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,6 +47,7 @@ function makeDriver(
     resolveSandboxWritablePaths?: (beeId: string) => readonly SandboxWritableDirectory[];
     resolveSandboxHarnessHome?: (beeId: string) => { harness: string; path: string } | undefined;
     harnessEnv?: Record<string, string>;
+    probeEnvironment?: boolean;
     hostCommand?: (configPath: string) => { command: string; args: string[] };
   } = {},
 ): CellDriver {
@@ -57,11 +58,16 @@ function makeDriver(
     resolveHarness: (beeId) => {
       const path = cellPaths(rig.cellsRoot, beeId, "fixture", beeId.replaceAll("bee-", "c"));
       const staged = join(path.boxDir, "fixture-agent.mjs");
+      const probe = join(path.boxDir, "fixture-env-probe.mjs");
+      if (opts.probeEnvironment) {
+        mkdirSync(path.boxDir, {recursive: true});
+        writeFileSync(probe, `import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(join(path.boxDir, "fixture-env.json"))},JSON.stringify(Object.fromEntries(['TMPDIR','NODE_COMPILE_CACHE','npm_config_yes'].map(key=>[key,process.env[key]]))));`);
+      }
       if (opts.sandbox) { mkdirSync(path.boxDir, { recursive: true }); copyFileSync(AGENT_PATH, staged); }
       return ({
       adapter: stubAdapter,
       command: process.execPath,
-      args: [opts.sandbox ? staged : AGENT_PATH],
+      args: [...(opts.probeEnvironment ? ["--import", probe] : []), opts.sandbox ? staged : AGENT_PATH],
       env: { ...(process.env as Record<string, string>), STUB_TURN_MS: "5", ...(opts.harnessEnv ?? {}) },
     }); },
     resolveSandboxGateway: () => ({ socketPath: fixtureGatewaySocket }),
@@ -598,4 +604,54 @@ test("cell-driver.node-kind: a missing kind refuses implicit unsandboxed launch 
     explicit.start("bee-2", 1);
     await drainUntil(explicit, events => events.some(event => event.kind === "booted"));
   } finally { refused.disposeAll(); explicit.disposeAll(); await sleep(10); rig.cleanup(); }
+});
+
+test("cell-driver.unconfined-platform: real startup preserves host temporary paths without projection", async () => {
+  const rig = makeRig();
+  const tmp = join(rig.root, "bee-tmp"), cache = join(rig.root, "compile-cache");
+  mkdirSync(tmp); mkdirSync(cache);
+  const driver = makeDriver(rig, {
+    nodeKind: "workstation", nodeKindExplicit: true, sandbox: false, probeEnvironment: true,
+    harnessEnv: {TMPDIR: tmp, NODE_COMPILE_CACHE: cache, npm_config_yes: "true"},
+    resolveSandboxHarnessHome: () => { throw new Error("Unconfined launch must not project a harness home"); },
+  });
+  try {
+    driver.start("bee-platform", 1);
+    const cell = driver.cellOf("bee-platform");
+    assert.ok(cell);
+    assert.equal(existsSync(join(cell.paths.wrapperDir, "sandbox-state")), false);
+    const resolve = driver as unknown as {resolveCellSpawn(bee: string, generation: number): {env: Record<string, string>}};
+    const env = resolve.resolveCellSpawn("bee-platform", 1).env;
+    assert.equal(env.TMPDIR, tmp);
+    assert.equal(env.NODE_COMPILE_CACHE, cache);
+    assert.equal(env.npm_config_yes, "false");
+    await drainUntil(driver, events => events.some(event => event.kind === "booted"));
+    const observed = JSON.parse(readFileSync(join(cell.paths.boxDir, "fixture-env.json"), "utf8"));
+    assert.equal(observed.TMPDIR, tmp);
+    assert.equal(observed.NODE_COMPILE_CACHE, cache);
+    assert.equal(observed.npm_config_yes, "false");
+    await deliverUntilAccepted(driver, "bee-platform", 1, 901, "hello platform");
+    await drainUntil(driver, events => events.some(event => event.kind === "turn_ended"));
+    driver.stop("bee-platform", 1, "stopped_by_user");
+    await drainUntil(driver, events => events.some(event => event.kind === "exited"));
+    console.log(JSON.stringify({fixture: "unconfined Cell platform launch", platform: platform(), preservedTmp: true, noPrivateProjection: true}));
+  } finally { driver.disposeAll(); await sleep(10); rig.cleanup(); }
+});
+
+
+test("cell-driver.sandbox-package-env: a real isolated child gets the package confirmation default", {skip: platform() !== "linux"}, async () => {
+  const rig = makeRig();
+  const driver = makeDriver(rig, {nodeKind: "satellite", nodeKindExplicit: true, sandbox: true, probeEnvironment: true, harnessEnv: {npm_config_yes: "true"}});
+  try {
+    driver.start("bee-package", 1);
+    await drainUntil(driver, events => events.some(event => event.kind === "booted"));
+    const cell = driver.cellOf("bee-package");
+    assert.ok(cell);
+    const observed = JSON.parse(readFileSync(join(cell.paths.boxDir, "fixture-env.json"), "utf8"));
+    assert.equal(observed.npm_config_yes, "false");
+    assert.equal(observed.TMPDIR, "/tmp");
+    assert.ok(observed.NODE_COMPILE_CACHE.startsWith(join(cell.paths.wrapperDir, "sandbox-state")));
+    driver.stop("bee-package", 1, "stopped_by_user");
+    await drainUntil(driver, events => events.some(event => event.kind === "exited"));
+  } finally { driver.disposeAll(); await sleep(10); rig.cleanup(); }
 });

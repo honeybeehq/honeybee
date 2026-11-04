@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, linkSync, unlinkSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, mkdirSync, writeFileSync, linkSync, unlinkSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CellStorageGate } from "../src/inodeGate.ts";
 import { scanCellStorage, CellStorageRefused } from "../src/inodeScan.ts";
 
 function fixture() {
-  const root = mkdtempSync(join(tmpdir(), "hb-inode-gate-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "hb-inode-gate-")));
   const cellsRoot = join(root, "cells"), wrapper = "fixture", wrapperDir = join(cellsRoot, wrapper), spaceDir = join(wrapperDir, "repo-space-fixture");
   mkdirSync(join(spaceDir, ".git", "objects", "info"), {recursive: true});
   return {root, wrapperDir, identity: {cellsRoot, wrapper, spaceDir, sandboxed: true}, close: () => rmSync(root, {recursive: true, force: true})};

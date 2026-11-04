@@ -140,6 +140,8 @@ function checkedWritablePaths(policy: SandboxPolicy): string[] {
 
 
 export function sandboxEnvironment(cellDir: string, original: Readonly<Record<string, string>>, sandboxed = true): Record<string, string> {
+  if (!sandboxed) return {...original, npm_config_yes: "false"};
+  if (platform() === "darwin") throw new Error("cell sandbox: private state projection is unsupported on darwin");
   const root = join(cellDir, "sandbox-state");
   const temp = join(root, "tmp");
   const cache = join(root, "cache");
