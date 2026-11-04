@@ -1,6 +1,7 @@
 export const CELL_REPO_REPORT_BYTES = 1024 * 1024;
 export const CELL_REPO_REQUEST_BYTES = 64 * 1024;
 export const CELL_REPO_DIAGNOSTIC_BYTES = 64 * 1024;
+export const CELL_REPO_STATUS_BYTES = 512 * 1024;
 
 export interface CellRepoIdentity {
   cellsRoot: string;
@@ -19,7 +20,11 @@ export interface CellRepoInspection {
   stashed: boolean;
 }
 
-export type CellRepoFailure = "unavailable" | "identity_changed" | "invalid_repository" | "deadline" | "output_limit" | "invalid_output" | "git_failed";
+export type CellRepoFailure = "unavailable" | "identity_changed" | "invalid_repository" | "deadline" | "output_limit" | "invalid_output" | "invalid_request" | "git_failed";
+
+export function cellRepoFailure(value: unknown): CellRepoFailure | null {
+  return typeof value === "string" && ["unavailable", "identity_changed", "invalid_repository", "deadline", "output_limit", "invalid_output", "invalid_request", "git_failed"].includes(value) ? value as CellRepoFailure : null;
+}
 
 export class CellRepoRefusal extends Error {
   readonly code: CellRepoFailure;
@@ -31,9 +36,9 @@ export class CellRepoRefusal extends Error {
 }
 
 export function parseCellRepoRequest(value: unknown): CellRepoRequest {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new CellRepoRefusal("invalid_output");
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new CellRepoRefusal("invalid_request");
   const row = value as Record<string, unknown>;
-  if (Object.keys(row).length !== 2 || row.operation !== "inspect" || typeof row.ignored !== "boolean") throw new CellRepoRefusal("invalid_output");
+  if (Object.keys(row).length !== 2 || row.operation !== "inspect" || typeof row.ignored !== "boolean") throw new CellRepoRefusal("invalid_request");
   return { operation: "inspect", ignored: row.ignored };
 }
 

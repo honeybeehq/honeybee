@@ -127,7 +127,8 @@ await build({
   preserveSymlinks: true,
   logLevel: "silent",
 });
-for (const [entry, output] of [["cellRepoWorker.ts", "cell-repo-worker.js"], ["cellRepoHelper.ts", "cell-repo-helper.js"]]) {
+const repoFiles = {};
+for (const [entry, output] of [["cellRepoSupervisor.ts", "cell-repo-supervisor.js"], ["cellRepoHelper.ts", "cell-repo-helper.js"]]) {
   const result = await build({
     entryPoints: [join(root, "v2", "driver-cell", "src", entry)],
     outfile: join(outDir, output),
@@ -141,7 +142,9 @@ for (const [entry, output] of [["cellRepoWorker.ts", "cell-repo-worker.js"], ["c
   const staged = join(outDir, `${output}.tmp-${process.pid}`);
   await writeFile(staged, result.outputFiles[0].contents, { mode: 0o444, flag: "wx" });
   await rename(staged, join(outDir, output));
+  repoFiles[output] = createHash("sha256").update(result.outputFiles[0].contents).digest("hex");
 }
+await writeFile(join(outDir, "cell-repo-manifest.json"), JSON.stringify({ version: 1, files: repoFiles }) + "\n");
 const runnerHostBuild = await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "driver-hsr", "src", "runner-host-main.ts")],
