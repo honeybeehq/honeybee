@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assertConfinedSpawn, assertConfinedVerb, peerConfinement, peerUserNamespace, strictConfinementReasons, type ProcReader } from "../src/confinedPeer.ts";
+import { assertConfinedSpawn, assertConfinedVerb, classifyPeer, peerConfinement, peerUserNamespace, strictConfinementReasons, type PeerClass, type ProcReader } from "../src/confinedPeer.ts";
 import { RpcError } from "../src/protocol.ts";
 
 const peer = {uid: 1000, pid: 42, processBirth: "linux:99"};
 const reader = (changes: Partial<ProcReader> = {}): ProcReader => ({open: () => 7, birth: () => "linux:99", userns: () => "user:[1]", selfUserns: () => "user:[1]", close: () => {}, ...changes});
-const onLinux = (options: Parameters<typeof peerConfinement>[1]) => peerConfinement(peer, {platform: "linux", ...options});
+const classify = (options: {platform?: string; proc?: ProcReader; substrate?: () => string | null} = {}): PeerClass => classifyPeer(peer, {platform: options.platform, proc: options.proc ?? reader(), owner: () => { const substrate = options.substrate?.() ?? null; return substrate === null ? null : {beeId: "bee", generation: 1, substrate}; }});
+const onLinux = (options: {proc?: ProcReader; substrate?: () => string | null; strict?: boolean; registered?: boolean}) => peerConfinement(() => classify({platform: "linux", proc: options.proc, substrate: options.substrate}), {platform: "linux", strict: options.strict, registered: options.registered});
 const refused = (error: unknown) => error instanceof RpcError && error.code === "confined_spawn_refused";
 
 test("confinement uses pinned process birth and namespace, failing closed", () => {
@@ -19,7 +20,8 @@ test("confinement uses pinned process birth and namespace, failing closed", () =
   assert.equal(closed, true);
   let reads = 0;
   assert.equal(onLinux({proc: reader({birth: () => ++reads === 1 ? "linux:99" : "linux:100"})}), "confined");
-  assert.equal(peerConfinement(peer, {platform: "darwin", proc: reader({open: () => {throw new Error("must not read proc");}})}), "unknown");
+  assert.equal(classifyPeer(peer, {platform: "darwin", proc: reader({open: () => {throw new Error("must not read proc");}}), owner: () => null}).namespace, "unread");
+  assert.equal(peerConfinement(() => {throw new Error("must not classify");}, {platform: "darwin"}), "unknown");
 });
 
 test("strict mode triggers and trusted host exceptions", () => {
@@ -126,8 +128,8 @@ test("Linux confinement follows the kernel rather than a simulated process platf
   const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
   Object.defineProperty(process, "platform", {value: "darwin"});
   try {
-    assert.equal(peerConfinement(peer, {proc: reader()}), "unconfined");
-    assert.equal(peerConfinement(peer, {proc: reader({userns: () => "user:[2]"})}), "confined");
+    assert.equal(peerConfinement(() => classify({proc: reader()})), "unconfined");
+    assert.equal(peerConfinement(() => classify({proc: reader({userns: () => "user:[2]"})})), "confined");
   } finally { Object.defineProperty(process, "platform", platform); }
 });
 
@@ -142,10 +144,11 @@ test("a confined caller whose ancestry is denied before its bee runtime is refus
     listBees: () => [bee], listRuntimes: () => [runtime], getBee: (id: string) => id === bee.id ? bee : null, currentRuntime: () => runtime,
     runtimeProcessIdentity: () => ({kind: "bound", identity: {pid: 2, birth: "linux:2", bootId}}),
   };
-  const conn = {localPeer: {uid: 1000, pid: 4, processBirth: "linux:4"}, ingress: "local_unix", confinement: "confined"};
+  const localPeer = {uid: 1000, pid: 4, processBirth: "linux:4"};
   const admit = (denied: boolean) => {
     const owner = Object.create(HiveDaemon.prototype) as Record<string, unknown>;
     Object.assign(owner, {store, stopping: false, confinedAdmission: new ConfinedAdmission(), lineageInspect: (pid: number) => pid === 4 ? present(4, 3) : pid === 3 ? (denied ? {kind: "unavailable", reason: "permission_denied"} : present(3, 2)) : pid === 2 ? present(2, 1) : present(1, 0)});
+    const conn = {localPeer, ingress: "local_unix", confinement: "confined", peerClass: () => classifyPeer(localPeer, {platform: "linux", proc: reader(), owner: () => (owner.peerOwner as (peer: typeof localPeer) => unknown).call(owner, localPeer) as never})};
     return (owner.admitConfined as (verb: string, params: Record<string, unknown>, conn: unknown) => Record<string, unknown>).call(owner, "view", {}, conn);
   };
   assert.deepEqual(admit(false), {beeId: bee.id});

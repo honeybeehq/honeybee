@@ -1,5 +1,5 @@
 import type { SchedulingStatus } from "../../core/src/processScheduling.ts";
-import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, peerConfinement, runtimeUserNamespace, strictConfinementReasons } from "./confinedPeer.ts";
+import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, classifyPeer, peerConfinement, peerOwner, runtimeUserNamespace, strictConfinementReasons, type PeerOwner } from "./confinedPeer.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import type { AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
@@ -1212,12 +1212,10 @@ export class HiveDaemon {
     this.activeStartupPhase = rpc;
     this.rpc = new RpcServer({
       admitConfined: (verb, params, conn) => this.admitConfined(verb, params, conn),
-      peerConfinement: (peer, registered) => peerConfinement(peer, {strict: this.confinementReasons.size > 0, registered, substrate: () => {
-        const id = peer ? this.spawnPeerBee(peer) : null;
-        return id ? this.mustStore().getBee(id)?.substrate ?? null : null;
-      }}),
-      assertServiceCaller: peer => {
-        if (this.spawnPeerBee(peer)) throw new RpcError("caller_not_trusted", "A bee runtime cannot register as the Apiary service");
+      classifyPeer: peer => classifyPeer(peer, {owner: () => this.peerOwner(peer)}),
+      peerConfinement: (peerClass, registered) => peerConfinement(peerClass, {strict: this.confinementReasons.size > 0, registered}),
+      assertServiceCaller: peerClass => {
+        if (peerOwner({peerClass})) throw new RpcError("caller_not_trusted", "A bee runtime cannot register as the Apiary service");
       },
       socketPath: this.cfg.socketPath,
       dataDir: this.cfg.dataDir,
@@ -2596,9 +2594,9 @@ export class HiveDaemon {
         return this.viewOf(this.mustStore(), this.param(params, "beeId"));
       case "list":
         if (conn.confinement === "confined") {
-          const id = conn.localPeer ? this.spawnPeerBee(conn.localPeer) : null;
-          if (!id) throw new RpcError("confined_peer_refused", "Confined caller has no owning bee");
-          const own = this.viewOf(this.mustStore(), id);
+          const owner = peerOwner(conn);
+          if (!owner) throw new RpcError("confined_peer_refused", "Confined caller has no owning bee");
+          const own = this.viewOf(this.mustStore(), owner.beeId);
           return {views: [own]};
         }
         return this.rpcList(params);
@@ -2899,12 +2897,11 @@ export class HiveDaemon {
   private readonly confinedAdmission = new ConfinedAdmission();
   private admitConfined(verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn): Record<string, unknown> {
     const store = this.mustStore();
-    const id = conn.localPeer && conn.ingress === "local_unix" ? this.spawnPeerBee(conn.localPeer) : null;
-    const bee = id ? store.getBee(id) : null;
-    const runtime = id ? store.currentRuntime(id) : null;
-    if (!bee || bee.lifecycle !== "active" || !runtime || runtime.state === "stopped") throw new RpcError("confined_peer_refused", "Confined caller has no live owning bee");
-    const binding = store.runtimeProcessIdentity(bee.id, runtime.generation);
-    if (!conn.localPeer || binding.kind !== "bound" || spawnCallerBee(conn.localPeer, [{beeId: bee.id, identity: binding.identity}], pid => this.lineageInspect(pid)) !== bee.id) throw new RpcError("confined_peer_refused", "Confined caller generation is stale");
+    const owner = conn.ingress === "local_unix" ? peerOwner(conn) : null;
+    const bee = owner ? store.getBee(owner.beeId) : null;
+    const runtime = owner ? store.currentRuntime(owner.beeId) : null;
+    if (!owner || !bee || bee.lifecycle !== "active" || !runtime || runtime.state === "stopped") throw new RpcError("confined_peer_refused", "Confined caller has no live owning bee");
+    if (runtime.generation !== owner.generation || store.runtimeProcessIdentity(bee.id, runtime.generation).kind !== "bound") throw new RpcError("confined_peer_refused", "Confined caller generation is stale");
     return this.confinedAdmission.admit(verb, params, {
       beeId: bee.id, generation: runtime.generation, parentId: bee.parentExternal ? null : bee.parentId,
       canSend: target => { const parent = store.getBee(target); return !!parent && parent.agent !== INBOX_AGENT; },
@@ -2945,7 +2942,7 @@ export class HiveDaemon {
     const trustOff = !this.cfg.rpcLocalTrust.requireObservationCaller;
     const localLane = conn.localPeer != null && (conn.ingress === "local_unix" || conn.ingress === "node_relay");
     if (!callerBeeId && !conn.spawnServiceAuthority && conn.localPeer && localLane) {
-      callerBeeId = this.spawnPeerBee(conn.localPeer);
+      callerBeeId = peerOwner(conn)?.beeId ?? null;
     }
     const localService = localLane && (conn.ingress === "local_unix" || trustOff);
     if (!callerBeeId && !conn.spawnServiceAuthority && !localService) throw new RpcError("caller_not_trusted", "Spawn requires a verified direct local caller or registered service authority");
@@ -2965,13 +2962,14 @@ export class HiveDaemon {
     } };
   }
 
-  private spawnPeerBee(peer: NonNullable<RpcConn["localPeer"]>): string | null {
+  private peerOwner(peer: NonNullable<RpcConn["localPeer"]>): PeerOwner | null {
     const store = this.mustStore();
     const runtimes = store.listBees().flatMap(bee => store.listRuntimes(bee.id).map(runtime => {
       const binding = store.runtimeProcessIdentity(bee.id, runtime.generation);
-      return { beeId: bee.id, identity: binding.kind === "bound" ? binding.identity : null, pid: runtime.state === "stopped" ? null : runtime.pid };
+      return { beeId: bee.id, generation: runtime.generation, substrate: bee.substrate ?? null, identity: binding.kind === "bound" ? binding.identity : null, pid: runtime.state === "stopped" ? null : runtime.pid };
     }));
-    return spawnCallerBee(peer, runtimes, pid => this.lineageInspect(pid));
+    const owner = spawnCallerBee(peer, runtimes, pid => this.lineageInspect(pid));
+    return owner && { beeId: owner.beeId, generation: owner.generation, substrate: owner.substrate };
   }
 
   private rpcSpawnEffect(params: Record<string, unknown>): Promise<SpawnResult> {

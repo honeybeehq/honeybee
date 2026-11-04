@@ -2,11 +2,11 @@ import type { ProcessIdentity, ProcessInspection } from "../../harness/src/proce
 import { sameProcess } from "../../harness/src/processIdentity.ts";
 import { RpcError } from "./protocol.ts";
 
-export function spawnCallerBee(
+export function spawnCallerBee<T extends { beeId: string; identity: ProcessIdentity | null; pid?: number | null }>(
   peer: { pid: number; uid: number; processBirth: string | null },
-  runtimes: ReadonlyArray<{ beeId: string; identity: ProcessIdentity | null; pid?: number | null }>,
+  runtimes: ReadonlyArray<T>,
   inspect: (pid: number) => ProcessInspection,
-): string | null {
+): T | null {
   const chain: Extract<ProcessInspection, { kind: "present" }>[] = [];
   let pid = peer.pid;
   for (let depth = 0; depth < 256; depth++) {
@@ -21,18 +21,18 @@ export function spawnCallerBee(
     chain.push(value);
     const owner = runtimes.find(runtime => runtime.identity ? sameProcess(runtime.identity, value) : runtime.pid === value.pid);
     if (owner && !owner.identity) throw new RpcError("caller_not_trusted", "Spawning bee process identity is unresolved");
-    if (owner || value.ppid === 0) return verifiedAncestry(chain, inspect, owner?.beeId ?? null);
+    if (owner || value.ppid === 0) return verifiedAncestry(chain, inspect, owner ?? null);
     pid = value.ppid;
   }
   throw new RpcError("caller_not_trusted", "Spawn caller process ancestry exceeds the supported depth");
 }
 
-function verifiedAncestry(chain: Extract<ProcessInspection, { kind: "present" }>[], inspect: (pid: number) => ProcessInspection, beeId: string | null): string | null {
+function verifiedAncestry<T>(chain: Extract<ProcessInspection, { kind: "present" }>[], inspect: (pid: number) => ProcessInspection, owner: T | null): T | null {
   if (chain.some(item => {
     const current = inspect(item.pid);
     return !sameProcess(item, current) || current.ppid !== item.ppid || current.state !== "live";
   })) throw new RpcError("caller_not_trusted", "Spawn caller process ancestry changed");
-  return beeId;
+  return owner;
 }
 
 export function bindSpawnParent(params: Record<string, unknown>, callerBeeId: string | null, serviceAuthority = false): Record<string, unknown> {

@@ -7,6 +7,9 @@ import { RpcError } from "./protocol.ts";
 import type { RpcConn } from "./rpc.ts";
 
 export type Confinement = "confined" | "unconfined" | "unknown";
+export interface PeerOwner { beeId: string; generation: number; substrate: string | null }
+export type PeerLineage = {kind: "bee"; owner: PeerOwner} | {kind: "none"} | {kind: "refused"; error: unknown};
+export interface PeerClass { namespace: "same" | "different" | "unavailable" | "unread"; lineage: PeerLineage }
 export interface ProcReader {
   open(pid: number): number;
   birth(fd: number): string;
@@ -56,16 +59,32 @@ export function runtimeUserNamespace(pid: number, proc: ProcReader = procReader,
   } catch { return "unavailable"; }
   finally { if (fd !== undefined) proc.close(fd); }
 }
-export function peerConfinement(peer: LocalPeer | undefined, options: {
-  platform?: string; proc?: ProcReader; substrate?: () => string | null; strict?: boolean; registered?: boolean;
-} = {}): Confinement {
-  if ((options.platform ?? (type() === "Linux" ? "linux" : type())) !== "linux") return "unknown";
-  if (peerUserNamespace(peer, options.proc) !== "same") return "confined";
+function kernel(platform: string | undefined): string { return platform ?? (type() === "Linux" ? "linux" : type()); }
+export function classifyPeer(peer: LocalPeer, options: {platform?: string; proc?: ProcReader; owner: () => PeerOwner | null}): PeerClass {
+  const namespace = kernel(options.platform) === "linux" ? peerUserNamespace(peer, options.proc) : "unread";
+  let lineage: PeerLineage;
   try {
-    const substrate = options.substrate?.() ?? null;
-    if (substrate === "cell") return "confined";
-    return options.strict && !options.registered && substrate === null ? "confined" : "unconfined";
-  } catch { return "confined"; }
+    const owner = options.owner();
+    lineage = owner ? {kind: "bee", owner} : {kind: "none"};
+  } catch (error) { lineage = {kind: "refused", error}; }
+  return {namespace, lineage};
+}
+export function peerClassSettled(peerClass: PeerClass): boolean {
+  return peerClass.namespace !== "unavailable" && peerClass.lineage.kind !== "refused";
+}
+export function peerOwner(conn: Pick<RpcConn, "peerClass">): PeerOwner | null {
+  const peerClass = conn.peerClass?.() ?? null;
+  if (!peerClass) return null;
+  if (peerClass.lineage.kind === "refused") throw peerClass.lineage.error;
+  return peerClass.lineage.kind === "bee" ? peerClass.lineage.owner : null;
+}
+export function peerConfinement(peerClass: () => PeerClass | null, options: {platform?: string; strict?: boolean; registered?: boolean} = {}): Confinement {
+  if (kernel(options.platform) !== "linux") return "unknown";
+  const classified = peerClass();
+  if (!classified || classified.namespace !== "same" || classified.lineage.kind === "refused") return "confined";
+  const substrate = classified.lineage.kind === "bee" ? classified.lineage.owner.substrate : null;
+  if (substrate === "cell") return "confined";
+  return options.strict && !options.registered && substrate === null ? "confined" : "unconfined";
 }
 export function strictConfinementReasons(setuid: boolean, namespace?: "same" | "different" | "unavailable"): string[] {
   return [...(setuid ? ["setuid_bwrap"] : []), ...(namespace !== undefined && namespace !== "different" ? ["cell_userns_unisolated"] : [])];

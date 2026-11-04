@@ -9,6 +9,7 @@ const proc = (pid: number, ppid: number): Extract<ProcessInspection, {kind: "pre
   kind: "present", pid, ppid, uid: 1000, pgid: 2, state: "live", birth: `linux:${pid}`, bootId, startedAtMs: 1, waitStatus: null,
 });
 const refused = (error: unknown) => error instanceof RpcError && error.code === "caller_not_trusted";
+const owner = (...args: Parameters<typeof spawnCallerBee>): string | null => spawnCallerBee(...args)?.beeId ?? null;
 
 test("spawn lineage binds authenticated bee and preserves operator delegation", () => {
   assert.deepEqual(bindSpawnParent({ name: "helper" }, "caller"), { name: "helper", parentId: "caller", parentExternal: false });
@@ -29,10 +30,10 @@ test("spawn peer authentication follows exact process ancestry and chooses the c
   const processes = new Map([proc(4, 3), proc(3, 2), proc(2, 1), proc(1, 0)].map(value => [value.pid, value]));
   const inspect = (pid: number): ProcessInspection => processes.get(pid) ?? { kind: "gone" };
   const peer = { pid: 4, uid: 1000, processBirth: "linux:4" };
-  assert.equal(spawnCallerBee(peer, [{ beeId: "parent", identity: proc(2, 1) }], inspect), "parent");
-  assert.equal(spawnCallerBee(peer, [{ beeId: "parent", identity: proc(2, 1) }, { beeId: "nested", identity: proc(3, 2) }], inspect), "nested");
-  assert.equal(spawnCallerBee(peer, [], inspect), null);
-  assert.equal(spawnCallerBee(peer, [{ beeId: "unrelated", identity: null, pid: 99 }], inspect), null);
+  assert.equal(owner(peer, [{ beeId: "parent", identity: proc(2, 1) }], inspect), "parent");
+  assert.equal(owner(peer, [{ beeId: "parent", identity: proc(2, 1) }, { beeId: "nested", identity: proc(3, 2) }], inspect), "nested");
+  assert.equal(owner(peer, [], inspect), null);
+  assert.equal(owner(peer, [{ beeId: "unrelated", identity: null, pid: 99 }], inspect), null);
   assert.throws(() => spawnCallerBee(peer, [{ beeId: "unresolved", identity: null, pid: 3 }], inspect), refused);
   assert.throws(() => spawnCallerBee({ ...peer, processBirth: "linux:999" }, [], inspect), refused);
   processes.set(3, { ...proc(3, 2), ppid: 4 });
@@ -44,7 +45,7 @@ test("spawn refuses missing ancestry evidence and process replacement during ins
   assert.throws(() => spawnCallerBee(peer, [], () => ({ kind: "unavailable", reason: "permission_denied" })), refused);
   let reads = 0;
   assert.throws(() => spawnCallerBee(peer, [{ beeId: "caller", identity: proc(4, 0) }], () => ({ ...proc(4, 0), birth: ++reads === 1 ? "linux:4" : "linux:99" })), refused);
-  assert.equal(spawnCallerBee(peer, [{ beeId: "recycled", identity: { ...proc(4, 0), birth: "linux:99" } }], () => proc(4, 0)), null);
+  assert.equal(owner(peer, [{ beeId: "recycled", identity: { ...proc(4, 0), birth: "linux:99" } }], () => proc(4, 0)), null);
 });
 
 test("macOS ancestry ends at the first other-user ancestor that proc_pidinfo refuses, without losing the nearest bee", () => {
@@ -61,11 +62,11 @@ test("macOS ancestry ends at the first other-user ancestor that proc_pidinfo ref
   const terminal = chain(mac(470, 460), mac(460, 300));
   const ci = { pid: 700, uid: 501, processBirth: "darwin:1793200000:700" };
   const cli = { pid: 470, uid: 501, processBirth: "darwin:1793200000:470" };
-  assert.equal(spawnCallerBee(ci, [], runner), null);
-  assert.equal(spawnCallerBee(cli, [], terminal), null);
-  assert.equal(spawnCallerBee(cli, [{ beeId: "stale", identity: null, pid: null }], terminal), null);
-  assert.equal(spawnCallerBee(ci, [{ beeId: "bee", identity: mac(550, 510) }], runner), "bee");
-  assert.equal(spawnCallerBee(ci, [{ beeId: "bee", identity: mac(550, 510), pid: 550 }], runner), "bee");
+  assert.equal(owner(ci, [], runner), null);
+  assert.equal(owner(cli, [], terminal), null);
+  assert.equal(owner(cli, [{ beeId: "stale", identity: null, pid: null }], terminal), null);
+  assert.equal(owner(ci, [{ beeId: "bee", identity: mac(550, 510) }], runner), "bee");
+  assert.equal(owner(ci, [{ beeId: "bee", identity: mac(550, 510), pid: 550 }], runner), "bee");
   assert.throws(() => spawnCallerBee(cli, [{ beeId: "hidden", identity: null, pid: 300 }], terminal), refused);
   assert.throws(() => spawnCallerBee(cli, [{ beeId: "hidden", identity: { ...mac(300, 1), birth: "darwin:1793200000:300" } }], terminal), refused);
   assert.throws(() => spawnCallerBee(cli, [], () => denied), refused);
@@ -80,9 +81,9 @@ test("a permission denial between the caller and its bee runtime never attribute
   const denied: ProcessInspection = { kind: "unavailable", reason: "permission_denied" };
   const peer = { pid: 4, uid: 1000, processBirth: "linux:4" };
   const inspect = (pid: number): ProcessInspection => pid === 4 ? proc(4, 3) : pid === 3 ? denied : pid === 2 ? proc(2, 1) : pid === 1 ? proc(1, 0) : { kind: "gone" };
-  assert.equal(spawnCallerBee(peer, [{ beeId: "above", identity: proc(2, 1) }], inspect), null);
-  assert.equal(spawnCallerBee(peer, [{ beeId: "above", identity: proc(2, 1), pid: 2 }], inspect), null);
+  assert.equal(owner(peer, [{ beeId: "above", identity: proc(2, 1) }], inspect), null);
+  assert.equal(owner(peer, [{ beeId: "above", identity: proc(2, 1), pid: 2 }], inspect), null);
   assert.throws(() => spawnCallerBee(peer, [{ beeId: "hidden", identity: proc(3, 2) }], inspect), refused);
   assert.throws(() => spawnCallerBee(peer, [{ beeId: "hidden", identity: proc(3, 2), pid: 3 }], inspect), refused);
-  assert.equal(spawnCallerBee(peer, [{ beeId: "below", identity: proc(4, 3) }, { beeId: "above", identity: proc(2, 1) }], inspect), "below");
+  assert.equal(owner(peer, [{ beeId: "below", identity: proc(4, 3) }, { beeId: "above", identity: proc(2, 1) }], inspect), "below");
 });

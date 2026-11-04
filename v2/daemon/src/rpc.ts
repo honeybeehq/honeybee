@@ -1,4 +1,4 @@
-import { assertConfinedVerb, type Confinement } from "./confinedPeer.ts";
+import { assertConfinedVerb, peerClassSettled, type Confinement, type PeerClass } from "./confinedPeer.ts";
 import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
 import { StoreBackupError } from "../../core/src/storeBackup.ts";
 import { HumanOutputError } from "../../core/src/humanOutput.ts";
@@ -104,6 +104,7 @@ export interface RpcConn {
   readonly authenticatedBeeId?: string;
   readonly humanOutputManagement?: boolean;
   readonly localPeer?: Readonly<{uid: number; pid: number; processBirth: string | null}>;
+  readonly peerClass?: () => PeerClass | null;
   readonly ingress?: "local_unix" | "node_relay" | "remote";
   readonly caller?: Readonly<HelloCaller>;
   /** Push a raw frame (used for watch deltas/gaps). */
@@ -180,8 +181,9 @@ export type RpcDispatch = (
 
 export interface RpcServerOptions {
   admitConfined?: (verb: RpcVerb, params: Record<string, unknown>, conn: RpcConn) => Record<string, unknown>;
-  peerConfinement?: (peer: RpcConn["localPeer"], registered: boolean) => Confinement;
-  assertServiceCaller?: (peer: NonNullable<RpcConn["localPeer"]>) => void;
+  classifyPeer?: (peer: NonNullable<RpcConn["localPeer"]>) => PeerClass;
+  peerConfinement?: (peerClass: () => PeerClass | null, registered: boolean) => Confinement;
+  assertServiceCaller?: (peerClass: () => PeerClass | null) => void;
   dataDir?: string;
   instance?: {id: string; dataDir: string};
   localTrust?: LocalTrustConfig;
@@ -195,6 +197,7 @@ export interface RpcServerOptions {
 
 interface Connection extends RpcConn {
   confinement: Confinement;
+  peerClass: () => PeerClass | null;
   peerConnection: PeerConnection | null;
   socket: Socket;
   frames: JsonLineBuffer;
@@ -374,10 +377,18 @@ export class RpcServer {
 
   private onConnection(socket: Socket): void {
     const localUnix = socket.remoteAddress === undefined;
+    let classified: PeerClass | undefined;
     const conn: Connection = {
       socket,
       peerConnection: localUnix ? this.credentials.connect(socket) : null,
       get localPeer() { return conn.peerConnection?.state === "verified" ? conn.peerConnection.peer : undefined; },
+      peerClass: () => {
+        if (classified && peerClassSettled(classified)) return classified;
+        const peer = conn.localPeer;
+        if (!peer || !this.opts.classifyPeer) return null;
+        classified = this.opts.classifyPeer(peer);
+        return classified;
+      },
       confinement: "unknown",
       frames: new JsonLineBuffer(),
       helloDone: false,
@@ -490,7 +501,7 @@ export class RpcServer {
       if (process.platform === "linux" && this.opts.peerConfinement && conn.peerConnection && conn.peerConnection.state !== "verified") throw new RpcError("local_peer_credentials_unavailable", "Peer identity is unavailable; confined admission fails closed");
       let registered = false;
       try { if (this.trust.enabled && conn.peerConnection) { this.trust.require(conn.peerConnection, conn.ingress); registered = true; } } catch {}
-      conn.confinement = this.opts.peerConfinement?.(conn.localPeer, registered) ?? "unknown";
+      conn.confinement = this.opts.peerConfinement?.(conn.peerClass, registered) ?? "unknown";
       assertConfinedVerb(verb, conn.confinement ?? "unknown");
       if (verb === "spawn" && frame.context !== undefined && conn.confinement === "confined") throw new RpcError("confined_peer_refused", "Confined callers cannot acquire spawn service authority");
       if (conn.confinement === "confined") {
@@ -572,7 +583,7 @@ export class RpcServer {
             return this.trust.challenge(peer, conn, conn.ingress);
           }
           if (peer.state !== "verified") throw new RpcError("caller_not_trusted", "Service registration requires a verified peer");
-          this.opts.assertServiceCaller?.(peer.peer);
+          this.opts.assertServiceCaller?.(conn.peerClass);
           return this.trust.register(params, peer, conn, conn.ingress);
         }
         if (verb === "account.limits.observe" || verb === "account.limits.observation.discard" || (verb === "account.limits.observation" && params.id !== undefined)) {
