@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { join } from "node:path";
 import { samePath } from "../../daemon/src/endpointRecord.ts";
 import { serviceFileDataDir } from "../../daemon/src/service.ts";
 import { socketConfigured, type ResolvedDaemonTarget } from "./target.ts";
 
-export type ServiceScopeCode = "service_refused_in_cell" | "service_data_dir_mismatch" | "service_socket_mismatch" | "service_not_installed" | "daemon_identity_mismatch" | "daemon_stop_timeout";
+export type ServiceScopeCode = "service_refused_in_cell" | "service_home_redirected" | "service_data_dir_mismatch" | "service_socket_mismatch" | "service_not_installed" | "daemon_identity_mismatch" | "daemon_stop_timeout";
 
 export class ServiceScopeError extends Error {
   readonly code: ServiceScopeCode;
@@ -23,8 +23,18 @@ export interface ServiceScope {
   installed: boolean;
   unitDataDir: string | null;
   inCell: boolean;
+  accountHome: string | null;
+  homeRedirected: boolean;
   dataDirOwned: boolean;
   socketOwned: boolean;
+}
+
+function accountHomeOf(): string | null {
+  try {
+    return userInfo().homedir || null;
+  } catch {
+    return null;
+  }
 }
 
 export function resolveServiceScope(target: ResolvedDaemonTarget, servicePath: string, env: Record<string, string | undefined> = process.env): ServiceScope {
@@ -36,11 +46,16 @@ export function resolveServiceScope(target: ResolvedDaemonTarget, servicePath: s
   }
   const installed = contents !== null;
   const unitDataDir = contents === null ? null : serviceFileDataDir(contents);
-  const dataDirOwned = unitDataDir !== null
-    ? samePath(unitDataDir, target.cfg.dataDir)
-    : samePath(target.cfg.dataDir, join(homedir(), ".hive", "v2"));
+  const accountHome = accountHomeOf();
+  const homeRedirected = accountHome === null || !samePath(homedir(), accountHome);
+  const dataDirOwned = unitDataDir !== null && samePath(unitDataDir, target.cfg.dataDir);
   const socketOwned = !socketConfigured(target) || samePath(target.cfg.socketPath, target.expectedSocketPath);
-  return { servicePath, installed, unitDataDir, inCell: env.HIVE_CELL === "1", dataDirOwned, socketOwned };
+  return { servicePath, installed, unitDataDir, inCell: env.HIVE_CELL === "1", accountHome, homeRedirected, dataDirOwned, socketOwned };
+}
+
+export function isNodeDataDir(scope: ServiceScope, dir: string): boolean {
+  if (scope.unitDataDir !== null && samePath(dir, scope.unitDataDir)) return true;
+  return scope.accountHome !== null && samePath(dir, join(scope.accountHome, ".hive", "v2"));
 }
 
 function detailsOf(scope: ServiceScope, target: ResolvedDaemonTarget): Record<string, unknown> {
@@ -52,7 +67,17 @@ function detailsOf(scope: ServiceScope, target: ResolvedDaemonTarget): Record<st
     servicePath: scope.servicePath,
     serviceInstalled: scope.installed,
     serviceDataDir: scope.unitDataDir,
+    home: homedir(),
+    accountHome: scope.accountHome,
   };
+}
+
+export function refuseNodeDaemon(scope: ServiceScope, target: ResolvedDaemonTarget, verb: string, dataDir: string): ServiceScopeError {
+  const details = detailsOf(scope, target);
+  if (!scope.installed) {
+    return new ServiceScopeError("service_not_installed", `hive daemon ${verb}: no background service is installed for data dir ${dataDir}; run it in the foreground with: hive daemon run --data-dir ${dataDir}`, details);
+  }
+  return new ServiceScopeError("service_data_dir_mismatch", `hive daemon ${verb}: the background service runs data dir ${scope.unitDataDir ?? "(unknown)"}, not ${dataDir}; refusing to touch it. A daemon for ${dataDir} runs in the foreground with: hive daemon run --data-dir ${dataDir}`, details);
 }
 
 export function assertServiceOwned(scope: ServiceScope, target: ResolvedDaemonTarget, verb: string): void {
@@ -60,13 +85,13 @@ export function assertServiceOwned(scope: ServiceScope, target: ResolvedDaemonTa
   if (scope.inCell) {
     throw new ServiceScopeError("service_refused_in_cell", `hive daemon ${verb}: refused inside a Cell (HIVE_CELL=1); the background service belongs to the node, not to a Cell. Run a scratch daemon with: hive daemon run --data-dir <dir>`, details);
   }
+  if (scope.homeRedirected) {
+    throw new ServiceScopeError("service_home_redirected", `hive daemon ${verb}: HOME (${homedir()}) is not this account's home (${scope.accountHome ?? "unknown"}); the user service manager runs under the account home, so a service file under this HOME would never be the one it runs. Refusing to touch the service`, details);
+  }
   if (!scope.socketOwned) {
     throw new ServiceScopeError("service_socket_mismatch", `hive daemon ${verb}: socket ${target.cfg.socketPath} (from ${target.socketSource}) is not the background service's socket ${target.expectedSocketPath}; refusing to touch the service`, details);
   }
   if (scope.dataDirOwned) return;
   if (verb === "install" && !scope.installed) return;
-  if (scope.installed) {
-    throw new ServiceScopeError("service_data_dir_mismatch", `hive daemon ${verb}: the background service runs data dir ${scope.unitDataDir ?? "(unknown)"}, not ${target.cfg.dataDir}; refusing to touch it. A daemon for ${target.cfg.dataDir} runs in the foreground with: hive daemon run --data-dir ${target.cfg.dataDir}`, details);
-  }
-  throw new ServiceScopeError("service_not_installed", `hive daemon ${verb}: no background service is installed for data dir ${target.cfg.dataDir}; run it in the foreground with: hive daemon run --data-dir ${target.cfg.dataDir}`, details);
+  throw refuseNodeDaemon(scope, target, verb, target.cfg.dataDir);
 }
