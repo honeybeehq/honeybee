@@ -1,3 +1,4 @@
+import {cellGit, withCellGit, requireCellGitIdentity, type CellGitIdentity} from "./cellGit.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -99,6 +100,7 @@ function lines(out: string): string[] {
  */
 export function unlandedCommitsByTip(req: {
   spaceDir: string;
+  cellGit?:CellGitIdentity;
   originRepo: string;
   tips: readonly string[];
   base: string | null;
@@ -106,34 +108,37 @@ export function unlandedCommitsByTip(req: {
   /** A Honeybee upstream mirror ref: one more landing target, by ancestry and by the content checks. */
   upstream?: UpstreamRef | null;
 }): Map<string, string[]> {
+  const identity=requireCellGitIdentity(req.cellGit,req.spaceDir);
   const tips = [...new Set(req.tips)];
   try {
-    return probeTips(req.spaceDir, req.originRepo, tips, req.base, req.receipts ?? [], req.upstream ?? null);
+    return withCellGit(identity,()=>probeTips(req.spaceDir, req.originRepo, tips, req.base, req.receipts ?? [], req.upstream ?? null,identity));
   } catch {
-    return new Map(tips.map((tip) => [tip, commitsSinceBase(req.spaceDir, tip, req.base)]));
+    return new Map(tips.map((tip) => [tip, commitsSinceBase(req.spaceDir, tip, req.base,identity)]));
   }
 }
 
-function commitsSinceBase(spaceDir: string, tip: string, base: string | null): string[] {
-  const res = tryGit(spaceDir, ["rev-list", `--max-count=${MAX_RANGE_COMMITS + 1}`, tip, ...(base ? ["--not", base] : [])]);
+function commitsSinceBase(spaceDir: string, tip: string, base: string | null,identity:CellGitIdentity): string[] {
+  const res = cellGit(identity, ["rev-list", `--max-count=${MAX_RANGE_COMMITS + 1}`, tip, ...(base ? ["--not", base] : [])]);
   const range = res.status === 0 ? lines(res.stdout) : [];
   return range.length > 0 ? range : [tip];
 }
 
-function probeTips(spaceDir: string, originRepo: string, tips: string[], base: string | null, receipts: readonly LandingReceipt[], upstream: UpstreamRef | null): Map<string, string[]> {
-  const cellObjects = objectsDir(spaceDir);
+function probeTips(spaceDir: string, originRepo: string, tips: string[], base: string | null, receipts: readonly LandingReceipt[], upstream: UpstreamRef | null,identity:CellGitIdentity): Map<string, string[]> {
+  const cellObjects = cellGit(identity,["rev-parse","--path-format=absolute","--git-path","objects"]).stdout.trim();
   const originObjects = objectsDir(originRepo);
   if (cellObjects == null || originObjects == null) throw new Error("object directories unresolvable");
   const allTargets = [...new Set([...landingTargets(originRepo, receipts), ...(upstream ? [upstream.sha] : [])])];
 
   const scratch = mkdtempSync(join(tmpdir(), "hive-landed-"));
   try {
-    const env = { GIT_OBJECT_DIRECTORY: scratch, GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([cellObjects, originObjects, ...(upstream ? [upstream.objectsDir] : [])]) };
+    const scratchRepo=join(scratch,"repo.git");
+    if(tryGit(scratch,["init","--bare",scratchRepo]).status!==0)throw new Error("scratch initialization failed");
+    const env = { GIT_OBJECT_DIRECTORY: join(scratchRepo,"objects"), GIT_ALTERNATE_OBJECT_DIRECTORIES: alternatesValue([cellObjects, originObjects, ...(upstream ? [upstream.objectsDir] : [])]) };
     const deadline = Date.now() + PROBE_BUDGET_MS;
     const run = (args: string[], opts: { input?: string; literalPaths?: boolean } = {}) => {
       const timeoutMs = deadline - Date.now();
       if (timeoutMs <= 0) throw new Error("landed probe budget exhausted");
-      return tryGit(spaceDir, args, { env: opts.literalPaths ? { ...env, GIT_LITERAL_PATHSPECS: "1" } : env, input: opts.input, timeoutMs });
+      return tryGit(scratchRepo, args, { env: opts.literalPaths ? { ...env, GIT_LITERAL_PATHSPECS: "1" } : env, input: opts.input, timeoutMs });
     };
     const must = (args: string[], opts: { input?: string; literalPaths?: boolean } = {}) => {
       const res = run(args, opts);
@@ -301,9 +306,9 @@ function probeTips(spaceDir: string, originRepo: string, tips: string[], base: s
 }
 
 /** Subjects for display; a commit whose subject cannot be read keeps an empty one. */
-export function describeCommits(spaceDir: string, shas: readonly string[]): UnlandedCommit[] {
+export function describeCommits(spaceDir: string, shas: readonly string[],cellIdentity?:CellGitIdentity): UnlandedCommit[] {
   if (shas.length === 0) return [];
-  const res = tryGit(spaceDir, ["log", "--no-walk=unsorted", "--format=%H%x00%s", ...shas]);
+  const res = cellGit(requireCellGitIdentity(cellIdentity,spaceDir), ["log", "--no-walk=unsorted", "--format=%H%x00%s", ...shas]);
   const subjects = new Map<string, string>();
   if (res.status === 0) {
     for (const line of res.stdout.split("\n")) {

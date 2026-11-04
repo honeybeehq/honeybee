@@ -1,4 +1,7 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import {tmpdir} from "node:os";
+import {randomUUID} from "node:crypto";
+import {cellGit, withCellGit, requireCellGitIdentity, type CellGitIdentity} from "./cellGit.ts";
+import { existsSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { gitEnv, revParse, tryGit } from "./git.ts";
 
@@ -29,9 +32,9 @@ export interface WipSnapshot {
 
 const IN_PROGRESS_MARKERS = ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG", "rebase-merge", "rebase-apply"] as const;
 
-export function operationInProgress(spaceDir: string): string | null {
+export function operationInProgress(spaceDir: string, identity?: CellGitIdentity): string | null {
   for (const marker of IN_PROGRESS_MARKERS) {
-    const res = tryGit(spaceDir, ["rev-parse", "--git-path", marker]);
+    const res = cellGit(requireCellGitIdentity(identity,spaceDir), ["rev-parse", "--git-path", marker]);
     if (res.status !== 0) continue;
     const path = res.stdout.trim();
     if (existsSync(join(spaceDir, path)) || existsSync(path)) return marker;
@@ -58,21 +61,14 @@ function must(cwd: string, args: string[], stage: WipError["stage"], env?: Recor
   return res.stdout.trim();
 }
 
-function seedIndex(spaceDir: string, index: string, stage: WipStage, env: Record<string, string>): void {
-  rmSync(index, { force: true });
-  const real = join(spaceDir, ".git", "index");
-  if (existsSync(real)) {
-    try {
-      copyFileSync(real, index);
-    } catch {
-      rmSync(index, { force: true });
-    }
-  }
-  if (!existsSync(index)) must(spaceDir, ["read-tree", "HEAD"], stage, env);
+function cellMust(spaceDir: string, args: string[], stage: WipStage, identity: CellGitIdentity, indexFile?:string): string {
+  const res=cellGit(identity,args,{indexFile});
+  if(res.status!==0)throw new WipError(stage,`repository command exited ${res.status}`);
+  return res.stdout.trim();
 }
 
-function changedPaths(spaceDir: string, stage: WipStage): string[] {
-  const res = tryGit(spaceDir, ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"]);
+function changedPaths(spaceDir: string, stage: WipStage, identity:CellGitIdentity): string[] {
+  const res = cellGit(identity, ["status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames"]);
   if (res.status !== 0) throw new WipError(stage, `git status exited ${res.status}: ${res.stderr.trim()}`);
   return res.stdout.split("\0").filter((entry) => entry.length > 3).map((entry) => entry.slice(3));
 }
@@ -90,43 +86,43 @@ function oversize(spaceDir: string, paths: string[], maxFileBytes: number): Arra
   return out;
 }
 
-function stageWorkingTree(spaceDir: string, index: string, stage: WipStage, maxFileBytes: number): { env: Record<string, string>; skipped: Array<{ path: string; bytes: number }> } {
-  const env = gitEnv({ GIT_INDEX_FILE: index });
-  seedIndex(spaceDir, index, stage, env);
-  const skipped = oversize(spaceDir, changedPaths(spaceDir, stage), maxFileBytes);
-  const add = ["add", "-A", "--", ".", ...skipped.map((s) => `:(exclude,literal)${s.path}`)];
-  if (tryGit(spaceDir, add, { env }).status !== 0) {
-    rmSync(index, { force: true });
-    must(spaceDir, ["read-tree", "HEAD"], stage, env);
-    must(spaceDir, add, stage, env);
-  }
-  return { env, skipped };
+function stageWorkingTree(spaceDir:string,index:string,stage:WipStage,maxFileBytes:number,identity:CellGitIdentity): {skipped:Array<{path:string;bytes:number}>} {
+  cellMust(spaceDir,["read-tree","HEAD"],stage,identity,index);
+  const skipped=oversize(spaceDir,changedPaths(spaceDir,stage,identity),maxFileBytes);
+  cellMust(spaceDir,["add","-A","--",".",...skipped.map(s=>`:(exclude,literal)${s.path}`)],stage,identity,index);
+  return {skipped};
 }
 
-export function snapshotWip(spaceDir: string, boxDir: string, cellId: string, now: () => number = Date.now, maxFileBytes = WIP_MAX_FILE_BYTES): WipSnapshot {
-  const head = revParse(spaceDir, "HEAD");
+export function snapshotWip(spaceDir: string, boxDir: string, cellId: string, now: () => number = Date.now, maxFileBytes = WIP_MAX_FILE_BYTES, cellIdentity?:CellGitIdentity): WipSnapshot {
+  const identity=requireCellGitIdentity(cellIdentity,spaceDir);
+  const head = cellMust(spaceDir,["rev-parse","--verify","HEAD"],"snapshot",identity);
   if (head == null) throw new WipError("snapshot", "the Cell has no HEAD");
-  const inProgress = operationInProgress(spaceDir);
+  const inProgress = operationInProgress(spaceDir,identity);
   if (inProgress != null) throw new WipError("snapshot", `operation_in_progress:${inProgress}`);
-  mkdirSync(boxDir, { recursive: true });
-  const index = join(boxDir, "wip.index");
+  const scratch=mkdtempSync(join(tmpdir(),"hive-wip-index-"));
+  const index=join(scratch,"index");
   try {
-    const { env, skipped } = stageWorkingTree(spaceDir, index, "snapshot", maxFileBytes);
-    const tree = must(spaceDir, ["write-tree"], "snapshot", env);
-    const headTree = must(spaceDir, ["rev-parse", `${head}^{tree}`], "snapshot");
+    const { skipped } = stageWorkingTree(spaceDir, index, "snapshot", maxFileBytes, identity);
+    const tree = cellMust(spaceDir, ["write-tree"], "snapshot", identity,index);
+    const headTree = cellMust(spaceDir, ["rev-parse", `${head}^{tree}`], "snapshot",identity);
     if (tree === headTree) return { head, tree, sha: head, dirty: false, skipped, complete: skipped.length === 0 };
-    const sha = must(spaceDir, ["commit-tree", tree, "-p", head, "-m", `hive wip ${cellId} ${new Date(now()).toISOString()}`], "snapshot", env);
+    const sha = cellMust(spaceDir, ["commit-tree", tree, "-p", head, "-m", `hive wip ${cellId} ${new Date(now()).toISOString()}`], "snapshot", identity,index);
     return { head, tree, sha, dirty: true, skipped, complete: skipped.length === 0 };
   } finally {
-    rmSync(index, { force: true });
+    rmSync(scratch, { recursive:true, force: true });
   }
 }
 
-export function pushWip(originRepo: string, spaceDir: string, node: string, cellId: string, sha: string, timeoutMs = 120_000): void {
+export function pushWip(originRepo: string, spaceDir: string, node: string, cellId: string, sha: string, timeoutMs = 120_000, cellIdentity?:CellGitIdentity): void {
+  const identity=requireCellGitIdentity(cellIdentity,spaceDir);
   if (!SHA.test(sha)) throw new WipError("push", `not a commit sha: ${sha}`);
   if (!existsSync(join(originRepo, ".git")) && !existsSync(join(originRepo, "HEAD"))) throw new WipError("push", `origin ${originRepo} is not a local repository`);
-  const res = tryGit(originRepo, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", spaceDir, `+${sha}:${wipRefFor(node, cellId)}`], { timeoutMs });
-  if (res.status !== 0) throw new WipError("push", `fetch into origin exited ${res.status}: ${res.stderr.trim()}`);
+  const intake=`refs/hive/wip-intake/${randomUUID()}`;
+  try {
+    const res=withCellGit(identity,()=>tryGit(originRepo,["-c","fetch.fsckObjects=true","fetch","--quiet","--no-tags","--no-recurse-submodules",spaceDir,`+${sha}:${intake}`],{timeoutMs}));
+    if(res.status!==0)throw new WipError("push","checked intake failed");
+    must(originRepo,["update-ref",wipRefFor(node,cellId),sha],"push");
+  } finally {tryGit(originRepo,["update-ref","-d",intake]);}
 }
 
 export function confirmWip(originRepo: string, node: string, cellId: string, sha: string): boolean {
@@ -180,19 +176,20 @@ export function adoptWipRef(originRepo: string, node: string, cellId: string, sh
   return tryGit(originRepo, ["update-ref", wipRefFor(node, cellId), sha]).status === 0 ? "adopted" : "failed";
 }
 
-export function restoreWip(spaceDir: string, originRepo: string, node: string, cellId: string, sha: string): { restored: boolean; reason: WipRestoreSkip | null } {
+export function restoreWip(spaceDir: string, originRepo: string, node: string, cellId: string, sha: string, cellIdentity?:CellGitIdentity): { restored: boolean; reason: WipRestoreSkip | null } {
+  const identity=requireCellGitIdentity(cellIdentity,spaceDir);
   if (!SHA.test(sha)) return { restored: false, reason: "invalid_sha" };
-  const head = revParse(spaceDir, "HEAD");
+  const head = cellMust(spaceDir,["rev-parse","--verify","HEAD"],"restore",identity);
   if (head == null) return { restored: false, reason: "no_head" };
   if (sha === head) return { restored: false, reason: "nothing_to_restore" };
-  if (tryGit(spaceDir, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) {
-    const fetched = tryGit(spaceDir, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", originRepo, wipRefFor(node, cellId)], { timeoutMs: 120_000 });
-    if (fetched.status !== 0 || tryGit(spaceDir, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) return { restored: false, reason: "wip_unreachable" };
+  if (cellGit(identity, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) {
+    const fetched = cellGit(identity, ["fetch", "--quiet", "--no-tags", "--no-recurse-submodules", originRepo, wipRefFor(node, cellId)], { timeoutMs: 15000 });
+    if (fetched.status !== 0 || cellGit(identity, ["cat-file", "-e", `${sha}^{commit}`]).status !== 0) return { restored: false, reason: "wip_unreachable" };
   }
-  if (revParse(spaceDir, `${sha}^`) !== head) return { restored: false, reason: "head_mismatch" };
-  if (tryGit(spaceDir, ["status", "--porcelain", "--untracked-files=normal"]).stdout.trim().length > 0) return { restored: false, reason: "space_dirty" };
-  must(spaceDir, ["read-tree", "-m", "-u", sha], "restore");
-  must(spaceDir, ["reset", "--quiet"], "restore");
+  if (cellMust(spaceDir,["rev-parse",`${sha}^`],"restore",identity) !== head) return { restored: false, reason: "head_mismatch" };
+  if (cellGit(identity, ["status", "--porcelain", "--untracked-files=normal"]).stdout.trim().length > 0) return { restored: false, reason: "space_dirty" };
+  cellMust(spaceDir, ["read-tree", "-m", "-u", sha], "restore",identity);
+  cellMust(spaceDir, ["reset", "--quiet"], "restore",identity);
   return { restored: true, reason: null };
 }
 

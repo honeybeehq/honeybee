@@ -1,3 +1,4 @@
+import {fixtureCellGit} from "./helpers.ts";
 /**
  * v31 Cell retention primitives: inspection facts, the eviction guard
  * (dirty / HEAD moved / shape), the atomic park, and the deferred sweep.
@@ -10,7 +11,7 @@ import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { cellPaths } from "../src/layout.ts";
 import { provisionCell } from "../src/provision.ts";
-import { CellDeleteRefused, CellShapeError } from "../src/remove.ts";
+import { CellDeleteRefused, CellShapeError } from "./fixture-operations.ts";
 import {
   CellHeadMovedError,
   EVICTING_DIR,
@@ -36,7 +37,7 @@ import {
   sweepEvictingSync,
   trimCellWrapper,
   verifyTrimPaths,
-} from "../src/retention.ts";
+} from "./fixture-operations.ts";
 import type { RetentionWorkerResult } from "../src/retentionWorker.ts";
 import { commitInCell, g, makeRig } from "./helpers.ts";
 
@@ -150,7 +151,7 @@ test("retention.worker: inspects a batch off-thread and reports per-wrapper erro
     const result = await new Promise<RetentionWorkerResult>((resolve, reject) => {
       const worker = new Worker(retentionWorkerUrl(), {
         execArgv: [],
-        workerData: { wrappers: [{ key: "a", wrapperDir: a.paths.wrapperDir }, { key: "gone", wrapperDir: join(rig.cellsRoot, "gone") }], measure: true },
+        workerData: { wrappers: [{ key: "a", wrapperDir: a.paths.wrapperDir, cellGit: {...fixtureCellGit(a.paths.spaceDir),onWarning:undefined} }, { key: "gone", wrapperDir: join(rig.cellsRoot, "gone") }], measure: true },
       });
       worker.once("message", resolve);
       worker.once("error", reject);

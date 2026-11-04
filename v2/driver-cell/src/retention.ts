@@ -1,3 +1,4 @@
+import {cellGit, requireCellGitIdentity, type CellGitIdentity} from "./cellGit.ts";
 /**
  * Cell retention primitives (v31).
  *
@@ -167,11 +168,11 @@ export function matchesTrimPattern(name: string, isDirectory: boolean, patterns:
   return patterns.some((pattern) => (pattern.startsWith("*.") ? !isDirectory && name.endsWith(pattern.slice(1)) : isDirectory && name === pattern));
 }
 
-export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[] = DEFAULT_TRIM_PATTERNS): IgnoredEntries {
+export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[] = DEFAULT_TRIM_PATTERNS,identity?:CellGitIdentity): IgnoredEntries {
   const out: IgnoredEntries = { env: [], trim: [], install: [], keep: [] };
   if (!existsSync(join(spaceDir, ".git"))) return out;
-  const args = ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--ignored=matching", "--untracked-files=normal", "--ignore-submodules=all"];
-  const result = tryGit(spaceDir, args);
+  const args = ["status", "--porcelain=v1", "-z", "--ignored=matching", "--untracked-files=normal", "--ignore-submodules=all"];
+  const result = cellGit(requireCellGitIdentity(identity,spaceDir), args);
   if (result.status !== 0) throw new GitError(args, result.status, result.stderr);
   const records = result.stdout.split("\0");
   for (let i = 0; i < records.length; i++) {
@@ -203,8 +204,8 @@ export function classifyIgnored(spaceDir: string, trimPatterns: readonly string[
  * directories such as node_modules, which git collapses). They are often
  * per-Cell and unique, so eviction preserves them and revive restores them.
  */
-export function listIgnoredEnvFiles(spaceDir: string): string[] {
-  return classifyIgnored(spaceDir).env;
+export function listIgnoredEnvFiles(spaceDir: string,identity?:CellGitIdentity): string[] {
+  return classifyIgnored(spaceDir,DEFAULT_TRIM_PATTERNS,identity).env;
 }
 
 export function measurePathBytes(path: string): number {
@@ -559,11 +560,11 @@ export function verifyParkPaths(
   wrapperDir: string,
   planned: string[],
   mode: ParkMode,
-  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number } = {},
+  opts: { cellGit?:CellGitIdentity; trimPatterns?: readonly string[]; modifiedSinceMs?: number } = {},
 ): ParkVerification {
   const spaceDir = spaceDirIn(resolve(wrapperDir));
   if (spaceDir == null) return { confirmed: [], skipped: planned.map((path) => ({ path, why: "absent" })), shallow: [] };
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS,opts.cellGit);
   const current = new Set(parkCandidates(ignored, mode));
   const install = new Set(ignored.install);
   const confirmed: string[] = [];
@@ -594,12 +595,12 @@ export interface ParkPlan {
 export function planParkPaths(
   wrapperDir: string,
   mode: ParkMode,
-  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; measure?: boolean } = {},
+  opts: { cellGit?:CellGitIdentity; trimPatterns?: readonly string[]; modifiedSinceMs?: number; measure?: boolean } = {},
 ): ParkPlan {
   const spaceDir = spaceDirIn(resolve(wrapperDir));
   if (spaceDir == null) return { mode, planned: [], shallow: [], skipped: [], envFiles: [], bytes: null, sharedBytes: null };
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
-  const verified = verifyParkPaths(wrapperDir, parkCandidates(ignored, mode), mode, { trimPatterns: opts.trimPatterns, ...(opts.modifiedSinceMs == null ? {} : { modifiedSinceMs: opts.modifiedSinceMs }) });
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS,opts.cellGit);
+  const verified = verifyParkPaths(wrapperDir, parkCandidates(ignored, mode), mode, { cellGit:opts.cellGit, trimPatterns: opts.trimPatterns, ...(opts.modifiedSinceMs == null ? {} : { modifiedSinceMs: opts.modifiedSinceMs }) });
   const env = new Set(ignored.env);
   let bytes: number | null = null;
   let sharedBytes: number | null = null;
@@ -615,7 +616,7 @@ export function planParkPaths(
   return { mode, planned: verified.confirmed, shallow: verified.shallow, skipped: verified.skipped, envFiles: mode === "purge" ? verified.confirmed.filter((rel) => env.has(rel)) : [], bytes, sharedBytes };
 }
 
-export function applyParkPlan(cellsRoot: string, wrapperDir: string, plan: ParkPlan, opts: { now?: () => number } = {}): ParkResult {
+export function applyParkPlan(cellsRoot: string, wrapperDir: string, plan: ParkPlan, opts: { cellGit?:CellGitIdentity; now?: () => number } = {}): ParkResult {
   const { root, spaceDir } = trimTarget(cellsRoot, wrapperDir);
   const envFiles = plan.mode === "purge" ? preserveEnvFiles(root, spaceDir, plan.envFiles) : [];
   const parked = parkPaths(cellsRoot, wrapperDir, plan.planned, { now: opts.now, label: plan.mode === "purge" ? "park" : "trim", shallow: plan.shallow });
@@ -625,7 +626,7 @@ export function applyParkPlan(cellsRoot: string, wrapperDir: string, plan: ParkP
 export function verifyTrimPaths(
   wrapperDir: string,
   planned: string[],
-  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number } = {},
+  opts: { cellGit?:CellGitIdentity; trimPatterns?: readonly string[]; modifiedSinceMs?: number } = {},
 ): { confirmed: string[]; skipped: TrimSkip[] } {
   const { confirmed, skipped } = verifyParkPaths(wrapperDir, planned, "trim", opts);
   return { confirmed, skipped };
@@ -635,7 +636,7 @@ export function parkPaths(
   cellsRoot: string,
   wrapperDir: string,
   confirmed: string[],
-  opts: { now?: () => number; label?: string; shallow?: readonly string[] } = {},
+  opts: { cellGit?:CellGitIdentity; now?: () => number; label?: string; shallow?: readonly string[] } = {},
 ): TrimResult {
   const { root, target, spaceDir } = trimTarget(cellsRoot, wrapperDir);
   const shallow = new Set(opts.shallow ?? []);
@@ -656,7 +657,7 @@ export function parkPaths(
   return result;
 }
 
-export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: string[], opts: { now?: () => number } = {}): TrimResult {
+export function parkTrimPaths(cellsRoot: string, wrapperDir: string, confirmed: string[], opts: { cellGit?:CellGitIdentity; now?: () => number } = {}): TrimResult {
   return parkPaths(cellsRoot, wrapperDir, confirmed, opts);
 }
 
@@ -674,7 +675,7 @@ export function parkCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
   mode: ParkMode,
-  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number; measure?: boolean } = {},
+  opts: { cellGit?:CellGitIdentity; trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number; measure?: boolean } = {},
 ): ParkResult {
   trimTarget(cellsRoot, wrapperDir);
   return applyParkPlan(cellsRoot, wrapperDir, planParkPaths(wrapperDir, mode, opts), { now: opts.now });
@@ -684,7 +685,7 @@ export function trimCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
   planned: string[],
-  opts: { trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number } = {},
+  opts: { cellGit?:CellGitIdentity; trimPatterns?: readonly string[]; modifiedSinceMs?: number; now?: () => number } = {},
 ): TrimResult {
   trimTarget(cellsRoot, wrapperDir);
   const verified = verifyTrimPaths(wrapperDir, planned, opts);
@@ -705,7 +706,7 @@ function spaceDirIn(wrapperDir: string): string | null {
 
 export function inspectCellWrapper(
   wrapperDir: string,
-  opts: { measure?: boolean; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
+  opts: { cellGit?:CellGitIdentity; measure?: boolean; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
 ): CellWrapperInspection {
   const started = Date.now();
   const target = resolve(wrapperDir);
@@ -714,9 +715,9 @@ export function inspectCellWrapper(
     return { wrapperDir: target, envFiles: [], present: false, provisioned: false, head: null, report: null, dirtySubmodules: [], bytes: null, trim: [], install: [], keep: [], elapsedMs: Date.now() - started };
   }
   const provisioned = existsSync(join(spaceDir, ".git"));
-  const head = provisioned ? revParse(spaceDir, "HEAD") : null;
-  const { report, dirtySubmodules } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
+  const head = provisioned ? cellGit(requireCellGitIdentity(opts.cellGit,spaceDir),["rev-parse","--verify","HEAD"]).stdout.trim() : null;
+  const { report, dirtySubmodules } = dirtyReportDetailed(target, { cellGit:opts.cellGit, receipts: opts.receipts, upstream: opts.upstream ?? null });
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS,opts.cellGit);
   const measure = opts.measure !== false;
   const sized = (paths: string[]): PathBytes[] => paths.map((path) => {
     if (!measure) return { path, bytes: null, sharedBytes: null };
@@ -754,7 +755,7 @@ export class CellHeadMovedError extends Error {
 export function evictCellWrapper(
   cellsRoot: string,
   wrapperDir: string,
-  opts: { force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
+  opts: { cellGit?:CellGitIdentity; force?: boolean; expectedHead?: string | null; now?: () => number; trimPatterns?: readonly string[]; receipts?: readonly LandingReceipt[]; upstream?: UpstreamRef | null } = {},
 ): EvictResult | null {
   const target = resolve(wrapperDir);
   if (!existsSync(target)) return null;
@@ -764,14 +765,14 @@ export function evictCellWrapper(
   }
   const spaceDir = spaceDirIn(target);
   if (spaceDir == null) throw new CellShapeError(target, "no -space- checkout inside");
-  const { report, dirtySubmodules } = dirtyReportDetailed(target, { receipts: opts.receipts, upstream: opts.upstream ?? null });
+  const { report, dirtySubmodules } = dirtyReportDetailed(target, { cellGit:opts.cellGit, receipts: opts.receipts, upstream: opts.upstream ?? null });
   const force = opts.force ?? false;
   if (report.dirty && !force) throw new CellDeleteRefused(target, report, dirtySubmodules);
-  const head = existsSync(join(spaceDir, ".git")) ? revParse(spaceDir, "HEAD") : null;
+  const head = existsSync(join(spaceDir, ".git")) ? cellGit(requireCellGitIdentity(opts.cellGit,spaceDir),["rev-parse","--verify","HEAD"]).stdout.trim() : null;
   if (opts.expectedHead !== undefined && head !== opts.expectedHead) {
     throw new CellHeadMovedError(target, opts.expectedHead, head);
   }
-  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS);
+  const ignored = classifyIgnored(spaceDir, opts.trimPatterns ?? DEFAULT_TRIM_PATTERNS,opts.cellGit);
   const envFiles = preserveEnvFiles(root, spaceDir, ignored.env);
   const keptPaths = preserveKeptPaths(root, spaceDir, ignored.keep);
   const parkedDir = join(root, EVICTING_DIR, `${basename(target)}.${(opts.now ?? Date.now)()}.${process.pid}`);

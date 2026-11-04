@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { provisionCell } from "../src/provision.ts";
-import { CellDeleteRefused, deleteCell, dirtyReport } from "../src/remove.ts";
+import { CellDeleteRefused, deleteCell, dirtyReport } from "./fixture-operations.ts";
 import { commitInCell, commitOn, fingerprintOrigin, g, makeRig } from "./helpers.ts";
 
 function provisioned(rig: ReturnType<typeof makeRig>) {

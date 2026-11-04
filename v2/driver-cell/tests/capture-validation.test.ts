@@ -1,3 +1,4 @@
+import { fixtureCellGit } from "./helpers.ts";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
@@ -38,7 +39,7 @@ for (const variant of ["existing_blob", "new_blob", "malformed_commit", "destina
         placeObject(space, hash, object);
         g(space, ["update-ref", "--no-deref", "HEAD", hash]);
       }
-      const result = captureWork({ originRepo: rig.origin.repo, cellSpaceDir: space, targetBranch: "target", mode: "merge", opId: variant });
+      const result = captureWork({ originRepo: rig.origin.repo, cellSpaceDir: space, cellGit: fixtureCellGit(space), targetBranch: "target", mode: "merge", opId: variant });
       if (variant === "new_blob" || variant === "malformed_commit") {
         assert.equal(result.status, "refused");
         assert.equal(result.reason, "invalid_objects");

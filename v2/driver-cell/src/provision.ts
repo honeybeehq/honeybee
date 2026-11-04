@@ -1,3 +1,4 @@
+import type {CellGitIdentity} from "./cellGit.ts";
 /**
  * Two-step cell provisioning (WP5, spec 05 point 1) + warm cells (A5).
  *
@@ -64,6 +65,7 @@ export interface ProvisionRequest {
   /** Per-repo opt-in warm artifact dirs, relative to the working tree (A5). */
   warmArtifacts?: string[];
   restoreWip?: { sha: string; node: string; cellId: string };
+  cellGit?:CellGitIdentity;
 }
 
 export interface ProvisionedCell {
@@ -80,7 +82,7 @@ export interface ProvisionedCell {
 export function restoreWipAfterProvision(cell: ProvisionedCell, req: ProvisionRequest): ProvisionedCell {
   if (!req.restoreWip || cell.replayed) return cell;
   try {
-    const res = restoreWip(cell.paths.spaceDir, req.originRepo, req.restoreWip.node, req.restoreWip.cellId, req.restoreWip.sha);
+    const res = restoreWip(cell.paths.spaceDir, req.originRepo, req.restoreWip.node, req.restoreWip.cellId, req.restoreWip.sha,req.cellGit);
     return { ...cell, wipRestore: { restored: res.restored, reason: res.reason } };
   } catch (err) {
     return { ...cell, wipRestore: { restored: false, reason: err instanceof Error ? err.message : String(err) } };

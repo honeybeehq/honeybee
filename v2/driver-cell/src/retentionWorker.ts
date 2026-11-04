@@ -1,3 +1,4 @@
+import type {CellGitIdentity} from "./cellGit.ts";
 /**
  * Worker entrypoint for the retention pass: `inspectCellWrapper` over many
  * wrappers (git status + HEAD + a full du walk each) is seconds-to-minutes of
@@ -12,7 +13,7 @@ import { confirmWip, pushWip, snapshotWip, sweepWipRefs, type WipSnapshot } from
 
 export interface RetentionWorkerRequest {
   kind?: "inspect";
-  wrappers: Array<{ key: string; wrapperDir: string; receipts?: LandingReceipt[]; originRepo?: string | null }>;
+  wrappers: Array<{ cellGit?:CellGitIdentity; key: string; wrapperDir: string; receipts?: LandingReceipt[]; originRepo?: string | null }>;
   measure: boolean;
   trimPatterns: string[];
   /** Refresh each origin's upstream mirror before inspecting; its ref counts as landed by ancestry. */
@@ -48,7 +49,7 @@ export interface RetentionWorkerResult {
 
 export interface TrimVerifyWorkerRequest {
   kind: "verifyTrim";
-  cells: Array<{ key: string; wrapperDir: string; paths: string[]; modifiedSinceMs: number }>;
+  cells: Array<{ cellGit?:CellGitIdentity; key: string; wrapperDir: string; paths: string[]; modifiedSinceMs: number }>;
   trimPatterns: string[];
   mode?: ParkMode;
 }
@@ -58,6 +59,7 @@ export interface TrimVerifyWorkerResult {
 }
 
 export interface ParkPlanWorkerRequest {
+  cellGit?:CellGitIdentity;
   kind: "planPark";
   wrapperDir: string;
   mode: ParkMode;
@@ -70,6 +72,7 @@ export interface ParkPlanWorkerResult {
 }
 
 export interface WipPushWorkerRequest {
+  cellGit?:CellGitIdentity;
   kind: "pushWip";
   spaceDir: string;
   boxDir: string;
@@ -81,6 +84,7 @@ export interface WipPushWorkerRequest {
 }
 
 export interface WipPushWorkerResult {
+  warnings?:Array<"cell_git_config_warning">;
   snapshot: WipSnapshot | null;
   confirmed: boolean;
   unchanged: boolean;
@@ -101,16 +105,19 @@ export interface WipRefSweepWorkerResult {
 const request = workerData as RetentionWorkerRequest | TrimVerifyWorkerRequest | ParkPlanWorkerRequest | WipPushWorkerRequest | WipRefSweepWorkerRequest;
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 if (request.kind === "pushWip") {
+  const warningCodes=new Set<"cell_git_config_warning">();
+  const identity=request.cellGit?{...request.cellGit,onWarning:()=>warningCodes.add("cell_git_config_warning")}:undefined;
+  const warnings=()=>warningCodes.size?{warnings:[...warningCodes]}:{};
   try {
-    const snapshot = snapshotWip(request.spaceDir, request.boxDir, request.cellId, Date.now, request.maxFileBytes);
+    const snapshot = snapshotWip(request.spaceDir, request.boxDir, request.cellId, Date.now, request.maxFileBytes,identity);
     if (request.previous && snapshot.tree === request.previous.tree && confirmWip(request.originRepo, request.node, request.cellId, request.previous.sha)) {
-      parentPort?.postMessage({ snapshot: { ...snapshot, sha: request.previous.sha }, confirmed: true, unchanged: true, error: null } satisfies WipPushWorkerResult);
+      parentPort?.postMessage({ ...warnings(), snapshot: { ...snapshot, sha: request.previous.sha }, confirmed: true, unchanged: true, error: null } satisfies WipPushWorkerResult);
     } else {
-      pushWip(request.originRepo, request.spaceDir, request.node, request.cellId, snapshot.sha);
-      parentPort?.postMessage({ snapshot, confirmed: confirmWip(request.originRepo, request.node, request.cellId, snapshot.sha), unchanged: false, error: null } satisfies WipPushWorkerResult);
+      pushWip(request.originRepo, request.spaceDir, request.node, request.cellId, snapshot.sha,120000,identity);
+      parentPort?.postMessage({ ...warnings(), snapshot, confirmed: confirmWip(request.originRepo, request.node, request.cellId, snapshot.sha), unchanged: false, error: null } satisfies WipPushWorkerResult);
     }
   } catch (err) {
-    parentPort?.postMessage({ snapshot: null, confirmed: false, unchanged: false, error: errorText(err) } satisfies WipPushWorkerResult);
+    parentPort?.postMessage({ ...warnings(), snapshot: null, confirmed: false, unchanged: false, error: errorText(err) } satisfies WipPushWorkerResult);
   }
 } else if (request.kind === "sweepWipRefs") {
   try {
@@ -121,15 +128,15 @@ if (request.kind === "pushWip") {
   }
 } else if (request.kind === "planPark") {
   try {
-    parentPort?.postMessage({ plan: planParkPaths(request.wrapperDir, request.mode, { trimPatterns: request.trimPatterns, measure: true }), error: null } satisfies ParkPlanWorkerResult);
+    parentPort?.postMessage({ plan: planParkPaths(request.wrapperDir, request.mode, { cellGit:request.cellGit, trimPatterns: request.trimPatterns, measure: true }), error: null } satisfies ParkPlanWorkerResult);
   } catch (err) {
     parentPort?.postMessage({ plan: null, error: errorText(err) } satisfies ParkPlanWorkerResult);
   }
 } else if (request.kind === "verifyTrim") {
   const verified: TrimVerifyWorkerResult["verified"] = [];
-  for (const { key, wrapperDir, paths, modifiedSinceMs } of request.cells) {
+  for (const { key, wrapperDir, paths, modifiedSinceMs, cellGit } of request.cells) {
     try {
-      verified.push({ key, ...verifyParkPaths(wrapperDir, paths, request.mode ?? "trim", { trimPatterns: request.trimPatterns, modifiedSinceMs }), error: null });
+      verified.push({ key, ...verifyParkPaths(wrapperDir, paths, request.mode ?? "trim", { cellGit, trimPatterns: request.trimPatterns, modifiedSinceMs }), error: null });
     } catch (err) {
       verified.push({ key, confirmed: [], skipped: [], shallow: [], error: errorText(err) });
     }
@@ -148,11 +155,11 @@ if (request.kind === "pushWip") {
     }
   }
   const inspections: RetentionWorkerInspection[] = [];
-  for (const { key, wrapperDir, receipts, originRepo } of request.wrappers) {
+  for (const { key, wrapperDir, receipts, originRepo, cellGit } of request.wrappers) {
     let entry: RetentionWorkerInspection;
     try {
       const upstream = originRepo ? upstreams.get(originRepo)?.ref ?? null : null;
-      entry = { key, inspection: inspectCellWrapper(wrapperDir, { measure: request.measure, trimPatterns: request.trimPatterns, receipts, upstream }), error: null };
+      entry = { key, inspection: inspectCellWrapper(wrapperDir, { cellGit, measure: request.measure, trimPatterns: request.trimPatterns, receipts, upstream }), error: null };
     } catch (err) {
       entry = { key, inspection: null, error: errorText(err) };
     }

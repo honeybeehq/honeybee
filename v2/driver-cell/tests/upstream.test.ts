@@ -10,8 +10,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { provisionCell, reserveCell, type ProvisionRequest } from "../src/provision.ts";
-import { dirtyReport } from "../src/remove.ts";
-import { evictCellWrapper } from "../src/retention.ts";
+import { dirtyReport } from "./fixture-operations.ts";
+import { evictCellWrapper } from "./fixture-operations.ts";
 import { buildPoolMember, claimFromPool, listPoolMembers, repoKeyFor } from "../src/warmPool.ts";
 import { hasCommit, tryGit } from "../src/git.ts";
 import { holdMirrorLock, mirrorDirFor, readUpstreamMirror, refreshUpstreamMirror, resolveCellBase, syncOriginFromMirror, UPSTREAM_REF } from "../src/upstream.ts";

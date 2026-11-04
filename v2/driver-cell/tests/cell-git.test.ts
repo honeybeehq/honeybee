@@ -74,3 +74,27 @@ test("missing objects refuse without changing refs or attempting hydration", () 
     assert.equal(readFileSync(head,"utf8"),missing);
   } finally {rig.cleanup();}
 });
+
+
+test("sandboxed control indirection must be absent even when empty", () => {
+  for (const file of ["commondir","objects/info/alternates","objects/info/http-alternates","config.worktree"]) {
+    const {rig,identity,git}=fixture();
+    try {writeFileSync(join(git,file),"");assert.throws(()=>cellGit(identity,["rev-list","HEAD"]),CellGitRefused);}
+    finally {rig.cleanup();}
+  }
+});
+
+test("Cell Git rejects asynchronous operation callbacks", () => {
+  const {rig,identity}=fixture();
+  try {assert.throws(()=>withCellGit(identity,()=>Promise.resolve("done")),CellGitRefused);}
+  finally {rig.cleanup();}
+});
+
+
+test("sandboxed submodule context refuses and unconfined paths cannot escape", () => {
+  const {rig,identity}=fixture();
+  try {
+    assert.throws(()=>cellGit(identity,["rev-parse","HEAD"],{submodulePath:"vendor/lib"}),CellGitRefused);
+    assert.throws(()=>cellGit({...identity,sandboxed:false},["rev-parse","HEAD"],{submodulePath:"../other"}),CellGitRefused);
+  } finally {rig.cleanup();}
+});

@@ -1,3 +1,4 @@
+import { fixtureCellGit } from "./helpers.ts";
 /**
  * The capture scratch clone must not hydrate source tags. Packed tag refs are
  * deliberately adversarial here: they exercise Git's implicit tag-following
@@ -214,7 +215,7 @@ function runCapture(fixture: Fixture, spec: CaseSpec, traceName: string): Captur
     () =>
       captureWork({
         originRepo: fixture.rig.origin.repo,
-        cellSpaceDir: fixture.cellSpaceDir,
+        cellSpaceDir: fixture.cellSpaceDir, cellGit: fixtureCellGit(fixture.cellSpaceDir),
         targetBranch: "target",
         mode: spec.mode,
         opId: `packed-tags-${spec.name}`,

@@ -1,3 +1,4 @@
+import {cellGit, requireCellGitIdentity, type CellGitIdentity} from "./cellGit.ts";
 /**
  * Cell deletion (WP5, spec 05 point 6 — the A2 ruling).
  *
@@ -90,6 +91,7 @@ function spaceDirOf(wrapperDir: string): string {
 }
 
 export interface DirtyReportOptions {
+  cellGit?:CellGitIdentity;
   /** Landing receipts for the Cell's bee: exact proof that a Cell commit landed under another SHA. */
   receipts?: readonly LandingReceipt[];
   /** Honeybee upstream mirror ref for the origin: ancestry of it counts as landed. */
@@ -117,17 +119,18 @@ export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions
     unlandedCommitCount: 0,
     originUnknown: false,
   };
+  const identity=requireCellGitIdentity(opts.cellGit,spaceDir);
   if (!existsSync(join(spaceDir, ".git"))) return { report: clean, dirtySubmodules: [] }; // half-provisioned: nothing to lose
-
-  const dirtySubmodules = submodulesWithLocalState(spaceDir);
-  const uncommitted = git(spaceDir, ["status", "--porcelain", "--ignore-submodules=all"]).length > 0 || dirtySubmodules.length > 0;
-  const stashed = git(spaceDir, ["stash", "list"]).length > 0;
+  const run=(args:string[])=>{const r=cellGit(identity,args);if(r.status!==0)throw new Error("Cell repository read failed");return r.stdout.trim();};
+  const dirtySubmodules = submodulesWithLocalState(spaceDir,identity);
+  const uncommitted = run(["status", "--porcelain", "--ignore-submodules=all"]).length > 0 || dirtySubmodules.length > 0;
+  const stashed = run(["stash", "list"]).length > 0;
 
   let unpushed = false;
   let originUnknown = false;
   const unlandedBranches: string[] = [];
   let unlanded: string[] = [];
-  const head = revParse(spaceDir, "HEAD");
+  const head = run(["rev-parse","--verify","HEAD"]);
   const ledger = readLedger(join(wrapperDir, "box", "cell.json"));
   const origin = ledger?.origin;
   if (ledger == null || origin == null || !existsSync(origin)) {
@@ -140,14 +143,14 @@ export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions
     // A branch the agent committed to and then switched away from is not
     // HEAD, yet deleting the Cell would destroy it just the same.
     const branches: Array<{ name: string; sha: string }> = [];
-    const refs = git(spaceDir, ["for-each-ref", "--format=%(refname:short)%00%(objectname)", "refs/heads"]);
+    const refs = run(["for-each-ref", "--format=%(refname:short)%00%(objectname)", "refs/heads"]);
     for (const line of refs.split("\n")) {
       const [name, sha] = line.split("\0");
       if (name && sha && unseen(sha)) branches.push({ name, sha });
     }
     const tips = [...(headTip ? [headTip] : []), ...branches.map((b) => b.sha)];
     if (tips.length > 0) {
-      const byTip = unlandedCommitsByTip({ spaceDir, originRepo: origin, tips, base: ledger.sha, receipts: opts.receipts ?? [], upstream: opts.upstream ?? null });
+      const byTip = unlandedCommitsByTip({ cellGit:identity, spaceDir, originRepo: origin, tips, base: ledger.sha, receipts: opts.receipts ?? [], upstream: opts.upstream ?? null });
       const at = (sha: string) => byTip.get(sha) ?? [sha];
       if (headTip) unpushed = at(headTip).length > 0;
       for (const b of branches) if (at(b.sha).length > 0) unlandedBranches.push(b.name);
@@ -161,7 +164,7 @@ export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions
     unpushed,
     stashed,
     unlandedBranches,
-    unlandedCommits: describeCommits(spaceDir, unlanded.slice(0, REPORTED_COMMITS)),
+    unlandedCommits: describeCommits(spaceDir, unlanded.slice(0, REPORTED_COMMITS),identity),
     unlandedCommitCount: unlanded.length,
     originUnknown,
   };
@@ -170,8 +173,8 @@ export function dirtyReportDetailed(wrapperDir: string, opts: DirtyReportOptions
 
 const GITLINK_MODE = "160000";
 
-function gitlinksOf(repo: string): Array<{ path: string; sha: string }> | null {
-  const res = tryGit(repo, ["ls-files", "--stage", "-z"]);
+function gitlinksOf(repo: string, identity:CellGitIdentity): Array<{ path: string; sha: string }> | null {
+  const res = cellGit(identity, ["ls-files", "--stage", "-z"]);
   if (res.status !== 0) return null;
   const links: Array<{ path: string; sha: string }> = [];
   for (const entry of res.stdout.split("\0")) {
@@ -191,37 +194,24 @@ function gitlinksOf(repo: string): Array<{ path: string; sha: string }> | null {
  * a stash, their HEAD or a local branch has commits on no remote-tracking ref,
  * or they nest further submodules. An unreadable index counts as dirty.
  */
-export function submodulesWithLocalState(spaceDir: string): string[] {
-  const links = gitlinksOf(spaceDir);
-  if (links == null) return ["(index unreadable)"];
-  if (links.length === 0) return [];
-  const changed = tryGit(spaceDir, ["status", "--porcelain=v1", "-z", "--ignore-submodules=none", "--untracked-files=no"]);
-  const changedPaths = new Set(
-    changed.status === 0 ? changed.stdout.split("\0").filter((r) => r.length > 3).map((r) => r.slice(3)) : links.map((l) => l.path),
-  );
-  const dirty: string[] = [];
-  for (const link of links) {
-    const subDir = join(spaceDir, link.path);
-    if (!existsSync(join(subDir, ".git"))) {
-      if (existsSync(subDir) && (!statSync(subDir).isDirectory() || readdirSync(subDir).length > 0)) dirty.push(link.path);
-      continue;
-    }
-    const holds = (): boolean => {
-      if (changedPaths.has(link.path)) return true;
-      const status = tryGit(subDir, ["status", "--porcelain=v1", "--ignored=matching", "--untracked-files=normal"]);
-      if (status.status !== 0 || status.stdout.trim().length > 0) return true;
-      const stash = tryGit(subDir, ["stash", "list"]);
-      if (stash.status !== 0 || stash.stdout.trim().length > 0) return true;
-      const head = revParse(subDir, "HEAD");
-      if (head == null || head !== link.sha) return true;
-      const onRemote = tryGit(subDir, ["for-each-ref", "--contains", head, "--count=1", "--format=%(refname)", "refs/remotes"]);
-      if (onRemote.status !== 0 || onRemote.stdout.trim().length === 0) return true;
-      const localOnly = tryGit(subDir, ["rev-list", "--max-count=1", "--branches", "--not", "--remotes"]);
-      if (localOnly.status !== 0 || localOnly.stdout.trim().length > 0) return true;
-      const nested = gitlinksOf(subDir);
-      return nested == null || nested.length > 0;
-    };
-    if (holds()) dirty.push(link.path);
+export function submodulesWithLocalState(spaceDir:string,cellIdentity?:CellGitIdentity):string[] {
+  const identity=requireCellGitIdentity(cellIdentity,spaceDir);
+  const links=gitlinksOf(spaceDir,identity);
+  if(links===null)return ["(index unreadable)"];
+  const dirty:string[]=[];
+  for(const link of links) {
+    const path=join(spaceDir,link.path);
+    if(!existsSync(path))continue;
+    if(!statSync(path).isDirectory()||!existsSync(join(path,".git"))){if(!statSync(path).isDirectory()||readdirSync(path).length>0)dirty.push(link.path);continue;}
+    if(identity.sandboxed){dirty.push(link.path);continue;}
+    const run=(args:string[])=>cellGit(identity,args,{submodulePath:link.path});
+    const head=run(["rev-parse","--verify","HEAD"]);
+    const status=run(["status","--porcelain=v1","--ignored=matching","--untracked-files=normal"]);
+    const stash=run(["stash","list"]);
+    const local=run(["rev-list","--max-count=1","--branches","--not","--remotes"]);
+    const remote=run(["for-each-ref","--contains",head.stdout.trim(),"--count=1","--format=%(refname)","refs/remotes"]);
+    const nested=run(["ls-files","--stage","-z"]);
+    if([head,status,stash,local,remote,nested].some(result=>result.status!==0)||head.stdout.trim()!==link.sha||status.stdout.trim()||stash.stdout.trim()||local.stdout.trim()||!remote.stdout.trim()||nested.stdout.split("\0").some(entry=>entry.startsWith("160000 ")))dirty.push(link.path);
   }
   return dirty;
 }

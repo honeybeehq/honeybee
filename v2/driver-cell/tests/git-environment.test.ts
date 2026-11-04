@@ -7,7 +7,7 @@ import { HostGitRefused } from "../../../src/hostGitRuntime.ts";
 import { gitEnv, hostGitEnv, tryGit } from "../src/git.ts";
 import { provisionCell } from "../src/provision.ts";
 import { deleteCell } from "../src/remove.ts";
-import { g, makeRig } from "./helpers.ts";
+import { fixtureCellGit, g, makeRig } from "./helpers.ts";
 
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
@@ -36,7 +36,7 @@ test("host Git does not fetch missing objects implicitly through local transport
     assert.throws(() => tryGit(space, ["rev-list", "HEAD"]), (error: unknown) => error instanceof HostGitRefused && error.reason === "missing_objects");
     assert.equal(existsSync(marker), false);
     assert.equal(readFileSync(head, "utf8"), before);
-    assert.throws(() => deleteCell(cell.paths.wrapperDir), HostGitRefused);
+    assert.throws(() => deleteCell(cell.paths.wrapperDir,{cellGit:fixtureCellGit(space)}), HostGitRefused);
     assert.equal(existsSync(cell.paths.wrapperDir), true);
     assert.equal(existsSync(marker), false);
   } finally {

@@ -1,3 +1,4 @@
+import { fixtureCellGit } from "./helpers.ts";
 /**
  * Spec 05 test tier 1 — the exit path: capture incl. conflict staging and
  * the zero-artifact guarantee (origin ref set bit-identical after a failed
@@ -44,7 +45,7 @@ test("capture.branch-create: cell work lands as a new branch; only that branch a
 
     const report = captureWork({
       originRepo: rig.origin.repo,
-      cellSpaceDir: cell.paths.spaceDir,
+      cellSpaceDir: cell.paths.spaceDir, cellGit: fixtureCellGit(cell.paths.spaceDir),
       targetBranch: "bee/feature",
       mode: "merge",
       opId: "cmd-77",
@@ -74,7 +75,7 @@ test("capture.fast-forward: existing target advances by CAS", () => {
     const work = commitInCell(cell.paths.spaceDir, "ff.ts", "1\n", "ff work");
     const report = captureWork({
       originRepo: rig.origin.repo,
-      cellSpaceDir: cell.paths.spaceDir,
+      cellSpaceDir: cell.paths.spaceDir, cellGit: fixtureCellGit(cell.paths.spaceDir),
       targetBranch: "target",
       mode: "merge",
       opId: "cmd-1",
@@ -101,7 +102,7 @@ test("capture.merge: diverged target gets a merge commit; origin worktree untouc
 
     const report = captureWork({
       originRepo: rig.origin.repo,
-      cellSpaceDir: cell.paths.spaceDir,
+      cellSpaceDir: cell.paths.spaceDir, cellGit: fixtureCellGit(cell.paths.spaceDir),
       targetBranch: "target",
       mode: "merge",
       opId: "cmd-2",
@@ -135,7 +136,7 @@ test("capture.rebase: cell commits replay onto the target tip", () => {
 
     const report = captureWork({
       originRepo: rig.origin.repo,
-      cellSpaceDir: cell.paths.spaceDir,
+      cellSpaceDir: cell.paths.spaceDir, cellGit: fixtureCellGit(cell.paths.spaceDir),
       targetBranch: "target",
       mode: "rebase",
       opId: "cmd-3",
@@ -170,7 +171,7 @@ test("capture.rebase: work already on the target in rewritten form reports nothi
 
     const report = captureWork({
       originRepo: rig.origin.repo,
-      cellSpaceDir: cell.paths.spaceDir,
+      cellSpaceDir: cell.paths.spaceDir, cellGit: fixtureCellGit(cell.paths.spaceDir),
       targetBranch: "target",
       mode: "rebase",
       opId: "cmd-empty-1",
@@ -199,7 +200,7 @@ test("capture.conflict: structured report, origin ref-set bit-identical, transie
     for (const mode of ["merge", "rebase"] as const) {
       const report = captureWork({
         originRepo: rig.origin.repo,
-        cellSpaceDir: cell.paths.spaceDir,
+        cellSpaceDir: cell.paths.spaceDir, cellGit: fixtureCellGit(cell.paths.spaceDir),
         targetBranch: "target",
         mode,
         opId: `cmd-conf-${mode}`,
@@ -228,7 +229,7 @@ test("capture.refusals: checked-out target, moved target, nothing to capture", (
     const before = fingerprintOrigin(rig.origin.repo);
     const refused = captureWork({
       originRepo: rig.origin.repo,
-      cellSpaceDir: cell.paths.spaceDir,
+      cellSpaceDir: cell.paths.spaceDir, cellGit: fixtureCellGit(cell.paths.spaceDir),
       targetBranch: "main",
       mode: "merge",
       opId: "cmd-r1",
@@ -255,7 +256,7 @@ test("capture.refusals: checked-out target, moved target, nothing to capture", (
     );
     const nothing = captureWork({
       originRepo: rig.origin.repo,
-      cellSpaceDir: fresh.paths.spaceDir,
+      cellSpaceDir: fresh.paths.spaceDir, cellGit: fixtureCellGit(fresh.paths.spaceDir),
       targetBranch: "same",
       mode: "merge",
       opId: "cmd-r2",

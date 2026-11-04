@@ -6,7 +6,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { gitEnv } from "../src/git.ts";
 
 export function sh(cwd: string, cmd: string, args: string[]): string {
@@ -105,4 +105,8 @@ export function makeRig(): CellTestRig {
     origin: makeOrigin(root),
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
+}
+
+export function fixtureCellGit(spaceDir: string): import("../src/cellGit.ts").CellGitIdentity {
+  return {cellsRoot:dirname(dirname(spaceDir)),wrapper:basename(dirname(spaceDir)),spaceDir,sandboxed:false,independentInodes:false,onWarning:()=>{}};
 }

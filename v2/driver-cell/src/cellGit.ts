@@ -19,6 +19,8 @@ export class CellGitRefused extends Error {
   constructor(detail: string) { super(`Cell Git refused: ${detail}`); this.name = "CellGitRefused"; }
 }
 
+const ROOT_CONTEXT = new WeakMap<CellGitIdentity,string>();
+
 type Snapshot = { path: string; dev: number; ino: number };
 const CONFIG_LIMIT = 256 * 1024;
 const TIMEOUT = 15000;
@@ -49,6 +51,7 @@ function gitDirectories(cell: CellGitIdentity): {git: string; common: string; ob
   }
   directory(git);
   let common = git;
+  if (cell.sandboxed && lstatSync(join(git, "commondir"), {throwIfNoEntry:false})) throw new CellGitRefused("repository indirection is unsupported");
   const commonText = boundedFile(join(git, "commondir"), true).trim();
   if (commonText) {
     if (cell.sandboxed || commonText.includes("\n")) throw new CellGitRefused("repository indirection is unsupported");
@@ -62,14 +65,20 @@ function layout(cell: CellGitIdentity): Snapshot[] {
   if (cell.sandboxed && cell.independentInodes !== true) throw new CellGitRefused("independent object storage has not been verified");
   if (![cell.cellsRoot, cell.spaceDir].every(isAbsolute) || !cell.wrapper || cell.wrapper === "." || cell.wrapper === ".." || cell.wrapper.includes(sep)) throw new CellGitRefused("trusted Cell identity is invalid");
   const wrapper = join(cell.cellsRoot, cell.wrapper);
-  const suffix = relative(wrapper, cell.spaceDir);
-  if (!suffix || suffix === ".." || suffix.includes(sep) || join(wrapper, suffix) !== cell.spaceDir) throw new CellGitRefused("checkout does not belong to its trusted wrapper");
+  const authoritySpace = ROOT_CONTEXT.get(cell) ?? cell.spaceDir;
+  const suffix = relative(wrapper, authoritySpace);
+  if (!suffix || suffix === ".." || suffix.includes(sep) || join(wrapper, suffix) !== authoritySpace) throw new CellGitRefused("checkout does not belong to its trusted wrapper");
   const {git, common, objects} = gitDirectories(cell);
-  const snapshots = [...new Set([cell.cellsRoot, wrapper, cell.spaceDir, git, common, objects])].map(directory);
+  const nested = relative(authoritySpace,cell.spaceDir);
+  if(nested === ".." || nested.startsWith(`..${sep}`) || isAbsolute(nested)) throw new CellGitRefused("submodule escapes its trusted Cell");
+  const directories=[cell.cellsRoot,wrapper,authoritySpace];
+  let cursor=authoritySpace;
+  for(const part of nested.split(sep).filter(Boolean)){cursor=join(cursor,part);directories.push(cursor);}
+  const snapshots = [...new Set([...directories, git, common, objects])].map(directory);
   const infoPath = join(objects, "info");
   if (lstatSync(infoPath, { throwIfNoEntry: false })) snapshots.push(directory(infoPath));
   if (cell.sandboxed) for (const file of [join(objects, "info", "alternates"), join(objects, "info", "http-alternates"), join(git, "config.worktree")]) {
-    if (boundedFile(file, true).trim() !== "") throw new CellGitRefused("repository indirection is unsupported");
+    if (lstatSync(file, {throwIfNoEntry:false})) throw new CellGitRefused("repository indirection is unsupported");
   }
   return snapshots;
 }
@@ -119,12 +128,19 @@ function validateConfig(cell: CellGitIdentity, env: Record<string, string>): Arr
   return overrides;
 }
 
-export function withCellGit<T>(cell: CellGitIdentity, operation: (run: (args: string[], opts?: {input?: string; timeoutMs?: number}) => GitResult) => T): T {
+export function withCellGit<T>(cell: CellGitIdentity, operation: (run: (args: string[], opts?: {input?: string; timeoutMs?: number; indexFile?: string}) => GitResult) => T, context: {submodulePath?:string} = {}): T {
+  if(context.submodulePath !== undefined) {
+    layout(cell);
+    if(cell.sandboxed || !context.submodulePath || isAbsolute(context.submodulePath) || context.submodulePath.includes("\0") || context.submodulePath.split(sep).some(part=>part===".."||part==="."||part==="")) throw new CellGitRefused("submodule context is unsupported");
+    const original=cell;
+    cell={...cell,spaceDir:join(cell.spaceDir,context.submodulePath)};
+    ROOT_CONTEXT.set(cell,ROOT_CONTEXT.get(original)??original.spaceDir);
+  }
   const before = layout(cell), baseEnv = environment(cell);
   assertHostGitVersion(cell.spaceDir, baseEnv);
   const env = hostGitEnv(baseEnv, validateConfig(cell, baseEnv));
   try {
-    return operation((args, opts = {}) => {
+    const result = operation((args, opts = {}) => {
       if (args.length === 0 || args[0]!.startsWith("-") || args.some(arg => /^(?:--git-dir|--work-tree|--config-env|--exec-path)(?:=|$)/.test(arg)) || args.includes("-C") || args.includes("-c")) throw new CellGitRefused("repository command attempts to override trusted context");
       const timeout = opts.timeoutMs ?? TIMEOUT;
       if (!Number.isFinite(timeout) || timeout <= 0 || timeout > TIMEOUT) throw new CellGitRefused("repository command timeout is invalid");
@@ -132,8 +148,18 @@ export function withCellGit<T>(cell: CellGitIdentity, operation: (run: (args: st
       if (["status", "diff"].includes(args[0]!)) safeArgs.splice(1, 0, "--ignore-submodules=all");
       layout(cell);
       const currentEnv = hostGitEnv(baseEnv, validateConfig(cell, baseEnv));
+      if (opts.indexFile) {
+        const parent = resolve(opts.indexFile, "..");
+        const info = lstatSync(parent);
+        if (!isAbsolute(opts.indexFile) || realpathSync(parent) !== parent || !info.isDirectory() || info.uid !== process.geteuid?.() || (info.mode & 0o777) !== 0o700 || relative(join(cell.cellsRoot,cell.wrapper), parent).split(sep)[0] !== "..") throw new CellGitRefused("index must belong to private host scratch");
+        const index = lstatSync(opts.indexFile, {throwIfNoEntry:false});
+        if (index && (!index.isFile() || index.isSymbolicLink() || index.nlink !== 1)) throw new CellGitRefused("index layout is unsupported");
+        currentEnv.GIT_INDEX_FILE = opts.indexFile;
+      }
       return invoke(cell, safeArgs, currentEnv, opts.input, timeout);
     });
+    if (result && (typeof result === "object" || typeof result === "function") && "then" in result) throw new CellGitRefused("operation must complete synchronously");
+    return result;
   } finally {
     const after = layout(cell);
     if (before.length !== after.length || before.some((entry, index) => entry.dev !== after[index]!.dev || entry.ino !== after[index]!.ino)) throw new CellGitRefused("repository directories changed during the operation");
@@ -141,6 +167,12 @@ export function withCellGit<T>(cell: CellGitIdentity, operation: (run: (args: st
   }
 }
 
-export function cellGit(cell: CellGitIdentity, args: string[], opts: {input?: string; timeoutMs?: number} = {}): GitResult {
-  return withCellGit(cell, run => run(args, opts));
+export function cellGit(cell: CellGitIdentity, args: string[], opts: {input?: string; timeoutMs?: number; indexFile?: string; submodulePath?:string} = {}): GitResult {
+  return withCellGit(cell, run => run(args, opts),{submodulePath:opts.submodulePath});
+}
+
+export function requireCellGitIdentity(identity: CellGitIdentity | undefined, spaceDir: string): CellGitIdentity {
+  if (!identity || identity.spaceDir !== spaceDir) throw new CellGitRefused("authoritative Cell identity is required");
+  if (identity.sandboxed && !identity.independentInodes) throw new CellGitRefused("independent object storage has not been verified");
+  return identity;
 }

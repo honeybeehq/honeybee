@@ -1,3 +1,4 @@
+import type {CellGitIdentity} from "./cellGit.ts";
 import { cellDaemonEnvironment } from "./runtimeEnvironment.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
@@ -512,12 +513,13 @@ export class CellDriver implements RuntimeDriver {
   }
 
   /** The native exit path (spec 05 point 4). */
-  capture(beeId: string, opts: { targetBranch: string; mode: CaptureMode; opId: string }): CaptureReport {
+  capture(beeId: string, opts: { targetBranch: string; mode: CaptureMode; opId: string; cellGit?:CellGitIdentity }): CaptureReport {
     const cell = this.cellOf(beeId);
     if (!cell) throw new Error(`capture: bee ${beeId} has no provisioned cell`);
     return captureWork({
       originRepo: cell.originRepo,
       cellSpaceDir: cell.paths.spaceDir,
+      cellGit:opts.cellGit,
       targetBranch: opts.targetBranch,
       mode: opts.mode,
       opId: opts.opId,

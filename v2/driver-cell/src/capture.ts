@@ -1,3 +1,4 @@
+import { withCellGit, requireCellGitIdentity, type CellGitIdentity } from "./cellGit.ts";
 /**
  * The native exit path (WP5, spec 05 point 4; UI lands in WP6).
  *
@@ -32,6 +33,7 @@ export interface CaptureRequest {
   originRepo: string;
   /** The cell's space (checkout) directory. */
   cellSpaceDir: string;
+  cellGit?: CellGitIdentity;
   /** Branch in the origin to land onto (created if absent). */
   targetBranch: string;
   mode: CaptureMode;
@@ -93,10 +95,15 @@ function mergeWithoutCheckout(repo: string, targetTip: string, cellHead: string,
 }
 
 export function captureWork(req: CaptureRequest): CaptureReport {
+  const identity = requireCellGitIdentity(req.cellGit, req.cellSpaceDir);
+  const head = withCellGit(identity, run => run(["rev-parse", "--verify", "HEAD"]));
+  return captureWorkInner(req, head.status === 0 ? head.stdout.trim() : null);
+}
+
+function captureWorkInner(req: CaptureRequest, cellHead: string | null): CaptureReport {
   const { originRepo, cellSpaceDir, targetBranch, mode } = req;
   const base = { targetBranch, mode };
 
-  const cellHead = revParse(cellSpaceDir, "HEAD");
   if (cellHead == null) {
     return report({ ...base, status: "refused", reason: "no_cell_head" });
   }
@@ -112,7 +119,7 @@ export function captureWork(req: CaptureRequest): CaptureReport {
   let scratch: string | null = null;
   try {
     // 1. Cell commits into the origin, under the transient ref only.
-    if (tryGit(originRepo, ["-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "--no-recurse-submodules", cellSpaceDir, `+HEAD:${transientRef}`]).status !== 0) {
+    if (withCellGit(requireCellGitIdentity(req.cellGit, cellSpaceDir), () => tryGit(originRepo, ["-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "--no-recurse-submodules", cellSpaceDir, `+${cellHead}:${transientRef}`])).status !== 0) {
       return report({ ...base, status: "refused", reason: "invalid_objects", cellHead });
     }
 

@@ -1,3 +1,4 @@
+import { fixtureCellGit } from "./helpers.ts";
 /**
  * Spec 05 test tier 1 — dirty-cell delete + --force (A2), shape-checked
  * paths, ENOTEMPTY retry.
@@ -9,7 +10,7 @@ import { join } from "node:path";
 import { captureWork } from "../src/capture.ts";
 import { readLedger, writeLedger } from "../src/ledger.ts";
 import { provisionCell } from "../src/provision.ts";
-import { CellDeleteRefused, CellShapeError, deleteCell, dirtyReport } from "../src/remove.ts";
+import { CellDeleteRefused, CellShapeError, deleteCell, dirtyReport } from "./fixture-operations.ts";
 import { commitInCell, makeRig } from "./helpers.ts";
 
 function provisioned(rig: ReturnType<typeof makeRig>, beeId = "bee-1", cellId = "c1") {
@@ -73,7 +74,7 @@ test("delete.dirty-unpushed: commits the origin never saw refuse; captured work 
     // Capture the work out — the same cell is now clean to delete.
     const landed = captureWork({
       originRepo: rig.origin.repo,
-      cellSpaceDir: cell.paths.spaceDir,
+      cellSpaceDir: cell.paths.spaceDir, cellGit: fixtureCellGit(cell.paths.spaceDir),
       targetBranch: "bee/work",
       mode: "merge",
       opId: "cmd-l",

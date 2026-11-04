@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { g, makeOrigin } from "./helpers.ts";
-import { WipError, confirmWip, dropWipRef, operationInProgress, pushWip, restoreWip, snapshotWip, sweepWipRefs, wipNodeScope, wipRefFor } from "../src/wip.ts";
+import { WipError, confirmWip, dropWipRef, operationInProgress, pushWip, restoreWip, snapshotWip, sweepWipRefs, wipNodeScope, wipRefFor } from "./fixture-operations.ts";
 
 const NODE = "node-a";
 

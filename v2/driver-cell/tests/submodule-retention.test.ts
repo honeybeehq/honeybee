@@ -9,8 +9,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { provisionCell } from "../src/provision.ts";
-import { CellDeleteRefused, dirtyReport, dirtyReportDetailed } from "../src/remove.ts";
-import { cellEnvRootForCells, cellKeepRootForCells, evictCellWrapper, unparkCellWrapper } from "../src/retention.ts";
+import { CellDeleteRefused, dirtyReport, dirtyReportDetailed } from "./fixture-operations.ts";
+import { cellEnvRootForCells, cellKeepRootForCells, evictCellWrapper, unparkCellWrapper } from "./fixture-operations.ts";
 import { commitInCell, commitOn, g, makeOrigin, makeRig } from "./helpers.ts";
 
 const allowFile = ["-c", "protocol.file.allow=always"];

@@ -1,3 +1,4 @@
+import { fixtureCellGit } from "./helpers.ts";
 /**
  * Differential parity for the merge-tree clean-merge prototype (capture.ts).
  *
@@ -143,7 +144,7 @@ function runSide(fx: Fixture, shim: Shim, opId: string): SideResult {
   }, () => {
     report = captureWork({
       originRepo: fx.origin,
-      cellSpaceDir: fx.cell,
+      cellSpaceDir: fx.cell, cellGit: fixtureCellGit(fx.cell),
       targetBranch: "landing",
       mode: "merge",
       opId,

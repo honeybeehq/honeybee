@@ -1,3 +1,4 @@
+import {fixtureCellGit} from "./helpers.ts";
 /**
  * CellDriver integration — pure delegation to the HSR driver with real OS
  * child processes (the WP3 stub agent), running inside provisioned cells.
@@ -283,12 +284,12 @@ test("cell-driver.exit-path: work committed in the live cell captures out; remov
     // A live runtime blocks removeCell (the cell is its cwd).
     assert.throws(() => driver.removeCell("bee-1"), /live runtime/);
 
-    const report = driver.capture("bee-1", { targetBranch: "bee/result", mode: "merge", opId: "cmd-9" });
+    const report = driver.capture("bee-1", {cellGit:fixtureCellGit(driver.cellOf("bee-1")!.paths.spaceDir), targetBranch: "bee/result", mode: "merge", opId: "cmd-9" });
     assert.equal(report.status, "landed");
 
     driver.stop("bee-1", 1, "stopped_by_user");
     await drainUntil(driver, (e) => e.some((x) => x.kind === "exited"));
-    const res = driver.removeCell("bee-1");
+    const res = driver.removeCell("bee-1",{cellGit:fixtureCellGit(driver.cellOf("bee-1")!.paths.spaceDir)});
     assert.equal(res.deleted, true);
     assert.equal(res.forced, false); // captured work → clean delete without force
     assert.ok(!existsSync(cell.paths.wrapperDir));
@@ -317,9 +318,9 @@ test("cell-driver.restart-hydration: a fresh driver re-hydrates cells from cell.
     assert.ok(hydrated, "cell.json is the durable allocation truth");
     assert.equal(hydrated.paths.spaceDir, cell.paths.spaceDir);
     assert.equal(hydrated.copyMode, "clone");
-    const report = driver2.capture("bee-1", { targetBranch: "bee/late", mode: "merge", opId: "cmd-r" });
+    const report = driver2.capture("bee-1", {cellGit:fixtureCellGit(driver2.cellOf("bee-1")!.paths.spaceDir), targetBranch: "bee/late", mode: "merge", opId: "cmd-r" });
     assert.equal(report.status, "landed");
-    assert.equal(driver2.removeCell("bee-1").deleted, true);
+    assert.equal(driver2.removeCell("bee-1",{cellGit:fixtureCellGit(driver2.cellOf("bee-1")!.paths.spaceDir)}).deleted, true);
   } finally {
     driver.disposeAll();
     await sleep(10);

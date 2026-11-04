@@ -1,3 +1,4 @@
+import { fixtureCellGit } from "./helpers.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -5,7 +6,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, utimesSync, wri
 import { join } from "node:path";
 import { captureWork } from "../src/capture.ts";
 import { gitEnv, hostGitConfig, parseConfigListing, porcelainStatus, repoLocalExecOverrides, tryGit } from "../src/git.ts";
-import { describeCommits, unlandedCommitsByTip } from "../src/landed.ts";
+import { describeCommits, unlandedCommitsByTip } from "./fixture-operations.ts";
 import { provisionCell } from "../src/provision.ts";
 import { commitInCell, g, makeOrigin, makeRig } from "./helpers.ts";
 
@@ -128,7 +129,7 @@ test("host git never runs a hook or fsmonitor planted in a Cell, a nested repo, 
     describeCommits(space, [work]);
     const report = captureWork({
       originRepo: rig.origin.repo,
-      cellSpaceDir: space,
+      cellSpaceDir: space, cellGit: fixtureCellGit(space),
       targetBranch: "bee/feature",
       mode: "merge",
       opId: "cmd-77",
