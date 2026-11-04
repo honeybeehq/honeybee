@@ -10,6 +10,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { devNull } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import type { LocalRepoIdentity } from "../../core/src/types.ts";
+import { assertHostGitVersion, refuseMissingGitObjects } from "../../../src/hostGitRuntime.ts";
 
 export class GitError extends Error {
   readonly args: string[];
@@ -145,6 +146,8 @@ export function hostGitEnv(base: Record<string, string>, overrides: ReadonlyArra
     env[`GIT_CONFIG_VALUE_${offset + index}`] = value;
   });
   env.GIT_CONFIG_COUNT = String(offset + entries.length);
+  env.GIT_NO_LAZY_FETCH = "1";
+  env.GIT_NO_REPLACE_OBJECTS = "1";
   return env;
 }
 
@@ -167,6 +170,8 @@ export function gitEnv(extra: Record<string, string> = {}): Record<string, strin
     GIT_COMMITTER_NAME: "hive-cell",
     GIT_COMMITTER_EMAIL: "cell@hive.invalid",
     ...extra,
+    GIT_NO_LAZY_FETCH: "1",
+    GIT_NO_REPLACE_OBJECTS: "1",
   };
 }
 
@@ -179,10 +184,12 @@ export interface GitResult {
 /** Run git, returning the result without throwing. */
 export function tryGit(cwd: string, args: string[], opts: { env?: Record<string, string>; input?: string; timeoutMs?: number } = {}): GitResult {
   const env = gitEnv(opts.env);
+  assertHostGitVersion(cwd, env);
   const verb = subcommandOf(args);
   const overrides = verb !== undefined && READ_ONLY_VERBS.has(verb) ? [] : repoLocalExecOverrides(cwd, env);
   const res = spawnSync("git", args, { cwd, encoding: "utf8", env: hostGitEnv(env, overrides), input: opts.input, timeout: opts.timeoutMs, maxBuffer: 64 * 1024 * 1024 });
   if (res.error) throw res.error; // git binary missing — a machine boundary, not a git failure
+  refuseMissingGitObjects(res.status, res.stderr ?? "");
   return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }
 

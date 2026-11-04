@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { devNull } from "node:os";
+import { assertHostGitVersion } from "./hostGitRuntime.js";
 
 const hostGitConfig: ReadonlyArray<readonly [string, string]> = [
   ["core.fsmonitor", "false"],
@@ -31,6 +32,8 @@ function withConfig(base: NodeJS.ProcessEnv, entries: ReadonlyArray<readonly [st
     env[`GIT_CONFIG_VALUE_${offset + index}`] = value;
   });
   env.GIT_CONFIG_COUNT = String(offset + entries.length);
+  env.GIT_NO_LAZY_FETCH = "1";
+  env.GIT_NO_REPLACE_OBJECTS = "1";
   env.GIT_ALLOW_PROTOCOL = "file:git:http:https:ssh";
   return env;
 }
@@ -56,6 +59,7 @@ export function hostGitEnv(base: NodeJS.ProcessEnv = process.env): Record<string
 }
 
 export function untrustedCheckoutGitEnv(cwd: string, base: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  assertHostGitVersion(cwd, hostGitEnv(base));
   const probe = execFileSync("git", ["-C", cwd, "config", "--list", "--show-scope", "--includes", "-z"], {
     encoding: "utf8",
     env: hostGitEnv(base),
