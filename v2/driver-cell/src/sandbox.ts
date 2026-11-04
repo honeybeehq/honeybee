@@ -1,3 +1,4 @@
+import { apiaryToolchainRoot } from "./apiaryToolchain.ts";
 import { withoutCellHostRoutes } from "./runtimeEnvironment.ts";
 import { ensureCellPrivateDirectory, prepareSandboxHarnessHome } from "./harnessHome.ts";
 /**
@@ -101,7 +102,7 @@ export function defaultWritablePaths(_home: string = homedir()): string[] {
 }
 
 export function sandboxProtectedPaths(home: string = homedir()): string[] {
-  return [".config", ".local", ".ssh", ".gnupg", ".hive", ".nectar", ".claude", ".claude.json",
+  return [".config", ".local", ".local/share/apiary-satellite", ".ssh", ".gnupg", ".hive", ".nectar", ".claude", ".claude.json",
     ".codex", ".grok", ".gemini", ".kimi", ".cache", ".npm", ".bun", ".bashrc", ".profile",
     ".bash_profile", ".zshrc", ".zprofile", "Library/LaunchAgents", "Library/Caches"]
     .map(path => join(home, path));
@@ -118,7 +119,7 @@ function hiddenPaths(policy: SandboxPolicy): string[] {
 }
 
 function checkedWritablePaths(policy: SandboxPolicy): string[] {
-  const protectedPaths = [...sandboxProtectedPaths(), "/run", ...(policy.protectedPaths ?? []), ...(policy.harnessHome ? [policy.harnessHome.path] : [])].map(canonicalPath);
+  const protectedPaths = [...sandboxProtectedPaths(), ...sandboxProtectedPaths(userInfo().homedir), "/run", ...(policy.protectedPaths ?? []), ...(policy.harnessHome ? [policy.harnessHome.path] : [])].map(canonicalPath);
   const standardScratch = new Set([...defaultScratchPaths("linux"), ...defaultScratchPaths("darwin")]);
   const paths = [...policy.writablePaths, ...(policy.scratchPaths ?? []).filter(path => !standardScratch.has(path) && !/^(?:\/private)?\/var\/folders\/[^/]+\/[^/]+\/T\/?$/.test(path))];
   for (const path of paths) {
@@ -373,6 +374,8 @@ export function assertSandboxToolchainMetadata(info: { uid: number; mode: number
 }
 
 export function sandboxToolchainRoot(executable: string = process.execPath, log?: (line: string) => void): string | null {
+  const apiary = apiaryToolchainRoot(executable, userInfo().homedir, process.geteuid?.() ?? userInfo().uid);
+  if (apiary) return apiary;
   const binary = realpathSync(executable);
   if (binary.startsWith("/usr/") || binary.startsWith("/bin/")) return null;
   const root = realpathSync(dirname(dirname(binary)));
@@ -407,14 +410,16 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
   const homes = [...new Set([homedir(), userInfo().homedir, ...(policy.homePaths ?? [])].map(path => realpathSync(path)))];
   const toolchain = sandboxToolchainRoot(process.execPath, policy.log);
+  const homeToolchain = toolchain !== null && containsPath(userInfo().homedir, toolchain);
   const out: string[] = [
     "--unshare-user", "--unshare-pid", "--unshare-ipc",
     "--tmpfs", "/", ...systemReadOnlyMounts(),
-    ...(toolchain ? ["--ro-bind", toolchain, toolchain] : []),
+    ...(toolchain && !homeToolchain ? ["--ro-bind", toolchain, toolchain] : []),
     "--dev", "/dev", ...size, "--tmpfs", "/dev/shm", "--proc", "/proc",
     ...BWRAP_PRIVATE_MOUNTS.flatMap(mount => [...size, "--tmpfs", mount]),
     ...homes.flatMap(home => ["--tmpfs", home]),
     "--tmpfs", "/run", "--dir", "/run/user", "--dir", "/run/honeybee", "--dir", "/run/honeybee/bin",
+    ...(homeToolchain ? ["--ro-bind", toolchain!, toolchain!] : []),
     ...bwrapLaunchBinds(command, args, policy.cellDir),
     "--bind", policy.cellDir, policy.cellDir,
   ];
