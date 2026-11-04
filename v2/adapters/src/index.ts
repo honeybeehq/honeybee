@@ -25,3 +25,5 @@ export {
   type ArgGrammar,
   type ArgUnit,
 } from "./args.ts";
+
+export { assertClaudeSessionId, ClaudeSessionIdError } from "./claudeSession.ts";

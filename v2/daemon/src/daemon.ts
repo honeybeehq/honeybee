@@ -1,3 +1,4 @@
+import { assertClaudeSessionId } from "../../adapters/src/claudeSession.ts";
 import type { SchedulingStatus } from "../../../src/processScheduling.ts";
 import { cellDaemonEnvironment, withoutCellHostRoutes } from "../../driver-cell/src/runtimeEnvironment.ts";
 import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, peerConfinement, runtimeUserNamespace, strictConfinementReasons } from "./confinedPeer.ts";
@@ -7987,6 +7988,7 @@ export class HiveDaemon {
         `bee ${bee.name}: no recorded Claude conversation can be carried to ${target.id} (no session id in the store and none in the bee's session log); swapping would resume nothing`,
       );
     }
+    assertClaudeSessionId(seed);
     const key = homeEnvFor("claude");
     const boundHome = key ? bee.env[key] : undefined;
     const sourceHome = boundHome ?? (from ? this.mustStore().getAccount(from)?.homePath : undefined) ?? join(homedir(), ".claude");

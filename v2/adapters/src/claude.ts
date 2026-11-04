@@ -1,3 +1,4 @@
+import { assertClaudeSessionId } from "./claudeSession.ts";
 import { claudeQuotaBoundary } from "./quota.ts";
 /**
  * Claude harness adapter (WP3) — normalizes the `claude -p --input-format
@@ -107,6 +108,11 @@ export function parseClaudeLine(line: string): AdapterSignal[] {
     case "system": {
       if (msg.subtype !== "init") return []; // thinking_tokens etc: progress pings
       const sessionId = typeof msg.session_id === "string" ? msg.session_id : undefined;
+      if (sessionId !== undefined) {
+        try { assertClaudeSessionId(sessionId); } catch {
+          return [{ kind: "flag", flag: "spawn_failed", action: "set", detail: "Claude reported an invalid session identifier; resume is refused" }];
+        }
+      }
       return bootedToIdle(sessionId);
     }
     case "rate_limit_event":
@@ -148,6 +154,7 @@ export function encodeClaudeMessage(body: string): string {
  * env carries it for imported bees). Never combined with `--session-id`.
  */
 export function claudeResumeArgs(providerSessionId: string): string[] {
+  assertClaudeSessionId(providerSessionId);
   return ["--resume", providerSessionId];
 }
 
@@ -162,6 +169,7 @@ export function claudeResumeArgs(providerSessionId: string): string[] {
  * mints; the adapter records.
  */
 export function claudeForkArgs(sourceSessionId: string): string[] {
+  assertClaudeSessionId(sourceSessionId);
   return ["--resume", sourceSessionId, "--fork-session"];
 }
 

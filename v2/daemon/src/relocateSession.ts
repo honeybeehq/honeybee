@@ -1,3 +1,4 @@
+import { assertClaudeSessionId } from "../../adapters/src/claudeSession.ts";
 /**
  * Claude cwd-keyed transcript carry for Cell→checkout move.
  * Filesystem only — caller commits SQLite placement after this returns.
@@ -46,6 +47,7 @@ export function findClaudeTranscript(
   projectKey: string,
   seed: string,
 ): { file: string; dir: string | null } | null {
+  assertClaudeSessionId(seed);
   const file = join(home, "projects", projectKey, `${seed}.jsonl`);
   if (!existsSync(file)) return null;
   const sibling = join(home, "projects", projectKey, seed);
@@ -83,6 +85,7 @@ export function relocateClaudeSession(opts: {
   moveId: string;
 }): RelocateResult {
   const seed = opts.sessionId;
+  assertClaudeSessionId(seed);
   const fromKey = claudeProjectKey(opts.fromCwd);
   const toKey = claudeProjectKey(opts.toCwd);
   const destDir = join(opts.home, "projects", toKey);
