@@ -34,7 +34,7 @@ import { execFileSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { shortSocketDir, socketPathFits } from "../core/src/socketPath.ts";
-import { securityExecutable } from "../../src/keychain.ts";
+import { securityExecutable } from "../daemon/src/nativeKeychain.ts";
 import { fileURLToPath } from "node:url";
 import { TmuxDriver, type TmuxSpawnSpec } from "./src/driver.ts";
 import { exactPaneTarget, TmuxServer } from "./src/tmux.ts";

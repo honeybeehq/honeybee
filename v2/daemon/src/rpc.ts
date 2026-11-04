@@ -7,7 +7,7 @@ import type { AutomationReference, AutomationKind, HumanChatAdmission } from "..
 import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
 import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
 import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
-import { canonicalDigest } from "../../../src/comb/canonical.ts";
+import { canonicalDigest } from "../../core/src/canonical.ts";
 import { parsePhoneOrigin, type PhoneOriginRequest } from "../../core/src/phoneOrigin.ts";
 import { AccountLeaseUnknownError } from "../../core/src/accountLease.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";

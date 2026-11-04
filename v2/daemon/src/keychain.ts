@@ -18,7 +18,7 @@
  * so tests never touch a real keychain; the default reader is a no-op off
  * macOS or under HIVE_NO_KEYCHAIN.
  */
-import { readClaudeKeychainState as readNativeKeychainState, securityExecutable } from "../../../src/keychain.ts";
+import { readClaudeKeychainState as readNativeKeychainState, securityExecutable } from "./nativeKeychain.ts";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { homedir, userInfo } from "node:os";

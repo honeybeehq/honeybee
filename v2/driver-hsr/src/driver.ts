@@ -8,9 +8,9 @@ import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import type { ExecutionStart, ExecutionRuntimeHooks, ExecutionProcess } from "../../core/src/executionStart.ts";
 import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
 import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
-import { canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
+import { canonicalDigest, type JsonValue } from "../../core/src/canonical.ts";
 import { TurnQuiet } from "../../driver-tmux/src/turn-quiet.ts";
-import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
+import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
 import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
 /**
  * HsrDriver — the first real substrate driver (WP3 of the reset).

@@ -1,7 +1,7 @@
 import type { PublicBeeRow } from "../../core/src/envRedaction.ts";
 export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
-import { honeybeeBuildIdentity, type BuildIdentity } from "../../../src/release/buildIdentity.ts";
-export { UPDATE_RECOVERY_CONTRACT } from "../../../src/updateReservation.ts";
+import { honeybeeBuildIdentity, type BuildIdentity } from "../../core/src/release/buildIdentity.ts";
+export { UPDATE_RECOVERY_CONTRACT } from "../../core/src/updateReservation.ts";
 export type { ReconnectToolsResult, ReconnectToolsReceipt, ReconnectToolsError } from "../../core/src/reconnectTools.ts";
 import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
 /**
@@ -2047,7 +2047,7 @@ export interface HealthResult {
   /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
   cellDisk?: CellDiskStatus | null;
   capacity?: NodeCapacity | null;
-  scheduling?: import("../../../src/processScheduling.ts").SchedulingStatus;
+  scheduling?: import("../../core/src/processScheduling.ts").SchedulingStatus;
 }
 
 export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };

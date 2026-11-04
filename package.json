@@ -11,30 +11,8 @@
       "onFail": "error"
     }
   },
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./comb": {
-      "types": "./dist/comb/sdk.d.ts",
-      "default": "./dist/comb/sdk.js"
-    },
-    "./execution/v1": {
-      "types": "./dist/execution/index.d.ts",
-      "default": "./dist/execution/index.js"
-    },
-    "./release/v1": {
-      "types": "./dist/release/index.d.ts",
-      "default": "./dist/release/index.js"
-    },
-    "./release/v1/extractor": "./contracts/release/v1/tools/extract-inventory.mjs",
-    "./release/v2": {
-      "types": "./dist/release/v2.d.ts",
-      "default": "./dist/release/v2.js"
-    }
+    "./release/v1/extractor": "./contracts/release/v1/tools/extract-inventory.mjs"
   },
   "files": [
     "dist/",
@@ -46,11 +24,9 @@
     "ap": "dist/cli.js"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build-runner-host-artifact.mjs && node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs && node scripts/build-cli-entry.mjs",
-    "build:test": "node scripts/build-tests.mjs",
+    "build": "node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs",
     "postbuild": "chmod +x dist/cli.js",
-    "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
-    "probe:secret-containment": "node scripts/probe-secret-containment.mjs",
+    "check": "npm run v2:check",
     "v2:check": "tsc -p v2/core/tsconfig.json && tsc -p v2/harness/tsconfig.json && tsc -p v2/adapters/tsconfig.json && tsc -p v2/driver-hsr/tsconfig.json && tsc -p v2/daemon/tsconfig.json && tsc -p v2/cli/tsconfig.json && tsc -p v2/driver-cell/tsconfig.json && tsc -p v2/driver-tmux/tsconfig.json",
     "v2:test": "NODE_COMPILE_CACHE=.cache/node-compile node scripts/with-fixture-warden.mjs node --test --test-isolation=none \"v2/core/tests/*.test.ts\" && node --test scripts/perf/fleet-cell.node-test.mjs scripts/perf/fleet-move.node-test.mjs",
     "v2:harness": "NODE_COMPILE_CACHE=.cache/node-compile node scripts/with-fixture-warden.mjs node --test --test-isolation=none \"v2/harness/tests/*.test.ts\"",
@@ -60,19 +36,15 @@
     "v2:daemon": "node scripts/with-fixture-warden.mjs node scripts/run-v2-daemon-tests.mjs",
     "v2:harness:real": "NODE_COMPILE_CACHE=.cache/node-compile node --test \"v2/driver-hsr/tests/harness/*.test.ts\" \"v2/driver-cell/tests/harness/*.test.ts\" \"v2/driver-tmux/tests/harness/*.test.ts\"",
     "deploy": "node scripts/deploy-settle.mjs",
-    "pretest": "npm run release:test && npm run build:test",
-    "test": "node scripts/with-fixture-warden.mjs node scripts/run-tests.mjs",
-    "test:source": "node --import tsx --test --test-concurrency=8 --test-reporter=dot tests/*.test.ts",
-    "execution:digest": "tsx scripts/update-execution-digest.mjs",
-    "runtime:artifact": "tsx scripts/build-runtime-artifact.mjs",
-    "dev": "tsx src/cli.ts",
     "hive": "node dist/cli.js",
     "v2:smoke": "node --experimental-strip-types v2/driver-hsr/smoke.ts",
     "v2:smoke:tmux": "node --experimental-strip-types v2/driver-tmux/smoke.ts",
     "v2:smoke:cell": "node --experimental-strip-types v2/driver-cell/smoke.ts",
     "release:inventory": "node contracts/release/v1/tools/extract-inventory.mjs .",
-    "release:test": "node --test tests/release-inventory.test.mjs",
-    "release:publish": "tsx scripts/publish-honeybee-release.mjs"
+    "release:test": "node --test contracts/release/v1/tools/extract-inventory.test.mjs",
+    "release:publish": "tsx scripts/publish-honeybee-release.mjs",
+    "execution:digest": "node scripts/update-execution-digest.mjs",
+    "runtime:artifact": "node scripts/build-runtime-artifact.mjs"
   },
   "engines": {
     "node": ">=20"

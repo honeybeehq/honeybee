@@ -1,4 +1,4 @@
-import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
+import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
 /**
  * Honeybee-owned upstream mirrors: one bare repository per origin URL under
  * `<data-dir>/upstream/`, fetch-only, whose `refs/upstream/head` is the

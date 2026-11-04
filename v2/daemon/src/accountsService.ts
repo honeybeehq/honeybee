@@ -29,8 +29,8 @@ import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, readCodexCredentialCo
 import { MuseCredentialAuthority, MUSE_CREDENTIAL_CODEC, MUSE_DEFAULT_KEY_TTL_MS, museMeta, museWorkingDocument, defaultMuseKeyTransport } from "./museCredentialAuthority.ts";
 import { GrokCredentialAuthority, GROK_CREDENTIAL_CODEC, grokAccessOnly, grokCredentialEntry, defaultGrokRefreshTransport } from "./grokCredentialAuthority.ts";
 import { liveGateways } from "./gateways.ts";
-import { withFileLock } from "../../../src/lock.ts";
-import { seedGatewayMcp, type GatewayMcpSeedResult } from "../../../src/accounts/gatewayMcpSeed.ts";
+import { withFileLock } from "../../core/src/lock.ts";
+import { seedGatewayMcp, type GatewayMcpSeedResult } from "./gatewayMcpSeed.ts";
 import {
   AUTO_PICK_DEBIT_PERCENT,
   DEFAULT_ACCOUNT_ADMISSION_POLICY,

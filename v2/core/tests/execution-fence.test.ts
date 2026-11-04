@@ -1,4 +1,4 @@
-import type { JsonValue } from "../../../src/comb/canonical.ts";
+import type { JsonValue } from "../src/canonical.ts";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

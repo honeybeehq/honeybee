@@ -72,6 +72,6 @@ test("execution host PID and ticks cannot override a bound token from another bo
 });
 
 import {mkdirSync, readFileSync, writeFileSync} from "node:fs";
-import {canonicalDigest, type JsonValue} from "../../../src/comb/canonical.ts";
+import {canonicalDigest, type JsonValue} from "../../core/src/canonical.ts";
 
 import {dirname} from "node:path";

@@ -20,12 +20,12 @@ import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, ty
 import { readAccountLease, accountLeaseUnknown, knownAccountLease } from "./accountLease.ts";
 import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
 import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
-import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
+import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "./apiarySwap.ts";
 import { currentRpcCaller } from "./rpcAuditContext.ts";
 import type { QuestionDismissedEvent } from "./mirror.ts";
 import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
 import { isAccountId } from "./accountRecipes.ts";
-import { parseUpdateReservation, type UpdateReservation } from "../../../src/updateReservation.ts";
+import { parseUpdateReservation, type UpdateReservation } from "./updateReservation.ts";
 import type { ReconnectToolsReceipt, ReconnectToolsError } from "./reconnectTools.ts";
 import { threadOperationView, type ThreadOperationRow, type ThreadOperationPhase } from "./threadOperation.ts";
 import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";

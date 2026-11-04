@@ -1,7 +1,7 @@
 // Select only a reviewed profile in the exact source checkout.
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parseDistributionProfile, productionProfile, distributionIdentity } from '../src/release/distribution-profile.ts'
+import { parseDistributionProfile, productionProfile, distributionIdentity } from '../v2/core/src/release/distribution-profile.ts'
 export function selectedDistribution(root, env = process.env) {
   const id = env.RELEASE_DISTRIBUTION || 'production'
   if (id === 'production') return productionProfile
