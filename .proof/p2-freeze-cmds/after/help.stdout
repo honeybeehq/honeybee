@@ -1,0 +1,8 @@
+Usage: hive deploy [<sha>] [--keep <n>] [--skip-tests]   build+verify <sha> (default HEAD) in a temp checkout, install to ~/.hive/runtime/<sha>, retarget current, restart daemon
+       --provision-question-withdrawal provisions registered local service trust for an approved host; explicit false in config remains disabled
+       --skip-tests skips tests with a not release-grade warning; release artifacts cannot skip tests
+       refuses a <sha> that does not contain the deployed commit (silent-revert guard); --allow-non-descendant overrides
+       hive deploy --rollback             retarget current to the previous deploy and restart the daemon
+       hive deploy --artifact <archive> --identity <json> --admission <json> --expected-current <sha|none> [--bin-dir <directory>]   install exact verified release bytes
+       hive deploy --list [--json]        show the deploy history
+       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current

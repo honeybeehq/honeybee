@@ -1,0 +1,11 @@
+# hive bash completion
+# Install: eval "$(hive completion bash)"
+# Or add to ~/.bashrc: hive completion bash > ~/.hive.bash && source ~/.hive.bash
+_hive_complete() {
+  local IFS=$'\n'
+  local response
+  response=$("${COMP_WORDS[0]}" __complete "${COMP_WORDS[@]}" 2>/dev/null)
+  COMPREPLY=( $(compgen -W "$response" -- "${COMP_WORDS[COMP_CWORD]}") )
+}
+complete -F _hive_complete hive
+

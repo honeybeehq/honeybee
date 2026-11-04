@@ -1,0 +1,327 @@
+[
+  {
+    "name": "artifact-fresh",
+    "args": [
+      "deploy",
+      "--artifact",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/release/honeybee-runtime-ffffffffffffffffffffffffffffffffffffffff.tar.gz",
+      "--identity",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/identity.json",
+      "--admission",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/admission.json",
+      "--expected-current",
+      "none",
+      "--bin-dir",
+      "/tmp/hb-freeze-capture/artifact/bin"
+    ],
+    "code": 0
+  },
+  {
+    "name": "artifact-replay",
+    "args": [
+      "deploy",
+      "--artifact",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/release/honeybee-runtime-ffffffffffffffffffffffffffffffffffffffff.tar.gz",
+      "--identity",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/identity.json",
+      "--admission",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/admission.json",
+      "--expected-current",
+      "none",
+      "--bin-dir",
+      "/tmp/hb-freeze-capture/artifact/bin"
+    ],
+    "code": 0
+  },
+  {
+    "name": "artifact-list-json",
+    "args": [
+      "deploy",
+      "--list",
+      "--json"
+    ],
+    "code": 0
+  },
+  {
+    "name": "artifact-list",
+    "args": [
+      "deploy",
+      "--list"
+    ],
+    "code": 0
+  },
+  {
+    "name": "artifact-bad-checksum",
+    "args": [
+      "deploy",
+      "--artifact",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/release/honeybee-runtime-ffffffffffffffffffffffffffffffffffffffff.tar.gz",
+      "--identity",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/bad-identity.json",
+      "--admission",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/admission.json",
+      "--expected-current",
+      "none"
+    ],
+    "code": 1
+  },
+  {
+    "name": "artifact-missing-identity",
+    "args": [
+      "deploy",
+      "--artifact",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/release/honeybee-runtime-ffffffffffffffffffffffffffffffffffffffff.tar.gz",
+      "--identity",
+      "/tmp/hb-freeze-capture/artifact/nope.json",
+      "--admission",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/admission.json",
+      "--expected-current",
+      "none"
+    ],
+    "code": 1
+  },
+  {
+    "name": "rollback-list-before",
+    "args": [
+      "deploy",
+      "--list"
+    ],
+    "code": 0
+  },
+  {
+    "name": "rollback",
+    "args": [
+      "deploy",
+      "--rollback"
+    ],
+    "code": 0
+  },
+  {
+    "name": "rollback-list-after-json",
+    "args": [
+      "deploy",
+      "--list",
+      "--json"
+    ],
+    "code": 0
+  },
+  {
+    "name": "rollback-again",
+    "args": [
+      "deploy",
+      "--rollback"
+    ],
+    "code": 0
+  },
+  {
+    "name": "help",
+    "args": [
+      "deploy",
+      "--help"
+    ],
+    "code": 0
+  },
+  {
+    "name": "help-h",
+    "args": [
+      "deploy",
+      "-h"
+    ],
+    "code": 0
+  },
+  {
+    "name": "unknown-flag",
+    "args": [
+      "deploy",
+      "--dry-run"
+    ],
+    "code": 1
+  },
+  {
+    "name": "conflicting-modes",
+    "args": [
+      "deploy",
+      "--list",
+      "--rollback"
+    ],
+    "code": 1
+  },
+  {
+    "name": "stray-positionals",
+    "args": [
+      "deploy",
+      "one",
+      "two"
+    ],
+    "code": 1
+  },
+  {
+    "name": "skip-tests-banana",
+    "args": [
+      "deploy",
+      "--skip-tests=banana"
+    ],
+    "code": 1
+  },
+  {
+    "name": "skip-tests-with-list",
+    "args": [
+      "deploy",
+      "--skip-tests",
+      "--list"
+    ],
+    "code": 1
+  },
+  {
+    "name": "orphan-identity",
+    "args": [
+      "deploy",
+      "--identity",
+      "none"
+    ],
+    "code": 1
+  },
+  {
+    "name": "artifact-with-help",
+    "args": [
+      "deploy",
+      "--artifact",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/release/honeybee-runtime-ffffffffffffffffffffffffffffffffffffffff.tar.gz",
+      "--identity",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/identity.json",
+      "--admission",
+      "/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.proof/p2-honeybee-freeze/fixture/admission.json",
+      "--expected-current",
+      "none",
+      "--bin-dir",
+      "/tmp/hb-freeze-capture/artifact/bin",
+      "--help"
+    ],
+    "code": 0
+  },
+  {
+    "name": "list-empty",
+    "args": [
+      "deploy",
+      "--list"
+    ],
+    "code": 0
+  },
+  {
+    "name": "list-empty-json",
+    "args": [
+      "deploy",
+      "--list",
+      "--json"
+    ],
+    "code": 0
+  },
+  {
+    "name": "init",
+    "args": [
+      "deploy",
+      "--init"
+    ],
+    "code": 0
+  },
+  {
+    "name": "outside-repo",
+    "args": [
+      "deploy"
+    ],
+    "code": 1
+  },
+  {
+    "name": "rollback-nothing",
+    "args": [
+      "deploy",
+      "--rollback"
+    ],
+    "code": 1
+  },
+  {
+    "name": "version",
+    "args": [
+      "--version"
+    ],
+    "code": 0
+  },
+  {
+    "name": "update-owner-status-no-daemon",
+    "args": [
+      "update-owner",
+      "status"
+    ],
+    "code": 1
+  },
+  {
+    "name": "deploy-info-no-daemon",
+    "args": [
+      "deploy-info",
+      "--json"
+    ],
+    "code": 1
+  },
+  {
+    "name": "completion-bash",
+    "args": [
+      "completion",
+      "bash"
+    ],
+    "code": 0
+  },
+  {
+    "name": "completion-zsh",
+    "args": [
+      "completion",
+      "zsh"
+    ],
+    "code": 0
+  },
+  {
+    "name": "completion-fish",
+    "args": [
+      "completion",
+      "fish"
+    ],
+    "code": 0
+  },
+  {
+    "name": "complete-top",
+    "args": [
+      "__complete",
+      "hive",
+      ""
+    ],
+    "code": 0
+  },
+  {
+    "name": "complete-dep",
+    "args": [
+      "__complete",
+      "hive",
+      "dep"
+    ],
+    "code": 0
+  },
+  {
+    "name": "complete-deploy-flags",
+    "args": [
+      "__complete",
+      "hive",
+      "deploy",
+      "--"
+    ],
+    "code": 0
+  },
+  {
+    "name": "complete-send",
+    "args": [
+      "__complete",
+      "hive",
+      "send",
+      ""
+    ],
+    "code": 0
+  }
+]

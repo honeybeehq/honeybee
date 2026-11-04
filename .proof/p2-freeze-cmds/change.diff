@@ -1,0 +1,2516 @@
+diff --git a/scripts/gates/darwin/focused-sibling-audit.json b/scripts/gates/darwin/focused-sibling-audit.json
+index 6d3861fc..e52ce44a 100644
+--- a/scripts/gates/darwin/focused-sibling-audit.json
++++ b/scripts/gates/darwin/focused-sibling-audit.json
+@@ -191,11 +191,6 @@
+       "sha256": "7db5059740eeb9705e1bb77b258710c0cdc3d17009720bbad1b026e5a4b8ce56",
+       "siblingClosure": true
+     },
+-    {
+-      "path": "v2/core/src/import-frozen.ts",
+-      "sha256": "b00060020bdd477be744d1cbfe827d772c9f15abf049bbf2357981951e0ac85a",
+-      "siblingClosure": true
+-    },
+     {
+       "path": "v2/core/src/index.ts",
+       "sha256": "ad51b938db8a812b5bc3b597f48ccb2c477176d79fc41e950dc75bb8a899116d",
+diff --git a/scripts/run-v2-daemon-tests.mjs b/scripts/run-v2-daemon-tests.mjs
+index cb5e13e9..f9b4ae37 100644
+--- a/scripts/run-v2-daemon-tests.mjs
++++ b/scripts/run-v2-daemon-tests.mjs
+@@ -134,11 +134,15 @@ async function runGroup(files, concurrency, extraArgs = []) {
+ }
+ 
+ async function runSerial(files) {
++  const failed = [];
+   for (const file of files) {
+     const result = await runGroup([file], "1");
+-    if (result) return result;
++    if (result) failed.push({ file, result });
+   }
+-  return 0;
++  if (failed.length === 0) return 0;
++  console.error(`v2 daemon/cli test files failed (${failed.length} of ${files.length}):`);
++  for (const { file, result } of failed) console.error(`  ${file} (exit ${result})`);
++  return failed[0].result;
+ }
+ 
+ if (requestedFiles.length > 0) {
+diff --git a/v2/cli/src/help.ts b/v2/cli/src/help.ts
+index 31358dcf..fc62db9e 100644
+--- a/v2/cli/src/help.ts
++++ b/v2/cli/src/help.ts
+@@ -111,13 +111,6 @@ export const GROUPS: Group[] = [
+       ["packages", "import-local [--dir d]", "import ~/.hive templates"],
+     ],
+   },
+-  {
+-    title: "Cutover",
+-    rows: [
+-      ["freeze", "[--root r] [--force]", "write <root>/FROZEN (refuses while the old daemon is alive)"],
+-      ["import", "--from-frozen", "import active bees from the frozen old-world store"],
+-    ],
+-  },
+   {
+     title: "Daemon",
+     rows: [
+diff --git a/v2/cli/src/main.ts b/v2/cli/src/main.ts
+index 31ef6c74..141b50c1 100644
+--- a/v2/cli/src/main.ts
++++ b/v2/cli/src/main.ts
+@@ -111,7 +111,6 @@ import {
+   type ReconfigureResult,
+   type SpawnResult,
+   type TagResult,
+-  type ImportFromFrozenResult,
+   type ImportLocalConfigResult,
+   type TemplateDeleteResult,
+   type TemplateExportResult,
+@@ -135,7 +134,6 @@ import { beeTaskList, isTaskStatus, isTaskTransitionAction, parseTaskListRef } f
+ import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow, type CommandRow, type NodeCapacity, type TemplateRow, type ChampionRow } from "../../core/src/types.ts";
+ import { matchAccount } from "../../core/src/accountMatch.ts";
+ import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
+-import type { FrozenImportReport, ImportPlanEntry } from "../../core/src/import-frozen.ts";
+ import { hostname } from "node:os";
+ import type { AuditTailResult } from "../../daemon/src/protocol.ts";
+ import type { TranscriptTurnStream } from "../../driver-tmux/src/transcripts.ts";
+@@ -356,7 +354,6 @@ const BOOL_FLAGS = new Set([
+   "--clear",
+   "--apply",
+   "--rebase",
+-  "--from-frozen",
+   "--no-parent",
+   "--sandbox",
+   "--no-sandbox",
+@@ -4655,103 +4652,6 @@ async function attachToBee(
+   return res.status ?? 0;
+ }
+ 
+-// ---------------------------------------------------------------------------
+-// WP7 cutover: freeze the old world, import its active bees (spec 07 B3/B4)
+-// ---------------------------------------------------------------------------
+-
+-/** The old-world store root: --root, else HIVE_STORE_ROOT (the old CLI's own override, src/fsx.ts), else ~/.hive. */
+-function frozenRootOf(parsed: Parsed): string {
+-  const flag = parsed.flags.get("--root") as string | undefined;
+-  return resolve(flag ?? process.env.HIVE_STORE_ROOT ?? join(homedir(), ".hive"));
+-}
+-
+-/**
+- * `hive freeze [--root r] [--force]` — B3. Local: writes `<root>/FROZEN`
+- * (the ONE write into the old root, the operator's), refusing while the old
+- * daemon's lock pid is alive. Does not need the v2 daemon.
+- */
+-async function cmdFreeze(ctx: CliContext, parsed: Parsed): Promise<number> {
+-  const root = frozenRootOf(parsed);
+-  const [{ freezeRoot }, { realPreflightProbes }] = await Promise.all([import("../../core/src/import-frozen.ts"), import("../../daemon/src/import-probes.ts")]);
+-  const result = freezeRoot(root, {
+-    probes: realPreflightProbes(),
+-    force: parsed.flags.get("--force") === true,
+-    by: `hive freeze (host ${hostname()}, pid ${process.pid})`,
+-  });
+-  const lines =
+-    result.outcome === "written"
+-      ? [`${cyan(bold("frozen:"))} ${result.markerPath} written — the old-world store at ${root} is now read-only by convention (remove the marker to unfreeze, spec 07 §C)`]
+-      : result.outcome === "already_frozen"
+-        ? [`${yellow("already frozen:")} ${result.markerPath} exists`]
+-        : [`${red("refused:")} ${result.refusal}`];
+-  emit(ctx, lines, result, false);
+-  return result.outcome === "refused" ? 1 : 0;
+-}
+-
+-function planEntryLine(e: ImportPlanEntry): string {
+-  if (e.action === "import") {
+-    const bee = e.bee;
+-    const resume =
+-      e.resume === "harness_native"
+-        ? `resume=native(${bee?.providerSessionId ?? "?"})`
+-        : e.resume === "fresh_no_session_id"
+-          ? "resume=FRESH(no provider session id)"
+-          : "resume=FRESH(no v2 resume path)";
+-    const notes = e.notes.length > 0 ? `  [${e.notes.join("; ")}]` : "";
+-    return `  ${cyan("import")} ${e.originalId}  ${e.name}  agent=${e.agent} substrate=${bee?.substrate ?? "?"}  ${resume}${notes}`;
+-  }
+-  const notes = e.notes.length > 0 ? `  (${e.notes.join("; ")})` : "";
+-  return `  ${dim("skip  ")} ${e.originalId}  ${e.name}  agent=${e.agent}  reason=${e.reason}${notes}`;
+-}
+-
+-function importReportLines(report: FrozenImportReport, verbose: boolean): string[] {
+-  const c = report.plan.counts;
+-  const lines: string[] = [];
+-  lines.push(`${report.dryRun ? "dry-run: " : ""}import --from-frozen ${report.frozenRoot}`);
+-  lines.push(`  marker: ${report.preflight.markerPresent ? "FROZEN present" : "FROZEN MISSING"}`);
+-  lines.push(
+-    `  preflight: ${report.preflight.ok ? "no live old-world runtimes" : `${report.preflight.live.length} live old-world runtime(s)`}`,
+-  );
+-  for (const l of report.preflight.live) lines.push(`    - ${l.detail}`);
+-  lines.push(`  plan: would import ${c.import}, skip ${c.skip}`);
+-  const byReason = Object.entries(c.byReason).map(([k, v]) => `${k}=${v}`).join(" ");
+-  if (byReason) lines.push(`    skipped by reason: ${byReason}`);
+-  const byResume = Object.entries(c.byResume).map(([k, v]) => `${k}=${v}`).join(" ");
+-  if (byResume) lines.push(`    resume modes:      ${byResume}`);
+-  const shown = verbose ? report.plan.entries : report.plan.entries.filter((e) => e.action === "import" || (e.reason !== "done" && e.reason !== "already_imported"));
+-  for (const e of shown) lines.push(planEntryLine(e));
+-  if (!verbose) {
+-    const hidden = report.plan.entries.length - shown.length;
+-    if (hidden > 0) lines.push(`  (… ${hidden} done/already-imported rows hidden; --verbose lists all)`);
+-  }
+-  if (report.refusal) lines.push(`${red(bold("REFUSED:"))} ${report.refusal}`);
+-  else if (report.dryRun) lines.push(dim("dry-run: nothing written"));
+-  else lines.push(confirm("ok", "imported", `${report.imported.length} bee(s)`));
+-  return lines;
+-}
+-
+-/**
+- * `hive import --from-frozen [--root r] [--dry-run] [--force] [--verbose]`
+- * — B4. RPC only (the daemon is the sole writer); refusals are reports, not
+- * errors, and exit 1.
+- */
+-async function cmdImport(ctx: CliContext, parsed: Parsed): Promise<number> {
+-  if (parsed.flags.get("--from-frozen") !== true) {
+-    throw new Error("usage: hive import --from-frozen [--root r] [--dry-run] [--force] [--verbose] [--idempotency-key k]");
+-  }
+-  const root = frozenRootOf(parsed);
+-  const result = await withClient(ctx, (c) =>
+-    c.request<ImportFromFrozenResult>("import.fromFrozen", {
+-      root,
+-      dryRun: parsed.flags.get("--dry-run") === true,
+-      force: parsed.flags.get("--force") === true,
+-      idempotencyKey: parsed.flags.get("--idempotency-key") as string | undefined,
+-    }),
+-  );
+-  emit(ctx, importReportLines(result, parsed.flags.get("--verbose") === true), result, false);
+-  return result.applied || result.dryRun ? 0 : 1;
+-}
+-
+ // ---------------------------------------------------------------------------
+ // daemon service subcommands
+ // ---------------------------------------------------------------------------
+@@ -5217,10 +5117,6 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
+         return await cmdChampion(ctx, parsed);
+       case "packages":
+         return await cmdPackages(ctx, parsed);
+-      case "freeze":
+-        return await cmdFreeze(ctx, parsed);
+-      case "import":
+-        return await cmdImport(ctx, parsed);
+       case "daemon":
+         return await cmdDaemon(ctx, parsed);
+       case "runner-host": {
+diff --git a/v2/cli/tests/cli.test.ts b/v2/cli/tests/cli.test.ts
+index 645eebcb..f5a640fd 100644
+--- a/v2/cli/tests/cli.test.ts
++++ b/v2/cli/tests/cli.test.ts
+@@ -15,7 +15,6 @@ import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "../../da
+ import { makeRegisteredServiceDir, registerService } from "../../daemon/tests/registered-service-fixture.ts";
+ import { runV2Cli, serviceEnv, serviceExecArgs, serviceLabel, type CliIo } from "../src/main.ts";
+ import { stripAnsi } from "../src/style.ts";
+-import { claudeHsrRecord, makeFrozenFixture } from "../../core/tests/frozen-fixture.ts";
+ import { commitInCell, g, makeOrigin } from "../../driver-cell/tests/helpers.ts";
+ 
+ function capture(): { io: CliIo; out: string[]; err: string[] } {
+@@ -835,76 +834,6 @@ test("cli.6: service glue — label never the live daemon's, exec args env overr
+   assert.deepEqual(serviceEnv("/data", { HIVE_NODE_PATH: process.execPath }), { HIVE_V2_DATA_DIR: "/data", ...nodePinEnv(probeNativeNode(process.execPath)) });
+ });
+ 
+-test("cli.7: cutover verbs — `freeze` writes/refuses locally; `import --from-frozen` reports (dry-run, marker refusal, real import, idempotent) over RPC", async () => {
+-  const fx = makeFrozenFixture();
+-  const { dir, cleanup } = makeDaemonDir();
+-  let daemon: DaemonHandle | null = null;
+-  try {
+-    fx.writeRecord("a.json", claudeHsrRecord(fx.root, { runnerPid: 4_190_000, runnerFingerprint: { pgid: 4_190_000, startedAt: "Tue Aug 18 07:42:57 2026" } }));
+-    fx.writeRecord("kf.json", claudeHsrRecord(fx.root, { id: "CL.kf", name: "kf-bee", status: "kill_failed" }));
+-    daemon = await startDaemon(dir);
+-
+-    // import before freeze → refused (marker missing), exit 1, nothing written
+-    const r0 = capture();
+-    assert.equal(await runV2Cli(["import", "--from-frozen", "--root", fx.root, "--data-dir", dir], r0.io), 1);
+-    assert.ok(r0.out.some((l) => l.includes("FROZEN MISSING")), r0.out.join("\n"));
+-    assert.ok(r0.out.some((l) => l.startsWith("REFUSED:") && l.includes("hive v2 freeze")), r0.out.join("\n"));
+-
+-    // usage guard
+-    const bad = capture();
+-    assert.equal(await runV2Cli(["import", "--data-dir", dir], bad.io), 1);
+-    assert.ok(bad.err[0]?.includes("usage: hive import --from-frozen"));
+-
+-    // freeze: lock pid alive → refused; impossible pid → written; again → already frozen
+-    // This test can run more than a minute after the test process starts.
+-    // The real preflight verifies process birth, so the fixture must too.
+-    fx.writeDaemonLock({ pid: process.pid, startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString() });
+-    const f0 = capture();
+-    assert.equal(await runV2Cli(["freeze", "--root", fx.root, "--data-dir", dir], f0.io), 1);
+-    assert.ok(f0.out[0]?.includes("refused") && f0.out[0]?.includes(String(process.pid)), f0.out[0]);
+-    fx.writeDaemonLock({ pid: 4_190_001, startedAt: "2026-08-17T12:22:29.035Z" });
+-    const f1 = capture();
+-    assert.equal(await runV2Cli(["freeze", "--root", fx.root, "--data-dir", dir, "--json"], f1.io), 0);
+-    assert.equal((JSON.parse(f1.out[0] ?? "{}") as { outcome: string }).outcome, "written");
+-    const f2 = capture();
+-    assert.equal(await runV2Cli(["freeze", "--root", fx.root, "--data-dir", dir], f2.io), 0);
+-    assert.ok(f2.out[0]?.startsWith("already frozen"));
+-
+-    // dry-run: plan listed, nothing written, exit 0
+-    const d = capture();
+-    assert.equal(await runV2Cli(["import", "--from-frozen", "--root", fx.root, "--dry-run", "--data-dir", dir], d.io), 0);
+-    assert.ok(d.out.some((l) => l.startsWith("dry-run: import --from-frozen")), d.out.join("\n"));
+-    assert.ok(d.out.some((l) => l.includes("would import 1, skip 1")), d.out.join("\n"));
+-    assert.ok(d.out.some((l) => l.includes("import CL.fe6f") && l.includes("resume=native(9aa1f08d")), d.out.join("\n"));
+-    assert.ok(d.out.some((l) => l.includes("skip   CL.kf") && l.includes("reason=kill_failed")), d.out.join("\n"));
+-    assert.ok(d.out.some((l) => l === "dry-run: nothing written"));
+-    const l0 = capture();
+-    await runV2Cli(["list", "--all", "--data-dir", dir, "--json"], l0.io);
+-    assert.equal((JSON.parse(l0.out[0] ?? "{}") as { views: unknown[] }).views.length, 0);
+-
+-    // real import, json
+-    const i1 = capture();
+-    assert.equal(await runV2Cli(["import", "--from-frozen", "--root", fx.root, "--data-dir", dir, "--json"], i1.io), 0);
+-    const report = JSON.parse(i1.out[0] ?? "{}") as { applied: boolean; imported: Array<{ beeId: string; resume: string }> };
+-    assert.equal(report.applied, true);
+-    assert.deepEqual(report.imported, [{ beeId: "CL.fe6f", name: "apiary-waggle-msx67afb-1", agent: "claude", resume: "harness_native" }]);
+-    // the bee is visible + stopped + reachable through the normal read path
+-    const v = capture();
+-    assert.equal(await runV2Cli(["view", "CL.fe6f", "--data-dir", dir], v.io), 0);
+-    assert.ok(v.out[0]?.includes("stopped(stopped_by_system)"), v.out[0]);
+-
+-    // idempotent re-run through the CLI
+-    const i2 = capture();
+-    assert.equal(await runV2Cli(["import", "--from-frozen", "--root", fx.root, "--data-dir", dir], i2.io), 0);
+-    assert.ok(i2.out.some((l) => l.includes("already_imported=1")), i2.out.join("\n"));
+-    assert.ok(i2.out.some((l) => l.includes("imported 0 bee(s)")));
+-  } finally {
+-    await daemon?.stop().catch(() => {});
+-    cleanup();
+-    fx.cleanup();
+-  }
+-});
+-
+ test("cli.urgency: send --urgency passes through to the row; the mailbox read surfaces it; an unknown value is a typed error", async () => {
+   const { dir, cleanup } = makeDaemonDir();
+   let daemon: DaemonHandle | null = null;
+diff --git a/v2/core/src/accountRecipes.ts b/v2/core/src/accountRecipes.ts
+index 38f8a064..5ea9a5b1 100644
+--- a/v2/core/src/accountRecipes.ts
++++ b/v2/core/src/accountRecipes.ts
+@@ -8,9 +8,21 @@
+  * not logged in (the rest are supporting snapshots). `configFiles` are
+  * preserved when present but never gate anything.
+  */
+-import { HARNESS_HOME_ENV } from "./import-frozen.ts";
+ import type { LoginAuthorizationPolicy, LoginFieldDescriptor, LoginMethodDescriptor } from "./loginFlow.ts";
+ 
++/** Harness → the env var that relocates its config/session home. */
++export const HARNESS_HOME_ENV: Readonly<Record<string, string>> = {
++  claude: "CLAUDE_CONFIG_DIR",
++  codex: "CODEX_HOME",
++  opencode: "OPENCODE_CONFIG_DIR",
++  grok: "GROK_HOME",
++  kimi: "KIMI_CODE_HOME",
++  cursor: "CURSOR_CONFIG_DIR",
++  // Muse has no home variable of its own: its config root (auth.json,
++  // settings, trust) is $XDG_CONFIG_HOME/muse, set only in the muse child env.
++  muse: "XDG_CONFIG_HOME",
++};
++
+ export interface IdentityRecipe {
+   /** Home-relative credential files; the same relative paths are used inside the vault. */
+   credentialFiles: string[];
+diff --git a/v2/core/src/import-frozen.ts b/v2/core/src/import-frozen.ts
+deleted file mode 100644
+index a4e726fc..00000000
+--- a/v2/core/src/import-frozen.ts
++++ /dev/null
+@@ -1,959 +0,0 @@
+-/**
+- * `hive v2 import --from-frozen` — the WP7 importer (spec 07 B3/B4, §F).
+- *
+- * Brings the operator's ACTIVE old-world bees into the v2 store as records +
+- * history: identity, name, tags, cwd, title, session-log pointer and — the
+- * continuity guarantee — the harness-native provider session id, stored where
+- * the daemon's revive path hands it back to the harness (claude `--resume`,
+- * codex `thread/resume`). Runtimes are NOT migrated (runtime death is
+- * uninteresting by contract; bees revive on message).
+- *
+- * Reads `<frozenRoot>/sessions/*.json` (the old SessionRecord json files) and
+- * `<frozenRoot>/hsr/<name>/meta.json` (only as a fallback source for the
+- * session id + live-pid preflight). Never writes into the frozen root.
+- *
+- * Old record knowledge is re-encoded here from reading src/store.ts
+- * (SessionRecord), src/drivers.ts (homeEnv table) and src/hsr/runDir.ts
+- * (meta.json) — no old code is imported.
+- *
+- * Selection (operator ruling, B4: "no zombie rows, no dead history"):
+- *   import  — status "running", not archived, with something to continue or a
+- *             runtime that was live/ready at freeze time
+- *   skip    — done/dead (history), kill_failed (parked; stays in the frozen
+- *             store), archived lifecycle, remote-node records, records with
+- *             a terminal last observation AND no session id / transcript
+- *             (zombie: nothing to continue), unusable/unparsable records,
+- *             agents the v2 node cannot run, a cwd that no longer exists on
+- *             this node (revive could not spawn — recreate it and re-run), and
+- *             ids already present (idempotent re-run).
+- *
+- * Preflight (A2): refuses while old-world runtimes are live — the frozen
+- * store's daemon lock pid, HSR host/child pids and tmux launcher pgids the
+- * records point at, verified by pid + start-time through injected probes (the
+- * daemon supplies real ones; tests supply fakes). `force` overrides.
+- */
+-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+-import { join } from "node:path";
+-import { HANDLE_RE, type CoreStore } from "./store.ts";
+-
+-/** Marker file `hive v2 freeze` writes at the frozen root (B3). */
+-export const FROZEN_MARKER = "FROZEN";
+-
+-/** Old-world harness → the env var that relocates its config/session home (src/drivers.ts homeEnv). */
+-export const HARNESS_HOME_ENV: Readonly<Record<string, string>> = {
+-  claude: "CLAUDE_CONFIG_DIR",
+-  codex: "CODEX_HOME",
+-  opencode: "OPENCODE_CONFIG_DIR",
+-  grok: "GROK_HOME",
+-  kimi: "KIMI_CODE_HOME",
+-  cursor: "CURSOR_CONFIG_DIR",
+-  // Muse has no home variable of its own: its config root (auth.json,
+-  // settings, trust) is $XDG_CONFIG_HOME/muse, set only in the muse child env.
+-  muse: "XDG_CONFIG_HOME",
+-};
+-
+-/** Old-world harnesses with a v2 harness-native resume path (spec 07 §F). */
+-export const RESUME_CAPABLE_HARNESSES: readonly string[] = ["claude", "codex"];
+-
+-/** Old `lastObservedState` spellings that mean "no live runtime" (src/store.ts TERMINAL_OBSERVED_STATES + crashed/wedged). */
+-const TERMINAL_OBSERVED = new Set(["dead", "crashed", "done", "sealed", "archived", "retired", "killed", "wedged"]);
+-
+-export const SKIP_REASONS = [
+-  "unparsable",
+-  "unusable_record",
+-  "archived",
+-  "done",
+-  "kill_failed",
+-  "remote_node",
+-  "zombie_no_history",
+-  "unsupported_agent",
+-  "cwd_missing",
+-  "already_imported",
+-  "id_collision",
+-] as const;
+-export type SkipReason = (typeof SKIP_REASONS)[number];
+-
+-/** How an imported bee will come back when messaged (exact, per harness). */
+-export type ResumeMode =
+-  /** harness-native resume with the recorded provider session id */
+-  | "harness_native"
+-  /** the harness could resume, but the record carries no session id → fresh runtime on the same session log */
+-  | "fresh_no_session_id"
+-  /** the v2 adapter has no resume path for this harness → fresh runtime */
+-  | "fresh_no_resume_path";
+-
+-/** The subset of the old SessionRecord the importer reads (see src/store.ts). */
+-export interface FrozenRecord {
+-  path: string;
+-  id: string;
+-  name: string;
+-  agent: string;
+-  cwd: string;
+-  status: string;
+-  substrate: string | null;
+-  title: string | null;
+-  tags: string[];
+-  providerSessionId: string | null;
+-  transcriptPath: string | null;
+-  homePath: string | null;
+-  accountId: string | null;
+-  lastObservedState: string | null;
+-  lifecycle: string | null;
+-  createdAt: number | null;
+-  updatedAt: number | null;
+-  node: string | null;
+-  /** Old `hive set-model` first-class model — overrides the launch argv's model flag. */
+-  model: string | null;
+-  /** Old `hive set-model … -- <flags>` extra harness flags (one shell-words line). */
+-  modelExtraArgs: string | null;
+-  /** The old runner's launch argv (`launchArgv`, program first) — the source of per-bee args. */
+-  launchArgv: string[] | null;
+-  /** The old shell command line (`command`; env prefix + program + args) — fallback when launchArgv is absent. */
+-  command: string | null;
+-  runtimeGeneration: number | null;
+-  /** Old-world process identities (HSR runner host / tmux launcher) for the preflight. */
+-  runnerPid: number | null;
+-  runnerStartedAt: number | null;
+-  launcherPgid: number | null;
+-  launcherStartedAt: number | null;
+-  tmuxTarget: string | null;
+-}
+-
+-export interface FrozenReadResult {
+-  records: FrozenRecord[];
+-  /** Files that could not be read as a usable record (path → reason; whatever identity was legible). */
+-  unreadable: Array<{ path: string; reason: SkipReason; detail: string; id: string | null; name: string | null; agent: string | null }>;
+-}
+-
+-export interface ImportPlanEntry {
+-  path: string;
+-  originalId: string;
+-  name: string;
+-  agent: string;
+-  action: "import" | "skip";
+-  reason: SkipReason | null;
+-  resume: ResumeMode | null;
+-  /** The v2 bee this record maps to (null when skipped before mapping). */
+-  bee: FrozenBeeInput | null;
+-  /** Human-readable notes (e.g. substrate mapping, session id source). */
+-  notes: string[];
+-}
+-
+-/** The createBee input + provenance the importer derives from one record. */
+-export interface FrozenBeeInput {
+-  id: string;
+-  name: string;
+-  agent: string;
+-  substrate: string;
+-  cwd: string;
+-  title: string | undefined;
+-  tags: string[];
+-  sessionLogPath: string | undefined;
+-  providerSessionId: string | undefined;
+-  env: Record<string, string>;
+-  /** Per-bee spawn args (schema v5) kept from the old launch argv; null when nothing harness-meaningful survived. */
+-  args: string[] | null;
+-  createdAt: number | undefined;
+-  provenance: Record<string, unknown>;
+-}
+-
+-export interface FrozenImportPlan {
+-  frozenRoot: string;
+-  entries: ImportPlanEntry[];
+-  counts: { import: number; skip: number; byReason: Partial<Record<SkipReason, number>>; byResume: Partial<Record<ResumeMode, number>> };
+-}
+-
+-/** One live old-world runtime the preflight found. */
+-export interface LiveOldRuntime {
+-  kind: "old_daemon" | "hsr_host" | "hsr_child" | "tmux_launcher" | "tmux_session";
+-  detail: string;
+-  pid: number | null;
+-  beeId: string | null;
+-}
+-
+-export interface PreflightProbes {
+-  /**
+-   * True when `pid` is alive AND (start time unknown OR within tolerance of
+-   * `startedAtMs`). A null `startedAtMs` means "no stamp to verify" — alive
+-   * suffices. Conservative: unverifiable-but-alive counts as live.
+-   */
+-  pidLive(pid: number, startedAtMs: number | null): boolean;
+-  /** True when a tmux session named `target` exists (best-effort; false when tmux is absent). */
+-  tmuxSessionLive(target: string): boolean;
+-}
+-
+-export interface PreflightResult {
+-  frozenRoot: string;
+-  markerPresent: boolean;
+-  live: LiveOldRuntime[];
+-  ok: boolean;
+-}
+-
+-export interface FrozenImportOptions {
+-  /** Report only; write nothing. Preflight still runs and is reported. */
+-  dryRun?: boolean;
+-  /** Import even when the preflight found live old-world runtimes (A2 override). */
+-  force?: boolean;
+-  /** Agents the v2 node can spawn (daemon: Object.keys(cfg.agents)); absent = accept all. */
+-  knownAgents?: readonly string[];
+-  /** Process/tmux probes (the daemon supplies real ones). Absent = preflight cannot see runtimes → treated as none live. */
+-  probes?: PreflightProbes;
+-  now?: () => number;
+-}
+-
+-export interface FrozenImportReport {
+-  frozenRoot: string;
+-  dryRun: boolean;
+-  /** False when the import was refused (marker missing / preflight); `refusal` says why. */
+-  applied: boolean;
+-  refusal: string | null;
+-  preflight: PreflightResult;
+-  plan: FrozenImportPlan;
+-  imported: Array<{ beeId: string; name: string; agent: string; resume: ResumeMode }>;
+-}
+-
+-// ---------------------------------------------------------------------------
+-// reading the frozen store
+-// ---------------------------------------------------------------------------
+-
+-function str(v: unknown): string | null {
+-  return typeof v === "string" && v.length > 0 ? v : null;
+-}
+-
+-function num(v: unknown): number | null {
+-  return typeof v === "number" && Number.isFinite(v) ? v : null;
+-}
+-
+-function isoMs(v: unknown): number | null {
+-  const s = str(v);
+-  if (!s) return null;
+-  const t = Date.parse(s);
+-  return Number.isFinite(t) ? t : null;
+-}
+-
+-/** Old ProcessBirthFingerprint.startedAt is `ps lstart` text ("Mon Aug 17 06:41:42 2026") — parseable by Date. */
+-function fingerprintMs(fp: unknown): number | null {
+-  if (!fp || typeof fp !== "object") return null;
+-  const started = (fp as Record<string, unknown>).startedAt;
+-  return isoMs(started);
+-}
+-
+-/** Parse one old SessionRecord json object into the importer's view of it. */
+-export type ParsedFrozenRecord =
+-  | { record: FrozenRecord }
+-  | { reason: SkipReason; detail: string; id: string | null; name: string | null; agent: string | null };
+-
+-export function parseFrozenRecord(path: string, raw: unknown): ParsedFrozenRecord {
+-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+-    return { reason: "unparsable", detail: "not a json object", id: null, name: null, agent: null };
+-  }
+-  const r = raw as Record<string, unknown>;
+-  const name = str(r.name);
+-  const agent = str(r.agent);
+-  const cwd = str(r.cwd);
+-  const status = str(r.status);
+-  const id = str(r.id) ?? str(r.uuid) ?? name;
+-  if (!name || !agent || !cwd || !status || !id) {
+-    const missing = [!name && "name", !agent && "agent", !cwd && "cwd", !status && "status", !id && "id"].filter(Boolean).join(",");
+-    return { reason: "unusable_record", detail: `missing ${missing}`, id, name, agent };
+-  }
+-  const sm = r.stateMachine && typeof r.stateMachine === "object" ? (r.stateMachine as Record<string, unknown>) : {};
+-  const tags = Array.isArray(r.tags) ? (r.tags as unknown[]).filter((t): t is string => typeof t === "string") : [];
+-  return {
+-    record: {
+-      path,
+-      id,
+-      name,
+-      agent,
+-      cwd,
+-      status,
+-      substrate: str(r.substrate),
+-      title: str(r.title),
+-      tags,
+-      providerSessionId: str(r.providerSessionId),
+-      transcriptPath: str(r.transcriptPath),
+-      homePath: str(r.homePath),
+-      accountId: str(r.accountId),
+-      lastObservedState: str(r.lastObservedState),
+-      lifecycle: str(sm.lifecycle),
+-      createdAt: isoMs(r.createdAt),
+-      updatedAt: isoMs(r.updatedAt),
+-      node: str(r.node),
+-      model: str(r.model),
+-      modelExtraArgs: str(r.modelExtraArgs),
+-      launchArgv:
+-        Array.isArray(r.launchArgv) && r.launchArgv.length > 0 && r.launchArgv.every((a) => typeof a === "string")
+-          ? [...(r.launchArgv as string[])]
+-          : null,
+-      command: str(r.command),
+-      runtimeGeneration: num(r.runtimeGeneration),
+-      runnerPid: num(r.runnerPid),
+-      runnerStartedAt: fingerprintMs(r.runnerFingerprint),
+-      launcherPgid: num(r.launcherPgid),
+-      launcherStartedAt: fingerprintMs(r.launcherFingerprint),
+-      tmuxTarget: str(r.tmuxTarget),
+-    },
+-  };
+-}
+-
+-/** Read every `<root>/sessions/*.json`. Read-only; per-file failures are reported, never thrown. */
+-export function readFrozenSessions(frozenRoot: string): FrozenReadResult {
+-  const dir = join(frozenRoot, "sessions");
+-  const out: FrozenReadResult = { records: [], unreadable: [] };
+-  if (!existsSync(dir)) return out;
+-  for (const entry of readdirSync(dir).sort()) {
+-    if (!entry.endsWith(".json")) continue;
+-    const path = join(dir, entry);
+-    try {
+-      if (!statSync(path).isFile()) continue;
+-    } catch {
+-      continue;
+-    }
+-    let raw: unknown;
+-    try {
+-      raw = JSON.parse(readFileSync(path, "utf8"));
+-    } catch (err) {
+-      out.unreadable.push({ path, reason: "unparsable", detail: err instanceof Error ? err.message : String(err), id: null, name: null, agent: null });
+-      continue;
+-    }
+-    const parsed = parseFrozenRecord(path, raw);
+-    if ("record" in parsed) out.records.push(parsed.record);
+-    else out.unreadable.push({ path, reason: parsed.reason, detail: parsed.detail, id: parsed.id, name: parsed.name, agent: parsed.agent });
+-  }
+-  return out;
+-}
+-
+-/** HSR run-dir meta (old src/hsr/runDir.ts): host/child pids + the harness session id. */
+-export interface HsrMeta {
+-  hostPid: number | null;
+-  hostStartedAt: number | null;
+-  childPid: number | null;
+-  childStartedAt: number | null;
+-  sessionId: string | null;
+-}
+-
+-export function readHsrMeta(frozenRoot: string, beeName: string): HsrMeta | null {
+-  const path = join(frozenRoot, "hsr", beeName, "meta.json");
+-  if (!existsSync(path)) return null;
+-  try {
+-    const m = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+-    return {
+-      hostPid: num(m.hostPid),
+-      hostStartedAt: fingerprintMs(m.hostFingerprint),
+-      childPid: num(m.childPid),
+-      childStartedAt: fingerprintMs(m.childFingerprint),
+-      sessionId: str(m.sessionId),
+-    };
+-  } catch {
+-    return null;
+-  }
+-}
+-
+-/** The old daemon lock (`<root>/daemon/daemon.lock`: {pid, startedAt ISO, …}). */
+-export function readOldDaemonLock(frozenRoot: string): { pid: number; startedAt: number | null } | null {
+-  const path = join(frozenRoot, "daemon", "daemon.lock");
+-  if (!existsSync(path)) return null;
+-  try {
+-    const l = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+-    const pid = num(l.pid);
+-    if (pid == null) return null;
+-    return { pid, startedAt: isoMs(l.startedAt) };
+-  } catch {
+-    return null;
+-  }
+-}
+-
+-// ---------------------------------------------------------------------------
+-// per-bee args from the old launch argv (schema v5)
+-// ---------------------------------------------------------------------------
+-
+-/**
+- * Minimal POSIX-ish shell-words split for the old `command` string /
+- * `modelExtraArgs` line: single quotes literal, double quotes with `\` escapes,
+- * backslash escapes outside quotes, whitespace separates. Enough for the
+- * shapes the old system wrote (`-c 'model_reasoning_effort="high"'`).
+- */
+-export function shellWords(line: string): string[] {
+-  const out: string[] = [];
+-  let cur = "";
+-  let has = false;
+-  let i = 0;
+-  while (i < line.length) {
+-    const ch = line[i] as string;
+-    if (ch === "'") {
+-      const end = line.indexOf("'", i + 1);
+-      cur += line.slice(i + 1, end < 0 ? line.length : end);
+-      has = true;
+-      i = end < 0 ? line.length : end + 1;
+-      continue;
+-    }
+-    if (ch === '"') {
+-      i += 1;
+-      while (i < line.length && line[i] !== '"') {
+-        if (line[i] === "\\" && i + 1 < line.length && '"\\$`'.includes(line[i + 1] as string)) i += 1;
+-        cur += line[i];
+-        i += 1;
+-      }
+-      i += 1;
+-      has = true;
+-      continue;
+-    }
+-    if (ch === "\\" && i + 1 < line.length) {
+-      cur += line[i + 1];
+-      has = true;
+-      i += 2;
+-      continue;
+-    }
+-    if (ch === " " || ch === "\t" || ch === "\n") {
+-      if (has) out.push(cur);
+-      cur = "";
+-      has = false;
+-      i += 1;
+-      continue;
+-    }
+-    cur += ch;
+-    has = true;
+-    i += 1;
+-  }
+-  if (has) out.push(cur);
+-  return out;
+-}
+-
+-/**
+- * The old record's argv AFTER the program token: `launchArgv` (program first)
+- * when present, else the `command` string with its leading `KEY=value` env
+- * assignments and the program stripped. Null when neither is usable.
+- */
+-export function oldLaunchArgs(record: Pick<FrozenRecord, "launchArgv" | "command">): { args: string[]; source: "launchArgv" | "command" } | null {
+-  if (record.launchArgv && record.launchArgv.length > 0) return { args: record.launchArgv.slice(1), source: "launchArgv" };
+-  if (record.command) {
+-    const words = shellWords(record.command);
+-    let i = 0;
+-    while (i < words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[i] as string)) i += 1; // env prefix
+-    if (i < words.length) return { args: words.slice(i + 1), source: "command" };
+-  }
+-  return null;
+-}
+-
+-/**
+- * The importer's keep/drop table — which old launch flags become per-bee
+- * args (schema v5) and which are old-system plumbing the v2 daemon/adapters
+- * supply themselves (or that would break the v2 spawn shape). Anything not
+- * listed is DROPPED (recorded in the provenance payload as `droppedArgs`);
+- * the table is an allow-list, so an unknown flag never leaks into a v2 spawn.
+- *
+- *   claude   keep  --model <m>                     (also --model=<m>)
+- *            keep  --effort <e>                    (also --effort=<e>)
+- *            keep  --dangerously-skip-permissions
+- *            drop  --session-id <id>               (v2 resumes with --resume <providerSessionId>)
+- *            drop  --resume <id> / -r <id>         (same — the bee row carries the id)
+- *            drop  --append-system-prompt <text>   (old hive-session preamble; v2 has its own delivery)
+- *            drop  --system-prompt <text>
+- *            drop  -p / --print / --input-format <f> / --output-format <f> / --verbose
+- *                                                  (the v2 agent spec's base args)
+- *            drop  --permission-mode <m>, --continue/-c, everything else
+- *
+- *   codex    keep  -m <m> / --model <m> / --model=<m>   → canonical `--model <m>`
+- *            keep  -c model_reasoning_effort=…      → canonical `-c model_reasoning_effort=…`
+- *                  (--config …, -c=…, --config=… spellings fold onto `-c`)
+- *            keep  --dangerously-bypass-approvals-and-sandbox
+- *                                                  (→ v2 codex adapter approvalPolicy "never"
+- *                                                   + sandbox "danger-full-access"; lifted off
+- *                                                   argv by the daemon, see adapters/args.ts)
+- *            drop  -c service_tier=…               (old-system tier plumbing)
+- *            drop  -c features.fast_mode=…          (old-system fast-mode plumbing)
+- *            drop  -c sandbox_workspace_write.*     (old cell-network plumbing)
+- *            drop  -c <anything else>
+- *            drop  app-server, --full-auto, -a/--ask-for-approval <p>, -s/--sandbox <p>,
+- *                  -p/--profile <p>, -C/--cd <d>, -i/--image <f>, everything else
+- *
+- *   other    drop everything (no v2 adapter takes per-bee args for them)
+- *
+- * The record's first-class `model` (old `hive set-model`) overrides the argv's
+- * model flag; `modelExtraArgs` (old `set-model … -- <flags>`) is shell-split
+- * and run through the same table AFTER the argv, so it layers on top. The
+- * result is canonical + de-duplicated (later wins per flag).
+- */
+-export const IMPORT_ARGS_TABLE = {
+-  claude: {
+-    keepValue: ["--model", "--effort"],
+-    keepBoolean: ["--dangerously-skip-permissions"],
+-    dropValue: ["--session-id", "--resume", "-r", "--append-system-prompt", "--system-prompt", "--input-format", "--output-format", "--permission-mode", "--max-turns", "--fallback-model", "--agent", "--settings", "--mcp-config", "--allowedTools", "--disallowedTools", "--add-dir", "--max-budget-usd", "--json-schema", "--betas"],
+-    dropBoolean: ["-p", "--print", "--verbose", "--continue", "-c", "--include-partial-messages", "--replay-user-messages"],
+-    keepConfigKeys: [] as string[],
+-  },
+-  codex: {
+-    keepValue: ["-m", "--model"],
+-    keepBoolean: ["--dangerously-bypass-approvals-and-sandbox"],
+-    dropValue: ["-a", "--ask-for-approval", "-s", "--sandbox", "-p", "--profile", "-C", "--cd", "-i", "--image"],
+-    dropBoolean: ["--full-auto", "--search", "--oss"],
+-    keepConfigKeys: ["model_reasoning_effort"],
+-  },
+-} as const;
+-
+-export type ImportArgsHarness = keyof typeof IMPORT_ARGS_TABLE;
+-
+-const CODEX_MODEL_ALIASES = new Set(["-m", "--model"]);
+-const CODEX_CONFIG_ALIASES = new Set(["-c", "--config"]);
+-
+-export interface ExtractedArgs {
+-  /** Canonical, de-duplicated per-bee args; null when nothing survived. */
+-  args: string[] | null;
+-  /** Dropped units, each rendered as the tokens it consisted of. */
+-  dropped: string[][];
+-}
+-
+-/** Apply the keep/drop table to one old argv (program already stripped). Pure. */
+-export function extractBeeArgs(harness: string, argv: readonly string[]): ExtractedArgs {
+-  const table = (IMPORT_ARGS_TABLE as Record<string, (typeof IMPORT_ARGS_TABLE)[ImportArgsHarness]>)[harness];
+-  const dropped: string[][] = [];
+-  if (!table) {
+-    for (const t of argv) dropped.push([t]);
+-    return { args: null, dropped };
+-  }
+-  // units: [identity, tokens]; identity null = keep-as-is (never happens for
+-  // an allow-list — every kept unit is identified)
+-  const kept: Array<{ identity: string; kind: "value" | "boolean"; tokens: string[] }> = [];
+-  const isCodex = harness === "codex";
+-  for (let i = 0; i < argv.length; i += 1) {
+-    const tok = argv[i] as string;
+-    const eq = tok.startsWith("-") ? tok.indexOf("=") : -1;
+-    const flag = eq > 0 ? tok.slice(0, eq) : tok;
+-    const inline = eq > 0 ? tok.slice(eq + 1) : null;
+-    const takeValue = (): string | null => {
+-      if (inline !== null) return inline;
+-      const v = argv[i + 1];
+-      if (v === undefined) return null;
+-      i += 1;
+-      return v;
+-    };
+-    if (isCodex && CODEX_CONFIG_ALIASES.has(flag)) {
+-      const value = takeValue();
+-      if (value === null) {
+-        dropped.push([tok]);
+-        continue;
+-      }
+-      const key = value.split("=")[0] ?? value;
+-      if ((table.keepConfigKeys as readonly string[]).includes(key)) kept.push({ identity: `-c:${key}`, kind: "value", tokens: ["-c", value] });
+-      else dropped.push(inline !== null ? [tok] : [tok, value]);
+-      continue;
+-    }
+-    if ((table.keepValue as readonly string[]).includes(flag)) {
+-      const value = takeValue();
+-      if (value === null) {
+-        dropped.push([tok]);
+-        continue;
+-      }
+-      const canonical = isCodex && CODEX_MODEL_ALIASES.has(flag) ? "--model" : flag;
+-      kept.push({ identity: canonical, kind: "value", tokens: [canonical, value] });
+-      continue;
+-    }
+-    if ((table.keepBoolean as readonly string[]).includes(flag) && inline === null) {
+-      kept.push({ identity: flag, kind: "boolean", tokens: [flag] });
+-      continue;
+-    }
+-    if ((table.dropValue as readonly string[]).includes(flag)) {
+-      const value = takeValue();
+-      dropped.push(value === null || inline !== null ? [tok] : [tok, value]);
+-      continue;
+-    }
+-    // dropBoolean, unknown flags, positionals: dropped one token at a time
+-    dropped.push([tok]);
+-  }
+-  // de-dup: valued → last wins (its position); boolean → first wins
+-  const first = new Map<string, number>();
+-  const last = new Map<string, number>();
+-  kept.forEach((u, i) => {
+-    if (!first.has(u.identity)) first.set(u.identity, i);
+-    last.set(u.identity, i);
+-  });
+-  const args = kept
+-    .filter((u, i) => (u.kind === "boolean" ? first.get(u.identity) === i : last.get(u.identity) === i))
+-    .flatMap((u) => u.tokens);
+-  return { args: args.length > 0 ? args : null, dropped };
+-}
+-
+-/**
+- * The per-bee args for one old record: launch argv (or command) through the
+- * keep/drop table, then the first-class `model` override, then
+- * `modelExtraArgs`. Returns the args plus what the provenance payload records.
+- */
+-export function beeArgsFromRecord(record: FrozenRecord): {
+-  args: string[] | null;
+-  provenance: { argsSource: "launchArgv" | "command" | null; keptArgs: string[] | null; droppedArgs: string[][]; modelOverride: string | null; modelExtraArgs: string | null };
+-} {
+-  const launch = oldLaunchArgs(record);
+-  const layers: string[] = [];
+-  const dropped: string[][] = [];
+-  if (launch) {
+-    const ex = extractBeeArgs(record.agent, launch.args);
+-    if (ex.args) layers.push(...ex.args);
+-    dropped.push(...ex.dropped);
+-  }
+-  const modelOverride = record.model && (record.agent === "claude" || record.agent === "codex") ? record.model : null;
+-  if (modelOverride) layers.push("--model", modelOverride);
+-  if (record.modelExtraArgs) {
+-    const ex = extractBeeArgs(record.agent, shellWords(record.modelExtraArgs));
+-    if (ex.args) layers.push(...ex.args);
+-    dropped.push(...ex.dropped);
+-  }
+-  // one more pass folds the layers (override + extras) onto the argv args
+-  const final = layers.length > 0 ? extractBeeArgs(record.agent, layers).args : null;
+-  return {
+-    args: final,
+-    provenance: {
+-      argsSource: launch?.source ?? null,
+-      keptArgs: final,
+-      droppedArgs: dropped,
+-      modelOverride,
+-      modelExtraArgs: record.modelExtraArgs,
+-    },
+-  };
+-}
+-
+-// ---------------------------------------------------------------------------
+-// planning (pure)
+-// ---------------------------------------------------------------------------
+-
+-/** Old substrate value → v2 substrate (contract §1: tmux | hsr | cell). */
+-export function mapSubstrate(old: string | null): string {
+-  if (old === "hsr") return "hsr";
+-  // Absent = local-tmux in the old system (back-compat default), "local-tmux" explicit.
+-  return "tmux";
+-}
+-
+-export function resumeModeFor(agent: string, providerSessionId: string | null): ResumeMode {
+-  if (!RESUME_CAPABLE_HARNESSES.includes(agent)) return "fresh_no_resume_path";
+-  return providerSessionId ? "harness_native" : "fresh_no_session_id";
+-}
+-
+-/** Map one active old record to a v2 createBee input + provenance payload. */
+-export function mapFrozenRecord(record: FrozenRecord, frozenRoot: string, meta: HsrMeta | null): { bee: FrozenBeeInput; notes: string[] } {
+-  const notes: string[] = [];
+-  let providerSessionId = record.providerSessionId;
+-  if (!providerSessionId && meta?.sessionId) {
+-    providerSessionId = meta.sessionId;
+-    notes.push("provider session id taken from hsr/<name>/meta.json (record lacked it)");
+-  }
+-  const substrate = mapSubstrate(record.substrate);
+-  if (substrate !== (record.substrate ?? "local-tmux")) notes.push(`substrate ${record.substrate ?? "(absent=local-tmux)"} → ${substrate}`);
+-  const env: Record<string, string> = {};
+-  const homeEnv = HARNESS_HOME_ENV[record.agent];
+-  if (record.homePath && homeEnv) {
+-    env[homeEnv] = record.homePath;
+-    notes.push(`${homeEnv}=${record.homePath}`);
+-  } else if (record.homePath) {
+-    notes.push(`homePath ${record.homePath} not applied: no known home env var for agent ${record.agent}`);
+-  }
+-  if (record.agent === "claude" && substrate === "tmux" && providerSessionId) {
+-    notes.push("claude interactive (tmux) session → headless resume is unverified (old finding: the two claude session stores are disjoint)");
+-  }
+-  const extracted = beeArgsFromRecord(record);
+-  if (extracted.args) notes.push(`args ${extracted.args.join(" ")}`);
+-  if (extracted.provenance.droppedArgs.length > 0) {
+-    notes.push(`dropped ${extracted.provenance.droppedArgs.length} old launch flag(s): ${extracted.provenance.droppedArgs.map((d) => d[0]).join(" ")}`);
+-  }
+-  const bee: FrozenBeeInput = {
+-    id: record.id,
+-    name: record.name,
+-    agent: record.agent,
+-    substrate,
+-    cwd: record.cwd,
+-    title: record.title ?? undefined,
+-    tags: record.tags,
+-    sessionLogPath: record.transcriptPath ?? undefined,
+-    providerSessionId: providerSessionId ?? undefined,
+-    env,
+-    args: extracted.args,
+-    createdAt: record.createdAt ?? undefined,
+-    provenance: {
+-      imported_from: "frozen",
+-      frozenRoot,
+-      recordPath: record.path,
+-      originalId: record.id,
+-      originalName: record.name,
+-      agent: record.agent,
+-      substrate: record.substrate,
+-      status: record.status,
+-      lastObservedState: record.lastObservedState,
+-      lifecycle: record.lifecycle,
+-      providerSessionId: providerSessionId,
+-      providerSessionIdSource: record.providerSessionId ? "record" : providerSessionId ? "hsr_meta" : null,
+-      transcriptPath: record.transcriptPath,
+-      homePath: record.homePath,
+-      accountId: record.accountId,
+-      model: record.model,
+-      runtimeGeneration: record.runtimeGeneration,
+-      createdAt: record.createdAt,
+-      updatedAt: record.updatedAt,
+-      // schema v5: what the keep/drop table did to the old launch argv
+-      ...extracted.provenance,
+-    },
+-  };
+-  return { bee, notes };
+-}
+-
+-export interface PlanContext {
+-  frozenRoot: string;
+-  knownAgents?: readonly string[];
+-  /** Whether a bee cwd exists on this node (default: fs check). Injectable for pure tests. */
+-  cwdExists?: (cwd: string) => boolean;
+-  /** Existing v2 bees by id → importedFrom marker (null = v2-born). */
+-  existing: (id: string) => { importedFrom: string | null } | null;
+-  hsrMeta: (beeName: string) => HsrMeta | null;
+-}
+-
+-/** Decide import/skip (+ reason, resume mode) for every record. Pure given the context functions. */
+-export function planFrozenImport(read: FrozenReadResult, ctx: PlanContext): FrozenImportPlan {
+-  const entries: ImportPlanEntry[] = [];
+-  const skip = (path: string, originalId: string, name: string, agent: string, reason: SkipReason, note?: string): ImportPlanEntry => ({
+-    path,
+-    originalId,
+-    name,
+-    agent,
+-    action: "skip",
+-    reason,
+-    resume: null,
+-    bee: null,
+-    notes: note ? [note] : [],
+-  });
+-  for (const u of read.unreadable) entries.push(skip(u.path, u.id ?? "?", u.name ?? "?", u.agent ?? "?", u.reason, u.detail));
+-  for (const r of read.records) {
+-    if (r.lifecycle === "archived") {
+-      entries.push(skip(r.path, r.id, r.name, r.agent, "archived"));
+-      continue;
+-    }
+-    if (r.status === "done" || r.status === "dead") {
+-      entries.push(skip(r.path, r.id, r.name, r.agent, "done", `status ${r.status}`));
+-      continue;
+-    }
+-    if (r.status === "kill_failed") {
+-      entries.push(skip(r.path, r.id, r.name, r.agent, "kill_failed", "parked in the frozen store (operator ruling)"));
+-      continue;
+-    }
+-    if (r.status !== "running") {
+-      entries.push(skip(r.path, r.id, r.name, r.agent, "unusable_record", `unknown status ${r.status}`));
+-      continue;
+-    }
+-    if (r.node) {
+-      entries.push(skip(r.path, r.id, r.name, r.agent, "remote_node", `owned by node ${r.node}`));
+-      continue;
+-    }
+-    const meta = ctx.hsrMeta(r.name);
+-    const sessionId = r.providerSessionId ?? meta?.sessionId ?? null;
+-    if (r.lastObservedState && TERMINAL_OBSERVED.has(r.lastObservedState) && !sessionId && !r.transcriptPath) {
+-      entries.push(skip(r.path, r.id, r.name, r.agent, "zombie_no_history", `last observed ${r.lastObservedState}, no session id, no transcript`));
+-      continue;
+-    }
+-    if (ctx.knownAgents && !ctx.knownAgents.includes(r.agent)) {
+-      entries.push(skip(r.path, r.id, r.name, r.agent, "unsupported_agent", `no v2 agent spec/adapter for '${r.agent}'`));
+-      continue;
+-    }
+-    if (!(ctx.cwdExists ?? existsSync)(r.cwd)) {
+-      entries.push(skip(r.path, r.id, r.name, r.agent, "cwd_missing", `cwd ${r.cwd} does not exist on this node — recreate it and re-run (idempotent)`));
+-      continue;
+-    }
+-    const existing = ctx.existing(r.id);
+-    if (existing) {
+-      entries.push(
+-        existing.importedFrom === "frozen"
+-          ? skip(r.path, r.id, r.name, r.agent, "already_imported", "same id already in the v2 store (re-run is a no-op)")
+-          : skip(r.path, r.id, r.name, r.agent, "id_collision", "a v2-born bee already holds this id"),
+-      );
+-      continue;
+-    }
+-    const { bee, notes } = mapFrozenRecord(r, ctx.frozenRoot, meta);
+-    const resume = resumeModeFor(r.agent, bee.providerSessionId ?? null);
+-    entries.push({ path: r.path, originalId: r.id, name: r.name, agent: r.agent, action: "import", reason: null, resume, bee, notes });
+-  }
+-  const counts: FrozenImportPlan["counts"] = { import: 0, skip: 0, byReason: {}, byResume: {} };
+-  for (const e of entries) {
+-    if (e.action === "import") {
+-      counts.import += 1;
+-      if (e.resume) counts.byResume[e.resume] = (counts.byResume[e.resume] ?? 0) + 1;
+-    } else {
+-      counts.skip += 1;
+-      if (e.reason) counts.byReason[e.reason] = (counts.byReason[e.reason] ?? 0) + 1;
+-    }
+-  }
+-  return { frozenRoot: ctx.frozenRoot, entries, counts };
+-}
+-
+-// ---------------------------------------------------------------------------
+-// preflight (A2)
+-// ---------------------------------------------------------------------------
+-
+-/**
+- * Find live old-world runtimes: the frozen store's daemon (lock pid), every
+- * candidate record's HSR host/child pids (record + hsr meta) and tmux
+- * launcher pgid / session. Only ACTIVE candidates are probed — a parked
+- * kill_failed row's stale pid is not this import's business.
+- */
+-export function preflightFrozen(
+-  frozenRoot: string,
+-  read: FrozenReadResult,
+-  probes: PreflightProbes | undefined,
+-  hsrMeta: (beeName: string) => HsrMeta | null,
+-): PreflightResult {
+-  const live: LiveOldRuntime[] = [];
+-  const markerPresent = existsSync(join(frozenRoot, FROZEN_MARKER));
+-  if (!probes) return { frozenRoot, markerPresent, live, ok: true };
+-  const lock = readOldDaemonLock(frozenRoot);
+-  if (lock && probes.pidLive(lock.pid, lock.startedAt)) {
+-    live.push({ kind: "old_daemon", detail: `old daemon pid ${lock.pid} is alive (${join(frozenRoot, "daemon", "daemon.lock")})`, pid: lock.pid, beeId: null });
+-  }
+-  for (const r of read.records) {
+-    if (r.status !== "running") continue; // parked/dead rows are not this import's business
+-    const seen = new Set<number>();
+-    const probe = (kind: LiveOldRuntime["kind"], pid: number | null, startedAt: number | null, what: string): void => {
+-      if (pid == null || pid <= 0 || seen.has(pid)) return;
+-      seen.add(pid);
+-      if (probes.pidLive(pid, startedAt)) live.push({ kind, detail: `${what} pid ${pid} is alive (bee ${r.id} ${r.name})`, pid, beeId: r.id });
+-    };
+-    probe("hsr_host", r.runnerPid, r.runnerStartedAt, "hsr runner");
+-    const meta = hsrMeta(r.name);
+-    if (meta) {
+-      probe("hsr_host", meta.hostPid, meta.hostStartedAt, "hsr host");
+-      probe("hsr_child", meta.childPid, meta.childStartedAt, "hsr child");
+-    }
+-    probe("tmux_launcher", r.launcherPgid, r.launcherStartedAt, "tmux launcher");
+-    if (r.tmuxTarget && r.substrate !== "hsr" && probes.tmuxSessionLive(r.tmuxTarget)) {
+-      live.push({ kind: "tmux_session", detail: `tmux session '${r.tmuxTarget}' exists (bee ${r.id} ${r.name})`, pid: null, beeId: r.id });
+-    }
+-  }
+-  return { frozenRoot, markerPresent, live, ok: live.length === 0 };
+-}
+-
+-// ---------------------------------------------------------------------------
+-// freeze (B3) — the ONE write into the old root, and it is the operator's
+-// ---------------------------------------------------------------------------
+-
+-export interface FreezeOptions {
+-  probes?: PreflightProbes;
+-  /** Freeze even if the old daemon lock pid is alive. */
+-  force?: boolean;
+-  now?: () => number;
+-  /** Written into the marker for forensics (hostname, pid, cli). */
+-  by?: string;
+-}
+-
+-export interface FreezeResult {
+-  frozenRoot: string;
+-  markerPath: string;
+-  /** "written" | "already_frozen" | "refused" */
+-  outcome: "written" | "already_frozen" | "refused";
+-  refusal: string | null;
+-}
+-
+-/**
+- * `hive v2 freeze <root>`: mark the old-world store frozen by writing
+- * `<root>/FROZEN` (json: frozenAt, by). Refuses while the old daemon is alive
+- * (its lock pid verified by pid + start-time), unless `force`. Idempotent —
+- * an existing marker is left untouched. Nothing else in the root is written.
+- */
+-export function freezeRoot(frozenRoot: string, opts: FreezeOptions = {}): FreezeResult {
+-  const markerPath = join(frozenRoot, FROZEN_MARKER);
+-  if (!existsSync(frozenRoot) || !existsSync(join(frozenRoot, "sessions"))) {
+-    return { frozenRoot, markerPath, outcome: "refused", refusal: `no old-world store at ${frozenRoot} (expected <root>/sessions/)` };
+-  }
+-  if (existsSync(markerPath)) return { frozenRoot, markerPath, outcome: "already_frozen", refusal: null };
+-  const lock = readOldDaemonLock(frozenRoot);
+-  if (lock && opts.probes && !opts.force && opts.probes.pidLive(lock.pid, lock.startedAt)) {
+-    return {
+-      frozenRoot,
+-      markerPath,
+-      outcome: "refused",
+-      refusal: `old daemon pid ${lock.pid} is alive (${join(frozenRoot, "daemon", "daemon.lock")}) — stop it first (\`hive daemon stop\`) or pass --force`,
+-    };
+-  }
+-  const now = opts.now ?? Date.now;
+-  writeFileSync(
+-    markerPath,
+-    `${JSON.stringify({ frozenAt: new Date(now()).toISOString(), by: opts.by ?? "hive v2 freeze", note: "old-world store frozen for the v2 cutover (spec 07 B3); files stay readable; remove this marker to unfreeze (rollback §C)" }, null, 2)}\n`,
+-    { flag: "wx" },
+-  );
+-  return { frozenRoot, markerPath, outcome: "written", refusal: null };
+-}
+-
+-// ---------------------------------------------------------------------------
+-// the importer
+-// ---------------------------------------------------------------------------
+-
+-/**
+- * Import active old-world bees from a frozen root into the v2 store. Refuses
+- * (report.applied=false, report.refusal set) when the FROZEN marker is absent
+- * or the preflight finds live old-world runtimes (unless `force`). Idempotent:
+- * ids are preserved, so a re-run skips everything as `already_imported`.
+- * Every write is one store transaction per bee: createBee (with the provider
+- * session id, env, provenance) → runtime 1 stopped(stopped_by_system) (the
+- * old runtime is gone by definition; revive mints generation 2) → the
+- * `bee.imported` audit row.
+- */
+-export function importFromFrozen(store: CoreStore, frozenRoot: string, opts: FrozenImportOptions = {}): FrozenImportReport {
+-  const dryRun = opts.dryRun === true;
+-  const read = readFrozenSessions(frozenRoot);
+-  const hsrMeta = (name: string): HsrMeta | null => readHsrMeta(frozenRoot, name);
+-  const plan = planFrozenImport(read, {
+-    frozenRoot,
+-    knownAgents: opts.knownAgents,
+-    existing: (id) => {
+-      const bee = store.getBee(id);
+-      return bee ? { importedFrom: bee.importedFrom } : null;
+-    },
+-    hsrMeta,
+-  });
+-  const preflight = preflightFrozen(frozenRoot, read, opts.probes, hsrMeta);
+-  const report: FrozenImportReport = { frozenRoot, dryRun, applied: false, refusal: null, preflight, plan, imported: [] };
+-
+-  if (!existsSync(frozenRoot) || !existsSync(join(frozenRoot, "sessions"))) {
+-    report.refusal = `no old-world store at ${frozenRoot} (expected <root>/sessions/)`;
+-    return report;
+-  }
+-  if (!preflight.markerPresent) {
+-    report.refusal = `${join(frozenRoot, FROZEN_MARKER)} is missing — run \`hive v2 freeze --root ${frozenRoot}\` first (B3: stop the old daemon, mark the store frozen)`;
+-    return report;
+-  }
+-  if (!preflight.ok && !opts.force) {
+-    report.refusal =
+-      `old-world runtimes are still live (${preflight.live.length}); stop them (B1 quiesce) or re-run with --force:\n` +
+-      preflight.live.map((l) => `  - ${l.detail}`).join("\n");
+-    return report;
+-  }
+-  if (dryRun) return report;
+-
+-  const now = opts.now ?? Date.now;
+-  for (const entry of plan.entries) {
+-    if (entry.action !== "import" || !entry.bee) continue;
+-    const b = entry.bee;
+-    store.transact(() => {
+-      store.createBee({
+-        id: b.id,
+-        name: b.name,
+-        agent: b.agent,
+-        substrate: b.substrate,
+-        cwd: b.cwd,
+-        title: b.title,
+-        tags: b.tags,
+-        sessionLogPath: b.sessionLogPath,
+-        providerSessionId: b.providerSessionId,
+-        env: b.env,
+-        args: b.args,
+-        importedFrom: "frozen",
+-        parentExternal: false,
+-        createdAt: b.createdAt,
+-        // v10: an old-world id IS a pretty handle (CL.7920) — keep it as the
+-        // display handle so the operator's known references survive the
+-        // cutover. If a v2-born bee somehow minted it first, fall back to a
+-        // fresh mint rather than failing the import.
+-        ...(HANDLE_RE.test(b.id) && !store.listBees().some((x) => x.handle === b.id) ? { handle: b.id } : {}),
+-      });
+-      // The old runtime is not migrated (contract: runtime death is uninteresting).
+-      // Generation 1 exists only so revive-on-message mints generation 2 cleanly.
+-      store.updateRuntimeState(b.id, 1, "stopped", { exitCause: "stopped_by_system" });
+-      store.recordImportProvenance(b.id, { ...b.provenance, importedAt: now(), resume: entry.resume });
+-    });
+-    report.imported.push({ beeId: b.id, name: b.name, agent: b.agent, resume: entry.resume ?? "fresh_no_resume_path" });
+-  }
+-  report.applied = true;
+-  return report;
+-}
+diff --git a/v2/core/src/index.ts b/v2/core/src/index.ts
+index ee1d4d8d..6eeaa9b8 100644
+--- a/v2/core/src/index.ts
++++ b/v2/core/src/index.ts
+@@ -67,7 +67,6 @@ export {
+   type TemplateFields,
+ } from "./registry.ts";
+ export * from "./packages.ts";
+-export * from "./import-frozen.ts";
+ export * from "./mirror.ts";
+ export * from "./tasks.ts";
+ export * from "./automation.ts";
+diff --git a/v2/core/tests/bee-args.test.ts b/v2/core/tests/bee-args.test.ts
+index 9b1fda9f..9f5b9f63 100644
+--- a/v2/core/tests/bee-args.test.ts
++++ b/v2/core/tests/bee-args.test.ts
+@@ -20,25 +20,9 @@ import { DatabaseSync } from "node:sqlite";
+ import {
+   SCHEMA_VERSION,
+   SchemaVersionError,
+-  beeArgsFromRecord,
+-  extractBeeArgs,
+-  importFromFrozen,
+-  oldLaunchArgs,
+-  parseFrozenRecord,
+   replayAudit,
+-  shellWords,
+-  type FrozenRecord,
+ } from "../src/index.ts";
+ import { harness, makeBee } from "./helpers.ts";
+-import {
+-  CLAUDE_HSR_LAUNCH_ARGV,
+-  CLAUDE_HSR_SESSION_ID,
+-  claudeHsrRecord,
+-  codexHsrRecord,
+-  codexTmuxRecord,
+-  deadProbes,
+-  makeFrozenFixture,
+-} from "./frozen-fixture.ts";
+ 
+ test("reconfigure records args at admission, waits for idle, and replaces a queued change; stopped changes and no-ops replay", () => {
+   const h = harness();
+@@ -297,123 +281,3 @@ test("args.2: a v4-shaped store (spawn_failures, no args column) migrates additi
+     h.cleanup();
+   }
+ });
+-
+-test("args.3: keep/drop table — claude keeps --model/--effort/--dangerously-skip-permissions, drops session-id / system prompt / plumbing; codex canonicalizes -m and -c reasoning, drops service_tier & fast_mode; unknown harness drops all", () => {
+-  // claude, real shape (program stripped by oldLaunchArgs)
+-  const claude = extractBeeArgs("claude", CLAUDE_HSR_LAUNCH_ARGV.slice(1));
+-  assert.deepEqual(claude.args, ["--dangerously-skip-permissions", "--model", "fable", "--effort", "high"]);
+-  assert.deepEqual(claude.dropped, [["--session-id", CLAUDE_HSR_SESSION_ID], ["--append-system-prompt", CLAUDE_HSR_LAUNCH_ARGV[9]]]);
+-  // the v2 base-args plumbing and other old flags drop; --model=x spelling accepted; later --model wins; boolean idempotent
+-  const claude2 = extractBeeArgs("claude", ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--model=opus", "--dangerously-skip-permissions", "--permission-mode", "plan", "--dangerously-skip-permissions", "--model", "fable", "--resume", "abc", "-r", "def", "--continue", "--unknown-flag", "positional"]);
+-  assert.deepEqual(claude2.args, ["--dangerously-skip-permissions", "--model", "fable"]);
+-  assert.deepEqual(claude2.dropped, [["-p"], ["--input-format", "stream-json"], ["--output-format", "stream-json"], ["--verbose"], ["--permission-mode", "plan"], ["--resume", "abc"], ["-r", "def"], ["--continue"], ["--unknown-flag"], ["positional"]]);
+-  assert.equal(extractBeeArgs("claude", ["--dangerously-skip-permissions=yes"]).args, null, "an inline value on a boolean flag is not the flag");
+-
+-  // codex, real shape
+-  const codex = extractBeeArgs("codex", ["-c", "service_tier=default", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", 'model_reasoning_effort="ultra"', "-c", "features.fast_mode=false"]);
+-  assert.deepEqual(codex.args, ["--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5.6-sol", "-c", 'model_reasoning_effort="ultra"']);
+-  assert.deepEqual(codex.dropped, [["-c", "service_tier=default"], ["-c", "features.fast_mode=false"]]);
+-  // spellings fold: --model=, --config, -c=, --config=; last model wins; last reasoning wins; app-server & sandbox flags drop
+-  const codex2 = extractBeeArgs("codex", ["app-server", "--model=gpt-5.5", "--config", 'model_reasoning_effort="high"', "-c=model_reasoning_effort=xhigh", "--full-auto", "-a", "never", "-s", "danger-full-access", "-m", "gpt-5.6-sol", "--config=service_tier=fast", "-c", "sandbox_workspace_write.network_access=true"]);
+-  assert.deepEqual(codex2.args, ["-c", "model_reasoning_effort=xhigh", "--model", "gpt-5.6-sol"]);
+-  assert.deepEqual(codex2.dropped, [["app-server"], ["--full-auto"], ["-a", "never"], ["-s", "danger-full-access"], ["--config=service_tier=fast"], ["-c", "sandbox_workspace_write.network_access=true"]]);
+-  assert.deepEqual(extractBeeArgs("codex", ["-c"]).dropped, [["-c"]], "dangling -c drops");
+-  assert.deepEqual(extractBeeArgs("codex", ["-m"]), { args: null, dropped: [["-m"]] }, "dangling -m drops");
+-
+-  // other harnesses: nothing kept, everything recorded
+-  const grok = extractBeeArgs("grok", ["--permission-mode", "bypassPermissions", "--always-approve"]);
+-  assert.equal(grok.args, null);
+-  assert.deepEqual(grok.dropped, [["--permission-mode"], ["bypassPermissions"], ["--always-approve"]]);
+-});
+-
+-test("args.4: oldLaunchArgs — launchArgv preferred (program stripped); command string fallback strips env prefix + program and honours quotes; shellWords", () => {
+-  assert.deepEqual(shellWords(`CODEX_HOME=/h codex -c 'model_reasoning_effort="high"' --model "gpt 5" a\\ b`), ["CODEX_HOME=/h", "codex", "-c", 'model_reasoning_effort="high"', "--model", "gpt 5", "a b"]);
+-  assert.deepEqual(shellWords(`  --x  "" y `), ["--x", "", "y"]);
+-  const rec = (o: Partial<FrozenRecord>): Pick<FrozenRecord, "launchArgv" | "command"> => ({ launchArgv: null, command: null, ...o });
+-  assert.deepEqual(oldLaunchArgs(rec({ launchArgv: ["claude", "--model", "fable"], command: "claude --model opus" })), { args: ["--model", "fable"], source: "launchArgv" });
+-  assert.deepEqual(oldLaunchArgs(rec({ command: "CLAUDE_CONFIG_DIR=/x/y HIVE_BEE=CL.1 claude --dangerously-skip-permissions --model opus --effort high --session-id s1" })), {
+-    args: ["--dangerously-skip-permissions", "--model", "opus", "--effort", "high", "--session-id", "s1"],
+-    source: "command",
+-  });
+-  assert.deepEqual(oldLaunchArgs(rec({ command: `CODEX_HOME=/h codex -c service_tier=default -c 'model_reasoning_effort="medium"'` })), {
+-    args: ["-c", "service_tier=default", "-c", 'model_reasoning_effort="medium"'],
+-    source: "command",
+-  });
+-  assert.equal(oldLaunchArgs(rec({ command: "ONLY_ENV=1" })), null, "no program → nothing");
+-  assert.equal(oldLaunchArgs(rec({})), null);
+-});
+-
+-test("args.5: beeArgsFromRecord — first-class model overrides the argv model; modelExtraArgs layer on top through the same table; command fallback; other harness → null", () => {
+-  const fx = makeFrozenFixture();
+-  try {
+-    const parse = (raw: Record<string, unknown>): FrozenRecord => {
+-      const p = parseFrozenRecord("/p", raw);
+-      assert.ok("record" in p);
+-      return p.record;
+-    };
+-    // as recorded
+-    const claude = beeArgsFromRecord(parse(claudeHsrRecord(fx.root)));
+-    assert.deepEqual(claude.args, ["--dangerously-skip-permissions", "--model", "fable", "--effort", "high"]);
+-    assert.equal(claude.provenance.argsSource, "launchArgv");
+-    assert.equal(claude.provenance.droppedArgs.length, 2);
+-    assert.equal(claude.provenance.modelOverride, null);
+-    // old `hive set-model opus -- --effort max`: model + extra flags override
+-    const claudeSet = beeArgsFromRecord(parse(claudeHsrRecord(fx.root, { model: "opus", modelExtraArgs: "--effort max --append-system-prompt 'x y'" })));
+-    assert.deepEqual(claudeSet.args, ["--dangerously-skip-permissions", "--model", "opus", "--effort", "max"]);
+-    assert.equal(claudeSet.provenance.modelOverride, "opus");
+-    assert.equal(claudeSet.provenance.modelExtraArgs, "--effort max --append-system-prompt 'x y'");
+-    assert.deepEqual(claudeSet.provenance.droppedArgs.at(-1), ["--append-system-prompt", "x y"]);
+-    // codex: -m canonicalized, service_tier/fast_mode dropped; set-model override wins over -m
+-    const codex = beeArgsFromRecord(parse(codexHsrRecord(fx.root)));
+-    assert.deepEqual(codex.args, ["--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5.6-sol", "-c", 'model_reasoning_effort="ultra"']);
+-    const codexSet = beeArgsFromRecord(parse(codexHsrRecord(fx.root, { model: "gpt-5.6-luna", modelExtraArgs: `-c 'model_reasoning_effort="xhigh"' -c service_tier=fast` })));
+-    assert.deepEqual(codexSet.args, ["--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5.6-luna", "-c", 'model_reasoning_effort="xhigh"']);
+-    // command-string fallback when launchArgv is absent
+-    const fromCommand = beeArgsFromRecord(parse(codexTmuxRecord(fx.root, { launchArgv: undefined })));
+-    assert.equal(fromCommand.provenance.argsSource, "command");
+-    assert.deepEqual(fromCommand.args, ["--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5.6-sol", "-c", 'model_reasoning_effort="medium"']);
+-    // nothing to read → null, no source
+-    const bare = beeArgsFromRecord(parse(claudeHsrRecord(fx.root, { launchArgv: undefined, command: undefined })));
+-    assert.equal(bare.args, null);
+-    assert.equal(bare.provenance.argsSource, null);
+-    // a model-only record (no argv) still yields --model
+-    assert.deepEqual(beeArgsFromRecord(parse(claudeHsrRecord(fx.root, { launchArgv: undefined, command: undefined, model: "sonnet" }))).args, ["--model", "sonnet"]);
+-    // other harness: model override does not apply; args null
+-    assert.equal(beeArgsFromRecord(parse(claudeHsrRecord(fx.root, { agent: "grok", model: "grok-4" }))).args, null);
+-  } finally {
+-    fx.cleanup();
+-  }
+-});
+-
+-test("args.6: importFromFrozen writes bees.args from the fixture records and records kept/dropped args in the bee.imported provenance row", () => {
+-  const fx = makeFrozenFixture();
+-  const h = harness();
+-  try {
+-    fx.writeMarker();
+-    fx.writeRecord("cl.json", claudeHsrRecord(fx.root));
+-    fx.writeRecord("co.json", codexHsrRecord(fx.root));
+-    fx.writeRecord("co2.json", codexTmuxRecord(fx.root, { launchArgv: undefined, command: undefined, model: "gpt-5.6-luna" }));
+-    const store = h.open();
+-    const report = importFromFrozen(store, fx.root, { probes: deadProbes });
+-    assert.equal(report.applied, true, report.refusal ?? "");
+-    assert.deepEqual(store.getBee("CL.fe6f")?.args, ["--dangerously-skip-permissions", "--model", "fable", "--effort", "high"]);
+-    assert.deepEqual(store.getBee("CO.3ae1")?.args, ["--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5.6-sol", "-c", 'model_reasoning_effort="ultra"']);
+-    assert.deepEqual(store.getBee("CO.2232")?.args, ["--model", "gpt-5.6-luna"], "first-class model with no argv → --model only");
+-    const prov = store.auditRows().filter((r) => r.kind === "bee.imported" && r.beeId === "CL.fe6f");
+-    assert.equal(prov.length, 1);
+-    const p = prov[0]!.payload;
+-    assert.equal(p.argsSource, "launchArgv");
+-    assert.deepEqual(p.keptArgs, ["--dangerously-skip-permissions", "--model", "fable", "--effort", "high"]);
+-    assert.deepEqual((p.droppedArgs as string[][]).map((d) => d[0]), ["--session-id", "--append-system-prompt"]);
+-    const entry = report.plan.entries.find((e) => e.originalId === "CL.fe6f");
+-    assert.ok(entry?.notes.some((n) => n.startsWith("args --dangerously-skip-permissions --model fable --effort high")), `notes: ${JSON.stringify(entry?.notes)}`);
+-    assert.ok(entry?.notes.some((n) => n.startsWith("dropped 2 old launch flag(s): --session-id --append-system-prompt")));
+-    // the plan's bee input carries args too (dry-run visibility)
+-    assert.deepEqual(entry?.bee?.args, ["--dangerously-skip-permissions", "--model", "fable", "--effort", "high"]);
+-    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+-    store.close();
+-  } finally {
+-    fx.cleanup();
+-    h.cleanup();
+-  }
+-});
+diff --git a/v2/core/tests/frozen-fixture.ts b/v2/core/tests/frozen-fixture.ts
+deleted file mode 100644
+index 80315da6..00000000
+--- a/v2/core/tests/frozen-fixture.ts
++++ /dev/null
+@@ -1,200 +0,0 @@
+-/**
+- * A frozen old-world store fixture for the WP7 importer tests: REAL record
+- * shapes copied from a live ~/.hive/sessions (2026-08-18) and scrubbed —
+- * paths, session ids, pids and account names replaced with fixture values,
+- * every field the importer reads kept in its real spelling (SessionRecord,
+- * ProcessBirthFingerprint's `ps lstart` startedAt text, hsr meta.json).
+- *
+- * SAFETY: written into a fresh mkdtemp dir; never touches ~/.hive.
+- */
+-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+-import { tmpdir } from "node:os";
+-import { join } from "node:path";
+-
+-export const CLAUDE_HSR_SESSION_ID = "9aa1f08d-1446-4d78-981f-bbec462ba87b";
+-export const CODEX_HSR_THREAD_ID = "01a00e69-6ee4-7cd1-955c-befcbe8d9540";
+-export const CODEX_TMUX_THREAD_ID = "01a00e41-1009-7450-9831-137890213c02";
+-
+-/** The old hive-session preamble the launcher appended (scrubbed, shortened). */
+-export const OLD_SYSTEM_PROMPT = '<hive-session>\nYou are a Honeybee bee: id CL.fe6f, name "apiary-waggle-msx67afb-1". Message another bee: `hive buz send <bee> …`.\n</hive-session>';
+-
+-/** Real claude HSR launch argv shape (program first; harness flags + old plumbing). */
+-export const CLAUDE_HSR_LAUNCH_ARGV = ["claude", "--dangerously-skip-permissions", "--model", "fable", "--effort", "high", "--session-id", CLAUDE_HSR_SESSION_ID, "--append-system-prompt", OLD_SYSTEM_PROMPT];
+-
+-/** Real codex HSR launch argv shape. */
+-export const CODEX_HSR_LAUNCH_ARGV = ["codex", "-c", "service_tier=default", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt-5.6-sol", "-c", 'model_reasoning_effort="ultra"', "-c", "features.fast_mode=false"];
+-
+-/** Real claude HSR record shape (CL.fe6f, scrubbed). */
+-export function claudeHsrRecord(root: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+-  const home = join(root, "homes", "claude-fixture-account");
+-  return {
+-    id: "CL.fe6f",
+-    name: "apiary-waggle-msx67afb-1",
+-    agent: "claude",
+-    cwd: join(root, "cwd-apiary"),
+-    tags: ["apiary:workspace=ws-a33e3761-4c6d-4f37-a8f5-b0562e07662e"],
+-    title: "Optimize Apiary core performance",
+-    command: `CLAUDE_CONFIG_DIR=${home} claude --dangerously-skip-permissions --model fable --effort high --session-id ${CLAUDE_HSR_SESSION_ID} --append-system-prompt '<hive-session>…</hive-session>'`,
+-    launchArgv: CLAUDE_HSR_LAUNCH_ARGV,
+-    providerSessionId: CLAUDE_HSR_SESSION_ID,
+-    transcriptPath: join(home, "projects", "-tmp-fixture-apiary", `${CLAUDE_HSR_SESSION_ID}.jsonl`),
+-    homePath: home,
+-    accountId: "claude-fixture-account",
+-    substrate: "hsr",
+-    status: "running",
+-    lastObservedState: "idle_with_output",
+-    lastObservedStateAt: "2026-08-18T07:19:33.665Z",
+-    createdAt: "2026-08-17T11:48:37.633Z",
+-    updatedAt: "2026-08-18T06:13:48.521Z",
+-    runnerPid: 24394,
+-    runnerTier: "stream",
+-    runnerFingerprint: { pgid: 24394, startedAt: "Tue Aug 18 07:42:57 2026" },
+-    tmuxTarget: "apiary-waggle-msx67afb-1",
+-    runtimeGeneration: 9,
+-    uuid: "fe6fbad7ac6b4e78af623fac0caa3e67",
+-    prefix: "CL.",
+-    requestedAgent: "claude",
+-    titleSource: "provider",
+-    combId: "apiary-waggle-msx67afb-1",
+-    stateMachine: { lifecycle: "active", runtime: "parked", work: "done", revision: 41, transitionedAt: "2026-08-18T06:13:48.521Z" },
+-    ...overrides,
+-  };
+-}
+-
+-/** Real codex HSR (Apiary cell) record shape (CO.3ae1, scrubbed). */
+-export function codexHsrRecord(root: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+-  const home = join(root, "homes", "codex-fixture-account");
+-  return {
+-    id: "CO.3ae1",
+-    name: "xr-dfc1452083e3",
+-    agent: "codex",
+-    cwd: join(root, "cwd-cells", "digitech-next-space"),
+-    tags: ["apiary:workspace=ws-cc64dd8f-c81a-4fc4-a449-e146d3ad24a5", "apiary:workspace=ws-d80b1dc7-b656-4ce7-9898-8ff46a2719bd"],
+-    title: "Order Module Cleanup",
+-    command: `CODEX_HOME=${home} HIVE_BEE=CO.3ae1 codex -c service_tier=default --dangerously-bypass-approvals-and-sandbox -m gpt-5.6-sol -c 'model_reasoning_effort="ultra"' -c features.fast_mode=false`,
+-    launchArgv: CODEX_HSR_LAUNCH_ARGV,
+-    providerSessionId: CODEX_HSR_THREAD_ID,
+-    transcriptPath: join(home, "sessions", "2026", "08", "17", `rollout-2026-08-17T08-29-45-${CODEX_HSR_THREAD_ID}.jsonl`),
+-    homePath: home,
+-    accountId: "codex-fixture-account",
+-    substrate: "hsr",
+-    status: "running",
+-    lastObservedState: "idle_with_output",
+-    createdAt: "2026-08-17T06:29:45.656Z",
+-    updatedAt: "2026-08-18T07:12:27.523Z",
+-    runnerPid: 27325,
+-    runnerTier: "server",
+-    runnerFingerprint: { pgid: 27325, startedAt: "Tue Aug 18 08:54:30 2026" },
+-    tmuxTarget: "xr-dfc1452083e3",
+-    runtimeGeneration: 7,
+-    uuid: "3ae1e79f4a20440db3c414d3f7fd1a7a",
+-    prefix: "CO.",
+-    requestedAgent: "codex",
+-    titleSource: "user",
+-    combId: "xr-dfc1452083e3",
+-    stateMachine: { lifecycle: "active", runtime: "parked", work: "done", revision: 29, transitionedAt: "2026-08-18T07:12:27.523Z" },
+-    ...overrides,
+-  };
+-}
+-
+-/** Real codex local-tmux record shape (CO.2232, scrubbed) — no `substrate` field, launcher pgid. */
+-export function codexTmuxRecord(root: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+-  const home = join(root, "homes", "codex-fixture-account-2");
+-  return {
+-    id: "CO.2232",
+-    name: "CO.2232",
+-    agent: "codex",
+-    cwd: join(root, "cwd-honeybee"),
+-    title: "Clean Up Stale Worktrees",
+-    command: `CODEX_HOME=${home} codex --dangerously-bypass-approvals-and-sandbox --model gpt-5.6-sol -c 'model_reasoning_effort="medium"'`,
+-    launchArgv: ["codex", "--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5.6-sol", "-c", 'model_reasoning_effort="medium"'],
+-    providerSessionId: CODEX_TMUX_THREAD_ID,
+-    transcriptPath: join(home, "sessions", "2026", "08", "17", `rollout-2026-08-17T07-45-40-${CODEX_TMUX_THREAD_ID}.jsonl`),
+-    homePath: home,
+-    accountId: "codex-fixture-account-2",
+-    status: "running",
+-    lastObservedState: "idle_with_output",
+-    createdAt: "2026-08-17T05:45:39.801Z",
+-    updatedAt: "2026-08-17T05:47:08.026Z",
+-    tmuxTarget: "CO-2232",
+-    agentPaneId: "%122",
+-    launcherPgid: 95736,
+-    launcherFingerprint: { pgid: 95736, startedAt: "Mon Aug 17 07:45:39 2026" },
+-    uuid: "22326d8c7ab842278804529734f8e231",
+-    prefix: "CO.",
+-    requestedAgent: "codex",
+-    titleSource: "auto",
+-    combId: "CO-2232",
+-    ...overrides,
+-  };
+-}
+-
+-/** Real hsr/<name>/meta.json shape (scrubbed). */
+-export function hsrMeta(name: string, harness: string, sessionId: string | null, hostPid = 7530): Record<string, unknown> {
+-  return {
+-    bee: name,
+-    harness,
+-    tier: harness === "codex" ? "server" : "stream",
+-    hostPid,
+-    hostFingerprint: { pgid: hostPid, startedAt: "Tue Aug 18 08:52:41 2026" },
+-    childAdmission: "admitted",
+-    startedAt: "2026-08-18T06:52:41.351Z",
+-    startupPhase: "harness",
+-    status: "running",
+-    childPid: hostPid + 40,
+-    childPgid: hostPid + 40,
+-    childFingerprint: { pgid: hostPid + 40, startedAt: "Tue Aug 18 08:52:41 2026" },
+-    ...(sessionId ? { sessionId } : {}),
+-    runningAt: "2026-08-18T06:52:41.367Z",
+-  };
+-}
+-
+-export interface FrozenFixture {
+-  root: string;
+-  writeRecord(fileName: string, record: Record<string, unknown>): string;
+-  writeRaw(fileName: string, text: string): string;
+-  writeHsrMeta(name: string, meta: Record<string, unknown>): void;
+-  writeDaemonLock(lock: { pid: number; startedAt: string }): void;
+-  writeMarker(): void;
+-  cleanup(): void;
+-}
+-
+-export function makeFrozenFixture(): FrozenFixture {
+-  const root = mkdtempSync(join(tmpdir(), "hb-v2-frozen-"));
+-  mkdirSync(join(root, "sessions"), { recursive: true });
+-  // The fixture bees' cwds exist (a missing cwd is its own skip reason).
+-  for (const d of ["cwd-apiary", join("cwd-cells", "digitech-next-space"), "cwd-honeybee"]) mkdirSync(join(root, d), { recursive: true });
+-  return {
+-    root,
+-    writeRecord(fileName, record) {
+-      const path = join(root, "sessions", fileName);
+-      writeFileSync(path, JSON.stringify(record, null, 2));
+-      return path;
+-    },
+-    writeRaw(fileName, text) {
+-      const path = join(root, "sessions", fileName);
+-      writeFileSync(path, text);
+-      return path;
+-    },
+-    writeHsrMeta(name, meta) {
+-      mkdirSync(join(root, "hsr", name), { recursive: true });
+-      writeFileSync(join(root, "hsr", name, "meta.json"), JSON.stringify(meta, null, 2));
+-    },
+-    writeDaemonLock(lock) {
+-      mkdirSync(join(root, "daemon"), { recursive: true });
+-      writeFileSync(
+-        join(root, "daemon", "daemon.lock"),
+-        JSON.stringify({ ...lock, hostname: "fixture", machineId: "m", token: `${lock.pid}-x`, label: "hive daemon" }, null, 2),
+-      );
+-    },
+-    writeMarker() {
+-      writeFileSync(join(root, "FROZEN"), JSON.stringify({ frozenAt: "2026-08-18T00:00:00.000Z", by: "fixture" }));
+-    },
+-    cleanup() {
+-      rmSync(root, { recursive: true, force: true });
+-    },
+-  };
+-}
+-
+-/** A "no old runtimes anywhere" probe set. */
+-export const deadProbes = { pidLive: () => false, tmuxSessionLive: () => false };
+diff --git a/v2/core/tests/import-frozen.test.ts b/v2/core/tests/import-frozen.test.ts
+deleted file mode 100644
+index b5ae2066..00000000
+--- a/v2/core/tests/import-frozen.test.ts
++++ /dev/null
+@@ -1,440 +0,0 @@
+-/**
+- * WP7 importer (spec 07 B3/B4, §F) — core tier: selection rules with exact
+- * reasons, old→v2 field mapping (provider session id, harness home env,
+- * session-log pointer, substrate, tags, preserved id + createdAt),
+- * provenance, idempotent re-run, dry-run, marker requirement, the A2
+- * preflight refusal (daemon lock / hsr host+child / tmux launcher+session)
+- * and `--force`, `freezeRoot` semantics, and the v3 store surface the daemon's
+- * revive path reads (recordProviderSessionId + audit replay + v2→v3 migration).
+- *
+- * All against mkdtemp fixtures; nothing under ~/.hive is touched.
+- */
+-import { test } from "node:test";
+-import assert from "node:assert/strict";
+-import { existsSync, readFileSync } from "node:fs";
+-import { join } from "node:path";
+-import { DatabaseSync } from "node:sqlite";
+-import {
+-  FROZEN_MARKER,
+-  SCHEMA_VERSION,
+-  freezeRoot,
+-  importFromFrozen,
+-  mapSubstrate,
+-  parseFrozenRecord,
+-  planFrozenImport,
+-  readFrozenSessions,
+-  replayAudit,
+-  resumeModeFor,
+-  type ImportPlanEntry,
+-  type PreflightProbes,
+-} from "../src/index.ts";
+-import { harness } from "./helpers.ts";
+-import {
+-  CLAUDE_HSR_SESSION_ID,
+-  CODEX_HSR_THREAD_ID,
+-  CODEX_TMUX_THREAD_ID,
+-  claudeHsrRecord,
+-  codexHsrRecord,
+-  codexTmuxRecord,
+-  deadProbes,
+-  hsrMeta,
+-  makeFrozenFixture,
+-} from "./frozen-fixture.ts";
+-
+-function entry(entries: ImportPlanEntry[], id: string): ImportPlanEntry {
+-  const e = entries.find((x) => x.originalId === id);
+-  assert.ok(e, `plan entry for ${id}`);
+-  return e;
+-}
+-
+-test("import.1: selection — active bees import with exact resume modes; done/kill_failed/archived/zombie/remote/unsupported/unparsable skip with reasons", () => {
+-  const fx = makeFrozenFixture();
+-  const h = harness();
+-  try {
+-    fx.writeMarker();
+-    fx.writeRecord("apiary-waggle-msx67afb-1.json", claudeHsrRecord(fx.root));
+-    fx.writeRecord("xr-dfc1452083e3.json", codexHsrRecord(fx.root));
+-    fx.writeRecord("CO.2232.json", codexTmuxRecord(fx.root));
+-    // codex tmux, live at ~, no session id: active but nothing to resume → import as FRESH
+-    fx.writeRecord("CO.19fa.json", codexTmuxRecord(fx.root, { id: "CO.19fa", name: "CO.19fa", cwd: "/tmp", providerSessionId: undefined, transcriptPath: undefined, title: undefined, lastObservedState: "ready" }));
+-    // codex tmux crashed at ~, no session id, no transcript → zombie
+-    fx.writeRecord("CO.2421.json", codexTmuxRecord(fx.root, { id: "CO.2421", name: "CO.2421", cwd: "/tmp", providerSessionId: undefined, transcriptPath: undefined, lastObservedState: "crashed" }));
+-    // codex tmux crashed WITH a session id → import (crash is runtime death; the conversation continues)
+-    fx.writeRecord("CO.6986.json", codexTmuxRecord(fx.root, { id: "CO.6986", name: "CO.6986", lastObservedState: "crashed" }));
+-    // grok tmux crashed no sid → zombie AND unsupported; zombie wins (checked first, it is the operator-visible truth)
+-    fx.writeRecord("GR.616c.json", codexTmuxRecord(fx.root, { id: "GR.616c", name: "GR.616c", agent: "grok", cwd: "/tmp", providerSessionId: undefined, transcriptPath: undefined, lastObservedState: "crashed" }));
+-    // grok live-ish with a transcript → unsupported_agent on a node without a grok agent spec
+-    fx.writeRecord("GR.live.json", codexTmuxRecord(fx.root, { id: "GR.live", name: "GR.live", agent: "grok", lastObservedState: "ready" }));
+-    fx.writeRecord("done.json", claudeHsrRecord(fx.root, { id: "CL.done", name: "done-bee", status: "done" }));
+-    fx.writeRecord("dead.json", claudeHsrRecord(fx.root, { id: "CL.dead", name: "dead-bee", status: "dead" }));
+-    fx.writeRecord("kf.json", claudeHsrRecord(fx.root, { id: "CL.kf", name: "kf-bee", status: "kill_failed", lastObservedState: "kill_failed" }));
+-    fx.writeRecord("archived.json", claudeHsrRecord(fx.root, { id: "CL.arch", name: "arch-bee", stateMachine: { lifecycle: "archived", runtime: "parked", work: "done", revision: 1, transitionedAt: "2026-08-18T00:00:00Z" } }));
+-    fx.writeRecord("remote.json", claudeHsrRecord(fx.root, { id: "CL.remote", name: "remote-bee", node: "metal-3" }));
+-    fx.writeRecord("nocwd.json", claudeHsrRecord(fx.root, { id: "CL.nocwd", name: "nocwd-bee", cwd: undefined }));
+-    fx.writeRecord("gonecwd.json", claudeHsrRecord(fx.root, { id: "CL.gone", name: "gone-bee", cwd: join(fx.root, "no-such-dir") }));
+-    fx.writeRaw("broken.json", "{ this is not json");
+-    fx.writeRaw("array.json", "[1,2,3]");
+-
+-    const store = h.open();
+-    const report = importFromFrozen(store, fx.root, { dryRun: true, knownAgents: ["claude", "codex", "stub"], probes: deadProbes });
+-    assert.equal(report.refusal, null);
+-    assert.equal(report.applied, false, "dry-run writes nothing");
+-    assert.equal(store.listBees().length, 0);
+-    const e = report.plan.entries;
+-
+-    assert.equal(entry(e, "CL.fe6f").action, "import");
+-    assert.equal(entry(e, "CL.fe6f").resume, "harness_native");
+-    assert.equal(entry(e, "CO.3ae1").resume, "harness_native");
+-    assert.equal(entry(e, "CO.2232").resume, "harness_native");
+-    assert.equal(entry(e, "CO.6986").action, "import");
+-    assert.equal(entry(e, "CO.19fa").action, "import");
+-    assert.equal(entry(e, "CO.19fa").resume, "fresh_no_session_id");
+-    assert.equal(entry(e, "CO.2421").reason, "zombie_no_history");
+-    assert.equal(entry(e, "GR.616c").reason, "zombie_no_history");
+-    assert.equal(entry(e, "GR.live").reason, "unsupported_agent");
+-    assert.equal(entry(e, "CL.done").reason, "done");
+-    assert.equal(entry(e, "CL.dead").reason, "done");
+-    assert.equal(entry(e, "CL.kf").reason, "kill_failed");
+-    assert.equal(entry(e, "CL.arch").reason, "archived");
+-    assert.equal(entry(e, "CL.remote").reason, "remote_node");
+-    assert.equal(entry(e, "CL.nocwd").reason, "unusable_record");
+-    assert.equal(entry(e, "CL.gone").reason, "cwd_missing");
+-    const unparsable = e.filter((x) => x.reason === "unparsable");
+-    assert.equal(unparsable.length, 2, "broken json + non-object");
+-
+-    assert.equal(report.plan.counts.import, 5);
+-    assert.equal(report.plan.counts.skip, 12);
+-    assert.deepEqual(report.plan.counts.byResume, { harness_native: 4, fresh_no_session_id: 1 });
+-    assert.equal(report.plan.counts.byReason.zombie_no_history, 2);
+-    store.close();
+-  } finally {
+-    fx.cleanup();
+-    h.cleanup();
+-  }
+-});
+-
+-test("import.2: mapping — id preserved, provider session id + harness home env, session log = transcriptPath, substrate, tags, createdAt, provenance audit; runtime 1 stopped; revive mints gen 2", () => {
+-  const fx = makeFrozenFixture();
+-  const h = harness();
+-  try {
+-    fx.writeMarker();
+-    fx.writeRecord("a.json", claudeHsrRecord(fx.root));
+-    fx.writeRecord("b.json", codexHsrRecord(fx.root));
+-    fx.writeRecord("c.json", codexTmuxRecord(fx.root));
+-    const store = h.open();
+-    const report = importFromFrozen(store, fx.root, { probes: deadProbes, now: () => 1_700_000_000_000 });
+-    assert.equal(report.applied, true, report.refusal ?? "");
+-    assert.deepEqual(
+-      report.imported.map((i) => [i.beeId, i.resume]),
+-      [
+-        ["CL.fe6f", "harness_native"],
+-        ["CO.3ae1", "harness_native"],
+-        ["CO.2232", "harness_native"],
+-      ],
+-    );
+-
+-    const claude = store.getBee("CL.fe6f");
+-    assert.ok(claude);
+-    assert.equal(claude.name, "apiary-waggle-msx67afb-1");
+-    assert.equal(claude.agent, "claude");
+-    assert.equal(claude.substrate, "hsr");
+-    assert.equal(claude.cwd, join(fx.root, "cwd-apiary"));
+-    assert.equal(claude.title, "Optimize Apiary core performance");
+-    assert.deepEqual(claude.tags, ["apiary:workspace=ws-a33e3761-4c6d-4f37-a8f5-b0562e07662e"]);
+-    assert.equal(claude.providerSessionId, CLAUDE_HSR_SESSION_ID);
+-    assert.equal(claude.sessionLogPath, join(fx.root, "homes", "claude-fixture-account", "projects", "-tmp-fixture-apiary", `${CLAUDE_HSR_SESSION_ID}.jsonl`));
+-    assert.deepEqual(claude.env, { CLAUDE_CONFIG_DIR: join(fx.root, "homes", "claude-fixture-account") });
+-    assert.equal(claude.importedFrom, "frozen");
+-    assert.equal(claude.parentExternal, false, "frozen imports default to local lineage");
+-    assert.equal(claude.createdAt, Date.parse("2026-08-17T11:48:37.633Z"));
+-    assert.equal(claude.lifecycle, "active");
+-    const rt = store.currentRuntime("CL.fe6f");
+-    assert.equal(rt?.generation, 1);
+-    assert.equal(rt?.state, "stopped");
+-    assert.equal(rt?.exitCause, "stopped_by_system");
+-    const view = store.view("CL.fe6f");
+-    assert.equal(view.reachable, true, "an imported bee is reachable (contract §4.4)");
+-
+-    const codex = store.getBee("CO.3ae1");
+-    assert.equal(codex?.providerSessionId, CODEX_HSR_THREAD_ID);
+-    assert.deepEqual(codex?.env, { CODEX_HOME: join(fx.root, "homes", "codex-fixture-account") });
+-    assert.equal(codex?.substrate, "hsr");
+-    assert.deepEqual(codex?.tags, ["apiary:workspace=ws-cc64dd8f-c81a-4fc4-a449-e146d3ad24a5", "apiary:workspace=ws-d80b1dc7-b656-4ce7-9898-8ff46a2719bd"]);
+-
+-    const tmux = store.getBee("CO.2232");
+-    assert.equal(tmux?.substrate, "tmux", "absent old substrate = local-tmux → v2 tmux");
+-    assert.equal(tmux?.providerSessionId, CODEX_TMUX_THREAD_ID);
+-
+-    // provenance: the bee.imported audit row carries the old record's facts
+-    const prov = store.auditRows().filter((r) => r.kind === "bee.imported" && r.beeId === "CL.fe6f");
+-    assert.equal(prov.length, 1);
+-    assert.equal(prov[0]?.payload.imported_from, "frozen");
+-    assert.equal(prov[0]?.payload.originalId, "CL.fe6f");
+-    assert.equal(prov[0]?.payload.accountId, "claude-fixture-account");
+-    assert.equal(prov[0]?.payload.providerSessionIdSource, "record");
+-    assert.equal(prov[0]?.payload.resume, "harness_native");
+-    assert.equal(prov[0]?.payload.importedAt, 1_700_000_000_000);
+-
+-    // audit replay reproduces the imported state exactly (test 13 discipline)
+-    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+-
+-    // revive-on-message path: send enqueues a wake; reviveBee mints generation 2 with the id still on the bee
+-    const sent = store.send("CL.fe6f", "are you still there?");
+-    assert.ok(sent.wakeCommand, "no live runtime → send_wake enqueued");
+-    const gen2 = store.reviveBee("CL.fe6f");
+-    assert.equal(gen2.generation, 2);
+-    assert.equal(store.getBee("CL.fe6f")?.providerSessionId, CLAUDE_HSR_SESSION_ID);
+-    store.close();
+-  } finally {
+-    fx.cleanup();
+-    h.cleanup();
+-  }
+-});
+-
+-test("import.3: idempotent — a re-run skips every imported id as already_imported (no dupes); a v2-born id collision is refused per-record", () => {
+-  const fx = makeFrozenFixture();
+-  const h = harness();
+-  try {
+-    fx.writeMarker();
+-    fx.writeRecord("a.json", claudeHsrRecord(fx.root));
+-    fx.writeRecord("b.json", codexHsrRecord(fx.root));
+-    fx.writeRecord("c.json", codexHsrRecord(fx.root, { id: "CO.native", name: "native" }));
+-    const store = h.open();
+-    // a v2-born bee already holds CO.native
+-    store.createBee({ id: "CO.native", name: "mine", agent: "codex", substrate: "hsr", cwd: "/tmp" });
+-    const first = importFromFrozen(store, fx.root, { probes: deadProbes });
+-    assert.equal(first.applied, true);
+-    assert.equal(first.imported.length, 2);
+-    assert.equal(first.plan.entries.find((e) => e.originalId === "CO.native")?.reason, "id_collision");
+-    const before = store.dumpState();
+-    const second = importFromFrozen(store, fx.root, { probes: deadProbes });
+-    assert.equal(second.applied, true);
+-    assert.equal(second.imported.length, 0);
+-    assert.equal(second.plan.counts.byReason.already_imported, 2);
+-    assert.equal(second.plan.counts.byReason.id_collision, 1);
+-    assert.deepEqual(store.dumpState(), before, "re-run changed nothing");
+-    assert.equal(store.listBees().length, 3);
+-    store.close();
+-  } finally {
+-    fx.cleanup();
+-    h.cleanup();
+-  }
+-});
+-
+-test("import.4: marker required — refuses without <root>/FROZEN, and never writes into the frozen root", () => {
+-  const fx = makeFrozenFixture();
+-  const h = harness();
+-  try {
+-    fx.writeRecord("a.json", claudeHsrRecord(fx.root));
+-    const store = h.open();
+-    const report = importFromFrozen(store, fx.root, { probes: deadProbes });
+-    assert.equal(report.applied, false);
+-    assert.match(report.refusal ?? "", /FROZEN.*missing.*hive v2 freeze/);
+-    assert.equal(report.preflight.markerPresent, false);
+-    assert.equal(store.listBees().length, 0);
+-    assert.equal(existsSync(join(fx.root, FROZEN_MARKER)), false, "import did not create the marker");
+-    // no store at all → refused with a pointer
+-    const none = importFromFrozen(store, join(fx.root, "nope"), { probes: deadProbes });
+-    assert.match(none.refusal ?? "", /no old-world store/);
+-    store.close();
+-  } finally {
+-    fx.cleanup();
+-    h.cleanup();
+-  }
+-});
+-
+-test("import.5: A2 preflight — live old daemon / hsr host+child / tmux launcher / tmux session refuse with exact detail; --force imports anyway; parked kill_failed pids are not probed", () => {
+-  const fx = makeFrozenFixture();
+-  const h = harness();
+-  try {
+-    fx.writeMarker();
+-    fx.writeRecord("a.json", claudeHsrRecord(fx.root)); // runnerPid 24394
+-    fx.writeHsrMeta("apiary-waggle-msx67afb-1", hsrMeta("apiary-waggle-msx67afb-1", "claude", CLAUDE_HSR_SESSION_ID, 7530)); // host 7530, child 7570
+-    fx.writeRecord("c.json", codexTmuxRecord(fx.root)); // launcherPgid 95736, tmuxTarget CO-2232
+-    fx.writeRecord("kf.json", claudeHsrRecord(fx.root, { id: "CL.kf", name: "kf-bee", status: "kill_failed", runnerPid: 4242 }));
+-    fx.writeDaemonLock({ pid: 71440, startedAt: "2026-08-17T12:22:29.035Z" });
+-
+-    const probed: Array<[number, number | null]> = [];
+-    const alive = new Set([71440, 24394, 7570, 95736]);
+-    const probes: PreflightProbes = {
+-      pidLive: (pid, startedAt) => {
+-        probed.push([pid, startedAt]);
+-        return alive.has(pid);
+-      },
+-      tmuxSessionLive: (t) => t === "CO-2232",
+-    };
+-    const store = h.open();
+-    const report = importFromFrozen(store, fx.root, { probes });
+-    assert.equal(report.applied, false);
+-    assert.equal(report.preflight.ok, false);
+-    const kinds = report.preflight.live.map((l) => l.kind).sort();
+-    assert.deepEqual(kinds, ["hsr_child", "hsr_host", "old_daemon", "tmux_launcher", "tmux_session"]);
+-    assert.match(report.refusal ?? "", /old daemon pid 71440 is alive/);
+-    assert.match(report.refusal ?? "", /hsr runner pid 24394 is alive \(bee CL\.fe6f/);
+-    assert.match(report.refusal ?? "", /hsr child pid 7570/);
+-    assert.match(report.refusal ?? "", /tmux launcher pid 95736/);
+-    assert.match(report.refusal ?? "", /tmux session 'CO-2232' exists/);
+-    // start-time stamps were handed to the probe (lock ISO, ps-lstart fingerprints)
+-    assert.ok(probed.some(([pid, at]) => pid === 71440 && at === Date.parse("2026-08-17T12:22:29.035Z")));
+-    assert.ok(probed.some(([pid, at]) => pid === 24394 && at === Date.parse("Tue Aug 18 07:42:57 2026")));
+-    assert.ok(!probed.some(([pid]) => pid === 4242), "kill_failed pids are not probed");
+-    assert.equal(store.listBees().length, 0);
+-
+-    // dry-run still reports the preflight but is not "refused" from listing the plan
+-    const dry = importFromFrozen(store, fx.root, { probes, dryRun: true });
+-    assert.equal(dry.plan.counts.import, 2);
+-    assert.equal(dry.preflight.live.length, 5);
+-
+-    // --force
+-    const forced = importFromFrozen(store, fx.root, { probes, force: true });
+-    assert.equal(forced.applied, true);
+-    assert.equal(forced.imported.length, 2);
+-    assert.equal(forced.preflight.ok, false, "the report still tells the operator what was live");
+-    store.close();
+-  } finally {
+-    fx.cleanup();
+-    h.cleanup();
+-  }
+-});
+-
+-test("import.6: session id fallback from hsr/<name>/meta.json when the record lacks it; unknown home env is noted, not applied", () => {
+-  const fx = makeFrozenFixture();
+-  const h = harness();
+-  try {
+-    fx.writeMarker();
+-    fx.writeRecord("a.json", codexHsrRecord(fx.root, { providerSessionId: undefined }));
+-    fx.writeHsrMeta("xr-dfc1452083e3", hsrMeta("xr-dfc1452083e3", "codex", "thread-from-meta"));
+-    fx.writeRecord("b.json", codexTmuxRecord(fx.root, { id: "PI.1", name: "pi-bee", agent: "pi", homePath: "/tmp/pi-home" }));
+-    const store = h.open();
+-    const report = importFromFrozen(store, fx.root, { probes: deadProbes });
+-    assert.equal(report.applied, true);
+-    const codex = store.getBee("CO.3ae1");
+-    assert.equal(codex?.providerSessionId, "thread-from-meta");
+-    const codexEntry = report.plan.entries.find((e) => e.originalId === "CO.3ae1");
+-    assert.ok(codexEntry?.notes.some((n) => n.includes("meta.json")));
+-    const pi = store.getBee("PI.1");
+-    assert.deepEqual(pi?.env, {}, "no known home env var for pi → nothing applied");
+-    assert.equal(report.plan.entries.find((e) => e.originalId === "PI.1")?.resume, "fresh_no_resume_path");
+-    store.close();
+-  } finally {
+-    fx.cleanup();
+-    h.cleanup();
+-  }
+-});
+-
+-test("import.7: freezeRoot — writes the marker once, refuses while the old daemon lock pid is alive, --force overrides, idempotent, refuses a non-store", () => {
+-  const fx = makeFrozenFixture();
+-  try {
+-    fx.writeDaemonLock({ pid: 71440, startedAt: "2026-08-17T12:22:29.035Z" });
+-    const alive: PreflightProbes = { pidLive: (pid) => pid === 71440, tmuxSessionLive: () => false };
+-    const refused = freezeRoot(fx.root, { probes: alive });
+-    assert.equal(refused.outcome, "refused");
+-    assert.match(refused.refusal ?? "", /old daemon pid 71440 is alive/);
+-    assert.equal(existsSync(join(fx.root, FROZEN_MARKER)), false);
+-
+-    const forced = freezeRoot(fx.root, { probes: alive, force: true, now: () => Date.parse("2026-08-18T10:00:00Z"), by: "test" });
+-    assert.equal(forced.outcome, "written");
+-    const marker = JSON.parse(readFileSync(join(fx.root, FROZEN_MARKER), "utf8")) as { frozenAt: string; by: string };
+-    assert.equal(marker.frozenAt, "2026-08-18T10:00:00.000Z");
+-    assert.equal(marker.by, "test");
+-
+-    const again = freezeRoot(fx.root, { probes: deadProbes });
+-    assert.equal(again.outcome, "already_frozen");
+-    assert.equal(readFileSync(join(fx.root, FROZEN_MARKER), "utf8").includes('"by": "test"'), true, "existing marker untouched");
+-
+-    const dead = freezeRoot(fx.root + "-missing", { probes: deadProbes });
+-    assert.equal(dead.outcome, "refused");
+-  } finally {
+-    fx.cleanup();
+-  }
+-});
+-
+-test("import.8: pure helpers — parseFrozenRecord, mapSubstrate, resumeModeFor, readFrozenSessions ordering", () => {
+-  const fx = makeFrozenFixture();
+-  try {
+-    assert.equal(mapSubstrate("hsr"), "hsr");
+-    assert.equal(mapSubstrate("local-tmux"), "tmux");
+-    assert.equal(mapSubstrate(null), "tmux");
+-    assert.equal(resumeModeFor("claude", "x"), "harness_native");
+-    assert.equal(resumeModeFor("codex", null), "fresh_no_session_id");
+-    assert.equal(resumeModeFor("grok", "x"), "fresh_no_resume_path");
+-    const parsed = parseFrozenRecord("/p", claudeHsrRecord(fx.root));
+-    assert.ok("record" in parsed);
+-    assert.equal(parsed.record.runnerStartedAt, Date.parse("Tue Aug 18 07:42:57 2026"));
+-    assert.equal(parsed.record.lifecycle, "active");
+-    const noId = parseFrozenRecord("/p", claudeHsrRecord(fx.root, { id: undefined, uuid: undefined }));
+-    assert.ok("record" in noId && noId.record.id === "apiary-waggle-msx67afb-1", "id falls back to uuid then name");
+-    const bad = parseFrozenRecord("/p", "nope");
+-    assert.ok("reason" in bad && bad.reason === "unparsable");
+-    fx.writeRecord("b.json", codexHsrRecord(fx.root));
+-    fx.writeRecord("a.json", claudeHsrRecord(fx.root));
+-    fx.writeRaw("notes.txt", "ignored");
+-    const read = readFrozenSessions(fx.root);
+-    assert.deepEqual(read.records.map((r) => r.id), ["CL.fe6f", "CO.3ae1"], "sorted by file name; non-json ignored");
+-    assert.equal(readFrozenSessions(join(fx.root, "missing")).records.length, 0);
+-    const plan = planFrozenImport(read, { frozenRoot: fx.root, existing: () => null, hsrMeta: () => null });
+-    assert.equal(plan.counts.import, 2);
+-  } finally {
+-    fx.cleanup();
+-  }
+-});
+-
+-test("import.9: store v3 — recordProviderSessionId is bee-scoped, idempotent, audited + replayable; env/importedFrom round-trip; v2 store migrates additively", () => {
+-  const h = harness();
+-  try {
+-    const store = h.open();
+-    const { bee } = store.createBee({ name: "w", agent: "claude", substrate: "hsr", cwd: "/tmp", env: { CLAUDE_CONFIG_DIR: "/tmp/h" } });
+-    assert.equal(bee.providerSessionId, null);
+-    assert.deepEqual(bee.env, { CLAUDE_CONFIG_DIR: "/tmp/h" });
+-    assert.equal(bee.importedFrom, null);
+-    assert.equal(store.recordProviderSessionId(bee.id, "sid-1").applied, true);
+-    assert.equal(store.recordProviderSessionId(bee.id, "sid-1").applied, false, "same value = silent no-op");
+-    assert.equal(store.recordProviderSessionId(bee.id, "sid-2").applied, true);
+-    assert.equal(store.getBee(bee.id)?.providerSessionId, "sid-2");
+-    assert.equal(store.auditRows().filter((r) => r.kind === "bee.provider_session").length, 2);
+-    assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+-    assert.throws(() => store.recordProviderSessionId(bee.id, ""), /non-empty/);
+-    assert.throws(() => store.recordProviderSessionId("ghost", "x"), /bee not found/);
+-    store.close();
+-  } finally {
+-    h.cleanup();
+-  }
+-
+-  // v2-shaped store (bees without the v3 columns) migrates on open.
+-  const h2 = harness();
+-  try {
+-    const db = new DatabaseSync(h2.path);
+-    db.exec(`
+-      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
+-      INSERT INTO meta(key, value) VALUES('schema_version', '2');
+-      CREATE TABLE bees (
+-        id TEXT PRIMARY KEY, name TEXT NOT NULL, agent TEXT NOT NULL, substrate TEXT NOT NULL, cwd TEXT NOT NULL,
+-        title TEXT, tags TEXT NOT NULL DEFAULT '[]', session_log_path TEXT,
+-        lifecycle TEXT NOT NULL CHECK (lifecycle IN ('active','archived')),
+-        created_at INTEGER NOT NULL, archived_at INTEGER, last_output_at INTEGER
+-      ) STRICT;
+-      INSERT INTO bees(id, name, agent, substrate, cwd, lifecycle, created_at) VALUES('old-1','old','claude','hsr','/tmp','active',5);
+-    `);
+-    db.close();
+-    const store = h2.open();
+-    const old = store.getBee("old-1");
+-    assert.equal(old?.providerSessionId, null);
+-    assert.deepEqual(old?.env, {});
+-    assert.equal(old?.importedFrom, null);
+-    assert.equal(old?.spawnFailures, 0); // v4 column, defaulted by the migration
+-    assert.equal(old?.args, null); // v5 column, NULL by the migration
+-    assert.equal(old?.parentExternal, false); // v21 column, false by the migration
+-    store.recordProviderSessionId("old-1", "after-migration");
+-    store.close();
+-    const check = new DatabaseSync(h2.path, { readOnly: true });
+-    try {
+-      const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+-      assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
+-    } finally {
+-      check.close();
+-    }
+-  } finally {
+-    h2.cleanup();
+-  }
+-});
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 4ff21615..8fa03914 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -69,7 +69,6 @@ import {
+   matchAccount,
+   homeEnvFor,
+   exportTemplate,
+-  importFromFrozen,
+   importLocalConfig,
+   importTemplate,
+   beeTaskList,
+@@ -171,7 +170,6 @@ import { resumeStateKey, resumeStateScope, writeResumeKey } from "./resumeBundle
+ import { createDirectoryTranscriptObjectStore, type TranscriptObjectStore } from "./transcriptObjectStore.ts";
+ import { TRANSCRIPT_PROJECTION_VERSION } from "../../driver-tmux/src/transcript-projection.ts";
+ import { CredentialAuthorityError, credentialErrorDetails } from "./claudeCredentialAuthority.ts";
+-import { realPreflightProbes } from "./import-probes.ts";
+ import { HsrDriver, pidAlive, verifyProcessIdentity, type SpawnSpec } from "../../driver-hsr/src/index.ts";
+ import {
+   darwinUserTempDir,
+@@ -420,7 +418,6 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
+   type TaskTransitionResult,
+   type SetArgsResult,
+   type TagResult,
+-  type ImportFromFrozenResult,
+   type ImportLocalConfigResult,
+   type SendRpcResult,
+   type SnapshotResult,
+@@ -2726,8 +2723,6 @@ export class HiveDaemon {
+         });
+       case "packages.importLocalConfig":
+         return this.withIdempotency(verb, params, () => this.rpcImportLocalConfig(params));
+-      case "import.fromFrozen":
+-        return this.withIdempotency(verb, params, () => this.rpcImportFromFrozen(params));
+       case "mirror.local.snapshot":
+       case "snapshot": {
+         const includeHomes = verb === "mirror.local.snapshot" && conn.operatorLocalHomes === true;
+@@ -8458,31 +8453,6 @@ export class HiveDaemon {
+     return { template: res.template, outcome: res.outcome };
+   }
+ 
+-  /**
+-   * WP7 (spec 07 B4): import active old-world bees from the frozen store.
+-   * The daemon is the sole writer (contract §3.5), so the import runs here;
+-   * the preflight probes real pids/tmux (A2). Refusals come back as a report
+-   * (`applied:false`, `refusal`), not as RPC errors — the CLI prints them.
+-   */
+-  private rpcImportFromFrozen(params: Record<string, unknown>): ImportFromFrozenResult {
+-    const store = this.mustStore();
+-    const root = typeof params.root === "string" && params.root.length > 0 ? params.root : join(homedir(), ".hive");
+-    const dryRun = params.dryRun === true;
+-    const force = params.force === true;
+-    const report = importFromFrozen(store, root, {
+-      dryRun,
+-      force,
+-      knownAgents: Object.keys(this.cfg.agents),
+-      probes: realPreflightProbes(),
+-    });
+-    this.log(
+-      `import.fromFrozen root=${root} dryRun=${dryRun} force=${force} applied=${report.applied} ` +
+-        `import=${report.plan.counts.import} skip=${report.plan.counts.skip} live=${report.preflight.live.length}` +
+-        (report.refusal ? ` refusal=${JSON.stringify(report.refusal.split("\n")[0])}` : ""),
+-    );
+-    return report;
+-  }
+-
+   private rpcImportLocalConfig(params: Record<string, unknown>): ImportLocalConfigResult {
+     const store = this.mustStore();
+     // The local package source dir: ~/.hive by default (spec 06 §1.4.1 — the
+diff --git a/v2/daemon/src/import-probes.ts b/v2/daemon/src/import-probes.ts
+deleted file mode 100644
+index 2510c82b..00000000
+--- a/v2/daemon/src/import-probes.ts
++++ /dev/null
+@@ -1,58 +0,0 @@
+-/**
+- * Real process/tmux probes for the WP7 import preflight (spec 07 A2) and
+- * `hive v2 freeze`. Same exact-identity discipline as the driver's psutil
+- * (pid alive + OS start-time within tolerance) — a recycled pid with a
+- * different start time is NOT the old runtime. Conservative on doubt: an
+- * alive pid whose start time cannot be read counts as live (refuse, never
+- * guess).
+- *
+- * One `ps` call snapshots every process's elapsed time, so probing the whole
+- * frozen fleet costs a single fork.
+- */
+-import { spawnSync } from "node:child_process";
+-import type { PreflightProbes } from "../../core/src/index.ts";
+-import { parseEtimeMs, pidAlive } from "../../driver-hsr/src/psutil.ts";
+-
+-/**
+- * Old-world start stamps come from `ps lstart` text (second granularity) and
+- * ISO lock timestamps written slightly after the fork; the daemon lock's
+- * startedAt in particular can lag process start by seconds on a busy boot.
+- */
+-export const OLD_RUNTIME_START_TOLERANCE_MS = 60_000;
+-
+-/** pid → OS start time (epoch ms) for every visible process, from one `ps` call. */
+-export function snapshotProcessStarts(now: () => number = Date.now): Map<number, number> {
+-  const out = new Map<number, number>();
+-  const res = spawnSync("ps", ["-axo", "pid=,etime="], { encoding: "utf8" });
+-  if (res.error || res.status !== 0) return out;
+-  const at = now();
+-  for (const line of res.stdout.split("\n")) {
+-    const m = /^\s*(\d+)\s+(\S+)\s*$/.exec(line);
+-    if (!m) continue;
+-    const elapsed = parseEtimeMs(m[2] as string);
+-    if (elapsed == null) continue;
+-    out.set(Number(m[1]), at - elapsed);
+-  }
+-  return out;
+-}
+-
+-export function tmuxHasSession(target: string): boolean {
+-  // `=name` pins an exact session name (no prefix matching).
+-  const res = spawnSync("tmux", ["has-session", "-t", `=${target}`], { encoding: "utf8" });
+-  return !res.error && res.status === 0;
+-}
+-
+-/** Build the probes once per preflight (one ps snapshot; tmux checked per target). */
+-export function realPreflightProbes(opts: { now?: () => number; toleranceMs?: number } = {}): PreflightProbes {
+-  const starts = snapshotProcessStarts(opts.now);
+-  const tol = opts.toleranceMs ?? OLD_RUNTIME_START_TOLERANCE_MS;
+-  return {
+-    pidLive(pid, startedAtMs) {
+-      if (!pidAlive(pid)) return false;
+-      const start = starts.get(pid);
+-      if (start == null || startedAtMs == null) return true; // alive, unverifiable → live (conservative)
+-      return Math.abs(start - startedAtMs) <= tol;
+-    },
+-    tmuxSessionLive: tmuxHasSession,
+-  };
+-}
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 893e5e45..19b5c30b 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -57,7 +57,6 @@ import type {
+   BeeView,
+   CommandRow,
+   CommandStatus,
+-  FrozenImportReport,
+   LocalConfigImportReport,
+   MessageRow,
+   NamingUsageSummary,
+@@ -573,8 +572,6 @@ export const RPC_VERBS = [
+   "template.export",
+   "template.import",
+   "packages.importLocalConfig",
+-  // WP7 (spec 07 B4): import the operator's active old-world bees from a frozen store
+-  "import.fromFrozen",
+   // schema v5: replace a bee's per-bee spawn args (takes effect on the next runtime)
+   "bee.setArgs",
+   "bee.reconfigure",
+@@ -2125,15 +2122,6 @@ export interface TemplateImportResult extends DedupMarkers {
+ 
+ export type ImportLocalConfigResult = LocalConfigImportReport & DedupMarkers;
+ 
+-/**
+- * `import.fromFrozen` (WP7). Params: `{ root?: string, dryRun?: boolean,
+- * force?: boolean }` — root defaults to the node's old-world store (~/.hive).
+- * Result is core's FrozenImportReport verbatim: `applied:false` + `refusal`
+- * when the FROZEN marker is missing or the preflight found live old-world
+- * runtimes (never an RPC error — the report IS the answer).
+- */
+-export type ImportFromFrozenResult = FrozenImportReport & DedupMarkers;
+-
+ // ---------------------------------------------------------------------------
+ // Cell verb shapes (WP6 §5.1 / spec 05 points 4 + 6)
+ // ---------------------------------------------------------------------------
+diff --git a/v2/daemon/src/rpcAccess.ts b/v2/daemon/src/rpcAccess.ts
+index 7a017857..67ff33ef 100644
+--- a/v2/daemon/src/rpcAccess.ts
++++ b/v2/daemon/src/rpcAccess.ts
+@@ -63,7 +63,6 @@ export const RPC_ACCESS = {
+   "template.export": "read",
+   "template.import": "mutate",
+   "packages.importLocalConfig": "mutate",
+-  "import.fromFrozen": "mutate",
+   "bee.setArgs": "mutate",
+   "bee.reconfigure": "mutate",
+   "cell.capture": "mutate",
+diff --git a/v2/daemon/tests/import-frozen.test.ts b/v2/daemon/tests/import-frozen.test.ts
+deleted file mode 100644
+index b12ea006..00000000
+--- a/v2/daemon/tests/import-frozen.test.ts
++++ /dev/null
+@@ -1,230 +0,0 @@
+-/**
+- * WP7 (spec 07 B4 + §F) — the resume-on-revive test over the REAL daemon:
+- *
+- *  1. a frozen old-world store built from REAL claude/codex record shapes
+- *     (copied 2026-08-18, scrubbed) + FROZEN marker
+- *  2. `import.fromFrozen` over RPC (dry-run first, then for real, then again
+- *     for idempotency) — bees land stopped, id preserved, provider session id
+- *     + harness home env on the row
+- *  3. message each imported bee → send_wake → revive → the driver spawns the
+- *     harness WITH the resume selector: fake claude sees `--resume <that id>`
+- *     and CLAUDE_CONFIG_DIR = the old home; fake codex sees `thread/resume
+- *     {threadId: <that id>}` and CODEX_HOME = the old home; the new generation
+- *     reports the SAME session id, which the daemon records unchanged — AND
+- *     with the per-bee args the importer kept from the old launch argv
+- *     (schema v5): fake claude sees `--model fable --effort high
+- *     --dangerously-skip-permissions --resume <id>`; fake codex sees
+- *     `-c model_reasoning_effort="ultra"` on argv and `model: gpt-5.6-sol`
+- *     in thread/resume (lifted off argv), never the dropped old plumbing
+- *  4. the same continuity for a v2-born bee: first boot mints a session id →
+- *     recorded → stop → message → generation 2 resumes it (scale-to-zero pause);
+- *     spawned with `args`, then `bee.setArgs` before the stop → generation 2
+- *     runs with the replaced args + the resume selector
+- *
+- * SAFETY: temp dirs only; the "agents" are fake-claude.mjs / fake-codex.mjs
+- * (v2/driver-hsr/test-agent) — no real CLI, no tokens; the frozen fixture's
+- * pids are impossible values so the real preflight cannot collide with a live
+- * process on the test host.
+- */
+-import { test } from "node:test";
+-import assert from "node:assert/strict";
+-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+-import { dirname, join } from "node:path";
+-import { fileURLToPath } from "node:url";
+-import type { ImportFromFrozenResult, ListResult, MailboxResult, SendRpcResult, SetArgsResult, SpawnResult, ViewResult } from "../src/protocol.ts";
+-import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
+-import {
+-  CLAUDE_HSR_SESSION_ID,
+-  CODEX_HSR_THREAD_ID,
+-  claudeHsrRecord,
+-  codexHsrRecord,
+-  makeFrozenFixture,
+-} from "../../core/tests/frozen-fixture.ts";
+-
+-const here = dirname(fileURLToPath(import.meta.url));
+-const FAKE_CLAUDE = join(here, "..", "..", "driver-hsr", "test-agent", "fake-claude.mjs");
+-const FAKE_CODEX = join(here, "..", "..", "driver-hsr", "test-agent", "fake-codex.mjs");
+-
+-/** Impossible pids: no live process on the test host can match (real preflight probes run in the daemon). */
+-const NO_SUCH_PID = 4_190_000;
+-
+-function jsonl<T>(path: string): T[] {
+-  if (!existsSync(path)) return [];
+-  return readFileSync(path, "utf8").split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l) as T);
+-}
+-
+-test("import.int: frozen import over RPC → revive resumes claude (--resume) and codex (thread/resume) with the imported ids; v2-born bees resume across stop", async () => {
+-  const fx = makeFrozenFixture();
+-  const claudeArgvLog = join(fx.root, "fake-claude-argv.jsonl");
+-  const codexRpcLog = join(fx.root, "fake-codex-rpc.jsonl");
+-  const { dir, cleanup } = makeDaemonDir({
+-    agents: {
+-      claude: { command: process.execPath, args: [FAKE_CLAUDE, "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose"], adapter: "claude", env: { FAKE_CLAUDE_ARGV_LOG: claudeArgvLog } },
+-      codex: { command: process.execPath, args: [FAKE_CODEX, "app-server"], adapter: "codex", env: { FAKE_CODEX_RPC_LOG: codexRpcLog } },
+-    },
+-  });
+-  let daemon: DaemonHandle | null = null;
+-  try {
+-    fx.writeMarker();
+-    fx.writeRecord("apiary-waggle-msx67afb-1.json", claudeHsrRecord(fx.root, { runnerPid: NO_SUCH_PID, runnerFingerprint: { pgid: NO_SUCH_PID, startedAt: "Tue Aug 18 07:42:57 2026" } }));
+-    fx.writeRecord("xr-dfc1452083e3.json", codexHsrRecord(fx.root, { runnerPid: NO_SUCH_PID + 1, runnerFingerprint: { pgid: NO_SUCH_PID + 1, startedAt: "Tue Aug 18 08:54:30 2026" } }));
+-    fx.writeRecord("done.json", claudeHsrRecord(fx.root, { id: "CL.done", name: "done-bee", status: "done" }));
+-    fx.writeRecord("kf.json", claudeHsrRecord(fx.root, { id: "CL.kf", name: "kf-bee", status: "kill_failed", runnerPid: NO_SUCH_PID + 2 }));
+-    fx.writeRecord("unknown.json", claudeHsrRecord(fx.root, { id: "XX.1", name: "unknown-bee", agent: "unknown-harness", runnerPid: NO_SUCH_PID + 3 }));
+-    const claudeHome = join(fx.root, "homes", "claude-fixture-account");
+-    const codexHome = join(fx.root, "homes", "codex-fixture-account");
+-    // The imported session LIVES in the imported home: claude (and the fake)
+-    // resolve `--resume <id>` against `projects/*/<id>.jsonl` in the config dir.
+-    mkdirSync(join(claudeHome, "projects", "imported"), { recursive: true });
+-    writeFileSync(join(claudeHome, "projects", "imported", `${CLAUDE_HSR_SESSION_ID}.jsonl`), `${JSON.stringify({ type: "init", sessionId: CLAUDE_HSR_SESSION_ID })}\n`);
+-
+-    daemon = await startDaemon(dir);
+-    const client = await daemon.client();
+-
+-    // --- dry-run: the plan, nothing written -----------------------------------
+-    const dry = await client.request<ImportFromFrozenResult>("import.fromFrozen", { root: fx.root, dryRun: true });
+-    assert.equal(dry.dryRun, true);
+-    assert.equal(dry.applied, false);
+-    assert.equal(dry.refusal, null, "marker present, impossible pids → preflight ok");
+-    assert.equal(dry.preflight.ok, true);
+-    assert.equal(dry.plan.counts.import, 2);
+-    assert.deepEqual(dry.plan.counts.byReason, { done: 1, kill_failed: 1, unsupported_agent: 1 });
+-    assert.equal((await client.request<ListResult>("list", {})).views.length, 0);
+-
+-    // --- the import -------------------------------------------------------------
+-    const imported = await client.request<ImportFromFrozenResult>("import.fromFrozen", { root: fx.root });
+-    assert.equal(imported.applied, true, imported.refusal ?? "");
+-    assert.deepEqual(imported.imported.map((i) => i.beeId).sort(), ["CL.fe6f", "CO.3ae1"]);
+-    const claudeView = await client.request<ViewResult>("view", { beeId: "CL.fe6f" });
+-    assert.equal(claudeView.view.runtimeState, "stopped");
+-    assert.equal(claudeView.view.reachable, true);
+-    assert.equal(claudeView.bee?.providerSessionId, CLAUDE_HSR_SESSION_ID);
+-    assert.deepEqual(claudeView.bee?.envKeys, ["CLAUDE_CONFIG_DIR"]);
+-    assert.equal(claudeView.bee?.importedFrom, "frozen");
+-    assert.equal(claudeView.bee?.name, "apiary-waggle-msx67afb-1");
+-    assert.deepEqual(claudeView.bee?.args, ["--dangerously-skip-permissions", "--model", "fable", "--effort", "high"], "per-bee args kept from the old launch argv (schema v5)");
+-    const codexView = await client.request<ViewResult>("view", { beeId: "CO.3ae1" });
+-    assert.deepEqual(codexView.bee?.args, ["--dangerously-bypass-approvals-and-sandbox", "--model", "gpt-5.6-sol", "-c", 'model_reasoning_effort="ultra"']);
+-    // list carries args too (mirror row shape)
+-    const listed = await client.request<ListResult>("list", {});
+-    assert.deepEqual(listed.views.find((v) => v.bee?.id === "CL.fe6f")?.bee?.args, claudeView.bee?.args);
+-
+-    // idempotent re-run over RPC: no dupes
+-    const again = await client.request<ImportFromFrozenResult>("import.fromFrozen", { root: fx.root });
+-    assert.equal(again.applied, true);
+-    assert.equal(again.imported.length, 0);
+-    assert.equal(again.plan.counts.byReason.already_imported, 2);
+-    assert.equal((await client.request<ListResult>("list", {})).views.length, 2);
+-
+-    // --- §F: message the imported claude bee → revive → --resume <imported id> --
+-    const sentClaude = await client.request<SendRpcResult>("send", { beeId: "CL.fe6f", body: "do you remember our conversation?" });
+-    assert.ok(sentClaude.commandId != null, "no live runtime → send_wake enqueued");
+-    const claudeGen = await waitFor(async () => {
+-      const { messages } = await client.request<MailboxResult>("mailbox", { beeId: "CL.fe6f" });
+-      const m = messages.find((x) => x.id === sentClaude.messageId);
+-      return m?.deliveredAt != null ? m.deliveredGeneration : null;
+-    }, "claude message delivered to the revived generation", 12_000);
+-    assert.equal(claudeGen, 2, "revive minted generation 2 (generation 1 = the imported, stopped placeholder)");
+-    await waitFor(async () => (await client.request<ViewResult>("view", { beeId: "CL.fe6f" })).view.runtimeState === "idle", "claude turn ended", 12_000);
+-    const claudeBoots = jsonl<{ argv: string[]; env: { CLAUDE_CONFIG_DIR: string | null }; sessionId: string; resumed: string | null; cwd: string }>(claudeArgvLog);
+-    assert.equal(claudeBoots.length, 1, "exactly one fake-claude spawn");
+-    const boot = claudeBoots[0]!;
+-    assert.deepEqual(boot.argv.slice(-2), ["--resume", CLAUDE_HSR_SESSION_ID], `spawned with --resume <imported id>: ${JSON.stringify(boot.argv)}`);
+-    assert.ok(boot.argv.includes("--output-format"), "the agent spec's own args are kept ahead of the resume selector");
+-    // schema v5: the imported per-bee args ride between the spec's args and the resume selector
+-    assert.deepEqual(
+-      boot.argv.slice(boot.argv.indexOf("--verbose") + 1),
+-      ["--dangerously-skip-permissions", "--model", "fable", "--effort", "high", "--resume", CLAUDE_HSR_SESSION_ID],
+-      `spec args < bee args < resume: ${JSON.stringify(boot.argv)}`,
+-    );
+-    assert.equal(boot.argv.includes("--session-id"), false, "old --session-id dropped (never combined with --resume)");
+-    assert.equal(boot.argv.includes("--append-system-prompt"), false, "old system-prompt plumbing dropped");
+-    assert.equal(boot.env.CLAUDE_CONFIG_DIR, claudeHome, "runs under the imported home (the session lives there)");
+-    assert.equal(boot.resumed, CLAUDE_HSR_SESSION_ID);
+-    // the new generation reported the same session id; the daemon recorded it unchanged
+-    const afterClaude = await client.request<ViewResult>("view", { beeId: "CL.fe6f" });
+-    assert.equal(afterClaude.bee?.providerSessionId, CLAUDE_HSR_SESSION_ID);
+-    assert.equal(afterClaude.view.generation, 2);
+-    // the verbatim v2 session log for this generation carries the init line with that id
+-    const claudeStream = jsonl<{ type: string; subtype?: string; session_id?: string }>(join(dir, "session-logs", "CL.fe6f.jsonl"));
+-    assert.equal(claudeStream.find((l) => l.type === "system" && l.subtype === "init")?.session_id, CLAUDE_HSR_SESSION_ID);
+-
+-    // --- §F: message the imported codex bee → revive → thread/resume {threadId: <imported id>} --
+-    const sentCodex = await client.request<SendRpcResult>("send", { beeId: "CO.3ae1", body: "and you?" });
+-    const codexGen = await waitFor(async () => {
+-      const { messages } = await client.request<MailboxResult>("mailbox", { beeId: "CO.3ae1" });
+-      const m = messages.find((x) => x.id === sentCodex.messageId);
+-      return m?.deliveredAt != null ? m.deliveredGeneration : null;
+-    }, "codex message delivered to the revived generation", 12_000);
+-    assert.equal(codexGen, 2);
+-    await waitFor(async () => (await client.request<ViewResult>("view", { beeId: "CO.3ae1" })).view.runtimeState === "idle", "codex turn ended", 12_000);
+-    const codexCalls = jsonl<{ method: string; params: Record<string, unknown> | null; env: { CODEX_HOME: string | null } }>(codexRpcLog);
+-    const resume = codexCalls.find((c) => c.method === "thread/resume");
+-    assert.ok(resume, `thread/resume sent; saw ${JSON.stringify(codexCalls.map((c) => c.method))}`);
+-    assert.equal(resume.params?.threadId, CODEX_HSR_THREAD_ID);
+-    assert.equal(resume.env.CODEX_HOME, codexHome, "runs under the imported CODEX_HOME (the rollout lives there)");
+-    assert.equal(codexCalls.some((c) => c.method === "thread/start"), false, "never a fresh thread for a resumable bee");
+-    const turn = codexCalls.find((c) => c.method === "turn/start");
+-    assert.equal(turn?.params?.threadId, CODEX_HSR_THREAD_ID, "the delivered turn targets the resumed thread");
+-    const afterCodex = await client.request<ViewResult>("view", { beeId: "CO.3ae1" });
+-    assert.equal(afterCodex.bee?.providerSessionId, CODEX_HSR_THREAD_ID);
+-    // schema v5, codex mapping: `-c model_reasoning_effort` reaches the app-server child's argv;
+-    // `--model` is lifted into thread/resume; the approval flag is absorbed by the adapter's policy
+-    const codexArgv = (resume as unknown as { argv: string[] }).argv;
+-    assert.deepEqual(codexArgv.slice(codexArgv.indexOf("app-server")), ["app-server", "-c", 'model_reasoning_effort="ultra"'], `codex child argv: ${JSON.stringify(codexArgv)}`);
+-    assert.equal(resume.params?.model, "gpt-5.6-sol", "-m lifted into the thread request");
+-    assert.equal(resume.params?.approvalPolicy, "never");
+-    assert.equal(resume.params?.sandbox, "danger-full-access");
+-    assert.equal(codexArgv.some((a) => a.includes("service_tier") || a.includes("fast_mode")), false, "old service_tier/fast_mode plumbing dropped");
+-
+-    // --- continuity for a v2-born bee (scale-to-zero pause shape) --------------
+-    const born = await client.request<SpawnResult>("spawn", { name: "fresh", agent: "claude", cwd: fx.root, args: ["--model", "opus"] });
+-    assert.deepEqual((await client.request<ViewResult>("view", { beeId: born.beeId })).bee?.args, ["--model", "opus"], "spawn args land on the row");
+-    const first = await client.request<SendRpcResult>("send", { beeId: born.beeId, body: "first" });
+-    await waitFor(async () => {
+-      const { messages } = await client.request<MailboxResult>("mailbox", { beeId: born.beeId });
+-      return messages.find((x) => x.id === first.messageId)?.deliveredAt != null;
+-    }, "fresh bee first delivery", 12_000);
+-    const minted = await waitFor(async () => (await client.request<ViewResult>("view", { beeId: born.beeId })).bee?.providerSessionId, "fresh bee's session id recorded", 12_000);
+-    assert.notEqual(minted, CLAUDE_HSR_SESSION_ID);
+-    // bee.setArgs before the stop: generation 2 must run with the replaced args
+-    const setArgs = await client.request<SetArgsResult>("bee.setArgs", { beeId: born.beeId, args: ["--model", "fable", "--dangerously-skip-permissions"] });
+-    assert.equal(setArgs.applied, true);
+-    assert.deepEqual(setArgs.bee.args, ["--model", "fable", "--dangerously-skip-permissions"]);
+-    assert.equal((await client.request<SetArgsResult>("bee.setArgs", { beeId: born.beeId, args: ["--model", "fable", "--dangerously-skip-permissions"] })).applied, false, "identical = no-op");
+-    await client.request("stop", { beeId: born.beeId });
+-    await waitFor(async () => (await client.request<ViewResult>("view", { beeId: born.beeId })).view.runtimeState === "stopped", "fresh bee stopped", 12_000);
+-    const second = await client.request<SendRpcResult>("send", { beeId: born.beeId, body: "second" });
+-    const gen2 = await waitFor(async () => {
+-      const { messages } = await client.request<MailboxResult>("mailbox", { beeId: born.beeId });
+-      const m = messages.find((x) => x.id === second.messageId);
+-      return m?.deliveredAt != null ? m.deliveredGeneration : null;
+-    }, "fresh bee second delivery", 12_000);
+-    assert.equal(gen2, 2);
+-    await waitFor(async () => (await client.request<ViewResult>("view", { beeId: born.beeId })).view.runtimeState === "idle", "fresh bee gen 2 idle", 12_000);
+-    const bornBoots = jsonl<{ argv: string[]; sessionId: string; resumed: string | null; env: { CLAUDE_CONFIG_DIR: string | null } }>(claudeArgvLog).slice(1);
+-    assert.equal(bornBoots.length, 2, "fresh bee: two spawns (gen 1 fresh, gen 2 resumed)");
+-    assert.equal(bornBoots[0]?.resumed, null, "generation 1 had nothing to resume");
+-    assert.equal(bornBoots[0]?.sessionId, minted);
+-    assert.deepEqual(bornBoots[0]?.argv.slice(-2), ["--model", "opus"], "generation 1 ran with the spawn args");
+-    assert.equal(bornBoots[1]?.resumed, minted, "generation 2 resumes the id generation 1 minted");
+-    assert.deepEqual(bornBoots[1]?.argv.slice(-5), ["--model", "fable", "--dangerously-skip-permissions", "--resume", minted], `generation 2 ran with the replaced args + resume: ${JSON.stringify(bornBoots[1]?.argv)}`);
+-    assert.equal(bornBoots[1]?.argv.filter((a) => a === "--model").length, 1, "one --model after de-dup");
+-    // no per-bee env for a v2-born bee: it inherits whatever the daemon process had (possibly a CLAUDE_CONFIG_DIR of its own), never the imported home
+-    assert.equal(bornBoots[1]?.env.CLAUDE_CONFIG_DIR, process.env.CLAUDE_CONFIG_DIR ?? null);
+-    assert.notEqual(bornBoots[1]?.env.CLAUDE_CONFIG_DIR, claudeHome);
+-    assert.equal((await client.request<ViewResult>("view", { beeId: born.beeId })).bee?.providerSessionId, minted);
+-
+-    client.close();
+-    // hygiene: the importer never wrote into the frozen root (only our fake logs + the marker we wrote live there)
+-    assert.equal(existsSync(join(fx.root, "v2")), false);
+-  } catch (err) {
+-    process.stderr.write(`DAEMON OUTPUT:\n${daemon?.output().split("\n").slice(-60).join("\n")}\n`);
+-    try { process.stderr.write(`LOG:\n${readFileSync(join(dir, "hived.log"), "utf8").split("\n").slice(-60).join("\n")}\n`); } catch {}
+-    throw err;
+-  } finally {
+-    if (daemon) await daemon.stop().catch(() => undefined);
+-    cleanup();
+-    fx.cleanup();
+-  }
+-});

@@ -1,0 +1,8 @@
+# hive fish completion
+# Install: hive completion fish | source
+# Or add to ~/.config/fish/completions/hive.fish
+function __hive_complete
+  hive __complete (commandline -opc) (commandline -ct) 2>/dev/null
+end
+complete -c hive -f -a '(__hive_complete)'
+

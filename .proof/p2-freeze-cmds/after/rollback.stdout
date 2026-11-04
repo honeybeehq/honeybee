@@ -1,0 +1,7 @@
+deploy: rollback planned bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb → aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+deploy: no prior store; absence receipt /tmp/hb-freeze-capture/rollback/runtime/.store-absence/1793795454760-1577563.json
+deploy: rolled back bbbbbbbbbbbb → aaaaaaaaaaaa
+deploy: /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node /tmp/hb-freeze-capture/rollback/runtime/current/dist/cli.js v2 daemon install --data-dir /tmp/hb-freeze-capture/rollback/v2
+deploy: /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node /tmp/hb-freeze-capture/rollback/runtime/current/dist/cli.js v2 daemon stop --data-dir /tmp/hb-freeze-capture/rollback/v2
+deploy: /home/trmd/.local/share/apiary-satellite/node-v24.21.0-linux-x64/bin/node /tmp/hb-freeze-capture/rollback/runtime/current/dist/cli.js v2 daemon start --data-dir /tmp/hb-freeze-capture/rollback/v2
+rollback	bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb	aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
