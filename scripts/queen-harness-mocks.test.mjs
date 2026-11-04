@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { modelReply, startMock, TOOL_COMMAND } from "./queen-harness-mocks.mjs";
 
-const output = "fixture-sentinel\nv24.18.0\nQUEEN_PATH=/run/honeybee/bin:/usr/bin:/bin\nQUEEN_COMMIT=" + "a".repeat(40) + "\nQUEEN_STATUS_BEGIN\nQUEEN_STATUS_END\n";
+const inventory = ["pnpm", "corepack", "yarn", "bun", "gh", "git", "make", "python3", "gcc"].map(name => `QUEEN_TOOL=${name}:MISSING`).join("\n");
+const output = inventory + "\nQUEEN_LOCAL_NPM_OK\nfixture-sentinel\nv24.18.0\nQUEEN_PATH=/run/honeybee/bin:/usr/bin:/bin\nQUEEN_COMMIT=" + "a".repeat(40) + "\nQUEEN_STATUS_BEGIN\nQUEEN_STATUS_END\n";
 test("Codex receives one advertised shell call and requires actual tool output before final", () => {
   for (const name of ["exec_command", "shell_command"]) {
     const state = { turn: 0 };

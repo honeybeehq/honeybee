@@ -6,17 +6,17 @@ Create an owned, private, short scratch parent with mode 0700. Do not reuse a pr
 
 ```sh
 node scripts/queen-cell-real-harness.mjs \
-  --approved-head <40-character-approved-sha> \
+  --approved-head f4bf332eb29b2a61411e288f703e0102a1d0feca \
   --node /opt/node-v24.18.0-linux-x64/bin/node \
   --codex <absolute-Apiary-Codex-path> \
   --claude <absolute-Apiary-Claude-path> \
   --scratch-parent <owned-0700-short-directory> \
-  --projection-export <approved-apiaryHarness-function-export>
+  --projection-export apiaryHarnessProjection
 ```
 
 The runner archives the exact approved source into a new 0700 scratch directory, records build provenance and lockfile hash, installs only lockfile-pinned dependencies, and builds there. The reviewed fixture scripts are copied separately with their hashes recorded. The fixture worker requires a function exported from that build's `v2/driver-cell/src/apiaryHarness.ts` before starting a provider or harness. Missing capability refuses execution.
 
-Each lane uses a fresh daemon config, database, socket, origin repository, Cell, and synthetic account home. The real harness receives one deterministic shell call, then a final response only after the mock sees successful tool output. The call lists files, prints Node version and PATH, records git status, and commits a local fixture file with an explicit fixture identity. No git push occurs. The worker independently verifies the resulting commit, author, file, clean status, final transcript, and actual wrapped bwrap launch argv.
+Each lane uses a fresh daemon config, database, socket, origin repository, Cell, and synthetic account home. The real harness receives one deterministic shell call, then a final response only after the mock sees successful tool output. The call lists files, prints Node version and PATH, reports command lookup for pnpm, corepack, yarn, bun, gh, git, make, python3 and gcc (missing tools are reported), packs and installs a tiny local npm tarball offline without dependencies or lifecycle scripts, removes that fixture, records git status, and commits a local fixture file with an explicit fixture identity. No git push occurs. The worker independently verifies the resulting commit, author, file, clean status, final transcript, and actual wrapped bwrap launch argv.
 
 The mock accepts only loopback requests to its supported Responses/Messages routes, plus Claude's local token-count route. It never proxies requests. Unexpected routes, unsupported tool schemas, extra turns, missing tool results, projection failure, and launch failure produce a failed receipt. Version-specific harness compatibility remains unverified until Queen runs the reviewed script; mocks must not be relaxed to hide a real tool failure.
 

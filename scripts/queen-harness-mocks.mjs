@@ -3,6 +3,11 @@ import { createServer } from "node:http";
 
 export const TOOL_COMMAND = [
   "set -eu", "ls", "node --version", "printf 'QUEEN_PATH=%s\\n' \"$PATH\"",
+  "for tool in pnpm corepack yarn bun gh git make python3 gcc; do if tool_path=$(command -v \"$tool\"); then printf 'QUEEN_TOOL=%s:%s\\n' \"$tool\" \"$tool_path\"; else printf 'QUEEN_TOOL=%s:MISSING\\n' \"$tool\"; fi; done",
+  "npm_fixture=$(node -e 'const f=require(\"fs\");const p=f.mkdtempSync(\".queen-npm-\");f.mkdirSync(p+\"/package\");f.writeFileSync(p+\"/package/package.json\",JSON.stringify({name:\"queen-local-package\",version:\"1.0.0\",main:\"index.js\"}));f.writeFileSync(p+\"/package/index.js\",\"module.exports=42;\\n\");console.log(p)')",
+  "npm pack \"./$npm_fixture/package\" --pack-destination \"$npm_fixture\" --offline --ignore-scripts --no-audit --no-fund",
+  "npm install --prefix \"$npm_fixture/install\" \"./$npm_fixture/queen-local-package-1.0.0.tgz\" --offline --ignore-scripts --no-audit --no-fund",
+  "node -e 'const p=process.argv[1];if(require(\"./\"+p+\"/install/node_modules/queen-local-package\")!==42)process.exit(1);require(\"fs\").rmSync(p,{recursive:true});console.log(\"QUEEN_LOCAL_NPM_OK\")' \"$npm_fixture\"",
   "git status --short", "printf 'queen-local-fixture\\n' > queen-local-fixture.txt",
   "git add -- queen-local-fixture.txt",
   "git -c user.name=QueenFixture -c user.email=queen@example.invalid -c core.hooksPath=/dev/null commit -m queen-local-fixture",
@@ -38,6 +43,8 @@ export function modelReply(harness, body, state) {
     state.output = typeof result.output === "string" ? result.output : JSON.stringify(result.output);
   }
   assert.match(state.output, /QUEEN_PATH=/);
+  assert.match(state.output, /QUEEN_LOCAL_NPM_OK/);
+  for (const tool of ["pnpm", "corepack", "yarn", "bun", "gh", "git", "make", "python3", "gcc"]) assert.ok(state.output.includes(`QUEEN_TOOL=${tool}:`));
   assert.match(state.output, /fixture-sentinel/);
   assert.match(state.output, /v\d+\.\d+\.\d+/);
   assert.match(state.output, /QUEEN_COMMIT=[a-f0-9]{40}/);
