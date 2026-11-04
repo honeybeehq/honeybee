@@ -29,7 +29,7 @@ export function resolveUpstreamSshPolicy(raw: unknown, configDir: string, home =
   return { identityFiles: c.identityFiles.map((p) => resolve(configDir, p)), knownHostsFile: resolve(configDir, c.knownHostsFile) };
 }
 
-function checkedFile(path: string, optional: boolean): boolean {
+function checkedFile(path: string, optional: boolean, publicFile = false): boolean {
   if (!isAbsolute(path)) throw new UpstreamFetchError("ssh_policy_invalid", "upstream SSH paths must be absolute");
   let current = parse(path).root;
   const parts = path.slice(current.length).split(sep).filter(Boolean);
@@ -41,14 +41,15 @@ function checkedFile(path: string, optional: boolean): boolean {
       throw new UpstreamFetchError("ssh_policy_invalid", "upstream SSH file is missing or unreadable");
     }
     if (info.isSymbolicLink() || (i === parts.length - 1 ? !info.isFile() : !info.isDirectory())) throw new UpstreamFetchError("ssh_policy_invalid", "upstream SSH path must contain only real directories and a regular file");
-    if (i >= parts.length - 2 && ((process.getuid && info.uid !== process.getuid()) || (info.mode & 0o077) !== 0)) throw new UpstreamFetchError("ssh_policy_invalid", "upstream SSH files and their parent must be private and owned by the daemon user");
+    const forbiddenMode = publicFile && i === parts.length - 1 ? 0o022 : 0o077;
+    if (i >= parts.length - 2 && ((process.getuid && info.uid !== process.getuid()) || (info.mode & forbiddenMode) !== 0)) throw new UpstreamFetchError("ssh_policy_invalid", "upstream SSH paths must be daemon-owned and protected against access or modification by other users");
   }
   if (realpathSync(path) !== path) throw new UpstreamFetchError("ssh_policy_invalid", "upstream SSH path must be canonical");
   return true;
 }
 
 export function validatedUpstreamSsh(policy: UpstreamSshPolicy): UpstreamSshPolicy {
-  checkedFile(policy.knownHostsFile, false);
+  checkedFile(policy.knownHostsFile, false, true);
   const identityFiles = policy.identityFiles.filter((path) => checkedFile(path, true));
   if (identityFiles.length === 0) throw new UpstreamFetchError("ssh_policy_invalid", "no valid upstream SSH identity is available; keeping the last mirror");
   return { identityFiles, knownHostsFile: policy.knownHostsFile };

@@ -108,6 +108,11 @@ test("upstream SSH resolves explicit paths and refuses unsafe metadata", () => {
     writeFileSync(known, "fixture", { mode: 0o600 });
     const policy = resolveUpstreamSshPolicy({ identityFiles: ["identity", "missing"], knownHostsFile: "known_hosts" }, root);
     assert.deepEqual(validatedUpstreamSsh(policy), { identityFiles: [identity], knownHostsFile: known });
+    chmodSync(known, 0o644);
+    assert.deepEqual(validatedUpstreamSsh(policy), { identityFiles: [identity], knownHostsFile: known });
+    chmodSync(known, 0o664);
+    assert.throws(() => validatedUpstreamSsh(policy), UpstreamFetchError);
+    chmodSync(known, 0o600);
     chmodSync(identity, 0o644);
     assert.throws(() => validatedUpstreamSsh(policy), UpstreamFetchError);
     chmodSync(identity, 0o600);
