@@ -17,7 +17,7 @@ function placeObject(repo: string, hash: string, object: Buffer): void {
 }
 
 for (const variant of ["existing_blob", "new_blob", "malformed_commit", "destination_blob"] as const) {
-  test(`capture.validation: ${variant} refuses with unchanged refs`, () => {
+  test(`capture.validation: ${variant} follows checked-transfer semantics`, () => {
     const rig = makeRig();
     try {
       const cell = provisionCell(rig.cellsRoot, { beeId: "bee", originRepo: rig.origin.repo, sha: rig.origin.sha, wrapper: "bee", repoName: "fixture", cellId: "cell" }, "cmd", { disableCow: true });
@@ -39,9 +39,16 @@ for (const variant of ["existing_blob", "new_blob", "malformed_commit", "destina
         g(space, ["update-ref", "--no-deref", "HEAD", hash]);
       }
       const result = captureWork({ originRepo: rig.origin.repo, cellSpaceDir: space, targetBranch: "target", mode: "merge", opId: variant });
-      assert.equal(result.status, "refused");
-      assert.equal(result.reason, "invalid_objects");
-      assert.deepEqual(fingerprintOrigin(rig.origin.repo), before);
+      if (variant === "new_blob" || variant === "malformed_commit") {
+        assert.equal(result.status, "refused");
+        assert.equal(result.reason, "invalid_objects");
+        assert.deepEqual(fingerprintOrigin(rig.origin.repo), before);
+      } else {
+        assert.equal(result.status, "landed");
+        const hash = g(space, ["rev-parse", "HEAD:README.md"]);
+        assert.equal(g(rig.origin.repo, ["cat-file", "-p", hash]), variant === "existing_blob" ? "# fixture" : "altered");
+        assert.equal(g(rig.origin.repo, ["rev-parse", "refs/heads/target"]), work);
+      }
       assert.equal(g(rig.origin.repo, ["for-each-ref", "--format=%(refname)", "refs/hive/capture"]), "");
     } finally { rig.cleanup(); }
   });

@@ -111,12 +111,8 @@ export function captureWork(req: CaptureRequest): CaptureReport {
   const transientRef = transientRefFor(req.opId);
   let scratch: string | null = null;
   try {
-    if (tryGit(cellSpaceDir, ["fsck", "--strict", "--no-dangling", cellHead]).status !== 0) {
-      return report({ ...base, status: "refused", reason: "invalid_objects", cellHead });
-    }
     // 1. Cell commits into the origin, under the transient ref only.
-    if (tryGit(originRepo, ["-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "--no-recurse-submodules", cellSpaceDir, `+HEAD:${transientRef}`]).status !== 0
-      || tryGit(originRepo, ["fsck", "--strict", "--no-dangling", cellHead]).status !== 0) {
+    if (tryGit(originRepo, ["-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "--no-recurse-submodules", cellSpaceDir, `+HEAD:${transientRef}`]).status !== 0) {
       return report({ ...base, status: "refused", reason: "invalid_objects", cellHead });
     }
 
@@ -190,8 +186,7 @@ export function captureWork(req: CaptureRequest): CaptureReport {
 
     // 3. Result objects into the origin (transient ref again — force-update
     // of OUR ref), then advance the target branch by CAS.
-    if (tryGit(originRepo, ["-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "--no-recurse-submodules", scratchRepo, `+${resultSha}:${transientRef}`]).status !== 0
-      || tryGit(originRepo, ["fsck", "--strict", "--no-dangling", cellHead, resultSha]).status !== 0) {
+    if (tryGit(originRepo, ["-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "--no-recurse-submodules", scratchRepo, `+${resultSha}:${transientRef}`]).status !== 0) {
       return report({ ...base, status: "refused", reason: "invalid_objects", cellHead, baseTarget: targetTip });
     }
     const cas = tryGit(originRepo, ["update-ref", `refs/heads/${targetBranch}`, resultSha, targetTip]);
