@@ -188,38 +188,51 @@ export function decodeCappedUtf8(buf: Buffer): string {
  * Space-relative cwd only. Realpath both sides so a symlink inside the space
  * that points at a sibling outside cannot pass.
  */
+export class CellExecContainmentError extends Error {
+  readonly code = "containment";
+  constructor(message = "Cell exec working directory is unavailable inside the sandbox") {
+    super(message);
+    this.name = "CellExecContainmentError";
+  }
+}
+
 export function containedExecCwd(spaceDir: string, requested?: string): string {
-  const realRoot = realpathSync(resolve(spaceDir));
-  if (requested == null || requested.length === 0 || requested === ".") return realRoot;
-  if (isAbsolute(requested)) {
-    throw new Error(`cell.exec cwd must be space-relative, got absolute '${requested}'`);
-  }
-  const parts = requested.split(/[/\\]/).filter((p) => p.length > 0 && p !== ".");
-  if (parts.some((p) => p === "..")) {
-    throw new Error(`cell.exec cwd '${requested}' escapes the Cell space`);
-  }
-  const candidate = resolve(realRoot, ...parts);
-  const unresolvedRel = relative(realRoot, candidate);
-  if (unresolvedRel.startsWith(`..${sep}`) || unresolvedRel === ".." || isAbsolute(unresolvedRel)) {
-    throw new Error(`cell.exec cwd '${requested}' escapes the Cell space`);
-  }
-  if (existsSync(candidate) && lstatSync(candidate).isSymbolicLink()) {
+  try {
+    const realRoot = realpathSync(resolve(spaceDir));
+    if (requested == null || requested.length === 0 || requested === ".") return realRoot;
+    if (isAbsolute(requested)) {
+      throw new CellExecContainmentError(`cell.exec cwd must be space-relative, got absolute '${requested}'`);
+    }
+    const parts = requested.split(/[/\\]/).filter((p) => p.length > 0 && p !== ".");
+    if (parts.some((p) => p === "..")) {
+      throw new CellExecContainmentError(`cell.exec cwd '${requested}' escapes the Cell space`);
+    }
+    const candidate = resolve(realRoot, ...parts);
+    const unresolvedRel = relative(realRoot, candidate);
+    if (unresolvedRel.startsWith(`..${sep}`) || unresolvedRel === ".." || isAbsolute(unresolvedRel)) {
+      throw new CellExecContainmentError(`cell.exec cwd '${requested}' escapes the Cell space`);
+    }
+    if (existsSync(candidate) && lstatSync(candidate).isSymbolicLink()) {
+      const realCandidate = realpathSync(candidate);
+      const rel = relative(realRoot, realCandidate);
+      if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
+        throw new CellExecContainmentError(`cell.exec cwd '${requested}' escapes the Cell space`);
+      }
+      return realCandidate;
+    }
+    if (!existsSync(candidate)) {
+      throw new CellExecContainmentError(`cell.exec cwd '${requested}' does not exist inside the Cell space`);
+    }
     const realCandidate = realpathSync(candidate);
     const rel = relative(realRoot, realCandidate);
     if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
-      throw new Error(`cell.exec cwd '${requested}' escapes the Cell space`);
+      throw new CellExecContainmentError(`cell.exec cwd '${requested}' escapes the Cell space`);
     }
     return realCandidate;
+  } catch (error) {
+    if (error instanceof CellExecContainmentError) throw error;
+    throw new CellExecContainmentError();
   }
-  if (!existsSync(candidate)) {
-    throw new Error(`cell.exec cwd '${requested}' does not exist inside the Cell space`);
-  }
-  const realCandidate = realpathSync(candidate);
-  const rel = relative(realRoot, realCandidate);
-  if (rel.startsWith(`..${sep}`) || rel === ".." || isAbsolute(rel)) {
-    throw new Error(`cell.exec cwd '${requested}' escapes the Cell space`);
-  }
-  return realCandidate;
 }
 
 function killTree(pid: number, signal: "SIGTERM" | "SIGKILL"): void {
@@ -286,13 +299,14 @@ export async function runCellExec(
     HIVE_CELL_SPACE: paths.spaceName,
   };
   if (!sandboxEnabled(spec.nodeKind, spec.sandbox) && spec.nodeKindExplicit === false && spec.sandbox !== false) throw new Error("cell sandbox: nodeKind is missing; explicit cells.sandbox:false is required for an unsandboxed Cell");
+  const confinedLinux = process.platform === "linux" && sandboxEnabled(spec.nodeKind, spec.sandbox);
   let wrappedCommand = command as string;
   let wrappedArgs = args;
   env = sandboxEnvironment(paths.wrapperDir, env, sandboxEnabled(spec.nodeKind, spec.sandbox)) as typeof env;
   if (sandboxEnabled(spec.nodeKind, spec.sandbox)) {
     (env as Record<string, string>).HIVE_CELL_GATEWAY_SOCKET = "/run/honeybee/gateway.sock";
     const wrapped = wrapWithSandbox(
-      { cellDir: paths.wrapperDir, writablePaths: defaultWritablePaths(), kvm: spec.kvm, gatewaySocketPath: spec.gatewaySocketPath },
+      { cellDir: paths.wrapperDir, ...(confinedLinux ? {launchCwd: cwd} : {}), writablePaths: defaultWritablePaths(), kvm: spec.kvm, gatewaySocketPath: spec.gatewaySocketPath },
       command,
       args,
       paths.sandboxProfilePath,
@@ -309,7 +323,7 @@ export async function runCellExec(
   const supervisorArgs = [...(linuxNamespace ? [...LINUX_SECRET_NAMESPACE_ARGS, process.execPath] : []), "-e", secretSupervisorSource];
   let child: ChildProcess;
   try { child = spawnProcess(supervised ? supervisorCommand : wrappedCommand, supervised ? supervisorArgs : wrappedArgs, {
-    cwd,
+    cwd: confinedLinux ? "/" : cwd,
     env: supervised ? sanitizedCellExecEnv() : env,
     stdio: supervised ? ["ignore", "pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"],
     detached: true,
@@ -358,6 +372,8 @@ export async function runCellExec(
   const privateOutput = spec.outputCapture ? Buffer.alloc(spec.outputCapture.maxBytes) : undefined;
   let privateLength = 0;
   let privateFailed = false;
+  let cwdFailure = false;
+  let startupError = "";
   let outputFailed = false;
   child.stdout?.on("data", (chunk: Buffer) => {
     if (!privateOutput) { intake(stdout, chunk); return; }
@@ -371,7 +387,13 @@ export async function runCellExec(
     chunk.copy(privateOutput, privateLength);
     privateLength += chunk.length;
   });
-  child.stderr?.on("data", (chunk: Buffer) => { if (!privateOutput) intake(stderr, chunk); });
+  child.stderr?.on("data", (chunk: Buffer) => {
+    if (confinedLinux && startupError.length < 4096) {
+      startupError += chunk.toString("utf8").slice(0, 4096 - startupError.length);
+      cwdFailure ||= /^bwrap:.*(?:chdir|change[^\n]*directory)/mi.test(startupError);
+    }
+    if (!privateOutput) intake(stderr, chunk);
+  });
   child.stdout?.on("error", () => { privateFailed = true; });
   child.stdout?.on("error", () => { outputFailed = true; stdout.finish(false); });
   child.stderr?.on("error", () => { outputFailed = true; stderr.finish(false); });
@@ -433,6 +455,10 @@ export async function runCellExec(
   }
 
   finish(!spawnError && !spec.signal?.aborted && !outputFailed && reaped.code === 0);
+  if (cwdFailure && reaped.code !== 0) {
+    privateOutput?.fill(0);
+    throw new CellExecContainmentError();
+  }
   if (privateOutput) {
     try {
       if (!spawnError && !spec.signal?.aborted && reaped.code === 0 && !privateFailed && spec.outputCapture!.expiresAt > Date.now()) spec.outputCapture!.receive(privateOutput.subarray(0, privateLength));

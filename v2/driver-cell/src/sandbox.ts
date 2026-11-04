@@ -42,6 +42,7 @@ export function sandboxEnabled(kind: NodeKind, cellOverride: boolean | null | un
 export interface SandboxPolicy {
   /** The cell wrapper dir — the primary writable subtree. */
   cellDir: string;
+  launchCwd?: string;
   /** Harness home/state dirs and caches that must stay writable. */
   writablePaths: string[];
   /** OS scratch dirs kept writable. Defaults to the platform list. */
@@ -459,6 +460,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     "--setenv", "HIVE_CELL_GATEWAY_SOCKET", "/run/honeybee/gateway.sock",
     "--setenv", "PATH", `/run/honeybee/bin:/run/honeybee/tools/bin:${toolchain ? `${nodeDestination}/bin:` : ""}/usr/bin:/bin`,
     "--share-net", "--die-with-parent");
+  if (policy.launchCwd !== undefined) out.push("--chdir", policy.launchCwd);
   const parent = statSync("/proc/self/ns/user");
   const projectInput = (input: string) => harness && isAbsolute(input) && isRegularFile(input) && containsPath(harness.leaf, realpathSync(input)) ? realpathSync(input) : input;
   const launchCommand = harness && command === harness.id ? harness.alias : projectInput(command);

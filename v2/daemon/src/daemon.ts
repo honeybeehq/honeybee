@@ -1,3 +1,4 @@
+import { CellExecContainmentError } from "../../driver-cell/src/exec.ts";
 import { assertClaudeSessionId } from "../../adapters/src/claudeSession.ts";
 import type { SchedulingStatus } from "../../../src/processScheduling.ts";
 import { cellDaemonEnvironment, withoutCellHostRoutes } from "../../driver-cell/src/runtimeEnvironment.ts";
@@ -5273,8 +5274,8 @@ export class HiveDaemon {
       });
       return this.cellExecResultFromOp({ ...saved, timeoutMs: saved.timeoutMs ?? outcome.timeoutMs }, false);
     } catch (err) {
-      const detail = secret ? err instanceof Error && err.message === "secret_execution_containment_unavailable" ? err.message : "secret_execution_failed" : err instanceof Error ? err.message : String(err);
-      const reason = detail === "secret_execution_containment_unavailable" ? "secret_execution_containment_unavailable" : /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
+      const detail = err instanceof CellExecContainmentError ? "Cell exec cwd is outside or unavailable in the Cell" : secret ? err instanceof Error && err.message === "secret_execution_containment_unavailable" ? err.message : "secret_execution_failed" : err instanceof Error ? err.message : String(err);
+      const reason = err instanceof CellExecContainmentError ? "containment" : detail === "secret_execution_containment_unavailable" ? "secret_execution_containment_unavailable" : /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
       const saved = store.updateCellOp(op.id, { status: "failed", failure: reason === "containment" ? "containment" : detail });
       return { ...this.cellExecResultFromOp(saved, false), reason, stderr: detail, timeoutMs: timeoutMs ?? 0 };
     } finally {
