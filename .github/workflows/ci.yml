@@ -153,5 +153,7 @@ jobs:
       - run: npm run check
       - run: npm run v2:check
       - run: npm run build
+      - name: Require attributed Cell home-write denial
+        run: node --test v2/driver-cell/tests/real-home-write.test.ts
       - run: npm test
       - run: npm run v2:test && npm run v2:daemon && npm run v2:driver && npm run v2:driver2 && npm run v2:harness

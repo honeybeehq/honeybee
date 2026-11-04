@@ -9,6 +9,8 @@ import { sandboxEnvironment, wrapWithSandbox } from "../src/sandbox.ts";
 import { fixtureGatewaySocket } from "./sandboxFixture.ts";
 
 test("real home and nearest systemd ancestor refuse one exclusive create inside a Cell", {skip: process.platform !== "linux"}, t => {
+  const allowUnproven = process.env.HIVE_TEST_ALLOW_UNPROVEN_HOME_PROBE === "1";
+  assert.ok(!allowUnproven || !process.env.CI && !process.env.GITHUB_ACTIONS, "unproven attribution opt-in is forbidden on CI");
   const root = mkdtempSync("/tmp/hb-real-home-probe-");
   const cell = join(root, "cell");
   mkdirSync(cell);
@@ -63,7 +65,10 @@ test("real home and nearest systemd ancestor refuse one exclusive create inside 
       assert.notEqual(inner[key].result, "CREATED_AND_REMOVED", "inner Cell created a forbidden home file (removed immediately)");
       if (controls[key].result === "CREATED_AND_REMOVED") assert.ok(["EROFS", "EACCES"].includes(inner[key].result), JSON.stringify(inner[key]));
     }
-    if (report.attribution === "unproven (outer layer denies)") t.todo(report.attribution);
+    if (report.attribution === "unproven (outer layer denies)") {
+      if (allowUnproven) t.todo(report.attribution);
+      else assert.fail(report.attribution + "; positive controls must succeed for the denial release gate");
+    }
   } finally {
     const trash = join(tmpdir(), "honeybee-test-trash");
     mkdirSync(trash, {recursive: true, mode: 0o700});
