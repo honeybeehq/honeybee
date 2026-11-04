@@ -11,7 +11,7 @@ import { probeNativeNode, resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { delimiter, dirname, isAbsolute, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import {
   assertDeployRestartAdmission,
@@ -40,7 +40,7 @@ import { collectBuildProvenance } from "../release/buildIdentityProducer.js";
 import { hostGitEnv } from "../hostGit.js";
 import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../release/runtimeTarget.js";
 import { waitForDeployReadiness, type DeployProcessIdentity } from "../deployReadiness.js";
-import { inspectProcess, loadNodeConfig } from "../v2/updateOwnerClient.mjs";
+import { inspectProcess, resolveDaemonConfig } from "../v2/updateOwnerClient.mjs";
 import { DatabaseSync } from "node:sqlite";
 
 const execFileAsync = promisify(execFile);
@@ -58,14 +58,41 @@ const USAGE = [
 
 const KNOWN_FLAGS = new Set(["provision-question-withdrawal", "skip-tests", "keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
 
-export function assertDeployNodePolicy(dataDir: string, osPlatform: string = process.platform): void {
-  const cfg = loadNodeConfig(dataDir);
+export function assertDeployNodePolicy(dataDir: string, osPlatform: string = process.platform, configPath?: string): void {
+  const cfg = resolveDaemonConfig({ dataDir, configPath });
   if (!cfg.nodeKindExplicit && cfg.cellSandbox === null) {
     throw Object.assign(new Error("deploy: configure nodeKind or cells.sandbox explicitly before installing a runtime"), { code: "DEPLOY_NODE_POLICY_REQUIRED" });
   }
   if (osPlatform === "darwin" && (cfg.cellSandbox === true || (cfg.nodeKind === "satellite" && cfg.cellSandbox !== false))) {
     throw Object.assign(new Error("deploy: sandboxed Cells on darwin require unsupported private Claude/Codex harness input projection; refusing installation"), { code: "DEPLOY_DARWIN_SANDBOX_UNSUPPORTED" });
   }
+}
+
+export function assertDeployTargetPolicy(root: string, osPlatform: string = process.platform, args: { dataDir?: string; configPath?: string } = {}, requireNodePolicy = true): void {
+  const cfg = resolveDaemonConfig(args);
+  const coordinatedDataDir = resolve(root, "..", "v2");
+  if (cfg.dataDir !== coordinatedDataDir || resolve(cfg.configPath) !== join(coordinatedDataDir, "config.json")) {
+    throw Object.assign(new Error("deploy: resolved daemon config differs from the coordinated backup/restart target; custom targets require a coordinated deployment owner"), { code: "DEPLOY_CONFIG_TARGET_UNCOORDINATED" });
+  }
+  if (requireNodePolicy) assertDeployNodePolicy(cfg.dataDir, osPlatform, cfg.configPath);
+}
+
+export async function rollbackRequiresNodePolicy(root: string): Promise<boolean> {
+  const target = rollbackTargetEntry(await readDeployHistory(root), await currentDeployTarget(root), { root, requireInstalled: true });
+  if (!target) return true;
+  const directory = join(root, target.sha);
+  try {
+    const info = await lstat(directory);
+    if (!info.isDirectory() || info.isSymbolicLink() || await realpath(directory) !== resolve(directory)) return true;
+    for (const child of [join(directory, "dist"), join(directory, "dist", "v2")]) {
+      const childInfo = await lstat(child);
+      if (!childInfo.isDirectory() || childInfo.isSymbolicLink() || await realpath(child) !== resolve(child)) return true;
+    }
+    try {
+      await lstat(join(directory, "dist", "v2", "cell-cli-manifest.json"));
+      return true;
+    } catch (error) { return (error as NodeJS.ErrnoException).code !== "ENOENT"; }
+  } catch { return true; }
 }
 
 export async function cmdDeploy(parsed: Parsed): Promise<void> {
@@ -92,7 +119,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
       || (binDirectory !== undefined && (typeof binDirectory !== "string" || binDirectory.length === 0))
       || (expected !== "none" && !/^[a-f0-9]{40}$/.test(expected)) || parsed.args.length
       || ["list", "init", "rollback"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
-    assertDeployNodePolicy(join(runtimeRoot(), "..", "v2"));
+    assertDeployTargetPolicy(runtimeRoot());
     const result = await deployArtifact({ archive, identity: JSON.parse(await readFile(identity, "utf8")),
       admission: JSON.parse(await readFile(admission, "utf8")),
       ...(typeof binDirectory === "string" ? { cliBinDirectory: binDirectory } : {}),
@@ -109,7 +136,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
   if (wantsList) return deployList(parsed);
   if (wantsInit) return deployInit();
   if (!wantsRollback && parsed.args.length > 1) throw new Error(USAGE);
-  assertDeployNodePolicy(join(runtimeRoot(), "..", "v2"));
+  assertDeployTargetPolicy(runtimeRoot(), process.platform, {}, !wantsRollback || await rollbackRequiresNodePolicy(runtimeRoot()));
   if (wantsRollback) return deployRollback();
   return deployRun(parsed);
 }
