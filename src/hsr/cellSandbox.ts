@@ -327,6 +327,7 @@ function scratchEnvironment(scratchRoot: string): Record<string, string> {
     TEMP: temp,
     CLAUDE_CODE_TMPDIR: temp,
     XDG_CACHE_HOME: cache,
+    npm_config_yes: "false",
     npm_config_cache: ensurePrivateDirectory(join(cache, "npm")),
     // pnpm reads npm_config_store_dir. PNPM_STORE_DIR looks plausible but is
     // not a pnpm configuration key; keep it as a compatibility receipt while
