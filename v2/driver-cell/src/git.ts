@@ -308,3 +308,5 @@ export function porcelainStatus(repo: string): string {
 export function refSet(repo: string): string {
   return git(repo, ["for-each-ref", "--format=%(refname) %(objectname)"]);
 }
+
+export { cellGit, withCellGit, CellGitRefused, type CellGitIdentity } from "./cellGit.ts";

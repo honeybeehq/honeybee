@@ -201,3 +201,5 @@ export {
 } from "./gitImage.ts";
 
 export { prepareSandboxHarnessHome, privateHarnessHomePath, SANDBOX_HARNESS_INPUTS } from "./harnessHome.ts";
+
+export { cellGit, withCellGit, CellGitRefused, type CellGitIdentity } from "./cellGit.ts";
