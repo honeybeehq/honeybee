@@ -28,10 +28,15 @@ export class GitError extends Error {
 
 export const hostGitConfig: ReadonlyArray<readonly [string, string]> = [
   ["core.fsmonitor", "false"],
+  ["core.gitProxy", ""],
+  ["core.askPass", ""],
+  ["credential.helper", ""],
+  ["gpg.program", "/bin/false"],
+  ["gpg.ssh.program", "/bin/false"],
+  ["commit.gpgsign", "false"],
   ["core.hooksPath", devNull],
   ["submodule.recurse", "false"],
   ["diff.ignoreSubmodules", "all"],
-  ["commit.gpgsign", "false"],
   ["tag.gpgsign", "false"],
   ["log.showSignature", "false"],
   ["core.alternateRefsCommand", ""],
