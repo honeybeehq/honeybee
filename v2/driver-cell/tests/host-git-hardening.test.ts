@@ -137,7 +137,7 @@ test("host git never runs a hook or fsmonitor planted in a Cell, a nested repo, 
     assert.deepEqual(gitlinkSpawns(trace), []);
     if (previousTrace === undefined) delete process.env.GIT_TRACE;
     else process.env.GIT_TRACE = previousTrace;
-    assert.deepEqual(hostGitConfig.map(([key]) => key), ["core.fsmonitor", "core.hooksPath", "submodule.recurse", "diff.ignoreSubmodules", "commit.gpgsign", "tag.gpgsign", "log.showSignature", "core.alternateRefsCommand"]);
+    assert.deepEqual(hostGitConfig.map(([key]) => key), ["core.fsmonitor", "core.gitProxy", "core.askPass", "credential.helper", "gpg.program", "gpg.ssh.program", "commit.gpgsign", "core.hooksPath", "submodule.recurse", "diff.ignoreSubmodules", "tag.gpgsign", "log.showSignature", "core.alternateRefsCommand"]);
   } finally {
     rig.cleanup();
   }
