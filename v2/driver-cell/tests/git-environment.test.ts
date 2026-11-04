@@ -33,7 +33,9 @@ test("host Git does not fetch missing objects implicitly through local transport
     assert.notEqual(baseline.status, 0);
     assert.equal(existsSync(marker), true);
     rmSync(marker);
-    assert.throws(() => tryGit(space, ["rev-list", "HEAD"]), (error: unknown) => error instanceof HostGitRefused && error.reason === "missing_objects");
+    const protectedResult=tryGit(space,["rev-list","HEAD"]);
+    assert.notEqual(protectedResult.status,0);
+    assert.equal(protectedResult.missingObjects,true);
     assert.equal(existsSync(marker), false);
     assert.equal(readFileSync(head, "utf8"), before);
     assert.throws(() => deleteCell(cell.paths.wrapperDir,{cellGit:fixtureCellGit(space)}), HostGitRefused);
@@ -51,10 +53,10 @@ test("host Git pins object flags through wrappers and refuses unsupported versio
   const previousPath = process.env.PATH;
   try {
     const realGit = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
-    const bin = join(rig.root, "bin"), wrapper = join(bin, "git"), unexpected = join(rig.root, "unexpected");
+    const bin = join(rig.root, "bin"), wrapper = join(bin, "git"), unexpected = join(rig.root, "unexpected"), versions=join(rig.root,"versions");
     mkdirSync(bin);
     const writeWrapper = (version: string) => {
-      writeFileSync(wrapper, `#!/bin/sh\n[ "$GIT_NO_LAZY_FETCH" = 1 ] && [ "$GIT_NO_REPLACE_OBJECTS" = 1 ] || exit 77\nif [ "$1" = --version ]; then printf 'git version ${version}\\n'; exit 0; fi\nprintf called > ${quote(unexpected)}\nGIT_SSH_COMMAND=false exec ${quote(realGit)} -c credential.helper=false "$@"\n`);
+      writeFileSync(wrapper, `#!/bin/sh\n[ "$GIT_NO_LAZY_FETCH" = 1 ] && [ "$GIT_NO_REPLACE_OBJECTS" = 1 ] || exit 77\nif [ "$1" = --version ]; then printf version >> ${quote(versions)}; printf 'git version ${version}\\n'; exit 0; fi\nprintf called > ${quote(unexpected)}\nGIT_SSH_COMMAND=false exec ${quote(realGit)} -c credential.helper=false "$@"\n`);
       chmodSync(wrapper, 0o700);
     };
     process.env.PATH = `${bin}:${previousPath ?? ""}`;
@@ -64,6 +66,12 @@ test("host Git pins object flags through wrappers and refuses unsupported versio
     writeWrapper("2.44.0");
     assert.equal(tryGit(rig.origin.repo, ["rev-list", "HEAD"], { env: { GIT_NO_LAZY_FETCH: "0", GIT_NO_REPLACE_OBJECTS: "0" } }).status, 0);
     assert.equal(existsSync(unexpected), true);
+    const checked=readFileSync(versions,"utf8");
+    assert.equal(tryGit(rig.origin.repo,["rev-list","HEAD"]).status,0);
+    assert.equal(readFileSync(versions,"utf8"),checked);
+    writeWrapper("2.43.0");
+    assert.throws(()=>tryGit(rig.origin.repo,["rev-list","HEAD"]),HostGitRefused);
+    assert.notEqual(readFileSync(versions,"utf8"),checked);
     const env = hostGitEnv({ GIT_NO_LAZY_FETCH: "0", GIT_NO_REPLACE_OBJECTS: "0" });
     assert.equal(env.GIT_NO_LAZY_FETCH, "1");
     assert.equal(env.GIT_NO_REPLACE_OBJECTS, "1");

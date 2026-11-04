@@ -10,7 +10,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { devNull } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import type { LocalRepoIdentity } from "../../core/src/types.ts";
-import { assertHostGitVersion, refuseMissingGitObjects } from "../../../src/hostGitRuntime.ts";
+import { assertHostGitVersion, refuseMissingGitObjects, hasMissingGitObjects } from "../../../src/hostGitRuntime.ts";
 
 export class GitError extends Error {
   readonly args: string[];
@@ -181,6 +181,7 @@ export function gitEnv(extra: Record<string, string> = {}): Record<string, strin
 }
 
 export interface GitResult {
+  missingObjects?:boolean;
   status: number | null;
   stdout: string;
   stderr: string;
@@ -194,14 +195,14 @@ export function tryGit(cwd: string, args: string[], opts: { env?: Record<string,
   const overrides = verb !== undefined && READ_ONLY_VERBS.has(verb) ? [] : repoLocalExecOverrides(cwd, env);
   const res = spawnSync("git", args, { cwd, encoding: "utf8", env: hostGitEnv(env, overrides), input: opts.input, timeout: opts.timeoutMs, maxBuffer: 64 * 1024 * 1024 });
   if (res.error) throw res.error; // git binary missing — a machine boundary, not a git failure
-  refuseMissingGitObjects(res.status, res.stderr ?? "");
-  return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
+  const missingObjects=hasMissingGitObjects(res.status,res.stderr??"");
+  return { ...(missingObjects?{missingObjects:true}:{}), status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
 }
 
 /** Run git; non-zero exit throws GitError. Returns trimmed stdout. */
 export function git(cwd: string, args: string[]): string {
   const res = tryGit(cwd, args);
-  if (res.status !== 0) throw new GitError(args, res.status, res.stderr);
+  if (res.status !== 0) {refuseMissingGitObjects(res.status,res.stderr);throw new GitError(args, res.status, res.stderr);}
   return res.stdout.trim();
 }
 
