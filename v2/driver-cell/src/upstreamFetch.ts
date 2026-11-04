@@ -3,6 +3,7 @@ import { lstatSync, realpathSync } from "node:fs";
 import { devNull, homedir } from "node:os";
 import { dirname, isAbsolute, join, parse, resolve, sep } from "node:path";
 import { hostGitEnv } from "./git.ts";
+import { assertHostGitVersion } from "../../../src/hostGitRuntime.ts";
 
 export interface UpstreamSshPolicy {
   identityFiles: string[];
@@ -82,7 +83,8 @@ export function upstreamFetchEnv(cwd: string, url: string, ssh: UpstreamSshPolic
     ["credential.helper", ""], ["credential.interactive", "false"], ["http.extraHeader", ""], ["http.cookieFile", ""], ["http.saveCookies", "false"], ["http.sslVerify", "true"], ["http.proxy", ""], ["http.followRedirects", "false"], ["http.sslCert", ""], ["http.sslKey", ""],
     ["fetch.fsckObjects", "true"], ["transfer.fsckObjects", "true"], ["fetch.recurseSubmodules", "false"], ["gc.auto", "0"],
   ];
-  const listed = spawnSync("git", ["config", "--list", "--name-only", "--null", "--includes"], { cwd, env: hostGitEnv(env, overrides), encoding: "utf8", timeout: 10_000, maxBuffer: 1024 * 1024 });
+  const executable = assertHostGitVersion(cwd, env);
+  const listed = spawnSync(executable, ["config", "--list", "--name-only", "--null", "--includes"], { cwd, env: hostGitEnv(env, overrides), encoding: "utf8", timeout: 10_000, maxBuffer: 1024 * 1024 });
   if (listed.error || listed.status !== 0) throw new UpstreamFetchError("fetch_failed", "cannot inspect upstream repository configuration");
   for (const key of listed.stdout.split("\0")) {
     if (/^(?:fetch|receive|transfer)\.fsck\.|^fsck\./iu.test(key)) throw new UpstreamFetchError("transport_refused", "upstream fetch refuses repository object-validation overrides");

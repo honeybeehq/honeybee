@@ -1,4 +1,5 @@
 import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
+import { assertHostGitVersion } from "../../../src/hostGitRuntime.ts";
 /**
  * Honeybee-owned upstream mirrors: one bare repository per origin URL under
  * `<data-dir>/upstream/`, fetch-only, whose `refs/upstream/head` is the
@@ -198,7 +199,8 @@ function refreshLocked(
     if (opts.maxAgeMs > 0 && existing && last != null && now() - last < opts.maxAgeMs) return { status: "fresh", url, ref: existing };
     const fetch = (cwd: string) => {
       const args = ["fetch", "--upload-pack=git-upload-pack", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-gc", url, `+HEAD:${UPSTREAM_REF}`];
-      const res = spawnSync("git", args, { cwd, encoding: "utf8", env: upstreamFetchEnv(cwd, url, opts.ssh), timeout: opts.timeoutMs, maxBuffer: 16 * 1024 * 1024 });
+      const env = upstreamFetchEnv(cwd, url, opts.ssh);
+      const res = spawnSync(assertHostGitVersion(cwd, env), args, { cwd, encoding: "utf8", env, timeout: opts.timeoutMs, maxBuffer: 16 * 1024 * 1024 });
       if (res.error) throw res.error;
       if (res.status !== 0) throw new UpstreamFetchError(upstreamFetchFailure(res.stderr ?? ""), `upstream fetch refused: ${(res.stderr ?? "").trim().slice(0, 400)}`);
     };
@@ -333,7 +335,7 @@ export function syncOriginFromMirror(
   let env;
   try { env = upstreamFetchEnv(originRepo, mirrorDir, undefined); }
   catch (error) { return refusal(error instanceof UpstreamFetchError ? error.code : "fetch_failed"); }
-  const transferred = spawnSync("git", [
+  const transferred = spawnSync(assertHostGitVersion(originRepo, env), [
     "-c", "fetch.writeCommitGraph=false",
     "-c", "fetch.fsckObjects=true", "-c", "transfer.fsckObjects=true",
     "fetch", "--upload-pack=git-upload-pack", "--quiet", "--no-tags", "--no-recurse-submodules", "--no-prune", "--no-auto-gc",

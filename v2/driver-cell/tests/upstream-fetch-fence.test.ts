@@ -46,6 +46,7 @@ test("upstream fetch ignores repository and ambient executable transport setting
     assert.equal(get("http.https://example.invalid/.extraHeader"), "");
     assert.equal(env.GIT_NO_LAZY_FETCH, "1");
     assert.equal(env.GIT_NO_REPLACE_OBJECTS, "1");
+    assert.equal(env.GIT_ALLOW_PROTOCOL, "https:ssh");
     assert.equal(env.HOME, "/dev/null");
     assert.equal(env.SSH_AUTH_SOCK, undefined);
     assert.equal(existsSync(marker), false);
