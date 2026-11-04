@@ -1,3 +1,4 @@
+import { mirrorCellSandbox } from "./cellSandboxPolicy.ts";
 import { CellExecContainmentError } from "../../driver-cell/src/exec.ts";
 import { assertClaudeSessionId } from "../../adapters/src/claudeSession.ts";
 import type { SchedulingStatus } from "../../../src/processScheduling.ts";
@@ -1658,6 +1659,14 @@ export class HiveDaemon {
     const accounts = this.accounts;
     return rows.map((source) => {
       const row = this.publicConfirmationAudit(publicAuditRow(source, includeOperatorLocalHomes));
+      if (row.kind === "cell.put") {
+        const payload = {...row.payload};
+        for (const key of ["cell", "previous"]) {
+          const cell = payload[key];
+          if (cell && typeof cell === "object" && !Array.isArray(cell)) payload[key] = mirrorCellSandbox(cell as CellRow, this.cfg.nodeKind, this.cfg.cellSandbox);
+        }
+        return {...row, payload};
+      }
       if (row.kind === "thread_operation.put") return { ...row, payload: { operation: row.payload.operation } };
       if (!accounts) return row;
       if (row.kind !== "account.put") return row;
@@ -6293,7 +6302,7 @@ export class HiveDaemon {
       bee: mirrorBeeRow(bee),
       runtime: bee ? store.currentRuntime(beeId) : null,
       move: bee ? (() => { const m = store.latestMoveOf(bee.id); return m ? toBeeMoveView(m) : null; })() : null,
-      cell: bee?.cellId ? store.getCell(bee.cellId) : null,
+      cell: bee?.cellId ? (() => { const cell = store.getCell(bee.cellId!); return cell ? mirrorCellSandbox(cell, this.cfg.nodeKind, this.cfg.cellSandbox) : null; })() : null,
       handoff: bee ? (() => { const h = store.latestHandoffOf(bee.id); return h ? toBeeHandoffView(h) : null; })() : null,
     };
   }
@@ -7124,7 +7133,7 @@ export class HiveDaemon {
       tasks: store.listTasks(),
       taskSupply: store.listTaskSupply(),
       loginFlows: store.listLoginFlows(),
-      cells: store.listCells(),
+      cells: store.listCells().map(cell => mirrorCellSandbox(cell, this.cfg.nodeKind, this.cfg.cellSandbox)),
       beeMoves: store.listBeeMoves().map(toBeeMoveView),
       beeHandoffs: store.listBeeHandoffs().map(toBeeHandoffView),
       transcriptSegments: store.listTranscriptSegments(),

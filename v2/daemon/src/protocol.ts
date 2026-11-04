@@ -1,3 +1,4 @@
+import type { MirroredCellRow } from "./cellSandboxPolicy.ts";
 import type { PublicBeeRow } from "../../core/src/envRedaction.ts";
 export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import { honeybeeBuildIdentity, type BuildIdentity } from "../../../src/release/buildIdentity.ts";
@@ -1668,7 +1669,7 @@ export interface ViewResult {
   /** v21 — latest move receipt (in-flight, complete, or failed). */
   move: BeeMoveView | null;
   /** v21 — active or retained Cell. */
-  cell: CellRow | null;
+  cell: MirroredCellRow | null;
   /** v23 — latest handoff receipt (in-flight, complete, or failed). */
   handoff: BeeHandoffView | null;
 }
@@ -1988,7 +1989,7 @@ export interface SnapshotResult {
   /** v16 (additive): account login flows, store rows verbatim. */
   loginFlows: MirrorLoginFlowRow[];
   /** v21 (additive): Cell registry + move aggregate. */
-  cells: CellRow[];
+  cells: MirroredCellRow[];
   beeMoves: BeeMoveView[];
   /** v23 (additive): handoff receipts + transcript segments (store rows verbatim). */
   beeHandoffs: BeeHandoffView[];
