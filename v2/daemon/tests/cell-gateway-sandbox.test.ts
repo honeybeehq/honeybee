@@ -4,7 +4,8 @@ import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, renameSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { cellCliBundlePath } from "../../driver-cell/src/cellScope.ts";
 import { openCoreStore } from "../../core/src/index.ts";
 import { sandboxEnvironment, wrapWithSandbox } from "../../driver-cell/src/sandbox.ts";
 import { inspectProcess, sameProcess } from "../../harness/src/processIdentity.ts";
@@ -56,7 +57,7 @@ test("joint Cell gateway and launcher fixture allows self, masks host sockets an
   const ready = join(cellDir, "ready");
   const script = `
 import {createConnection} from 'node:net';
-import {existsSync,lstatSync} from 'node:fs';
+import {existsSync,lstatSync,readdirSync,writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 const rpc=(verb,params)=>new Promise((resolve,reject)=>{
  const socket=createConnection('/run/honeybee/gateway.sock');let buffer='',hello=false;
@@ -68,11 +69,14 @@ const self=await rpc('view',{beeId:${JSON.stringify(bee.id)}});
 const other=await rpc('view',{beeId:${JSON.stringify(inbox.id)}});
 const cwd=await rpc('spawn',{agent:'stub',cwd:'/tmp'});
 const inbox=await rpc('send',{beeId:${JSON.stringify(inbox.id)},body:'must not forward'});
+const denied=fn=>{try{fn();return 'ALLOWED';}catch(error){return error.code;}};
+const runtimeList=denied(()=>readdirSync(${JSON.stringify(dirname(cellCliBundlePath()))}));
+const runtimeWrite=denied(()=>writeFileSync('/run/honeybee/unapproved-runtime-file','bad'));
 const missing=path=>{try{lstatSync(path);return 'VISIBLE';}catch(error){return error.code;}};
 const cli=spawnSync('/run/honeybee/bin/hive',['view',${JSON.stringify(bee.id)},'--json','--data-dir',${JSON.stringify(root)}],{encoding:'utf8',timeout:10000});
 const send=spawnSync('/run/honeybee/bin/hive',['send',${JSON.stringify(parent.id)},'joint fixture mail','--json','--data-dir',${JSON.stringify(root)}],{encoding:'utf8',timeout:10000});
 const transcript=spawnSync('/run/honeybee/bin/hive',['transcript',${JSON.stringify(bee.id)},'--raw','--json','--data-dir',${JSON.stringify(root)}],{encoding:'utf8',timeout:10000});
-console.log(JSON.stringify({self:self.ok&&self.result.bee.id,other:other.error?.code,cwd:cwd.error?.code,inbox:inbox.error?.code,hostSocket:missing(${JSON.stringify(config.socketPath)}),tmuxSocket:missing(${JSON.stringify(tmuxSocket)}),liveSocket:missing(${JSON.stringify(join(homedir(), ".hive/v2/hived.sock"))}),store:missing(${JSON.stringify(join(root, "fixture.sqlite"))}),sharedLogs:missing(${JSON.stringify(config.sessionLogDir)}),gateway:lstatSync('/run/honeybee/gateway.sock').isSocket(),gatewayEnv:process.env.HIVE_CELL_GATEWAY_SOCKET,cliCode:cli.status,cliOut:cli.stdout,cliError:cli.stderr,sendCode:send.status,sendError:send.stderr,transcriptCode:transcript.status,transcriptOut:transcript.stdout,transcriptError:transcript.stderr}));
+console.log(JSON.stringify({runtimeList,runtimeWrite,self:self.ok&&self.result.bee.id,other:other.error?.code,cwd:cwd.error?.code,inbox:inbox.error?.code,hostSocket:missing(${JSON.stringify(config.socketPath)}),tmuxSocket:missing(${JSON.stringify(tmuxSocket)}),liveSocket:missing(${JSON.stringify(join(homedir(), ".hive/v2/hived.sock"))}),store:missing(${JSON.stringify(join(root, "fixture.sqlite"))}),sharedLogs:missing(${JSON.stringify(config.sessionLogDir)}),gateway:lstatSync('/run/honeybee/gateway.sock').isSocket(),gatewayEnv:process.env.HIVE_CELL_GATEWAY_SOCKET,cliCode:cli.status,cliOut:cli.stdout,cliError:cli.stderr,sendCode:send.status,sendError:send.stderr,transcriptCode:transcript.status,transcriptOut:transcript.stdout,transcriptError:transcript.stderr}));
 `;
   writeFileSync(probe, script);
   const policy = { cellDir, writablePaths: [], gatewaySocketPath: gateway.socketPath, protectedPaths: [root] };
@@ -96,6 +100,8 @@ console.log(JSON.stringify({self:self.ok&&self.result.bee.id,other:other.error?.
     assert.equal(code, 0, stderr);
     const result = JSON.parse(stdout.trim());
     assert.equal(result.self, bee.id);
+    assert.equal(result.runtimeList, "ENOENT");
+    assert.ok(["EROFS", "EACCES"].includes(result.runtimeWrite));
     for (const key of ["other", "cwd", "inbox"]) assert.equal(result[key], "caller_not_trusted", key);
     for (const key of ["hostSocket", "tmuxSocket", "liveSocket", "store", "sharedLogs"]) assert.equal(result[key], "ENOENT", key);
     assert.equal(result.gateway, true);
@@ -107,7 +113,7 @@ console.log(JSON.stringify({self:self.ok&&self.result.bee.id,other:other.error?.
     assert.equal(result.transcriptCode, 0, result.transcriptError);
     assert.deepEqual(JSON.parse(result.transcriptOut).lines, ["joint transcript line"]);
     assert.equal(store.listMessages(inbox.id).length, 0);
-    console.log(JSON.stringify({ fixture: "joint-gateway-launcher", customRoot, hostPathsPreexisting: true, liveSocketPreexisting, tmuxFixture: "actual isolated server", tmuxSocketPreexisting: true, passed: true, self: true, other: result.other, cwdSpawn: result.cwd, inboxForward: result.inbox, hostSocket: result.hostSocket, tmuxSocket: result.tmuxSocket, liveSocket: result.liveSocket, store: result.store, sharedLogs: result.sharedLogs, gateway: result.gateway, cli: true, cliSend: true, cliTranscript: true, missingGateway: "refused" }));
+    console.log(JSON.stringify({ fixture: "joint-gateway-launcher", customRoot, hostPathsPreexisting: true, liveSocketPreexisting, tmuxFixture: "actual isolated server", tmuxSocketPreexisting: true, passed: true, runtimeSourceListing: result.runtimeList, runtimeWrite: result.runtimeWrite, self: true, other: result.other, cwdSpawn: result.cwd, inboxForward: result.inbox, hostSocket: result.hostSocket, tmuxSocket: result.tmuxSocket, liveSocket: result.liveSocket, store: result.store, sharedLogs: result.sharedLogs, gateway: result.gateway, cli: true, cliSend: true, cliTranscript: true, missingGateway: "refused" }));
   } finally {
     clearTimeout(timeout);
     if (child.exitCode === null && child.signalCode === null) { child.kill("SIGTERM"); await finished; }

@@ -14,6 +14,8 @@ interface CacheReport {
   otherCacheVisible: boolean;
   tempWritable: boolean;
   cacheWritable: boolean;
+  compileCachePrivate: boolean;
+  otherCompileCacheVisible: boolean;
 }
 
 test("shared cache: Cells cannot write host homes or another bee's TMPDIR, and each TMPDIR is private", { skip: process.platform !== "linux", timeout: 20000 }, async () => {
@@ -21,11 +23,12 @@ test("shared cache: Cells cannot write host homes or another bee's TMPDIR, and e
   const root = mkdtempSync(join(managedRoot ?? "/tmp", "hb-shared-cache-"));
   const home = join(root, "home");
   const cells = [join(root, "cell-a"), join(root, "cell-b")];
-  const paths = [".cache", ".cache/honeybee/tmp/other-bee", ".config", ".config/systemd", ".config/systemd/user", ".npm", ".bun", ".local/share", ".local/share/muse", ".local/share/pnpm", ".claude", ".claude.json", ".codex", ".gemini", ".grok", "Library/Caches"];
+  const paths = [".cache", ".cache/honeybee/tmp/other-bee", ".cache/honeybee/node-compile-cache", "data-dir/node-compile-cache", ".config", ".config/systemd", ".config/systemd/user", ".npm", ".bun", ".local/share", ".local/share/muse", ".local/share/pnpm", ".claude", ".claude.json", ".codex", ".gemini", ".grok", "Library/Caches"];
   const marker = "fixture-" + randomUUID();
   const protectedFiles = paths.map(path => path === ".claude.json" ? join(home, path) : join(home, path, marker));
   const tempFiles = cells.map((_, index) => join(root, marker + "-temp-" + index));
   const cacheFiles = cells.map(cell => join(cell, "sandbox-state", "cache", marker));
+  const compileFiles = cells.map(cell => join(cell, "sandbox-state", "cache", "node-compile", marker));
   const metadata = (path: string) => {
     const info = statSync(path, { bigint: true, throwIfNoEntry: false });
     return info ? [info.dev, info.ino, info.mode, info.size, info.mtimeNs, info.ctimeNs].map(String) : null;
@@ -44,13 +47,14 @@ test("shared cache: Cells cannot write host homes or another bee's TMPDIR, and e
     await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(gateway, resolve); });
     const launch = async (index: number): Promise<CacheReport> => {
       const cell = cells[index]!;
-      const env = sandboxEnvironment(cell, { HOME: home, TMPDIR: join(home, ".cache/honeybee/tmp/other-bee"), PATH: "/usr/bin:/bin" });
+      const env = sandboxEnvironment(cell, { HOME: home, TMPDIR: join(home, ".cache/honeybee/tmp/other-bee"), NODE_COMPILE_CACHE: join(home, ".cache/honeybee/node-compile-cache"), PATH: "/usr/bin:/bin" });
       const script = `
         const fs = require('node:fs'), path = require('node:path');
         const paths = ${JSON.stringify(paths)};
         const home = ${JSON.stringify(home)}, marker = ${JSON.stringify(marker)};
         const otherTempVisible = !!fs.statSync(${JSON.stringify(tempFiles[1 - index])}, {throwIfNoEntry:false});
         const otherCacheVisible = !!fs.statSync(${JSON.stringify(cacheFiles[1 - index])}, {throwIfNoEntry:false});
+        const otherCompileCacheVisible = !!fs.statSync(${JSON.stringify(compileFiles[1 - index])}, {throwIfNoEntry:false});
         const writes = paths.map(relative => {
           try {
             const target = path.join(home, relative);
@@ -64,11 +68,16 @@ test("shared cache: Cells cannot write host homes or another bee's TMPDIR, and e
         fs.writeFileSync(temp, 'private');
         const cache = path.join(process.env.XDG_CACHE_HOME, marker);
         fs.writeFileSync(cache, 'cache');
-        console.log(JSON.stringify({writes, tmpdirIsPrivateTmp:process.env.TMPDIR === '/tmp', otherTempVisible, otherCacheVisible, tempWritable:fs.statSync(temp).size === 7, cacheWritable:fs.statSync(cache).size === 5}));
+        fs.mkdirSync(process.env.NODE_COMPILE_CACHE, {recursive:true});
+        fs.writeFileSync(path.join(process.env.NODE_COMPILE_CACHE, marker), 'compile');
+        const compileCachePrivate = process.env.NODE_COMPILE_CACHE === ${JSON.stringify(join(cell, 'sandbox-state', 'cache', 'node-compile'))};
+        console.log(JSON.stringify({compileCachePrivate,otherCompileCacheVisible,writes, tmpdirIsPrivateTmp:process.env.TMPDIR === '/tmp', otherTempVisible, otherCacheVisible, tempWritable:fs.statSync(temp).size === 7, cacheWritable:fs.statSync(cache).size === 5}));
         process.stdin.resume();
         process.stdin.once('end', () => process.exit(0));
       `;
       const command = wrapWithSandbox({ cellDir: cell, writablePaths: [], homePaths: [home], gatewaySocketPath: gateway }, process.execPath, ["-e", script], join(cell, "profile"));
+      const writableBinds = command.args.flatMap((arg, position) => arg === "--bind" ? [command.args[position + 1]] : []);
+      assert.deepEqual(writableBinds, [cell], "only this Cell directory is writable; no shared compile cache grant");
       const child = spawn(command.command, command.args, { env, stdio: ["pipe", "pipe", "pipe"], detached: true, timeout: 15000 });
       const closed = new Promise<number | null>(resolve => { child.once("close", resolve); child.once("error", () => resolve(null)); });
       children.push({ child, closed });
@@ -96,12 +105,15 @@ test("shared cache: Cells cannot write host homes or another bee's TMPDIR, and e
       assert.equal(report.otherCacheVisible, false);
       assert.equal(report.tempWritable, true);
       assert.equal(report.cacheWritable, true);
+      assert.equal(report.compileCachePrivate, true);
+      assert.equal(report.otherCompileCacheVisible, false);
     }
     assert.deepEqual(paths.map(path => metadata(join(home, path))), before);
     for (const path of protectedFiles.filter(path => path !== join(home, ".claude.json"))) assert.equal(metadata(path), null);
     for (const path of tempFiles) assert.equal(metadata(path), null);
+    for (const path of compileFiles) assert.equal(statSync(path).size, 7);
     for (const path of cacheFiles) assert.equal(statSync(path).size, 5);
-    console.log(JSON.stringify({ fixture: "T11 shared home caches", paths, concurrentCells: 2, protectedWrites: false, hostMetadataUnchanged: true, hostPoisonFilesAbsent: true, hostTempFilesAbsent: true, ownTmpWorks: true, crossCellTmpVisible: false, crossCellCacheVisible: false }));
+    console.log(JSON.stringify({ fixture: "T11 shared home caches", paths, concurrentCells: 2, protectedWrites: false, hostMetadataUnchanged: true, hostPoisonFilesAbsent: true, hostTempFilesAbsent: true, ownTmpWorks: true, crossCellTmpVisible: false, crossCellCacheVisible: false, nodeCompileCachePrivate: true, crossCellCompileCacheVisible: false }));
   } finally {
     for (const { child } of children) child.stdin?.end();
     const exits = await Promise.all(children.map(({ closed }) => closed));

@@ -47,7 +47,7 @@ export function resumeStatePaths(harness: string, accountHome: string | null, cw
       const root = accountHome ?? join(process.env.HOME ?? "", ".codex");
       let absolute: string;
       try {
-        absolute = codexHistoryPath(root, providerSessionId);
+        absolute = codexHistoryPath(root, providerSessionId).path;
       } catch {
         return null;
       }

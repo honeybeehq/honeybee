@@ -12,7 +12,7 @@ import { ensureCellPrivateDirectory, prepareSandboxHarnessHome } from "./harness
  * Defaults by node kind (A4): workstation OFF, satellite ON, cloud gateway
  * OFF (the ephemeral VM is the boundary there). Per-cell override wins.
  */
-import { cellCliBundlePath, cellScopeArtifactDirectory, validatedCellScopeBinary } from "./cellScope.ts";
+import { cellCliReadOnlyFiles, cellScopeArtifactDirectory, validatedCellScopeBinary } from "./cellScope.ts";
 import { spawnSync } from "node:child_process";
 import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync } from "node:fs";
 import { homedir, platform, userInfo } from "node:os";
@@ -428,7 +428,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
   const scopeDirectory = cellScopeArtifactDirectory();
   out.push("--ro-bind", join(scopeDirectory, "cell-scope"), "/run/honeybee/cell-scope",
     "--ro-bind", join(scopeDirectory, "hive"), "/run/honeybee/bin/hive",
-    "--ro-bind", cellCliBundlePath(), "/run/honeybee/hive.mjs");
+    ...cellCliReadOnlyFiles().flatMap(file => ["--ro-bind", file.source, file.destination]));
   for (const home of homes) out.push("--remount-ro", home);
   out.push("--remount-ro", "/run",
     "--unsetenv", "DBUS_SESSION_BUS_ADDRESS", "--unsetenv", "DBUS_SYSTEM_BUS_ADDRESS",

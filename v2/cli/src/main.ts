@@ -4142,7 +4142,7 @@ async function cmdGatewayTranscript(ctx: CliContext, parsed: Parsed, tail: boole
   const { result } = await readBee(ctx, needle);
   if (!result.bee) throw new RpcError("bee_not_found", "Bee not found");
   const bee = result.bee;
-  const stream = createTranscriptTurnStream(bee.agent);
+  const stream = (await import("../../driver-tmux/src/transcripts.ts")).createTranscriptTurnStream(bee.agent);
   const raw = parsed.flags.get("--raw") === true;
   const follow = wantsFollow(parsed);
   const count = tail ? numFlag(parsed, "--tail", 40) : parsed.flags.has("--tail") ? numFlag(parsed, "--tail", 0) : null;

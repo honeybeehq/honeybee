@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export function cellScopeArtifactDirectory(): string {
@@ -26,4 +26,30 @@ export function validatedCellScopeBinary(directory = cellScopeArtifactDirectory(
 
 export function cellCliBundlePath(): string {
   return fileURLToPath(new URL(fileURLToPath(import.meta.url).endsWith(".ts") ? "../../../dist/v2/cli.js" : "./cli.js", import.meta.url));
+}
+
+export function cellCliReadOnlyFiles(directory = dirname(cellCliBundlePath())): { source: string; destination: string }[] {
+  const failure = () => new Error("cell sandbox: missing or invalid Cell CLI closure; refusing launch");
+  const manifestPath = join(directory, "cell-cli-manifest.json");
+  const manifestInfo = lstatSync(manifestPath, { throwIfNoEntry: false });
+  if (!manifestInfo?.isFile() || manifestInfo.isSymbolicLink()) throw failure();
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  if (manifest.version !== 1 || manifest.entry !== "cli.js" || !manifest.files || typeof manifest.files !== "object") throw failure();
+  const pending = [manifest.entry];
+  const seen = new Set<string>();
+  const files: { source: string; destination: string }[] = [];
+  while (pending.length) {
+    const name = pending.pop()!;
+    if (seen.has(name)) continue;
+    if (name !== "cli.js" && !/^cli-chunk-[A-Z0-9]+\.js$/.test(name)) throw failure();
+    const metadata = manifest.files[name];
+    if (!metadata || !/^[a-f0-9]{64}$/.test(metadata.sha256) || !Array.isArray(metadata.imports) || metadata.imports.some((value: unknown) => typeof value !== "string")) throw failure();
+    const source = join(directory, name);
+    const info = lstatSync(source, { throwIfNoEntry: false });
+    if (!info?.isFile() || info.isSymbolicLink() || createHash("sha256").update(readFileSync(source)).digest("hex") !== metadata.sha256) throw failure();
+    seen.add(name);
+    files.push({ source, destination: join("/run/honeybee", name === "cli.js" ? "hive.mjs" : name) });
+    pending.push(...metadata.imports);
+  }
+  return files;
 }
