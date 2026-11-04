@@ -12,7 +12,7 @@ import * as v2 from "../../core/src/release/v2.ts";
 async function fixture() {
   const dir = await mkdtemp(join(tmpdir(), "hon8-admission-"));
   const root = join(dir, "runtime");
-  const recovery = parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v1/fixtures/recovery-plan.json", import.meta.url), "utf8")));
+  const recovery = parseRecoveryPlan(JSON.parse(await readFile(new URL("../../../contracts/release/v1/fixtures/recovery-plan.json", import.meta.url), "utf8")));
   recovery.subject.storageRequirements = [UPDATE_RECOVERY_CONTRACT];
   recovery.subjectDigest = recoverySubjectDigest(recovery.subject);
   for (const evidence of recovery.evidence) evidence.subjectDigest = recovery.subjectDigest;
@@ -33,7 +33,7 @@ async function fixture() {
 
 async function roleBoundFixture() {
   const f = await fixture();
-  const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
+  const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../../../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
   recovery.subject.storageRequirements = [UPDATE_RECOVERY_CONTRACT];
   recovery.subject.from.honeybee.version = "0.0.9";
   recovery.subject.from.honeybee.artifact.sha256 = `sha256:${"f".repeat(64)}`;

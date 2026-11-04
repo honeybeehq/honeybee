@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { parseComponentIdentity, parseCompatibilityRecord, parseDependencyLock, parseReleaseManifest, parseRecoveryPlan, compatibilitySubjectDigest, recoverySubjectDigest } from "../src/release/index.ts";
 
-const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../contracts/release/v1/fixtures/${name}.json`, import.meta.url), "utf8"));
+const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../../../contracts/release/v1/fixtures/${name}.json`, import.meta.url), "utf8"));
 
 test("recovery may target an exact explicitly supported compatible combination", () => {
   const manifest = parseReleaseManifest(fixture("release-manifest"));

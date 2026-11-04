@@ -4,8 +4,8 @@ import { test } from "node:test";
 import { parseCompatibilityRecord, parseReleaseManifest, parseCompatibilityMatrix, parseRecoveryPlan, parseDependencyLock, parseComponentIdentity, compatibilitySubjectDigest, recoverySubjectDigest, type CompatibilityRecord } from "../src/release/v2.ts";
 import * as v1 from "../src/release/index.ts";
 
-const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../contracts/release/v2/fixtures/${name}.json`, import.meta.url), "utf8"));
-const legacyFixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../contracts/release/v1/fixtures/${name}.json`, import.meta.url), "utf8"));
+const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../../../contracts/release/v2/fixtures/${name}.json`, import.meta.url), "utf8"));
+const legacyFixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../../../contracts/release/v1/fixtures/${name}.json`, import.meta.url), "utf8"));
 
 function rebind(record: CompatibilityRecord): void {
   record.subjectDigest = compatibilitySubjectDigest(record.subject);
