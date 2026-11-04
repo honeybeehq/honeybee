@@ -134,11 +134,15 @@ async function runGroup(files, concurrency, extraArgs = []) {
 }
 
 async function runSerial(files) {
+  const failed = [];
   for (const file of files) {
     const result = await runGroup([file], "1");
-    if (result) return result;
+    if (result) failed.push({ file, result });
   }
-  return 0;
+  if (failed.length === 0) return 0;
+  console.error(`v2 daemon/cli test files failed (${failed.length} of ${files.length}):`);
+  for (const { file, result } of failed) console.error(`  ${file} (exit ${result})`);
+  return failed[0].result;
 }
 
 if (requestedFiles.length > 0) {
