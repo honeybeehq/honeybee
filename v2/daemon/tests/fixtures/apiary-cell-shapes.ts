@@ -49,7 +49,7 @@ export interface HiveCellCaptureResult {
   /** Conflicted paths (conflict only) — staged for the operator, never auto-resolved. */
   conflicts: string[]
   /** Refusal reason (refused only). */
-  reason: 'target_checked_out' | 'target_moved' | 'no_cell_head' | null
+  reason: 'target_checked_out' | 'target_moved' | 'no_cell_head' | 'invalid_objects' | null
   deduped?: boolean
 }
 
