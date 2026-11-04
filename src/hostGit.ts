@@ -8,6 +8,7 @@ const hostGitConfig: ReadonlyArray<readonly [string, string]> = [
   ["diff.ignoreSubmodules", "all"],
   ["log.showSignature", "false"],
   ["core.alternateRefsCommand", ""],
+  ["transfer.fsckObjects", "true"],
 ];
 
 const configScopes = new Set(["system", "global", "local", "worktree", "command"]);
