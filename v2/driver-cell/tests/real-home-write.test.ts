@@ -12,6 +12,7 @@ test("real home and nearest systemd ancestor refuse one exclusive create inside 
   const root = mkdtempSync("/tmp/hb-real-home-probe-");
   const cell = join(root, "cell");
   mkdirSync(cell);
+  console.log(JSON.stringify({fixture: "T11 real-home launch venue", nodeExecutable: process.execPath}));
   const home = userInfo().homedir;
   const marker = `.hb-t11-write-${randomUUID()}`;
   const script = `
