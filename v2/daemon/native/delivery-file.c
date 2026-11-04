@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define LIMIT (8u * 1024u * 1024u)
 static _Atomic unsigned long sequence;
@@ -201,9 +202,51 @@ static napi_value remove_file(napi_env env,napi_callback_info info) {
   if(error) { errno=error; return failure(env,"delivery_file_remove"); }
   napi_value yes;napi_get_boolean(env,true,&yes);return yes;
 }
+static napi_value read_regular(napi_env env,napi_callback_info info) {
+  napi_value a[3]; size_t count=3,length; char root[4097],path[4097]; uint32_t cap;
+  if(napi_get_cb_info(env,info,&count,a,NULL,NULL)!=napi_ok || count!=3 ||
+     napi_get_value_string_utf8(env,a[0],root,sizeof(root),&length)!=napi_ok || !length || length>4096 || strlen(root)!=length ||
+     napi_get_value_string_utf8(env,a[1],path,sizeof(path),&length)!=napi_ok || !length || length>4096 || strlen(path)!=length || path[0]=='/' ||
+     napi_get_value_uint32(env,a[2],&cap)!=napi_ok || !cap || cap>LIMIT) {
+    errno=EINVAL; return failure(env,"host_file_invalid");
+  }
+  struct timespec start,current;
+  if(clock_gettime(CLOCK_MONOTONIC,&start)<0) return failure(env,"host_file_clock");
+  int fd=root_directory(root),error=fd<0?errno:0; char *save=NULL;
+  unsigned depth=0;
+  for(char *part=strtok_r(path,"/",&save); part && !error; part=strtok_r(NULL,"/",&save)) {
+    if(++depth>64 || !strcmp(part,".") || !strcmp(part,"..")) {error=EINVAL; break;}
+    int last=!save || !*save;
+    int next=openat(fd,part,O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC|(last?0:O_DIRECTORY));
+    if(next<0) {error=errno; break;}
+    if(close(fd)<0) {error=errno;close(next);fd=-1;break;}
+    fd=next;
+  }
+  struct stat before,after;
+  if(!error && (fstat(fd,&before)<0 || !S_ISREG(before.st_mode) || before.st_size<0 || before.st_size>(off_t)cap)) error=EFBIG;
+  unsigned char *bytes=NULL; size_t used=0;
+  if(!error) {bytes=malloc((size_t)before.st_size+1); if(!bytes) error=ENOMEM;}
+  while(!error && used<(size_t)before.st_size) {
+    if(clock_gettime(CLOCK_MONOTONIC,&current)<0) {error=errno;break;}
+    if((current.tv_sec-start.tv_sec)*1000000000LL+current.tv_nsec-start.tv_nsec>=1000000000LL) {error=ETIMEDOUT;break;}
+    size_t remaining=(size_t)before.st_size-used;
+    ssize_t got=read(fd,bytes+used,remaining>65536?65536:remaining);
+    if(got<0 && errno==EINTR) continue;
+    if(got<=0) {error=got<0?errno:ESTALE;break;}
+    used+=(size_t)got;
+  }
+  if(!error && (fstat(fd,&after)<0 || before.st_dev!=after.st_dev || before.st_ino!=after.st_ino || before.st_size!=after.st_size || before.st_mtime!=after.st_mtime || before.st_ctime!=after.st_ctime)) error=ESTALE;
+  if(fd>=0 && close(fd)<0 && !error) error=errno;
+  napi_value result=NULL;
+  if(!error && napi_create_buffer_copy(env,used,bytes,NULL,&result)!=napi_ok) error=ENOMEM;
+  free(bytes);
+  if(error) {errno=error;return failure(env,"host_file_refused");}
+  return result;
+}
 static napi_value init(napi_env env,napi_value exports) {
   napi_value fn;napi_create_function(env,"publish",NAPI_AUTO_LENGTH,publish,NULL,&fn);napi_set_named_property(env,exports,"publish",fn);
   napi_create_function(env,"remove",NAPI_AUTO_LENGTH,remove_file,NULL,&fn);napi_set_named_property(env,exports,"remove",fn);
+  napi_create_function(env,"readRegular",NAPI_AUTO_LENGTH,read_regular,NULL,&fn);napi_set_named_property(env,exports,"readRegular",fn);
   return exports;
 }
 NAPI_MODULE(NODE_GYP_MODULE_NAME,init)
