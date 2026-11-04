@@ -42,6 +42,7 @@ export function sandboxEnabled(kind: NodeKind, cellOverride: boolean | null | un
 export interface SandboxPolicy {
   /** The cell wrapper dir — the primary writable subtree. */
   cellDir: string;
+  launchCwd?: string;
   /** Harness home/state dirs and caches that must stay writable. */
   writablePaths: string[];
   /** OS scratch dirs kept writable. Defaults to the platform list. */
@@ -139,6 +140,8 @@ function checkedWritablePaths(policy: SandboxPolicy): string[] {
 
 
 export function sandboxEnvironment(cellDir: string, original: Readonly<Record<string, string>>, sandboxed = true): Record<string, string> {
+  if (!sandboxed) return {...original, npm_config_yes: "false"};
+  if (platform() === "darwin") throw new Error("cell sandbox: private state projection is unsupported on darwin");
   const root = join(cellDir, "sandbox-state");
   const temp = join(root, "tmp");
   const cache = join(root, "cache");
@@ -149,7 +152,7 @@ export function sandboxEnvironment(cellDir: string, original: Readonly<Record<st
   }
   const scratch = sandboxed && platform() === "linux" ? "/tmp" : temp;
   const env = { ...withoutCellHostRoutes(original), HOME: home, TMPDIR: scratch, TMP: scratch, TEMP: scratch, CLAUDE_CODE_TMPDIR: scratch,
-    XDG_CACHE_HOME: cache, NODE_COMPILE_CACHE: join(cache, "node-compile"), npm_config_cache: join(cache, "npm"),
+    XDG_CACHE_HOME: cache, NODE_COMPILE_CACHE: join(cache, "node-compile"), npm_config_cache: join(cache, "npm"), npm_config_yes: "false",
     npm_config_store_dir: join(cache, "pnpm"), YARN_CACHE_FOLDER: join(cache, "yarn"), PIP_CACHE_DIR: join(cache, "pip"),
     UV_CACHE_DIR: join(cache, "uv"), GOCACHE: join(cache, "go-build"), GOMODCACHE: join(cache, "go-mod"),
     GRADLE_USER_HOME: join(cache, "gradle") };
@@ -459,6 +462,7 @@ export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[]
     "--setenv", "HIVE_CELL_GATEWAY_SOCKET", "/run/honeybee/gateway.sock",
     "--setenv", "PATH", `/run/honeybee/bin:/run/honeybee/tools/bin:${toolchain ? `${nodeDestination}/bin:` : ""}/usr/bin:/bin`,
     "--share-net", "--die-with-parent");
+  if (policy.launchCwd !== undefined) out.push("--chdir", policy.launchCwd);
   const parent = statSync("/proc/self/ns/user");
   const projectInput = (input: string) => harness && isAbsolute(input) && isRegularFile(input) && containsPath(harness.leaf, realpathSync(input)) ? realpathSync(input) : input;
   const launchCommand = harness && command === harness.id ? harness.alias : projectInput(command);

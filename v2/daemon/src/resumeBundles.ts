@@ -1,3 +1,4 @@
+import { assertClaudeSessionId } from "../../adapters/src/claudeSession.ts";
 import { spawn } from "node:child_process";
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from "node:crypto";
 import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -36,6 +37,7 @@ export function resumeStateKey(harness: string, cwd: string): string | null {
 export function resumeStatePaths(harness: string, accountHome: string | null, cwd: string, providerSessionId: string): ResumeState | null {
   switch (harness) {
     case "claude": {
+      assertClaudeSessionId(providerSessionId);
       const root = accountHome ?? join(process.env.HOME ?? "", ".claude");
       const key = claudeProjectKey(cwd);
       const file = join("projects", key, `${providerSessionId}.jsonl`);

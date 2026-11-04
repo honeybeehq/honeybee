@@ -145,6 +145,18 @@ for (const [entry, output] of [["cellRepoSupervisor.ts", "cell-repo-supervisor.j
   repoFiles[output] = createHash("sha256").update(result.outputFiles[0].contents).digest("hex");
 }
 await writeFile(join(outDir, "cell-repo-manifest.json"), JSON.stringify({ version: 1, files: repoFiles }) + "\n");
+await build({
+  absWorkingDir: root,
+  entryPoints: [join(root, "v2", "driver-cell", "src", "inodeWorker.ts")],
+  outfile: join(outDir, "inode-worker.js"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  minify: false,
+  preserveSymlinks: true,
+  logLevel: "silent",
+});
 const runnerHostBuild = await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "driver-hsr", "src", "runner-host-main.ts")],

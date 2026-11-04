@@ -34,7 +34,7 @@ test("strict mode triggers and trusted host exceptions", () => {
   }
 });
 
-const forbidden = [{}, {substrate: "hsr"}, {substrate: "tmux"}, {substrate: "cell", cell: {sandbox: false}}, {substrate: "cell", cwd: "/tmp"}, {substrate: "cell", node: "other"}, {substrate: "cell", nodeId: "other"}, {substrate: "cell", relay: "other"}];
+const forbidden = [{substrate: "cell", originRepo: "/fixture"}, {substrate: "cell", cell: {originRepo: "/fixture"}}, {}, {substrate: "hsr"}, {substrate: "tmux"}, {substrate: "cell", cell: {sandbox: false}}, {substrate: "cell", cwd: "/tmp"}, {substrate: "cell", node: "other"}, {substrate: "cell", nodeId: "other"}, {substrate: "cell", relay: "other"}];
 test("confined spawn refuses every forbidden placement and permits sandboxed Cells and inbox", () => {
   for (const params of forbidden) assert.throws(() => assertConfinedSpawn(params, {confinement: "confined"}), refused);
   assert.throws(() => assertConfinedSpawn({substrate: "cell"}, {confinement: "confined", ingress: "node_relay"}), refused);

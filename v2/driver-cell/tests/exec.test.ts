@@ -1,3 +1,5 @@
+import { spawn, type SpawnOptions } from "node:child_process";
+import { createServer } from "node:net";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -6,6 +8,7 @@ import { join } from "node:path";
 import { CELL_EXEC_MAX_OUTPUT_BYTES } from "../../core/src/cellMove.ts";
 import { pidAlive } from "../../driver-hsr/src/psutil.ts";
 import {
+  CellExecContainmentError,
   containedExecCwd,
   decodeCappedUtf8,
   OutputBudget,
@@ -208,4 +211,29 @@ test("exec.timeout: SIGTERM-ignoring child is SIGKILL-reaped before resolve", as
   } finally {
     rig.cleanup();
   }
+});
+
+
+test("exec.cwd: a changed directory is resolved only within the sandbox", {skip: process.platform !== "linux"}, async () => {
+  const rig = space();
+  const server = createServer(socket => socket.destroy());
+  const socketPath = join(rig.root, "gateway.sock");
+  await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(socketPath, resolve); });
+  try {
+    const requested = join(rig.paths.spaceDir, "requested");
+    const outside = join(rig.root, "outside");
+    mkdirSync(requested); mkdirSync(outside);
+    let hostCwd: string | undefined;
+    await assert.rejects(runCellExec(rig.paths, {
+      argv: ["/bin/pwd"], cwd: "requested", gatewaySocketPath: socketPath, sandbox: true, nodeKind: "satellite", timeoutMs: 5000,
+    }, undefined, ((command: string, args: readonly string[], options: SpawnOptions) => {
+      hostCwd = options?.cwd?.toString();
+      assert.equal(hostCwd, "/");
+      assert.ok(args?.includes("--chdir"));
+      rmSync(requested, {recursive: true});
+      symlinkSync(outside, requested);
+      return spawn(command, args, options);
+    }) as typeof spawn), CellExecContainmentError);
+    assert.equal(hostCwd, "/");
+  } finally { await new Promise<void>(resolve => server.close(() => resolve())); rig.cleanup(); }
 });
