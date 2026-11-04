@@ -1,0 +1,15 @@
+✔ v6.rpc.1: rename / tag / children round-trips, idempotent replays, typed refusals; snapshot + watch carry the new rows/kinds (1325.655738ms)
+✔ v6.rpc.2: bee.interrupt — idle no-op; mid-turn (hung) interrupt → turn_ended, runtime live, next message delivers to the same generation; replay dedups (1439.286908ms)
+✔ v6.rpc.3: bee.fork (claude) — forks the source session into a NEW one (--resume <src> --fork-session), records the fork's own id (seed consumed), parentId/forkedFrom set, HIVE_* env stamps; revive resumes the fork's own id; copy has no prompt; replay dedups (2064.815622ms)
+✔ v6.rpc.4: bee.fork (codex) — the fork's handshake sends thread/fork {threadId: source}; the NEW thread id is recorded; delivery targets the new thread (1532.300613ms)
+✔ daemon restart: adopted Codex keeps its thread id and confirms queued mail (1582.553944ms)
+✔ v6.rpc.5: parenting policy over RPC — archive parent leaves children; delete parent orphans (bee.orphaned in the watch stream, children alive, parentId null); fork of a cell bee refused (2084.835337ms)
+✔ v6.rpc.6: questions + seals — ask → open row → answer → delivered as mailbox message → answered; list filters; seals CRUD; typed not-found; idempotent replays; snapshot carries them (1790.56768ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12027.417729

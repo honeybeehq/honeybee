@@ -1,0 +1,13 @@
+v2:check exit=0 seconds=43 tests=0 pass=0 fail=0
+v2:test exit=1 seconds=46 tests=745 pass=707 fail=38
+v2:daemon exit=1 seconds=567 tests=823 pass=820 fail=2
+v2:driver exit=0 seconds=14 tests=193 pass=193 fail=0
+v2:driver2 exit=1 seconds=15 tests=387 pass=364 fail=1
+v2:harness exit=0 seconds=16 tests=14 pass=14 fail=0
+release:test exit=0 seconds=11 tests=16 pass=16 fail=0
+--- targeted reruns after test fixes (all under the fixture warden, TMPDIR=/tmp)
+v2:test exit=0 tests=747 pass=747 fail=0
+ported cli+daemon targeted exit=1 tests=47 pass=28 fail=19
+--- the full v2:daemon run stops at its first failing file (scripts/run-v2-daemon-tests.mjs returns on the first non-zero group), so every file after delivery-file-read (98 daemon files) and all 31 cli files were run one file at a time under the warden with TMPDIR=/tmp and every HIVE_* variable of this Cell unset (the Cell exports HIVE_NODE_PATH and HIVE_V2_DATA_DIR, which the deploy tests treat as an operator override); see battery-daemon-cli-remaining/summary.txt
+TOTAL files=125 failing_files=1 tests=1141 fail=1
+grok-central-credentials: fails 0/2 on the untouched baseline 4531a680 as well (grok-central-credentials-baseline-4531a680.log); pre-existing on this node

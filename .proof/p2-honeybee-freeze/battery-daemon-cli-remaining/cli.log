@@ -1,0 +1,29 @@
+✔ set-model --apply uses atomic admission and waits out an active turn (1432.626994ms)
+✔ cli.1: help prints and exits 0; unknown command exits 1 (4.721924ms)
+✔ cli.2: reads fall back to the read-only store when the daemon is down — labeled stale (64.343026ms)
+✔ cli.children: stale reads exclude external lineage that collides with a local bee id (25.6277ms)
+✔ cli.3: mutations NEVER fall back — daemon down means a loud, typed failure (22.123592ms)
+✔ cli.3b: a misspelled flag is a LOUD error (never a silent no-op), and spawn takes the agent positionally (4.666176ms)
+✔ cli.send-sender-wire: the real CLI request carries the authority-bound ambient bee id (3.437568ms)
+✔ cli.4: against a live daemon — spawn, list (not stale), send --wait blocks on the delivery mark (1122.227801ms)
+✔ cli.4n: health and daemon status report naming ok, off, or disabled with the reason (1526.005028ms)
+✔ cli.4b: --idempotency-key passes through on spawn and send — replays dedup to the original (750.691231ms)
+✔ cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -- <args…>` / --clear, `bee args`, `revive --arg`, view/list carry args; stale read shows them too (1715.921506ms)
+✔ cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto` (landed / refused as results), `cell remove` (refused-dirty exit 2, --force) (1870.360099ms)
+✔ cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --parent (+ ambient HIVE_BEE_ID), ask/answer/question list, seal create/list/get; stale fallbacks for the reads (2063.529257ms)
+✔ cli.daemon: usage lists restart as a stop+start alias (1.096481ms)
+✔ cli.5: daemon status when nothing runs and no service is installed (1.038528ms)
+✔ cli.6: service glue — label never the live daemon's, exec args env override wins (916.397203ms)
+✔ cli.7: cutover verbs — `freeze` writes/refuses locally; `import --from-frozen` reports (dry-run, marker refusal, real import, idempotent) over RPC (919.82933ms)
+✔ cli.urgency: send --urgency passes through to the row; the mailbox read surfaces it; an unknown value is a typed error (1310.834475ms)
+✔ cli.version: --version answers (Apiary's Doctor gates local runs on it) (0.618792ms)
+✔ cli.task: add/ls/done/supply round-trip through the daemon; unknown command is gone (740.374957ms)
+✔ cli.answer-display-label: --by stays local and question rows use plain answered wording (5.480367ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14727.656758

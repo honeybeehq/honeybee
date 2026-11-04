@@ -1,0 +1,11 @@
+#compdef hive
+# hive zsh completion
+# Install: eval "$(hive completion zsh)"
+# Or add to a directory in $fpath as _hive: hive completion zsh > ~/.zsh/completions/_hive
+_hive() {
+  local -a candidates
+  candidates=( "${(@f)$("${words[1]}" __complete "${words[@]}" 2>/dev/null)}" )
+  compadd -a candidates
+}
+compdef _hive hive
+

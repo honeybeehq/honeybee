@@ -1,0 +1,20 @@
+✔ identity recovery is bounded, fair, retries failures and warns at ten minutes (1.952133ms)
+✔ stop intent remains queued and deduplicated across restart until proof, without signaling (45.462595ms)
+✔ archive intent remains queued and deduplicated across restart until proof, without signaling (30.812282ms)
+✔ proven gone still reconciles to stopped while unresolved rows stay reachable (21.608791ms)
+✔ resolved RPC results omit diagnostics; overdue unresolved rows carry doctor and CLI text (26.406513ms)
+✔ identity loss during stop holds the same durable command without a signal or retry exhaustion (25.331023ms)
+✔ a queued unresolved stop settles after restart when the process is proven gone (25.248141ms)
+✔ boot absence cannot settle a malformed or unbound persisted identity (23.695786ms)
+✔ recovery persists an owned late capture through the store and never replaces malformed content (25.475453ms)
+✔ health omits zero cleanup counts and distinguishes retained from informational (24.007582ms)
+✔ shutdown preserves default ordering and confines early disposal (preserve=true) (0.976818ms)
+✔ shutdown preserves default ordering and confines early disposal (preserve=false) (0.685392ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 536.533191

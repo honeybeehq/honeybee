@@ -1,0 +1,14 @@
+✔ authenticated pending recovery gets a durable readiness budget (stale stop=false) (46.579484ms)
+✔ authenticated pending recovery gets a durable readiness budget (stale stop=true) (32.085335ms)
+✔ a recovered but never-ready generation times out once after the same budget across restart (29.314922ms)
+✔ a deferred hang stop cannot block an explicit stop or cross into a new generation (28.673967ms)
+✔ skipping a hang stop on synthetic readiness does not miscount a later system stop as a boot failure (26.51876ms)
+✔ bind-time memoization follows committed binding, rollback, generation and deletion (26.657489ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 390.242824

@@ -1,0 +1,19 @@
+✔ external Apiary current reconciles history and rolls back to an installed history build (48.753168ms)
+✔ external Apiary current reconciles history and restores its exact link on failure (17.525138ms)
+✔ unidentified external runtime refuses with the missing identity path (8.092993ms)
+✔ rollback checks store schema 44 before changing current or history (20.575393ms)
+✔ rollback checks store schema 48 before changing current or history (7.366942ms)
+✔ unknown schema capability refuses: "" (5.113224ms)
+✔ unknown schema capability refuses: "var SCHEMA_VERSION = 48;\nvar SCHEMA_VERSION2 = 48;\n" (7.190149ms)
+✔ unknown schema capability refuses: "var SCHEMA_VERSION = garbage;\n" (4.622621ms)
+✔ schema capability is read across the split cli bundle chunks (5.343341ms)
+✔ schema 29 requires an explicit store restore even when the target schema is newer (4.483691ms)
+✔ rollback from an external current retains it for a second rollback back (21.308759ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 367.236817

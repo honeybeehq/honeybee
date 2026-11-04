@@ -1,0 +1,34 @@
+✔ target resolution: flag > env > live record > config, empty env is unset, dead-pid record is absent (44.463924ms)
+✔ socket_in_use probe is a bare connect: no bytes reach the listener (57.650983ms)
+✔ the endpoint record is written after the socket_in_use probe and before the socket accepts (4.945879ms)
+✔ a daemon that cannot write its endpoint record fails before it listens (418.097469ms)
+▶ socket isolation against throwaway daemons
+  ✔ the endpoint record carries the instance, the socket and the daemon pid (0.596508ms)
+  ✔ HIVE_V2_SOCKET_PATH is honoured and --json names the daemon it reached (25.751619ms)
+  ✔ --socket overrides HIVE_V2_SOCKET_PATH (20.837322ms)
+  ✔ --data-dir alone follows the live endpoint record to a --socket daemon (12.670847ms)
+  ✔ socket_mismatch before connecting: a configured socket that is not the data dir's (3.420696ms)
+  ✔ an explicit --data-dir outranks an inherited env socket: a harness inside a bee reaches its throwaway daemon (41.169473ms)
+  ✔ a harness passing nothing reaches its own bee's daemon through the env socket (179.010237ms)
+  ✔ socket_mismatch after hello: the daemon behind the socket serves another data dir (2.232948ms)
+  ✔ an unreachable configured socket fails loud and never falls back to the default socket or a stale store (3004.613965ms)
+  ✔ every --json error is one JSON line on stdout (26.009671ms)
+  ✔ an honest harness that resolved the throwaway data dir is never foreign, with or without HIVE_V2_DATA_DIR and through a symlinked spelling (433.845704ms)
+  ✔ reaching a daemon that is not the one recorded for the resolved data dir is foreign (201.810812ms)
+  ✔ a deleted endpoint record turns every provider spawn on the live daemon into foreign_daemon_spawn (197.105612ms)
+  ✔ a bee spawning a provider harness into an explicit throwaway dir needs no flag (574.215852ms)
+  ✔ a caller whose env names one dir and whose hello names another is refused by the daemon (data_dir_mismatch) (37.952654ms)
+  ✔ every daemon exports the socket it listens on to its bees, never an inherited one (454.308999ms)
+  ✔ a second daemon refuses a live socket with socket_in_use and the first stays reachable (427.323983ms)
+  ✔ hive daemon run ignores an inherited HIVE_V2_SOCKET_PATH and listens on its data dir's socket (433.754247ms)
+  ✔ an explicit target that is the live daemon is refused from a caller whose env names another dir, unless --allow-foreign-daemon (1435.42724ms)
+  ✔ a clean shutdown removes the record; a restart mints a new instance id and rewrites it (489.756506ms)
+✔ socket isolation against throwaway daemons (8961.709332ms)
+ℹ tests 25
+ℹ suites 0
+ℹ pass 25
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9733.45466

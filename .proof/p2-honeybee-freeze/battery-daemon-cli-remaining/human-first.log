@@ -1,0 +1,34 @@
+✔ human-first holds tool-turn input, then runs humans FIFO one turn each before background (55.617152ms)
+✔ unique admission keeps one row and timestamp; conflicting key/body/authority refuses (30.194091ms)
+✔ daemon/store restart while waiting preserves pending order and policy (39.737161ms)
+✔ policy off retains native next accept point and eligible FIFO; senderKind grants no priority (30.657491ms)
+✔ explicit human now retains interrupt semantics under policy (28.532322ms)
+✔ held oldest human blocks younger human and ordinary background (27.210193ms)
+✔ a newer explicit now interrupts without overtaking the oldest human (30.293594ms)
+✔ a policy enabled before a substrate change holds fresh human delivery on tmux (26.137089ms)
+✔ schema 47 migration adds human policy without upgrading legacy senderKind provenance (44.351456ms)
+✔ human policy and admission receipts replay exactly and delete with their bee (30.926393ms)
+✔ I1 suspends intended human-first holds then measures a genuinely eligible delivery refusal (30.783496ms)
+✔ trusted quota recovery delivery gate keeps precedence over pending human chat (29.913645ms)
+✔ core-owned spawn.prompt context precedes human chat; forged sender/body does not (30.232055ms)
+✔ core-owned auth.resume context precedes human chat; forged sender/body does not (28.817016ms)
+✔ trusted auth.resume replay preserves human provenance and one-turn isolation without a new admission (32.755096ms)
+✔ trusted quota.resume replay preserves human provenance and one-turn isolation without a new admission (32.089664ms)
+✔ core next context waits for the active human turn to end (28.72686ms)
+✔ core idle context waits for the active human turn to end (28.649149ms)
+✔ an ineligible spawn.prompt seed holds younger next background mail (28.400556ms)
+✔ an ineligible auth.resume seed holds younger next background mail (28.217771ms)
+✔ held background confirmation states do not wedge the next human turn (80.943025ms)
+✔ human-first wait has a durable bounded diagnostic without interrupting the turn (26.55962ms)
+✔ an active human turn with no pending mailbox row is still wait-bounded (26.719601ms)
+✔ late background confirmation preserves the newer active human turn trigger (29.539709ms)
+✔ late human confirmation never reopens a superseding ended human turn (30.931684ms)
+✔ late now-steer acceptance cannot reopen the human turn it joined (29.940539ms)
+ℹ tests 26
+ℹ suites 0
+ℹ pass 26
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1084.738158

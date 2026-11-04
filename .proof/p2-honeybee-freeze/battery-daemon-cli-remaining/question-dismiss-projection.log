@@ -1,0 +1,16 @@
+{"questionDismissalTypeCensus":{"results":{"WatchFrame":{"values":[],"audits":["events[]"]},"QuestionAskResult":{"values":["question"],"audits":[]},"QuestionAnswerResult":{"values":["question"],"audits":[]},"QuestionDismissResult":{"values":["question"],"audits":[]},"QuestionWithdrawResult":{"values":["question"],"audits":[]},"QuestionListResult":{"values":["questions[]"],"audits":[]},"AuditTailResult":{"values":[],"audits":["rows[]"]},"SnapshotResult":{"values":["questions[]"],"audits":[]},"ActionReportResult":{"values":["question"],"audits":[]}},"audits":{"question.asked":["question"],"question.dismissed":[""]},"dispatch":{"action.report":{"values":["question"],"audits":[]},"question.ask":{"values":["question"],"audits":[]},"question.answer":{"values":["question"],"audits":[]},"question.dismiss":{"values":["question"],"audits":[]},"question.withdraw":{"values":["question"],"audits":[]},"question.list":{"values":["questions[]"],"audits":[]},"audit.tail":{"values":[],"audits":["rows[]"]},"snapshot":{"values":["questions[]"],"audits":[]},"watch":{"values":["questions[]"],"audits":[]}},"modules":{"mirror":{"MirrorQuestionRow":{"values":[""],"audits":[]},"MirrorSnapshot":{"values":["questions[]"],"audits":[]},"MirrorDelta":{"values":[],"audits":[""]},"QuestionDismissedEvent":{"values":[""],"audits":[]}}}}}
+✔ dismissal census covers every typed result, dispatch and inferred row/event audit payload (2956.90581ms)
+✔ dismissal census rejects uncovered question/result, dispatch and dismissal event paths (9186.369461ms)
+✔ legacy projection removes new fields, transforms dismissal rows/events and never mutates shared objects or user output (1.039379ms)
+✔ dismissal notice has its dedicated envelope and file pointer, separate from byte-stable answer delivery (0.919466ms)
+✔ absence of the owner mutation capability refuses before the client sends a dismissal (36.172606ms)
+✔ legacy errors project dismissal refusals immutably and withdrawal no-op markers remain canonical only (0.36012ms)
+✔ sync and async dismissal errors stay compatible on simultaneous legacy and modern connections (5.314535ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12706.185952

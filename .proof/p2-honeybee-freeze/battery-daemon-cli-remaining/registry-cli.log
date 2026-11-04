@@ -1,0 +1,13 @@
+✔ regcli.1: template/packages against a live daemon — put, list, export → import, import-local (592.419347ms)
+✔ regcli.3: template run and --template execute migrated presets through v2 spawn/send RPC (1203.43369ms)
+✔ regcli.template-prompt: interpolation replaces placeholders and otherwise appends input (0.372093ms)
+✔ regcli.2: template reads fall back to the read-only store labeled stale; mutations refuse (49.984518ms)
+✔ regcli.4: template put from a fields file with an empty env is refused over a template that has env; a file without env keeps it; a written-out env is accepted (566.814152ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2623.391116

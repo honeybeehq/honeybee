@@ -1,0 +1,16 @@
+✔ thread pipeline publishes history before compaction; queued messages wait through failure and restart (104.21746ms)
+✔ pinned prefix ignores concurrent output, streams large history, rekeys only the native header, and pages all bytes (309.662054ms)
+✔ copy refuses a truncated pinned source (25.419033ms)
+✔ recovery refuses an unverifiable live worker and bounds automatic attempts (59.238448ms)
+✔ fork never calls compaction and never enqueues continuation (39.480602ms)
+✔ restart after completed copy but lost readiness receipt uses owned history even when the source is gone (43.348677ms)
+✔ startup crashes exhaust the ordinary budget; explicit retry keeps the same compacted successor (60.36721ms)
+✔ restart during compaction retries the same native session without releasing queued mail (57.728193ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 908.657888

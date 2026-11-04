@@ -1,0 +1,18 @@
+▶ send: exact-ID lookup preserves fallback and sender authority
+  ✔ exact ID avoids the list and preserves urgency, key and wait (13.070924ms)
+  ✔ names, case-insensitive handles, prefixes and non-UUID IDs keep full lookup (11.094835ms)
+  ✔ UUID-shaped name falls back and exact ID takes precedence over a name (2.98055ms)
+  ✔ missing and ambiguous recipients never send (3.182102ms)
+  ✔ ambient identity survives the fast path; foreign authority remains operator (3.408672ms)
+  ✔ explicit aliases and forged sender claims retain the full resolver (5.87831ms)
+  ✔ buz human sender is preserved and cannot be claimed by a bee (2.102525ms)
+  ✔ view errors propagate without list fallback or mutation (1.460969ms)
+✔ send: exact-ID lookup preserves fallback and sender authority (49.349074ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 272.118124

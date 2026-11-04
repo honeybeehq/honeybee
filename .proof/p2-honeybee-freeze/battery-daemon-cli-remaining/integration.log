@@ -1,0 +1,19 @@
+✔ int.1: verb round-trips over the real socket — the full bee lifecycle (1576.04378ms)
+✔ int.2: typed errors — closed list only (bee_not_found, invalid_request, protocol_mismatch) (556.250036ms)
+✔ int.3: watch — snapshot + contiguous seq deltas; induced gap forces a snapshot refetch (1769.241062ms)
+✔ int.4: daemon SIGKILL mid-turn → restart → zero failed states (B7) + runtime re-adopted (1529.875405ms)
+✔ int.4b: runner-persisted completion recovers after SIGKILL and releases idle-urgency mail (2662.337479ms)
+✔ int.5: scale-to-zero with a tiny window → stopped_by_system → revive-on-message (1574.515802ms)
+✔ int.6: induced I1 breach — a boot-hanging agent leaves mail undelivered past the deadline → violation row (1123.378727ms)
+✔ int.7: immediate-exit agent → bounded revives on backoff, spawn_failed at the budget; the counter survives a daemon SIGKILL; operator revive recovers once the agent is fixed (3775.483465ms)
+✔ int.urgency.1: mid-turn `now` — the turn is interrupted, the message delivers immediately, and the bee keeps working (1104.954182ms)
+✔ int.urgency.2: mid-turn `idle` — held while the turn runs, delivered only after it ends (1478.565869ms)
+✔ int.urgency.3: an unknown urgency is a typed invalid_request, and nothing is enqueued (888.306903ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18182.964857

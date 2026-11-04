@@ -1,0 +1,40 @@
+✔ lease enrol claude: same live row, stable receipt, renewal route continuity, revoke preserves profiles (58.852358ms)
+✔ lease enrol codex: same live row, stable receipt, renewal route continuity, revoke preserves profiles (36.230959ms)
+✔ lease enrol grok: same live row, stable receipt, renewal route continuity, revoke preserves profiles (35.699937ms)
+✔ lease enrol kimi: same live row, stable receipt, renewal route continuity, revoke preserves profiles (32.873276ms)
+✔ lease enrol opencode: same live row, stable receipt, renewal route continuity, revoke preserves profiles (33.295146ms)
+✔ lease enrol muse: same live row, stable receipt, renewal route continuity, revoke preserves profiles (32.824231ms)
+✔ lease enrol refuses home refresh grant before effects (23.923528ms)
+✔ lease enrol refuses vault refresh grant before effects (22.972951ms)
+✔ lease enrol refuses mirror refresh grant before effects (22.611459ms)
+✔ lease enrol refuses keychain refresh grant before effects (23.122683ms)
+✔ lease enrol refuses profile refresh grant before effects (22.79697ms)
+✔ lease enrol refuses temporary refresh grant before effects (22.594145ms)
+✔ lease enrol refuses unknown JSON, symlinks, private authority, active operation and native rows (140.194367ms)
+✔ lease enrol serializes a plain install racing first enrolment before provenance is written (24.507172ms)
+✔ lease enrol refuses a prior companion lease and leaves both rows untouched (23.34814ms)
+✔ lease enrol resolution queue does not fence an unrelated local base during companion publication (22.52963ms)
+✔ lease enrol publication fence and receipt survive failure/restart without a generation (27.662373ms)
+✔ lease enrol local-only provenance, and ordinary remote lease install remains unchanged (0.411389ms)
+✔ lease enrol live unstamped death keeps legacy continuation; next physical admission uses T15 (36.687937ms)
+✔ lease enrol preserves operator pause, proves Keychain material and checks again after waiting (44.08586ms)
+✔ lease enrol receipt survives authority epoch changes, stale input refuses and renewed material remains access-only (25.306134ms)
+✔ lease enrol captures uncovered admissions at conversion after the Keychain wait (23.3584ms)
+✔ lease enrol requires a current canonical primary, not only an abandoned access-only temp (22.316045ms)
+✔ lease instance claude: lower new scoped generation replaces legacy once, retired instances never return (33.434315ms)
+✔ lease instance codex: lower new scoped generation replaces legacy once, retired instances never return (34.277654ms)
+✔ lease instance grok: lower new scoped generation replaces legacy once, retired instances never return (31.999658ms)
+✔ lease instance: remembered legacy floor return survives restart without stale scoped rollback (30.101281ms)
+✔ lease instance: remembered legacy floor new survives restart without stale scoped rollback (29.608934ms)
+✔ lease instance: remembered legacy floor advance survives restart without stale scoped rollback (34.414931ms)
+✔ lease instance: remembered legacy floor generationless survives restart without stale scoped rollback (29.943464ms)
+✔ lease instance: a generationless delivery from the same declared instance cannot erase its monotonic floor (30.704512ms)
+✔ lease instance retirement keeps the newest eight ids across restart (39.279783ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1285.190081

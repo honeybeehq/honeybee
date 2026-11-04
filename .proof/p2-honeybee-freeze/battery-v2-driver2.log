@@ -1,0 +1,495 @@
+
+> honeybee@0.0.1 v2:driver2
+> NODE_COMPILE_CACHE=.cache/node-compile node scripts/with-fixture-warden.mjs node --test "v2/driver-cell/tests/*.test.ts" "v2/driver-tmux/tests/*.test.ts"
+
+✔ shared no-tags clone keeps tag-only objects available by OID through its alternate (101.610118ms)
+✖ packed source tags do not change clean merge, checkout-conflict, or rebase capture semantics (456.14895ms)
+✔ parity: clean merges, attributes, renames, modes, gitlinks, conflicts, case collisions, and forced fallback (3682.52761ms)
+✔ capture.branch-create: cell work lands as a new branch; only that branch appears (199.120431ms)
+✔ capture.fast-forward: existing target advances by CAS (161.529503ms)
+✔ capture.merge: diverged target gets a merge commit; origin worktree untouched (245.433363ms)
+✔ capture.rebase: cell commits replay onto the target tip (194.621361ms)
+✔ capture.rebase: work already on the target in rewritten form reports nothing_to_capture (206.630381ms)
+✔ capture.conflict: structured report, origin ref-set bit-identical, transient ref gone (305.422074ms)
+✔ capture.refusals: checked-out target, moved target, nothing to capture (159.122187ms)
+✔ cell-driver.roundtrip: start provisions the cell, runtime runs in the space, full turn cycle (431.275359ms)
+✔ cell-driver.background: start returns before provisioning and later boots from the durable ledger (457.816769ms)
+﹣ cell-driver.background: first Cell ensures the image before boot and the next Cell stays hot (63.797238ms) # filesystem has no local CoW support
+✔ cell-driver.background: satellites do not build the workstation-local Git image (520.463685ms)
+✔ cell-driver.background: worker exit without a result becomes a boot failure (65.299457ms)
+✔ cell-driver.exit-path: work committed in the live cell captures out; removeCell guards (538.004671ms)
+✔ cell-driver.restart-hydration: a fresh driver re-hydrates cells from cell.json (capture + delete work) (508.484562ms)
+✔ cell-driver.reserved-only: a cell reserved (seed ledger) but never started removes outright; sessions delegate; typed live-runtime refusal (384.083248ms)
+﹣ cell-driver.sandboxed: per-cell override ON wraps the spawn in Seatbelt; the turn still works (darwin) (0.243403ms) # SKIP
+✔ cell-driver.workstation-default: sandbox stays OFF without an override (A4) (420.722266ms)
+✔ cell-driver.account-home: the bee resolver adds one exact sandbox grant and ignores harness env (168.997551ms)
+✔ cell-driver.restart: a successor daemon re-adopts a live cell runtime from the ledger at full capability (669.729843ms)
+✔ exec.cwd: relative-only and realpath containment rejects a symlink out of the space (2.326911ms)
+✔ exec.cap: incomplete tail is dropped, complete multibyte suffix is kept (0.479531ms)
+✔ exec.cap: split multibyte chunks reassemble; malformed replacement stays within 1MiB (38.673621ms)
+✔ exec.cap: stdout and stderr share one 1MiB budget (67.364831ms)
+✔ exec.spawn: an onSpawned failure terminates and reaps the process (9.092003ms)
+✔ exec.spawn: argv spawn errors reject with their cause (5.75466ms)
+✔ exec.timeout: SIGTERM-ignoring child is SIGKILL-reaped before resolve (1511.226186ms)
+✔ invalid Cell roots refuse before driver or reservation directories exist (3.200528ms)
+✔ fenced Cell owner refuses before account, bee, reservation or provisioning mutation (80.149696ms)
+✔ fenced Cell driver refuses before resolution, worker, pool claim or host start (35.261963ms)
+✔ Cell delegates fresh delivery and confirmation planning options intact (2.640089ms)
+✔ git-image.refresh: publishes one validated pack-only generation without mutating the origin (196.276877ms)
+﹣ git-image.provision: hot Cell copies the compact image, not origin metadata (0.169669ms) # SKIP
+﹣ git-image.provision: fresh config avoids config subprocesses and preserves init semantics (0.126536ms) # SKIP
+﹣ git-image.provision: large template config uses Git's writer (0.137888ms) # SKIP
+﹣ git-image.provision: Git fallback preserves control paths and replaces template safety keys (0.159229ms) # SKIP
+﹣ git-image.provision: symlinked template config retains Git's update behavior (0.132337ms) # SKIP
+﹣ git-image.materialize: template multivalue and config lock remain cache misses (0.105405ms) # SKIP
+﹣ git-image.provision: preserves absent, same, and rewritten split remotes (0.143418ms) # SKIP
+﹣ git-image.provision: the first Cell builds an image in its worker and uses it (0.138409ms) # SKIP
+﹣ git-image.refresh: first generation CoW-seeds origin packs and packs only the loose delta (0.249805ms) # SKIP
+﹣ git-image.provision: a stale image is incrementally extended before checkout (0.172245ms) # SKIP
+﹣ git-image.corruption: malformed publication is rebuilt before Cell placement (0.111156ms) # SKIP
+﹣ git-image.policy: an existing image is ignored when the node policy disables local images (0.101227ms) # SKIP
+﹣ git-image.lock: a provisioning contender waits for publication, then extends the image (0.077851ms) # SKIP
+✔ git-image.lock: live builder is single-flight and a stale lock is recovered (257.815607ms)
+✔ host git never runs a hook or fsmonitor planted in a Cell, a nested repo, or a submodule gitdir (633.364045ms)
+✔ the exec-config probe fails closed on a listing whose scope/record parity or scope names are off (32.218131ms)
+✔ landed.cherry-pick: commits re-landed on main under new SHAs delete clean (432.412017ms)
+✔ landed.squash: several Cell commits squashed into one main commit delete clean (272.843362ms)
+✔ landed.partial: one landed and one unlanded commit refuses and names only the unlanded one (336.576847ms)
+✔ landed.uncommitted: landed commits plus an uncommitted change still refuse (157.368119ms)
+✔ landed.landed-then-evolved: a cherry-picked commit main later edited still counts (patch-id) (150.302753ms)
+✔ landed.landed-then-restored: a cherry-picked commit counts after main restores one of its files (260.308401ms)
+✔ landed.conflict-resolved: a rebase conflict resolved to the Cell's version counts (empty replay) (171.755549ms)
+✔ landed.combined-resolution: a conflict resolved by keeping both sides counts (zero-context patch-id) (343.962606ms)
+✔ landed.below-merge-base: a Cell that merged main after its commit landed there with other context counts (201.629625ms)
+✔ landed.receipt: a landing receipt whose result is on main clears the Cell head (322.669749ms)
+✔ landed.not-landed: a conflicting change on main keeps the Cell commit unlanded (271.281618ms)
+✔ landed.ancestor: work merged into main the ordinary way deletes clean (157.718811ms)
+✔ landed.side-branch: an unlanded side branch is named; a landed one is not (225.791805ms)
+✔ landed.no-writes: probing writes nothing into the Cell's object store (162.321231ms)
+✔ landed.same-edit-different-block: an edit to another block does not land Cell work (396.264902ms)
+✔ landed.unterminated-repeat: another line's suffix does not land Cell work (462.999108ms)
+﹣ provision-worker: a fresh image hit exits after ready without maintenance Git children (28.591204ms) # filesystem has no local CoW support
+﹣ provision-worker: a replayed ledger rebuilds a missing image after maintenance starts (27.533429ms) # filesystem has no local CoW support
+﹣ provision-worker: an incomplete image operation keeps maintenance after replay resumes (30.715962ms) # filesystem has no local CoW support
+✔ provision-worker: image failure fallback keeps the deferred retry (332.17754ms)
+✔ provision-worker: provisioning errors stay failed and do not enter maintenance (74.273201ms)
+﹣ provision.cow: CoW path places .git, records copy_mode=cow, hygiene applied (1.197266ms) # SKIP
+✔ provision.clone: fallback places a fresh .git, records copy_mode=clone, needs no hygiene (349.977932ms)
+✔ provision.layout: wrapper/space/box shape and clean space checkout (54.219973ms)
+✔ provision.replay: interrupted provisioning (partial space, no recorded step) replays idempotently (54.33681ms)
+✔ provision.replay: mismatched bee/sha refuses instead of clobbering (43.619109ms)
+﹣ provision.warm: CoW copy-in of listed artifact dirs (A5) (0.131606ms) # SKIP
+✔ provision.warm: no CoW → cold, no fallback copy (the A5 ruling) (43.770202ms)
+✔ provision.warm: nothing listed → cold(none_listed), default off (43.656281ms)
+✔ provision.reserve: reserveCell writes the seed ledger (origin/sha/warm/sandbox, no operations); provisionCell then provisions against it; the inverse (provisionRequestOf) round-trips; mismatches refuse (45.743165ms)
+✔ detached Cell owner reconnects and re-adopts without reprovisioning or changing generation (518.373142ms)
+✔ delete.clean: a pristine cell deletes without force (92.171872ms)
+✔ delete.dirty-uncommitted: refuses without force; force deletes (A2) (109.904712ms)
+✔ delete.dirty-unpushed: commits the origin never saw refuse; captured work deletes clean (316.383628ms)
+✔ delete.origin-gone: unknown origin counts as dirty (refuse without force) (96.887844ms)
+✔ delete.shape: refuses anything that is not a -space- shaped cell wrapper (22.960245ms)
+✔ delete.half-provisioned: a wrapper whose space has no .git deletes fine (21.25952ms)
+✔ retention.inspect: clean provisioned Cell reports HEAD, not dirty, and du-style bytes (158.366498ms)
+✔ retention.inspect: uncommitted and unlanded work are reported distinctly (228.783227ms)
+✔ retention.evict: a clean Cell is parked atomically under _evicting and the sweep deletes it (85.059355ms)
+✔ retention.evict: dirty refuses without force, force parks and reports forced (98.922276ms)
+✔ retention.evict: HEAD moved since planning refuses; shape and containment are enforced (76.138023ms)
+✔ retention.worker: inspects a batch off-thread and reports per-wrapper errors (128.302182ms)
+✔ retention.dirty: a stash and a branch the agent switched away from are data, not clean (427.657539ms)
+✔ retention.env: ignored .env files are preserved (0600) on eviction and restored into a re-provisioned space (155.002784ms)
+✔ retention refuses an unreadable Git index before parking a Cell (48.599824ms)
+✔ retention refuses wrappers nested below the direct Cell root (43.723542ms)
+✔ retention env restore refuses symlinked parent directories (41.879439ms)
+✔ retention env paths retain leading whitespace and repeated preservation is idempotent (74.910599ms)
+✔ retention.classify: ignored entries split into env files, build output and kept files; installs and .DS_Store are disposable (161.454458ms)
+✔ retention.trim: parks build output and leaves source, kept files, installs and git state untouched (85.099302ms)
+✔ retention.trim: build output modified inside the idle window is skipped as recently modified (67.717715ms)
+✔ retention.trim: re-classifies at apply time and skips nested repositories, symlinks and paths that are no longer ignored build output (72.061264ms)
+✔ retention.evict: ignored files outside the trim patterns move to cell-keep and return on re-provision (113.541837ms)
+✔ retention.evict: a failed park moves kept files back, and an unrestored keep refuses the next eviction (167.075928ms)
+✔ retention.restoreKept: a path that already exists in the new space stays in cell-keep and in the manifest (107.655191ms)
+✔ retention.restoreKept: a path whose parent is now unsafe becomes a conflict instead of stranding the rest (112.316277ms)
+✔ retention.trim: refuses repositories below a build directory (69.123476ms)
+✔ retention.classify: install directory names do not discard ignored regular files (64.266391ms)
+✔ retention.trim: retains trees beyond the bounded repository inspection (97.787522ms)
+✔ retention.park (trim mode): only build output goes; installs, kept files, env, source and git state stay (73.847834ms)
+✔ retention.park (purge mode): every ignored path goes, env files are copied aside first, installs with nested repositories park shallowly (128.66131ms)
+✔ retention.park verification: a path that left the mode's class, a symlink, a nested repository outside installs, or a recent write is skipped with its reason (68.593377ms)
+✔ sandbox.defaults: workstation OFF, satellite ON, cloud OFF (A4) (1.640727ms)
+✔ sandbox.override: per-cell override beats the node-kind default (0.223635ms)
+✔ sandbox.profile: Seatbelt profile confines writes to cell + harness paths, allows the rest (4.15894ms)
+✔ sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure, all platforms) (0.588393ms)
+✔ sandbox.merge: a bee grant an existing baseline path already covers is not bound again (2.087996ms)
+✔ sandbox.account-home: bwrap grants the exact bound home, never its parent or a sibling (1.737525ms)
+✔ sandbox.account-home validation rejects relative, missing, root, OS-home, and broad symlink targets (1.595439ms)
+✔ sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, other throws) (2.349855ms)
+✔ sandbox.ssh-config: materializes symlinked client includes without changing settings or host files (1.60038ms)
+✔ sandbox.ssh-config: include view is bound read-only after writable mounts without changing the SSH command (0.412331ms)
+✔ sandbox.ssh-config: missing include targets are ignored and snapshot failures preserve the host view (1.621279ms)
+﹣ sandbox.seatbelt-real: sandbox-exec confines writes to the cell (darwin) (0.126866ms) # SKIP
+✔ sandbox.darwin-scratch: only the user's own temp dir of /private/var/folders is writable (0.479912ms)
+﹣ sandbox.seatbelt-user-temp: mktemp works and the user cache dir is denied (darwin) (0.106157ms) # SKIP
+✔ sandbox.tmpfs-paths: the sampled tmpfs paths are exactly the tmpfs mounts bwrap makes (0.440396ms)
+✔ sandbox.bwrap: /tmp and /var/tmp are private tmpfs mounts, never host binds (0.367414ms)
+✔ sandbox.bwrap-real: bwrap confines writes to the cell (linux — metal-3 gate) (90.443084ms)
+✔ sandbox.bwrap-tmpfs: a tmpfs cap sizes /tmp and a private /dev/shm; no cap keeps the old argv (0.493679ms)
+✔ sandbox.tmpfs-cap: config, darwin and an old bwrap decide the effective cap (0.566491ms)
+✔ sandbox.tmp-full: a nearly full tmpfs yields the typed detail; space left yields nothing (0.343697ms)
+✔ sandbox.tmp-pid: the sandboxed process is the host's grandchild in another mount namespace (2.157031ms)
+✔ sandbox.tmpfs-real: a capped bwrap /tmp and /dev/shm refuse writes past the cap, visible from the host (157.720734ms)
+✔ sandbox.tmp-watch: tracked bees only, set once when full, re-set after a turn clear, clear with hysteresis or on exit (1.135285ms)
+✔ sandbox.tmp-watch: an exit is fenced by generation, so a respawn behind a dying runtime stays watched (0.265225ms)
+✔ sandbox.bwrap-real: a harness launched from under /tmp still runs, read-only, while the rest of /tmp stays private (linux) (108.430999ms)
+{"mode":"kill","detached":false,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on kill (detached=false, sandbox=false) (189.981316ms)
+{"mode":"stop","detached":false,"cleanupMs":911,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on stop (detached=false, sandbox=false) (1078.867184ms)
+{"mode":"normal","detached":false,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on normal (detached=false, sandbox=false) (164.040651ms)
+{"mode":"deadline","detached":false,"cleanupMs":930,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on deadline (detached=false, sandbox=false) (1073.456181ms)
+{"mode":"cancel-frozen","detached":false,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on cancel-frozen (detached=false, sandbox=false) (169.227909ms)
+{"mode":"supervisor-kill","detached":false,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on supervisor-kill (detached=false, sandbox=false) (163.560379ms)
+{"mode":"supervisor-only-kill","detached":false,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on supervisor-only-kill (detached=false, sandbox=false) (164.372336ms)
+{"mode":"init-only-kill","detached":false,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on init-only-kill (detached=false, sandbox=false) (163.062491ms)
+{"mode":"owner-and-init-kill","detached":false,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on owner-and-init-kill (detached=false, sandbox=false) (184.842793ms)
+{"mode":"kill","detached":true,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on kill (detached=true, sandbox=false) (164.739569ms)
+{"mode":"stop","detached":true,"cleanupMs":907,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on stop (detached=true, sandbox=false) (1075.829903ms)
+{"mode":"normal","detached":true,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on normal (detached=true, sandbox=false) (189.195469ms)
+{"mode":"deadline","detached":true,"cleanupMs":928,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on deadline (detached=true, sandbox=false) (1071.996465ms)
+{"mode":"cancel-frozen","detached":true,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on cancel-frozen (detached=true, sandbox=false) (189.837267ms)
+{"mode":"supervisor-kill","detached":true,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on supervisor-kill (detached=true, sandbox=false) (166.152915ms)
+{"mode":"supervisor-only-kill","detached":true,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on supervisor-only-kill (detached=true, sandbox=false) (165.350666ms)
+{"mode":"init-only-kill","detached":true,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on init-only-kill (detached=true, sandbox=false) (167.451908ms)
+{"mode":"owner-and-init-kill","detached":true,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on owner-and-init-kill (detached=true, sandbox=false) (166.260995ms)
+{"mode":"kill","detached":false,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on kill (detached=false, sandbox=null) (185.239334ms)
+{"mode":"stop","detached":false,"cleanupMs":908,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on stop (detached=false, sandbox=null) (1080.334083ms)
+{"mode":"normal","detached":false,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on normal (detached=false, sandbox=null) (187.845177ms)
+{"mode":"deadline","detached":false,"cleanupMs":907,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on deadline (detached=false, sandbox=null) (1070.381509ms)
+{"mode":"cancel-frozen","detached":false,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on cancel-frozen (detached=false, sandbox=null) (192.430194ms)
+{"mode":"supervisor-kill","detached":false,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on supervisor-kill (detached=false, sandbox=null) (184.617445ms)
+{"mode":"supervisor-only-kill","detached":false,"cleanupMs":40,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on supervisor-only-kill (detached=false, sandbox=null) (266.343375ms)
+{"mode":"init-only-kill","detached":false,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on init-only-kill (detached=false, sandbox=null) (207.908414ms)
+{"mode":"owner-and-init-kill","detached":false,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on owner-and-init-kill (detached=false, sandbox=null) (185.900518ms)
+{"mode":"kill","detached":true,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on kill (detached=true, sandbox=null) (205.851848ms)
+{"mode":"stop","detached":true,"cleanupMs":906,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on stop (detached=true, sandbox=null) (1074.027672ms)
+{"mode":"normal","detached":true,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on normal (detached=true, sandbox=null) (192.717071ms)
+{"mode":"deadline","detached":true,"cleanupMs":908,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on deadline (detached=true, sandbox=null) (1072.950859ms)
+{"mode":"cancel-frozen","detached":true,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on cancel-frozen (detached=true, sandbox=null) (192.708845ms)
+{"mode":"supervisor-kill","detached":true,"cleanupMs":21,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on supervisor-kill (detached=true, sandbox=null) (186.058406ms)
+{"mode":"supervisor-only-kill","detached":true,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on supervisor-only-kill (detached=true, sandbox=null) (184.047208ms)
+{"mode":"init-only-kill","detached":true,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on init-only-kill (detached=true, sandbox=null) (184.288136ms)
+{"mode":"owner-and-init-kill","detached":true,"cleanupMs":20,"childAndGrandchildStopped":true}
+✔ secret runner lease kills child and grandchild on owner-and-init-kill (detached=true, sandbox=null) (204.700652ms)
+✔ raw redaction chooses longest matches across every chunk boundary and flushes binary tails (8.446949ms)
+✔ secret env rejects empty, oversized, nul and loader or parent environment overrides (1.216624ms)
+✔ child-only injection redacts stdout, stderr, EOF, nonzero, spawn failure and truncation before capture (553.891213ms)
+✔ private stdout capture releases only bounded successful bytes and suppresses both ordinary streams (1535.327568ms)
+✔ supervisor preserves command exit codes and fragmented unicode configuration (285.546491ms)
+✔ unavailable containment refuses before sending configuration or executing argv (135.189292ms)
+{"threeChunkChecks":1686,"unmaskedMatchingBytes":0}
+✔ union masking covers overlapping values across every three-chunk byte split (51.401888ms)
+✔ overlap coverage survives emitted matches while the raw tail remains held (0.518748ms)
+{"sandbox":false,"status":"ok","stdoutBytes":10,"stderrBytes":10,"unmaskedMatchingBytes":0}
+cell sandbox: retaining host SSH config: ENOENT: no such file or directory, mkdtemp '/tmp/secret-overlap-HneI9P/wrap/box/ssh-config-XXXXXX'
+✔ real runner masks overlapping synthetic values in both streams (sandbox=false) (88.917019ms)
+{"sandbox":null,"status":"ok","stdoutBytes":10,"stderrBytes":10,"unmaskedMatchingBytes":0}
+{"referenceCases":1000,"mismatches":0}
+{"periodicPatterns":32,"maxValueBytes":1831,"materialBytes":58096,"inputBytes":1048576,"elapsedMs":482,"captures":1}
+{"periodicPatterns":4,"maxValueBytes":16384,"materialBytes":65536,"inputBytes":1048576,"elapsedMs":44,"captures":1}
+✔ real runner masks overlapping synthetic values in both streams (sandbox=null) (105.973124ms)
+✔ streaming union equals an independent whole-buffer interval oracle (55.326493ms)
+✔ periodic values at the material/count caps keep union scanning bounded (529.250554ms)
+✔ darwin refuses secret execution and private capture before spawning or reading credentials (2.896657ms)
+✔ freebsd refuses secret execution and private capture before spawning or reading credentials (0.38628ms)
+✔ win32 refuses secret execution and private capture before spawning or reading credentials (0.436458ms)
+cell sandbox: retaining host SSH config: ENOENT: no such file or directory, mkdtemp '/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.secret-sandbox-9FV3DX/wrap/box/ssh-config-XXXXXX'
+cell sandbox: retaining host SSH config: ENOENT: no such file or directory, mkdtemp '/home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/.secret-sandbox-9FV3DX/wrap/box/ssh-config-XXXXXX'
+✔ default satellite sandbox composes with containment, isolates writes, redacts and captures (249.337097ms)
+{"normal":true,"byteBoundaryChecks":845,"leakedPrefixMatches":0}
+{"normal":false,"byteBoundaryChecks":845,"leakedPrefixMatches":0}
+✔ held secret prefixes are masked on normal EOF at every byte boundary (28.694464ms)
+✔ held secret prefixes are discarded on abnormal end at every byte boundary (17.910705ms)
+{"sandbox":false,"mode":"normal","status":"ok","stdoutBytes":10,"stderrBytes":10,"leakedPrefixMatches":0}
+✔ real runner mid-value normal masks or drops both stream tails (sandbox=false) (100.292668ms)
+{"sandbox":false,"mode":"cancel","status":"interrupted","stdoutBytes":0,"stderrBytes":0,"leakedPrefixMatches":0}
+✔ real runner mid-value cancel masks or drops both stream tails (sandbox=false) (69.914933ms)
+{"sandbox":false,"mode":"timeout","status":"timeout","stdoutBytes":0,"stderrBytes":0,"leakedPrefixMatches":0}
+✔ real runner mid-value timeout masks or drops both stream tails (sandbox=false) (1008.49408ms)
+{"sandbox":false,"mode":"exit7","status":"nonzero","stdoutBytes":0,"stderrBytes":0,"leakedPrefixMatches":0}
+✔ real runner mid-value exit7 masks or drops both stream tails (sandbox=false) (70.25289ms)
+{"sandbox":false,"mode":"signal","status":"nonzero","stdoutBytes":0,"stderrBytes":0,"leakedPrefixMatches":0}
+✔ real runner mid-value signal masks or drops both stream tails (sandbox=false) (63.002084ms)
+{"sandbox":false,"mode":"supervisor-kill","status":"nonzero","stdoutBytes":0,"stderrBytes":0,"leakedPrefixMatches":0}
+cell sandbox: retaining host SSH config: ENOENT: no such file or directory, mkdtemp '/tmp/secret-tail-XRN0jC/wrap/box/ssh-config-XXXXXX'
+✔ real runner mid-value supervisor-kill masks or drops both stream tails (sandbox=false) (70.401409ms)
+{"sandbox":null,"mode":"normal","status":"ok","stdoutBytes":10,"stderrBytes":10,"leakedPrefixMatches":0}
+cell sandbox: retaining host SSH config: ENOENT: no such file or directory, mkdtemp '/tmp/secret-tail-G6HUjg/wrap/box/ssh-config-XXXXXX'
+✔ real runner mid-value normal masks or drops both stream tails (sandbox=null) (86.063385ms)
+{"sandbox":null,"mode":"cancel","status":"interrupted","stdoutBytes":0,"stderrBytes":0,"leakedPrefixMatches":0}
+cell sandbox: retaining host SSH config: ENOENT: no such file or directory, mkdtemp '/tmp/secret-tail-brkFVH/wrap/box/ssh-config-XXXXXX'
+✔ real runner mid-value cancel masks or drops both stream tails (sandbox=null) (78.090035ms)
+{"sandbox":null,"mode":"timeout","status":"timeout","stdoutBytes":0,"stderrBytes":0,"leakedPrefixMatches":0}
+cell sandbox: retaining host SSH config: ENOENT: no such file or directory, mkdtemp '/tmp/secret-tail-S5uKe1/wrap/box/ssh-config-XXXXXX'
+✔ real runner mid-value timeout masks or drops both stream tails (sandbox=null) (1009.457701ms)
+{"sandbox":null,"mode":"exit7","status":"nonzero","stdoutBytes":0,"stderrBytes":0,"leakedPrefixMatches":0}
+cell sandbox: retaining host SSH config: ENOENT: no such file or directory, mkdtemp '/tmp/secret-tail-n1q05V/wrap/box/ssh-config-XXXXXX'
+✔ real runner mid-value exit7 masks or drops both stream tails (sandbox=null) (78.137277ms)
+{"sandbox":null,"mode":"signal","status":"nonzero","stdoutBytes":0,"stderrBytes":0,"leakedPrefixMatches":0}
+cell sandbox: retaining host SSH config: ENOENT: no such file or directory, mkdtemp '/tmp/secret-tail-OXBklf/wrap/box/ssh-config-XXXXXX'
+✔ real runner mid-value signal masks or drops both stream tails (sandbox=null) (79.515705ms)
+{"sandbox":null,"mode":"supervisor-kill","status":"nonzero","stdoutBytes":0,"stderrBytes":0,"leakedPrefixMatches":0}
+✔ real runner mid-value supervisor-kill masks or drops both stream tails (sandbox=null) (77.092537ms)
+✔ submodule.clean: a populated submodule at its recorded commit with nothing local keeps the Cell clean, and so does an unpopulated one (382.739577ms)
+✔ submodule.dirty: edits, untracked or ignored files, a stash, unpushed commits and a moved pointer each hold the Cell (2128.099636ms)
+✔ unpark: a park whose registry write failed goes back in place with its kept paths, and its env copies are dropped (138.186945ms)
+✔ unpark: refuses when the wrapper path is occupied again (67.310844ms)
+✔ upstream.ancestry: work landed upstream but missing from the stale origin is landed once the mirror fetched it (939.298814ms)
+✔ upstream.rebased: work rebased onto the upstream under new SHAs is landed by the existing content checks against the mirror (953.803733ms)
+✔ upstream.unmerged: a pushed branch that never reached the upstream default branch stays unlanded (717.533361ms)
+✔ upstream.fallbacks: no upstream URL is unmirrored; a failing fetch keeps the last good ref (1027.442641ms)
+✔ resolveCellBase: HEAD until a fetch moves the upstream tip ahead, then the tip (521.653105ms)
+✔ resolveCellBase: local commits not on the upstream keep HEAD (499.401406ms)
+✔ resolveCellBase: no upstream configured is plain HEAD (41.77176ms)
+✔ syncOriginFromMirror: an unreachable upstream leaves the origin's tracking ref alone (370.835051ms)
+✔ syncOriginFromMirror: an origin tracking a non-default branch is not moved to the upstream default (441.044637ms)
+✔ clone-provisioned Cell points origin at the real upstream, not the local origin path (584.137103ms)
+✔ pool claim refreshes the Cell's origin/main to the current upstream tip (592.721028ms)
+✔ upstream.lock: a refresh waits for a concurrent one instead of failing into backoff, and a stale lock is taken over (700.681293ms)
+✔ syncOriginFromMirror: a busy origin (index.lock, merge in progress) is skipped with a reason and left untouched (1091.045212ms)
+✔ upstream.lock heartbeat: the holder keeps the lock's mtime fresh until it releases (2480.167998ms)
+✔ adoptOriginRemote never writes the origin checkout: clone provision and pool claim leave its origin url, pushurl and origin/* refs unchanged (1010.039131ms)
+✔ pool claim whose member lacks the origin's new upstream tip still provisions: stale origin/* refs are dropped, the tracking ref is not moved (813.397826ms)
+✔ claim serves an exact-sha member and reaps it (143.468936ms)
+✔ provisionCell replays (no re-clone) after a claim — idempotency survives the pool (83.203078ms)
+✔ claim applies a checkout delta to a reachable older sha (113.777185ms)
+✔ a member behind the origin fetches the wanted commit and serves it (131.901916ms)
+✔ a sha the origin lacks is not served, and the member is kept (84.160608ms)
+✔ a dirty member is never handed out (74.126155ms)
+✔ two concurrent claims cannot take the same member (72.690786ms)
+✔ buildPoolMember honours maxSize (62.078991ms)
+✔ reapPool drops stale-sha members and keeps current ones (113.464678ms)
+✔ claim returns null (cold fallback) when the pool is empty (26.479862ms)
+✔ wip.0: snapshot, push, confirm, restore and drop round-trip through the origin (579.029159ms)
+✔ wip.1: a push into something that is not a repository, or of a non-sha, is a typed refusal (72.954118ms)
+✔ agy projector: replayed calls, results and replies stay deduplicated across checkpoints (7.208333ms)
+✔ agy projector: bounded FIFO dedupe preserves replay and eviction order after restore (96.50495ms)
+✔ agy projector: flushed assistant fragments also obey the dedupe bound (19.575169ms)
+✔ agy projector: captured tool turn maps user, tool pair, reply, usage suffix, and result (1.404679ms)
+✔ agy projector: failed tool without output projects tool_info error (0.531883ms)
+✔ agy projector: result response is a fallback and never duplicates text_delta (1.019651ms)
+✔ agy projector: agent response fragments emit once when the step completes (0.5767ms)
+✔ agy projector: flush emits an in-progress assistant response once (0.541282ms)
+✔ agy projector: captured cumulative result usage becomes per-turn usage (0.891451ms)
+✔ agy projector: missing usage invalidates the cumulative baseline (0.897734ms)
+✔ agy projector: resumed cumulative duration waits for a baseline (0.608112ms)
+✔ agy projector: captured auth error stays visible as an interrupt and terminal result (0.462939ms)
+✔ agy projector: init and known progress are noise; malformed and future events are safe (0.718816ms)
+✔ agy renderer and projector factory are registered for CLI transcripts (0.601348ms)
+✔ agy CLI rendering shows the user, tools, and reply once; last returns the reply (0.561401ms)
+✔ projector source changes require checkpoint version review (5.877468ms)
+✔ checkpoint digest excludes stateless projectors and unrelated shared-module code (1.918948ms)
+✔ checkpoint digest guards stateful modules, registry and shared validators (16.914159ms)
+✔ codex: exact checkpoint validation (3.761337ms)
+✔ grok: exact checkpoint validation (0.606388ms)
+✔ agy: exact checkpoint validation (0.672527ms)
+✔ muse: exact checkpoint validation (0.543596ms)
+✔ claude: exact checkpoint validation (0.349148ms)
+✔ stub: exact checkpoint validation (0.381141ms)
+✔ unknown-provider: exact checkpoint validation (0.338237ms)
+✔ reject lossy JSON, exotic objects, cycles, and throwing accessors without throwing (0.563274ms)
+✔ 4 MiB UTF-8 JSON envelope boundary is inclusive (43.047919ms)
+✔ checkpoint and restore detach nested provider data; checkpoint never flushes chunks (1.75533ms)
+✔ provider-owned nested state rejects unknown fields, bad types and duplicate map keys (1.531475ms)
+✔ fallback dialect differs from the exact checkpoint registry key (0.407562ms)
+✔ Grok retains tool dedupe without retaining already emitted large inputs (74.608151ms)
+✔ shared serialization preserves lone surrogates through UTF-8 JSON storage (15.937202ms)
+✔ Grok restored tool inputs remain available only to an un-emitted call (1.174532ms)
+✔ claude projector: a full turn — prompt, thinking, tool pair, reply, result (5.872268ms)
+✔ claude projector: redacted thinking, meta users, and protocol noise (1.298573ms)
+✔ claude projector: image results stay typed and their synthetic dimensions echo stays hidden (0.880992ms)
+✔ claude projector: registered in the factory (no renderer fallback) (0.258041ms)
+✔ claude projector: assistant message.usage becomes turn-scoped token_usage with providerTurnId (0.799454ms)
+✔ claude projector: usage carries the billed model; result rows carry the harness cost + dominant model (0.570419ms)
+✔ claude projector: native session-file lines stamp their events; HSR lines stay unstamped (0.724658ms)
+✔ claude projector: an errored result projects a halt (interrupt) carrying the CLI's errors, then the turn end (1.139093ms)
+✔ claude projector: out-of-range numeric timestamps preserve events with an unknown timestamp (0.949865ms)
+✔ codex projector: captured HSR sequence projects one native turn and folded shell events (11.863077ms)
+✔ codex projector: command completion folds fields retained from item/started (1.071913ms)
+✔ codex projector: item folding covers MCP, files, thinking, compaction, web, and unknown types (2.948307ms)
+✔ codex projector: MCP completion without a start emits call then result (0.703647ms)
+✔ codex projector: empty commentary and app-server protocol noise emit nothing (0.883095ms)
+✔ codex projector: thread/fork response replays inherited turns once (2.610953ms)
+✔ codex projector: interrupted turn completion is an end only and never re-renders nested items (0.563985ms)
+✔ codex projector: native rollout messages and tools remain projected without duplicate copies (2.436504ms)
+✔ codex projector: app-server tokenUsage.total becomes cumulative usage with uncached input and the thread model (1.053717ms)
+✔ spec05.deliver.type-mode: a TUI that drops pastes still receives typed delivery (873.202559ms)
+✔ spec05.deliver.eat-first: an input that eats leading chars is caught by echo-verify and retyped (2833.971582ms)
+✔ spec05.deliver.post-turn-swallow: the paste swallowed after a completed turn is re-injected, not lost (3118.391984ms)
+✔ spec05.deliver.honest-failure: nothing ever lands → immediate echo_mismatch note, Enter never pressed (4701.297232ms)
+✔ spec05.deliver.multiline-type: typed-mode refuses multiline with a routable reason (172.623586ms)
+✔ delivery.unconfirmed: no observed turn start within grace → retryable note, no state change (992.894856ms)
+✔ delivery.pane-fallback: a file-less harness still yields activity/quiescence automation (source c) (917.292152ms)
+✔ tmux.parent-env: roots clear the server's inherited parent while children keep their explicit parent (180.738761ms)
+✔ tmux.roundtrip: spawn on the private socket, deliver, observe a full turn, clean @exit (346.661689ms)
+✔ tmux.crash: a mid-turn process death is observed as exited(crashed) (122.387352ms)
+✔ tmux.stop: TERM stops the exact pid; a SIGTERM-ignoring runtime gets the KILL escalation (647.91809ms)
+✔ tmux.kill-server-guard: kill-server refuses without the pinned opt-in (the v1 lesson) (6.126091ms)
+✔ tmux.adopt: a fresh driver instance re-adopts by exact identity and stays fully deliverable (454.076233ms)
+✔ tmux.session-hygiene: dead panes are reaped from the private server (191.612325ms)
+✔ tmux.interrupt (v6): idle → no-op; a hung turn is ended by C-c to the exact pane (turn_ended observed), the runtime stays live and takes the next message; gone → no_process (239.491429ms)
+✔ tmux quiet facts require final evidence and discard late text between hook turns (207.758812ms)
+✔ spec05.eq.hooks: claude-style hook events drive full automation (240.27886ms)
+✔ spec05.eq.notify: codex-style notify events drive full automation (210.699946ms)
+✔ spec05.eq.transcript-only: a files-only harness drives full automation (no hooks at all) (285.819381ms)
+✔ spec05.eq.identical: all three observation styles produced the SAME outcome (0.502616ms)
+✔ grok projector: captured ACP chunks assemble into one assistant message (9.585432ms)
+✔ grok projector: user message chunks coalesce into one message (0.704168ms)
+✔ grok projector: tool updates fold into one call and completion uses the same callId (1.02932ms)
+✔ grok projector: flush emits an otherwise-open chunk buffer (0.651545ms)
+✔ grok projector: prompt_complete flushes the open assistant message (1.999054ms)
+✔ grok projector: session/prompt emits turn_start before the user message (0.479191ms)
+✔ grok projector: session/prompt suppresses Grok's echoed user chunks once (0.726862ms)
+✔ grok projector: a mismatched user chunk is not mistaken for a prompt mirror (0.51964ms)
+✔ grok projector: session/update turn_completed ends the turn after flushing (0.565709ms)
+✔ grok projector: auto compaction flushes the prior chunk and preserves token counts (0.991957ms)
+✔ grok projector: generated continuation summary is a boundary, not a user message (0.774124ms)
+✔ grok projector: unrecognized methods and non-boundary updates do not flush open chunks (0.893847ms)
+✔ grok projector: thinking chunks coalesce and native chat_history shapes remain supported (0.989252ms)
+✔ grok projector: redacted thinking requires redacted=true and omits text (0.566451ms)
+✔ grok projector: project-then-flatten preserves the full last assistant text (2.310018ms)
+✔ grok projector: turn_completed usage is projected turn-scoped with uncached input, prompt id, and model (1.536745ms)
+✔ Kimi ACP prompt, streamed answer and result survive checkpoint restore (4.18985ms)
+✔ unsupported version is probed once per server and replacement invalidates the cache (1.008679ms)
+✔ supported version tracks a pane going 0 to 1 and rechecks each pane (0.198255ms)
+✔ failed or wrong-pane probes are not cached as version unsupported (0.250607ms)
+✔ real echo session projects turns, messages, usage and cancellation, and skips reminder children (5.19914ms)
+✔ real meta session projects the bash result envelope as a shell event and counts cached usage per turn (1.631951ms)
+✔ context usage, foreground completion, partial tool output, status and plan usage notifications from the real session project nothing (0.647227ms)
+✔ bash results without the JSON envelope keep the raw text as stdout (0.682826ms)
+✔ schema-derived tool session maps shell, tools, edits, subagents, reasoning, compaction and usage (2.047187ms)
+✔ client requests, responses and deltas are not transcript events; interrupts are (0.405328ms)
+✔ repeated item/started does not duplicate a tool call and a lone item/completed pairs itself (0.505121ms)
+✔ checkpoint restore keeps open tool items and per-turn usage (1.462521ms)
+✔ open item and usage retention is bounded (45.74076ms)
+✔ compaction that did not compact is visible but not a compaction (0.452259ms)
+✔ muse renderer and turn stream read the real echo session (2.465169ms)
+✔ parsers.claude: user rows start turns; sidechain/meta/tool rows do not; assistant rows are output (2.948368ms)
+✔ parsers.claude: project key derivation matches the v1 rule (0.410407ms)
+✔ renderer.codex: hsr app-server envelope (item/completed) renders alongside the rollout shape (0.932993ms)
+✔ parsers.codex: turn_context/task_started start, task_complete ends explicitly, messages are output (0.43748ms)
+✔ parsers.codex: HSR app-server uses explicit notifications as observation evidence (0.54565ms)
+✔ parsers.grok: chat_history rows (v1 fixture shapes) — user starts, assistant is output (0.654181ms)
+✔ parsers.grok: ACP prompt starts a turn and agent chunks are output recency (0.364759ms)
+✔ renderers.grok: ACP deltas defer to the stateful projector (0.503719ms)
+✔ parsers.events-file: claude-hook, codex-notify and generic shapes normalize identically (0.517686ms)
+✔ native completion hooks carry final assistant text, never subagent text (1.249858ms)
+✔ private tmux multiline transport (native probe): bracketed ON; only proven ON pastes inline (187.335767ms)
+ℹ tmux 3.5a, native probe: bracket_paste_flag=→
+✔ private tmux multiline transport (native probe): bracketed OFF; only proven ON pastes inline (140.046478ms)
+ℹ tmux 3.5a, native probe: bracket_paste_flag=
+✔ private tmux multiline transport (supported probe): bracketed ON; only proven ON pastes inline (130.440847ms)
+ℹ tmux 3.5a, supported probe: bracket_paste_flag=0→1
+✔ private tmux multiline transport (supported probe): bracketed OFF; only proven ON pastes inline (120.555903ms)
+ℹ tmux 3.5a, supported probe: bracket_paste_flag=0
+✔ private tmux multiline transport (unknown probe): bracketed ON; only proven ON pastes inline (128.312954ms)
+ℹ tmux 3.5a, unknown probe: bracket_paste_flag=→
+✔ private tmux multiline transport (unknown probe): bracketed OFF; only proven ON pastes inline (119.527125ms)
+ℹ tmux 3.5a, unknown probe: bracket_paste_flag=
+✔ legacy pane proof is exactly one pane tied to the persisted pid and derived session (2.210023ms)
+✔ legacy tmux binds derived single-pane proof to the stored pid once (135.351858ms)
+✔ socket proof refuses symlinks, directory mode changes and inode drift (3.825602ms)
+✔ socket ownership refuses either wrong uid and any non-private directory (0.262891ms)
+✔ fresh tmux retries a transient unavailable capture through its retained socket and pane (63.76687ms)
+✔ exit cleanup retains a replacement pane instead of killing its session (109.39958ms)
+✔ retained cleanup becomes informational on socket loss and resolves after proven absence (123.387885ms)
+✔ late capture refuses wrong scope, pid, pane, dead pane and extra membership (0.516834ms)
+✔ single exact dead pane cleanup removes only its pane (other session=false) (91.124347ms)
+✔ single exact dead pane cleanup removes only its pane (other session=true) (106.107826ms)
+✔ disposeAll cleans only the verified sole dead pane (extra member=false) (115.419085ms)
+✔ disposeAll cleans only the verified sole dead pane (extra member=true) (116.915412ms)
+✔ failed start retains without killing a session (duplicate) (58.03807ms)
+✔ failed start retains without killing a session (post-create) (59.863236ms)
+✔ failed start retains without killing a session (malformed-locator) (54.129327ms)
+✔ disposal budgets a stalled list-panes command and retains cleanup (2095.663853ms)
+✔ disposal budgets a stalled if-shell command and retains cleanup (2102.288783ms)
+✔ tail.basic: appended lines arrive once, in order; missing file is quiet (6.534775ms)
+✔ tail.partial: a line still being written is carried, not emitted (0.595366ms)
+✔ tail.truncate: size shrink resets to the start (0.577031ms)
+✔ tail.rotation: identity change jumps to EOF — history is never replayed (0.662287ms)
+✔ tail.skipExisting: resume semantics start at EOF of a pre-existing file (0.458651ms)
+✔ repairs: the registry projector carries Apiary's compat repairs so both sides project the same events (5.689292ms)
+✔ format: scanLogLines numbers only non-blank lines, keeps byte offsets across blanks and CRLF, and leaves a torn tail (3.067519ms)
+✔ format: the projected segment encodes and decodes losslessly, matches Apiary's header, and digests the raw line hashes in order (2.044642ms)
+✔ quiet matches Apiary exact-only semantics, including astral invisibles (3.34064ms)
+✔ final assistant text wins; child threads and tool output cannot silence the root (3.249513ms)
+✔ Claude assistant final text is classified and reset between turns (1.345705ms)
+✔ tmux hook or quiescence cannot classify intermediate transcript text (0.44786ms)
+✔ Claude native sidechain rows cannot replace root final text (0.367634ms)
+✔ quiet text followed by failure or interruption stays unclassified (0.823751ms)
+✔ ACP errors and cancelled prompt results cannot classify prior quiet chunks (2.042809ms)
+✔ ACP successful completion stays quiet and foreign sessions cannot replace the root (0.385028ms)
+ℹ tests 387
+ℹ suites 0
+ℹ pass 364
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 22
+ℹ todo 0
+ℹ duration_ms 13939.406761
+
+✖ failing tests:
+
+test at v2/driver-cell/tests/capture-no-tags.test.ts:322:1
+✖ packed source tags do not change clean merge, checkout-conflict, or rebase capture semantics (456.14895ms)
+  AssertionError [ERR_ASSERTION]: clean-merge: expected exactly one scratch clone; traced 24 git starts: [["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["git-upload-pack","/tmp/hb-v2-cell-RO8pKb/cells/bee-1/fixture-space-c1"],["/usr/lib/git-core/git","pack-objects","--revs"],["/usr/lib/git-core/git","unpack-objects","-q"],["/usr/lib/git-core/git","rev-list","--objects"],["/usr/lib/git-core/git","maintenance","run"],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["git-upload-pack","/tmp/hb-v2-cell-RO8pKb/origin/.git"],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="],["git-upload-pack","/tmp/hive-capture-IxJIrn/repo"],["/usr/lib/git-core/git","pack-objects","--revs"],["/usr/lib/git-core/git","unpack-objects","-q"],["/usr/lib/git-core/git","rev-list","--objects"],["/usr/lib/git-core/git","maintenance","run"],["/usr/bin/git","-c","credential.https://github.com.helper="],["/usr/bin/git","-c","credential.https://github.com.helper="]]
+  
+  0 !== 1
+  
+      at assertScratchCloneTrace (file:///home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/v2/driver-cell/tests/capture-no-tags.test.ts:170:10)
+      at runCapture (file:///home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/v2/driver-cell/tests/capture-no-tags.test.ts:273:3)
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-p2-honeybee-freeze-36fabec3cd02/github-com-honeybeehq-honeybee-a9015b303498-space-36fabec3cd02/v2/driver-cell/tests/capture-no-tags.test.ts:341:31)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
