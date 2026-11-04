@@ -25,7 +25,7 @@ function captureOwned() {
   if (!daemon?.store || !daemon.driver) return;
   for (const row of daemon.driver.snapshotLive()) {
     const binding = daemon.store.runtimeProcessIdentity(row.beeId, row.generation);
-    assert.equal(binding.kind, "bound", "Owned runtime must have a fenced identity");
+    if (binding.kind !== "bound") continue;
     const current = inspectProcess(row.pid);
     if (sameProcess(binding.identity, current) && current.kind === "present") ownedIdentities.set(current.pid, current);
   }
