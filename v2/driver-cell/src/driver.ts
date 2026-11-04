@@ -20,6 +20,7 @@ import { stateDirectory } from "../../harness/src/statePath.ts";
  *  - exit path: captureWork() (capture.ts) and deleteCell() (remove.ts) are
  *    exposed for the daemon/UI (WP6) — they never touch runtime driving.
  */
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { platform } from "node:os";
 import { Worker } from "node:worker_threads";
@@ -106,7 +107,7 @@ export interface CellDriverConfig {
   warmPool?: { targetFree: number; maxSize?: number };
   /** Tests: substitute the pool top-up worker entrypoint. */
   poolWorkerUrl?: URL;
-  upstreamRefresh?: { root: string } & Partial<UpstreamRefreshPolicy>;
+  upstreamRefresh?: { root: string; nodeKey?: string } & Partial<UpstreamRefreshPolicy>;
   onUpstreamRefreshed?(originRepo: string, result: PoolWorkerResult): void;
   /**
    * v31 — the Cell's checkout now exists on disk for a runtime start (cold
@@ -124,11 +125,16 @@ export interface UpstreamRefreshPolicy {
 }
 
 export const DEFAULT_UPSTREAM_REFRESH: UpstreamRefreshPolicy = {
-  intervalMs: 2 * 60_000,
-  maxAgeMs: 30_000,
+  intervalMs: 10 * 60_000,
+  maxAgeMs: 10 * 60_000,
   recentMs: 24 * 60 * 60_000,
   timeoutMs: 15_000,
 };
+
+export function upstreamRefreshDelay(intervalMs: number, nodeKey: string, first: boolean, random: number = Math.random()): number {
+  const offset = first ? createHash("sha256").update(nodeKey).digest().readUInt32BE(0) / 0x1_0000_0000 * intervalMs : 0;
+  return Math.floor(intervalMs + offset + Math.max(0, Math.min(1, random)) * intervalMs * 0.2);
+}
 
 interface TrackedOrigin {
   request: RefreshRequest;
@@ -174,14 +180,14 @@ export class CellDriver implements RuntimeDriver {
   private sandboxCap: SandboxTmpfsCap | null = null;
   private readonly origins = new Map<string, TrackedOrigin>();
   private readonly upstreamPolicy: (UpstreamRefreshPolicy & { root: string }) | null;
-  private upstreamTimer: ReturnType<typeof setInterval> | null = null;
+  private upstreamTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(cfg: CellDriverConfig) {
     stateDirectory(cfg.cellsRoot, "cellsRoot");
     if (cfg.gitImagesRoot !== undefined) stateDirectory(cfg.gitImagesRoot, "gitImagesRoot");
     if (cfg.upstreamRefresh !== undefined) stateDirectory(cfg.upstreamRefresh.root, "upstreamRefresh.root");
     this.cfg = cfg;
-    this.upstreamPolicy = cfg.upstreamRefresh == null ? null : { ...DEFAULT_UPSTREAM_REFRESH, ...cfg.upstreamRefresh };
+    this.upstreamPolicy = cfg.upstreamRefresh == null ? null : { ...DEFAULT_UPSTREAM_REFRESH, ...cfg.upstreamRefresh, maxAgeMs: cfg.upstreamRefresh.maxAgeMs ?? cfg.upstreamRefresh.intervalMs ?? DEFAULT_UPSTREAM_REFRESH.intervalMs };
     this.inner = new HsrDriver({
       ...cfg.hsr,
       resolve: (beeId: string, generation?: number) => this.resolveCellSpawn(beeId, generation),
@@ -625,7 +631,7 @@ export class CellDriver implements RuntimeDriver {
     this.maintenanceByRuntime.clear();
     for (const worker of this.poolWorkers.values()) void worker.terminate();
     this.poolWorkers.clear();
-    if (this.upstreamTimer != null) clearInterval(this.upstreamTimer);
+    if (this.upstreamTimer != null) clearTimeout(this.upstreamTimer);
     this.upstreamTimer = null;
   }
 
@@ -658,8 +664,10 @@ export class CellDriver implements RuntimeDriver {
   }
 
   trackOrigins(origins: readonly { originRepo: string; repoName: string; usedAt: number }[]): void {
-    for (const origin of origins) this.trackOrigin({ originRepo: origin.originRepo, repoName: origin.repoName }, origin.usedAt);
-    this.refreshRecentOrigins();
+    for (const origin of origins) {
+      const tracked = this.trackOrigin({ originRepo: origin.originRepo, repoName: origin.repoName }, origin.usedAt);
+      if (this.warmPoolEnabled()) this.scheduleRefresh(tracked, false);
+    }
   }
 
   private trackOrigin(request: RefreshRequest, usedAt: number): TrackedOrigin {
@@ -675,9 +683,14 @@ export class CellDriver implements RuntimeDriver {
     return tracked;
   }
 
-  private ensureUpstreamTimer(): void {
+  private ensureUpstreamTimer(first = true): void {
     if (this.upstreamPolicy == null || this.upstreamTimer != null) return;
-    this.upstreamTimer = setInterval(() => this.refreshRecentOrigins(), this.upstreamPolicy.intervalMs);
+    const delay = upstreamRefreshDelay(this.upstreamPolicy.intervalMs, this.cfg.upstreamRefresh?.nodeKey ?? this.cfg.cellsRoot, first);
+    this.upstreamTimer = setTimeout(() => {
+      this.upstreamTimer = null;
+      this.refreshRecentOrigins();
+      if (this.origins.size > 0) this.ensureUpstreamTimer(false);
+    }, delay);
     this.upstreamTimer.unref();
   }
 
@@ -707,7 +720,7 @@ export class CellDriver implements RuntimeDriver {
       repoName: p.repoName,
       ...(p.warmArtifacts && p.warmArtifacts.length > 0 ? { warmArtifacts: [...p.warmArtifacts] } : {}),
     }, Date.now());
-    this.scheduleRefresh(origin);
+    this.scheduleRefresh(origin, false);
   }
 
   /**
@@ -715,10 +728,10 @@ export class CellDriver implements RuntimeDriver {
    * resulting Cell base, in a worker off the event loop. Single-flight per
    * repoKey: a burst of spawns for one repo shares one in-flight worker.
    */
-  private scheduleRefresh(origin: TrackedOrigin): void {
+  private scheduleRefresh(origin: TrackedOrigin, allowUpstreamFetch = true): void {
     const now = Date.now();
     const policy = this.upstreamPolicy;
-    const fetchDue = policy != null && now - origin.lastFetchAt >= policy.maxAgeMs;
+    const fetchDue = allowUpstreamFetch && policy != null && now - origin.lastFetchAt >= policy.maxAgeMs;
     const target = this.warmPoolEnabled() ? this.cfg.warmPool?.targetFree ?? 0 : 0;
     if (!fetchDue && target === 0) return;
     const request = origin.request;

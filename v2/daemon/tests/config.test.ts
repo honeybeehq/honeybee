@@ -9,6 +9,7 @@ import { StatePathError } from "../../harness/src/statePath.ts";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  cellRetentionOf,
   ConfigError,
   BUILTIN_AGENTS,
   DEFAULTS,
@@ -563,4 +564,21 @@ test("config: durability resolves defaults and invalid values", () => {
   assert.deepEqual(bad.resumeBundle, defaults.resumeBundle);
   assert.equal(bad.import.enabled, false);
   assert.equal(bad.warnings.length, 4);
+});
+
+
+test("upstream refresh budget resolves configured minutes without changing the fetch opt-in", () => {
+  for (const nodeKind of ["workstation", "satellite"] as const) {
+    const defaults = cellRetentionOf(undefined, nodeKind);
+    assert.equal(defaults.upstreamRefreshMs, 600000);
+    assert.equal(defaults.fetchUpstream, nodeKind === "satellite");
+    const configured = cellRetentionOf({ upstreamRefreshMinutes: 20, fetchUpstream: false }, nodeKind);
+    assert.equal(configured.upstreamRefreshMs, 1200000);
+    assert.equal(configured.fetchUpstream, false);
+    for (const value of [0, -1, "10", null, 1441]) {
+      const invalid = cellRetentionOf({ upstreamRefreshMinutes: value }, nodeKind);
+      assert.equal(invalid.upstreamRefreshMs, 600000);
+      assert.ok(invalid.warnings.some(warning => warning.includes("upstreamRefreshMinutes")));
+    }
+  }
 });

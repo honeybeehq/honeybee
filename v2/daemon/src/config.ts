@@ -227,6 +227,7 @@ export interface CellRetentionConfig {
   pressureIdleAfterDays?: number | null;
   /** Fetch each origin's upstream into a Honeybee-owned mirror and use its HEAD as a landing target (satellites true; other nodes false). */
   fetchUpstream?: boolean;
+  upstreamRefreshMinutes?: number;
   /** At most this many Cells evicted or removed by retention passes in any rolling 24 h (default 200). null = no cap. */
   maxEvictionsPerDay?: number | null;
   purgeIgnoredOnPark?: boolean;
@@ -253,6 +254,7 @@ export interface ResolvedCellRetention {
   minFreeBytes: number | null;
   pressureIdleAfterMs: number | null;
   fetchUpstream: boolean;
+  upstreamRefreshMs: number;
   maxEvictionsPerDay: number | null;
   purgeIgnoredOnPark: boolean;
   budgetEnforce: boolean;
@@ -695,6 +697,7 @@ export const DEFAULT_CELL_RETENTION: ResolvedCellRetention = {
   minFreeBytes: WORKSTATION_MIN_FREE_BYTES,
   pressureIdleAfterMs: 3 * DAY_MS,
   fetchUpstream: false,
+  upstreamRefreshMs: 10 * 60_000,
   maxEvictionsPerDay: 200,
   purgeIgnoredOnPark: false,
   budgetEnforce: false,
@@ -770,6 +773,7 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   out.minFreePercent = read("minFreePercent", "a number from 0 to 100 or null", (v) => v === null || (isNonNegative(v) && v <= 100), (v) => v as number | null, out.minFreePercent);
   out.minFreeBytes = read("minFreeBytes", "a non-negative number or null", nullableNonNegative, (v) => v as number | null, out.minFreeBytes);
   out.pressureIdleAfterMs = read("pressureIdleAfterDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.pressureIdleAfterMs);
+  out.upstreamRefreshMs = read("upstreamRefreshMinutes", "a number from 1 to 1440", (v) => typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 1440, (v) => (v as number) * 60_000, out.upstreamRefreshMs);
   out.fetchUpstream = read("fetchUpstream", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.fetchUpstream);
   out.maxEvictionsPerDay = read(
     "maxEvictionsPerDay",
