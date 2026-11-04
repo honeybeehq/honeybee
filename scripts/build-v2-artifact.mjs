@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
  * immutable release must spawn that release's host without re-entering the
  * full CLI bundle.
  */
-import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -127,6 +127,21 @@ await build({
   preserveSymlinks: true,
   logLevel: "silent",
 });
+for (const [entry, output] of [["cellRepoWorker.ts", "cell-repo-worker.js"], ["cellRepoHelper.ts", "cell-repo-helper.js"]]) {
+  const result = await build({
+    entryPoints: [join(root, "v2", "driver-cell", "src", entry)],
+    outfile: join(outDir, output),
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    logLevel: "silent",
+    write: false,
+  });
+  const staged = join(outDir, `${output}.tmp-${process.pid}`);
+  await writeFile(staged, result.outputFiles[0].contents, { mode: 0o444, flag: "wx" });
+  await rename(staged, join(outDir, output));
+}
 const runnerHostBuild = await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "driver-hsr", "src", "runner-host-main.ts")],
