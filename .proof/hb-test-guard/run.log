@@ -1,4 +1,4 @@
-sandbox: $SB=/tmp/hb-guard-Fwq1Zq; HOME stays the account home ($HOME); unit dir $SB/units, label hb.guard.test, fake unit bound to $SB/node/v2; PATH shim: $SB/bin/systemctl
+sandbox: $SB=/tmp/hb-guard-I0Vrcl; HOME stays the account home ($HOME); unit dir $SB/units, label hb.guard.test, fake unit bound to $SB/node/v2; PATH shim: $SB/bin/systemctl
 no command in this run names the account's own data dir; every target is under $SB
 
 ### 1. owned path: the data dir is the unit's own -> the unit is targeted (stop, start, restart; flag and env forms)
@@ -73,13 +73,13 @@ systemctl --user stop hb.guard.test.service
 systemctl --user start hb.guard.test.service
 
 ### 6. a real scratch daemon: hive daemon stop --data-dir <scratch> stops that daemon by its own pid
-scratch daemon pid 3687540; endpoint record: {"schema":1,"instanceId":"…","dataDir":"$SB/scratch","socketPath":"$SB/scratch/hived.sock","tmuxSocketPath":"$SB/scratch/tmux.sock","pid":3687540,"startedAt":1793794029135,"processBirth":"…","bootId":"…"}
-{"running":true,"health":{"protocol":"v2/2","pid":3687540,"startedAt":1793794029135,"uptimeMs":166,"ticks":0,"lastTickAt
+scratch daemon pid 3690186; endpoint record: {"schema":1,"instanceId":"…","dataDir":"$SB/scratch","socketPath":"$SB/scratch/hived.sock","tmuxSocketPath":"$SB/scratch/tmux.sock","pid":3690186,"startedAt":1793794317322,"processBirth":"…","bootId":"…"}
+{"running":true,"health":{"protocol":"v2/2","pid":3690186,"startedAt":1793794317322,"uptimeMs":178,"ticks":0,"lastTickAt
 [exit 0]
-{"running":false,"stopped":true,"pid":3687540,"instanceId":"1f986f67-b7f0-4bde-8ede-ae2f6ceee50f","dataDir":"$SB/scratch","service":null,"daemonTarget":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"record","instanceId":"1f986f67-b7f0-4bde-8ede-ae2f6ceee50f","daemonDataDir":"$SB/scratch","connected":true}}
+{"running":false,"stopped":true,"pid":3690186,"instanceId":"9a7b1aea-379f-4a91-be39-cddb41270014","dataDir":"$SB/scratch","service":null,"daemonTarget":{"dataDir":"$SB/scratch","dataDirSource":"flag","socketPath":"$SB/scratch/hived.sock","socketSource":"record","instanceId":"9a7b1aea-379f-4a91-be39-cddb41270014","daemonDataDir":"$SB/scratch","connected":true}}
 [exit 0]
 scratch daemon exit code: 0
-scratch daemon pid 3687540 is gone
+scratch daemon pid 3690186 is gone
 ✓  not running no daemon at $SB/scratch/hived.sock (data dir $SB/scratch); the background service was not touched
 [exit 0]
 --- fake systemctl calls so far: 4
@@ -121,7 +121,22 @@ systemctl --user stop hb.guard.test.service
 systemctl --user start hb.guard.test.service
 systemctl --user daemon-reload
 
-### 9. the owned path still works after all of the above
+### 9. a sandbox unit dir without a label override (HIVE_V2_SERVICE_LABEL unset) would drive the node's own label -> refused, unit untouched
+{"error":{"code":"service_label_unpaired","message":"hive daemon stop: HIVE_V2_SERVICE_DIR points at $SB/unlabelled-units/dev.honeybee.hive.v2.service but HIVE_V2_SERVICE_LABEL is not set, so the verb
+hive: error (service_label_unpaired): hive daemon stop: HIVE_V2_SERVICE_DIR points at $SB/unlabelled-units/dev.honeybee.hive.v2.service but HIVE_V2_SERVICE_LABEL is not set, so the verb would drive th
+[exit 1]
+hive: error (service_label_unpaired): hive daemon restart: HIVE_V2_SERVICE_DIR points at $SB/unlabelled-units/dev.honeybee.hive.v2.service but HIVE_V2_SERVICE_LABEL is not set, so the verb would drive the node's own service label from a sandbox unit. Set HIVE_V2_SERVICE_LABEL with it, or unset both
+[exit 1]
+!  daemon: not running (socket $SB/node/v2/hived.sock; HIVE_V2_SERVICE_DIR is set without HIVE_V2_SERVICE_LABEL, so the background service is not consulted)
+[exit 0]
+--- fake systemctl calls so far: 5
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+systemctl --user stop hb.guard.test.service
+systemctl --user start hb.guard.test.service
+systemctl --user daemon-reload
+
+### 10. the owned path still works after all of the above
 ✓  stopped hb.guard.test
 [exit 0]
 --- fake systemctl calls so far: 6
