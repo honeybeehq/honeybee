@@ -769,7 +769,6 @@ export class HiveDaemon {
   private lastAutoTitleAt = 0;
   private lastBoot: BootReport | null = null;
   private stopping = false;
-  private publishedSeq = 0;
   private readonly opLog: string[] = [];
   private accounts: AccountsService | null = null;
   private loginFlows: LoginFlowService | null = null;
@@ -1205,7 +1204,6 @@ export class HiveDaemon {
     // periodic limits sweep.
     this.accounts?.scheduleRecoveryForAuthNeededClaude();
     store.pruneAuthInterruptions(Date.now() - AUTH_INTERRUPTION_RETENTION_MS);
-    this.publishedSeq = store.lastAuditSeq();
     reconcile.end();
     this.activeStartupPhase = null;
     const rpc = this.performance.startSpan("daemon.start.rpc");
@@ -1639,7 +1637,6 @@ export class HiveDaemon {
     const rpc = this.rpc;
     if (!store || !rpc) return;
     const latest = store.lastAuditSeq();
-    if (latest > this.publishedSeq) this.publishedSeq = latest;
     // maxBatch+1: one extra row is exactly enough to detect a gap without
     // materializing the backlog (the 2026-08-21 flush stall).
     rpc.flushWatch(latest, (fromSeq, includeHomes) => this.mirrorAuditRows(store.auditRows(fromSeq, this.cfg.watchMaxBatch + 1), includeHomes), this.cfg.watchMaxBatch);
@@ -6981,25 +6978,32 @@ export class HiveDaemon {
     };
   }
 
+  private readonly snapshots: { public?: { seq: number; stamp: string; snapshot: SnapshotResult }; operatorLocal?: { seq: number; stamp: string; snapshot: SnapshotResult } } = {};
+
   private snapshot(includeOperatorLocalHomes = false): SnapshotResult {
     const store = this.mustStore();
     // Single-threaded: reading the seq and the rows is atomic w.r.t. writes.
     const seq = store.lastAuditSeq();
-    this.publishedSeq = seq;
-    return {
+    const capacity = this.retention?.capacity() ?? null;
+    const accounts = store.listAccounts().map((account) => this.mirrorAccount(account));
+    const stamp = JSON.stringify({ identity: this.identityRecovery.stamp(Date.now()), capacity, accounts });
+    const variant = includeOperatorLocalHomes ? "operatorLocal" : "public";
+    const hit = this.snapshots[variant];
+    if (hit && hit.seq === seq && hit.stamp === stamp) return hit.snapshot;
+    const snapshot: SnapshotResult = {
       seq,
       humanFirstPolicies: store.listHumanFirstPolicies(),
       mailBatchingPolicies: store.listMailBatchingPolicies(),
       mailBatches: store.listMailBatches(),
       views: store.listBeeViewRows().map((row) => ({ ...row, bee: includeOperatorLocalHomes ? operatorLocalBee(row.bee) : mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
-      capacity: this.retention?.capacity() ?? null,
+      capacity,
       templates: store.listTemplates(),
       ...(this.cfg.champions.enabled ? { champions: store.listChampions() } : {}),
       tells: store.listTells(),
       reactions: store.listReactions(),
       questions: store.listQuestions(),
       seals: store.listSeals(),
-      accounts: store.listAccounts().map((account) => this.mirrorAccount(account)),
+      accounts,
       accountLimits: store.listAccountLimits(),
       accountAdmissions: store.listAccountAdmissions(),
       quotaRecoveries: store.listQuotaRecoveries(),
@@ -7014,6 +7018,8 @@ export class HiveDaemon {
       actions: store.listActionViews(),
       actionQueues: store.listActionQueueViews(),
     };
+    this.snapshots[variant] = { seq, stamp, snapshot };
+    return snapshot;
   }
 
   // -------------------------------------------------------------------------

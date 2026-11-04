@@ -4,9 +4,9 @@ import { StoreBackupError } from "../../core/src/storeBackup.ts";
 import { HumanOutputError } from "../../core/src/humanOutput.ts";
 import { createHash } from "node:crypto";
 import type { AutomationReference, AutomationKind, HumanChatAdmission } from "../../core/src/types.ts";
-import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
-import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
-import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
+import { MAIL_DELIVERY_CONFIRMATION_CAPABILITY, projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
+import { QUESTION_DISMISSED_CAPABILITY, projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
+import { ANSWER_TRIGGER_CAPABILITY, projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
 import { canonicalDigest } from "../../core/src/canonical.ts";
 import { parsePhoneOrigin, type PhoneOriginRequest } from "../../core/src/phoneOrigin.ts";
 import { AccountLeaseUnknownError } from "../../core/src/accountLease.ts";
@@ -25,7 +25,7 @@ import { withRpcCaller } from "../../core/src/rpcAuditContext.ts";
  * errors onto the closed list, and owns the per-connection watch cursors.
  * Verb semantics live in the daemon's dispatch function.
  */
-import { JsonLineBuffer } from "./jsonl.ts";
+import { JsonLineBuffer, jsonChunks } from "./jsonl.ts";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { existsSync, unlinkSync } from "node:fs";
 import type { AuditRow } from "../../core/src/index.ts";
@@ -210,6 +210,8 @@ interface Connection extends RpcConn {
 }
 
 const RPC_VERB_SET = new Set<string>(RPC_VERBS);
+const SNAPSHOT_VERBS = new Set<RpcVerb>(["snapshot", "watch", "mirror.local.snapshot", "mirror.local.watch"]);
+const LEGACY_CAPABILITIES: readonly string[] = [MAIL_DELIVERY_CONFIRMATION_CAPABILITY, ANSWER_TRIGGER_CAPABILITY, QUESTION_DISMISSED_CAPABILITY];
 
 function isRpcVerb(value: unknown): value is RpcVerb {
   return typeof value === "string" && RPC_VERB_SET.has(value);
@@ -270,6 +272,7 @@ export class RpcServer {
   private readonly performance: PerformanceRecorder;
   private readonly server: Server;
   private readonly conns = new Set<Connection>();
+  private readonly snapshotChunks = new WeakMap<object, Map<string, readonly Buffer[]>>();
   private listening = false;
   private readonly credentials: PeerCredentials;
   private readonly trust: LocalRpcTrust;
@@ -373,6 +376,32 @@ export class RpcServer {
     if (conn.authenticatedBeeId !== undefined || conn.automationAuthority !== undefined || conn.humanChat !== undefined || conn.phoneOrigin !== undefined || conn.phoneLane !== undefined || !this.trust.enabled || this.trust.state !== "ready" || conn.ingress !== "local_unix" || conn.relayLane !== null || !conn.peerConnection) return false;
     try { this.trust.require(conn.peerConnection, conn.ingress); return true; } catch { return false; }
 
+  }
+
+  private sendSnapshot(conn: Connection, id: number, verb: RpcVerb, result: unknown, includeOperatorLocalHomes: boolean): void {
+    const key = `${verb}:${includeOperatorLocalHomes}:${LEGACY_CAPABILITIES.filter((capability) => !conn.clientCapabilities.includes(capability)).join(",")}`;
+    const shared = result !== null && typeof result === "object" ? result : null;
+    let variants = shared ? this.snapshotChunks.get(shared) : undefined;
+    let chunks = variants?.get(key);
+    if (!chunks) {
+      chunks = jsonChunks(publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes));
+      if (shared) {
+        if (!variants) {
+          variants = new Map();
+          this.snapshotChunks.set(shared, variants);
+        }
+        variants.set(key, chunks);
+      }
+    }
+    const socket = conn.socket;
+    if (socket.destroyed) return;
+    this.performance.measureSync("rpc.serialize", () => {
+      socket.cork();
+      socket.write(`{"id":${id},"ok":true,"result":`);
+      for (const chunk of chunks) socket.write(chunk);
+      socket.write("}\n");
+      socket.uncork();
+    });
   }
 
   private onConnection(socket: Socket): void {
@@ -697,6 +726,10 @@ export class RpcServer {
         return;
       }
       span.end();
+      if (SNAPSHOT_VERBS.has(verb)) {
+        this.sendSnapshot(conn, id, verb, result, includeOperatorLocalHomes);
+        return;
+      }
       conn.send({ id, ok: true, result: publicBeeResponse(verb, projectQuestionDismissalResult(verb, projectAnswerTriggerResult(verb, projectMailDeliveryResult(verb, result, conn.clientCapabilities), conn.clientCapabilities), conn.clientCapabilities), includeOperatorLocalHomes) });
     } catch (err) {
       if (err instanceof RpcError && err.code === "caller_not_trusted") this.refusals.record(err.code, conn.localPeer?.uid ?? null, conn.localPeer?.pid ?? null);
@@ -752,7 +785,7 @@ export const ENV_TRANSFER_VERBS: ReadonlySet<RpcVerb> = new Set([
 
 export function publicBeeResponse(verb: RpcVerb, result: unknown, includeOperatorLocalHomes = false): unknown {
   if (ENV_TRANSFER_VERBS.has(verb)) return result;
-  if ((verb === "snapshot" || verb === "watch" || verb === "mirror.local.snapshot" || verb === "mirror.local.watch") && result && typeof result === "object" && "templates" in result) {
+  if (SNAPSHOT_VERBS.has(verb) && result && typeof result === "object" && "templates" in result) {
     const { templates, ...observation } = result;
     return { ...publicEnvRecords(observation, includeOperatorLocalHomes) as object, templates };
   }

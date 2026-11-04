@@ -10,6 +10,7 @@ export class IdentityRecovery {
     return row ? {message: "identity unresolved", warning: now - row.since >= 600000} : undefined;
   }
   entries(): UnresolvedRuntime[] { return [...this.rows.values()]; }
+  stamp(now: number): string { return this.entries().map(row => `${row.beeId}:${row.generation}:${now - row.since >= 600000 ? "warning" : "open"}`).join(","); }
   counts(now: number): {count: number; overdue: number} { return {count: this.rows.size, overdue: this.entries().filter(row => now - row.since >= 600000).length}; }
   retry(now: number, recover: (row: UnresolvedRuntime) => boolean): void {
     if (now - this.lastAttempt < 1000) return;
