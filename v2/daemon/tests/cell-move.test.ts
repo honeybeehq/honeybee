@@ -1,7 +1,7 @@
 /** Local placement and retained operations over real disposable daemons. */
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,7 @@ import { makeDaemonDir, startDaemon, waitFor } from "./helpers.ts";
 const cellAgent = fileURLToPath(new URL("../../driver-cell/test-agent/agent.mjs", import.meta.url));
 const SESSION_ID = "move-fixture-conversation";
 
-async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "codex" } = {}) {
+async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "codex"; sandbox?: boolean } = {}) {
   const agent = opts.agent ?? "stub";
   const root = mkdtempSync(join(tmpdir(), "hb-cell-move-rpc-"));
   const origin = makeOrigin(root);
@@ -23,9 +23,12 @@ async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "code
   mkdirSync(cellsRoot);
   const claudeHome = join(root, "claude-home");
   mkdirSync(claudeHome);
-  const agentSpec = { command: process.execPath, args: [cellAgent], adapter: "stub" as const, env: { STUB_SESSION_ID: SESSION_ID } };
+  const stagedAgent = opts.sandbox ? join(root, "agent.mjs") : cellAgent;
+  if (opts.sandbox) copyFileSync(cellAgent, stagedAgent);
+  const agentSpec = { command: process.execPath, args: [stagedAgent], adapter: "stub" as const, env: { STUB_SESSION_ID: SESSION_ID } };
   const rig = makeDaemonDir({
-    cells: { root: cellsRoot, allowStubMove: true },
+    nodeKind: "satellite",
+    cells: { root: cellsRoot, allowStubMove: true, sandbox: opts.sandbox ?? false },
     agents: { stub: agentSpec, claude: agentSpec, codex: agentSpec },
   });
   let daemon = await startDaemon(rig.dir);
@@ -121,7 +124,7 @@ async function fixture(t: TestContext, opts: { agent?: "stub" | "claude" | "code
 }
 
 test("cell move RPC preserves conversation, source work, mail and retained operations", { timeout: 120_000 }, async (t) => {
-  const f = await fixture(t);
+  const f = await fixture(t, {sandbox: true});
   writeFileSync(join(f.cell.spaceDir, "retained-work.txt"), "retained\n");
   writeFileSync(join(f.origin.repo, "checkout-work.txt"), "checkout\n");
   const original = fingerprintOrigin(f.origin.repo);
