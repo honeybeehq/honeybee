@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { rmSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,8 +24,6 @@ test("Cell scope compiles with pre-ABI6 Landlock headers and keeps the live ABI 
       assert.match(run.stderr, /ABI >= 6 required/);
     } else assert.equal(run.status, 0, run.stderr);
   } finally {
-    const trash = join(tmpdir(), "honeybee-test-trash");
-    mkdirSync(trash, {recursive: true, mode: 0o700});
-    assert.equal(spawnSync("trash", ["--trash-dir", trash, root]).status, 0);
+    try { rmSync(root, {recursive: true, force: true, maxRetries: 10, retryDelay: 50}); } catch (error) { console.error("owned fixture cleanup failed", error); process.exitCode = 1; }
   }
 });

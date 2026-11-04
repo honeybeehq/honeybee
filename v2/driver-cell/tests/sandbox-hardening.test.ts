@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawn, spawnSync } from "node:child_process";
 import { createConnection, createServer } from "node:net";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { rmSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { bwrapArgs as productionBwrapArgs, defaultWritablePaths, sandboxEnvironment, sandboxProtectedPaths, seatbeltProfile, wrapWithSandbox as productionWrapWithSandbox } from "../src/sandbox.ts";
@@ -21,7 +21,7 @@ const bwrapArgs: typeof productionBwrapArgs = (policy, ...args) => productionBwr
 const wrapWithSandbox: typeof productionWrapWithSandbox = (policy, ...args) => productionWrapWithSandbox(withFixtureGateway(policy), ...args);
 
 const linux = process.platform === "linux";
-const dispose = (path: string): void => { assert.equal(spawnSync("trash", [path]).status, 0); };
+const dispose = (path: string): void => { try { rmSync(path, {recursive: true, force: true, maxRetries: 10, retryDelay: 50}); } catch (error) { console.error("owned fixture cleanup failed", error); process.exitCode = 1; } };
 
 test("hardening: defaults and overrides cannot reopen protected host paths", () => {
   assert.deepEqual(defaultWritablePaths(), []);

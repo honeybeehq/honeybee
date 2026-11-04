@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { rmSync, mkdirSync, mkdtempSync } from "node:fs";
 import { userInfo, tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -70,8 +70,6 @@ test("real home and nearest systemd ancestor refuse one exclusive create inside 
       else assert.fail(report.attribution + "; positive controls must succeed for the denial release gate");
     }
   } finally {
-    const trash = join(tmpdir(), "honeybee-test-trash");
-    mkdirSync(trash, {recursive: true, mode: 0o700});
-    assert.equal(spawnSync("trash", ["--trash-dir", trash, root]).status, 0);
+    try { rmSync(root, {recursive: true, force: true, maxRetries: 10, retryDelay: 50}); } catch (error) { console.error("owned fixture cleanup failed", error); process.exitCode = 1; }
   }
 });

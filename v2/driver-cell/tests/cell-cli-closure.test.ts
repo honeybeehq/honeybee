@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, writeFileSync, symlinkSync } from "node:fs";
+import { rmSync, mkdirSync, mkdtempSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -37,8 +37,6 @@ test("Cell CLI closure pins exact regular files and refuses missing, changed or 
     symlinkSync(join(root, "cli-chunk-ABC.js"), join(root, "cli-chunk-SYMLINK.js"));
     assert.throws(() => cellCliReadOnlyFiles(root), /closure/);
   } finally {
-    const trash = join(tmpdir(), "honeybee-test-trash");
-    mkdirSync(trash, {recursive: true, mode: 0o700});
-    assert.equal(spawnSync("trash", ["--trash-dir", trash, root]).status, 0);
+    try { rmSync(root, {recursive: true, force: true, maxRetries: 10, retryDelay: 50}); } catch (error) { console.error("owned fixture cleanup failed", error); process.exitCode = 1; }
   }
 });

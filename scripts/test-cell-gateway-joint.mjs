@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, symlinkSync } from "node:fs";
+import { rmSync, chmodSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,8 +48,5 @@ try {
     assert.equal(result.status, 0, custom ? "Custom daemon home fixture" : "Default daemon home fixture");
   }
 } finally {
-  const trashDirectory = join(tmpdir(), "honeybee-test-trash");
-  mkdirSync(trashDirectory, { recursive: true, mode: 0o700 });
-  const cleanup = spawnSync("trash", ["--trash-dir", trashDirectory, root], { stdio: "inherit" });
-  assert.equal(cleanup.status, 0, "Only the test-owned fixture tree is trashed");
+  try { rmSync(root, {recursive: true, force: true, maxRetries: 10, retryDelay: 50}); } catch (error) { console.error("owned fixture cleanup failed", error); process.exitCode = 1; }
 }

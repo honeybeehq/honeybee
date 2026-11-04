@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { rmSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -38,8 +38,6 @@ test("Codex resume bundles canonicalize home aliases and refuse unsafe rollout p
     assert.equal(resumeStatePaths("codex", join(root, "missing"), root, "fixture"), null);
   } finally {
     db.close();
-    const trash = join(tmpdir(), "honeybee-test-trash");
-    mkdirSync(trash, {recursive: true, mode: 0o700});
-    assert.equal(spawnSync("trash", ["--trash-dir", trash, root]).status, 0);
+    try { rmSync(root, {recursive: true, force: true, maxRetries: 10, retryDelay: 50}); } catch (error) { console.error("owned fixture cleanup failed", error); process.exitCode = 1; }
   }
 });

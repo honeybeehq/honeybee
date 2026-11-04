@@ -1,6 +1,6 @@
 import { after } from "node:test";
 import { createServer } from "node:net";
-import { mkdtempSync } from "node:fs";
+import { rmSync, mkdtempSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import type { SandboxPolicy } from "../src/sandbox.ts";
@@ -12,6 +12,6 @@ await new Promise<void>((resolve, reject) => { server.once("error", reject); ser
 server.unref();
 after(async () => {
   await new Promise<void>(resolve => server.close(() => resolve()));
-  spawnSync("trash", [root]);
+  try { rmSync(root, {recursive: true, force: true, maxRetries: 10, retryDelay: 50}); } catch (error) { console.error("owned fixture cleanup failed", error); process.exitCode = 1; }
 });
 export const withFixtureGateway = (policy: SandboxPolicy): SandboxPolicy => ({ ...policy, gatewaySocketPath: policy.gatewaySocketPath ?? fixtureGatewaySocket });

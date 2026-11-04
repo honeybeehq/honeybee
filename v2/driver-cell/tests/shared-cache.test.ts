@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
-import { mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { rmSync, mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { sandboxEnvironment, wrapWithSandbox } from "../src/sandbox.ts";
 
@@ -118,7 +118,7 @@ test("shared cache: Cells cannot write host homes or another bee's TMPDIR, and e
     for (const { child } of children) child.stdin?.end();
     const exits = await Promise.all(children.map(({ closed }) => closed));
     if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));
-    if (!managedRoot) assert.equal(spawnSync("trash", [root]).status, 0);
+    if (!managedRoot) { try { rmSync(root, {recursive: true, force: true, maxRetries: 10, retryDelay: 50}); } catch (error) { console.error("owned fixture cleanup failed", error); process.exitCode = 1; } }
     assert.deepEqual(exits, children.map(() => 0));
   }
 });
