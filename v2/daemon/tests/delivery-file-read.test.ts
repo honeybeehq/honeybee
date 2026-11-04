@@ -21,8 +21,9 @@ import { disposeAndAwaitOwnedChild, waitForGateProfile, waitForGateReaderObserva
 
 before(ensureDeliveryFileArtifact);
 for (const substrate of ["hsr", "cell-sandbox", "satellite-default"] as const) test(`${process.platform === "darwin" ? "Darwin " : ""}OS-level file read outside cwd: ${substrate}; tool-policy read UNVERIFIED (OS-level only)`, {skip: process.platform !== "linux" && process.platform !== "darwin"}, async t => {
-  const needsVisibleRoot = process.platform === "linux" && substrate !== "hsr";
-  const base = deliveryReadFixtureBase(process.platform, substrate !== "hsr", tmpdir(), process.env.RUNNER_TEMP, process.cwd());
+  const sandboxed = substrate === "cell-sandbox" || substrate === "satellite-default" && sandboxDefaultFor("satellite", process.platform);
+  const needsVisibleRoot = process.platform === "linux" && sandboxed;
+  const base = deliveryReadFixtureBase(process.platform, sandboxed, tmpdir(), process.env.RUNNER_TEMP, process.cwd());
   mkdirSync(base, {recursive: true, mode: 0o700});
   const canonicalBase = realpathSync(base);
   if (needsVisibleRoot) assert.ok(outsideLinuxPrivateMounts(canonicalBase), "Sandboxed Linux delivery read fixture base resolves inside a private mount");
@@ -36,8 +37,7 @@ for (const substrate of ["hsr", "cell-sandbox", "satellite-default"] as const) t
   const id = randomUUID(), content = `Honeybee delivery content: publication=${id}\n\nnonce-${randomUUID()}`;
   const row = new DeliveryFiles(undefined, root).publish(data, "owner", "bee", id, content, [work]);
   const fixture = fileURLToPath(new URL("./fixtures/delivery-file-reader.mjs", import.meta.url));
-  const sandboxed = substrate !== "hsr";
-  if (substrate === "satellite-default") assert.equal(sandboxDefaultFor("satellite"), true);
+  if (substrate === "satellite-default") assert.equal(sandboxDefaultFor("satellite"), process.platform !== "darwin");
   const profilePath = join(work, "sandbox.sb");
   const policy = {cellDir: work, writablePaths: [], scratchPaths: []};
   const command = sandboxed ? wrapWithSandbox(policy, process.execPath, [fixture], profilePath) : {command: process.execPath, args: [fixture]};

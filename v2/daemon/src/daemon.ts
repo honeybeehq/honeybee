@@ -1116,7 +1116,7 @@ export class HiveDaemon {
         root: canonicalPath(this.cfg.dataDir),
         rootForBee: bee => {
           const wrapper = cell.cellOf(bee.id)?.paths.wrapperDir;
-          return deliveryContentRoot(canonicalPath(this.cfg.dataDir), bee.substrate, bee.substrate === "cell" && sandboxEnabled(this.cfg.nodeKind, this.resolveCellSpec(bee.id).sandbox), wrapper ? canonicalPath(wrapper) : null);
+          return deliveryContentRoot(canonicalPath(this.cfg.dataDir), bee.substrate, bee.substrate === "cell" && sandboxEnabled(this.cfg.nodeKind, this.resolveCellSpec(bee.id).sandbox, process.platform), wrapper ? canonicalPath(wrapper) : null);
         },
         worktrees: bee => {
           const space = cell.cellOf(bee.id)?.paths.spaceDir;
@@ -2913,7 +2913,7 @@ export class HiveDaemon {
       if (bee?.substrate !== "cell") return;
       const cell = bee.cellId ? this.store.getCell(bee.cellId) : null;
       if (!cell || cell.state === "removed") throw new Error("cell_unresolved");
-      sandboxed = sandboxEnabled(this.cfg.nodeKind, cell.sandbox ?? this.cfg.cellSandbox);
+      sandboxed = sandboxEnabled(this.cfg.nodeKind, cell.sandbox ?? this.cfg.cellSandbox, process.platform);
     } catch { this.log("security.confinement cell_sandbox_unresolved assumed=sandboxed"); }
     try {
       if (!sandboxed) return;

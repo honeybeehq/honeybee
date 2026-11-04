@@ -41,16 +41,16 @@ import {
 const IS_DARWIN = platform() === "darwin";
 const IS_LINUX = platform() === "linux";
 
-test("sandbox.defaults: workstation OFF, satellite ON, cloud OFF (A4)", () => {
+test("sandbox.defaults: satellite follows the platform and other node kinds remain off", () => {
   assert.equal(sandboxDefaultFor("workstation"), false);
-  assert.equal(sandboxDefaultFor("satellite"), true);
+  assert.equal(sandboxDefaultFor("satellite"), process.platform !== "darwin");
   assert.equal(sandboxDefaultFor("cloud"), false);
 });
 
 test("sandbox.override: per-cell override beats the node-kind default", () => {
   assert.equal(sandboxEnabled("workstation", null), false);
   assert.equal(sandboxEnabled("workstation", true), true);
-  assert.equal(sandboxEnabled("satellite", undefined), true);
+  assert.equal(sandboxEnabled("satellite", undefined), process.platform !== "darwin");
   assert.equal(sandboxEnabled("satellite", false), false);
   assert.equal(sandboxEnabled("cloud", true), true);
 });

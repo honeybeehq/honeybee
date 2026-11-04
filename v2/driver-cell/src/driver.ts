@@ -782,7 +782,7 @@ export class CellDriver implements RuntimeDriver {
       HIVE_CELL: "1",
       HIVE_CELL_SPACE: cell.paths.spaceName,
     };
-    if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
+    if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox, platform())) {
       return { ...harness, cwd: cell.paths.spaceDir, env };
     }
     const cap = this.effectiveSandboxCap();

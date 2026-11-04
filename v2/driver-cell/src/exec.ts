@@ -285,7 +285,7 @@ export async function runCellExec(
   };
   let wrappedCommand = command as string;
   let wrappedArgs = args;
-  if (sandboxEnabled(spec.nodeKind, spec.sandbox)) {
+  if (sandboxEnabled(spec.nodeKind, spec.sandbox, process.platform)) {
     const wrapped = wrapWithSandbox(
       { cellDir: paths.wrapperDir, writablePaths: defaultWritablePaths(), kvm: spec.kvm },
       command,

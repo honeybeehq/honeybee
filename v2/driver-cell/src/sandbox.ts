@@ -20,13 +20,13 @@ export type NodeKind = "workstation" | "satellite" | "cloud";
 export const NODE_KINDS: readonly NodeKind[] = ["workstation", "satellite", "cloud"];
 
 /** A4: sandbox default per node kind. */
-export function sandboxDefaultFor(kind: NodeKind): boolean {
-  return kind === "satellite";
+export function sandboxDefaultFor(kind: NodeKind, osPlatform: string = platform()): boolean {
+  return kind === "satellite" && osPlatform !== "darwin";
 }
 
 /** Effective sandbox decision: per-cell override > node-kind default. */
-export function sandboxEnabled(kind: NodeKind, cellOverride: boolean | null | undefined): boolean {
-  return cellOverride ?? sandboxDefaultFor(kind);
+export function sandboxEnabled(kind: NodeKind, cellOverride: boolean | null | undefined, osPlatform: string = platform()): boolean {
+  return cellOverride ?? sandboxDefaultFor(kind, osPlatform);
 }
 
 export interface SandboxPolicy {
