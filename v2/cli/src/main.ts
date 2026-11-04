@@ -1,3 +1,5 @@
+import { upstreamFetchLine } from "../../driver-cell/src/upstreamStatus.ts";
+import type { DeployInfoResult } from "../../daemon/src/protocol.ts";
 import { serviceDirectory } from "../../../src/servicePaths.ts";
 import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
@@ -3370,11 +3372,11 @@ async function cmdCommands(ctx: CliContext, parsed: Parsed): Promise<number> {
 }
 
 async function cmdDeployInfo(ctx: CliContext): Promise<number> {
-  const daemon = await withClient(ctx, (c) => c.request<Record<string, unknown>>("deployInfo"), { legacyProtocolVerbs: ["deployInfo"] });
+  const daemon = await withClient(ctx, (c) => c.request<DeployInfoResult & Record<string, unknown>>("deployInfo"), { legacyProtocolVerbs: ["deployInfo"] });
   const result = { ...daemon, cliIdentity: BUILD_IDENTITY, daemonIdentity: daemon.identity ?? null };
   const disk = daemon.cellDisk as CellDiskStatus | null | undefined;
   const capacity = daemon.capacity as NodeCapacity | null | undefined;
-  emit(ctx, () => [...(disk ? [cellDiskLine(disk)] : []), ...(capacity ? [capacityLine(capacity)] : []), JSON.stringify(result, null, 2)], result, false);
+  emit(ctx, () => [...(disk ? [cellDiskLine(disk)] : []), ...(daemon.upstreamFetch ? [upstreamFetchLine(daemon.upstreamFetch)] : []), ...(capacity ? [capacityLine(capacity)] : []), JSON.stringify(result, null, 2)], result, false);
   return 0;
 }
 
@@ -3407,7 +3409,7 @@ async function cmdHumanRef(ctx: CliContext, parsed: Parsed): Promise<number> {
 
 async function cmdHealth(ctx: CliContext): Promise<number> {
   const result = await withClient(ctx, (c) => c.request<HealthResult>("health"));
-  emit(ctx, () => [...renderHealth(result), ...(result.cellDisk ? [cellDiskLine(result.cellDisk)] : []), ...(result.capacity ? [capacityLine(result.capacity)] : [])], result, false);
+  emit(ctx, () => [...renderHealth(result), ...(result.upstreamFetch ? [upstreamFetchLine(result.upstreamFetch)] : []), ...(result.cellDisk ? [cellDiskLine(result.cellDisk)] : []), ...(result.capacity ? [capacityLine(result.capacity)] : [])], result, false);
   return 0;
 }
 

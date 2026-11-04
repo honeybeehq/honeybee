@@ -1000,6 +1000,7 @@ export class HiveDaemon {
       onUpstreamRefreshed: (originRepo, result) => {
         const sync = result.sync;
         if (sync == null) return;
+        this.retention?.noteUpstreamRefresh(originRepo, sync.refresh);
         const error = sync.refresh.status === "failed" ? ` error=${JSON.stringify(sync.refresh.error)}` : "";
         const skipped = sync.skipped == null ? "" : ` skipped=${JSON.stringify(sync.skipped)}`;
         this.log(`cell.upstream origin=${originRepo} mirror=${sync.refresh.status} ref=${sync.trackingRef ?? "-"} before=${sync.before ?? "-"} after=${sync.after ?? "-"} ms=${sync.durationMs}${result.built > 0 ? ` pool_built=${result.built}` : ""}${skipped}${error}`);
@@ -6881,6 +6882,7 @@ export class HiveDaemon {
       storePath: this.cfg.storePath,
       localSecurity: this.rpc?.localSecurity,
       cellDisk: this.retention?.diskStatus() ?? null,
+      upstreamFetch: this.retention?.upstreamFetchStatus(),
       capacity: this.retention?.capacity(true) ?? null,
       transcriptSegments: this.transcriptSegmentsStatus(),
       ...(this.resumeSync ? { resumeBundles: this.resumeSync.status() } : {}),
@@ -6982,6 +6984,7 @@ export class HiveDaemon {
         ? { state: "disabled", reason: this.naming.disabledReason }
         : { state: this.naming.auto ? "ok" : "off" },
       cellDisk: this.retention?.diskStatus() ?? null,
+      upstreamFetch: this.retention?.upstreamFetchStatus(),
       capacity: this.retention?.capacity(true) ?? null,
       ...(this.scheduling ? { scheduling: this.scheduling() } : {}),
     };

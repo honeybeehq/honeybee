@@ -14,8 +14,12 @@ import { dirtyReport } from "../src/remove.ts";
 import { evictCellWrapper } from "../src/retention.ts";
 import { buildPoolMember, claimFromPool, listPoolMembers, repoKeyFor } from "../src/warmPool.ts";
 import { hasCommit, tryGit } from "../src/git.ts";
-import { holdMirrorLock, mirrorDirFor, readUpstreamMirror, refreshUpstreamMirror, resolveCellBase, syncOriginFromMirror, UPSTREAM_REF } from "../src/upstream.ts";
+import { holdMirrorLock, mirrorDirFor, readUpstreamMirror as readNetworkMirror, refreshUpstreamMirror as refreshNetworkMirror, resolveCellBase, syncOriginFromMirror as syncNetworkMirror, UPSTREAM_REF } from "../src/upstream.ts";
 import { commitInCell, commitOn, fingerprintOrigin, g, makeOrigin, makeRig } from "./helpers.ts";
+
+const refreshUpstreamMirror = (origin: string, root: string, opts: Parameters<typeof refreshNetworkMirror>[2]) => refreshNetworkMirror(origin, root, { ...opts, allowLocalFixture: true });
+const syncOriginFromMirror = (origin: string, root: string, opts: Parameters<typeof syncNetworkMirror>[2]) => syncNetworkMirror(origin, root, { ...opts, allowLocalFixture: true });
+const readUpstreamMirror = (origin: string, root: string) => readNetworkMirror(origin, root, true);
 
 function withUpstream() {
   const rig = makeRig();

@@ -1,3 +1,4 @@
+import type { UpstreamFetchStatus } from "../../driver-cell/src/upstreamStatus.ts";
 import type { PublicBeeRow } from "../../core/src/envRedaction.ts";
 export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import { honeybeeBuildIdentity, type BuildIdentity } from "../../../src/release/buildIdentity.ts";
@@ -1985,6 +1986,7 @@ export interface DeployInfoResult {
   storePath: string;
   /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
   cellDisk?: CellDiskStatus | null;
+  upstreamFetch?: UpstreamFetchStatus;
   capacity?: NodeCapacity | null;
 }
 
@@ -2046,6 +2048,7 @@ export interface HealthResult {
   naming?: NamingHealth;
   /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
   cellDisk?: CellDiskStatus | null;
+  upstreamFetch?: UpstreamFetchStatus;
   capacity?: NodeCapacity | null;
   scheduling?: import("../../../src/processScheduling.ts").SchedulingStatus;
 }

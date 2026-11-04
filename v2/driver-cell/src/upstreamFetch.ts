@@ -9,7 +9,8 @@ export interface UpstreamSshPolicy {
   knownHostsFile: string;
 }
 
-export type UpstreamFetchFailure = "ssh_policy_invalid" | "host_key_refused" | "https_auth_unsupported" | "invalid_objects" | "transport_refused" | "fetch_failed";
+export const UPSTREAM_FETCH_FAILURES = ["ssh_policy_invalid", "host_key_refused", "ssh_auth_refused", "https_auth_unsupported", "invalid_objects", "transport_refused", "provenance_refused", "fetch_failed"] as const;
+export type UpstreamFetchFailure = typeof UPSTREAM_FETCH_FAILURES[number];
 
 export class UpstreamFetchError extends Error {
   readonly code: UpstreamFetchFailure;
@@ -24,13 +25,13 @@ export function resolveUpstreamSshPolicy(raw: unknown, configDir: string, home =
   if (raw === undefined) return { identityFiles: [join(home, ".ssh", "id_ed25519"), join(home, ".ssh", "id_rsa")], knownHostsFile: join(home, ".ssh", "known_hosts") };
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw new UpstreamFetchError("ssh_policy_invalid", "upstreamSsh must contain identityFiles and knownHostsFile");
   const c = raw as Record<string, unknown>;
-  const valid = (v: unknown): v is string => typeof v === "string" && v.length > 0 && !/[\x00\r\n]/u.test(v);
+  const valid = (v: unknown): v is string => typeof v === "string" && v.length > 0 && !/[%\x00\r\n]/u.test(v);
   if (!Array.isArray(c.identityFiles) || c.identityFiles.length === 0 || !c.identityFiles.every(valid) || !valid(c.knownHostsFile)) throw new UpstreamFetchError("ssh_policy_invalid", "upstreamSsh requires nonempty identityFiles and knownHostsFile paths");
   return { identityFiles: c.identityFiles.map((p) => resolve(configDir, p)), knownHostsFile: resolve(configDir, c.knownHostsFile) };
 }
 
 function checkedFile(path: string, optional: boolean, publicFile = false): boolean {
-  if (!isAbsolute(path)) throw new UpstreamFetchError("ssh_policy_invalid", "upstream SSH paths must be absolute");
+  if (!isAbsolute(path) || /[%\x00\r\n]/u.test(path)) throw new UpstreamFetchError("ssh_policy_invalid", "upstream SSH paths must be absolute without SSH expansion tokens");
   let current = parse(path).root;
   const parts = path.slice(current.length).split(sep).filter(Boolean);
   for (let i = 0; i < parts.length; i++) {
@@ -84,17 +85,22 @@ export function upstreamFetchEnv(cwd: string, url: string, ssh: UpstreamSshPolic
   const listed = spawnSync("git", ["config", "--list", "--name-only", "--null", "--includes"], { cwd, env: hostGitEnv(env, overrides), encoding: "utf8", timeout: 10_000, maxBuffer: 1024 * 1024 });
   if (listed.error || listed.status !== 0) throw new UpstreamFetchError("fetch_failed", "cannot inspect upstream repository configuration");
   for (const key of listed.stdout.split("\0")) {
+    if (/^(?:fetch|receive|transfer)\.fsck\.|^fsck\./iu.test(key)) throw new UpstreamFetchError("transport_refused", "upstream fetch refuses repository object-validation overrides");
+    if (/^url\..+\.(?:insteadof|pushinsteadof)$/iu.test(key)) throw new UpstreamFetchError("transport_refused", "upstream fetch refuses repository URL rewrites");
+    const remote = /^remote\.(.*)\.([^.]+)$/iu.exec(key);
+    if (remote && (!/^[a-z0-9][a-z0-9_.-]*$/iu.test(remote[1]!) || !/^(?:url|fetch|pushurl|mirror|tagopt|prune|promisor|partialclonefilter)$/iu.test(remote[2]!))) throw new UpstreamFetchError("transport_refused", "upstream fetch refuses URL-named remotes and executable remote transport settings");
+    if (/^http\./iu.test(key) && !/^http\.(?:.*\.)?(?:extraheader|cookiefile|proxy|sslcert|sslkey|savecookies|sslverify|followredirects)$/iu.test(key)) throw new UpstreamFetchError("transport_refused", "upstream fetch refuses unsupported HTTP configuration");
     if (/^credential\..+\.helper$/iu.test(key) || /^http\..+\.(?:extraheader|cookiefile|proxy|sslcert|sslkey)$/iu.test(key)) overrides.push([key, ""]);
     if (/^http\..+\.followredirects$/iu.test(key)) overrides.push([key, "false"]);
     if (/^http\..+\.savecookies$/iu.test(key)) overrides.push([key, "false"]);
     if (/^http\..+\.sslverify$/iu.test(key)) overrides.push([key, "true"]);
-    if (/^url\..+\.insteadof$/iu.test(key)) overrides.push([key, "hive-disabled-rewrite://"]);
   }
   return hostGitEnv(env, overrides);
 }
 
 export function upstreamFetchFailure(stderr: string): UpstreamFetchFailure {
   if (/host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED|No .* host key is known/iu.test(stderr)) return "host_key_refused";
+  if (/Permission denied \([^)]*publickey/iu.test(stderr)) return "ssh_auth_refused";
   if (/could not read Username|Authentication failed|terminal prompts disabled|HTTP.*40[13]/iu.test(stderr)) return "https_auth_unsupported";
   if (/fsck|corrupt|inflate|hash mismatch|bad object|invalid object|missing blob|did not send all necessary objects|unpack.*(?:failed|error)/iu.test(stderr)) return "invalid_objects";
   return "fetch_failed";

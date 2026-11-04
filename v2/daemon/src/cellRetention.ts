@@ -1,3 +1,4 @@
+import { UpstreamFetchMonitor, type UpstreamFetchObservation, type UpstreamFetchStatus } from "../../driver-cell/src/upstreamStatus.ts";
 import { passDiagnostics, readPassDiagnostics } from "./cellRetentionDiagnostics.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 /**
@@ -289,6 +290,7 @@ export class CellRetentionService {
   private lastPass: CellGcPassSummary | null;
   private progress: CellGcProgress | null = null;
   private upstreamRefs = new Map<string, UpstreamRef>();
+  private readonly upstreamMonitor = new UpstreamFetchMonitor();
   private evictionTimes: number[] = [];
   private submoduleHolds: Array<{ cellId: string | null; beeId: string; paths: string[] }> = [];
   private lastCapAuditAt: number | null = null;
@@ -951,8 +953,17 @@ export class CellRetentionService {
     };
   }
 
+  noteUpstreamRefresh(originRepo: string, observation: UpstreamFetchObservation): void {
+    this.upstreamMonitor.observe(originRepo, observation);
+  }
+
+  upstreamFetchStatus(): UpstreamFetchStatus {
+    return this.upstreamMonitor.snapshot(this.deps.policy.fetchUpstream);
+  }
+
   private noteUpstreams(statuses: RetentionUpstreamStatus[]): void {
     for (const s of statuses) {
+      this.noteUpstreamRefresh(s.originRepo, s);
       if (s.ref) this.upstreamRefs.set(s.originRepo, s.ref);
       else this.upstreamRefs.delete(s.originRepo);
       if (s.status === "fetched") this.deps.log(`cell.retention.upstream_fetched origin=${s.originRepo} sha=${s.ref?.sha ?? "-"}`);
