@@ -40,7 +40,7 @@ import { collectBuildProvenance } from "../release/buildIdentityProducer.js";
 import { hostGitEnv } from "../hostGit.js";
 import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../release/runtimeTarget.js";
 import { waitForDeployReadiness, type DeployProcessIdentity } from "../deployReadiness.js";
-import { inspectProcess } from "../v2/updateOwnerClient.mjs";
+import { inspectProcess, loadNodeConfig } from "../v2/updateOwnerClient.mjs";
 import { DatabaseSync } from "node:sqlite";
 
 const execFileAsync = promisify(execFile);
@@ -57,6 +57,17 @@ const USAGE = [
 ].join("\n");
 
 const KNOWN_FLAGS = new Set(["provision-question-withdrawal", "skip-tests", "keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
+
+/** Validate the target node before entering any deploy installation path. */
+export function assertDeployNodePolicy(dataDir: string, osPlatform: string = process.platform): void {
+  const cfg = loadNodeConfig(dataDir);
+  if (!cfg.nodeKindExplicit && cfg.cellSandbox === null) {
+    throw new Error("deploy: configure nodeKind or cells.sandbox explicitly before installing a runtime");
+  }
+  if (osPlatform === "darwin" && (cfg.cellSandbox ?? cfg.nodeKind === "satellite")) {
+    throw new Error("deploy: sandboxed Cells on darwin require unsupported private Claude/Codex harness input projection; refusing installation");
+  }
+}
 
 export async function cmdDeploy(parsed: Parsed): Promise<void> {
   // Help and unknown flags must never fall through to a real deploy: a bare
@@ -82,6 +93,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
       || (binDirectory !== undefined && (typeof binDirectory !== "string" || binDirectory.length === 0))
       || (expected !== "none" && !/^[a-f0-9]{40}$/.test(expected)) || parsed.args.length
       || ["list", "init", "rollback"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
+    assertDeployNodePolicy(join(runtimeRoot(), "..", "v2"));
     const result = await deployArtifact({ archive, identity: JSON.parse(await readFile(identity, "utf8")),
       admission: JSON.parse(await readFile(admission, "utf8")),
       ...(typeof binDirectory === "string" ? { cliBinDirectory: binDirectory } : {}),
@@ -97,8 +109,9 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
   if (modes > 1 || (modes === 1 && parsed.args.length > 0)) throw new Error(USAGE);
   if (wantsList) return deployList(parsed);
   if (wantsInit) return deployInit();
+  if (!wantsRollback && parsed.args.length > 1) throw new Error(USAGE);
+  assertDeployNodePolicy(join(runtimeRoot(), "..", "v2"));
   if (wantsRollback) return deployRollback();
-  if (parsed.args.length > 1) throw new Error(USAGE);
   return deployRun(parsed);
 }
 

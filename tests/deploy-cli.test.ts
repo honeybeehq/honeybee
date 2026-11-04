@@ -107,6 +107,8 @@ test("hive deploy refuses unknown flags before doing anything", async () => {
 
 test("artifact deploy flags reach artifact validation without bypassing help", async () => {
   await withStore(async (dir) => {
+    await mkdir(join(dir, "v2"));
+    await writeFile(join(dir, "v2", "config.json"), JSON.stringify({ cells: { sandbox: false } }));
     const args = ["--artifact", join(dir, "runtime.tgz"), "--identity", join(dir, "identity.json"),
       "--admission", join(dir, "admission.json"), "--expected-current", "none", "--bin-dir", join(dir, "bin")];
     const { stdout } = await hive(dir, "deploy", ...args, "--help");
@@ -141,6 +143,8 @@ test("hive deploy refuses conflicting modes and stray positionals", async () => 
 
 test("hive deploy outside the honeybee repo refuses before doing anything", async () => {
   await withStore(async (dir) => {
+    await mkdir(join(dir, "v2"));
+    await writeFile(join(dir, "v2", "config.json"), JSON.stringify({ cells: { sandbox: false } }));
     const elsewhere = await mkdtemp(join(tmpdir(), "hive-deploy-elsewhere-"));
     try {
       const stderr = await execFileAsync(
@@ -162,6 +166,8 @@ test("hive deploy outside the honeybee repo refuses before doing anything", asyn
 
 test("deploy --skip-tests is accepted and threaded to the source build", async () => {
   await withStore(async (dir) => {
+    await mkdir(join(dir, "v2"));
+    await writeFile(join(dir, "v2", "config.json"), JSON.stringify({ cells: { sandbox: false } }));
     const stderr = await execFileAsync(process.execPath,
       [join(process.cwd(), "tests/cli-entry.mjs"), "deploy", "--skip-tests"],
       { cwd: dir, env: ENV(dir) }).then(
