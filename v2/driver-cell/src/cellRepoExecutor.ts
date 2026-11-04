@@ -54,16 +54,16 @@ export async function executeCellRepoBatch(data: { identity: CellRepoIdentity; r
   if (manifest.version !== 1 || manifest.files?.[basename(helper)] !== createHash("sha256").update(await readFile(helper)).digest("hex")) throw new CellRepoRefusal("unavailable");
   const scope = validatedCellScopeBinary();
   const parentNamespace = await stat("/proc/self/ns/user");
-  const args = ["--", "/usr/bin/bwrap", "--unshare-all", "--die-with-parent", "--clearenv", "--cap-drop", "ALL", "--tmpfs", "/",
+  const args = ["--parent-pid", String(process.pid), "--", "/usr/bin/bwrap", "--unshare-all", "--die-with-parent", "--clearenv", "--cap-drop", "ALL", "--tmpfs", "/",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
     "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/scratch", "--dir", "/run", "--dir", "/run/hive",
     "--ro-bind", node, "/run/hive/node", "--ro-bind", helper, "/run/hive/helper.mjs", "--ro-bind", scope, "/run/hive/scope",
     "--ro-bind-fd", "3", "/cell", "--chdir", "/cell", "/run/hive/scope", "--assert-userns", `${parentNamespace.dev}:${parentNamespace.ino}`, "--", "/run/hive/node", "/run/hive/helper.mjs", String(data.timeoutMs)];
   if (signal?.aborted) throw new CellRepoRefusal("deadline");
   const result = await new Promise<string>((resolveResult, reject) => {
-    const child = spawn(scope, args, { env: {}, stdio: ["pipe", "pipe", "pipe", directory.fd] });
+    const child = spawn(scope, args, { env: {}, detached: true, stdio: ["pipe", "pipe", "pipe", directory.fd] });
     const observed = child.pid === undefined ? null : inspectProcess(child.pid);
-    const identity = observed?.kind === "present" ? { pid: observed.pid, birth: observed.birth, bootId: observed.bootId } : null;
+    const identity = observed?.kind === "present" && observed.pgid === child.pid ? { pid: observed.pid, birth: observed.birth, bootId: observed.bootId } : null;
     if (identity) onStarted?.(identity);
     const output: Buffer[] = [];
     let bytes = 0;
@@ -72,8 +72,8 @@ export async function executeCellRepoBatch(data: { identity: CellRepoIdentity; r
     const stop = (code: "deadline" | "output_limit" | "unavailable") => {
       failure ??= new CellRepoRefusal(code);
       const current = identity ? inspectProcess(identity.pid) : null;
-      if (identity && current && sameProcess(identity, current)) {
-        try { process.kill(identity.pid, "SIGKILL"); } catch {}
+      if (identity && current && sameProcess(identity, current) && current.pgid === identity.pid) {
+        try { process.kill(-identity.pid, "SIGKILL"); } catch {}
       } else child.kill("SIGKILL");
     };
     if (!identity) stop("unavailable");

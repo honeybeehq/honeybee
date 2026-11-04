@@ -45,11 +45,18 @@ export async function runCellRepoBatch(identity: CellRepoIdentity, request: Cell
     const output: Buffer[] = [];
     let bytes = 0;
     let diagnostics = 0;
+    let sandboxIdentity: ProcessIdentity | null = null;
+    let prefix = "";
+    let started = false;
     const kill = () => {
       const current = owned ? inspectProcess(owned.pid) : null;
       if (owned && current && sameProcess(owned, current) && current.pgid === owned.pid) {
         try { process.kill(-owned.pid, "SIGKILL"); } catch {}
       } else if (!owned) child.kill("SIGKILL");
+      const sandbox = sandboxIdentity ? inspectProcess(sandboxIdentity.pid) : null;
+      if (sandboxIdentity && sandbox && sameProcess(sandboxIdentity, sandbox) && sandbox.pgid === sandboxIdentity.pid) {
+        try { process.kill(-sandboxIdentity.pid, "SIGKILL"); } catch {}
+      }
     };
     const stop = (code: "deadline" | "output_limit" | "unavailable") => { failure ??= new CellRepoRefusal(code); child.stdin.destroy(); kill(); };
     const timer = setTimeout(() => stop("deadline"), timeoutMs);
@@ -59,6 +66,21 @@ export async function runCellRepoBatch(identity: CellRepoIdentity, request: Cell
       bytes += chunk.length;
       if (bytes > CELL_REPO_REPORT_BYTES) stop("output_limit");
       else output.push(chunk);
+      if (!started) {
+        const end = chunk.indexOf(10);
+        prefix += chunk.subarray(0, end < 0 ? chunk.length : end).toString("utf8");
+        if (Buffer.byteLength(prefix) > 4096) { stop("output_limit"); return; }
+        if (end >= 0) {
+          started = true;
+          try {
+            const frame = JSON.parse(prefix);
+            sandboxIdentity = processIdentityValue(frame.started);
+            if (!sandboxIdentity || Object.keys(frame).length !== 1) throw new Error();
+            const observed = inspectProcess(sandboxIdentity.pid);
+            if (observed.kind === "present" && (!sameProcess(sandboxIdentity, observed) || observed.ppid !== owned?.pid || observed.pgid !== sandboxIdentity.pid)) throw new Error();
+          } catch { stop("unavailable"); }
+        }
+      }
     });
     child.stderr.on("data", (chunk: Buffer) => { diagnostics += chunk.length; if (diagnostics > CELL_REPO_DIAGNOSTIC_BYTES) stop("output_limit"); });
     child.once("error", () => { failure ??= new CellRepoRefusal("unavailable"); kill(); });

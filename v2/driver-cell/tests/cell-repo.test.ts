@@ -8,6 +8,7 @@ import test from "node:test";
 import { runCellRepoBatch } from "../src/cellRepo.ts";
 import { executeCellRepoBatch } from "../src/cellRepoExecutor.ts";
 import { inspectProcess, type ProcessIdentity } from "../../harness/src/processIdentity.ts";
+import { validatedCellScopeBinary } from "../src/cellScope.ts";
 import { CellRepoRefusal, parseCellRepoInspection, type CellRepoIdentity } from "../src/cellRepoProtocol.ts";
 
 const sha = "a".repeat(40);
@@ -89,6 +90,16 @@ test("confined inspection returns a batch and refuses redirected allocation path
   }), (error: unknown) => error instanceof CellRepoRefusal && error.code === "deadline");
   assert.ok(processIdentity);
   assert.equal(inspectProcess((processIdentity as ProcessIdentity).pid).kind, "gone");
+  for (let round = 0; round < 50; round++) {
+    const cancel = new AbortController();
+    await assert.rejects(executeCellRepoBatch({ identity, request: { operation: "inspect", ignored: false }, timeoutMs: 5000, helperPath: fake }, cancel.signal, () => {
+      setTimeout(() => cancel.abort(), 100);
+    }), (error: unknown) => error instanceof CellRepoRefusal && error.code === "deadline");
+  }
+  const scope = validatedCellScopeBinary();
+  assert.equal(spawnSync(scope, ["--parent-pid", String(process.pid), "--", "/usr/bin/true"], { env: {}, timeout: 1000 }).status, 0);
+  assert.equal(spawnSync(scope, ["--parent-pid", "2147483646", "--", "/usr/bin/true"], { env: {}, timeout: 1000 }).status, 124);
+  assert.equal(spawnSync(scope, ["--parent-pid", "1", "--", "/usr/bin/true"], { env: {}, timeout: 1000 }).status, 125);
   let workerProcess: ProcessIdentity | null = null;
   await assert.rejects(runCellRepoBatch(identity, { operation: "inspect", ignored: false }, {
     ...options, helperPath: fake, deadlineMs: 1000, onStarted: process => { workerProcess = process; },
@@ -96,53 +107,69 @@ test("confined inspection returns a batch and refuses redirected allocation path
   assert.ok(workerProcess);
   for (let attempt = 0; attempt < 20 && inspectProcess((workerProcess as ProcessIdentity).pid).kind !== "gone"; attempt++) await new Promise(resolve => setTimeout(resolve, 100));
   assert.equal(inspectProcess((workerProcess as ProcessIdentity).pid).kind, "gone");
-  const owner = new Worker(`
-    const { parentPort, workerData } = require("node:worker_threads");
-    const { spawn } = require("node:child_process");
-    const child = spawn(process.execPath, [workerData.supervisor], { env: { PATH: "/usr/bin:/bin" }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
-    let output = "";
-    child.stdout.on("data", chunk => {
-      output += chunk.toString();
-      const end = output.indexOf("\\n");
-      if (end >= 0) parentPort.postMessage({ pid: child.pid, helper: JSON.parse(output.slice(0, end)).started });
-    });
-    child.stdin.write(JSON.stringify(workerData.request) + "\\n");
-  `, { eval: true, workerData: { supervisor: resolve("dist/v2/cell-repo-supervisor.js"), request: { identity, request: { operation: "inspect", ignored: false }, timeoutMs: 5000, helperPath: fake } } });
-  const receipt = await new Promise<{ pid: number; helper: ProcessIdentity }>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("fixture did not start")), 5000);
-    owner.once("message", message => { clearTimeout(timer); resolve(message); });
-    owner.once("error", reject);
-  }).catch(async error => { await owner.terminate(); throw error; });
-  const supervisor = inspectProcess(receipt.pid);
-  assert.equal(supervisor.kind, "present");
-  await new Promise(resolve => setTimeout(resolve, 100));
-  const descendants: ProcessIdentity[] = [];
-  const pending = [receipt.helper.pid];
-  while (pending.length > 0) {
-    const pid = pending.pop()!;
-    const info = inspectProcess(pid);
-    if (info.kind !== "present" || info.state !== "live") continue;
-    descendants.push({ pid: info.pid, birth: info.birth, bootId: info.bootId });
-    for (const word of readFileSync(`/proc/${pid}/task/${pid}/children`, "utf8").trim().split(/\s+/)) {
-      const child = Number(word);
-      if (Number.isSafeInteger(child) && child > 0) pending.push(child);
+  for (const mode of ["owner", "supervisor", "setup"] as const) {
+    const owner = new Worker(`
+      const { parentPort, workerData } = require("node:worker_threads");
+      const { spawn } = require("node:child_process");
+      const child = spawn(process.execPath, [workerData.supervisor], { env: { PATH: "/usr/bin:/bin" }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
+      parentPort.postMessage({ kind: "supervisor", pid: child.pid });
+      if (workerData.mode !== "setup") {
+        let output = "";
+        child.stdout.on("data", chunk => {
+          output += chunk.toString();
+          const end = output.indexOf("\\n");
+          if (end >= 0) parentPort.postMessage({ kind: "helper", pid: child.pid, helper: JSON.parse(output.slice(0, end)).started });
+        });
+      }
+      child.stdin.write(JSON.stringify(workerData.request) + "\\n");
+    `, { eval: true, workerData: { mode, supervisor: resolve("dist/v2/cell-repo-supervisor.js"), request: { identity, request: { operation: "inspect", ignored: false }, timeoutMs: 5000, helperPath: fake } } });
+    const receipt = await new Promise<{ pid: number; helper?: ProcessIdentity }>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("fixture did not start")), 5000);
+      owner.on("message", message => {
+        if (mode === "setup" ? message.kind === "supervisor" : message.kind === "helper") { clearTimeout(timer); resolve(message); }
+      });
+      owner.once("error", reject);
+    }).catch(async error => { await owner.terminate(); throw error; });
+    const supervisor = inspectProcess(receipt.pid);
+    assert.ok(supervisor.kind === "present" && supervisor.pgid === supervisor.pid);
+    let first = receipt.helper?.pid;
+    if (mode === "setup") {
+      for (let attempt = 0; attempt < 1000 && !first; attempt++) {
+        first = readFileSync(`/proc/${receipt.pid}/task/${receipt.pid}/children`, "utf8").trim().split(/\s+/).map(Number).find(pid => Number.isSafeInteger(pid) && pid > 0);
+        if (!first) await new Promise(resolve => setTimeout(resolve, 1));
+      }
+    } else await new Promise(resolve => setTimeout(resolve, 100));
+    const descendants: ProcessIdentity[] = [];
+    const pending = first ? [first] : [];
+    while (pending.length > 0) {
+      const pid = pending.pop()!;
+      const info = inspectProcess(pid);
+      if (info.kind !== "present" || info.state !== "live") continue;
+      descendants.push({ pid: info.pid, birth: info.birth, bootId: info.bootId });
+      for (const word of readFileSync(`/proc/${pid}/task/${pid}/children`, "utf8").trim().split(/\s+/)) {
+        const child = Number(word);
+        if (Number.isSafeInteger(child) && child > 0) pending.push(child);
+      }
     }
-  }
-  await owner.terminate();
-  assert.ok(descendants.length >= 2);
-  for (let attempt = 0; attempt < 30; attempt++) {
-    const supervisorNow = inspectProcess(receipt.pid);
-    const helperNow = inspectProcess(receipt.helper.pid);
-    if ((supervisorNow.kind !== "present" || supervisorNow.state !== "live") && (helperNow.kind !== "present" || helperNow.state !== "live")) break;
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  const supervisorNow = inspectProcess(receipt.pid);
-  const helperNow = inspectProcess(receipt.helper.pid);
-  assert.ok(supervisorNow.kind !== "present" || supervisorNow.state !== "live");
-  assert.ok(helperNow.kind !== "present" || helperNow.birth !== receipt.helper.birth || helperNow.state !== "live");
-  for (const identity of descendants) {
-    const current = inspectProcess(identity.pid);
-    assert.ok(current.kind !== "present" || current.birth !== identity.birth || current.state !== "live");
+    if (mode !== "owner") {
+      const current = inspectProcess(supervisor.pid);
+      assert.ok(current.kind === "present" && current.birth === supervisor.birth);
+      process.kill(supervisor.pid, "SIGKILL");
+    }
+    await owner.terminate();
+    assert.ok(descendants.length >= (mode === "setup" ? 1 : 2));
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const live = [supervisor, ...descendants].some(identity => {
+        const current = inspectProcess(identity.pid);
+        return current.kind === "present" && current.birth === identity.birth && current.state === "live";
+      });
+      if (!live) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    for (const identity of [supervisor, ...descendants]) {
+      const current = inspectProcess(identity.pid);
+      assert.ok(current.kind !== "present" || current.birth !== identity.birth || current.state !== "live");
+    }
   }
   for (const name of ["commondir", "objects/info/alternates", "objects/info/http-alternates"]) {
     const file = join(spaceDir, ".git", name);

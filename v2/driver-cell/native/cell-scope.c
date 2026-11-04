@@ -1,7 +1,10 @@
 #define _GNU_SOURCE
 #include <errno.h>
 #include <linux/landlock.h>
+#include <limits.h>
+#include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
 #include <stddef.h>
@@ -9,6 +12,7 @@
 #include <sys/stat.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 
 struct hb_landlock_ruleset_attr {
@@ -29,6 +33,23 @@ _Static_assert(offsetof(struct hb_landlock_ruleset_attr, scoped) == offsetof(str
 #endif
 
 int main(int argc, char **argv) {
+  if (argc >= 2 && strcmp(argv[1], "--parent-pid") == 0) {
+    if (argc < 5 || strcmp(argv[3], "--") != 0 || argv[4][0] != '/') return 125;
+    for (const char *p = argv[2]; *p; ++p) if (*p < '0' || *p > '9') return 125;
+    errno = 0;
+    char *end = NULL;
+    long parent = strtol(argv[2], &end, 10);
+    if (errno != 0 || end == argv[2] || *end != '\0' || parent <= 1 || parent > INT_MAX || parent == getpid()) return 125;
+    struct stat target;
+    if (lstat(argv[4], &target) != 0 || !S_ISREG(target.st_mode) || (target.st_mode & 06000) != 0) return 125;
+    errno = 0;
+    if (getxattr(argv[4], "security.capability", NULL, 0) >= 0 || (errno != ENODATA && errno != ENOTSUP)) return 125;
+    if (getppid() != (pid_t)parent) return 124;
+    if (prctl(PR_SET_PDEATHSIG, SIGKILL) != 0) return 125;
+    if (getppid() != (pid_t)parent) return 124;
+    argc -= 2;
+    argv += 2;
+  }
   if (argc >= 5 && strcmp(argv[1], "--assert-userns") == 0 && strcmp(argv[3], "--") == 0) {
     struct stat info;
     char current[96];
