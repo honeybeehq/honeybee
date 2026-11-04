@@ -38,7 +38,7 @@ function makeRig(retention: Record<string, unknown>) {
   mkdirSync(cellsRoot, { recursive: true });
   const { dir, cleanup } = makeDaemonDir({
     bootHangTimeoutMs: 60_000,
-    cells: { root: cellsRoot, retention },
+    cells: { root: cellsRoot, sandbox: false, retention },
     agents: {
       cellstub: {
         command: process.execPath,
@@ -228,7 +228,7 @@ test("cell-retention.4: a clean retained Cell (its bee moved away) is removed by
   const cellsRoot = join(root, "cells");
   mkdirSync(cellsRoot);
   const rig = makeDaemonDir({
-    cells: { root: cellsRoot, allowStubMove: true, retention: { enabled: false, retainedAfterDays: 0 } },
+    cells: { root: cellsRoot, sandbox: false, allowStubMove: true, retention: { enabled: false, retainedAfterDays: 0 } },
     agents: { stub: { command: process.execPath, adapter: "stub", args: [fileURLToPath(new URL("../../driver-cell/test-agent/agent.mjs", import.meta.url))] } },
   });
   let daemon: DaemonHandle | null = null;

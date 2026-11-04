@@ -14,6 +14,7 @@ assert.match(install, /^\/opt\/node-v[0-9]+\.[0-9]+\.[0-9]+-linux-(?:x64|arm64)$
 const root = mkdtempSync(join(tmpdir(), "hb-gateway-joint-"));
 const suites = process.argv.includes("--sandbox-suites");
 const secret = process.argv.includes("--secret-sandbox");
+const beeTmp = process.argv.includes("--bee-tmp");
 const composition = process.argv.includes("--composition");
 const codex = process.argv.includes("--codex-fixture");
 try {
@@ -33,15 +34,15 @@ try {
   assert.equal(hash(copy), sourceHash);
   assert.equal(statSync(overlay).uid, process.geteuid());
   console.log(JSON.stringify({ fixture: "owned-node-code-overlay", node: process.version, sha256: sourceHash, credentialsCopied: false }));
-  for (const custom of suites || codex || secret ? [false] : [false, true]) {
+  for (const custom of suites || codex || secret || beeTmp ? [false] : [false, true]) {
     const args = ["--unshare-user", "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
       "--bind", root, "/mnt", "--bind", join(root, "temp"), "/tmp", "--ro-bind", overlay, install,
       "--setenv", "TMPDIR", custom ? "/mnt" : "/tmp", "--unsetenv", "NODE_COMPILE_CACHE",
       "--setenv", "XDG_DATA_HOME", "/mnt/data",
       ...(secret ? ["--setenv", "HIVE_TEST_SECRET_ROOT", "/mnt"] : []),
       ...(custom ? ["--setenv", "HIVE_TEST_GATEWAY_CUSTOM_ROOT", "1"] : ["--unsetenv", "HIVE_TEST_GATEWAY_CUSTOM_ROOT"]),
-      "--", executable, ...(codex ? ["scripts/probe-cell-codex.mjs", join(install, "bin", "codex")] : ["--test", ...(secret ? ["v2/driver-cell/tests/secret-sandbox.test.ts"] : suites ? ["v2/driver-cell/tests/sandbox-hardening.test.ts", "v2/driver-cell/tests/sandbox.test.ts", "v2/driver-cell/tests/driver.test.ts"] : [composition ? "v2/daemon/tests/confined-cell-gateway-composition.test.ts" : "v2/daemon/tests/cell-gateway-sandbox.test.ts"])])];
-    const result = spawnSync("bwrap", args, { cwd: checkout, stdio: "inherit", timeout: suites ? 180_000 : 60_000 });
+      "--", executable, ...(codex ? ["scripts/probe-cell-codex.mjs", join(install, "bin", "codex")] : ["--test", ...(beeTmp ? ["v2/daemon/tests/bee-tmp.test.ts"] : secret ? ["v2/driver-cell/tests/secret-sandbox.test.ts"] : suites ? ["v2/driver-cell/tests/sandbox-hardening.test.ts", "v2/driver-cell/tests/sandbox.test.ts", "v2/driver-cell/tests/driver.test.ts"] : [composition ? "v2/daemon/tests/confined-cell-gateway-composition.test.ts" : "v2/daemon/tests/cell-gateway-sandbox.test.ts"])])];
+    const result = spawnSync("bwrap", args, { cwd: checkout, stdio: "inherit", timeout: suites || beeTmp ? 240_000 : 60_000 });
     assert.equal(result.error?.code, undefined, "Outer fixture launcher must start");
     assert.equal(result.status, 0, custom ? "Custom daemon home fixture" : "Default daemon home fixture");
   }

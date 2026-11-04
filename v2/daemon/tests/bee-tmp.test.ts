@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { homedir } from "node:os";
+import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import { realpathSync } from "node:fs";
 import {
   beeTmpDir,
@@ -22,6 +23,17 @@ import { SANDBOX_TMPFS_PATHS } from "../../driver-cell/src/sandbox.ts";
 import { AGENT_PATH, makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helpers.ts";
 
 const PROBE = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "tmp-probe", "probe.mjs");
+
+function sandboxProbeInputs() {
+  const root = mkdtempSync("/tmp/hb-tmp-probe-code-");
+  cpSync(dirname(PROBE), join(root, "probe"), {recursive: true});
+  copyFileSync(AGENT_PATH, join(root, "agent.mjs"));
+  return {args: ["--import", join(root, "probe", "probe.mjs"), join(root, "agent.mjs")], cleanup: () => {
+    const trash = join(tmpdir(), "honeybee-test-trash");
+    mkdirSync(trash, {recursive: true, mode: 0o700});
+    assert.equal(spawnSync("trash", ["--trash-dir", trash, root]).status, 0);
+  }};
+}
 
 interface ProbeReport {
   TMPDIR: string | null;
@@ -366,13 +378,14 @@ test("boot sweep removes only this store's archived bees' dirs", { timeout: 90_0
   }
 });
 
-test("satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writable inside the sandbox", { timeout: 120_000, skip: process.platform !== "linux" && process.platform !== "darwin" }, async () => {
+test("satellite sandboxed Cell: private TMPDIR and compile cache are writable while host directories stay denied", { timeout: 120_000, skip: process.platform !== "linux" && process.platform !== "darwin" }, async () => {
+  const code = sandboxProbeInputs();
   const rig = makeDaemonDir({
     nodeKind: "satellite",
     agents: {
       probe: {
         command: process.execPath,
-        args: ["--import", PROBE, AGENT_PATH],
+        args: code.args,
         adapter: "stub",
         env: { STUB_TURN_MS: "10", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
       },
@@ -389,6 +402,7 @@ test("satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writabl
       cwd: "/ignored",
       substrate: "cell",
       cell: { originRepo: origin.repo, sandbox: true },
+      env: {PROBE_HOST_TMP_ROOT: join(cache, "honeybee", "tmp"), PROBE_HOST_COMPILE_CACHE: join(cache, "honeybee", "node-compile-cache")},
     });
     const early = await client.request<ViewResult>("view", { beeId: spawned.beeId });
     const report = await waitForProbeReport(rig.dir, spawned.beeId, early.bee?.cwd as string, "sandboxed probe report");
@@ -396,11 +410,15 @@ test("satellite sandboxed Cell: the per-bee TMPDIR and compile cache are writabl
     assert.equal(report.TMPDIR, beeTmp);
     assert.equal(report.tmpWritable, true, "the per-bee TMPDIR is writable inside the sandbox");
     if (process.platform !== "linux") assert.equal(readFileSync(join(beeTmp, "probe-write"), "utf8"), "ok");
+    assert.equal(report.NODE_COMPILE_CACHE, join(dirname(early.bee?.cwd as string), "sandbox-state", "cache", "node-compile"));
+    assert.equal(report.escapes[join(cache, "honeybee", "tmp", spawned.beeId)], false);
+    assert.equal(report.escapes[join(cache, "honeybee", "node-compile-cache")], false);
     assert.ok(report.cacheEntries > 0, "the Cell private compile cache is writable inside the sandbox");
     client.close();
   } finally {
     await daemon.stop();
     rig.cleanup();
+    code.cleanup();
   }
 });
 
@@ -452,12 +470,13 @@ test("symlinks: a planted link at any owned level is replaced by a real dir, nev
 });
 
 test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets no write access through it on the next generation", { timeout: 180_000, skip: process.platform !== "linux" && process.platform !== "darwin" }, async (t) => {
+  const code = sandboxProbeInputs();
   const rig = makeDaemonDir({
     nodeKind: "satellite",
     agents: {
       probe: {
         command: process.execPath,
-        args: ["--import", PROBE, AGENT_PATH],
+        args: code.args,
         adapter: "stub",
         env: { STUB_TURN_MS: "10", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
       },
@@ -465,18 +484,7 @@ test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets n
   });
   const origin = makeOrigin(rig.dir);
   const cache = join(realpathSync(rig.dir), "xdg-cache");
-  const candidates = [
-    [homedir(), ".hb-escape-probe-"],
-    [join(process.cwd(), ".cache"), "escape-target-"],
-    [dirname(realpathSync(rig.dir)), "hb-escape-probe-"],
-  ].flatMap(([parent, prefix]) => {
-    try {
-      mkdirSync(parent!, { recursive: true });
-      return [realpathSync(mkdtempSync(join(parent!, prefix!)))];
-    } catch {
-      return [];
-    }
-  });
+  const candidates = ["home", "cache", "sibling"].map(name => realpathSync(mkdtempSync(join(rig.dir, `escape-${name}-`))));
   const daemon = await startDaemon(rig.dir, { env: { XDG_CACHE_HOME: cache }, platform: process.platform });
   try {
     const client = await daemon.client();
@@ -516,8 +524,9 @@ test("Queen's probe: a sandboxed bee that swaps its tmp dir for a symlink gets n
     client.close();
   } finally {
     await daemon.stop();
-    rig.cleanup();
     for (const dir of candidates) rmSync(dir, { recursive: true, force: true });
+    rig.cleanup();
+    code.cleanup();
   }
 });
 
@@ -600,13 +609,14 @@ test("config: bees.sandboxTmpBytes is additive, nullable and falls back to the d
 });
 
 async function sandboxedFill(bees: Record<string, unknown>, fillBytes: number, expectFlag: boolean): Promise<{ log: string; beeId: string; report: ProbeReport; flags: string[]; detail: string | null }> {
+  const code = sandboxProbeInputs();
   const rig = makeDaemonDir({
     nodeKind: "satellite",
     bees,
     agents: {
       probe: {
         command: process.execPath,
-        args: ["--import", PROBE, AGENT_PATH],
+        args: code.args,
         adapter: "stub",
         env: { STUB_TURN_MS: "10", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null", PROBE_FILL_TMP_BYTES: String(fillBytes) },
       },
@@ -642,6 +652,7 @@ async function sandboxedFill(bees: Record<string, unknown>, fillBytes: number, e
   } finally {
     await daemon.stop();
     rig.cleanup();
+    code.cleanup();
   }
 }
 
