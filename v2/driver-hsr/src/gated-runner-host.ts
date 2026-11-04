@@ -5,7 +5,7 @@ import { createServer } from "node:net";
 import { dirname } from "node:path";
 import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
 import { runnerStateFiles } from "../../harness/src/statePath.ts";
-import { canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
+import { canonicalDigest, type JsonValue } from "../../core/src/canonical.ts";
 import type { RunnerHostConfig, RunnerStatus } from "./runner-host.ts";
 
 export function runGatedRunnerHost(cfg: RunnerHostConfig, sessionLogLine: (line: string) => string): void {

@@ -1,4 +1,4 @@
-import type { JsonValue } from "../../../src/comb/canonical.ts";
+import type { JsonValue } from "../../core/src/canonical.ts";
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { createConnection } from "node:net";

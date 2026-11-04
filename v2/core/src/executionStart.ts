@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
+import { canonicalDigest, type JsonValue } from "./canonical.ts";
 import { ExecutionFenceError, executionClaim, type ExecutionClaim } from "./executionFence.ts";
 
 export interface ExecutionStart {

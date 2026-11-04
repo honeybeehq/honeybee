@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { readClaudeKeychainState, securityExecutable, underTest } from "../../../src/keychain.ts";
+import { readClaudeKeychainState, securityExecutable, underTest } from "../src/nativeKeychain.ts";
 
 test("keychain test guard: a test process refuses the real security binary before any exec", async (t) => {
   const realExecFile = childProcess.execFile;

@@ -6,7 +6,7 @@ import { join,resolve } from "node:path";
 import { spawn,type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
-import { canonicalDigest,type JsonValue } from "../../../src/comb/canonical.ts";
+import { canonicalDigest,type JsonValue } from "../../core/src/canonical.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { executionRequestDigest } from "../../core/src/executionFence.ts";
 import { HsrDriver } from "../src/driver.ts";

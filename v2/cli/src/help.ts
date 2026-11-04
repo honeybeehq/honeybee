@@ -3,7 +3,7 @@ import { blue, bold, cyan, dim, gray, honey, yellow } from "./style.ts";
 type Row = [cmd: string, syn: string, desc: string];
 type Group = { title: string; rows: Row[] };
 
-const GROUPS: Group[] = [
+export const GROUPS: Group[] = [
   {
     title: "Spawn & run",
     rows: [
@@ -123,6 +123,9 @@ const GROUPS: Group[] = [
     rows: [
       ["daemon", "run", "run the daemon in the foreground"],
       ["daemon", "install|uninstall|start|stop|restart|status", "platform service + liveness"],
+      ["deploy", "[<sha>] [--keep n] [--skip-tests]", "build a committed sha in a clean checkout, install it under ~/.hive/runtime, retarget current, restart"],
+      ["deploy", "--rollback | --list [--json] | --init", "retarget current to the previous version · history · one-time global migration steps"],
+      ["completion", "<bash|zsh|fish>", "print a shell completion script (eval to install)"],
     ],
   },
 ];

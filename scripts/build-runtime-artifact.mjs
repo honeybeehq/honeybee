@@ -18,8 +18,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildDeployArtifact } from "../src/commands/deploy.ts";
-import { packRuntimeArtifact } from "../src/runtimeArtifact.ts";
+import { buildDeployArtifact } from "../v2/cli/src/deploy/command.ts";
+import { packRuntimeArtifact } from "../v2/core/src/release/runtimeArtifact.ts";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 

@@ -12,8 +12,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { canonicalDigest } from "../src/comb/canonical.ts";
-import { computeSchemaDigest, loadExecutionContract } from "../src/execution/contract.ts";
+import { canonicalDigest } from "../v2/core/src/canonical.ts";
+import { computeSchemaDigest, loadExecutionContract } from "../v2/core/src/release/executionContract.ts";
 
 const root = fileURLToPath(new URL("../contracts/execution/v1/", import.meta.url));
 

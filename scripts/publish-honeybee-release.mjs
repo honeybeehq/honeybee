@@ -6,13 +6,13 @@ import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { canonicalDigest } from "../src/comb/canonical.ts";
-import { buildDeployArtifact } from "../src/commands/deploy.ts";
-import { packRuntimeArtifact } from "../src/runtimeArtifact.ts";
-import { prepareHoneybeeRelease } from "../src/release/prepare.ts";
-import { publishHoneybeeRelease } from "../src/release/publish.ts";
-import { validateRuntimeBuildTarget } from "../src/release/runtimeTarget.ts";
-import { GitHubReleaseStore, notifyHoneybeeRelease } from "../src/release/github.ts";
+import { canonicalDigest } from "../v2/core/src/canonical.ts";
+import { buildDeployArtifact } from "../v2/cli/src/deploy/command.ts";
+import { packRuntimeArtifact } from "../v2/core/src/release/runtimeArtifact.ts";
+import { prepareHoneybeeRelease } from "../v2/core/src/release/prepare.ts";
+import { publishHoneybeeRelease } from "../v2/core/src/release/publish.ts";
+import { validateRuntimeBuildTarget } from "../v2/core/src/release/runtimeTarget.ts";
+import { GitHubReleaseStore, notifyHoneybeeRelease } from "../v2/core/src/release/github.ts";
 
 // Actions concurrency is repository-scoped, including for reusable workflow callers.
 if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_REPOSITORY !== "honeybeehq/honeybee") {

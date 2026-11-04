@@ -1,5 +1,5 @@
-import { validateDaemonNode } from "../../../src/nodeRuntime.ts";
-import { ForegroundScheduling } from "../../../src/processScheduling.ts";
+import { validateDaemonNode } from "../../core/src/nodeRuntime.ts";
+import { ForegroundScheduling } from "../../core/src/processScheduling.ts";
 /**
  * Foreground daemon entry: `hive v2 daemon run [--data-dir d] [--config p]
  * [--socket s]`. This is what the rendered launchd plist / systemd unit

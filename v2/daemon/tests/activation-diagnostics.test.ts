@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { GatewayMcpSeedLockError, seedGatewayMcp } from "../../../src/accounts/gatewayMcpSeed.ts";
-import { FileLockReleaseError, withFileLock } from "../../../src/lock.ts";
+import { GatewayMcpSeedLockError, seedGatewayMcp } from "../src/gatewayMcpSeed.ts";
+import { FileLockReleaseError, withFileLock } from "../../core/src/lock.ts";
 import { activationFailureName } from "../src/daemon.ts";
 import { RpcError } from "../src/protocol.ts";
 

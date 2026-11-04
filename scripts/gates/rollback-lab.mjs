@@ -4,13 +4,13 @@ import { copyFile, cp, mkdir, mkdtemp, readFile, readlink, rename, symlink, writ
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { deployVersion, readDeployHistory } from '../../dist/deployRuntime.js';
-import { restartDeployedDaemon } from '../../dist/commands/deploy.js';
-import { persistNodePin, probeNativeNode, nodePinFile } from '../../dist/nodeRuntime.js';
-import { packRuntimeArtifact, sha256File } from '../../dist/runtimeArtifact.js';
-import { recoverySubjectDigest, parseRecoveryPlan } from '../../dist/release/index.js';
-import { writeBuildStamp } from '../../dist/deploySettle.js';
-import { UPDATE_RECOVERY_CONTRACT } from '../../dist/updateAdmission.js';
+import { deployVersion, readDeployHistory } from '../../v2/cli/src/deploy/runtime.ts';
+import { restartDeployedDaemon } from '../../v2/cli/src/deploy/command.ts';
+import { persistNodePin, probeNativeNode, nodePinFile } from '../../v2/core/src/nodeRuntime.ts';
+import { packRuntimeArtifact, sha256File } from '../../v2/core/src/release/runtimeArtifact.ts';
+import { recoverySubjectDigest, parseRecoveryPlan } from '../../v2/core/src/release/index.ts';
+import { writeBuildStamp } from '../../v2/core/src/release/settle.ts';
+import { UPDATE_RECOVERY_CONTRACT } from '../../v2/cli/src/deploy/updateAdmission.ts';
 
 if (process.platform !== 'linux') throw new Error('Linux fixture only');
 const exec = promisify(execFile), repo = resolve('.');

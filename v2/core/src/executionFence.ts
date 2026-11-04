@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { CoreError } from "./types.ts";
-import { assertCanonicalData, canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
+import { assertCanonicalData, canonicalDigest, type JsonValue } from "./canonical.ts";
 import type { EffectCoverage } from "./effectResolve.ts";
 
 export const EXECUTION_FENCE_CAPABILITY = "rpc-execution-fence.archive-send.v1";

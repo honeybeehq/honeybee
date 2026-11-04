@@ -10,7 +10,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { devNull } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import type { LocalRepoIdentity } from "../../core/src/types.ts";
-import { assertHostGitVersion, refuseMissingGitObjects, hasMissingGitObjects } from "../../../src/hostGitRuntime.ts";
+import { assertHostGitVersion, refuseMissingGitObjects, hasMissingGitObjects } from "../../core/src/hostGitRuntime.ts";
 
 export class GitError extends Error {
   readonly args: string[];
