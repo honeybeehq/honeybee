@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { devNull } from "node:os";
-import { assertHostGitVersion } from "./hostGitRuntime.js";
+import { assertHostGitVersion } from "./hostGitRuntime.ts";
 
 const hostGitConfig: ReadonlyArray<readonly [string, string]> = [
   ["core.fsmonitor", "false"],

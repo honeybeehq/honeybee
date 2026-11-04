@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
-import { HostGitRefused } from "../../../src/hostGitRuntime.ts";
+import { HostGitRefused } from "../../core/src/hostGitRuntime.ts";
 import { gitEnv, hostGitEnv, tryGit } from "../src/git.ts";
 import { provisionCell } from "../src/provision.ts";
 import { deleteCell } from "../src/remove.ts";
