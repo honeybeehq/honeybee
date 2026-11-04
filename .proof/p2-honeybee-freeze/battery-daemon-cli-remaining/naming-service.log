@@ -1,0 +1,23 @@
+✔ naming shutdown never retries or restarts an in-flight generation (154.406077ms)
+✔ naming telemetry uses GPT-6 Astra standard nano-USD rates (0.875301ms)
+✔ naming telemetry uses GPT-6 Sol and GPT-6 Luna standard nano-USD rates (0.147737ms)
+✔ naming telemetry has no rates for unknown models (0.138349ms)
+✔ naming service prices a GPT-6 Sol usage body at the published rates (23.362588ms)
+✔ naming service prices a GPT-6 Luna usage body at the published rates (0.619644ms)
+✔ naming service records null rates and cost for an unknown model but keeps its tokens (0.444644ms)
+✔ naming service preserves the initial Linear issue even when the model omits it (0.666885ms)
+✔ naming service keeps one Codex app-server warm and isolates titles in ephemeral threads (35.648127ms)
+✔ naming service calls Responses API without exposing the configured key in output (1.545973ms)
+✔ naming service records failed direct API attempts without hiding their latency (1.141648ms)
+✔ naming service restarts the warm app-server after an unexpected exit (106.247055ms)
+✔ openai-api naming resolves apiKeyRef through hem lazily, caches it, and never leaks it in errors (5.970179ms)
+✔ hem resolver refuses refs outside the naming allowlist without running hem (0.519068ms)
+✔ openai-api transport errors never carry the key (0.520842ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 478.660543

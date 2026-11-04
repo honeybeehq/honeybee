@@ -1,0 +1,12 @@
+✔ cut: small chunks stream a log into dense byte-exact segments, a torn tail waits, and the cursor resumes without re-reading (13.447014ms)
+✔ cut: a line longer than the chunk grows the read window up to the cap; one longer than the cap is left for a later cut (3.955685ms)
+✔ cut: a shrunk log starts a new epoch at byte 0 while line numbers keep climbing; a missing log cuts nothing (2.5842ms)
+✔ cut: a rejected checkpoint replays the prefix in chunks and projects the same events as an uninterrupted projector (6.819188ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 159.51457

@@ -1,0 +1,46 @@
+✔ remote observed limits: opaque tier/source, exact account, durable provenance, newest and quiet replay (36.059606ms)
+✔ local baseline survives remote selection; CAS discard restores it, blocks replay and permits a newer holder (30.633926ms)
+✔ discard without a local source clears only selected limits; account deletion clears all provenance (23.003671ms)
+✔ future observation boundary 300000 (21.071979ms)
+✔ future observation boundary 300001 (20.888773ms)
+✔ expired holder path {"kind":"direct","holderExpiresAtMs":1} (20.799129ms)
+✔ expired holder path {"kind":"peer","shareId":"share","epoch":1,"holderExpiresAtMs":1} (20.44497ms)
+✔ expired holder path {"kind":"one_hop","viaNodeId":"via","shareId":"share","epoch":1,"observerExpiresAtMs":1,"viaExpiresAtMs":9007199254740991} (20.554002ms)
+✔ expired holder path {"kind":"one_hop","viaNodeId":"via","shareId":"share","epoch":1,"observerExpiresAtMs":9007199254740991,"viaExpiresAtMs":1} (20.421174ms)
+✔ valid peer path preserved verbatim and checked inside transaction (21.086145ms)
+✔ valid one_hop path preserved verbatim and checked inside transaction (20.677893ms)
+✔ observation gating: local vault/home source and central source accepted; native, leased and probe harness refused (22.174981ms)
+✔ strict secret-free payload refuses observation (20.340838ms)
+✔ strict secret-free payload refuses observation (20.133576ms)
+✔ strict secret-free payload refuses observation (20.198121ms)
+✔ strict secret-free payload refuses observation (19.971991ms)
+✔ strict secret-free payload refuses observation (19.939297ms)
+✔ strict secret-free payload refuses raw (20.065553ms)
+✔ v43 migration adds only local observation metadata; parser preserves opaque tier (41.040944ms)
+✔ a newer local provider failure supersedes remote provenance and refreshes the retained local baseline (21.765245ms)
+✔ observer assertions are bounded and expiry cannot predate an ahead-of-clock observation (20.490588ms)
+✔ discard restores every local limits column exactly (readable=true) (22.433573ms)
+✔ discard restores every local limits column exactly (readable=false) (22.160192ms)
+✔ a remote snapshot cannot become a local quota observation or echo back as lastLocal (21.202792ms)
+✔ holder read accepts a retained companion account id and exposes only its local provider reading (23.390654ms)
+✔ missing or malformed holder assertion is a typed refusal (20.484807ms)
+✔ missing or malformed holder assertion is a typed refusal (20.11556ms)
+✔ missing or malformed holder assertion is a typed refusal (20.082015ms)
+✔ missing or malformed holder assertion is a typed refusal (19.999254ms)
+✔ missing or malformed holder assertion is a typed refusal (20.161139ms)
+✔ missing or malformed holder assertion is a typed refusal (20.005085ms)
+✔ applying to a vault-held lease source touches usage only and attributes the asserted path (21.009106ms)
+✔ local provider tier/source is bounded without losing observed usage (21.063101ms)
+✔ local provider tier/source is bounded without losing observed usage (20.653755ms)
+✔ local provider tier/source is bounded without losing observed usage (20.54293ms)
+✔ local provider tier/source is bounded without losing observed usage (20.880366ms)
+✔ a real local probe refreshes lastLocal without turning remote applies or restores into local readings (22.307549ms)
+✔ an unsupported probe placeholder never becomes or replaces local provider evidence (21.521152ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1071.303094

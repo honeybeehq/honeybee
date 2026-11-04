@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createServiceManager } from "../../daemon/src/service.ts";
-import { nodePinEnv, probeNativeNode, persistNodePin } from "../../../src/nodeRuntime.ts";
+import { nodePinEnv, probeNativeNode, persistNodePin } from "../../core/src/nodeRuntime.ts";
 import { runV2Cli, serviceEnv, serviceExecArgs } from "../src/main.ts";
 
 test("service environment records native pin and drops Electron mode", () => {

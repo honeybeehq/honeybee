@@ -1,4 +1,4 @@
-import { nativeNodeEnv } from "../../../src/nodeRuntime.ts";
+import { nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
 /**
  * Platform service management behind ONE interface (spec 04 behavior 6):
  * launchd (macOS) and a systemd user unit (Linux), with install / uninstall /

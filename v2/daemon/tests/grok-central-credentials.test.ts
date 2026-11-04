@@ -238,7 +238,7 @@ test("central Grok: isolated daemon rotates once, publishes access-only, refresh
 });
 
 test("central Grok review: live ownership fences, saved publication survives restart, healthy disable restores chain", async () => {
-  const stub = fileURLToPath(new URL("../../../tests/fixtures/grok-acp-stub.mjs", import.meta.url));
+  const stub = fileURLToPath(new URL("./fixtures/grok-acp-stub.mjs", import.meta.url));
   const { dir, cleanup } = makeDaemonDir({ accounts: { centralRefreshAheadMs: 0 }, agents: { grok: { command: process.execPath, args: [stub], adapter: "grok" } } });
   const id = "grok-review-example.com";
   let expected = randomUUID();

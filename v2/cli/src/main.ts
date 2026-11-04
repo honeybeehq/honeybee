@@ -1,5 +1,5 @@
-import { serviceDirectory } from "../../../src/servicePaths.ts";
-import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
+import { serviceDirectory } from "../../core/src/servicePaths.ts";
+import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../core/src/nodeRuntime.ts";
 import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
 import { pidAlive, readLiveEndpointRecord, samePath } from "../../daemon/src/endpointRecord.ts";
 import { assertServiceOwned, isNodeDataDir, refuseNodeDaemon, resolveServiceScope, ServiceScopeError, type ServiceScope } from "./serviceScope.ts";
@@ -379,7 +379,7 @@ const BOOL_FLAGS = new Set([
   "--replace-account",
 ]);
 
-const KNOWN_FLAGS = new Set([...VALUE_FLAGS, ...BOOL_FLAGS, ...OPTIONAL_VALUE_FLAGS]);
+export const KNOWN_FLAGS = new Set([...VALUE_FLAGS, ...BOOL_FLAGS, ...OPTIONAL_VALUE_FLAGS]);
 
 /** Cheap edit distance, for "did you mean --substrate?" on a typo. */
 function editDistance(a: string, b: string): number {
@@ -5045,6 +5045,17 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
   if (argv[0] === "--help" || argv[0] === "-h") {
     io.out(helpText(hiveVersion()));
     return 0;
+  }
+  // Runtime management and shell plumbing parse their own argv and never open the daemon.
+  if (argv[0] === "deploy") return (await import("./deploy/command.ts")).runDeployCli(argv.slice(1), io);
+  if (argv[0] === "__complete") {
+    for (const candidate of (await import("./completion.ts")).getCompletions(argv.slice(1))) io.out(candidate);
+    return 0;
+  }
+  if (argv[0] === "completion") {
+    const { shellScript } = await import("./completion/shell.ts");
+    try { io.out(shellScript(argv[1] ?? "")); return 0; }
+    catch (err) { io.err(errorLine(err instanceof Error ? err.message : String(err))); return 1; }
   }
   let parsed: Parsed;
   try {

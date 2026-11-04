@@ -1,0 +1,31 @@
+✔ active-human holds unmarked urgent peers then releases one deterministic digest (76.840615ms)
+✔ human followup and authenticated controls each get own clean turn ahead of background (41.725454ms)
+✔ restart before and after freeze preserves membership and newer mail joins later group (61.322196ms)
+✔ unknown written group reconciles same members atomically across restart (46.161512ms)
+✔ paged digest keeps all UTF8 originals and frozen mutations refuse (57.347705ms)
+✔ policy off keeps individual legacy now and next delivery (29.305074ms)
+✔ held stopped mail defers wake until release and restart enqueues one wake (43.923354ms)
+✔ a new human holds a frozen but unwritten batch until next window closes (33.568647ms)
+✔ batch size is bounded and a held core seed preserves precedence (73.540584ms)
+✔ oversized overview shrinks before freeze and sender paging preserves originals (105.012817ms)
+✔ a generation-changed unknown group requires explicit whole-group recovery (51.848411ms)
+✔ whole-group drop is explicit, idempotent and unblocks later background (39.709056ms)
+✔ max age releases ordinary group after ten minutes despite a renewed human window (61.018666ms)
+✔ release reasons distinguish idle and window close and raw sender metadata is untrusted (34.17772ms)
+✔ held-only mail never causes release wake churn (38.00733ms)
+✔ a ready file fallback head joins the digest and settles with its immutable original (34.201346ms)
+✔ Honeybee receipt notices and action instructions never become digest members (41.160796ms)
+✔ legacy frozen action members cannot be removed by cancel or complete (58.173398ms)
+✔ unwritten whole groups can be retried or dropped without a confirmation intent (26.726404ms)
+✔ a frozen unwritten group still reaches max age after a renewed human admission (35.791866ms)
+✔ reorder prefixes share the digest byte budget (33.036603ms)
+✔ internal resend strips privileged reference snapshots and preserves ordinary and control kinds (31.730154ms)
+✔ a legacy group missing a member is recoverable and never stops another bee (69.067955ms)
+ℹ tests 23
+ℹ suites 0
+ℹ pass 23
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1331.902139

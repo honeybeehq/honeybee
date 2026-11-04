@@ -1,4 +1,4 @@
-import { nodePinEnv, probeNativeNode } from "../../../src/nodeRuntime.ts";
+import { nodePinEnv, probeNativeNode } from "../../core/src/nodeRuntime.ts";
 /**
  * WP4 CLI tier: the thin client — RPC when the daemon is up, read-only
  * SQLite fallback clearly labeled stale when it is down, `send --wait` (Q3),

@@ -1,0 +1,3323 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 59c962ca..c57fdb27 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -109,8 +109,7 @@ jobs:
+           sudo apparmor_parser -r /etc/apparmor.d/hive-ci-unshare
+           /usr/bin/unshare --user --map-current-user --pid --mount --mount-proc --fork --kill-child=SIGKILL /bin/true
+       - run: npm ci
+-      - run: npm run check
+       - run: npm run v2:check
+       - run: npm run build
+-      - run: npm test
++      - run: npm run release:test
+       - run: npm run v2:test && npm run v2:daemon && npm run v2:driver && npm run v2:driver2 && npm run v2:harness
+diff --git a/.github/workflows/landing-typecheck.yml b/.github/workflows/landing-typecheck.yml
+index c31fab36..05aee5c8 100644
+--- a/.github/workflows/landing-typecheck.yml
++++ b/.github/workflows/landing-typecheck.yml
+@@ -23,4 +23,4 @@ jobs:
+           cache: npm
+       - run: npm install --global npm@11.16.0
+       - run: npm ci
+-      - run: npm run check && npm run v2:check
++      - run: npm run v2:check
+diff --git a/tests/release-inventory.test.mjs b/contracts/release/v1/tools/extract-inventory.test.mjs
+similarity index 99%
+rename from tests/release-inventory.test.mjs
+rename to contracts/release/v1/tools/extract-inventory.test.mjs
+index 3510d940..e05eba81 100644
+--- a/tests/release-inventory.test.mjs
++++ b/contracts/release/v1/tools/extract-inventory.test.mjs
+@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+ import { tmpdir } from 'node:os'
+ import { join } from 'node:path'
+ import ts from 'typescript'
+-import { extractInventory } from '../contracts/release/v1/tools/extract-inventory.mjs'
++import { extractInventory } from './extract-inventory.mjs'
+ 
+ test('extraction is stable, tracks input/output/commands, and records dynamic coverage', () => {
+   const root = mkdtempSync(join(tmpdir(), 'contract-inventory-'))
+diff --git a/package-lock.json b/package-lock.json
+index 685c2586..05fed3cf 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -17,8 +17,7 @@
+       },
+       "bin": {
+         "ap": "dist/cli.js",
+-        "hive": "dist/cli.js",
+-        "hive-x": "dist/cli-x.js"
++        "hive": "dist/cli.js"
+       },
+       "devDependencies": {
+         "@types/node": "25.7.0",
+diff --git a/package.json b/package.json
+index 2a7a0547..dc492521 100644
+--- a/package.json
++++ b/package.json
+@@ -11,30 +11,8 @@
+       "onFail": "error"
+     }
+   },
+-  "main": "dist/index.js",
+-  "types": "dist/index.d.ts",
+   "exports": {
+-    ".": {
+-      "types": "./dist/index.d.ts",
+-      "default": "./dist/index.js"
+-    },
+-    "./comb": {
+-      "types": "./dist/comb/sdk.d.ts",
+-      "default": "./dist/comb/sdk.js"
+-    },
+-    "./execution/v1": {
+-      "types": "./dist/execution/index.d.ts",
+-      "default": "./dist/execution/index.js"
+-    },
+-    "./release/v1": {
+-      "types": "./dist/release/index.d.ts",
+-      "default": "./dist/release/index.js"
+-    },
+-    "./release/v1/extractor": "./contracts/release/v1/tools/extract-inventory.mjs",
+-    "./release/v2": {
+-      "types": "./dist/release/v2.d.ts",
+-      "default": "./dist/release/v2.js"
+-    }
++    "./release/v1/extractor": "./contracts/release/v1/tools/extract-inventory.mjs"
+   },
+   "files": [
+     "dist/",
+@@ -43,15 +21,12 @@
+   ],
+   "bin": {
+     "hive": "dist/cli.js",
+-    "hive-x": "dist/cli-x.js",
+     "ap": "dist/cli.js"
+   },
+   "scripts": {
+-    "build": "tsc -p tsconfig.json && node scripts/build-runner-host-artifact.mjs && node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs && node scripts/build-cli-entry.mjs",
+-    "build:test": "node scripts/build-tests.mjs",
+-    "postbuild": "chmod +x dist/cli.js dist/cli-x.js",
+-    "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+-    "probe:secret-containment": "node scripts/probe-secret-containment.mjs",
++    "build": "node scripts/build-peercred.mjs --optional && node scripts/build-delivery-file.mjs --optional && node scripts/probe-peercred.mjs --optional && node scripts/probe-delivery-file.mjs --optional && node scripts/build-v2-artifact.mjs",
++    "postbuild": "chmod +x dist/cli.js",
++    "check": "npm run v2:check",
+     "v2:check": "tsc -p v2/core/tsconfig.json && tsc -p v2/harness/tsconfig.json && tsc -p v2/adapters/tsconfig.json && tsc -p v2/driver-hsr/tsconfig.json && tsc -p v2/daemon/tsconfig.json && tsc -p v2/cli/tsconfig.json && tsc -p v2/driver-cell/tsconfig.json && tsc -p v2/driver-tmux/tsconfig.json",
+     "v2:test": "NODE_COMPILE_CACHE=.cache/node-compile node scripts/with-fixture-warden.mjs node --test --test-isolation=none \"v2/core/tests/*.test.ts\" && node --test scripts/perf/fleet-cell.node-test.mjs scripts/perf/fleet-move.node-test.mjs",
+     "v2:harness": "NODE_COMPILE_CACHE=.cache/node-compile node scripts/with-fixture-warden.mjs node --test --test-isolation=none \"v2/harness/tests/*.test.ts\"",
+@@ -61,19 +36,15 @@
+     "v2:daemon": "node scripts/with-fixture-warden.mjs node scripts/run-v2-daemon-tests.mjs",
+     "v2:harness:real": "NODE_COMPILE_CACHE=.cache/node-compile node --test \"v2/driver-hsr/tests/harness/*.test.ts\" \"v2/driver-cell/tests/harness/*.test.ts\" \"v2/driver-tmux/tests/harness/*.test.ts\"",
+     "deploy": "node scripts/deploy-settle.mjs",
+-    "pretest": "npm run release:test && npm run build:test",
+-    "test": "node scripts/with-fixture-warden.mjs node scripts/run-tests.mjs",
+-    "test:source": "node --import tsx --test --test-concurrency=8 --test-reporter=dot tests/*.test.ts",
+-    "execution:digest": "tsx scripts/update-execution-digest.mjs",
+-    "runtime:artifact": "tsx scripts/build-runtime-artifact.mjs",
+-    "dev": "tsx src/cli.ts",
+     "hive": "node dist/cli.js",
+     "v2:smoke": "node --experimental-strip-types v2/driver-hsr/smoke.ts",
+     "v2:smoke:tmux": "node --experimental-strip-types v2/driver-tmux/smoke.ts",
+     "v2:smoke:cell": "node --experimental-strip-types v2/driver-cell/smoke.ts",
+     "release:inventory": "node contracts/release/v1/tools/extract-inventory.mjs .",
+-    "release:test": "node --test tests/release-inventory.test.mjs",
+-    "release:publish": "tsx scripts/publish-honeybee-release.mjs"
++    "release:test": "node --test contracts/release/v1/tools/extract-inventory.test.mjs",
++    "release:publish": "tsx scripts/publish-honeybee-release.mjs",
++    "execution:digest": "node scripts/update-execution-digest.mjs",
++    "runtime:artifact": "node scripts/build-runtime-artifact.mjs"
+   },
+   "engines": {
+     "node": ">=20"
+diff --git a/scripts/build-runtime-artifact.mjs b/scripts/build-runtime-artifact.mjs
+index 78fe8525..89b91225 100644
+--- a/scripts/build-runtime-artifact.mjs
++++ b/scripts/build-runtime-artifact.mjs
+@@ -18,8 +18,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join, resolve } from "node:path";
+ import { fileURLToPath } from "node:url";
+-import { buildDeployArtifact } from "../src/commands/deploy.ts";
+-import { packRuntimeArtifact } from "../src/runtimeArtifact.ts";
++import { buildDeployArtifact } from "../v2/cli/src/deploy/command.ts";
++import { packRuntimeArtifact } from "../v2/core/src/release/runtimeArtifact.ts";
+ 
+ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+ 
+diff --git a/scripts/build-v2-artifact.mjs b/scripts/build-v2-artifact.mjs
+index d13eafde..85b715d0 100644
+--- a/scripts/build-v2-artifact.mjs
++++ b/scripts/build-v2-artifact.mjs
+@@ -9,32 +9,33 @@ import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+ import { join, relative, resolve } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { build } from "esbuild";
+-import { collectBuildIdentity } from "../dist/release/buildIdentityProducer.js";
++import { collectBuildIdentity } from "../v2/core/src/release/buildIdentityProducer.ts";
+ 
+ const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
+ const outDir = join(root, "dist", "v2");
+ const runnerHostOutput = join(outDir, "runner-host.js");
+ const CLI_CHUNK_RE = /^cli-chunk-[A-Z0-9]+\.js$/;
+ const runnerHostInputs = [
+-  "src/comb/canonical.ts",
++  "v2/core/src/canonical.ts",
+   "v2/core/src/processIdentity.ts",
+   "v2/driver-hsr/src/gated-runner-host.ts",
+   "v2/driver-hsr/src/delivery-receipts.ts",
+   "v2/harness/src/processIdentity.ts",
+   "v2/harness/src/statePath.ts",
+-  "src/runtimeEnvironment.ts",
+-  "src/processScheduling.ts",
++  "v2/core/src/runtimeEnvironment.ts",
++  "v2/core/src/processScheduling.ts",
+   "v2/driver-hsr/src/runner-host-main.ts",
+   "v2/driver-hsr/src/runner-host.ts",
+   "v2/driver-hsr/src/runner-exit.ts",
+-  "src/peercredReceipt.ts",
++  "v2/core/src/peercredReceipt.ts",
+ ];
+ const runnerHostMaxBytes = 32 * 1024;
+ await mkdir(outDir, { recursive: true });
+ await writeFile(join(root, "dist", "build-identity.json"), `${JSON.stringify(collectBuildIdentity(root), null, 2)}\n`);
+ await build({
+-  entryPoints: [join(root, "src", "v2", "updateOwnerClient.mjs")],
+-  outfile: join(outDir, "updateOwnerClient.mjs"),
++  absWorkingDir: root,
++  entryPoints: [join(root, "v2", "cli", "src", "bootstrap.ts")],
++  outfile: join(root, "dist", "cli.js"),
+   bundle: true,
+   platform: "node",
+   format: "esm",
+@@ -154,5 +155,5 @@ if (runnerHostBytes > runnerHostMaxBytes) {
+ }
+ 
+ process.stdout.write(
+-  `v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, dist/v2/transcript-segment-worker.js, and dist/v2/runner-host.js (${runnerHostBytes} bytes)\n`,
++  `hive entry staged at dist/cli.js; v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, dist/v2/transcript-segment-worker.js, and dist/v2/runner-host.js (${runnerHostBytes} bytes)\n`,
+ );
+diff --git a/scripts/deploy-settle.mjs b/scripts/deploy-settle.mjs
+index c80a27f3..3c68dd6c 100644
+--- a/scripts/deploy-settle.mjs
++++ b/scripts/deploy-settle.mjs
+@@ -1,196 +1,17 @@
+ #!/usr/bin/env node
+-// Deploy with a settle barrier: build -> stamp -> immutable npm pack -> global
+-// install -> PROVE the
+-// globally installed module tree equals the local build -> rebind launchd to
+-// that exact installed CLI -> restart. Encodes the incident where a daemon
+-// restart mid-copy booted a stale module mix and false-reaped 8 live runners;
+-// the daemon must never
+-// restart over a tree that has not settled. Settle logic lives (typed and
+-// unit-tested) in src/deploySettle.ts; this orchestrator imports the copy the
+-// build it just ran emitted.
+-//
+-// Post-WP7 freeze: the live runtime is ~/.hive/runtime/current, not the npm
+-// global tree. On a frozen node this script hands off to `hive deploy`
+-// instead of `npm i -g` + restart.
++// `npm run deploy`: the live runtime is ~/.hive/runtime/current, so the
++// installed `hive deploy` builds this checkout's HEAD in a clean temp checkout,
++// installs it as a new version, retargets current and restarts the daemon.
+ //
+ //   npm run deploy
+-//   HIVE_DEPLOY_SETTLE_TIMEOUT_MS=120000 npm run deploy   # slow disks/NFS
++//   npm run deploy -- --rollback
+ //
+-import { execFileSync, spawnSync } from "node:child_process";
+-import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+-import { homedir, tmpdir } from "node:os";
+-import { join } from "node:path";
++import { spawnSync } from "node:child_process";
+ import { fileURLToPath } from "node:url";
+ 
+ const repoRoot = fileURLToPath(new URL("..", import.meta.url));
+-const localDist = join(repoRoot, "dist");
+-
+-function hiveStoreRoot() {
+-  return process.env.HIVE_STORE_ROOT ?? join(homedir(), ".hive");
+-}
+-
+-function run(command, args) {
+-  console.log(`deploy-settle: ${command} ${args.join(" ")}`);
+-  const outcome = spawnSync(command, args, { cwd: repoRoot, stdio: "inherit" });
+-  if (outcome.error) throw outcome.error;
+-  if (outcome.status !== 0) {
+-    throw new Error(`deploy-settle: '${command} ${args.join(" ")}' exited with ${outcome.status}`);
+-  }
+-}
+-
+-if (existsSync(join(hiveStoreRoot(), "FROZEN"))) {
+-  // Spec 00 / WP7: never npm i -g on a frozen node. That clobbers the
+-  // runtime/current symlink (hive deploy --init) and never retargets the
+-  // live daemon, which runs out of ~/.hive/runtime/current.
+-  const extra = process.argv.slice(2);
+-  console.log(
+-    "deploy-settle: frozen node — live runtime is ~/.hive/runtime/current; handing off to hive deploy",
+-  );
+-  run("hive", ["deploy", ...extra]);
+-  process.exit(0);
+-}
+-
+-run("npm", ["run", "build"]);
+-
+-// Import from the build that just ran, so script and daemon share one
+-// settle implementation and the script needs no compile step of its own.
+-const { waitForSettledInstall, writeBuildStamp } = await import(
+-  new URL("../dist/deploySettle.js", import.meta.url).href
+-);
+-const {
+-  EXECUTION_VALIDATION_SURFACE_VERSION,
+-  computeExecutionValidationSurfaceDigest,
+-  computeSchemaDigest,
+-  executionBaselineFeatures,
+-  loadExecutionContract,
+-} = await import(
+-  new URL("../dist/execution/index.js", import.meta.url).href
+-);
+-const { assertExecutionMaterializationMatches, preflightInstalledExecutionConsumer } = await import(
+-  new URL("../dist/execution/consumerRollout.js", import.meta.url).href
+-);
+-
+-const executionContract = loadExecutionContract();
+-const executionProfile = executionContract.profile;
+-const computedExecutionDigest = computeSchemaDigest(executionContract);
+-if (executionContract.committedDigest !== computedExecutionDigest) {
+-  throw new Error(
+-    `deploy-settle: execution corpus digest drift (${executionContract.committedDigest} != ${computedExecutionDigest})`,
+-  );
+-}
+-const contractCorpusPath = "contracts/execution/v1";
+-const dirtyContractCorpus = execFileSync(
+-  "git",
+-  ["status", "--porcelain=v1", "--untracked-files=all", "--", contractCorpusPath],
+-  { cwd: repoRoot, encoding: "utf8" },
+-).trim();
+-if (dirtyContractCorpus.length > 0) {
+-  throw new Error(
+-    `deploy-settle: execution corpus has uncommitted bytes; commit and certify them before deploy\n${dirtyContractCorpus}`,
+-  );
+-}
+-const executionSourceRevision = execFileSync(
+-  "git",
+-  ["log", "-1", "--format=%H", "--", contractCorpusPath],
+-  { cwd: repoRoot, encoding: "utf8" },
+-).trim();
+-if (!/^[a-f0-9]{40}$/.test(executionSourceRevision)) {
+-  throw new Error(`deploy-settle: cannot resolve execution corpus source revision (${executionSourceRevision || "empty"})`);
+-}
+-const executionCandidate = {
+-  contract: String(executionProfile.contract ?? ""),
+-  contractVersion: String(executionProfile.contractVersion ?? ""),
+-  protocolVersion: String(executionProfile.protocolVersion ?? ""),
+-  schemaDigest: computedExecutionDigest,
+-  validationSurfaceVersion: EXECUTION_VALIDATION_SURFACE_VERSION,
+-  validationSurfaceDigest: computeExecutionValidationSurfaceDigest(executionContract),
+-  sourceRevision: executionSourceRevision,
+-  features: executionBaselineFeatures(executionContract),
+-};
+-const consumer = preflightInstalledExecutionConsumer(executionCandidate, {
+-  ...(process.env.APIARY_APP_BUNDLE !== undefined
+-    ? { appBundlePath: process.env.APIARY_APP_BUNDLE }
+-    : {}),
+-});
+-console.log(
+-  consumer.kind === "accepted"
+-    ? `deploy-settle: ${consumer.product} accepts execution contract (${consumer.mode}, surface ` +
+-      `v${executionCandidate.validationSurfaceVersion}, source ${executionCandidate.sourceRevision.slice(0, 12)})`
+-    : `deploy-settle: execution consumer preflight skipped (${consumer.detail})`,
+-);
+-
+-const stamp = await writeBuildStamp(localDist);
+-console.log(`deploy-settle: local build ${stamp.hash.slice(0, 12)} stamped`);
+-
+-// Installing `.` globally can leave npm's package entry as a symlink to the
+-// invoking checkout. That makes a successful deploy depend on a disposable
+-// worktree remaining forever. Pack the already-certified bytes and install
+-// the archive: npm must materialize an independent global tree.
+-const { parseNpmPackResult } = await import("../dist/npmPack.js");
+-const packRoot = mkdtempSync(join(tmpdir(), "honeybee-deploy-pack-"));
+-try {
+-  const packed = parseNpmPackResult(execFileSync(
+-    "npm",
+-    ["pack", "--json", "--pack-destination", packRoot],
+-    { cwd: repoRoot, encoding: "utf8" },
+-  ), "honeybee");
+-  const { filename } = packed;
+-  run("npm", ["i", "-g", join(packRoot, filename)]);
+-} finally {
+-  rmSync(packRoot, { recursive: true, force: true });
+-}
+-
+-// Prove npm did not retain the invoking checkout despite the archive boundary.
+-const globalRoot = execFileSync("npm", ["root", "-g"], { encoding: "utf8" }).trim();
+-const installedPackageRoot = realpathSync(join(globalRoot, "honeybee"));
+-if (installedPackageRoot === realpathSync(repoRoot)) {
+-  throw new Error("deploy-settle: global Honeybee still resolves to the invoking checkout");
+-}
+-const installedDist = join(installedPackageRoot, "dist");
+-
+-const timeoutMs = Number(process.env.HIVE_DEPLOY_SETTLE_TIMEOUT_MS);
+-const settled = await waitForSettledInstall(localDist, installedDist, {
+-  ...(Number.isFinite(timeoutMs) && timeoutMs > 0 ? { timeoutMs } : {}),
+-});
+-console.log(`deploy-settle: installed tree settled at ${settled.hash.slice(0, 12)} (${settled.attempts} probe${settled.attempts === 1 ? "" : "s"})`);
+-
+-// The contract corpus is packaged beside dist/, so the dist settle hash does
+-// not cover it. Reload the installed corpus and prove the bytes that the
+-// daemon will actually read still equal the preflighted candidate.
+-const installedExecutionContract = loadExecutionContract(
+-  join(installedPackageRoot, "contracts", "execution", "v1"),
+-);
+-const installedExecutionDigest = computeSchemaDigest(installedExecutionContract);
+-const installedExecutionSurface = computeExecutionValidationSurfaceDigest(installedExecutionContract);
+-const installedExecutionFeatures = executionBaselineFeatures(installedExecutionContract);
+-if (installedExecutionContract.committedDigest !== installedExecutionDigest) {
+-  throw new Error(
+-    `deploy-settle: globally installed execution corpus digest drift ` +
+-      `(${installedExecutionContract.committedDigest} != ${installedExecutionDigest})`,
+-  );
+-}
+-assertExecutionMaterializationMatches(
+-  executionCandidate,
+-  {
+-    schemaDigest: installedExecutionDigest,
+-    validationSurfaceVersion: EXECUTION_VALIDATION_SURFACE_VERSION,
+-    validationSurfaceDigest: installedExecutionSurface,
+-    features: installedExecutionFeatures,
+-  },
+-  "globally installed execution corpus",
+-);
+-console.log(
+-  `deploy-settle: installed execution corpus verified (${installedExecutionDigest.slice(0, 19)}, ` +
+-    `surface ${installedExecutionSurface.slice(0, 19)})`,
+-);
+-
+-// A LaunchAgent records the absolute CLI path from the shell that originally
+-// installed it. Merely invoking `hive daemon restart` can therefore restart a
+-// stale checkout even though the global module above settled correctly. Run
+-// the verified installed CLI itself and force-rewrite the plist first. The
+-// following restart is both a liveness check and a non-zero failure signal if
+-// launchctl bootstrap did not actually take.
+-const installedCli = join(installedDist, "cli.js");
+-run(process.execPath, [installedCli, "daemon", "install", "--force"]);
+-run(process.execPath, [installedCli, "daemon", "restart"]);
+-console.log("deploy-settle: daemon rebound and restarted on the settled installed module tree");
++const args = ["deploy", ...process.argv.slice(2)];
++console.log(`deploy-settle: hive ${args.join(" ")}`);
++const outcome = spawnSync("hive", args, { cwd: repoRoot, stdio: "inherit" });
++if (outcome.error) throw outcome.error;
++process.exit(outcome.status ?? 1);
+diff --git a/scripts/gates/rollback-lab.mjs b/scripts/gates/rollback-lab.mjs
+index b40107ac..3d648118 100644
+--- a/scripts/gates/rollback-lab.mjs
++++ b/scripts/gates/rollback-lab.mjs
+@@ -4,13 +4,13 @@ import { copyFile, cp, mkdir, mkdtemp, readFile, readlink, rename, symlink, writ
+ import { existsSync } from 'node:fs';
+ import { join, resolve } from 'node:path';
+ import { promisify } from 'node:util';
+-import { deployVersion, readDeployHistory } from '../../dist/deployRuntime.js';
+-import { restartDeployedDaemon } from '../../dist/commands/deploy.js';
+-import { persistNodePin, probeNativeNode, nodePinFile } from '../../dist/nodeRuntime.js';
+-import { packRuntimeArtifact, sha256File } from '../../dist/runtimeArtifact.js';
+-import { recoverySubjectDigest, parseRecoveryPlan } from '../../dist/release/index.js';
+-import { writeBuildStamp } from '../../dist/deploySettle.js';
+-import { UPDATE_RECOVERY_CONTRACT } from '../../dist/updateAdmission.js';
++import { deployVersion, readDeployHistory } from '../../v2/cli/src/deploy/runtime.ts';
++import { restartDeployedDaemon } from '../../v2/cli/src/deploy/command.ts';
++import { persistNodePin, probeNativeNode, nodePinFile } from '../../v2/core/src/nodeRuntime.ts';
++import { packRuntimeArtifact, sha256File } from '../../v2/core/src/release/runtimeArtifact.ts';
++import { recoverySubjectDigest, parseRecoveryPlan } from '../../v2/core/src/release/index.ts';
++import { writeBuildStamp } from '../../v2/core/src/release/settle.ts';
++import { UPDATE_RECOVERY_CONTRACT } from '../../v2/cli/src/deploy/updateAdmission.ts';
+ 
+ if (process.platform !== 'linux') throw new Error('Linux fixture only');
+ const exec = promisify(execFile), repo = resolve('.');
+diff --git a/scripts/publish-honeybee-release.mjs b/scripts/publish-honeybee-release.mjs
+index 712310f8..68a4359e 100644
+--- a/scripts/publish-honeybee-release.mjs
++++ b/scripts/publish-honeybee-release.mjs
+@@ -6,13 +6,13 @@ import { appendFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+-import { canonicalDigest } from "../src/comb/canonical.ts";
+-import { buildDeployArtifact } from "../src/commands/deploy.ts";
+-import { packRuntimeArtifact } from "../src/runtimeArtifact.ts";
+-import { prepareHoneybeeRelease } from "../src/release/prepare.ts";
+-import { publishHoneybeeRelease } from "../src/release/publish.ts";
+-import { validateRuntimeBuildTarget } from "../src/release/runtimeTarget.ts";
+-import { GitHubReleaseStore, notifyHoneybeeRelease } from "../src/release/github.ts";
++import { canonicalDigest } from "../v2/core/src/canonical.ts";
++import { buildDeployArtifact } from "../v2/cli/src/deploy/command.ts";
++import { packRuntimeArtifact } from "../v2/core/src/release/runtimeArtifact.ts";
++import { prepareHoneybeeRelease } from "../v2/core/src/release/prepare.ts";
++import { publishHoneybeeRelease } from "../v2/core/src/release/publish.ts";
++import { validateRuntimeBuildTarget } from "../v2/core/src/release/runtimeTarget.ts";
++import { GitHubReleaseStore, notifyHoneybeeRelease } from "../v2/core/src/release/github.ts";
+ 
+ // Actions concurrency is repository-scoped, including for reusable workflow callers.
+ if (process.env.GITHUB_ACTIONS !== "true" || process.env.GITHUB_REPOSITORY !== "honeybeehq/honeybee") {
+diff --git a/scripts/release-distribution.mjs b/scripts/release-distribution.mjs
+index 4aeaf3e3..54ef8e87 100644
+--- a/scripts/release-distribution.mjs
++++ b/scripts/release-distribution.mjs
+@@ -1,7 +1,7 @@
+ // Select only a reviewed profile in the exact source checkout.
+ import { readFileSync } from 'node:fs'
+ import { join } from 'node:path'
+-import { parseDistributionProfile, productionProfile, distributionIdentity } from '../src/release/distribution-profile.ts'
++import { parseDistributionProfile, productionProfile, distributionIdentity } from '../v2/core/src/release/distribution-profile.ts'
+ export function selectedDistribution(root, env = process.env) {
+   const id = env.RELEASE_DISTRIBUTION || 'production'
+   if (id === 'production') return productionProfile
+diff --git a/scripts/repack-peercred.mjs b/scripts/repack-peercred.mjs
+index 30278d7e..ce3ed60a 100644
+--- a/scripts/repack-peercred.mjs
++++ b/scripts/repack-peercred.mjs
+@@ -1,5 +1,5 @@
+ // Run with node --import tsx. All GitHub access is a plain gh api read.
+-import { repackPeercred } from "../src/repackPeercred.ts";
++import { repackPeercred } from "../v2/core/src/release/repackPeercred.ts";
+ const [dist, archive, sourceHead, target, ciRun, ciJob, artifactId, ...extra] = process.argv.slice(2);
+ if (!dist || !archive || !sourceHead || !target || !ciRun || !ciJob || !artifactId || extra.length) throw new Error("usage: node --import tsx scripts/repack-peercred.mjs DIST CI_ZIP HEAD TARGET RUN_ID JOB_ID ARTIFACT_ID");
+ await repackPeercred(dist, { archive, sourceHead, target, ciRun: Number(ciRun), ciJob: Number(ciJob), artifactId: Number(artifactId) });
+diff --git a/scripts/update-execution-digest.mjs b/scripts/update-execution-digest.mjs
+index d9e090b2..7cfcbbe3 100644
+--- a/scripts/update-execution-digest.mjs
++++ b/scripts/update-execution-digest.mjs
+@@ -12,8 +12,8 @@
+ import { readFileSync, writeFileSync } from "node:fs";
+ import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+-import { canonicalDigest } from "../src/comb/canonical.ts";
+-import { computeSchemaDigest, loadExecutionContract } from "../src/execution/contract.ts";
++import { canonicalDigest } from "../v2/core/src/canonical.ts";
++import { computeSchemaDigest, loadExecutionContract } from "../v2/core/src/release/executionContract.ts";
+ 
+ const root = fileURLToPath(new URL("../contracts/execution/v1/", import.meta.url));
+ 
+diff --git a/v2/cli/src/bootstrap.ts b/v2/cli/src/bootstrap.ts
+new file mode 100644
+index 00000000..a75ab039
+--- /dev/null
++++ b/v2/cli/src/bootstrap.ts
+@@ -0,0 +1,27 @@
++#!/usr/bin/env node
++import { readFileSync } from "node:fs";
++
++/** Installed `hive` entry: answer a plain version from the build facts, otherwise load the v2 CLI bundle beside this file. */
++function printsPlainVersion(argv: string[]): boolean {
++  return argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version");
++}
++
++async function main(argv: string[]): Promise<void> {
++  if (argv[0] === "v2") argv = argv.slice(1);
++  if (printsPlainVersion(argv)) {
++    try {
++      const identity = JSON.parse(readFileSync(new URL("./build-identity.json", import.meta.url), "utf8"));
++      if (identity?.component === "honeybee" && typeof identity.version === "string") {
++        process.stdout.write(`honeybee ${identity.version}\n`);
++        return;
++      }
++    } catch {}
++  }
++  const cli = (await import(new URL("./v2/cli.js", import.meta.url).href)) as { runV2Cli(argv: string[]): Promise<number> };
++  process.exitCode = await cli.runV2Cli(argv);
++}
++
++main(process.argv.slice(2)).catch((error) => {
++  console.error(`hive: ${error instanceof Error ? error.message : String(error)}`);
++  process.exitCode = 1;
++});
+diff --git a/v2/cli/src/completion.ts b/v2/cli/src/completion.ts
+new file mode 100644
+index 00000000..1d8a52d4
+--- /dev/null
++++ b/v2/cli/src/completion.ts
+@@ -0,0 +1,121 @@
++import { readdirSync, statSync } from "node:fs";
++import { homedir } from "node:os";
++import { join, resolve } from "node:path";
++import { resolveDaemonTarget } from "./target.ts";
++import { ReadOnlyStore } from "./readonly.ts";
++import { GROUPS } from "./help.ts";
++import { KNOWN_FLAGS } from "./main.ts";
++
++const GLOBAL_FLAGS = ["--data-dir", "--socket", "--config", "--json", "--allow-foreign-daemon"];
++const ALIASES: Record<string, string[]> = { list: ["ls", "ps"], transcript: ["tx"], usage: ["limits"] };
++
++function firstToken(syntax: string): string {
++  return syntax.trim().split(/\s+/)[0] ?? "";
++}
++
++/** Command names, per-command subcommands and bee-first commands, read from the help table so completion cannot drift from it. */
++const COMMAND_NAMES: string[] = [];
++const SUBCOMMANDS: Record<string, string[]> = {};
++const BEE_FIRST_ARG = new Set<string>();
++for (const group of GROUPS) {
++  for (const [name, syntax] of group.rows) {
++    for (const alias of [name, ...(ALIASES[name] ?? [])]) if (!COMMAND_NAMES.includes(alias)) COMMAND_NAMES.push(alias);
++    const head = firstToken(syntax);
++    if (head.startsWith("<bee>")) BEE_FIRST_ARG.add(name);
++    else if (/^[a-z][a-z0-9-]*(\|[a-z][a-z0-9-]*)*$/.test(head)) {
++      const subs = (SUBCOMMANDS[name] ??= []);
++      for (const sub of head.split("|")) if (!subs.includes(sub)) subs.push(sub);
++      const second = syntax.trim().split(/\s+/)[1] ?? "";
++      if (second.startsWith("<bee>")) for (const sub of head.split("|")) BEE_FIRST_ARG.add(`${name} ${sub}`);
++    }
++  }
++}
++for (const [name, aliases] of Object.entries(ALIASES)) for (const alias of aliases) { if (SUBCOMMANDS[name]) SUBCOMMANDS[alias] = SUBCOMMANDS[name]; if (BEE_FIRST_ARG.has(name)) BEE_FIRST_ARG.add(alias); }
++for (const name of ["deploy", "completion", "help"]) if (!COMMAND_NAMES.includes(name)) COMMAND_NAMES.push(name);
++COMMAND_NAMES.sort();
++const COMMAND_FLAGS = [...KNOWN_FLAGS].sort();
++
++export const SHELLS = ["bash", "zsh", "fish"];
++const DEPLOY_FLAGS = ["--rollback", "--list", "--init", "--json", "--keep", "--skip-tests", "--allow-non-descendant", "--provision-question-withdrawal", "--artifact", "--identity", "--admission", "--expected-current", "--bin-dir", "--help"];
++
++export type CompletionState = { bees: Array<{ id: string; handle: string | null; name: string; human_ref?: string | null }> };
++
++/** Bee references a shell can offer: handles, human refs, names and ids of active bees, read straight from the store. */
++function liveState(): CompletionState {
++  try {
++    const target = resolveDaemonTarget({});
++    const store = new ReadOnlyStore(target.cfg.storePath);
++    try {
++      return { bees: store.listBees().filter((row) => row.lifecycle !== "deleted").map((row) => ({ id: row.id, handle: row.handle, name: row.name, human_ref: row.human_ref })) };
++    } finally { store.close(); }
++  } catch { return { bees: [] }; }
++}
++
++export function beeCandidates(state: CompletionState): string[] {
++  const out = new Set<string>();
++  for (const bee of state.bees) {
++    if (bee.human_ref) out.add(bee.human_ref);
++    if (bee.handle) out.add(bee.handle);
++    out.add(bee.name);
++    out.add(bee.id);
++  }
++  return [...out];
++}
++
++function expandTilde(value: string): string {
++  if (value === "~") return homedir();
++  if (value.startsWith("~/")) return join(homedir(), value.slice(2));
++  return value;
++}
++
++export function fileCandidates(prefix: string, cwd: string): string[] {
++  const expanded = expandTilde(prefix);
++  const slash = expanded.lastIndexOf("/");
++  const dir = slash === -1 ? cwd : resolve(cwd, expanded.slice(0, slash + 1));
++  const stem = slash === -1 ? expanded : expanded.slice(slash + 1);
++  const base = slash === -1 ? "" : prefix.slice(0, prefix.length - stem.length);
++  let entries: string[];
++  try { entries = readdirSync(dir); } catch { return []; }
++  return entries.filter((name) => name.startsWith(stem)).map((name) => {
++    let isDir = false;
++    try { isDir = statSync(join(dir, name)).isDirectory(); } catch {}
++    return `${base}${name}${isDir ? "/" : ""}`;
++  }).sort();
++}
++
++function stripBinary(words: string[]): string[] {
++  const first = words[0] ?? "";
++  return first === "hive" || first.endsWith("/hive") || first.endsWith("cli.js") || first === "ap" ? words.slice(1) : words;
++}
++
++const VALUE_FLAG_KINDS: Record<string, "bee" | "file" | "shell"> = {
++  "--bee": "bee", "--cwd": "file", "--file": "file", "--from": "file", "--out": "file", "--dir": "file", "--artifact": "file", "--identity": "file", "--admission": "file", "--bin-dir": "file", "--data-dir": "file", "--socket": "file", "--config": "file",
++};
++
++export function getCompletionsFromState(words: string[], state: CompletionState, cwd = process.cwd()): string[] {
++  const args = stripBinary(words);
++  if (args.length <= 1) {
++    const cur = args[0] ?? "";
++    return cur.startsWith("-") ? GLOBAL_FLAGS : COMMAND_NAMES;
++  }
++  const command = args[0]!;
++  const current = args[args.length - 1] ?? "";
++  const previous = args[args.length - 2] ?? "";
++  const valueKind = VALUE_FLAG_KINDS[previous];
++  if (valueKind === "bee") return beeCandidates(state);
++  if (valueKind === "file") return fileCandidates(current, cwd);
++  if (current.startsWith("-")) return command === "deploy" ? DEPLOY_FLAGS : COMMAND_FLAGS;
++  if (command === "completion") return args.length === 2 ? SHELLS : [];
++  if (command === "deploy") return [];
++  const subs = SUBCOMMANDS[command];
++  const positionals = args.slice(1).filter((word, index, all) => !word.startsWith("-") && !(index > 0 && all[index - 1]!.startsWith("--") && VALUE_FLAG_KINDS[all[index - 1]!]));
++  if (subs && positionals.length <= 1) return subs;
++  if (BEE_FIRST_ARG.has(command) && positionals.length <= 1) return beeCandidates(state);
++  if (subs && BEE_FIRST_ARG.has(`${command} ${positionals[0]}`) && positionals.length <= 2) return beeCandidates(state);
++  return [];
++}
++
++export function getCompletions(words: string[]): string[] {
++  const needsBees = words.length >= 2;
++  return getCompletionsFromState(words, needsBees ? liveState() : { bees: [] });
++}
+diff --git a/src/completion/shell.ts b/v2/cli/src/completion/shell.ts
+similarity index 100%
+rename from src/completion/shell.ts
+rename to v2/cli/src/completion/shell.ts
+diff --git a/src/deployArtifact.ts b/v2/cli/src/deploy/artifact.ts
+similarity index 94%
+rename from src/deployArtifact.ts
+rename to v2/cli/src/deploy/artifact.ts
+index 89bea405..77b19832 100644
+--- a/src/deployArtifact.ts
++++ b/v2/cli/src/deploy/artifact.ts
+@@ -3,10 +3,10 @@ import { cp, mkdir, readFile, readdir, lstat, readlink, realpath } from "node:fs
+ import { createHash } from "node:crypto";
+ import { join, posix, relative, isAbsolute, sep } from "node:path";
+ import { x } from "tar";
+-import { parseComponentIdentity, type ComponentIdentity } from "./release/index.js";
+-import { readBuildIdentity, parseBuildIdentity } from "./release/buildIdentity.js";
+-import { verifyDistAgainstArtifact } from "./deploySettle.js";
+-import { parseRuntimeArtifactManifest, readArtifactExecutionDigest, readArtifactProtocol, sha256File } from "./runtimeArtifact.js";
++import { parseComponentIdentity, type ComponentIdentity } from "../../../core/src/release/index.ts";
++import { readBuildIdentity, parseBuildIdentity } from "../../../core/src/release/buildIdentity.ts";
++import { verifyDistAgainstArtifact } from "../../../core/src/release/settle.ts";
++import { parseRuntimeArtifactManifest, readArtifactExecutionDigest, readArtifactProtocol, sha256File } from "../../../core/src/release/runtimeArtifact.ts";
+ 
+ export async function unpackDeployArtifact(archive: string, expected: ComponentIdentity, workDir: string) {
+   const identity = parseComponentIdentity(expected);
+diff --git a/src/deployCli.ts b/v2/cli/src/deploy/cliExposure.ts
+similarity index 97%
+rename from src/deployCli.ts
+rename to v2/cli/src/deploy/cliExposure.ts
+index 5f93d352..264340ac 100644
+--- a/src/deployCli.ts
++++ b/v2/cli/src/deploy/cliExposure.ts
+@@ -1,4 +1,4 @@
+-import { probeNativeNode } from "./nodeRuntime.js";
++import { probeNativeNode } from "../../../core/src/nodeRuntime.ts";
+ /** The deploy owner exposes its stable CLI without rewriting user-managed bins. */
+ import { lstat, mkdir, open, readFile, readlink, rename, symlink, unlink } from "node:fs/promises";
+ import { dirname, join, resolve } from "node:path";
+diff --git a/src/commands/deploy.ts b/v2/cli/src/deploy/command.ts
+similarity index 80%
+rename from src/commands/deploy.ts
+rename to v2/cli/src/deploy/command.ts
+index 7a1cc6fd..0afb2963 100644
+--- a/src/commands/deploy.ts
++++ b/v2/cli/src/deploy/command.ts
+@@ -1,8 +1,8 @@
+-import { provisionQuestionWithdrawal, verifyQuestionWithdrawal } from "../deployQuestionWithdrawal.js";
+-import { parseNpmPackResult } from "../npmPack.js";
+-import { serviceDirectory } from "../servicePaths.js";
++import { provisionQuestionWithdrawal, verifyQuestionWithdrawal } from "./questionWithdrawal.ts";
++import { parseNpmPackResult } from "./npmPack.ts";
++import { serviceDirectory } from "../../../core/src/servicePaths.ts";
+ import { randomUUID } from "node:crypto";
+-import { probeNativeNode, resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile, nodeRepairFile, type NodePin } from "../nodeRuntime.js";
++import { probeNativeNode, resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile, nodeRepairFile, type NodePin } from "../../../core/src/nodeRuntime.ts";
+ // `hive deploy` — versioned runtime deploys (reset WP0, spec 00). The
+ // orchestration lives in src/deployRuntime.ts; this module wires the CLI
+ // surface plus the two production hooks: the real clean-checkout build and
+@@ -29,22 +29,90 @@ import {
+   runtimeRoot,
+   type BuildArtifactContext,
+   type RestartDaemonContext,
+-} from "../deployRuntime.js";
+-import { assertRuntimeUpdateAllowed } from "../readUpdateReservation.js";
+-import { withFileLock } from "../lock.js";
+-import { runtimeUsesV2 } from "../cliRoute.js";
+-import { actionLine, bold, dim, formatRelativeTime, isPretty, note, tildify, yellow } from "../format.js";
+-import { flag, numberFlag, truthy, type Parsed } from "../parse.js";
++} from "./runtime.ts";
++import { assertRuntimeUpdateAllowed } from "./readUpdateReservation.ts";
++import { withFileLock } from "../../../core/src/lock.ts";
++import { actionLine, bold, dim, errorLine, formatRelativeTime, isPretty, joinParts, tildify, yellow } from "../style.ts";
++import type { CliIo } from "../main.ts";
+ 
+-import { collectBuildProvenance } from "../release/buildIdentityProducer.js";
+-import { hostGitEnv } from "../hostGit.js";
+-import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../release/runtimeTarget.js";
+-import { waitForDeployReadiness, type DeployProcessIdentity } from "../deployReadiness.js";
+-import { inspectProcess } from "../v2/updateOwnerClient.mjs";
++import { collectBuildProvenance } from "../../../core/src/release/buildIdentityProducer.ts";
++import { hostGitEnv } from "../../../core/src/hostGit.ts";
++import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../../../core/src/release/runtimeTarget.ts";
++import { waitForDeployReadiness, type DeployProcessIdentity } from "./readiness.ts";
++import { inspectProcess } from "./updateOwnerClient.mjs";
+ import { DatabaseSync } from "node:sqlite";
+ 
+ const execFileAsync = promisify(execFile);
+ 
++type Parsed = { args: string[]; flags: Map<string, string | true | string[]> };
++
++const BOOLEAN_FLAGS = new Set(["provision-question-withdrawal", "skip-tests", "allow-non-descendant", "rollback", "list", "json", "init", "help", "h"]);
++const KNOWN_FLAGS = new Set([...BOOLEAN_FLAGS, "keep", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
++
++function setFlag(flags: Parsed["flags"], key: string, value: string | true): void {
++  const existing = flags.get(key);
++  if (Array.isArray(existing)) existing.push(String(value));
++  else if (existing !== undefined) flags.set(key, [String(existing), String(value)]);
++  else flags.set(key, value);
++}
++
++export function parseDeployArgs(argv: string[]): Parsed {
++  const flags: Parsed["flags"] = new Map();
++  const args: string[] = [];
++  for (let i = 0; i < argv.length; i += 1) {
++    const item = argv[i]!;
++    if (item === "--") break;
++    if (item.startsWith("-") && item.length > 1) {
++      const long = item.startsWith("--");
++      const eq = long ? item.indexOf("=") : -1;
++      const key = item.slice(long ? 2 : 1, eq > -1 ? eq : undefined);
++      const booleanFlag = BOOLEAN_FLAGS.has(key) || !KNOWN_FLAGS.has(key);
++      const nextIsValue = i + 1 < argv.length && (!argv[i + 1]!.startsWith("-") || argv[i + 1] === "-");
++      const value = eq > -1 ? item.slice(eq + 1) : booleanFlag ? true : nextIsValue ? argv[++i]! : true;
++      setFlag(flags, key, value);
++      continue;
++    }
++    args.push(item);
++  }
++  return { args, flags };
++}
++
++function flag(parsed: Parsed, key: string): string | true | string[] | undefined {
++  return parsed.flags.get(key);
++}
++
++function numberFlag(parsed: Parsed, keys: string[], fallback: number): number {
++  for (const key of keys) {
++    const value = flag(parsed, key);
++    if (typeof value === "string") {
++      const parsedValue = Number(value);
++      if (Number.isFinite(parsedValue)) return parsedValue;
++    }
++  }
++  return fallback;
++}
++
++function truthy(value: unknown): boolean {
++  return value === true || value === "true" || value === "1" || value === "yes";
++}
++
++function note(message: string): string {
++  return dim(`hive: ${message}`);
++}
++
++/** `hive deploy …`: parses its own flags (the artifact and admission paths are not daemon flags) and never opens the daemon. */
++export async function runDeployCli(argv: string[], io: CliIo): Promise<number> {
++  try {
++    await cmdDeploy(parseDeployArgs(argv), io);
++    return 0;
++  } catch (error) {
++    const [first = "", ...rest] = (error instanceof Error ? error.message : String(error)).split("\n");
++    io.err(errorLine(first));
++    for (const line of rest) io.err(dim(line));
++    return 1;
++  }
++}
++
+ const USAGE = [
+   "Usage: hive deploy [<sha>] [--keep <n>] [--skip-tests]   build+verify <sha> (default HEAD) in a temp checkout, install to ~/.hive/runtime/<sha>, retarget current, restart daemon",
+   "       --provision-question-withdrawal provisions registered local service trust for an approved host; explicit false in config remains disabled",
+@@ -56,13 +124,11 @@ const USAGE = [
+   "       hive deploy --init                 print the manual steps that make the global `hive` resolve through ~/.hive/runtime/current",
+ ].join("\n");
+ 
+-const KNOWN_FLAGS = new Set(["provision-question-withdrawal", "skip-tests", "keep", "allow-non-descendant", "rollback", "list", "json", "init", "artifact", "identity", "expected-current", "admission", "bin-dir"]);
+-
+-export async function cmdDeploy(parsed: Parsed): Promise<void> {
++export async function cmdDeploy(parsed: Parsed, io: CliIo): Promise<void> {
+   // Help and unknown flags must never fall through to a real deploy: a bare
+   // `hive deploy --help` once built and restarted the live daemon.
+   if (parsed.flags.has("help") || parsed.flags.has("h")) {
+-    console.log(USAGE);
++    io.out(USAGE);
+     return;
+   }
+   const unknown = [...parsed.flags.keys()].filter((key) => !KNOWN_FLAGS.has(key));
+@@ -86,7 +152,7 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
+       admission: JSON.parse(await readFile(admission, "utf8")),
+       ...(typeof binDirectory === "string" ? { cliBinDirectory: binDirectory } : {}),
+       expectedCurrent: expected === "none" ? null : expected, hooks: { backupStore: backupBeforeSwap, restartDaemon: context => restartDeployedDaemon(context, provision === true) } });
+-    console.log(JSON.stringify(result));
++    io.out(JSON.stringify(result));
+     return;
+   }
+   if (["identity", "admission", "expected-current", "bin-dir"].some(name => parsed.flags.has(name))) throw new Error(USAGE);
+@@ -95,11 +161,11 @@ export async function cmdDeploy(parsed: Parsed): Promise<void> {
+   const wantsRollback = truthy(flag(parsed, "rollback"));
+   const modes = [wantsList, wantsInit, wantsRollback].filter(Boolean).length;
+   if (modes > 1 || (modes === 1 && parsed.args.length > 0)) throw new Error(USAGE);
+-  if (wantsList) return deployList(parsed);
+-  if (wantsInit) return deployInit();
+-  if (wantsRollback) return deployRollback();
++  if (wantsList) return deployList(parsed, io);
++  if (wantsInit) return deployInit(io);
++  if (wantsRollback) return deployRollback(io);
+   if (parsed.args.length > 1) throw new Error(USAGE);
+-  return deployRun(parsed);
++  return deployRun(parsed, io);
+ }
+ 
+ /**
+@@ -156,23 +222,10 @@ export async function buildDeployArtifact(
+   await runStep("npm", ["run", "build"], checkout, log, gateEnv);
+   if (skipTests === true) {
+     log("deploy: WARNING test gate skipped (--skip-tests) — this artifact is not release-grade");
+-  } else if (release) {
+-    for (const script of ["v2:check", "v2:test", "v2:daemon", "v2:driver", "v2:driver2", "v2:harness"]) {
+-      await runStep("npm", ["run", script], checkout, log, gateEnv);
+-    }
+-    await runStep("npm", ["test"], checkout, log, gateEnv);
+-  } else if (runtimeUsesV2(runtimeRoot())) {
+-    // Post-flip node (WP7): the old suite's CLI-shelling tests don't override
+-    // the store root, so on a frozen machine they route into v2 and hang
+-    // (2026-08-19: deploy gate deadlocked against its own flip). The v2
+-    // battery is the gate for what actually ships; the old suite keeps
+-    // running in repo CI until WP8 removes the old tree.
+-    log("deploy: v2 node — gating on the v2 battery instead of the legacy suite");
+-    for (const script of ["v2:test", "v2:daemon", "v2:driver", "v2:harness"]) {
++  } else {
++    for (const script of release ? ["v2:test", "v2:daemon", "v2:driver", "v2:driver2", "v2:harness"] : ["v2:test", "v2:daemon", "v2:driver", "v2:harness"]) {
+       await runStep("npm", ["run", script], checkout, log, gateEnv);
+     }
+-  } else {
+-    await runStep("npm", ["test"], checkout, log, gateEnv);
+   }
+ 
+   // npm pack gives exactly the `files` set a real install would receive; the
+@@ -216,9 +269,7 @@ export async function restartDeployedDaemon(context: RestartDaemonContext, provi
+   });
+ }
+ 
+-async function restartAdmittedDaemon({ root, installedDir, sha, log, runtime, restorePrevious, assertRollbackSafe }: RestartDaemonContext, provision: boolean): Promise<void> {
+-  const v2 = runtime === "v2" || runtimeUsesV2(root);
+-  if (!v2) throw new Error("deploy: legacy service activation is refused; install the pinned v2 service first");
++async function restartAdmittedDaemon({ root, installedDir, sha, log, restorePrevious, assertRollbackSafe }: RestartDaemonContext, provision: boolean): Promise<void> {
+   const dataDir = join(root, "..", "v2");
+   let daemonLogPath = join(dataDir, "hived.log");
+   try {
+@@ -429,11 +480,11 @@ async function resolveHoneybeeRepoRoot(): Promise<string> {
+   return repoRoot;
+ }
+ 
+-async function deployRun(parsed: Parsed): Promise<void> {
++async function deployRun(parsed: Parsed, io: CliIo): Promise<void> {
+   const repoRoot = await resolveHoneybeeRepoRoot();
+   const ref = parsed.args[0];
+   const keep = numberFlag(parsed, ["keep"], DEFAULT_KEEP_VERSIONS);
+-  const log = (line: string) => console.log(isPretty() ? dim(line) : line);
++  const log = (line: string) => io.out(isPretty() ? dim(line) : line);
+   const outcome = await deployVersion({
+     repoRoot,
+     ...(ref !== undefined ? { ref } : {}),
+@@ -444,42 +495,36 @@ async function deployRun(parsed: Parsed): Promise<void> {
+     hooks: { buildArtifact: buildDeployArtifact, backupStore: backupBeforeSwap, restartDaemon: context => restartDeployedDaemon(context, flag(parsed, "provision-question-withdrawal") === true) },
+   });
+   if (isPretty()) {
+-    console.log(actionLine("ok", "deploy", [
+-      bold(outcome.sha.slice(0, 12)),
+-      dim(`→ ${tildify(outcome.installedDir)}`),
+-    ]));
+-    console.log(dim(`  artifact: ${outcome.artifactHash.slice(0, 12)}  previous: ${outcome.previousSha?.slice(0, 12) ?? "none"}  pruned: ${outcome.pruned.length}`));
++    io.out(actionLine("ok", "deploy", joinParts([bold(outcome.sha.slice(0, 12)), dim(`→ ${tildify(outcome.installedDir)}`)])));
++    io.out(dim(`  artifact: ${outcome.artifactHash.slice(0, 12)}  previous: ${outcome.previousSha?.slice(0, 12) ?? "none"}  pruned: ${outcome.pruned.length}`));
+   } else {
+-    console.log(`deploy\t${outcome.sha}\t${outcome.artifactHash}\t${outcome.installedDir}\t${outcome.pruned.length}`);
++    io.out(`deploy\t${outcome.sha}\t${outcome.artifactHash}\t${outcome.installedDir}\t${outcome.pruned.length}`);
+   }
+ }
+ 
+-async function deployRollback(): Promise<void> {
+-  const log = (line: string) => console.log(isPretty() ? dim(line) : line);
++async function deployRollback(io: CliIo): Promise<void> {
++  const log = (line: string) => io.out(isPretty() ? dim(line) : line);
+   const outcome = await rollbackDeploy({
+     log,
+     hooks: { backupStore: backupBeforeSwap, restartDaemon: restartDeployedDaemon },
+   });
+   if (isPretty()) {
+-    console.log(actionLine("ok", "deploy", [
+-      bold("rollback"),
+-      dim(`${outcome.from.slice(0, 12)} → ${outcome.sha.slice(0, 12)}`),
+-    ]));
++    io.out(actionLine("ok", "deploy", joinParts([bold("rollback"), dim(`${outcome.from.slice(0, 12)} → ${outcome.sha.slice(0, 12)}`)])));
+   } else {
+-    console.log(`rollback\t${outcome.from}\t${outcome.sha}`);
++    io.out(`rollback\t${outcome.from}\t${outcome.sha}`);
+   }
+ }
+ 
+-async function deployList(parsed: Parsed): Promise<void> {
++async function deployList(parsed: Parsed, io: CliIo): Promise<void> {
+   const root = runtimeRoot();
+   const entries = await readDeployHistory(root);
+   const currentSha = await currentDeployTarget(root);
+   if (truthy(flag(parsed, "json"))) {
+-    console.log(JSON.stringify({ root, current: currentSha, entries }, null, 2));
++    io.out(JSON.stringify({ root, current: currentSha, entries }, null, 2));
+     return;
+   }
+   if (entries.length === 0) {
+-    console.log(note(`no deploys recorded under ${tildify(root)} — run: hive deploy`));
++    io.out(note(`no deploys recorded under ${tildify(root)} — run: hive deploy`));
+     return;
+   }
+   const pretty = isPretty();
+@@ -490,14 +535,14 @@ async function deployList(parsed: Parsed): Promise<void> {
+     const marker = [isCurrent ? "current" : "", entry.activation ? `activation ${entry.activation}` : ""].filter(Boolean).join("; ");
+     if (pretty) {
+       const sha = isCurrent ? bold(entry.sha.slice(0, 12)) : entry.sha.slice(0, 12);
+-      const when = formatRelativeTime(entry.at);
++      const when = formatRelativeTime(Date.parse(entry.at));
+       const badge = `${isCurrent ? ` ${yellow("← current")}` : ""}${entry.activation ? ` ${yellow(`activation ${entry.activation}`)}` : ""}`;
+-      console.log(`${sha}  ${dim(entry.artifactHash.slice(0, 12))}  ${dim(when)}  ${dim(entry.by)}${badge}`);
++      io.out(`${sha}  ${dim(entry.artifactHash.slice(0, 12))}  ${dim(when)}  ${dim(entry.by)}${badge}`);
+     } else {
+-      console.log(`${entry.sha}\t${entry.at}\t${entry.artifactHash}\t${entry.by}\t${marker}`);
++      io.out(`${entry.sha}\t${entry.at}\t${entry.artifactHash}\t${entry.by}\t${marker}`);
+     }
+   }
+-  if (pretty && rollback) console.log(dim(`rollback target: ${rollback.sha.slice(0, 12)}`));
++  if (pretty && rollback) io.out(dim(`rollback target: ${rollback.sha.slice(0, 12)}`));
+ }
+ 
+ type PathState =
+@@ -525,7 +570,7 @@ async function inspectPath(path: string): Promise<PathState> {
+  * spec exists to remove. The one-time migration is four commands; the
+  * operator runs them deliberately.
+  */
+-async function deployInit(): Promise<void> {
++async function deployInit(io: CliIo): Promise<void> {
+   const root = runtimeRoot();
+   const currentDir = join(root, CURRENT_LINK_NAME);
+   const deployed = existsSync(join(currentDir, "dist", "cli.js"));
+@@ -541,8 +586,8 @@ async function deployInit(): Promise<void> {
+   const binState = await inspectPath(binPath);
+ 
+   const pretty = isPretty();
+-  const heading = (line: string) => console.log(pretty ? bold(line) : line);
+-  const detail = (line: string) => console.log(pretty ? dim(line) : line);
++  const heading = (line: string) => io.out(pretty ? bold(line) : line);
++  const detail = (line: string) => io.out(pretty ? dim(line) : line);
+ 
+   heading("hive deploy --init — migrate the global `hive` onto ~/.hive/runtime/current");
+   detail("");
+@@ -551,32 +596,32 @@ async function deployInit(): Promise<void> {
+   detail(`  global bin:      ${binPath} [${binState.kind === "symlink" ? `symlink → ${binState.target}` : binState.kind}]`);
+   detail("");
+   if (pkgState.kind === "symlink" && pkgState.target.startsWith(currentDir)) {
+-    console.log(note("already migrated: the global package resolves through runtime/current."));
++    io.out(note("already migrated: the global package resolves through runtime/current."));
+     return;
+   }
+-  console.log("This step is print-only (it never rewires the live tree itself). Run, in order:");
+-  console.log("");
++  io.out("This step is print-only (it never rewires the live tree itself). Run, in order:");
++  io.out("");
+   let step = 1;
+   if (!deployed) {
+-    console.log(`  ${step++}. hive deploy`);
+-    console.log("     # install a first version under ~/.hive/runtime before switching resolution");
++    io.out(`  ${step++}. hive deploy`);
++    io.out("     # install a first version under ~/.hive/runtime before switching resolution");
+   }
+   if (pkgState.kind === "directory" || pkgState.kind === "file") {
+-    console.log(`  ${step++}. mv "${pkgDir}" "${pkgDir}.pre-runtime"`);
+-    console.log("     # keep the old npm-installed tree as an escape hatch; delete it once the migration is verified");
++    io.out(`  ${step++}. mv "${pkgDir}" "${pkgDir}.pre-runtime"`);
++    io.out("     # keep the old npm-installed tree as an escape hatch; delete it once the migration is verified");
+   }
+-  console.log(`  ${step++}. ln -s "${currentDir}" "${pkgDir}.new" && mv -h "${pkgDir}.new" "${pkgDir}"`);
+-  console.log("     # atomic swap (BSD mv -h: replace the link itself, never follow it)");
++  io.out(`  ${step++}. ln -s "${currentDir}" "${pkgDir}.new" && mv -h "${pkgDir}.new" "${pkgDir}"`);
++  io.out("     # atomic swap (BSD mv -h: replace the link itself, never follow it)");
+   if (binState.kind === "missing" || binState.kind === "symlink") {
+-    console.log(`  ${step++}. ln -sfn "../lib/node_modules/honeybee/dist/cli.js" "${binPath}"`);
+-    console.log("     # npm-style relative bin shim; resolves through the package symlink, i.e. through runtime/current");
++    io.out(`  ${step++}. ln -sfn "../lib/node_modules/honeybee/dist/cli.js" "${binPath}"`);
++    io.out("     # npm-style relative bin shim; resolves through the package symlink, i.e. through runtime/current");
+   }
+-  console.log(`  ${step++}. hive daemon install --force && hive daemon restart`);
+-  console.log("     # rebind the LaunchAgent plist to the runtime/current CLI path");
+-  console.log(`  ${step}. readlink "${pkgDir}" && hive deploy --list`);
+-  console.log("     # verify: the package resolves through runtime/current and history shows the active sha");
+-  console.log("");
+-  console.log(note("warning: any future `npm i -g honeybee` / `npm update -g` will clobber the symlink — redo the ln/mv step after such commands (or simply never run them again; `hive deploy` replaces them)."));
++  io.out(`  ${step++}. hive daemon install --force && hive daemon restart`);
++  io.out("     # rebind the LaunchAgent plist to the runtime/current CLI path");
++  io.out(`  ${step}. readlink "${pkgDir}" && hive deploy --list`);
++  io.out("     # verify: the package resolves through runtime/current and history shows the active sha");
++  io.out("");
++  io.out(note("warning: any future `npm i -g honeybee` / `npm update -g` will clobber the symlink — redo the ln/mv step after such commands (or simply never run them again; `hive deploy` replaces them)."));
+ }
+ 
+ export async function backupBeforeSwap({ root, installedDir, sourceRevision }: { root: string; installedDir: string; sourceRevision: string | null }): Promise<{ receiptPath: string }> {
+diff --git a/src/npmPack.ts b/v2/cli/src/deploy/npmPack.ts
+similarity index 100%
+rename from src/npmPack.ts
+rename to v2/cli/src/deploy/npmPack.ts
+diff --git a/src/deployQuestionWithdrawal.ts b/v2/cli/src/deploy/questionWithdrawal.ts
+similarity index 98%
+rename from src/deployQuestionWithdrawal.ts
+rename to v2/cli/src/deploy/questionWithdrawal.ts
+index 543add1b..81461aeb 100644
+--- a/src/deployQuestionWithdrawal.ts
++++ b/v2/cli/src/deploy/questionWithdrawal.ts
+@@ -1,7 +1,7 @@
+ import { lstat, readFile } from "node:fs/promises";
+ import { createConnection } from "node:net";
+ import { isAbsolute, join, relative, resolve } from "node:path";
+-import { atomicWriteFile } from "./fsx.js";
++import { atomicWriteFile } from "../../../core/src/fsx.ts";
+ 
+ async function readConfig(path: string): Promise<Record<string, unknown>> {
+   const info = await lstat(path).catch((error: NodeJS.ErrnoException) => {
+diff --git a/src/readUpdateReservation.ts b/v2/cli/src/deploy/readUpdateReservation.ts
+similarity index 87%
+rename from src/readUpdateReservation.ts
+rename to v2/cli/src/deploy/readUpdateReservation.ts
+index 8f0f1ba6..5be61647 100644
+--- a/src/readUpdateReservation.ts
++++ b/v2/cli/src/deploy/readUpdateReservation.ts
+@@ -1,9 +1,9 @@
+-import { recordedSocketPath } from "./daemonSocketPath.js";
++import { recordedSocketPath } from "./updateOwnerClient.mjs";
+ import { lstatSync, readFileSync } from "node:fs";
+ import { join, resolve } from "node:path";
+ import { DatabaseSync } from "node:sqlite";
+-import { readLiveUpdateOwner } from "./v2/updateOwnerClient.mjs";
+-import { parseDurableUpdateReservation, isApiarySwap, type DurableUpdateReservation } from "./apiarySwap.js";
++import { readLiveUpdateOwner } from "./updateOwnerClient.mjs";
++import { parseDurableUpdateReservation, isApiarySwap, type DurableUpdateReservation } from "../../../core/src/apiarySwap.ts";
+ 
+ function parseOwnerReservation(value: unknown): DurableUpdateReservation | null {
+   if (value === null) return null;
+@@ -57,9 +57,15 @@ export async function readUpdateReservation(root: string): Promise<DurableUpdate
+ 
+ export class DeployReservationHeldError extends Error {
+   readonly code = "DEPLOY_RESERVATION_HELD";
+-  constructor(readonly reservationId: string, readonly epoch: number, readonly purpose: "paired-recovery" | "apiary-swap" = "paired-recovery") {
++  readonly reservationId: string;
++  readonly epoch: number;
++  readonly purpose: "paired-recovery" | "apiary-swap";
++  constructor(reservationId: string, epoch: number, purpose: "paired-recovery" | "apiary-swap" = "paired-recovery") {
+     super(`deploy: ${purpose} update reservation ${reservationId} at epoch ${epoch} is held; finish or recover the coordinated update, then clear it with hive update-owner ${purpose === "apiary-swap" ? "apiary-swap release" : "release"} using its exact owner tuple and completion receipt`);
+     this.name = "DeployReservationHeldError";
++    this.reservationId = reservationId;
++    this.epoch = epoch;
++    this.purpose = purpose;
+   }
+ }
+ 
+diff --git a/src/deployReadiness.ts b/v2/cli/src/deploy/readiness.ts
+similarity index 83%
+rename from src/deployReadiness.ts
+rename to v2/cli/src/deploy/readiness.ts
+index 46bfef1b..b0a2c21e 100644
+--- a/src/deployReadiness.ts
++++ b/v2/cli/src/deploy/readiness.ts
+@@ -8,9 +8,13 @@ export type DeployReadinessObservation = {
+ };
+ 
+ export class DeployReadinessError extends Error {
+-  constructor(readonly code: "READINESS_REPAIR" | "READINESS_EXITED" | "READINESS_IDENTITY_CHANGED" | "READINESS_LIMIT" | "READINESS_STALLED", message: string, readonly processIdentity?: DeployProcessIdentity) {
++  readonly code: "READINESS_REPAIR" | "READINESS_EXITED" | "READINESS_IDENTITY_CHANGED" | "READINESS_LIMIT" | "READINESS_STALLED";
++  readonly processIdentity: DeployProcessIdentity | undefined;
++  constructor(code: "READINESS_REPAIR" | "READINESS_EXITED" | "READINESS_IDENTITY_CHANGED" | "READINESS_LIMIT" | "READINESS_STALLED", message: string, processIdentity?: DeployProcessIdentity) {
+     super(message);
+     this.name = "DeployReadinessError";
++    this.code = code;
++    this.processIdentity = processIdentity;
+   }
+ }
+ 
+diff --git a/src/deployRuntime.ts b/v2/cli/src/deploy/runtime.ts
+similarity index 95%
+rename from src/deployRuntime.ts
+rename to v2/cli/src/deploy/runtime.ts
+index 1159ca40..545beb4b 100644
+--- a/src/deployRuntime.ts
++++ b/v2/cli/src/deploy/runtime.ts
+@@ -1,8 +1,8 @@
+ import { createHash, randomUUID } from "node:crypto";
+ import { DatabaseSync } from "node:sqlite";
+-import { readBuildIdentity } from "./release/buildIdentity.js";
+-import { recordedSocketPath, readLiveUpdateOwner } from "./v2/updateOwnerClient.mjs";
+-import { resolveNodePin } from "./nodeRuntime.js";
++import { readBuildIdentity } from "../../../core/src/release/buildIdentity.ts";
++import { recordedSocketPath, readLiveUpdateOwner } from "./updateOwnerClient.mjs";
++import { resolveNodePin } from "../../../core/src/nodeRuntime.ts";
+ /**
+  * Versioned runtime deploys (reset WP0 — docs/design/specs/reset-00-deploy.md).
+  *
+@@ -28,23 +28,23 @@ import { cp, lstat, mkdir, mkdtemp, open, readFile, readdir, readlink, rename, r
+ import { tmpdir, userInfo } from "node:os";
+ import { dirname, join, resolve } from "node:path";
+ import { promisify } from "node:util";
+-import { withFileLock } from "./lock.js";
+-import { configuredV2Runtime, installedV2Identity, runtimeUsesV2, RUNTIME_MODE_CONFIG, V2_DEPLOY_MARKER } from "./cliRoute.js";
+-import { exposeDeployedCli } from "./deployCli.js";
+-import { unpackDeployArtifact, artifactTreeDigest, assertArtifactLinksContained } from "./deployArtifact.js";
+-import type { ComponentIdentity } from "./release/index.js";
+-import { canonicalDigest } from "./comb/canonical.js";
+-import { assertUpdateAdmission, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "./updateAdmission.js";
+-import { hashDirectoryTree, readBuildStamp, verifyDistAgainstArtifact, writeBuildStamp } from "./deploySettle.js";
+-import { atomicWriteFile, storeRoot } from "./fsx.js";
+-import { hostGitEnv } from "./hostGit.js";
+-import { assertRuntimeUpdateAllowed, readUpdateReservation, DeployReservationHeldError } from "./readUpdateReservation.js";
+-import { isApiarySwap } from "./apiarySwap.js";
+-import { parseUpdateReservation, type UpdateReservation } from "./updateReservation.js";
++import { withFileLock } from "../../../core/src/lock.ts";
++import { configuredV2Runtime, installedV2Identity, RUNTIME_MODE_CONFIG, V2_DEPLOY_MARKER } from "../../../core/src/runtimeMode.ts";
++import { exposeDeployedCli } from "./cliExposure.ts";
++import { unpackDeployArtifact, artifactTreeDigest, assertArtifactLinksContained } from "./artifact.ts";
++import type { ComponentIdentity } from "../../../core/src/release/index.ts";
++import { canonicalDigest } from "../../../core/src/canonical.ts";
++import { assertUpdateAdmission, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "./updateAdmission.ts";
++import { hashDirectoryTree, readBuildStamp, verifyDistAgainstArtifact, writeBuildStamp } from "../../../core/src/release/settle.ts";
++import { atomicWriteFile, storeRoot } from "../../../core/src/fsx.ts";
++import { hostGitEnv } from "../../../core/src/hostGit.ts";
++import { assertRuntimeUpdateAllowed, readUpdateReservation, DeployReservationHeldError } from "./readUpdateReservation.ts";
++import { isApiarySwap } from "../../../core/src/apiarySwap.ts";
++import { parseUpdateReservation, type UpdateReservation } from "../../../core/src/updateReservation.ts";
+ 
+ const execFileAsync = promisify(execFile);
+ 
+-export { DeployReservationHeldError } from "./readUpdateReservation.js";
++export { DeployReservationHeldError } from "./readUpdateReservation.ts";
+ 
+ export const RUNTIME_DIR_NAME = "runtime";
+ export const CURRENT_LINK_NAME = "current";
+@@ -85,8 +85,6 @@ export type BuildArtifactContext = {
+ };
+ 
+ export type RestartDaemonContext = {
+-  /** Verified artifact installs explicitly activate v2, including fresh nodes. */
+-  runtime?: "v2";
+   root: string;
+   installedDir: string;
+   sha: string;
+@@ -98,9 +96,13 @@ export type RestartDaemonContext = {
+ export class DeployActivationHeldError extends Error {
+   readonly code = "DEPLOY_ACTIVATION_HELD";
+   readonly serviceFilesRetained = true;
+-  constructor(readonly sha: string, detail: string, options?: ErrorOptions, readonly candidateReadiness: "ready" | "unavailable" | "unknown" = "unknown") {
++  readonly sha: string;
++  readonly candidateReadiness: "ready" | "unavailable" | "unknown";
++  constructor(sha: string, detail: string, options?: ErrorOptions, candidateReadiness: "ready" | "unavailable" | "unknown" = "unknown") {
+     super(`deploy: DEPLOY_ACTIVATION_HELD: current candidate ${sha} retained; service configuration preserved; ${detail}`, options);
+     this.name = "DeployActivationHeldError";
++    this.sha = sha;
++    this.candidateReadiness = candidateReadiness;
+   }
+ }
+ 
+@@ -125,12 +127,12 @@ export type DeployHooks = {
+   restartDaemon: (context: RestartDaemonContext) => Promise<void>;
+ };
+ 
+-const admittedRestarts = new WeakMap<RestartDaemonContext, Pick<RestartDaemonContext, "root" | "installedDir" | "sha" | "runtime"> & { reservation?: UpdateReservation }>();
++const admittedRestarts = new WeakMap<RestartDaemonContext, Pick<RestartDaemonContext, "root" | "installedDir" | "sha"> & { reservation?: UpdateReservation }>();
+ 
+ export function hasDeployRestartAdmission(context: RestartDaemonContext): boolean {
+   const admission = admittedRestarts.get(context);
+   return admission !== undefined && admission.root === context.root && admission.installedDir === context.installedDir
+-    && admission.sha === context.sha && admission.runtime === context.runtime;
++    && admission.sha === context.sha;
+ }
+ 
+ export async function assertDeployRestartAdmission(context: RestartDaemonContext): Promise<void> {
+@@ -156,7 +158,7 @@ async function restartWithAdmission(hooks: Pick<DeployHooks, "restartDaemon" | "
+     if (!hasDeployRestartAdmission(context)) throw new Error("deploy: restart admission expired");
+     return checkRollback();
+   };
+-  admittedRestarts.set(context, { root: context.root, installedDir: context.installedDir, sha: context.sha, runtime: context.runtime, reservation });
++  admittedRestarts.set(context, { root: context.root, installedDir: context.installedDir, sha: context.sha, reservation });
+   try { await hooks.restartDaemon(context); } finally { admittedRestarts.delete(context); }
+ }
+ 
+@@ -273,10 +275,14 @@ export async function currentDeployTarget(root: string): Promise<string | null>
+   } catch { return null; }
+ }
+ 
++export type DeployRollbackCode = "ROLLBACK_CURRENT_IDENTITY_MISSING" | "ROLLBACK_PREVIOUS_INSTALL_MISSING" | "ROLLBACK_SCHEMA_UNKNOWN" | "ROLLBACK_STORE_RESTORE_REQUIRED" | "ROLLBACK_PREVIOUS_INSTALL_CONFLICT";
++
+ export class DeployRollbackError extends Error {
+-  constructor(readonly code: "ROLLBACK_CURRENT_IDENTITY_MISSING" | "ROLLBACK_PREVIOUS_INSTALL_MISSING" | "ROLLBACK_SCHEMA_UNKNOWN" | "ROLLBACK_STORE_RESTORE_REQUIRED" | "ROLLBACK_PREVIOUS_INSTALL_CONFLICT", message: string, options?: ErrorOptions) {
++  readonly code: DeployRollbackCode;
++  constructor(code: DeployRollbackCode, message: string, options?: ErrorOptions) {
+     super(`deploy: ${code}: ${message}`, options);
+     this.name = "DeployRollbackError";
++    this.code = code;
+   }
+ }
+ 
+@@ -587,7 +593,6 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
+   if (previousLink && !previousSha) throw new DeployRollbackError("ROLLBACK_CURRENT_IDENTITY_MISSING", `runtime/current points to ${previousLink}, which has no valid Honeybee build identity`);
+   const retainedDigest = previousLink && previousSha && previousLink !== previousSha
+     ? await retainExternalCurrent(root, previousLink, previousSha, now, by) : null;
+-  const v2 = runtimeUsesV2(root) || immutable;
+   let staging: string | null = null;
+   try {
+     // Stage on the runtime filesystem so publishing is a same-device rename.
+@@ -613,7 +618,7 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
+       await rm(staging, { recursive: true });
+       staging = null;
+     }
+-    if (v2) await persistV2RuntimeMode(root);
++    await persistV2RuntimeMode(root);
+     if (staging && existsSync(versionDir)) {
+       displaced = join(root, `.displaced.${sha}.${process.pid}.${Date.now()}`);
+       await rename(versionDir, displaced);
+@@ -652,7 +657,7 @@ async function publishDeploy({ root, sha, artifactDir, artifactHash, keep, by, n
+     };
+     let activated = false;
+     try {
+-      await restartWithAdmission(hooks, { root, installedDir: versionDir, sha, log, ...(previousLink ? { restorePrevious, assertRollbackSafe } : {}), ...(v2 ? { runtime: "v2" as const } : {}) }, reservation);
++      await restartWithAdmission(hooks, { root, installedDir: versionDir, sha, log, ...(previousLink ? { restorePrevious, assertRollbackSafe } : {}) }, reservation);
+       if (restored) throw new Error("deploy: activation rolled back");
+       activated = true;
+     } catch (error) {
+@@ -776,8 +781,7 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
+   if (currentLink && currentLink !== currentSha) await retainExternalCurrent(root, currentLink, currentSha, now, by);
+ 
+   await backupBeforeRuntimeSwap(root, options.hooks, join(root, currentSha), currentSha, log);
+-  const v2 = runtimeUsesV2(root);
+-  if (v2) await persistV2RuntimeMode(root);
++  await persistV2RuntimeMode(root);
+   await retargetCurrent(root, target.sha);
+   const entry: DeployHistoryEntry = {
+     sha: target.sha,
+@@ -789,8 +793,7 @@ async function rollbackDeployLocked(options: RollbackOptions): Promise<RollbackO
+   try {
+     await restartWithAdmission(options.hooks, { root, installedDir: join(root, target.sha), sha: target.sha, log,
+       restorePrevious: async () => { await assertRollbackStoreCompatible(root, resolve(root, currentLink!)); await retargetCurrent(root, currentLink!); return true; },
+-      assertRollbackSafe: async () => { await assertRollbackStoreCompatible(root, resolve(root, currentLink!)); },
+-      ...(v2 ? { runtime: "v2" as const } : {}) });
++      assertRollbackSafe: async () => { await assertRollbackStoreCompatible(root, resolve(root, currentLink!)); } });
+   } catch (error) {
+     if (error instanceof DeployActivationHeldError) {
+       if (await currentDeployTarget(root) === target.sha) await appendDeployHistory(root, { ...entry, activation: "held" });
+diff --git a/src/updateAdmission.ts b/v2/cli/src/deploy/updateAdmission.ts
+similarity index 92%
+rename from src/updateAdmission.ts
+rename to v2/cli/src/deploy/updateAdmission.ts
+index 688337a8..6eb6ec8f 100644
+--- a/src/updateAdmission.ts
++++ b/v2/cli/src/deploy/updateAdmission.ts
+@@ -1,16 +1,16 @@
+-import { recordedSocketPath } from "./daemonSocketPath.js";
+-import { childNodePath, nativeNodeEnv } from "./nodeRuntime.js";
++import { recordedSocketPath } from "./updateOwnerClient.mjs";
++import { childNodePath, nativeNodeEnv } from "../../../core/src/nodeRuntime.ts";
+ /** Read-only deploy admission. SQLite remains the daemon's sole authority. */
+ import { DatabaseSync } from "node:sqlite";
+ import { existsSync, readFileSync } from "node:fs";
+ import { join, resolve } from "node:path";
+ import { execFile } from "node:child_process";
+ import { promisify } from "node:util";
+-import { parseRecoveryPlan, type RecoveryPlan, type ComponentIdentity } from "./release/index.js";
+-import { parseRecoveryPlan as parseRoleBoundRecoveryPlan, type RecoveryPlan as RoleBoundRecoveryPlan } from "./release/v2.js";
+-import { canonicalDigest } from "./comb/canonical.js";
+-import { UPDATE_RECOVERY_CONTRACT, parseUpdateReservation, type UpdateReservation } from "./updateReservation.js";
+-export { UPDATE_RECOVERY_CONTRACT } from "./updateReservation.js";
++import { parseRecoveryPlan, type RecoveryPlan, type ComponentIdentity } from "../../../core/src/release/index.ts";
++import { parseRecoveryPlan as parseRoleBoundRecoveryPlan, type RecoveryPlan as RoleBoundRecoveryPlan } from "../../../core/src/release/v2.ts";
++import { canonicalDigest } from "../../../core/src/canonical.ts";
++import { UPDATE_RECOVERY_CONTRACT, parseUpdateReservation, type UpdateReservation } from "../../../core/src/updateReservation.ts";
++export { UPDATE_RECOVERY_CONTRACT } from "../../../core/src/updateReservation.ts";
+ export type UpdateAdmission = { reservation: UpdateReservation; recovery: RecoveryPlan | RoleBoundRecoveryPlan };
+ 
+ /** Called inside the SAME deploy lock used by the daemon's reserve/release RPC. */
+diff --git a/src/v2/updateOwnerClient.d.mts b/v2/cli/src/deploy/updateOwnerClient.d.mts
+similarity index 100%
+rename from src/v2/updateOwnerClient.d.mts
+rename to v2/cli/src/deploy/updateOwnerClient.d.mts
+diff --git a/src/v2/updateOwnerClient.mjs b/v2/cli/src/deploy/updateOwnerClient.mjs
+similarity index 82%
+rename from src/v2/updateOwnerClient.mjs
+rename to v2/cli/src/deploy/updateOwnerClient.mjs
+index cbe7f51f..bef6a054 100644
+--- a/src/v2/updateOwnerClient.mjs
++++ b/v2/cli/src/deploy/updateOwnerClient.mjs
+@@ -1,6 +1,6 @@
+-import { readLiveEndpointRecord, samePath } from "../../v2/daemon/src/endpointRecord.ts";
+-import { ownedPrivateDir } from "../../v2/core/src/socketPath.ts";
+-import { inspectProcess } from "../../v2/harness/src/processIdentity.ts";
++import { readLiveEndpointRecord, samePath } from "../../../daemon/src/endpointRecord.ts";
++import { ownedPrivateDir } from "../../../core/src/socketPath.ts";
++import { inspectProcess } from "../../../harness/src/processIdentity.ts";
+ export { inspectProcess };
+ import { dirname, join } from "node:path";
+ function liveEndpoint(dataDir) {
+@@ -13,7 +13,7 @@ function liveEndpoint(dataDir) {
+ export function recordedSocketPath(dataDir) {
+   return liveEndpoint(dataDir)?.socketPath ?? join(dataDir, "hived.sock");
+ }
+-import { DaemonDownError, RpcClient } from "../../v2/cli/src/client.ts";
++import { DaemonDownError, RpcClient } from "../client.ts";
+ 
+ export async function readLiveUpdateOwner(socketPath, dataDir) {
+   let client;
+diff --git a/v2/cli/src/help.ts b/v2/cli/src/help.ts
+index 7c4fe8f0..7886a55c 100644
+--- a/v2/cli/src/help.ts
++++ b/v2/cli/src/help.ts
+@@ -3,7 +3,7 @@ import { blue, bold, cyan, dim, gray, honey, yellow } from "./style.ts";
+ type Row = [cmd: string, syn: string, desc: string];
+ type Group = { title: string; rows: Row[] };
+ 
+-const GROUPS: Group[] = [
++export const GROUPS: Group[] = [
+   {
+     title: "Spawn & run",
+     rows: [
+@@ -122,6 +122,9 @@ const GROUPS: Group[] = [
+     rows: [
+       ["daemon", "run", "run the daemon in the foreground"],
+       ["daemon", "install|uninstall|start|stop|restart|status", "platform service + liveness"],
++      ["deploy", "[<sha>] [--keep n] [--skip-tests]", "build a committed sha in a clean checkout, install it under ~/.hive/runtime, retarget current, restart"],
++      ["deploy", "--rollback | --list [--json] | --init", "retarget current to the previous version · history · one-time global migration steps"],
++      ["completion", "<bash|zsh|fish>", "print a shell completion script (eval to install)"],
+     ],
+   },
+ ];
+diff --git a/v2/cli/src/main.ts b/v2/cli/src/main.ts
+index 30747902..e9433f16 100644
+--- a/v2/cli/src/main.ts
++++ b/v2/cli/src/main.ts
+@@ -1,5 +1,5 @@
+-import { serviceDirectory } from "../../../src/servicePaths.ts";
+-import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../../src/nodeRuntime.ts";
++import { serviceDirectory } from "../../core/src/servicePaths.ts";
++import { resolveNodePin, persistNodePin, nodePinEnv, validateDaemonNode, readNodeRepair } from "../../core/src/nodeRuntime.ts";
+ import { BUILD_IDENTITY } from "../../daemon/src/protocol.ts";
+ import { readLiveEndpointRecord } from "../../daemon/src/endpointRecord.ts";
+ /**
+@@ -373,7 +373,7 @@ const BOOL_FLAGS = new Set([
+   "--replace-account",
+ ]);
+ 
+-const KNOWN_FLAGS = new Set([...VALUE_FLAGS, ...BOOL_FLAGS, ...OPTIONAL_VALUE_FLAGS]);
++export const KNOWN_FLAGS = new Set([...VALUE_FLAGS, ...BOOL_FLAGS, ...OPTIONAL_VALUE_FLAGS]);
+ 
+ /** Cheap edit distance, for "did you mean --substrate?" on a typo. */
+ function editDistance(a: string, b: string): number {
+@@ -4930,6 +4930,17 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
+     io.out(helpText(hiveVersion()));
+     return 0;
+   }
++  // Runtime management and shell plumbing parse their own argv and never open the daemon.
++  if (argv[0] === "deploy") return (await import("./deploy/command.ts")).runDeployCli(argv.slice(1), io);
++  if (argv[0] === "__complete") {
++    for (const candidate of (await import("./completion.ts")).getCompletions(argv.slice(1))) io.out(candidate);
++    return 0;
++  }
++  if (argv[0] === "completion") {
++    const { shellScript } = await import("./completion/shell.ts");
++    try { io.out(shellScript(argv[1] ?? "")); return 0; }
++    catch (err) { io.err(errorLine(err instanceof Error ? err.message : String(err))); return 1; }
++  }
+   let parsed: Parsed;
+   try {
+     parsed = parseArgs(argv);
+diff --git a/v2/cli/tests/cli.test.ts b/v2/cli/tests/cli.test.ts
+index 9981cf9c..645eebcb 100644
+--- a/v2/cli/tests/cli.test.ts
++++ b/v2/cli/tests/cli.test.ts
+@@ -1,4 +1,4 @@
+-import { nodePinEnv, probeNativeNode } from "../../../src/nodeRuntime.ts";
++import { nodePinEnv, probeNativeNode } from "../../core/src/nodeRuntime.ts";
+ /**
+  * WP4 CLI tier: the thin client — RPC when the daemon is up, read-only
+  * SQLite fallback clearly labeled stale when it is down, `send --wait` (Q3),
+diff --git a/tests/deploy-artifact.test.ts b/v2/cli/tests/deploy-artifact.test.ts
+similarity index 92%
+rename from tests/deploy-artifact.test.ts
+rename to v2/cli/tests/deploy-artifact.test.ts
+index 304b844b..13c71151 100644
+--- a/tests/deploy-artifact.test.ts
++++ b/v2/cli/tests/deploy-artifact.test.ts
+@@ -1,17 +1,17 @@
+-import { backupStoreOffline } from "../v2/core/src/storeBackup.ts";
+-import { persistNodePin, probeNativeNode, nodePinFile, nodeRepairFile } from "../src/nodeRuntime.js";
++import { backupStoreOffline } from "../../core/src/storeBackup.ts";
++import { persistNodePin, probeNativeNode, nodePinFile, nodeRepairFile } from "../../core/src/nodeRuntime.ts";
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+ import { mkdtemp, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+-import { deployArtifact, deployVersion, currentDeployTarget, hasDeployRestartAdmission, DeployReservationHeldError } from "../src/deployRuntime.js";
+-import { restartDeployedDaemon } from "../src/commands/deploy.js";
++import { deployArtifact, deployVersion, currentDeployTarget, hasDeployRestartAdmission, DeployReservationHeldError } from "../src/deploy/runtime.ts";
++import { restartDeployedDaemon } from "../src/deploy/command.ts";
+ import { existsSync } from "node:fs";
+ import { DatabaseSync } from "node:sqlite";
+-import { recoverySubjectDigest, parseRecoveryPlan } from "../src/release/index.js";
+-import * as v2 from "../src/release/v2.js";
+-import { UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "../src/updateAdmission.js";
++import { recoverySubjectDigest, parseRecoveryPlan } from "../../core/src/release/index.ts";
++import * as v2 from "../../core/src/release/v2.ts";
++import { UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "../src/deploy/updateAdmission.ts";
+ 
+ test("artifact deploy refuses unchecked bytes before switching or restarting", async () => {
+   const dir = await mkdtemp(join(tmpdir(), "hon8-deploy-"));
+@@ -31,8 +31,8 @@ test("artifact deploy refuses unchecked bytes before switching or restarting", a
+ });
+ 
+ import { cp, mkdir, readFile, readlink, symlink, lstat } from "node:fs/promises";
+-import { packRuntimeArtifact, sha256File } from "../src/runtimeArtifact.js";
+-import type { ComponentIdentity } from "../src/release/index.js";
++import { packRuntimeArtifact, sha256File } from "../../core/src/release/runtimeArtifact.ts";
++import type { ComponentIdentity } from "../../core/src/release/index.ts";
+ 
+ async function release(dir: string, sha = "a".repeat(40), gate: "full" | "tests-skipped" = "full", cli = "console.log('hive');\n") {
+   const stage = join(dir, `stage-${sha}`);
+@@ -52,7 +52,7 @@ async function release(dir: string, sha = "a".repeat(40), gate: "full" | "tests-
+ }
+ 
+ async function reserve(dir: string, identity: ComponentIdentity): Promise<UpdateAdmission> {
+-  const recovery = parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v1/fixtures/recovery-plan.json", import.meta.url), "utf8")));
++  const recovery = parseRecoveryPlan(JSON.parse(await readFile(new URL("../../../contracts/release/v1/fixtures/recovery-plan.json", import.meta.url), "utf8")));
+   recovery.subject.to.honeybee = { ...identity, component: "honeybee" };
+   recovery.subject.storageRequirements = [UPDATE_RECOVERY_CONTRACT];
+   recovery.subjectDigest = recoverySubjectDigest(recovery.subject);
+@@ -107,7 +107,7 @@ for (const state of ["apiary-swap", "absent", "own-paired", "different-id", "dif
+       } else {
+         await assert.rejects(operation, error => error instanceof DeployReservationHeldError
+           && (state !== "apiary-swap" || (error.purpose === "apiary-swap" && /update-owner apiary-swap release/.test(error.message))));
+-        if (state === "apiary-swap") await assert.rejects(restartDeployedDaemon({ root, installedDir: root, sha: previous.identity.sourceRevision, runtime: "v2", log() {} }), /update-owner apiary-swap release/);
++        if (state === "apiary-swap") await assert.rejects(restartDeployedDaemon({ root, installedDir: root, sha: previous.identity.sourceRevision, log() {} }), /update-owner apiary-swap release/);
+         assert.equal(existsSync(calls), false);
+         assert.equal(existsSync(units), false);
+         assert.equal(existsSync(nodeRepairFile(data)), false);
+@@ -131,7 +131,7 @@ test("v2 recovery admits artifact deployment and rollback while preserving the f
+     const hooks = { async backupStore() { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() { activations.push((await currentDeployTarget(root))!); } };
+     await deployArtifact({ ...previous, root, admission: { fresh: true }, expectedCurrent: null, hooks });
+     const { reservation } = await reserve(dir, next.identity);
+-    const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
++    const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../../../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
+     recovery.subject.from.honeybee = { ...previous.identity, component: "honeybee" };
+     recovery.subject.to.honeybee = { ...next.identity, component: "honeybee" };
+     recovery.subject.storageRequirements = [UPDATE_RECOVERY_CONTRACT];
+@@ -190,9 +190,9 @@ for (const scenario of ["install", "identity", "gate", "fence", "conflict", "res
+   });
+ }
+ 
+-import { rollbackDeploy } from "../src/deployRuntime.js";
+-import { withFileLock } from "../src/lock.js";
+-import { installedV2Runtime, installedV2Identity, runtimeUsesV2, RUNTIME_MODE_CONFIG, v2IsDefault } from "../src/cliRoute.js";
++import { rollbackDeploy } from "../src/deploy/runtime.ts";
++import { withFileLock } from "../../core/src/lock.ts";
++import { configuredV2Runtime, installedV2Identity, RUNTIME_MODE_CONFIG } from "../../core/src/runtimeMode.ts";
+ 
+ test("reserved artifact publication retains all recovery artifacts", async () => {
+   const dir = await mkdtemp(join(tmpdir(), "hon8-reserved-"));
+@@ -229,27 +229,18 @@ test("fresh verified artifact uses v2 activation without a freeze marker", async
+   try {
+     const fixture = await release(dir), root = join(dir, "runtime");
+     await deployArtifact({ ...fixture, root, admission: { fresh: true }, expectedCurrent: null,
+-      hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon(context) { assert.equal(context.runtime, "v2"); } } });
++      hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); }, async restartDaemon() {} } });
+     assert.equal((await import("node:fs")).existsSync(join(dir, "FROZEN")), false);
+-    assert.equal(installedV2Runtime(root), true);
+-    const saved = process.env.HIVE_STORE_ROOT;
+-    try {
+-      process.env.HIVE_STORE_ROOT = dir;
+-      assert.equal(v2IsDefault("ls"), true);
+-      assert.equal(v2IsDefault(undefined), true);
+-      assert.equal(v2IsDefault("deploy"), false);
+-    } finally {
+-      if (saved === undefined) delete process.env.HIVE_STORE_ROOT;
+-      else process.env.HIVE_STORE_ROOT = saved;
+-    }
++    assert.equal(configuredV2Runtime(root), true);
++    assert.deepEqual(installedV2Identity(root), fixture.identity);
+     await writeFile(join(root, fixture.identity.sourceRevision, "dist", "build-identity.json"), "{}");
+-    assert.equal(installedV2Runtime(root), false);
++    assert.equal(installedV2Identity(root), null);
+   } finally { await rm(dir, { recursive: true, force: true }); }
+ });
+ 
+ import { Header } from "tar";
+ import { gzipSync } from "node:zlib";
+-import { unpackDeployArtifact } from "../src/deployArtifact.js";
++import { unpackDeployArtifact } from "../src/deploy/artifact.ts";
+ 
+ for (const entry of [
+   { path: "../escape", type: "File" as const },
+@@ -337,9 +328,9 @@ for (const receiptOnly of [false, true]) {
+       };
+       const initial = await commit("initial");
+       const fixture = await release(dir, initial);
+-      const restarts: Array<string | undefined> = [];
++      let restarts = 0;
+       const hooks = { async backupStore() { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); },
+-        async restartDaemon(context: { runtime?: "v2" }) { restarts.push(context.runtime); },
++        async restartDaemon() { restarts += 1; },
+         async buildArtifact({ workDir }: { workDir: string }) {
+           const artifactDir = join(workDir, "stage");
+           await mkdir(join(artifactDir, "dist"), { recursive: true });
+@@ -351,20 +342,20 @@ for (const receiptOnly of [false, true]) {
+       assert.deepEqual(JSON.parse(await readFile(join(root, RUNTIME_MODE_CONFIG), "utf8")), { schemaVersion: 1, runtime: "v2" });
+       if (receiptOnly) await rm(join(root, RUNTIME_MODE_CONFIG));
+       process.env.HIVE_STORE_ROOT = dir;
+-      assert.equal(runtimeUsesV2(root), true);
++      assert.equal(configuredV2Runtime(root), !receiptOnly);
+       const firstSource = await commit("source one");
+       await deployVersion({ root, repoRoot, hooks });
+       assert.equal(await currentDeployTarget(root), firstSource);
+       assert.equal(installedV2Identity(root), null, "runtime selection does not copy release identity");
+-      assert.equal(runtimeUsesV2(root), true);
+-      assert.equal(v2IsDefault("ls"), true);
++      assert.equal(configuredV2Runtime(root), true);
+       await commit("source two");
+       await deployVersion({ root, repoRoot, hooks });
++      if (receiptOnly) await rm(join(root, RUNTIME_MODE_CONFIG));
+       await rollbackDeploy({ root, hooks });
+       assert.equal(await currentDeployTarget(root), firstSource);
+       assert.equal(installedV2Identity(root), null);
+-      assert.equal(v2IsDefault("ls"), true);
+-      assert.deepEqual(restarts, ["v2", "v2", "v2", "v2"]);
++      assert.equal(configuredV2Runtime(root), true);
++      assert.equal(restarts, 4);
+       assert.equal((await import("node:fs")).existsSync(join(dir, "FROZEN")), false);
+     } finally {
+       if (saved === undefined) delete process.env.HIVE_STORE_ROOT;
+@@ -377,9 +368,9 @@ for (const receiptOnly of [false, true]) {
+ test("runtime mode config rejects corrupt content without routing to legacy", async () => {
+   const dir = await mkdtemp(join(tmpdir(), "hon8-mode-invalid-"));
+   try {
+-    assert.equal(runtimeUsesV2(dir), false);
++    assert.equal(configuredV2Runtime(dir), false);
+     await writeFile(join(dir, RUNTIME_MODE_CONFIG), "{}");
+-    assert.throws(() => runtimeUsesV2(dir), /runtime mode config/);
++    assert.throws(() => configuredV2Runtime(dir), /runtime mode config/);
+   } finally { await rm(dir, { recursive: true, force: true }); }
+ });
+ 
+@@ -406,9 +397,9 @@ test("reserved artifact restart receives structural admission that expires after
+   const dir = await mkdtemp(join(tmpdir(), "hon-pinned-admission-"));
+   try {
+     const fixture = await release(dir), root = join(dir, "runtime"), admission = await reserve(dir, fixture.identity);
+-    const { restartDeployedDaemon } = await import("../src/commands/deploy.js");
+-    const { hasDeployRestartAdmission, DeployReservationHeldError } = await import("../src/deployRuntime.js");
+-    let captured: import("../src/deployRuntime.js").RestartDaemonContext | undefined;
++    const { restartDeployedDaemon } = await import("../src/deploy/command.ts");
++    const { hasDeployRestartAdmission, DeployReservationHeldError } = await import("../src/deploy/runtime.ts");
++    let captured: import("../src/deploy/runtime.ts").RestartDaemonContext | undefined;
+     await deployArtifact({ ...fixture, root, admission, expectedCurrent: null, hooks: { async backupStore({ root }: { root: string }) { return backupStoreOffline(join(root, "..", "v2", "core.sqlite3"), "fixture"); },
+       async restartDaemon(context) {
+         captured = context;
+diff --git a/tests/deploy-cli-exposure.test.ts b/v2/cli/tests/deploy-cli-exposure.test.ts
+similarity index 96%
+rename from tests/deploy-cli-exposure.test.ts
+rename to v2/cli/tests/deploy-cli-exposure.test.ts
+index 22448062..4741157f 100644
+--- a/tests/deploy-cli-exposure.test.ts
++++ b/v2/cli/tests/deploy-cli-exposure.test.ts
+@@ -5,7 +5,7 @@ import { join } from "node:path";
+ import { tmpdir } from "node:os";
+ import { execFile } from "node:child_process";
+ import { promisify } from "node:util";
+-import { exposeDeployedCli } from "../src/deployCli.js";
++import { exposeDeployedCli } from "../src/deploy/cliExposure.ts";
+ 
+ test("deploy-owned CLI follows current, preserves argument quoting, and replays exposure", async () => {
+   const dir = await mkdtemp(join(tmpdir(), "hon8-cli-"));
+diff --git a/tests/deploy-cli.test.ts b/v2/cli/tests/deploy-cli.test.ts
+similarity index 94%
+rename from tests/deploy-cli.test.ts
+rename to v2/cli/tests/deploy-cli.test.ts
+index 53ccd339..d81d7a99 100644
+--- a/tests/deploy-cli.test.ts
++++ b/v2/cli/tests/deploy-cli.test.ts
+@@ -14,7 +14,7 @@ const execFileAsync = promisify(execFile);
+ const ENV = (dir: string) => ({ ...process.env, HIVE_STORE_ROOT: dir, NO_COLOR: "1", TERM: "dumb" });
+ 
+ async function hive(dir: string, ...args: string[]): Promise<{ stdout: string; stderr: string }> {
+-  return execFileAsync(process.execPath, ["tests/cli-entry.mjs", ...args], { cwd: process.cwd(), env: ENV(dir) });
++  return execFileAsync(process.execPath, [join(process.cwd(), "v2", "cli", "src", "bin.ts"), ...args], { cwd: process.cwd(), env: ENV(dir) });
+ }
+ 
+ async function hiveExpectFail(dir: string, ...args: string[]): Promise<string> {
+@@ -121,7 +121,7 @@ test("artifact-only flags require an artifact before source deploy routing", asy
+   await withStore(async (dir) => {
+     for (const name of ["identity", "admission", "expected-current", "bin-dir"]) {
+       const result = await execFileAsync(process.execPath,
+-        [join(process.cwd(), "tests", "cli-entry.mjs"), "deploy", `--${name}`, "none"],
++        [join(process.cwd(), "v2", "cli", "src", "bin.ts"), "deploy", `--${name}`, "none"],
+         { cwd: dir, env: ENV(dir) }).then(
+           () => { throw new Error("expected orphan artifact flag to fail"); },
+           (error: NodeJS.ErrnoException & { stderr?: string }) => error.stderr ?? "");
+@@ -145,7 +145,7 @@ test("hive deploy outside the honeybee repo refuses before doing anything", asyn
+     try {
+       const stderr = await execFileAsync(
+         process.execPath,
+-        [join(process.cwd(), "tests", "cli-entry.mjs"), "deploy"],
++        [join(process.cwd(), "v2", "cli", "src", "bin.ts"), "deploy"],
+         { cwd: elsewhere, env: ENV(dir) },
+       ).then(
+         () => {
+@@ -163,14 +163,14 @@ test("hive deploy outside the honeybee repo refuses before doing anything", asyn
+ test("deploy --skip-tests is accepted and threaded to the source build", async () => {
+   await withStore(async (dir) => {
+     const stderr = await execFileAsync(process.execPath,
+-      [join(process.cwd(), "tests/cli-entry.mjs"), "deploy", "--skip-tests"],
++      [join(process.cwd(), "v2", "cli", "src", "bin.ts"), "deploy", "--skip-tests"],
+       { cwd: dir, env: ENV(dir) }).then(
+         () => { throw new Error("expected refusal outside repo"); },
+         (error: NodeJS.ErrnoException & { stderr?: string }) => error.stderr ?? "");
+     assert.doesNotMatch(stderr, /unknown flag/);
+     assert.match(stderr, /not a git repository here|not the honeybee repo/);
+   });
+-  const source = await (await import("node:fs/promises")).readFile("src/commands/deploy.ts", "utf8");
++  const source = await (await import("node:fs/promises")).readFile("v2/cli/src/deploy/command.ts", "utf8");
+   assert.match(source, /skipTests: truthy\(flag\(parsed, "skip-tests"\)\)/);
+   assert.match(source, /WARNING test gate skipped .*not release-grade/);
+ });
+diff --git a/tests/deploy-gate-env.test.ts b/v2/cli/tests/deploy-gate-env.test.ts
+similarity index 97%
+rename from tests/deploy-gate-env.test.ts
+rename to v2/cli/tests/deploy-gate-env.test.ts
+index 1162a5b6..e84fbb29 100644
+--- a/tests/deploy-gate-env.test.ts
++++ b/v2/cli/tests/deploy-gate-env.test.ts
+@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { promisify } from "node:util";
+ import { test } from "node:test";
+-import { buildDeployArtifact } from "../src/commands/deploy.js";
++import { buildDeployArtifact } from "../src/deploy/command.ts";
+ 
+ const exec = promisify(execFile);
+ 
+diff --git a/tests/deploy-readiness.test.ts b/v2/cli/tests/deploy-readiness.test.ts
+similarity index 97%
+rename from tests/deploy-readiness.test.ts
+rename to v2/cli/tests/deploy-readiness.test.ts
+index 710c9839..48c6e2cf 100644
+--- a/tests/deploy-readiness.test.ts
++++ b/v2/cli/tests/deploy-readiness.test.ts
+@@ -1,6 +1,6 @@
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+-import { DeployReadinessError, waitForDeployReadiness, type DeployReadinessObservation } from "../src/deployReadiness.js";
++import { DeployReadinessError, waitForDeployReadiness, type DeployReadinessObservation } from "../src/deploy/readiness.ts";
+ 
+ const identity = { pid: 123, birth: "darwin:1:1", bootId: "" };
+ 
+diff --git a/tests/deploy-restart.test.ts b/v2/cli/tests/deploy-restart.test.ts
+similarity index 93%
+rename from tests/deploy-restart.test.ts
+rename to v2/cli/tests/deploy-restart.test.ts
+index 67adb93b..c3027355 100644
+--- a/tests/deploy-restart.test.ts
++++ b/v2/cli/tests/deploy-restart.test.ts
+@@ -1,11 +1,11 @@
+-import { persistNodePin, probeNativeNode } from "../src/nodeRuntime.js";
++import { persistNodePin, probeNativeNode } from "../../core/src/nodeRuntime.ts";
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+ import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+ import { join } from "node:path";
+ import { tmpdir } from "node:os";
+-import { restartDeployedDaemon } from "../src/commands/deploy.js";
+-import { DeployActivationHeldError, DeployRollbackError } from "../src/deployRuntime.js";
++import { restartDeployedDaemon } from "../src/deploy/command.ts";
++import { DeployActivationHeldError, DeployRollbackError } from "../src/deploy/runtime.ts";
+ import { chmod } from "node:fs/promises";
+ 
+ test("fresh verified activation executes installed current v2 CLI with scoped data directory", { skip: process.platform !== "darwin" && process.platform !== "linux" }, async () => {
+@@ -26,7 +26,7 @@ test("fresh verified activation executes installed current v2 CLI with scoped da
+     await copyFile(process.execPath, pinnedNode);
+     persistNodePin(join(dir, "v2"), probeNativeNode(pinnedNode));
+     await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ args: process.argv.slice(2), interpreter: process.execPath, nodeOptions: process.env.NODE_OPTIONS, electron: process.env.ELECTRON_RUN_AS_NODE })+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`);
+-    await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2", log() {} });
++    await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), log() {} });
+     assert.deepEqual((await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)),
+       ["install", "stop", "start", "status"].map(verb => ({ args: ["v2", "daemon", verb, "--data-dir", join(dir, "v2"), ...(verb === "status" ? ["--json"] : [])], interpreter: pinnedNode })));
+   } finally {
+@@ -58,7 +58,7 @@ for (const absent of [false, true]) {
+         if (process.argv[4] === 'start') require('node:fs').writeFileSync(${JSON.stringify(join(dir, "started"))}, 'yes');
+         if (process.argv[4] === 'status') console.log(JSON.stringify(require('node:fs').existsSync(${JSON.stringify(join(dir, "started"))}) ? {running:true} : ${JSON.stringify({ running: !absent, service: { installed: !absent, running: !absent } })}));
+       `);
+-      const result = restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2", log() {} });
++      const result = restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), log() {} });
+       if (absent) await result;
+       else await assert.rejects(result, /exited/);
+       const verbs = (await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line)[2]);
+@@ -73,7 +73,7 @@ for (const absent of [false, true]) {
+   });
+ }
+ 
+-import { RUNTIME_MODE_CONFIG } from "../src/cliRoute.js";
++import { RUNTIME_MODE_CONFIG } from "../../core/src/runtimeMode.ts";
+ 
+ test("persisted v2 config selects the v2 service for an ordinary source restart", { skip: process.platform !== "darwin" && process.platform !== "linux" }, async () => {
+   const dir = await mkdtemp(join(tmpdir(), "hon8-config-restart-"));
+@@ -100,13 +100,6 @@ test("persisted v2 config selects the v2 service for an ordinary source restart"
+   }
+ });
+ 
+-test("legacy deployment refuses activation before selecting a service", async () => {
+-  const dir = await mkdtemp(join(tmpdir(), "hb-legacy-deploy-refuse-"));
+-  try {
+-    await assert.rejects(restartDeployedDaemon({ root: dir, installedDir: dir, sha: "a".repeat(40), log() {} }), /legacy service activation is refused/);
+-  } finally { await rm(dir, { recursive: true, force: true }); }
+-});
+-
+ for (const scenario of ["after-start", "after-stop", "compatible"] as const) {
+   test(`restart recovery preserves a safe service and pin boundary: ${scenario}`, async () => {
+     const dir = await mkdtemp(join(tmpdir(), "hb-recovery-order-"));
+@@ -146,7 +139,7 @@ for (const scenario of ["after-start", "after-stop", "compatible"] as const) {
+     const assertRollbackSafe = async () => {
+       if ((await readFile(marker, "utf8")) === "51") throw new DeployRollbackError("ROLLBACK_STORE_RESTORE_REQUIRED", "store51 cannot be opened by previous44");
+     };
+-    const context = { root, installedDir: join(root, "current"), sha: "a".repeat(40), runtime: "v2" as const, log() {}, assertRollbackSafe,
++    const context = { root, installedDir: join(root, "current"), sha: "a".repeat(40), log() {}, assertRollbackSafe,
+       restorePrevious: async () => { await assertRollbackSafe(); return true; } };
+     try {
+       const outcome = restartDeployedDaemon(context);
+diff --git a/tests/deploy-rollback.test.ts b/v2/cli/tests/deploy-rollback.test.ts
+similarity index 98%
+rename from tests/deploy-rollback.test.ts
+rename to v2/cli/tests/deploy-rollback.test.ts
+index dba79f06..566e1cc4 100644
+--- a/tests/deploy-rollback.test.ts
++++ b/v2/cli/tests/deploy-rollback.test.ts
+@@ -1,12 +1,12 @@
+-import { backupStoreOffline } from "../v2/core/src/storeBackup.ts";
++import { backupStoreOffline } from "../../core/src/storeBackup.ts";
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+ import { mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { DatabaseSync } from "node:sqlite";
+-import { hashDirectoryTree } from "../src/deploySettle.js";
+-import { assertRollbackStoreCompatible, currentDeployTarget, DeployRollbackError, readDeployHistory, rollbackDeploy } from "../src/deployRuntime.js";
++import { hashDirectoryTree } from "../../core/src/release/settle.ts";
++import { assertRollbackStoreCompatible, currentDeployTarget, DeployRollbackError, readDeployHistory, rollbackDeploy } from "../src/deploy/runtime.ts";
+ 
+ const current = "a".repeat(40), previous = "b".repeat(40);
+ async function fixture() {
+diff --git a/tests/deploy-runtime.test.ts b/v2/cli/tests/deploy-runtime.test.ts
+similarity index 98%
+rename from tests/deploy-runtime.test.ts
+rename to v2/cli/tests/deploy-runtime.test.ts
+index 4a877765..3d3106c1 100644
+--- a/tests/deploy-runtime.test.ts
++++ b/v2/cli/tests/deploy-runtime.test.ts
+@@ -1,4 +1,4 @@
+-import { backupStoreOffline } from "../v2/core/src/storeBackup.ts";
++import { backupStoreOffline } from "../../core/src/storeBackup.ts";
+ // Spec 00 (reset WP0) — versioned deploys. Exercises the full deploy state
+ // machine (src/deployRuntime.ts) against a temp runtime root and a real
+ // fixture git repo, with the build and daemon-restart hooks injected so no
+@@ -13,10 +13,10 @@ import { join } from "node:path";
+ import { test } from "node:test";
+ import { promisify } from "node:util";
+ import { DatabaseSync } from "node:sqlite";
+-import { withFileLock } from "../src/lock.js";
+-import { DeployReservationHeldError } from "../src/deployRuntime.js";
+-import { readUpdateReservation } from "../src/readUpdateReservation.js";
+-import { restartDeployedDaemon } from "../src/commands/deploy.js";
++import { withFileLock } from "../../core/src/lock.ts";
++import { DeployReservationHeldError } from "../src/deploy/runtime.ts";
++import { readUpdateReservation } from "../src/deploy/readUpdateReservation.ts";
++import { restartDeployedDaemon } from "../src/deploy/command.ts";
+ import {
+   CURRENT_LINK_NAME,
+   DEPLOY_HISTORY_FILENAME,
+@@ -32,7 +32,7 @@ import {
+   type BuildArtifactContext,
+   type DeployHooks,
+   type RestartDaemonContext,
+-} from "../src/deployRuntime.js";
++} from "../src/deploy/runtime.ts";
+ 
+ const execFileAsync = promisify(execFile);
+ 
+@@ -698,7 +698,7 @@ for (const operation of ["deploy", "rollback"] as const) {
+ test("unadmitted pinned restart refuses a held reservation before pin or service effects", async () => {
+   await withDeployWorld(async ({ root }) => {
+     await seedReservation(root, true);
+-    await assert.rejects(restartDeployedDaemon({ root, installedDir: root, sha: "a".repeat(40), runtime: "v2", log() {} }), DeployReservationHeldError);
++    await assert.rejects(restartDeployedDaemon({ root, installedDir: root, sha: "a".repeat(40), log() {} }), DeployReservationHeldError);
+     assert.equal(await currentDeployTarget(root), null);
+   });
+ });
+diff --git a/tests/update-admission.test.ts b/v2/cli/tests/update-admission.test.ts
+similarity index 96%
+rename from tests/update-admission.test.ts
+rename to v2/cli/tests/update-admission.test.ts
+index 7a8a2984..f7c115bc 100644
+--- a/tests/update-admission.test.ts
++++ b/v2/cli/tests/update-admission.test.ts
+@@ -5,14 +5,14 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { DatabaseSync } from "node:sqlite";
+-import { assertUpdateAdmission, readOfflineUpdateReservation, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "../src/updateAdmission.js";
+-import { parseRecoveryPlan, recoverySubjectDigest } from "../src/release/index.js";
+-import * as v2 from "../src/release/v2.js";
++import { assertUpdateAdmission, readOfflineUpdateReservation, UPDATE_RECOVERY_CONTRACT, type UpdateAdmission } from "../src/deploy/updateAdmission.ts";
++import { parseRecoveryPlan, recoverySubjectDigest } from "../../core/src/release/index.ts";
++import * as v2 from "../../core/src/release/v2.ts";
+ 
+ async function fixture() {
+   const dir = await mkdtemp(join(tmpdir(), "hon8-admission-"));
+   const root = join(dir, "runtime");
+-  const recovery = parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v1/fixtures/recovery-plan.json", import.meta.url), "utf8")));
++  const recovery = parseRecoveryPlan(JSON.parse(await readFile(new URL("../../../contracts/release/v1/fixtures/recovery-plan.json", import.meta.url), "utf8")));
+   recovery.subject.storageRequirements = [UPDATE_RECOVERY_CONTRACT];
+   recovery.subjectDigest = recoverySubjectDigest(recovery.subject);
+   for (const evidence of recovery.evidence) evidence.subjectDigest = recovery.subjectDigest;
+@@ -33,7 +33,7 @@ async function fixture() {
+ 
+ async function roleBoundFixture() {
+   const f = await fixture();
+-  const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
++  const recovery = v2.parseRecoveryPlan(JSON.parse(await readFile(new URL("../../../contracts/release/v2/fixtures/remote-recovery.json", import.meta.url), "utf8")));
+   recovery.subject.storageRequirements = [UPDATE_RECOVERY_CONTRACT];
+   recovery.subject.from.honeybee.version = "0.0.9";
+   recovery.subject.from.honeybee.artifact.sha256 = `sha256:${"f".repeat(64)}`;
+diff --git a/v2/cli/tests/update-service.test.ts b/v2/cli/tests/update-service.test.ts
+index cb575d8d..9cfb248f 100644
+--- a/v2/cli/tests/update-service.test.ts
++++ b/v2/cli/tests/update-service.test.ts
+@@ -3,7 +3,7 @@ import { test } from "node:test";
+ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+ import { join } from "node:path";
+ import { tmpdir } from "node:os";
+-import { nodePinEnv, probeNativeNode, persistNodePin } from "../../../src/nodeRuntime.ts";
++import { nodePinEnv, probeNativeNode, persistNodePin } from "../../core/src/nodeRuntime.ts";
+ import { runV2Cli, serviceEnv, serviceExecArgs } from "../src/main.ts";
+ 
+ test("service environment records native pin and drops Electron mode", () => {
+diff --git a/src/apiarySwap.ts b/v2/core/src/apiarySwap.ts
+similarity index 99%
+rename from src/apiarySwap.ts
+rename to v2/core/src/apiarySwap.ts
+index b22178f0..03707385 100644
+--- a/src/apiarySwap.ts
++++ b/v2/core/src/apiarySwap.ts
+@@ -1,5 +1,5 @@
+ import { resolve, isAbsolute } from "node:path";
+-import { canonicalDigest } from "./comb/canonical.ts";
++import { canonicalDigest } from "./canonical.ts";
+ import { parseComponentIdentity, type ComponentIdentity } from "./release/index.ts";
+ import { parseUpdateReservation, type UpdateReservation } from "./updateReservation.ts";
+ 
+diff --git a/src/comb/canonical.ts b/v2/core/src/canonical.ts
+similarity index 100%
+rename from src/comb/canonical.ts
+rename to v2/core/src/canonical.ts
+diff --git a/v2/core/src/executionFence.ts b/v2/core/src/executionFence.ts
+index 8ff6873c..f14b892c 100644
+--- a/v2/core/src/executionFence.ts
++++ b/v2/core/src/executionFence.ts
+@@ -1,6 +1,6 @@
+ import type { DatabaseSync } from "node:sqlite";
+ import { CoreError } from "./types.ts";
+-import { assertCanonicalData, canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
++import { assertCanonicalData, canonicalDigest, type JsonValue } from "./canonical.ts";
+ import type { EffectCoverage } from "./effectResolve.ts";
+ 
+ export const EXECUTION_FENCE_CAPABILITY = "rpc-execution-fence.archive-send.v1";
+diff --git a/v2/core/src/executionStart.ts b/v2/core/src/executionStart.ts
+index 5256b42e..88fd1a58 100644
+--- a/v2/core/src/executionStart.ts
++++ b/v2/core/src/executionStart.ts
+@@ -1,6 +1,6 @@
+ import type { DatabaseSync } from "node:sqlite";
+ import { randomUUID } from "node:crypto";
+-import { canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
++import { canonicalDigest, type JsonValue } from "./canonical.ts";
+ import { ExecutionFenceError, executionClaim, type ExecutionClaim } from "./executionFence.ts";
+ 
+ export interface ExecutionStart {
+diff --git a/v2/core/src/fsx.ts b/v2/core/src/fsx.ts
+new file mode 100644
+index 00000000..c666d57e
+--- /dev/null
++++ b/v2/core/src/fsx.ts
+@@ -0,0 +1,21 @@
++import { mkdir, rename, writeFile } from "node:fs/promises";
++import { homedir } from "node:os";
++import { basename, dirname, join } from "node:path";
++
++export function storeRoot(): string {
++  return process.env.HIVE_STORE_ROOT ?? join(homedir(), ".hive");
++}
++
++export type AtomicWriteOptions = {
++  mode?: number;
++};
++
++let atomicWriteCounter = 0;
++
++export async function atomicWriteFile(path: string, data: string | Buffer, options: AtomicWriteOptions = {}): Promise<void> {
++  await mkdir(dirname(path), { recursive: true });
++  atomicWriteCounter += 1;
++  const tmp = join(dirname(path), `.${basename(path)}.${process.pid}.${Date.now()}.${atomicWriteCounter}.tmp`);
++  await writeFile(tmp, data, options.mode !== undefined ? { mode: options.mode } : undefined);
++  await rename(tmp, path);
++}
+diff --git a/src/hostGit.ts b/v2/core/src/hostGit.ts
+similarity index 100%
+rename from src/hostGit.ts
+rename to v2/core/src/hostGit.ts
+diff --git a/src/lock.ts b/v2/core/src/lock.ts
+similarity index 100%
+rename from src/lock.ts
+rename to v2/core/src/lock.ts
+diff --git a/src/nodeRuntime.ts b/v2/core/src/nodeRuntime.ts
+similarity index 100%
+rename from src/nodeRuntime.ts
+rename to v2/core/src/nodeRuntime.ts
+diff --git a/v2/core/src/packageRoot.ts b/v2/core/src/packageRoot.ts
+new file mode 100644
+index 00000000..c9538e15
+--- /dev/null
++++ b/v2/core/src/packageRoot.ts
+@@ -0,0 +1,31 @@
++import { existsSync, readFileSync } from "node:fs";
++import { basename, dirname, join } from "node:path";
++import { fileURLToPath } from "node:url";
++
++let cachedRoot: string | undefined;
++
++/** The honeybee package directory this module runs from: the repo in source mode, the installed version in a build. */
++export function packageRoot(): string {
++  if (cachedRoot) return cachedRoot;
++  let dir = dirname(fileURLToPath(import.meta.url));
++  for (;;) {
++    const manifest = join(dir, "package.json");
++    if (existsSync(manifest)) {
++      try { if (JSON.parse(readFileSync(manifest, "utf8")).name === "honeybee") return cachedRoot = dir; } catch {}
++    }
++    const parent = dirname(dir);
++    if (parent === dir) throw new Error("honeybee package root not found");
++    dir = parent;
++  }
++}
++
++/** The dist directory when this module runs from a build; undefined in source mode. */
++export function distDirectory(): string | undefined {
++  let dir = dirname(fileURLToPath(import.meta.url));
++  for (;;) {
++    if (basename(dir) === "dist") return dir;
++    const parent = dirname(dir);
++    if (parent === dir) return undefined;
++    dir = parent;
++  }
++}
+diff --git a/src/peercredReceipt.ts b/v2/core/src/peercredReceipt.ts
+similarity index 100%
+rename from src/peercredReceipt.ts
+rename to v2/core/src/peercredReceipt.ts
+diff --git a/src/processScheduling.ts b/v2/core/src/processScheduling.ts
+similarity index 100%
+rename from src/processScheduling.ts
+rename to v2/core/src/processScheduling.ts
+diff --git a/src/release/buildIdentity.ts b/v2/core/src/release/buildIdentity.ts
+similarity index 84%
+rename from src/release/buildIdentity.ts
+rename to v2/core/src/release/buildIdentity.ts
+index 16825f71..c7c2ae24 100644
+--- a/src/release/buildIdentity.ts
++++ b/v2/core/src/release/buildIdentity.ts
+@@ -1,5 +1,7 @@
+ /** Build facts are not a verified release identity: no artifact URL/checksum is invented. */
+ import { readFileSync } from "node:fs";
++import { join } from "node:path";
++import { distDirectory, packageRoot } from "../packageRoot.ts";
+ 
+ export interface BuildIdentity {
+   schemaVersion: 1;
+@@ -33,12 +35,15 @@ export function readBuildIdentity(path: string | URL): BuildIdentity {
+ /** Resolve from this installation, never cwd or the operator's current git checkout. */
+ export function honeybeeBuildIdentity(): BuildIdentity {
+   try {
+-    const identity = readBuildIdentity(new URL("../build-identity.json", import.meta.url));
+-    if (identity.component === "honeybee") return identity;
++    const dist = distDirectory();
++    if (dist) {
++      const identity = readBuildIdentity(join(dist, "build-identity.json"));
++      if (identity.component === "honeybee") return identity;
++    }
+   } catch { /* Source execution and legacy packages have no build evidence. */ }
+   let packageVersion = "0.0.0";
+   try {
+-    const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
++    const pkg = JSON.parse(readFileSync(join(packageRoot(), "package.json"), "utf8"));
+     if (pkg.name === "honeybee" && typeof pkg.version === "string") packageVersion = pkg.version;
+   } catch { /* No package evidence. */ }
+   return { schemaVersion: 1, component: "honeybee", version: `${packageVersion}-dev.unknown`,
+diff --git a/src/release/buildIdentityProducer.ts b/v2/core/src/release/buildIdentityProducer.ts
+similarity index 97%
+rename from src/release/buildIdentityProducer.ts
+rename to v2/core/src/release/buildIdentityProducer.ts
+index 32f764f5..3f5cc71a 100644
+--- a/src/release/buildIdentityProducer.ts
++++ b/v2/core/src/release/buildIdentityProducer.ts
+@@ -2,8 +2,8 @@
+ import { execFileSync } from "node:child_process";
+ import { existsSync, readFileSync } from "node:fs";
+ import { join } from "node:path";
+-import { parseBuildIdentity, type BuildIdentity } from "./buildIdentity.js";
+-import { hostGitEnv } from "../hostGit.js";
++import { parseBuildIdentity, type BuildIdentity } from "./buildIdentity.ts";
++import { hostGitEnv } from "../hostGit.ts";
+ 
+ const releaseTagMatches = (tag: string | null, version: string): boolean => tag === `v${version}` || tag === `honeybee-v${version}`
+   || /^distribution-[a-f0-9]{64}-honeybee-v(\d+\.\d+\.\d+)$/.exec(tag ?? "")?.[1] === version;
+diff --git a/src/release/distribution-profile.ts b/v2/core/src/release/distribution-profile.ts
+similarity index 100%
+rename from src/release/distribution-profile.ts
+rename to v2/core/src/release/distribution-profile.ts
+diff --git a/src/execution/contract.ts b/v2/core/src/release/executionContract.ts
+similarity index 97%
+rename from src/execution/contract.ts
+rename to v2/core/src/release/executionContract.ts
+index d7def622..4a88bc9c 100644
+--- a/src/execution/contract.ts
++++ b/v2/core/src/release/executionContract.ts
+@@ -8,8 +8,9 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
+ import { join, relative } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
+-import { canonicalDigest } from "../comb/canonical.js";
+-import type { JsonValue } from "../comb/types.js";
++import { canonicalDigest } from "../canonical.ts";
++import { packageRoot } from "../packageRoot.ts";
++export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+ 
+ export type JsonObject = { [key: string]: JsonValue };
+ 
+@@ -61,7 +62,7 @@ export type ExecutionContract = {
+ 
+ /** Absolute path of the canonical corpus directory inside this package. */
+ export function executionContractRoot(): string {
+-  return fileURLToPath(new URL("../../contracts/execution/v1/", import.meta.url));
++  return join(packageRoot(), "contracts", "execution", "v1");
+ }
+ 
+ function readJson(path: string): JsonValue {
+diff --git a/src/release/github.ts b/v2/core/src/release/github.ts
+similarity index 95%
+rename from src/release/github.ts
+rename to v2/core/src/release/github.ts
+index e29d2a2b..d28994fe 100644
+--- a/src/release/github.ts
++++ b/v2/core/src/release/github.ts
+@@ -1,6 +1,6 @@
+-import { parseDistributionProfile, productionProfile, distributionIdentity, type DistributionProfile } from "./distribution-profile.js";
++import { parseDistributionProfile, productionProfile, distributionIdentity, type DistributionProfile } from "./distribution-profile.ts";
+ /** GitHub boundary: create-only draft assets, repository immutability, and evaluator notification. */
+-import type { HoneybeeReleaseEvent, ReleaseAssetStore } from "./publish.js";
++import type { HoneybeeReleaseEvent, ReleaseAssetStore } from "./publish.ts";
+ 
+ type Release = { id: number; tag_name: string; draft: boolean; immutable: boolean };
+ type Asset = { id: number; name: string; state: string; size: number };
+@@ -11,7 +11,13 @@ type Asset = { id: number; name: string; state: string; size: number };
+ export class GitHubReleaseStore implements ReleaseAssetStore {
+   private release: Release | null = null;
+   private readonly repo: string;
+-  constructor(private readonly tag: string, private readonly token: string, private readonly request: typeof fetch = fetch, profile: DistributionProfile = productionProfile) {
++  private readonly tag: string;
++  private readonly token: string;
++  private readonly request: typeof fetch;
++  constructor(tag: string, token: string, request: typeof fetch = fetch, profile: DistributionProfile = productionProfile) {
++    this.tag = tag;
++    this.token = token;
++    this.request = request;
+     this.repo = parseDistributionProfile(profile).repository;
+     if (!/^honeybee-v\d+\.\d+\.\d+-(darwin-arm64|linux-x64)$/.test(tag)) throw new Error("Unsupported release tag/target");
+     if (!token) throw new Error("Distribution token required");
+diff --git a/src/release/index.ts b/v2/core/src/release/index.ts
+similarity index 97%
+rename from src/release/index.ts
+rename to v2/core/src/release/index.ts
+index 9b7fe2cc..7c9f7172 100644
+--- a/src/release/index.ts
++++ b/v2/core/src/release/index.ts
+@@ -1,6 +1,8 @@
+ /** Versioned release metadata. Parsing establishes consistency, not authenticity. */
+-import { canonicalDigest } from "../comb/canonical.ts";
++import { canonicalDigest } from "../canonical.ts";
+ import { readFileSync } from "node:fs";
++import { join } from "node:path";
++import { packageRoot } from "../packageRoot.ts";
+ import { Ajv2020 } from "ajv/dist/2020.js";
+ 
+ export type Component = "apiary" | "apiaryd" | "honeybee";
+@@ -16,7 +18,7 @@ export type ComponentIdentity = {
+ let contract: { schemaId: string; ajv: Ajv2020 } | undefined;
+ function releaseContract(): { schemaId: string; ajv: Ajv2020 } {
+   if (contract) return contract;
+-  const schema = JSON.parse(readFileSync(new URL("../../contracts/release/v1/schema.json", import.meta.url), "utf8"));
++  const schema = JSON.parse(readFileSync(join(packageRoot(), "contracts", "release", "v1", "schema.json"), "utf8"));
+   const ajv = new Ajv2020({ allErrors: true, strict: true });
+   ajv.addFormat("uri", (value: string) => URL.canParse(value));
+   ajv.addSchema(schema);
+diff --git a/src/peercredProvenance.ts b/v2/core/src/release/peercredProvenance.ts
+similarity index 100%
+rename from src/peercredProvenance.ts
+rename to v2/core/src/release/peercredProvenance.ts
+diff --git a/src/release/prepare.ts b/v2/core/src/release/prepare.ts
+similarity index 96%
+rename from src/release/prepare.ts
+rename to v2/core/src/release/prepare.ts
+index 14667af3..3e713c93 100644
+--- a/src/release/prepare.ts
++++ b/v2/core/src/release/prepare.ts
+@@ -1,13 +1,13 @@
+-import { parseDistributionProfile, productionProfile, distributionPrefix, distributionIdentity, type DistributionProfile } from "./distribution-profile.js";
++import { parseDistributionProfile, productionProfile, distributionPrefix, distributionIdentity, type DistributionProfile } from "./distribution-profile.ts";
+ /** Release allocation owns only Git objects/refs; never the caller's checkout or live runtime. */
+ import { execFile } from "node:child_process";
+ import { mkdtemp, rm } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { promisify } from "node:util";
+-import { assertCanonicalData, canonicalDigest } from "../comb/canonical.js";
+-import { parseComponentIdentity } from "./index.js";
+-import { hostGitEnv } from "../hostGit.js";
++import { assertCanonicalData, canonicalDigest } from "../canonical.ts";
++import { parseComponentIdentity } from "./index.ts";
++import { hostGitEnv } from "../hostGit.ts";
+ 
+ const exec = promisify(execFile);
+ const METADATA = ".release/release.json";
+@@ -54,7 +54,7 @@ function assessmentBump(raw: unknown, revision: string, beforeRevision: string |
+   if (!bump || a.bump !== bump || (a.classification !== "breaking-api" && a.checks.some((x: string) => x !== "compatible"))
+     || (a.classification === "breaking-api" && !a.checks.includes("incompatible"))) throw new Error("API assessment is unverified or contradicts bump policy");
+   const index = { major: 0, minor: 1, patch: 2 }[bump];
+-  parts[index] += 1;
++  parts[index] = (parts[index] ?? 0) + 1;
+   for (let i = index + 1; i < parts.length; i++) parts[i] = 0;
+   return { version: parts.join("."), assessmentSha256: sha256 as string, before };
+ }
+@@ -65,9 +65,9 @@ export async function productSourceDigest(repoRoot: string, revision: string): P
+   const tree = await git(repoRoot, ["ls-tree", "-rz", "--full-tree", revision]);
+   const entries = [];
+   for (const entry of tree.split("\0").filter(Boolean)) {
+-    const [header, path] = entry.split("\t");
++    const [header = "", path = ""] = entry.split("\t");
+     if (path === METADATA || path === ASSESSMENT) continue;
+-    const [mode, type, object] = header.split(" ");
++    const [mode = "", type = "", object = ""] = header.split(" ");
+     if (path === "package.json" || path === "package-lock.json") {
+       const pkg = JSON.parse(await git(repoRoot, ["cat-file", "blob", object]));
+       delete pkg.version;
+diff --git a/src/release/publish.ts b/v2/core/src/release/publish.ts
+similarity index 98%
+rename from src/release/publish.ts
+rename to v2/core/src/release/publish.ts
+index f8d68f75..a3139f45 100644
+--- a/src/release/publish.ts
++++ b/v2/core/src/release/publish.ts
+@@ -1,4 +1,4 @@
+-import { parseDistributionProfile, productionProfile, distributionIdentity, type DistributionProfile } from "./distribution-profile.js";
++import { parseDistributionProfile, productionProfile, distributionIdentity, type DistributionProfile } from "./distribution-profile.ts";
+ /** Retry-safe publication over a create-only asset store. The first tarball is the durable build receipt. */
+ import { execFile } from "node:child_process";
+ import { createHash } from "node:crypto";
+@@ -6,9 +6,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { promisify } from "node:util";
+-import { parseComponentIdentity, type ArtifactReference, type ComponentIdentity } from "./index.js";
+-import { formatSha256Sums, parseRuntimeArtifactManifest, runtimeArtifactTarballName } from "../runtimeArtifact.js";
+-import type { ReleaseReservation } from "./prepare.js";
++import { parseComponentIdentity, type ArtifactReference, type ComponentIdentity } from "./index.ts";
++import { formatSha256Sums, parseRuntimeArtifactManifest, runtimeArtifactTarballName } from "./runtimeArtifact.ts";
++import type { ReleaseReservation } from "./prepare.ts";
+ const exec = promisify(execFile);
+ export const releaseBytesDigest = (bytes: Uint8Array) => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+ export interface ReleaseAssetStore {
+diff --git a/src/repackPeercred.ts b/v2/core/src/release/repackPeercred.ts
+similarity index 93%
+rename from src/repackPeercred.ts
+rename to v2/core/src/release/repackPeercred.ts
+index 5cd738ca..f764f785 100644
+--- a/src/repackPeercred.ts
++++ b/v2/core/src/release/repackPeercred.ts
+@@ -1,9 +1,9 @@
+ import { createHash } from "node:crypto";
+ import { mkdir, writeFile, lstat } from "node:fs/promises";
+ import { join } from "node:path";
+-import { readBuildIdentity } from "./release/buildIdentity.js";
+-import { hashDirectoryTree, readBuildStamp, REPACK_RECORD_FILENAME, verifyRepackedDist, type RepackRecord } from "./deploySettle.js";
+-import { verifyPeercredCi, type GitHubRead } from "./peercredProvenance.js";
++import { readBuildIdentity } from "./buildIdentity.ts";
++import { hashDirectoryTree, readBuildStamp, REPACK_RECORD_FILENAME, verifyRepackedDist, type RepackRecord } from "./settle.ts";
++import { verifyPeercredCi, type GitHubRead } from "./peercredProvenance.ts";
+ 
+ /** Verify the CI archive before adding any bytes or publishing a repack record. */
+ export async function repackPeercred(dist: string, input: Parameters<typeof verifyPeercredCi>[0], api?: GitHubRead): Promise<RepackRecord> {
+diff --git a/src/runtimeArtifact.ts b/v2/core/src/release/runtimeArtifact.ts
+similarity index 98%
+rename from src/runtimeArtifact.ts
+rename to v2/core/src/release/runtimeArtifact.ts
+index bbf8ab4f..3ed92c64 100644
+--- a/src/runtimeArtifact.ts
++++ b/v2/core/src/release/runtimeArtifact.ts
+@@ -26,10 +26,10 @@ import { createReadStream, existsSync } from "node:fs";
+ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+ import { basename, join } from "node:path";
+ import { promisify } from "node:util";
+-import { writeBuildStamp } from "./deploySettle.js";
+-import { computeSchemaDigest, loadExecutionContract } from "./execution/contract.js";
++import { writeBuildStamp } from "./settle.ts";
++import { computeSchemaDigest, loadExecutionContract } from "./executionContract.ts";
+ 
+-import { readBuildIdentity, parseBuildIdentity, type BuildIdentity } from "./release/buildIdentity.js";
++import { readBuildIdentity, parseBuildIdentity, type BuildIdentity } from "./buildIdentity.ts";
+ 
+ const execFileAsync = promisify(execFile);
+ 
+diff --git a/src/release/runtimeTarget.ts b/v2/core/src/release/runtimeTarget.ts
+similarity index 99%
+rename from src/release/runtimeTarget.ts
+rename to v2/core/src/release/runtimeTarget.ts
+index 4b941661..40bc6ced 100644
+--- a/src/release/runtimeTarget.ts
++++ b/v2/core/src/release/runtimeTarget.ts
+@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
+ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+ import { join } from "node:path";
+ import { type } from "node:os";
+-import { readBuildIdentity } from "./buildIdentity.js";
++import { readBuildIdentity } from "./buildIdentity.ts";
+ 
+ /** JavaScript is portable; the only cross-build supported here uses shipped macOS PTY prebuilds. */
+ export function validateRuntimeBuildTarget(target: string | undefined, host = runtimeHostTarget()): asserts target is string {
+diff --git a/src/deploySettle.ts b/v2/core/src/release/settle.ts
+similarity index 98%
+rename from src/deploySettle.ts
+rename to v2/core/src/release/settle.ts
+index eabbf9cd..95c33c9d 100644
+--- a/src/deploySettle.ts
++++ b/v2/core/src/release/settle.ts
+@@ -1,5 +1,5 @@
+-import { assertPeercredReceipt } from "./peercredReceipt.js";
+-import type { PeercredProvenance } from "./peercredProvenance.js";
++import { assertPeercredReceipt } from "../peercredReceipt.ts";
++import type { PeercredProvenance } from "./peercredProvenance.ts";
+ /**
+  * Deploy settling: prove the globally installed module tree is EXACTLY the
+  * tree the local build produced before anything restarts the daemon.
+@@ -22,8 +22,8 @@ import type { PeercredProvenance } from "./peercredProvenance.js";
+ import { createHash } from "node:crypto";
+ import { lstat, readFile, readdir } from "node:fs/promises";
+ import { join } from "node:path";
+-import { atomicWriteFile } from "./fsx.js";
+-import { readBuildIdentity } from "./release/buildIdentity.js";
++import { atomicWriteFile } from "../fsx.ts";
++import { readBuildIdentity } from "./buildIdentity.ts";
+ 
+ /** Lives inside dist/ so the stamp travels with any install mechanism. */
+ export const BUILD_STAMP_FILENAME = ".build-stamp.json";
+diff --git a/src/release/v2.ts b/v2/core/src/release/v2.ts
+similarity index 97%
+rename from src/release/v2.ts
+rename to v2/core/src/release/v2.ts
+index bb626b66..76cc6a62 100644
+--- a/src/release/v2.ts
++++ b/v2/core/src/release/v2.ts
+@@ -1,8 +1,10 @@
+ /** Role-bound v2 metadata. Parsing establishes consistency, not authenticity.
+  * Version-specific validation is intentionally separate from the frozen v1 reader.
+  */
+-import { canonicalDigest } from "../comb/canonical.js";
++import { canonicalDigest } from "../canonical.ts";
+ import { readFileSync } from "node:fs";
++import { join } from "node:path";
++import { packageRoot } from "../packageRoot.ts";
+ import { Ajv2020 } from "ajv/dist/2020.js";
+ 
+ export type Component = "apiary" | "apiaryd" | "honeybee";
+@@ -15,7 +17,7 @@ export type ComponentIdentity = {
+   artifact: ArtifactReference;
+ };
+ 
+-const schema = JSON.parse(readFileSync(new URL("../../contracts/release/v2/schema.json", import.meta.url), "utf8"));
++const schema = JSON.parse(readFileSync(join(packageRoot(), "contracts", "release", "v2", "schema.json"), "utf8"));
+ const ajv = new Ajv2020({ allErrors: true, strict: true });
+ // HTTPS is constrained by the schema; parsing also rejects malformed authorities/ports.
+ ajv.addFormat("uri", (value: string) => URL.canParse(value));
+@@ -227,4 +229,4 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
+   return manifest;
+ }
+ 
+-export { parseBuildIdentity, readBuildIdentity, type BuildIdentity } from "./buildIdentity.js";
++export { parseBuildIdentity, readBuildIdentity, type BuildIdentity } from "./buildIdentity.ts";
+diff --git a/src/runtimeEnvironment.ts b/v2/core/src/runtimeEnvironment.ts
+similarity index 100%
+rename from src/runtimeEnvironment.ts
+rename to v2/core/src/runtimeEnvironment.ts
+diff --git a/src/cliRoute.ts b/v2/core/src/runtimeMode.ts
+similarity index 60%
+rename from src/cliRoute.ts
+rename to v2/core/src/runtimeMode.ts
+index ab5dc64e..42157296 100644
+--- a/src/cliRoute.ts
++++ b/v2/core/src/runtimeMode.ts
+@@ -1,24 +1,14 @@
+-import { existsSync, lstatSync, readFileSync, readlinkSync } from "node:fs";
+-import { homedir } from "node:os";
++import { lstatSync, readFileSync, readlinkSync } from "node:fs";
+ import { join } from "node:path";
+ import { readBuildIdentity, type BuildIdentity } from "./release/buildIdentity.ts";
+ import { UPDATE_RECOVERY_CONTRACT } from "./updateReservation.ts";
+ 
+-/** Legacy-only verbs that remain reachable after the v2 freeze flip. */
+-const V1_VERBS_KEPT_WHEN_FROZEN = new Set(["deploy", "__complete"]);
+-
+ /**
+- * Keep the freeze check in a dependency-light module: the installed CLI
+- * bootstrap imports this before choosing either the v2 or legacy graph.
++ * The one "v2 is live" signal: `<store>/runtime/runtime-mode.json`. Every
++ * deploy and rollback writes it so Honeybee versions still deployed on peer
++ * nodes keep routing plain `hive` into v2. Owner: hive deploy. Delete once no
++ * peer runs a build that consults FROZEN or the deployment marker for routing.
+  */
+-export function v2IsDefault(argv0: string | undefined): boolean {
+-  if (argv0 !== undefined && V1_VERBS_KEPT_WHEN_FROZEN.has(argv0)) return false;
+-  const root = process.env.HIVE_STORE_ROOT ?? join(homedir(), ".hive");
+-  return runtimeUsesV2(join(root, "runtime"));
+-}
+-
+-
+-/** Deployment configuration, independent of release provenance or bee lifecycle. */
+ export const RUNTIME_MODE_CONFIG = "runtime-mode.json";
+ 
+ export function configuredV2Runtime(root: string): boolean {
+@@ -34,21 +24,10 @@ export function configuredV2Runtime(root: string): boolean {
+   }
+ }
+ 
+-/** Keep a verified current receipt as the upgrade path for earlier installs. */
+-export function runtimeUsesV2(root: string): boolean {
+-  return configuredV2Runtime(root) || existsSync(join(root, "..", "FROZEN")) || installedV2Runtime(root);
+-}
+-
++/** Owner-written receipt of a verified artifact install inside the immutable version. */
+ export const V2_DEPLOY_MARKER = ".honeybee-deployment.json";
+ 
+-/** Owner-written receipt in the immutable version. Only hive deploy writes it,
+- * after checking the release checksum, build identity and recovery capability.
+- * Keep routing dependency-light: no legacy graph, SQLite or schema compiler. */
+-export function installedV2Runtime(root: string): boolean {
+-  return installedV2Identity(root) !== null;
+-}
+-
+-type InstalledV2Identity = Pick<BuildIdentity, "component" | "version" | "target"> & {
++export type InstalledV2Identity = Pick<BuildIdentity, "component" | "version" | "target"> & {
+   sourceRevision: string; artifact: { url: string; sha256: string };
+ };
+ 
+diff --git a/src/servicePaths.ts b/v2/core/src/servicePaths.ts
+similarity index 100%
+rename from src/servicePaths.ts
+rename to v2/core/src/servicePaths.ts
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index ece80497..892447d1 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -20,12 +20,12 @@ import { type PhoneInput, type PhoneOperationOrigin, type PhoneOriginRequest, ty
+ import { readAccountLease, accountLeaseUnknown, knownAccountLease } from "./accountLease.ts";
+ import { ExecutionLedger, ExecutionFenceError, executionRequest, type ExecutionRequest } from "./executionFence.ts";
+ import { EffectKeyError, EffectLedger, type EffectVerb, type EffectResolution } from "./effectResolve.ts";
+-import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
++import { parseDurableUpdateReservation, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover, acquireApiarySwap, settleApiarySwap, recoverApiarySwap, type DurableUpdateReservation, type ApiarySwapReservation } from "./apiarySwap.ts";
+ import { currentRpcCaller } from "./rpcAuditContext.ts";
+ import type { QuestionDismissedEvent } from "./mirror.ts";
+ import type { AccountObservationMetadata, LimitsObserverProvenance } from "./types.ts";
+ import { isAccountId } from "./accountRecipes.ts";
+-import { parseUpdateReservation, type UpdateReservation } from "../../../src/updateReservation.ts";
++import { parseUpdateReservation, type UpdateReservation } from "./updateReservation.ts";
+ import type { ReconnectToolsReceipt, ReconnectToolsError } from "./reconnectTools.ts";
+ import { threadOperationView, type ThreadOperationRow, type ThreadOperationPhase } from "./threadOperation.ts";
+ import { THREAD_OPERATIONS_TABLE_SQL } from "./schema.ts";
+diff --git a/src/updateReservation.ts b/v2/core/src/updateReservation.ts
+similarity index 100%
+rename from src/updateReservation.ts
+rename to v2/core/src/updateReservation.ts
+diff --git a/v2/core/tests/apiary-swap.test.ts b/v2/core/tests/apiary-swap.test.ts
+index fed49f28..328efa28 100644
+--- a/v2/core/tests/apiary-swap.test.ts
++++ b/v2/core/tests/apiary-swap.test.ts
+@@ -5,9 +5,9 @@ import { tmpdir, hostname } from "node:os";
+ import { join } from "node:path";
+ import { DatabaseSync } from "node:sqlite";
+ import { openCoreStore } from "../src/index.ts";
+-import { canonicalDigest } from "../../../src/comb/canonical.ts";
+-import { parseUpdateReservation } from "../../../src/updateReservation.ts";
+-import { parseDurableUpdateReservation, type ApiarySwapAcquire, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
++import { canonicalDigest } from "../src/canonical.ts";
++import { parseUpdateReservation } from "../src/updateReservation.ts";
++import { parseDurableUpdateReservation, type ApiarySwapAcquire, type ApiarySwapReservation } from "../src/apiarySwap.ts";
+ 
+ const hash = (character: string) => `sha256:${character.repeat(64)}`;
+ const identity = { component: "honeybee" as const, version: "0.0.1", sourceRevision: "a".repeat(40), target: `${process.platform}-${process.arch}`, artifact: { url: "https://example.test/honeybee.tgz", sha256: hash("a") } };
+diff --git a/tests/build-identity.test.ts b/v2/core/tests/build-identity.test.ts
+similarity index 99%
+rename from tests/build-identity.test.ts
+rename to v2/core/tests/build-identity.test.ts
+index dc5ce0de..6c5ffa51 100644
+--- a/tests/build-identity.test.ts
++++ b/v2/core/tests/build-identity.test.ts
+@@ -3,8 +3,8 @@ import { test } from "node:test";
+ import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+-import { collectBuildIdentity } from "../src/release/buildIdentityProducer.js";
+-import { readBuildIdentity } from "../src/release/buildIdentity.js";
++import { collectBuildIdentity } from "../src/release/buildIdentityProducer.ts";
++import { readBuildIdentity } from "../src/release/buildIdentity.ts";
+ 
+ test("an exported source build retains its own identity after packaging without git", async () => {
+   const root = await mkdtemp(join(tmpdir(), "honeybee-identity-"));
+diff --git a/tests/canonical-json.test.ts b/v2/core/tests/canonical-json.test.ts
+similarity index 95%
+rename from tests/canonical-json.test.ts
+rename to v2/core/tests/canonical-json.test.ts
+index 83fe5fc2..53a4e81f 100644
+--- a/tests/canonical-json.test.ts
++++ b/v2/core/tests/canonical-json.test.ts
+@@ -9,7 +9,7 @@
+ // "fix" the numeric ordering here without a coordinated digest migration.
+ import { strict as assert } from "node:assert";
+ import { test } from "node:test";
+-import { canonicalDigest, canonicalJson } from "../src/comb/canonical.js";
++import { canonicalDigest, canonicalJson } from "../src/canonical.ts";
+ 
+ test("canonicalJson: string keys sort lexicographically", () => {
+   assert.equal(canonicalJson({ b: 1, a: 2, C: 3 }), '{"C":3,"a":2,"b":1}');
+diff --git a/v2/core/tests/execution-fence.test.ts b/v2/core/tests/execution-fence.test.ts
+index 28d4d23f..e23237e2 100644
+--- a/v2/core/tests/execution-fence.test.ts
++++ b/v2/core/tests/execution-fence.test.ts
+@@ -1,4 +1,4 @@
+-import type { JsonValue } from "../../../src/comb/canonical.ts";
++import type { JsonValue } from "../src/canonical.ts";
+ import { test } from "node:test";
+ import assert from "node:assert/strict";
+ import { DatabaseSync } from "node:sqlite";
+diff --git a/v2/core/tests/fsx.test.ts b/v2/core/tests/fsx.test.ts
+new file mode 100644
+index 00000000..fea31a6a
+--- /dev/null
++++ b/v2/core/tests/fsx.test.ts
+@@ -0,0 +1,58 @@
++import assert from "node:assert/strict";
++import { mkdtemp, readFile, readdir, rm, utimes, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { test } from "node:test";
++import { atomicWriteFile, storeRoot } from "../src/fsx.ts";
++
++async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
++  const dir = await mkdtemp(join(tmpdir(), "honeybee-fsx-"));
++  try {
++    await fn(dir);
++  } finally {
++    await rm(dir, { recursive: true, force: true });
++  }
++}
++
++test("storeRoot honors HIVE_STORE_ROOT and falls back to ~/.hive", () => {
++  const previous = process.env.HIVE_STORE_ROOT;
++  process.env.HIVE_STORE_ROOT = "/tmp/honeybee-test";
++  try {
++    assert.equal(storeRoot(), "/tmp/honeybee-test");
++  } finally {
++    if (previous === undefined) delete process.env.HIVE_STORE_ROOT;
++    else process.env.HIVE_STORE_ROOT = previous;
++  }
++});
++
++test("atomicWriteFile writes and creates parent dirs", async () => {
++  await withTempDir(async (dir) => {
++    const target = join(dir, "nested/deeper/file.json");
++    await atomicWriteFile(target, '{"hello":"world"}\n');
++    const raw = await readFile(target, "utf8");
++    assert.equal(raw, '{"hello":"world"}\n');
++  });
++});
++
++test("atomicWriteFile honors mode option", async () => {
++  await withTempDir(async (dir) => {
++    const target = join(dir, "secret.json");
++    await atomicWriteFile(target, "{}", { mode: 0o600 });
++    const { stat } = await import("node:fs/promises");
++    const info = await stat(target);
++    assert.equal(info.mode & 0o777, 0o600);
++  });
++});
++
++test("atomicWriteFile tolerates concurrent same-destination writes without temp collisions", async () => {
++  await withTempDir(async (dir) => {
++    const target = join(dir, "contended.json");
++    const payloads = Array.from({ length: 20 }, (_, i) => `{"write":${i}}`);
++    await Promise.all(payloads.map((data) => atomicWriteFile(target, data)));
++
++    const final = await readFile(target, "utf8");
++    assert.ok(payloads.includes(final), `unexpected final content: ${final}`);
++    const leftovers = (await readdir(dir)).filter((entry) => entry.endsWith(".tmp"));
++    assert.deepEqual(leftovers, []);
++  });
++});
+diff --git a/tests/lock.test.ts b/v2/core/tests/lock.test.ts
+similarity index 99%
+rename from tests/lock.test.ts
+rename to v2/core/tests/lock.test.ts
+index 163e2a22..4310e40d 100644
+--- a/tests/lock.test.ts
++++ b/v2/core/tests/lock.test.ts
+@@ -13,7 +13,7 @@ import {
+   removeFileLockIfOwner,
+   withFileLock,
+   withGuardedFileLockOwner,
+-} from "../src/lock.js";
++} from "../src/lock.ts";
+ 
+ async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
+   const dir = await mkdtemp(join(tmpdir(), "honeybee-lock-"));
+diff --git a/tests/node-runtime.test.ts b/v2/core/tests/node-runtime.test.ts
+similarity index 99%
+rename from tests/node-runtime.test.ts
+rename to v2/core/tests/node-runtime.test.ts
+index f274e35b..e84cc34b 100644
+--- a/tests/node-runtime.test.ts
++++ b/v2/core/tests/node-runtime.test.ts
+@@ -3,7 +3,7 @@ import { test } from "node:test";
+ import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+ import { join } from "node:path";
+ import { tmpdir } from "node:os";
+-import { childNodePath, nativeNodeEnv, nodePinFile, persistNodePin, probeNativeNode, resolveNodePin, withoutInspectorArgs } from "../src/nodeRuntime.js";
++import { childNodePath, nativeNodeEnv, nodePinFile, persistNodePin, probeNativeNode, resolveNodePin, withoutInspectorArgs } from "../src/nodeRuntime.ts";
+ 
+ function fixture(run: (dir: string) => void): void {
+   const dir = mkdtempSync(join(tmpdir(), "hb-pin-"));
+diff --git a/tests/processScheduling.test.ts b/v2/core/tests/process-scheduling.test.ts
+similarity index 100%
+rename from tests/processScheduling.test.ts
+rename to v2/core/tests/process-scheduling.test.ts
+diff --git a/tests/release-contract-v2.test.ts b/v2/core/tests/release-contract-v2.test.ts
+similarity index 97%
+rename from tests/release-contract-v2.test.ts
+rename to v2/core/tests/release-contract-v2.test.ts
+index a86a5654..8b437fba 100644
+--- a/tests/release-contract-v2.test.ts
++++ b/v2/core/tests/release-contract-v2.test.ts
+@@ -1,11 +1,11 @@
+ import assert from "node:assert/strict";
+ import { readFileSync } from "node:fs";
+ import { test } from "node:test";
+-import { parseCompatibilityRecord, parseReleaseManifest, parseCompatibilityMatrix, parseRecoveryPlan, parseDependencyLock, parseComponentIdentity, compatibilitySubjectDigest, recoverySubjectDigest, type CompatibilityRecord } from "../src/release/v2.js";
+-import * as v1 from "../src/release/index.js";
++import { parseCompatibilityRecord, parseReleaseManifest, parseCompatibilityMatrix, parseRecoveryPlan, parseDependencyLock, parseComponentIdentity, compatibilitySubjectDigest, recoverySubjectDigest, type CompatibilityRecord } from "../src/release/v2.ts";
++import * as v1 from "../src/release/index.ts";
+ 
+-const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../contracts/release/v2/fixtures/${name}.json`, import.meta.url), "utf8"));
+-const legacyFixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../contracts/release/v1/fixtures/${name}.json`, import.meta.url), "utf8"));
++const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../../../contracts/release/v2/fixtures/${name}.json`, import.meta.url), "utf8"));
++const legacyFixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../../../contracts/release/v1/fixtures/${name}.json`, import.meta.url), "utf8"));
+ 
+ function rebind(record: CompatibilityRecord): void {
+   record.subjectDigest = compatibilitySubjectDigest(record.subject);
+diff --git a/tests/release-contract.test.ts b/v2/core/tests/release-contract.test.ts
+similarity index 99%
+rename from tests/release-contract.test.ts
+rename to v2/core/tests/release-contract.test.ts
+index 7666b5c4..66e95866 100644
+--- a/tests/release-contract.test.ts
++++ b/v2/core/tests/release-contract.test.ts
+@@ -1,9 +1,9 @@
+ import assert from "node:assert/strict";
+ import { readFileSync } from "node:fs";
+ import { test } from "node:test";
+-import { parseComponentIdentity, parseCompatibilityRecord, parseDependencyLock, parseReleaseManifest, parseRecoveryPlan, compatibilitySubjectDigest, recoverySubjectDigest } from "../src/release/index.js";
++import { parseComponentIdentity, parseCompatibilityRecord, parseDependencyLock, parseReleaseManifest, parseRecoveryPlan, compatibilitySubjectDigest, recoverySubjectDigest } from "../src/release/index.ts";
+ 
+-const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../contracts/release/v1/fixtures/${name}.json`, import.meta.url), "utf8"));
++const fixture = (name: string): unknown => JSON.parse(readFileSync(new URL(`../../../contracts/release/v1/fixtures/${name}.json`, import.meta.url), "utf8"));
+ 
+ test("recovery may target an exact explicitly supported compatible combination", () => {
+   const manifest = parseReleaseManifest(fixture("release-manifest"));
+diff --git a/tests/release-github.test.ts b/v2/core/tests/release-github.test.ts
+similarity index 99%
+rename from tests/release-github.test.ts
+rename to v2/core/tests/release-github.test.ts
+index 464d9cc7..aeb5746e 100644
+--- a/tests/release-github.test.ts
++++ b/v2/core/tests/release-github.test.ts
+@@ -1,7 +1,7 @@
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+ import { spawnSync } from "node:child_process";
+-import { GitHubReleaseStore, notifyHoneybeeRelease } from "../src/release/github.js";
++import { GitHubReleaseStore, notifyHoneybeeRelease } from "../src/release/github.ts";
+ 
+ test("production publisher rejects execution outside the owning repository's Actions lock", () => {
+   for (const context of [{ GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "honeybeehq/apiary" }, { GITHUB_ACTIONS: "false", GITHUB_REPOSITORY: "honeybeehq/honeybee" }]) {
+@@ -105,7 +105,7 @@ test("starter recovery never deletes nonempty or published assets", async () =>
+ });
+ 
+ import { generateKeyPairSync } from "node:crypto";
+-import { distributionIdentity } from "../src/release/distribution-profile.js";
++import { distributionIdentity } from "../src/release/distribution-profile.ts";
+ test("staging notifications use an isolated event route and reject foreign profiles before HTTP", async () => {
+   const profile = { schemaVersion: 1 as const, id: "fixture-stage", repository: "fixture/stage", verificationKeys: { fixture: generateKeyPairSync("ed25519").publicKey.export({ type: "spki", format: "pem" }).toString() } };
+   const event = { schemaVersion: 1 as const, distribution: distributionIdentity(profile), eventKey: `sha256:${"a".repeat(64)}`, descriptor: { url: "https://github.com/fixture/stage/releases/download/honeybee-v0.1.0-darwin-arm64/release.json", sha256: `sha256:${"a".repeat(64)}` } };
+diff --git a/tests/release-pipeline.test.ts b/v2/core/tests/release-pipeline.test.ts
+similarity index 97%
+rename from tests/release-pipeline.test.ts
+rename to v2/core/tests/release-pipeline.test.ts
+index 6be6d291..4407c7d6 100644
+--- a/tests/release-pipeline.test.ts
++++ b/v2/core/tests/release-pipeline.test.ts
+@@ -4,8 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { test } from "node:test";
+-import { canonicalDigest } from "../src/comb/canonical.js";
+-import { prepareHoneybeeRelease } from "../src/release/prepare.js";
++import { canonicalDigest } from "../src/canonical.ts";
++import { prepareHoneybeeRelease } from "../src/release/prepare.ts";
+ 
+ const hash = `sha256:${"a".repeat(64)}`;
+ function assessment(beforeRevision: string, afterRevision: string, version = "0.0.1", classification = "compatible-fix") {
+@@ -78,7 +78,7 @@ test("unverified or stale-source assessment cannot allocate a version", async t
+ });
+ 
+ import { generateKeyPairSync } from "node:crypto";
+-import { distributionIdentity, distributionPrefix } from "../src/release/distribution-profile.js";
++import { distributionIdentity, distributionPrefix } from "../src/release/distribution-profile.ts";
+ test("staging and production allocate independently for identical source and isolate source refs", async t => {
+   const { root, revision } = await fixture(t);
+   const profile = { schemaVersion: 1 as const, id: "fixture-stage", repository: "fixture/stage-releases", verificationKeys: { fixture: generateKeyPairSync("ed25519").publicKey.export({ type: "spki", format: "pem" }).toString() } };
+diff --git a/tests/release-publication.test.ts b/v2/core/tests/release-publication.test.ts
+similarity index 97%
+rename from tests/release-publication.test.ts
+rename to v2/core/tests/release-publication.test.ts
+index e28a6fd9..85580523 100644
+--- a/tests/release-publication.test.ts
++++ b/v2/core/tests/release-publication.test.ts
+@@ -4,8 +4,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { test } from "node:test";
+-import { publishHoneybeeRelease, type ReleaseAssetStore } from "../src/release/publish.js";
+-import type { ReleaseReservation } from "../src/release/prepare.js";
++import { publishHoneybeeRelease, type ReleaseAssetStore } from "../src/release/publish.ts";
++import type { ReleaseReservation } from "../src/release/prepare.ts";
+ 
+ const reservation: ReleaseReservation = { schemaVersion: 1, version: "0.1.0", tag: "honeybee-v0.1.0", sourceRevision: "a".repeat(40),
+   requestedSourceRevision: "b".repeat(40), productSourceSha256: `sha256:${"c".repeat(64)}`, assessmentSha256: `sha256:${"d".repeat(64)}` };
+@@ -57,7 +57,7 @@ test("interrupted publication resumes original uploaded bytes and exact identiti
+ });
+ 
+ test("failed and skipped verification never publish; identity and assessed inventory must match", async t => {
+-  for (const [gate, version, expectedFingerprint] of [["tests-skipped", "0.1.0", fingerprint], ["full", "0.2.0", fingerprint], ["full", "0.1.0", `sha256:${"0".repeat(64)}`]]) {
++  for (const [gate, version, expectedFingerprint] of [["tests-skipped", "0.1.0", fingerprint], ["full", "0.2.0", fingerprint], ["full", "0.1.0", `sha256:${"0".repeat(64)}`]] as const) {
+     const bytes = await bundle(t, gate, version), store = new Assets();
+     await assert.rejects(publishHoneybeeRelease({ reservation, target: "darwin-arm64", providerFingerprint: expectedFingerprint, store,
+       build: async () => bytes, notify: async () => {} }), /checked source|assessed source/);
+@@ -91,12 +91,12 @@ test("existing metadata with different bytes is never overwritten or exposed as
+ });
+ 
+ test("release build boundary refuses the local skip-tests escape hatch", async () => {
+-  const { buildDeployArtifact } = await import("../src/commands/deploy.js");
++  const { buildDeployArtifact } = await import("../../cli/src/deploy/command.ts");
+   await assert.rejects(buildDeployArtifact({ repoRoot: "/unused", sha: reservation.sourceRevision, workDir: "/unused", log: () => {}, release: true, skipTests: true }), /cannot skip tests/);
+ });
+ 
+ import { generateKeyPairSync } from "node:crypto";
+-import { distributionIdentity, distributionPrefix } from "../src/release/distribution-profile.js";
++import { distributionIdentity, distributionPrefix } from "../src/release/distribution-profile.ts";
+ test("staging publication binds reservation, descriptor and notification and cannot touch production assets", async t => {
+   const profile = { schemaVersion: 1 as const, id: "fixture-stage", repository: "fixture/stage", verificationKeys: { fixture: generateKeyPairSync("ed25519").publicKey.export({ type: "spki", format: "pem" }).toString() } };
+   const staged = { ...reservation, distribution: distributionIdentity(profile), tag: `${distributionPrefix(profile)}${reservation.tag}` };
+diff --git a/tests/deploy-settle.test.ts b/v2/core/tests/release-settle.test.ts
+similarity index 76%
+rename from tests/deploy-settle.test.ts
+rename to v2/core/tests/release-settle.test.ts
+index aace6002..8b1eac9d 100644
+--- a/tests/deploy-settle.test.ts
++++ b/v2/core/tests/release-settle.test.ts
+@@ -1,5 +1,5 @@
+-import { parseNpmPackResult } from "../src/npmPack.js";
+-// Deploy settling (scripts/deploy-settle.mjs): the daemon must never restart
++import { parseNpmPackResult } from "../../cli/src/deploy/npmPack.ts";
++// Deploy settling: the daemon must never restart
+ // over a half-copied or mid-rebuild global module tree. The settle barrier
+ // proves content equality between the local build and the installed tree —
+ // stamp AND re-hash — with bounded retries.
+@@ -19,7 +19,7 @@ import {
+   verifyDistAgainstArtifact,
+   waitForSettledInstall,
+   writeBuildStamp,
+-} from "../src/deploySettle.js";
++} from "../src/release/settle.ts";
+ 
+ async function withTempDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+   const dir = await mkdtemp(join(tmpdir(), "hive-deploy-settle-"));
+@@ -251,7 +251,7 @@ test("a local repack record must be byte-identical to the installed one", async
+ test("the tree digest preserves historical host-locale ordering for rollback", async () => {
+   await withTempDir(async (root) => {
+     for (const name of ["aa.js", "ab.js", "z.js", "Ab.js", "\u00e6.js", "I.js", "\u0131.js"]) await writeFile(join(root, name), name);
+-    const moduleUrl = new URL("../src/deploySettle.js", import.meta.url).href;
++    const moduleUrl = new URL("../src/release/settle.ts", import.meta.url).href;
+     const script = `const { hashDirectoryTree } = await import(${JSON.stringify(moduleUrl)}); process.stdout.write(await hashDirectoryTree(${JSON.stringify(root)}));`;
+     const digests = new Set(["en_US.UTF-8", "nb_NO.UTF-8", "da_DK.UTF-8", "tr_TR.UTF-8"].map((locale) =>
+       execFileSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", env: { ...process.env, LANG: locale, LC_ALL: locale } })));
+@@ -271,59 +271,6 @@ test("settling without a local stamp is a caller error, not a wait", async () =>
+   });
+ });
+ 
+-test("deploy orchestrator rebinds launchd to the verified installed CLI before restart", async () => {
+-  const source = await readFile(join(process.cwd(), "scripts", "deploy-settle.mjs"), "utf8");
+-  assert.match(source, /const installedCli = join\(installedDist, "cli\.js"\)/);
+-  assert.match(source, /\[installedCli, "daemon", "install", "--force"\]/);
+-  assert.match(source, /\[installedCli, "daemon", "restart"\]/);
+-  assert.doesNotMatch(source, /run\("hive", \["daemon", "restart"\]\)/);
+-});
+-
+-test("frozen node hands npm deploy off to hive deploy before any global install", async () => {
+-  const source = await readFile(join(process.cwd(), "scripts", "deploy-settle.mjs"), "utf8");
+-  assert.match(source, /existsSync\(join\(hiveStoreRoot\(\), "FROZEN"\)\)/);
+-  assert.match(source, /run\("hive", \["deploy", \.\.\.extra\]\)/);
+-  assert.ok(
+-    source.indexOf('run("hive", ["deploy"') < source.indexOf('run("npm", ["run", "build"])'),
+-    "frozen handoff must precede the local build / npm i -g path",
+-  );
+-  assert.ok(
+-    source.indexOf('run("hive", ["deploy"') < source.indexOf('[installedCli, "daemon", "restart"]'),
+-    "frozen handoff must never reach the v1 daemon-restart step",
+-  );
+-
+-  await withTempDir(async (dir) => {
+-    await writeFile(join(dir, "FROZEN"), "{}\n");
+-    const bin = join(dir, "bin");
+-    await mkdir(bin);
+-    const hive = join(bin, "hive");
+-    await writeFile(hive, "#!/bin/sh\necho hive-stub \"$@\"\n");
+-    await chmod(hive, 0o755);
+-    const output = execFileSync(process.execPath, [join(process.cwd(), "scripts", "deploy-settle.mjs"), "--list"], {
+-      cwd: process.cwd(),
+-      encoding: "utf8",
+-      env: { ...process.env, HIVE_STORE_ROOT: dir, PATH: `${bin}:${process.env.PATH ?? ""}` },
+-    });
+-    assert.match(output, /handing off to hive deploy/);
+-    assert.match(output, /hive deploy --list/);
+-    assert.match(output, /hive-stub deploy --list/);
+-    assert.doesNotMatch(output, /npm run build/);
+-    assert.doesNotMatch(output, /npm i -g/);
+-  });
+-});
+-
+-test("deploy installs an immutable package archive, never a worktree symlink", async () => {
+-  const source = await readFile(join(process.cwd(), "scripts", "deploy-settle.mjs"), "utf8");
+-  assert.match(source, /\["pack", "--json", "--pack-destination", packRoot\]/);
+-  assert.match(source, /run\("npm", \["i", "-g", join\(packRoot, filename\)\]\)/);
+-  assert.doesNotMatch(source, /run\("npm", \["i", "-g", "\."\]\)/);
+-  assert.match(source, /installedPackageRoot === realpathSync\(repoRoot\)/);
+-  assert.ok(
+-    source.indexOf("writeBuildStamp(localDist)") < source.indexOf('["pack", "--json"'),
+-    "the packed archive must contain the certified build stamp",
+-  );
+-});
+-
+ test("the deploy archive allowlist excludes workstation state and retains runtime assets", () => {
+   const packed = parseNpmPackResult(execFileSync(
+     "npm",
+@@ -335,15 +282,12 @@ test("the deploy archive allowlist excludes workstation state and retains runtim
+   for (const required of [
+     "package.json",
+     "dist/cli.js",
+-    "dist/cli-legacy.js",
++    "dist/build-identity.json",
+     "dist/v2/cli.js",
+     "dist/v2/provision-worker.js",
+     "dist/v2/runner-host.js",
+-    "dist/hsr/runner-entry.js",
+-    "dist/hsr/artifacts/runner-host.mjs",
+-    "dist/hsr/artifacts/runner-host.manifest.json",
+-    "dist/execution/service.js",
+     "contracts/execution/v1/profile.json",
++    "contracts/release/v1/schema.json",
+     "docs/honeybee.tmux.conf",
+   ]) {
+     assert.ok(paths.has(required), `deploy archive is missing ${required}`);
+@@ -355,26 +299,3 @@ test("the deploy archive allowlist excludes workstation state and retains runtim
+   }
+ });
+ 
+-test("deploy preflight certifies candidate corpus bytes before the global install mutates", async () => {
+-  const source = await readFile(join(process.cwd(), "scripts", "deploy-settle.mjs"), "utf8");
+-  assert.match(source, /computeExecutionValidationSurfaceDigest\(executionContract\)/);
+-  assert.match(source, /executionBaselineFeatures\(executionContract\)/);
+-  assert.match(source, /\["status", "--porcelain=v1", "--untracked-files=all", "--", contractCorpusPath\]/);
+-  assert.match(source, /\["log", "-1", "--format=%H", "--", contractCorpusPath\]/);
+-  assert.doesNotMatch(source, /APIARY_EXECUTION_CONTRACT_CONSUMER/);
+-  assert.match(source, /process\.env\.APIARY_APP_BUNDLE !== undefined/);
+-  assert.match(source, /loadExecutionContract\(\s*join\(installedPackageRoot, "contracts", "execution", "v1"\)/);
+-  assert.match(source, /assertExecutionMaterializationMatches\(\s*executionCandidate/);
+-  assert.match(source, /schemaDigest: installedExecutionDigest/);
+-  assert.match(source, /validationSurfaceDigest: installedExecutionSurface/);
+-  assert.ok(
+-    source.indexOf("preflightInstalledExecutionConsumer(executionCandidate") <
+-      source.indexOf('["pack", "--json", "--pack-destination", packRoot]'),
+-    "consumer preflight must finish before npm mutates the installed Honeybee tree",
+-  );
+-  assert.ok(
+-    source.indexOf("installed execution corpus verified") <
+-      source.indexOf('[installedCli, "daemon", "restart"]'),
+-    "installed contract bytes must be verified before daemon restart",
+-  );
+-});
+diff --git a/tests/runtime-artifact.test.ts b/v2/core/tests/runtime-artifact.test.ts
+similarity index 97%
+rename from tests/runtime-artifact.test.ts
+rename to v2/core/tests/runtime-artifact.test.ts
+index 433b557e..133d1a3c 100644
+--- a/tests/runtime-artifact.test.ts
++++ b/v2/core/tests/runtime-artifact.test.ts
+@@ -1,4 +1,4 @@
+-// Redistributable runtime artifact (src/runtimeArtifact.ts, driven by
++// Redistributable runtime artifact (v2/core/src/release/runtimeArtifact.ts, driven by
+ // scripts/build-runtime-artifact.mjs). Exercises the manifest / hash / tar
+ // layout over a fake stage directory: no git, npm, or build ever runs here.
+ // The one invariant that matters most: the manifest's artifactHash must be
+@@ -10,8 +10,8 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { test } from "node:test";
+-import { BUILD_STAMP_FILENAME, hashDirectoryTree, readBuildStamp } from "../src/deploySettle.js";
+-import { computeSchemaDigest, loadExecutionContract } from "../src/execution/contract.js";
++import { BUILD_STAMP_FILENAME, hashDirectoryTree, readBuildStamp } from "../src/release/settle.ts";
++import { computeSchemaDigest, loadExecutionContract } from "../src/release/executionContract.ts";
+ import {
+   RUNTIME_ARTIFACT_MANIFEST_FILENAME,
+   RUNTIME_ARTIFACT_SUMS_FILENAME,
+@@ -23,7 +23,7 @@ import {
+   readArtifactProtocol,
+   runtimeArtifactTarballName,
+   sha256File,
+-} from "../src/runtimeArtifact.js";
++} from "../src/release/runtimeArtifact.ts";
+ 
+ const SHA = "0123456789abcdef0123456789abcdef01234567";
+ const FIXED_NOW = () => new Date("2026-08-26T10:00:00.000Z");
+@@ -240,13 +240,13 @@ test("manifest parsing rejects malformed manifests", () => {
+ 
+ test("the artifact script reuses buildDeployArtifact and packRuntimeArtifact instead of forking them", async () => {
+   const source = await readFile(join(process.cwd(), "scripts", "build-runtime-artifact.mjs"), "utf8");
+-  assert.match(source, /import \{ buildDeployArtifact \} from "\.\.\/src\/commands\/deploy\.ts"/);
+-  assert.match(source, /import \{ packRuntimeArtifact \} from "\.\.\/src\/runtimeArtifact\.ts"/);
++  assert.match(source, /import \{ buildDeployArtifact \} from "\.\.\/v2\/cli\/src\/deploy\/command\.ts"/);
++  assert.match(source, /import \{ packRuntimeArtifact \} from "\.\.\/v2\/core\/src\/release\/runtimeArtifact\.ts"/);
+   assert.match(source, /\["-C", repoRoot, "rev-parse", "--verify", `\$\{ref\}\^\{commit\}`\]/);
+   assert.match(source, /gate: options\.skipTests \? "tests-skipped" : "full"/);
+   assert.doesNotMatch(source, /npm", \["ci"\]|git", \["archive"/, "the script must not re-implement the deploy build steps");
+   const pkg = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")) as { scripts: Record<string, string> };
+-  assert.equal(pkg.scripts["runtime:artifact"], "tsx scripts/build-runtime-artifact.mjs");
++  assert.equal(pkg.scripts["runtime:artifact"], "node scripts/build-runtime-artifact.mjs");
+ });
+ 
+ test("artifact identity comes from its packaged bytes and rejects a mismatched requested revision", async () => {
+diff --git a/tests/runtime-target.test.ts b/v2/core/tests/runtime-target.test.ts
+similarity index 99%
+rename from tests/runtime-target.test.ts
+rename to v2/core/tests/runtime-target.test.ts
+index 2cffd6f3..a988768e 100644
+--- a/tests/runtime-target.test.ts
++++ b/v2/core/tests/runtime-target.test.ts
+@@ -4,7 +4,7 @@ import { test } from "node:test";
+ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+-import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../src/release/runtimeTarget.js";
++import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../src/release/runtimeTarget.ts";
+ 
+ async function peerArtifact(stage: string, target: string): Promise<void> {
+   for (const name of ["peercred", "delivery-file"]) await nativeArtifact(stage, target, name);
+diff --git a/v2/daemon/src/accountsService.ts b/v2/daemon/src/accountsService.ts
+index 3f0c8d3d..2ce4f7eb 100644
+--- a/v2/daemon/src/accountsService.ts
++++ b/v2/daemon/src/accountsService.ts
+@@ -29,8 +29,8 @@ import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, readCodexCredentialCo
+ import { MuseCredentialAuthority, MUSE_CREDENTIAL_CODEC, MUSE_DEFAULT_KEY_TTL_MS, museMeta, museWorkingDocument, defaultMuseKeyTransport } from "./museCredentialAuthority.ts";
+ import { GrokCredentialAuthority, GROK_CREDENTIAL_CODEC, grokAccessOnly, grokCredentialEntry, defaultGrokRefreshTransport } from "./grokCredentialAuthority.ts";
+ import { liveGateways } from "./gateways.ts";
+-import { withFileLock } from "../../../src/lock.ts";
+-import { seedGatewayMcp, type GatewayMcpSeedResult } from "../../../src/accounts/gatewayMcpSeed.ts";
++import { withFileLock } from "../../core/src/lock.ts";
++import { seedGatewayMcp, type GatewayMcpSeedResult } from "./gatewayMcpSeed.ts";
+ import {
+   AUTO_PICK_DEBIT_PERCENT,
+   DEFAULT_ACCOUNT_ADMISSION_POLICY,
+diff --git a/v2/daemon/src/cursorAuth.ts b/v2/daemon/src/cursorAuth.ts
+index ebae5bf8..c5d7e8df 100644
+--- a/v2/daemon/src/cursorAuth.ts
++++ b/v2/daemon/src/cursorAuth.ts
+@@ -19,7 +19,7 @@ import { homedir } from "node:os";
+ import { join } from "node:path";
+ import { promisify } from "node:util";
+ import { keychainAvailable } from "./keychain.ts";
+-import { securityExecutable } from "../../../src/keychain.ts";
++import { securityExecutable } from "./nativeKeychain.ts";
+ 
+ const execFileAsync = promisify(execFile);
+ const SECURITY_EXEC_TIMEOUT_MS = 60_000;
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index ca1a8bf6..6f40f682 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -1,4 +1,4 @@
+-import type { SchedulingStatus } from "../../../src/processScheduling.ts";
++import type { SchedulingStatus } from "../../core/src/processScheduling.ts";
+ import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, peerConfinement, runtimeUserNamespace, strictConfinementReasons } from "./confinedPeer.ts";
+ import { admitSecretExecution } from "./secretExecution.ts";
+ import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
+@@ -19,15 +19,15 @@ const PHONE_DIGEST = Symbol("phoneDigest");
+ const PHONE_CARRIER_DIGEST = Symbol("phoneCarrierDigest");
+ import { knownAccountLease } from "../../core/src/accountLease.ts";
+ import { effectVerb } from "../../core/src/effectResolve.ts";
+-import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../../src/apiarySwap.ts";
+-import { canonicalDigest } from "../../../src/comb/canonical.ts";
+-import { parseComponentIdentity, type ComponentIdentity } from "../../../src/release/index.ts";
++import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../core/src/apiarySwap.ts";
++import { canonicalDigest } from "../../core/src/canonical.ts";
++import { parseComponentIdentity, type ComponentIdentity } from "../../core/src/release/index.ts";
+ import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
+ import { applyObservation, observationReadRequest, discardObservation } from "./limitsObservation.ts";
+ import { reconnectToolsResult, type ReconnectToolsResult } from "../../core/src/reconnectTools.ts";
+-import { withFileLock } from "../../../src/lock.ts";
+-import { readBuildIdentity } from "../../../src/release/buildIdentity.ts";
+-import { installedV2Identity } from "../../../src/cliRoute.ts";
++import { withFileLock } from "../../core/src/lock.ts";
++import { readBuildIdentity } from "../../core/src/release/buildIdentity.ts";
++import { installedV2Identity } from "../../core/src/runtimeMode.ts";
+ import { SCHEMA_VERSION } from "../../core/src/schema.ts";
+ import { ThreadOperations } from "./threadOperations.ts";
+ import { carryCodexHistory, codexSwapHistoryPath, validateCodexSwapPath } from "./codexSwapHistory.ts";
+@@ -62,7 +62,7 @@ import { canonicalPath, removeEndpointRecord, samePath, writeEndpointRecord } fr
+ import { placeDaemonSockets } from "./socketPath.ts";
+ import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
+ import { getSystemErrorMap } from "node:util";
+-import { GatewayMcpSeedLockError } from "../../../src/accounts/gatewayMcpSeed.ts";
++import { GatewayMcpSeedLockError } from "./gatewayMcpSeed.ts";
+ import {
+   accountIdFor,
+   isAccountId,
+diff --git a/src/accounts/gatewayMcpSeed.ts b/v2/daemon/src/gatewayMcpSeed.ts
+similarity index 99%
+rename from src/accounts/gatewayMcpSeed.ts
+rename to v2/daemon/src/gatewayMcpSeed.ts
+index 929d45dc..2a536bbe 100644
+--- a/src/accounts/gatewayMcpSeed.ts
++++ b/v2/daemon/src/gatewayMcpSeed.ts
+@@ -1,8 +1,8 @@
+ import { readFile, stat } from "node:fs/promises";
+ import { homedir } from "node:os";
+ import { join, resolve } from "node:path";
+-import { atomicWriteFile } from "../fsx.ts";
+-import { FileLockReleaseError, FileLockTimeoutError, withFileLock } from "../lock.ts";
++import { atomicWriteFile } from "../../core/src/fsx.ts";
++import { FileLockReleaseError, FileLockTimeoutError, withFileLock } from "../../core/src/lock.ts";
+ function tomlLines(input: string): string[] {
+   const trimmed = input.replace(/\s+$/u, "");
+   return trimmed.length === 0 ? [] : trimmed.split(/\r?\n/u);
+diff --git a/v2/daemon/src/keychain.ts b/v2/daemon/src/keychain.ts
+index b810bfdf..01f234db 100644
+--- a/v2/daemon/src/keychain.ts
++++ b/v2/daemon/src/keychain.ts
+@@ -18,7 +18,7 @@
+  * so tests never touch a real keychain; the default reader is a no-op off
+  * macOS or under HIVE_NO_KEYCHAIN.
+  */
+-import { readClaudeKeychainState as readNativeKeychainState, securityExecutable } from "../../../src/keychain.ts";
++import { readClaudeKeychainState as readNativeKeychainState, securityExecutable } from "./nativeKeychain.ts";
+ import { execFile } from "node:child_process";
+ import { createHash } from "node:crypto";
+ import { homedir, userInfo } from "node:os";
+diff --git a/v2/daemon/src/main.ts b/v2/daemon/src/main.ts
+index 1cde9bb5..45da450d 100644
+--- a/v2/daemon/src/main.ts
++++ b/v2/daemon/src/main.ts
+@@ -1,5 +1,5 @@
+-import { validateDaemonNode } from "../../../src/nodeRuntime.ts";
+-import { ForegroundScheduling } from "../../../src/processScheduling.ts";
++import { validateDaemonNode } from "../../core/src/nodeRuntime.ts";
++import { ForegroundScheduling } from "../../core/src/processScheduling.ts";
+ /**
+  * Foreground daemon entry: `hive v2 daemon run [--data-dir d] [--config p]
+  * [--socket s]`. This is what the rendered launchd plist / systemd unit
+diff --git a/src/keychain.ts b/v2/daemon/src/nativeKeychain.ts
+similarity index 100%
+rename from src/keychain.ts
+rename to v2/daemon/src/nativeKeychain.ts
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 3da6f761..b5ca29a5 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -1,7 +1,7 @@
+ import type { PublicBeeRow } from "../../core/src/envRedaction.ts";
+ export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
+-import { honeybeeBuildIdentity, type BuildIdentity } from "../../../src/release/buildIdentity.ts";
+-export { UPDATE_RECOVERY_CONTRACT } from "../../../src/updateReservation.ts";
++import { honeybeeBuildIdentity, type BuildIdentity } from "../../core/src/release/buildIdentity.ts";
++export { UPDATE_RECOVERY_CONTRACT } from "../../core/src/updateReservation.ts";
+ export type { ReconnectToolsResult, ReconnectToolsReceipt, ReconnectToolsError } from "../../core/src/reconnectTools.ts";
+ import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
+ /**
+@@ -1952,7 +1952,7 @@ export interface HealthResult {
+   /** Additive (P7): free space of the Cells volume and the last retention pass; null when unmeasurable. */
+   cellDisk?: CellDiskStatus | null;
+   capacity?: NodeCapacity | null;
+-  scheduling?: import("../../../src/processScheduling.ts").SchedulingStatus;
++  scheduling?: import("../../core/src/processScheduling.ts").SchedulingStatus;
+ }
+ 
+ export type NamingHealth = { state: "ok" | "off" } | { state: "disabled"; reason: string };
+diff --git a/v2/daemon/src/rpc.ts b/v2/daemon/src/rpc.ts
+index d0dd3652..26a2fdca 100644
+--- a/v2/daemon/src/rpc.ts
++++ b/v2/daemon/src/rpc.ts
+@@ -7,7 +7,7 @@ import type { AutomationReference, AutomationKind, HumanChatAdmission } from "..
+ import { projectMailDeliveryResult, projectMailDeliveryDelta } from "./mailDeliveryProjection.ts";
+ import { projectQuestionDismissalResult, projectQuestionDismissalDelta, projectQuestionDismissalError } from "./questionDismissalProjection.ts";
+ import { projectAnswerTriggerDelta, projectAnswerTriggerResult } from "./answerTriggerProjection.ts";
+-import { canonicalDigest } from "../../../src/comb/canonical.ts";
++import { canonicalDigest } from "../../core/src/canonical.ts";
+ import { parsePhoneOrigin, type PhoneOriginRequest } from "../../core/src/phoneOrigin.ts";
+ import { AccountLeaseUnknownError } from "../../core/src/accountLease.ts";
+ import { ExecutionFenceError } from "../../core/src/executionFence.ts";
+diff --git a/v2/daemon/src/service.ts b/v2/daemon/src/service.ts
+index 57f4e430..649ee5d6 100644
+--- a/v2/daemon/src/service.ts
++++ b/v2/daemon/src/service.ts
+@@ -1,4 +1,4 @@
+-import { nativeNodeEnv } from "../../../src/nodeRuntime.ts";
++import { nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
+ /**
+  * Platform service management behind ONE interface (spec 04 behavior 6):
+  * launchd (macOS) and a systemd user unit (Linux), with install / uninstall /
+diff --git a/v2/daemon/tests/accounts-service.test.ts b/v2/daemon/tests/accounts-service.test.ts
+index b4246919..46e7a54a 100644
+--- a/v2/daemon/tests/accounts-service.test.ts
++++ b/v2/daemon/tests/accounts-service.test.ts
+@@ -40,7 +40,7 @@ import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "..
+ import { recipeFingerprint } from "../src/activation.ts";
+ import { parseCursorAuth } from "../src/cursorAuth.ts";
+ import { waitFor } from "./helpers.ts";
+-import { seedGatewayMcp } from "../../../src/accounts/gatewayMcpSeed.ts";
++import { seedGatewayMcp } from "../src/gatewayMcpSeed.ts";
+ 
+ const HOUR = 60 * 60 * 1000;
+ const DAY = 24 * HOUR;
+diff --git a/v2/daemon/tests/activation-diagnostics.test.ts b/v2/daemon/tests/activation-diagnostics.test.ts
+index 6169f0e8..408177a2 100644
+--- a/v2/daemon/tests/activation-diagnostics.test.ts
++++ b/v2/daemon/tests/activation-diagnostics.test.ts
+@@ -3,8 +3,8 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { test } from "node:test";
+-import { GatewayMcpSeedLockError, seedGatewayMcp } from "../../../src/accounts/gatewayMcpSeed.ts";
+-import { FileLockReleaseError, withFileLock } from "../../../src/lock.ts";
++import { GatewayMcpSeedLockError, seedGatewayMcp } from "../src/gatewayMcpSeed.ts";
++import { FileLockReleaseError, withFileLock } from "../../core/src/lock.ts";
+ import { activationFailureName } from "../src/daemon.ts";
+ import { RpcError } from "../src/protocol.ts";
+ 
+diff --git a/v2/daemon/tests/delivery-file-read-barrier.test.ts b/v2/daemon/tests/delivery-file-read-barrier.test.ts
+index f09d600a..ddcc0d76 100644
+--- a/v2/daemon/tests/delivery-file-read-barrier.test.ts
++++ b/v2/daemon/tests/delivery-file-read-barrier.test.ts
+@@ -5,7 +5,7 @@ import net from "node:net";
+ import { registerHooks, syncBuiltinESMExports } from "node:module";
+ import type { ChildProcess } from "node:child_process";
+ import { seatbeltProfile } from "../../driver-cell/src/sandbox.ts";
+-import { nativeNodeEnv } from "../../../src/runtimeEnvironment.ts";
++import { nativeNodeEnv } from "../../core/src/runtimeEnvironment.ts";
+ import { disposeAndAwaitOwnedChild, waitForGateProfile, waitForGateReaderObservation, withoutGateReaderObservationDuringLaunch } from "./delivery-file-read-barrier.ts";
+ 
+ class FixtureSocket extends EventEmitter {
+diff --git a/v2/daemon/tests/execution-fence.test.ts b/v2/daemon/tests/execution-fence.test.ts
+index 96493077..8e05d773 100644
+--- a/v2/daemon/tests/execution-fence.test.ts
++++ b/v2/daemon/tests/execution-fence.test.ts
+@@ -1,4 +1,4 @@
+-import type { JsonValue } from "../../../src/comb/canonical.ts";
++import type { JsonValue } from "../../core/src/canonical.ts";
+ import { test, type TestContext } from "node:test";
+ import assert from "node:assert/strict";
+ import { createConnection } from "node:net";
+diff --git a/v2/daemon/tests/keychain-test-guard.test.ts b/v2/daemon/tests/keychain-test-guard.test.ts
+index c9860c67..e549da97 100644
+--- a/v2/daemon/tests/keychain-test-guard.test.ts
++++ b/v2/daemon/tests/keychain-test-guard.test.ts
+@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
+ import { tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { test } from "node:test";
+-import { readClaudeKeychainState, securityExecutable, underTest } from "../../../src/keychain.ts";
++import { readClaudeKeychainState, securityExecutable, underTest } from "../src/nativeKeychain.ts";
+ 
+ test("keychain test guard: a test process refuses the real security binary before any exec", async (t) => {
+   const realExecFile = childProcess.execFile;
+diff --git a/tests/keychain.test.ts b/v2/daemon/tests/native-keychain.test.ts
+similarity index 99%
+rename from tests/keychain.test.ts
+rename to v2/daemon/tests/native-keychain.test.ts
+index 993e2737..6e3ad5f2 100644
+--- a/tests/keychain.test.ts
++++ b/v2/daemon/tests/native-keychain.test.ts
+@@ -5,7 +5,7 @@ import { homedir, tmpdir } from "node:os";
+ import { join } from "node:path";
+ import { test } from "node:test";
+ import { promisify } from "node:util";
+-import { buildAddGenericPasswordCommand, claudeKeychainService, credentialDigest, decodeSecurityPasswordOutput, identityOnlyCredentials, keychainAvailable, readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry } from "../src/keychain.js";
++import { buildAddGenericPasswordCommand, claudeKeychainService, credentialDigest, decodeSecurityPasswordOutput, identityOnlyCredentials, keychainAvailable, readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry } from "../src/nativeKeychain.ts";
+ 
+ const execFileAsync = promisify(execFile);
+ 
+diff --git a/v2/daemon/tests/node-pin-entry.test.ts b/v2/daemon/tests/node-pin-entry.test.ts
+index 2cbc66af..16a25709 100644
+--- a/v2/daemon/tests/node-pin-entry.test.ts
++++ b/v2/daemon/tests/node-pin-entry.test.ts
+@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
+ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+ import { join } from "node:path";
+ import { tmpdir } from "node:os";
+-import { nodePinFile, nodeRepairFile, persistNodePin, probeNativeNode, validateDaemonNode } from "../../../src/nodeRuntime.ts";
++import { nodePinFile, nodeRepairFile, persistNodePin, probeNativeNode, validateDaemonNode } from "../../core/src/nodeRuntime.ts";
+ import { ConfigError, defaultDataDir } from "../src/config.ts";
+ import { resolveDaemonConfig, runDaemon } from "../src/main.ts";
+ 
+diff --git a/v2/daemon/tests/update-owner.test.ts b/v2/daemon/tests/update-owner.test.ts
+index 98ff6c32..b9d15899 100644
+--- a/v2/daemon/tests/update-owner.test.ts
++++ b/v2/daemon/tests/update-owner.test.ts
+@@ -23,7 +23,7 @@ import { HiveDaemon } from "../src/daemon.ts";
+ import { BUILD_IDENTITY, RpcError, UPDATE_RECOVERY_CONTRACT } from "../src/protocol.ts";
+ import { RpcServer, type RpcDispatch } from "../src/rpc.ts";
+ import { RpcClient } from "../../cli/src/client.ts";
+-import type { UpdateReservation } from "../../../src/updateReservation.ts";
++import type { UpdateReservation } from "../../core/src/updateReservation.ts";
+ import { FakeDriver } from "./helpers.ts";
+ 
+ const request = { id: "update-a", recoverySubjectDigest: `sha256:${"a".repeat(64)}`, expectedEpoch: 0 };
+diff --git a/v2/driver-cell/src/upstream.ts b/v2/driver-cell/src/upstream.ts
+index 93c41bef..be1e482e 100644
+--- a/v2/driver-cell/src/upstream.ts
++++ b/v2/driver-cell/src/upstream.ts
+@@ -1,4 +1,4 @@
+-import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
++import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
+ /**
+  * Honeybee-owned upstream mirrors: one bare repository per origin URL under
+  * `<data-dir>/upstream/`, fetch-only, whose `refs/upstream/head` is the
+diff --git a/v2/driver-hsr/src/driver.ts b/v2/driver-hsr/src/driver.ts
+index 47e2de43..9b5b9e69 100644
+--- a/v2/driver-hsr/src/driver.ts
++++ b/v2/driver-hsr/src/driver.ts
+@@ -8,9 +8,9 @@ import { ExecutionFenceError } from "../../core/src/executionFence.ts";
+ import type { ExecutionStart, ExecutionRuntimeHooks, ExecutionProcess } from "../../core/src/executionStart.ts";
+ import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
+ import { stateDirectory, stateFile } from "../../harness/src/statePath.ts";
+-import { canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
++import { canonicalDigest, type JsonValue } from "../../core/src/canonical.ts";
+ import { TurnQuiet } from "../../driver-tmux/src/turn-quiet.ts";
+-import { childNodePath, nativeNodeEnv } from "../../../src/nodeRuntime.ts";
++import { childNodePath, nativeNodeEnv } from "../../core/src/nodeRuntime.ts";
+ import type { ReconnectToolsReceipt } from "../../core/src/reconnectTools.ts";
+ /**
+  * HsrDriver — the first real substrate driver (WP3 of the reset).
+diff --git a/v2/driver-hsr/src/gated-runner-host.ts b/v2/driver-hsr/src/gated-runner-host.ts
+index 799dd6a2..d866949a 100644
+--- a/v2/driver-hsr/src/gated-runner-host.ts
++++ b/v2/driver-hsr/src/gated-runner-host.ts
+@@ -5,7 +5,7 @@ import { createServer } from "node:net";
+ import { dirname } from "node:path";
+ import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
+ import { runnerStateFiles } from "../../harness/src/statePath.ts";
+-import { canonicalDigest, type JsonValue } from "../../../src/comb/canonical.ts";
++import { canonicalDigest, type JsonValue } from "../../core/src/canonical.ts";
+ import type { RunnerHostConfig, RunnerStatus } from "./runner-host.ts";
+ 
+ export function runGatedRunnerHost(cfg: RunnerHostConfig, sessionLogLine: (line: string) => string): void {
+diff --git a/v2/driver-hsr/src/runner-host.ts b/v2/driver-hsr/src/runner-host.ts
+index 27d7bf32..e434345d 100644
+--- a/v2/driver-hsr/src/runner-host.ts
++++ b/v2/driver-hsr/src/runner-host.ts
+@@ -3,8 +3,8 @@ import { runGatedRunnerHost } from "./gated-runner-host.ts";
+ import { DeliveryReceipts, DELIVERY_FRAME_MAX_BYTES, DELIVERY_STATUS_CAPABILITY, type TaggedDelivery } from "./delivery-receipts.ts";
+ import { stateFile, runnerStateFiles } from "../../harness/src/statePath.ts";
+ import type { ExecutionStart, ExecutionProcess } from "../../core/src/executionStart.ts";
+-import { nativeNodeEnv } from "../../../src/runtimeEnvironment.ts";
+-import { describeRepair, promoteScheduling } from "../../../src/processScheduling.ts";
++import { nativeNodeEnv } from "../../core/src/runtimeEnvironment.ts";
++import { describeRepair, promoteScheduling } from "../../core/src/processScheduling.ts";
+ import { spawn, type ChildProcess } from "node:child_process";
+ import { createHash } from "node:crypto";
+ import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+diff --git a/v2/driver-hsr/tests/execution-handshake.test.ts b/v2/driver-hsr/tests/execution-handshake.test.ts
+index 94424377..b8b7b3f4 100644
+--- a/v2/driver-hsr/tests/execution-handshake.test.ts
++++ b/v2/driver-hsr/tests/execution-handshake.test.ts
+@@ -6,7 +6,7 @@ import { join,resolve } from "node:path";
+ import { spawn,type ChildProcess } from "node:child_process";
+ import { once } from "node:events";
+ import { exactProcessBirth } from "../../harness/src/processIdentity.ts";
+-import { canonicalDigest,type JsonValue } from "../../../src/comb/canonical.ts";
++import { canonicalDigest,type JsonValue } from "../../core/src/canonical.ts";
+ import type { ExecutionStart } from "../../core/src/executionStart.ts";
+ import { executionRequestDigest } from "../../core/src/executionFence.ts";
+ import { HsrDriver } from "../src/driver.ts";
+diff --git a/v2/driver-hsr/tests/legacy-birth.test.ts b/v2/driver-hsr/tests/legacy-birth.test.ts
+index ea844ab7..e331fc56 100644
+--- a/v2/driver-hsr/tests/legacy-birth.test.ts
++++ b/v2/driver-hsr/tests/legacy-birth.test.ts
+@@ -72,6 +72,6 @@ test("execution host PID and ticks cannot override a bound token from another bo
+ });
+ 
+ import {mkdirSync, readFileSync, writeFileSync} from "node:fs";
+-import {canonicalDigest, type JsonValue} from "../../../src/comb/canonical.ts";
++import {canonicalDigest, type JsonValue} from "../../core/src/canonical.ts";
+ 
+ import {dirname} from "node:path";
+diff --git a/v2/driver-tmux/smoke.ts b/v2/driver-tmux/smoke.ts
+index 3d3e5540..8607cce0 100644
+--- a/v2/driver-tmux/smoke.ts
++++ b/v2/driver-tmux/smoke.ts
+@@ -34,7 +34,7 @@ import { execFileSync } from "node:child_process";
+ import { homedir, tmpdir } from "node:os";
+ import { dirname, join } from "node:path";
+ import { shortSocketDir, socketPathFits } from "../core/src/socketPath.ts";
+-import { securityExecutable } from "../../src/keychain.ts";
++import { securityExecutable } from "../daemon/src/nativeKeychain.ts";
+ import { fileURLToPath } from "node:url";
+ import { TmuxDriver, type TmuxSpawnSpec } from "./src/driver.ts";
+ import { exactPaneTarget, TmuxServer } from "./src/tmux.ts";
+diff --git a/v2/harness/src/processIdentity.ts b/v2/harness/src/processIdentity.ts
+index d47a15ee..d61c1e2f 100644
+--- a/v2/harness/src/processIdentity.ts
++++ b/v2/harness/src/processIdentity.ts
+@@ -1,4 +1,4 @@
+-import { assertPeercredReceipt } from "../../../src/peercredReceipt.ts";
++import { assertPeercredReceipt } from "../../core/src/peercredReceipt.ts";
+ import { createHash } from "node:crypto";
+ import { closeSync, existsSync, readFileSync } from "node:fs";
+ import { createRequire } from "node:module";

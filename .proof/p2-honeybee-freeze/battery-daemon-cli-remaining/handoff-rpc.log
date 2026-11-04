@@ -1,0 +1,15 @@
+✔ handoff.rpc.replay-defaults: omitted target defaults stay bound to the original source after later switches (1662.669521ms)
+✔ handoff.rpc: capability, validation, idempotency, typed refusals, and unavailable target accounts (1429.124251ms)
+✔ handoff.rpc.cross-family: claude → codex on an idle hsr bee keeps identity, mailbox order, and publishes parseable segments (1593.722641ms)
+✔ handoff.rpc.same-family: a context reset keeps args unless replaced, opens a fresh thread, and stays on the account (1777.803461ms)
+✔ handoff.rpc.working+stopped: stopAt=idle waits for the running turn, stopAt=now stops a hung turn, a stopped source hands off (5332.121378ms)
+✔ handoff.rpc.disconnect+crash: a lost response replays to the same operation; SIGKILL during stopping and starting resumes (2360.737589ms)
+✔ handoff.rpc.cell: a Cell bee hands off in place — same Cell, cwd, dirty files, one runtime in the checkout (1841.998328ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 16212.747746

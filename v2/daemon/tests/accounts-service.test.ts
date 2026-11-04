@@ -40,7 +40,7 @@ import { loadNodeConfig, type NodeConfigFile, type ResolvedNodeConfig } from "..
 import { recipeFingerprint } from "../src/activation.ts";
 import { parseCursorAuth } from "../src/cursorAuth.ts";
 import { waitFor } from "./helpers.ts";
-import { seedGatewayMcp } from "../../../src/accounts/gatewayMcpSeed.ts";
+import { seedGatewayMcp } from "../src/gatewayMcpSeed.ts";
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;

@@ -1,0 +1,17 @@
+✔ envelope.1: bee-sent mail wraps in the v1 envelope — marker, one parseable meta line, blank line, body verbatim (1.549ms)
+✔ envelope.2: only POSITIVELY-identified peers envelope — unverified sender labels stay bare (0.394246ms)
+✔ envelope.3: tier mapping matches the Q2 amendment (0.138399ms)
+✔ envelope.remote: a relayed agent on another authority is a peer; malformed claims are not (0.183266ms)
+✔ envelope.5: the interrupt notice sits between the blank line and the body, for peer mail only (0.282829ms)
+✔ envelope.answer: a question answer carries the answer marker and its questionId, for people and peers alike (0.88505ms)
+✔ envelope.automation: an automated send carries the automation marker and its senderKind; human and unmarked sends stay bare (0.254184ms)
+✔ envelope.automation-senders: Honeybee's own and known automation senders get the automation marker without a senderKind; self-framed senders stay bare (0.285916ms)
+✔ envelope.automation-interrupt: an interrupting automated message carries the automation notice; human mail and human answers never claim no person is waiting (0.242702ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 83.126789

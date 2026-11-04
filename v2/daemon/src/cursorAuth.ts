@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { keychainAvailable } from "./keychain.ts";
-import { securityExecutable } from "../../../src/keychain.ts";
+import { securityExecutable } from "./nativeKeychain.ts";
 
 const execFileAsync = promisify(execFile);
 const SECURITY_EXEC_TIMEOUT_MS = 60_000;

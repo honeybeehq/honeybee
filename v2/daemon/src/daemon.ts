@@ -1,4 +1,4 @@
-import type { SchedulingStatus } from "../../../src/processScheduling.ts";
+import type { SchedulingStatus } from "../../core/src/processScheduling.ts";
 import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, peerConfinement, runtimeUserNamespace, strictConfinementReasons } from "./confinedPeer.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
@@ -19,15 +19,15 @@ const PHONE_DIGEST = Symbol("phoneDigest");
 const PHONE_CARRIER_DIGEST = Symbol("phoneCarrierDigest");
 import { knownAccountLease } from "../../core/src/accountLease.ts";
 import { effectVerb } from "../../core/src/effectResolve.ts";
-import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../../src/apiarySwap.ts";
-import { canonicalDigest } from "../../../src/comb/canonical.ts";
-import { parseComponentIdentity, type ComponentIdentity } from "../../../src/release/index.ts";
+import { APIARY_SWAP_CAPABILITY, ApiarySwapError, parseApiarySwapAcquire, parseApiarySwapSettle, parseApiarySwapRecover } from "../../core/src/apiarySwap.ts";
+import { canonicalDigest } from "../../core/src/canonical.ts";
+import { parseComponentIdentity, type ComponentIdentity } from "../../core/src/release/index.ts";
 import { withoutRpcCaller } from "../../core/src/rpcAuditContext.ts";
 import { applyObservation, observationReadRequest, discardObservation } from "./limitsObservation.ts";
 import { reconnectToolsResult, type ReconnectToolsResult } from "../../core/src/reconnectTools.ts";
-import { withFileLock } from "../../../src/lock.ts";
-import { readBuildIdentity } from "../../../src/release/buildIdentity.ts";
-import { installedV2Identity } from "../../../src/cliRoute.ts";
+import { withFileLock } from "../../core/src/lock.ts";
+import { readBuildIdentity } from "../../core/src/release/buildIdentity.ts";
+import { installedV2Identity } from "../../core/src/runtimeMode.ts";
 import { SCHEMA_VERSION } from "../../core/src/schema.ts";
 import { ThreadOperations } from "./threadOperations.ts";
 import { carryCodexHistory, codexSwapHistoryPath, validateCodexSwapPath } from "./codexSwapHistory.ts";
@@ -62,7 +62,7 @@ import { canonicalPath, removeEndpointRecord, samePath, writeEndpointRecord } fr
 import { placeDaemonSockets } from "./socketPath.ts";
 import { monitorEventLoopDelay, type IntervalHistogram } from "node:perf_hooks";
 import { getSystemErrorMap } from "node:util";
-import { GatewayMcpSeedLockError } from "../../../src/accounts/gatewayMcpSeed.ts";
+import { GatewayMcpSeedLockError } from "./gatewayMcpSeed.ts";
 import {
   accountIdFor,
   isAccountId,

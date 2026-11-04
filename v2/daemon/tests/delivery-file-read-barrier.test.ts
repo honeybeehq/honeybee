@@ -5,7 +5,7 @@ import net from "node:net";
 import { registerHooks, syncBuiltinESMExports } from "node:module";
 import type { ChildProcess } from "node:child_process";
 import { seatbeltProfile } from "../../driver-cell/src/sandbox.ts";
-import { nativeNodeEnv } from "../../../src/runtimeEnvironment.ts";
+import { nativeNodeEnv } from "../../core/src/runtimeEnvironment.ts";
 import { disposeAndAwaitOwnedChild, waitForGateProfile, waitForGateReaderObservation, withoutGateReaderObservationDuringLaunch } from "./delivery-file-read-barrier.ts";
 
 class FixtureSocket extends EventEmitter {

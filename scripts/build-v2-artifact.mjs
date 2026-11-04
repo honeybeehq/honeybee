@@ -9,32 +9,33 @@ import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { collectBuildIdentity } from "../dist/release/buildIdentityProducer.js";
+import { collectBuildIdentity } from "../v2/core/src/release/buildIdentityProducer.ts";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const outDir = join(root, "dist", "v2");
 const runnerHostOutput = join(outDir, "runner-host.js");
 const CLI_CHUNK_RE = /^cli-chunk-[A-Z0-9]+\.js$/;
 const runnerHostInputs = [
-  "src/comb/canonical.ts",
+  "v2/core/src/canonical.ts",
   "v2/core/src/processIdentity.ts",
   "v2/driver-hsr/src/gated-runner-host.ts",
   "v2/driver-hsr/src/delivery-receipts.ts",
   "v2/harness/src/processIdentity.ts",
   "v2/harness/src/statePath.ts",
-  "src/runtimeEnvironment.ts",
-  "src/processScheduling.ts",
+  "v2/core/src/runtimeEnvironment.ts",
+  "v2/core/src/processScheduling.ts",
   "v2/driver-hsr/src/runner-host-main.ts",
   "v2/driver-hsr/src/runner-host.ts",
   "v2/driver-hsr/src/runner-exit.ts",
-  "src/peercredReceipt.ts",
+  "v2/core/src/peercredReceipt.ts",
 ];
 const runnerHostMaxBytes = 32 * 1024;
 await mkdir(outDir, { recursive: true });
 await writeFile(join(root, "dist", "build-identity.json"), `${JSON.stringify(collectBuildIdentity(root), null, 2)}\n`);
 await build({
-  entryPoints: [join(root, "src", "v2", "updateOwnerClient.mjs")],
-  outfile: join(outDir, "updateOwnerClient.mjs"),
+  absWorkingDir: root,
+  entryPoints: [join(root, "v2", "cli", "src", "bootstrap.ts")],
+  outfile: join(root, "dist", "cli.js"),
   bundle: true,
   platform: "node",
   format: "esm",
@@ -154,5 +155,5 @@ if (runnerHostBytes > runnerHostMaxBytes) {
 }
 
 process.stdout.write(
-  `v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, dist/v2/transcript-segment-worker.js, and dist/v2/runner-host.js (${runnerHostBytes} bytes)\n`,
+  `hive entry staged at dist/cli.js; v2 artifacts staged at dist/v2/cli.js, dist/v2/provision-worker.js, dist/v2/pool-worker.js, dist/v2/retention-worker.js, dist/v2/transcript-segment-worker.js, and dist/v2/runner-host.js (${runnerHostBytes} bytes)\n`,
 );

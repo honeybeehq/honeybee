@@ -5,9 +5,9 @@ import { tmpdir, hostname } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { openCoreStore } from "../src/index.ts";
-import { canonicalDigest } from "../../../src/comb/canonical.ts";
-import { parseUpdateReservation } from "../../../src/updateReservation.ts";
-import { parseDurableUpdateReservation, type ApiarySwapAcquire, type ApiarySwapReservation } from "../../../src/apiarySwap.ts";
+import { canonicalDigest } from "../src/canonical.ts";
+import { parseUpdateReservation } from "../src/updateReservation.ts";
+import { parseDurableUpdateReservation, type ApiarySwapAcquire, type ApiarySwapReservation } from "../src/apiarySwap.ts";
 
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const identity = { component: "honeybee" as const, version: "0.0.1", sourceRevision: "a".repeat(40), target: `${process.platform}-${process.arch}`, artifact: { url: "https://example.test/honeybee.tgz", sha256: hash("a") } };

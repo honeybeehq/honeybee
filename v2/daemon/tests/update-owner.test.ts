@@ -23,7 +23,7 @@ import { HiveDaemon } from "../src/daemon.ts";
 import { BUILD_IDENTITY, RpcError, UPDATE_RECOVERY_CONTRACT } from "../src/protocol.ts";
 import { RpcServer, type RpcDispatch } from "../src/rpc.ts";
 import { RpcClient } from "../../cli/src/client.ts";
-import type { UpdateReservation } from "../../../src/updateReservation.ts";
+import type { UpdateReservation } from "../../core/src/updateReservation.ts";
 import { FakeDriver } from "./helpers.ts";
 
 const request = { id: "update-a", recoverySubjectDigest: `sha256:${"a".repeat(64)}`, expectedEpoch: 0 };

@@ -1,0 +1,21 @@
+✔ worker.parser: Codex browser login ignores its callback listener in every chunk layout (2.539343ms)
+✔ worker.clean: ANSI/OSC sequences are stripped and \r redraws resolve to the last overwrite (0.270075ms)
+✔ worker.parser: a URL split across chunks is reported once, whole, and only once; a reissued URL is a change (0.656816ms)
+✔ worker.parser: a URL with no trailing newline is reported once the output settles (0.216821ms)
+✔ worker.parser: device codes, repeated prompt lines, prompts that scroll away, and failure cues (0.475534ms)
+✔ worker.parser: a failure cue fires again after the prompt is answered; a code inside a URL is never a device code; split escape sequences do not leave residue (0.281036ms)
+✔ worker.parser: buffers are bounded and a masked secret never survives in the tail (2.731055ms)
+✔ worker.node-pty: the prebuilt spawn-helper's execute bit is repaired when npm stripped it (posix_spawnp failed otherwise) (0.615826ms)
+✔ worker.node-pty: a REAL pseudo-terminal drives the fake CLI end to end (ANSI redraw + URL + prompt + hidden input + credential + exit) (172.245166ms)
+✔ worker.node-pty: the optional backend loads when installed, and its absence is a typed null (never tmux) (1.215421ms)
+✔ worker.pipe: fake CLI → url (split, ANSI) → prompt → wrong input re-prompts → right input writes the credential → exit; events are typed only (281.886825ms)
+✔ worker.pipe: kill() terminates a hanging CLI (whole group) and reports a signalled exit (77.396825ms)
+✔ worker.pipe: a missing CLI is a typed spawn_error, not a hang (20.638095ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 648.25965

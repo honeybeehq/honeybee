@@ -1,0 +1,18 @@
+✔ batching RPC requires registered direct authority, trust=false (13.887471ms)
+✔ batching RPC requires registered direct authority, trust=true (18.031412ms)
+✔ daemon automation guard rejects forged authority and mixed origins (0.469682ms)
+✔ daemon keeps policy off by default, protects policy, and rejects tmux enable (34.974057ms)
+✔ daemon sends metadata once and rejects replay classification changes before effect (28.329959ms)
+✔ batch reads validate paging before accessing the bee-scoped core reader (22.041763ms)
+✔ frozen group mutation refusals remain typed at the RPC boundary (26.40573ms)
+✔ frozen delivery resolution errors remain typed (0.156454ms)
+✔ bypass requires protected live-reference binding before effect (23.058848ms)
+✔ daemon batch reads allow only the owning principal or direct Apiary authority (24.135781ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 465.304717

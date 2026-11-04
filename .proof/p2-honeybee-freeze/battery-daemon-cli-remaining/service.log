@@ -1,0 +1,20 @@
+✔ service.1: launchd plist snapshot (1.113263ms)
+✔ service.2: systemd owns only the daemon process so detached bee runtimes survive restart (0.323498ms)
+✔ service.3: launchd manager — install writes the plist; start/stop/status drive launchctl (1.449767ms)
+✔ service.4: launchd start falls back to kickstart when already bootstrapped (0.331203ms)
+✔ service.4b: launchd stop waits through the asynchronous bootout window (0.366752ms)
+✔ service.4c: launchd stop accepts an already-stopped service and confirms absence (0.338067ms)
+✔ service.4d: an already-stopped response still waits until launchd confirms absence (0.242181ms)
+✔ service.4e: launchd stop preserves other bootout failures (0.687366ms)
+✔ service.5: systemd manager — install writes unit + daemon-reload; start/stop/status; uninstall removes (0.912212ms)
+✔ service.6: one factory per platform; anything else refuses (0.47345ms)
+✔ service.7: a failing systemctl surfaces as a typed ServiceError, never silence (0.300704ms)
+✔ service renderers exclude Electron and Node option environment injection (0.264093ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 27.778969

@@ -1,0 +1,13 @@
+✔ status listing prepares a bounded set of plans across different bee ids (60.500158ms)
+✔ prepared status reads stay fresh, detached and generation ordered across writes and rollback (24.993787ms)
+✔ optional tables remain lazy and a later schema migration is visible on the same reader (29.206923ms)
+✔ read-only isolation and close semantics survive statement reuse (46.633137ms)
+✔ stale explicit-mode status reads the owner acknowledgement facts (30.706425ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 381.41873

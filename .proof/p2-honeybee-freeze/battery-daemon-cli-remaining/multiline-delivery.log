@@ -1,0 +1,22 @@
+✔ multiline busy waits without fallback and delivers inline; telemetry=false (45.495408ms)
+✔ mixed busy and unsupported counts only unsupported then resumes main FIFO; telemetry=false (34.255821ms)
+✔ unsupported or unknown retains main delivery: multiline_bracketed_paste_version_unsupported; telemetry=false (25.999782ms)
+✔ unsupported or unknown retains main delivery: multiline_bracketed_paste_unknown; telemetry=false (25.843498ms)
+✔ multiline busy waits without fallback and delivers inline; telemetry=true (27.898822ms)
+✔ mixed busy and unsupported counts only unsupported then resumes main FIFO; telemetry=true (30.913067ms)
+✔ unsupported or unknown retains main delivery: multiline_bracketed_paste_version_unsupported; telemetry=true (26.065539ms)
+✔ unsupported or unknown retains main delivery: multiline_bracketed_paste_unknown; telemetry=true (25.977098ms)
+✔ thirty-second type expiry holds accepted mail without further driver calls; telemetry=false (29.37517ms)
+✔ thirty-second type expiry holds accepted mail without further driver calls; telemetry=true (28.63901ms)
+✔ long busy turn produces no extra multiline writes or audit; telemetry=false (384.697233ms)
+✔ long busy turn produces no extra multiline writes or audit; telemetry=true (350.587065ms)
+✔ unsupported time pauses across no_process without resetting attempts (27.051274ms)
+✔ unsupported time pauses across ineligible without resetting attempts (26.674332ms)
+ℹ tests 14
+ℹ suites 0
+ℹ pass 14
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1305.226164

@@ -109,8 +109,7 @@ jobs:
           sudo apparmor_parser -r /etc/apparmor.d/hive-ci-unshare
           /usr/bin/unshare --user --map-current-user --pid --mount --mount-proc --fork --kill-child=SIGKILL /bin/true
       - run: npm ci
-      - run: npm run check
       - run: npm run v2:check
       - run: npm run build
-      - run: npm test
+      - run: npm run release:test
       - run: npm run v2:test && npm run v2:daemon && npm run v2:driver && npm run v2:driver2 && npm run v2:harness
