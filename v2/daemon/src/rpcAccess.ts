@@ -31,6 +31,7 @@ export const RPC_ACCESS = {
   "unarchive": "mutate",
   "delete": "mutate",
   "view": "read",
+  "bee.transcript": "read",
   "list": "read",
   "mailbox": "read",
   "mail.history": "read",

@@ -1,0 +1,134 @@
+sourceSha=ef61a37de80df0d2394716416b2323515d986cdf
+date=2026-10-28T15:48:46.573176+00:00
+venue=netcup-4 own isolated fixtures
+command=node --test v2/daemon/tests/auth-resume.test.ts v2/daemon/tests/auth-resume-rpc.test.ts
+
+✖ auth-resume.1: capture after a logged-out cut — an untouched turn is redelivered, a half-done turn gets one continue message, a bee the user stopped stays stopped (500.174449ms)
+✖ auth-resume.2: account.credentialsRestored on a satellite — refused while the credential is expired, one continuation per bee across a daemon kill, repeat calls send nothing (442.014489ms)
+✖ auth-resume.3: a bee that cannot authenticate on a credential that validates is continued once, then left flagged until the credential changes (407.029297ms)
+✖ auth-resume.4: the daemon's own refresh and a readable limits probe each resume the bee with no operator action (412.742964ms)
+✖ auth-resume.5: swapping an interrupted bee onto a healthy account continues its turn there; the old account's later restore does not touch it (407.627054ms)
+✖ auth-resume.6: recovering a centrally managed account — the login does not wake its bees on the native chain; enabling central credentials resumes them (466.772206ms)
+✖ auth-resume.7: a readable limits probe on an account with 300 bees and nothing open reaches a watcher as deltas, never a gap (422.571364ms)
+✔ auth resume: a bee mid-turn is not disturbed; the owed continuation survives a restart and is sent once when the turn ends (35.312464ms)
+✔ auth resume: a turn that succeeds before the continuation is sent supersedes it (23.883478ms)
+✔ auth resume: archive and a user stop cancel the continuation; a system stop does not (29.698333ms)
+✔ auth resume: a restore clears flags by where the failure came from, not only by current binding (29.285166ms)
+✔ auth resume: a probe tick touches only bees with an open flag or interruption; 300 bees with neither write nothing (139.046115ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 5
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3240.82453
+
+✖ failing tests:
+
+test at v2/daemon/tests/auth-resume-rpc.test.ts:120:1
+✖ auth-resume.1: capture after a logged-out cut — an untouched turn is redelivered, a half-done turn gets one continue message, a bee the user stopped stays stopped (500.174449ms)
+  Error [RpcError]: Confined caller has no live owning bee
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:205:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:181:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:115:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'confined_peer_refused',
+    details: undefined
+  }
+
+test at v2/daemon/tests/auth-resume-rpc.test.ts:186:1
+✖ auth-resume.2: account.credentialsRestored on a satellite — refused while the credential is expired, one continuation per bee across a daemon kill, repeat calls send nothing (442.014489ms)
+  Error [RpcError]: Confined caller has no live owning bee
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:205:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:181:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:115:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'confined_peer_refused',
+    details: undefined
+  }
+
+test at v2/daemon/tests/auth-resume-rpc.test.ts:236:1
+✖ auth-resume.3: a bee that cannot authenticate on a credential that validates is continued once, then left flagged until the credential changes (407.029297ms)
+  Error [RpcError]: Confined caller has no live owning bee
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:205:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:181:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:115:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'confined_peer_refused',
+    details: undefined
+  }
+
+test at v2/daemon/tests/auth-resume-rpc.test.ts:270:1
+✖ auth-resume.4: the daemon's own refresh and a readable limits probe each resume the bee with no operator action (412.742964ms)
+  Error [RpcError]: Confined caller has no live owning bee
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:205:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:181:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:115:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'confined_peer_refused',
+    details: undefined
+  }
+
+test at v2/daemon/tests/auth-resume-rpc.test.ts:320:1
+✖ auth-resume.5: swapping an interrupted bee onto a healthy account continues its turn there; the old account's later restore does not touch it (407.627054ms)
+  Error [RpcError]: Confined caller has no live owning bee
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:205:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:181:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:115:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'confined_peer_refused',
+    details: undefined
+  }
+
+test at v2/daemon/tests/auth-resume-rpc.test.ts:352:1
+✖ auth-resume.6: recovering a centrally managed account — the login does not wake its bees on the native chain; enabling central credentials resumes them (466.772206ms)
+  Error [RpcError]: Confined caller has no live owning bee
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:205:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:181:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:115:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'confined_peer_refused',
+    details: undefined
+  }
+
+test at v2/daemon/tests/auth-resume-rpc.test.ts:400:1
+✖ auth-resume.7: a readable limits probe on an account with 300 bees and nothing open reaches a watcher as deltas, never a gap (422.571364ms)
+  Error [RpcError]: Confined caller has no live owning bee
+      at RpcClient.onFrame (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:205:9)
+      at RpcClient.onData (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:181:33)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/hdm-t11-sandbox-hardening-313cc60934b2/github-com-honeybeehq-honeybee-a9015b303498-space-313cc60934b2/v2/cli/src/client.ts:115:51)
+      at Socket.emit (node:events:509:28)
+      at addChunk (node:internal/streams/readable:563:12)
+      at readableAddChunkPushByteMode (node:internal/streams/readable:514:3)
+      at Readable.push (node:internal/streams/readable:394:5)
+      at Pipe.onStreamRead (node:internal/stream_base_commons:189:23) {
+    code: 'confined_peer_refused',
+    details: undefined
+  }
+
+exitCode=1

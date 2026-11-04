@@ -7,7 +7,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { platform } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,8 @@ import {
   type NodeKind,
   type SandboxWritableDirectory,
 } from "../src/sandbox.ts";
+import { cellPaths } from "../src/layout.ts";
+import { fixtureGatewaySocket } from "./sandboxFixture.ts";
 import { commitInCell, makeRig, type CellTestRig } from "./helpers.ts";
 import { fixtureRuntimeIdentity, persistFixtureProcess, pidAlive } from "../../driver-hsr/tests/helpers.ts";
 
@@ -40,21 +42,35 @@ function makeDriver(
     disableCow?: boolean;
     gitImagesRoot?: string;
     nodeKind?: NodeKind;
+    nodeKindExplicit?: boolean;
     sandboxWritablePaths?: string[];
     resolveSandboxWritablePaths?: (beeId: string) => readonly SandboxWritableDirectory[];
+    resolveSandboxHarnessHome?: (beeId: string) => { harness: string; path: string } | undefined;
     harnessEnv?: Record<string, string>;
+    probeEnvironment?: boolean;
     hostCommand?: (configPath: string) => { command: string; args: string[] };
   } = {},
 ): CellDriver {
   return new CellDriver({
     cellsRoot: rig.cellsRoot,
     nodeKind: opts.nodeKind ?? "workstation",
-    resolveHarness: () => ({
+    nodeKindExplicit: opts.nodeKindExplicit,
+    resolveHarness: (beeId) => {
+      const path = cellPaths(rig.cellsRoot, beeId, "fixture", beeId.replaceAll("bee-", "c"));
+      const staged = join(path.boxDir, "fixture-agent.mjs");
+      const probe = join(path.boxDir, "fixture-env-probe.mjs");
+      if (opts.probeEnvironment) {
+        mkdirSync(path.boxDir, {recursive: true});
+        writeFileSync(probe, `import {writeFileSync} from 'node:fs';writeFileSync(${JSON.stringify(join(path.boxDir, "fixture-env.json"))},JSON.stringify(Object.fromEntries(['TMPDIR','NODE_COMPILE_CACHE','npm_config_yes'].map(key=>[key,process.env[key]]))));`);
+      }
+      if (opts.sandbox) { mkdirSync(path.boxDir, { recursive: true }); copyFileSync(AGENT_PATH, staged); }
+      return ({
       adapter: stubAdapter,
       command: process.execPath,
-      args: [AGENT_PATH],
+      args: [...(opts.probeEnvironment ? ["--import", probe] : []), opts.sandbox ? staged : AGENT_PATH],
       env: { ...(process.env as Record<string, string>), STUB_TURN_MS: "5", ...(opts.harnessEnv ?? {}) },
-    }),
+    }); },
+    resolveSandboxGateway: () => ({ socketPath: fixtureGatewaySocket }),
     resolveCell: (beeId: string) => ({
       provision: {
         beeId,
@@ -75,8 +91,9 @@ function makeDriver(
     // Sandboxed runs must still reach the OS tmp + the node binary; the
     // default scratch list covers it. Harness "home" writes go to the logs
     // dir via the driver, outside the sandboxed child.
-    sandboxWritablePaths: opts.sandboxWritablePaths ?? defaultScratchPaths(),
+    sandboxWritablePaths: opts.sandboxWritablePaths ?? [],
     resolveSandboxWritablePaths: opts.resolveSandboxWritablePaths,
+    resolveSandboxHarnessHome: opts.resolveSandboxHarnessHome,
     disableCow: opts.disableCow ?? true,
     backgroundProvisioning: opts.backgroundProvisioning,
     provisionWorkerUrl: opts.provisionWorkerUrl,
@@ -381,6 +398,37 @@ test(
   },
 );
 
+for (const background of [false, true]) test("cell-driver.tty: sandbox runtime and adoption have no controlling terminal, background=" + background, { skip: platform() !== "linux" }, async t => {
+  const rig = makeRig();
+  const parentStat = readFileSync("/proc/self/stat", "utf8");
+  t.diagnostic("test-owned parent tty_nr=" + parentStat.slice(parentStat.lastIndexOf(")") + 2).split(" ")[4]);
+  const first = makeDriver(rig, { sandbox: true, backgroundProvisioning: background });
+  let second: CellDriver | undefined;
+  const assertNoTty = (pid: number): void => {
+    const stat = readFileSync("/proc/" + pid + "/stat", "utf8");
+    assert.equal(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[4], "0");
+    const children = readFileSync("/proc/" + pid + "/task/" + pid + "/children", "utf8").trim().split(/\s+/).filter(Boolean).map(Number);
+    for (const child of children) assertNoTty(child);
+  };
+  try {
+    first.start("bee-1", 1);
+    const bootEvents = await drainUntil(first, events => events.some(event => event.kind === "booted"), 15000);
+    const proc = first.procOf("bee-1", 1);
+    assert.ok(proc, JSON.stringify(bootEvents));
+    assertNoTty(proc.pid);
+    persistFixtureProcess(rig.root, "bee-1", 1, proc);
+    first.detachAll();
+    second = makeDriver(rig, { sandbox: true, backgroundProvisioning: background });
+    assert.equal(second.adopt("bee-1", 1, proc.pid, proc.pidStartedAt, "running"), true);
+    assertNoTty(proc.pid);
+    second.stop("bee-1", 1, "stopped_by_user");
+    await drainUntil(second, events => events.some(event => event.kind === "exited"));
+  } finally {
+    second?.disposeAll(); first.disposeAll();
+    await sleep(10); rig.cleanup();
+  }
+});
+
 test("cell-driver.workstation-default: sandbox stays OFF without an override (A4)", async () => {
   const rig = makeRig();
   const driver = makeDriver(rig); // nodeKind workstation, no override
@@ -399,8 +447,8 @@ test("cell-driver.workstation-default: sandbox stays OFF without an override (A4
   }
 });
 
-test("cell-driver.account-home: the bee resolver adds one exact sandbox grant and ignores harness env", {
-  skip: platform() !== "darwin" && platform() !== "linux",
+test("cell-driver.account-home: the bee resolver never grants the shared account home and ignores harness env", {
+  skip: platform() !== "linux",
 }, async () => {
   const rig = makeRig();
   const homesRoot = join(rig.root, "account-homes");
@@ -417,12 +465,13 @@ test("cell-driver.account-home: the bee resolver adds one exact sandbox grant an
   const resolverCalls: string[] = [];
   const driver = makeDriver(rig, {
     sandbox: true,
-    sandboxWritablePaths: [baseline, `${baseline}/.`],
+    sandboxWritablePaths: [],
     harnessEnv: { CODEX_HOME: siblingHome },
     resolveSandboxWritablePaths: (beeId) => {
       resolverCalls.push(beeId);
-      return beeId === "bee-1" ? [accountGrant, accountGrant] : [];
+      return [];
     },
+    resolveSandboxHarnessHome: (beeId) => beeId === "bee-1" ? { harness: "codex", path: accountHome } : undefined,
     hostCommand: (configPath) => {
       runnerConfigs.push(JSON.parse(readFileSync(configPath, "utf8")) as {
         beeId: string;
@@ -440,21 +489,21 @@ test("cell-driver.account-home: the bee resolver adds one exact sandbox grant an
     if (platform() === "linux") {
       const bound = runnerConfigs.find((config) => config.beeId === "bee-1");
       const unbound = runnerConfigs.find((config) => config.beeId === "bee-2");
-      assert.equal(bound?.command, "bwrap");
-      assert.equal(unbound?.command, "bwrap");
+      assert.ok(bound?.command.endsWith("/cell-scope"));
+      assert.ok(unbound?.command.endsWith("/cell-scope"));
       const bindTrySources = (config: typeof bound): Array<string | undefined> =>
         (config?.args ?? []).flatMap((arg, index, args) => arg === "--bind-try" ? [args[index + 1]] : []);
-      assert.equal(bindTrySources(bound).filter((path) => path === accountGrant.path).length, 1);
+      assert.equal(bindTrySources(bound).filter((path) => path === accountGrant.path).length, 0);
       assert.equal(bindTrySources(bound).includes(canonicalHomesRoot), false);
       assert.equal(bindTrySources(bound).includes(canonicalSiblingHome), false);
       assert.equal(bindTrySources(unbound).includes(accountGrant.path), false);
       assert.equal(bindTrySources(unbound).includes(canonicalSiblingHome), false,
         "an env-supplied CODEX_HOME is not sandbox authority");
-      assert.equal(bindTrySources(unbound).filter((path) => path === baseline).length, 1);
+      assert.equal(bindTrySources(unbound).filter((path) => path === baseline).length, 0);
     } else {
       const boundProfile = readFileSync(driver.cellOf("bee-1")!.paths.sandboxProfilePath, "utf8");
       const unboundProfile = readFileSync(driver.cellOf("bee-2")!.paths.sandboxProfilePath, "utf8");
-      assert.equal(boundProfile.includes(`  (subpath "${accountGrant.path}")`), true);
+      assert.equal(boundProfile.includes(`  (subpath "${accountGrant.path}")`), false);
       assert.equal(boundProfile.includes(`  (subpath "${canonicalHomesRoot}")`), false);
       assert.equal(boundProfile.includes(canonicalSiblingHome), false);
       assert.equal(unboundProfile.includes(accountGrant.path) || unboundProfile.includes(canonicalSiblingHome), false,
@@ -545,3 +594,64 @@ async function waitForJournal(path: string, predicate: (text: string) => boolean
     await sleep(10);
   }
 }
+
+test("cell-driver.node-kind: a missing kind refuses implicit unsandboxed launch but honors explicit false", async () => {
+  const rig = makeRig();
+  const refused = makeDriver(rig, { nodeKindExplicit: false });
+  const explicit = makeDriver(rig, { nodeKindExplicit: false, sandbox: false });
+  try {
+    assert.throws(() => refused.start("bee-1", 1), /nodeKind is missing/);
+    explicit.start("bee-2", 1);
+    await drainUntil(explicit, events => events.some(event => event.kind === "booted"));
+  } finally { refused.disposeAll(); explicit.disposeAll(); await sleep(10); rig.cleanup(); }
+});
+
+test("cell-driver.unconfined-platform: real startup preserves host temporary paths without projection", async () => {
+  const rig = makeRig();
+  const tmp = join(rig.root, "bee-tmp"), cache = join(rig.root, "compile-cache");
+  mkdirSync(tmp); mkdirSync(cache);
+  const driver = makeDriver(rig, {
+    nodeKind: "workstation", nodeKindExplicit: true, sandbox: false, probeEnvironment: true,
+    harnessEnv: {TMPDIR: tmp, NODE_COMPILE_CACHE: cache, npm_config_yes: "true"},
+    resolveSandboxHarnessHome: () => { throw new Error("Unconfined launch must not project a harness home"); },
+  });
+  try {
+    driver.start("bee-platform", 1);
+    const cell = driver.cellOf("bee-platform");
+    assert.ok(cell);
+    assert.equal(existsSync(join(cell.paths.wrapperDir, "sandbox-state")), false);
+    const resolve = driver as unknown as {resolveCellSpawn(bee: string, generation: number): {env: Record<string, string>}};
+    const env = resolve.resolveCellSpawn("bee-platform", 1).env;
+    assert.equal(env.TMPDIR, tmp);
+    assert.equal(env.NODE_COMPILE_CACHE, cache);
+    assert.equal(env.npm_config_yes, "false");
+    await drainUntil(driver, events => events.some(event => event.kind === "booted"));
+    const observed = JSON.parse(readFileSync(join(cell.paths.boxDir, "fixture-env.json"), "utf8"));
+    assert.equal(observed.TMPDIR, tmp);
+    assert.equal(observed.NODE_COMPILE_CACHE, cache);
+    assert.equal(observed.npm_config_yes, "false");
+    await deliverUntilAccepted(driver, "bee-platform", 1, 901, "hello platform");
+    await drainUntil(driver, events => events.some(event => event.kind === "turn_ended"));
+    driver.stop("bee-platform", 1, "stopped_by_user");
+    await drainUntil(driver, events => events.some(event => event.kind === "exited"));
+    console.log(JSON.stringify({fixture: "unconfined Cell platform launch", platform: platform(), preservedTmp: true, noPrivateProjection: true}));
+  } finally { driver.disposeAll(); await sleep(10); rig.cleanup(); }
+});
+
+
+test("cell-driver.sandbox-package-env: a real isolated child gets the package confirmation default", {skip: platform() !== "linux"}, async () => {
+  const rig = makeRig();
+  const driver = makeDriver(rig, {nodeKind: "satellite", nodeKindExplicit: true, sandbox: true, probeEnvironment: true, harnessEnv: {npm_config_yes: "true"}});
+  try {
+    driver.start("bee-package", 1);
+    await drainUntil(driver, events => events.some(event => event.kind === "booted"));
+    const cell = driver.cellOf("bee-package");
+    assert.ok(cell);
+    const observed = JSON.parse(readFileSync(join(cell.paths.boxDir, "fixture-env.json"), "utf8"));
+    assert.equal(observed.npm_config_yes, "false");
+    assert.equal(observed.TMPDIR, "/tmp");
+    assert.ok(observed.NODE_COMPILE_CACHE.startsWith(join(cell.paths.wrapperDir, "sandbox-state")));
+    driver.stop("bee-package", 1, "stopped_by_user");
+    await drainUntil(driver, events => events.some(event => event.kind === "exited"));
+  } finally { driver.disposeAll(); await sleep(10); rig.cleanup(); }
+});

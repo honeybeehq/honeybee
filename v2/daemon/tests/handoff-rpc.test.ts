@@ -9,7 +9,7 @@
  */
 import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,6 +47,9 @@ interface Fixture {
 
 async function fixture(t: TestContext, opts: { cells?: boolean; stubEnv?: Record<string, string> } = {}): Promise<Fixture> {
   const root = mkdtempSync(join(tmpdir(), "hb-handoff-rpc-"));
+  const codeRoot = opts.cells ? mkdtempSync(join(tmpdir(), "hb-handoff-code-")) : null;
+  const stagedCellAgent = codeRoot ? join(codeRoot, "agent.mjs") : cellAgent;
+  if (codeRoot) copyFileSync(cellAgent, stagedCellAgent);
   const stubSpec = (sessionId: string, agentPath = AGENT_PATH) => ({
     command: process.execPath,
     args: [agentPath],
@@ -56,11 +59,11 @@ async function fixture(t: TestContext, opts: { cells?: boolean; stubEnv?: Record
   const cellsRoot = join(root, "cells");
   mkdirSync(cellsRoot);
   const rig = makeDaemonDir({
-    ...(opts.cells ? { cells: { root: cellsRoot } } : {}),
+    ...(opts.cells ? { nodeKind: "satellite", cells: { root: cellsRoot, sandbox: true } } : {}),
     agents: {
       stub: stubSpec("stub-session"),
-      claude: stubSpec("claude-session", opts.cells ? cellAgent : AGENT_PATH),
-      codex: stubSpec("codex-session", opts.cells ? cellAgent : AGENT_PATH),
+      claude: stubSpec("claude-session", opts.cells ? stagedCellAgent : AGENT_PATH),
+      codex: stubSpec("codex-session", opts.cells ? stagedCellAgent : AGENT_PATH),
     },
   });
   let daemon = await startDaemon(rig.dir);
@@ -70,6 +73,7 @@ async function fixture(t: TestContext, opts: { cells?: boolean; stubEnv?: Record
     await daemon.stop();
     rig.cleanup();
     rmSync(root, { recursive: true, force: true });
+    if (codeRoot) rmSync(codeRoot, {recursive: true, force: true});
   });
   const f: Fixture = {
     root,

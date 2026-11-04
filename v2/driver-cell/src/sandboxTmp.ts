@@ -90,11 +90,18 @@ function childrenOf(procRoot: string, pid: number): number[] {
 export function sandboxedPid(hostPid: number, procRoot = "/proc"): number | null {
   const own = mountNamespace(procRoot, hostPid);
   if (own === null) return null;
-  for (const child of childrenOf(procRoot, hostPid)) {
-    for (const grandchild of childrenOf(procRoot, child)) {
-      const ns = mountNamespace(procRoot, grandchild);
-      if (ns !== null && ns !== own) return grandchild;
+  let pending = childrenOf(procRoot, hostPid);
+  const seen = new Set<number>([hostPid]);
+  for (let depth = 0; depth < 4 && pending.length > 0; depth++) {
+    const next: number[] = [];
+    for (const pid of pending.slice(0, 64)) {
+      if (seen.has(pid)) continue;
+      seen.add(pid);
+      const ns = mountNamespace(procRoot, pid);
+      if (ns !== null && ns !== own) return pid;
+      next.push(...childrenOf(procRoot, pid));
     }
+    pending = next;
   }
   return null;
 }

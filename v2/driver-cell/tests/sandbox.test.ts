@@ -12,7 +12,7 @@ import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, 
 import { homedir, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  bwrapArgs,
+  bwrapArgs as productionBwrapArgs,
   createSshConfigView,
   DEFAULT_SANDBOX_TMPFS_BYTES,
   defaultWritablePaths,
@@ -23,7 +23,7 @@ import {
   seatbeltProfile,
   SANDBOX_TMPFS_PATHS,
   defaultScratchPaths,
-  wrapWithSandbox,
+  wrapWithSandbox as productionWrapWithSandbox,
 } from "../src/sandbox.ts";
 import {
   bwrapSupportsSize,
@@ -37,6 +37,10 @@ import {
   sandboxTmpFullDetail,
   SandboxTmpWatch,
 } from "../src/sandboxTmp.ts";
+
+import { withFixtureGateway } from "./sandboxFixture.ts";
+const bwrapArgs: typeof productionBwrapArgs = (policy, ...args) => productionBwrapArgs(withFixtureGateway(policy), ...args);
+const wrapWithSandbox: typeof productionWrapWithSandbox = (policy, ...args) => productionWrapWithSandbox(withFixtureGateway(policy), ...args);
 
 const IS_DARWIN = platform() === "darwin";
 const IS_LINUX = platform() === "linux";
@@ -58,12 +62,12 @@ test("sandbox.override: per-cell override beats the node-kind default", () => {
 test("sandbox.profile: Seatbelt profile confines writes to cell + harness paths, allows the rest", () => {
   const profile = seatbeltProfile({
     cellDir: "/cells/bee-1",
-    writablePaths: ["/home/u/.claude", "/home/u/.cache"],
+    writablePaths: ["/cells/bee-1/state"],
   });
   assert.match(profile, /\(allow default\)/); // read + network open
   assert.match(profile, /\(deny file-write\*\)/);
   assert.match(profile, /\(subpath "\/cells\/bee-1"\)/);
-  assert.match(profile, /\(subpath "\/home\/u\/\.claude"\)/);
+  assert.match(profile, /\(subpath "\/cells\/bee-1\/state"\)/);
   assert.match(profile, /\(subpath "\/private\/tmp"\)/);
   const userTemp = defaultScratchPaths("darwin")[3]!;
   assert.ok(userTemp === "/private/var/folders" || userTemp.startsWith("/private/var/folders/"), userTemp);
@@ -75,14 +79,16 @@ test("sandbox.profile: Seatbelt profile confines writes to cell + harness paths,
 
 test("sandbox.bwrap: argv is read-only root + rw cell/harness binds + net (pure, all platforms)", () => {
   const args = bwrapArgs(
-    { cellDir: "/cells/bee-1", writablePaths: ["/home/u/.codex"] },
+    { cellDir: "/cells/bee-1", writablePaths: [] },
     "node",
     ["agent.mjs"],
   );
   const joined = args.join(" ");
-  assert.match(joined, /--ro-bind \/ \//);
+  assert.match(joined, /--tmpfs \/ /);
+  assert.equal(args.includes("--unshare-user"), true);
+  assert.equal(args.some((value, index) => value === "--ro-bind" && args[index + 1] === "/"), false);
   assert.match(joined, /--bind \/cells\/bee-1 \/cells\/bee-1/);
-  assert.match(joined, /--bind-try \/home\/u\/\.codex \/home\/u\/\.codex/);
+  assert.equal(joined.includes("--bind-try"), false);
   assert.match(joined, /--share-net/);
   assert.match(joined, /--die-with-parent/);
   assert.ok(joined.endsWith("-- node agent.mjs"));
@@ -110,44 +116,11 @@ test("sandbox.merge: a bee grant an existing baseline path already covers is not
   }
 });
 
-test("sandbox.account-home: bwrap grants the exact bound home, never its parent or a sibling", () => {
-  const root = mkdtempSync(join(tmpdir(), "hb-v2-account-home-"));
-  try {
-    const homesRoot = join(root, "homes");
-    const accountHome = join(homesRoot, "codex-primary");
-    const siblingHome = join(homesRoot, "codex-sibling");
-    mkdirSync(accountHome, { recursive: true });
-    mkdirSync(siblingHome);
-    const baseline = defaultWritablePaths("/home/hive");
-    const accountGrant = sandboxWritableDirectory(accountHome, { forbiddenDirectories: [homesRoot] });
-    const writablePaths = mergeSandboxWritablePaths(
-      baseline,
-      [accountGrant],
-    );
-    const args = bwrapArgs(
-      { cellDir: "/cells/bee-1", writablePaths, scratchPaths: [] },
-      "codex",
-      ["app-server"],
-    );
-    const bindTrySources = args.flatMap((arg, index) =>
-      arg === "--bind-try" ? [args[index + 1]] : []
-    );
-
-    assert.equal(bindTrySources.filter((path) => path === accountGrant.path).length, 1);
-    assert.equal(bindTrySources.includes(realpathSync(homesRoot)), false);
-    assert.equal(bindTrySources.includes(realpathSync(siblingHome)), false);
-    assert.deepEqual(
-      mergeSandboxWritablePaths(baseline, []),
-      baseline,
-      "an unbound bee retains exactly the default writable homes and caches",
-    );
-    assert.deepEqual(
-      mergeSandboxWritablePaths(["relative-legacy-cache"], []),
-      ["relative-legacy-cache"],
-      "the existing baseline override is not reinterpreted by the new authority seam",
-    );
-  } finally {
-    rmSync(root, { recursive: true, force: true });
+test("sandbox.account-home: broad account grants and protected overrides are refused", () => {
+  assert.deepEqual(defaultWritablePaths(), []);
+  for (const path of [".config", ".config/systemd/user", ".config/autostart", ".config/environment.d", ".local/share/apiary-satellite", ".ssh", ".hive", ".claude", ".codex", ".cache"]) {
+    assert.throws(() => bwrapArgs({ cellDir: "/cells/bee", writablePaths: [join(homedir(), path)] }, "node", []), /protected writable path/);
+    assert.throws(() => seatbeltProfile({ cellDir: "/cells/bee", writablePaths: [join(homedir(), path)] }), /protected writable path/);
   }
 });
 
@@ -192,7 +165,7 @@ test("sandbox.wrap: platform dispatch (darwin sandbox-exec -f, linux bwrap, othe
   const box = mkdtempSync(join(tmpdir(), "hb-v2-wrap-"));
   try {
     const linux = wrapWithSandbox(policy, "node", ["a.mjs"], join(box, "p.sb"), "linux");
-    assert.equal(linux.command, "bwrap");
+    assert.ok(linux.command.endsWith("/cell-scope"));
     assert.equal(linux.profile, undefined);
   } finally {
     rmSync(box, { recursive: true, force: true });
@@ -231,17 +204,11 @@ test("sandbox.ssh-config: materializes symlinked client includes without changin
   }
 });
 
-test("sandbox.ssh-config: include view is bound read-only after writable mounts without changing the SSH command", () => {
-  const policy = { cellDir: "/cells/bee", writablePaths: ["/home/u/.cache"] };
-  const command = ["-o", "StrictHostKeyChecking=yes", "git@github.com"];
-  const args = bwrapArgs(policy, "ssh", command, "/cells/bee/box/ssh-config-123");
-  const mount = args.indexOf("/etc/ssh/ssh_config.d");
-  assert.deepEqual(args.slice(mount - 2, mount + 1), ["--ro-bind", "/cells/bee/box/ssh-config-123", "/etc/ssh/ssh_config.d"]);
-  assert.deepEqual(args.slice(mount - 5, mount - 2), ["--ro-bind", "/cells/bee/box/ssh-config-123", "/cells/bee/box/ssh-config-123"]);
-  assert.ok(mount > args.lastIndexOf("--bind-try"));
-  assert.deepEqual(args.slice(args.indexOf("--") + 1), ["ssh", ...command]);
-  assert.equal(args.includes("--uid"), false);
-  assert.equal(args.includes("--gid"), false);
+test("sandbox.ssh-config: the hardened home never restores host SSH keys or include directories", () => {
+  const args = bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [] }, "ssh", ["git@github.com"], "/cells/bee-1/ssh-config");
+  assert.equal(args.includes("/etc/ssh/ssh_config.d"), false);
+  assert.equal(args.includes("--unshare-user"), true);
+  assert.deepEqual(args.slice(args.lastIndexOf("--") + 1), ["ssh", "git@github.com"]);
 });
 
 test("sandbox.ssh-config: missing include targets are ignored and snapshot failures preserve the host view", (t) => {
@@ -335,7 +302,7 @@ test("sandbox.seatbelt-user-temp: mktemp works and the user cache dir is denied 
 
 test("sandbox.tmpfs-paths: the sampled tmpfs paths are exactly the tmpfs mounts bwrap makes", () => {
   const args = bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [], tmpfsBytes: 1024 }, "node", ["a.mjs"]);
-  const mounted = args.flatMap((arg, index) => (arg === "--tmpfs" ? [args[index + 1]!] : []));
+  const mounted = args.flatMap((arg, index) => (arg === "--tmpfs" && SANDBOX_TMPFS_PATHS.includes(args[index + 1]!) ? [args[index + 1]!] : []));
   assert.deepEqual([...mounted].sort(), [...SANDBOX_TMPFS_PATHS].sort());
   assert.ok(SANDBOX_TMPFS_PATHS.includes("/tmp") && SANDBOX_TMPFS_PATHS.includes("/dev/shm"));
   let varTmpReal = false;
@@ -344,7 +311,7 @@ test("sandbox.tmpfs-paths: the sampled tmpfs paths are exactly the tmpfs mounts 
   } catch {}
   assert.equal(SANDBOX_TMPFS_PATHS.includes("/var/tmp"), varTmpReal);
   args.forEach((arg, index) => {
-    if (arg === "--tmpfs") assert.equal(args[index - 2], "--size", `--size precedes --tmpfs ${args[index + 1]}`);
+    if (arg === "--tmpfs" && SANDBOX_TMPFS_PATHS.includes(args[index + 1]!)) assert.equal(args[index - 2], "--size", `--size precedes --tmpfs ${args[index + 1]}`);
   });
 });
 
@@ -355,7 +322,7 @@ test("sandbox.bwrap: /tmp and /var/tmp are private tmpfs mounts, never host bind
   assert.match(joined, /--tmpfs \/var\/tmp /);
   assert.doesNotMatch(joined, /--bind(-try)? \/var\/tmp/);
   assert.doesNotMatch(joined, /--bind(-try)? \/tmp/);
-  const lastTmpfs = args.lastIndexOf("--tmpfs");
+  const lastTmpfs = Math.max(args.indexOf("/tmp") - 1, args.indexOf("/var/tmp") - 1);
   const firstBind = args.findIndex((arg) => arg === "--bind" || arg === "--bind-try");
   assert.ok(lastTmpfs < firstBind, "tmpfs mounts come before every bind so they never hide a grant under /tmp or /var/tmp");
 });
@@ -411,7 +378,7 @@ test("sandbox.bwrap-tmpfs: a tmpfs cap sizes /tmp and a private /dev/shm; no cap
     bwrapArgs({ cellDir: "/cells/bee-1", writablePaths: [], tmpfsBytes: null }, "node", []),
   ]) {
     assert.equal(uncapped.includes("--size"), false);
-    assert.equal(uncapped.includes("/dev/shm"), false);
+    assert.equal(uncapped.includes("/dev/shm"), true);
   }
 });
 
@@ -451,7 +418,7 @@ test("sandbox.tmp-pid: the sandboxed process is the host's grandchild in another
     proc(12, "mnt:[1]", []);
     proc(13, "mnt:[2]", []);
     assert.equal(sandboxedPid(10, root), 13);
-    assert.equal(sandboxedPid(11, root), null, "a direct child in another namespace is not the shape bwrap leaves");
+    assert.equal(sandboxedPid(11, root), 13, "namespace lookup tolerates the extra PID-namespace reaper level");
     assert.equal(sandboxedPid(99, root), null);
   } finally {
     rmSync(root, { recursive: true, force: true });

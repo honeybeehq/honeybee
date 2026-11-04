@@ -1,3 +1,7 @@
+import { apiaryHarnessProjection, nodeReadOnlyProjection } from "./apiaryHarness.ts";
+import { apiaryToolchainRoot } from "./apiaryToolchain.ts";
+import { withoutCellHostRoutes } from "./runtimeEnvironment.ts";
+import { ensureCellPrivateDirectory, prepareSandboxHarnessHome } from "./harnessHome.ts";
 /**
  * Cell sandbox wrapper (WP5, spec 05 point 5 — the A4 ruling).
  *
@@ -10,9 +14,10 @@
  * Defaults by node kind (A4): workstation OFF, satellite ON, cloud gateway
  * OFF (the ephemeral VM is the boundary there). Per-cell override wins.
  */
+import { cellCliReadOnlyFiles, cellScopeArtifactDirectory, validatedCellScopeBinary } from "./cellScope.ts";
 import { spawnSync } from "node:child_process";
-import { cpSync, lstatSync, mkdtempSync, realpathSync, rmSync, statSync } from "node:fs";
-import { homedir, platform } from "node:os";
+import { cpSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync } from "node:fs";
+import { homedir, platform, userInfo } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve as resolvePath, sep } from "node:path";
 
 export type NodeKind = "workstation" | "satellite" | "cloud";
@@ -25,19 +30,31 @@ export function sandboxDefaultFor(kind: NodeKind): boolean {
 }
 
 /** Effective sandbox decision: per-cell override > node-kind default. */
+export function resolveCellSandboxPolicy(kind: NodeKind | undefined, cellOverride: boolean | null | undefined, configuredOverride: boolean | null | undefined = null): {enabled: boolean; override: boolean | null} {
+  const override = cellOverride ?? configuredOverride ?? null;
+  return {enabled: override ?? sandboxDefaultFor(kind ?? "workstation"), override};
+}
+
 export function sandboxEnabled(kind: NodeKind, cellOverride: boolean | null | undefined): boolean {
-  return cellOverride ?? sandboxDefaultFor(kind);
+  return resolveCellSandboxPolicy(kind, cellOverride).enabled;
 }
 
 export interface SandboxPolicy {
   /** The cell wrapper dir — the primary writable subtree. */
   cellDir: string;
+  launchCwd?: string;
   /** Harness home/state dirs and caches that must stay writable. */
   writablePaths: string[];
   /** OS scratch dirs kept writable. Defaults to the platform list. */
   scratchPaths?: string[];
   tmpfsBytes?: number | null;
   kvm?: boolean;
+  protectedPaths?: readonly string[];
+  hiddenPaths?: readonly string[];
+  gatewaySocketPath?: string;
+  homePaths?: readonly string[];
+  log?: (line: string) => void;
+  harnessHome?: { harness: string; path: string; cwd: string };
 }
 
 export const DEFAULT_SANDBOX_TMPFS_BYTES = 1024 * 1024 * 1024;
@@ -87,22 +104,60 @@ export function defaultScratchPaths(
  * sandbox (spec: "manager download caches remain visible via the sandbox
  * profile, so cold installs stay network-warm").
  */
-export function defaultWritablePaths(home: string = homedir()): string[] {
-  return [
-    join(home, ".claude"),
-    join(home, ".claude.json"),
-    join(home, ".codex"),
-    join(home, ".gemini"),
-    join(home, ".grok"),
-    join(home, ".config"),
-    join(home, ".cache"),
-    join(home, ".npm"),
-    join(home, ".bun"),
-    join(home, ".local", "share", "muse"),
-    join(home, ".local", "share", "pnpm"),
-    join(home, "Library", "pnpm"),
-    join(home, "Library", "Caches"),
-  ];
+export function defaultWritablePaths(_home: string = homedir()): string[] {
+  return [];
+}
+
+export function sandboxProtectedPaths(home: string = homedir()): string[] {
+  return [".config", ".local", ".local/share/apiary-satellite", ".ssh", ".gnupg", ".hive", ".nectar", ".claude", ".claude.json",
+    ".codex", ".grok", ".gemini", ".kimi", ".cache", ".npm", ".bun", ".bashrc", ".profile",
+    ".bash_profile", ".zshrc", ".zprofile", "Library/LaunchAgents", "Library/Caches"]
+    .map(path => join(home, path));
+}
+
+function hiddenPaths(policy: SandboxPolicy): string[] {
+  return [...new Set([join(homedir(), ".config", "gh"), ...(policy.hiddenPaths ?? [])])]
+    .filter(path => lstatSync(path, { throwIfNoEntry: false }))
+    .map(path => {
+      const canonical = realpathSync(path);
+      if (!statSync(canonical).isDirectory()) throw new Error(`cell sandbox: hidden credential root is not a directory: ${path}`);
+      return canonical;
+    });
+}
+
+function checkedWritablePaths(policy: SandboxPolicy): string[] {
+  const protectedPaths = [...sandboxProtectedPaths(), ...sandboxProtectedPaths(userInfo().homedir), "/run", ...(policy.protectedPaths ?? []), ...(policy.harnessHome ? [policy.harnessHome.path] : [])].map(canonicalPath);
+  const standardScratch = new Set([...defaultScratchPaths("linux"), ...defaultScratchPaths("darwin")]);
+  const paths = [...policy.writablePaths, ...(policy.scratchPaths ?? []).filter(path => !standardScratch.has(path) && !/^(?:\/private)?\/var\/folders\/[^/]+\/[^/]+\/T\/?$/.test(path))];
+  for (const path of paths) {
+    const canonical = canonicalPath(path);
+    if (!isAbsolute(path) || !containsPath(canonicalPath(policy.cellDir), canonical) || protectedPaths.some(protectedPath => containsPath(canonical, protectedPath) || containsPath(protectedPath, canonical))) {
+      throw new Error(`cell sandbox: protected writable path refused: ${path}`);
+    }
+  }
+  return policy.writablePaths;
+}
+
+
+export function sandboxEnvironment(cellDir: string, original: Readonly<Record<string, string>>, sandboxed = true): Record<string, string> {
+  if (!sandboxed) return {...original, npm_config_yes: "false"};
+  if (platform() === "darwin") throw new Error("cell sandbox: private state projection is unsupported on darwin");
+  const root = join(cellDir, "sandbox-state");
+  const temp = join(root, "tmp");
+  const cache = join(root, "cache");
+  const home = join(root, "home");
+  for (const path of [root, temp, cache, home]) {
+    try { ensureCellPrivateDirectory(cellDir, path); }
+    catch { throw new Error(`cell sandbox: unsafe private state: ${path}`); }
+  }
+  const scratch = sandboxed && platform() === "linux" ? "/tmp" : temp;
+  const env = { ...withoutCellHostRoutes(original), HOME: home, TMPDIR: scratch, TMP: scratch, TEMP: scratch, CLAUDE_CODE_TMPDIR: scratch,
+    XDG_CACHE_HOME: cache, NODE_COMPILE_CACHE: join(cache, "node-compile"), npm_config_cache: join(cache, "npm"), npm_config_yes: "false",
+    npm_config_store_dir: join(cache, "pnpm"), YARN_CACHE_FOLDER: join(cache, "yarn"), PIP_CACHE_DIR: join(cache, "pip"),
+    UV_CACHE_DIR: join(cache, "uv"), GOCACHE: join(cache, "go-build"), GOMODCACHE: join(cache, "go-mod"),
+    GRADLE_USER_HOME: join(cache, "gradle") };
+  for (const key of ["DBUS_SESSION_BUS_ADDRESS", "DBUS_SYSTEM_BUS_ADDRESS", "XDG_RUNTIME_DIR", "SSH_AUTH_SOCK", "NODE_OPTIONS"]) delete (env as Record<string, string>)[key];
+  return env;
 }
 
 /** A canonical existing directory admitted through the narrow per-bee seam. */
@@ -116,10 +171,18 @@ export interface SandboxWritableDirectoryOptions {
 }
 
 function canonicalPath(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {
-    return resolvePath(path);
+  let cursor = resolvePath(path);
+  const suffix: string[] = [];
+  for (;;) {
+    try {
+      return join(realpathSync(cursor), ...suffix);
+    } catch {
+      if (lstatSync(cursor, { throwIfNoEntry: false })) throw new Error(`cell sandbox: unresolved path refused: ${path}`);
+      const parent = dirname(cursor);
+      if (parent === cursor) throw new Error(`cell sandbox: unresolved path refused: ${path}`);
+      suffix.unshift(cursor.slice(parent.length + (parent.endsWith(sep) ? 0 : 1)));
+      cursor = parent;
+    }
   }
 }
 
@@ -212,6 +275,7 @@ function withRealpaths(paths: string[]): string[] {
  * Later SBPL rules win, so the allow-list overrides the deny.
  */
 export function seatbeltProfile(policy: SandboxPolicy): string {
+  checkedWritablePaths(policy);
   const writeAllows = withRealpaths([
     policy.cellDir,
     ...policy.writablePaths,
@@ -227,6 +291,7 @@ export function seatbeltProfile(policy: SandboxPolicy): string {
     "(allow file-write*",
     writeAllows,
     ")",
+    ...hiddenPaths(policy).map(path => `(deny file-read* (subpath ${sbPath(path)}))`),
     "",
   ].join("\n");
 }
@@ -258,22 +323,24 @@ function isRegularFile(path: string): boolean {
   }
 }
 
-/**
- * Re-binds, read-only, the top-level entry of a private mount (/tmp, /var/tmp)
- * that holds a regular-file launch input, so the harness can still start.
- * Contract: a unix socket inside such a re-bound directory stays connectable
- * through the read-only bind. That is exploitable only when a socket shares a
- * directory with a regular-file launch input; HSR runner sockets are top-level
- * in /tmp, so none is exposed today. The grain stays the directory because
- * per-file binds break sibling imports next to the launch input.
- */
-function bwrapLaunchBinds(command: string, args: readonly string[]): string[] {
+function bwrapLaunchBinds(command: string, args: readonly string[], cellDir: string, projected: readonly string[] = []): string[] {
   const roots = new Set<string>();
   for (const input of [command, ...args]) {
-    if (!isAbsolute(input) || !isRegularFile(input)) continue;
+    if (!isAbsolute(input) || !isRegularFile(input) || containsPath(canonicalPath(cellDir), canonicalPath(input)) || projected.some(root => containsPath(root, input) || containsPath(root, realpathSync(input)))) continue;
     for (const spelling of [input, realpathSync(input)]) {
       const root = maskedLaunchRoot(spelling);
       if (root) roots.add(root);
+    }
+  }
+  for (const root of roots) {
+    const pending = [{ path: root, depth: 0 }];
+    let visited = 0;
+    while (pending.length > 0) {
+      const entry = pending.pop()!;
+      if (++visited > 10000 || entry.depth > 16) throw new Error("cell sandbox: launch input tree exceeds its limit");
+      const info = lstatSync(entry.path);
+      if (info.isSocket() || info.isSymbolicLink() && statSync(entry.path).isSocket()) throw new Error(`cell sandbox: socket in launch input tree refused: ${entry.path}`);
+      if (info.isDirectory()) for (const name of readdirSync(entry.path)) pending.push({ path: join(entry.path, name), depth: entry.depth + 1 });
     }
   }
   return [...roots].flatMap((root) => ["--ro-bind", realpathSync(root), root]);
@@ -309,28 +376,97 @@ export function createSshConfigView(profilePath: string, source = "/etc/ssh/ssh_
  * read-write. Pure argv construction — testable on any platform; execution
  * is exercised by the linux gate (trmd-metal-3).
  */
-export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[], sshConfigView?: string): string[] {
+export function assertSandboxToolchainMetadata(info: { uid: number; mode: number }, allowedOwners: ReadonlySet<number>): void {
+  if (info.uid === 65534) throw new Error("cell sandbox: toolchain root owner is unmapped; refusing launch");
+  if ((info.mode & 0o022) !== 0) throw new Error("cell sandbox: toolchain root is group- or world-writable; refusing launch");
+  if (!allowedOwners.has(info.uid)) throw new Error("cell sandbox: toolchain root has an untrusted owner; refusing launch");
+}
+
+export function sandboxToolchainRoot(executable: string = process.execPath, log?: (line: string) => void): string | null {
+  const apiary = apiaryToolchainRoot(executable, userInfo().homedir, process.geteuid?.() ?? userInfo().uid);
+  if (apiary) return apiary;
+  const binary = realpathSync(executable);
+  if (binary.startsWith("/usr/") || binary.startsWith("/bin/")) return null;
+  const root = realpathSync(dirname(dirname(binary)));
+  if (!/^\/opt\/node-v[0-9]+\.[0-9]+\.[0-9]+-linux-(?:x64|arm64)$/.test(root)) throw new Error("cell sandbox: unapproved executable install root; refusing launch");
+  const info = statSync(root);
+  if (!info.isDirectory()) throw new Error("cell sandbox: toolchain root is not a directory");
+  const metadata = `path=${root} uid=${info.uid} mode=${(info.mode & 0o777).toString(8)}`;
+  try { assertSandboxToolchainMetadata(info, new Set([0, process.geteuid?.() ?? userInfo().uid])); }
+  catch (error) { log?.(`cell.sandbox.toolchain ${metadata} verdict=refused`); throw error; }
+  log?.(`cell.sandbox.toolchain ${metadata} verdict=accepted`);
+  return root;
+}
+
+function systemReadOnlyMounts(): string[] {
+  const mounts: string[] = [];
+  for (const path of ["/usr", "/etc", "/bin", "/sbin", "/lib", "/lib64"]) {
+    const info = lstatSync(path, { throwIfNoEntry: false });
+    if (!info) continue;
+    if (info.isSymbolicLink()) mounts.push("--symlink", readlinkSync(path), path);
+    else if (info.isDirectory()) mounts.push("--ro-bind", path, path);
+    else throw new Error(`cell sandbox: unsupported system root: ${path}`);
+  }
+  return mounts;
+}
+
+export function bwrapArgs(policy: SandboxPolicy, command: string, args: string[], _sshConfigView?: string): string[] {
+  checkedWritablePaths(policy);
+  if ((policy.scratchPaths ?? []).some(path => !["/tmp", "/var/tmp", "/dev"].includes(path))) {
+    throw new Error("cell sandbox: only Cell-owned writable paths are supported");
+  }
+  const projection = policy.harnessHome ? prepareSandboxHarnessHome(policy.cellDir, policy.harnessHome.harness, policy.harnessHome.path) : undefined;
   const size = policy.tmpfsBytes != null ? ["--size", String(policy.tmpfsBytes)] : [];
+  const homes = [...new Set([homedir(), userInfo().homedir, ...(policy.homePaths ?? [])].map(path => realpathSync(path)))];
+  const toolchain = sandboxToolchainRoot(process.execPath, policy.log);
+  const uid = process.geteuid?.() ?? userInfo().uid;
+  const harness = apiaryHarnessProjection(command, args, userInfo().homedir, uid, policy.harnessHome?.harness);
+  const node = toolchain ? nodeReadOnlyProjection(toolchain, uid) : null;
+  const nodeDestination = "/run/honeybee/node";
   const out: string[] = [
-    "--ro-bind", "/", "/",
-    "--dev", "/dev",
-    ...(size.length > 0 ? [...size, "--tmpfs", "/dev/shm"] : []),
-    "--proc", "/proc",
-    ...BWRAP_PRIVATE_MOUNTS.flatMap((mount) => [...size, "--tmpfs", mount]),
-    ...bwrapLaunchBinds(command, args),
+    "--unshare-user", "--unshare-pid", "--unshare-ipc",
+    "--tmpfs", "/", ...systemReadOnlyMounts(),
+    "--dev", "/dev", ...size, "--tmpfs", "/dev/shm", "--proc", "/proc",
+    ...BWRAP_PRIVATE_MOUNTS.flatMap(mount => [...size, "--tmpfs", mount]),
+    ...homes.flatMap(home => ["--tmpfs", home]),
+    "--tmpfs", "/run", "--dir", "/run/user", "--dir", "/run/honeybee", "--dir", "/run/honeybee/bin", "--dir", "/run/honeybee/tools", "--dir", "/run/honeybee/tools/bin",
+    ...bwrapLaunchBinds(command, args, policy.cellDir, [join(userInfo().homedir, ".local", "share", "apiary-satellite"), ...(harness ? [harness.leaf] : [])]),
     "--bind", policy.cellDir, policy.cellDir,
   ];
+  if (toolchain && node) {
+    out.push("--tmpfs", toolchain, "--tmpfs", nodeDestination);
+    for (const source of [...node.files, ...node.packages]) {
+      out.push("--ro-bind", source, source, "--ro-bind", source, join(nodeDestination, relative(toolchain, source)));
+    }
+    for (const link of node.links) {
+      out.push("--symlink", link.target, link.path, "--symlink", join(nodeDestination, relative(toolchain, link.target)), join(nodeDestination, relative(toolchain, link.path)));
+    }
+    out.push("--remount-ro", toolchain, "--remount-ro", nodeDestination);
+  }
+  if (harness) out.push("--ro-bind", harness.leaf, harness.leaf, "--symlink", harness.executable, harness.alias);
   if (policy.kvm) out.push("--dev-bind", "/dev/kvm", "/dev/kvm");
-  for (const p of policy.writablePaths) {
-    // --bind-try: absent harness homes must not break the spawn.
-    out.push("--bind-try", p, p);
+  if (projection) {
+    for (const file of projection.files) out.push("--ro-bind", file.source, file.destination);
+    out.push("--setenv", policy.harnessHome!.harness === "codex" ? "CODEX_HOME" : "CLAUDE_CONFIG_DIR", projection.home);
   }
-  for (const p of policy.scratchPaths ?? defaultScratchPaths("linux")) {
-    if (p === "/tmp" || p === "/var/tmp" || p === "/dev") continue; // already mounted above
-    out.push("--bind-try", p, p);
-  }
-  if (sshConfigView) out.push("--ro-bind", sshConfigView, sshConfigView, "--ro-bind", sshConfigView, "/etc/ssh/ssh_config.d");
-  out.push("--share-net", "--die-with-parent", "--", command, ...args);
+  for (const path of hiddenPaths(policy)) out.push("--tmpfs", path, "--remount-ro", path);
+  if (policy.gatewaySocketPath) out.push("--ro-bind", policy.gatewaySocketPath, "/run/honeybee/gateway.sock");
+  const scopeDirectory = cellScopeArtifactDirectory();
+  out.push("--ro-bind", join(scopeDirectory, "cell-scope"), "/run/honeybee/cell-scope",
+    "--ro-bind", join(scopeDirectory, "hive"), "/run/honeybee/bin/hive",
+    ...cellCliReadOnlyFiles().flatMap(file => ["--ro-bind", file.source, file.destination]));
+  for (const home of homes) out.push("--remount-ro", home);
+  out.push("--remount-ro", "/run",
+    "--unsetenv", "DBUS_SESSION_BUS_ADDRESS", "--unsetenv", "DBUS_SYSTEM_BUS_ADDRESS",
+    "--unsetenv", "SSH_AUTH_SOCK", "--unsetenv", "XDG_RUNTIME_DIR", "--unsetenv", "NODE_OPTIONS",
+    "--setenv", "HIVE_CELL_GATEWAY_SOCKET", "/run/honeybee/gateway.sock",
+    "--setenv", "PATH", `/run/honeybee/bin:/run/honeybee/tools/bin:${toolchain ? `${nodeDestination}/bin:` : ""}/usr/bin:/bin`,
+    "--share-net", "--die-with-parent");
+  if (policy.launchCwd !== undefined) out.push("--chdir", policy.launchCwd);
+  const parent = statSync("/proc/self/ns/user");
+  const projectInput = (input: string) => harness && isAbsolute(input) && isRegularFile(input) && containsPath(harness.leaf, realpathSync(input)) ? realpathSync(input) : input;
+  const launchCommand = harness && command === harness.id ? harness.alias : projectInput(command);
+  out.push("--", "/run/honeybee/cell-scope", "--assert-userns", `${parent.dev}:${parent.ino}`, "--", launchCommand, ...args.map(projectInput));
   return out;
 }
 
@@ -354,6 +490,7 @@ export function wrapWithSandbox(
   osPlatform: string = platform(),
 ): WrappedCommand {
   if (osPlatform === "darwin") {
+    if (policy.harnessHome) throw new Error("cell sandbox: private harness input projection is unsupported on darwin; refusing launch");
     return {
       command: "sandbox-exec",
       args: ["-f", profilePath, command, ...args],
@@ -361,7 +498,11 @@ export function wrapWithSandbox(
     };
   }
   if (osPlatform === "linux") {
-    return { command: "bwrap", args: bwrapArgs(policy, command, args, createSshConfigView(profilePath)) };
+    const socket = policy.gatewaySocketPath;
+    if (!socket || !isAbsolute(socket)) throw new Error("cell sandbox: per-Cell gateway is required; refusing launch");
+    const info = lstatSync(socket, { throwIfNoEntry: false });
+    if (!info?.isSocket() || info.isSymbolicLink() || realpathSync(socket) !== socket) throw new Error("cell sandbox: per-Cell gateway is missing or unsafe; refusing launch");
+    return { command: validatedCellScopeBinary(), args: ["--", "bwrap", ...bwrapArgs(policy, command, args)] };
   }
   throw new Error(`cell sandbox: unsupported platform '${osPlatform}'`);
 }

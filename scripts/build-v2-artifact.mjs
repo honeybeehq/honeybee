@@ -1,12 +1,13 @@
 #!/usr/bin/env node
+import { createHash } from "node:crypto";
 /**
  * Bundle the v2 CLI, cell provision worker, and dedicated runner host. The
  * runner host is intentionally its own tiny sibling: a daemon loaded from an
  * immutable release must spawn that release's host without re-entering the
  * full CLI bundle.
  */
-import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { basename, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { collectBuildIdentity } from "../dist/release/buildIdentityProducer.js";
@@ -42,7 +43,8 @@ await build({
   logLevel: "silent",
 });
 for (const stale of (await readdir(outDir)).filter((name) => CLI_CHUNK_RE.test(name))) await rm(join(outDir, stale));
-await build({
+const cliBuild = await build({
+  metafile: true,
   absWorkingDir: root,
   entryPoints: { cli: join(root, "v2", "cli", "src", "main.ts") },
   outdir: outDir,
@@ -66,6 +68,17 @@ await build({
   // backend); it is resolved at runtime from node_modules, never bundled.
   external: ["node-pty"],
 });
+const cliFiles = {};
+for (const [output, metadata] of Object.entries(cliBuild.metafile.outputs)) {
+  const name = basename(output);
+  if (name !== "cli.js" && !CLI_CHUNK_RE.test(name)) throw new Error(`Unexpected Cell CLI output: ${output}`);
+  const imports = metadata.imports.filter(item => !item.external).map(item => basename(item.path));
+  cliFiles[name] = { sha256: createHash("sha256").update(await readFile(resolve(root, output))).digest("hex"), imports };
+}
+for (const metadata of Object.values(cliFiles)) {
+  for (const name of metadata.imports) if (!Object.hasOwn(cliFiles, name)) throw new Error(`Missing Cell CLI import: ${name}`);
+}
+await writeFile(join(outDir, "cell-cli-manifest.json"), JSON.stringify({ version: 1, entry: "cli.js", files: cliFiles }) + "\n");
 await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "driver-cell", "src", "provisionWorker.ts")],
@@ -106,6 +119,18 @@ await build({
   absWorkingDir: root,
   entryPoints: [join(root, "v2", "driver-cell", "src", "retentionWorker.ts")],
   outfile: join(outDir, "retention-worker.js"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  minify: false,
+  preserveSymlinks: true,
+  logLevel: "silent",
+});
+await build({
+  absWorkingDir: root,
+  entryPoints: [join(root, "v2", "driver-cell", "src", "inodeWorker.ts")],
+  outfile: join(outDir, "inode-worker.js"),
   bundle: true,
   platform: "node",
   format: "esm",

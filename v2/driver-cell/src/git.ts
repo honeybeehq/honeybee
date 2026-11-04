@@ -34,6 +34,7 @@ export const hostGitConfig: ReadonlyArray<readonly [string, string]> = [
   ["tag.gpgsign", "false"],
   ["log.showSignature", "false"],
   ["core.alternateRefsCommand", ""],
+  ["transfer.fsckObjects", "true"],
 ];
 
 const REPO_LOCAL_EXEC_CONFIG: ReadonlyArray<readonly [RegExp, string]> = [

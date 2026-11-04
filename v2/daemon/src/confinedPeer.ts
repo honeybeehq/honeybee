@@ -88,8 +88,8 @@ export function assertConfinedVerb(verb: string, confinement: Confinement): void
 }
 export function assertConfinedSpawn(params: Record<string, unknown>, conn: Pick<RpcConn, "confinement" | "spawnServiceAuthority" | "ingress">): void {
   if (conn.confinement !== "confined" || conn.spawnServiceAuthority) return;
-  const cell = params.cell as {sandbox?: unknown} | null | undefined;
-  if (params.cwd !== undefined || params.node !== undefined || params.nodeId !== undefined || params.relay !== undefined || conn.ingress === "node_relay" || cell?.sandbox === false
+  const cell = params.cell as {sandbox?: unknown; originRepo?: unknown} | null | undefined;
+  if (params.originRepo !== undefined || cell?.originRepo !== undefined || params.cwd !== undefined || params.node !== undefined || params.nodeId !== undefined || params.relay !== undefined || conn.ingress === "node_relay" || cell?.sandbox === false
     || (params.agent !== "inbox" && params.substrate !== "cell")) {
     throw new RpcError("confined_spawn_refused", "Confined callers may only spawn sandboxed local Cells without an explicit cwd");
   }

@@ -1,3 +1,4 @@
+import type { MirroredCellRow } from "./cellSandboxPolicy.ts";
 import type { PublicBeeRow } from "../../core/src/envRedaction.ts";
 export type { BeeTellParams, BeeTellResult, BeeReactParams, BeeReactResult, SetHumanOutputModeParams, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
 import { honeybeeBuildIdentity, type BuildIdentity } from "../../../src/release/buildIdentity.ts";
@@ -349,6 +350,8 @@ export const RPC_ERROR_CODES = [
   "caller_not_trusted",
   "confined_spawn_refused",
   "confined_peer_refused",
+  "cell_gateway_payload_too_large",
+  "cell_gateway_rate_limited",
   "local_peer_credentials_unavailable",
   "local_peer_uid_mismatch",
   "tag_reserved",
@@ -526,6 +529,7 @@ export const RPC_VERBS = [
   "delete",
   // reads
   "view",
+  "bee.transcript",
   "list",
   "mailbox",
   "mail.history",
@@ -1665,7 +1669,7 @@ export interface ViewResult {
   /** v21 — latest move receipt (in-flight, complete, or failed). */
   move: BeeMoveView | null;
   /** v21 — active or retained Cell. */
-  cell: CellRow | null;
+  cell: MirroredCellRow | null;
   /** v23 — latest handoff receipt (in-flight, complete, or failed). */
   handoff: BeeHandoffView | null;
 }
@@ -1985,7 +1989,7 @@ export interface SnapshotResult {
   /** v16 (additive): account login flows, store rows verbatim. */
   loginFlows: MirrorLoginFlowRow[];
   /** v21 (additive): Cell registry + move aggregate. */
-  cells: CellRow[];
+  cells: MirroredCellRow[];
   beeMoves: BeeMoveView[];
   /** v23 (additive): handoff receipts + transcript segments (store rows verbatim). */
   beeHandoffs: BeeHandoffView[];
@@ -2085,7 +2089,7 @@ export interface CellCaptureResult extends CellDedupMarker {
   /** Conflicted paths (conflict only) — staged for the operator, never auto-resolved. */
   conflicts: string[];
   /** Refusal reason (refused only). */
-  reason: "target_checked_out" | "target_moved" | "no_cell_head" | null;
+  reason: "target_checked_out" | "target_moved" | "no_cell_head" | "invalid_objects" | null;
 }
 
 /** The driver's DirtyReport verbatim (A2 — the three causes). */

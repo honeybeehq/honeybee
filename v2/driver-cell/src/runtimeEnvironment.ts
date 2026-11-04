@@ -1,0 +1,25 @@
+const CELL_DAEMON_KEYS = new Set([
+  "npm_config_yes", "PATH", "LANG", "TZ", "TERM", "HOME", "USER", "LOGNAME", "TMPDIR",
+  "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
+  "LC_ALL", "LC_ADDRESS", "LC_COLLATE", "LC_CTYPE", "LC_IDENTIFICATION", "LC_MEASUREMENT",
+  "LC_MESSAGES", "LC_MONETARY", "LC_NAME", "LC_NUMERIC", "LC_PAPER", "LC_TELEPHONE", "LC_TIME",
+]);
+const HOST_ROUTES = ["HIVE_SOCKET", "HIVE_DATA_DIR", "HIVE_V2_SOCKET_PATH", "HIVE_V2_DATA_DIR", "HIVE_TMUX_SOCKET", "HIVE_TMUX_SOCKET_PATH"];
+
+export function cellDaemonEnvironment(source: Readonly<Record<string, string | undefined>>, dropped?: (names: string[]) => void): Record<string, string> {
+  const env: Record<string, string> = {};
+  const names: string[] = [];
+  for (const [name, value] of Object.entries(source)) {
+    if (value === undefined) continue;
+    if (CELL_DAEMON_KEYS.has(name)) env[name] = value;
+    else names.push(name);
+  }
+  if (names.length) dropped?.(names.sort());
+  return env;
+}
+
+export function withoutCellHostRoutes(source: Readonly<Record<string, string>>): Record<string, string> {
+  const env = {...source};
+  for (const name of HOST_ROUTES) delete env[name];
+  return env;
+}

@@ -1,0 +1,21 @@
+import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+if (process.platform !== "linux") process.exit(0);
+const root = fileURLToPath(new URL("..", import.meta.url));
+const target = `linux-${process.arch}`;
+if (!["linux-x64", "linux-arm64"].includes(target)) throw new Error(`Unsupported cell scope target: ${target}`);
+const directory = join(root, "dist/v2/cell-scope", target);
+const source = join(root, "v2/driver-cell/native/cell-scope.c");
+const binary = join(directory, "cell-scope");
+const hash = bytes => createHash("sha256").update(bytes).digest("hex");
+mkdirSync(directory, { recursive: true });
+execFileSync(process.env.CC ?? "cc", ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-fPIE", "-pie", source, "-o", binary], { stdio: "inherit" });
+chmodSync(binary, 0o755);
+copyFileSync(join(root, "v2/driver-cell/native/hive"), join(directory, "hive"));
+chmodSync(join(directory, "hive"), 0o755);
+writeFileSync(join(directory, "manifest.json"), JSON.stringify({ version: 1, target, sourceSha256: hash(readFileSync(source)), cliShimSha256: hash(readFileSync(join(directory, "hive"))), sha256: hash(readFileSync(binary)) }) + "\n");
+console.log(`cell scope built: ${target}`);

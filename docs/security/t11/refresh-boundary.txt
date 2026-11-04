@@ -1,0 +1,32 @@
+✔ codex: bootLines is a single initialize request (0.960453ms)
+✔ codex: initialize response → respond with initialized + thread/start (ack-ordered handshake) (0.93884ms)
+✔ codex: thread/start response → booted(threadId) + spawn_failed clear + turn_ended (0.241829ms)
+✔ codex: turn/started → turn_started; turn/completed → clears + turn_ended (0.335015ms)
+✔ codex: error notification with auth-expiry signature → auth_needed set (0.435702ms)
+✔ codex: read-only credential refresh remains a visible authentication boundary (0.333953ms)
+✔ codex: error notification with rate-limit text → resource_blocked set; generic error → [] (0.279778ms)
+✔ codex: rateLimits reached → resource_blocked set with primary-window reset hint (0.924197ms)
+✔ codex: benign rolling rateLimits update (reached null) → [] (0.204981ms)
+✔ codex: mid-turn deltas, reasoning and usage notifications carry no state edge (0.33816ms)
+✔ codex: inbound server request is refused (method-not-found), never left hanging (0.176157ms)
+✔ codex: encodeMessage requires the learned thread id; idle encodes turn/start (0.226466ms)
+✔ codex: a running turn encodes turn/steer with its native id and refuses safely before that id is known (0.238904ms)
+✔ codex: turn delivery responses confirm or refuse the mailbox message; errors still surface flags (0.218873ms)
+✔ codex: resume requests metadata only and reaches idle with the preserved conversation id (0.357749ms)
+✔ codex v6: turn/started carries the turn id; encodeInterrupt = turn/interrupt {threadId, turnId} (null before a turn id is known); the ack parses to [] (0.29369ms)
+✔ codex v6: forkThreadId → the handshake sends thread/fork {threadId: source}; the response's NEW thread.id lands as booted; resume wins over fork (0.300741ms)
+✔ codex: GPT-6 Astra model passes verbatim to start, resume, and fork (0.17199ms)
+✔ codex: developerInstructions ride on thread/start and thread/resume, not as a replacement of cwd/model (0.185931ms)
+✔ codex: usage-limit failure stays blocked after turn completion (0.207746ms)
+✔ codex: typed quota error survives unfamiliar message wording and completion-only errors (0.149875ms)
+✔ codex: only an explicitly successful completion clears boundary flags (0.195827ms)
+✔ codex: legacy usage-limit text and failed auth retain their boundaries (0.153661ms)
+✔ codex: fresh delivery starts a turn and refuses every known active turn (0.283444ms)
+ℹ tests 24
+ℹ suites 0
+ℹ pass 24
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 116.650261

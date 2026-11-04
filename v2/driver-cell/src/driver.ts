@@ -1,3 +1,4 @@
+import { cellDaemonEnvironment } from "./runtimeEnvironment.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError } from "../../core/src/executionFence.ts";
 import { stateDirectory } from "../../harness/src/statePath.ts";
@@ -54,6 +55,7 @@ import {
   defaultWritablePaths,
   mergeSandboxWritablePaths,
   sandboxEnabled,
+  sandboxEnvironment,
   wrapWithSandbox,
   type NodeKind,
   type SandboxWritableDirectory,
@@ -71,6 +73,7 @@ export interface CellDriverConfig {
   cellsRoot: string;
   /** Node kind, from the daemon config — decides the sandbox default (A4). */
   nodeKind: NodeKind;
+  nodeKindExplicit?: boolean;
   /** Resolve the harness half of a spawn (adapter/command/args/env). cwd is cell-owned. */
   resolveHarness(beeId: string, generation?: number): SpawnSpec;
   /** Resolve the cell half (origin repo, sha, warm config, sandbox override). */
@@ -80,6 +83,9 @@ export interface CellDriverConfig {
   /** Baseline sandbox-writable paths (defaults: harness homes + caches). */
   sandboxWritablePaths?: string[];
   sandboxKvm?: boolean;
+  sandboxProtectedPaths?: readonly string[];
+  resolveSandboxGateway?(beeId: string, generation: number): { socketPath: string };
+  resolveSandboxHarnessHome?(beeId: string): { harness: string; path: string } | undefined;
   /**
    * Additional authoritative paths for this bee. Callers must derive these
    * from trusted state, never from the harness spawn environment.
@@ -775,16 +781,28 @@ export class CellDriver implements RuntimeDriver {
     if (!cell) throw new Error(`cell driver: bee ${beeId} has no provisioned cell (start() provisions first)`);
     const harness = this.cfg.resolveHarness(beeId, generation);
     const spec = this.cfg.resolveCell(beeId);
-    const env: Record<string, string> = {
-      ...(harness.env ?? (process.env as Record<string, string>)),
+    let env: Record<string, string> = {
+      ...(harness.env ?? cellDaemonEnvironment(process.env)),
       // The old runner discipline: in-cell tools detect containment and the
       // space identity through these stamps.
       HIVE_CELL: "1",
       HIVE_CELL_SPACE: cell.paths.spaceName,
     };
-    if (!sandboxEnabled(this.cfg.nodeKind, spec.sandbox)) {
+    const effectiveSandbox = sandboxEnabled(this.cfg.nodeKind, spec.sandbox);
+    if (effectiveSandbox && platform() === "darwin") throw new Error("cell sandbox: sandboxed Cells are unsupported on darwin; configure cells.sandbox:false");
+    if (effectiveSandbox) env = sandboxEnvironment(cell.paths.wrapperDir, env, true);
+    else env.npm_config_yes = "false";
+    if (!effectiveSandbox) {
+      if (this.cfg.nodeKindExplicit === false && spec.sandbox !== false) {
+        this.cfg.log?.("cell.sandbox.refused reason=nodeKind_missing implicit_workstation_default");
+        throw new Error("cell sandbox: nodeKind is missing; explicit cells.sandbox:false is required for an unsandboxed Cell");
+      }
       return { ...harness, cwd: cell.paths.spaceDir, env };
     }
+    const harnessHome = this.cfg.resolveSandboxHarnessHome?.(beeId);
+    const gateway = generation === undefined ? undefined : this.cfg.resolveSandboxGateway?.(beeId, generation);
+    if (platform() === "linux" && !gateway) throw new Error("cell sandbox: per-Cell gateway is required; refusing launch");
+    if (gateway) env.HIVE_CELL_GATEWAY_SOCKET = "/run/honeybee/gateway.sock";
     const cap = this.effectiveSandboxCap();
     if (generation !== undefined) this.cfg.log?.(describeSandboxTmpfs(beeId, generation, cap));
     if (cap.kind === "capped" && platform() === "linux") {
@@ -797,6 +815,10 @@ export class CellDriver implements RuntimeDriver {
     const wrapped = wrapWithSandbox(
       {
         cellDir: cell.paths.wrapperDir,
+        protectedPaths: this.cfg.sandboxProtectedPaths,
+        gatewaySocketPath: gateway?.socketPath,
+        log: this.cfg.log,
+        ...(harnessHome ? { harnessHome: { ...harnessHome, cwd: cell.paths.spaceDir } } : {}),
         kvm: this.cfg.sandboxKvm,
         writablePaths: mergeSandboxWritablePaths(
           this.cfg.sandboxWritablePaths ?? defaultWritablePaths(),

@@ -8,8 +8,6 @@
  *   provisioning worker; a miss never changes correctness.
  *   Cold fallback: CoW copy of the origin's `.git` (`cp -c` /
  *   `cp --reflink=always`).
- *   Fallback: `git clone --local --no-checkout` — hardlinked objects on any
- *   same-volume POSIX fs, and a factory-fresh `.git` needing no scrubbing.
  *   Only the live-origin CoW path runs hygiene (it copied the user's live `.git`
  *   verbatim): hooksPath → empty dir, fsmonitor off, scrub lock files and
  *   merge/rebase/sequencer state. `copy_mode` is recorded honestly.
@@ -380,7 +378,7 @@ function runProvisionOperation(
       }) ?? undefined;
       if (image != null) mode = "image-cow";
     }
-    if (mode === "clone" && !cfg.disableCow && cfg.platform != null && probeCow(originGitDir, paths.boxDir, cfg.platform)) {
+    if (mode === "clone" && !cfg.disableCow && cfg.platform != null && !existsSync(join(originGitDir, "objects", "info", "alternates")) && probeCow(originGitDir, paths.boxDir, cfg.platform)) {
       mkdirSync(paths.spaceDir, { recursive: true });
       if (cowCopy(cfg.platform, originGitDir, join(paths.spaceDir, ".git"), { recursive: true })) {
         mode = "cow";
@@ -391,7 +389,7 @@ function runProvisionOperation(
       }
     }
     if (mode === "clone") {
-      git(paths.boxDir, ["clone", "--local", "--no-checkout", req.originRepo, paths.spaceDir]);
+      git(paths.boxDir, ["clone", "--local", "--no-hardlinks", "--dissociate", "--no-checkout", req.originRepo, paths.spaceDir]);
       adoptOriginRemote(req.originRepo, paths.spaceDir, { trackingRefs: true });
     }
     op.steps.git_placed = { mode, at: cfg.now(), ...(image == null ? {} : { image }) };

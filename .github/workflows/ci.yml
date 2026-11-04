@@ -42,6 +42,7 @@ jobs:
           brew list tmux >/dev/null 2>&1 || brew install tmux
           npm ci
           npm run build
+          node --test --test-name-pattern="cell-driver.unconfined-platform" v2/driver-cell/tests/driver.test.ts
           node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/local-rpc-security.test.ts v2/daemon/tests/human-ref.test.ts v2/daemon/tests/local-rpc-trust.test.ts
       - uses: actions/upload-artifact@v4
         with:
@@ -77,6 +78,47 @@ jobs:
           name: delivery-file-${{ matrix.target }}
           path: dist/v2/delivery-file/${{ matrix.target }}/
           if-no-files-found: error
+  cell-scope:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+      - name: Build and prove Cell scope on its native runner
+        shell: bash
+        run: |
+          test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
+          node scripts/build-cell-scope.mjs
+          node scripts/probe-cell-scope.mjs
+      - name: Bind provenance and file digests to this CI run
+        shell: bash
+        env:
+          CELL_SCOPE_TARGET: ${{ matrix.target }}
+        run: |
+          node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync(`dist/v2/cell-scope/${process.env.CELL_SCOPE_TARGET}/ci-provenance.json`, JSON.stringify({version:1,sourceRevision:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,job:process.env.GITHUB_JOB,target:process.env.CELL_SCOPE_TARGET})+"\n")'
+          cd "dist/v2/cell-scope/${{ matrix.target }}"
+          sha256sum cell-scope hive manifest.json proof.json ci-provenance.json > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        id: scope-artifact
+        with:
+          name: cell-scope-${{ matrix.target }}
+          path: dist/v2/cell-scope/${{ matrix.target }}/
+          if-no-files-found: error
+      - name: Record uploaded artifact identity
+        shell: bash
+        run: |
+          printf '%s\n' 'cell-scope target=${{ matrix.target }} run=${{ github.run_id }} job=${{ github.job }} artifactId=${{ steps.scope-artifact.outputs.artifact-id }} artifactDigest=${{ steps.scope-artifact.outputs.artifact-digest }}' >> "$GITHUB_STEP_SUMMARY"
   verify:
     # Source tests need tmux >= 3.3 (allow-passthrough); Ubuntu 24.04 ships 3.4.
     # Release archive packaging remains controlled by release.yml.
@@ -112,5 +154,53 @@ jobs:
       - run: npm run check
       - run: npm run v2:check
       - run: npm run build
+      - name: Smoke the actual built CLI and deploy bridge before the root suite
+        run: node --import tsx --test tests/deploy-built-help.test.ts
+      - name: Require built native helpers and non-optional proofs
+        shell: bash
+        run: |
+          node -e 'const fs=require("node:fs"),path=require("node:path");for(const family of ["peercred","delivery-file"]){const binary=path.resolve("dist/v2",family,process.platform+"-"+process.arch,family+".node");fs.accessSync(binary);require(binary);console.log(JSON.stringify({fixture:"required native helper loaded",family,binary}));}'
+          node scripts/probe-peercred.mjs
+          node scripts/probe-delivery-file.mjs
+      - name: Stage the exact Node binary at the approved test path
+        shell: bash
+        run: |
+          source_node="$(node -p 'process.execPath')"
+          node_version="$(node -p 'process.versions.node')"
+          node_arch="$(node -p 'process.arch')"
+          node_root="/opt/node-v${node_version}-linux-${node_arch}"
+          [[ "$node_root" =~ ^/opt/node-v[0-9]+\.[0-9]+\.[0-9]+-linux-(x64|arm64)$ ]]
+          sudo install -D -o root -g root -m 755 "$source_node" "$node_root/bin/node"
+          for directory in "$node_root" "$node_root/bin"; do
+            test "$(stat -c '%u:%g:%a' "$directory")" = "0:0:755"
+          done
+          sha256sum "$source_node" "$node_root/bin/node"
+          test "$(sha256sum "$source_node" | cut -d ' ' -f 1)" = "$(sha256sum "$node_root/bin/node" | cut -d ' ' -f 1)"
+          "$node_root/bin/node" -e 'const assert=require("node:assert/strict"); assert.equal(process.execPath,process.argv[1]); console.log(JSON.stringify({fixture:"CI approved Node path",execPath:process.execPath}));' "$node_root/bin/node"
+          source_include="$(dirname "$(dirname "$source_node")")/include/node"
+          sudo python3 .github/scripts/stage-node-headers.py "$source_include" "$node_root/include/node"
+          python3 - "$source_include" "$node_root/include/node" <<'PYHEADERS'
+          import hashlib, json, os, pathlib, stat, sys
+          manifests = []
+          for root in map(pathlib.Path, sys.argv[1:]):
+              rows = []
+              for path in sorted(root.rglob('*')):
+                  info = path.lstat()
+                  if stat.S_ISDIR(info.st_mode):
+                      continue
+                  if not stat.S_ISREG(info.st_mode):
+                      raise ValueError('nonregular header refused')
+                  rows.append(hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + str(path.relative_to(root)))
+              if not rows:
+                  raise ValueError('empty Node header tree')
+              manifest = '\n'.join(rows) + '\n'
+              print(str(root) + '\n' + manifest)
+              print(json.dumps({'headerRoot': str(root), 'treeSha256': hashlib.sha256(manifest.encode()).hexdigest(), 'files': len(rows)}))
+              manifests.append(manifest)
+          assert manifests[0] == manifests[1], 'Node header tree hash mismatch'
+          PYHEADERS
+          echo "$node_root/bin" >> "$GITHUB_PATH"
+      - name: Require attributed Cell home-write denial
+        run: node --test v2/driver-cell/tests/real-home-write.test.ts
       - run: npm test
       - run: npm run v2:test && npm run v2:daemon && npm run v2:driver && npm run v2:driver2 && npm run v2:harness

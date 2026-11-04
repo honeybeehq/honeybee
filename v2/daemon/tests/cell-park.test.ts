@@ -9,7 +9,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,7 +32,7 @@ import { makeDaemonDir, startDaemon, waitFor, type DaemonHandle } from "./helper
 const here = dirname(fileURLToPath(import.meta.url));
 const CELL_AGENT_PATH = join(here, "..", "..", "driver-cell", "test-agent", "agent.mjs");
 
-function makeRig(retention: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+function makeRig(retention: Record<string, unknown>, extra: Record<string, unknown> = {}, opts: {sandbox?: boolean} = {}) {
   const root = mkdtempSync(join(tmpdir(), "hb-v2-park-"));
   const origin = makeOrigin(root);
   writeFileSync(join(origin.repo, ".gitignore"), ".env\n.next/\nnode_modules/\n.proof/\ntmp/\n");
@@ -40,14 +40,17 @@ function makeRig(retention: Record<string, unknown>, extra: Record<string, unkno
   g(origin.repo, ["commit", "-q", "-m", "ignores"]);
   const cellsRoot = join(root, "cells");
   mkdirSync(cellsRoot, { recursive: true });
+  const agent = opts.sandbox ? join(root, "agent.mjs") : CELL_AGENT_PATH;
+  if (opts.sandbox) copyFileSync(CELL_AGENT_PATH, agent);
   const { dir, cleanup } = makeDaemonDir({
+    nodeKind: opts.sandbox ? "satellite" : "workstation",
     bootHangTimeoutMs: 60_000,
     ...extra,
-    cells: { root: cellsRoot, retention },
+    cells: { root: cellsRoot, retention, sandbox: opts.sandbox ?? false },
     agents: {
       cellstub: {
         command: process.execPath,
-        args: [CELL_AGENT_PATH],
+        args: [agent],
         adapter: "stub",
         env: {
           GIT_AUTHOR_NAME: "cell-bee", GIT_AUTHOR_EMAIL: "bee@hive.invalid",
@@ -92,7 +95,7 @@ test("cell-park.0: verb, capability and error code are published", () => {
 });
 
 test("cell-park.1: trim mode parks only build output; a live runtime is a typed refusal; replaying the key returns the same report", { timeout: 180_000 }, async () => {
-  const rig = makeRig({ enabled: false, trimAfterHours: null });
+  const rig = makeRig({ enabled: false, trimAfterHours: null }, {}, {sandbox: true});
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(rig.dir);
@@ -129,7 +132,7 @@ test("cell-park.1: trim mode parks only build output; a live runtime is a typed 
 });
 
 test("cell-park.2: purge mode parks every ignored path, copies env files aside, and the next runtime start restores them; the idle pass does the same", { timeout: 240_000 }, async () => {
-  const rig = makeRig({ enabled: false, trimAfterHours: 0, purgeIgnoredOnPark: true });
+  const rig = makeRig({ enabled: false, trimAfterHours: 0, purgeIgnoredOnPark: true }, {}, {sandbox: true});
   let daemon: DaemonHandle | null = null;
   try {
     daemon = await startDaemon(rig.dir);

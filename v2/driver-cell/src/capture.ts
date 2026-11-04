@@ -52,7 +52,7 @@ export interface CaptureReport {
   /** Conflicted paths (conflict only) — staged for the operator, never auto-resolved. */
   conflicts: string[];
   /** Refusal reason (refused only). */
-  reason: "target_checked_out" | "target_moved" | "no_cell_head" | null;
+  reason: "target_checked_out" | "target_moved" | "no_cell_head" | "invalid_objects" | null;
 }
 
 const TRANSIENT_NS = "refs/hive/capture";
@@ -112,7 +112,9 @@ export function captureWork(req: CaptureRequest): CaptureReport {
   let scratch: string | null = null;
   try {
     // 1. Cell commits into the origin, under the transient ref only.
-    git(originRepo, ["fetch", "--no-tags", "--no-recurse-submodules", cellSpaceDir, `+HEAD:${transientRef}`]);
+    if (tryGit(originRepo, ["-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "--no-recurse-submodules", cellSpaceDir, `+HEAD:${transientRef}`]).status !== 0) {
+      return report({ ...base, status: "refused", reason: "invalid_objects", cellHead });
+    }
 
     const targetTip = revParse(originRepo, `refs/heads/${targetBranch}`);
 
@@ -184,7 +186,9 @@ export function captureWork(req: CaptureRequest): CaptureReport {
 
     // 3. Result objects into the origin (transient ref again — force-update
     // of OUR ref), then advance the target branch by CAS.
-    git(originRepo, ["fetch", "--no-tags", "--no-recurse-submodules", scratchRepo, `+${resultSha}:${transientRef}`]);
+    if (tryGit(originRepo, ["-c", "fetch.fsckObjects=true", "fetch", "--no-tags", "--no-recurse-submodules", scratchRepo, `+${resultSha}:${transientRef}`]).status !== 0) {
+      return report({ ...base, status: "refused", reason: "invalid_objects", cellHead, baseTarget: targetTip });
+    }
     const cas = tryGit(originRepo, ["update-ref", `refs/heads/${targetBranch}`, resultSha, targetTip]);
     if (cas.status !== 0) {
       return report({ ...base, status: "refused", reason: "target_moved", cellHead, baseTarget: targetTip });

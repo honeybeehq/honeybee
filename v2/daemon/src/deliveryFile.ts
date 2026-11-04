@@ -8,6 +8,7 @@ export const MULTILINE_FILE_MAX_BYTES = 8 * 1024 * 1024;
 interface Bridge {
   publish(root: string, bee: string, id: string, content: Buffer): true;
   remove(root: string, bee: string, id: string): true;
+  readRegular?(root: string, path: string, limit: number): Buffer;
 }
 export class DeliveryFileError extends Error {
   readonly code: string;
@@ -36,6 +37,12 @@ export class DeliveryFiles {
       this.bridge = bridge;
       return bridge;
     } catch { throw new DeliveryFileError("delivery_file_helper_unavailable"); }
+  }
+  readRegular(root: string, path: string, limit: number): Buffer {
+    if (!Number.isInteger(limit) || limit < 1 || limit > MULTILINE_FILE_MAX_BYTES) throw new DeliveryFileError("host_file_limit_invalid");
+    const bridge = this.native();
+    if (typeof bridge.readRegular !== "function") throw new DeliveryFileError("host_file_helper_unavailable");
+    return bridge.readRegular(root, path, limit);
   }
   private location(root: string, owner: string, bee: string, id: string, worktrees: readonly string[], cleanup: boolean) {
     if (!isAbsolute(root) || root === sep || /[\x00-\x1f\x7f\u0085\u2028\u2029]/.test(root) || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)) throw new DeliveryFileError("delivery_file_location_invalid");

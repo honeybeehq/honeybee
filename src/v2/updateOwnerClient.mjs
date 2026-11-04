@@ -1,6 +1,8 @@
 import { readLiveEndpointRecord, samePath } from "../../v2/daemon/src/endpointRecord.ts";
 import { ownedPrivateDir } from "../../v2/core/src/socketPath.ts";
 import { inspectProcess } from "../../v2/harness/src/processIdentity.ts";
+export { loadNodeConfig } from "../../v2/daemon/src/config.ts";
+export { resolveDaemonConfig } from "../../v2/daemon/src/daemonConfig.ts";
 export { inspectProcess };
 import { dirname, join } from "node:path";
 function liveEndpoint(dataDir) {
@@ -11,6 +13,11 @@ function liveEndpoint(dataDir) {
   return record;
 }
 export function recordedSocketPath(dataDir) {
+  if (process.env.HIVE_CELL_GATEWAY_SOCKET !== undefined) {
+    const gateway = process.env.HIVE_CELL_GATEWAY_SOCKET;
+    if (!gateway.startsWith("/") || gateway.includes("\0")) throw new Error("Invalid Cell gateway socket path");
+    return gateway;
+  }
   return liveEndpoint(dataDir)?.socketPath ?? join(dataDir, "hived.sock");
 }
 import { DaemonDownError, RpcClient } from "../../v2/cli/src/client.ts";

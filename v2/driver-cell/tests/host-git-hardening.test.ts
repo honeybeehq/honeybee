@@ -50,6 +50,8 @@ test("host git never runs a hook or fsmonitor planted in a Cell, a nested repo, 
       { disableCow: true },
     );
     const space = cell.paths.spaceDir;
+    g(space, ["config", "transfer.fsckObjects", "false"]);
+    assert.equal(tryGit(space, ["config", "--get", "transfer.fsckObjects"]).stdout.trim(), "true");
     g(space, ["-c", "protocol.file.allow=always", "submodule", "add", "--quiet", submoduleOrigin.repo, "vendor/sub"]);
     g(space, ["commit", "--quiet", "-m", "add submodule"]);
     const work = commitInCell(space, "feature.ts", "export const f = 1;\n", "add feature");
@@ -137,7 +139,7 @@ test("host git never runs a hook or fsmonitor planted in a Cell, a nested repo, 
     assert.deepEqual(gitlinkSpawns(trace), []);
     if (previousTrace === undefined) delete process.env.GIT_TRACE;
     else process.env.GIT_TRACE = previousTrace;
-    assert.deepEqual(hostGitConfig.map(([key]) => key), ["core.fsmonitor", "core.hooksPath", "submodule.recurse", "diff.ignoreSubmodules", "commit.gpgsign", "tag.gpgsign", "log.showSignature", "core.alternateRefsCommand"]);
+    assert.deepEqual(hostGitConfig.map(([key]) => key), ["core.fsmonitor", "core.hooksPath", "submodule.recurse", "diff.ignoreSubmodules", "commit.gpgsign", "tag.gpgsign", "log.showSignature", "core.alternateRefsCommand", "transfer.fsckObjects"]);
   } finally {
     rig.cleanup();
   }

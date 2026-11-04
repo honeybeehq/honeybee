@@ -40,7 +40,7 @@ function makeRig(retention: Record<string, unknown>, opts: { submodule?: boolean
   mkdirSync(cellsRoot, { recursive: true });
   const { dir, cleanup } = makeDaemonDir({
     bootHangTimeoutMs: 60_000,
-    cells: { root: cellsRoot, retention },
+    cells: { root: cellsRoot, retention, sandbox: false },
     agents: {
       cellstub: {
         command: process.execPath,

@@ -1,4 +1,8 @@
+import { mirrorCellSandbox } from "./cellSandboxPolicy.ts";
+import { CellExecContainmentError } from "../../driver-cell/src/exec.ts";
+import { assertClaudeSessionId } from "../../adapters/src/claudeSession.ts";
 import type { SchedulingStatus } from "../../../src/processScheduling.ts";
+import { cellDaemonEnvironment, withoutCellHostRoutes } from "../../driver-cell/src/runtimeEnvironment.ts";
 import { assertConfinedSpawn, ConfinedAdmission, assertConfinedVerb, bwrapMode, peerConfinement, runtimeUserNamespace, strictConfinementReasons } from "./confinedPeer.ts";
 import { admitSecretExecution } from "./secretExecution.ts";
 import type { BeeTellParams, BeeReactParams, HumanOutputMode, BeeTellResult, BeeReactResult, SetHumanOutputModeResult } from "../../core/src/humanOutputTypes.ts";
@@ -9,6 +13,8 @@ export { autoswapDisabled } from "../../core/src/index.ts";
 import {IdentityRecovery} from "./identityRecovery.ts";
 import {inspectProcess, sameProcess, type ProcessInspection} from "../../harness/src/processIdentity.ts";
 import { bindSpawnParent, spawnCallerBee } from "./spawnLineage.ts";
+import { CellGatewayLimits } from "./cellGateway.ts";
+import { ownedPrivateDir, requireSocketPathFits, shortSocketDir, socketPathFits } from "../../core/src/socketPath.ts";
 import type { ExecutionStart } from "../../core/src/executionStart.ts";
 import { ExecutionFenceError, type ExecutionRequest } from "../../core/src/executionFence.ts";
 import { type PhoneOriginRequest, parsePhoneOrigin } from "../../core/src/phoneOrigin.ts";
@@ -51,7 +57,7 @@ import { threadOperationView, type ThreadOperationRow } from "../../core/src/thr
  *  - behavior 6 (service mgmt)     → service.ts (wired by the CLI)
  *  - behavior 7 (config)           → config.ts
  */
-import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, constants, copyFileSync, cpSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import type { InterruptOutcome } from "../../harness/src/driver.ts";
 import { appendFileSync } from "node:fs";
@@ -202,14 +208,12 @@ import {
   type CellBase,
   isAncestor,
   currentBranch,
-  sandboxWritableDirectory,
-  sandboxEnabled,
+  sandboxEnabled, resolveCellSandboxPolicy,
   DEFAULT_SANDBOX_TMPFS_BYTES,
   runCellExec,
   sanitizeComponent,
   type CellSpec,
   type ReserveRequest,
-  type SandboxWritableDirectory,
 } from "../../driver-cell/src/index.ts";
 import { deliveryContentRoot } from "./multilineFallback.ts";
 import { DeliveryFiles } from "./deliveryFile.ts";
@@ -747,6 +751,10 @@ export class HiveDaemon {
   private core: DaemonCore | null = null;
   private telemetry: TelemetryStore | null = null;
   private rpc: RpcServer | null = null;
+  private readonly cellGateways = new Map<string, { beeId: string; generation: number; socketPath: string; server: RpcServer }>();
+  private readonly cellGatewayLimits = new Map<string, CellGatewayLimits>();
+  private cellGatewayDirectory: string | null = null;
+  private cellGatewaySweep: NodeJS.Timeout | null = null;
   private tickTimer: NodeJS.Timeout | null = null;
   private tickRequested = false;
   /** Event-loop delay histogram: stalls anywhere (tick, RPC handler, fs) starve the accept loop. */
@@ -979,10 +987,13 @@ export class HiveDaemon {
     const cell = new CellDriver({
       cellsRoot: this.cfg.cellsRoot,
       nodeKind: this.cfg.nodeKind,
+      nodeKindExplicit: this.cfg.nodeKindExplicit,
       resolveHarness: (beeId: string, generation?: number) => this.resolveSpawnSpec(beeId, generation),
       sandboxKvm: this.cfg.cellKvm,
       resolveCell: (beeId: string) => this.resolveCellSpec(beeId),
-      resolveSandboxWritablePaths: (beeId: string) => this.resolveCellSandboxWritablePaths(beeId),
+      sandboxProtectedPaths: [this.cfg.dataDir, this.cfg.accounts.homesDir],
+      resolveSandboxGateway: (beeId, generation) => this.cellGateway(beeId, generation),
+      resolveSandboxHarnessHome: (beeId: string) => this.resolveCellSandboxHarnessHome(beeId),
       ...(this.cfg.beeSandboxTmpBytes !== undefined ? { sandboxTmpfsBytes: this.cfg.beeSandboxTmpBytes } : {}),
       log: (op: string) => this.log(op),
       onCellMaterialized: (beeId: string, execution?: ExecutionStart) => this.onCellMaterialized(beeId,execution),
@@ -1271,6 +1282,10 @@ export class HiveDaemon {
       await this.loginFlows?.shutdown();
       await this.threadOperations?.shutdown();
       await this.rpc?.close();
+      if (this.cellGatewaySweep) clearInterval(this.cellGatewaySweep);
+      this.cellGatewaySweep = null;
+      await Promise.all([...this.cellGateways.values()].map(gateway => gateway.server.close()));
+      this.cellGateways.clear();
       removeEndpointRecord(this.cfg.dataDir, this.instanceId);
       this.core?.detachReconnectOwner();
       if (options.preserveRuntimes === false) {
@@ -1644,6 +1659,14 @@ export class HiveDaemon {
     const accounts = this.accounts;
     return rows.map((source) => {
       const row = this.publicConfirmationAudit(publicAuditRow(source, includeOperatorLocalHomes));
+      if (row.kind === "cell.put") {
+        const payload = {...row.payload};
+        for (const key of ["cell", "previous"]) {
+          const cell = payload[key];
+          if (cell && typeof cell === "object" && !Array.isArray(cell)) payload[key] = mirrorCellSandbox(cell as CellRow, this.cfg.nodeKind, this.cfg.cellSandbox);
+        }
+        return {...row, payload};
+      }
       if (row.kind === "thread_operation.put") return { ...row, payload: { operation: row.payload.operation } };
       if (!accounts) return row;
       if (row.kind !== "account.put") return row;
@@ -1739,7 +1762,7 @@ export class HiveDaemon {
     // from the account row. The tracked pre-claim readiness gate has already
     // activated the home and reconciled its native MCP config.
     const env = { ...this.runtimeEnvOf(bee, spec, "resolve"), ...this.beeTmpEnv(bee, spec) };
-    if (adapterName === "codex" && bee.providerSessionId && env.CODEX_HOME) {
+    if (adapterName === "codex" && bee.substrate !== "cell" && bee.providerSessionId && env.CODEX_HOME) {
       const path = codexSwapHistoryPath(env.CODEX_HOME, bee.id, bee.providerSessionId);
       if (existsSync(path)) {
         validateCodexSwapPath(env.CODEX_HOME, path);
@@ -1806,25 +1829,22 @@ export class HiveDaemon {
         cellId: parsed.cellId,
         ...(restoreWip ? { restoreWip } : {}),
       },
-      sandbox: cell.sandbox ?? this.cfg.cellSandbox,
+      sandbox: resolveCellSandboxPolicy(this.cfg.nodeKind, cell.sandbox, this.cfg.cellSandbox).override,
     };
   }
 
-  private resolveCellSandboxWritablePaths(beeId: string): readonly SandboxWritableDirectory[] {
+  private resolveCellSandboxHarnessHome(beeId: string): { harness: string; path: string } | undefined {
     const store = this.mustStore();
     const bee = store.getBee(beeId);
-    if (!bee) throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} not found`);
-    const tmp = this.beeTmp ? this.verifiedBeeTmp(beeId) : null;
-    const grants: SandboxWritableDirectory[] = tmp ? [{ path: tmp.TMPDIR }, { path: tmp.NODE_COMPILE_CACHE }] : [];
-    if (!bee.account) return grants;
-    const account = store.getAccount(bee.account);
-    if (!account) {
-      throw new Error(`resolveCellSandboxWritablePaths: bee ${beeId} is bound to unknown account ${bee.account}`);
-    }
-    if (this.mustAccounts().isNative(account)) return grants;
-    return [...grants, sandboxWritableDirectory(account.homePath, {
-      forbiddenDirectories: [this.cfg.accounts.homesDir],
-    })];
+    if (!bee) throw new Error(`resolveCellSandboxHarnessHome: bee ${beeId} not found`);
+    const spec = this.cfg.agents[bee.agent];
+    if (!spec) throw new Error(`resolveCellSandboxHarnessHome: no agent spec for ${bee.agent}`);
+    const harness = spec.adapter ?? bee.agent;
+    if (harness !== "claude" && harness !== "codex") return undefined;
+    const env = this.runtimeEnvOf(bee, spec, "sandbox");
+    const key = harness === "claude" ? "CLAUDE_CONFIG_DIR" : "CODEX_HOME";
+    const path = env[key] ?? join(homedir(), harness === "claude" ? ".claude" : ".codex");
+    return { harness, path };
   }
 
   private verifiedBeeTmp(beeId: string): { TMPDIR: string; NODE_COMPILE_CACHE: string } {
@@ -2520,7 +2540,7 @@ export class HiveDaemon {
         const offset = params.offset ?? 0;
         const limit = params.limitBytes ?? 262144;
         if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0 || offset > row.source.bytes || typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1 || limit > 1048576) throw new RpcError("invalid_request", "Invalid transcript byte window");
-        return readThreadHistory(row, offset, limit).catch(error => { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); });
+        return readThreadHistory(row, offset, limit, join(this.cfg.dataDir, "thread-operations")).catch(error => { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); });
       }
       case "bee.fork":
         return this.releasingRefusedClaim(() => this.rpcForkWithAdmission(params));
@@ -2586,6 +2606,26 @@ export class HiveDaemon {
         );
       case "view":
         return this.viewOf(this.mustStore(), this.param(params, "beeId"));
+      case "bee.transcript": {
+        const beeId = this.requireBee(params);
+        if (conn.authenticatedBeeId !== beeId) throw new RpcError("caller_not_trusted", "Transcript pages require the session's Cell gateway");
+        const offset = params.offset ?? 0;
+        const limitBytes = params.limitBytes ?? 262144;
+        if (typeof offset !== "number" || !Number.isSafeInteger(offset) || offset < 0 || typeof limitBytes !== "number" || !Number.isSafeInteger(limitBytes) || limitBytes < 1 || limitBytes > 1048576) throw new RpcError("invalid_request", "Invalid transcript byte window");
+        const path = this.ownedSessionLogPath(this.mustStore().getBee(beeId)?.sessionLogPath ?? null);
+        if (!path || !existsSync(path)) return { bytesBase64: "", nextOffset: offset, eof: true };
+        const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+        try {
+          const stat = fstatSync(fd);
+          const target = realpathSync(path);
+          const current = statSync(target);
+          if (!stat.isFile() || !target.startsWith(`${realpathSync(this.cfg.sessionLogDir)}/`) || stat.dev !== current.dev || stat.ino !== current.ino) throw new RpcError("caller_not_trusted", "Transcript must be a daemon-owned regular file");
+          if (offset > stat.size) throw new RpcError("transcript_unavailable", "Transcript was truncated; restart the read from offset zero");
+          const buffer = Buffer.alloc(Math.min(limitBytes, Math.max(0, stat.size - offset)));
+          const bytes = readSync(fd, buffer, 0, buffer.length, offset);
+          return { bytesBase64: buffer.subarray(0, bytes).toString("base64"), nextOffset: offset + bytes, eof: offset + bytes >= stat.size };
+        } finally { closeSync(fd); }
+      }
       case "list":
         if (conn.confinement === "confined") {
           const id = conn.localPeer ? this.spawnPeerBee(conn.localPeer) : null;
@@ -2913,7 +2953,7 @@ export class HiveDaemon {
       if (bee?.substrate !== "cell") return;
       const cell = bee.cellId ? this.store.getCell(bee.cellId) : null;
       if (!cell || cell.state === "removed") throw new Error("cell_unresolved");
-      sandboxed = sandboxEnabled(this.cfg.nodeKind, cell.sandbox ?? this.cfg.cellSandbox);
+      sandboxed = resolveCellSandboxPolicy(this.cfg.nodeKind, cell.sandbox, this.cfg.cellSandbox).enabled;
     } catch { this.log("security.confinement cell_sandbox_unresolved assumed=sandboxed"); }
     try {
       if (!sandboxed) return;
@@ -2966,6 +3006,83 @@ export class HiveDaemon {
       return { beeId: bee.id, identity: binding.kind === "bound" ? binding.identity : null, pid: runtime.state === "stopped" ? null : runtime.pid };
     }));
     return spawnCallerBee(peer, runtimes, pid => this.lineageInspect(pid));
+  }
+
+  private cellGateway(beeId: string, generation: number): { socketPath: string } {
+    const current = this.mustStore().currentRuntime(beeId);
+    if (!current || current.generation !== generation) throw new RpcError("caller_not_trusted", "Cell gateway requires the current generation");
+    const key = `${beeId}:${generation}`;
+    const prior = this.cellGateways.get(key);
+    if (prior) {
+      if (!prior.server.accepting) throw new RpcError("caller_not_trusted", "Cell gateway is unavailable");
+      return { socketPath: prior.socketPath };
+    }
+    for (const [oldKey, gateway] of this.cellGateways) {
+      if (gateway.beeId === beeId && gateway.generation !== generation) {
+        this.cellGateways.delete(oldKey);
+        void gateway.server.close().catch(error => this.log(`rpc.gateway.close_failed ${error instanceof Error ? error.message : String(error)}`));
+      }
+    }
+    const base = join(this.cfg.dataDir, "cell-gateways");
+    mkdirSync(base, { recursive: true, mode: 0o700 });
+    if (!ownedPrivateDir(base)) throw new RpcError("caller_not_trusted", "Gateway directory must be private");
+    const name = `${createHash("sha256").update(beeId).digest("hex").slice(0, 16)}-${generation}.sock`;
+    const dir = this.cellGatewayDirectory ?? (socketPathFits(join(base, this.instanceId.slice(0, 8), name))
+      ? join(base, this.instanceId.slice(0, 8)) : shortSocketDir("hb-cg-", name, ["/tmp"]));
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (!ownedPrivateDir(dir)) throw new RpcError("caller_not_trusted", "Gateway directory must be private");
+    this.cellGatewayDirectory = dir;
+    const socketPath = requireSocketPathFits(join(dir, name), "Cell gateway");
+    const store = this.mustStore();
+    let limits = this.cellGatewayLimits.get(beeId);
+    if (!limits) { limits = new CellGatewayLimits(); this.cellGatewayLimits.set(beeId, limits); }
+    if (!this.cellGatewaySweep) {
+      this.cellGatewaySweep = withoutRpcCaller(() => setInterval(() => {
+        for (const [gatewayKey, gateway] of this.cellGateways) {
+          const runtime = store.currentRuntime(gateway.beeId);
+          const bee = store.getBee(gateway.beeId);
+          if (!bee || bee.lifecycle === "deleted") this.cellGatewayLimits.delete(gateway.beeId);
+          if (!bee || bee.lifecycle === "deleted" || !runtime || runtime.state === "stopped" || runtime.generation !== gateway.generation) {
+            this.cellGateways.delete(gatewayKey);
+            void gateway.server.close().catch(error => this.log(`rpc.gateway.close_failed ${error instanceof Error ? error.message : String(error)}`));
+          }
+        }
+      }, 30_000));
+      this.cellGatewaySweep.unref();
+    }
+    const server = new RpcServer({
+      socketPath,
+      dataDir: this.cfg.dataDir,
+      instance: { id: this.instanceId, dataDir: canonicalPath(this.cfg.dataDir) },
+      log: op => this.log(op),
+      performance: this.performance,
+      securityAudit: (kind, payload) => store.recordLocalRpcEvent(kind as "rpc.peer_credentials_unavailable" | "rpc.local_refused" | "rpc.local_registered", { ...payload, beeId, generation }),
+      dispatch: (verb, params, conn) => this.dispatch(verb, params, conn),
+      cellGateway: {
+        identity: Object.freeze({ beeId, generation }),
+        limits,
+        current: peer => {
+          const bee = store.getBee(beeId);
+          const runtime = store.currentRuntime(beeId);
+          if (!bee || bee.lifecycle === "deleted" || bee.substrate !== "cell" || !runtime || runtime.generation !== generation || runtime.state === "stopped") return false;
+          const binding = store.runtimeProcessIdentity(beeId, generation);
+          if (binding.kind !== "bound") return false;
+          return spawnCallerBee(peer, [{ beeId, identity: binding.identity }], inspectProcess) === beeId;
+        },
+        canSend: target => {
+          const bee = store.getBee(beeId);
+          const parent = store.getBee(target);
+          return !!bee && !!parent && !isInboxAgent(parent.agent) && !bee.parentExternal && bee.parentId === target;
+        },
+      },
+    });
+    try { server.listenFresh(); }
+    catch (error) {
+      void server.close().catch(closeError => this.log(`rpc.gateway.close_failed ${closeError instanceof Error ? closeError.message : String(closeError)}`));
+      throw error;
+    }
+    this.cellGateways.set(key, { beeId, generation, socketPath, server });
+    return { socketPath };
   }
 
   private rpcSpawnEffect(params: Record<string, unknown>): Promise<SpawnResult> {
@@ -5132,15 +5249,20 @@ export class HiveDaemon {
     if (secret && controller) this.secretExecutions.set(secret.executionId, { beeId: secret.beeId, cellId, nodeId: secret.nodeId, controller });
     try {
       if (secret && (secret.expiresAt <= Date.now() || secret.outputCapture && secret.outputCapture.expiresAt <= Date.now())) throw new Error("secret_execution_expired");
+      const execRuntime = store.currentRuntime(cell.sourceBeeId);
+      const sandboxPolicy = resolveCellSandboxPolicy(this.cfg.nodeKind, cell.sandbox, this.cfg.cellSandbox);
+      const gatewaySocketPath = sandboxPolicy.enabled && execRuntime ? this.cellGateway(cell.sourceBeeId, execRuntime.generation).socketPath : undefined;
       const outcome = await runCellExec(
         paths,
         {
           argv: argv as string[],
           cwd,
           timeoutMs,
-          sandbox: cell.sandbox,
+          sandbox: sandboxPolicy.override,
           nodeKind: this.cfg.nodeKind,
+          nodeKindExplicit: this.cfg.nodeKindExplicit,
           kvm: this.cfg.cellKvm,
+          gatewaySocketPath,
           ...(secret ? { secretEnv: secret.outputCapture ? undefined : secret.env, ...(secret.outputCapture ? { outputCapture: { maxBytes: secret.outputCapture.maxBytes, expiresAt: secret.outputCapture.expiresAt, receive: (bytes: Buffer) => captureSecretOutput?.(secret.outputCapture!.leaseId, bytes) } } : {}), signal: controller!.signal } : {}),
 
         },
@@ -5161,8 +5283,8 @@ export class HiveDaemon {
       });
       return this.cellExecResultFromOp({ ...saved, timeoutMs: saved.timeoutMs ?? outcome.timeoutMs }, false);
     } catch (err) {
-      const detail = secret ? err instanceof Error && err.message === "secret_execution_containment_unavailable" ? err.message : "secret_execution_failed" : err instanceof Error ? err.message : String(err);
-      const reason = detail === "secret_execution_containment_unavailable" ? "secret_execution_containment_unavailable" : /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
+      const detail = err instanceof CellExecContainmentError ? "Cell exec cwd is outside or unavailable in the Cell" : secret ? err instanceof Error && err.message === "secret_execution_containment_unavailable" ? err.message : "secret_execution_failed" : err instanceof Error ? err.message : String(err);
+      const reason = err instanceof CellExecContainmentError ? "containment" : detail === "secret_execution_containment_unavailable" ? "secret_execution_containment_unavailable" : /escapes|space-relative|does not exist/.test(detail) ? "containment" : "argv_invalid";
       const saved = store.updateCellOp(op.id, { status: "failed", failure: reason === "containment" ? "containment" : detail });
       return { ...this.cellExecResultFromOp(saved, false), reason, stderr: detail, timeoutMs: timeoutMs ?? 0 };
     } finally {
@@ -5411,15 +5533,22 @@ export class HiveDaemon {
       const account = this.mustStore().getAccount(bee.account);
       if (!account) throw new Error(`${label}: bee ${bee.id} is bound to unknown account ${bee.account}`);
       accountEnv = { ...this.accounts.homeEnvOf(account), ...this.accounts.credentialEnvOf(account) };
+      const homeKey = homeEnvFor(account.harness);
+      if (bee.substrate === "cell" && homeKey) accountEnv[homeKey] = account.homePath;
       beeEnv = this.accounts.nativeBeeEnv(account, bee.env);
     }
+    const inherited = bee.substrate === "cell"
+      ? cellDaemonEnvironment(process.env, process.env.HIVE_DEBUG_CELL_ENV === "1" ? names => this.log(`debug.cell_env.dropped names=${JSON.stringify(names)}`) : undefined)
+      : process.env;
     const env: Record<string, string> = {
-      ...(process.env as Record<string, string>),
+      ...(inherited as Record<string, string>),
       ...(spec.env ?? {}),
       ...beeEnv,
       ...accountEnv,
     };
-    return { ...env, ...beeIdentityEnv(bee, this.cfg.dataDir, resolve(this.cfg.socketPath)) };
+    return bee.substrate === "cell"
+      ? withoutCellHostRoutes({...env, ...beeIdentityEnv(bee)})
+      : { ...env, ...beeIdentityEnv(bee, this.cfg.dataDir, resolve(this.cfg.socketPath)) };
   }
 
   private claudeContextLaunchFor(bee: BeeRow, args: readonly string[], env: Record<string, string>): ClaudeContextLaunch {
@@ -5664,7 +5793,10 @@ export class HiveDaemon {
     const spec = this.resolveSpawnSpec(source.id);
     const home = spec.env?.CODEX_HOME ?? join(homedir(), ".codex");
     let boundary: ThreadOperationRow["source"];
-    try { boundary = pinThreadHistory(codexHistoryPath(home, sourceProviderSessionId), sourceProviderSessionId); }
+    try {
+      const indexed = codexHistoryPath(home, sourceProviderSessionId);
+      boundary = pinThreadHistory(indexed.path, sourceProviderSessionId, indexed.root);
+    }
     catch (error) { throw new RpcError("thread_history_unavailable", error instanceof Error ? error.message : String(error)); }
     const id = randomUUID();
     const successorProviderSessionId = randomUUID();
@@ -6170,7 +6302,7 @@ export class HiveDaemon {
       bee: mirrorBeeRow(bee),
       runtime: bee ? store.currentRuntime(beeId) : null,
       move: bee ? (() => { const m = store.latestMoveOf(bee.id); return m ? toBeeMoveView(m) : null; })() : null,
-      cell: bee?.cellId ? store.getCell(bee.cellId) : null,
+      cell: bee?.cellId ? (() => { const cell = store.getCell(bee.cellId!); return cell ? mirrorCellSandbox(cell, this.cfg.nodeKind, this.cfg.cellSandbox) : null; })() : null,
       handoff: bee ? (() => { const h = store.latestHandoffOf(bee.id); return h ? toBeeHandoffView(h) : null; })() : null,
     };
   }
@@ -7001,7 +7133,7 @@ export class HiveDaemon {
       tasks: store.listTasks(),
       taskSupply: store.listTaskSupply(),
       loginFlows: store.listLoginFlows(),
-      cells: store.listCells(),
+      cells: store.listCells().map(cell => mirrorCellSandbox(cell, this.cfg.nodeKind, this.cfg.cellSandbox)),
       beeMoves: store.listBeeMoves().map(toBeeMoveView),
       beeHandoffs: store.listBeeHandoffs().map(toBeeHandoffView),
       transcriptSegments: store.listTranscriptSegments(),
@@ -7818,6 +7950,7 @@ export class HiveDaemon {
   }
 
   private carryCodexTranscript(bee: BeeRow, target: AccountRow): SwapAccountResult["transcript"] {
+    if (bee.substrate === "cell") return "none";
     const sessionId = bee.providerSessionId ?? bee.forkSeed;
     if (!sessionId) return "none";
     if (!bee.providerSessionId) throw new RpcError("transcript_unavailable", `bee ${bee.name}: Codex fork must start before its account can be swapped`);
@@ -7826,10 +7959,11 @@ export class HiveDaemon {
       const home = spec.env?.CODEX_HOME ?? join(homedir(), ".codex");
       const carried = codexSwapHistoryPath(home, bee.id, sessionId);
       const operation = this.mustStore().threadOperationForSuccessor(bee.id);
+      const indexed = !existsSync(carried) && operation?.successorProviderSessionId !== sessionId ? codexHistoryPath(home, sessionId) : null;
       const path = existsSync(carried) ? carried
         : operation?.successorProviderSessionId === sessionId ? operation.sessionPath
-        : codexHistoryPath(home, sessionId);
-      const source = pinThreadHistory(path, sessionId);
+        : indexed!.path;
+      const source = pinThreadHistory(path, sessionId, indexed?.root);
       const destination = codexSwapHistoryPath(target.homePath, bee.id, sessionId);
       const result = carryCodexHistory(source, target.homePath, destination, sessionId);
       this.log(`bee.swapAccount.transcript bee=${bee.id} seed=${sessionId} from=${source.path} to=${destination} bytes=${source.bytes} method=hardlink`);
@@ -7854,6 +7988,7 @@ export class HiveDaemon {
    * rekey has not been consumed yet (a stopped bee swapped twice).
    */
   private carryClaudeTranscript(bee: BeeRow, from: string | null, target: AccountRow): SwapAccountResult["transcript"] {
+    if (bee.substrate === "cell") return "none";
     const recovered = bee.providerSessionId || bee.forkSeed ? null : this.recoverClaudeSessionId(bee);
     const seed = bee.providerSessionId ?? bee.forkSeed ?? recovered?.sessionId;
     if (!seed) {
@@ -7863,6 +7998,7 @@ export class HiveDaemon {
         `bee ${bee.name}: no recorded Claude conversation can be carried to ${target.id} (no session id in the store and none in the bee's session log); swapping would resume nothing`,
       );
     }
+    assertClaudeSessionId(seed);
     const key = homeEnvFor("claude");
     const boundHome = key ? bee.env[key] : undefined;
     const sourceHome = boundHome ?? (from ? this.mustStore().getAccount(from)?.homePath : undefined) ?? join(homedir(), ".claude");
