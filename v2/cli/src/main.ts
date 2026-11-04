@@ -4951,7 +4951,7 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
       const repair = readNodeRepair(ctx.cfg.dataDir);
       if (repair) { emit(ctx, ["daemon held, needs repair: invalid Node pin"], { running: false, repair }, false); return 0; }
       const scope = serviceScopeOf(ctx);
-      if (scope.installed && serviceOwned(scope) && !scope.inCell && !scope.homeRedirected) {
+      if (scope.installed && serviceOwned(scope) && !scope.inCell && !scope.homeRedirected && !scope.labelUnpaired) {
         const status = await buildServiceManager(ctx).status();
         emit(
           ctx,
@@ -4960,7 +4960,7 @@ async function cmdDaemon(ctx: CliContext, parsed: Parsed): Promise<number> {
           false,
         );
       } else {
-        const why = scope.inCell ? "the background service is not consulted inside a Cell" : scope.homeRedirected ? "the background service is not consulted under a redirected HOME" : !scope.installed ? "no service installed" : `the background service runs data dir ${scope.unitDataDir ?? "(unknown)"}, not this one`;
+        const why = scope.inCell ? "the background service is not consulted inside a Cell" : scope.homeRedirected ? "the background service is not consulted under a redirected HOME" : scope.labelUnpaired ? "HIVE_V2_SERVICE_DIR is set without HIVE_V2_SERVICE_LABEL, so the background service is not consulted" : !scope.installed ? "no service installed" : `the background service runs data dir ${scope.unitDataDir ?? "(unknown)"}, not this one`;
         emit(
           ctx,
           [confirm("warn", "daemon:", `not running (socket ${ctx.cfg.socketPath}; ${why})`)],

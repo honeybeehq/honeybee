@@ -90,6 +90,14 @@ HIVE_V2_SERVICE_DIR="$SB/empty-units" hive daemon install --data-dir "$NODE_DIR"
 echo "unit written: $(ls "$SB/empty-units")"
 calls
 
-step "9. the owned path still works after all of the above"
+step "9. a sandbox unit dir without a label override (HIVE_V2_SERVICE_LABEL unset) would drive the node's own label -> refused, unit untouched"
+mkdir -p "$SB/unlabelled-units"
+sed 's/hb.guard.test/dev.honeybee.hive.v2/' "$SB/units/hb.guard.test.service" > "$SB/unlabelled-units/dev.honeybee.hive.v2.service"
+(unset HIVE_V2_SERVICE_LABEL; HIVE_V2_SERVICE_DIR="$SB/unlabelled-units" hive daemon stop --data-dir "$NODE_DIR" --json | cut -c1-200)
+(unset HIVE_V2_SERVICE_LABEL; HIVE_V2_SERVICE_DIR="$SB/unlabelled-units" hive daemon restart --data-dir "$NODE_DIR")
+(unset HIVE_V2_SERVICE_LABEL; HIVE_V2_SERVICE_DIR="$SB/unlabelled-units" hive daemon status --data-dir "$NODE_DIR")
+calls
+
+step "10. the owned path still works after all of the above"
 hive daemon stop --data-dir "$NODE_DIR"
 calls
