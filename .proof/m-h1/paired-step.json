@@ -1,0 +1,6440 @@
+{
+  "schemaVersion": 2,
+  "completed": true,
+  "startedAt": "2026-11-04T20:22:19.073Z",
+  "timestamp": "2026-11-04T20:23:43.784Z",
+  "sources": [
+    {
+      "root": "/tmp/hb-before",
+      "revision": "59a1d66d352b250ba1623f539b13f4bcfbf17f9c",
+      "status": "?? node_modules\n",
+      "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "hashes": {
+        "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+        "v2/adapters/src/args.ts": "cde627b399ff82136f3d3c5f53c781668b78f48faa7d76c3bb24cacf528fda6f",
+        "v2/adapters/src/claude.ts": "3a6b17f1b7fc777bdeed96689148f722f1acdfbaa608feedea17dcb5643521f1",
+        "v2/adapters/src/codex.ts": "4cef7ab08c94aa14c2e17560088fc2398c366add5c5ffb1decc57678453dc943",
+        "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+        "v2/adapters/src/index.ts": "9502ec947af87a8498461954351b566227d23180a990c1254113d5dd7370ce40",
+        "v2/adapters/src/kimi.ts": "01a12959dd7b507aee8e5cebf1789a12c0593acdb65549f506537dad4235feec",
+        "v2/adapters/src/muse.ts": "4e7b29125fd4a2936adef6387d5e3529aec06f9e70c876b48171261250e62859",
+        "v2/adapters/src/quota.ts": "c6160bc2087f96abd2d56525e67a1dd4459e7084bd55d84a4d35dc680cd1e98b",
+        "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+        "v2/adapters/src/types.ts": "28ee2b0f1c5d41dda88e813ab52da86c3ff291317c80597fcaed3dab1fa1ac47",
+        "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+        "v2/cli/src/bootstrap.ts": "9b809d767ace9f5f8d22ce2e2ffffa1ba7dda91556e310318e5a2686902da700",
+        "v2/cli/src/client.ts": "7415888427ef6e38782f96b0d8d7672ef59550d5d815105d300ba1cdc05cef90",
+        "v2/cli/src/completion.ts": "42027c0b82b5e458023c81854541d72a38864f787443c89c3dfaed427fc672f8",
+        "v2/cli/src/completion/shell.ts": "c77d0974d767313ef527f90e12c58a07565ddb3027f7b2c02a151850d6fda8f6",
+        "v2/cli/src/deploy/artifact.ts": "7cc7c45df3c17c6adde98b8ff03a442ceeaeabd2932bcf1cc7b39e1f9219a96e",
+        "v2/cli/src/deploy/cliExposure.ts": "b5c5d46f2457b72cd86fcf2a3e6e3e450775bb62fa91042aba178fc20c70940e",
+        "v2/cli/src/deploy/command.ts": "e0bf52636a1e830ed5e45f31aeb67ad2f555d22011f3014b178875824a88af07",
+        "v2/cli/src/deploy/npmPack.ts": "479760a422ce907f35ba25627d8585356a1dfbdbd054ad79d1a41b9958aa0fab",
+        "v2/cli/src/deploy/questionWithdrawal.ts": "6958d27be09ae825e9340cec00457ac27cae3811d3433722f84d67cb95a8cae2",
+        "v2/cli/src/deploy/readUpdateReservation.ts": "dae50f1a6b5c82f2b4d1b4f0eeda04e9d7c780bace521beb5938cf97071ae4cf",
+        "v2/cli/src/deploy/readiness.ts": "bb80586fb55ff304cff7ab06f468e649d9b19a175b8eecd5534bb0d0e6c49f02",
+        "v2/cli/src/deploy/runtime.ts": "ea3c5706b1fbc768eb040f8ca77519196e63ee0a00abc74410247ff7b90c7c36",
+        "v2/cli/src/deploy/updateAdmission.ts": "3eb04039ad568d8603dae68fd6c82b8ba5400dc64d41637b2381f4db288693a5",
+        "v2/cli/src/help.ts": "5e9d2ee6783bc8b29435bfb20563f6b123f7f139ef66cc0115027ca30ae4c935",
+        "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+        "v2/cli/src/main.ts": "9a8443559d0490e641fc3448c706aee42876a88a61b2492ce26f4e840b241f08",
+        "v2/cli/src/readonly.ts": "bd092313445348fdd640676a60866445755de48cb8971a5d8e25c215481dc2cb",
+        "v2/cli/src/render.ts": "bfe0bc112bf442e5ba87f431d77b3c38938efeb2f31a226d2a946989d3f40da3",
+        "v2/cli/src/serviceScope.ts": "987126cd43277f16fcbfc8d257734d169296eb8b6c15cfd04355e2ecb025ca46",
+        "v2/cli/src/style.ts": "43f8ee7eddf9d3634427b2cfe700ec955513fb9a8dc0a4acf3cd8b8036d39ea5",
+        "v2/cli/src/target.ts": "a37b406366aa6e81a026577840e755779296741dd4cf2f90e80662275c517990",
+        "v2/core/src/accountAllocation.ts": "5cf5bb01f10f6ffb25c3de402fa5ed0ed1fd90e577d66ac5e5077deb242765ae",
+        "v2/core/src/accountLease.ts": "4cd887319865b8e2b0ee194b7fbd53a0b985a8fb60caf42e8ea9d10cabe9b34b",
+        "v2/core/src/accountLimitsParse.ts": "fbe796c5cab6aece6f058f851462428b793bd3a98787fcdeb43a06cc21d2985d",
+        "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+        "v2/core/src/accountRecipes.ts": "064588cd41c6749071836eeb4116aea194d775ad10dba0d8c53d807c07c50111",
+        "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+        "v2/core/src/actions.ts": "100240ce166d8000de6e9ef8745b23600aab5adb8c432e21b69cf499822bb502",
+        "v2/core/src/apiarySwap.ts": "e7d57b8afe216d87cba2603025439e624813770972da36175e79334b92617daa",
+        "v2/core/src/audit.ts": "9e38f0b0d12296ed6ca590590312c0453620d89e1a0e77f0830860ad6ecc34db",
+        "v2/core/src/automation.ts": "7af17a93df4db700a55956d11315feab0bfa048d178e54edec187e99a05c2760",
+        "v2/core/src/canonical.ts": "25222a1fbfc7ee4c2f9ccf9878da27309f31e54b972c91d60bf13ed733cc97cd",
+        "v2/core/src/cellMove.ts": "64a0c07352dbab4226c2b173655eb412b976c4f22e4b9d158e5e829c0884d0d6",
+        "v2/core/src/deliveryConfirmation.ts": "5d58048c5fd34329ef99159177a3177b88ee4d1e7d4f822a707608deed059682",
+        "v2/core/src/deliveryConfirmationTypes.ts": "94896ec56c10e76ab9a11019e991a3c75a013286ecb852a85deb66ff64fa13e8",
+        "v2/core/src/effectResolve.ts": "6a768ba7f4dea8dd6884acebb33d68cbcaf3801edfd55f8d68de46396e681a05",
+        "v2/core/src/envRedaction.ts": "296052b4ba2147ccc2050f3bca0a3a040fc59c8ef0adcfbc1578f0a9acc8ad2c",
+        "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+        "v2/core/src/executionFence.ts": "ce89b1b9a1208eeb84b145260a16218daaed5d61a894f833f642e896e712cf1a",
+        "v2/core/src/executionStart.ts": "682c3f09846cf15a7f70eb4d9bbbcb45a975a4714be58163382ab9c89b41890e",
+        "v2/core/src/fsx.ts": "0bcb7306f29e6406fb148114d5ab862d877d01b5dec7388c0dac4dcfcae59262",
+        "v2/core/src/handoff.ts": "d7164a1dd657e3ee93ece9249977d2367626545311dcedc4d3f56e8a120f7cb6",
+        "v2/core/src/hostGit.ts": "a730dd7771140667cd21ea1ec788c19a69bc377d68292a7aec8836fc0e15ef15",
+        "v2/core/src/hostGitRuntime.ts": "12ff9a817898601b335468da7bedf23440bf497b3ab952e682e0bc1ff3639afe",
+        "v2/core/src/humanOutput.ts": "ee474b3ed493549ecb595d0fab128cf148e243fa0c3cc3c043b4c8e064c791e0",
+        "v2/core/src/humanOutputTypes.ts": "b85c1a9b9dc16b7505b50979c79d291a98986386c34e6806d3e3b334166e2a8d",
+        "v2/core/src/humanRefs.ts": "7db5059740eeb9705e1bb77b258710c0cdc3d17009720bbad1b026e5a4b8ce56",
+        "v2/core/src/import-frozen.ts": "b00060020bdd477be744d1cbfe827d772c9f15abf049bbf2357981951e0ac85a",
+        "v2/core/src/index.ts": "a047be6c3b817fa5af3b91049ecc0fcf0b0fa298883eac242ee36bf80fca5b8e",
+        "v2/core/src/lock.ts": "054744a0c15c18c35dfef48c852d5be44af13416b19e981f6c3a12bd0202d738",
+        "v2/core/src/loginFlow.ts": "304939cc238919de340261198a22692550fe5950c4c6641e3d553b8f6375d045",
+        "v2/core/src/mailBatch.ts": "d460e3999099221d114b2a7ed50e362c1832c05e9950951f8e5f8977bc77fc3a",
+        "v2/core/src/mirror.ts": "394e7203500004bef8142d0556f0396fedac2058cfddf5a46f9f8e4ac12c1629",
+        "v2/core/src/multilineDelivery.ts": "145685eaccff7569f24e7253977cda436e1d6627b5c9030db120402a507f2134",
+        "v2/core/src/multilineDeliveryTypes.ts": "ca142861dcc9e41eb4e6c7af6329e56b26b149f6951ca673cf00490fe9be8573",
+        "v2/core/src/nodeRuntime.ts": "4a52e09a547c2fbb0f482ae652393a4aeffa7b2120d4080bd32eef28b5eab84d",
+        "v2/core/src/packageRoot.ts": "ec7e308bcf731b80bec6dafc8ce33e844f142b091eb238a7ab545946ace4f457",
+        "v2/core/src/packages.ts": "d3f92325dec7c4d8f2ea31ed5e655d49df9cf7364a049d75d17f53f05f6142ec",
+        "v2/core/src/peercredReceipt.ts": "df1960b105d1b7b5e128259df724189f67535b81bd38ab9f2b9fca3f8ce8bf29",
+        "v2/core/src/phoneOrigin.ts": "2dd7069362c61a6b04b04fdb1e7c4dc5cf68fd7dcfc8e10b34fe43d894eefbd2",
+        "v2/core/src/phoneOriginTypes.ts": "470d2172e268204e13444e62e2ed73c5c8e0f4ea09d42e319104be1bf9df5e85",
+        "v2/core/src/processIdentity.ts": "6e0f9ecf9be188d9c81cee671c36b1a5dc1281345a73e59f148df0abb0f9cb6b",
+        "v2/core/src/processScheduling.ts": "341671a4b124a15cb6ffe616f8b4baed430a812f33770f6767083e76643e0d0b",
+        "v2/core/src/quiet.ts": "e8b28797cdd11c8bc132ec51ebcdbee6e419c657a8c1f73a7f51e9d01403f873",
+        "v2/core/src/quota.ts": "4eaccb5470b43266bb587cae82a05a0a517d0abc17a082c30deba469ffc61668",
+        "v2/core/src/reconnectTools.ts": "7b2786d4b7ab52d4d84968e7966514e9cc9c88db882dc455093d0a71f611fbd4",
+        "v2/core/src/registry.ts": "b903cd2bf4c2ff12b2d47df4e2b8d7af02645589e9577b49262592bdc6aae8b7",
+        "v2/core/src/release/buildIdentity.ts": "63a74ad20ce9498b598f59ec862c3b5a3039e7fea10326eba37d301d0b0508ac",
+        "v2/core/src/release/buildIdentityProducer.ts": "b325a59d07a2004ab3e3a3b4b6f3f1347dc5186310b4ce396cb236c10064e8bf",
+        "v2/core/src/release/distribution-profile.ts": "bb55c4c5fc456c374cf8f6eed6dd5f6ae146dde48f6833a62f1cbb1579745f23",
+        "v2/core/src/release/executionContract.ts": "712df2f113414492ec637e1eb6e936a7027d2119b7cb057f9fea186c1943b80c",
+        "v2/core/src/release/github.ts": "c8c6d0c7590c0b9716c3b7c9edcf7266a2989bc47d4c5f4a19380afef8283088",
+        "v2/core/src/release/index.ts": "279c0e0492d0e6d008a381fa3def990d7a9ff5d07e549a45fedc4676618b5c3b",
+        "v2/core/src/release/peercredProvenance.ts": "96cf1639306e9f2e2d1c6036dbe65a27853166698339831ff7e296eb2eeb58d8",
+        "v2/core/src/release/prepare.ts": "4570966bbefb4ab40b6550ea4f413bf2e31fdc20bf56cf220f21d318b17541f8",
+        "v2/core/src/release/publish.ts": "913eb928eee56f2c43fe9462dc33048bc61f74d6840b7a02e1c99352997c36e8",
+        "v2/core/src/release/repackPeercred.ts": "4a227b552317d7d2fd812e0620a09b491483cd27a62b2460fa05540c4ecbaeaf",
+        "v2/core/src/release/runtimeArtifact.ts": "809ce6a9684a98d58fedaf761b57d249494c641a5659c60284f02926dd8127f3",
+        "v2/core/src/release/runtimeTarget.ts": "72de0976f8d548dd5629a733553dc034e0ed23485884d605193c151a66e9faac",
+        "v2/core/src/release/settle.ts": "080596f320c402d09b1ef3d1eb0b70c437a6a8c36ad07a9450faeed3d9fc45b5",
+        "v2/core/src/release/v2.ts": "6cca4a23b20424e6cbfaaed4d04e58789163c62c1dae8875b60582f7ef922ff7",
+        "v2/core/src/rpcAuditContext.ts": "f27902cbb2f8e77e6c57ef68579c0510eb5501e974dff9a4482c021374836356",
+        "v2/core/src/runtimeCleanup.ts": "8343bfdb80cb9f38c171209b9ff64d25b51d355b693d44cf94d33e2fe1339f0d",
+        "v2/core/src/runtimeEnvironment.ts": "71bdffd708b6dd471a3f89b3b7fc213fd30c8ae37095e2fc865f816ce054fada",
+        "v2/core/src/runtimeMode.ts": "5b817f6e9b55e83e630f5e55fc98fca0d4dd61eff60a290fdb02c0bc6e62e4d7",
+        "v2/core/src/runtimeProcessIdentity.ts": "cc8a7c0d4a0299b93b2e6140dfd897152b59a5e7251b98feeba753d737e058f8",
+        "v2/core/src/schema.ts": "2d42c8b34949d265ab076b687278e82978c9770a9d31e7e57425a18b288d61ea",
+        "v2/core/src/servicePaths.ts": "b74ecb7c9708fdd885a0f333f257c0178e186ddf7de6f264ce53a117e3f26521",
+        "v2/core/src/socketPath.ts": "47130b1d5066b4fd7d17b865df4a34fe1cdf382c8909d1aed5f7dbd07945c67c",
+        "v2/core/src/store.ts": "3356176a44c9104c1b73b10d6a856b678905b1a5b258220b49d63a34e59c529c",
+        "v2/core/src/storeBackup.ts": "75fc665a459f1845350782a6eb643c3f81972e6d01e6fd22dfd8ac32a7553551",
+        "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+        "v2/core/src/threadOperation.ts": "c63c088bc0f067f2693b7ca600317fd755d3fcc8ec2e17ba62852ddb3f9d2933",
+        "v2/core/src/types.ts": "37191e038baf44923035394af0a235efed194339ebf314c46a527acda3a7d8b7",
+        "v2/core/src/updateReservation.ts": "6eb3b5228261527b6634b5d66f6ff3e9b92c943d3ddcfa0772dd251a06ed81cd",
+        "v2/core/src/view.ts": "e5406a64f5cb8e1136a56444571211d6d877705b8332645a11c03b07aa4312f6",
+        "v2/daemon/src/accountConfigImport.ts": "cf711993929baf0a1960703b72715be4df8cb08a70adf8536989a101a474a07c",
+        "v2/daemon/src/accountsService.ts": "9c7860b8fda037dcf9a1e5b30d27dc9e43fefde19f1a50f033fa06b9962063a1",
+        "v2/daemon/src/activation.ts": "ece27aabec3eeb7e91caf84843e541529cb619c640f50eb75f1a1cb333d97075",
+        "v2/daemon/src/answerTriggerProjection.ts": "603a36c01ea6cdaacce94a3163cf5b1f19fe2ec877c3ef86c3bd14a6b1349ffd",
+        "v2/daemon/src/authResume.ts": "b0a73b258f295bba8f2fec15cd7d097d66ca7c46a843e23b1740e19355bc7622",
+        "v2/daemon/src/autoTitle.ts": "8df67b1568d340c5957c46dede3ca384276932ac5c17048af2f146a1a2864b8e",
+        "v2/daemon/src/beeResumeSync.ts": "6df510167122b090776dedef2b1a858ab1b7bf725d26499ecde1e9511a2cc313",
+        "v2/daemon/src/beeTmp.ts": "1561605839f8acb7e61e1735d01fd035442290e0701a0ab586ec1f41557cb8be",
+        "v2/daemon/src/bin.ts": "37b102d6314c1271080688f2293b005f3a5450a7eda8fb7599f41884b0e5d3fb",
+        "v2/daemon/src/cellRetention.ts": "3919b69621dce95e2397fda36819ef35336ea3798f504ab79e8d07b6f0a7dd48",
+        "v2/daemon/src/cellRetentionDiagnostics.ts": "abe6d834fbca2dd57e021637f37df187d3aba72cbe9defa7f1e4ffea56028f36",
+        "v2/daemon/src/championHomes.ts": "8f5cea5bf47cf90cae90e4d1a5f70ad9252abe7db37f2bfa876e26ae4567caa0",
+        "v2/daemon/src/claudeCredentialAuthority.ts": "94fd412976f1cb1f4391a006fc6edb30b189154681b0274d224fea6febfa26b1",
+        "v2/daemon/src/claudeRefreshLock.ts": "a62ecf0cf27e2daa1c7adf49a493274aabcced41edaeba2adfc39db46b9dc399",
+        "v2/daemon/src/claudeRefreshTransport.ts": "67681a3141c6c0269f2f4859d3403e97ff944e765fc8efd7038cf5ac10c97e98",
+        "v2/daemon/src/codexCredentialAuthority.ts": "29c61c04fa5c6e71b043016745e83c3f6290e1b27da949aa4177cba2b0e645d8",
+        "v2/daemon/src/codexSwapHistory.ts": "429359b2b7a06f874b52267cd83051687800341d78a701138310f9ce0ee4fe17",
+        "v2/daemon/src/config.ts": "5ed0a869938ae0481d8607944987f3a61619b95428dfb34e3ae37db824c15e7a",
+        "v2/daemon/src/confinedPeer.ts": "5acc61114c3491d016dfa6ef289480b566d731d22441aa4f36e57cf6937bcdca",
+        "v2/daemon/src/contextPolicy.ts": "1c7ce681428a1289bced8614d8b9b1714f0681d8d3f98b17f53b35664aec2c68",
+        "v2/daemon/src/credentialHandoff.ts": "99078e461f57b38df101d44ba2153fdeb31165b6fcee6fd4f529f0c56e1850ec",
+        "v2/daemon/src/cursorAuth.ts": "c26829eb380cdbd1c042f8fc5f8e1853e27755886be65f7526d412497a6d8c4d",
+        "v2/daemon/src/daemon.ts": "ebd5b115413d9d166903fa34d9683a5ba3d5de1ee634e147bdd26baa60cc2bfd",
+        "v2/daemon/src/deliveryFile.ts": "eeea7fccc2a6f42269f063627538d7395d1bc8030a9601cb88b339315d77e973",
+        "v2/daemon/src/endpointRecord.ts": "c5cbcb591feda0cd138f3e7b5f509277dbcbc15d6ca1e49acba3ed1ea4d355e9",
+        "v2/daemon/src/envelope.ts": "837cb1117a94071ebd9368c50828da9a9dae588a0768aedb274658da87a72919",
+        "v2/daemon/src/gatewayMcpSeed.ts": "85afb7c8d4135f0a0bbbb9160b9c3479edcf9bd271b328f70fdb72582f4444fe",
+        "v2/daemon/src/gateways.ts": "818fbb3682812f389fef5c1e1947cb9b140f32af4fb38b70e363941d13218e1c",
+        "v2/daemon/src/grokCredentialAuthority.ts": "34edd53172b0630a504133a4c7afe565389942fa44427746fad077ee94571a4d",
+        "v2/daemon/src/hemSecret.ts": "2f4956b33f98aa5f1486da20a5787853f4950bd99cefecef0d30739e9cc0461b",
+        "v2/daemon/src/homeDefaults.ts": "7bd1c2844a7f8c2d8daaf8299fffac056ba3e43846b4b6a2a73cf8cbb3b746bd",
+        "v2/daemon/src/identityRecovery.ts": "8d70370abb8ae5997f697950054f6b04dacc67e0c80a66ff06cf0283d9207875",
+        "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+        "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+        "v2/daemon/src/jsonl.ts": "e8ab05c5884e6d5010eb8b63b4bc85c821c81ee5114383cc66785327f15ce43c",
+        "v2/daemon/src/keychain.ts": "5a7ecb508ba9bec3b37fc1e9c458781a75232f397c5ce66167289a82d9369129",
+        "v2/daemon/src/leaseMaterial.ts": "2556dcee3c09492e5333b79e70823055815e58debed6151539fd7cb61e2bdc9e",
+        "v2/daemon/src/limitsObservation.ts": "725952fd6c77145d3ebff531e794215f6c8babda1dfc4f80f2a76af0d0c7816c",
+        "v2/daemon/src/localRpcRefusals.ts": "98beb0e087d737158563622eab0ad935141de0b7bfc441131fbe7faf70520188",
+        "v2/daemon/src/localRpcTrust.ts": "59fb4c189ffe4cd152f1cf168c22b9b2deeb318369f2b6815df7d9c77041f97e",
+        "v2/daemon/src/login/claudeOauth.ts": "1fa5e8d20ec2c574ae40391a4d4c9e03e7e5b8483f3671ccc55569255edfa2d5",
+        "v2/daemon/src/login/cliRunner.ts": "7e2e7def50baf0535f77bb5cc8031081ecbbcb2a7b7e89fbe2ce454c8e23a31d",
+        "v2/daemon/src/login/common.ts": "cf2e10bda6652a8d37e2651912198e129fcb6e11a47d64e68698f87ab6458a09",
+        "v2/daemon/src/login/directKey.ts": "2bf6b9ad5b735c94e9c02c2542c0986a5ff1dde5eff471530ea5db994170ee0c",
+        "v2/daemon/src/login/museApiKey.ts": "28257662e777647ceea48f4d7dba9b77937663cd7c51ed0dcb7afb0e3c36ca8e",
+        "v2/daemon/src/login/museOauth.ts": "6d02ce04565c597733fc65459c4aa636f858d5c30e8ca6ba8038a94626b57597",
+        "v2/daemon/src/login/redaction.ts": "2b8a67e2172f929fe4d1ac2b3b9ccf91a4cbca03a30eea2d705070a20d862698",
+        "v2/daemon/src/login/runner.ts": "0b54f553b0ebab0eef4973aa6c24405e8c51c4ae3d14e0514d2c02383ffd7147",
+        "v2/daemon/src/login/transports.ts": "bba5d8daeef1d8234fc915bacf688c4a7938a2e78f300217bfdf7002431015b7",
+        "v2/daemon/src/loginFlows.ts": "f065b8ca8112cfa74c57ce32ecbb25bcc2234922382bedd4b30a3b1e638db92e",
+        "v2/daemon/src/loginWorker.ts": "6b4a56f8fa5f10fe04b2579a5bcaecbc0a5dc338045238c69d4b60929d7ee3c3",
+        "v2/daemon/src/loops.ts": "4a9e7bff2d9856c4e45e308a53304e2fc9cadf4475581aa0cb65ce427d0baea4",
+        "v2/daemon/src/mailBatch.ts": "07154d812509067a09d56e4d8206760b9a74dc418f1f674eac4cfc07981ff3c3",
+        "v2/daemon/src/mailDeliveryProjection.ts": "ffa478e6eb2063a3ed5f0e89280cca6306bab64f5f3e52b8a5d928202faba7bc",
+        "v2/daemon/src/main.ts": "9b0a69bdb932ca45ea632112ec86eafa2eed37e90802802d0ebe2435cc76eaee",
+        "v2/daemon/src/multilineFallback.ts": "6b33d866cde33189759b8eb0bd8029cd848f8f69e83416d27949771cd95de28b",
+        "v2/daemon/src/museCredentialAuthority.ts": "4aefa90526266cc7c2be4fa50395b4efcc0363913f532054235cf15bfa493f55",
+        "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+        "v2/daemon/src/namingService.ts": "b4f84f6d7de4b652063d95f6379fb28f1382019e3916646507c71b72a250c83e",
+        "v2/daemon/src/nativeKeychain.ts": "a2d989843d1021781f5c01ddf1a27e74d5c66110dfd03e7d6d884ee1fde7e469",
+        "v2/daemon/src/peerCredentials.ts": "f5a0e9ebe8569789fef339029b4a37c7cf01c67d1a8afdc6928ed4dfef6c93ab",
+        "v2/daemon/src/performance.ts": "930c14a19149fc6ca08511eb081bbded8bcde1c4aa0c5ba319a6a12ab6798072",
+        "v2/daemon/src/protocol.ts": "789fcf18f379311bc48ac6abc815a00d89ff2ceabf8bb19be0f2e552990ee26d",
+        "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+        "v2/daemon/src/questionDismissalProjection.ts": "ccb72e050184ae17d8788033d66b5129ad34baaebfa4006edfe5c4d19c0a664d",
+        "v2/daemon/src/quotaRecovery.ts": "cb0e6f325fa31b6c6a9d2fb4824ccae9217d590ac255667f10ebb7ce056dc0dc",
+        "v2/daemon/src/relocateSession.ts": "bb23acc8d738f024ac8a674b4c7f1366e9913c0b792df2814d9d0869c2ee04e7",
+        "v2/daemon/src/resumeBundles.ts": "942e55006bdb19084d195c3f2b6713c734b5b4a04110e11fb5dbd7682587188a",
+        "v2/daemon/src/rpc.ts": "73d0dbd9633ec8b3d7136b23ea5eb9cce694bbe889e778861ea25b7c4107b906",
+        "v2/daemon/src/rpcAccess.ts": "ee23ee005a18eec400a6d552a7c44f10c08269c12e52af37397fe851387d63eb",
+        "v2/daemon/src/secretExecution.ts": "ec82d46f4a057d442e04753327b1216f180d612e7dd1ba0f17de8b1dc140f669",
+        "v2/daemon/src/service.ts": "7300f6fffa5d1450de822e283d8c7adbec7295a1842c6cc73d861acdd7d32eae",
+        "v2/daemon/src/socketPath.ts": "67050df7ba34087d20097c9ea30c7007dc995aa0e995915f37efe7925a22f1b0",
+        "v2/daemon/src/spawnLineage.ts": "ad8cf65c05da0aefceac54e019253a76f6b3a2623a3a1637e2706b1d112b6b1a",
+        "v2/daemon/src/substrates.ts": "18fc5a32184dc42c33fedff7bb02d9279adf9b6955867efceb24571dc65eff83",
+        "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+        "v2/daemon/src/testNetworkGuard.ts": "90e670bca79fdf8e5a8d3a5a5d186fc253c315c2a696b695190f98fc4ca59fa6",
+        "v2/daemon/src/threadCompactor.ts": "e2ab0906151124ebb121bec36c297d5ebaf033ab9a7a4d5a1c7445f14b52eea8",
+        "v2/daemon/src/threadHistory.ts": "9a1174efdfe8d3f3b7e2edc8c264d6cefa294f7878d80a5942861105462f0537",
+        "v2/daemon/src/threadOperations.ts": "4e734e8beb6c57089f4d46c3c2ef388772a319275fb5217b3f60be786b68c0ad",
+        "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+        "v2/daemon/src/transcriptObjectStore.ts": "a4abb58363a0a8fc65bd7277edbf02d0264159235df830ff62c91a30632754b4",
+        "v2/daemon/src/transcriptSegmentWorker.ts": "c33ce623c07662ed5c694ee0bc978287869c8c7ac320c0a3f0bf550256a1d648",
+        "v2/daemon/src/transcriptSegmenter.ts": "dbbe9ab93e9c6134736643f1d40233c39031f0aa7442184672123f447e4bbafb",
+        "v2/daemon/tests/helpers.ts": "f20371310b5e279604b162490c4532bf3e6d880ee787866e4b8c6b861d3650ee",
+        "v2/driver-cell/src/capture.ts": "1ae9fc2848f5f3fdc6297f3c09eb2a370e673a906bc3b69d4e9f3a9fb1dbe840",
+        "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+        "v2/driver-cell/src/driver.ts": "f092d4a253d8235871815831fc1ca08e09db69804ce2e40417ae7b644902c8ee",
+        "v2/driver-cell/src/exec.ts": "17b13d390ef6aa28fd16d31dba3ff9c08d53b2618f23556ccf53de847e9d30fe",
+        "v2/driver-cell/src/git.ts": "d05949dda0cc85c83280e16ea74e8d0b39d2ee13714396cfea4130f1efa8f04a",
+        "v2/driver-cell/src/gitImage.ts": "59d0f3d26406346abae960cb08c6a2f3a29967600368b57740e560cd45e2e841",
+        "v2/driver-cell/src/index.ts": "4f25f455b67503eda953a0ad6f24fb4200e85056cd1eff0cc87e42e657d0d47d",
+        "v2/driver-cell/src/landed.ts": "ab66ce4d91bd665b60d4c40329cea4fa1a98875c1166fe32569b8376d3526e3a",
+        "v2/driver-cell/src/layout.ts": "548a1b1ee6bba1fd5feeaf05c592493539024411ea168b95dc2e835bad9d762a",
+        "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+        "v2/driver-cell/src/poolWorker.ts": "88aae8c47aaa8c7d1a09edc7ebb08b354fe6ce3fb806b7847b9f8dfe830ab385",
+        "v2/driver-cell/src/provision.ts": "a7154013cbdf7ab3470008558a060c83bbfd5dc8aeb47704e14e8df854b7621b",
+        "v2/driver-cell/src/provisionWorker.ts": "7eb750cd6f6f468ee01a323639ca8ee0050156e6cf67cb1f203f69cd8d160bd6",
+        "v2/driver-cell/src/remove.ts": "c768f598654f627ff98111341e69898176b9753dba5a74e22e291376eb947186",
+        "v2/driver-cell/src/retention.ts": "67e847d2db9f06dc82c8c06251d040ec2cb2b2d225e412e7ce05a84810c04ce4",
+        "v2/driver-cell/src/retentionWorker.ts": "a2e44374d232562bb46ec411df98d4e47aced3aa4e90ca8d5f305b996ecc3f3a",
+        "v2/driver-cell/src/sandbox.ts": "d0a3b8955192b8bfe4810cf207d9ab6f45369955b53503f5a6e97c5948740d07",
+        "v2/driver-cell/src/sandboxTmp.ts": "7680b98c0b93990fea9a078f566963d7ebc896e7d0671f17f76d9f84d9324f1f",
+        "v2/driver-cell/src/secretOutput.ts": "36f592d25a7d4ef8a5200a4e188cc724f47b32d31074e9123c66bb73a1ed070d",
+        "v2/driver-cell/src/secretSupervisor.ts": "3bf7d800620c00625dd9765ff1689993a80e53d24dce169d547cc1746ab3b8a5",
+        "v2/driver-cell/src/trimPatterns.ts": "9cdf923a28193cae888cd174acfcba329e86c9bed4c478d8f9dd8222033abf45",
+        "v2/driver-cell/src/upstream.ts": "57170178c9c27891cdefa3932c10120a73531d05111fc25e61770cadcedc4b7e",
+        "v2/driver-cell/src/warmPool.ts": "0a7baa2023338068798188d619457c1a4e5f0112a0256ce479b0b2a9ff3d7ccc",
+        "v2/driver-cell/src/wip.ts": "fd3285f0211ec016377b1f69afbf0016a68fce9605a17815a45ab4428987839b",
+        "v2/driver-hsr/src/delivery-receipts.ts": "cb3a7c442f49c3b2fd0e4553f34b7f802dbd2be0ea75653639faab30e1c8c786",
+        "v2/driver-hsr/src/driver.ts": "812bd4c4447445bc3d38e2b986065bc32a8dcc77ce20a0f0686c3bd4d89c5cf5",
+        "v2/driver-hsr/src/gated-runner-host.ts": "f992cb96342ff725b0861e606dee671415bd92e2eb09343e1ecbf628295e914a",
+        "v2/driver-hsr/src/index.ts": "fe4c4106dbcce107cf25a0c2d56741480c47bc9c82ac86d2fe6adef241b10eff",
+        "v2/driver-hsr/src/psutil.ts": "91655faf8e65577700260bfe31dbf24782c9761bb82f35e66834c4a7d23244c8",
+        "v2/driver-hsr/src/runner-exit.ts": "76e29e6d8ba434b0a30515ade75c977e0e80c284b7b7dfb4318007be89441a5c",
+        "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+        "v2/driver-hsr/src/runner-host.ts": "ee7bc8b6e75bb4109869a0241e1979faa62b98bec0a0b55fbfcf5b25fcbaf820",
+        "v2/driver-tmux/src/agy-projection.ts": "7a3476ed16c60ed26f78e56d68baef15e443c99814e605139301a6dadc6d93a8",
+        "v2/driver-tmux/src/claude-projection.ts": "69d941ce080c82f075fd48198cbdfc8a1b7c955f5db9c7e30f034a782660108a",
+        "v2/driver-tmux/src/codex-projection.ts": "d8947e22553f13c5fa9f9f68f70112b654d0e0500a7e525d64a66af9b0a5e1fc",
+        "v2/driver-tmux/src/driver.ts": "1f93745d789ec8ff2bb1ac003204443f288c40cf3733f0d7999364caf540a565",
+        "v2/driver-tmux/src/events-file.ts": "b5741a7ba141e8d46006a7d12d0ccbe8a50c547d40fb9d7cb9a9397f113debe8",
+        "v2/driver-tmux/src/grok-projection.ts": "d1f4a75e356a1617a711edf95af7369dcab9b972e092eceb15679d14e7d8d2e4",
+        "v2/driver-tmux/src/index.ts": "fcdc4353cb3823cd88371f6131ffdbc549087ddf78cd57dba7a2a6af9a9101fe",
+        "v2/driver-tmux/src/kimi-projection.ts": "a4da4dc37525162a1512d68b5165fc3fe77203c2dea834e8ebdcf6774437d062",
+        "v2/driver-tmux/src/multiline-probe.ts": "da3d95f7398414698781b806383db48a73cbbec618a080f3b6b5d44eaa805be3",
+        "v2/driver-tmux/src/muse-projection.ts": "e000620db32f5c09e1de6fc76f88ea3e5d8aa0c082f76e645a57fc2856364e3a",
+        "v2/driver-tmux/src/processProof.ts": "3d35f16dc124fa403dba72381cfa8db49542533f4f89eb9d2cf82d4e79e39083",
+        "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+        "v2/driver-tmux/src/tmux.ts": "ff6c75e4656c88194302ae12fdbd32d75389bea184c5c008cd382563d4b85e35",
+        "v2/driver-tmux/src/transcript-context.ts": "86e9f67fac9565377315bef8f8ed6c6aecb8d8f684fd25663e1dc02bbf780d42",
+        "v2/driver-tmux/src/transcript-projection.ts": "151a39998f898cd88ab5814c1bfc1b43e012a971d1a354b8701cdd4317e8786b",
+        "v2/driver-tmux/src/transcript-repairs.ts": "8f87d7c6383fcfb53764c0ce91f3e39899a673933a436107cd756273ee3093bd",
+        "v2/driver-tmux/src/transcript-segment-format.ts": "9512e04b4c499c80b85f2f2cc3fe570d544e6ec08cf5519b1db4fed0b765a113",
+        "v2/driver-tmux/src/transcripts.ts": "0d978663ff02af9cfccd7128ddea5e8946caefac8496cb78b0f09cd33c11d176",
+        "v2/driver-tmux/src/turn-quiet.ts": "46ee3e54c63d81bfd549d9e63a7981cce799061689a6f333b0abd4122089cc52",
+        "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+        "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+        "v2/harness/src/driver.ts": "1ced35d730d66b54f6d70040720a2c93a81a2f360230b5487dc74c89438bae1e",
+        "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+        "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+        "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+        "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+        "v2/harness/src/processIdentity.ts": "c36dfc163c8ce762570fc66dbbd7b0cf1afc18d3bb732b3662225711950daaf4",
+        "v2/harness/src/sim-driver.ts": "b63e17a76303f8f7cf12a146db7213e45c3a314b5813335068d40eefc8083ca8",
+        "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c",
+        "v2/harness/src/statePath.ts": "df552b5372a82fe36d01676ba554fb0efecf423852d776a929860eb7daab8d59"
+      }
+    },
+    {
+      "root": "/home/trmd/.hive/v2/cells/rebuild-m-h1-dirty-sets-9f6e294bd207/github-com-honeybeehq-honeybee-a9015b303498-space-9f6e294bd207",
+      "revision": "59a1d66d352b250ba1623f539b13f4bcfbf17f9c",
+      "status": " M v2/core/src/index.ts\n M v2/core/src/store.ts\n M v2/daemon/src/accountsService.ts\n M v2/daemon/src/autoTitle.ts\n M v2/daemon/src/credentialHandoff.ts\n M v2/daemon/src/daemon.ts\n M v2/daemon/src/loops.ts\n M v2/daemon/src/multilineFallback.ts\n M v2/daemon/src/quotaRecovery.ts\n M v2/daemon/src/threadOperations.ts\n M v2/daemon/tests/loops.test.ts\n?? .proof/m-h1/\n?? v2/daemon/src/deadlines.ts\n",
+      "diffSha256": "57fa3101f6ec88e99359d7e74a62132840dab6da8fdeac008fb76898f652ca4c",
+      "hashes": {
+        "v2/daemon/src/deadlines.ts": "00c81b9591bb66e4b8313be3c6a67f3694ef227984367af6a175a44b443e93ee",
+        "v2/adapters/src/agy.ts": "ae4751062d36382252aae126e7c0ee024bbcf65009cc12adc16721e24e9dbbc7",
+        "v2/adapters/src/args.ts": "cde627b399ff82136f3d3c5f53c781668b78f48faa7d76c3bb24cacf528fda6f",
+        "v2/adapters/src/claude.ts": "3a6b17f1b7fc777bdeed96689148f722f1acdfbaa608feedea17dcb5643521f1",
+        "v2/adapters/src/codex.ts": "4cef7ab08c94aa14c2e17560088fc2398c366add5c5ffb1decc57678453dc943",
+        "v2/adapters/src/grok.ts": "71f647f0b8fb2a32427604ddf45e0a7b54a4a1b876418c7f91de8c3024c0d84f",
+        "v2/adapters/src/index.ts": "9502ec947af87a8498461954351b566227d23180a990c1254113d5dd7370ce40",
+        "v2/adapters/src/kimi.ts": "01a12959dd7b507aee8e5cebf1789a12c0593acdb65549f506537dad4235feec",
+        "v2/adapters/src/muse.ts": "4e7b29125fd4a2936adef6387d5e3529aec06f9e70c876b48171261250e62859",
+        "v2/adapters/src/quota.ts": "c6160bc2087f96abd2d56525e67a1dd4459e7084bd55d84a4d35dc680cd1e98b",
+        "v2/adapters/src/stub.ts": "4fdfca1b8dca0cc396bd495fac99d5fcab7005b40bb598e33413a5747e8f3ccc",
+        "v2/adapters/src/types.ts": "28ee2b0f1c5d41dda88e813ab52da86c3ff291317c80597fcaed3dab1fa1ac47",
+        "v2/cli/src/bin.ts": "330f6bb9d42c72475929a6e104fa5c318051b57816acd4056b3c7523010b8a8c",
+        "v2/cli/src/bootstrap.ts": "9b809d767ace9f5f8d22ce2e2ffffa1ba7dda91556e310318e5a2686902da700",
+        "v2/cli/src/client.ts": "7415888427ef6e38782f96b0d8d7672ef59550d5d815105d300ba1cdc05cef90",
+        "v2/cli/src/completion.ts": "42027c0b82b5e458023c81854541d72a38864f787443c89c3dfaed427fc672f8",
+        "v2/cli/src/completion/shell.ts": "c77d0974d767313ef527f90e12c58a07565ddb3027f7b2c02a151850d6fda8f6",
+        "v2/cli/src/deploy/artifact.ts": "7cc7c45df3c17c6adde98b8ff03a442ceeaeabd2932bcf1cc7b39e1f9219a96e",
+        "v2/cli/src/deploy/cliExposure.ts": "b5c5d46f2457b72cd86fcf2a3e6e3e450775bb62fa91042aba178fc20c70940e",
+        "v2/cli/src/deploy/command.ts": "e0bf52636a1e830ed5e45f31aeb67ad2f555d22011f3014b178875824a88af07",
+        "v2/cli/src/deploy/npmPack.ts": "479760a422ce907f35ba25627d8585356a1dfbdbd054ad79d1a41b9958aa0fab",
+        "v2/cli/src/deploy/questionWithdrawal.ts": "6958d27be09ae825e9340cec00457ac27cae3811d3433722f84d67cb95a8cae2",
+        "v2/cli/src/deploy/readUpdateReservation.ts": "dae50f1a6b5c82f2b4d1b4f0eeda04e9d7c780bace521beb5938cf97071ae4cf",
+        "v2/cli/src/deploy/readiness.ts": "bb80586fb55ff304cff7ab06f468e649d9b19a175b8eecd5534bb0d0e6c49f02",
+        "v2/cli/src/deploy/runtime.ts": "ea3c5706b1fbc768eb040f8ca77519196e63ee0a00abc74410247ff7b90c7c36",
+        "v2/cli/src/deploy/updateAdmission.ts": "3eb04039ad568d8603dae68fd6c82b8ba5400dc64d41637b2381f4db288693a5",
+        "v2/cli/src/help.ts": "5e9d2ee6783bc8b29435bfb20563f6b123f7f139ef66cc0115027ca30ae4c935",
+        "v2/cli/src/index.ts": "705f8de04ba4adb8b563d11f2def4da5ae0904ec9bcd0c062d9ce2019676bfd8",
+        "v2/cli/src/main.ts": "9a8443559d0490e641fc3448c706aee42876a88a61b2492ce26f4e840b241f08",
+        "v2/cli/src/readonly.ts": "bd092313445348fdd640676a60866445755de48cb8971a5d8e25c215481dc2cb",
+        "v2/cli/src/render.ts": "bfe0bc112bf442e5ba87f431d77b3c38938efeb2f31a226d2a946989d3f40da3",
+        "v2/cli/src/serviceScope.ts": "987126cd43277f16fcbfc8d257734d169296eb8b6c15cfd04355e2ecb025ca46",
+        "v2/cli/src/style.ts": "43f8ee7eddf9d3634427b2cfe700ec955513fb9a8dc0a4acf3cd8b8036d39ea5",
+        "v2/cli/src/target.ts": "a37b406366aa6e81a026577840e755779296741dd4cf2f90e80662275c517990",
+        "v2/core/src/accountAllocation.ts": "5cf5bb01f10f6ffb25c3de402fa5ed0ed1fd90e577d66ac5e5077deb242765ae",
+        "v2/core/src/accountLease.ts": "4cd887319865b8e2b0ee194b7fbd53a0b985a8fb60caf42e8ea9d10cabe9b34b",
+        "v2/core/src/accountLimitsParse.ts": "fbe796c5cab6aece6f058f851462428b793bd3a98787fcdeb43a06cc21d2985d",
+        "v2/core/src/accountMatch.ts": "90ebe4e125f83d28bc1a1c99cbff9b813362d3b38bbac8b97182014cb4fcf980",
+        "v2/core/src/accountRecipes.ts": "064588cd41c6749071836eeb4116aea194d775ad10dba0d8c53d807c07c50111",
+        "v2/core/src/accountSelect.ts": "2536db3146b2d9a66c812e294c8d668df5e82e3bea9d2923308dff4060e01f5c",
+        "v2/core/src/actions.ts": "100240ce166d8000de6e9ef8745b23600aab5adb8c432e21b69cf499822bb502",
+        "v2/core/src/apiarySwap.ts": "e7d57b8afe216d87cba2603025439e624813770972da36175e79334b92617daa",
+        "v2/core/src/audit.ts": "9e38f0b0d12296ed6ca590590312c0453620d89e1a0e77f0830860ad6ecc34db",
+        "v2/core/src/automation.ts": "7af17a93df4db700a55956d11315feab0bfa048d178e54edec187e99a05c2760",
+        "v2/core/src/canonical.ts": "25222a1fbfc7ee4c2f9ccf9878da27309f31e54b972c91d60bf13ed733cc97cd",
+        "v2/core/src/cellMove.ts": "64a0c07352dbab4226c2b173655eb412b976c4f22e4b9d158e5e829c0884d0d6",
+        "v2/core/src/deliveryConfirmation.ts": "5d58048c5fd34329ef99159177a3177b88ee4d1e7d4f822a707608deed059682",
+        "v2/core/src/deliveryConfirmationTypes.ts": "94896ec56c10e76ab9a11019e991a3c75a013286ecb852a85deb66ff64fa13e8",
+        "v2/core/src/effectResolve.ts": "6a768ba7f4dea8dd6884acebb33d68cbcaf3801edfd55f8d68de46396e681a05",
+        "v2/core/src/envRedaction.ts": "296052b4ba2147ccc2050f3bca0a3a040fc59c8ef0adcfbc1578f0a9acc8ad2c",
+        "v2/core/src/executables.ts": "4a878c553014ceabcdd7e940e274d652799c2852474ada614d5c80cca1eadc7c",
+        "v2/core/src/executionFence.ts": "ce89b1b9a1208eeb84b145260a16218daaed5d61a894f833f642e896e712cf1a",
+        "v2/core/src/executionStart.ts": "682c3f09846cf15a7f70eb4d9bbbcb45a975a4714be58163382ab9c89b41890e",
+        "v2/core/src/fsx.ts": "0bcb7306f29e6406fb148114d5ab862d877d01b5dec7388c0dac4dcfcae59262",
+        "v2/core/src/handoff.ts": "d7164a1dd657e3ee93ece9249977d2367626545311dcedc4d3f56e8a120f7cb6",
+        "v2/core/src/hostGit.ts": "a730dd7771140667cd21ea1ec788c19a69bc377d68292a7aec8836fc0e15ef15",
+        "v2/core/src/hostGitRuntime.ts": "12ff9a817898601b335468da7bedf23440bf497b3ab952e682e0bc1ff3639afe",
+        "v2/core/src/humanOutput.ts": "ee474b3ed493549ecb595d0fab128cf148e243fa0c3cc3c043b4c8e064c791e0",
+        "v2/core/src/humanOutputTypes.ts": "b85c1a9b9dc16b7505b50979c79d291a98986386c34e6806d3e3b334166e2a8d",
+        "v2/core/src/humanRefs.ts": "7db5059740eeb9705e1bb77b258710c0cdc3d17009720bbad1b026e5a4b8ce56",
+        "v2/core/src/import-frozen.ts": "b00060020bdd477be744d1cbfe827d772c9f15abf049bbf2357981951e0ac85a",
+        "v2/core/src/index.ts": "6697c2e31e079b6f06f42c4ba96b175c81a8e16f82e920a9bc48ecb25df5017d",
+        "v2/core/src/lock.ts": "054744a0c15c18c35dfef48c852d5be44af13416b19e981f6c3a12bd0202d738",
+        "v2/core/src/loginFlow.ts": "304939cc238919de340261198a22692550fe5950c4c6641e3d553b8f6375d045",
+        "v2/core/src/mailBatch.ts": "d460e3999099221d114b2a7ed50e362c1832c05e9950951f8e5f8977bc77fc3a",
+        "v2/core/src/mirror.ts": "394e7203500004bef8142d0556f0396fedac2058cfddf5a46f9f8e4ac12c1629",
+        "v2/core/src/multilineDelivery.ts": "145685eaccff7569f24e7253977cda436e1d6627b5c9030db120402a507f2134",
+        "v2/core/src/multilineDeliveryTypes.ts": "ca142861dcc9e41eb4e6c7af6329e56b26b149f6951ca673cf00490fe9be8573",
+        "v2/core/src/nodeRuntime.ts": "4a52e09a547c2fbb0f482ae652393a4aeffa7b2120d4080bd32eef28b5eab84d",
+        "v2/core/src/packageRoot.ts": "ec7e308bcf731b80bec6dafc8ce33e844f142b091eb238a7ab545946ace4f457",
+        "v2/core/src/packages.ts": "d3f92325dec7c4d8f2ea31ed5e655d49df9cf7364a049d75d17f53f05f6142ec",
+        "v2/core/src/peercredReceipt.ts": "df1960b105d1b7b5e128259df724189f67535b81bd38ab9f2b9fca3f8ce8bf29",
+        "v2/core/src/phoneOrigin.ts": "2dd7069362c61a6b04b04fdb1e7c4dc5cf68fd7dcfc8e10b34fe43d894eefbd2",
+        "v2/core/src/phoneOriginTypes.ts": "470d2172e268204e13444e62e2ed73c5c8e0f4ea09d42e319104be1bf9df5e85",
+        "v2/core/src/processIdentity.ts": "6e0f9ecf9be188d9c81cee671c36b1a5dc1281345a73e59f148df0abb0f9cb6b",
+        "v2/core/src/processScheduling.ts": "341671a4b124a15cb6ffe616f8b4baed430a812f33770f6767083e76643e0d0b",
+        "v2/core/src/quiet.ts": "e8b28797cdd11c8bc132ec51ebcdbee6e419c657a8c1f73a7f51e9d01403f873",
+        "v2/core/src/quota.ts": "4eaccb5470b43266bb587cae82a05a0a517d0abc17a082c30deba469ffc61668",
+        "v2/core/src/reconnectTools.ts": "7b2786d4b7ab52d4d84968e7966514e9cc9c88db882dc455093d0a71f611fbd4",
+        "v2/core/src/registry.ts": "b903cd2bf4c2ff12b2d47df4e2b8d7af02645589e9577b49262592bdc6aae8b7",
+        "v2/core/src/release/buildIdentity.ts": "63a74ad20ce9498b598f59ec862c3b5a3039e7fea10326eba37d301d0b0508ac",
+        "v2/core/src/release/buildIdentityProducer.ts": "b325a59d07a2004ab3e3a3b4b6f3f1347dc5186310b4ce396cb236c10064e8bf",
+        "v2/core/src/release/distribution-profile.ts": "bb55c4c5fc456c374cf8f6eed6dd5f6ae146dde48f6833a62f1cbb1579745f23",
+        "v2/core/src/release/executionContract.ts": "712df2f113414492ec637e1eb6e936a7027d2119b7cb057f9fea186c1943b80c",
+        "v2/core/src/release/github.ts": "c8c6d0c7590c0b9716c3b7c9edcf7266a2989bc47d4c5f4a19380afef8283088",
+        "v2/core/src/release/index.ts": "279c0e0492d0e6d008a381fa3def990d7a9ff5d07e549a45fedc4676618b5c3b",
+        "v2/core/src/release/peercredProvenance.ts": "96cf1639306e9f2e2d1c6036dbe65a27853166698339831ff7e296eb2eeb58d8",
+        "v2/core/src/release/prepare.ts": "4570966bbefb4ab40b6550ea4f413bf2e31fdc20bf56cf220f21d318b17541f8",
+        "v2/core/src/release/publish.ts": "913eb928eee56f2c43fe9462dc33048bc61f74d6840b7a02e1c99352997c36e8",
+        "v2/core/src/release/repackPeercred.ts": "4a227b552317d7d2fd812e0620a09b491483cd27a62b2460fa05540c4ecbaeaf",
+        "v2/core/src/release/runtimeArtifact.ts": "809ce6a9684a98d58fedaf761b57d249494c641a5659c60284f02926dd8127f3",
+        "v2/core/src/release/runtimeTarget.ts": "72de0976f8d548dd5629a733553dc034e0ed23485884d605193c151a66e9faac",
+        "v2/core/src/release/settle.ts": "080596f320c402d09b1ef3d1eb0b70c437a6a8c36ad07a9450faeed3d9fc45b5",
+        "v2/core/src/release/v2.ts": "6cca4a23b20424e6cbfaaed4d04e58789163c62c1dae8875b60582f7ef922ff7",
+        "v2/core/src/rpcAuditContext.ts": "f27902cbb2f8e77e6c57ef68579c0510eb5501e974dff9a4482c021374836356",
+        "v2/core/src/runtimeCleanup.ts": "8343bfdb80cb9f38c171209b9ff64d25b51d355b693d44cf94d33e2fe1339f0d",
+        "v2/core/src/runtimeEnvironment.ts": "71bdffd708b6dd471a3f89b3b7fc213fd30c8ae37095e2fc865f816ce054fada",
+        "v2/core/src/runtimeMode.ts": "5b817f6e9b55e83e630f5e55fc98fca0d4dd61eff60a290fdb02c0bc6e62e4d7",
+        "v2/core/src/runtimeProcessIdentity.ts": "cc8a7c0d4a0299b93b2e6140dfd897152b59a5e7251b98feeba753d737e058f8",
+        "v2/core/src/schema.ts": "2d42c8b34949d265ab076b687278e82978c9770a9d31e7e57425a18b288d61ea",
+        "v2/core/src/servicePaths.ts": "b74ecb7c9708fdd885a0f333f257c0178e186ddf7de6f264ce53a117e3f26521",
+        "v2/core/src/socketPath.ts": "47130b1d5066b4fd7d17b865df4a34fe1cdf382c8909d1aed5f7dbd07945c67c",
+        "v2/core/src/store.ts": "2c8f52352d1aff6aae33bb92215572221ec1ab36ad517ef5fa38b1bb2447d5f3",
+        "v2/core/src/storeBackup.ts": "75fc665a459f1845350782a6eb643c3f81972e6d01e6fd22dfd8ac32a7553551",
+        "v2/core/src/tasks.ts": "2f266a9640ed4b9c7ceeea18aee63ce11521cc416ecc3b5ce118ebb5c195a263",
+        "v2/core/src/threadOperation.ts": "c63c088bc0f067f2693b7ca600317fd755d3fcc8ec2e17ba62852ddb3f9d2933",
+        "v2/core/src/types.ts": "37191e038baf44923035394af0a235efed194339ebf314c46a527acda3a7d8b7",
+        "v2/core/src/updateReservation.ts": "6eb3b5228261527b6634b5d66f6ff3e9b92c943d3ddcfa0772dd251a06ed81cd",
+        "v2/core/src/view.ts": "e5406a64f5cb8e1136a56444571211d6d877705b8332645a11c03b07aa4312f6",
+        "v2/daemon/src/accountConfigImport.ts": "cf711993929baf0a1960703b72715be4df8cb08a70adf8536989a101a474a07c",
+        "v2/daemon/src/accountsService.ts": "68bda4cb4209f78914f7e282ad9fee2d8afa6ff6bfe32d5833c0c60c0936fec2",
+        "v2/daemon/src/activation.ts": "ece27aabec3eeb7e91caf84843e541529cb619c640f50eb75f1a1cb333d97075",
+        "v2/daemon/src/answerTriggerProjection.ts": "603a36c01ea6cdaacce94a3163cf5b1f19fe2ec877c3ef86c3bd14a6b1349ffd",
+        "v2/daemon/src/authResume.ts": "b0a73b258f295bba8f2fec15cd7d097d66ca7c46a843e23b1740e19355bc7622",
+        "v2/daemon/src/autoTitle.ts": "fe4f9c8b9f10ba0f1afb0d20e2306f693c2f357d440927fd81125b1df509e38b",
+        "v2/daemon/src/beeResumeSync.ts": "6df510167122b090776dedef2b1a858ab1b7bf725d26499ecde1e9511a2cc313",
+        "v2/daemon/src/beeTmp.ts": "1561605839f8acb7e61e1735d01fd035442290e0701a0ab586ec1f41557cb8be",
+        "v2/daemon/src/bin.ts": "37b102d6314c1271080688f2293b005f3a5450a7eda8fb7599f41884b0e5d3fb",
+        "v2/daemon/src/cellRetention.ts": "3919b69621dce95e2397fda36819ef35336ea3798f504ab79e8d07b6f0a7dd48",
+        "v2/daemon/src/cellRetentionDiagnostics.ts": "abe6d834fbca2dd57e021637f37df187d3aba72cbe9defa7f1e4ffea56028f36",
+        "v2/daemon/src/championHomes.ts": "8f5cea5bf47cf90cae90e4d1a5f70ad9252abe7db37f2bfa876e26ae4567caa0",
+        "v2/daemon/src/claudeCredentialAuthority.ts": "94fd412976f1cb1f4391a006fc6edb30b189154681b0274d224fea6febfa26b1",
+        "v2/daemon/src/claudeRefreshLock.ts": "a62ecf0cf27e2daa1c7adf49a493274aabcced41edaeba2adfc39db46b9dc399",
+        "v2/daemon/src/claudeRefreshTransport.ts": "67681a3141c6c0269f2f4859d3403e97ff944e765fc8efd7038cf5ac10c97e98",
+        "v2/daemon/src/codexCredentialAuthority.ts": "29c61c04fa5c6e71b043016745e83c3f6290e1b27da949aa4177cba2b0e645d8",
+        "v2/daemon/src/codexSwapHistory.ts": "429359b2b7a06f874b52267cd83051687800341d78a701138310f9ce0ee4fe17",
+        "v2/daemon/src/config.ts": "5ed0a869938ae0481d8607944987f3a61619b95428dfb34e3ae37db824c15e7a",
+        "v2/daemon/src/confinedPeer.ts": "5acc61114c3491d016dfa6ef289480b566d731d22441aa4f36e57cf6937bcdca",
+        "v2/daemon/src/contextPolicy.ts": "1c7ce681428a1289bced8614d8b9b1714f0681d8d3f98b17f53b35664aec2c68",
+        "v2/daemon/src/credentialHandoff.ts": "aa29773fb9808d37846a562d5e7ef22c7491a1e5b18921c72e67dec47f0e9ff5",
+        "v2/daemon/src/cursorAuth.ts": "c26829eb380cdbd1c042f8fc5f8e1853e27755886be65f7526d412497a6d8c4d",
+        "v2/daemon/src/daemon.ts": "cb5f2ca2e5083b87df67a39947f7f53ac6874e596d7eae65f73cf114a8062b3b",
+        "v2/daemon/src/deliveryFile.ts": "eeea7fccc2a6f42269f063627538d7395d1bc8030a9601cb88b339315d77e973",
+        "v2/daemon/src/endpointRecord.ts": "c5cbcb591feda0cd138f3e7b5f509277dbcbc15d6ca1e49acba3ed1ea4d355e9",
+        "v2/daemon/src/envelope.ts": "837cb1117a94071ebd9368c50828da9a9dae588a0768aedb274658da87a72919",
+        "v2/daemon/src/gatewayMcpSeed.ts": "85afb7c8d4135f0a0bbbb9160b9c3479edcf9bd271b328f70fdb72582f4444fe",
+        "v2/daemon/src/gateways.ts": "818fbb3682812f389fef5c1e1947cb9b140f32af4fb38b70e363941d13218e1c",
+        "v2/daemon/src/grokCredentialAuthority.ts": "34edd53172b0630a504133a4c7afe565389942fa44427746fad077ee94571a4d",
+        "v2/daemon/src/hemSecret.ts": "2f4956b33f98aa5f1486da20a5787853f4950bd99cefecef0d30739e9cc0461b",
+        "v2/daemon/src/homeDefaults.ts": "7bd1c2844a7f8c2d8daaf8299fffac056ba3e43846b4b6a2a73cf8cbb3b746bd",
+        "v2/daemon/src/identityRecovery.ts": "8d70370abb8ae5997f697950054f6b04dacc67e0c80a66ff06cf0283d9207875",
+        "v2/daemon/src/import-probes.ts": "14cdeb5b7c47d1da44a8eff3e92e22a52a523dcaf250174cefd1c6c46f15529a",
+        "v2/daemon/src/index.ts": "5f8b71e1193407322cb5b44e87bd30cb8384aeb783c22803a10aca034aa691a9",
+        "v2/daemon/src/jsonl.ts": "e8ab05c5884e6d5010eb8b63b4bc85c821c81ee5114383cc66785327f15ce43c",
+        "v2/daemon/src/keychain.ts": "5a7ecb508ba9bec3b37fc1e9c458781a75232f397c5ce66167289a82d9369129",
+        "v2/daemon/src/leaseMaterial.ts": "2556dcee3c09492e5333b79e70823055815e58debed6151539fd7cb61e2bdc9e",
+        "v2/daemon/src/limitsObservation.ts": "725952fd6c77145d3ebff531e794215f6c8babda1dfc4f80f2a76af0d0c7816c",
+        "v2/daemon/src/localRpcRefusals.ts": "98beb0e087d737158563622eab0ad935141de0b7bfc441131fbe7faf70520188",
+        "v2/daemon/src/localRpcTrust.ts": "59fb4c189ffe4cd152f1cf168c22b9b2deeb318369f2b6815df7d9c77041f97e",
+        "v2/daemon/src/login/claudeOauth.ts": "1fa5e8d20ec2c574ae40391a4d4c9e03e7e5b8483f3671ccc55569255edfa2d5",
+        "v2/daemon/src/login/cliRunner.ts": "7e2e7def50baf0535f77bb5cc8031081ecbbcb2a7b7e89fbe2ce454c8e23a31d",
+        "v2/daemon/src/login/common.ts": "cf2e10bda6652a8d37e2651912198e129fcb6e11a47d64e68698f87ab6458a09",
+        "v2/daemon/src/login/directKey.ts": "2bf6b9ad5b735c94e9c02c2542c0986a5ff1dde5eff471530ea5db994170ee0c",
+        "v2/daemon/src/login/museApiKey.ts": "28257662e777647ceea48f4d7dba9b77937663cd7c51ed0dcb7afb0e3c36ca8e",
+        "v2/daemon/src/login/museOauth.ts": "6d02ce04565c597733fc65459c4aa636f858d5c30e8ca6ba8038a94626b57597",
+        "v2/daemon/src/login/redaction.ts": "2b8a67e2172f929fe4d1ac2b3b9ccf91a4cbca03a30eea2d705070a20d862698",
+        "v2/daemon/src/login/runner.ts": "0b54f553b0ebab0eef4973aa6c24405e8c51c4ae3d14e0514d2c02383ffd7147",
+        "v2/daemon/src/login/transports.ts": "bba5d8daeef1d8234fc915bacf688c4a7938a2e78f300217bfdf7002431015b7",
+        "v2/daemon/src/loginFlows.ts": "f065b8ca8112cfa74c57ce32ecbb25bcc2234922382bedd4b30a3b1e638db92e",
+        "v2/daemon/src/loginWorker.ts": "6b4a56f8fa5f10fe04b2579a5bcaecbc0a5dc338045238c69d4b60929d7ee3c3",
+        "v2/daemon/src/loops.ts": "881c6b12af553c5ba9ec117bc0c9d850e277e21f3e0f8babdde1d8973f52f9d8",
+        "v2/daemon/src/mailBatch.ts": "07154d812509067a09d56e4d8206760b9a74dc418f1f674eac4cfc07981ff3c3",
+        "v2/daemon/src/mailDeliveryProjection.ts": "ffa478e6eb2063a3ed5f0e89280cca6306bab64f5f3e52b8a5d928202faba7bc",
+        "v2/daemon/src/main.ts": "9b0a69bdb932ca45ea632112ec86eafa2eed37e90802802d0ebe2435cc76eaee",
+        "v2/daemon/src/multilineFallback.ts": "9cc13eb7b36b5a0c204be3df9bb5b6e7dd43f470e6d088090dcf55f0251a08fe",
+        "v2/daemon/src/museCredentialAuthority.ts": "4aefa90526266cc7c2be4fa50395b4efcc0363913f532054235cf15bfa493f55",
+        "v2/daemon/src/naming.ts": "eae82ba481b3e5b74d7d80c38ca50d6bbf64e378e48e8a7c953d35b2f0a643f5",
+        "v2/daemon/src/namingService.ts": "b4f84f6d7de4b652063d95f6379fb28f1382019e3916646507c71b72a250c83e",
+        "v2/daemon/src/nativeKeychain.ts": "a2d989843d1021781f5c01ddf1a27e74d5c66110dfd03e7d6d884ee1fde7e469",
+        "v2/daemon/src/peerCredentials.ts": "f5a0e9ebe8569789fef339029b4a37c7cf01c67d1a8afdc6928ed4dfef6c93ab",
+        "v2/daemon/src/performance.ts": "930c14a19149fc6ca08511eb081bbded8bcde1c4aa0c5ba319a6a12ab6798072",
+        "v2/daemon/src/protocol.ts": "789fcf18f379311bc48ac6abc815a00d89ff2ceabf8bb19be0f2e552990ee26d",
+        "v2/daemon/src/providerLimits.ts": "befe91217b50c927419389adb50527fd0867ed58d5111f13bcb669eb2b700790",
+        "v2/daemon/src/questionDismissalProjection.ts": "ccb72e050184ae17d8788033d66b5129ad34baaebfa4006edfe5c4d19c0a664d",
+        "v2/daemon/src/quotaRecovery.ts": "4bf88a1bb715ac334deaec9c5ebc46cccd237ad18cb9b88abc52af2186a8149a",
+        "v2/daemon/src/relocateSession.ts": "bb23acc8d738f024ac8a674b4c7f1366e9913c0b792df2814d9d0869c2ee04e7",
+        "v2/daemon/src/resumeBundles.ts": "942e55006bdb19084d195c3f2b6713c734b5b4a04110e11fb5dbd7682587188a",
+        "v2/daemon/src/rpc.ts": "73d0dbd9633ec8b3d7136b23ea5eb9cce694bbe889e778861ea25b7c4107b906",
+        "v2/daemon/src/rpcAccess.ts": "ee23ee005a18eec400a6d552a7c44f10c08269c12e52af37397fe851387d63eb",
+        "v2/daemon/src/secretExecution.ts": "ec82d46f4a057d442e04753327b1216f180d612e7dd1ba0f17de8b1dc140f669",
+        "v2/daemon/src/service.ts": "7300f6fffa5d1450de822e283d8c7adbec7295a1842c6cc73d861acdd7d32eae",
+        "v2/daemon/src/socketPath.ts": "67050df7ba34087d20097c9ea30c7007dc995aa0e995915f37efe7925a22f1b0",
+        "v2/daemon/src/spawnLineage.ts": "ad8cf65c05da0aefceac54e019253a76f6b3a2623a3a1637e2706b1d112b6b1a",
+        "v2/daemon/src/substrates.ts": "18fc5a32184dc42c33fedff7bb02d9279adf9b6955867efceb24571dc65eff83",
+        "v2/daemon/src/telemetry.ts": "0f234f5f77df593387db1ed6c08ba64ccd45f3ffa60303bbd178765aefd0980c",
+        "v2/daemon/src/testNetworkGuard.ts": "90e670bca79fdf8e5a8d3a5a5d186fc253c315c2a696b695190f98fc4ca59fa6",
+        "v2/daemon/src/threadCompactor.ts": "e2ab0906151124ebb121bec36c297d5ebaf033ab9a7a4d5a1c7445f14b52eea8",
+        "v2/daemon/src/threadHistory.ts": "9a1174efdfe8d3f3b7e2edc8c264d6cefa294f7878d80a5942861105462f0537",
+        "v2/daemon/src/threadOperations.ts": "2af30be9d106ecf4c7d0b577bb5356cb219f0abe076e7be33a22237ac69c7cc0",
+        "v2/daemon/src/tmuxHarness.ts": "aebc0a90c9ff4a03a466cdf2edc4fe282dc91388cf9966a0412801fb0bea320f",
+        "v2/daemon/src/transcriptObjectStore.ts": "a4abb58363a0a8fc65bd7277edbf02d0264159235df830ff62c91a30632754b4",
+        "v2/daemon/src/transcriptSegmentWorker.ts": "c33ce623c07662ed5c694ee0bc978287869c8c7ac320c0a3f0bf550256a1d648",
+        "v2/daemon/src/transcriptSegmenter.ts": "dbbe9ab93e9c6134736643f1d40233c39031f0aa7442184672123f447e4bbafb",
+        "v2/daemon/tests/helpers.ts": "f20371310b5e279604b162490c4532bf3e6d880ee787866e4b8c6b861d3650ee",
+        "v2/driver-cell/src/capture.ts": "1ae9fc2848f5f3fdc6297f3c09eb2a370e673a906bc3b69d4e9f3a9fb1dbe840",
+        "v2/driver-cell/src/cow.ts": "24eb5ce7b6536de861ca261a5d80096343115e14bc8a23e354a2e8a74f318b10",
+        "v2/driver-cell/src/driver.ts": "f092d4a253d8235871815831fc1ca08e09db69804ce2e40417ae7b644902c8ee",
+        "v2/driver-cell/src/exec.ts": "17b13d390ef6aa28fd16d31dba3ff9c08d53b2618f23556ccf53de847e9d30fe",
+        "v2/driver-cell/src/git.ts": "d05949dda0cc85c83280e16ea74e8d0b39d2ee13714396cfea4130f1efa8f04a",
+        "v2/driver-cell/src/gitImage.ts": "59d0f3d26406346abae960cb08c6a2f3a29967600368b57740e560cd45e2e841",
+        "v2/driver-cell/src/index.ts": "4f25f455b67503eda953a0ad6f24fb4200e85056cd1eff0cc87e42e657d0d47d",
+        "v2/driver-cell/src/landed.ts": "ab66ce4d91bd665b60d4c40329cea4fa1a98875c1166fe32569b8376d3526e3a",
+        "v2/driver-cell/src/layout.ts": "548a1b1ee6bba1fd5feeaf05c592493539024411ea168b95dc2e835bad9d762a",
+        "v2/driver-cell/src/ledger.ts": "efdf4762fab38defd8ec3e68dceba52a44a11d17962b027cb4a0302eec429834",
+        "v2/driver-cell/src/poolWorker.ts": "88aae8c47aaa8c7d1a09edc7ebb08b354fe6ce3fb806b7847b9f8dfe830ab385",
+        "v2/driver-cell/src/provision.ts": "a7154013cbdf7ab3470008558a060c83bbfd5dc8aeb47704e14e8df854b7621b",
+        "v2/driver-cell/src/provisionWorker.ts": "7eb750cd6f6f468ee01a323639ca8ee0050156e6cf67cb1f203f69cd8d160bd6",
+        "v2/driver-cell/src/remove.ts": "c768f598654f627ff98111341e69898176b9753dba5a74e22e291376eb947186",
+        "v2/driver-cell/src/retention.ts": "67e847d2db9f06dc82c8c06251d040ec2cb2b2d225e412e7ce05a84810c04ce4",
+        "v2/driver-cell/src/retentionWorker.ts": "a2e44374d232562bb46ec411df98d4e47aced3aa4e90ca8d5f305b996ecc3f3a",
+        "v2/driver-cell/src/sandbox.ts": "d0a3b8955192b8bfe4810cf207d9ab6f45369955b53503f5a6e97c5948740d07",
+        "v2/driver-cell/src/sandboxTmp.ts": "7680b98c0b93990fea9a078f566963d7ebc896e7d0671f17f76d9f84d9324f1f",
+        "v2/driver-cell/src/secretOutput.ts": "36f592d25a7d4ef8a5200a4e188cc724f47b32d31074e9123c66bb73a1ed070d",
+        "v2/driver-cell/src/secretSupervisor.ts": "3bf7d800620c00625dd9765ff1689993a80e53d24dce169d547cc1746ab3b8a5",
+        "v2/driver-cell/src/trimPatterns.ts": "9cdf923a28193cae888cd174acfcba329e86c9bed4c478d8f9dd8222033abf45",
+        "v2/driver-cell/src/upstream.ts": "57170178c9c27891cdefa3932c10120a73531d05111fc25e61770cadcedc4b7e",
+        "v2/driver-cell/src/warmPool.ts": "0a7baa2023338068798188d619457c1a4e5f0112a0256ce479b0b2a9ff3d7ccc",
+        "v2/driver-cell/src/wip.ts": "fd3285f0211ec016377b1f69afbf0016a68fce9605a17815a45ab4428987839b",
+        "v2/driver-hsr/src/delivery-receipts.ts": "cb3a7c442f49c3b2fd0e4553f34b7f802dbd2be0ea75653639faab30e1c8c786",
+        "v2/driver-hsr/src/driver.ts": "812bd4c4447445bc3d38e2b986065bc32a8dcc77ce20a0f0686c3bd4d89c5cf5",
+        "v2/driver-hsr/src/gated-runner-host.ts": "f992cb96342ff725b0861e606dee671415bd92e2eb09343e1ecbf628295e914a",
+        "v2/driver-hsr/src/index.ts": "fe4c4106dbcce107cf25a0c2d56741480c47bc9c82ac86d2fe6adef241b10eff",
+        "v2/driver-hsr/src/psutil.ts": "91655faf8e65577700260bfe31dbf24782c9761bb82f35e66834c4a7d23244c8",
+        "v2/driver-hsr/src/runner-exit.ts": "76e29e6d8ba434b0a30515ade75c977e0e80c284b7b7dfb4318007be89441a5c",
+        "v2/driver-hsr/src/runner-host-main.ts": "10c4f1c2af2e2dc20bdddba51e7972bc976831c1bf40b5f5772a2519538411da",
+        "v2/driver-hsr/src/runner-host.ts": "ee7bc8b6e75bb4109869a0241e1979faa62b98bec0a0b55fbfcf5b25fcbaf820",
+        "v2/driver-tmux/src/agy-projection.ts": "7a3476ed16c60ed26f78e56d68baef15e443c99814e605139301a6dadc6d93a8",
+        "v2/driver-tmux/src/claude-projection.ts": "69d941ce080c82f075fd48198cbdfc8a1b7c955f5db9c7e30f034a782660108a",
+        "v2/driver-tmux/src/codex-projection.ts": "d8947e22553f13c5fa9f9f68f70112b654d0e0500a7e525d64a66af9b0a5e1fc",
+        "v2/driver-tmux/src/driver.ts": "1f93745d789ec8ff2bb1ac003204443f288c40cf3733f0d7999364caf540a565",
+        "v2/driver-tmux/src/events-file.ts": "b5741a7ba141e8d46006a7d12d0ccbe8a50c547d40fb9d7cb9a9397f113debe8",
+        "v2/driver-tmux/src/grok-projection.ts": "d1f4a75e356a1617a711edf95af7369dcab9b972e092eceb15679d14e7d8d2e4",
+        "v2/driver-tmux/src/index.ts": "fcdc4353cb3823cd88371f6131ffdbc549087ddf78cd57dba7a2a6af9a9101fe",
+        "v2/driver-tmux/src/kimi-projection.ts": "a4da4dc37525162a1512d68b5165fc3fe77203c2dea834e8ebdcf6774437d062",
+        "v2/driver-tmux/src/multiline-probe.ts": "da3d95f7398414698781b806383db48a73cbbec618a080f3b6b5d44eaa805be3",
+        "v2/driver-tmux/src/muse-projection.ts": "e000620db32f5c09e1de6fc76f88ea3e5d8aa0c082f76e645a57fc2856364e3a",
+        "v2/driver-tmux/src/processProof.ts": "3d35f16dc124fa403dba72381cfa8db49542533f4f89eb9d2cf82d4e79e39083",
+        "v2/driver-tmux/src/tail.ts": "40e24f0d34401e7990581eef3eff1d1542defbc846a92339e61bb81a95a0d156",
+        "v2/driver-tmux/src/tmux.ts": "ff6c75e4656c88194302ae12fdbd32d75389bea184c5c008cd382563d4b85e35",
+        "v2/driver-tmux/src/transcript-context.ts": "86e9f67fac9565377315bef8f8ed6c6aecb8d8f684fd25663e1dc02bbf780d42",
+        "v2/driver-tmux/src/transcript-projection.ts": "151a39998f898cd88ab5814c1bfc1b43e012a971d1a354b8701cdd4317e8786b",
+        "v2/driver-tmux/src/transcript-repairs.ts": "8f87d7c6383fcfb53764c0ce91f3e39899a673933a436107cd756273ee3093bd",
+        "v2/driver-tmux/src/transcript-segment-format.ts": "9512e04b4c499c80b85f2f2cc3fe570d544e6ec08cf5519b1db4fed0b765a113",
+        "v2/driver-tmux/src/transcripts.ts": "0d978663ff02af9cfccd7128ddea5e8946caefac8496cb78b0f09cd33c11d176",
+        "v2/driver-tmux/src/turn-quiet.ts": "46ee3e54c63d81bfd549d9e63a7981cce799061689a6f333b0abd4122089cc52",
+        "v2/harness/src/clock.ts": "690b130f9bb111af2099cc96d19a114258bf3bc6353d7a440d53b3141c9e2446",
+        "v2/harness/src/daemon.ts": "2b8f17080275ef72b3612e4b446b9e951d203373c70bcec7b83e3b21c91d81ef",
+        "v2/harness/src/driver.ts": "1ced35d730d66b54f6d70040720a2c93a81a2f360230b5487dc74c89438bae1e",
+        "v2/harness/src/faults.ts": "6152e965e33f1501f9beee0f5a3c42ce18a8b71897713043716a993de48cfc20",
+        "v2/harness/src/index.ts": "200de7850d2848f5b1d2afa72fdbd1490d2919efd8f77976508416ccb7b9a191",
+        "v2/harness/src/invariants.ts": "5ab63d4da3399534d6a2d9eff705d1c6c403e14b39b5749b5863bd7d04daccbb",
+        "v2/harness/src/prng.ts": "1be8ed3684abb058b30f83b89239385928abb14d8c24616ebf925c95af4639e8",
+        "v2/harness/src/processIdentity.ts": "c36dfc163c8ce762570fc66dbbd7b0cf1afc18d3bb732b3662225711950daaf4",
+        "v2/harness/src/sim-driver.ts": "b63e17a76303f8f7cf12a146db7213e45c3a314b5813335068d40eefc8083ca8",
+        "v2/harness/src/simulation.ts": "9979407c9e3483294675c47b23b802a724adcea73681ae8d8480f47f5e2d650c",
+        "v2/harness/src/statePath.ts": "df552b5372a82fe36d01676ba554fb0efecf423852d776a929860eb7daab8d59"
+      }
+    }
+  ],
+  "changedSourceFiles": [
+    "v2/core/src/index.ts",
+    "v2/core/src/store.ts",
+    "v2/daemon/src/accountsService.ts",
+    "v2/daemon/src/autoTitle.ts",
+    "v2/daemon/src/credentialHandoff.ts",
+    "v2/daemon/src/daemon.ts",
+    "v2/daemon/src/deadlines.ts",
+    "v2/daemon/src/loops.ts",
+    "v2/daemon/src/multilineFallback.ts",
+    "v2/daemon/src/quotaRecovery.ts",
+    "v2/daemon/src/threadOperations.ts"
+  ],
+  "expectedChangedFiles": null,
+  "sharedModuleIdentity": false,
+  "toolHashes": {
+    "paired-step.mjs": "dfe2e1d8604a5e16515ae760c0b3e8e36577db9aca37faa76a69713bd6221ff1",
+    "fixtures.mjs": "3fcc682d4f9525007c129f86acca91f0a09cf9ff8e6d33ca35852a6b99396bfb",
+    "report.mjs": "d1ad61cdac530c2748345235bc546166089e31e4e9614492a761fa3db3afbba7",
+    "boot-identity.mjs": "555b2a8de914ecba13defbd76542b65b6af15d204b156fb15f58ea9b8036d0fa"
+  },
+  "environment": {
+    "node": "v24.21.0",
+    "execArgv": [],
+    "platform": "linux",
+    "arch": "x64",
+    "cpu": "AMD EPYC 7401P 24-Core Processor",
+    "logicalCpus": 48,
+    "hostname": "trmd-metal-2",
+    "bootIdentity": {
+      "method": "linux-boot-id-sha256",
+      "sha256": "caaed6cb8e99128e2e838723b6933daf45ee30366438d373c9d1b3a5c7ab5ded"
+    },
+    "nodeCompileCache": "/home/trmd/.hive/v2/node-compile-cache",
+    "nodeOptionsSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "loadBefore": [
+      2.1,
+      1.88,
+      2.02
+    ],
+    "loadAfter": [
+      7.69,
+      4.08,
+      2.81
+    ]
+  },
+  "workload": {
+    "scenarios": [
+      {
+        "name": "empty",
+        "bees": 0,
+        "generations": 1,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      {
+        "name": "retained-1000",
+        "bees": 1000,
+        "generations": 20,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      {
+        "name": "retained-10000",
+        "bees": 10000,
+        "generations": 1,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      {
+        "name": "sparse-live",
+        "bees": 1000,
+        "generations": 20,
+        "live": 1,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      {
+        "name": "all-live",
+        "bees": 1000,
+        "generations": 1,
+        "live": 1000,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      {
+        "name": "held-mail",
+        "bees": 10,
+        "generations": 1,
+        "live": 1,
+        "pending": 1000,
+        "bodyBytes": 1024
+      },
+      {
+        "name": "write-every-tick",
+        "bees": 1000,
+        "generations": 1,
+        "live": 1,
+        "pending": 0,
+        "bodyBytes": 0,
+        "rename": true
+      }
+    ],
+    "rounds": 15,
+    "order": "ABBA each round; both modules seeded; three step and two write-batch warmups per side",
+    "durability": "WAL/NORMAL"
+  },
+  "results": [
+    {
+      "scenario": {
+        "name": "empty",
+        "bees": 0,
+        "generations": 1,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      "seededBytes": 987136,
+      "firstOpen": [
+        {
+          "wallMs": 4.641501999999946,
+          "cpuMs": 3.675
+        },
+        {
+          "wallMs": 4.285154000000034,
+          "cpuMs": 3.772
+        }
+      ],
+      "closedStorage": [
+        {
+          "bytes": 1892352,
+          "pageCount": 462,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        },
+        {
+          "bytes": 1892352,
+          "pageCount": 462,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 0.5192229999998972,
+            "cpuMs": 0.548
+          },
+          {
+            "wallMs": 0.49661300000002484,
+            "cpuMs": 0.799
+          },
+          {
+            "wallMs": 0.5028630000000476,
+            "cpuMs": 0.509
+          },
+          {
+            "wallMs": 0.5280939999998964,
+            "cpuMs": 0.557
+          },
+          {
+            "wallMs": 0.5532640000000129,
+            "cpuMs": 0.558
+          },
+          {
+            "wallMs": 0.6704579999999396,
+            "cpuMs": 0.675
+          },
+          {
+            "wallMs": 0.6384669999999915,
+            "cpuMs": 0.643
+          },
+          {
+            "wallMs": 0.46808199999998124,
+            "cpuMs": 0.472
+          },
+          {
+            "wallMs": 0.44035199999996166,
+            "cpuMs": 0.444
+          },
+          {
+            "wallMs": 0.5171229999999696,
+            "cpuMs": 3.365
+          },
+          {
+            "wallMs": 0.47700300000008156,
+            "cpuMs": 1.162
+          },
+          {
+            "wallMs": 0.4860830000000078,
+            "cpuMs": 0.491
+          },
+          {
+            "wallMs": 0.5210039999999481,
+            "cpuMs": 0.526
+          },
+          {
+            "wallMs": 0.4943430000000717,
+            "cpuMs": 0.5
+          },
+          {
+            "wallMs": 0.4964840000000095,
+            "cpuMs": 0.502
+          },
+          {
+            "wallMs": 0.45883200000002944,
+            "cpuMs": 0.463
+          },
+          {
+            "wallMs": 0.4840229999999792,
+            "cpuMs": 0.489
+          },
+          {
+            "wallMs": 0.4698519999999462,
+            "cpuMs": 0.473
+          },
+          {
+            "wallMs": 0.45295199999998204,
+            "cpuMs": 0.458
+          },
+          {
+            "wallMs": 0.4556320000000369,
+            "cpuMs": 0.459
+          },
+          {
+            "wallMs": 0.46427200000005087,
+            "cpuMs": 0.468
+          },
+          {
+            "wallMs": 0.4536920000000464,
+            "cpuMs": 0.458
+          },
+          {
+            "wallMs": 0.44833199999993667,
+            "cpuMs": 0.452
+          },
+          {
+            "wallMs": 0.4316519999999855,
+            "cpuMs": 0.435
+          },
+          {
+            "wallMs": 0.5025939999999309,
+            "cpuMs": 0.51
+          },
+          {
+            "wallMs": 0.5270440000000463,
+            "cpuMs": 0.802
+          },
+          {
+            "wallMs": 0.4272409999999809,
+            "cpuMs": 0.432
+          },
+          {
+            "wallMs": 0.4974730000000136,
+            "cpuMs": 0.667
+          },
+          {
+            "wallMs": 0.4504620000000159,
+            "cpuMs": 0.455
+          },
+          {
+            "wallMs": 0.504413999999997,
+            "cpuMs": 0.69
+          }
+        ],
+        [
+          {
+            "wallMs": 0.05787199999997483,
+            "cpuMs": 0.063
+          },
+          {
+            "wallMs": 0.059360999999967134,
+            "cpuMs": 0.084
+          },
+          {
+            "wallMs": 0.06324199999994562,
+            "cpuMs": 0.068
+          },
+          {
+            "wallMs": 0.05721200000004956,
+            "cpuMs": 0.062
+          },
+          {
+            "wallMs": 0.080791999999974,
+            "cpuMs": 0.085
+          },
+          {
+            "wallMs": 0.13534400000003188,
+            "cpuMs": 0.139
+          },
+          {
+            "wallMs": 0.15579400000001442,
+            "cpuMs": 0.159
+          },
+          {
+            "wallMs": 0.039240999999947235,
+            "cpuMs": 0.042
+          },
+          {
+            "wallMs": 0.040170999999986634,
+            "cpuMs": 0.043
+          },
+          {
+            "wallMs": 0.032379999999989195,
+            "cpuMs": 0.035
+          },
+          {
+            "wallMs": 0.07236199999999826,
+            "cpuMs": 0.077
+          },
+          {
+            "wallMs": 0.05593199999998433,
+            "cpuMs": 0.061
+          },
+          {
+            "wallMs": 0.04907100000002629,
+            "cpuMs": 0.053
+          },
+          {
+            "wallMs": 0.030759999999986576,
+            "cpuMs": 0.033
+          },
+          {
+            "wallMs": 0.0386510000000726,
+            "cpuMs": 0.041
+          },
+          {
+            "wallMs": 0.038511000000085005,
+            "cpuMs": 0.041
+          },
+          {
+            "wallMs": 0.054850999999985106,
+            "cpuMs": 0.058
+          },
+          {
+            "wallMs": 0.036541000000056556,
+            "cpuMs": 0.039
+          },
+          {
+            "wallMs": 0.03251099999999951,
+            "cpuMs": 0.035
+          },
+          {
+            "wallMs": 0.021999999999934516,
+            "cpuMs": 0.025
+          },
+          {
+            "wallMs": 0.03203100000007453,
+            "cpuMs": 0.034
+          },
+          {
+            "wallMs": 0.021911000000045533,
+            "cpuMs": 0.024
+          },
+          {
+            "wallMs": 0.029600999999956912,
+            "cpuMs": 0.033
+          },
+          {
+            "wallMs": 0.021649999999908687,
+            "cpuMs": 0.025
+          },
+          {
+            "wallMs": 0.03000099999997019,
+            "cpuMs": 0.032
+          },
+          {
+            "wallMs": 0.02178999999989628,
+            "cpuMs": 0.024
+          },
+          {
+            "wallMs": 0.029630999999994856,
+            "cpuMs": 0.033
+          },
+          {
+            "wallMs": 0.04013199999997141,
+            "cpuMs": 0.043
+          },
+          {
+            "wallMs": 0.058532000000013795,
+            "cpuMs": 0.064
+          },
+          {
+            "wallMs": 0.022981000000072527,
+            "cpuMs": 0.025
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 37.529133,
+            "cpuMs": 28.543
+          },
+          {
+            "wallMs": 10.839767000000052,
+            "cpuMs": 10.846
+          },
+          {
+            "wallMs": 12.055679000000055,
+            "cpuMs": 12.063
+          },
+          {
+            "wallMs": 30.096557000000075,
+            "cpuMs": 15.448
+          },
+          {
+            "wallMs": 11.590906000000018,
+            "cpuMs": 13.858
+          },
+          {
+            "wallMs": 32.597842000000014,
+            "cpuMs": 17.66
+          },
+          {
+            "wallMs": 12.06728899999996,
+            "cpuMs": 16.397
+          },
+          {
+            "wallMs": 13.319391999999993,
+            "cpuMs": 14.255
+          },
+          {
+            "wallMs": 32.768906000000015,
+            "cpuMs": 16.912
+          },
+          {
+            "wallMs": 12.769428000000062,
+            "cpuMs": 12.78
+          },
+          {
+            "wallMs": 37.32581700000014,
+            "cpuMs": 18.576
+          },
+          {
+            "wallMs": 12.63973400000009,
+            "cpuMs": 14.524
+          },
+          {
+            "wallMs": 12.023838000000069,
+            "cpuMs": 12.032
+          },
+          {
+            "wallMs": 43.665484000000106,
+            "cpuMs": 29.198
+          },
+          {
+            "wallMs": 11.198317000000088,
+            "cpuMs": 11.207
+          },
+          {
+            "wallMs": 30.170037999999977,
+            "cpuMs": 15.467
+          },
+          {
+            "wallMs": 10.733794000000216,
+            "cpuMs": 10.741
+          },
+          {
+            "wallMs": 17.967143999999962,
+            "cpuMs": 18.02
+          },
+          {
+            "wallMs": 36.816892999999936,
+            "cpuMs": 18.51
+          },
+          {
+            "wallMs": 12.145500999999967,
+            "cpuMs": 12.155
+          },
+          {
+            "wallMs": 31.372509000000036,
+            "cpuMs": 16.406
+          },
+          {
+            "wallMs": 15.372387000000117,
+            "cpuMs": 14.562
+          },
+          {
+            "wallMs": 15.170051999999941,
+            "cpuMs": 15.179
+          },
+          {
+            "wallMs": 32.924740000000156,
+            "cpuMs": 24.321
+          },
+          {
+            "wallMs": 33.98467900000014,
+            "cpuMs": 36.62
+          },
+          {
+            "wallMs": 28.59134599999993,
+            "cpuMs": 15.354
+          },
+          {
+            "wallMs": 11.035671999999977,
+            "cpuMs": 11.047
+          },
+          {
+            "wallMs": 11.915675000000192,
+            "cpuMs": 11.925
+          },
+          {
+            "wallMs": 28.580356000000165,
+            "cpuMs": 15.324
+          },
+          {
+            "wallMs": 11.31919999999991,
+            "cpuMs": 11.328
+          }
+        ],
+        [
+          {
+            "wallMs": 30.036554000000024,
+            "cpuMs": 17.4
+          },
+          {
+            "wallMs": 11.317380000000071,
+            "cpuMs": 11.326
+          },
+          {
+            "wallMs": 12.5646109999999,
+            "cpuMs": 29.674
+          },
+          {
+            "wallMs": 37.289536,
+            "cpuMs": 55.919
+          },
+          {
+            "wallMs": 11.163796000000048,
+            "cpuMs": 11.81
+          },
+          {
+            "wallMs": 28.270578,
+            "cpuMs": 17.347
+          },
+          {
+            "wallMs": 12.87814000000003,
+            "cpuMs": 19.088
+          },
+          {
+            "wallMs": 12.104061000000002,
+            "cpuMs": 12.114
+          },
+          {
+            "wallMs": 29.331025000000068,
+            "cpuMs": 15.413
+          },
+          {
+            "wallMs": 12.089819999999918,
+            "cpuMs": 12.097
+          },
+          {
+            "wallMs": 28.996265999999878,
+            "cpuMs": 17.17
+          },
+          {
+            "wallMs": 11.621936999999889,
+            "cpuMs": 11.629
+          },
+          {
+            "wallMs": 12.775678999999855,
+            "cpuMs": 12.783
+          },
+          {
+            "wallMs": 29.192322000000104,
+            "cpuMs": 16.305
+          },
+          {
+            "wallMs": 10.635782000000063,
+            "cpuMs": 10.642
+          },
+          {
+            "wallMs": 34.76819899999987,
+            "cpuMs": 15.718
+          },
+          {
+            "wallMs": 13.672952000000123,
+            "cpuMs": 13.241
+          },
+          {
+            "wallMs": 10.808076000000028,
+            "cpuMs": 10.816
+          },
+          {
+            "wallMs": 30.23045000000002,
+            "cpuMs": 17.286
+          },
+          {
+            "wallMs": 11.990885999999819,
+            "cpuMs": 11.998
+          },
+          {
+            "wallMs": 29.750297000000046,
+            "cpuMs": 15.825
+          },
+          {
+            "wallMs": 12.513919999999871,
+            "cpuMs": 12.522
+          },
+          {
+            "wallMs": 13.762543999999934,
+            "cpuMs": 13.771
+          },
+          {
+            "wallMs": 35.08665800000017,
+            "cpuMs": 27.33
+          },
+          {
+            "wallMs": 12.438259000000016,
+            "cpuMs": 12.447
+          },
+          {
+            "wallMs": 26.387456999999813,
+            "cpuMs": 14.614
+          },
+          {
+            "wallMs": 10.919699000000037,
+            "cpuMs": 10.928
+          },
+          {
+            "wallMs": 12.287545000000136,
+            "cpuMs": 12.298
+          },
+          {
+            "wallMs": 28.32521799999995,
+            "cpuMs": 14.837
+          },
+          {
+            "wallMs": 11.351441000000023,
+            "cpuMs": 11.359
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 7.182440000000042,
+            "cpuMs": 4.316
+          },
+          {
+            "wallMs": 6.292105999999876,
+            "cpuMs": 4.514
+          },
+          {
+            "wallMs": 5.3873319999997875,
+            "cpuMs": 3.864
+          },
+          {
+            "wallMs": 5.648949000000357,
+            "cpuMs": 3.558
+          },
+          {
+            "wallMs": 6.046579999999722,
+            "cpuMs": 4.179
+          },
+          {
+            "wallMs": 7.425665999999637,
+            "cpuMs": 5.712
+          },
+          {
+            "wallMs": 6.5311430000001565,
+            "cpuMs": 5.567
+          },
+          {
+            "wallMs": 5.1599369999999,
+            "cpuMs": 3.868
+          },
+          {
+            "wallMs": 6.523522999999841,
+            "cpuMs": 4.996
+          },
+          {
+            "wallMs": 6.600793999999951,
+            "cpuMs": 4.63
+          }
+        ],
+        [
+          {
+            "wallMs": 6.651386000000002,
+            "cpuMs": 4.269
+          },
+          {
+            "wallMs": 5.63630900000021,
+            "cpuMs": 3.825
+          },
+          {
+            "wallMs": 4.86874899999998,
+            "cpuMs": 3.708
+          },
+          {
+            "wallMs": 4.853178999999727,
+            "cpuMs": 3.627
+          },
+          {
+            "wallMs": 7.323084000000108,
+            "cpuMs": 5.716
+          },
+          {
+            "wallMs": 7.745355000000018,
+            "cpuMs": 6.486
+          },
+          {
+            "wallMs": 5.7297419999999875,
+            "cpuMs": 4.835
+          },
+          {
+            "wallMs": 5.897215999999844,
+            "cpuMs": 4.355
+          },
+          {
+            "wallMs": 5.770841999999902,
+            "cpuMs": 4.459
+          },
+          {
+            "wallMs": 5.861114000000271,
+            "cpuMs": 4.058
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "retained-1000",
+        "bees": 1000,
+        "generations": 20,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      "seededBytes": 21446656,
+      "firstOpen": [
+        {
+          "wallMs": 40.44261900000129,
+          "cpuMs": 4.204
+        },
+        {
+          "wallMs": 4.5711409999967145,
+          "cpuMs": 3.727
+        }
+      ],
+      "closedStorage": [
+        {
+          "bytes": 22376448,
+          "pageCount": 5463,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        },
+        {
+          "bytes": 22376448,
+          "pageCount": 5463,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 0.3636899999983143,
+            "cpuMs": 0.378
+          },
+          {
+            "wallMs": 0.358459999999468,
+            "cpuMs": 0.362
+          },
+          {
+            "wallMs": 0.3548499999997148,
+            "cpuMs": 0.359
+          },
+          {
+            "wallMs": 0.3566790000004403,
+            "cpuMs": 0.361
+          },
+          {
+            "wallMs": 0.37442899999950896,
+            "cpuMs": 0.379
+          },
+          {
+            "wallMs": 0.3538590000025579,
+            "cpuMs": 0.358
+          },
+          {
+            "wallMs": 0.36094999999841093,
+            "cpuMs": 0.365
+          },
+          {
+            "wallMs": 0.3620699999992212,
+            "cpuMs": 1.112
+          },
+          {
+            "wallMs": 0.35716900000261376,
+            "cpuMs": 0.36
+          },
+          {
+            "wallMs": 0.3552700000000186,
+            "cpuMs": 0.359
+          },
+          {
+            "wallMs": 0.42552100000102655,
+            "cpuMs": 0.429
+          },
+          {
+            "wallMs": 0.35209000000031665,
+            "cpuMs": 0.355
+          },
+          {
+            "wallMs": 0.3462989999970887,
+            "cpuMs": 0.35
+          },
+          {
+            "wallMs": 0.35046000000147615,
+            "cpuMs": 0.353
+          },
+          {
+            "wallMs": 0.3663299999971059,
+            "cpuMs": 0.37
+          },
+          {
+            "wallMs": 0.36447899999984656,
+            "cpuMs": 0.368
+          },
+          {
+            "wallMs": 0.3457090000010794,
+            "cpuMs": 0.349
+          },
+          {
+            "wallMs": 0.34585900000092806,
+            "cpuMs": 0.35
+          },
+          {
+            "wallMs": 0.3409189999983937,
+            "cpuMs": 0.344
+          },
+          {
+            "wallMs": 0.3416590000015276,
+            "cpuMs": 0.345
+          },
+          {
+            "wallMs": 0.3381789999984903,
+            "cpuMs": 0.342
+          },
+          {
+            "wallMs": 0.3842100000001665,
+            "cpuMs": 0.388
+          },
+          {
+            "wallMs": 0.36486000000149943,
+            "cpuMs": 0.369
+          },
+          {
+            "wallMs": 0.4009310000001278,
+            "cpuMs": 0.404
+          },
+          {
+            "wallMs": 0.4033710000003339,
+            "cpuMs": 0.407
+          },
+          {
+            "wallMs": 0.3904709999987972,
+            "cpuMs": 0.405
+          },
+          {
+            "wallMs": 0.3871800000015355,
+            "cpuMs": 0.551
+          },
+          {
+            "wallMs": 0.440110999999888,
+            "cpuMs": 1.049
+          },
+          {
+            "wallMs": 0.39415100000042,
+            "cpuMs": 0.573
+          },
+          {
+            "wallMs": 0.4383010000019567,
+            "cpuMs": 1.224
+          }
+        ],
+        [
+          {
+            "wallMs": 0.019250999997893814,
+            "cpuMs": 0.021
+          },
+          {
+            "wallMs": 0.011500000000523869,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.01854000000093947,
+            "cpuMs": 0.022
+          },
+          {
+            "wallMs": 0.010951000000204658,
+            "cpuMs": 0.014
+          },
+          {
+            "wallMs": 0.018369999997958075,
+            "cpuMs": 0.021
+          },
+          {
+            "wallMs": 0.010871000002225628,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.019161000000167405,
+            "cpuMs": 0.022
+          },
+          {
+            "wallMs": 0.01238999999986845,
+            "cpuMs": 0.015
+          },
+          {
+            "wallMs": 0.018880999999964843,
+            "cpuMs": 0.021
+          },
+          {
+            "wallMs": 0.010930000000371365,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.018401000001176726,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.010650000000168802,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.018201000002591172,
+            "cpuMs": 0.021
+          },
+          {
+            "wallMs": 0.010809999999764841,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.017750000002706656,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.010390999999799533,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.0177399999993213,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.010480000000825385,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.017929999998159474,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.010340000000724103,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.017690000000584405,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.010430000002088491,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.019030999999813503,
+            "cpuMs": 0.021
+          },
+          {
+            "wallMs": 0.011070000000472646,
+            "cpuMs": 0.014
+          },
+          {
+            "wallMs": 0.020540999998047482,
+            "cpuMs": 0.023
+          },
+          {
+            "wallMs": 0.012230000000272412,
+            "cpuMs": 0.015
+          },
+          {
+            "wallMs": 0.0192399999978079,
+            "cpuMs": 0.022
+          },
+          {
+            "wallMs": 0.05230200000005425,
+            "cpuMs": 0.055
+          },
+          {
+            "wallMs": 0.02187000000049011,
+            "cpuMs": 0.052
+          },
+          {
+            "wallMs": 0.012241000000358326,
+            "cpuMs": 0.014
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 28.48912299999938,
+            "cpuMs": 15.273
+          },
+          {
+            "wallMs": 10.650891999997839,
+            "cpuMs": 10.656
+          },
+          {
+            "wallMs": 28.294777999999496,
+            "cpuMs": 14.765
+          },
+          {
+            "wallMs": 10.975210000000516,
+            "cpuMs": 10.941
+          },
+          {
+            "wallMs": 11.070062999999209,
+            "cpuMs": 11.077
+          },
+          {
+            "wallMs": 28.976435000000492,
+            "cpuMs": 14.853
+          },
+          {
+            "wallMs": 10.492998000001535,
+            "cpuMs": 10.498
+          },
+          {
+            "wallMs": 28.304238000000623,
+            "cpuMs": 14.681
+          },
+          {
+            "wallMs": 10.969260000001668,
+            "cpuMs": 11.49
+          },
+          {
+            "wallMs": 11.002389999997831,
+            "cpuMs": 11.008
+          },
+          {
+            "wallMs": 28.784130999996705,
+            "cpuMs": 16.202
+          },
+          {
+            "wallMs": 10.513807999999699,
+            "cpuMs": 10.522
+          },
+          {
+            "wallMs": 29.09754900000189,
+            "cpuMs": 14.662
+          },
+          {
+            "wallMs": 11.780542000000423,
+            "cpuMs": 14.057
+          },
+          {
+            "wallMs": 10.609280000000581,
+            "cpuMs": 10.615
+          },
+          {
+            "wallMs": 27.408774999999878,
+            "cpuMs": 14.86
+          },
+          {
+            "wallMs": 10.648142000001826,
+            "cpuMs": 10.655
+          },
+          {
+            "wallMs": 34.193953999998485,
+            "cpuMs": 14.76
+          },
+          {
+            "wallMs": 11.930075000000215,
+            "cpuMs": 11.936
+          },
+          {
+            "wallMs": 30.085194999999658,
+            "cpuMs": 15.447
+          },
+          {
+            "wallMs": 11.068273000000772,
+            "cpuMs": 11.075
+          },
+          {
+            "wallMs": 10.756665000000794,
+            "cpuMs": 10.765
+          },
+          {
+            "wallMs": 27.80671500000244,
+            "cpuMs": 14.868
+          },
+          {
+            "wallMs": 12.297394999997778,
+            "cpuMs": 12.306
+          },
+          {
+            "wallMs": 32.290883000001486,
+            "cpuMs": 15.915
+          },
+          {
+            "wallMs": 11.404421999999613,
+            "cpuMs": 11.412
+          },
+          {
+            "wallMs": 11.029092000000674,
+            "cpuMs": 11.036
+          },
+          {
+            "wallMs": 23.554102000001876,
+            "cpuMs": 15.944
+          },
+          {
+            "wallMs": 11.822433000001183,
+            "cpuMs": 11.83
+          },
+          {
+            "wallMs": 30.445605000000796,
+            "cpuMs": 16.593
+          }
+        ],
+        [
+          {
+            "wallMs": 34.33198800000173,
+            "cpuMs": 18.621
+          },
+          {
+            "wallMs": 10.90234799999962,
+            "cpuMs": 11.337
+          },
+          {
+            "wallMs": 51.22923399999854,
+            "cpuMs": 100.008
+          },
+          {
+            "wallMs": 10.793615000002319,
+            "cpuMs": 10.799
+          },
+          {
+            "wallMs": 10.975361000000703,
+            "cpuMs": 10.982
+          },
+          {
+            "wallMs": 28.92506499999945,
+            "cpuMs": 14.06
+          },
+          {
+            "wallMs": 11.84359399999812,
+            "cpuMs": 11.587
+          },
+          {
+            "wallMs": 28.49445299999934,
+            "cpuMs": 13.971
+          },
+          {
+            "wallMs": 10.659741999999824,
+            "cpuMs": 10.665
+          },
+          {
+            "wallMs": 10.710982999997213,
+            "cpuMs": 10.719
+          },
+          {
+            "wallMs": 41.74601400000029,
+            "cpuMs": 16.294
+          },
+          {
+            "wallMs": 11.513883999999962,
+            "cpuMs": 11.145
+          },
+          {
+            "wallMs": 31.676329000001715,
+            "cpuMs": 14.606
+          },
+          {
+            "wallMs": 10.975419999998849,
+            "cpuMs": 14.411
+          },
+          {
+            "wallMs": 11.022021000000677,
+            "cpuMs": 11.03
+          },
+          {
+            "wallMs": 28.393530999997893,
+            "cpuMs": 14.351
+          },
+          {
+            "wallMs": 10.460376999999426,
+            "cpuMs": 10.467
+          },
+          {
+            "wallMs": 27.235500000002503,
+            "cpuMs": 14.247
+          },
+          {
+            "wallMs": 11.17824599999949,
+            "cpuMs": 11.184
+          },
+          {
+            "wallMs": 34.893802999999025,
+            "cpuMs": 14.63
+          },
+          {
+            "wallMs": 10.922238999999536,
+            "cpuMs": 10.931
+          },
+          {
+            "wallMs": 10.424344999999448,
+            "cpuMs": 10.43
+          },
+          {
+            "wallMs": 30.586750000002212,
+            "cpuMs": 15.324
+          },
+          {
+            "wallMs": 11.48101300000053,
+            "cpuMs": 11.489
+          },
+          {
+            "wallMs": 28.885023999999248,
+            "cpuMs": 14.993
+          },
+          {
+            "wallMs": 11.381870999997773,
+            "cpuMs": 11.39
+          },
+          {
+            "wallMs": 11.325607999999193,
+            "cpuMs": 11.332
+          },
+          {
+            "wallMs": 23.459450999998808,
+            "cpuMs": 15.408
+          },
+          {
+            "wallMs": 11.374861000000237,
+            "cpuMs": 11.382
+          },
+          {
+            "wallMs": 22.920955000001413,
+            "cpuMs": 15.299
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 5.9936689999995,
+            "cpuMs": 3.79
+          },
+          {
+            "wallMs": 4.989912000000913,
+            "cpuMs": 3.598
+          },
+          {
+            "wallMs": 5.336730999999418,
+            "cpuMs": 3.611
+          },
+          {
+            "wallMs": 5.0121930000022985,
+            "cpuMs": 3.614
+          },
+          {
+            "wallMs": 4.632592999998451,
+            "cpuMs": 3.703
+          },
+          {
+            "wallMs": 4.967521999999008,
+            "cpuMs": 5.435
+          },
+          {
+            "wallMs": 4.751655000000028,
+            "cpuMs": 6.196
+          },
+          {
+            "wallMs": 5.518955999999889,
+            "cpuMs": 3.571
+          },
+          {
+            "wallMs": 5.550637000000279,
+            "cpuMs": 3.607
+          },
+          {
+            "wallMs": 5.942946999999549,
+            "cpuMs": 3.668
+          }
+        ],
+        [
+          {
+            "wallMs": 5.304641000002448,
+            "cpuMs": 3.747
+          },
+          {
+            "wallMs": 5.47271499999988,
+            "cpuMs": 3.555
+          },
+          {
+            "wallMs": 5.298819999999978,
+            "cpuMs": 3.633
+          },
+          {
+            "wallMs": 5.071833999998489,
+            "cpuMs": 3.552
+          },
+          {
+            "wallMs": 4.519609999999375,
+            "cpuMs": 4.193
+          },
+          {
+            "wallMs": 4.715155000001687,
+            "cpuMs": 4.689
+          },
+          {
+            "wallMs": 4.739685999997164,
+            "cpuMs": 3.583
+          },
+          {
+            "wallMs": 5.247258999999758,
+            "cpuMs": 3.538
+          },
+          {
+            "wallMs": 5.711111999997229,
+            "cpuMs": 3.605
+          },
+          {
+            "wallMs": 5.7423520000011194,
+            "cpuMs": 3.593
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "retained-10000",
+        "bees": 10000,
+        "generations": 1,
+        "live": 0,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      "seededBytes": 23351296,
+      "firstOpen": [
+        {
+          "wallMs": 26.02914900000178,
+          "cpuMs": 3.984
+        },
+        {
+          "wallMs": 4.162040000002889,
+          "cpuMs": 3.468
+        }
+      ],
+      "closedStorage": [
+        {
+          "bytes": 24272896,
+          "pageCount": 5926,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        },
+        {
+          "bytes": 24272896,
+          "pageCount": 5926,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 0.37492999999813037,
+            "cpuMs": 0.437
+          },
+          {
+            "wallMs": 0.3524990000005346,
+            "cpuMs": 0.355
+          },
+          {
+            "wallMs": 0.3413199999995413,
+            "cpuMs": 0.345
+          },
+          {
+            "wallMs": 0.3433789999980945,
+            "cpuMs": 0.347
+          },
+          {
+            "wallMs": 0.3366889999961131,
+            "cpuMs": 0.34
+          },
+          {
+            "wallMs": 0.33960900000238325,
+            "cpuMs": 0.342
+          },
+          {
+            "wallMs": 0.3351790000015171,
+            "cpuMs": 0.338
+          },
+          {
+            "wallMs": 0.34379900000203634,
+            "cpuMs": 0.347
+          },
+          {
+            "wallMs": 0.3571989999982179,
+            "cpuMs": 0.36
+          },
+          {
+            "wallMs": 0.3389880000031553,
+            "cpuMs": 0.342
+          },
+          {
+            "wallMs": 0.3316679999988992,
+            "cpuMs": 0.334
+          },
+          {
+            "wallMs": 0.337017999998352,
+            "cpuMs": 0.34
+          },
+          {
+            "wallMs": 0.3327590000044438,
+            "cpuMs": 0.336
+          },
+          {
+            "wallMs": 0.3475890000045183,
+            "cpuMs": 0.35
+          },
+          {
+            "wallMs": 0.35254900000290945,
+            "cpuMs": 0.356
+          },
+          {
+            "wallMs": 0.3391390000033425,
+            "cpuMs": 0.342
+          },
+          {
+            "wallMs": 0.32944799999677343,
+            "cpuMs": 0.332
+          },
+          {
+            "wallMs": 0.3365479999993113,
+            "cpuMs": 0.339
+          },
+          {
+            "wallMs": 0.33287799999379786,
+            "cpuMs": 0.336
+          },
+          {
+            "wallMs": 0.339099000004353,
+            "cpuMs": 0.342
+          },
+          {
+            "wallMs": 0.33140799999819137,
+            "cpuMs": 0.335
+          },
+          {
+            "wallMs": 0.3353579999966314,
+            "cpuMs": 0.338
+          },
+          {
+            "wallMs": 0.33421899999666493,
+            "cpuMs": 0.338
+          },
+          {
+            "wallMs": 0.33675899999798276,
+            "cpuMs": 0.34
+          },
+          {
+            "wallMs": 0.33449900000414345,
+            "cpuMs": 0.338
+          },
+          {
+            "wallMs": 0.33832900000561494,
+            "cpuMs": 0.342
+          },
+          {
+            "wallMs": 0.3312380000061239,
+            "cpuMs": 0.334
+          },
+          {
+            "wallMs": 0.33702899999479996,
+            "cpuMs": 0.34
+          },
+          {
+            "wallMs": 0.33332900000095833,
+            "cpuMs": 0.336
+          },
+          {
+            "wallMs": 0.3358189999999013,
+            "cpuMs": 0.338
+          }
+        ],
+        [
+          {
+            "wallMs": 0.017990000000281725,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.010880000001634471,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.018720000000030268,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.02316100000462029,
+            "cpuMs": 0.025
+          },
+          {
+            "wallMs": 0.020461000000068452,
+            "cpuMs": 0.022
+          },
+          {
+            "wallMs": 0.010430000002088491,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.01773999999568332,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.010100999999849591,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.01780000000144355,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.010260000002745073,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.017449999999371357,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.01005000000441214,
+            "cpuMs": 0.011
+          },
+          {
+            "wallMs": 0.017079999997804407,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.009970999999495689,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.018149999996239785,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.00998000000254251,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.017399999996996485,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.011599999997997656,
+            "cpuMs": 0.014
+          },
+          {
+            "wallMs": 0.01757999999972526,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.00983000000269385,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.017249999997147825,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.009761000001162756,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.017760000002454035,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.009860999998636544,
+            "cpuMs": 0.011
+          },
+          {
+            "wallMs": 0.043660999996063765,
+            "cpuMs": 0.045
+          },
+          {
+            "wallMs": 0.010589999998046551,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.017521000001579523,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.009899999997287523,
+            "cpuMs": 0.011
+          },
+          {
+            "wallMs": 0.017360999998345505,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.011509999996633269,
+            "cpuMs": 0.014
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 32.73898600000393,
+            "cpuMs": 16.767
+          },
+          {
+            "wallMs": 10.629069999995409,
+            "cpuMs": 10.634
+          },
+          {
+            "wallMs": 26.30802599999879,
+            "cpuMs": 13.59
+          },
+          {
+            "wallMs": 10.707693000003928,
+            "cpuMs": 13.264
+          },
+          {
+            "wallMs": 10.268740999999864,
+            "cpuMs": 10.273
+          },
+          {
+            "wallMs": 25.61670800000138,
+            "cpuMs": 14.73
+          },
+          {
+            "wallMs": 10.591969000000972,
+            "cpuMs": 10.597
+          },
+          {
+            "wallMs": 27.258371000003535,
+            "cpuMs": 13.639
+          },
+          {
+            "wallMs": 10.877488000005542,
+            "cpuMs": 10.885
+          },
+          {
+            "wallMs": 10.777355000005628,
+            "cpuMs": 10.782
+          },
+          {
+            "wallMs": 57.26880399999936,
+            "cpuMs": 79.949
+          },
+          {
+            "wallMs": 10.566538999999466,
+            "cpuMs": 10.571
+          },
+          {
+            "wallMs": 26.89744100000098,
+            "cpuMs": 13.843
+          },
+          {
+            "wallMs": 10.996271000003617,
+            "cpuMs": 19.476
+          },
+          {
+            "wallMs": 11.337530000004335,
+            "cpuMs": 13.55
+          },
+          {
+            "wallMs": 25.149934999994002,
+            "cpuMs": 13.931
+          },
+          {
+            "wallMs": 10.152078999999503,
+            "cpuMs": 10.157
+          },
+          {
+            "wallMs": 23.69012699999439,
+            "cpuMs": 13.613
+          },
+          {
+            "wallMs": 10.307481999996526,
+            "cpuMs": 10.311
+          },
+          {
+            "wallMs": 28.031732000003103,
+            "cpuMs": 14.327
+          },
+          {
+            "wallMs": 10.485747000006086,
+            "cpuMs": 10.491
+          },
+          {
+            "wallMs": 10.441235999998753,
+            "cpuMs": 10.446
+          },
+          {
+            "wallMs": 26.878199999999197,
+            "cpuMs": 14.509
+          },
+          {
+            "wallMs": 10.453587000003608,
+            "cpuMs": 10.458
+          },
+          {
+            "wallMs": 28.184995000003255,
+            "cpuMs": 14.3
+          },
+          {
+            "wallMs": 10.247060999994574,
+            "cpuMs": 10.253
+          },
+          {
+            "wallMs": 10.854097999996156,
+            "cpuMs": 10.858
+          },
+          {
+            "wallMs": 22.627988000000187,
+            "cpuMs": 14.209
+          },
+          {
+            "wallMs": 11.26438799999596,
+            "cpuMs": 11.268
+          },
+          {
+            "wallMs": 21.136459000001196,
+            "cpuMs": 14.758
+          }
+        ],
+        [
+          {
+            "wallMs": 28.10076300000219,
+            "cpuMs": 16.215
+          },
+          {
+            "wallMs": 10.630340999996406,
+            "cpuMs": 10.635
+          },
+          {
+            "wallMs": 25.3492499999993,
+            "cpuMs": 14.318
+          },
+          {
+            "wallMs": 10.502597999999125,
+            "cpuMs": 10.507
+          },
+          {
+            "wallMs": 10.500577999999223,
+            "cpuMs": 10.528
+          },
+          {
+            "wallMs": 25.376499999998487,
+            "cpuMs": 14.303
+          },
+          {
+            "wallMs": 10.79752500000177,
+            "cpuMs": 10.802
+          },
+          {
+            "wallMs": 25.780673000001116,
+            "cpuMs": 14.513
+          },
+          {
+            "wallMs": 10.796823999997287,
+            "cpuMs": 10.804
+          },
+          {
+            "wallMs": 11.31333900000027,
+            "cpuMs": 11.319
+          },
+          {
+            "wallMs": 27.575299000003724,
+            "cpuMs": 15.328
+          },
+          {
+            "wallMs": 10.592939000001934,
+            "cpuMs": 10.598
+          },
+          {
+            "wallMs": 24.886688999999024,
+            "cpuMs": 14.732
+          },
+          {
+            "wallMs": 10.935739000000467,
+            "cpuMs": 10.94
+          },
+          {
+            "wallMs": 11.578717000003962,
+            "cpuMs": 11.584
+          },
+          {
+            "wallMs": 27.384283999999752,
+            "cpuMs": 15.538
+          },
+          {
+            "wallMs": 10.496708000006038,
+            "cpuMs": 10.501
+          },
+          {
+            "wallMs": 25.36467000000266,
+            "cpuMs": 14.161
+          },
+          {
+            "wallMs": 10.569980000000214,
+            "cpuMs": 10.574
+          },
+          {
+            "wallMs": 25.336040000001958,
+            "cpuMs": 14.184
+          },
+          {
+            "wallMs": 10.557269000004453,
+            "cpuMs": 10.563
+          },
+          {
+            "wallMs": 10.428546000002825,
+            "cpuMs": 10.433
+          },
+          {
+            "wallMs": 26.734825999999885,
+            "cpuMs": 14.759
+          },
+          {
+            "wallMs": 10.652922000001126,
+            "cpuMs": 10.658
+          },
+          {
+            "wallMs": 23.392738000002282,
+            "cpuMs": 15.274
+          },
+          {
+            "wallMs": 10.773334999998042,
+            "cpuMs": 10.779
+          },
+          {
+            "wallMs": 11.041300999997475,
+            "cpuMs": 11.046
+          },
+          {
+            "wallMs": 22.564496999999392,
+            "cpuMs": 14.275
+          },
+          {
+            "wallMs": 11.615028000000166,
+            "cpuMs": 11.621
+          },
+          {
+            "wallMs": 23.39730799999961,
+            "cpuMs": 15.07
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 6.417388999994728,
+            "cpuMs": 3.865
+          },
+          {
+            "wallMs": 5.282898999997997,
+            "cpuMs": 4.048
+          },
+          {
+            "wallMs": 5.19360699999379,
+            "cpuMs": 3.591
+          },
+          {
+            "wallMs": 6.028380000003381,
+            "cpuMs": 3.53
+          },
+          {
+            "wallMs": 5.997379000000365,
+            "cpuMs": 3.88
+          },
+          {
+            "wallMs": 5.202268000000913,
+            "cpuMs": 3.665
+          },
+          {
+            "wallMs": 4.504379000005429,
+            "cpuMs": 3.527
+          },
+          {
+            "wallMs": 4.739314999998896,
+            "cpuMs": 3.613
+          },
+          {
+            "wallMs": 4.8343279999971855,
+            "cpuMs": 3.739
+          },
+          {
+            "wallMs": 6.5149820000006,
+            "cpuMs": 3.822
+          }
+        ],
+        [
+          {
+            "wallMs": 5.444384000002174,
+            "cpuMs": 3.588
+          },
+          {
+            "wallMs": 4.88213800000085,
+            "cpuMs": 3.939
+          },
+          {
+            "wallMs": 4.4772980000052485,
+            "cpuMs": 3.681
+          },
+          {
+            "wallMs": 4.739535000000615,
+            "cpuMs": 3.971
+          },
+          {
+            "wallMs": 5.507036000002699,
+            "cpuMs": 3.897
+          },
+          {
+            "wallMs": 5.345921000000089,
+            "cpuMs": 3.462
+          },
+          {
+            "wallMs": 4.584911000005377,
+            "cpuMs": 3.516
+          },
+          {
+            "wallMs": 4.572411000001011,
+            "cpuMs": 3.552
+          },
+          {
+            "wallMs": 7.558289000000514,
+            "cpuMs": 3.666
+          },
+          {
+            "wallMs": 8.316530000003695,
+            "cpuMs": 4.058
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "sparse-live",
+        "bees": 1000,
+        "generations": 20,
+        "live": 1,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      "seededBytes": 21446656,
+      "firstOpen": [
+        {
+          "wallMs": 27.304300999996485,
+          "cpuMs": 5.765
+        },
+        {
+          "wallMs": 4.705094000004465,
+          "cpuMs": 3.82
+        }
+      ],
+      "closedStorage": [
+        {
+          "bytes": 22376448,
+          "pageCount": 5463,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        },
+        {
+          "bytes": 22376448,
+          "pageCount": 5463,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 0.40372100000968203,
+            "cpuMs": 0.415
+          },
+          {
+            "wallMs": 0.39866999999503605,
+            "cpuMs": 0.402
+          },
+          {
+            "wallMs": 0.38826000000699423,
+            "cpuMs": 0.391
+          },
+          {
+            "wallMs": 0.3982010000036098,
+            "cpuMs": 0.402
+          },
+          {
+            "wallMs": 0.39196999999694526,
+            "cpuMs": 0.395
+          },
+          {
+            "wallMs": 0.42396200000075623,
+            "cpuMs": 0.633
+          },
+          {
+            "wallMs": 0.43822199999704026,
+            "cpuMs": 0.68
+          },
+          {
+            "wallMs": 0.41924100001051556,
+            "cpuMs": 0.422
+          },
+          {
+            "wallMs": 0.39045000000623986,
+            "cpuMs": 0.393
+          },
+          {
+            "wallMs": 0.37964099999226164,
+            "cpuMs": 0.383
+          },
+          {
+            "wallMs": 0.3758700000034878,
+            "cpuMs": 0.378
+          },
+          {
+            "wallMs": 0.37670999999681953,
+            "cpuMs": 0.38
+          },
+          {
+            "wallMs": 0.36991999999736436,
+            "cpuMs": 0.373
+          },
+          {
+            "wallMs": 0.37309999999706633,
+            "cpuMs": 0.376
+          },
+          {
+            "wallMs": 0.376959999994142,
+            "cpuMs": 0.379
+          },
+          {
+            "wallMs": 0.37387999999918975,
+            "cpuMs": 0.377
+          },
+          {
+            "wallMs": 0.3699300000007497,
+            "cpuMs": 0.373
+          },
+          {
+            "wallMs": 0.4098200000007637,
+            "cpuMs": 0.413
+          },
+          {
+            "wallMs": 0.39482000000134576,
+            "cpuMs": 0.398
+          },
+          {
+            "wallMs": 0.40384099999209866,
+            "cpuMs": 0.407
+          },
+          {
+            "wallMs": 0.3943909999943571,
+            "cpuMs": 0.397
+          },
+          {
+            "wallMs": 0.41115099999296945,
+            "cpuMs": 0.415
+          },
+          {
+            "wallMs": 0.3693900000071153,
+            "cpuMs": 0.372
+          },
+          {
+            "wallMs": 0.3792600000015227,
+            "cpuMs": 0.382
+          },
+          {
+            "wallMs": 0.36973000000580214,
+            "cpuMs": 0.372
+          },
+          {
+            "wallMs": 0.3726699999970151,
+            "cpuMs": 0.375
+          },
+          {
+            "wallMs": 0.385180000012042,
+            "cpuMs": 0.388
+          },
+          {
+            "wallMs": 0.37370999999984633,
+            "cpuMs": 0.377
+          },
+          {
+            "wallMs": 0.3765500000008615,
+            "cpuMs": 0.379
+          },
+          {
+            "wallMs": 0.37472999999590684,
+            "cpuMs": 0.378
+          }
+        ],
+        [
+          {
+            "wallMs": 0.01923000000533648,
+            "cpuMs": 0.021
+          },
+          {
+            "wallMs": 0.011369999992894009,
+            "cpuMs": 0.014
+          },
+          {
+            "wallMs": 0.018630999999004416,
+            "cpuMs": 0.021
+          },
+          {
+            "wallMs": 0.010750000001280569,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.020670999991125427,
+            "cpuMs": 0.022
+          },
+          {
+            "wallMs": 0.010470000008353963,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.019089999987045303,
+            "cpuMs": 0.021
+          },
+          {
+            "wallMs": 0.010741000005509704,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.018590000006952323,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.01013999999850057,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.01770000001124572,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.010251000014250167,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.01787999999942258,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.01015999999071937,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.018110999997588806,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.010269999998854473,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.07223199999134522,
+            "cpuMs": 0.074
+          },
+          {
+            "wallMs": 0.010890999998082407,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.01942100000451319,
+            "cpuMs": 0.022
+          },
+          {
+            "wallMs": 0.011440000002039596,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.019039999999222346,
+            "cpuMs": 0.021
+          },
+          {
+            "wallMs": 0.010680000006686896,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.017740000010235235,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.010009999998146668,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.017680999997537583,
+            "cpuMs": 0.019
+          },
+          {
+            "wallMs": 0.010009999998146668,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.01799100000062026,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.01006000000052154,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.017680999997537583,
+            "cpuMs": 0.02
+          },
+          {
+            "wallMs": 0.010099999999511056,
+            "cpuMs": 0.012
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 27.827074999993783,
+            "cpuMs": 16.511
+          },
+          {
+            "wallMs": 10.746033999996143,
+            "cpuMs": 10.752
+          },
+          {
+            "wallMs": 22.392771999991965,
+            "cpuMs": 14.545
+          },
+          {
+            "wallMs": 10.490997999993851,
+            "cpuMs": 10.496
+          },
+          {
+            "wallMs": 10.605521000004956,
+            "cpuMs": 10.611
+          },
+          {
+            "wallMs": 23.668176000006497,
+            "cpuMs": 14.852
+          },
+          {
+            "wallMs": 10.915239000009024,
+            "cpuMs": 10.885
+          },
+          {
+            "wallMs": 20.733697999996366,
+            "cpuMs": 14.424
+          },
+          {
+            "wallMs": 10.678101999990758,
+            "cpuMs": 10.684
+          },
+          {
+            "wallMs": 10.70839299999352,
+            "cpuMs": 10.675
+          },
+          {
+            "wallMs": 21.841738000002806,
+            "cpuMs": 16.255
+          },
+          {
+            "wallMs": 10.526989000005415,
+            "cpuMs": 10.532
+          },
+          {
+            "wallMs": 20.95883399999002,
+            "cpuMs": 14.561
+          },
+          {
+            "wallMs": 12.302735000004759,
+            "cpuMs": 12.31
+          },
+          {
+            "wallMs": 11.764060999994399,
+            "cpuMs": 11.769
+          },
+          {
+            "wallMs": 23.22335399998701,
+            "cpuMs": 15.903
+          },
+          {
+            "wallMs": 10.699263000002247,
+            "cpuMs": 10.705
+          },
+          {
+            "wallMs": 21.42733700000099,
+            "cpuMs": 14.598
+          },
+          {
+            "wallMs": 10.47514599999704,
+            "cpuMs": 10.48
+          },
+          {
+            "wallMs": 23.530071999994107,
+            "cpuMs": 15.638
+          },
+          {
+            "wallMs": 10.72025399999984,
+            "cpuMs": 10.725
+          },
+          {
+            "wallMs": 10.597000000008848,
+            "cpuMs": 10.603
+          },
+          {
+            "wallMs": 23.123331000009784,
+            "cpuMs": 14.474
+          },
+          {
+            "wallMs": 10.782115000009071,
+            "cpuMs": 11.241
+          },
+          {
+            "wallMs": 24.16609800000151,
+            "cpuMs": 14.815
+          },
+          {
+            "wallMs": 10.521868000010727,
+            "cpuMs": 10.525
+          },
+          {
+            "wallMs": 10.531088999996427,
+            "cpuMs": 10.536
+          },
+          {
+            "wallMs": 21.47871799999848,
+            "cpuMs": 14.506
+          },
+          {
+            "wallMs": 10.458945999998832,
+            "cpuMs": 10.465
+          },
+          {
+            "wallMs": 22.693639999997686,
+            "cpuMs": 15.743
+          }
+        ],
+        [
+          {
+            "wallMs": 24.640561000007438,
+            "cpuMs": 16.099
+          },
+          {
+            "wallMs": 10.591371000002255,
+            "cpuMs": 10.562
+          },
+          {
+            "wallMs": 22.522345999997924,
+            "cpuMs": 13.753
+          },
+          {
+            "wallMs": 10.426766000004136,
+            "cpuMs": 10.432
+          },
+          {
+            "wallMs": 10.725883000006434,
+            "cpuMs": 10.731
+          },
+          {
+            "wallMs": 22.832794999994803,
+            "cpuMs": 13.62
+          },
+          {
+            "wallMs": 10.711472999988473,
+            "cpuMs": 10.645
+          },
+          {
+            "wallMs": 20.86064100000658,
+            "cpuMs": 13.431
+          },
+          {
+            "wallMs": 10.733254000006127,
+            "cpuMs": 10.738
+          },
+          {
+            "wallMs": 10.611201000006986,
+            "cpuMs": 10.616
+          },
+          {
+            "wallMs": 19.95374699999229,
+            "cpuMs": 13.968
+          },
+          {
+            "wallMs": 10.66386300000886,
+            "cpuMs": 11.751
+          },
+          {
+            "wallMs": 20.335637999989558,
+            "cpuMs": 14.106
+          },
+          {
+            "wallMs": 11.923623999988195,
+            "cpuMs": 11.854
+          },
+          {
+            "wallMs": 10.852415999994264,
+            "cpuMs": 10.857
+          },
+          {
+            "wallMs": 20.262736999997287,
+            "cpuMs": 13.791
+          },
+          {
+            "wallMs": 10.54957899999863,
+            "cpuMs": 10.554
+          },
+          {
+            "wallMs": 19.47061499999836,
+            "cpuMs": 13.414
+          },
+          {
+            "wallMs": 10.614140999998199,
+            "cpuMs": 10.618
+          },
+          {
+            "wallMs": 20.703896999999415,
+            "cpuMs": 13.862
+          },
+          {
+            "wallMs": 10.712933000002522,
+            "cpuMs": 10.717
+          },
+          {
+            "wallMs": 10.466757000001962,
+            "cpuMs": 10.471
+          },
+          {
+            "wallMs": 21.06866699999955,
+            "cpuMs": 14.082
+          },
+          {
+            "wallMs": 10.90760799999407,
+            "cpuMs": 14.363
+          },
+          {
+            "wallMs": 21.467898000002606,
+            "cpuMs": 13.981
+          },
+          {
+            "wallMs": 10.352734000000055,
+            "cpuMs": 10.357
+          },
+          {
+            "wallMs": 10.357084000002942,
+            "cpuMs": 10.361
+          },
+          {
+            "wallMs": 20.321286999998847,
+            "cpuMs": 13.414
+          },
+          {
+            "wallMs": 10.617941000004066,
+            "cpuMs": 10.623
+          },
+          {
+            "wallMs": 20.55449399999634,
+            "cpuMs": 13.648
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 4.627952000009827,
+            "cpuMs": 3.468
+          },
+          {
+            "wallMs": 4.7087049999972805,
+            "cpuMs": 3.656
+          },
+          {
+            "wallMs": 5.064154000006965,
+            "cpuMs": 3.695
+          },
+          {
+            "wallMs": 4.867988000012701,
+            "cpuMs": 3.462
+          },
+          {
+            "wallMs": 5.086973999990732,
+            "cpuMs": 3.633
+          },
+          {
+            "wallMs": 4.359964999996009,
+            "cpuMs": 3.447
+          },
+          {
+            "wallMs": 4.415785999997752,
+            "cpuMs": 3.502
+          },
+          {
+            "wallMs": 4.4006570000055945,
+            "cpuMs": 3.63
+          },
+          {
+            "wallMs": 4.323533999995561,
+            "cpuMs": 3.578
+          },
+          {
+            "wallMs": 5.217698000007658,
+            "cpuMs": 3.859
+          }
+        ],
+        [
+          {
+            "wallMs": 4.410826999999699,
+            "cpuMs": 3.52
+          },
+          {
+            "wallMs": 4.292803999996977,
+            "cpuMs": 3.467
+          },
+          {
+            "wallMs": 4.983101000005263,
+            "cpuMs": 3.611
+          },
+          {
+            "wallMs": 4.823946000004071,
+            "cpuMs": 3.453
+          },
+          {
+            "wallMs": 4.97194099999615,
+            "cpuMs": 3.553
+          },
+          {
+            "wallMs": 4.344265000006999,
+            "cpuMs": 3.397
+          },
+          {
+            "wallMs": 4.145768999995198,
+            "cpuMs": 3.394
+          },
+          {
+            "wallMs": 4.350143999996362,
+            "cpuMs": 3.595
+          },
+          {
+            "wallMs": 4.816986999998335,
+            "cpuMs": 3.57
+          },
+          {
+            "wallMs": 5.002292999997735,
+            "cpuMs": 3.896
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "all-live",
+        "bees": 1000,
+        "generations": 1,
+        "live": 1000,
+        "pending": 0,
+        "bodyBytes": 0
+      },
+      "seededBytes": 3899392,
+      "firstOpen": [
+        {
+          "wallMs": 7.357454999990296,
+          "cpuMs": 5.127
+        },
+        {
+          "wallMs": 4.110708000007435,
+          "cpuMs": 3.273
+        }
+      ],
+      "closedStorage": [
+        {
+          "bytes": 4800512,
+          "pageCount": 1172,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        },
+        {
+          "bytes": 4800512,
+          "pageCount": 1172,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 6.571144000001368,
+            "cpuMs": 7.343
+          },
+          {
+            "wallMs": 6.493292000013753,
+            "cpuMs": 6.496
+          },
+          {
+            "wallMs": 6.337887000001501,
+            "cpuMs": 6.341
+          },
+          {
+            "wallMs": 6.389888000005158,
+            "cpuMs": 6.393
+          },
+          {
+            "wallMs": 6.36116800000309,
+            "cpuMs": 6.365
+          },
+          {
+            "wallMs": 9.39084800001001,
+            "cpuMs": 9.868
+          },
+          {
+            "wallMs": 6.331317000003764,
+            "cpuMs": 7.193
+          },
+          {
+            "wallMs": 6.116672000003746,
+            "cpuMs": 6.12
+          },
+          {
+            "wallMs": 6.446809999994002,
+            "cpuMs": 13.308
+          },
+          {
+            "wallMs": 6.624995999998646,
+            "cpuMs": 11.531
+          },
+          {
+            "wallMs": 6.340108000003966,
+            "cpuMs": 6.27
+          },
+          {
+            "wallMs": 6.241884999995818,
+            "cpuMs": 6.245
+          },
+          {
+            "wallMs": 6.313476999988779,
+            "cpuMs": 6.316
+          },
+          {
+            "wallMs": 6.728917999993428,
+            "cpuMs": 8.404
+          },
+          {
+            "wallMs": 6.967663999996148,
+            "cpuMs": 14.97
+          },
+          {
+            "wallMs": 6.432820000001811,
+            "cpuMs": 10.438
+          },
+          {
+            "wallMs": 6.1882040000054985,
+            "cpuMs": 14.192
+          },
+          {
+            "wallMs": 6.358628000001772,
+            "cpuMs": 10.363
+          },
+          {
+            "wallMs": 6.559464000005391,
+            "cpuMs": 22.085
+          },
+          {
+            "wallMs": 6.081011000002036,
+            "cpuMs": 6.083
+          },
+          {
+            "wallMs": 5.975836999990861,
+            "cpuMs": 5.98
+          },
+          {
+            "wallMs": 5.972338000006857,
+            "cpuMs": 5.975
+          },
+          {
+            "wallMs": 5.961106999995536,
+            "cpuMs": 5.964
+          },
+          {
+            "wallMs": 6.086321000009775,
+            "cpuMs": 6.034
+          },
+          {
+            "wallMs": 5.99609899999632,
+            "cpuMs": 5.999
+          },
+          {
+            "wallMs": 6.216824000002816,
+            "cpuMs": 6.955
+          },
+          {
+            "wallMs": 6.124381000001449,
+            "cpuMs": 6.128
+          },
+          {
+            "wallMs": 5.992689000006067,
+            "cpuMs": 5.995
+          },
+          {
+            "wallMs": 5.9050959999876795,
+            "cpuMs": 5.907
+          },
+          {
+            "wallMs": 6.007408999998006,
+            "cpuMs": 6.01
+          }
+        ],
+        [
+          {
+            "wallMs": 0.025080999999772757,
+            "cpuMs": 0.027
+          },
+          {
+            "wallMs": 0.011159999994561076,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.02434999999240972,
+            "cpuMs": 0.026
+          },
+          {
+            "wallMs": 0.010691000003134832,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.02456999999412801,
+            "cpuMs": 0.026
+          },
+          {
+            "wallMs": 0.011690999992424622,
+            "cpuMs": 0.014
+          },
+          {
+            "wallMs": 0.03322100000514183,
+            "cpuMs": 0.035
+          },
+          {
+            "wallMs": 0.010290999998687766,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.03566100000170991,
+            "cpuMs": 0.038
+          },
+          {
+            "wallMs": 0.010959999999613501,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.03343099998892285,
+            "cpuMs": 0.036
+          },
+          {
+            "wallMs": 0.010110000002896413,
+            "cpuMs": 0.011
+          },
+          {
+            "wallMs": 0.02824099999270402,
+            "cpuMs": 0.03
+          },
+          {
+            "wallMs": 0.010169999994104728,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.03430099999241065,
+            "cpuMs": 0.036
+          },
+          {
+            "wallMs": 0.010680999999749474,
+            "cpuMs": 0.013
+          },
+          {
+            "wallMs": 0.03232100000604987,
+            "cpuMs": 0.034
+          },
+          {
+            "wallMs": 0.009951000000000931,
+            "cpuMs": 0.011
+          },
+          {
+            "wallMs": 0.03350099999806844,
+            "cpuMs": 0.035
+          },
+          {
+            "wallMs": 0.009961000003386289,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.025180999989970587,
+            "cpuMs": 0.027
+          },
+          {
+            "wallMs": 0.00988000001234468,
+            "cpuMs": 0.011
+          },
+          {
+            "wallMs": 0.021229999998467974,
+            "cpuMs": 0.023
+          },
+          {
+            "wallMs": 0.00983999999880325,
+            "cpuMs": 0.011
+          },
+          {
+            "wallMs": 0.025290000005043112,
+            "cpuMs": 0.027
+          },
+          {
+            "wallMs": 0.053491999991820194,
+            "cpuMs": 0.056
+          },
+          {
+            "wallMs": 0.02948100000503473,
+            "cpuMs": 0.031
+          },
+          {
+            "wallMs": 0.009810000003199093,
+            "cpuMs": 0.012
+          },
+          {
+            "wallMs": 0.01997999999730382,
+            "cpuMs": 0.021
+          },
+          {
+            "wallMs": 0.009330999993835576,
+            "cpuMs": 0.01
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 26.418338999996195,
+            "cpuMs": 16.29
+          },
+          {
+            "wallMs": 10.57579899999837,
+            "cpuMs": 10.581
+          },
+          {
+            "wallMs": 24.679652999999234,
+            "cpuMs": 13.135
+          },
+          {
+            "wallMs": 10.552169999995385,
+            "cpuMs": 10.493
+          },
+          {
+            "wallMs": 10.429565000013099,
+            "cpuMs": 10.434
+          },
+          {
+            "wallMs": 25.024432000005618,
+            "cpuMs": 13.395
+          },
+          {
+            "wallMs": 10.251130000004196,
+            "cpuMs": 10.257
+          },
+          {
+            "wallMs": 26.204813999996986,
+            "cpuMs": 13.563
+          },
+          {
+            "wallMs": 10.848887000000104,
+            "cpuMs": 10.855
+          },
+          {
+            "wallMs": 10.41051499999594,
+            "cpuMs": 10.415
+          },
+          {
+            "wallMs": 27.285770999995293,
+            "cpuMs": 13.358
+          },
+          {
+            "wallMs": 10.593479999995907,
+            "cpuMs": 10.599
+          },
+          {
+            "wallMs": 25.774181999993743,
+            "cpuMs": 13.469
+          },
+          {
+            "wallMs": 10.502466999998433,
+            "cpuMs": 10.507
+          },
+          {
+            "wallMs": 10.781465000007302,
+            "cpuMs": 10.786
+          },
+          {
+            "wallMs": 26.831749000004493,
+            "cpuMs": 13.861
+          },
+          {
+            "wallMs": 10.544049000003724,
+            "cpuMs": 10.549
+          },
+          {
+            "wallMs": 26.380137999993167,
+            "cpuMs": 14.19
+          },
+          {
+            "wallMs": 10.509127999990596,
+            "cpuMs": 10.514
+          },
+          {
+            "wallMs": 10.505066999990959,
+            "cpuMs": 10.51
+          },
+          {
+            "wallMs": 25.357761000006576,
+            "cpuMs": 13.402
+          },
+          {
+            "wallMs": 10.291461000000709,
+            "cpuMs": 10.297
+          },
+          {
+            "wallMs": 27.0888469999918,
+            "cpuMs": 13.334
+          },
+          {
+            "wallMs": 10.29099199999473,
+            "cpuMs": 10.264
+          },
+          {
+            "wallMs": 24.00773399999889,
+            "cpuMs": 12.912
+          },
+          {
+            "wallMs": 10.801175999993575,
+            "cpuMs": 10.494
+          },
+          {
+            "wallMs": 10.293481000000611,
+            "cpuMs": 10.298
+          },
+          {
+            "wallMs": 26.15888200000336,
+            "cpuMs": 13.584
+          },
+          {
+            "wallMs": 10.52328700000362,
+            "cpuMs": 10.467
+          },
+          {
+            "wallMs": 28.044112000003224,
+            "cpuMs": 15.48
+          }
+        ],
+        [
+          {
+            "wallMs": 27.104846000002,
+            "cpuMs": 14.86
+          },
+          {
+            "wallMs": 10.622451000002911,
+            "cpuMs": 10.627
+          },
+          {
+            "wallMs": 25.98506599999382,
+            "cpuMs": 13.753
+          },
+          {
+            "wallMs": 10.392894999997225,
+            "cpuMs": 10.399
+          },
+          {
+            "wallMs": 10.469567000007373,
+            "cpuMs": 10.474
+          },
+          {
+            "wallMs": 25.8604830000113,
+            "cpuMs": 13.76
+          },
+          {
+            "wallMs": 10.279802000004565,
+            "cpuMs": 10.285
+          },
+          {
+            "wallMs": 26.485520000001998,
+            "cpuMs": 13.331
+          },
+          {
+            "wallMs": 10.568470000012894,
+            "cpuMs": 10.573
+          },
+          {
+            "wallMs": 10.290412000002107,
+            "cpuMs": 10.295
+          },
+          {
+            "wallMs": 27.513927000007243,
+            "cpuMs": 13.797
+          },
+          {
+            "wallMs": 10.296312000005855,
+            "cpuMs": 10.301
+          },
+          {
+            "wallMs": 31.5296340000059,
+            "cpuMs": 14.345
+          },
+          {
+            "wallMs": 10.543849000008777,
+            "cpuMs": 10.548
+          },
+          {
+            "wallMs": 11.038222999995924,
+            "cpuMs": 11.003
+          },
+          {
+            "wallMs": 27.17645800000173,
+            "cpuMs": 14.421
+          },
+          {
+            "wallMs": 10.36530400000629,
+            "cpuMs": 10.369
+          },
+          {
+            "wallMs": 26.646314000012353,
+            "cpuMs": 13.813
+          },
+          {
+            "wallMs": 11.021502000003238,
+            "cpuMs": 11.026
+          },
+          {
+            "wallMs": 10.501318000009633,
+            "cpuMs": 10.489
+          },
+          {
+            "wallMs": 25.79541099999915,
+            "cpuMs": 13.94
+          },
+          {
+            "wallMs": 10.23916100000497,
+            "cpuMs": 10.243
+          },
+          {
+            "wallMs": 25.773810999991838,
+            "cpuMs": 13.923
+          },
+          {
+            "wallMs": 10.25862199999392,
+            "cpuMs": 10.263
+          },
+          {
+            "wallMs": 27.036894999997457,
+            "cpuMs": 13.9
+          },
+          {
+            "wallMs": 10.980691000004299,
+            "cpuMs": 10.715
+          },
+          {
+            "wallMs": 10.322583000001032,
+            "cpuMs": 10.327
+          },
+          {
+            "wallMs": 26.082769000000553,
+            "cpuMs": 14.151
+          },
+          {
+            "wallMs": 10.515827999988687,
+            "cpuMs": 10.522
+          },
+          {
+            "wallMs": 26.85278999998991,
+            "cpuMs": 13.857
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 6.139922000002116,
+            "cpuMs": 3.452
+          },
+          {
+            "wallMs": 4.322723999997834,
+            "cpuMs": 3.358
+          },
+          {
+            "wallMs": 4.200981000001775,
+            "cpuMs": 3.335
+          },
+          {
+            "wallMs": 4.1550699999934295,
+            "cpuMs": 3.406
+          },
+          {
+            "wallMs": 4.514328999997815,
+            "cpuMs": 3.716
+          },
+          {
+            "wallMs": 4.736966000011307,
+            "cpuMs": 3.315
+          },
+          {
+            "wallMs": 4.8932090000016615,
+            "cpuMs": 3.38
+          },
+          {
+            "wallMs": 5.521405999999843,
+            "cpuMs": 3.663
+          },
+          {
+            "wallMs": 5.543566000007559,
+            "cpuMs": 4.021
+          },
+          {
+            "wallMs": 4.634192999990773,
+            "cpuMs": 3.755
+          }
+        ],
+        [
+          {
+            "wallMs": 4.409916999997222,
+            "cpuMs": 3.393
+          },
+          {
+            "wallMs": 4.344584999998915,
+            "cpuMs": 3.379
+          },
+          {
+            "wallMs": 4.087908000001335,
+            "cpuMs": 3.331
+          },
+          {
+            "wallMs": 4.123629999987315,
+            "cpuMs": 3.35
+          },
+          {
+            "wallMs": 4.164099999994505,
+            "cpuMs": 3.378
+          },
+          {
+            "wallMs": 4.142269999996643,
+            "cpuMs": 3.385
+          },
+          {
+            "wallMs": 4.851657999999588,
+            "cpuMs": 3.424
+          },
+          {
+            "wallMs": 4.759136000007857,
+            "cpuMs": 3.364
+          },
+          {
+            "wallMs": 4.828427999993437,
+            "cpuMs": 3.566
+          },
+          {
+            "wallMs": 4.593171999993501,
+            "cpuMs": 3.694
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "held-mail",
+        "bees": 10,
+        "generations": 1,
+        "live": 1,
+        "pending": 1000,
+        "bodyBytes": 1024
+      },
+      "seededBytes": 5214208,
+      "firstOpen": [
+        {
+          "wallMs": 11.891764999993029,
+          "cpuMs": 4.532
+        },
+        {
+          "wallMs": 4.205570999998599,
+          "cpuMs": 3.317
+        }
+      ],
+      "closedStorage": [
+        {
+          "bytes": 6131712,
+          "pageCount": 1497,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        },
+        {
+          "bytes": 6131712,
+          "pageCount": 1497,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 1.8099979999969946,
+            "cpuMs": 2.674
+          },
+          {
+            "wallMs": 2.055714000001899,
+            "cpuMs": 9.459
+          },
+          {
+            "wallMs": 1.7874769999907585,
+            "cpuMs": 5.199
+          },
+          {
+            "wallMs": 1.6773839999950724,
+            "cpuMs": 1.681
+          },
+          {
+            "wallMs": 1.6057330000039656,
+            "cpuMs": 1.609
+          },
+          {
+            "wallMs": 1.6549740000045858,
+            "cpuMs": 1.658
+          },
+          {
+            "wallMs": 1.7585370000015246,
+            "cpuMs": 1.789
+          },
+          {
+            "wallMs": 2.558017999996082,
+            "cpuMs": 2.806
+          },
+          {
+            "wallMs": 1.7250260000000708,
+            "cpuMs": 7.358
+          },
+          {
+            "wallMs": 1.9096099999878788,
+            "cpuMs": 8.88
+          },
+          {
+            "wallMs": 1.5637020000140183,
+            "cpuMs": 2.983
+          },
+          {
+            "wallMs": 1.5005390000005718,
+            "cpuMs": 1.503
+          },
+          {
+            "wallMs": 1.5330199999880278,
+            "cpuMs": 1.537
+          },
+          {
+            "wallMs": 1.4700790000060806,
+            "cpuMs": 1.473
+          },
+          {
+            "wallMs": 1.5017099999968195,
+            "cpuMs": 1.505
+          },
+          {
+            "wallMs": 1.4725190000026487,
+            "cpuMs": 1.476
+          },
+          {
+            "wallMs": 1.439808000010089,
+            "cpuMs": 1.442
+          },
+          {
+            "wallMs": 2.139506999999867,
+            "cpuMs": 4.125
+          },
+          {
+            "wallMs": 1.5060300000041025,
+            "cpuMs": 1.509
+          },
+          {
+            "wallMs": 1.5512509999971371,
+            "cpuMs": 2.082
+          },
+          {
+            "wallMs": 1.4558879999967758,
+            "cpuMs": 1.459
+          },
+          {
+            "wallMs": 1.4628890000021784,
+            "cpuMs": 1.466
+          },
+          {
+            "wallMs": 1.45713799999794,
+            "cpuMs": 1.46
+          },
+          {
+            "wallMs": 1.4709589999984019,
+            "cpuMs": 1.475
+          },
+          {
+            "wallMs": 1.4575890000123763,
+            "cpuMs": 1.461
+          },
+          {
+            "wallMs": 1.4721790000039618,
+            "cpuMs": 1.726
+          },
+          {
+            "wallMs": 1.4686690000089584,
+            "cpuMs": 1.682
+          },
+          {
+            "wallMs": 1.458517999999458,
+            "cpuMs": 1.462
+          },
+          {
+            "wallMs": 1.4649380000046222,
+            "cpuMs": 1.468
+          },
+          {
+            "wallMs": 1.4793090000021039,
+            "cpuMs": 1.482
+          }
+        ],
+        [
+          {
+            "wallMs": 1.5018800000107149,
+            "cpuMs": 1.505
+          },
+          {
+            "wallMs": 1.5286310000083176,
+            "cpuMs": 1.532
+          },
+          {
+            "wallMs": 1.6720839999907184,
+            "cpuMs": 1.675
+          },
+          {
+            "wallMs": 1.4261069999920437,
+            "cpuMs": 1.429
+          },
+          {
+            "wallMs": 1.4433479999861447,
+            "cpuMs": 1.447
+          },
+          {
+            "wallMs": 1.50895999999193,
+            "cpuMs": 1.685
+          },
+          {
+            "wallMs": 1.72060600000259,
+            "cpuMs": 3.221
+          },
+          {
+            "wallMs": 1.630952999999863,
+            "cpuMs": 5.934
+          },
+          {
+            "wallMs": 1.7946270000102231,
+            "cpuMs": 3.051
+          },
+          {
+            "wallMs": 1.2953439999982947,
+            "cpuMs": 1.3
+          },
+          {
+            "wallMs": 1.376566000006278,
+            "cpuMs": 3.668
+          },
+          {
+            "wallMs": 1.3193050000118092,
+            "cpuMs": 1.322
+          },
+          {
+            "wallMs": 1.3019550000026356,
+            "cpuMs": 1.305
+          },
+          {
+            "wallMs": 1.2280630000022938,
+            "cpuMs": 1.231
+          },
+          {
+            "wallMs": 1.3557659999933094,
+            "cpuMs": 1.358
+          },
+          {
+            "wallMs": 1.246253000004799,
+            "cpuMs": 1.249
+          },
+          {
+            "wallMs": 1.2767239999957383,
+            "cpuMs": 1.279
+          },
+          {
+            "wallMs": 1.2946649999939837,
+            "cpuMs": 1.297
+          },
+          {
+            "wallMs": 1.2796939999971073,
+            "cpuMs": 1.283
+          },
+          {
+            "wallMs": 1.2600530000054277,
+            "cpuMs": 3.335
+          },
+          {
+            "wallMs": 1.2634039999975357,
+            "cpuMs": 1.266
+          },
+          {
+            "wallMs": 1.2363829999958398,
+            "cpuMs": 1.239
+          },
+          {
+            "wallMs": 1.2537930000107735,
+            "cpuMs": 1.257
+          },
+          {
+            "wallMs": 1.2376430000003893,
+            "cpuMs": 1.24
+          },
+          {
+            "wallMs": 1.2396830000070622,
+            "cpuMs": 1.242
+          },
+          {
+            "wallMs": 1.2698830000008456,
+            "cpuMs": 1.272
+          },
+          {
+            "wallMs": 1.2837540000036824,
+            "cpuMs": 1.286
+          },
+          {
+            "wallMs": 1.2346330000000307,
+            "cpuMs": 1.238
+          },
+          {
+            "wallMs": 1.2574929999973392,
+            "cpuMs": 1.26
+          },
+          {
+            "wallMs": 1.2344630000006873,
+            "cpuMs": 1.238
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 25.966056999997818,
+            "cpuMs": 15.408
+          },
+          {
+            "wallMs": 10.397595000002184,
+            "cpuMs": 10.403
+          },
+          {
+            "wallMs": 10.223240999999689,
+            "cpuMs": 10.228
+          },
+          {
+            "wallMs": 24.696291999993264,
+            "cpuMs": 13.027
+          },
+          {
+            "wallMs": 10.265870999995968,
+            "cpuMs": 10.27
+          },
+          {
+            "wallMs": 26.150781000003917,
+            "cpuMs": 12.88
+          },
+          {
+            "wallMs": 10.073906000005081,
+            "cpuMs": 10.079
+          },
+          {
+            "wallMs": 10.196849999992992,
+            "cpuMs": 10.201
+          },
+          {
+            "wallMs": 24.69935300000361,
+            "cpuMs": 13.122
+          },
+          {
+            "wallMs": 10.207878999994136,
+            "cpuMs": 10.212
+          },
+          {
+            "wallMs": 24.722524000011617,
+            "cpuMs": 13.712
+          },
+          {
+            "wallMs": 10.11461699999927,
+            "cpuMs": 10.118
+          },
+          {
+            "wallMs": 10.21313000000373,
+            "cpuMs": 10.184
+          },
+          {
+            "wallMs": 23.924142999996548,
+            "cpuMs": 13.102
+          },
+          {
+            "wallMs": 10.200688999990234,
+            "cpuMs": 10.205
+          },
+          {
+            "wallMs": 24.859448000002885,
+            "cpuMs": 13.442
+          },
+          {
+            "wallMs": 10.504587000003085,
+            "cpuMs": 10.509
+          },
+          {
+            "wallMs": 10.539728000003379,
+            "cpuMs": 10.544
+          },
+          {
+            "wallMs": 23.810060000003432,
+            "cpuMs": 12.97
+          },
+          {
+            "wallMs": 10.232451000003493,
+            "cpuMs": 10.237
+          },
+          {
+            "wallMs": 23.922432000006665,
+            "cpuMs": 13.124
+          },
+          {
+            "wallMs": 10.177799000011873,
+            "cpuMs": 10.182
+          },
+          {
+            "wallMs": 10.206718999994337,
+            "cpuMs": 10.211
+          },
+          {
+            "wallMs": 21.077627999999095,
+            "cpuMs": 13.066
+          },
+          {
+            "wallMs": 10.128358000001754,
+            "cpuMs": 10.133
+          },
+          {
+            "wallMs": 26.871911000009277,
+            "cpuMs": 13.186
+          },
+          {
+            "wallMs": 10.075217000005068,
+            "cpuMs": 10.079
+          },
+          {
+            "wallMs": 10.266461999999592,
+            "cpuMs": 10.271
+          },
+          {
+            "wallMs": 27.099396000005072,
+            "cpuMs": 13.593
+          },
+          {
+            "wallMs": 10.264072000005399,
+            "cpuMs": 10.235
+          }
+        ],
+        [
+          {
+            "wallMs": 33.71587200000067,
+            "cpuMs": 21.143
+          },
+          {
+            "wallMs": 11.329968999998528,
+            "cpuMs": 11.335
+          },
+          {
+            "wallMs": 10.425046000003931,
+            "cpuMs": 10.428
+          },
+          {
+            "wallMs": 28.867872999995598,
+            "cpuMs": 13.935
+          },
+          {
+            "wallMs": 10.321912999992492,
+            "cpuMs": 10.325
+          },
+          {
+            "wallMs": 26.25618399999803,
+            "cpuMs": 13.71
+          },
+          {
+            "wallMs": 10.225590999994893,
+            "cpuMs": 10.23
+          },
+          {
+            "wallMs": 10.24576099999831,
+            "cpuMs": 10.25
+          },
+          {
+            "wallMs": 26.235223000010592,
+            "cpuMs": 13.882
+          },
+          {
+            "wallMs": 10.210999999995693,
+            "cpuMs": 10.215
+          },
+          {
+            "wallMs": 26.0265580000123,
+            "cpuMs": 14.316
+          },
+          {
+            "wallMs": 10.109378000008292,
+            "cpuMs": 10.113
+          },
+          {
+            "wallMs": 10.292201999996905,
+            "cpuMs": 10.297
+          },
+          {
+            "wallMs": 25.902385000008508,
+            "cpuMs": 14.209
+          },
+          {
+            "wallMs": 10.270012000008137,
+            "cpuMs": 10.274
+          },
+          {
+            "wallMs": 26.537220999991405,
+            "cpuMs": 14.476
+          },
+          {
+            "wallMs": 10.998290999996243,
+            "cpuMs": 11.003
+          },
+          {
+            "wallMs": 10.231490999998641,
+            "cpuMs": 10.235
+          },
+          {
+            "wallMs": 25.69554899999639,
+            "cpuMs": 13.915
+          },
+          {
+            "wallMs": 10.294733000002452,
+            "cpuMs": 10.299
+          },
+          {
+            "wallMs": 26.39544800001022,
+            "cpuMs": 13.901
+          },
+          {
+            "wallMs": 10.37391499998921,
+            "cpuMs": 10.379
+          },
+          {
+            "wallMs": 10.462117000002763,
+            "cpuMs": 10.4
+          },
+          {
+            "wallMs": 29.43305799999507,
+            "cpuMs": 16.416
+          },
+          {
+            "wallMs": 10.43803599999228,
+            "cpuMs": 10.444
+          },
+          {
+            "wallMs": 26.90038099999947,
+            "cpuMs": 14.358
+          },
+          {
+            "wallMs": 10.589990000007674,
+            "cpuMs": 10.565
+          },
+          {
+            "wallMs": 10.979600999999093,
+            "cpuMs": 10.984
+          },
+          {
+            "wallMs": 26.691265000001295,
+            "cpuMs": 14.221
+          },
+          {
+            "wallMs": 10.238130999990972,
+            "cpuMs": 10.243
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 5.986288000000059,
+            "cpuMs": 3.639
+          },
+          {
+            "wallMs": 4.676193000006606,
+            "cpuMs": 3.747
+          },
+          {
+            "wallMs": 4.6217020000040065,
+            "cpuMs": 3.7
+          },
+          {
+            "wallMs": 4.694444000007934,
+            "cpuMs": 3.49
+          },
+          {
+            "wallMs": 5.480924999996205,
+            "cpuMs": 3.508
+          },
+          {
+            "wallMs": 5.4070430000138,
+            "cpuMs": 3.544
+          },
+          {
+            "wallMs": 5.818843000000925,
+            "cpuMs": 3.78
+          },
+          {
+            "wallMs": 4.436977999997907,
+            "cpuMs": 3.468
+          },
+          {
+            "wallMs": 4.537650000012945,
+            "cpuMs": 3.891
+          },
+          {
+            "wallMs": 4.4585080000106245,
+            "cpuMs": 3.522
+          }
+        ],
+        [
+          {
+            "wallMs": 4.9877419999975245,
+            "cpuMs": 3.802
+          },
+          {
+            "wallMs": 4.6690530000050785,
+            "cpuMs": 3.751
+          },
+          {
+            "wallMs": 4.435316999995848,
+            "cpuMs": 3.596
+          },
+          {
+            "wallMs": 4.369504999995115,
+            "cpuMs": 3.505
+          },
+          {
+            "wallMs": 5.310660000002827,
+            "cpuMs": 3.653
+          },
+          {
+            "wallMs": 5.330420999991475,
+            "cpuMs": 3.529
+          },
+          {
+            "wallMs": 5.350081999989925,
+            "cpuMs": 3.719
+          },
+          {
+            "wallMs": 5.03349299999536,
+            "cpuMs": 3.531
+          },
+          {
+            "wallMs": 4.697194000007585,
+            "cpuMs": 3.887
+          },
+          {
+            "wallMs": 4.425497000003816,
+            "cpuMs": 3.535
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    },
+    {
+      "scenario": {
+        "name": "write-every-tick",
+        "bees": 1000,
+        "generations": 1,
+        "live": 1,
+        "pending": 0,
+        "bodyBytes": 0,
+        "rename": true
+      },
+      "seededBytes": 3129344,
+      "firstOpen": [
+        {
+          "wallMs": 9.601932999998098,
+          "cpuMs": 8.536
+        },
+        {
+          "wallMs": 4.161649000001489,
+          "cpuMs": 3.42
+        }
+      ],
+      "closedStorage": [
+        {
+          "bytes": 4050944,
+          "pageCount": 989,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        },
+        {
+          "bytes": 4050944,
+          "pageCount": 989,
+          "freePages": 0,
+          "schemaVersion": "55",
+          "indexes": [
+            {
+              "name": "runtimes_daemon_live",
+              "sql": "CREATE INDEX runtimes_daemon_live\n  ON runtimes(bee_id, generation) WHERE state != 'stopped'"
+            },
+            {
+              "name": "sqlite_autoindex_runtimes_1",
+              "sql": null
+            }
+          ]
+        }
+      ],
+      "raw": [
+        [
+          {
+            "wallMs": 0.5562939999945229,
+            "cpuMs": 0.565
+          },
+          {
+            "wallMs": 0.5617950000014389,
+            "cpuMs": 0.565
+          },
+          {
+            "wallMs": 0.5412740000028862,
+            "cpuMs": 0.545
+          },
+          {
+            "wallMs": 0.5584949999902165,
+            "cpuMs": 0.561
+          },
+          {
+            "wallMs": 0.6658080000051996,
+            "cpuMs": 0.669
+          },
+          {
+            "wallMs": 0.6580169999942882,
+            "cpuMs": 0.853
+          },
+          {
+            "wallMs": 0.5681749999930616,
+            "cpuMs": 0.571
+          },
+          {
+            "wallMs": 0.5398439999989932,
+            "cpuMs": 0.543
+          },
+          {
+            "wallMs": 0.5266739999933634,
+            "cpuMs": 0.53
+          },
+          {
+            "wallMs": 0.5443349999986822,
+            "cpuMs": 0.547
+          },
+          {
+            "wallMs": 0.5273839999863412,
+            "cpuMs": 0.531
+          },
+          {
+            "wallMs": 0.5275039999978617,
+            "cpuMs": 0.53
+          },
+          {
+            "wallMs": 0.538033999997424,
+            "cpuMs": 0.541
+          },
+          {
+            "wallMs": 0.5365840000013122,
+            "cpuMs": 0.54
+          },
+          {
+            "wallMs": 0.5381639999977779,
+            "cpuMs": 0.542
+          },
+          {
+            "wallMs": 0.534404000005452,
+            "cpuMs": 0.537
+          },
+          {
+            "wallMs": 0.5684649999893736,
+            "cpuMs": 0.571
+          },
+          {
+            "wallMs": 0.5533240000077058,
+            "cpuMs": 0.556
+          },
+          {
+            "wallMs": 0.5193229999858886,
+            "cpuMs": 0.522
+          },
+          {
+            "wallMs": 0.533923999988474,
+            "cpuMs": 0.537
+          },
+          {
+            "wallMs": 0.5186140000005253,
+            "cpuMs": 0.521
+          },
+          {
+            "wallMs": 0.522664000003715,
+            "cpuMs": 0.526
+          },
+          {
+            "wallMs": 0.5190929999953369,
+            "cpuMs": 0.523
+          },
+          {
+            "wallMs": 0.5271740000025602,
+            "cpuMs": 0.53
+          },
+          {
+            "wallMs": 0.5200139999942621,
+            "cpuMs": 0.523
+          },
+          {
+            "wallMs": 0.5981360000005225,
+            "cpuMs": 0.668
+          },
+          {
+            "wallMs": 0.5346040000003995,
+            "cpuMs": 0.537
+          },
+          {
+            "wallMs": 0.5964059999969322,
+            "cpuMs": 0.599
+          },
+          {
+            "wallMs": 0.6187670000072103,
+            "cpuMs": 0.622
+          },
+          {
+            "wallMs": 0.5962449999933597,
+            "cpuMs": 0.599
+          }
+        ],
+        [
+          {
+            "wallMs": 0.5455240000010235,
+            "cpuMs": 0.549
+          },
+          {
+            "wallMs": 0.5386950000101933,
+            "cpuMs": 0.542
+          },
+          {
+            "wallMs": 0.5684750000073109,
+            "cpuMs": 0.571
+          },
+          {
+            "wallMs": 0.5454639999952633,
+            "cpuMs": 0.548
+          },
+          {
+            "wallMs": 0.5779249999905005,
+            "cpuMs": 0.581
+          },
+          {
+            "wallMs": 0.535585000005085,
+            "cpuMs": 0.539
+          },
+          {
+            "wallMs": 0.544183999998495,
+            "cpuMs": 0.547
+          },
+          {
+            "wallMs": 0.5120440000027884,
+            "cpuMs": 0.515
+          },
+          {
+            "wallMs": 0.5202030000073137,
+            "cpuMs": 0.523
+          },
+          {
+            "wallMs": 0.5107330000028014,
+            "cpuMs": 0.514
+          },
+          {
+            "wallMs": 0.5168930000072578,
+            "cpuMs": 0.52
+          },
+          {
+            "wallMs": 0.5166039999894565,
+            "cpuMs": 0.52
+          },
+          {
+            "wallMs": 0.5201630000083242,
+            "cpuMs": 0.523
+          },
+          {
+            "wallMs": 0.518104000002495,
+            "cpuMs": 0.521
+          },
+          {
+            "wallMs": 0.5110639999911655,
+            "cpuMs": 0.514
+          },
+          {
+            "wallMs": 0.5033929999917746,
+            "cpuMs": 0.507
+          },
+          {
+            "wallMs": 0.587005000008503,
+            "cpuMs": 0.591
+          },
+          {
+            "wallMs": 0.5288939999882132,
+            "cpuMs": 0.532
+          },
+          {
+            "wallMs": 0.5075740000029327,
+            "cpuMs": 0.511
+          },
+          {
+            "wallMs": 0.5068529999989551,
+            "cpuMs": 0.51
+          },
+          {
+            "wallMs": 0.5267539999913424,
+            "cpuMs": 0.53
+          },
+          {
+            "wallMs": 0.5106240000022808,
+            "cpuMs": 0.514
+          },
+          {
+            "wallMs": 0.5093130000022938,
+            "cpuMs": 0.513
+          },
+          {
+            "wallMs": 0.5088240000040969,
+            "cpuMs": 0.511
+          },
+          {
+            "wallMs": 0.5366139999969164,
+            "cpuMs": 0.54
+          },
+          {
+            "wallMs": 0.5922359999967739,
+            "cpuMs": 0.861
+          },
+          {
+            "wallMs": 0.5242440000001807,
+            "cpuMs": 0.527
+          },
+          {
+            "wallMs": 0.5411039999889908,
+            "cpuMs": 0.544
+          },
+          {
+            "wallMs": 0.5482239999982994,
+            "cpuMs": 0.553
+          },
+          {
+            "wallMs": 0.5255029999971157,
+            "cpuMs": 0.529
+          }
+        ]
+      ],
+      "writeRaw": [
+        [
+          {
+            "wallMs": 23.05219999999099,
+            "cpuMs": 14.893
+          },
+          {
+            "wallMs": 10.936438000004273,
+            "cpuMs": 10.942
+          },
+          {
+            "wallMs": 20.716008000003058,
+            "cpuMs": 14.237
+          },
+          {
+            "wallMs": 10.865917999995872,
+            "cpuMs": 10.87
+          },
+          {
+            "wallMs": 11.32064900000114,
+            "cpuMs": 11.326
+          },
+          {
+            "wallMs": 21.839758000001893,
+            "cpuMs": 15.65
+          },
+          {
+            "wallMs": 10.607191000002786,
+            "cpuMs": 10.612
+          },
+          {
+            "wallMs": 20.624635000000126,
+            "cpuMs": 14.745
+          },
+          {
+            "wallMs": 11.503145000009681,
+            "cpuMs": 11.508
+          },
+          {
+            "wallMs": 21.378255000003264,
+            "cpuMs": 15.263
+          },
+          {
+            "wallMs": 11.314368999999715,
+            "cpuMs": 11.32
+          },
+          {
+            "wallMs": 11.00427099999797,
+            "cpuMs": 11.009
+          },
+          {
+            "wallMs": 20.969544999999925,
+            "cpuMs": 14.717
+          },
+          {
+            "wallMs": 12.424228000003495,
+            "cpuMs": 12.43
+          },
+          {
+            "wallMs": 22.570187000004807,
+            "cpuMs": 15.335
+          },
+          {
+            "wallMs": 10.964650000008987,
+            "cpuMs": 10.969
+          },
+          {
+            "wallMs": 10.872816999995848,
+            "cpuMs": 10.877
+          },
+          {
+            "wallMs": 22.578087000001688,
+            "cpuMs": 14.882
+          },
+          {
+            "wallMs": 11.850302999999258,
+            "cpuMs": 11.857
+          },
+          {
+            "wallMs": 21.24799200000416,
+            "cpuMs": 14.523
+          },
+          {
+            "wallMs": 10.402994999996736,
+            "cpuMs": 10.408
+          },
+          {
+            "wallMs": 23.15313099999912,
+            "cpuMs": 13.801
+          },
+          {
+            "wallMs": 11.226187000007485,
+            "cpuMs": 11.231
+          },
+          {
+            "wallMs": 10.749655000006896,
+            "cpuMs": 10.754
+          },
+          {
+            "wallMs": 20.654326000003493,
+            "cpuMs": 13.659
+          },
+          {
+            "wallMs": 11.159155000001192,
+            "cpuMs": 11.164
+          },
+          {
+            "wallMs": 24.291291999994428,
+            "cpuMs": 14.697
+          },
+          {
+            "wallMs": 11.415512000006856,
+            "cpuMs": 11.373
+          },
+          {
+            "wallMs": 11.444182999999612,
+            "cpuMs": 11.448
+          },
+          {
+            "wallMs": 20.43296900000132,
+            "cpuMs": 14.556
+          }
+        ],
+        [
+          {
+            "wallMs": 26.053779000008944,
+            "cpuMs": 15.113
+          },
+          {
+            "wallMs": 10.891658000007737,
+            "cpuMs": 10.897
+          },
+          {
+            "wallMs": 21.746115000001737,
+            "cpuMs": 15.299
+          },
+          {
+            "wallMs": 11.233577999999397,
+            "cpuMs": 11.171
+          },
+          {
+            "wallMs": 12.532760999994935,
+            "cpuMs": 12.539
+          },
+          {
+            "wallMs": 22.93122699999367,
+            "cpuMs": 16.262
+          },
+          {
+            "wallMs": 10.919197999988683,
+            "cpuMs": 10.928
+          },
+          {
+            "wallMs": 21.899019000004046,
+            "cpuMs": 15.011
+          },
+          {
+            "wallMs": 11.725849999987986,
+            "cpuMs": 11.731
+          },
+          {
+            "wallMs": 21.349193999994895,
+            "cpuMs": 14.525
+          },
+          {
+            "wallMs": 11.078913000004832,
+            "cpuMs": 11.084
+          },
+          {
+            "wallMs": 11.169086000008974,
+            "cpuMs": 11.174
+          },
+          {
+            "wallMs": 21.919969000009587,
+            "cpuMs": 15.369
+          },
+          {
+            "wallMs": 12.21193299999868,
+            "cpuMs": 12.217
+          },
+          {
+            "wallMs": 24.317371999990428,
+            "cpuMs": 15.689
+          },
+          {
+            "wallMs": 11.276758000007248,
+            "cpuMs": 11.281
+          },
+          {
+            "wallMs": 11.19955600000685,
+            "cpuMs": 11.14
+          },
+          {
+            "wallMs": 23.27146499999799,
+            "cpuMs": 14.577
+          },
+          {
+            "wallMs": 10.880078000001959,
+            "cpuMs": 10.884
+          },
+          {
+            "wallMs": 23.780649000007543,
+            "cpuMs": 14.755
+          },
+          {
+            "wallMs": 10.558048000006238,
+            "cpuMs": 10.564
+          },
+          {
+            "wallMs": 22.43248400000448,
+            "cpuMs": 14.475
+          },
+          {
+            "wallMs": 10.384225000001607,
+            "cpuMs": 10.388
+          },
+          {
+            "wallMs": 11.447412000008626,
+            "cpuMs": 11.37
+          },
+          {
+            "wallMs": 24.7732560000004,
+            "cpuMs": 15.465
+          },
+          {
+            "wallMs": 10.746073999995133,
+            "cpuMs": 10.991
+          },
+          {
+            "wallMs": 69.81556600000476,
+            "cpuMs": 58.473
+          },
+          {
+            "wallMs": 11.077143000002252,
+            "cpuMs": 11.083
+          },
+          {
+            "wallMs": 11.248607000001357,
+            "cpuMs": 11.253
+          },
+          {
+            "wallMs": 29.133111000002827,
+            "cpuMs": 17.381
+          }
+        ]
+      ],
+      "repeatOpen": [
+        [
+          {
+            "wallMs": 5.636919000011403,
+            "cpuMs": 3.834
+          },
+          {
+            "wallMs": 5.453393999996479,
+            "cpuMs": 3.73
+          },
+          {
+            "wallMs": 5.694719999999506,
+            "cpuMs": 3.751
+          },
+          {
+            "wallMs": 7.178009999988717,
+            "cpuMs": 5.474
+          },
+          {
+            "wallMs": 5.045582999999169,
+            "cpuMs": 3.68
+          },
+          {
+            "wallMs": 4.552169999995385,
+            "cpuMs": 3.74
+          },
+          {
+            "wallMs": 4.373764999996638,
+            "cpuMs": 3.584
+          },
+          {
+            "wallMs": 4.57998100000259,
+            "cpuMs": 3.716
+          },
+          {
+            "wallMs": 4.557550999990781,
+            "cpuMs": 3.765
+          },
+          {
+            "wallMs": 5.270249000008334,
+            "cpuMs": 3.465
+          }
+        ],
+        [
+          {
+            "wallMs": 4.863817999997991,
+            "cpuMs": 3.853
+          },
+          {
+            "wallMs": 4.860088000001269,
+            "cpuMs": 3.865
+          },
+          {
+            "wallMs": 5.679320999988704,
+            "cpuMs": 3.849
+          },
+          {
+            "wallMs": 8.614658000005875,
+            "cpuMs": 4.351
+          },
+          {
+            "wallMs": 4.845758000010392,
+            "cpuMs": 3.803
+          },
+          {
+            "wallMs": 4.581340999997337,
+            "cpuMs": 3.705
+          },
+          {
+            "wallMs": 4.380556000003708,
+            "cpuMs": 3.571
+          },
+          {
+            "wallMs": 4.506018999993103,
+            "cpuMs": 3.663
+          },
+          {
+            "wallMs": 5.433932999992976,
+            "cpuMs": 3.768
+          },
+          {
+            "wallMs": 5.976297000001068,
+            "cpuMs": 4.03
+          }
+        ]
+      ],
+      "order": [
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0,
+        0,
+        1,
+        1,
+        0
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "scenario": "empty",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 0.4272409999999809,
+        "p50": 0.4860830000000078,
+        "p95": 0.6384669999999915,
+        "max": 0.6704579999999396,
+        "mean": 0.4945974333333273
+      },
+      "after": {
+        "n": 30,
+        "min": 0.021649999999908687,
+        "p50": 0.0386510000000726,
+        "p95": 0.13534400000003188,
+        "max": 0.15579400000001442,
+        "mean": 0.04869529999999713
+      },
+      "deltaPercent": -92.04847731764494
+    },
+    {
+      "scenario": "empty",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 0.432,
+        "p50": 0.5,
+        "p95": 1.162,
+        "max": 3.365,
+        "mean": 0.6487333333333333
+      },
+      "after": {
+        "n": 30,
+        "min": 0.024,
+        "p50": 0.041,
+        "p95": 0.139,
+        "max": 0.159,
+        "mean": 0.05266666666666665
+      },
+      "deltaPercent": -91.8
+    },
+    {
+      "scenario": "empty",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 10.733794000000216,
+        "p50": 15.170051999999941,
+        "p95": 37.529133,
+        "max": 43.665484000000106,
+        "mean": 21.686269166666712
+      },
+      "after": {
+        "n": 30,
+        "min": 10.635782000000063,
+        "p50": 12.775678999999855,
+        "p95": 35.08665800000017,
+        "max": 37.289536,
+        "mean": 19.48536959999999
+      },
+      "deltaPercent": -15.783551697779918
+    },
+    {
+      "scenario": "empty",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 10.741,
+        "p50": 15.179,
+        "p95": 29.198,
+        "max": 36.62,
+        "mean": 16.375266666666665
+      },
+      "after": {
+        "n": 30,
+        "min": 10.642,
+        "p50": 13.241,
+        "p95": 29.674,
+        "max": 55.919,
+        "mean": 16.190233333333328
+      },
+      "deltaPercent": -12.767639501943473
+    },
+    {
+      "scenario": "empty",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 10,
+        "min": 5.1599369999999,
+        "p50": 6.292105999999876,
+        "p95": 7.425665999999637,
+        "max": 7.425665999999637,
+        "mean": 6.279846999999927
+      },
+      "after": {
+        "n": 10,
+        "min": 4.853178999999727,
+        "p50": 5.770841999999902,
+        "p95": 7.745355000000018,
+        "max": 7.745355000000018,
+        "mean": 6.033697600000005
+      },
+      "deltaPercent": -8.284412246074435
+    },
+    {
+      "scenario": "empty",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 10,
+        "min": 3.558,
+        "p50": 4.316,
+        "p95": 5.712,
+        "max": 5.712,
+        "mean": 4.5204
+      },
+      "after": {
+        "n": 10,
+        "min": 3.627,
+        "p50": 4.269,
+        "p95": 6.486,
+        "max": 6.486,
+        "mean": 4.5338
+      },
+      "deltaPercent": -1.08897126969415
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 0.3381789999984903,
+        "p50": 0.36094999999841093,
+        "p95": 0.4383010000019567,
+        "max": 0.440110999999888,
+        "mean": 0.37061720000007575
+      },
+      "after": {
+        "n": 30,
+        "min": 0.010340000000724103,
+        "p50": 0.017690000000584405,
+        "p95": 0.02187000000049011,
+        "max": 0.05230200000005425,
+        "mean": 0.016339433333511504
+      },
+      "deltaPercent": -95.09904418876235
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 0.342,
+        "p50": 0.365,
+        "p95": 1.112,
+        "max": 1.224,
+        "mean": 0.4572666666666667
+      },
+      "after": {
+        "n": 30,
+        "min": 0.012,
+        "p50": 0.02,
+        "p95": 0.052,
+        "max": 0.055,
+        "mean": 0.019533333333333344
+      },
+      "deltaPercent": -94.52054794520548
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 10.492998000001535,
+        "p50": 11.822433000001183,
+        "p95": 32.290883000001486,
+        "max": 34.193953999998485,
+        "mean": 18.891747433333514
+      },
+      "after": {
+        "n": 30,
+        "min": 10.424344999999448,
+        "p50": 11.48101300000053,
+        "p95": 41.74601400000029,
+        "max": 51.22923399999854,
+        "mean": 20.024120833333168
+      },
+      "deltaPercent": -2.8878996396141
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 10.498,
+        "p50": 11.936,
+        "p95": 16.202,
+        "max": 16.593,
+        "mean": 13.023399999999999
+      },
+      "after": {
+        "n": 30,
+        "min": 10.43,
+        "p50": 11.489,
+        "p95": 18.621,
+        "max": 100.008,
+        "mean": 15.769733333333331
+      },
+      "deltaPercent": -3.7449731903485217
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 10,
+        "min": 4.632592999998451,
+        "p50": 5.0121930000022985,
+        "p95": 5.9936689999995,
+        "max": 5.9936689999995,
+        "mean": 5.269681499999933
+      },
+      "after": {
+        "n": 10,
+        "min": 4.519609999999375,
+        "p50": 5.247258999999758,
+        "p95": 5.7423520000011194,
+        "max": 5.7423520000011194,
+        "mean": 5.182318399999713
+      },
+      "deltaPercent": 4.689883250652005
+    },
+    {
+      "scenario": "retained-1000",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 10,
+        "min": 3.571,
+        "p50": 3.614,
+        "p95": 6.196,
+        "max": 6.196,
+        "mean": 4.079299999999999
+      },
+      "after": {
+        "n": 10,
+        "min": 3.538,
+        "p50": 3.593,
+        "p95": 4.689,
+        "max": 4.689,
+        "mean": 3.7688
+      },
+      "deltaPercent": -0.5810736026563346
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 0.32944799999677343,
+        "p50": 0.33675899999798276,
+        "p95": 0.3571989999982179,
+        "max": 0.37492999999813037,
+        "mean": 0.33967576666691457
+      },
+      "after": {
+        "n": 30,
+        "min": 0.009761000001162756,
+        "p50": 0.017079999997804407,
+        "p95": 0.02316100000462029,
+        "max": 0.043660999996063765,
+        "mean": 0.015393633333102723
+      },
+      "deltaPercent": -94.92812367363405
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 0.332,
+        "p50": 0.34,
+        "p95": 0.36,
+        "max": 0.437,
+        "mean": 0.3446333333333333
+      },
+      "after": {
+        "n": 30,
+        "min": 0.011,
+        "p50": 0.019,
+        "p95": 0.025,
+        "max": 0.045,
+        "mean": 0.017133333333333337
+      },
+      "deltaPercent": -94.41176470588235
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 10.152078999999503,
+        "p50": 10.996271000003617,
+        "p95": 32.73898600000393,
+        "max": 57.26880399999936,
+        "mean": 18.42487020000044
+      },
+      "after": {
+        "n": 30,
+        "min": 10.428546000002825,
+        "p50": 11.31333900000027,
+        "p95": 27.575299000003724,
+        "max": 28.10076300000219,
+        "mean": 17.167574200000672
+      },
+      "deltaPercent": 2.8834138408970533
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 10.157,
+        "p50": 13.264,
+        "p95": 19.476,
+        "max": 79.949,
+        "mean": 14.881299999999998
+      },
+      "after": {
+        "n": 30,
+        "min": 10.433,
+        "p50": 11.319,
+        "p95": 15.538,
+        "max": 16.215,
+        "mean": 12.552066666666667
+      },
+      "deltaPercent": -14.663751507840761
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 10,
+        "min": 4.504379000005429,
+        "p50": 5.202268000000913,
+        "p95": 6.5149820000006,
+        "max": 6.5149820000006,
+        "mean": 5.471492599999328
+      },
+      "after": {
+        "n": 10,
+        "min": 4.4772980000052485,
+        "p50": 4.88213800000085,
+        "p95": 8.316530000003695,
+        "max": 8.316530000003695,
+        "mean": 5.542845300002227
+      },
+      "deltaPercent": -6.153662210405287
+    },
+    {
+      "scenario": "retained-10000",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 10,
+        "min": 3.527,
+        "p50": 3.665,
+        "p95": 4.048,
+        "max": 4.048,
+        "mean": 3.728
+      },
+      "after": {
+        "n": 10,
+        "min": 3.462,
+        "p50": 3.666,
+        "p95": 4.058,
+        "max": 4.058,
+        "mean": 3.7329999999999997
+      },
+      "deltaPercent": 0.027285129604370795
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 0.3693900000071153,
+        "p50": 0.37964099999226164,
+        "p95": 0.42396200000075623,
+        "max": 0.43822199999704026,
+        "mean": 0.3887983666669849
+      },
+      "after": {
+        "n": 30,
+        "min": 0.010009999998146668,
+        "p50": 0.011440000002039596,
+        "p95": 0.020670999991125427,
+        "max": 0.07223199999134522,
+        "mean": 0.016301066667074336
+      },
+      "deltaPercent": -96.98662683896819
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 0.372,
+        "p50": 0.383,
+        "p95": 0.633,
+        "max": 0.68,
+        "mean": 0.4068333333333333
+      },
+      "after": {
+        "n": 30,
+        "min": 0.012,
+        "p50": 0.014,
+        "p95": 0.022,
+        "max": 0.074,
+        "mean": 0.01816666666666667
+      },
+      "deltaPercent": -96.34464751958225
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 10.458945999998832,
+        "p50": 10.915239000009024,
+        "p95": 24.16609800000151,
+        "max": 27.827074999993783,
+        "mean": 16.01961986666623
+      },
+      "after": {
+        "n": 30,
+        "min": 10.352734000000055,
+        "p50": 10.852415999994264,
+        "p95": 22.832794999994803,
+        "max": 24.640561000007438,
+        "mean": 15.227131699999639
+      },
+      "deltaPercent": -0.5755531327780172
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 10.465,
+        "p50": 11.241,
+        "p95": 16.255,
+        "max": 16.511,
+        "mean": 12.693966666666665
+      },
+      "after": {
+        "n": 30,
+        "min": 10.357,
+        "p50": 11.751,
+        "p95": 14.363,
+        "max": 16.099,
+        "mean": 12.247299999999997
+      },
+      "deltaPercent": 4.536962903656261
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 10,
+        "min": 4.323533999995561,
+        "p50": 4.627952000009827,
+        "p95": 5.217698000007658,
+        "max": 5.217698000007658,
+        "mean": 4.707341300002009
+      },
+      "after": {
+        "n": 10,
+        "min": 4.145768999995198,
+        "p50": 4.410826999999699,
+        "p95": 5.002292999997735,
+        "max": 5.002292999997735,
+        "mean": 4.614207699999679
+      },
+      "deltaPercent": -4.691600085948755
+    },
+    {
+      "scenario": "sparse-live",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 10,
+        "min": 3.447,
+        "p50": 3.578,
+        "p95": 3.859,
+        "max": 3.859,
+        "mean": 3.593
+      },
+      "after": {
+        "n": 10,
+        "min": 3.394,
+        "p50": 3.52,
+        "p95": 3.896,
+        "max": 3.896,
+        "mean": 3.5455999999999994
+      },
+      "deltaPercent": -1.6210173281162588
+    },
+    {
+      "scenario": "all-live",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 5.9050959999876795,
+        "p50": 6.313476999988779,
+        "p95": 6.967663999996148,
+        "max": 9.39084800001001,
+        "mean": 6.383810066667502
+      },
+      "after": {
+        "n": 30,
+        "min": 0.009330999993835576,
+        "p50": 0.01997999999730382,
+        "p95": 0.03566100000170991,
+        "max": 0.053491999991820194,
+        "mean": 0.020795299998523357
+      },
+      "deltaPercent": -99.68353412870057
+    },
+    {
+      "scenario": "all-live",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 5.907,
+        "p50": 6.341,
+        "p95": 14.97,
+        "max": 22.085,
+        "mean": 8.242366666666666
+      },
+      "after": {
+        "n": 30,
+        "min": 0.01,
+        "p50": 0.021,
+        "p95": 0.038,
+        "max": 0.056,
+        "mean": 0.02250000000000001
+      },
+      "deltaPercent": -99.66882195237345
+    },
+    {
+      "scenario": "all-live",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 10.251130000004196,
+        "p50": 10.781465000007302,
+        "p95": 27.285770999995293,
+        "max": 28.044112000003224,
+        "mean": 17.265351099999194
+      },
+      "after": {
+        "n": 30,
+        "min": 10.23916100000497,
+        "p50": 10.980691000004299,
+        "p95": 27.513927000007243,
+        "max": 31.5296340000059,
+        "mean": 17.618363800002165
+      },
+      "deltaPercent": 1.8478564832966837
+    },
+    {
+      "scenario": "all-live",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 10.257,
+        "p50": 10.599,
+        "p95": 15.48,
+        "max": 16.29,
+        "mean": 11.943099999999998
+      },
+      "after": {
+        "n": 30,
+        "min": 10.243,
+        "p50": 10.715,
+        "p95": 14.421,
+        "max": 14.86,
+        "mean": 12.010333333333332
+      },
+      "deltaPercent": 1.094442871969048
+    },
+    {
+      "scenario": "all-live",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 10,
+        "min": 4.1550699999934295,
+        "p50": 4.634192999990773,
+        "p95": 6.139922000002116,
+        "max": 6.139922000002116,
+        "mean": 4.866236600000411
+      },
+      "after": {
+        "n": 10,
+        "min": 4.087908000001335,
+        "p50": 4.344584999998915,
+        "p95": 4.851657999999588,
+        "max": 4.851657999999588,
+        "mean": 4.430480399997032
+      },
+      "deltaPercent": -6.2493728679930864
+    },
+    {
+      "scenario": "all-live",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 10,
+        "min": 3.315,
+        "p50": 3.406,
+        "p95": 4.021,
+        "max": 4.021,
+        "mean": 3.5401000000000002
+      },
+      "after": {
+        "n": 10,
+        "min": 3.331,
+        "p50": 3.379,
+        "p95": 3.694,
+        "max": 3.694,
+        "mean": 3.4264
+      },
+      "deltaPercent": -0.7927187316500328
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 1.439808000010089,
+        "p50": 1.5017099999968195,
+        "p95": 2.139506999999867,
+        "max": 2.558017999996082,
+        "mean": 1.628957066667499
+      },
+      "after": {
+        "n": 30,
+        "min": 1.2280630000022938,
+        "p50": 1.2837540000036824,
+        "p95": 1.72060600000259,
+        "max": 1.7946270000102231,
+        "mean": 1.3657572000006135
+      },
+      "deltaPercent": -14.513854205778653
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 1.442,
+        "p50": 1.537,
+        "p95": 8.88,
+        "max": 9.459,
+        "mean": 2.5963
+      },
+      "after": {
+        "n": 30,
+        "min": 1.231,
+        "p50": 1.297,
+        "p95": 3.668,
+        "max": 5.934,
+        "mean": 1.7547999999999997
+      },
+      "deltaPercent": -15.614834092387763
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 10.073906000005081,
+        "p50": 10.266461999999592,
+        "p95": 26.871911000009277,
+        "max": 27.099396000005072,
+        "mean": 16.069639866668147
+      },
+      "after": {
+        "n": 30,
+        "min": 10.109378000008292,
+        "p50": 10.589990000007674,
+        "p95": 29.43305799999507,
+        "max": 33.71587200000067,
+        "mean": 17.223139799999867
+      },
+      "deltaPercent": 3.151309574886607
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 10.079,
+        "p50": 10.271,
+        "p95": 13.712,
+        "max": 15.408,
+        "mean": 11.497766666666665
+      },
+      "after": {
+        "n": 30,
+        "min": 10.113,
+        "p50": 10.565,
+        "p95": 16.416,
+        "max": 21.143,
+        "mean": 12.216700000000001
+      },
+      "deltaPercent": 2.862428195891331
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 10,
+        "min": 4.436977999997907,
+        "p50": 4.676193000006606,
+        "p95": 5.986288000000059,
+        "max": 5.986288000000059,
+        "mean": 5.011857400005101
+      },
+      "after": {
+        "n": 10,
+        "min": 4.369504999995115,
+        "p50": 4.697194000007585,
+        "p95": 5.350081999989925,
+        "max": 5.350081999989925,
+        "mean": 4.860896399998455
+      },
+      "deltaPercent": 0.449104645615539
+    },
+    {
+      "scenario": "held-mail",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 10,
+        "min": 3.468,
+        "p50": 3.544,
+        "p95": 3.891,
+        "max": 3.891,
+        "mean": 3.6289000000000002
+      },
+      "after": {
+        "n": 10,
+        "min": 3.505,
+        "p50": 3.596,
+        "p95": 3.887,
+        "max": 3.887,
+        "mean": 3.6507999999999994
+      },
+      "deltaPercent": 1.4672686230248422
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "step",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 0.5186140000005253,
+        "p50": 0.5381639999977779,
+        "p95": 0.6580169999942882,
+        "max": 0.6658080000051996,
+        "mean": 0.5549845999975029
+      },
+      "after": {
+        "n": 30,
+        "min": 0.5033929999917746,
+        "p50": 0.5242440000001807,
+        "p95": 0.587005000008503,
+        "max": 0.5922359999967739,
+        "mean": 0.5312939666662715
+      },
+      "deltaPercent": -2.58657212256016
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "step",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 0.521,
+        "p50": 0.542,
+        "p95": 0.669,
+        "max": 0.853,
+        "mean": 0.5668000000000001
+      },
+      "after": {
+        "n": 30,
+        "min": 0.507,
+        "p50": 0.527,
+        "p95": 0.591,
+        "max": 0.861,
+        "mean": 0.5433333333333332
+      },
+      "deltaPercent": -2.7675276752767597
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "wallMs",
+      "before": {
+        "n": 30,
+        "min": 10.402994999996736,
+        "p50": 11.503145000009681,
+        "p95": 23.15313099999912,
+        "max": 24.291291999994428,
+        "mean": 15.785668366668203
+      },
+      "after": {
+        "n": 30,
+        "min": 10.384225000001607,
+        "p50": 11.725849999987986,
+        "p95": 29.133111000002827,
+        "max": 69.81556600000476,
+        "mean": 18.133469466668128
+      },
+      "deltaPercent": 1.936035753510179
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "tenDurableLifecycleCycles",
+      "metric": "cpuMs",
+      "before": {
+        "n": 30,
+        "min": 10.408,
+        "p50": 11.508,
+        "p95": 15.335,
+        "max": 15.65,
+        "mean": 12.701866666666666
+      },
+      "after": {
+        "n": 30,
+        "min": 10.388,
+        "p50": 11.731,
+        "p95": 17.381,
+        "max": 58.473,
+        "mean": 14.436300000000001
+      },
+      "deltaPercent": 1.9377824122349674
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "repeatOpen",
+      "metric": "wallMs",
+      "before": {
+        "n": 10,
+        "min": 4.373764999996638,
+        "p50": 5.045582999999169,
+        "p95": 7.178009999988717,
+        "max": 7.178009999988717,
+        "mean": 5.2342341999989
+      },
+      "after": {
+        "n": 10,
+        "min": 4.380556000003708,
+        "p50": 4.860088000001269,
+        "p95": 8.614658000005875,
+        "max": 8.614658000005875,
+        "mean": 5.374178899999242
+      },
+      "deltaPercent": -3.676383878690137
+    },
+    {
+      "scenario": "write-every-tick",
+      "operation": "repeatOpen",
+      "metric": "cpuMs",
+      "before": {
+        "n": 10,
+        "min": 3.465,
+        "p50": 3.73,
+        "p95": 5.474,
+        "max": 5.474,
+        "mean": 3.8739000000000003
+      },
+      "after": {
+        "n": 10,
+        "min": 3.571,
+        "p50": 3.803,
+        "p95": 4.351,
+        "max": 4.351,
+        "mean": 3.8458000000000006
+      },
+      "deltaPercent": 1.9571045576407542
+    }
+  ],
+  "scope": "Real CoreStore and DaemonCore with FakeDriver, source runtime. One process alternates both implementations over copied identical databases. Shared-heap GC can cross sides; ABBA reduces but cannot eliminate that coupling. No provider/process readiness or whole-daemon idle claim. First open is one sample per scenario and includes candidate index installation; repeat open includes close/checkpoint. Closed bytes include subsequent identical lifecycle writes and page-allocation effects; index definitions and free pages are retained. Write batches grow the same retained history on both sides; every mutation commits with production durability. RSS and private memory are not measured here."
+}

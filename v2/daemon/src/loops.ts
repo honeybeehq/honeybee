@@ -69,14 +69,17 @@ import {
   type CoreStore,
   type DaemonStepInputs,
   type DaemonWorkRow,
+  type DeliveryConfirmationIntent,
   type HandoffContext,
   type HandoffContextTurn,
   type I1PendingBee,
   type MessageRow,
   type RuntimeState,
+  type StoreChange,
   type TranscriptSegmentRow,
   type TurnTriggerSource,
 } from "../../core/src/index.ts";
+import { DeadlineHeap } from "./deadlines.ts";
 import type { CaptureReport } from "../../driver-cell/src/index.ts";
 import { deliveryText, isPeerSender, turnTriggerSource } from "./envelope.ts";
 import { MultilineFallback, type MultilineFallbackOptions } from "./multilineFallback.ts";
@@ -303,6 +306,12 @@ const DEDUP_SWEEP_GROWTH = 1024;
 /** Membership-probe chunk bound for the I1-disabled sweep basis. */
 const DEDUP_PROBE_CHUNK = 512;
 
+const FLAGS_KEY = "core:flags";
+const COMMANDS_KEY = "core:commands";
+const BEE_KEY_PREFIX = "b:";
+const NAMED_KEY_PREFIX = "k:";
+const QUIET_GLOBAL_CHANGE_PREFIXES = ["account", "rpc.", "cell.retention.", "cell.pressure.", "cell.parked", "cell_op.", "node.capacity", "login_flow.", "template.", "selection_cursor.", "legacy_birth_bound", "auth_interruption.pruned", "champion"];
+
 type StepSnapshot =
   | DaemonStepInputs
   | {
@@ -346,11 +355,26 @@ export class DaemonCore {
   private readonly reportedI1 = new Set<number>();
   /** Committed ticks since the last dedup sweep (or clear). */
   private readonly unresolvedIdentity = new Map<string, number>();
-  retainProcessIdentity(beeId: string, generation: number): void { this.unresolvedIdentity.set(beeId, generation); }
-  resolveProcessIdentity(beeId: string, generation: number): void { if (this.unresolvedIdentity.get(beeId) === generation) this.unresolvedIdentity.delete(beeId); }
+  retainProcessIdentity(beeId: string, generation: number): void { this.unresolvedIdentity.set(beeId, generation); this.wakeBee(beeId); }
+  resolveProcessIdentity(beeId: string, generation: number): void { if (this.unresolvedIdentity.get(beeId) === generation) this.unresolvedIdentity.delete(beeId); this.wakeBee(beeId); }
   private sweepTicks = 0;
   /** Combined dedup-set size recorded by the last sweep — growth trigger baseline. */
   private sizeAtLastSweep = 0;
+  private readonly dirtyBees = new Set<string>();
+  private dirtyAll = true;
+  private commandsDue = true;
+  private flagsDue = true;
+  private readonly hot = new Set<string>();
+  private multilineCleanupPending = true;
+  private readonly deadlines = new DeadlineHeap();
+  private readonly dueNamed = new Set<string>();
+  private readonly movingBees = new Set<string>();
+  private readonly handingOffBees = new Set<string>();
+  private readonly actionBees = new Set<string>();
+  private readonly confirmingBees = new Set<string>();
+  private readonly supplyBees = new Set<string>();
+  private readonly batchingBees = new Set<string>();
+  private readonly humanFirstBees = new Set<string>();
 
   constructor(opts: DaemonCoreOptions) {
     this.store = opts.store;
@@ -381,6 +405,59 @@ export class DaemonCore {
     this.summarizeHandoff = opts.summarizeHandoff ?? null;
     this.cellCapture = opts.cellCaptureExecutor ?? null;
     this.reconnectTools = opts.reconnectTools;
+    this.store.onChange(change => this.noteChange(change));
+  }
+
+  private noteChange(change: StoreChange): void {
+    if (change.beeId !== null) {
+      this.commandsDue = true;
+      this.dirtyBees.add(change.beeId);
+      const kind = change.kind;
+      if (kind.startsWith("flag.")) this.flagsDue = true;
+      else if (kind.startsWith("bee.move") || kind === "bee.placement") this.movingBees.add(change.beeId);
+      else if (kind.startsWith("bee.handoff")) this.handingOffBees.add(change.beeId);
+      else if (kind.startsWith("action")) this.actionBees.add(change.beeId);
+      else if (kind.startsWith("mail.confirmation_")) this.confirmingBees.add(change.beeId);
+      else if (kind.startsWith("task_supply.")) this.supplyBees.add(change.beeId);
+      else if (kind.startsWith("mail.batching.")) this.batchingBees.add(change.beeId);
+      else if (kind.startsWith("mail.human_first.")) this.humanFirstBees.add(change.beeId);
+      return;
+    }
+    if (QUIET_GLOBAL_CHANGE_PREFIXES.some(prefix => change.kind.startsWith(prefix))) return;
+    this.commandsDue = true;
+    this.dirtyAll = true;
+  }
+
+  schedule(key: string, at: number): void {
+    this.deadlines.schedule(`${NAMED_KEY_PREFIX}${key}`, at);
+  }
+
+  takeDue(key: string): boolean {
+    return this.dueNamed.delete(`${NAMED_KEY_PREFIX}${key}`);
+  }
+
+  wakeBee(beeId: string): void {
+    this.dirtyBees.add(beeId);
+    this.commandsDue = true;
+  }
+
+  wakeCommands(): void {
+    this.commandsDue = true;
+  }
+
+  private scheduleBee(beeId: string, at: number): void {
+    this.deadlines.schedule(`${BEE_KEY_PREFIX}${beeId}`, at);
+  }
+
+  private takeDueDeadlines(now: number): Set<string> {
+    const bees = new Set<string>();
+    for (const key of this.deadlines.popDue(now)) {
+      if (key.startsWith(BEE_KEY_PREFIX)) bees.add(key.slice(BEE_KEY_PREFIX.length));
+      else if (key === FLAGS_KEY) this.flagsDue = true;
+      else if (key === COMMANDS_KEY) this.commandsDue = true;
+      else this.dueNamed.add(key);
+    }
+    return bees;
   }
 
   /** Late asynchronous replies belong to the successor after shutdown. */
@@ -452,42 +529,92 @@ export class DaemonCore {
 
   private stepPhases(): void {
     this.performance.measureSync("core.step.observe", () => this.observe());
-    this.reconcileDeliveryConfirmations();
-    this.performance.measureSync("core.step.flags", () => this.expireFlags());
+    const now = this.now();
+    const dueBees = this.takeDueDeadlines(now);
+    const all = this.dirtyAll;
+    const scope = all ? null : new Set([...this.dirtyBees, ...this.hot, ...dueBees]);
+    this.dirtyAll = false;
+    this.dirtyBees.clear();
+    this.hot.clear();
+    if (all || this.flagsDue) {
+      this.flagsDue = false;
+      this.performance.measureSync("core.step.flags", () => this.expireFlags());
+      const resetAt = this.store.nextFlagResetAt();
+      if (resetAt !== null) this.deadlines.schedule(FLAGS_KEY, resetAt);
+    }
+    this.reconcileDeliveryConfirmations(scope);
     let seq = this.store.lastAuditSeq();
     let snapshot = this.performance.measureSync("core.step.snapshot", () =>
-      this.stepSnapshot(),
+      this.stepSnapshot(scope),
     );
     this.performance.measureSync("core.step.policies", () => {
       this.bootHangPolicy(snapshot.work);
       this.scaleToZeroPolicy(snapshot.work);
       this.degradedMailPolicy(snapshot.work);
     });
-    this.store.releaseBatchingWakes();
-    this.performance.measureSync("core.step.commands", () => this.executeCommands());
-    this.performance.measureSync("core.step.moves", () => this.reconcileMoves());
-    this.performance.measureSync("core.step.handoffs", () => this.reconcileHandoffs());
-    this.performance.measureSync("core.step.actions", () => this.reconcileActions());
+    this.releaseBatchingWakes(scope);
+    if (all || this.commandsDue) {
+      this.commandsDue = false;
+      this.performance.measureSync("core.step.commands", () => this.executeCommands());
+      const attemptAt = this.store.nextCommandAttemptAt();
+      if (attemptAt !== null) {
+        if (attemptAt <= this.now()) this.commandsDue = true;
+        else this.deadlines.schedule(COMMANDS_KEY, attemptAt);
+      }
+    }
+    const widened = scope === null ? null : new Set([...scope, ...this.dirtyBees]);
+    this.performance.measureSync("core.step.moves", () => this.reconcileMoves(widened));
+    this.performance.measureSync("core.step.handoffs", () => this.reconcileHandoffs(widened));
+    this.performance.measureSync("core.step.actions", () => this.reconcileActions(widened));
     ({ snapshot, seq } = this.performance.measureSync("core.step.snapshot", () =>
-      this.refreshSnapshot(snapshot, seq),
+      this.refreshSnapshot(snapshot, seq, widened),
     ));
     this.performance.measureSync("core.step.delivery", () =>
-      this.deliveryLoop(snapshot.work),
+      this.deliveryLoop(snapshot.work, widened),
     );
-    this.performance.measureSync("core.step.tasks", () => this.taskSupplyLoop());
+    this.performance.measureSync("core.step.tasks", () => this.taskSupplyLoop(widened));
     // This step's freshest committed I1 metadata, held ONLY for the duration
     // of this step as the sweep's membership basis; never cached across ticks.
     let latestI1: readonly I1PendingBee[] | null = null;
     if (this.i1Enabled()) {
       const i1Snapshot = this.performance.measureSync("core.step.snapshot", () =>
-        this.finalI1Snapshot(snapshot, seq),
+        this.finalI1Snapshot(snapshot, seq, widened),
       );
       latestI1 = i1Snapshot;
       this.performance.measureSync("core.step.i1", () =>
-        this.i1Telemetry(i1Snapshot),
+        this.i1Telemetry(i1Snapshot, widened),
       );
     }
     this.performance.measureSync("core.step.prune", () => this.pruneDeliveryDedup(latestI1));
+  }
+
+  private tracked(scope: ReadonlySet<string> | null, set: Set<string>, all: () => Iterable<string>, still: (beeId: string) => boolean): string[] {
+    if (scope === null) {
+      set.clear();
+      for (const beeId of all()) set.add(beeId);
+      return [...set];
+    }
+    const bees: string[] = [];
+    for (const beeId of scope) {
+      if (!set.has(beeId)) continue;
+      if (still(beeId)) bees.push(beeId);
+      else set.delete(beeId);
+    }
+    return bees;
+  }
+
+  private releaseBatchingWakes(scope: ReadonlySet<string> | null): void {
+    const bees = this.tracked(scope, this.batchingBees,
+      () => this.store.listMailBatchingPolicies().filter(policy => policy.enabled).map(policy => policy.beeId),
+      beeId => this.store.mailBatchingPolicy(beeId).enabled);
+    if (bees.length === 0) return;
+    this.store.transact(() => {
+      for (const beeId of bees) this.store.enqueueWake(beeId);
+    });
+    for (const beeId of bees) {
+      const at = this.store.mailBatchingWakeDueAt(beeId);
+      if (at !== null) this.scheduleBee(beeId, at);
+    }
   }
 
   /** Fold pending driver facts before an RPC makes a working-state decision. */
@@ -497,12 +624,18 @@ export class DaemonCore {
     // and last-output projections. A daemon death therefore leaves either
     // all effects plus the cursor, or neither; there is no durable
     // "completion applied, cursor stale" ambiguity to replay.
+    const observations = this.driver.observe();
+    const sessions = typeof this.ext.observeSessions === "function" ? this.ext.observeSessions() : [];
+    const evidence = typeof this.ext.observeEvidence === "function" ? this.ext.observeEvidence() : [];
+    const usage = typeof this.ext.observeUsage === "function" ? this.ext.observeUsage() : [];
+    const cursors = typeof this.ext.observeRecoveryCursors === "function" ? this.ext.observeRecoveryCursors() : [];
+    if (observations.length === 0 && sessions.length === 0 && evidence.length === 0 && usage.length === 0 && cursors.length === 0) return;
     this.store.transact(() => {
-      this.drainObservations();
-      this.applySessionIds();
-      this.applyEvidence();
-      this.applyUsage();
-      this.applyObservationCursors();
+      for (const obs of observations) this.applyObservation(obs);
+      this.applySessionIds(sessions);
+      this.applyEvidence(evidence);
+      this.applyUsage(usage);
+      this.applyObservationCursors(cursors);
     });
   }
 
@@ -513,10 +646,10 @@ export class DaemonCore {
    * tick instead of three (2026-09-01: three full listBeeViewRows reads per
    * 200ms tick were a third of the daemon's CPU on a 268-bee hive).
    */
-  private refreshSnapshot(current: StepSnapshot, takenAtSeq: number): { snapshot: StepSnapshot; seq: number } {
+  private refreshSnapshot(current: StepSnapshot, takenAtSeq: number, scope: ReadonlySet<string> | null): { snapshot: StepSnapshot; seq: number } {
     const seq = this.store.lastAuditSeq();
     if (seq === takenAtSeq) return { snapshot: current, seq };
-    return { snapshot: this.stepSnapshot(), seq };
+    return { snapshot: this.stepSnapshot(scope), seq };
   }
 
   private i1Enabled(): boolean {
@@ -524,10 +657,11 @@ export class DaemonCore {
   }
 
   /** Reuse only within this step, after proving delivery and task supply made no durable change. */
-  private finalI1Snapshot(snapshot: StepSnapshot, takenAtSeq: number): readonly I1PendingBee[] {
+  private finalI1Snapshot(snapshot: StepSnapshot, takenAtSeq: number, scope: ReadonlySet<string> | null): readonly I1PendingBee[] {
     const seq = this.store.lastAuditSeq();
     if (snapshot.i1 !== null && seq === takenAtSeq) return snapshot.i1;
-    return this.store.readI1PendingSnapshot();
+    if (scope !== null && scope.size === 0) return [];
+    return this.store.readI1PendingSnapshot(scope === null ? null : [...scope]);
   }
 
   /**
@@ -535,13 +669,14 @@ export class DaemonCore {
    * walks. Work is refreshed across the command boundary where the step
    * itself may have changed runtime or mailbox truth.
    */
-  private stepSnapshot(): StepSnapshot {
-    if (!this.store.hasStepSnapshotInputs()) {
+  private stepSnapshot(scope: ReadonlySet<string> | null): StepSnapshot {
+    if ((scope !== null && scope.size === 0) || !this.store.hasStepSnapshotInputs()) {
       if (this.i1Enabled()) return { work: [], i1: [] };
       return { work: [], i1: null };
     }
-    if (this.i1Enabled()) return this.store.readDaemonStepInputs();
-    return { work: this.store.readDaemonWork(), i1: null };
+    const beeIds = scope === null ? null : [...scope];
+    if (this.i1Enabled()) return this.store.readDaemonStepInputs(beeIds);
+    return { work: this.store.readDaemonWork(beeIds), i1: null };
   }
 
   /**
@@ -550,8 +685,11 @@ export class DaemonCore {
    * message. A fed task that sits through an idle tick without being closed
    * is stamped stalled.
    */
-  private taskSupplyLoop(): void {
-    for (const row of this.store.listTaskSupply({ on: true })) {
+  private taskSupplyLoop(scope: ReadonlySet<string> | null): void {
+    const bees = this.tracked(scope, this.supplyBees,
+      () => this.store.listTaskSupply({ on: true }).map(row => row.beeId),
+      beeId => this.store.getTaskSupply(beeId).on);
+    for (const row of bees.map(beeId => this.store.getTaskSupply(beeId))) {
       try {
         this.store.tryFeedTaskSupply(row.beeId);
         this.store.maybeStallFedTask(row.beeId);
@@ -564,12 +702,6 @@ export class DaemonCore {
   // -------------------------------------------------------------------------
   // observations → store state
   // -------------------------------------------------------------------------
-
-  private drainObservations(): void {
-    for (const obs of this.driver.observe()) {
-      this.applyObservation(obs);
-    }
-  }
 
   private applyObservation(obs: DriverObservation): void {
     if (!this.store.getBee(obs.beeId)) {
@@ -770,9 +902,8 @@ export class DaemonCore {
     if (applied) this.log(`flag.clear bee=${ev.beeId} flag=${ev.flag} gen=${ev.generation} by=sandbox_tmp`);
   }
 
-  private applyEvidence(): void {
-    if (typeof this.ext.observeEvidence !== "function") return;
-    for (const ev of this.ext.observeEvidence()) {
+  private applyEvidence(evidence: readonly FlagEvidenceLike[]): void {
+    for (const ev of evidence) {
       if (!this.store.getBee(ev.beeId)) {
         this.log(`flag.skip bee=${ev.beeId} flag=${ev.flag} reason=no_bee`);
         continue;
@@ -847,9 +978,8 @@ export class DaemonCore {
    * generation resumes it. Only the current generation may write it: a stale
    * generation's late init describes a conversation the bee has moved past.
    */
-  private applySessionIds(): void {
-    if (typeof this.ext.observeSessions !== "function") return;
-    for (const ev of this.ext.observeSessions()) {
+  private applySessionIds(sessions: readonly SessionEvidenceLike[]): void {
+    for (const ev of sessions) {
       const rt = this.store.getBee(ev.beeId) ? this.store.currentRuntime(ev.beeId) : null;
       if (!rt || rt.generation !== ev.generation) {
         // v23: a stale generation that belongs to a CLOSED transcript segment
@@ -879,9 +1009,8 @@ export class DaemonCore {
    * account hook records it (a stale generation still describes the account
    * it ran with). Never throws into the loop.
    */
-  private applyUsage(): void {
-    if (typeof this.ext.observeUsage !== "function") return;
-    for (const ev of this.ext.observeUsage()) {
+  private applyUsage(usage: readonly UsageEvidenceLike[]): void {
+    for (const ev of usage) {
       if (!this.onUsageEvidence) continue;
       try {
         this.onUsageEvidence(ev);
@@ -897,9 +1026,8 @@ export class DaemonCore {
    * crash rolls back both effects and cursor, while a committed cursor can
    * never outrun core state.
    */
-  private applyObservationCursors(): void {
-    if (typeof this.ext.observeRecoveryCursors !== "function") return;
-    for (const ev of this.ext.observeRecoveryCursors()) {
+  private applyObservationCursors(cursors: readonly ObservationCursorEvidenceLike[]): void {
+    for (const ev of cursors) {
       const { applied } = this.store.advanceRuntimeObservationCursor(
         ev.beeId,
         ev.generation,
@@ -919,7 +1047,8 @@ export class DaemonCore {
     const now = this.now();
     for (const { runtime: rt } of work) {
       if (rt.state !== "booting" || this.unresolvedIdentity.get(rt.beeId) === rt.generation) continue;
-      if (now <= this.bootHangDeadline(rt)) continue;
+      const deadline = this.bootHangDeadline(rt);
+      if (now <= deadline) { this.scheduleBee(rt.beeId, deadline + 1); continue; }
       if (this.store.hasPendingStopCommand(rt.beeId, rt.generation)) continue;
       if (this.store.hasBootHangStopCommand(rt.beeId, rt.generation)) continue;
       this.store.enqueueCommand("stop", rt.beeId, { cause: "stopped_by_system", reason: "hang_policy" });
@@ -941,7 +1070,7 @@ export class DaemonCore {
     const now = this.now();
     for (const { runtime: rt, pending } of work) {
       if (rt.state !== "idle") continue;
-      if (now - rt.updatedAt <= window) continue;
+      if (now - rt.updatedAt <= window) { this.scheduleBee(rt.beeId, rt.updatedAt + window + 1); continue; }
       // Pending mail means the delivery loop is about to use this runtime —
       // stopping it now would only bounce through revive-on-message.
       if (pending.length > 0) continue;
@@ -1197,10 +1326,25 @@ export class DaemonCore {
     return this.sourceProcessAbsent(beeId, generation);
   }
 
-  private reconcileMoves(): void {
-    for (const move of this.store.listActiveBeeMoves()) {
+  private reconcileMoves(scope: ReadonlySet<string> | null): void {
+    let moves: BeeMoveRow[];
+    if (scope === null) {
+      moves = this.store.listActiveBeeMoves();
+      this.movingBees.clear();
+      for (const move of moves) this.movingBees.add(move.beeId);
+    } else {
+      moves = [];
+      for (const beeId of scope) {
+        if (!this.movingBees.has(beeId)) continue;
+        const move = this.store.activeMoveOf(beeId);
+        if (move) moves.push(move);
+        else this.movingBees.delete(beeId);
+      }
+    }
+    for (const move of moves) {
       const bee = this.store.getBee(move.beeId);
       if (!bee) continue;
+      this.hot.add(bee.id);
       const rt = this.store.currentRuntime(bee.id);
       try {
         if (move.phase === "stopping") {
@@ -1283,10 +1427,25 @@ export class DaemonCore {
    * the next boot: stopping → (source stopped AND process gone) → summarizing
    * → (context built) → switch tx → starting → (seed delivered) → complete.
    */
-  private reconcileHandoffs(): void {
-    for (const handoff of this.store.listActiveBeeHandoffs()) {
+  private reconcileHandoffs(scope: ReadonlySet<string> | null): void {
+    let handoffs: BeeHandoffRow[];
+    if (scope === null) {
+      handoffs = this.store.listActiveBeeHandoffs();
+      this.handingOffBees.clear();
+      for (const handoff of handoffs) this.handingOffBees.add(handoff.beeId);
+    } else {
+      handoffs = [];
+      for (const beeId of scope) {
+        if (!this.handingOffBees.has(beeId)) continue;
+        const handoff = this.store.activeHandoffOf(beeId);
+        if (handoff) handoffs.push(handoff);
+        else this.handingOffBees.delete(beeId);
+      }
+    }
+    for (const handoff of handoffs) {
       const bee = this.store.getBee(handoff.beeId);
       if (!bee) continue;
+      this.hot.add(bee.id);
       const rt = this.store.currentRuntime(bee.id);
       try {
         if (handoff.phase === "stopping") {
@@ -1421,8 +1580,9 @@ export class DaemonCore {
    * positional predecessor succeeded. Agent instructions ride the mailbox
    * (default urgency `next`: the next accept point, never an interrupt).
    */
-  private reconcileActions(): void {
-    for (const beeId of this.store.listOpenActionBeeIds()) {
+  private reconcileActions(scope: ReadonlySet<string> | null): void {
+    const bees = this.tracked(scope, this.actionBees, () => this.store.listOpenActionBeeIds(), () => true);
+    for (const beeId of bees) {
       try {
         this.reconcileActionLane(beeId);
       } catch (err) {
@@ -1436,14 +1596,16 @@ export class DaemonCore {
   }
 
   private reconcileActionLane(beeId: string): void {
-    if (!this.store.getBee(beeId)) return;
+    if (!this.store.getBee(beeId)) { this.actionBees.delete(beeId); return; }
     const lane = this.store.listActionsOf(beeId);
+    if (!lane.some(a => actionIsActive(a) || a.status === "queued")) this.actionBees.delete(beeId);
     const active = lane.find((a) => actionIsActive(a));
     if (active) {
       if (active.executor === "lifecycle.archive" && active.status === "running") {
         const res = this.store.reconcileArchiveAction(active.id);
         if (res.settled) this.log(`action.settled bee=${beeId} action=${active.id} kind=${active.kind} status=${res.action.status}`);
       } else if (active.executor === "cell.capture") {
+        this.hot.add(beeId);
         if (active.status === "waiting" && active.waitingReason === "uncertain") this.reconcileUncertainCapture(active);
         else if (active.status === "waiting" && active.waitingReason === "executor") this.runCellCapture(active);
         else if (active.status === "running") {
@@ -1478,7 +1640,8 @@ export class DaemonCore {
     if (actionNudgeDueAt(row) === null) return;
     const answeredAt = row.questionId ? this.store.getQuestion(row.questionId)?.answeredAt ?? null : null;
     const dueAt = actionNudgeDueAt(row, answeredAt === null ? [] : [answeredAt]);
-    if (dueAt === null || this.now() < dueAt) return;
+    if (dueAt === null) return;
+    if (this.now() < dueAt) { this.scheduleBee(row.beeId, dueAt); return; }
     const res = this.store.nudgeAgentAction(row.id, row.attempt);
     if (res) this.log(`action.nudge bee=${row.beeId} action=${row.id} attempt=${row.attempt} msg=${res.messageId}`);
   }
@@ -1644,15 +1807,29 @@ export class DaemonCore {
 
   private readonly interruptRequested = new Set<number>();
   private readonly deliveryRetries = new Map<string, { key: string; attempts: number; nextAt: number }>();
-  private readonly confirmationReady = new Set<number>();
+  private readonly confirmationReady = new Map<number, string>();
   private readonly confirmationPolls = new Map<number, { beeId: string; key: string; attempts: number; nextAt: number }>();
 
-  private reconcileDeliveryConfirmations(): void {
+  private reconcileDeliveryConfirmations(scope: ReadonlySet<string> | null): void {
     if (this.store.inTransaction) return;
-    const intents = this.store.listDeliveryConfirmationIntents();
+    let intents: DeliveryConfirmationIntent[];
+    if (scope === null) {
+      intents = this.store.listDeliveryConfirmationIntents();
+      this.confirmingBees.clear();
+      for (const intent of intents) this.confirmingBees.add(intent.beeId);
+    } else {
+      intents = [];
+      for (const beeId of scope) {
+        if (!this.confirmingBees.has(beeId)) continue;
+        const rows = this.store.listDeliveryConfirmationIntents(beeId);
+        if (rows.length === 0) this.confirmingBees.delete(beeId);
+        intents.push(...rows);
+      }
+    }
     const ids = new Set(intents.map(row => row.messageId));
-    for (const id of this.confirmationPolls.keys()) if (!ids.has(id)) this.confirmationPolls.delete(id);
-    for (const id of this.confirmationReady) if (!ids.has(id)) this.confirmationReady.delete(id);
+    const evaluated = (beeId: string): boolean => scope === null || scope.has(beeId);
+    for (const [id, poll] of this.confirmationPolls) if (evaluated(poll.beeId) && !ids.has(id)) this.confirmationPolls.delete(id);
+    for (const [id, beeId] of this.confirmationReady) if (evaluated(beeId) && !ids.has(id)) this.confirmationReady.delete(id);
     for (const intent of intents) {
       const runtime = this.store.currentRuntime(intent.beeId);
       if (!runtime || runtime.generation !== intent.generation || runtime.state === "stopped") {
@@ -1660,6 +1837,7 @@ export class DaemonCore {
         this.confirmationReady.delete(intent.messageId);
         continue;
       }
+      this.hot.add(intent.beeId);
       if (intent.wireLine === null && intent.reason === "host_auth_failed" && this.driver.deliveryLaneReady?.(intent.beeId, intent.generation)) {
         this.store.releaseNeverWrittenDeliveryHold(intent.messageId, intent.generation, "host_auth_failed");
         this.confirmationPolls.delete(intent.messageId);
@@ -1723,11 +1901,11 @@ export class DaemonCore {
           this.confirmationReady.delete(intent.messageId);
         } else {
           this.store.replanDeliveryConfirmationIntent(intent, intent.digest);
-          this.confirmationReady.add(intent.messageId);
+          this.confirmationReady.set(intent.messageId, intent.beeId);
         }
       } else if (result === "refused") {
         if (intent.wireLine === null) continue;
-        if (this.store.retryRefusedDeliveryConfirmation(intent.messageId, intent.generation, intent.digest)) this.confirmationReady.add(intent.messageId);
+        if (this.store.retryRefusedDeliveryConfirmation(intent.messageId, intent.generation, intent.digest)) this.confirmationReady.set(intent.messageId, intent.beeId);
         else this.confirmationReady.delete(intent.messageId);
       } else if (result !== "pending_ack") {
         this.confirmationReady.delete(intent.messageId);
@@ -1754,14 +1932,16 @@ export class DaemonCore {
    * message waiting out a turn does not block a later `next`/`now` message
    * from delivering at the next accept point.
    */
-  private deliveryLoop(work: readonly DaemonWorkRow[]): void {
+  private deliveryLoop(work: readonly DaemonWorkRow[], scope: ReadonlySet<string> | null): void {
     const unsupportedAttempts = new Set<number>();
     const retryBees = new Set(work.map(row => row.runtime.beeId));
-    for (const beeId of this.deliveryRetries.keys()) if (!retryBees.has(beeId)) this.deliveryRetries.delete(beeId);
-    this.multilineFallback?.cleanupDeleted();
+    for (const beeId of this.deliveryRetries.keys()) if ((scope === null || scope.has(beeId)) && !retryBees.has(beeId)) this.deliveryRetries.delete(beeId);
+    if (scope !== null && scope.size === 0 && !this.multilineCleanupPending) return;
+    if (this.multilineFallback) this.multilineCleanupPending = this.multilineFallback.cleanupDeleted() > 0;
     const quarantines = this.multilineFallback ? this.store.multilinePaneQuarantines() : [];
     const heldMail = this.multilineFallback ? this.store.heldMultilineMail() : null;
     if (heldMail) for (const [beeId, pending] of heldMail) {
+      if (pending.some(row => row.fallback?.id === "" || row.fallback && ["in_flight", "unknown"].includes(row.fallback.state))) this.hot.add(beeId);
       heldMail.set(beeId, pending.filter(row => {
         if (row.fallback?.id === "") this.store.reconcileUnknownMultilineHold(row.id);
         if (!row.fallback || !["in_flight", "unknown"].includes(row.fallback.state)) return true;
@@ -1771,11 +1951,14 @@ export class DaemonCore {
         return !this.multilineFallback!.reconcile(message, this.turnTriggerSourceOf(message, peer));
       }));
     }
+    for (const row of quarantines) this.hot.add(row.beeId);
     try {
       for (const { runtime: rt, pending: ordinaryPending } of work) {
+        if (ordinaryPending.length > 0 || (heldMail?.get(rt.beeId)?.length ?? 0) > 0) this.hot.add(rt.beeId);
         let quarantined = false;
         for (const row of quarantines) {
           if (row.beeId !== rt.beeId) continue;
+          this.hot.add(rt.beeId);
           const pane = row.fallback!.paneInput!;
           if (pane.generation !== rt.generation) {this.store.clearMultilinePaneQuarantine(row.messageId, rt.generation); continue;}
           const identity = this.driver.deliveryPane?.(rt.beeId, rt.generation);
@@ -2047,9 +2230,9 @@ export class DaemonCore {
    * aware deadlines, and a suspended clock while a closed-list flag is active
    * (a visibly blocked bee is at an external boundary — I3/I6 territory).
    */
-  private readonly reportedHumanWait = new Set<number>();
+  private readonly reportedHumanWait = new Map<number, string>();
 
-  private readonly humanEligibilitySince = new Map<number, number>();
+  private readonly humanEligibilitySince = new Map<number, { beeId: string; at: number }>();
 
   private humanFirstState(beeId: string, generation = this.store.currentRuntime(beeId)?.generation ?? -1) {
     const policy = this.store.humanFirstPolicy(beeId);
@@ -2085,7 +2268,7 @@ export class DaemonCore {
     return this.store.mailBatchReleaseReason(beeId) !== null && (batch ? batch.memberIds[0] === messageId : this.store.mailBatchCandidate(messageId));
   }
 
-  private i1Telemetry(rows: readonly I1PendingBee[]): void {
+  private i1Telemetry(rows: readonly I1PendingBee[], scope: ReadonlySet<string> | null): void {
     const bound = this.policy.i1DeadlineSteps as number;
     const record = this.onI1Violation as (violation: I1ViolationEvent) => void;
     const now = this.now();
@@ -2093,12 +2276,19 @@ export class DaemonCore {
     const seenHumanWait = new Set<number>();
     const monitored = [...rows];
     const present = new Set(rows.map(row => row.beeId));
-    for (const policy of [...this.store.listHumanFirstPolicies(),...this.store.listMailBatchingPolicies()]) {
-      if (!policy.enabled || present.has(policy.beeId)) continue;
-      const runtime = this.store.currentRuntime(policy.beeId);
-      if (runtime && runtime.state !== "stopped" && this.store.humanTurnActive(policy.beeId,runtime.generation)) { monitored.push({beeId:policy.beeId,runtime,hasActiveFlag:this.store.activeFlags(policy.beeId).length > 0,pending:[]}); present.add(policy.beeId); }
+    const humanFirstBees = this.tracked(scope, this.humanFirstBees,
+      () => this.store.listHumanFirstPolicies().filter(policy => policy.enabled).map(policy => policy.beeId),
+      beeId => this.store.humanFirstPolicy(beeId).enabled);
+    const batchingBees = scope === null ? [...this.batchingBees] : [...scope].filter(beeId => this.batchingBees.has(beeId));
+    const policyBees = [...new Set([...humanFirstBees, ...batchingBees])];
+    for (const beeId of policyBees) {
+      if (present.has(beeId)) continue;
+      const runtime = this.store.currentRuntime(beeId);
+      if (runtime && runtime.state !== "stopped" && this.store.humanTurnActive(beeId,runtime.generation)) { monitored.push({beeId,runtime,hasActiveFlag:this.store.activeFlags(beeId).length > 0,pending:[]}); present.add(beeId); }
     }
     for (const { beeId, runtime: rt, hasActiveFlag, pending } of monitored) {
+      let nextAt: number | null = null;
+      const wakeAt = (at: number): void => { if (nextAt === null || at < nextAt) nextAt = at; };
       const humanState = this.humanFirstState(beeId);
       const midTurn = rt?.state === "running" && rt.bootEvidence === "real";
       const seedId = humanState.enabled ? this.store.pendingHandoffSeedMessageId(beeId) : null;
@@ -2116,8 +2306,9 @@ export class DaemonCore {
           seenHumanWait.add(heldHuman.id);
           const base = heldHuman.id === active?.id && trigger ? trigger.startedAt : heldHuman.enqueuedAt;
           const deadline = base + (this.policy.humanFirstWaitMs ?? 600_000);
+          if (now <= deadline && !this.reportedHumanWait.has(heldHuman.id)) wakeAt(deadline + 1);
           if (now > deadline && !this.reportedHumanWait.has(heldHuman.id)) {
-            this.reportedHumanWait.add(heldHuman.id);
+            this.reportedHumanWait.set(heldHuman.id, beeId);
             const detail = `human_first_wait message=${heldHuman.id} deadline=${deadline} now=${now}; turn end is unobserved or the human turn remains open`;
             record({detectedAt:now,beeId,messageId:heldHuman.id,enqueuedAt:heldHuman.enqueuedAt,deadline,detail});
             this.log(`i1.human_first_wait bee=${beeId} msg=${heldHuman.id} deadline=${deadline}`);
@@ -2137,8 +2328,8 @@ export class DaemonCore {
           const heldByQuota = quotaGate?.held || quotaGate && quotaGate.messageIds.length > 0 && !quotaContinuation;
           const heldByHuman = m.id !== seedId && !quotaContinuation && (!this.humanFirstEligible(m, midTurn, humanState) || !this.batchingEligible(beeId,m.id,midTurn));
           if (heldByQuota || heldByHuman) { this.humanEligibilitySince.delete(m.id); return; }
-          const eligibleAt = this.humanEligibilitySince.get(m.id) ?? now;
-          this.humanEligibilitySince.set(m.id, eligibleAt);
+          const eligibleAt = this.humanEligibilitySince.get(m.id)?.at ?? now;
+          this.humanEligibilitySince.set(m.id, { beeId, at: eligibleAt });
           base = Math.max(base, eligibleAt);
         }
         if (m.urgency === "idle") {
@@ -2149,15 +2340,18 @@ export class DaemonCore {
           base = Math.max(base, rt?.updatedAt ?? m.enqueuedAt);
         }
         const deadline = base + (pos + 1) * bound;
-        if (now <= deadline || this.reportedI1.has(m.id)) return;
+        if (this.reportedI1.has(m.id)) return;
+        if (now <= deadline) { wakeAt(deadline + 1); return; }
         this.reportedI1.add(m.id);
         const detail = `message ${m.id} undelivered past deadline (enqueued=${m.enqueuedAt} urgency=${m.urgency} pos=${pos} deadline=${deadline} now=${now})`;
         record({ detectedAt: now, beeId, messageId: m.id, enqueuedAt: m.enqueuedAt, deadline, detail });
         this.log(`i1.violation bee=${beeId} msg=${m.id} deadline=${deadline}`);
       });
+      if (nextAt !== null) this.scheduleBee(beeId, nextAt);
     }
-    for (const id of this.humanEligibilitySince.keys()) if (!seenPolicyMessages.has(id)) this.humanEligibilitySince.delete(id);
-    for (const id of this.reportedHumanWait) if (!seenHumanWait.has(id)) this.reportedHumanWait.delete(id);
+    const evaluated = (beeId: string): boolean => scope === null || scope.has(beeId);
+    for (const [id, entry] of this.humanEligibilitySince) if (evaluated(entry.beeId) && !seenPolicyMessages.has(id)) this.humanEligibilitySince.delete(id);
+    for (const [id, beeId] of this.reportedHumanWait) if (evaluated(beeId) && !seenHumanWait.has(id)) this.reportedHumanWait.delete(id);
   }
 
   /**

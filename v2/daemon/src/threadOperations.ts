@@ -16,9 +16,10 @@ export class ThreadOperations {
     this.store = store; this.resolve = resolve; this.compact = compact;
   }
 
-  tick(): void {
-    if (this.abort.signal.aborted) return;
-    for (const row of this.store.listThreadOperations(true)) {
+  tick(): number {
+    if (this.abort.signal.aborted) return 0;
+    const rows = this.store.listThreadOperations(true);
+    for (const row of rows) {
       if (!this.store.getBee(row.successorBeeId)) {
         this.fail(row, "successor_deleted", "Successor was deleted", false);
         continue;
@@ -49,6 +50,7 @@ export class ThreadOperations {
       }).finally(() => this.running.delete(row.id));
       this.running.set(row.id, work);
     }
+    return rows.length;
   }
 
   private fail(row: ThreadOperationRow, code: NonNullable<ThreadOperationView["failure"]>["code"], detail: string, retryable = true): void {

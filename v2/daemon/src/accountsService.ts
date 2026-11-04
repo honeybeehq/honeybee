@@ -477,6 +477,7 @@ export const CODEX_MIN_SHIP_TTL_MS = 15 * 60_000;
 // refreshed through the daemon's own OAuth refresher before shipping, never
 // re-shipped dying.
 export const CLAUDE_MIN_SHIP_TTL_MS = 15 * 60_000;
+const CENTRAL_TICK_POLL_MS = 1000;
 
 // How long a lease mint keeps deferring to a healthy running Claude: Claude
 // Code only refreshes on an API call inside its own 5-minute expiry buffer,
@@ -4286,6 +4287,41 @@ export class AccountsService {
         this.log(`account.credentials.early_refresh_failed account=${account.id} next_in_ms=${delayMs} err=${JSON.stringify(errorDetail(error).slice(0, 300))}`);
       });
     }
+  }
+
+  nextPeriodicRefreshAt(): number | null {
+    const every = this.cfg.accounts.limitsRefreshMs;
+    return every <= 0 ? null : this.lastPeriodicRefreshAt + every;
+  }
+
+  nextKeychainRepairAt(): number | null {
+    let next: number | null = null;
+    for (const at of this.claudeKeychainRepairs.values()) if (next === null || at < next) next = at;
+    return next;
+  }
+
+  centralTicksNextDueAt(now: number): number | null {
+    let next: number | null = null;
+    const consider = (at: number): void => { if (next === null || at < next) next = at; };
+    const aheadMs = this.cfg.accounts.centralRefreshAheadMs;
+    for (const account of this.store.listAccounts()) {
+      if (accountLeaseUnknown(account) || account.harness === "muse") continue;
+      const authority = this.authorityFor(account);
+      if (!authority) continue;
+      const probe = this.centralRetryProbes.get(account.id);
+      if (probe !== undefined && probe > now) consider(probe);
+      const state = authority.status(account);
+      if (!state) continue;
+      const retryAt = state.failure?.retryAt ?? null;
+      if (state.phase === "refreshing" || state.phase === "login_required" || (state.phase === "uncertain" && retryAt === null)) consider(now + CENTRAL_TICK_POLL_MS);
+      else if (retryAt !== null) consider(retryAt > now ? retryAt : now + CENTRAL_TICK_POLL_MS);
+      if (aheadMs > 0 && account.source !== "leased" && account.status !== "paused" && state.phase === "ready" && state.expiresAt !== null) {
+        const backoff = this.earlyRefreshBackoff.get(account.id);
+        const at = Math.max(state.expiresAt - aheadMs, backoff?.at ?? 0, retryAt ?? 0);
+        consider(at > now ? at : now + CENTRAL_TICK_POLL_MS);
+      }
+    }
+    return next;
   }
 
   centralRefreshRetryTick(): void {

@@ -51,7 +51,10 @@ export type AutoTitleDeps = {
   generate: (context: TitleContext) => Promise<string>;
   now: () => number;
   log: (op: string) => void;
+  onSettled?: () => void;
 };
+
+export type AutoTitleDispatcher = ((bees?: BeeRow[]) => Promise<AutoTitleOutcome[]>) & { nextDueAt(): number | null };
 
 export const AUTO_TITLE_RETRY_BACKOFF_MS = 15_000;
 export const AUTO_TITLE_MAX_RETRY_BACKOFF_MS = 10 * 60_000;
@@ -138,7 +141,7 @@ function canReuseQuietBaseline(
 function createAutoTitleDispatcherImpl(
   deps: AutoTitleDeps,
   storeReuse: StoreMailboxReuse | null,
-): (bees?: BeeRow[]) => Promise<AutoTitleOutcome[]> {
+): AutoTitleDispatcher {
   let inFlight = false;
   let inFlightSince = 0;
   let inFlightBee = "";
@@ -146,8 +149,14 @@ function createAutoTitleDispatcherImpl(
   let nextInFlightToken = 0;
   const finished: AutoTitleOutcome[] = [];
   const quietBaselines = storeReuse === null ? null : new Map<string, QuietBaseline>();
+  const unexamined = new Map<string, AutoTitleCandidate>();
+  const retries = new Map<string, number>();
+  const settle = (outcome: AutoTitleOutcome): void => {
+    finished.push(outcome);
+    deps.onSettled?.();
+  };
 
-  return async (bees) => {
+  const dispatch = async (bees?: BeeRow[]) => {
     const outcomes = finished.splice(0);
     if (!deps.enabled()) return outcomes;
 
@@ -166,7 +175,15 @@ function createAutoTitleDispatcherImpl(
       });
     }
 
-    const records = bees ?? deps.listBees();
+    const retryDue: AutoTitleCandidate[] = [];
+    if (bees !== undefined) for (const [beeId, at] of retries) {
+      if (at > now) continue;
+      const bee = deps.getBee(beeId);
+      if (bee) retryDue.push(bee);
+      else retries.delete(beeId);
+    }
+    const records: AutoTitleCandidate[] = bees === undefined ? deps.listBees() : [...new Map([...unexamined, ...retryDue.map(bee => [bee.id, bee] as const), ...bees.map(bee => [bee.id, bee] as const)]).values()];
+    unexamined.clear();
     // Rows read from the store on this very call are current; a caller-
     // supplied list may be stale, so only those are re-read per bee.
     const freshRows = bees === undefined;
@@ -182,9 +199,12 @@ function createAutoTitleDispatcherImpl(
       }
     }
     let probes = 0;
+    let examined = 0;
     for (const candidate of records) {
       if (probes >= AUTO_TITLE_CONTEXT_PROBES_PER_TICK) break;
+      examined += 1;
       const bee = freshRows ? candidate : (deps.getBee(candidate.id) ?? candidate);
+      retries.delete(bee.id);
       // Cheap pre-skip (2026-09-01): the first two autoTitleDecision rules,
       // applied BEFORE touching the mailbox. Without it every tick read every
       // bee's mailbox — hundreds of archived/titled bees × 5 ticks/s was the
@@ -232,7 +252,10 @@ function createAutoTitleDispatcherImpl(
       // provider outage can never leave a bee permanently unnamed.
       const currentBookkeeping = bookkeeping?.signature === signature ? bookkeeping : undefined;
       const decision = autoTitleDecision(bee, userMessages, currentBookkeeping, now);
-      if (decision.action === "skip") continue;
+      if (decision.action === "skip") {
+        if (decision.reason === "backoff" && currentBookkeeping) retries.set(bee.id, currentBookkeeping.lastAt + autoTitleRetryBackoffMs(currentBookkeeping.attempts));
+        continue;
+      }
       probes += 1;
       if (decision.action === "defer") {
         deps.saveState(bee.id, {
@@ -253,6 +276,7 @@ function createAutoTitleDispatcherImpl(
         signature,
       };
       deps.saveState(bee.id, claimed);
+      retries.set(bee.id, claimed.lastAt + autoTitleRetryBackoffMs(claimed.attempts));
 
       inFlight = true;
       inFlightSince = now;
@@ -268,24 +292,25 @@ function createAutoTitleDispatcherImpl(
           if (inFlightToken !== generationToken) return;
           const fresh = deps.getBee(bee.id);
           if (!fresh) {
-            finished.push({ beeId: bee.id, ok: false, skipped: "record removed while generating" });
+            settle({ beeId: bee.id, ok: false, skipped: "record removed while generating" });
             return;
           }
           if (fresh.title) {
-            finished.push({ beeId: bee.id, ok: false, skipped: "title set while generating" });
+            settle({ beeId: bee.id, ok: false, skipped: "title set while generating" });
             return;
           }
           const applied = deps.setTitle(bee.id, title);
           if (!applied.applied) {
-            finished.push({ beeId: bee.id, ok: false, skipped: "title write was a no-op" });
+            settle({ beeId: bee.id, ok: false, skipped: "title write was a no-op" });
             return;
           }
           deps.log(`autoTitle bee=${bee.id} title=${JSON.stringify(title)}`);
-          finished.push({ beeId: bee.id, ok: true, title });
+          retries.delete(bee.id);
+          settle({ beeId: bee.id, ok: true, title });
         })
         .catch((error) => {
           if (inFlightToken !== generationToken) return;
-          finished.push({
+          settle({
             beeId: bee.id,
             ok: false,
             error: error instanceof Error ? error.message : String(error),
@@ -300,12 +325,22 @@ function createAutoTitleDispatcherImpl(
         });
       break;
     }
+    if (!freshRows) for (const candidate of records.slice(examined)) unexamined.set(candidate.id, candidate);
 
     return outcomes;
   };
+  const nextDueAt = (): number | null => {
+    let next: number | null = null;
+    const consider = (at: number): void => { if (next === null || at < next) next = at; };
+    if (inFlight) consider(inFlightSince + AUTO_TITLE_WATCHDOG_MS);
+    if (unexamined.size > 0 || finished.length > 0) consider(deps.now());
+    for (const at of retries.values()) consider(at);
+    return next;
+  };
+  return Object.assign(dispatch, { nextDueAt });
 }
 
-export function createAutoTitleDispatcher(deps: AutoTitleDeps): (bees?: BeeRow[]) => Promise<AutoTitleOutcome[]> {
+export function createAutoTitleDispatcher(deps: AutoTitleDeps): AutoTitleDispatcher {
   return createAutoTitleDispatcherImpl(deps, null);
 }
 
@@ -317,8 +352,9 @@ export function createStoreAutoTitleDispatcher(
     now?: () => number;
     log?: (op: string) => void;
     generate?: (context: TitleContext) => Promise<string>;
+    onSettled?: () => void;
   },
-): (bees?: BeeRow[]) => Promise<AutoTitleOutcome[]> {
+): AutoTitleDispatcher {
   const state = loadBookkeepingFile(options.statePath);
   return createAutoTitleDispatcherImpl({
     enabled: () => options.naming().auto,
@@ -337,6 +373,7 @@ export function createStoreAutoTitleDispatcher(
       ((context) => generateTitle(context, { config: options.naming() })),
     now: options.now ?? Date.now,
     log: options.log ?? (() => undefined),
+    ...(options.onSettled ? { onSettled: options.onSettled } : {}),
   }, store);
 }
 

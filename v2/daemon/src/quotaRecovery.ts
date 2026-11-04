@@ -21,10 +21,12 @@ export class QuotaRecovery {
     await Promise.allSettled(this.pending);
   }
 
-  reconcile(): void {
-    if (this.stopped) return;
+  reconcile(): number {
+    if (this.stopped) return 0;
+    let live = 0;
     for (const row of this.store.listQuotaRecoveries()) {
       if (row.state !== "waiting" && row.state !== "rotating") continue;
+      live += 1;
       if (!this.store.quotaRecoveryValid(row)) {
         this.store.cancelQuotaRecovery(row.id, "control_or_placement_changed");
         continue;
@@ -61,5 +63,6 @@ export class QuotaRecovery {
       }
     }
     for (const id of this.attempts.keys()) if (this.store.getQuotaRecovery(id)?.state !== "waiting") this.attempts.delete(id);
+    return live;
   }
 }

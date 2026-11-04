@@ -141,9 +141,10 @@ export class MultilineFallback {
     return this.store.completeMultilineFallback(message.id, fallback.generation, source, !fallback.paneInput || this.driver.deliveryPaneClear?.(message.beeId, fallback.generation) === true).applied;
   }
 
-  cleanupDeleted(): void {
-    if (this.store.inTransaction) return;
-    for (const row of this.store.deletedMultilineFiles()) {
+  cleanupDeleted(): number {
+    if (this.store.inTransaction) return 0;
+    const rows = this.store.deletedMultilineFiles();
+    for (const row of rows) {
       const fallback = row.fallback;
       if (!fallback || fallback.state === "removed" || !fallback.id) continue;
       try {
@@ -155,5 +156,6 @@ export class MultilineFallback {
         this.store.recordMultilineCleanupFailure(row.messageId, detail);
       }
     }
+    return rows.length;
   }
 }
