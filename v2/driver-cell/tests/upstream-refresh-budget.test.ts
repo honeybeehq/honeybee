@@ -4,11 +4,11 @@ import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Worker } from "node:worker_threads";
-import { CellDriver, DEFAULT_UPSTREAM_REFRESH, upstreamRefreshDelay } from "../src/driver.ts";
+import { CellDriver, DEFAULT_UPSTREAM_REFRESH, upstreamRefreshDelay, upstreamFailureDelay } from "../src/driver.ts";
 import { stubAdapter } from "../../adapters/src/index.ts";
 import { makeRig } from "./helpers.ts";
 
-type Internals = { scheduleRefresh(origin: unknown, fetch?: boolean): void; ensureCell(): unknown; inner: {start():void}; poolWorkers:Map<string,Worker>; origins:Map<string,{lastFetchAt:number}> };
+type Internals = { scheduleRefresh(origin: unknown, fetch?: boolean): Promise<void>; refreshRecentOrigins():void; ensureCell(): unknown; inner: {start():void}; poolWorkers:Map<string,Worker>; origins:Map<string,{lastFetchAt:number;nextFetchAt:number;failures:number}> };
 function setup(extra: Record<string, unknown> = {}, intervalMs = 600000) {
   const rig=makeRig();
   const driver=new CellDriver({cellsRoot:rig.cellsRoot,nodeKind:"workstation",disableCow:true,
@@ -31,18 +31,18 @@ test("upstream refresh delay bounds jitter and gives nodes stable initial offset
   assert.notEqual(upstreamRefreshDelay(interval,"node-a",true,0),upstreamRefreshDelay(interval,"node-b",true,0));
 });
 
-test("upstream refresh starts after the node offset and repeats no faster than its interval",t=>{
+test("upstream refresh starts after the node offset and repeats no faster than its interval",async t=>{
   const interval=1200000;const {rig,driver,internal}=setup({},interval);const originalRandom=Math.random;const calls:boolean[]=[];
   t.mock.timers.enable({apis:["setTimeout","Date"],now:2_000_000_000_000});Math.random=()=>0;
-  internal.scheduleRefresh=(_origin,fetch=true)=>{calls.push(fetch);};
+  internal.scheduleRefresh=(_origin,fetch=true)=>{calls.push(fetch);return Promise.resolve();};
   try {
     driver.trackOrigins([{originRepo:rig.origin.repo,repoName:"fixture",usedAt:Date.now()}]);
     assert.deepEqual(calls,[]);
     const initial=upstreamRefreshDelay(interval,"fixture-node",true,0);
     t.mock.timers.tick(initial-1);assert.deepEqual(calls,[]);
-    t.mock.timers.tick(1);assert.deepEqual(calls,[true]);
+    t.mock.timers.tick(1);await new Promise(setImmediate);assert.deepEqual(calls,[true]);
     t.mock.timers.tick(interval-1);assert.equal(calls.length,1);
-    t.mock.timers.tick(1);assert.equal(calls.length,2);
+    t.mock.timers.tick(1);await new Promise(setImmediate);assert.equal(calls.length,2);
   }finally{driver.disposeAll();rig.cleanup();Math.random=originalRandom;t.mock.timers.reset();}
 });
 
@@ -51,7 +51,7 @@ test("startup and both spawn completion paths only schedule local pool work",asy
     const provisional=makeRig();const worker=join(provisional.root,"provision.mjs");
     writeFileSync(worker,"import {parentPort} from 'node:worker_threads';parentPort.postMessage({ok:true});");
     const {rig,driver,internal}=setup({backgroundProvisioning,provisionWorkerUrl:pathToFileURL(worker),warmPool:{targetFree:1}});
-    const calls:boolean[]=[];internal.scheduleRefresh=(_origin,fetch=true)=>{calls.push(fetch);};
+    const calls:boolean[]=[];internal.scheduleRefresh=(_origin,fetch=true)=>{calls.push(fetch);return Promise.resolve();};
     internal.ensureCell=()=>({});internal.inner.start=()=>{};
     try {
       driver.trackOrigins([{originRepo:rig.origin.repo,repoName:"fixture",usedAt:Date.now()}]);
@@ -86,11 +86,51 @@ test("periodic upstream refresh preserves per-origin single-flight and retry bud
 
 test("disabled upstream refresh schedules no startup or timer fetch", t => {
   const {rig,driver,internal}=setup({upstreamRefresh:undefined});
-  const calls:boolean[]=[];internal.scheduleRefresh=(_origin,fetch=true)=>{calls.push(fetch);};
+  const calls:boolean[]=[];internal.scheduleRefresh=(_origin,fetch=true)=>{calls.push(fetch);return Promise.resolve();};
   t.mock.timers.enable({apis:["setTimeout","Date"],now:2_000_000_000_000});
   try {
     driver.trackOrigins([{originRepo:rig.origin.repo,repoName:"fixture",usedAt:Date.now()}]);
     t.mock.timers.tick(86400000);
     assert.deepEqual(calls,[]);
   } finally {driver.disposeAll();rig.cleanup();t.mock.timers.reset();}
+});
+
+test("a refresh round serializes origins and spaces connection attempts", async t => {
+  const {rig,driver,internal}=setup();const starts:number[]=[];const completions:Array<()=>void>=[];
+  t.mock.timers.enable({apis:["setTimeout","Date"],now:2_000_000_000_000});
+  internal.scheduleRefresh=()=>{starts.push(Date.now());return new Promise<void>(resolve=>completions.push(resolve));};
+  try {
+    driver.trackOrigins(Array.from({length:4},(_,index)=>({originRepo:join(rig.root,`origin-${index}`),repoName:"fixture",usedAt:Date.now()})));
+    internal.refreshRecentOrigins();assert.equal(starts.length,1);
+    t.mock.timers.tick(100);await new Promise(setImmediate);assert.equal(starts.length,1);
+    for(let index=0;index<3;index++) {
+      completions[index]!();await new Promise(setImmediate);
+      t.mock.timers.tick(999);await new Promise(setImmediate);assert.equal(starts.length,index+1);
+      t.mock.timers.tick(1);await new Promise(setImmediate);assert.equal(starts.length,index+2);
+    }
+    completions[3]!();await new Promise(setImmediate);
+    assert.ok(starts.slice(1).every((at,index)=>at-starts[index]!>=1000));
+  } finally {driver.disposeAll();for(const complete of completions)complete();t.mock.timers.reset();rig.cleanup();}
+});
+
+test("consecutive origin failures back off to an hour and reset after success",async()=>{
+  assert.deepEqual([0,1,2,3,4].map(failures=>upstreamFailureDelay(600000,failures)),[600000,1200000,2400000,3600000,3600000]);
+  assert.equal(upstreamFailureDelay(7200000,1),7200000);
+  const provisional=makeRig(),worker=join(provisional.root,"outcome.mjs");
+  writeFileSync(worker,"import {parentPort} from 'node:worker_threads';parentPort.once('message',ok=>{parentPort.postMessage({ok,built:0});parentPort.close();});");
+  const {rig,driver,internal}=setup({poolWorkerUrl:pathToFileURL(worker)});
+  try {
+    driver.trackOrigins([{originRepo:rig.origin.repo,repoName:"fixture",usedAt:Date.now()}]);
+    const origin=internal.origins.get(rig.origin.repo)!;
+    for(const [ok,failures] of [[false,1],[false,2],[false,3],[true,0]] as const) {
+      origin.lastFetchAt=0;origin.nextFetchAt=0;
+      const complete=internal.scheduleRefresh(origin);
+      [...internal.poolWorkers.values()][0]!.postMessage(ok);
+      await complete;
+      assert.equal(origin.failures,failures);
+      const remaining=origin.nextFetchAt-Date.now();
+      assert.ok(remaining<=upstreamFailureDelay(600000,failures)&&remaining>=upstreamFailureDelay(600000,failures)-1000);
+      await internal.scheduleRefresh(origin);assert.equal(internal.poolWorkers.size,0);
+    }
+  } finally {for(const w of internal.poolWorkers.values())await w.terminate();driver.disposeAll();rig.cleanup();provisional.cleanup();}
 });

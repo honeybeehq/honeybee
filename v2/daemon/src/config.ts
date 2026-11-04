@@ -773,7 +773,7 @@ export function cellRetentionOf(raw: unknown, nodeKind: NodeKind = "workstation"
   out.minFreePercent = read("minFreePercent", "a number from 0 to 100 or null", (v) => v === null || (isNonNegative(v) && v <= 100), (v) => v as number | null, out.minFreePercent);
   out.minFreeBytes = read("minFreeBytes", "a non-negative number or null", nullableNonNegative, (v) => v as number | null, out.minFreeBytes);
   out.pressureIdleAfterMs = read("pressureIdleAfterDays", "a non-negative number or null", nullableNonNegative, scaled(DAY_MS), out.pressureIdleAfterMs);
-  out.upstreamRefreshMs = read("upstreamRefreshMinutes", "a number from 1 to 1440", (v) => typeof v === "number" && Number.isFinite(v) && v >= 1 && v <= 1440, (v) => (v as number) * 60_000, out.upstreamRefreshMs);
+  out.upstreamRefreshMs = read("upstreamRefreshMinutes", "a number from 5 to 1440", (v) => typeof v === "number" && Number.isFinite(v) && v >= 5 && v <= 1440, (v) => (v as number) * 60_000, out.upstreamRefreshMs);
   out.fetchUpstream = read("fetchUpstream", "a boolean", (v) => typeof v === "boolean", (v) => v as boolean, out.fetchUpstream);
   out.maxEvictionsPerDay = read(
     "maxEvictionsPerDay",
