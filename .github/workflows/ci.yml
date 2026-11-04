@@ -132,6 +132,22 @@ jobs:
         with:
           node-version: 24.15.0
           cache: npm
+      - name: Stage the exact Node binary at the approved test path
+        shell: bash
+        run: |
+          source_node="$(node -p 'process.execPath')"
+          node_version="$(node -p 'process.versions.node')"
+          node_arch="$(node -p 'process.arch')"
+          node_root="/opt/node-v${node_version}-linux-${node_arch}"
+          [[ "$node_root" =~ ^/opt/node-v[0-9]+\.[0-9]+\.[0-9]+-linux-(x64|arm64)$ ]]
+          sudo install -D -o root -g root -m 755 "$source_node" "$node_root/bin/node"
+          for directory in "$node_root" "$node_root/bin"; do
+            test "$(stat -c '%u:%g:%a' "$directory")" = "0:0:755"
+          done
+          sha256sum "$source_node" "$node_root/bin/node"
+          test "$(sha256sum "$source_node" | cut -d ' ' -f 1)" = "$(sha256sum "$node_root/bin/node" | cut -d ' ' -f 1)"
+          "$node_root/bin/node" -e 'const assert=require("node:assert/strict"); assert.equal(process.execPath,process.argv[1]); console.log(JSON.stringify({fixture:"CI approved Node path",execPath:process.execPath}));' "$node_root/bin/node"
+          echo "$node_root/bin" >> "$GITHUB_PATH"
       - name: Install Linux test prerequisites
         run: |
           sudo apt-get update
