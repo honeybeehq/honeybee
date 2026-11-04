@@ -77,6 +77,47 @@ jobs:
           name: delivery-file-${{ matrix.target }}
           path: dist/v2/delivery-file/${{ matrix.target }}/
           if-no-files-found: error
+  cell-scope:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-x64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+      - name: Build and prove Cell scope on its native runner
+        shell: bash
+        run: |
+          test "$(node -p 'process.platform + "-" + process.arch')" = "${{ matrix.target }}"
+          node scripts/build-cell-scope.mjs
+          node scripts/probe-cell-scope.mjs
+      - name: Bind provenance and file digests to this CI run
+        shell: bash
+        env:
+          CELL_SCOPE_TARGET: ${{ matrix.target }}
+        run: |
+          node --input-type=module -e 'import {writeFileSync} from "node:fs"; writeFileSync(`dist/v2/cell-scope/${process.env.CELL_SCOPE_TARGET}/ci-provenance.json`, JSON.stringify({version:1,sourceRevision:process.env.GITHUB_SHA,runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,job:process.env.GITHUB_JOB,target:process.env.CELL_SCOPE_TARGET})+"\n")'
+          cd "dist/v2/cell-scope/${{ matrix.target }}"
+          sha256sum cell-scope hive manifest.json proof.json ci-provenance.json > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        id: scope-artifact
+        with:
+          name: cell-scope-${{ matrix.target }}
+          path: dist/v2/cell-scope/${{ matrix.target }}/
+          if-no-files-found: error
+      - name: Record uploaded artifact identity
+        shell: bash
+        run: |
+          printf '%s\n' 'cell-scope target=${{ matrix.target }} run=${{ github.run_id }} job=${{ github.job }} artifactId=${{ steps.scope-artifact.outputs.artifact-id }} artifactDigest=${{ steps.scope-artifact.outputs.artifact-digest }}' >> "$GITHUB_STEP_SUMMARY"
   verify:
     # Source tests need tmux >= 3.3 (allow-passthrough); Ubuntu 24.04 ships 3.4.
     # Release archive packaging remains controlled by release.yml.
