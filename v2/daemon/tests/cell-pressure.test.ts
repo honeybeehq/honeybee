@@ -72,7 +72,7 @@ test("cell-pressure.1: below the floor, clean archived then idle Cells go oldest
   const off = { enabled: true, archivedAfterDays: 30, stoppedAfterDays: null, trimAfterHours: null, fetchUpstream: false, minFreePercent: null, minFreeBytes: null, pressureIdleAfterDays: IDLE_AFTER_MS / 86_400_000, budgetEnforce: true };
   const { dir, cleanup } = makeDaemonDir({
     bootHangTimeoutMs: 60_000,
-    cells: { root: cellsRoot, retention: off },
+    cells: { sandbox: false, root: cellsRoot, retention: off },
     agents: {
       cellstub: {
         command: process.execPath,
@@ -205,7 +205,7 @@ test("cell-pressure.2: a Cell whose work landed upstream, past a stale origin ch
   const retention = { enabled: false, archivedAfterDays: 0, trimAfterHours: null, minFreePercent: null, minFreeBytes: null };
   const { dir, cleanup } = makeDaemonDir({
     bootHangTimeoutMs: 60_000,
-    cells: { root: cellsRoot, retention: { ...retention, fetchUpstream: false } },
+    cells: { sandbox: false, root: cellsRoot, retention: { ...retention, fetchUpstream: false } },
     agents: {
       cellstub: {
         command: process.execPath,
@@ -331,7 +331,7 @@ test("cell-pressure.4: retention passes evict at most maxEvictionsPerDay Cells i
   const retention = { enabled: false, archivedAfterDays: 0, trimAfterHours: null, maxEvictionsPerDay: 1 };
   const { dir, cleanup } = makeDaemonDir({
     bootHangTimeoutMs: 60_000,
-    cells: { root: cellsRoot, retention },
+    cells: { sandbox: false, root: cellsRoot, retention },
     agents: {
       cellstub: {
         command: process.execPath,

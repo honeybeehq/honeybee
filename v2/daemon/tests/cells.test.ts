@@ -101,7 +101,7 @@ function makeCellRig(extra: Parameters<typeof makeDaemonDir>[0] = {}): CellRig {
     // hang policy kill a healthy boot merely because the release host is busy.
     bootHangTimeoutMs: 60_000,
     ...extra,
-    cells: { root: cellsRoot, ...(extra.cells ?? {}) },
+    cells: { sandbox: false, root: cellsRoot, ...(extra.cells ?? {}) },
     agents: {
       cellstub: {
         command: process.execPath,
