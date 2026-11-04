@@ -11,7 +11,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-const ENV = (dir: string) => ({ ...process.env, HIVE_STORE_ROOT: dir, NO_COLOR: "1", TERM: "dumb" });
+const ENV = (dir: string) => ({ ...process.env, HIVE_STORE_ROOT: dir, HIVE_V2_DATA_DIR: join(dir, "v2"), NO_COLOR: "1", TERM: "dumb" });
 
 async function hive(dir: string, ...args: string[]): Promise<{ stdout: string; stderr: string }> {
   return execFileAsync(process.execPath, ["tests/cli-entry.mjs", ...args], { cwd: process.cwd(), env: ENV(dir) });

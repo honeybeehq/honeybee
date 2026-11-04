@@ -1,5 +1,6 @@
 export function recordedSocketPath(dataDir: string): string;
 export function loadNodeConfig(dataDir: string): { nodeKind: "workstation" | "satellite"; nodeKindExplicit: boolean; cellSandbox: boolean | null };
+export function resolveDaemonConfig(args: { dataDir?: string; configPath?: string }): { dataDir: string; configPath: string; nodeKind: "workstation" | "satellite"; nodeKindExplicit: boolean; cellSandbox: boolean | null };
 export function inspectProcess(pid: number):
   | { kind: "present"; pid: number; birth: string; bootId: string; state: "live" | "zombie" }
   | { kind: "gone" }
