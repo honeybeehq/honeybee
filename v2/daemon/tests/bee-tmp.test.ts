@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { realpathSync } from "node:fs";
 import {
@@ -29,9 +28,8 @@ function sandboxProbeInputs() {
   cpSync(dirname(PROBE), join(root, "probe"), {recursive: true});
   copyFileSync(AGENT_PATH, join(root, "agent.mjs"));
   return {args: ["--import", join(root, "probe", "probe.mjs"), join(root, "agent.mjs")], cleanup: () => {
-    const trash = join(tmpdir(), "honeybee-test-trash");
-    mkdirSync(trash, {recursive: true, mode: 0o700});
-    assert.equal(spawnSync("trash", ["--trash-dir", trash, root]).status, 0);
+    try { rmSync(root, {recursive: true, force: true, maxRetries: 10, retryDelay: 50}); }
+    catch (error) { console.error("sandbox probe fixture cleanup failed", error); process.exitCode = 1; }
   }};
 }
 
