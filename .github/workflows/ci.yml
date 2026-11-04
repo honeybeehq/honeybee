@@ -153,6 +153,8 @@ jobs:
       - run: npm run check
       - run: npm run v2:check
       - run: npm run build
+      - name: Smoke the actual built CLI and deploy bridge before the root suite
+        run: node --import tsx --test tests/deploy-built-help.test.ts
       - name: Require built native helpers and non-optional proofs
         shell: bash
         run: |
