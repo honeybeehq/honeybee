@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from "node:crypto";
-import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Transform } from "node:stream";
@@ -44,10 +44,12 @@ export function resumeStatePaths(harness: string, accountHome: string | null, cw
       return { root, paths: existsSync(join(root, dir)) ? [file, dir] : [file], stateKey: key };
     }
     case "codex": {
-      const root = accountHome ?? join(process.env.HOME ?? "", ".codex");
+      const home = accountHome ?? join(process.env.HOME ?? "", ".codex");
+      let root: string;
       let absolute: string;
       try {
-        absolute = codexHistoryPath(root, providerSessionId).path;
+        root = realpathSync(home);
+        absolute = codexHistoryPath(home, providerSessionId).path;
       } catch {
         return null;
       }
