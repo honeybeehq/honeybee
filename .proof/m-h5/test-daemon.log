@@ -1,0 +1,251 @@
+✔ autoTitleDecision: thin first opener defers; second message generates (1.382834ms)
+✔ autoTitleDecision: substantial first message generates before the first turn finishes (0.339329ms)
+✔ autoTitleDecision: existing title and archived skip; failures retry with bounded backoff (0.190285ms)
+✔ dispatcher: first task titles without output, persisted deferral=false (2.816304ms)
+✔ dispatcher: first task titles without output, persisted deferral=true (0.309985ms)
+✔ dispatcher: thin opener does not burn an attempt; second message titles (0.814471ms)
+✔ dispatcher: watchdog recovery ignores the stale generator completion (0.482433ms)
+✔ dispatcher: disabled naming skips everything (0.129554ms)
+✔ dispatcher: initial Linear reference survives clamping and later turns (0.935984ms)
+✔ dispatcher: archived and already-titled bees never touch the mailbox (0.45373ms)
+✔ node state roots refuse missing or relative paths before filesystem effects (3.732638ms)
+✔ config.1: absent file resolves to pure defaults (the file may be absent) (0.472048ms)
+✔ config.2: file values override defaults; unknown keys are ignored (0.528943ms)
+✔ config.3: I1 deadline covers bounded boot recovery; the legacy turn timeout is ignored (0.425157ms)
+✔ config.4: an above-floor deadline override is honored (0.39286ms)
+✔ config.5: malformed json and wrongly-typed values fail loudly (1.316053ms)
+✔ config.6: HIVE_V2_DATA_DIR overrides the default data dir (test isolation hook) (0.114923ms)
+✔ config.7: nodeKind (WP5) defaults to workstation and validates the closed list (0.676986ms)
+✔ config.8: cells (WP5) — root default, sandbox override tri-state, warm map validation (0.924146ms)
+✔ config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 1h stale, 15 min sweep, 5h cool-off, no tmux socket) and validate; agents.<a>.login parses (2.881802ms)
+✔ config.naming: absent file defaults to a warm Codex GPT-6 Luna app-server at effort none (0.285398ms)
+✔ config.naming: file values override; patchNamingConfig merges and preserves unknown keys (0.697886ms)
+✔ config.naming: OpenAI key is required for API mode, persisted privately, and redacted publicly (0.697526ms)
+✔ config.naming: a hem apiKeyRef replaces the plaintext key and is reported publicly (1.149744ms)
+✔ config.naming: an invalid naming block disables naming with a reason instead of failing config load (1.277396ms)
+✔ config.warmPool: off on workstations, one member on satellites; file values parse; env HIVE_CELL_WARMPOOL_FREE overrides (1.18048ms)
+✔ config.warmPool: invalid values fail loudly (0.469324ms)
+✔ config.9: cells.retention (v31) — defaults on, day/hour units, null disables an axis, invalid values fall back without refusing boot (5.448682ms)
+✔ config.9b: satellites default to a 3-day archive floor, half the Cells volume as byte budget, the pressure floor and the upstream mirror; workstations only by opt-in (0.927731ms)
+✔ transcripts.segments: a data-dir store by default, every key validated with a warning fallback (0.162123ms)
+✔ config: champions resolves defaults, paths and invalid values (0.124758ms)
+✔ config: durability resolves defaults and invalid values (0.155103ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 108.108083
+✔ champions.0: verbs and capabilities are published; a node with no Champions answers empty and its snapshot carries no champions table (736.31343ms)
+✔ champions.1: put prepares the home, start spawns in it with the Apiary tags, the incarnation is resident, a turn end bundles the home, a second daemon restores it before its first runtime, archive and delete keep the home (3136.086667ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3987.412845
+(node:30411) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ champion-secrets: the name-only scan flags credential-like paths and leaves ordinary memory alone (0.794631ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 89.7495
+(node:30460) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:30460) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ champion-stale-homes: set-aside homes older than the retention are swept, younger ones are counted (64.545691ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 209.307204
+(node:30555) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ dark fenced-spawn production writer satisfies the shared effect-result contract (36.990255ms)
+✔ effect RPC commits spawn/send/archive once and resolves despite cache pruning and reopen (34.902464ms)
+✔ effect RPC fences late spawn send archive before effects and holds retired negatives (24.400574ms)
+✔ legacy effect RPC rejects changed in-flight args but replays changed args after commit and reopen (23.961435ms)
+✔ effect RPC missing capability fails locally without sending a resolver frame (17.158212ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 345.041538
+✔ apiary:* tags: refused from a bee caller on spawn and bee.tag, allowed from Apiary and the operator (1026.195464ms)
+✔ a fork never inherits apiary:role=*: forking a Champion makes an ordinary bee in the same workspace (822.898744ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1945.048604
+✔ context policy fields are validated and closed (1.414041ms)
+✔ facts follow Claude Code's threshold rule: window minus the 20k output reserve and 13k buffer, lowered by the percent override (0.217186ms)
+✔ window variant rewrites the model suffix (0.169024ms)
+✔ workspace comes from the apiary workspace tag (0.160941ms)
+✔ workspace policy overrides the node default field by field (0.264206ms)
+✔ claude launch: env and model per policy; per-bee env wins (0.756715ms)
+✔ writeContextPolicy keeps other config keys and clears empty scopes (3.148772ms)
+✔ contextPolicy.get/set over RPC; a tagged claude bee boots with the workspace policy (1274.342838ms)
+✔ champion role: built-in default compacts at 650k on a 1M window; workspace and stored role policy win (0.721392ms)
+✔ contextPolicy over RPC: a champion-tagged claude bee gets the 650k default, others do not, overrides win (2432.38706ms)
+✔ claude launch facts read the home's numeric autoCompactWindow and CLAUDE_CODE_MAX_OUTPUT_TOKENS (1.450155ms)
+✔ an inherited CLAUDE_CODE_AUTO_COMPACT_WINDOW is parsed like Claude does and lowers the Champion ceiling (0.897426ms)
+✔ over RPC: agents.claude.env CLAUDE_CODE_AUTO_COMPACT_WINDOW=300000 stays 300000 on a Champion (774.138517ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4592.028484
+✔ resume-import.1: a killed executor's bee is imported elsewhere with its state, id and handle; epochs fence the old executor (4928.451207ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5023.986234
+(node:34718) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ store cache reuses only unchanged defer and ignores delivery, urgency, and output (29.399321ms)
+✔ mail changes reset retry state and exact expiry rebuilds the full launch context (24.542016ms)
+✔ lastAt zero remains falsy and cannot become a quiet backoff hit (18.557732ms)
+✔ outer and nested transaction scans neither consume nor publish a speculative id (19.030781ms)
+✔ full-roster pruning preserves an unvisited suffix and removes only scanned-away ids (28.572491ms)
+✔ supplied stale rosters bypass store reuse and keep getBee-or-candidate fallback (18.815949ms)
+✔ a changed bookkeeping signature forces a full read even when membership returns to baseline (17.838943ms)
+✔ store-backed and general factories produce the same deterministic outcome stream (39.880991ms)
+✔ general dependencies retain exact callback order during synchronous reentry (2.532949ms)
+✔ store dispatcher preserves one generation slot, watchdog fencing, and roster launch order (19.675068ms)
+✔ quiet title scans never materialize archived or already-titled bees (69.696415ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 436.202515
+(node:34910) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ env privacy: full RPC bytes, old replay rows, public and registered private mirrors (666.610955ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 826.731894
+(node:35291) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ bee.reconfigure RPC admits an active turn, records args, and restarts the stub once it is idle (1323.48635ms)
+✔ args.daemon.1: composeSpawn precedence — claude: spec.args < defaultArgs < bee.args < --resume; later --model wins; boolean idempotent (1.85355ms)
+✔ args.daemon.2: composeSpawn codex — model lifted into thread/start|resume, approval flag absorbed, -c overrides stay on argv after app-server (1.089714ms)
+✔ args.daemon.2f: composeSpawn claude placement overlay is --append-system-prompt after resume (0.328282ms)
+✔ args.daemon.2f-keep: composeSpawn claude dest overlay keeps an existing append-system-prompt (0.391937ms)
+✔ args.daemon.2e: composeSpawn codex placement overlay is thread developerInstructions, not argv (0.847601ms)
+✔ args.daemon.2b: composeSpawn grok — --model/--effort lifted in front of stdio (0.730466ms)
+✔ args.daemon.2c: composeSpawn injects live gateways into Grok session setup (0.775533ms)
+✔ args.daemon.2d: composeSpawn agy keeps model and effort on argv, de-duplicates yolo, and resumes by conversation (0.464307ms)
+✔ args.daemon.3: composeSpawn stub/unknown — verbatim concatenation, no de-dup, no resume; unknown adapter → null (0.525157ms)
+✔ args.daemon.4: config — agents.<name>.defaultArgs parsed; wrong type fails loudly; absent = undefined (5.563834ms)
+✔ args.daemon.5: RPC — spawn args, bee.setArgs (typed errors, idempotency, null clears), revive with replacement args over the real daemon (1317.040523ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2882.469471
+(node:36315) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ tick scheduling always leaves a completion-relative poll window (0.551727ms)
+✔ test daemon graceful shutdown reaps its detached runner-host group (808.619209ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1028.1798
+(node:36588) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ verbs.agent-account-selector: auto/rr suffixes collapse without hijacking ordinary hyphenated agents (1.278918ms)
+✔ verbs.login-flow: interactive logins are driven from the terminal; json/no-wait just start; the rendered flow carries no secret and no attach target (0.556455ms)
+✔ verbs.x: spawn + first send in one shot (fire-and-forget); prompt lands in the mailbox; usage error without a prompt (996.293119ms)
+✔ verbs.run: spawn + send + wait + print the reply + archive; --keep leaves the bee (1878.302794ms)
+✔ verbs.wait: blocks until idle with no queued mail; a hung turn times out with exit 1 (2697.921619ms)
+✔ verbs.here: the HIVE_BEE_ID stamp — full line, --json, and the loud unset error (629.711156ms)
+✔ verbs.transcript+last: stub session log rendered as turns; --raw verbatim; --tail bounds; last = newest assistant text (1621.821201ms)
+✔ verbs.transcript: claude-format fixture — text turns kept, tool traffic one-lined, thinking/result elided; stale offline read (65.953853ms)
+✔ verbs.tail: rendered backlog with -n (--raw for verbatim); -f/--follow streams appends until SIGINT (284.355046ms)
+✔ verbs.transcript: -f/--follow streams appended lines until SIGINT (540.174675ms)
+✔ verbs.transcript: agy follow keeps projector state across appended lines (279.604551ms)
+✔ verbs.transcript: follow completes a torn agy record with one projector (279.143639ms)
+✔ verbs.transcript: follow flushes one live agy fragment once on SIGINT (54.808017ms)
+✔ verbs.transcript: follow starts at the backlog snapshot boundary (276.835288ms)
+✔ verbs.last: falls back to the latest seal when the log has no assistant text; --seal skips straight there (34.201062ms)
+✔ verbs.events: audit-row tail with --kind glob and --bee filters; stale fallback when the daemon is down (901.096871ms)
+▶ verbs.set-model: arg surgery — grammar-aware for claude/codex, conservative in-place for unknown harnesses; CLI applies via bee.setArgs
+  ✔ withModelArg unit surface (1.246379ms)
+✔ verbs.set-model: arg surgery — grammar-aware for claude/codex, conservative in-place for unknown harnesses; CLI applies via bee.setArgs (649.627145ms)
+✔ verbs.aliases: ls and ps are list; usage is limits-shaped over account_limits; login/swap-account top-level route through (682.365994ms)
+✔ verbs.account-capture: an already-authenticated home is validated, backed up, and marked logged in (428.558872ms)
+✔ verbs.usage: renders the cached account_limits rows (stale, read-only) with pct + resets, v1-usage style (49.801549ms)
+✔ verbs.xa: v1 shape is <agent> (not a bee name); refuses pane-less substrates; tmux spawn + --print (754.431863ms)
+✔ verbs.attach: refuses hsr/cell bees with the v2 guidance; tmux bees get the recorded session (via --print) (835.116489ms)
+✔ verbs.help: the grouped v1-style overview lists the new verbs under their sections (1.979419ms)
+✔ handles.ladder: exact id → exact handle (case-insensitive) → exact name → unique prefix; ambiguity lists candidates (1.405167ms)
+✔ handles.live: spawn returns the minted handle; ls leads with it and keeps id= tail; every verb takes the handle (651.736928ms)
+✔ verbs.send-sender: hive send binds the ambient bee identity while operator sends stay human (1096.309847ms)
+✔ verbs.buz: v1 compat — buz send maps tiers onto urgency + sender; buz inbox = mailbox; retired subs guide loudly (1106.89362ms)
+✔ verbs.tag: a bee cannot write apiary:* tags; the operator can (692.036017ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17711.367031
+✔ style.stripAnsi / visibleLength ignore SGR and count cells (0.734321ms)
+✔ style.visibleLength / truncate agree with grapheme segmentation for plain, wide, and clustered text (7.828831ms)
+✔ style.actionLine: live mutations get an icon; deduped keeps the one-key prefix (0.277316ms)
+✔ style.formatTable aligns headers and a rule to the body (0.428622ms)
+✔ render.viewLine keeps the greppable tokens operators and tests rely on (0.569624ms)
+✔ render.beeList is an aligned table: no argv dump, model column, compact runtime (0.559679ms)
+✔ helpText keeps the grouped v1-style overview tokens (0.832038ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 101.942797
+exit=0

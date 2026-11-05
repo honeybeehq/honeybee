@@ -1,0 +1,194 @@
+
+# A. executor A: the Champion is created, runs in its home, writes memory, and its home is bundled at turn end
+
+## A0 deployInfo on a node with default config: champions are on, the v2 tag is advertised
+```json
+{
+  "capabilities": [
+    "champions.v1",
+    "champions.v2"
+  ],
+  "champions": {
+    "enabled": true,
+    "homeSync": true,
+    "homes": null
+  },
+  "configChampions": {
+    "homesDir": "/tmp/m-h5-77014/homes-a"
+  }
+}
+```
+
+## A1 champion.put: identity, home under this executor's champions dir, template binding
+```json
+{
+  "outcome": "created",
+  "champion": {
+    "id": "vera-lund",
+    "name": "Vera Lund",
+    "agent": "cellstub",
+    "home": "/tmp/m-h5-77014/homes-a/vera-lund",
+    "templateId": "f8e1a349-c4c2-49cc-84fa-8959e6bf9066",
+    "model": "stub-1",
+    "effort": "high",
+    "currentBeeId": null,
+    "createdAt": 1793866244853,
+    "updatedAt": 1793866244853,
+    "archivedAt": null,
+    "epoch": 0,
+    "fencedAt": null
+  },
+  "homeTree": {
+    "MEMORY.md": "d7870cdadd1ac3b4"
+  }
+}
+```
+
+## A2 champion.start spawns the incarnation: bee kind champion, cwd = home, template args/env/tags plus the Champion's
+```json
+{
+  "started": {
+    "beeId": "f7e98479-905a-4cb1-ba4d-40398c1c1357",
+    "commandId": 1,
+    "messageId": 1,
+    "started": "spawned",
+    "homeRestored": false,
+    "restoreSkipped": "no_bundle",
+    "epoch": 0,
+    "replacedBeeId": null
+  },
+  "ms": 5.8,
+  "bee": {
+    "id": "f7e98479-905a-4cb1-ba4d-40398c1c1357",
+    "kind": "champion",
+    "cwd": "/tmp/m-h5-77014/homes-a/vera-lund",
+    "tags": [
+      "team:crew",
+      "apiary:champion=vera-lund",
+      "apiary:role=champion"
+    ],
+    "args": [
+      "--model",
+      "stub-1",
+      "--effort",
+      "high"
+    ],
+    "envKeys": [
+      "CREW_ROLE",
+      "HIVE_CHAMPION_HOME",
+      "HIVE_CHAMPION_ID"
+    ],
+    "agent": "cellstub",
+    "name": "Vera Lund"
+  },
+  "runtime": "idle"
+}
+```
+
+## A3 resident lifecycle: an ordinary spawn is kind agent; the incarnation cannot be archived, deleted or exported out from under the Champion
+```json
+{
+  "ordinaryKind": "agent",
+  "refusals": {
+    "spawn with kind: champion from a caller": "invalid_request: spawn: kind is set by champion.start, never by the caller",
+    "archive the incarnation directly": "invalid_request: archive: bee f7e98479-905a-4cb1-ba4d-40398c1c1357 is the current incarnation of Champion vera-lund; use champion.archive",
+    "delete the incarnation directly": "invalid_request: delete: bee f7e98479-905a-4cb1-ba4d-40398c1c1357 is the current incarnation of Champion vera-lund; use champion.archive",
+    "template.delete while bound": "invalid_request: template.delete: template f8e1a349-c4c2-49cc-84fa-8959e6bf9066 is bound by Champion(s) vera-lund; rebind them with champion.put first",
+    "champion.export while the incarnation runs": "runtime_refused: champion.export: incarnation f7e98479-905a-4cb1-ba4d-40398c1c1357 is running; stop it (or champion.fence) first so the home is quiet",
+    "champion.start on the live incarnation": "running"
+  }
+}
+```
+
+## A4 the turn end bundled the home into A's own object store
+```json
+{
+  "homeTree": {
+    "MEMORY.md": "4471ef659c27b659",
+    "blob.bin": "481a1fd67e95e621",
+    "memory/lab.md": "e94dc8af5d2e9b67",
+    "notes/plan.md": "f3a9668425b63876"
+  },
+  "bundle": {
+    "id": "948769c9-1f8a-4762-b218-567b360f6f95",
+    "championId": "vera-lund",
+    "ref": "e3249e531f3fc049374ebc63dcfa77d644978a5898d5eaccbe16b6d0b878c733",
+    "bytes": 20363,
+    "size": 30720,
+    "files": 4,
+    "skipped": 0,
+    "closedAt": 1793866245526,
+    "epoch": 0
+  },
+  "inObjectStore": true
+}
+```
+
+# B. stop on A, export the quiet home, revive on executor B with the home intact
+
+## B1 champion.export on A: identity + template + the home bundle bytes (sha256 = home.ref)
+```json
+{
+  "ms": 59.2,
+  "champion": {
+    "id": "vera-lund",
+    "epoch": 0,
+    "currentBeeId": "f7e98479-905a-4cb1-ba4d-40398c1c1357"
+  },
+  "template": {
+    "id": "f8e1a349-c4c2-49cc-84fa-8959e6bf9066",
+    "name": "crew-role",
+    "prompt": "You are the crew."
+  },
+  "home": {
+    "id": "948769c9-1f8a-4762-b218-567b360f6f95",
+    "championId": "vera-lund",
+    "ref": "e3249e531f3fc049374ebc63dcfa77d644978a5898d5eaccbe16b6d0b878c733",
+    "bytes": 20363,
+    "size": 30720,
+    "files": 4,
+    "skipped": 0,
+    "closedAt": 1793866245526,
+    "epoch": 0
+  },
+  "bytes": 20363,
+  "sha256MatchesRef": true
+}
+```
+
+## B2 executor B knows nothing of A: the identity is put again, and a start needs the bytes (no shared object store)
+```json
+{
+  "putB": {
+    "outcome": "created",
+    "home": "/tmp/m-h5-77014/homes-b/vera-lund",
+    "epoch": 0
+  },
+  "homeRef alone": "invalid_request: champion.start: home object e3249e531f3fc049374ebc63dcfa77d644978a5898d5eaccbe16b6d0b878c733 is not in the object store /tmp/m-h5-77014/objects-b; hand it over as homeBytes",
+  "bytes that do not hash to homeRef": "champion_fenced: champion.start: handover epoch 0 is older than this node's epoch 1 for vera-lund",
+  "homeBytes without homeRef/epoch": "invalid_request: champion.start: homeBytes needs homeRef and epoch (the handover from the executor that owned the home)",
+  "homeTreeBefore": {
+    "MEMORY.md": "d7870cdadd1ac3b4"
+  }
+}
+```
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /do not hash/. Input:
+
+"champion_fenced: champion.start: handover epoch 0 is older than this node's epoch 1 for vera-lund"
+
+    at file:///home/trmd/.hive/v2/cells/rebuild-m-h5-champion-kind-e368d38ac2be/github-com-honeybeehq-honeybee-a9015b303498-space-e368d38ac2be/.proof/m-h5/m-h5-driver.ts:116:67
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: "champion_fenced: champion.start: handover epoch 0 is older than this node's epoch 1 for vera-lund",
+  expected: /do not hash/,
+  operator: 'match',
+  diff: 'simple'
+}
+
+Node.js v24.13.0
+exit=1

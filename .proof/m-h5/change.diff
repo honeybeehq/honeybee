@@ -1,0 +1,1410 @@
+diff --git a/.agents/skills/verify-champion-lifecycle/SKILL.md b/.agents/skills/verify-champion-lifecycle/SKILL.md
+new file mode 100644
+index 00000000..15a8338c
+--- /dev/null
++++ b/.agents/skills/verify-champion-lifecycle/SKILL.md
+@@ -0,0 +1,78 @@
++---
++name: verify-champion-lifecycle
++description: Check the Champion revive, handover and fence rules of champion.start / champion.fence / champion.export and the home bundler with an explicit-state model (every order of steps on two executors, no Java needed) and the two-daemon driver. Use for /verify-champion-lifecycle, before landing any change to rpcChampionStart, restoreChampionHome, rpcChampionFence, rpcChampionExport, ChampionHomeSync.syncNow or store.takeoverChampion / fenceChampion, or when an epoch, fence or handover question comes up.
++---
++
++# Verify the Champion lifecycle
++
++## What is verified, in one sentence each
++
++- **A refused `champion.start` changes nothing.** Harm if broken: a handover whose home object is missing (or whose bytes do not match) still takes the epoch and stops the old incarnation, so the retry with the right bytes is `champion_fenced` and the Champion is stranded on that executor (this was the real bug M-H5 found and fixed: the takeover ran before the object check).
++- **An older handover epoch never unfences a node.** Harm: a stale pointer resurrects an incarnation beside the current owner.
++- **A fence with an older epoch is quiet.** Harm: a late fence message from a finished round stops the current owner's incarnation.
++- **A fenced node has no live incarnation it is not stopping.** Harm: two executors run the same Champion.
++- **Only one executor writes bundles under an epoch.** Harm: the Home cannot tell whose home is current; a stale home is handed over as if it were the newest. This is why a fenced node bundles nothing new, neither at a turn end while its stop settles nor for `champion.export`.
++- **Epochs never go down, and a takeover owns handover + 1 unfenced.**
++
++## Does my change touch the verified code?
++
++| model part (`champion-lifecycle.ts`) | code |
++|---|---|
++| `startPlain`, `startHandover`, `applyHandover` | `v2/daemon/src/daemon.ts` `rpcChampionStart` (parameter checks, the `describe(homeRef)` check before any state change, revive / running / spawn) and `restoreChampionHome` (`home_not_empty`, set-aside, `stale_epoch`); `v2/core/src/store.ts` `takeoverChampion` |
++| `fence` | `v2/daemon/src/daemon.ts` `rpcChampionFence`; `v2/core/src/store.ts` `fenceChampion` (`epoch = max`, `fenced_at`) ; the stop is an enqueued command, modelled as `stopping` until `stop` settles |
++| `bundle` | `v2/daemon/src/championHomes.ts` `ChampionHomeSync.syncNow` (skipped while fenced, written under the row epoch) |
++| `export` | `v2/daemon/src/daemon.ts` `rpcChampionExport` (`runtime_refused` while live, `bundleNow` under the row epoch unless fenced, latest pointer otherwise) |
++| the Home (assumption, not code) | Apiary's directory row: it creates a Champion on one executor, only hands over the current owner's exported pointer, and hands each pointer over once |
++
++Sync commit: the commit that added this skill (`git log -1 --format=%H -- .agents/skills/verify-champion-lifecycle/SKILL.md`) describes the code at the time of the last confirmation. After a change to the files above, re-read the model against the code, rerun, and only then move this line forward by committing the updated skill.
++
++## Run
++
++From the repository root, nothing to install (the model is TypeScript run by the pinned Node; TLA+ was not used because the satellites have no Java and the interim security rule forbids fetching one):
++
++```sh
++node --experimental-strip-types .agents/skills/verify-champion-lifecycle/champion-lifecycle.ts
++```
++
++Expected: `Model checking completed. No error has been found.` with 55822 distinct states (max epoch 3, two executors, one Champion, at most 2 bundles and 2 plain starts per node), in about 2.5 s, exit 0. A violation prints the rule, the state in the code's words and the shortest path of verbs that reaches it, exit 12.
++
++The real code: the two-daemon driver `.proof/m-h5/m-h5-driver.ts` creates a Champion on executor A, stops and exports it, revives it on executor B from the bytes, fences A and checks the refusals (needs `npm ci` and `npm run build` once, every `HIVE_*` variable unset):
++
++```sh
++HB_M_H5_LOG=/tmp/m-h5-run.md node scripts/with-fixture-warden.mjs node --experimental-strip-types .proof/m-h5/m-h5-driver.ts
++```
++
++Expected: `ALL CHECKS PASSED`. The targeted test is `v2/daemon/tests/champions.test.ts` under `node scripts/with-fixture-warden.mjs node scripts/run-v2-daemon-tests.mjs v2/daemon/tests/champions.test.ts`.
++
++## Make sure the check can still fail
++
++Each rule has a broken variant of the model; each must fail (exit 12):
++
++```sh
++for r in validateBeforeMutate handoverRefusesOlder fenceRefusesOlder fenceStopsLive startRefusedWhileFenced bundleSkippedWhileFenced; do node --experimental-strip-types .agents/skills/verify-champion-lifecycle/champion-lifecycle.ts --break $r; done
++```
++
++- `validateBeforeMutate` breaks **RefusedStartIsQuiet** in 4 steps: start A, stop A, export A, handover to B without bytes and without a shared store.
++- `handoverRefusesOlder` breaks **FencedStaysFencedUntilNewerHandover** in 5 steps.
++- `fenceRefusesOlder` breaks **StaleFenceIsQuiet** in 5 steps.
++- `fenceStopsLive` and `startRefusedWhileFenced` break **FencedHasNoLiveIncarnation** in 2 steps.
++- `bundleSkippedWhileFenced` breaks **BundleEpochsHaveOneWriter** in 7 steps (a fenced A exports and bundles under the owner's epoch).
++
++The same break in the real code (move the `homes.describe(homeRef)` check in `rpcChampionStart` below `store.takeoverChampion`) makes the driver fail at "homeRef alone" / "bytes that do not hash to homeRef": the second call answers `champion_fenced: handover epoch 0 is older than this node's epoch 1`. Last seen: `.proof/m-h5/scratch-break-run.log`.
++
++## Reading a failure
++
++- A rule breaks on the main configuration: a finding against the code or an intended contract change. Do not weaken the rule. Report the path in the code's words (which verb, which epoch, which executor).
++- A rule passes on main but not on its broken variant: the model is fine.
++- A broken variant passes: the model no longer models that rule; fix the model, not the code.
++- The driver fails while the model passes: the handler diverged from the model (parameter validation, result shape, log line); read the assertion and `/tmp/m-h5-run.md`.
++
++## Change the verification on purpose
++
++When the contract changes (for example a fence that also archives, or an export allowed on a fenced row), change the action in the model to match the new code first, update the rule text above, confirm the broken variants still fail, rerun the driver, and commit the skill with the code.
++
++## Scope and bounds
++
++- Two executors, one Champion, epochs 0..3, at most two turn-end bundles and two plain starts per executor; every interleaving of start, stop, bundle, export, handover (with and without bytes) and fence.
++- Not modelled: the home-content byte level (a bundle is an origin token), the secrets refusal, the set-aside directory, `champion.archive` / `champion.delete`, mail wake of a stopped incarnation, daemon restart, and the Home's own storage. The Home's three rules above are assumptions; if Apiary breaks them (hands the same pointer twice, hands over a non-owner's export, or creates the same identity on two executors) two executors can write under the same epoch, which the model shows when the assumptions are removed.
++- The model is explicit-state and bounded: a pass covers these bounds, not every size.
+diff --git a/.agents/skills/verify-champion-lifecycle/champion-lifecycle.ts b/.agents/skills/verify-champion-lifecycle/champion-lifecycle.ts
+new file mode 100644
+index 00000000..f9566f0f
+--- /dev/null
++++ b/.agents/skills/verify-champion-lifecycle/champion-lifecycle.ts
+@@ -0,0 +1,196 @@
++// Explicit-state model of the Champion revive / handover / fence lifecycle across two executors.
++// Run: node --experimental-strip-types .agents/skills/verify-champion-lifecycle/champion-lifecycle.ts [--break <rule>] [--max-epoch 3]
++// The model is TLA+-shaped (Init, Next as a list of guarded actions, invariants and per-step properties) and
++// is checked by breadth-first search over every reachable state, so a violation prints its shortest path.
++// Zero dependencies: this is what runs on a node with no Java, which is why it is not TLC.
++//
++// Code it describes (v2/daemon/src/daemon.ts unless noted):
++//   startPlain / startHandover  rpcChampionStart + restoreChampionHome
++//   fence                       rpcChampionFence; store.fenceChampion (v2/core/src/store.ts)
++//   takeover                    store.takeoverChampion (epoch = handover + 1, fence cleared)
++//   bundle                      ChampionHomeSync.syncNow (v2/daemon/src/championHomes.ts): skipped while fenced, written under the row epoch
++//   export                      rpcChampionExport: refused while the incarnation is live; hands the latest pointer to the Home
++//   adopt                       ChampionHomeSync.adopt + the `describe(homeRef)` check before any state change
++//   stop after a fence          rpcChampionFence enqueues a `stop` command; the runtime is live until it settles ("stopping" here)
++// Assumptions about the Home (Apiary), from its directory row "which executor runs it": it creates a Champion on one
++// executor (A), it only hands over the current owner's exported pointer (never a pointer an older owner exported later),
++// and it hands each pointer over once (handovers are serialised there). Everything else is Honeybee code.
++
++type Inc = "none" | "live" | "stopping" | "stopped";
++interface Node { epoch: number; fenced: boolean; inc: Inc; homeEpoch: number | null; homeOrigin: string | null; bundles: Array<{ epoch: number; origin: string; id: number }>; starts: number }
++interface State { nodes: Record<"A" | "B", Node>; home: Array<{ node: "A" | "B"; epoch: number; origin: string; id: number }>; owner: "A" | "B"; nextId: number }
++interface Step { action: string; from: State; to: State; refused: string | null }
++
++const RULES = {
++  validateBeforeMutate: "a refused champion.start leaves the row, the incarnation and the fence exactly as they were",
++  handoverRefusesOlder: "a handover epoch older than the row's is champion_fenced",
++  fenceRefusesOlder: "champion.fence with an older epoch is champion_fenced",
++  fenceStopsLive: "champion.fence stops the live incarnation",
++  startRefusedWhileFenced: "a plain champion.start on a fenced row is champion_fenced",
++  bundleSkippedWhileFenced: "a fenced node writes no bundle: not at a turn end while its stop settles, and not for an export",
++} as const;
++type Rule = keyof typeof RULES;
++
++const args = process.argv.slice(2);
++const broken = new Set<Rule>();
++let maxEpoch = 3;
++for (let i = 0; i < args.length; i += 1) {
++  if (args[i] === "--break") { const r = args[++i] as Rule; if (!(r in RULES)) throw new Error(`unknown rule ${r}; one of ${Object.keys(RULES).join(", ")}`); broken.add(r); }
++  else if (args[i] === "--max-epoch") maxEpoch = Number(args[++i]);
++  else throw new Error(`unknown argument ${args[i]}`);
++}
++const on = (rule: Rule) => !broken.has(rule);
++
++const NODES = ["A", "B"] as const;
++const init: State = { nodes: { A: fresh(), B: fresh() }, home: [], owner: "A", nextId: 1 };
++function fresh(): Node { return { epoch: 0, fenced: false, inc: "none", homeEpoch: null, homeOrigin: null, bundles: [], starts: 0 }; }
++const clone = (s: State): State => JSON.parse(JSON.stringify(s)) as State;
++const key = (s: State): string => JSON.stringify(s);
++
++// ---- actions: each returns the successor states (zero or more) with a refusal note when the verb refused ----
++function next(s: State): Step[] {
++  const out: Step[] = [];
++  for (const n of NODES) {
++    const node = s.nodes[n];
++    // stop: the incarnation runtime ends (operator stop, crash, daemon restart reconcile, or the fence's stop command settling)
++    if (node.inc === "live" || node.inc === "stopping") { const t = clone(s); t.nodes[n].inc = "stopped"; out.push({ action: `stop(${n})`, from: s, to: t, refused: null }); }
++    // bundle at turn end: written under the row epoch; skipped while fenced (championHomes.syncNow)
++    if ((node.inc === "live" || node.inc === "stopping") && node.homeEpoch != null && node.bundles.filter((b) => b.origin.startsWith(`${n}@`)).length < 2) {
++      if (node.fenced && on("bundleSkippedWhileFenced")) out.push({ action: `bundle(${n})`, from: s, to: s, refused: "push_skipped fenced" });
++      else { const t = clone(s); const id = t.nextId++; t.nodes[n].bundles.push({ epoch: node.epoch, origin: `${n}@${node.epoch}#${id}`, id }); t.nodes[n].homeOrigin = `${n}@${node.epoch}#${id}`; t.nodes[n].homeEpoch = node.epoch; out.push({ action: `bundle(${n})`, from: s, to: t, refused: null }); }
++    }
++    // export to the Home: refused while live; otherwise rpcChampionExport bundles the quiet home now under the row epoch
++    // (an unchanged home at the same epoch reuses its pointer; a fenced row bundles nothing new and answers its last pointer)
++    // and the Home learns that pointer (one pointer per node kept)
++    if (node.homeEpoch != null) {
++      if (node.inc === "live" || node.inc === "stopping") out.push({ action: `export(${n})`, from: s, to: s, refused: "runtime_refused" });
++      else {
++        const own = node.bundles.filter((b) => b.origin.startsWith(`${n}@`));
++        const latestOwn = own[own.length - 1];
++        const t = clone(s);
++        let pointer: { epoch: number; origin: string; id: number } | undefined;
++        if (node.fenced) pointer = node.bundles[node.bundles.length - 1];
++        else if (latestOwn && latestOwn.epoch === node.epoch) pointer = latestOwn;
++        else { const id = t.nextId++; pointer = { epoch: node.epoch, origin: `${n}@${node.epoch}#${id}`, id }; t.nodes[n].bundles.push(pointer); t.nodes[n].homeOrigin = pointer.origin; t.nodes[n].homeEpoch = node.epoch; }
++        if (pointer) { t.home = [...t.home.filter((p) => p.node !== n), { node: n, ...pointer }]; out.push({ action: `export(${n})`, from: s, to: t, refused: null }); }
++      }
++    }
++    // plain start: revive / running / spawn, with the implicit latest-bundle restore on an empty home.
++    // The Home creates a Champion on one executor (A here); every other executor first receives it by handover.
++    if (node.starts < 2 && (n === "A" || node.epoch > 0 || node.inc !== "none")) out.push(startPlain(s, n));
++    // handover start: the Home hands the pointer of the other node (or this one) with its epoch; bytes may or may not be carried
++    for (const p of s.home) for (const bytes of [true, false]) if (node.epoch <= maxEpoch - 1 && p.node === s.owner) out.push(startHandover(s, n, p, bytes));
++    // fence: the Home tells this node the epoch it knows (the max over the Home's pointers and the other node)
++    for (const e of fenceEpochs(s, n)) if (!(node.fenced && e <= node.epoch)) out.push(fence(s, n, e));
++  }
++  return out;
++}
++
++function fenceEpochs(s: State, n: "A" | "B"): number[] {
++  const other = NODES.find((m) => m !== n)!;
++  const set = new Set<number>([s.nodes[other].epoch, ...s.home.map((p) => p.epoch + 1)]);
++  if (s.nodes[n].epoch > 0) set.add(s.nodes[n].epoch - 1);
++  return [...set].filter((e) => e >= 0 && e <= maxEpoch);
++}
++
++function startPlain(s: State, n: "A" | "B"): Step {
++  const node = s.nodes[n];
++  const action = `start(${n})`;
++  if (node.fenced && on("startRefusedWhileFenced")) return { action, from: s, to: s, refused: "champion_fenced" };
++  const t = clone(s);
++  const nn = t.nodes[n];
++  nn.starts += 1;
++  if (node.inc === "live" || node.inc === "stopping") return { action, from: s, to: t, refused: null };
++  if (node.inc === "stopped") { nn.inc = "live"; return { action, from: s, to: t, refused: null }; }
++  // no incarnation: fresh home => restore this store's newest bundle unless it is older than the row epoch
++  if (node.homeEpoch == null && node.bundles.length > 0) {
++    const latest = node.bundles[node.bundles.length - 1]!;
++    if (latest.epoch >= node.epoch) { nn.homeEpoch = latest.epoch; nn.homeOrigin = latest.origin; }
++  }
++  if (nn.homeEpoch == null) { nn.homeEpoch = node.epoch; nn.homeOrigin = `${n}@${node.epoch}#fresh`; }
++  nn.inc = "live";
++  return { action, from: s, to: t, refused: null };
++}
++
++function startHandover(s: State, n: "A" | "B", p: State["home"][number], bytes: boolean): Step {
++  const node = s.nodes[n];
++  const action = `start(${n}, handover ${p.origin} epoch ${p.epoch}${bytes ? " +bytes" : ""})`;
++  if (p.epoch < node.epoch && on("handoverRefusesOlder")) return { action, from: s, to: s, refused: "champion_fenced (older handover)" };
++  const objectPresent = bytes || node.bundles.some((b) => b.id === p.id);
++  if (on("validateBeforeMutate")) {
++    if (!objectPresent) return { action, from: s, to: s, refused: "invalid_request (object not in store; hand it over as homeBytes)" };
++    return { action, from: s, to: applyHandover(s, n, p), refused: null };
++  }
++  // broken variant: the stale incarnation is stopped and archived and the epoch taken before the object check
++  const t = applyHandover(s, n, p);
++  if (!objectPresent) { t.nodes[n].inc = "none"; t.nodes[n].homeEpoch = node.homeEpoch; t.nodes[n].homeOrigin = node.homeOrigin; return { action, from: s, to: t, refused: "invalid_request (object not in store) AFTER takeover" }; }
++  return { action, from: s, to: t, refused: null };
++}
++
++function applyHandover(s: State, n: "A" | "B", p: State["home"][number]): State {
++  const t = clone(s);
++  const nn = t.nodes[n];
++  nn.starts += 1;
++  nn.epoch = p.epoch + 1; // store.takeoverChampion
++  nn.fenced = false;
++  nn.inc = "live"; // the stale incarnation (live or stopped) is stopped, archived, unbound; a new one spawns
++  nn.homeEpoch = p.epoch; // the pointed bundle is restored into a fresh home (a non-empty home is set aside)
++  nn.homeOrigin = p.origin;
++  if (!nn.bundles.some((b) => b.id === p.id)) nn.bundles.push({ epoch: p.epoch, origin: p.origin, id: p.id });
++  t.home = t.home.filter((q) => q.id !== p.id); // the Home hands a pointer over once
++  t.owner = n; // the directory row now names this executor
++  return t;
++}
++
++function fence(s: State, n: "A" | "B", e: number): Step {
++  const node = s.nodes[n];
++  const action = `fence(${n}, epoch ${e})`;
++  if (e < node.epoch && on("fenceRefusesOlder")) return { action, from: s, to: s, refused: "champion_fenced (older epoch)" };
++  const t = clone(s);
++  t.nodes[n].epoch = Math.max(e, node.epoch);
++  t.nodes[n].fenced = true;
++  if (node.inc === "live" && on("fenceStopsLive")) t.nodes[n].inc = "stopping";
++  return { action, from: s, to: t, refused: null };
++}
++
++// ---- properties ----
++const invariants: Record<string, (s: State) => string | null> = {
++  FencedHasNoLiveIncarnation: (s) => { for (const n of NODES) if (s.nodes[n].fenced && s.nodes[n].inc === "live") return `${n} is fenced at epoch ${s.nodes[n].epoch} with a live incarnation and no stop on its way`; return null; },
++  BundleEpochsHaveOneWriter: (s) => { const writers = new Map<number, Set<string>>(); for (const n of NODES) for (const b of s.nodes[n].bundles) if (b.origin.startsWith(`${n}@`)) { const set = writers.get(b.epoch) ?? new Set(); set.add(n); writers.set(b.epoch, set); } for (const [epoch, set] of writers) if (set.size > 1) return `both executors wrote bundles under epoch ${epoch} (${[...set].join(", ")}); the Home cannot tell whose home is current`; return null; },
++  BundlesNeverAboveRowEpoch: (s) => { for (const n of NODES) for (const b of s.nodes[n].bundles) if (b.epoch > s.nodes[n].epoch) return `${n} holds bundle ${b.origin} above its row epoch ${s.nodes[n].epoch}`; return null; },
++  HomeNeverOlderThanOwnBundles: (s) => { for (const n of NODES) { const node = s.nodes[n]; if (node.inc === "live" && node.homeEpoch != null && node.bundles.some((b) => b.epoch > node.homeEpoch!)) return `${n} runs on home content from epoch ${node.homeEpoch} while it holds a newer bundle (${node.bundles.map((b) => b.origin).join(", ")})`; } return null; },
++};
++const stepProperties: Record<string, (st: Step) => string | null> = {
++  EpochMonotone: (st) => { for (const n of NODES) if (st.to.nodes[n].epoch < st.from.nodes[n].epoch) return `${n} epoch ${st.from.nodes[n].epoch} -> ${st.to.nodes[n].epoch}`; return null; },
++  RefusedStartIsQuiet: (st) => { if (!st.action.startsWith("start(") || st.refused == null) return null; const n = st.action[6] as "A" | "B"; const a = st.from.nodes[n], b = st.to.nodes[n]; if (a.epoch !== b.epoch || a.fenced !== b.fenced || a.inc !== b.inc || a.homeOrigin !== b.homeOrigin) return `${st.action} refused (${st.refused}) but ${n} changed: epoch ${a.epoch}->${b.epoch} fenced ${a.fenced}->${b.fenced} inc ${a.inc}->${b.inc}`; return null; },
++  FencedStaysFencedUntilNewerHandover: (st) => { for (const n of NODES) { const a = st.from.nodes[n], b = st.to.nodes[n]; if (a.fenced && !b.fenced && !(st.action.startsWith(`start(${n}, handover`) && b.epoch > a.epoch)) return `${n} lost its fence through ${st.action} (epoch ${a.epoch} -> ${b.epoch})`; } return null; },
++  StaleFenceIsQuiet: (st) => { const m = /^fence\((.), epoch (\d+)\)$/.exec(st.action); if (!m) return null; const n = m[1] as "A" | "B"; if (Number(m[2]) < st.from.nodes[n].epoch && key(st.to) !== key(st.from)) return `${st.action} changed ${n} although its row is at epoch ${st.from.nodes[n].epoch} (inc ${st.from.nodes[n].inc} -> ${st.to.nodes[n].inc})`; return null; },
++  TakeoverOwnsNextEpoch: (st) => { if (!/^start\(., handover/.test(st.action) || st.refused != null) return null; const n = st.action[6] as "A" | "B"; const m = /epoch (\d+)/.exec(st.action)!; if (st.to.nodes[n].epoch !== Number(m[1]) + 1 || st.to.nodes[n].fenced) return `${st.action} left ${n} at epoch ${st.to.nodes[n].epoch} fenced=${st.to.nodes[n].fenced}`; return null; },
++};
++
++// ---- breadth-first search ----
++const seen = new Map<string, { parent: string | null; via: string | null }>();
++const queue: State[] = [init];
++seen.set(key(init), { parent: null, via: null });
++let violations = 0;
++const report = (name: string, detail: string, at: State, via?: string) => {
++  violations += 1;
++  const path: string[] = [];
++  let k: string | null = key(at);
++  while (k) { const e = seen.get(k)!; if (e.via) path.unshift(e.via); k = e.parent; }
++  if (via) path.push(via);
++  console.log(`\nVIOLATION ${name}: ${detail}\n  shortest path (${path.length} steps):\n    ${path.join("\n    ")}`);
++};
++const failed = new Set<string>();
++while (queue.length > 0 && violations < 1) {
++  const s = queue.shift()!;
++  for (const [name, check] of Object.entries(invariants)) { const d = check(s); if (d && !failed.has(name)) { failed.add(name); report(name, d, s); } }
++  for (const st of next(s)) {
++    if (st.to.epoch !== undefined) continue;
++    for (const [name, check] of Object.entries(stepProperties)) { const d = check(st); if (d && !failed.has(name)) { failed.add(name); report(name, d, s, st.action + (st.refused ? ` [refused: ${st.refused}]` : "")); } }
++    const k = key(st.to);
++    if (!seen.has(k)) { seen.set(k, { parent: key(s), via: st.action + (st.refused ? ` [refused: ${st.refused}]` : "") }); queue.push(st.to); }
++  }
++}
++console.log(`\n${violations === 0 ? "Model checking completed. No error has been found." : `Model checking found ${violations} violation(s).`}\n  distinct states: ${seen.size}, max epoch ${maxEpoch}, two executors, one Champion, at most 2 bundles per node and 2 plain starts per node, broken rules: ${broken.size ? [...broken].join(", ") : "none"}`);
++process.exit(violations === 0 ? 0 : 12);
+diff --git a/docs/design/champions-contract.md b/docs/design/champions-contract.md
+index 0bbc7247..f1c2b175 100644
+--- a/docs/design/champions-contract.md
++++ b/docs/design/champions-contract.md
+@@ -1,31 +1,30 @@
+-# Champions — Honeybee contract (H5, 2026-10-30)
++# Champions — Honeybee contract (H5, 2026-10-30; completed M-H5, 2026-11-05)
+ 
+-A Champion is a bee kind: a permanent identity with a name, a harness family, a home directory and an optional template binding, incarnated as one bee at a time. Honeybee owns the identity row, the home, the incarnation binding and the home bundles. Apiary owns presentation (bio, avatar), scope and membership, pilot settings and the Squad UI, and reads Champions from Honeybee instead of `crew/registry.json` (registry read-only for one release, then gone).
++A Champion is a bee kind: a permanent identity with a name, a harness family, a home directory and an optional template binding, incarnated as one bee at a time. Honeybee owns the identity row, the home, the incarnation binding and the home bundles. Apiary owns presentation (bio, avatar), scope and membership, pilot settings and the Squad UI, and reads Champions from Honeybee instead of `crew/registry.json` (C7).
+ 
+-Flags (`config.json`, section `champions`), both default `false`:
++Champions are on on every node: the verbs work, every incarnation turn end bundles the home, and `champion.start` on an empty home restores the latest bundle. The `champions.enabled` and `champions.homeSync` flags of the first cut are gone (M-H5). Config (`config.json`, section `champions`):
+ 
+-| key | default | on |
++| key | default | meaning |
+ |---|---|---|
+-| `champions.enabled` | `false` | the mutating verbs work; off = `capability_missing`. `champion.list` / `champion.get` always answer (empty when nothing was ever created) |
+-| `champions.homeSync` | `false` | every turn end of an incarnation bundles the home into the object store; `champion.start` on an empty home restores the latest bundle |
+ | `champions.homeSyncIncludeSecrets` | `false` | bundle a home even when it holds credential-like files (see Home bundles) |
+ | `champions.homesDir` | `<data-dir>/champions` | where a `champion.put` without `home` creates the home |
+ 
+-## Schema v54 (additive)
++## Schema v54 + v57 (additive)
+ 
+-`champions { id PK slug, name, agent, home, template_id?, model?, effort?, current_bee_id?, created_at, updated_at, archived_at?, epoch, fenced_at? }` and `champion_home_objects { id, champion_id, ref, bytes, size, files, skipped, closed_at, epoch }`, both `CREATE TABLE IF NOT EXISTS`. The `bees` table is untouched: the incarnation is bound through `champions.current_bee_id` and carries the Apiary-compatible tags `apiary:champion=<id>` and `apiary:role=champion`. Mirror: `snapshot.champions` (present when the flag is on), `champion.put` / `champion.deleted` deltas with `MIRROR_CHAMPION_KEYS`; `champion_home_object.put` is informational.
++`champions { id PK slug, name, agent, home, template_id?, model?, effort?, current_bee_id?, created_at, updated_at, archived_at?, epoch, fenced_at? }` and `champion_home_objects { id, champion_id, ref, bytes, size, files, skipped, closed_at, epoch }`, both `CREATE TABLE IF NOT EXISTS`. v57 adds `bees.kind` (`agent` | `champion`, default `agent`, `ALTER TABLE ADD COLUMN`): an incarnation is born `champion` by `champion.start` and keeps the kind through revive, handoff and move; `spawn` refuses a caller-given `kind`; a fork of a Champion is an ordinary `agent`. The incarnation is bound through `champions.current_bee_id` and carries the Apiary-compatible tags `apiary:champion=<id>` and `apiary:role=champion`. Mirror: bee records carry `kind`; `snapshot.champions` (present when at least one Champion exists), `champion.put` / `champion.deleted` deltas with `MIRROR_CHAMPION_KEYS`; `champion_home_object.put` is informational.
+ 
+-## Verbs (capability `champions.v1`)
++## Verbs (capabilities `champions.v1`, `champions.v2`)
+ 
+ - `champion.put {id?, name, agent, home?, templateId?, model?, effort?, archived?, idempotencyKey}` → `{champion, outcome}`. `id` defaults to the slug of the name. `agent` must be a configured spawn spec; `home` must be absolute and defaults to `<homesDir>/<id>`. **Agent and home are immutable**: a put that changes either is `invalid_request`. The home is created with a `MEMORY.md` stub and an empty `memory/`; nothing in it is ever deleted by Honeybee. `archived: true|false` hides or restores the identity.
+ - `champion.get {id}` → `{champion, bee: ViewResult | null, homeObjects}` (newest 20 bundles). `champion.list {}` → `{champions}`.
+-- `champion.start {id, prompt?, homeRef?, epoch?, idempotencyKey}` → `{champion, beeId, commandId, messageId, started: spawned | revived | running, homeRestored, epoch}`. A bound template that no longer exists is `invalid_request` (rebind first); `template.delete` refuses while a Champion binds it. With a live incarnation it is a no-op plus the optional prompt; a stopped one is revived (an archived bee unarchived); none spawns: `cwd = home`, `agent`, args from the bound template plus the row's model/effort (`--model`, `--effort` or codex `-c model_reasoning_effort`), template `env` plus `HIVE_CHAMPION_ID` and `HIVE_CHAMPION_HOME`, the template `substrate` and `account`, the template prompt as the first message, then the given prompt. Before the first runtime of a fresh home (stub `MEMORY.md`, empty `memory/`, nothing else) the home is restored from `homeRef` (a pointer the Home hands over after an executor swap) or from this store's newest bundle; a given `homeRef` is recorded as a pointer row.
++- `champion.start {id, prompt?, homeRef?, homeBytes?, epoch?, idempotencyKey}` → `{champion, beeId, commandId, messageId, started: spawned | revived | running, homeRestored, restoreSkipped, epoch, replacedBeeId}`. `homeBytes` (champions.v2) is the base64 bundle `champion.export` answered on the executor that owned the home; it needs `homeRef` and `epoch` (a handover), must hash to `homeRef` and is at most `CHAMPION_HOME_BYTES_MAX` (32 MiB); it is written into this node's object store under its ref before the restore, so two executors never need a shared object directory. A bound template that no longer exists is `invalid_request` (rebind first); `template.delete` refuses while a Champion binds it. With a live incarnation it is a no-op plus the optional prompt; a stopped one is revived (an archived bee unarchived); none spawns: `cwd = home`, `agent`, args from the bound template plus the row's model/effort (`--model`, `--effort` or codex `-c model_reasoning_effort`), template `env` plus `HIVE_CHAMPION_ID` and `HIVE_CHAMPION_HOME`, the template `substrate` and `account`, the template prompt as the first message, then the given prompt. Before the first runtime of a fresh home (stub `MEMORY.md`, empty `memory/`, nothing else) the home is restored from `homeRef` (a pointer the Home hands over after an executor swap) or from this store's newest bundle; a given `homeRef` is recorded as a pointer row.
+ - `champion.archive {id}` → archives the incarnation (`archive` command) and sets `archived_at`; the home stays. `champion.delete {id}` → removes the identity row and its pointer rows; the home and the bee stay; refused while an active incarnation exists.
++- `champion.export {id}` (champions.v2) → `{champion, template: TemplateRow | null, home: ChampionHomeObjectRow | null, homeBytes: base64 | null}`. The incarnation must be quiet (stopped, or no incarnation): a live runtime is `runtime_refused`. The home is bundled as it is now (a new pointer row when it changed, the existing one when not) and the object's bytes ride along, so the Home can carry identity, template and home to another executor in one frame. A home holding credential-like files is `invalid_request` with `details.reason = "secrets"` and the paths; a bundle over the frame limit is `invalid_request` with `details.bytes`. A never-bundled empty home answers `home: null`. A fenced row bundles nothing new (its content is stale by definition) and answers the last pointer taken before the fence.
+ - Resident lifecycle: `archive` and `delete` on a bee that is the current incarnation of an unarchived Champion are `invalid_request` ("use champion.archive"). Stop and revive work as for any bee; mail to a stopped incarnation wakes it as today.
+ 
+ ## Executor swap: epochs
+ 
+-Exactly one executor owns an incarnation at a time. Every Champion row carries an `epoch`; every bundle carries the epoch it was written under. A swap is a handover: the Home gives the new executor the latest pointer `{ref, epoch}` and it calls `champion.start {homeRef, epoch}`; the new executor takes `epoch + 1` and bundles under it. A handover epoch older than the row's epoch is `champion_fenced`. The Home then tells the old executor `champion.fence {id, epoch}`: its row takes the epoch and `fenced_at`, a live incarnation is stopped, its bundles stop (`champion.home.push_skipped reason=fenced`), and `champion.start` there is `champion_fenced` until a newer handover epoch arrives. Restores never apply a bundle whose epoch is older than the row's (`restore_skipped reason=stale_epoch`), so two executors can never trade stale homes. A handover (`homeRef` + `epoch` not older than the row's) on a node that still binds an incarnation (stopped, fenced or not) **takes over**: the row takes `epoch + 1` and drops the fence, the stale incarnation is stopped and archived and unbound (`replacedBeeId` in the result), the non-empty home is set aside as `<home>.stale-<epoch>-<ts>` (never deleted) and the bundle is restored into a fresh home before the new incarnation spawns (`started: spawned`, `homeRestored: true`). A handover stops a live incarnation immediately, mid-turn if it is running (the Home fences first, so this is the exception, not the rule). Set-aside homes are swept by the daily pass once older than 7 days and counted on `deployInfo.champions.homes.staleHomes` until then. A plain `champion.start` on a bound node revives or reports `running` as before, and on a fenced row stays `champion_fenced`. Every start reports `restoreSkipped` (`home_not_empty | no_bundle | stale_epoch | restore_failed | home_sync_off | null`) so the Home can surface why a home was not restored.
++Exactly one executor owns an incarnation at a time. Every Champion row carries an `epoch`; every bundle carries the epoch it was written under. A swap is a handover: the Home stops the incarnation on the old executor (`stop`, or `champion.fence` once it knows the epoch), takes `champion.export` there, puts the identity on the new executor (`template.put` for the exported template when it is bound, then `champion.put` with the same id, name, agent, model and effort) and calls `champion.start {homeRef: home.ref, homeBytes, epoch: home.epoch}`; the new executor adopts the bundle, takes `epoch + 1` and bundles under it. With a shared object store the bytes may be left out and `homeRef` alone restores. A handover epoch older than the row's epoch is `champion_fenced`. The Home then tells the old executor `champion.fence {id, epoch}`: its row takes the epoch and `fenced_at`, a live incarnation is stopped, its bundles stop (`champion.home.push_skipped reason=fenced`), and `champion.start` there is `champion_fenced` until a newer handover epoch arrives. Restores never apply a bundle whose epoch is older than the row's (`restore_skipped reason=stale_epoch`), so two executors can never trade stale homes. A handover (`homeRef` + `epoch` not older than the row's) on a node that still binds an incarnation (stopped, fenced or not) **takes over**: the row takes `epoch + 1` and drops the fence, the stale incarnation is stopped and archived and unbound (`replacedBeeId` in the result), the non-empty home is set aside as `<home>.stale-<epoch>-<ts>` (never deleted) and the bundle is restored into a fresh home before the new incarnation spawns (`started: spawned`, `homeRestored: true`). A handover stops a live incarnation immediately, mid-turn if it is running (the Home fences first, so this is the exception, not the rule). Set-aside homes are swept by the daily pass once older than 7 days and counted on `deployInfo.champions.homes.staleHomes` until then. A plain `champion.start` on a bound node revives or reports `running` as before, and on a fenced row stays `champion_fenced`. Every start reports `restoreSkipped` (`home_not_empty | no_bundle | stale_epoch | restore_failed | null`) so the Home can surface why a home was not restored.
+ 
+ ## Home bundles
+ 
+@@ -37,4 +36,4 @@ Accepted and documented: `champion.fence` stops a live incarnation immediately,
+ 
+ ## Gates and rollback
+ 
+-Proof in `.proof/h-track/h5/`. Rollback: `champions.enabled: false` keeps the rows and homes, refuses the verbs; `homeSync: false` stops bundling (existing bundles stay restorable through `homeRef`). A v54 store refuses to open under a pre-v54 release (`schema_newer`); `hive deploy --rollback` restores the backup the open path made. Apiary's registry.json stays readable for one release while Apiary mirrors champions from the snapshot and the `champion.put` deltas.
++Proof in `.proof/h-track/h5/` (first cut) and `.proof/m-h5/` (completion: two scratch daemons with separate data dirs and object stores, create on A, stop, export, put and start on B with the home intact). Rollback is `git revert` of the M-H5 commit plus `hive deploy --rollback`; a v57 store refuses to open under a pre-v57 release (`schema_newer`) and the rollback restores the backup the open path made. `deployInfo.champions.enabled` / `.homeSync` are the literal `true` until C7 stops reading them.
+diff --git a/v2/cli/src/main.ts b/v2/cli/src/main.ts
+index 59c975a0..a45b628a 100644
+--- a/v2/cli/src/main.ts
++++ b/v2/cli/src/main.ts
+@@ -124,6 +124,8 @@ import {
+   type ChampionStartResult,
+   type ChampionArchiveResult,
+   type ChampionDeleteResult,
++  type ChampionFenceResult,
++  type ChampionExportResult,
+   type TemplatePutResult,
+   type ViewResult,
+   type WatchFrame,
+@@ -3731,9 +3733,42 @@ async function cmdChampion(ctx: CliContext, parsed: Parsed): Promise<number> {
+     }
+     case "start": {
+       const id = parsed.positional[2];
+-      if (!id) throw new Error("usage: hive champion start <id> [--prompt text]");
+-      const result = await withClient(ctx, (c) => c.request<ChampionStartResult>("champion.start", { id, ...(flag("--prompt") ? { prompt: flag("--prompt") } : {}), idempotencyKey: flag("--idempotency-key") ?? `champion-start-${randomUUID()}` }));
+-      emit(ctx, [confirm("ok", result.started, `champion ${id} → bee ${result.beeId}${result.homeRestored ? " (home restored from the object store)" : ""}`)], result, false);
++      if (!id) throw new Error("usage: hive champion start <id> [--prompt text] [--home-bundle file --epoch n] [--home-ref sha --epoch n]");
++      const bundleFile = flag("--home-bundle");
++      const handover: Record<string, unknown> = {};
++      if (bundleFile) {
++        const exported = JSON.parse(readFileSync(resolve(bundleFile), "utf8")) as ChampionExportResult;
++        if (!exported.home || !exported.homeBytes) throw new Error(`${bundleFile} carries no home bundle`);
++        handover.homeRef = exported.home.ref;
++        handover.homeBytes = exported.homeBytes;
++        handover.epoch = flag("--epoch") !== undefined ? Number(flag("--epoch")) : exported.home.epoch;
++      } else if (flag("--home-ref")) {
++        handover.homeRef = flag("--home-ref");
++        if (flag("--epoch") === undefined) throw new Error("--home-ref needs --epoch");
++        handover.epoch = Number(flag("--epoch"));
++      } else if (flag("--epoch") !== undefined) handover.epoch = Number(flag("--epoch"));
++      if (handover.epoch !== undefined && !Number.isInteger(handover.epoch)) throw new Error("--epoch must be an integer");
++      const result = await withClient(ctx, (c) => c.request<ChampionStartResult>("champion.start", { id, ...(flag("--prompt") ? { prompt: flag("--prompt") } : {}), ...handover, idempotencyKey: flag("--idempotency-key") ?? `champion-start-${randomUUID()}` }));
++      emit(ctx, [confirm("ok", result.started, `champion ${id} → bee ${result.beeId} epoch ${result.epoch}${result.homeRestored ? " (home restored from the bundle)" : result.restoreSkipped ? ` (home not restored: ${result.restoreSkipped})` : ""}${result.replacedBeeId ? `; replaced ${result.replacedBeeId}` : ""}`)], result, false);
++      return 0;
++    }
++    case "export": {
++      const id = parsed.positional[2];
++      const out = flag("--out");
++      if (!id || !out) throw new Error("usage: hive champion export <id> --out <file>");
++      const result = await withClient(ctx, (c) => c.request<ChampionExportResult>("champion.export", { id }));
++      writeFileSync(resolve(out), JSON.stringify(result), { mode: 0o600 });
++      const { homeBytes, ...shown } = result;
++      void homeBytes;
++      emit(ctx, [confirm("ok", "exported", `champion ${id}${result.home ? ` home bundle ${result.home.ref.slice(0, 12)} ${result.home.bytes} bytes ${result.home.files} files epoch ${result.home.epoch}` : " (no home bundle)"}${result.template ? ` template ${result.template.id}` : ""} → ${out}`)], shown, false);
++      return 0;
++    }
++    case "fence": {
++      const id = parsed.positional[2];
++      const epoch = flag("--epoch");
++      if (!id || epoch === undefined || !Number.isInteger(Number(epoch))) throw new Error("usage: hive champion fence <id> --epoch <n>");
++      const result = await withClient(ctx, (c) => c.request<ChampionFenceResult>("champion.fence", { id, epoch: Number(epoch), idempotencyKey: flag("--idempotency-key") ?? `champion-fence-${randomUUID()}` }));
++      emit(ctx, [confirm("ok", "fenced", `champion ${id} at epoch ${result.champion.epoch}${result.stopped ? "; the live incarnation is being stopped" : ""}`)], result, false);
+       return 0;
+     }
+     case "archive": {
+@@ -3752,7 +3787,7 @@ async function cmdChampion(ctx: CliContext, parsed: Parsed): Promise<number> {
+       return 0;
+     }
+     default:
+-      throw new Error("usage: hive champion <list|get|put|start|archive|delete>");
++      throw new Error("usage: hive champion <list|get|put|start|export|fence|archive|delete>");
+   }
+ }
+ 
+diff --git a/v2/cli/src/readonly.ts b/v2/cli/src/readonly.ts
+index ac9b54c4..8a681a3c 100644
+--- a/v2/cli/src/readonly.ts
++++ b/v2/cli/src/readonly.ts
+@@ -60,6 +60,8 @@ function mapBee(r: Row): BeeRow {
+     tags: JSON.parse(r.tags as string) as string[],
+     sessionLogPath: (r.session_log_path as string | null) ?? null,
+     lifecycle: r.lifecycle as BeeRow["lifecycle"],
++    // v57 column; same tolerance.
++    kind: (r.kind as BeeRow["kind"] | null | undefined) ?? "agent",
+     createdAt: Number(r.created_at),
+     archivedAt: r.archived_at == null ? null : Number(r.archived_at),
+     lastOutputAt: r.last_output_at == null ? null : Number(r.last_output_at),
+diff --git a/v2/cli/src/render.ts b/v2/cli/src/render.ts
+index 43c6149e..231fd6d5 100644
+--- a/v2/cli/src/render.ts
++++ b/v2/cli/src/render.ts
+@@ -218,6 +218,7 @@ export function renderBeeView(v: ViewResult, stale: boolean): string[] {
+   const prefix = stalePrefix(stale);
+   const details: Array<[string, string]> = [];
+   if (bee.handle) details.push(["id", bee.id]);
++  if (bee.kind !== "agent") details.push(["kind", bee.kind]);
+   if (bee.title) details.push(["title", bee.title]);
+   details.push(["cwd", tildify(bee.cwd)]);
+   if (bee.account) details.push(["account", bee.account]);
+diff --git a/v2/core/src/audit.ts b/v2/core/src/audit.ts
+index eedca92a..ce24cd9f 100644
+--- a/v2/core/src/audit.ts
++++ b/v2/core/src/audit.ts
+@@ -171,6 +171,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
+         const bee = p.bee as BeeRow;
+         bees.set(bee.id, {
+           ...bee,
++          kind: bee.kind ?? "agent",
+           human_ref: bee.human_ref ?? null,
+           issuing_namespace: bee.issuing_namespace ?? null,
+           parentExternal: bee.parentExternal ?? false,
+diff --git a/v2/core/src/mirror.ts b/v2/core/src/mirror.ts
+index 09e52935..a99f5ac5 100644
+--- a/v2/core/src/mirror.ts
++++ b/v2/core/src/mirror.ts
+@@ -305,6 +305,8 @@ export const MIRROR_BEE_RECORD_KEYS = [
+   "tags",
+   "sessionLogPath",
+   "lifecycle",
++  // v57 (champions.v2): additive — `agent` | `champion`.
++  "kind",
+   "createdAt",
+   "archivedAt",
+   "lastOutputAt",
+@@ -411,6 +413,9 @@ export const MIRROR_ACCOUNT_KEYS = [
+   "pausedBy",
+   "pausedOwner",
+   "pausedAt",
++  // v56 (account.share.v1): additive — the credential share and its authority epoch owned by this row.
++  "shareId",
++  "shareEpoch",
+   "addedAt",
+   "updatedAt",
+   // v18: additive — derived credential-validation evidence (absent | unverified | verified).
+diff --git a/v2/core/src/schema.ts b/v2/core/src/schema.ts
+index 4c3dd934..0c5200d4 100644
+--- a/v2/core/src/schema.ts
++++ b/v2/core/src/schema.ts
+@@ -164,8 +164,10 @@
+  * v55 — H6a bee durability: `bee_resume_bundles` (encrypted harness-state bundles in the object store)
+  * and `bee_epochs` (import fence); additive CREATE TABLE IF NOT EXISTS.
+  * v56 — H6 account authority: `accounts.share_id` and `accounts.share_epoch` (the credential share
+- * and its authority epoch, owned by Honeybee); additive; migration = ALTER TABLE ADD COLUMN ×2. */
+-export const SCHEMA_VERSION = 56;
++ * and its authority epoch, owned by Honeybee); additive; migration = ALTER TABLE ADD COLUMN ×2.
++ * v57 — H5 Champion bee kind: `bees.kind` (`agent` | `champion`; a Champion incarnation is born
++ * `champion` by champion.start); additive; migration = ALTER TABLE ADD COLUMN. */
++export const SCHEMA_VERSION = 57;
+ 
+ export const QUESTIONS_TABLE_SQL = `
+ CREATE TABLE IF NOT EXISTS questions (
+@@ -416,7 +418,10 @@ CREATE TABLE IF NOT EXISTS bees (
+   -- v23: in-flight bee_handoffs.id; NULL when idle (terminal receipts remain).
+   active_handoff_id TEXT,
+   last_turn_trigger TEXT,
+-  last_human_output_at INTEGER
++  last_human_output_at INTEGER,
++  -- v57: the bee kind. agent is an ordinary bee; champion is the incarnation of a
++  -- Champion identity (champions.current_bee_id), spawned only by champion.start.
++  kind             TEXT NOT NULL DEFAULT 'agent' CHECK (kind IN ('agent','champion'))
+ ) STRICT;
+ -- Note: 'deleted' never appears as a stored lifecycle — Q1 says delete removes the
+ -- record row immediately, so a missing row IS the deleted state.
+@@ -904,6 +909,7 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
+   ["active_handoff_id", "active_handoff_id TEXT"],
+   ["last_turn_trigger", "last_turn_trigger TEXT"],
+   ["last_human_output_at", "last_human_output_at INTEGER"],
++  ["kind", "kind TEXT NOT NULL DEFAULT 'agent' CHECK (kind IN ('agent','champion'))"],
+ ];
+ 
+ /** Columns carried across the v31 rebuild of `cells` (by name: an ALTER-migrated store may differ in order). */
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index 2d2b8a22..37f5c74d 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -109,6 +109,7 @@ import {
+   type TranscriptSegmentObjectRow,
+   type ChampionRow,
+   type ChampionHomeObjectRow,
++  type BeeKind,
+   type BeeResumeBundleRow,
+   type BeeEpochRow,
+   type TranscriptSegmentCursorRow,
+@@ -343,6 +344,8 @@ export interface CreateBeeInput {
+   /** Trusted import/move only: preserve the original issuer and full reference. */
+   humanRef?: string;
+   issuingNamespace?: string;
++  /** v57 — `champion` only from champion.start; absent = `agent`. */
++  kind?: BeeKind;
+   /**
+    * Creation timestamp override (epoch ms) — importers preserve the original
+    * record's creation time. Defaults to the store clock.
+@@ -727,6 +730,7 @@ function mapBee(r: Row): BeeRow {
+     tags: JSON.parse(r.tags as string) as string[],
+     sessionLogPath: (r.session_log_path as string | null) ?? null,
+     lifecycle: r.lifecycle as BeeRow["lifecycle"],
++    kind: (r.kind as BeeRow["kind"] | null | undefined) ?? "agent",
+     createdAt: Number(r.created_at),
+     archivedAt: r.archived_at == null ? null : Number(r.archived_at),
+     lastOutputAt: r.last_output_at == null ? null : Number(r.last_output_at),
+@@ -2978,8 +2982,8 @@ export class CoreStore {
+         .prepare(
+           `INSERT INTO bees(id, name, agent, substrate, cwd, title, tags, session_log_path, lifecycle, created_at,
+                             provider_session_id, env, imported_from, args, parent_id, parent_external, forked_from,
+-                            fork_seed, account, handle, human_ref, issuing_namespace)
+-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
++                            fork_seed, account, handle, human_ref, issuing_namespace, kind)
++           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         )
+         .run(
+           id,
+@@ -3003,6 +3007,7 @@ export class CoreStore {
+           handle,
+           humanRef,
+           namespace,
++          input.kind ?? "agent",
+         );
+       if (input.phoneOperation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(input.phoneOperation.origin, null, input.phoneOperation.key, id)));
+       const bee = this.mustGetBee(id);
+diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
+index bbd90926..93b0fc6b 100644
+--- a/v2/core/src/types.ts
++++ b/v2/core/src/types.ts
+@@ -12,6 +12,9 @@ import type { LoginFlowRow } from "./loginFlow.ts";
+ 
+ export const LIFECYCLES = ["active", "archived", "deleted"] as const;
+ export type Lifecycle = (typeof LIFECYCLES)[number];
++/** v57 — what a bee is: an ordinary agent, or the incarnation of a Champion identity. */
++export const BEE_KINDS = ["agent", "champion"] as const;
++export type BeeKind = (typeof BEE_KINDS)[number];
+ 
+ /** B2 — exactly four runtime states. */
+ export const RUNTIME_STATES = ["booting", "running", "idle", "stopped"] as const;
+@@ -103,6 +106,8 @@ export interface BeeRow extends Partial<HumanOutputFacts> {
+   tags: string[];
+   sessionLogPath: string | null;
+   lifecycle: Lifecycle;
++  /** v57 — `champion` for the incarnation of a Champion (champions.current_bee_id names the current one). */
++  kind: BeeKind;
+   createdAt: number;
+   archivedAt: number | null;
+   /** Last time the bee's runtime produced output (canonical fact, recorded by daemon). */
+diff --git a/v2/core/tests/accounts.test.ts b/v2/core/tests/accounts.test.ts
+index 10ba8aa8..bc1ffdba 100644
+--- a/v2/core/tests/accounts.test.ts
++++ b/v2/core/tests/accounts.test.ts
+@@ -540,7 +540,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 56);
++      assert.equal(SCHEMA_VERSION, 57);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("account"));
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/actions.test.ts b/v2/core/tests/actions.test.ts
+index f10ab813..9c48d94a 100644
+--- a/v2/core/tests/actions.test.ts
++++ b/v2/core/tests/actions.test.ts
+@@ -406,7 +406,7 @@ test("actions.8: audit replay reproduces the action tables; the store reopens at
+   const h = harness();
+   try {
+     let store = h.open();
+-    assert.equal(SCHEMA_VERSION, 55);
++    assert.equal(SCHEMA_VERSION, 57);
+     const bee = liveBee(store);
+     const { actions } = shipSequence(store, bee.id);
+     const { messageId } = store.dispatchAgentAction(actions[0]!.id);
+diff --git a/v2/core/tests/apiary-swap.test.ts b/v2/core/tests/apiary-swap.test.ts
+index 328efa28..feb0d551 100644
+--- a/v2/core/tests/apiary-swap.test.ts
++++ b/v2/core/tests/apiary-swap.test.ts
+@@ -104,7 +104,7 @@ test("apiary schema: current version remains unchanged and newer storage refuses
+   await world(async root => {
+     await seed(root);
+     const db = new DatabaseSync(join(root, "v2", "core.sqlite3"));
+-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "55");
++    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "57");
+     db.exec("UPDATE meta SET value='999' WHERE key='schema_version'"); db.close();
+     assert.throws(() => openCoreStore(join(root, "v2", "core.sqlite3"), { ephemeral: true }), /newer store/);
+   });
+diff --git a/v2/core/tests/auth-interruption.test.ts b/v2/core/tests/auth-interruption.test.ts
+index faaa44fd..36f7e638 100644
+--- a/v2/core/tests/auth-interruption.test.ts
++++ b/v2/core/tests/auth-interruption.test.ts
+@@ -189,7 +189,7 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
+     raw.close();
+ 
+     store = h.open();
+-    assert.equal(SCHEMA_VERSION, 55);
++    assert.equal(SCHEMA_VERSION, 57);
+     const row = interrupt(store, bee.id);
+     store.restoreAuthInterruption(row.id, { revision: "rev-2", by: "credentials_restored" });
+     store.resumeAuthInterruption(row.id, AUTH_CONTINUE_BODY);
+diff --git a/v2/core/tests/bee-args.test.ts b/v2/core/tests/bee-args.test.ts
+index 9f5b9f63..88ec72ff 100644
+--- a/v2/core/tests/bee-args.test.ts
++++ b/v2/core/tests/bee-args.test.ts
+@@ -262,7 +262,7 @@ test("args.2: a v4-shaped store (spawn_failures, no args column) migrates additi
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("args"));
+       assert.ok(cols.includes("spawn_failures"));
+diff --git a/v2/core/tests/cell-move.test.ts b/v2/core/tests/cell-move.test.ts
+index 995cd352..15ede02c 100644
+--- a/v2/core/tests/cell-move.test.ts
++++ b/v2/core/tests/cell-move.test.ts
+@@ -336,7 +336,7 @@ test(`cell-move.schema v${previousVersion} store migrates to v22`, () => {
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("placement_version"));
+       assert.ok(cols.includes("active_move_id"));
+diff --git a/v2/core/tests/cell-retention.test.ts b/v2/core/tests/cell-retention.test.ts
+index 3e60a8e2..086b4cd0 100644
+--- a/v2/core/tests/cell-retention.test.ts
++++ b/v2/core/tests/cell-retention.test.ts
+@@ -139,7 +139,7 @@ test("cell-retention.schema: a v30 store's cells table is rebuilt with the evict
+     const check = new DatabaseSync(h.path, { readOnly: true });
+     try {
+       assert.equal(Number((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'cells_v30'").get(), undefined, "scratch table dropped");
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('cells')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("evicted_at") && cols.includes("evicted_head"));
+diff --git a/v2/core/tests/effect-resolve.test.ts b/v2/core/tests/effect-resolve.test.ts
+index 3be00884..a48d050a 100644
+--- a/v2/core/tests/effect-resolve.test.ts
++++ b/v2/core/tests/effect-resolve.test.ts
+@@ -90,7 +90,7 @@ test("effect additive tables preserve schema45 and retained legacy positives boo
+     assert.throws(() => store.resolveEffect("legacy-absent", "spawn"), error("rpc_effect_history_unknown"));
+   } finally { store.close(); }
+   const inspect = new DatabaseSync(h.path, { readOnly: true });
+-  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "55"); }
++  try { assert.equal(inspect.prepare("SELECT value FROM meta WHERE key='schema_version'").get()?.value, "57"); }
+   finally { inspect.close(); h.cleanup(); }
+ });
+ 
+diff --git a/v2/core/tests/external-parent.test.ts b/v2/core/tests/external-parent.test.ts
+index 6074fa33..bec50218 100644
+--- a/v2/core/tests/external-parent.test.ts
++++ b/v2/core/tests/external-parent.test.ts
+@@ -193,7 +193,7 @@ test("a v20 store migrates existing parent edges to local lineage at the current
+         value: string;
+       };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       const column = migrated.prepare(
+         "SELECT name FROM pragma_table_info('bees') WHERE name = 'parent_external'",
+       ).get() as { name: string } | undefined;
+diff --git a/v2/core/tests/fixtures/mirror-question-dismissed-v1.json b/v2/core/tests/fixtures/mirror-question-dismissed-v1.json
+index 3224ca48..5b99fd4f 100644
+--- a/v2/core/tests/fixtures/mirror-question-dismissed-v1.json
++++ b/v2/core/tests/fixtures/mirror-question-dismissed-v1.json
+@@ -31,6 +31,7 @@
+         "tags": [],
+         "sessionLogPath": null,
+         "lifecycle": "active",
++        "kind": "agent",
+         "createdAt": 1002000,
+         "archivedAt": null,
+         "lastOutputAt": null,
+@@ -163,6 +164,8 @@
+       "pausedBy": null,
+       "pausedOwner": null,
+       "pausedAt": null,
++      "shareId": null,
++      "shareEpoch": null,
+       "addedAt": 1016000,
+       "updatedAt": 1016000,
+       "credentialHealth": "absent",
+diff --git a/v2/core/tests/handles.test.ts b/v2/core/tests/handles.test.ts
+index 645e7420..d027fbc9 100644
+--- a/v2/core/tests/handles.test.ts
++++ b/v2/core/tests/handles.test.ts
+@@ -96,7 +96,7 @@ test("handles.4: v9-shaped store backfills on open — an old pretty id becomes
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       const idx = check.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='bees_handle'").get();
+       assert.ok(idx, "unique handle index exists");
+     } finally {
+diff --git a/v2/core/tests/mirror.test.ts b/v2/core/tests/mirror.test.ts
+index c4717277..877c69a4 100644
+--- a/v2/core/tests/mirror.test.ts
++++ b/v2/core/tests/mirror.test.ts
+@@ -206,6 +206,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
+         "tags": [],
+         "sessionLogPath": null,
+         "lifecycle": "active",
++        "kind": "agent",
+         "createdAt": 1002000,
+         "archivedAt": null,
+         "lastOutputAt": null,
+@@ -335,6 +336,8 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
+       "pausedBy": null,
+       "pausedOwner": null,
+       "pausedAt": null,
++      "shareId": null,
++      "shareEpoch": null,
+       "addedAt": 1016000,
+       "updatedAt": 1016000,
+       "credentialHealth": "absent",
+diff --git a/v2/core/tests/phone-origin.test.ts b/v2/core/tests/phone-origin.test.ts
+index 9069a144..61889a56 100644
+--- a/v2/core/tests/phone-origin.test.ts
++++ b/v2/core/tests/phone-origin.test.ts
+@@ -38,7 +38,7 @@ test("phone data, shadow, history, audit replay and key bindings survive reopen
+       store.recordRpcResult("k", "send", sent.wakeCommand?.id ?? null, { commandId: sent.wakeCommand?.id ?? null, unarchived: sent.unarchived, messageId: sent.message.id });
+       return sent.message;
+     });
+-    assert.equal(SCHEMA_VERSION, 55);
++    assert.equal(SCHEMA_VERSION, 57);
+     assert.equal(message.body, renderPhoneInput(body));
+     assert.equal(message.phoneInput?.originalContent, body);
+     assert.equal(message.phoneInput?.envelope.contentDigest, phoneDigest(body));
+diff --git a/v2/core/tests/preflip-verbs.test.ts b/v2/core/tests/preflip-verbs.test.ts
+index 4801e5ea..095d0d98 100644
+--- a/v2/core/tests/preflip-verbs.test.ts
++++ b/v2/core/tests/preflip-verbs.test.ts
+@@ -322,7 +322,7 @@ test("v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed a
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       for (const c of ["parent_id", "parent_external", "forked_from", "fork_seed", "args", "spawn_failures"]) assert.ok(cols.includes(c), c);
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/question-dismiss.test.ts b/v2/core/tests/question-dismiss.test.ts
+index 2cbdbfe7..606ed706 100644
+--- a/v2/core/tests/question-dismiss.test.ts
++++ b/v2/core/tests/question-dismiss.test.ts
+@@ -102,7 +102,7 @@ test("schema46 migration without a status CHECK gains dismissal columns additive
+     store = h.open(); assert.equal(store.dismissQuestionWithKey(q.id, "additive").question.status, "dismissed"); store.close();
+     const after = new DatabaseSync(h.path);
+     assert.equal(after.prepare("SELECT rootpage FROM sqlite_master WHERE name='questions'").get()!.rootpage, rootPage);
+-    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "55"); after.close();
++    assert.equal(String(after.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value), "57"); after.close();
+     store = h.open(); assert.equal(store.getQuestion(q.id)!.status, "dismissed");
+   } finally {store.close(); h.cleanup();}
+ });
+diff --git a/v2/core/tests/question-withdraw.test.ts b/v2/core/tests/question-withdraw.test.ts
+index be851041..087297d3 100644
+--- a/v2/core/tests/question-withdraw.test.ts
++++ b/v2/core/tests/question-withdraw.test.ts
+@@ -84,8 +84,8 @@ test("schema 44 legacy questions migrate additively without extra-table refusal"
+     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+     store.close();
+     const check = new DatabaseSync(f.path);
+-    assert.equal(SCHEMA_VERSION, 55);
+-    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "55");
++    assert.equal(SCHEMA_VERSION, 57);
++    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "57");
+     assert.equal(check.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
+     assert.deepEqual(check.prepare("PRAGMA foreign_key_check").all(), []);
+     assert.equal(check.prepare("SELECT count(*) AS n FROM question_withdraw_receipts").get()!.n, 1);
+diff --git a/v2/core/tests/runtime-process-identity.test.ts b/v2/core/tests/runtime-process-identity.test.ts
+index a5f1b2e0..80e641cb 100644
+--- a/v2/core/tests/runtime-process-identity.test.ts
++++ b/v2/core/tests/runtime-process-identity.test.ts
+@@ -25,7 +25,7 @@ test("runtime identity migration is additive, once-only and ignores malformed co
+     (store as unknown as {db: DatabaseSync}).db.prepare("UPDATE runtimes SET process_identity=NULL WHERE bee_id=?").run(bee.id);
+     store.close();
+     const db = new DatabaseSync(h.path);
+-    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "55");
++    assert.equal(db.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "57");
+     assert.equal(db.prepare("SELECT value FROM meta WHERE key='runtime_process_identity_schema'").get()!.value, "1");
+     installRuntimeProcessIdentity(db); installRuntimeProcessIdentity(db);
+     assert.equal(db.prepare("PRAGMA table_info(runtimes)").all().filter(r => r.name === "process_identity").length, 1);
+diff --git a/v2/core/tests/urgency.test.ts b/v2/core/tests/urgency.test.ts
+index 375f72ab..6fecd6de 100644
+--- a/v2/core/tests/urgency.test.ts
++++ b/v2/core/tests/urgency.test.ts
+@@ -157,7 +157,7 @@ test("urgency.5: v8 migration — a v7 store opens as v8: mailbox.urgency added,
+   try {
+     const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+     assert.equal(Number(version.value), SCHEMA_VERSION);
+-    assert.equal(SCHEMA_VERSION, 55);
++    assert.equal(SCHEMA_VERSION, 57);
+     const cols = (check.prepare("SELECT name FROM pragma_table_info('mailbox')").all() as Array<{ name: string }>).map((c) => c.name);
+     assert.ok(cols.includes("urgency"));
+     assert.ok(cols.includes("priority"));
+diff --git a/v2/daemon/src/championHomes.ts b/v2/daemon/src/championHomes.ts
+index bc282679..a0bd7d6e 100644
+--- a/v2/daemon/src/championHomes.ts
++++ b/v2/daemon/src/championHomes.ts
+@@ -1,6 +1,6 @@
+ import { spawn } from "node:child_process";
+ import { createHash } from "node:crypto";
+-import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
++import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+ import { rm, readdir, stat } from "node:fs/promises";
+ import { basename, dirname } from "node:path";
+ import { join, relative } from "node:path";
+@@ -253,27 +253,61 @@ export class ChampionHomeSync {
+       return null;
+     }
+     this.lastAt.set(championId, this.deps.now());
++    const outcome = await this.bundleNow(champion);
++    if (outcome.error != null) {
++      this.deps.log(`champion.home.push_failed id=${championId} err=${JSON.stringify(outcome.error)} ms=${outcome.ms}`);
++      return null;
++    }
++    if (outcome.refused) {
++      this.deps.log(`champion.home.push_refused id=${championId} reason=${outcome.refused.reason}${outcome.refused.paths.length > 0 ? ` paths=${JSON.stringify(outcome.refused.paths.slice(0, 20))}` : ""} ms=${outcome.ms}`);
++      return null;
++    }
++    return outcome.row;
++  }
++
++  /** Bundle the home as it is now and record the pointer; the caller decides whether the home is quiet. */
++  async bundleNow(champion: ChampionRow): Promise<{ row: ChampionHomeObjectRow | null; refused: { reason: "secrets" | "torn"; paths: string[] } | null; error: string | null; ms: number }> {
++    const store = this.deps.store();
+     const started = Date.now();
+     try {
+       const outcome = await this.runWorker<HomeBundleResult>({ kind: "bundleHome", home: champion.home, storeRoot: this.deps.root, maxFileBytes: this.deps.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES, includeSecrets: this.deps.includeSecrets ?? false } satisfies HomeBundleRequest);
+       if (outcome.error != null) throw new Error(outcome.error);
+-      if (outcome.refused) {
+-        this.deps.log(`champion.home.push_refused id=${championId} reason=${outcome.refused.reason}${outcome.refused.paths.length > 0 ? ` paths=${JSON.stringify(outcome.refused.paths.slice(0, 20))}` : ""} ms=${Date.now() - started}`);
+-        return null;
+-      }
++      if (outcome.refused) return { row: null, refused: outcome.refused, error: null, ms: Date.now() - started };
+       const bundle = outcome.bundle!;
+-      const latest = store.latestChampionHomeObject(championId);
++      const latest = store.latestChampionHomeObject(champion.id);
+       if (latest && latest.ref === bundle.ref && latest.epoch === champion.epoch) {
+-        this.deps.log(`champion.home.unchanged id=${championId} ref=${bundle.ref} ms=${Date.now() - started}`);
+-        return latest;
++        this.deps.log(`champion.home.unchanged id=${champion.id} ref=${bundle.ref} ms=${Date.now() - started}`);
++        return { row: latest, refused: null, error: null, ms: Date.now() - started };
+       }
+-      const row = store.putChampionHomeObject({ championId, ref: bundle.ref, bytes: bundle.bytes, size: bundle.size, files: bundle.files, skipped: bundle.skipped.length, closedAt: this.deps.now(), epoch: champion.epoch });
+-      this.deps.log(`champion.home.pushed id=${championId} epoch=${champion.epoch} ref=${bundle.ref} bytes=${bundle.bytes} size=${bundle.size} files=${bundle.files} skipped=${bundle.skipped.length}${bundle.skipped.length > 0 ? ` skipped_paths=${JSON.stringify(bundle.skipped.slice(0, 20))}` : ""} ms=${Date.now() - started}`);
+-      return row;
++      const row = store.putChampionHomeObject({ championId: champion.id, ref: bundle.ref, bytes: bundle.bytes, size: bundle.size, files: bundle.files, skipped: bundle.skipped.length, closedAt: this.deps.now(), epoch: champion.epoch });
++      this.deps.log(`champion.home.pushed id=${champion.id} epoch=${champion.epoch} ref=${bundle.ref} bytes=${bundle.bytes} size=${bundle.size} files=${bundle.files} skipped=${bundle.skipped.length}${bundle.skipped.length > 0 ? ` skipped_paths=${JSON.stringify(bundle.skipped.slice(0, 20))}` : ""} ms=${Date.now() - started}`);
++      return { row, refused: null, error: null, ms: Date.now() - started };
+     } catch (err) {
+-      this.deps.log(`champion.home.push_failed id=${championId} err=${JSON.stringify(err instanceof Error ? err.message : String(err))} ms=${Date.now() - started}`);
+-      return null;
++      return { row: null, refused: null, error: err instanceof Error ? err.message : String(err), ms: Date.now() - started };
++    }
++  }
++
++  /** Put a bundle another executor handed over into this store under its content ref. */
++  adopt(ref: string, bytes: Buffer): { created: boolean } {
++    if (createHash("sha256").update(bytes).digest("hex") !== ref) throw new Error(`champion home bytes do not hash to ${ref}`);
++    const target = championHomeObjectPath(this.deps.root, ref);
++    if (existsSync(target)) return { created: false };
++    mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
++    const temporary = `${target}.${process.pid}-${Date.now()}.partial`;
++    writeFileSync(temporary, bytes, { mode: 0o600 });
++    const fd = openSync(temporary, "r");
++    try {
++      fsyncSync(fd);
++    } finally {
++      closeSync(fd);
+     }
++    renameSync(temporary, target);
++    return { created: true };
++  }
++
++  objectBytes(ref: string): Buffer | null {
++    const path = championHomeObjectPath(this.deps.root, ref);
++    return existsSync(path) ? readFileSync(path) : null;
+   }
+ 
+   status(): ChampionHomesStatus | null {
+diff --git a/v2/daemon/src/config.ts b/v2/daemon/src/config.ts
+index 12e39d9a..9db07cdb 100644
+--- a/v2/daemon/src/config.ts
++++ b/v2/daemon/src/config.ts
+@@ -378,22 +378,18 @@ export function transcriptSegmentsOf(raw: unknown, dataDir: string): ResolvedTra
+ }
+ 
+ export interface ChampionsConfig {
+-  enabled?: boolean;
+-  homeSync?: boolean;
+   homeSyncIncludeSecrets?: boolean;
+   homesDir?: string;
+ }
+ 
+ export interface ResolvedChampions {
+-  enabled: boolean;
+-  homeSync: boolean;
+   homeSyncIncludeSecrets: boolean;
+   homesDir: string;
+   warnings: string[];
+ }
+ 
+ export function championsOf(raw: unknown, dataDir: string): ResolvedChampions {
+-  const out: ResolvedChampions = { enabled: false, homeSync: false, homeSyncIncludeSecrets: false, homesDir: join(dataDir, "champions"), warnings: [] };
++  const out: ResolvedChampions = { homeSyncIncludeSecrets: false, homesDir: join(dataDir, "champions"), warnings: [] };
+   if (raw === undefined) return out;
+   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+     out.warnings.push(`champions must be an object, got ${JSON.stringify(raw)}; using defaults`);
+@@ -401,14 +397,6 @@ export function championsOf(raw: unknown, dataDir: string): ResolvedChampions {
+   }
+   const c = raw as Record<string, unknown>;
+   const warn = (key: string, expected: string) => out.warnings.push(`champions.${key} must be ${expected}, got ${JSON.stringify(c[key])}; using the default`);
+-  if (c.enabled !== undefined) {
+-    if (typeof c.enabled === "boolean") out.enabled = c.enabled;
+-    else warn("enabled", "a boolean");
+-  }
+-  if (c.homeSync !== undefined) {
+-    if (typeof c.homeSync === "boolean") out.homeSync = c.homeSync;
+-    else warn("homeSync", "a boolean");
+-  }
+   if (c.homeSyncIncludeSecrets !== undefined) {
+     if (typeof c.homeSyncIncludeSecrets === "boolean") out.homeSyncIncludeSecrets = c.homeSyncIncludeSecrets;
+     else warn("homeSyncIncludeSecrets", "a boolean");
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 9aa439f6..93b4d8a9 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -371,6 +371,8 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
+   type ChampionArchiveResult,
+   type ChampionDeleteResult,
+   type ChampionFenceResult,
++  type ChampionExportResult,
++  CHAMPION_HOME_BYTES_MAX,
+   type BeeResumeBundlesResult,
+   type BeeImportDescriptor,
+   type BeeImportResume,
+@@ -1088,7 +1090,7 @@ export class HiveDaemon {
+     for (const warning of this.cfg.cellRetention.warnings) this.log(`config.retention.invalid ${warning}`);
+     for (const warning of this.cfg.transcriptSegments.warnings) this.log(`config.transcripts.invalid ${warning}`);
+     for (const warning of this.cfg.champions.warnings) this.log(`config.champions.invalid ${warning}`);
+-    if (this.cfg.champions.enabled) this.log(`champions.enabled homes=${this.cfg.champions.homesDir} home_sync=${this.cfg.champions.homeSync} store=${this.cfg.transcriptSegments.storeDir}`);
++    this.log(`champions homes=${this.cfg.champions.homesDir} store=${this.cfg.transcriptSegments.storeDir}`);
+     for (const warning of this.cfg.durability.warnings) this.log(`config.durability.invalid ${warning}`);
+     if (this.cfg.durability.resumeBundle.enabled) {
+       const keyFile = this.cfg.durability.resumeBundle.keyFile;
+@@ -1116,18 +1118,16 @@ export class HiveDaemon {
+       });
+       this.log(`durability.resume_bundle.enabled store=${this.cfg.transcriptSegments.storeDir} key_file=${keyFile} keep=${this.cfg.durability.resumeBundle.keep}`);
+     }
+-    if (this.cfg.champions.enabled && this.cfg.champions.homeSync) {
+-      this.championHomes = new ChampionHomeSync({
+-        store: () => this.mustStore(),
+-        root: this.cfg.transcriptSegments.storeDir,
+-        now: () => Date.now(),
+-        log: (op) => this.log(op),
+-        maxFileBytes: this.cfg.cellRetention.wipMaxFileBytes,
+-        includeSecrets: this.cfg.champions.homeSyncIncludeSecrets,
+-        ...(this.deps.championHomeMinIntervalMs !== undefined ? { minIntervalMs: this.deps.championHomeMinIntervalMs } : {}),
+-        ...(this.deps.championStaleHomeRetentionMs !== undefined ? { staleHomeRetentionMs: this.deps.championStaleHomeRetentionMs } : {}),
+-      });
+-    }
++    this.championHomes = new ChampionHomeSync({
++      store: () => this.mustStore(),
++      root: this.cfg.transcriptSegments.storeDir,
++      now: () => Date.now(),
++      log: (op) => this.log(op),
++      maxFileBytes: this.cfg.cellRetention.wipMaxFileBytes,
++      includeSecrets: this.cfg.champions.homeSyncIncludeSecrets,
++      ...(this.deps.championHomeMinIntervalMs !== undefined ? { minIntervalMs: this.deps.championHomeMinIntervalMs } : {}),
++      ...(this.deps.championStaleHomeRetentionMs !== undefined ? { staleHomeRetentionMs: this.deps.championStaleHomeRetentionMs } : {}),
++    });
+     this.transcriptObjects = createDirectoryTranscriptObjectStore(this.cfg.transcriptSegments.storeDir);
+     this.segmenter = new TranscriptSegmenter({
+       store: () => this.mustStore(),
+@@ -2204,6 +2204,7 @@ export class HiveDaemon {
+       case "humanRef.registry.reserve":
+         return this.mustStore().reserveHumanRefNamespace(this.param(params, "installationId"));
+       case "spawn":
++        if (params.kind !== undefined) throw new RpcError("invalid_request", "spawn: kind is set by champion.start, never by the caller");
+         this.assertApiaryTagWriter(verb, params);
+         // The start command is due now; do not wait out the tick cadence.
+         return this.releasingRefusedClaim(() => this.rpcSpawnEffect(this.authenticatedSpawnParams(params, conn))).then((result) => { this.requestTick(); return result; });
+@@ -2707,6 +2708,8 @@ export class HiveDaemon {
+         return this.withIdempotency(verb, params, () => this.rpcChampionDelete(params));
+       case "champion.fence":
+         return this.withIdempotency(verb, params, () => this.rpcChampionFence(params));
++      case "champion.export":
++        return this.rpcChampionExport(params);
+       case "bee.import":
+         return this.rpcBeeImport(params);
+       case "bee.fence":
+@@ -3795,6 +3798,7 @@ export class HiveDaemon {
+       spawnProvenance: params.spawnProvenance as import("../../core/src/store.ts").CreateBeeInput["spawnProvenance"],
+       env: { ...requestedEnv, ...accountEnv },
+       ...(account ? { account: account.id } : {}),
++      ...(params.kind === "champion" ? { kind: "champion" as const } : {}),
+     });
+     if (execution) store.checkSpawnPreparation(execution, "consume_account_claim");
+     if (claim) this.consumeAccountClaim(claim, created.id);
+@@ -6637,13 +6641,13 @@ export class HiveDaemon {
+   }
+ 
+   private syncChampionHome(beeId: string): void {
+-    if (!this.championHomes) return;
+     const champion = this.store?.getChampionByBee(beeId);
+-    if (champion && champion.archivedAt == null) this.championHomes.requestSync(champion.id);
++    if (champion && champion.archivedAt == null) this.mustChampionHomes().requestSync(champion.id);
+   }
+ 
+-  private requireChampions(verb: string): void {
+-    if (!this.cfg.champions.enabled) throw new RpcError("capability_missing", `${verb}: champions are not enabled on this node (config champions.enabled)`);
++  private mustChampionHomes(): ChampionHomeSync {
++    if (!this.championHomes) throw new Error("champion home sync is not started");
++    return this.championHomes;
+   }
+ 
+   private requireChampion(verb: string, params: Record<string, unknown>): ChampionRow {
+@@ -6667,7 +6671,6 @@ export class HiveDaemon {
+   }
+ 
+   private assertNotChampionIncarnation(verb: string, beeId: string): void {
+-    if (!this.cfg.champions.enabled) return;
+     const champion = this.mustStore().getChampionByBee(beeId);
+     if (champion && champion.archivedAt == null) {
+       throw new RpcError("invalid_request", `${verb}: bee ${beeId} is the current incarnation of Champion ${champion.id}; use champion.archive`);
+@@ -6682,7 +6685,6 @@ export class HiveDaemon {
+   }
+ 
+   private rpcChampionPut(params: Record<string, unknown>): ChampionPutResult {
+-    this.requireChampions("champion.put");
+     const store = this.mustStore();
+     const name = this.param(params, "name").trim();
+     if (name.length === 0 || name.length > 80) throw new RpcError("invalid_request", "champion.put: name must be 1..80 characters");
+@@ -6738,7 +6740,6 @@ export class HiveDaemon {
+   }
+ 
+   private async rpcChampionStart(params: Record<string, unknown>): Promise<ChampionStartResult> {
+-    this.requireChampions("champion.start");
+     const store = this.mustStore();
+     const champion = this.requireChampion("champion.start", params);
+     if (champion.archivedAt != null) throw new RpcError("invalid_request", `champion.start: ${champion.id} is archived; champion.put {archived:false} first`);
+@@ -6752,6 +6753,22 @@ export class HiveDaemon {
+     if (homeRef != null && !/^[a-f0-9]{64}$/.test(homeRef)) throw new RpcError("invalid_request", "champion.start: homeRef must be a sha256 object reference");
+     const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
+     const handover = handoverEpoch !== null && homeRef != null;
++    let homeBytes: Buffer | null = null;
++    if (params.homeBytes !== undefined && params.homeBytes !== null) {
++      if (!handover) throw new RpcError("invalid_request", "champion.start: homeBytes needs homeRef and epoch (the handover from the executor that owned the home)");
++      if (typeof params.homeBytes !== "string" || params.homeBytes.length > Math.ceil(CHAMPION_HOME_BYTES_MAX / 3) * 4) throw new RpcError("invalid_request", `champion.start: homeBytes must be base64 of at most ${CHAMPION_HOME_BYTES_MAX} bytes`);
++      homeBytes = Buffer.from(params.homeBytes, "base64");
++      if (homeBytes.length === 0 || homeBytes.length > CHAMPION_HOME_BYTES_MAX) throw new RpcError("invalid_request", `champion.start: homeBytes must decode to 1..${CHAMPION_HOME_BYTES_MAX} bytes`);
++      if (createHash("sha256").update(homeBytes).digest("hex") !== homeRef) throw new RpcError("invalid_request", "champion.start: homeBytes do not hash to homeRef");
++    }
++    const template = champion.templateId ? store.getTemplate(champion.templateId) : null;
++    if (champion.templateId && !template) throw new RpcError("invalid_request", `champion.start: ${champion.id} binds template ${champion.templateId}, which no longer exists; rebind with champion.put`);
++    const homes = this.mustChampionHomes();
++    if (homeBytes && homeRef) {
++      const adopted = homes.adopt(homeRef, homeBytes);
++      this.log(`champion.home.adopted id=${champion.id} ref=${homeRef} bytes=${homeBytes.length} created=${adopted.created}`);
++    }
++    if (homeRef != null && !homes.describe(homeRef)) throw new RpcError("invalid_request", `champion.start: home object ${homeRef} is not in the object store ${homes.root}; hand it over as homeBytes`);
+     let replacedBeeId: string | null = null;
+     if (current && current.lifecycle !== "deleted" && !handover) {
+       const runtime = store.currentRuntime(current.id);
+@@ -6771,8 +6788,6 @@ export class HiveDaemon {
+       replacedBeeId = current.id;
+       this.log(`champion.start id=${champion.id} handover epoch=${handoverEpoch} replaces=${current.id}`);
+     }
+-    const template = champion.templateId ? store.getTemplate(champion.templateId) : null;
+-    if (champion.templateId && !template) throw new RpcError("invalid_request", `champion.start: ${champion.id} binds template ${champion.templateId}, which no longer exists; rebind with champion.put`);
+     const owned = handoverEpoch !== null ? store.takeoverChampion(champion.id, handoverEpoch) : champion;
+     const restore = await this.restoreChampionHome(owned, homeRef, handoverEpoch, handover);
+     const homeRestored = restore.restored;
+@@ -6782,6 +6797,7 @@ export class HiveDaemon {
+       name: champion.name,
+       agent: champion.agent,
+       cwd: champion.home,
++      kind: "champion",
+       tags: [...new Set([...(template?.tags ?? []), `apiary:champion=${champion.id}`, "apiary:role=champion"])],
+       env: { ...(template?.env ?? {}), HIVE_CHAMPION_ID: champion.id, HIVE_CHAMPION_HOME: champion.home },
+       args: this.championSpawnArgs(champion, template),
+@@ -6797,7 +6813,6 @@ export class HiveDaemon {
+   }
+ 
+   private rpcChampionFence(params: Record<string, unknown>): ChampionFenceResult {
+-    this.requireChampions("champion.fence");
+     const store = this.mustStore();
+     const champion = this.requireChampion("champion.fence", params);
+     const epoch = params.epoch;
+@@ -6813,10 +6828,7 @@ export class HiveDaemon {
+   }
+ 
+   private async restoreChampionHome(champion: ChampionRow, homeRef: string | null, handoverEpoch: number | null, handover: boolean): Promise<{ restored: boolean; skipped: ChampionStartResult["restoreSkipped"] }> {
+-    if (!this.cfg.champions.homeSync || !this.championHomes) {
+-      if (homeRef != null) throw new RpcError("invalid_request", "champion.start: homeRef needs champions.homeSync on this node");
+-      return { restored: false, skipped: "home_sync_off" };
+-    }
++    const homes = this.mustChampionHomes();
+     try {
+       const entries = readdirSync(champion.home).filter((entry) => entry !== "MEMORY.md" && entry !== "memory");
+       const memory = join(champion.home, "MEMORY.md");
+@@ -6836,8 +6848,8 @@ export class HiveDaemon {
+       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+     }
+     const store = this.mustStore();
+-    const pointed = homeRef != null ? this.championHomes.describe(homeRef) : null;
+-    if (homeRef != null && !pointed) throw new RpcError("invalid_request", `champion.start: home object ${homeRef} is not in the object store ${this.championHomes.root}`);
++    const pointed = homeRef != null ? homes.describe(homeRef) : null;
++    if (homeRef != null && !pointed) throw new RpcError("invalid_request", `champion.start: home object ${homeRef} is not in the object store ${homes.root}; hand it over as homeBytes`);
+     const latest = pointed ? { ...pointed, epoch: handoverEpoch ?? champion.epoch } : store.latestChampionHomeObject(champion.id);
+     if (!latest) {
+       this.log(`champion.home.restore_skipped id=${champion.id} reason=no_bundle`);
+@@ -6847,7 +6859,7 @@ export class HiveDaemon {
+       this.log(`champion.home.restore_skipped id=${champion.id} reason=stale_epoch bundle_epoch=${latest.epoch} epoch=${champion.epoch} ref=${latest.ref}`);
+       return { restored: false, skipped: "stale_epoch" };
+     }
+-    const restored = await this.championHomes.restore(champion, latest);
++    const restored = await homes.restore(champion, latest);
+     if (restored && pointed && !store.listChampionHomeObjects(champion.id, { limit: 1000 }).some((o) => o.ref === pointed.ref)) {
+       store.putChampionHomeObject({ championId: champion.id, ref: pointed.ref, bytes: pointed.bytes, size: pointed.size, files: pointed.files, skipped: pointed.skipped, closedAt: Date.now(), epoch: latest.epoch });
+     }
+@@ -6855,8 +6867,30 @@ export class HiveDaemon {
+     return { restored, skipped: restored ? null : "restore_failed" };
+   }
+ 
++  private async rpcChampionExport(params: Record<string, unknown>): Promise<ChampionExportResult> {
++    const store = this.mustStore();
++    const champion = this.requireChampion("champion.export", params);
++    const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
++    const runtime = current ? store.currentRuntime(current.id) : null;
++    if (current && runtime != null && runtime.state !== "stopped") throw new RpcError("runtime_refused", `champion.export: incarnation ${current.id} is ${runtime.state}; stop it (or champion.fence) first so the home is quiet`, { beeId: current.id, runtimeState: runtime.state });
++    const template = champion.templateId ? store.getTemplate(champion.templateId) : null;
++    const homes = this.mustChampionHomes();
++    const taken = existsSync(champion.home) && champion.fencedAt == null ? await homes.bundleNow(champion) : null;
++    if (taken?.refused) throw new RpcError("invalid_request", taken.refused.reason === "secrets" ? `champion.export: home ${champion.home} holds credential-like files; remove them or set champions.homeSyncIncludeSecrets` : `champion.export: home ${champion.home} changed while it was being bundled; retry`, { reason: taken.refused.reason, paths: taken.refused.paths.slice(0, 20) });
++    if (taken?.error != null) throw new RpcError("invalid_request", `champion.export: cannot bundle ${champion.home}: ${taken.error}`);
++    const home = taken?.row ?? store.latestChampionHomeObject(champion.id);
++    if (!home) {
++      this.log(`champion.export id=${champion.id} home=none`);
++      return { champion, template, home: null, homeBytes: null };
++    }
++    const bytes = homes.objectBytes(home.ref);
++    if (!bytes) throw new RpcError("invalid_request", `champion.export: home object ${home.ref} is missing from ${homes.root}`);
++    if (bytes.length > CHAMPION_HOME_BYTES_MAX) throw new RpcError("invalid_request", `champion.export: the home bundle is ${bytes.length} bytes, over the ${CHAMPION_HOME_BYTES_MAX} byte frame limit`, { bytes: bytes.length, ref: home.ref });
++    this.log(`champion.export id=${champion.id} ref=${home.ref} bytes=${bytes.length} epoch=${home.epoch} fresh=${taken?.row != null && taken.row.id === home.id}${champion.fencedAt != null ? " fenced=true" : ""}`);
++    return { champion, template, home, homeBytes: bytes.toString("base64") };
++  }
++
+   private rpcChampionArchive(params: Record<string, unknown>): ChampionArchiveResult {
+-    this.requireChampions("champion.archive");
+     const store = this.mustStore();
+     const champion = this.requireChampion("champion.archive", params);
+     let commandId: number | null = null;
+@@ -6868,7 +6902,6 @@ export class HiveDaemon {
+   }
+ 
+   private rpcChampionDelete(params: Record<string, unknown>): ChampionDeleteResult {
+-    this.requireChampions("champion.delete");
+     const store = this.mustStore();
+     const champion = this.requireChampion("champion.delete", params);
+     const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
+@@ -6957,7 +6990,7 @@ export class HiveDaemon {
+       capacity: this.retention?.capacity(true) ?? null,
+       transcriptSegments: this.transcriptSegmentsStatus(),
+       ...(this.resumeSync ? { resumeBundles: this.resumeSync.status() } : {}),
+-      ...(this.cfg.champions.enabled ? { champions: { enabled: true, homeSync: this.cfg.champions.homeSync, homes: this.championHomes?.status() ?? null } } : {}),
++      champions: { enabled: true, homeSync: true, homes: this.championHomes?.status() ?? null },
+     };
+   }
+ 
+@@ -7080,7 +7113,7 @@ export class HiveDaemon {
+       views: store.listBeeViewRows().map((row) => ({ ...row, bee: includeOperatorLocalHomes ? operatorLocalBee(row.bee) : mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
+       capacity,
+       templates: store.listTemplates(),
+-      ...(this.cfg.champions.enabled ? { champions: store.listChampions() } : {}),
++      ...(store.listChampions().length > 0 ? { champions: store.listChampions() } : {}),
+       tells: store.listTells(),
+       reactions: store.listReactions(),
+       questions: store.listQuestions(),
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 293763d9..563a9081 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -209,6 +209,15 @@ export const DAEMON_CAPABILITIES = [
+   "transcript.segments.v1",
+   "transcript.segments.v2",
+   "champions.v1",
++  /**
++   * v57 (M-H5): the Champion bee kind is complete and always on. Bee rows carry
++   * `kind` (`agent` | `champion`); `champion.export` hands out the quiet home as
++   * a bundle (`homeBytes`) with the identity and its template; `champion.start`
++   * takes `homeBytes` beside `homeRef` + `epoch` so a handover needs no shared
++   * object store between executors. The `champions.enabled` / `homeSync` config
++   * flags are gone: the verbs work and homes bundle on every node.
++   */
++  "champions.v2",
+   "bee.resume_bundle.v1",
+   /**
+    * v23 (2026-09-13): durable session handoff — `bee.handoff` /
+@@ -566,6 +575,7 @@ export const RPC_VERBS = [
+   "champion.archive",
+   "champion.delete",
+   "champion.fence",
++  "champion.export",
+   "bee.resumeBundles",
+   "bee.import",
+   "bee.fence",
+@@ -1992,7 +2002,7 @@ export interface ChampionStartResult extends DedupMarkers {
+   messageId: number | null;
+   started: "spawned" | "revived" | "running";
+   homeRestored: boolean;
+-  restoreSkipped: "home_not_empty" | "no_bundle" | "stale_epoch" | "restore_failed" | "home_sync_off" | null;
++  restoreSkipped: "home_not_empty" | "no_bundle" | "stale_epoch" | "restore_failed" | null;
+   epoch: number;
+   replacedBeeId: string | null;
+ }
+@@ -2012,6 +2022,18 @@ export interface ChampionFenceResult extends DedupMarkers {
+   stopped: boolean;
+ }
+ 
++/** Largest home bundle `champion.export` answers and `champion.start` accepts in one frame. */
++export const CHAMPION_HOME_BYTES_MAX = 32 * 1024 * 1024;
++
++export interface ChampionExportResult {
++  champion: MirrorChampionRow;
++  template: MirrorTemplateRow | null;
++  /** The pointer row of the bundle carried in `homeBytes`; null when the home was never bundled and is empty. */
++  home: ChampionHomeObjectRow | null;
++  /** base64 of the zstd tar object; its sha256 is `home.ref`. */
++  homeBytes: string | null;
++}
++
+ export interface TranscriptSegmentsResult {
+   beeId: string;
+   segments: TranscriptSegmentObjectRow[];
+diff --git a/v2/daemon/src/rpcAccess.ts b/v2/daemon/src/rpcAccess.ts
+index 352b27f4..5aa7c1dc 100644
+--- a/v2/daemon/src/rpcAccess.ts
++++ b/v2/daemon/src/rpcAccess.ts
+@@ -49,6 +49,7 @@ export const RPC_ACCESS = {
+   "champion.archive": "mutate",
+   "champion.delete": "mutate",
+   "champion.fence": "mutate",
++  "champion.export": "mutate",
+   "bee.resumeBundles": "read",
+   "bee.import": "mutate",
+   "bee.fence": "mutate",
+diff --git a/v2/daemon/tests/auto-title-membership-cache.test.ts b/v2/daemon/tests/auto-title-membership-cache.test.ts
+index 747fe7b2..3cf89f03 100644
+--- a/v2/daemon/tests/auto-title-membership-cache.test.ts
++++ b/v2/daemon/tests/auto-title-membership-cache.test.ts
+@@ -569,6 +569,7 @@ test("general dependencies retain exact callback order during synchronous reentr
+     tags: [],
+     sessionLogPath: null,
+     lifecycle: "active",
++    kind: "agent",
+     createdAt: 1,
+     archivedAt: null,
+     lastOutputAt: null,
+diff --git a/v2/daemon/tests/autoTitle.test.ts b/v2/daemon/tests/autoTitle.test.ts
+index 500acada..4fd6a196 100644
+--- a/v2/daemon/tests/autoTitle.test.ts
++++ b/v2/daemon/tests/autoTitle.test.ts
+@@ -23,6 +23,7 @@ function bee(overrides: Partial<BeeRow> = {}): BeeRow {
+     tags: [],
+     sessionLogPath: null,
+     lifecycle: "active",
++    kind: "agent",
+     createdAt: 1,
+     archivedAt: null,
+     lastOutputAt: 2,
+diff --git a/v2/daemon/tests/champions.test.ts b/v2/daemon/tests/champions.test.ts
+index 733c523e..2128184d 100644
+--- a/v2/daemon/tests/champions.test.ts
++++ b/v2/daemon/tests/champions.test.ts
+@@ -1,11 +1,12 @@
+ /**
+- * H5 Champions in the REAL daemon: the verbs refuse while the flag is off; a
+- * champion.put prepares an immutable home; champion.start spawns the
+- * incarnation in that home with the Apiary tags and binds it; the bee's
+- * direct archive is refused (resident lifecycle); a turn end bundles the home
+- * into the object store; a second daemon sharing that store restores the home
+- * before its first runtime (executor swap by revive); archive and delete keep
+- * the home. Temp dirs and stub agents only.
++ * H5 Champions in the REAL daemon: the verbs and the champions.v2 tag are
++ * published on every node; a champion.put prepares an immutable home;
++ * champion.start spawns the incarnation (bee kind `champion`) in that home
++ * with the Apiary tags and binds it; the bee's direct archive is refused
++ * (resident lifecycle); a turn end bundles the home into the object store; a
++ * second daemon sharing that store restores the home before its first runtime
++ * (executor swap by revive); archive and delete keep the home. Temp dirs and
++ * stub agents only.
+  */
+ import { test } from "node:test";
+ import assert from "node:assert/strict";
+@@ -48,9 +49,10 @@ async function idle(client: RpcClient, beeId: string): Promise<ViewResult> {
+   }, "idle", 60_000);
+ }
+ 
+-test("champions.0: verbs and capability are published; everything but list/get refuses while the flag is off", { timeout: 120_000 }, async () => {
+-  for (const verb of ["champion.put", "champion.get", "champion.list", "champion.start", "champion.archive", "champion.delete"]) assert.ok(RPC_VERBS.includes(verb as (typeof RPC_VERBS)[number]), verb);
++test("champions.0: verbs and capabilities are published; a node with no Champions answers empty and its snapshot carries no champions table", { timeout: 120_000 }, async () => {
++  for (const verb of ["champion.put", "champion.get", "champion.list", "champion.start", "champion.archive", "champion.delete", "champion.fence", "champion.export"]) assert.ok(RPC_VERBS.includes(verb as (typeof RPC_VERBS)[number]), verb);
+   assert.ok(DAEMON_CAPABILITIES.includes("champions.v1"));
++  assert.ok(DAEMON_CAPABILITIES.includes("champions.v2"));
+   const root = mkdtempSync(join(tmpdir(), "hb-v2-champ-off-"));
+   const rig = makeRig(root, {}, join(root, "objects"));
+   let daemon: DaemonHandle | null = null;
+@@ -58,9 +60,10 @@ test("champions.0: verbs and capability are published; everything but list/get r
+     daemon = await startDaemon(rig.dir);
+     const client = await daemon.client();
+     assert.deepEqual(await client.request<ChampionListResult>("champion.list", {}), { champions: [] });
+-    await assert.rejects(client.request("champion.put", { name: "Vera", agent: "cellstub", idempotencyKey: "p1" }), (err: unknown) => err instanceof RpcError && err.code === "capability_missing");
++    await assert.rejects(client.request("champion.start", { id: "nobody", idempotencyKey: "s1" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && /unknown champion/.test(err.message));
++    await assert.rejects(client.request("spawn", { name: "fake", agent: "cellstub", cwd: root, kind: "champion" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && /champion\.start/.test(err.message));
+     const snapshot = await client.request<SnapshotResult>("snapshot", {});
+-    assert.equal(snapshot.champions, undefined, "the snapshot carries no champions table while the flag is off");
++    assert.equal(snapshot.champions, undefined, "the snapshot carries no champions table while no Champion exists");
+   } finally {
+     await daemon?.stop();
+     rig.cleanup();
+@@ -72,8 +75,8 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
+   const root = mkdtempSync(join(tmpdir(), "hb-v2-champ-"));
+   const objects = join(root, "shared-objects");
+   mkdirSync(objects, { recursive: true });
+-  const rigA = makeRig(root, { enabled: true, homeSync: true, homesDir: join(root, "homes-a") }, objects);
+-  const rigB = makeRig(root, { enabled: true, homeSync: true, homesDir: join(root, "homes-b") }, objects);
++  const rigA = makeRig(root, { homesDir: join(root, "homes-a") }, objects);
++  const rigB = makeRig(root, { homesDir: join(root, "homes-b") }, objects);
+   let a: DaemonHandle | null = null;
+   let b: DaemonHandle | null = null;
+   try {
+@@ -108,6 +111,7 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
+     const view = await idle(client, started.beeId);
+     assert.equal(view.bee?.cwd, put.champion.home, "the incarnation runs in the Champion's home");
+     assert.ok(view.bee?.tags.includes("apiary:champion=vera-lund") && view.bee?.tags.includes("apiary:role=champion"), JSON.stringify(view.bee?.tags));
++    assert.equal(view.bee?.kind, "champion", "the incarnation is a champion-kind bee");
+     assert.deepEqual(view.bee?.args, ["--model", "stub-1"]);
+     const got = await client.request<ChampionGetResult>("champion.get", { id: "vera-lund" });
+     assert.equal(got.champion.currentBeeId, started.beeId);
+diff --git a/v2/daemon/tests/config.test.ts b/v2/daemon/tests/config.test.ts
+index 9c079efc..666084d3 100644
+--- a/v2/daemon/tests/config.test.ts
++++ b/v2/daemon/tests/config.test.ts
+@@ -539,14 +539,13 @@ test("transcripts.segments: a data-dir store by default, every key validated wit
+ 
+ test("config: champions resolves defaults, paths and invalid values", () => {
+   const defaults = championsOf(undefined, "/data");
+-  assert.deepEqual(defaults, { enabled: false, homeSync: false, homeSyncIncludeSecrets: false, homesDir: "/data/champions", warnings: [] });
+-  const on = championsOf({ enabled: true, homeSync: true, homesDir: "~/crew" }, "/data");
+-  assert.equal(on.enabled, true);
+-  assert.equal(on.homeSync, true);
++  assert.deepEqual(defaults, { homeSyncIncludeSecrets: false, homesDir: "/data/champions", warnings: [] });
++  const on = championsOf({ homeSyncIncludeSecrets: true, homesDir: "~/crew" }, "/data");
++  assert.equal(on.homeSyncIncludeSecrets, true);
+   assert.ok(on.homesDir.endsWith("/crew") && !on.homesDir.startsWith("~"));
+-  const bad = championsOf({ enabled: "yes", homeSync: 1, homesDir: "relative/dir" }, "/data");
+-  assert.deepEqual([bad.enabled, bad.homeSync, bad.homesDir], [false, false, "/data/champions"]);
+-  assert.equal(bad.warnings.length, 3);
++  const bad = championsOf({ homeSyncIncludeSecrets: "yes", homesDir: "relative/dir" }, "/data");
++  assert.deepEqual([bad.homeSyncIncludeSecrets, bad.homesDir], [false, "/data/champions"]);
++  assert.equal(bad.warnings.length, 2);
+   assert.equal(championsOf("nope", "/data").warnings.length, 1);
+ });
+ 
+diff --git a/v2/daemon/tests/effect-resolve.test.ts b/v2/daemon/tests/effect-resolve.test.ts
+index 1ecc177b..b1cf9da8 100644
+--- a/v2/daemon/tests/effect-resolve.test.ts
++++ b/v2/daemon/tests/effect-resolve.test.ts
+@@ -31,7 +31,7 @@ async function fixture(t: TestContext) {
+   const dir = mkdtempSync(join(tmpdir(), "effect-rpc-")), path = join(dir, "core.sqlite3");
+   let store = openCoreStore(path, { ephemeral: true, maxRpcIdempotencyRows: 2 });
+   const owner = Object.create(HiveDaemon.prototype) as Record<string, unknown>;
+-  Object.assign(owner, { cfg: { dataDir: dir, logPath: join(dir, "log"), agents: { stub: { adapter: "stub" } }, champions: { enabled: false }, rpcLocalTrust: { requireObservationCaller: false, registrationKeyFile: "" } }, store, stopping: false, opLog: [], deps: {}, refusedClaims: new Map(), identityRecovery: new IdentityRecovery(), secretExecutions: new Map() });
++  Object.assign(owner, { cfg: { dataDir: dir, logPath: join(dir, "log"), agents: { stub: { adapter: "stub" } }, rpcLocalTrust: { requireObservationCaller: false, registrationKeyFile: "" } }, store, stopping: false, opLog: [], deps: {}, refusedClaims: new Map(), identityRecovery: new IdentityRecovery(), secretExecutions: new Map() });
+   const calls: string[] = [];
+   const server = new RpcServer({ socketPath: join(dir, "s"), log() {}, dispatch: (verb, params, conn) => { calls.push(verb); return (owner.dispatch as RpcDispatch).call(owner, verb, params, conn); } });
+   await server.listen();

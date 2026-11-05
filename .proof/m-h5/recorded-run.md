@@ -1,0 +1,308 @@
+# M-H5 recorded run 2026-11-05T08:09:31.397Z
+two scratch daemons (executors A and B) under the fixture base, each with its own data dir, socket, HOME, champion homes dir and object store
+
+# A. executor A: the Champion is created, runs in its home, writes memory, and its home is bundled at turn end
+
+## A0 deployInfo on a node with default config: champions are on, the v2 tag is advertised
+```json
+{
+  "capabilities": [
+    "champions.v1",
+    "champions.v2"
+  ],
+  "champions": {
+    "enabled": true,
+    "homeSync": true,
+    "homes": null
+  },
+  "configChampions": {
+    "homesDir": "/tmp/m-h5-69777/homes-a"
+  }
+}
+```
+
+## A1 champion.put: identity, home under this executor's champions dir, template binding
+```json
+{
+  "outcome": "created",
+  "champion": {
+    "id": "vera-lund",
+    "name": "Vera Lund",
+    "agent": "cellstub",
+    "home": "/tmp/m-h5-69777/homes-a/vera-lund",
+    "templateId": "12ee52ea-25a8-4362-be9f-d73fd3af8103",
+    "model": "stub-1",
+    "effort": "high",
+    "currentBeeId": null,
+    "createdAt": 1793866171876,
+    "updatedAt": 1793866171876,
+    "archivedAt": null,
+    "epoch": 0,
+    "fencedAt": null
+  },
+  "homeTree": {
+    "MEMORY.md": "d7870cdadd1ac3b4"
+  }
+}
+```
+
+## A2 champion.start spawns the incarnation: bee kind champion, cwd = home, template args/env/tags plus the Champion's
+```json
+{
+  "started": {
+    "beeId": "cf92e1a8-ced6-4a97-84ae-7070b5bbc014",
+    "commandId": 1,
+    "messageId": 1,
+    "started": "spawned",
+    "homeRestored": false,
+    "restoreSkipped": "no_bundle",
+    "epoch": 0,
+    "replacedBeeId": null
+  },
+  "ms": 5.8,
+  "bee": {
+    "id": "cf92e1a8-ced6-4a97-84ae-7070b5bbc014",
+    "kind": "champion",
+    "cwd": "/tmp/m-h5-69777/homes-a/vera-lund",
+    "tags": [
+      "team:crew",
+      "apiary:champion=vera-lund",
+      "apiary:role=champion"
+    ],
+    "args": [
+      "--model",
+      "stub-1",
+      "--effort",
+      "high"
+    ],
+    "envKeys": [
+      "CREW_ROLE",
+      "HIVE_CHAMPION_HOME",
+      "HIVE_CHAMPION_ID"
+    ],
+    "agent": "cellstub",
+    "name": "Vera Lund"
+  },
+  "runtime": "idle"
+}
+```
+
+## A3 resident lifecycle: an ordinary spawn is kind agent; the incarnation cannot be archived, deleted or exported out from under the Champion
+```json
+{
+  "ordinaryKind": "agent",
+  "refusals": {
+    "spawn with kind: champion from a caller": "invalid_request: spawn: kind is set by champion.start, never by the caller",
+    "archive the incarnation directly": "invalid_request: archive: bee cf92e1a8-ced6-4a97-84ae-7070b5bbc014 is the current incarnation of Champion vera-lund; use champion.archive",
+    "delete the incarnation directly": "invalid_request: delete: bee cf92e1a8-ced6-4a97-84ae-7070b5bbc014 is the current incarnation of Champion vera-lund; use champion.archive",
+    "template.delete while bound": "invalid_request: template.delete: template 12ee52ea-25a8-4362-be9f-d73fd3af8103 is bound by Champion(s) vera-lund; rebind them with champion.put first",
+    "champion.export while the incarnation runs": "runtime_refused: champion.export: incarnation cf92e1a8-ced6-4a97-84ae-7070b5bbc014 is running; stop it (or champion.fence) first so the home is quiet",
+    "champion.start on the live incarnation": "running"
+  }
+}
+```
+
+## A4 the turn end bundled the home into A's own object store
+```json
+{
+  "homeTree": {
+    "MEMORY.md": "4471ef659c27b659",
+    "blob.bin": "22c9fc390adea9d4",
+    "memory/lab.md": "e94dc8af5d2e9b67",
+    "notes/plan.md": "f3a9668425b63876"
+  },
+  "bundle": {
+    "id": "0ce8246c-0a58-455f-9738-c66aef7947bc",
+    "championId": "vera-lund",
+    "ref": "da8d976de0d53cd7ad044661b5ba5ea94a4d7af23393c43a204709ea39a0184a",
+    "bytes": 20362,
+    "size": 30720,
+    "files": 4,
+    "skipped": 0,
+    "closedAt": 1793866172500,
+    "epoch": 0
+  },
+  "inObjectStore": true
+}
+```
+
+# B. stop on A, export the quiet home, revive on executor B with the home intact
+
+## B1 champion.export on A: identity + template + the home bundle bytes (sha256 = home.ref)
+```json
+{
+  "ms": 63.2,
+  "champion": {
+    "id": "vera-lund",
+    "epoch": 0,
+    "currentBeeId": "cf92e1a8-ced6-4a97-84ae-7070b5bbc014"
+  },
+  "template": {
+    "id": "12ee52ea-25a8-4362-be9f-d73fd3af8103",
+    "name": "crew-role",
+    "prompt": "You are the crew."
+  },
+  "home": {
+    "id": "0ce8246c-0a58-455f-9738-c66aef7947bc",
+    "championId": "vera-lund",
+    "ref": "da8d976de0d53cd7ad044661b5ba5ea94a4d7af23393c43a204709ea39a0184a",
+    "bytes": 20362,
+    "size": 30720,
+    "files": 4,
+    "skipped": 0,
+    "closedAt": 1793866172500,
+    "epoch": 0
+  },
+  "bytes": 20362,
+  "sha256MatchesRef": true
+}
+```
+
+## B2 executor B knows nothing of A: the identity is put again, and a start needs the bytes (no shared object store)
+```json
+{
+  "putB": {
+    "outcome": "created",
+    "home": "/tmp/m-h5-69777/homes-b/vera-lund",
+    "epoch": 0
+  },
+  "homeRef alone": "invalid_request: champion.start: home object da8d976de0d53cd7ad044661b5ba5ea94a4d7af23393c43a204709ea39a0184a is not in the object store /tmp/m-h5-69777/objects-b; hand it over as homeBytes",
+  "bytes that do not hash to homeRef": "invalid_request: champion.start: homeBytes do not hash to homeRef",
+  "homeBytes without homeRef/epoch": "invalid_request: champion.start: homeBytes needs homeRef and epoch (the handover from the executor that owned the home)",
+  "homeTreeBefore": {
+    "MEMORY.md": "d7870cdadd1ac3b4"
+  }
+}
+```
+
+## B3 champion.start on B with the bytes: the home is restored before the first runtime, B owns epoch 1, the incarnation is a champion-kind bee running in the restored home
+```json
+{
+  "ms": 19.1,
+  "started": {
+    "beeId": "bd615ff3-d6aa-458e-8502-647fa9c3de76",
+    "commandId": 1,
+    "messageId": 1,
+    "started": "spawned",
+    "homeRestored": true,
+    "restoreSkipped": null,
+    "epoch": 1,
+    "replacedBeeId": null
+  },
+  "bee": {
+    "id": "bd615ff3-d6aa-458e-8502-647fa9c3de76",
+    "kind": "champion",
+    "cwd": "/tmp/m-h5-69777/homes-b/vera-lund",
+    "args": [
+      "--model",
+      "stub-1",
+      "--effort",
+      "high"
+    ],
+    "tags": [
+      "team:crew",
+      "apiary:champion=vera-lund",
+      "apiary:role=champion"
+    ]
+  },
+  "homeTreeOnB": {
+    "MEMORY.md": "4471ef659c27b659",
+    "blob.bin": "22c9fc390adea9d4",
+    "memory/lab.md": "e94dc8af5d2e9b67",
+    "notes/plan.md": "f3a9668425b63876"
+  },
+  "sameFilesAsA": true,
+  "objectAdoptedOnB": true
+}
+```
+
+## B4 the revived incarnation reads its memory on B; B's turn end bundles under epoch 1 into B's own store
+```json
+{
+  "seen": "# Memory\nVera remembers the lab.\nfact one\nkeep this\n",
+  "bundleB": {
+    "id": "25fbbc95-30cf-4d84-a242-8b2b07cb3248",
+    "championId": "vera-lund",
+    "ref": "3eb5fe53dda38979a26be30bda9e82ee64d08fff83422d277715f471b2ac06fd",
+    "bytes": 20407,
+    "size": 30720,
+    "files": 5,
+    "skipped": 0,
+    "closedAt": 1793866173543,
+    "epoch": 1
+  },
+  "pointerForAdoptedBundle": true
+}
+```
+
+# C. the old executor is fenced; a stale epoch cannot take the incarnation back; the snapshot and the CLI see the kind
+
+## C1 fence on A
+```json
+{
+  "fence": {
+    "epoch": 1,
+    "fencedAt": true,
+    "stoppedLive": false
+  },
+  "champion.start on fenced A": "champion_fenced: champion.start: vera-lund is fenced at epoch 1; another executor owns the incarnation (pass the handover epoch to take it back)",
+  "handover with the stale epoch 0 on A": "champion_fenced: champion.start: handover epoch 0 is older than this node's epoch 1 for vera-lund",
+  "fence with an older epoch": "champion_fenced: champion.fence: epoch 0 is older than this node's epoch 1 for vera-lund",
+  "export of the fenced home answers the last bundle taken before the fence (epoch 0), bundling nothing new under the fenced epoch": "ok, same ref, epoch 0"
+}
+```
+
+## C2 snapshot on B: the champions table and the champion-kind bee record
+```json
+{
+  "champions": [
+    {
+      "id": "vera-lund",
+      "epoch": 1,
+      "currentBeeId": "bd615ff3-d6aa-458e-8502-647fa9c3de76",
+      "templateId": "d19b8af9-9a99-42e2-b144-f79ea151d58c"
+    }
+  ],
+  "beeRecord": {
+    "id": "bd615ff3-d6aa-458e-8502-647fa9c3de76",
+    "kind": "champion",
+    "name": "Vera Lund"
+  }
+}
+```
+
+## C3 CLI on B: champion export --out (0600, redacted on screen), champion list, view shows kind, champion start revives the stopped incarnation
+```json
+{
+  "rc": [
+    0,
+    0,
+    0,
+    0
+  ],
+  "out": [
+    "✓  exported champion vera-lund home bundle 3eb5fe53dda3 20407 bytes 5 files epoch 1 template d19b8af9-9a99-42e2-b144-f79ea151d58c → /tmp/m-h5-69777/vera-lund.export.json",
+    "vera-lund  Vera Lund  cellstub stub-1/high  bee bd615ff3  /tmp/m-h5-69777/homes-b/vera-lund template=d19b8af9-9a99-42e2-b144-f79ea151d58c",
+    "◐  CE.0000  Vera Lund  agent=cellstub/hsr  gen=1  stopped(stopped_by_user)  waiting-for-you  active",
+    "id           bd615ff3-d6aa-458e-8502-647fa9c3de76",
+    "kind         champion",
+    "cwd          /tmp/m-h5-69777/homes-b/vera-lund",
+    "args         [\"--model\",\"stub-1\",\"--effort\",\"high\"]",
+    "tags         team:crew,apiary:champion=vera-lund,apiary:role=champion",
+    "last out     0s ago",
+    "session      cell-stub-70549",
+    "✓  revived champion vera-lund → bee bd615ff3-d6aa-458e-8502-647fa9c3de76 epoch 1"
+  ],
+  "err": [],
+  "exportFileMode": "600",
+  "exportFileHasBytes": true,
+  "exportFileEpoch": 1,
+  "revived": {
+    "runtime": "idle",
+    "generation": 2,
+    "sameBee": true
+  }
+}
+```
+
+ALL CHECKS PASSED
