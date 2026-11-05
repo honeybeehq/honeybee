@@ -23,6 +23,7 @@ function bee(overrides: Partial<BeeRow> = {}): BeeRow {
     tags: [],
     sessionLogPath: null,
     lifecycle: "active",
+    kind: "agent",
     createdAt: 1,
     archivedAt: null,
     lastOutputAt: 2,

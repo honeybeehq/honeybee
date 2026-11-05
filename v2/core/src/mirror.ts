@@ -305,6 +305,8 @@ export const MIRROR_BEE_RECORD_KEYS = [
   "tags",
   "sessionLogPath",
   "lifecycle",
+  // v57 (champions.v2): additive — `agent` | `champion`.
+  "kind",
   "createdAt",
   "archivedAt",
   "lastOutputAt",
@@ -411,6 +413,9 @@ export const MIRROR_ACCOUNT_KEYS = [
   "pausedBy",
   "pausedOwner",
   "pausedAt",
+  // v56 (account.share.v1): additive — the credential share and its authority epoch owned by this row.
+  "shareId",
+  "shareEpoch",
   "addedAt",
   "updatedAt",
   // v18: additive — derived credential-validation evidence (absent | unverified | verified).

@@ -371,6 +371,8 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
   type ChampionArchiveResult,
   type ChampionDeleteResult,
   type ChampionFenceResult,
+  type ChampionExportResult,
+  CHAMPION_HOME_BYTES_MAX,
   type BeeResumeBundlesResult,
   type BeeImportDescriptor,
   type BeeImportResume,
@@ -1088,7 +1090,7 @@ export class HiveDaemon {
     for (const warning of this.cfg.cellRetention.warnings) this.log(`config.retention.invalid ${warning}`);
     for (const warning of this.cfg.transcriptSegments.warnings) this.log(`config.transcripts.invalid ${warning}`);
     for (const warning of this.cfg.champions.warnings) this.log(`config.champions.invalid ${warning}`);
-    if (this.cfg.champions.enabled) this.log(`champions.enabled homes=${this.cfg.champions.homesDir} home_sync=${this.cfg.champions.homeSync} store=${this.cfg.transcriptSegments.storeDir}`);
+    this.log(`champions homes=${this.cfg.champions.homesDir} store=${this.cfg.transcriptSegments.storeDir}`);
     for (const warning of this.cfg.durability.warnings) this.log(`config.durability.invalid ${warning}`);
     if (this.cfg.durability.resumeBundle.enabled) {
       const keyFile = this.cfg.durability.resumeBundle.keyFile;
@@ -1116,18 +1118,16 @@ export class HiveDaemon {
       });
       this.log(`durability.resume_bundle.enabled store=${this.cfg.transcriptSegments.storeDir} key_file=${keyFile} keep=${this.cfg.durability.resumeBundle.keep}`);
     }
-    if (this.cfg.champions.enabled && this.cfg.champions.homeSync) {
-      this.championHomes = new ChampionHomeSync({
-        store: () => this.mustStore(),
-        root: this.cfg.transcriptSegments.storeDir,
-        now: () => Date.now(),
-        log: (op) => this.log(op),
-        maxFileBytes: this.cfg.cellRetention.wipMaxFileBytes,
-        includeSecrets: this.cfg.champions.homeSyncIncludeSecrets,
-        ...(this.deps.championHomeMinIntervalMs !== undefined ? { minIntervalMs: this.deps.championHomeMinIntervalMs } : {}),
-        ...(this.deps.championStaleHomeRetentionMs !== undefined ? { staleHomeRetentionMs: this.deps.championStaleHomeRetentionMs } : {}),
-      });
-    }
+    this.championHomes = new ChampionHomeSync({
+      store: () => this.mustStore(),
+      root: this.cfg.transcriptSegments.storeDir,
+      now: () => Date.now(),
+      log: (op) => this.log(op),
+      maxFileBytes: this.cfg.cellRetention.wipMaxFileBytes,
+      includeSecrets: this.cfg.champions.homeSyncIncludeSecrets,
+      ...(this.deps.championHomeMinIntervalMs !== undefined ? { minIntervalMs: this.deps.championHomeMinIntervalMs } : {}),
+      ...(this.deps.championStaleHomeRetentionMs !== undefined ? { staleHomeRetentionMs: this.deps.championStaleHomeRetentionMs } : {}),
+    });
     this.transcriptObjects = createDirectoryTranscriptObjectStore(this.cfg.transcriptSegments.storeDir);
     this.segmenter = new TranscriptSegmenter({
       store: () => this.mustStore(),
@@ -2204,6 +2204,7 @@ export class HiveDaemon {
       case "humanRef.registry.reserve":
         return this.mustStore().reserveHumanRefNamespace(this.param(params, "installationId"));
       case "spawn":
+        if (params.kind !== undefined) throw new RpcError("invalid_request", "spawn: kind is set by champion.start, never by the caller");
         this.assertApiaryTagWriter(verb, params);
         // The start command is due now; do not wait out the tick cadence.
         return this.releasingRefusedClaim(() => this.rpcSpawnEffect(this.authenticatedSpawnParams(params, conn))).then((result) => { this.requestTick(); return result; });
@@ -2707,6 +2708,8 @@ export class HiveDaemon {
         return this.withIdempotency(verb, params, () => this.rpcChampionDelete(params));
       case "champion.fence":
         return this.withIdempotency(verb, params, () => this.rpcChampionFence(params));
+      case "champion.export":
+        return this.rpcChampionExport(params);
       case "bee.import":
         return this.rpcBeeImport(params);
       case "bee.fence":
@@ -3795,6 +3798,7 @@ export class HiveDaemon {
       spawnProvenance: params.spawnProvenance as import("../../core/src/store.ts").CreateBeeInput["spawnProvenance"],
       env: { ...requestedEnv, ...accountEnv },
       ...(account ? { account: account.id } : {}),
+      ...(params.kind === "champion" ? { kind: "champion" as const } : {}),
     });
     if (execution) store.checkSpawnPreparation(execution, "consume_account_claim");
     if (claim) this.consumeAccountClaim(claim, created.id);
@@ -6637,13 +6641,13 @@ export class HiveDaemon {
   }
 
   private syncChampionHome(beeId: string): void {
-    if (!this.championHomes) return;
     const champion = this.store?.getChampionByBee(beeId);
-    if (champion && champion.archivedAt == null) this.championHomes.requestSync(champion.id);
+    if (champion && champion.archivedAt == null) this.mustChampionHomes().requestSync(champion.id);
   }
 
-  private requireChampions(verb: string): void {
-    if (!this.cfg.champions.enabled) throw new RpcError("capability_missing", `${verb}: champions are not enabled on this node (config champions.enabled)`);
+  private mustChampionHomes(): ChampionHomeSync {
+    if (!this.championHomes) throw new Error("champion home sync is not started");
+    return this.championHomes;
   }
 
   private requireChampion(verb: string, params: Record<string, unknown>): ChampionRow {
@@ -6667,7 +6671,6 @@ export class HiveDaemon {
   }
 
   private assertNotChampionIncarnation(verb: string, beeId: string): void {
-    if (!this.cfg.champions.enabled) return;
     const champion = this.mustStore().getChampionByBee(beeId);
     if (champion && champion.archivedAt == null) {
       throw new RpcError("invalid_request", `${verb}: bee ${beeId} is the current incarnation of Champion ${champion.id}; use champion.archive`);
@@ -6682,7 +6685,6 @@ export class HiveDaemon {
   }
 
   private rpcChampionPut(params: Record<string, unknown>): ChampionPutResult {
-    this.requireChampions("champion.put");
     const store = this.mustStore();
     const name = this.param(params, "name").trim();
     if (name.length === 0 || name.length > 80) throw new RpcError("invalid_request", "champion.put: name must be 1..80 characters");
@@ -6738,7 +6740,6 @@ export class HiveDaemon {
   }
 
   private async rpcChampionStart(params: Record<string, unknown>): Promise<ChampionStartResult> {
-    this.requireChampions("champion.start");
     const store = this.mustStore();
     const champion = this.requireChampion("champion.start", params);
     if (champion.archivedAt != null) throw new RpcError("invalid_request", `champion.start: ${champion.id} is archived; champion.put {archived:false} first`);
@@ -6752,6 +6753,22 @@ export class HiveDaemon {
     if (homeRef != null && !/^[a-f0-9]{64}$/.test(homeRef)) throw new RpcError("invalid_request", "champion.start: homeRef must be a sha256 object reference");
     const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
     const handover = handoverEpoch !== null && homeRef != null;
+    let homeBytes: Buffer | null = null;
+    if (params.homeBytes !== undefined && params.homeBytes !== null) {
+      if (!handover) throw new RpcError("invalid_request", "champion.start: homeBytes needs homeRef and epoch (the handover from the executor that owned the home)");
+      if (typeof params.homeBytes !== "string" || params.homeBytes.length > Math.ceil(CHAMPION_HOME_BYTES_MAX / 3) * 4) throw new RpcError("invalid_request", `champion.start: homeBytes must be base64 of at most ${CHAMPION_HOME_BYTES_MAX} bytes`);
+      homeBytes = Buffer.from(params.homeBytes, "base64");
+      if (homeBytes.length === 0 || homeBytes.length > CHAMPION_HOME_BYTES_MAX) throw new RpcError("invalid_request", `champion.start: homeBytes must decode to 1..${CHAMPION_HOME_BYTES_MAX} bytes`);
+      if (createHash("sha256").update(homeBytes).digest("hex") !== homeRef) throw new RpcError("invalid_request", "champion.start: homeBytes do not hash to homeRef");
+    }
+    const template = champion.templateId ? store.getTemplate(champion.templateId) : null;
+    if (champion.templateId && !template) throw new RpcError("invalid_request", `champion.start: ${champion.id} binds template ${champion.templateId}, which no longer exists; rebind with champion.put`);
+    const homes = this.mustChampionHomes();
+    if (homeBytes && homeRef) {
+      const adopted = homes.adopt(homeRef, homeBytes);
+      this.log(`champion.home.adopted id=${champion.id} ref=${homeRef} bytes=${homeBytes.length} created=${adopted.created}`);
+    }
+    if (homeRef != null && !homes.describe(homeRef)) throw new RpcError("invalid_request", `champion.start: home object ${homeRef} is not in the object store ${homes.root}; hand it over as homeBytes`);
     let replacedBeeId: string | null = null;
     if (current && current.lifecycle !== "deleted" && !handover) {
       const runtime = store.currentRuntime(current.id);
@@ -6771,8 +6788,6 @@ export class HiveDaemon {
       replacedBeeId = current.id;
       this.log(`champion.start id=${champion.id} handover epoch=${handoverEpoch} replaces=${current.id}`);
     }
-    const template = champion.templateId ? store.getTemplate(champion.templateId) : null;
-    if (champion.templateId && !template) throw new RpcError("invalid_request", `champion.start: ${champion.id} binds template ${champion.templateId}, which no longer exists; rebind with champion.put`);
     const owned = handoverEpoch !== null ? store.takeoverChampion(champion.id, handoverEpoch) : champion;
     const restore = await this.restoreChampionHome(owned, homeRef, handoverEpoch, handover);
     const homeRestored = restore.restored;
@@ -6782,6 +6797,7 @@ export class HiveDaemon {
       name: champion.name,
       agent: champion.agent,
       cwd: champion.home,
+      kind: "champion",
       tags: [...new Set([...(template?.tags ?? []), `apiary:champion=${champion.id}`, "apiary:role=champion"])],
       env: { ...(template?.env ?? {}), HIVE_CHAMPION_ID: champion.id, HIVE_CHAMPION_HOME: champion.home },
       args: this.championSpawnArgs(champion, template),
@@ -6797,7 +6813,6 @@ export class HiveDaemon {
   }
 
   private rpcChampionFence(params: Record<string, unknown>): ChampionFenceResult {
-    this.requireChampions("champion.fence");
     const store = this.mustStore();
     const champion = this.requireChampion("champion.fence", params);
     const epoch = params.epoch;
@@ -6813,10 +6828,7 @@ export class HiveDaemon {
   }
 
   private async restoreChampionHome(champion: ChampionRow, homeRef: string | null, handoverEpoch: number | null, handover: boolean): Promise<{ restored: boolean; skipped: ChampionStartResult["restoreSkipped"] }> {
-    if (!this.cfg.champions.homeSync || !this.championHomes) {
-      if (homeRef != null) throw new RpcError("invalid_request", "champion.start: homeRef needs champions.homeSync on this node");
-      return { restored: false, skipped: "home_sync_off" };
-    }
+    const homes = this.mustChampionHomes();
     try {
       const entries = readdirSync(champion.home).filter((entry) => entry !== "MEMORY.md" && entry !== "memory");
       const memory = join(champion.home, "MEMORY.md");
@@ -6836,8 +6848,8 @@ export class HiveDaemon {
       if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
     }
     const store = this.mustStore();
-    const pointed = homeRef != null ? this.championHomes.describe(homeRef) : null;
-    if (homeRef != null && !pointed) throw new RpcError("invalid_request", `champion.start: home object ${homeRef} is not in the object store ${this.championHomes.root}`);
+    const pointed = homeRef != null ? homes.describe(homeRef) : null;
+    if (homeRef != null && !pointed) throw new RpcError("invalid_request", `champion.start: home object ${homeRef} is not in the object store ${homes.root}; hand it over as homeBytes`);
     const latest = pointed ? { ...pointed, epoch: handoverEpoch ?? champion.epoch } : store.latestChampionHomeObject(champion.id);
     if (!latest) {
       this.log(`champion.home.restore_skipped id=${champion.id} reason=no_bundle`);
@@ -6847,7 +6859,7 @@ export class HiveDaemon {
       this.log(`champion.home.restore_skipped id=${champion.id} reason=stale_epoch bundle_epoch=${latest.epoch} epoch=${champion.epoch} ref=${latest.ref}`);
       return { restored: false, skipped: "stale_epoch" };
     }
-    const restored = await this.championHomes.restore(champion, latest);
+    const restored = await homes.restore(champion, latest);
     if (restored && pointed && !store.listChampionHomeObjects(champion.id, { limit: 1000 }).some((o) => o.ref === pointed.ref)) {
       store.putChampionHomeObject({ championId: champion.id, ref: pointed.ref, bytes: pointed.bytes, size: pointed.size, files: pointed.files, skipped: pointed.skipped, closedAt: Date.now(), epoch: latest.epoch });
     }
@@ -6855,8 +6867,30 @@ export class HiveDaemon {
     return { restored, skipped: restored ? null : "restore_failed" };
   }
 
+  private async rpcChampionExport(params: Record<string, unknown>): Promise<ChampionExportResult> {
+    const store = this.mustStore();
+    const champion = this.requireChampion("champion.export", params);
+    const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
+    const runtime = current ? store.currentRuntime(current.id) : null;
+    if (current && runtime != null && runtime.state !== "stopped") throw new RpcError("runtime_refused", `champion.export: incarnation ${current.id} is ${runtime.state}; stop it (or champion.fence) first so the home is quiet`, { beeId: current.id, runtimeState: runtime.state });
+    const template = champion.templateId ? store.getTemplate(champion.templateId) : null;
+    const homes = this.mustChampionHomes();
+    const taken = existsSync(champion.home) && champion.fencedAt == null ? await homes.bundleNow(champion) : null;
+    if (taken?.refused) throw new RpcError("invalid_request", taken.refused.reason === "secrets" ? `champion.export: home ${champion.home} holds credential-like files; remove them or set champions.homeSyncIncludeSecrets` : `champion.export: home ${champion.home} changed while it was being bundled; retry`, { reason: taken.refused.reason, paths: taken.refused.paths.slice(0, 20) });
+    if (taken?.error != null) throw new RpcError("invalid_request", `champion.export: cannot bundle ${champion.home}: ${taken.error}`);
+    const home = taken?.row ?? store.latestChampionHomeObject(champion.id);
+    if (!home) {
+      this.log(`champion.export id=${champion.id} home=none`);
+      return { champion, template, home: null, homeBytes: null };
+    }
+    const bytes = homes.objectBytes(home.ref);
+    if (!bytes) throw new RpcError("invalid_request", `champion.export: home object ${home.ref} is missing from ${homes.root}`);
+    if (bytes.length > CHAMPION_HOME_BYTES_MAX) throw new RpcError("invalid_request", `champion.export: the home bundle is ${bytes.length} bytes, over the ${CHAMPION_HOME_BYTES_MAX} byte frame limit`, { bytes: bytes.length, ref: home.ref });
+    this.log(`champion.export id=${champion.id} ref=${home.ref} bytes=${bytes.length} epoch=${home.epoch} fresh=${taken?.row != null && taken.row.id === home.id}${champion.fencedAt != null ? " fenced=true" : ""}`);
+    return { champion, template, home, homeBytes: bytes.toString("base64") };
+  }
+
   private rpcChampionArchive(params: Record<string, unknown>): ChampionArchiveResult {
-    this.requireChampions("champion.archive");
     const store = this.mustStore();
     const champion = this.requireChampion("champion.archive", params);
     let commandId: number | null = null;
@@ -6868,7 +6902,6 @@ export class HiveDaemon {
   }
 
   private rpcChampionDelete(params: Record<string, unknown>): ChampionDeleteResult {
-    this.requireChampions("champion.delete");
     const store = this.mustStore();
     const champion = this.requireChampion("champion.delete", params);
     const current = champion.currentBeeId ? store.getBee(champion.currentBeeId) : null;
@@ -6957,7 +6990,7 @@ export class HiveDaemon {
       capacity: this.retention?.capacity(true) ?? null,
       transcriptSegments: this.transcriptSegmentsStatus(),
       ...(this.resumeSync ? { resumeBundles: this.resumeSync.status() } : {}),
-      ...(this.cfg.champions.enabled ? { champions: { enabled: true, homeSync: this.cfg.champions.homeSync, homes: this.championHomes?.status() ?? null } } : {}),
+      champions: { enabled: true, homeSync: true, homes: this.championHomes?.status() ?? null },
     };
   }
 
@@ -7080,7 +7113,7 @@ export class HiveDaemon {
       views: store.listBeeViewRows().map((row) => ({ ...row, bee: includeOperatorLocalHomes ? operatorLocalBee(row.bee) : mirrorBeeRow(row.bee), ...this.identityDiagnostic(row.view.beeId, row.view.generation) })),
       capacity,
       templates: store.listTemplates(),
-      ...(this.cfg.champions.enabled ? { champions: store.listChampions() } : {}),
+      ...(store.listChampions().length > 0 ? { champions: store.listChampions() } : {}),
       tells: store.listTells(),
       reactions: store.listReactions(),
       questions: store.listQuestions(),

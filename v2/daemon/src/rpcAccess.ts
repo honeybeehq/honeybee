@@ -49,6 +49,7 @@ export const RPC_ACCESS = {
   "champion.archive": "mutate",
   "champion.delete": "mutate",
   "champion.fence": "mutate",
+  "champion.export": "mutate",
   "bee.resumeBundles": "read",
   "bee.import": "mutate",
   "bee.fence": "mutate",

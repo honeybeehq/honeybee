@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, openSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { closeSync, createReadStream, createWriteStream, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { rm, readdir, stat } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 import { join, relative } from "node:path";
@@ -253,27 +253,61 @@ export class ChampionHomeSync {
       return null;
     }
     this.lastAt.set(championId, this.deps.now());
+    const outcome = await this.bundleNow(champion);
+    if (outcome.error != null) {
+      this.deps.log(`champion.home.push_failed id=${championId} err=${JSON.stringify(outcome.error)} ms=${outcome.ms}`);
+      return null;
+    }
+    if (outcome.refused) {
+      this.deps.log(`champion.home.push_refused id=${championId} reason=${outcome.refused.reason}${outcome.refused.paths.length > 0 ? ` paths=${JSON.stringify(outcome.refused.paths.slice(0, 20))}` : ""} ms=${outcome.ms}`);
+      return null;
+    }
+    return outcome.row;
+  }
+
+  /** Bundle the home as it is now and record the pointer; the caller decides whether the home is quiet. */
+  async bundleNow(champion: ChampionRow): Promise<{ row: ChampionHomeObjectRow | null; refused: { reason: "secrets" | "torn"; paths: string[] } | null; error: string | null; ms: number }> {
+    const store = this.deps.store();
     const started = Date.now();
     try {
       const outcome = await this.runWorker<HomeBundleResult>({ kind: "bundleHome", home: champion.home, storeRoot: this.deps.root, maxFileBytes: this.deps.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES, includeSecrets: this.deps.includeSecrets ?? false } satisfies HomeBundleRequest);
       if (outcome.error != null) throw new Error(outcome.error);
-      if (outcome.refused) {
-        this.deps.log(`champion.home.push_refused id=${championId} reason=${outcome.refused.reason}${outcome.refused.paths.length > 0 ? ` paths=${JSON.stringify(outcome.refused.paths.slice(0, 20))}` : ""} ms=${Date.now() - started}`);
-        return null;
-      }
+      if (outcome.refused) return { row: null, refused: outcome.refused, error: null, ms: Date.now() - started };
       const bundle = outcome.bundle!;
-      const latest = store.latestChampionHomeObject(championId);
+      const latest = store.latestChampionHomeObject(champion.id);
       if (latest && latest.ref === bundle.ref && latest.epoch === champion.epoch) {
-        this.deps.log(`champion.home.unchanged id=${championId} ref=${bundle.ref} ms=${Date.now() - started}`);
-        return latest;
+        this.deps.log(`champion.home.unchanged id=${champion.id} ref=${bundle.ref} ms=${Date.now() - started}`);
+        return { row: latest, refused: null, error: null, ms: Date.now() - started };
       }
-      const row = store.putChampionHomeObject({ championId, ref: bundle.ref, bytes: bundle.bytes, size: bundle.size, files: bundle.files, skipped: bundle.skipped.length, closedAt: this.deps.now(), epoch: champion.epoch });
-      this.deps.log(`champion.home.pushed id=${championId} epoch=${champion.epoch} ref=${bundle.ref} bytes=${bundle.bytes} size=${bundle.size} files=${bundle.files} skipped=${bundle.skipped.length}${bundle.skipped.length > 0 ? ` skipped_paths=${JSON.stringify(bundle.skipped.slice(0, 20))}` : ""} ms=${Date.now() - started}`);
-      return row;
+      const row = store.putChampionHomeObject({ championId: champion.id, ref: bundle.ref, bytes: bundle.bytes, size: bundle.size, files: bundle.files, skipped: bundle.skipped.length, closedAt: this.deps.now(), epoch: champion.epoch });
+      this.deps.log(`champion.home.pushed id=${champion.id} epoch=${champion.epoch} ref=${bundle.ref} bytes=${bundle.bytes} size=${bundle.size} files=${bundle.files} skipped=${bundle.skipped.length}${bundle.skipped.length > 0 ? ` skipped_paths=${JSON.stringify(bundle.skipped.slice(0, 20))}` : ""} ms=${Date.now() - started}`);
+      return { row, refused: null, error: null, ms: Date.now() - started };
     } catch (err) {
-      this.deps.log(`champion.home.push_failed id=${championId} err=${JSON.stringify(err instanceof Error ? err.message : String(err))} ms=${Date.now() - started}`);
-      return null;
+      return { row: null, refused: null, error: err instanceof Error ? err.message : String(err), ms: Date.now() - started };
     }
+  }
+
+  /** Put a bundle another executor handed over into this store under its content ref. */
+  adopt(ref: string, bytes: Buffer): { created: boolean } {
+    if (createHash("sha256").update(bytes).digest("hex") !== ref) throw new Error(`champion home bytes do not hash to ${ref}`);
+    const target = championHomeObjectPath(this.deps.root, ref);
+    if (existsSync(target)) return { created: false };
+    mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+    const temporary = `${target}.${process.pid}-${Date.now()}.partial`;
+    writeFileSync(temporary, bytes, { mode: 0o600 });
+    const fd = openSync(temporary, "r");
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+    renameSync(temporary, target);
+    return { created: true };
+  }
+
+  objectBytes(ref: string): Buffer | null {
+    const path = championHomeObjectPath(this.deps.root, ref);
+    return existsSync(path) ? readFileSync(path) : null;
   }
 
   status(): ChampionHomesStatus | null {

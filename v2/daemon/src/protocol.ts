@@ -209,6 +209,15 @@ export const DAEMON_CAPABILITIES = [
   "transcript.segments.v1",
   "transcript.segments.v2",
   "champions.v1",
+  /**
+   * v57 (M-H5): the Champion bee kind is complete and always on. Bee rows carry
+   * `kind` (`agent` | `champion`); `champion.export` hands out the quiet home as
+   * a bundle (`homeBytes`) with the identity and its template; `champion.start`
+   * takes `homeBytes` beside `homeRef` + `epoch` so a handover needs no shared
+   * object store between executors. The `champions.enabled` / `homeSync` config
+   * flags are gone: the verbs work and homes bundle on every node.
+   */
+  "champions.v2",
   "bee.resume_bundle.v1",
   /**
    * v23 (2026-09-13): durable session handoff — `bee.handoff` /
@@ -566,6 +575,7 @@ export const RPC_VERBS = [
   "champion.archive",
   "champion.delete",
   "champion.fence",
+  "champion.export",
   "bee.resumeBundles",
   "bee.import",
   "bee.fence",
@@ -1992,7 +2002,7 @@ export interface ChampionStartResult extends DedupMarkers {
   messageId: number | null;
   started: "spawned" | "revived" | "running";
   homeRestored: boolean;
-  restoreSkipped: "home_not_empty" | "no_bundle" | "stale_epoch" | "restore_failed" | "home_sync_off" | null;
+  restoreSkipped: "home_not_empty" | "no_bundle" | "stale_epoch" | "restore_failed" | null;
   epoch: number;
   replacedBeeId: string | null;
 }
@@ -2010,6 +2020,18 @@ export interface ChampionFenceResult extends DedupMarkers {
   champion: MirrorChampionRow;
   commandId: number | null;
   stopped: boolean;
+}
+
+/** Largest home bundle `champion.export` answers and `champion.start` accepts in one frame. */
+export const CHAMPION_HOME_BYTES_MAX = 32 * 1024 * 1024;
+
+export interface ChampionExportResult {
+  champion: MirrorChampionRow;
+  template: MirrorTemplateRow | null;
+  /** The pointer row of the bundle carried in `homeBytes`; null when the home was never bundled and is empty. */
+  home: ChampionHomeObjectRow | null;
+  /** base64 of the zstd tar object; its sha256 is `home.ref`. */
+  homeBytes: string | null;
 }
 
 export interface TranscriptSegmentsResult {

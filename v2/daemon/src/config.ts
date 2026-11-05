@@ -378,22 +378,18 @@ export function transcriptSegmentsOf(raw: unknown, dataDir: string): ResolvedTra
 }
 
 export interface ChampionsConfig {
-  enabled?: boolean;
-  homeSync?: boolean;
   homeSyncIncludeSecrets?: boolean;
   homesDir?: string;
 }
 
 export interface ResolvedChampions {
-  enabled: boolean;
-  homeSync: boolean;
   homeSyncIncludeSecrets: boolean;
   homesDir: string;
   warnings: string[];
 }
 
 export function championsOf(raw: unknown, dataDir: string): ResolvedChampions {
-  const out: ResolvedChampions = { enabled: false, homeSync: false, homeSyncIncludeSecrets: false, homesDir: join(dataDir, "champions"), warnings: [] };
+  const out: ResolvedChampions = { homeSyncIncludeSecrets: false, homesDir: join(dataDir, "champions"), warnings: [] };
   if (raw === undefined) return out;
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     out.warnings.push(`champions must be an object, got ${JSON.stringify(raw)}; using defaults`);
@@ -401,14 +397,6 @@ export function championsOf(raw: unknown, dataDir: string): ResolvedChampions {
   }
   const c = raw as Record<string, unknown>;
   const warn = (key: string, expected: string) => out.warnings.push(`champions.${key} must be ${expected}, got ${JSON.stringify(c[key])}; using the default`);
-  if (c.enabled !== undefined) {
-    if (typeof c.enabled === "boolean") out.enabled = c.enabled;
-    else warn("enabled", "a boolean");
-  }
-  if (c.homeSync !== undefined) {
-    if (typeof c.homeSync === "boolean") out.homeSync = c.homeSync;
-    else warn("homeSync", "a boolean");
-  }
   if (c.homeSyncIncludeSecrets !== undefined) {
     if (typeof c.homeSyncIncludeSecrets === "boolean") out.homeSyncIncludeSecrets = c.homeSyncIncludeSecrets;
     else warn("homeSyncIncludeSecrets", "a boolean");

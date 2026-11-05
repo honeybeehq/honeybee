@@ -12,6 +12,9 @@ import type { LoginFlowRow } from "./loginFlow.ts";
 
 export const LIFECYCLES = ["active", "archived", "deleted"] as const;
 export type Lifecycle = (typeof LIFECYCLES)[number];
+/** v57 — what a bee is: an ordinary agent, or the incarnation of a Champion identity. */
+export const BEE_KINDS = ["agent", "champion"] as const;
+export type BeeKind = (typeof BEE_KINDS)[number];
 
 /** B2 — exactly four runtime states. */
 export const RUNTIME_STATES = ["booting", "running", "idle", "stopped"] as const;
@@ -103,6 +106,8 @@ export interface BeeRow extends Partial<HumanOutputFacts> {
   tags: string[];
   sessionLogPath: string | null;
   lifecycle: Lifecycle;
+  /** v57 — `champion` for the incarnation of a Champion (champions.current_bee_id names the current one). */
+  kind: BeeKind;
   createdAt: number;
   archivedAt: number | null;
   /** Last time the bee's runtime produced output (canonical fact, recorded by daemon). */
