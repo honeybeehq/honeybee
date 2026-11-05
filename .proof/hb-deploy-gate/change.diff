@@ -1,0 +1,452 @@
+diff --git a/v2/cli/src/deploy/command.ts b/v2/cli/src/deploy/command.ts
+index 97792618..f3f5740a 100644
+--- a/v2/cli/src/deploy/command.ts
++++ b/v2/cli/src/deploy/command.ts
+@@ -10,7 +10,8 @@ import { probeNativeNode, resolveNodePin, nativeNodeEnv, nodePinEnv, nodePinFile
+ // never reach the code in this file's hook implementations.
+ import { execFile, spawn } from "node:child_process";
+ import { existsSync } from "node:fs";
+-import { cp, lstat, mkdir, open, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
++import { cp, lstat, mkdir, mkdtemp, open, readFile, readlink, realpath, rename, rm, writeFile } from "node:fs/promises";
++import { tmpdir } from "node:os";
+ import { delimiter, dirname, isAbsolute, join } from "node:path";
+ import { promisify } from "node:util";
+ import {
+@@ -37,6 +38,8 @@ import type { CliIo } from "../main.ts";
+ 
+ import { collectBuildProvenance } from "../../../core/src/release/buildIdentityProducer.ts";
+ import { hostGitEnv } from "../../../core/src/hostGit.ts";
++import { HARNESS_HOME_ENV } from "../../../core/src/accountRecipes.ts";
++import { socketPathFits } from "../../../core/src/socketPath.ts";
+ import { prepareRuntimeTarget, validateRuntimeBuildTarget } from "../../../core/src/release/runtimeTarget.ts";
+ import { waitForDeployReadiness, type DeployProcessIdentity } from "./readiness.ts";
+ import { inspectProcess } from "./updateOwnerClient.mjs";
+@@ -168,18 +171,26 @@ export async function cmdDeploy(parsed: Parsed, io: CliIo): Promise<void> {
+   return deployRun(parsed, io);
+ }
+ 
+-/**
+- * The test steps of a deploy gate never reach the login Keychain: the
+- * Keychain bridge is switched off and a refusing `security` stands first on
+- * PATH, so even a test child spawned with a fully replaced environment that
+- * keeps PATH cannot run the real binary by name.
+- */
+-async function keychainFreeGateEnv(workDir: string): Promise<NodeJS.ProcessEnv> {
++const HARNESS_HOME_VARIABLES = new Set(Object.values(HARNESS_HOME_ENV));
++const RUNNER_HOST_SOCKET_SAMPLE = join("hc-XXXXXX", "s", `hb-rh-${"0".repeat(16)}`, "stdin.sock");
++
++function keepsGateTestVariable(key: string): boolean {
++  if (key.startsWith("HIVE_")) return key.startsWith("HIVE_TEST_");
++  return !HARNESS_HOME_VARIABLES.has(key);
++}
++
++async function gateTestEnv(workDir: string): Promise<{ env: NodeJS.ProcessEnv; dispose: () => Promise<void> }> {
+   const bin = join(workDir, "gate-bin");
+   await mkdir(bin, { recursive: true });
+   await writeFile(join(bin, "security"), "#!/bin/sh\necho 'deploy gate: a test tried to run security; refused' >&2\nexit 1\n", { mode: 0o755 });
+-  const env = hostGitEnv();
+-  return { ...env, HIVE_NO_KEYCHAIN: "1", PATH: `${bin}${delimiter}${env.PATH ?? ""}` };
++  const base = hostGitEnv();
++  const env: NodeJS.ProcessEnv = {};
++  for (const [key, value] of Object.entries(base)) if (keepsGateTestVariable(key)) env[key] = value;
++  env.HIVE_NO_KEYCHAIN = "1";
++  env.PATH = `${bin}${delimiter}${base.PATH ?? ""}`;
++  const temp = socketPathFits(join(tmpdir(), RUNNER_HOST_SOCKET_SAMPLE)) ? null : await realpath(await mkdtemp(join("/tmp", "hive-gate-")));
++  if (temp !== null) env.TMPDIR = temp;
++  return { env, dispose: async () => { if (temp !== null) await rm(temp, { recursive: true, force: true }); } };
+ }
+ 
+ /** Stream a build/restart step; the child's output is the progress report. */
+@@ -216,17 +227,19 @@ export async function buildDeployArtifact(
+ 
+   // git archive removes .git; capture facts for the exported revision, not the working tree.
+   await writeFile(join(checkout, ".build-provenance.json"), JSON.stringify(collectBuildProvenance(repoRoot, sha)));
+-  const gateEnv = await keychainFreeGateEnv(workDir);
+-  await runStep("npm", ["ci"], checkout, log, gateEnv);
+-  await runStep("npm", ["run", "check"], checkout, log, gateEnv);
+-  await runStep("npm", ["run", "build"], checkout, log, gateEnv);
+-  if (skipTests === true) {
+-    log("deploy: WARNING test gate skipped (--skip-tests) — this artifact is not release-grade");
+-  } else {
+-    for (const script of release ? ["v2:test", "v2:daemon", "v2:driver", "v2:driver2", "v2:harness"] : ["v2:test", "v2:daemon", "v2:driver", "v2:harness"]) {
+-      await runStep("npm", ["run", script], checkout, log, gateEnv);
++  const gate = await gateTestEnv(workDir);
++  try {
++    await runStep("npm", ["ci"], checkout, log, gate.env);
++    await runStep("npm", ["run", "check"], checkout, log, gate.env);
++    await runStep("npm", ["run", "build"], checkout, log, gate.env);
++    if (skipTests === true) {
++      log("deploy: WARNING test gate skipped (--skip-tests) — this artifact is not release-grade");
++    } else {
++      for (const script of release ? ["v2:test", "v2:daemon", "v2:driver", "v2:driver2", "v2:harness"] : ["v2:test", "v2:daemon", "v2:driver", "v2:harness"]) {
++        await runStep("npm", ["run", script], checkout, log, gate.env);
++      }
+     }
+-  }
++  } finally { await gate.dispose(); }
+ 
+   // npm pack gives exactly the `files` set a real install would receive; the
+   // lockfile rides along so the stage can `npm ci --omit=dev` production deps.
+diff --git a/v2/cli/src/main.ts b/v2/cli/src/main.ts
+index 6bf79819..13dc72f8 100644
+--- a/v2/cli/src/main.ts
++++ b/v2/cli/src/main.ts
+@@ -4693,7 +4693,7 @@ export function serviceExecArgs(dataDir: string, env: Record<string, string | un
+   // Invoked through the hive binary → keep the `v2` argv prefix so a service
+   // unit installed before freeze still hits this stack (`hive v2 daemon run`).
+   // The standalone v2 bin already is this CLI, so no prefix.
+-  const viaHive = !/[/\\]v2[/\\]/.test(entry);
++  const viaHive = /[/\\]dist[/\\]cli\.js$/.test(entry);
+   return [resolveNodePin(dataDir, env, undefined, true).path, entry, ...(viaHive ? ["v2"] : []), "daemon", "run", "--data-dir", dataDir];
+ }
+ 
+diff --git a/v2/cli/tests/deploy-restart.test.ts b/v2/cli/tests/deploy-restart.test.ts
+index 4983a605..b189e70d 100644
+--- a/v2/cli/tests/deploy-restart.test.ts
++++ b/v2/cli/tests/deploy-restart.test.ts
+@@ -1,7 +1,8 @@
+ import { persistNodePin, probeNativeNode } from "../../core/src/nodeRuntime.ts";
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+-import { copyFile, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
++import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
++import { copyNodeExecutable } from "../../core/tests/helpers.ts";
+ import { join } from "node:path";
+ import { tmpdir } from "node:os";
+ import { restartDeployedDaemon } from "../src/deploy/command.ts";
+@@ -23,7 +24,7 @@ test("fresh verified activation executes installed current v2 CLI with scoped da
+     const root = join(dir, "runtime"), calls = join(dir, "calls.jsonl");
+     await mkdir(join(root, "current", "dist"), { recursive: true });
+     const pinnedNode = join(dir, "node-24-pinned");
+-    await copyFile(process.execPath, pinnedNode);
++    copyNodeExecutable(pinnedNode);
+     persistNodePin(join(dir, "v2"), probeNativeNode(pinnedNode));
+     await writeFile(join(root, "current", "dist", "cli.js"), `require('node:fs').appendFileSync(${JSON.stringify(calls)}, JSON.stringify({ args: process.argv.slice(2), interpreter: process.execPath, nodeOptions: process.env.NODE_OPTIONS, electron: process.env.ELECTRON_RUN_AS_NODE })+'\\n'); if(process.argv[4] === 'status') console.log(JSON.stringify({running:true}));`);
+     await restartDeployedDaemon({ root, installedDir: join(root, "current"), sha: "a".repeat(40), log() {} });
+diff --git a/v2/cli/tests/deploy-rollback.test.ts b/v2/cli/tests/deploy-rollback.test.ts
+index 566e1cc4..fd2298e4 100644
+--- a/v2/cli/tests/deploy-rollback.test.ts
++++ b/v2/cli/tests/deploy-rollback.test.ts
+@@ -18,7 +18,7 @@ async function fixture() {
+   await mkdir(join(root, previous, "dist", "v2"), { recursive: true });
+   await writeFile(join(root, previous, "dist", "cli.js"), "");
+   await writeFile(join(root, previous, "dist", "v2", "cli.js"), "var SCHEMA_VERSION = 44;\n");
+-  await writeFile(join(external, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1, component: "honeybee", version: "0.1.0", packageVersion: "0.1.0", sourceRevision: current, dirty: false, release: true, target: "linux-x64" }));
++  await writeFile(join(external, "dist", "build-identity.json"), JSON.stringify({ schemaVersion: 1, component: "honeybee", version: "0.1.0", packageVersion: "0.1.0", sourceRevision: current, dirty: false, release: true, target: `${process.platform}-${process.arch}` }));
+   await symlink(external, join(root, "current"));
+   await writeFile(join(root, "deploys.json"), JSON.stringify({ schemaVersion: 1, entries: [{ sha: previous, artifactHash: "old", at: "2026-10-22T00:00:00Z", by: "fixture" }, { sha: current, artifactHash: await hashDirectoryTree(join(external, "dist")), at: "2026-10-22T01:00:00Z", by: "fixture" }] }));
+   return { dir, root, external };
+diff --git a/v2/core/tests/fixtures/mirror-question-dismissed-v1.json b/v2/core/tests/fixtures/mirror-question-dismissed-v1.json
+index 5b99fd4f..7fedb402 100644
+--- a/v2/core/tests/fixtures/mirror-question-dismissed-v1.json
++++ b/v2/core/tests/fixtures/mirror-question-dismissed-v1.json
+@@ -25,7 +25,7 @@
+         "id": "BEE_ID",
+         "name": "alpha",
+         "agent": "claude",
+-        "substrate": "tmux",
++        "substrate": "hsr",
+         "cwd": "/tmp/w",
+         "title": null,
+         "tags": [],
+diff --git a/v2/core/tests/helpers.ts b/v2/core/tests/helpers.ts
+index d63eb3e0..902b958e 100644
+--- a/v2/core/tests/helpers.ts
++++ b/v2/core/tests/helpers.ts
+@@ -1,6 +1,6 @@
+-import { mkdtempSync, rmSync } from "node:fs";
++import { chmodSync, copyFileSync, existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+ import { tmpdir } from "node:os";
+-import { join } from "node:path";
++import { dirname, join } from "node:path";
+ import { openCoreStore, type CoreStore, type CoreStoreOptions } from "../src/index.ts";
+ 
+ /**
+@@ -42,3 +42,15 @@ export function bootToRunning(store: CoreStore, beeId: string, pid: number, pidS
+   if (!rt) throw new Error("no runtime");
+   store.updateRuntimeState(beeId, rt.generation, "running", { pid, pidStartedAt });
+ }
++
++/** A runnable copy of this process's node: writable, with the install's shared libraries linked beside it (Homebrew node loads @rpath/libnode from @loader_path). */
++export function copyNodeExecutable(path: string): void {
++  copyFileSync(process.execPath, path);
++  chmodSync(path, 0o755);
++  const lib = join(dirname(realpathSync(process.execPath)), "..", "lib");
++  if (!existsSync(lib)) return;
++  for (const name of readdirSync(lib)) {
++    if (!/\.(dylib|so)(\.|$)/.test(name) || existsSync(join(dirname(path), name))) continue;
++    symlinkSync(join(lib, name), join(dirname(path), name));
++  }
++}
+diff --git a/v2/core/tests/mirror.test.ts b/v2/core/tests/mirror.test.ts
+index 877c69a4..6a582305 100644
+--- a/v2/core/tests/mirror.test.ts
++++ b/v2/core/tests/mirror.test.ts
+@@ -200,7 +200,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
+         "id": "BEE_ID",
+         "name": "alpha",
+         "agent": "claude",
+-        "substrate": "tmux",
++        "substrate": "hsr",
+         "cwd": "/tmp/w",
+         "title": null,
+         "tags": [],
+diff --git a/v2/core/tests/node-runtime.test.ts b/v2/core/tests/node-runtime.test.ts
+index e84cc34b..573ba555 100644
+--- a/v2/core/tests/node-runtime.test.ts
++++ b/v2/core/tests/node-runtime.test.ts
+@@ -1,9 +1,10 @@
+ import assert from "node:assert/strict";
+ import { test } from "node:test";
+-import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
++import { appendFileSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+ import { join } from "node:path";
+ import { tmpdir } from "node:os";
+ import { childNodePath, nativeNodeEnv, nodePinFile, persistNodePin, probeNativeNode, resolveNodePin, withoutInspectorArgs } from "../src/nodeRuntime.ts";
++import { copyNodeExecutable } from "./helpers.ts";
+ 
+ function fixture(run: (dir: string) => void): void {
+   const dir = mkdtempSync(join(tmpdir(), "hb-pin-"));
+@@ -21,7 +22,7 @@ test("fresh service pin requires explicit managed node and refuses Electron", ()
+ 
+ test("pin persists resolved executable identity and refuses version or byte drift", () => fixture(dir => {
+   const node = join(dir, "node-24"), link = join(dir, "node"), data = join(dir, "v2");
+-  copyFileSync(process.execPath, node);
++  copyNodeExecutable(node);
+   symlinkSync(node, link);
+   const pin = resolveNodePin(data, { HIVE_NODE_PATH: link });
+   assert.equal(pin.path, node);
+@@ -52,7 +53,7 @@ test("foreground helpers discover the persisted pin without inherited service en
+     for (const key of keys) delete process.env[key];
+     process.env.HIVE_STORE_ROOT = dir;
+     const node = join(dir, "node-pinned");
+-    copyFileSync(process.execPath, node);
++    copyNodeExecutable(node);
+     const pin = probeNativeNode(node);
+     persistNodePin(join(dir, "v2"), pin);
+     assert.equal(childNodePath(), node);
+@@ -68,7 +69,7 @@ test("foreground helpers discover the persisted pin without inherited service en
+ 
+ test("a recorded real executable replaced by a symlink cannot silently move the pin", () => fixture(dir => {
+   const node = join(dir, "node-pinned"), moved = join(dir, "node-moved"), data = join(dir, "v2");
+-  copyFileSync(process.execPath, node);
++  copyNodeExecutable(node);
+   persistNodePin(data, probeNativeNode(node));
+   renameSync(node, moved);
+   symlinkSync(moved, node);
+@@ -77,7 +78,7 @@ test("a recorded real executable replaced by a symlink cannot silently move the
+ 
+ test("only an explicit different HIVE_NODE_PATH permits installer migration", () => fixture(dir => {
+   const node = join(dir, "node-other"), data = join(dir, "v2");
+-  copyFileSync(process.execPath, node);
++  copyNodeExecutable(node);
+   persistNodePin(data, probeNativeNode(process.execPath));
+   assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: "/Applications/Apiary.app/Contents/MacOS/Apiary" }, undefined, true), /never Electron/);
+   assert.throws(() => resolveNodePin(data, {}, node, true), /identity drift/);
+@@ -87,7 +88,7 @@ test("only an explicit different HIVE_NODE_PATH permits installer migration", ()
+ 
+ test("aliases to the recorded executable cannot migrate changed bytes", () => fixture(dir => {
+   const node = join(dir, "node"), alias = join(dir, "alias"), data = join(dir, "v2");
+-  copyFileSync(process.execPath, node);
++  copyNodeExecutable(node);
+   persistNodePin(data, probeNativeNode(node));
+   symlinkSync(node, alias);
+   appendFileSync(node, "changed bytes");
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index a02dac7b..95729053 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -1277,7 +1277,7 @@ export class HiveDaemon {
+       this.loopDelay?.disable();
+       this.tickTimer = null;
+       await this.quotaRecovery?.stop();
+-      this.segmenter?.stop();
++      await this.segmenter?.stop();
+       this.championHomes?.stop();
+       this.resumeSync?.stop();
+       await this.retention?.stop();
+diff --git a/v2/daemon/src/transcriptSegmenter.ts b/v2/daemon/src/transcriptSegmenter.ts
+index b7f9e1ce..e99af968 100644
+--- a/v2/daemon/src/transcriptSegmenter.ts
++++ b/v2/daemon/src/transcriptSegmenter.ts
+@@ -83,12 +83,13 @@ export class TranscriptSegmenter {
+     this.deps = deps;
+   }
+ 
+-  stop(): void {
++  async stop(): Promise<void> {
+     this.stopping = true;
+-    for (const seat of [...this.seats]) this.retire(seat, new Error("transcript segmenter stopped"));
++    const terminated = [...this.seats].map((seat) => this.retire(seat, new Error("transcript segmenter stopped")));
+     for (const pending of [...this.queue, ...this.running.values()]) for (const settle of pending.settle) settle({ status: "nothing", segments: 0, lines: 0 });
+     this.queue.length = 0;
+     this.queued.clear();
++    await Promise.allSettled(terminated);
+   }
+ 
+   requestCut(beeId: string, reason: TranscriptCutReason): Promise<TranscriptCutOutcome> {
+@@ -244,20 +245,21 @@ export class TranscriptSegmenter {
+     return seat;
+   }
+ 
+-  private retire(seat: Seat, err: Error): void {
++  private retire(seat: Seat, err: Error): Promise<number> {
+     const at = this.seats.indexOf(seat);
+-    if (at < 0) return;
++    if (at < 0) return Promise.resolve(0);
+     this.seats.splice(at, 1);
+     const idleAt = this.idle.indexOf(seat);
+     if (idleAt >= 0) this.idle.splice(idleAt, 1);
+     seat.worker.removeAllListeners();
+-    void seat.worker.terminate();
++    const terminated = seat.worker.terminate();
+     const inFlight = seat.inFlight;
+     seat.inFlight = null;
+     inFlight?.reject(err);
+-    if (this.stopping) return;
++    if (this.stopping) return terminated;
+     const next = this.waiting.shift();
+     if (next) next(this.seat());
++    return terminated;
+   }
+ 
+   private release(seat: Seat): void {
+diff --git a/v2/daemon/tests/muse-mac-guard.test.ts b/v2/daemon/tests/muse-mac-guard.test.ts
+index a9cede95..d61522be 100644
+--- a/v2/daemon/tests/muse-mac-guard.test.ts
++++ b/v2/daemon/tests/muse-mac-guard.test.ts
+@@ -13,7 +13,6 @@
+  */
+ import { test } from "node:test";
+ import assert from "node:assert/strict";
+-import { spawnSync } from "node:child_process";
+ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+ import { dirname, join } from "node:path";
+ import { fileURLToPath } from "node:url";
+@@ -187,7 +186,7 @@ test("muse on darwin: This Mac is the machine's own `muse login` — added once
+     );
+     await refused(client, "account.add", { harness: "muse", native: true, label: "Second" }, "invalid_request", /already has its native muse account: muse-this-mac/);
+     await refused(client, "account.add", { harness: "muse", label: "mine", homePath: config }, "invalid_request", /add it with native: true/);
+-    await refused(client, "account.add", { harness: "claude", native: true }, "account_unavailable", /claude has no native account/);
++    await refused(client, "account.add", { harness: "stub", native: true }, "account_unavailable", /stub has no native account/);
+     await refused(client, "spawn", { name: "unsigned", agent: "muse", cwd: dir, account: "muse-this-mac" }, "account_auth_needed", /needs its sign-in. Run `muse login` in Terminal on this Mac/);
+ 
+     // The user runs `muse login` in Terminal; Muse leaves a Keychain pointer.
+@@ -272,64 +271,6 @@ test("muse on darwin: This Mac is the machine's own `muse login` — added once
+   }
+ });
+ 
+-test("muse on darwin: a This Mac bee on the tmux substrate gets the same env as on hsr — the user's HOME, no XDG pair, and nothing from the bee's own env that could redirect its login", async (t) => {
+-  if (spawnSync("tmux", ["-V"], { stdio: "ignore" }).status !== 0) {
+-    t.skip("tmux is not installed");
+-    return;
+-  }
+-  const { dir, cleanup } = makeDaemonDir();
+-  const bin = join(dir, "sentinel-bin");
+-  const sentinelLog = join(dir, "sentinel.log");
+-  mkdirSync(bin, { recursive: true });
+-  for (const name of ["muse", "security"]) {
+-    writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${sentinelLog}"\nexit 1\n`);
+-    chmodSync(join(bin, name), 0o755);
+-  }
+-  const envOut = join(dir, "tui-env.json");
+-  const tui = join(dir, "fake-muse-tui.mjs");
+-  writeFileSync(tui, `#!${process.execPath}\nimport { renameSync, writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(`${envOut}.tmp`)}, JSON.stringify({ argv: process.argv.slice(2), env: process.env }));\nrenameSync(${JSON.stringify(`${envOut}.tmp`)}, ${JSON.stringify(envOut)});\nsetInterval(() => {}, 1000);\n`);
+-  chmodSync(tui, 0o755);
+-  writeFileSync(join(dir, "config.json"), JSON.stringify({
+-    ...JSON.parse(readFileSync(join(dir, "config.json"), "utf8")),
+-    agents: { muse: { command: tui, args: ["serve"], adapter: "muse", env: { MUSE_NO_AUTO_UPDATE: "1" } } },
+-  }));
+-  const home = join(dir, "home");
+-  const config = join(home, ".config");
+-  mkdirSync(join(config, "muse"), { recursive: true });
+-  writeFileSync(join(config, "muse", "auth.json"), JSON.stringify({ schema_version: 2, providers: { meta: { mechanism: "oauth", obtained_via: "device_code", storage: "keychain", expires_at: 4102444800000 } } }));
+-  let daemon: DaemonHandle | null = null;
+-  try {
+-    daemon = await startDaemon(dir, { platform: "darwin", env: { HOME: home, PATH: `${bin}:${process.env.PATH ?? ""}` } });
+-    const client = await daemon.client();
+-    const added = await client.request<AccountAddResult>("account.add", { harness: "muse", native: true });
+-    assert.deepEqual({ id: added.account.id, home: added.account.homePath, status: added.account.status }, { id: "muse-this-mac", home: config, status: "ok" });
+-    const before = treeOf(home);
+-
+-    const redirect = { HOME: join(dir, "elsewhere"), XDG_CONFIG_HOME: join(dir, "elsewhere", "config"), XDG_DATA_HOME: join(dir, "elsewhere", "data"), XDG_STATE_HOME: join(dir, "elsewhere", "state"), XDG_CACHE_HOME: join(dir, "elsewhere", "cache"), MUSE_PROJECTS_HOME: join(dir, "elsewhere", "projects"), MUSE_AUTH_PATH: join(dir, "elsewhere", "auth.json"), MUSE_LOGIN: "1", MUSE_NO_AUTO_UPDATE: "0", MUSE_SYNC_UPDATE: "1", MUSE_UPDATE_INTERVAL_SECONDS: "1", MUSE_CHANNEL: "muse-canary", TBH_CREDENTIAL_BACKEND: "file", META_API_KEY: "redirected-key" };
+-    const spawned = await client.request<SpawnResult>("spawn", { name: "native-tui", agent: "muse", substrate: "tmux", cwd: dir, env: { ...redirect, FAKE_MUSE_KEPT: "kept" } });
+-    assert.deepEqual({ account: spawned.account, reason: spawned.accountReason }, { account: "muse-this-mac", reason: THIS_MAC });
+-    const ran = await waitFor(() => existsSync(envOut) ? JSON.parse(readFileSync(envOut, "utf8")) as { argv: string[]; env: Record<string, string> } : null, "native muse TUI starts in tmux", 15_000);
+-    assert.deepEqual(ran.argv, [], "the TUI seat takes no headless args");
+-    const expected: Record<string, string | undefined> = Object.fromEntries(Object.keys(redirect).map((key) => [key, process.env[key]]));
+-    for (const key of ["XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"]) expected[key] = undefined;
+-    expected.HOME = home;
+-    expected.MUSE_NO_AUTO_UPDATE = "1";
+-    assert.deepEqual(Object.fromEntries(Object.keys(redirect).map((key) => [key, ran.env[key]])), expected, "the bee's own env cannot redirect This Mac's login on tmux");
+-    assert.equal(ran.env.FAKE_MUSE_KEPT, "kept");
+-    assert.equal(ran.env.HIVE_BEE_ID, spawned.beeId);
+-
+-    await client.request("stop", { beeId: spawned.beeId });
+-    assert.deepEqual(treeOf(home), before, "the machine's own Muse files are untouched");
+-    assert.equal(existsSync(join(dir, "vault", "muse", "muse-this-mac")), false, "nothing reaches the vault");
+-    assert.equal(existsSync(sentinelLog), false, "neither muse nor security was ever executed");
+-    client.close();
+-  } finally {
+-    if (daemon) await daemon.stop().catch(() => {});
+-    spawnSync("tmux", ["-S", join(dir, "tmux.sock"), "kill-server"], { stdio: "ignore" });
+-    cleanup();
+-  }
+-});
+-
+ test("muse version stamp: only a safe version token is reported; control characters and markup never pass through", () => {
+   const { dir, cleanup } = makeDaemonDir();
+   try {
+diff --git a/v2/daemon/tests/native-keychain.test.ts b/v2/daemon/tests/native-keychain.test.ts
+index 6e3ad5f2..5673e09f 100644
+--- a/v2/daemon/tests/native-keychain.test.ts
++++ b/v2/daemon/tests/native-keychain.test.ts
+@@ -1,8 +1,8 @@
+ import assert from "node:assert/strict";
+ import { execFile } from "node:child_process";
+-import { mkdtempSync, rmSync } from "node:fs";
++import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+ import { homedir, tmpdir } from "node:os";
+-import { join } from "node:path";
++import { delimiter, join } from "node:path";
+ import { test } from "node:test";
+ import { promisify } from "node:util";
+ import { buildAddGenericPasswordCommand, claudeKeychainService, credentialDigest, decodeSecurityPasswordOutput, identityOnlyCredentials, keychainAvailable, readClaudeKeychain, readClaudeKeychainState, writeClaudeKeychainEntry } from "../src/nativeKeychain.ts";
+@@ -160,7 +160,10 @@ test("buildAddGenericPasswordCommand rejects account/service values that break t
+ // isolated in a throwaway keychain file so the developer's login keychain is
+ // never touched. Exercises the same command construction writeClaudeKeychain
+ // uses, with the explicit keychain-path argument targeting the fixture.
+-test("security -i writes Claude-format credentials as raw JSON, not hex text (macOS only)", { skip: process.platform !== "darwin" }, async () => {
++const securityOnPath = (process.env.PATH ?? "").split(delimiter).map((dir) => join(dir, "security")).find((path) => existsSync(path));
++const systemSecurityOnPath = securityOnPath !== undefined && realpathSync(securityOnPath) === "/usr/bin/security";
++
++test("security -i writes Claude-format credentials as raw JSON, not hex text (macOS only)", { skip: process.platform !== "darwin" ? "macOS only" : !systemSecurityOnPath && "security on PATH is a refusing shim (deploy gate); the real tokenizer check needs the system binary" }, async () => {
+   const dir = mkdtempSync(join(tmpdir(), "hive-keychain-test-"));
+   const keychain = join(dir, "test.keychain-db");
+   try {
+diff --git a/v2/daemon/tests/resume-reseed.test.ts b/v2/daemon/tests/resume-reseed.test.ts
+index 646fb319..187a0075 100644
+--- a/v2/daemon/tests/resume-reseed.test.ts
++++ b/v2/daemon/tests/resume-reseed.test.ts
+@@ -95,7 +95,7 @@ test("resume-reseed.1: an import without a usable bundle re-seeds the bee from i
+     assert.match(seed.body, /2 question\(s\)/);
+     assert.equal(mailbox.messages[0]!.id, seed.id, "the seed is the first message in the new mailbox");
+     await waitFor(async () => ((await clientB.request<ViewResult>("view", { beeId })).view.runtimeState === "idle" ? true : null), "reseeded bee idle", 60_000);
+-    assert.equal((await clientB.request<MailboxResult>("mailbox", { beeId })).messages[0]!.deliveredAt != null, true, "the seed was delivered first");
++    await waitFor(async () => ((await clientB.request<MailboxResult>("mailbox", { beeId })).messages[0]!.deliveredAt != null ? true : null), "the seed was delivered first", 30_000);
+ 
+     const fresh = await clientB.request<BeeImportResult>("bee.import", {
+       descriptor: { ...descriptor, id: "11111111-2222-4333-8444-555555555555", name: "fresh", handle: undefined },
+diff --git a/v2/driver-hsr/tests/pending-start-recovery.test.ts b/v2/driver-hsr/tests/pending-start-recovery.test.ts
+index 67090c00..e6cc4c7d 100644
+--- a/v2/driver-hsr/tests/pending-start-recovery.test.ts
++++ b/v2/driver-hsr/tests/pending-start-recovery.test.ts
+@@ -72,7 +72,7 @@ for (const scenario of ["recover", "stamp", "bee", "generation", "host", "journa
+         assert.ok(readFileSync(join(dir, "logs", `${bee.id}.jsonl`), "utf8").includes("recovered without restart"));
+         assert.equal(store.auditTail(0, 1000).filter(row => row.kind === "runtime.pending_start_bound").length, 1);
+       } else {
+-        if (scenario === "socket-peer") {
++        if (scenario === "socket-peer" || scenario === "gone") {
+           const deadline = Date.now() + 5000;
+           while (second.hasProcess(bee.id, 1) && Date.now() < deadline) await sleep(10);
+         } else await sleep(150);

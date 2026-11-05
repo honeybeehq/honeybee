@@ -1,0 +1,9 @@
+gate-driver: buildDeployArtifact sha=ff3951e1a436369733c9236ed1f14618b557f247 workDir=/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-mD9Ghz tmpdir=/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf execPath=/opt/homebrew/Cellar/node/25.8.0/bin/node at=2026-11-05T10:48:55.899Z
+deploy: git -C /Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2 archive --format=tar -o /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-mD9Ghz/source.tar ff3951e1a436369733c9236ed1f14618b557f247
+deploy: tar -xf /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-mD9Ghz/source.tar -C /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-mD9Ghz/checkout
+deploy: npm ci
+deploy: npm run check
+deploy: npm run build
+deploy: npm run v2:test
+deploy: npm run v2:daemon
+gate-driver: FAILED deploy: 'npm run v2:daemon' exited with 1 elapsedMs=833703

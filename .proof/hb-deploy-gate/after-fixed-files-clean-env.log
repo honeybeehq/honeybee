@@ -1,0 +1,113 @@
+== fixed files, clean gate env with short TMPDIR
+✔ external Apiary current reconciles history and rolls back to an installed history build (113.349459ms)
+✔ external Apiary current reconciles history and restores its exact link on failure (84.065541ms)
+✔ unidentified external runtime refuses with the missing identity path (5.749625ms)
+✔ rollback checks store schema 44 before changing current or history (111.868084ms)
+✔ rollback checks store schema 48 before changing current or history (7.348833ms)
+✔ unknown schema capability refuses: "" (4.153083ms)
+✔ unknown schema capability refuses: "var SCHEMA_VERSION = 48;\nvar SCHEMA_VERSION2 = 48;\n" (3.766625ms)
+✔ unknown schema capability refuses: "var SCHEMA_VERSION = garbage;\n" (4.417584ms)
+✔ schema capability is read across the split cli bundle chunks (7.076916ms)
+✔ schema 29 requires an explicit store restore even when the target schema is newer (4.78475ms)
+✔ rollback from an external current retains it for a second rollback back (164.195708ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 655.892333
+✔ service environment records native pin and drops Electron mode (156.633625ms)
+✔ service entry follows selected node current, independent of ambient home (85.218417ms)
+✔ fresh service install requires a pin and validates explicit argv overrides (220.2365ms)
+✔ daemon start, restart and status expose a held pin without opening the store (262.773125ms)
+✔ daemon service verbs reach the service manager only for the unit's own data dir under the account home (715.703209ms)
+✖ hive daemon stop on a scratch data dir signals only that daemon, by its own pid (470.596833ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 5
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1978.259084
+
+✖ failing tests:
+
+test at v2/cli/tests/update-service.test.ts:156:1
+✖ hive daemon stop on a scratch data dir signals only that daemon, by its own pid (470.596833ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    {
+  +   dataDir: '/private/tmp/hb-gate/tmp/hb-service-guard-vrHWfr/scratch',
+  -   dataDir: '/tmp/hb-gate/tmp/hb-service-guard-vrHWfr/scratch',
+      pid: 52990,
+      service: null,
+      stopped: true
+    }
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/tests/update-service.test.ts:174:12)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { stopped: true, pid: 52990, dataDir: '/private/tmp/hb-gate/tmp/hb-service-guard-vrHWfr/scratch', service: null },
+    expected: { stopped: true, pid: 52990, dataDir: '/tmp/hb-gate/tmp/hb-service-guard-vrHWfr/scratch', service: null },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+✔ muse on darwin: never executed for a probe, spawned under a held account, or written into a home; a Muse account is held through Honeybee's own Meta sign-in and leased (2070.402417ms)
+✔ muse on darwin: This Mac is the machine's own `muse login` — added once with no login, never signed in, copied or leased; Muse bees run on it with no home env; its state never runs muse or security (8098.610708ms)
+✔ muse version stamp: only a safe version token is reported; control characters and markup never pass through (1.524292ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10310.06775
+✔ claude keychain service embeds sha256(config dir)[0..8]; default home is unsuffixed (0.58075ms)
+✔ HIVE_NO_KEYCHAIN disables the bridge entirely (0.380875ms)
+✔ keychain reads distinguish explicit absence from unreadable and preserve present raw bytes (2.262792ms)
+✔ keychain reads prefer the current user's item over a same-service item under another account (0.247209ms)
+✔ buildAddGenericPasswordCommand stores compact Claude JSON as a plain password (0.173125ms)
+✔ security hex rendering is normalized to JSON at the bridge boundary (0.12ms)
+✔ buildAddGenericPasswordCommand compacts oversize JSON, fails closed when even that overflows (0.195167ms)
+✔ buildAddGenericPasswordCommand rejects account/service values that break the line protocol (0.049125ms)
+﹣ security -i writes Claude-format credentials as raw JSON, not hex text (macOS only) (0.039083ms) # security on PATH is a refusing shim (deploy gate); the real tokenizer check needs the system binary
+✔ identityOnlyCredentials extracts the claudeAiOauth identity and drops siblings (0.136958ms)
+✔ credentialDigest is a stable content hash (0.069291ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 56.395834
+✔ resume-reseed.1: an import without a usable bundle re-seeds the bee from its projected transcript (1205.090958ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1249.972
+v2 daemon/cli test files failed (1 of 5):
+  v2/cli/tests/update-service.test.ts (exit 1)
+exit=1
+== reseed repeat 1
+✔ resume-reseed.1: an import without a usable bundle re-seeds the bee from its projected transcript (1235.978584ms)
+ℹ fail 0
+== reseed repeat 2
+✔ resume-reseed.1: an import without a usable bundle re-seeds the bee from its projected transcript (1124.470292ms)
+ℹ fail 0
+== reseed repeat 3
+✔ resume-reseed.1: an import without a usable bundle re-seeds the bee from its projected transcript (1099.32375ms)
+ℹ fail 0
+fixture-warden: reaped leaked fixture pid 54009: /Users/trmd/.local/share/mise/installs/node/25.8.0/bin/node --experimental-strip-types /Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/driver-hsr/src/runner-host-main.ts /tmp/hb-gate/tmp/hb-v2-daemon-RkcGDk/runners/8c45625e-b47b-4237-9b5a-a1b44fb64016.1.json
+fixture-warden: reaped leaked fixture pid 54011: /Users/trmd/.local/share/mise/installs/node/25.8.0/bin/node /Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/driver-cell/test-agent/agent.mjs

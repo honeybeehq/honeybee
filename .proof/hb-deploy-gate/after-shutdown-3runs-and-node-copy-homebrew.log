@@ -1,0 +1,33 @@
+== shutdown run 1 (segmenter stop awaited)
+✔ daemon shutdown natural: exits promptly and preserves detached bees (3192.309834ms)
+✔ daemon shutdown retention: exits promptly and preserves detached bees (2956.379666ms)
+✔ daemon shutdown backstop: exits promptly and preserves detached bees (5071.42125ms)
+ℹ fail 0
+== shutdown run 2 (segmenter stop awaited)
+✔ daemon shutdown natural: exits promptly and preserves detached bees (3194.010541ms)
+✔ daemon shutdown retention: exits promptly and preserves detached bees (2988.175667ms)
+✔ daemon shutdown backstop: exits promptly and preserves detached bees (4084.476291ms)
+ℹ fail 0
+== shutdown run 3 (segmenter stop awaited)
+✔ daemon shutdown natural: exits promptly and preserves detached bees (3087.838792ms)
+✔ daemon shutdown retention: exits promptly and preserves detached bees (3066.149542ms)
+✔ daemon shutdown backstop: exits promptly and preserves detached bees (4010.225667ms)
+ℹ fail 0
+== deploy-restart + node-runtime under Homebrew node
+✔ fresh verified activation executes installed current v2 CLI with scoped data directory (671.887708ms)
+✔ restart after stop failure refuses a still-loaded service (291.2275ms)
+✔ restart after stop failure requires confirmed absence (377.97775ms)
+✔ persisted v2 config selects the v2 service for an ordinary source restart (377.972333ms)
+✔ restart recovery preserves a safe service and pin boundary: after-start (559.120542ms)
+✔ restart recovery preserves a safe service and pin boundary: after-stop (836.023792ms)
+✔ restart recovery preserves a safe service and pin boundary: compatible (609.687041ms)
+✔ fresh service pin requires explicit managed node and refuses Electron (243.760792ms)
+✔ pin persists resolved executable identity and refuses version or byte drift (558.927417ms)
+✔ runtime environment and inspector arguments are scrubbed (0.197834ms)
+✔ foreground helpers discover the persisted pin without inherited service environment (305.503875ms)
+✔ a recorded real executable replaced by a symlink cannot silently move the pin (236.81775ms)
+✔ only an explicit different HIVE_NODE_PATH permits installer migration (341.081417ms)
+✔ aliases to the recorded executable cannot migrate changed bytes (285.219791ms)
+ℹ pass 14
+ℹ fail 0
+/opt/homebrew/Cellar/node/25.8.0/bin/node
