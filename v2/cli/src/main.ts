@@ -4693,7 +4693,7 @@ export function serviceExecArgs(dataDir: string, env: Record<string, string | un
   // Invoked through the hive binary → keep the `v2` argv prefix so a service
   // unit installed before freeze still hits this stack (`hive v2 daemon run`).
   // The standalone v2 bin already is this CLI, so no prefix.
-  const viaHive = !/[/\\]v2[/\\]/.test(entry);
+  const viaHive = /[/\\]dist[/\\]cli\.js$/.test(entry);
   return [resolveNodePin(dataDir, env, undefined, true).path, entry, ...(viaHive ? ["v2"] : []), "daemon", "run", "--data-dir", dataDir];
 }
 

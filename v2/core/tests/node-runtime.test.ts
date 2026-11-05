@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { childNodePath, nativeNodeEnv, nodePinFile, persistNodePin, probeNativeNode, resolveNodePin, withoutInspectorArgs } from "../src/nodeRuntime.ts";
+import { copyNodeExecutable } from "./helpers.ts";
 
 function fixture(run: (dir: string) => void): void {
   const dir = mkdtempSync(join(tmpdir(), "hb-pin-"));
@@ -21,7 +22,7 @@ test("fresh service pin requires explicit managed node and refuses Electron", ()
 
 test("pin persists resolved executable identity and refuses version or byte drift", () => fixture(dir => {
   const node = join(dir, "node-24"), link = join(dir, "node"), data = join(dir, "v2");
-  copyFileSync(process.execPath, node);
+  copyNodeExecutable(node);
   symlinkSync(node, link);
   const pin = resolveNodePin(data, { HIVE_NODE_PATH: link });
   assert.equal(pin.path, node);
@@ -52,7 +53,7 @@ test("foreground helpers discover the persisted pin without inherited service en
     for (const key of keys) delete process.env[key];
     process.env.HIVE_STORE_ROOT = dir;
     const node = join(dir, "node-pinned");
-    copyFileSync(process.execPath, node);
+    copyNodeExecutable(node);
     const pin = probeNativeNode(node);
     persistNodePin(join(dir, "v2"), pin);
     assert.equal(childNodePath(), node);
@@ -68,7 +69,7 @@ test("foreground helpers discover the persisted pin without inherited service en
 
 test("a recorded real executable replaced by a symlink cannot silently move the pin", () => fixture(dir => {
   const node = join(dir, "node-pinned"), moved = join(dir, "node-moved"), data = join(dir, "v2");
-  copyFileSync(process.execPath, node);
+  copyNodeExecutable(node);
   persistNodePin(data, probeNativeNode(node));
   renameSync(node, moved);
   symlinkSync(moved, node);
@@ -77,7 +78,7 @@ test("a recorded real executable replaced by a symlink cannot silently move the 
 
 test("only an explicit different HIVE_NODE_PATH permits installer migration", () => fixture(dir => {
   const node = join(dir, "node-other"), data = join(dir, "v2");
-  copyFileSync(process.execPath, node);
+  copyNodeExecutable(node);
   persistNodePin(data, probeNativeNode(process.execPath));
   assert.throws(() => resolveNodePin(data, { HIVE_NODE_PATH: "/Applications/Apiary.app/Contents/MacOS/Apiary" }, undefined, true), /never Electron/);
   assert.throws(() => resolveNodePin(data, {}, node, true), /identity drift/);
@@ -87,7 +88,7 @@ test("only an explicit different HIVE_NODE_PATH permits installer migration", ()
 
 test("aliases to the recorded executable cannot migrate changed bytes", () => fixture(dir => {
   const node = join(dir, "node"), alias = join(dir, "alias"), data = join(dir, "v2");
-  copyFileSync(process.execPath, node);
+  copyNodeExecutable(node);
   persistNodePin(data, probeNativeNode(node));
   symlinkSync(node, alias);
   appendFileSync(node, "changed bytes");

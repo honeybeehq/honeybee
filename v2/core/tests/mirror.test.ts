@@ -200,7 +200,7 @@ test("mirror.2: value-level snapshot — a deterministic store serializes to the
         "id": "BEE_ID",
         "name": "alpha",
         "agent": "claude",
-        "substrate": "tmux",
+        "substrate": "hsr",
         "cwd": "/tmp/w",
         "title": null,
         "tags": [],

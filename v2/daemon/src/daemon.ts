@@ -1277,7 +1277,7 @@ export class HiveDaemon {
       this.loopDelay?.disable();
       this.tickTimer = null;
       await this.quotaRecovery?.stop();
-      this.segmenter?.stop();
+      await this.segmenter?.stop();
       this.championHomes?.stop();
       this.resumeSync?.stop();
       await this.retention?.stop();

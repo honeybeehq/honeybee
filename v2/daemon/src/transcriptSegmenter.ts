@@ -83,12 +83,13 @@ export class TranscriptSegmenter {
     this.deps = deps;
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.stopping = true;
-    for (const seat of [...this.seats]) this.retire(seat, new Error("transcript segmenter stopped"));
+    const terminated = [...this.seats].map((seat) => this.retire(seat, new Error("transcript segmenter stopped")));
     for (const pending of [...this.queue, ...this.running.values()]) for (const settle of pending.settle) settle({ status: "nothing", segments: 0, lines: 0 });
     this.queue.length = 0;
     this.queued.clear();
+    await Promise.allSettled(terminated);
   }
 
   requestCut(beeId: string, reason: TranscriptCutReason): Promise<TranscriptCutOutcome> {
@@ -244,20 +245,21 @@ export class TranscriptSegmenter {
     return seat;
   }
 
-  private retire(seat: Seat, err: Error): void {
+  private retire(seat: Seat, err: Error): Promise<number> {
     const at = this.seats.indexOf(seat);
-    if (at < 0) return;
+    if (at < 0) return Promise.resolve(0);
     this.seats.splice(at, 1);
     const idleAt = this.idle.indexOf(seat);
     if (idleAt >= 0) this.idle.splice(idleAt, 1);
     seat.worker.removeAllListeners();
-    void seat.worker.terminate();
+    const terminated = seat.worker.terminate();
     const inFlight = seat.inFlight;
     seat.inFlight = null;
     inFlight?.reject(err);
-    if (this.stopping) return;
+    if (this.stopping) return terminated;
     const next = this.waiting.shift();
     if (next) next(this.seat());
+    return terminated;
   }
 
   private release(seat: Seat): void {

@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { openCoreStore, type CoreStore, type CoreStoreOptions } from "../src/index.ts";
 
 /**
@@ -41,4 +41,16 @@ export function bootToRunning(store: CoreStore, beeId: string, pid: number, pidS
   const rt = store.currentRuntime(beeId);
   if (!rt) throw new Error("no runtime");
   store.updateRuntimeState(beeId, rt.generation, "running", { pid, pidStartedAt });
+}
+
+/** A runnable copy of this process's node: writable, with the install's shared libraries linked beside it (Homebrew node loads @rpath/libnode from @loader_path). */
+export function copyNodeExecutable(path: string): void {
+  copyFileSync(process.execPath, path);
+  chmodSync(path, 0o755);
+  const lib = join(dirname(realpathSync(process.execPath)), "..", "lib");
+  if (!existsSync(lib)) return;
+  for (const name of readdirSync(lib)) {
+    if (!/\.(dylib|so)(\.|$)/.test(name) || existsSync(join(dirname(path), name))) continue;
+    symlinkSync(join(lib, name), join(dirname(path), name));
+  }
 }
