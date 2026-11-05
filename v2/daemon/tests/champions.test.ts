@@ -1,11 +1,12 @@
 /**
- * H5 Champions in the REAL daemon: the verbs refuse while the flag is off; a
- * champion.put prepares an immutable home; champion.start spawns the
- * incarnation in that home with the Apiary tags and binds it; the bee's
- * direct archive is refused (resident lifecycle); a turn end bundles the home
- * into the object store; a second daemon sharing that store restores the home
- * before its first runtime (executor swap by revive); archive and delete keep
- * the home. Temp dirs and stub agents only.
+ * H5 Champions in the REAL daemon: the verbs and the champions.v2 tag are
+ * published on every node; a champion.put prepares an immutable home;
+ * champion.start spawns the incarnation (bee kind `champion`) in that home
+ * with the Apiary tags and binds it; the bee's direct archive is refused
+ * (resident lifecycle); a turn end bundles the home into the object store; a
+ * second daemon sharing that store restores the home before its first runtime
+ * (executor swap by revive); archive and delete keep the home. Temp dirs and
+ * stub agents only.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -48,9 +49,10 @@ async function idle(client: RpcClient, beeId: string): Promise<ViewResult> {
   }, "idle", 60_000);
 }
 
-test("champions.0: verbs and capability are published; everything but list/get refuses while the flag is off", { timeout: 120_000 }, async () => {
-  for (const verb of ["champion.put", "champion.get", "champion.list", "champion.start", "champion.archive", "champion.delete"]) assert.ok(RPC_VERBS.includes(verb as (typeof RPC_VERBS)[number]), verb);
+test("champions.0: verbs and capabilities are published; a node with no Champions answers empty and its snapshot carries no champions table", { timeout: 120_000 }, async () => {
+  for (const verb of ["champion.put", "champion.get", "champion.list", "champion.start", "champion.archive", "champion.delete", "champion.fence", "champion.export"]) assert.ok(RPC_VERBS.includes(verb as (typeof RPC_VERBS)[number]), verb);
   assert.ok(DAEMON_CAPABILITIES.includes("champions.v1"));
+  assert.ok(DAEMON_CAPABILITIES.includes("champions.v2"));
   const root = mkdtempSync(join(tmpdir(), "hb-v2-champ-off-"));
   const rig = makeRig(root, {}, join(root, "objects"));
   let daemon: DaemonHandle | null = null;
@@ -58,9 +60,10 @@ test("champions.0: verbs and capability are published; everything but list/get r
     daemon = await startDaemon(rig.dir);
     const client = await daemon.client();
     assert.deepEqual(await client.request<ChampionListResult>("champion.list", {}), { champions: [] });
-    await assert.rejects(client.request("champion.put", { name: "Vera", agent: "cellstub", idempotencyKey: "p1" }), (err: unknown) => err instanceof RpcError && err.code === "capability_missing");
+    await assert.rejects(client.request("champion.start", { id: "nobody", idempotencyKey: "s1" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && /unknown champion/.test(err.message));
+    await assert.rejects(client.request("spawn", { name: "fake", agent: "cellstub", cwd: root, kind: "champion" }), (err: unknown) => err instanceof RpcError && err.code === "invalid_request" && /champion\.start/.test(err.message));
     const snapshot = await client.request<SnapshotResult>("snapshot", {});
-    assert.equal(snapshot.champions, undefined, "the snapshot carries no champions table while the flag is off");
+    assert.equal(snapshot.champions, undefined, "the snapshot carries no champions table while no Champion exists");
   } finally {
     await daemon?.stop();
     rig.cleanup();
@@ -72,8 +75,8 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
   const root = mkdtempSync(join(tmpdir(), "hb-v2-champ-"));
   const objects = join(root, "shared-objects");
   mkdirSync(objects, { recursive: true });
-  const rigA = makeRig(root, { enabled: true, homeSync: true, homesDir: join(root, "homes-a") }, objects);
-  const rigB = makeRig(root, { enabled: true, homeSync: true, homesDir: join(root, "homes-b") }, objects);
+  const rigA = makeRig(root, { homesDir: join(root, "homes-a") }, objects);
+  const rigB = makeRig(root, { homesDir: join(root, "homes-b") }, objects);
   let a: DaemonHandle | null = null;
   let b: DaemonHandle | null = null;
   try {
@@ -108,6 +111,7 @@ test("champions.1: put prepares the home, start spawns in it with the Apiary tag
     const view = await idle(client, started.beeId);
     assert.equal(view.bee?.cwd, put.champion.home, "the incarnation runs in the Champion's home");
     assert.ok(view.bee?.tags.includes("apiary:champion=vera-lund") && view.bee?.tags.includes("apiary:role=champion"), JSON.stringify(view.bee?.tags));
+    assert.equal(view.bee?.kind, "champion", "the incarnation is a champion-kind bee");
     assert.deepEqual(view.bee?.args, ["--model", "stub-1"]);
     const got = await client.request<ChampionGetResult>("champion.get", { id: "vera-lund" });
     assert.equal(got.champion.currentBeeId, started.beeId);

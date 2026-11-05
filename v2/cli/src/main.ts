@@ -124,6 +124,8 @@ import {
   type ChampionStartResult,
   type ChampionArchiveResult,
   type ChampionDeleteResult,
+  type ChampionFenceResult,
+  type ChampionExportResult,
   type TemplatePutResult,
   type ViewResult,
   type WatchFrame,
@@ -3787,9 +3789,42 @@ async function cmdChampion(ctx: CliContext, parsed: Parsed): Promise<number> {
     }
     case "start": {
       const id = parsed.positional[2];
-      if (!id) throw new Error("usage: hive champion start <id> [--prompt text]");
-      const result = await withClient(ctx, (c) => c.request<ChampionStartResult>("champion.start", { id, ...(flag("--prompt") ? { prompt: flag("--prompt") } : {}), idempotencyKey: flag("--idempotency-key") ?? `champion-start-${randomUUID()}` }));
-      emit(ctx, [confirm("ok", result.started, `champion ${id} → bee ${result.beeId}${result.homeRestored ? " (home restored from the object store)" : ""}`)], result, false);
+      if (!id) throw new Error("usage: hive champion start <id> [--prompt text] [--home-bundle file --epoch n] [--home-ref sha --epoch n]");
+      const bundleFile = flag("--home-bundle");
+      const handover: Record<string, unknown> = {};
+      if (bundleFile) {
+        const exported = JSON.parse(readFileSync(resolve(bundleFile), "utf8")) as ChampionExportResult;
+        if (!exported.home || !exported.homeBytes) throw new Error(`${bundleFile} carries no home bundle`);
+        handover.homeRef = exported.home.ref;
+        handover.homeBytes = exported.homeBytes;
+        handover.epoch = flag("--epoch") !== undefined ? Number(flag("--epoch")) : exported.home.epoch;
+      } else if (flag("--home-ref")) {
+        handover.homeRef = flag("--home-ref");
+        if (flag("--epoch") === undefined) throw new Error("--home-ref needs --epoch");
+        handover.epoch = Number(flag("--epoch"));
+      } else if (flag("--epoch") !== undefined) handover.epoch = Number(flag("--epoch"));
+      if (handover.epoch !== undefined && !Number.isInteger(handover.epoch)) throw new Error("--epoch must be an integer");
+      const result = await withClient(ctx, (c) => c.request<ChampionStartResult>("champion.start", { id, ...(flag("--prompt") ? { prompt: flag("--prompt") } : {}), ...handover, idempotencyKey: flag("--idempotency-key") ?? `champion-start-${randomUUID()}` }));
+      emit(ctx, [confirm("ok", result.started, `champion ${id} → bee ${result.beeId} epoch ${result.epoch}${result.homeRestored ? " (home restored from the bundle)" : result.restoreSkipped ? ` (home not restored: ${result.restoreSkipped})` : ""}${result.replacedBeeId ? `; replaced ${result.replacedBeeId}` : ""}`)], result, false);
+      return 0;
+    }
+    case "export": {
+      const id = parsed.positional[2];
+      const out = flag("--out");
+      if (!id || !out) throw new Error("usage: hive champion export <id> --out <file>");
+      const result = await withClient(ctx, (c) => c.request<ChampionExportResult>("champion.export", { id }));
+      writeFileSync(resolve(out), JSON.stringify(result), { mode: 0o600 });
+      const { homeBytes, ...shown } = result;
+      void homeBytes;
+      emit(ctx, [confirm("ok", "exported", `champion ${id}${result.home ? ` home bundle ${result.home.ref.slice(0, 12)} ${result.home.bytes} bytes ${result.home.files} files epoch ${result.home.epoch}` : " (no home bundle)"}${result.template ? ` template ${result.template.id}` : ""} → ${out}`)], shown, false);
+      return 0;
+    }
+    case "fence": {
+      const id = parsed.positional[2];
+      const epoch = flag("--epoch");
+      if (!id || epoch === undefined || !Number.isInteger(Number(epoch))) throw new Error("usage: hive champion fence <id> --epoch <n>");
+      const result = await withClient(ctx, (c) => c.request<ChampionFenceResult>("champion.fence", { id, epoch: Number(epoch), idempotencyKey: flag("--idempotency-key") ?? `champion-fence-${randomUUID()}` }));
+      emit(ctx, [confirm("ok", "fenced", `champion ${id} at epoch ${result.champion.epoch}${result.stopped ? "; the live incarnation is being stopped" : ""}`)], result, false);
       return 0;
     }
     case "archive": {
@@ -3808,7 +3843,7 @@ async function cmdChampion(ctx: CliContext, parsed: Parsed): Promise<number> {
       return 0;
     }
     default:
-      throw new Error("usage: hive champion <list|get|put|start|archive|delete>");
+      throw new Error("usage: hive champion <list|get|put|start|export|fence|archive|delete>");
   }
 }
 

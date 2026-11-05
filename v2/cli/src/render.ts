@@ -218,6 +218,7 @@ export function renderBeeView(v: ViewResult, stale: boolean): string[] {
   const prefix = stalePrefix(stale);
   const details: Array<[string, string]> = [];
   if (bee.handle) details.push(["id", bee.id]);
+  if (bee.kind !== "agent") details.push(["kind", bee.kind]);
   if (bee.title) details.push(["title", bee.title]);
   details.push(["cwd", tildify(bee.cwd)]);
   if (bee.account) details.push(["account", bee.account]);

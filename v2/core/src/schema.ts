@@ -167,8 +167,10 @@
  * and its authority epoch, owned by Honeybee); additive; migration = ALTER TABLE ADD COLUMN ×2.
  * v57 — H7 gateways and skills: `gateways` (the MCP endpoints Apiary registers; Honeybee writes
  * `<storeRoot>/gateways/<name>.json` from these rows) and `skill_tree` (the one content-hashed skill
- * tree installed into every Honeybee-owned home); additive CREATE TABLE IF NOT EXISTS ×2. */
-export const SCHEMA_VERSION = 57;
+ * tree installed into every Honeybee-owned home); additive CREATE TABLE IF NOT EXISTS ×2.
+ * v58 — H5 Champion bee kind: `bees.kind` (`agent` | `champion`; a Champion incarnation is born
+ * `champion` by champion.start); additive; migration = ALTER TABLE ADD COLUMN. */
+export const SCHEMA_VERSION = 58;
 
 export const QUESTIONS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS questions (
@@ -419,7 +421,10 @@ CREATE TABLE IF NOT EXISTS bees (
   -- v23: in-flight bee_handoffs.id; NULL when idle (terminal receipts remain).
   active_handoff_id TEXT,
   last_turn_trigger TEXT,
-  last_human_output_at INTEGER
+  last_human_output_at INTEGER,
+  -- v58: the bee kind. agent is an ordinary bee; champion is the incarnation of a
+  -- Champion identity (champions.current_bee_id), spawned only by champion.start.
+  kind             TEXT NOT NULL DEFAULT 'agent' CHECK (kind IN ('agent','champion'))
 ) STRICT;
 -- Note: 'deleted' never appears as a stored lifecycle — Q1 says delete removes the
 -- record row immediately, so a missing row IS the deleted state.
@@ -907,6 +912,7 @@ export const BEES_ADDITIVE_COLUMNS: ReadonlyArray<readonly [name: string, ddl: s
   ["active_handoff_id", "active_handoff_id TEXT"],
   ["last_turn_trigger", "last_turn_trigger TEXT"],
   ["last_human_output_at", "last_human_output_at INTEGER"],
+  ["kind", "kind TEXT NOT NULL DEFAULT 'agent' CHECK (kind IN ('agent','champion'))"],
 ];
 
 /** Columns carried across the v31 rebuild of `cells` (by name: an ALTER-migrated store may differ in order). */

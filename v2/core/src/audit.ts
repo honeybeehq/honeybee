@@ -171,6 +171,7 @@ export function replayAudit(rows: AuditRow[]): StateDump {
         const bee = p.bee as BeeRow;
         bees.set(bee.id, {
           ...bee,
+          kind: bee.kind ?? "agent",
           human_ref: bee.human_ref ?? null,
           issuing_namespace: bee.issuing_namespace ?? null,
           parentExternal: bee.parentExternal ?? false,

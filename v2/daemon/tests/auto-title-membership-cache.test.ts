@@ -569,6 +569,7 @@ test("general dependencies retain exact callback order during synchronous reentr
     tags: [],
     sessionLogPath: null,
     lifecycle: "active",
+    kind: "agent",
     createdAt: 1,
     archivedAt: null,
     lastOutputAt: null,

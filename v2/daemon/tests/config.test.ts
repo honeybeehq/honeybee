@@ -539,14 +539,13 @@ test("transcripts.segments: a data-dir store by default, every key validated wit
 
 test("config: champions resolves defaults, paths and invalid values", () => {
   const defaults = championsOf(undefined, "/data");
-  assert.deepEqual(defaults, { enabled: false, homeSync: false, homeSyncIncludeSecrets: false, homesDir: "/data/champions", warnings: [] });
-  const on = championsOf({ enabled: true, homeSync: true, homesDir: "~/crew" }, "/data");
-  assert.equal(on.enabled, true);
-  assert.equal(on.homeSync, true);
+  assert.deepEqual(defaults, { homeSyncIncludeSecrets: false, homesDir: "/data/champions", warnings: [] });
+  const on = championsOf({ homeSyncIncludeSecrets: true, homesDir: "~/crew" }, "/data");
+  assert.equal(on.homeSyncIncludeSecrets, true);
   assert.ok(on.homesDir.endsWith("/crew") && !on.homesDir.startsWith("~"));
-  const bad = championsOf({ enabled: "yes", homeSync: 1, homesDir: "relative/dir" }, "/data");
-  assert.deepEqual([bad.enabled, bad.homeSync, bad.homesDir], [false, false, "/data/champions"]);
-  assert.equal(bad.warnings.length, 3);
+  const bad = championsOf({ homeSyncIncludeSecrets: "yes", homesDir: "relative/dir" }, "/data");
+  assert.deepEqual([bad.homeSyncIncludeSecrets, bad.homesDir], [false, "/data/champions"]);
+  assert.equal(bad.warnings.length, 2);
   assert.equal(championsOf("nope", "/data").warnings.length, 1);
 });
 

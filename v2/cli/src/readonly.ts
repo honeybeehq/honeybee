@@ -60,6 +60,8 @@ function mapBee(r: Row): BeeRow {
     tags: JSON.parse(r.tags as string) as string[],
     sessionLogPath: (r.session_log_path as string | null) ?? null,
     lifecycle: r.lifecycle as BeeRow["lifecycle"],
+    // v57 column; same tolerance.
+    kind: (r.kind as BeeRow["kind"] | null | undefined) ?? "agent",
     createdAt: Number(r.created_at),
     archivedAt: r.archived_at == null ? null : Number(r.archived_at),
     lastOutputAt: r.last_output_at == null ? null : Number(r.last_output_at),

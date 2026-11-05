@@ -111,6 +111,7 @@ import {
   type GatewayRow,
   type SkillTreeRow,
   type ChampionHomeObjectRow,
+  type BeeKind,
   type BeeResumeBundleRow,
   type BeeEpochRow,
   type TranscriptSegmentCursorRow,
@@ -345,6 +346,8 @@ export interface CreateBeeInput {
   /** Trusted import/move only: preserve the original issuer and full reference. */
   humanRef?: string;
   issuingNamespace?: string;
+  /** v58 — `champion` only from champion.start; absent = `agent`. */
+  kind?: BeeKind;
   /**
    * Creation timestamp override (epoch ms) — importers preserve the original
    * record's creation time. Defaults to the store clock.
@@ -729,6 +732,7 @@ function mapBee(r: Row): BeeRow {
     tags: JSON.parse(r.tags as string) as string[],
     sessionLogPath: (r.session_log_path as string | null) ?? null,
     lifecycle: r.lifecycle as BeeRow["lifecycle"],
+    kind: (r.kind as BeeRow["kind"] | null | undefined) ?? "agent",
     createdAt: Number(r.created_at),
     archivedAt: r.archived_at == null ? null : Number(r.archived_at),
     lastOutputAt: r.last_output_at == null ? null : Number(r.last_output_at),
@@ -2985,8 +2989,8 @@ export class CoreStore {
         .prepare(
           `INSERT INTO bees(id, name, agent, substrate, cwd, title, tags, session_log_path, lifecycle, created_at,
                             provider_session_id, env, imported_from, args, parent_id, parent_external, forked_from,
-                            fork_seed, account, handle, human_ref, issuing_namespace)
-           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            fork_seed, account, handle, human_ref, issuing_namespace, kind)
+           VALUES(?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -3010,6 +3014,7 @@ export class CoreStore {
           handle,
           humanRef,
           namespace,
+          input.kind ?? "agent",
         );
       if (input.phoneOperation) this.stmt("INSERT INTO phone_spawn_origins(bee_id, origin_json) VALUES(?, ?)").run(id, JSON.stringify(this.makePhoneOrigin(input.phoneOperation.origin, null, input.phoneOperation.key, id)));
       const bee = this.mustGetBee(id);
