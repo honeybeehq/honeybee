@@ -1,0 +1,590 @@
+== quick clean
+✖ external Apiary current reconciles history and rolls back to an installed history build (31.416208ms)
+✖ external Apiary current reconciles history and restores its exact link on failure (5.847958ms)
+✔ unidentified external runtime refuses with the missing identity path (5.04425ms)
+✖ rollback checks store schema 44 before changing current or history (10.77875ms)
+✔ rollback checks store schema 48 before changing current or history (7.810667ms)
+✔ unknown schema capability refuses: "" (4.767584ms)
+✔ unknown schema capability refuses: "var SCHEMA_VERSION = 48;\nvar SCHEMA_VERSION2 = 48;\n" (3.621541ms)
+✔ unknown schema capability refuses: "var SCHEMA_VERSION = garbage;\n" (3.914417ms)
+✔ schema capability is read across the split cli bundle chunks (5.84225ms)
+✔ schema 29 requires an explicit store restore even when the target schema is newer (4.766ms)
+✖ rollback from an external current retains it for a second rollback back (4.744ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 7
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 286.974375
+
+✖ failing tests:
+
+test at v2/cli/tests/deploy-rollback.test.ts:27:35
+✖ external Apiary current reconciles history and rolls back to an installed history build (31.416208ms)
+  Error [DeployRollbackError]: deploy: ROLLBACK_CURRENT_IDENTITY_MISSING: external current /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hb-rollback-logic-0VbQwQ/apiary/content-address/honeybee has build target linux-x64; a native darwin-arm64 rollback build must be reconciled before deploying
+      at retainExternalCurrent (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/src/deploy/runtime.ts:513:72)
+      at rollbackDeployLocked (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/src/deploy/runtime.ts:781:56)
+      at async withFileLock (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/core/src/lock.ts:267:14)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/tests/deploy-rollback.test.ts:41:21)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    code: 'ROLLBACK_CURRENT_IDENTITY_MISSING'
+  }
+
+test at v2/cli/tests/deploy-rollback.test.ts:27:35
+✖ external Apiary current reconciles history and restores its exact link on failure (5.847958ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /activation failed/. Input:
+  
+  'DeployRollbackError: deploy: ROLLBACK_CURRENT_IDENTITY_MISSING: external current /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hb-rollback-logic-zvDhST/apiary/content-address/honeybee has build target linux-x64; a native darwin-arm64 rollback build must be reconciled before deploying'
+  
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/tests/deploy-rollback.test.ts:37:7)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: DeployRollbackError: deploy: ROLLBACK_CURRENT_IDENTITY_MISSING: external current /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hb-rollback-logic-zvDhST/apiary/content-address/honeybee has build target linux-x64; a native darwin-arm64 rollback build must be reconciled before deploying
+        at retainExternalCurrent (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/src/deploy/runtime.ts:513:72)
+        at rollbackDeployLocked (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/src/deploy/runtime.ts:781:56)
+        at async withFileLock (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/core/src/lock.ts:267:14)
+        at async waitForActual (node:assert:621:5)
+        at async strict.rejects (node:assert:744:25)
+        at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/tests/deploy-rollback.test.ts:37:7)
+        at async Test.run (node:internal/test_runner/test:1208:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:831:7),
+    expected: /activation failed/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at v2/cli/tests/deploy-rollback.test.ts:56:32
+✖ rollback checks store schema 44 before changing current or history (10.77875ms)
+  Error [DeployRollbackError]: deploy: ROLLBACK_CURRENT_IDENTITY_MISSING: external current /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hb-rollback-logic-ZLztVD/apiary/content-address/honeybee has build target linux-x64; a native darwin-arm64 rollback build must be reconciled before deploying
+      at retainExternalCurrent (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/src/deploy/runtime.ts:513:72)
+      at rollbackDeployLocked (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/src/deploy/runtime.ts:781:56)
+      at async withFileLock (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/core/src/lock.ts:267:14)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/tests/deploy-rollback.test.ts:75:26)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    code: 'ROLLBACK_CURRENT_IDENTITY_MISSING'
+  }
+
+test at v2/cli/tests/deploy-rollback.test.ts:127:1
+✖ rollback from an external current retains it for a second rollback back (4.744ms)
+  Error [DeployRollbackError]: deploy: ROLLBACK_CURRENT_IDENTITY_MISSING: external current /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hb-rollback-logic-2z6JDX/apiary/content-address/honeybee has build target linux-x64; a native darwin-arm64 rollback build must be reconciled before deploying
+      at retainExternalCurrent (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/src/deploy/runtime.ts:513:72)
+      at rollbackDeployLocked (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/src/deploy/runtime.ts:781:56)
+      at async withFileLock (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/core/src/lock.ts:267:14)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/tests/deploy-rollback.test.ts:131:19)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    code: 'ROLLBACK_CURRENT_IDENTITY_MISSING'
+  }
+✔ service environment records native pin and drops Electron mode (159.973209ms)
+✖ service entry follows selected node current, independent of ambient home (85.419209ms)
+✔ fresh service install requires a pin and validates explicit argv overrides (227.085791ms)
+✔ daemon start, restart and status expose a held pin without opening the store (296.048083ms)
+✔ daemon service verbs reach the service manager only for the unit's own data dir under the account home (738.483458ms)
+✔ hive daemon stop on a scratch data dir signals only that daemon, by its own pid (683.675584ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 5
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2315.395958
+
+✖ failing tests:
+
+test at v2/cli/tests/update-service.test.ts:17:1
+✖ service entry follows selected node current, independent of ambient home (85.419209ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      '/Users/trmd/.local/share/mise/installs/node/25.8.0/bin/node',
+      '/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hon8-service-ayPU5F/runtime/current/dist/cli.js',
+  -   'v2',
+      'daemon',
+      'run',
+      '--data-dir',
+      '/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hon8-service-ayPU5F/v2'
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/cli/tests/update-service.test.ts:23:12)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1201:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:831:18)
+      at Test.postRun (node:internal/test_runner/test:1330:19)
+      at Test.run (node:internal/test_runner/test:1258:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ '/Users/trmd/.local/share/mise/installs/node/25.8.0/bin/node', '/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hon8-service-ayPU5F/runtime/current/dist/cli.js', 'daemon', 'run', '--data-dir', '/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hon8-service-ayPU5F/v2' ],
+    expected: [ '/Users/trmd/.local/share/mise/installs/node/25.8.0/bin/node', '/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hon8-service-ayPU5F/runtime/current/dist/cli.js', 'v2', 'daemon', 'run', '--data-dir', '/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hon8-service-ayPU5F/v2' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+✔ muse on darwin: never executed for a probe, spawned under a held account, or written into a home; a Muse account is held through Honeybee's own Meta sign-in and leased (2128.603958ms)
+✖ muse on darwin: This Mac is the machine's own `muse login` — added once with no login, never signed in, copied or leased; Muse bees run on it with no home env; its state never runs muse or security (329.506208ms)
+✔ muse on darwin: a This Mac bee on the tmux substrate gets the same env as on hsr — the user's HOME, no XDG pair, and nothing from the bee's own env that could redirect its login (553.918209ms)
+✔ muse version stamp: only a safe version token is reported; control characters and markup never pass through (1.876667ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3156.319083
+
+✖ failing tests:
+
+test at v2/daemon/tests/muse-mac-guard.test.ts:142:1
+✖ muse on darwin: This Mac is the machine's own `muse login` — added once with no login, never signed in, copied or leased; Muse bees run on it with no home env; its state never runs muse or security (329.506208ms)
+  AssertionError [ERR_ASSERTION]: account.add: expected account_unavailable
+      at refused (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/muse-mac-guard.test.ts:38:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/muse-mac-guard.test.ts:190:5)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+✔ claude keychain service embeds sha256(config dir)[0..8]; default home is unsuffixed (0.582875ms)
+✔ HIVE_NO_KEYCHAIN disables the bridge entirely (0.364958ms)
+✔ keychain reads distinguish explicit absence from unreadable and preserve present raw bytes (1.852542ms)
+✔ keychain reads prefer the current user's item over a same-service item under another account (0.240333ms)
+✔ buildAddGenericPasswordCommand stores compact Claude JSON as a plain password (0.199166ms)
+✔ security hex rendering is normalized to JSON at the bridge boundary (0.230667ms)
+✔ buildAddGenericPasswordCommand compacts oversize JSON, fails closed when even that overflows (0.221208ms)
+✔ buildAddGenericPasswordCommand rejects account/service values that break the line protocol (0.05225ms)
+✖ security -i writes Claude-format credentials as raw JSON, not hex text (macOS only) (230.7335ms)
+✔ identityOnlyCredentials extracts the claudeAiOauth identity and drops siblings (0.661ms)
+✔ credentialDigest is a stable content hash (0.101333ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 10
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 299.695375
+
+✖ failing tests:
+
+test at v2/daemon/tests/native-keychain.test.ts:163:1
+✖ security -i writes Claude-format credentials as raw JSON, not hex text (macOS only) (230.7335ms)
+  Error: Command failed: security create-keychain -p test /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-keychain-test-OEUToQ/test.keychain-db
+  deploy gate: a test tried to run security; refused
+  
+      at genericNodeError (node:internal/errors:998:15)
+      at wrappedFn (node:internal/errors:543:14)
+      at ChildProcess.exithandler (node:child_process:417:12)
+      at ChildProcess.emit (node:events:508:20)
+      at maybeClose (node:internal/child_process:1108:16)
+      at Socket.<anonymous> (node:internal/child_process:480:11)
+      at Socket.emit (node:events:508:20)
+      at Pipe.<anonymous> (node:net:350:12) {
+    code: 1,
+    killed: false,
+    signal: null,
+    cmd: 'security create-keychain -p test /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-keychain-test-OEUToQ/test.keychain-db',
+    stdout: '',
+    stderr: 'deploy gate: a test tried to run security; refused\n'
+  }
+v2 daemon/cli test files failed (4 of 4):
+  v2/cli/tests/deploy-rollback.test.ts (exit 1)
+  v2/cli/tests/update-service.test.ts (exit 1)
+  v2/daemon/tests/muse-mac-guard.test.ts (exit 1)
+  v2/daemon/tests/native-keychain.test.ts (exit 1)
+exit=1
+== delivery leak
+✖ Darwin OS-level file read outside cwd: hsr; tool-policy read UNVERIFIED (OS-level only) (5588.638875ms)
+ℹ fixture max socket path bytes: 101
+✖ Darwin OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (5667.367834ms)
+ℹ fixture max socket path bytes: 101
+✖ Darwin OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (5612.790375ms)
+ℹ fixture max socket path bytes: 101
+✔ default Darwin dataDir and delivery-content for a /Users home are outside default scratch paths and TMPDIR (0.912625ms)
+✖ real HSR asynchronous confirmation settles from durable confirmation (5717.029ms)
+✖ real HSR asynchronous confirmation with lost outbound-attempt state settles from durable intent (5662.024375ms)
+✖ real codex pointer confirmation stays pending without UNKNOWN notices (5714.386166ms)
+✖ real codex pointer confirmation refusal retries the saved publication (5650.937541ms)
+✖ real muse pointer confirmation stays pending without UNKNOWN notices (5692.792625ms)
+✖ real muse pointer confirmation refusal retries the saved publication (5672.882792ms)
+✖ SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and later mail flows (5774.542834ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 1
+ℹ fail 10
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 56866.362375
+
+✖ failing tests:
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ Darwin OS-level file read outside cwd: hsr; tool-policy read UNVERIFIED (OS-level only) (5588.638875ms)
+  AssertionError [ERR_ASSERTION]: [{"beeId":"bee","generation":1,"kind":"booted","pid":12578,"pidStartedAt":1793874851353},{"beeId":"bee","generation":1,"kind":"turn_ended"}]
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ Darwin OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (5667.367834ms)
+  AssertionError [ERR_ASSERTION]: [{"beeId":"bee","generation":1,"kind":"booted","pid":12684,"pidStartedAt":1793874856950},{"beeId":"bee","generation":1,"kind":"turn_ended"}]
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ Darwin OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (5612.790375ms)
+  AssertionError [ERR_ASSERTION]: [{"beeId":"bee","generation":1,"kind":"booted","pid":12781,"pidStartedAt":1793874862613},{"beeId":"bee","generation":1,"kind":"turn_ended"}]
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:116:42
+✖ real HSR asynchronous confirmation settles from durable confirmation (5717.029ms)
+  AssertionError [ERR_ASSERTION]: HSR confirm timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:126:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:127:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:116:42
+✖ real HSR asynchronous confirmation with lost outbound-attempt state settles from durable intent (5662.024375ms)
+  AssertionError [ERR_ASSERTION]: HSR confirm timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:126:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:127:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real codex pointer confirmation stays pending without UNKNOWN notices (5714.386166ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real codex pointer confirmation refusal retries the saved publication (5650.937541ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real muse pointer confirmation stays pending without UNKNOWN notices (5692.792625ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real muse pointer confirmation refusal retries the saved publication (5672.882792ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:187:1
+✖ SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and later mail flows (5774.542834ms)
+  Error: crash fixture exit 1: file:///Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/bc-Iujndp/[eval1]:9
+  for(let i=0;store.currentRuntime(bee.id)?.state!=="idle";i++){if(i>500)throw Error("boot timeout");core.step();await new Promise(r=>setTimeout(r,10));}
+                                                                               ^
+  
+  Error: boot timeout
+      at file:///Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/bc-Iujndp/[eval1]:9:78
+  
+  Node.js v25.8.0
+  
+      at ChildProcess.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:213:80)
+      at Object.onceWrapper (node:events:623:12)
+      at ChildProcess.emit (node:events:508:20)
+      at ChildProcess._handle.onexit (node:internal/child_process:294:12)
+v2 daemon/cli test files failed (1 of 1):
+  v2/daemon/tests/delivery-file-read.test.ts (exit 1)
+exit=1
+== delivery clean
+✖ Darwin OS-level file read outside cwd: hsr; tool-policy read UNVERIFIED (OS-level only) (5569.622375ms)
+ℹ fixture max socket path bytes: 101
+✖ Darwin OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (5592.797375ms)
+ℹ fixture max socket path bytes: 101
+✖ Darwin OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (5575.936458ms)
+ℹ fixture max socket path bytes: 101
+✔ default Darwin dataDir and delivery-content for a /Users home are outside default scratch paths and TMPDIR (0.769333ms)
+✖ real HSR asynchronous confirmation settles from durable confirmation (5717.414958ms)
+✖ real HSR asynchronous confirmation with lost outbound-attempt state settles from durable intent (5667.360958ms)
+✖ real codex pointer confirmation stays pending without UNKNOWN notices (5603.191083ms)
+✖ real codex pointer confirmation refusal retries the saved publication (5545.168459ms)
+✖ real muse pointer confirmation stays pending without UNKNOWN notices (5616.549833ms)
+✖ real muse pointer confirmation refusal retries the saved publication (5662.356791ms)
+✖ SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and later mail flows (5786.718541ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 1
+ℹ fail 10
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 56422.229417
+
+✖ failing tests:
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ Darwin OS-level file read outside cwd: hsr; tool-policy read UNVERIFIED (OS-level only) (5569.622375ms)
+  AssertionError [ERR_ASSERTION]: [{"beeId":"bee","generation":1,"kind":"booted","pid":15049,"pidStartedAt":1793874908497},{"beeId":"bee","generation":1,"kind":"turn_ended"}]
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:385:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ Darwin OS-level file read outside cwd: cell-sandbox; tool-policy read UNVERIFIED (OS-level only) (5592.797375ms)
+  AssertionError [ERR_ASSERTION]: [{"beeId":"bee","generation":1,"kind":"booted","pid":15155,"pidStartedAt":1793874914077},{"beeId":"bee","generation":1,"kind":"turn_ended"}]
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:23:80
+✖ Darwin OS-level file read outside cwd: satellite-default; tool-policy read UNVERIFIED (OS-level only) (5575.936458ms)
+  AssertionError [ERR_ASSERTION]: [{"beeId":"bee","generation":1,"kind":"booted","pid":15261,"pidStartedAt":1793874919670},{"beeId":"bee","generation":1,"kind":"turn_ended"}]
+  
+  false !== true
+  
+      at TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:73:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:116:42
+✖ real HSR asynchronous confirmation settles from durable confirmation (5717.414958ms)
+  AssertionError [ERR_ASSERTION]: HSR confirm timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:126:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:127:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:116:42
+✖ real HSR asynchronous confirmation with lost outbound-attempt state settles from durable intent (5667.360958ms)
+  AssertionError [ERR_ASSERTION]: HSR confirm timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:126:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:127:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real codex pointer confirmation stays pending without UNKNOWN notices (5603.191083ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real codex pointer confirmation refusal retries the saved publication (5545.168459ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real muse pointer confirmation stays pending without UNKNOWN notices (5616.549833ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:159:87
+✖ real muse pointer confirmation refusal retries the saved publication (5662.356791ms)
+  AssertionError [ERR_ASSERTION]: real adapter confirmation timed out
+      at wait (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:170:183)
+      at async TestContext.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:171:3)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+
+test at v2/daemon/tests/delivery-file-read.test.ts:187:1
+✖ SIGKILL after in_flight on a surviving HSR generation becomes UNKNOWN and later mail flows (5786.718541ms)
+  Error: crash fixture exit 1: file:///Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/bc-GUoXQI/[eval1]:9
+  for(let i=0;store.currentRuntime(bee.id)?.state!=="idle";i++){if(i>500)throw Error("boot timeout");core.step();await new Promise(r=>setTimeout(r,10));}
+                                                                               ^
+  
+  Error: boot timeout
+      at file:///Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/bc-GUoXQI/[eval1]:9:78
+  
+  Node.js v25.8.0
+  
+      at ChildProcess.<anonymous> (file:///Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/daemon/tests/delivery-file-read.test.ts:213:80)
+      at Object.onceWrapper (node:events:623:12)
+      at ChildProcess.emit (node:events:508:20)
+      at ChildProcess._handle.onexit (node:internal/child_process:294:12)
+v2 daemon/cli test files failed (1 of 1):
+  v2/daemon/tests/delivery-file-read.test.ts (exit 1)
+fixture-warden: reaped leaked fixture pid 17363: /opt/homebrew/Cellar/node/25.8.0/bin/node --experimental-strip-types /Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/driver-hsr/src/runner-host-main.ts /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/bc-GUoXQI/runners/3f442877-06d2-490d-87f3-7fabf4f42d70.1.json
+fixture-warden: reaped leaked fixture pid 17365: /Users/trmd/.local/share/mise/installs/node/25.8.0/bin/node /Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2/v2/driver-hsr/test-agent/fake-codex.mjs
+exit=1
+== reseed clean
+✔ resume-reseed.1: an import without a usable bundle re-seeds the bee from its projected transcript (1173.11275ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1248.348625
+exit=0

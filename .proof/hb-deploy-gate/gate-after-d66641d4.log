@@ -1,0 +1,13 @@
+gate-driver: buildDeployArtifact sha=d66641d480079a6f2248152f8294bb8d47ce4a04 workDir=/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-RKZ06T tmpdir=/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf execPath=/opt/homebrew/Cellar/node/25.8.0/bin/node at=2026-11-05T11:36:32.151Z
+deploy: git -C /Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2 archive --format=tar -o /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-RKZ06T/source.tar d66641d480079a6f2248152f8294bb8d47ce4a04
+deploy: tar -xf /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-RKZ06T/source.tar -C /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-RKZ06T/checkout
+deploy: npm ci
+deploy: npm run check
+deploy: npm run build
+deploy: npm run v2:test
+deploy: npm run v2:daemon
+deploy: npm run v2:driver
+deploy: npm run v2:harness
+deploy: tar -xzf /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-RKZ06T/pack/honeybee-0.0.1.tgz -C /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-RKZ06T/stage --strip-components 1
+deploy: npm ci --omit=dev
+gate-driver: PASSED artifactDir=/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-RKZ06T/stage elapsedMs=691926

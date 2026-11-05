@@ -1,0 +1,8 @@
+gate-driver: buildDeployArtifact sha=190501c21a434d7614e988cf5f9738fa29dbd797 workDir=/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-FuQEfc tmpdir=/Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf execPath=/opt/homebrew/Cellar/node/25.8.0/bin/node at=2026-11-05T10:46:35.128Z
+deploy: git -C /Users/trmd/.hive/v2/cells/rebuild-hb-deploy-gate-green-9f244dd9f6f2/honeybee-space-9f244dd9f6f2 archive --format=tar -o /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-FuQEfc/source.tar 190501c21a434d7614e988cf5f9738fa29dbd797
+deploy: tar -xf /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-FuQEfc/source.tar -C /Users/trmd/.hive/v2/tmp/1f032359-0f13-4947-a601-163af3f16dcf/hive-deploy-FuQEfc/checkout
+deploy: npm ci
+deploy: npm run check
+deploy: npm run build
+deploy: npm run v2:test
+gate-driver: FAILED deploy: 'npm run v2:test' exited with 1 elapsedMs=61632

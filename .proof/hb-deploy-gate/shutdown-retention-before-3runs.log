@@ -1,0 +1,21 @@
+== shutdown run 1
+✔ daemon shutdown natural: exits promptly and preserves detached bees (3318.782416ms)
+✖ daemon shutdown retention: exits promptly and preserves detached bees (2763.447959ms)
+✔ daemon shutdown backstop: exits promptly and preserves detached bees (4594.59625ms)
+ℹ fail 1
+✖ failing tests:
+✖ daemon shutdown retention: exits promptly and preserves detached bees (2763.447959ms)
+    assert.ok(!(JSON.parse(readFileSync(join(rig.dir, "shutdown-resources.json"), "utf8"))            ).includes("MessagePort"))
+== shutdown run 2
+✔ daemon shutdown natural: exits promptly and preserves detached bees (3663.002792ms)
+✖ daemon shutdown retention: exits promptly and preserves detached bees (3061.444541ms)
+✔ daemon shutdown backstop: exits promptly and preserves detached bees (4145.651125ms)
+ℹ fail 1
+✖ failing tests:
+✖ daemon shutdown retention: exits promptly and preserves detached bees (3061.444541ms)
+    assert.ok(!(JSON.parse(readFileSync(join(rig.dir, "shutdown-resources.json"), "utf8"))            ).includes("MessagePort"))
+== shutdown run 3
+✔ daemon shutdown natural: exits promptly and preserves detached bees (3158.959625ms)
+✔ daemon shutdown retention: exits promptly and preserves detached bees (3174.159167ms)
+✔ daemon shutdown backstop: exits promptly and preserves detached bees (4020.005041ms)
+ℹ fail 0
