@@ -1,0 +1,414 @@
+
+# A. gateway.register: Honeybee stores the endpoint and writes gateways/apiary.json itself; spawned bees are seeded with the URL
+
+## A1 deployInfo: the two capability tags, no gateway, no skill tree
+```json
+{
+  "capabilities": [
+    "gateway.register.v1",
+    "skills.install.v1"
+  ],
+  "gateways": [],
+  "skills": null,
+  "nodeId": "6eb9ee74-9e69-45e1-81c1-9a0ef3627492"
+}
+```
+
+## A2 only the registered local Apiary authority on a direct Unix socket may call the verbs
+```json
+{
+  "unregistered local caller": "caller_not_trusted (registration_required)",
+  "relay lane": "caller_not_trusted",
+  "unregistered skills.install": "caller_not_trusted (registration_required)"
+}
+```
+
+## A3 register: the row, the file Honeybee wrote under <storeRoot>/gateways, deployInfo
+```json
+{
+  "result": {
+    "gateway": {
+      "name": "apiary",
+      "url": "http://127.0.0.1:7788/mcp",
+      "tokenIssuer": "apiary-spawn-token-v1",
+      "principal": "1000:apiary-node-a",
+      "registeredAt": 1793865924852,
+      "updatedAt": 1793865924852
+    },
+    "file": "/tmp/hb-v2-daemon-Wl2lvb/store-root/gateways/apiary.json",
+    "changed": true,
+    "replaced": null
+  },
+  "file": {
+    "name": "apiary",
+    "protocol": "mcp",
+    "gatewayRev": 2,
+    "transport": "http",
+    "url": "http://127.0.0.1:7788/mcp",
+    "tokenIssuer": "apiary-spawn-token-v1",
+    "registeredAt": "2026-11-05T08:05:24.852Z",
+    "updatedAt": "2026-11-05T08:05:24.852Z",
+    "writtenBy": "hived"
+  },
+  "deployInfo": [
+    {
+      "name": "apiary",
+      "url": "http://127.0.0.1:7788/mcp",
+      "tokenIssuer": "apiary-spawn-token-v1",
+      "principal": "1000:apiary-node-a",
+      "registeredAt": 1793865924852,
+      "updatedAt": 1793865924852
+    }
+  ]
+}
+```
+
+## A4 typed refusals
+```json
+{
+  "ftp://host/mcp": "invalid_request (url)",
+  "http://user:pw@host/mcp": "invalid_request (url)",
+  "relative/path": "invalid_request (url)",
+  "http://host/mcp#frag": "invalid_request (url)",
+  "url with a space": "invalid_request (url)",
+  "name 'Bad Name'": "invalid_request (name)",
+  "tokenIssuer of 2000 chars": "invalid_request (token_issuer)",
+  "tokenIssuer with a newline": "invalid_request (token_issuer)"
+}
+```
+
+## A5 the same registration again is quiet (changed:false, no new audit row); the idempotency key replays
+```json
+{
+  "again": {
+    "changed": false,
+    "replaced": null
+  },
+  "replay": {
+    "deduped": true,
+    "changed": true
+  },
+  "auditRowsBefore": 1,
+  "auditRowsAfter": 1
+}
+```
+
+## A6 a codex bee and a claude bee spawned on their accounts: the homes' native MCP configs point at the registered URL; the stdio file gateway (foundation) is still seeded beside it
+```json
+{
+  "codexConfigToml": [
+    "[mcp_servers.apiary]",
+    "url = \"http://127.0.0.1:7788/mcp\"",
+    "[mcp_servers.foundation]",
+    "command = \"/opt/node-v24.18.0-linux-x64/bin/node\"",
+    "args = [\"foundation-fixture.mjs\", \"mcp\"]"
+  ],
+  "codexStamp": {
+    "schema": 1,
+    "files": {
+      "config.toml": {
+        "apiary": {
+          "url": "http://127.0.0.1:7788/mcp"
+        },
+        "foundation": {
+          "command": "/opt/node-v24.18.0-linux-x64/bin/node",
+          "args": [
+            "foundation-fixture.mjs",
+            "mcp"
+          ],
+          "envVars": [
+            "HIVE_BEE",
+            "HIVE_BEE_ID"
+          ]
+        }
+      }
+    }
+  },
+  "claudeMcpServers": {
+    "apiary": {
+      "type": "http",
+      "url": "http://127.0.0.1:7788/mcp"
+    },
+    "foundation": {
+      "command": "/opt/node-v24.18.0-linux-x64/bin/node",
+      "args": [
+        "foundation-fixture.mjs",
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+## A7 re-registering a new URL: the populated homes converge on the next activation
+```json
+{
+  "result": {
+    "changed": true,
+    "replaced": {
+      "url": "http://127.0.0.1:7788/mcp",
+      "tokenIssuer": "apiary-spawn-token-v1"
+    },
+    "url": "https://apiary.local:7443/mcp/v2"
+  },
+  "codexApiaryLine": "url = \"https://apiary.local:7443/mcp/v2\"",
+  "claudeApiary": {
+    "type": "http",
+    "url": "https://apiary.local:7443/mcp/v2"
+  },
+  "foundationStill": true
+}
+```
+
+## A8 a pre-C6 Apiary clobbers apiary.json with its stdio record; the next daemon boot rewrites Honeybee's record from the row, and the row survived the restart
+```json
+{
+  "fileAfterBoot": {
+    "name": "apiary",
+    "protocol": "mcp",
+    "gatewayRev": 2,
+    "transport": "http",
+    "url": "https://apiary.local:7443/mcp/v2",
+    "tokenIssuer": null,
+    "registeredAt": "2026-11-05T08:05:24.852Z",
+    "updatedAt": "2026-11-05T08:05:29.982Z",
+    "writtenBy": "hived"
+  },
+  "deployInfo": [
+    {
+      "name": "apiary",
+      "url": "https://apiary.local:7443/mcp/v2",
+      "tokenIssuer": null,
+      "principal": "1000:apiary-node-a",
+      "registeredAt": 1793865924852,
+      "updatedAt": 1793865929982
+    }
+  ]
+}
+```
+
+# B. skills.install: a content-hashed tree lands in every Honeybee-owned home now and in every home activated later
+
+## B1 a tree that does not hash to what it claims is refused typed, before anything is written
+```json
+{
+  "digest off by one": "invalid_request (digest)",
+  "one file's sha256 lies": "invalid_request (sha256 #0)",
+  "size disagrees with content": "invalid_request (size #1)",
+  "path escapes with ..": "invalid_request (path #2)",
+  "absolute path": "invalid_request (path #2)",
+  "reserved .hive- name": "invalid_request (path #2)",
+  "content not base64": "invalid_request (content #3)",
+  "nodeCopyExists": false,
+  "skills": null
+}
+```
+
+## B2 install: the node keeps its copy under <dataDir>/skills/<digest>; both existing homes get the files; manifests carry the digest
+```json
+{
+  "result": {
+    "tree": {
+      "digest": "6cfa7fdb0fa59343a3630b95f054e7279aabef33d857001d92491e65c9e3703f",
+      "files": 4,
+      "bytes": 74,
+      "principal": "1000:apiary-node-a",
+      "installedAt": 1793865931193
+    },
+    "changed": true,
+    "replaced": null,
+    "homes": [
+      {
+        "account": "codex-lx",
+        "home": "/tmp/hb-v2-daemon-Wl2lvb/homes/codex-lx",
+        "status": "installed"
+      },
+      {
+        "account": "claude-cy",
+        "home": "/tmp/hb-v2-daemon-Wl2lvb/homes/claude-cy",
+        "status": "installed"
+      }
+    ]
+  },
+  "nodeCopy": "6cfa7fdb0fa59343a3630b95f054e7279aabef33d857001d92491e65c9e3703f",
+  "codexHome": {
+    "files": {
+      ".hive-skills.json": "73ae986fab34",
+      "hello/SKILL.md": "68d7fc787265",
+      "hello/scripts/run.sh": "bfdeaeb08cff",
+      "review/SKILL.md": "3cb10fc6714a",
+      "review/references/checklist.md": "f390f85d2e24"
+    },
+    "manifestDigest": "6cfa7fdb0fa59343a3630b95f054e7279aabef33d857001d92491e65c9e3703f"
+  },
+  "claudeHome": {
+    "files": {
+      ".hive-skills.json": "73ae986fab34",
+      "hello/SKILL.md": "68d7fc787265",
+      "hello/scripts/run.sh": "bfdeaeb08cff",
+      "review/SKILL.md": "3cb10fc6714a",
+      "review/references/checklist.md": "f390f85d2e24"
+    },
+    "manifestDigest": "6cfa7fdb0fa59343a3630b95f054e7279aabef33d857001d92491e65c9e3703f"
+  },
+  "executableBit": "set"
+}
+```
+
+## B3 the same tree again: idempotency replay is deduped; a fresh call is changed:false with every home unchanged
+```json
+{
+  "replay": {
+    "deduped": true
+  },
+  "again": {
+    "changed": false,
+    "homes": [
+      "codex-lx:unchanged",
+      "claude-cy:unchanged"
+    ]
+  },
+  "audits": 1
+}
+```
+
+## B4 an account added after the install: its home has no skills until its first spawn activates it; then it carries the tree with the same digest and the daemon log names it
+```json
+{
+  "skillsDirExistedBeforeSpawn": false,
+  "files": {
+    ".hive-skills.json": "73ae986fab34",
+    "hello/SKILL.md": "68d7fc787265",
+    "hello/scripts/run.sh": "bfdeaeb08cff",
+    "review/SKILL.md": "3cb10fc6714a",
+    "review/references/checklist.md": "f390f85d2e24"
+  },
+  "manifestDigest": "6cfa7fdb0fa59343a3630b95f054e7279aabef33d857001d92491e65c9e3703f",
+  "mcpApiary": "url = \"https://apiary.local:7443/mcp/v2\"",
+  "logLine": "{\"ts\":1793865931238,\"op\":\"account.activate.skills account=codex-zz digest=6cfa7fdb0fa59343a3630b95f054e7279aabef33d857001d92491e65c9e3703f\"}"
+}
+```
+
+## B5 a second tree: a changed file is rewritten, a removed skill is gone, a new one appears, a file Honeybee never installed stays, the old node copy is removed
+```json
+{
+  "result": {
+    "changed": true,
+    "replaced": "6cfa7fdb0fa59343a3630b95f054e7279aabef33d857001d92491e65c9e3703f",
+    "homes": [
+      "codex-lx:installed",
+      "claude-cy:installed",
+      "codex-zz:installed"
+    ]
+  },
+  "codexHome": {
+    ".hive-skills.json": "a33d79dab0ff",
+    "hello/SKILL.md": "d0bb1f0aaef9",
+    "hello/scripts/run.sh": "bfdeaeb08cff",
+    "mine/SKILL.md": "71dde7ededed",
+    "perf/SKILL.md": "1614cd469525"
+  },
+  "oldCopyGone": true,
+  "newCopy": "561735444fb5676d0364b03af10f1de3343efdd37c8738caced539394bec302c"
+}
+```
+
+## B6 after a restart the tree row persists; a native (imported) account's vendor home is never written
+```json
+{
+  "skillsAfterRestart": "561735444fb5676d0364b03af10f1de3343efdd37c8738caced539394bec302c",
+  "imported": {
+    "id": "codex-this-computer",
+    "home": "/tmp/hb-v2-daemon-Wl2lvb/machine-home/.codex",
+    "native": true
+  },
+  "homesTouched": [
+    "codex-lx",
+    "claude-cy",
+    "codex-zz"
+  ],
+  "vendorSkillsDir": false
+}
+```
+
+## B7 a home activated after the restart gets the tree from the node's own copy (no Apiary call)
+```json
+{
+  "manifestDigest": "561735444fb5676d0364b03af10f1de3343efdd37c8738caced539394bec302c",
+  "files": {
+    ".hive-skills.json": "a33d79dab0ff",
+    "hello/SKILL.md": "d0bb1f0aaef9",
+    "hello/scripts/run.sh": "bfdeaeb08cff",
+    "perf/SKILL.md": "1614cd469525"
+  }
+}
+```
+
+# C. CLI edges (in-process runV2Cli against the scratch daemon)
+
+## C1 hive gateway register / list, hive skills install / status
+```json
+{
+  "register": {
+    "rc": 0,
+    "out": [
+      "✓  registered gateway apiary at http://127.0.0.1:9999/mcp; file /tmp/hb-v2-daemon-Wl2lvb/store-root/gateways/apiary.json"
+    ],
+    "err": []
+  },
+  "list": {
+    "rc": 0,
+    "out": [
+      "apiary  http://127.0.0.1:9999/mcp  registered 2026-11-05T08:05:24.852Z"
+    ],
+    "err": []
+  },
+  "install": {
+    "rc": 0,
+    "out": [
+      "✓  installed skill tree 6cfa7fdb0fa59343a3630b95f054e7279aabef33d857001d92491e65c9e3703f (4 files, 74 bytes)",
+      "  + codex-lx  /tmp/hb-v2-daemon-Wl2lvb/homes/codex-lx",
+      "  + claude-cy  /tmp/hb-v2-daemon-Wl2lvb/homes/claude-cy",
+      "  + codex-zz  /tmp/hb-v2-daemon-Wl2lvb/homes/codex-zz",
+      "  + codex-ww  /tmp/hb-v2-daemon-Wl2lvb/homes/codex-ww"
+    ],
+    "err": []
+  },
+  "status": {
+    "rc": 0,
+    "out": [
+      "skill tree 6cfa7fdb0fa59343a3630b95f054e7279aabef33d857001d92491e65c9e3703f  4 files, 74 bytes, installed 2026-11-05T08:05:32.717Z"
+    ],
+    "err": []
+  },
+  "refused": {
+    "rc": 1,
+    "err": [
+      "hive: error (invalid_request): gateway.register: url must use http or https"
+    ]
+  }
+}
+```
+
+# D. timing on the scratch daemon (ms)
+
+## D1 timings
+```json
+{
+  "gateway.register p50 (unchanged row, file rewritten)": "0.65",
+  "spawn→running p50 on a populated home with no skill tree (measured in section A, same build)": "434.22",
+  "spawn→running p50 on a populated home with the 4-file tree installed (manifest check only)": "413.21",
+  "skills.install of this node's real skill tree": {
+    "files": 915,
+    "bytes": 8818484,
+    "homes": 4,
+    "ms": "341",
+    "wireBytes": 11940430
+  },
+  "skills.install of the same tree again (unchanged everywhere)": "96",
+  "spawn→running p50 on a populated home with the 915-file tree installed (manifest check only)": "430.40",
+  "account.add + first spawn→running of a fresh home that receives the 900-file tree at activation": "479"
+}
+```
+
+ALL CHECKS PASSED

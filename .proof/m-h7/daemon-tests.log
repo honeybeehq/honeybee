@@ -1,0 +1,608 @@
+✔ select.1: candidate rules — none registered / all paused / none credentialed are typed refusals; a lone candidate short-circuits without a limits read (44.029993ms)
+✔ select.2: the operator's case over ROWS — 30% weekly with 3h to reset beats 25% with 6 days; stale rows are used and logged as stale (31.40361ms)
+✔ allocation.1: active owner admissions are durable, proportional, and fail closed without complete fleet activity (55.050622ms)
+✔ allocation.2: all protected accounts return a typed wait; there is no singleton or least-bad fallback (30.104895ms)
+✔ allocation.3: authoritative local activity charges long sessions and lets idle history age out (33.081126ms)
+✔ allocation.4: only fresh provider evidence after exhaustion reopens headroom (29.184298ms)
+✔ allocation.5: a remotely observed claim replaces its owner hold without a gap or double count (28.58923ms)
+✔ allocation.6: node activity reports authoritative pending work, freshness, and observed claims (30.944034ms)
+✔ select.3: auth_needed accounts are skipped while a healthy one exists (named in the reason) and refused (typed) otherwise; paused never (32.322413ms)
+✔ select.4: live-bee commitments steer around a busy account; the winner's in-flight load and penalty are named (30.418203ms)
+✔ select.5: near-ties rotate through the per-harness cursor ROW (a same-instant burst spreads); a Fable model reaches the scoring (31.716938ms)
+✔ select.6: rr cycles in registration order, skips auth failures, and does not disturb auto's near-tie cursor (34.803683ms)
+✔ select.7: pick debits expire; measured velocity from consecutive refreshes ages and projects the hot account out; exhaustion evidence is a down-tier class until the cool-off (36.664646ms)
+✔ select.8: exhaustion evidence down-tiers an account for the cool-off, then it competes again (28.540555ms)
+✔ select.9: an account at or past its weekly ceiling leaves auto, rr and admission until its window resets (32.085895ms)
+✔ limits.0:the real Codex app-server transport returns typed success and authentication failures (124.110785ms)
+✔ reset limits: passes one key through consume, accepts only closed outcomes, refreshes, and preserves count-only credits (37.225089ms)
+✔ reset transport: sends the supplied key, refreshes after redemption, and rejects unknown outcomes (348.113442ms)
+✔ limits.1: fetch writes the table (claude via the home token + injected usage transport, codex via the injected app-server transport); failures = unreadable rows; auth failure → auth_needed, recovery → ok (59.495304ms)
+✔ limits.agy: an imported HOME-scoped token clears auth_needed while provider limits remain unsupported (40.691306ms)
+✔ limits.muse: the XDG-pair home and auth.json expiry decide credential state; provider limits stay unsupported and expiry drives auth_needed (34.579633ms)
+✔ limits.muse.observed: usage a Muse runtime observed becomes the readable limits row, dated by observedAtMs; the probe keeps it, a credential loss replaces it (33.374834ms)
+✔ muse.darwin: one Keychain login per macOS user — a Muse account is held, captured and leased there but never ready, selected or activated into a home (37.648351ms)
+✔ muse.expiry: an OAuth login whose access token passed expires_at is expired where nothing can refresh it (darwin), and the limits probe then marks it auth_needed (34.225822ms)
+✔ muse.keychain: an auth.json that only points at the OS keychain is a present login that is never captured, imported or leased (30.872872ms)
+✔ muse.native: This Mac — on darwin the machine's own Muse login is the one runnable Muse account; it runs with no home env and is never activated, copied, leased or written (37.546572ms)
+✔ muse.native.stranded: a native account whose daemon now resolves another muse home stays native and fails closed, never an ordinary account (27.067157ms)
+✔ accounts.foreign-home: capture, config import, backup restore and adoption are refused for a home outside homesDir; homes inside it are unaffected (28.057962ms)
+✔ accounts.foreign-home.activation: the vault is never copied into an empty home outside homesDir; auto selection skips it and homes inside it still activate (33.507892ms)
+✔ accounts.foreign-home.gateways: gateway MCP config is never seeded into a populated home outside homesDir; a populated home inside it still converges (31.886614ms)
+✔ muse.native.env: a native bee's own env cannot redirect where Muse finds its login or config; other accounts keep theirs (34.009635ms)
+✔ limits.1a: Codex probes are per-home single-flight; transient failure keeps the last good row while auth failure invalidates it (44.427463ms)
+✔ limits.1aa: concurrent active admissions join one fresh quota probe per account (54.689949ms)
+✔ limits.1b: expired Claude chains refresh once, persist home + keychain + vault, and a rejected refresh is typed auth_failed (68.991947ms)
+✔ hive2.1: two sessions sharing one account that both failed auth do NOT strand refresh — the daemon takes it over and recovers (47.826526ms)
+✔ hive2.2: a single HEALTHY session still owns refresh even when an unhealthy sibling is present (no regression on rotating tokens) (40.318294ms)
+✔ hive2.3: rejected refresh requests login; temporary/timeout refresh keeps last-good and never requests login (39.890517ms)
+✔ hive2.4: daemon-restart recovery re-attempts every auth_needed Claude account and leaves other harnesses alone (50.837551ms)
+✔ hive2.5: reauthentication landing DURING recovery is used without a network refresh (check newer credentials first) (32.602639ms)
+✔ hive2.6: claudeCredentialFresh preserves a still-valid on-disk token against a delayed error (30.24319ms)
+✔ limits.1c: Grok, Kimi, Cursor, MiniMax, and z.ai use their real provider windows; rotating OAuth chains persist (59.260718ms)
+✔ limits.1d: the daemon never races a live Grok runtime's rotating refresh token (29.767288ms)
+✔ limits.2: freshness policy schedules stale candidates off the caller path, deduplicates the lane, and skips fresh/lone candidates (69.115869ms)
+✔ limits.3: the periodic in-daemon sweep runs every limitsRefreshMs, never overlaps itself, and is bounded by the fetch timeout (106.946715ms)
+✔ activation.1: an EMPTY home is activated from the vault (+ home defaults, mirrors); a POPULATED home is untouched byte for byte; the vault is never written by a spawn; claude keychain seeded via the injected writer (67.791483ms)
+✔ activation.2: a populated account waits for the common gateway seeder, preserves operator config, and stores only forwarded names (44.153657ms)
+✔ capture.1: explicit recovery captures an unchanged valid Claude credential from the external store (dotted account id) (32.821302ms)
+✔ capture.2: explicit recovery refuses an invalid current credential without touching the vault or login state (34.881745ms)
+✔ import.1: the old registry → rows (dry-run plans, real applies, re-run skips); the operator's ids/penalty/pause/addedAt come across; env-only bees backfill by home path (42.519408ms)
+﹣ import.2 (READ-ONLY): a dry-run of the importer against the REAL ~/.hive plans the operator's accounts without writing anything (0.212591ms) # no ~/.hive/vault/accounts.json on this machine
+✔ health.1: credentialHealthOf — absent without a primary credential; a file alone is unverified; login or a readable limits probe verify (29.025751ms)
+✔ import.v18.1: importExisting copies the vendor home's credential (+ config) into the vault — the home env var when set, else the recipe default under $HOME; nothing anywhere is a typed refusal listing every path checked (51.818262ms)
+✔ import.v18.2: relocated vendor files — Claude's ~/.claude.json + Keychain item (external), opencode's XDG data store — land under the recipe's vault layout (50.973413ms)
+✔ status.v18: honestStatus never returns ok without a credential (auth_needed instead); paused / auth_needed pass through; a recipe-less harness is always credentialed (42.144412ms)
+✔ verify.v18: the real limits probe settles an import — readable → verified (and the row is re-published for the mirror), auth failure → auth_needed; no probe → unverified; nothing → absent; a Codex probe activates the EMPTY home from the vault first (82.410054ms)
+✔ import.v18.3: the old-registry importer creates a credential-less record as auth_needed, never as a usable-looking ok row (29.295953ms)
+Grok busy probes: enrolling/disabling/refreshing operation_in_progress=provider_error; account auth remains ok
+✔ Grok central busy limits probes preserve account auth during ownership changes (33.909208ms)
+✔ lease unknown stays raw across reopen, refuses readiness and admission, and names the account (229.684108ms)
+✔ lease unknown background refresh cannot activate a home or probe credentials (180.964049ms)
+✔ node state roots refuse missing or relative paths before filesystem effects (3.712581ms)
+✔ config.1: absent file resolves to pure defaults (the file may be absent) (0.706582ms)
+✔ config.2: file values override defaults; unknown keys are ignored (0.844678ms)
+✔ config.3: I1 deadline covers bounded boot recovery; the legacy turn timeout is ignored (0.496574ms)
+✔ config.4: an above-floor deadline override is honored (0.59607ms)
+✔ config.5: malformed json and wrongly-typed values fail loudly (1.241486ms)
+✔ config.6: HIVE_V2_DATA_DIR overrides the default data dir (test isolation hook) (0.210297ms)
+✔ config.7: nodeKind (WP5) defaults to workstation and validates the closed list (1.503775ms)
+✔ config.8: cells (WP5) — root default, sandbox override tri-state, warm map validation (1.407486ms)
+✔ config.6 (spec 08): accounts settings default (vault/homes under ~/.hive, 1h stale, 15 min sweep, 5h cool-off, no tmux socket) and validate; agents.<a>.login parses (4.029876ms)
+✔ config.naming: absent file defaults to a warm Codex GPT-6 Luna app-server at effort none (0.486148ms)
+✔ config.naming: file values override; patchNamingConfig merges and preserves unknown keys (1.521133ms)
+✔ config.naming: OpenAI key is required for API mode, persisted privately, and redacted publicly (1.371981ms)
+✔ config.naming: a hem apiKeyRef replaces the plaintext key and is reported publicly (1.706942ms)
+✔ config.naming: an invalid naming block disables naming with a reason instead of failing config load (2.256509ms)
+✔ config.warmPool: off on workstations, one member on satellites; file values parse; env HIVE_CELL_WARMPOOL_FREE overrides (1.792846ms)
+✔ config.warmPool: invalid values fail loudly (1.112825ms)
+✔ config.9: cells.retention (v31) — defaults on, day/hour units, null disables an axis, invalid values fall back without refusing boot (12.872277ms)
+✔ config.9b: satellites default to a 3-day archive floor, half the Cells volume as byte budget, the pressure floor and the upstream mirror; workstations only by opt-in (1.805446ms)
+✔ transcripts.segments: a data-dir store by default, every key validated with a warning fallback (0.447619ms)
+✔ config: champions resolves defaults, paths and invalid values (0.213563ms)
+✔ config: durability resolves defaults and invalid values (0.202897ms)
+✔ account readiness blocks only affected starts; unrelated stop and mail progress; a same-bee stop cancels the deferred start (67.385241ms)
+✔ account readiness failure uses the existing bounded command retry before launch (33.199052ms)
+✔ readiness sees an automatic revive enqueued inside the current core step (39.859978ms)
+✔ model change waits when idle becomes working before command execution (44.671204ms)
+✔ model change admitted during a turn waits for the turn to end, and a newer change replaces it (42.585942ms)
+✔ a runtime ended by stopped_by_user while a model change waits is not restarted, even after boot (50.220859ms)
+✔ a runtime ended by crashed while a model change waits is not restarted, even after boot (41.821468ms)
+✔ bee tmp is released on archive only once no live runtime holds it, and on delete (43.148629ms)
+✔ deferred model change does not block other commands and a stale generation does not restart again (37.672066ms)
+✔ model change recovers after executor crash before_effect (47.88739ms)
+✔ model change recovers after executor crash after_effect (45.459953ms)
+✔ model change resumes after daemon restart between settled stop and observed exit (42.626685ms)
+✔ model change defers across real HSR input admission before the turn observation is folded (961.460576ms)
+✔ unit.0: a tick uses bounded batch reads, independent of bee count, re-read only after a write (50.538134ms)
+✔ unit.0a: the empty proof skips full snapshots and returns fresh containers without skipping flag expiry (29.954028ms)
+✔ unit.0a-disabled: an I1-disabled empty proof carries null instead of an unused array (26.885844ms)
+✔ unit.0b: a revive command refreshes an initially empty snapshot in the same tick (31.675945ms)
+✔ unit.0c: an outer rollback and reused audit sequence cannot preserve an uncommitted snapshot (30.087328ms)
+✔ unit.0d: I1 sees stopped-runtime and absent-runtime mail (51.134924ms)
+✔ unit.0e: task supply refreshes the snapshot before I1 in the same tick (38.750209ms)
+✔ unit.0e.1: limit-tripped task supply stalls after its mail drains on a later tick (41.855272ms)
+✔ unit.0f: fresh final I1 re-ranks the queue after delivery (44.527588ms)
+✔ unit.0g: linear I1 metadata matches the full-snapshot oracle exactly (46.586822ms)
+✔ unit.0i: same-tick I1 reuse cannot cross an outer rollback and reused audit sequence (36.136843ms)
+✔ unit.1: scale-to-zero — idle past the window stops with stopped_by_system; send revives (Q4 + Q3) (46.299012ms)
+✔ unit.2: scale-to-zero never stops an idle bee with undelivered mail (46.845584ms)
+✔ unit.0h: delivery hydrates bodies only for the selected target (40.186959ms)
+✔ unit.time-boundaries: archived boot hang, idle stop, and I1 remain strict (89.796596ms)
+✔ unit.3: flag policy — adapter evidence sets flags and contrary evidence clears them (spec 03) (32.683276ms)
+✔ unit.4: pid-at-spawn recording — procOf lands on the booting runtime row (WP2 amendment) (30.940128ms)
+✔ unit.5: degraded-runtime policy — mail for a re-adopted runtime rotates the generation (45.801707ms)
+✔ unit.6: I1 telemetry — a message undelivered past the deadline is recorded exactly once (41.471683ms)
+✔ unit.7: I1 telemetry — the clock is suspended while a closed-list flag is active (37.306847ms)
+✔ unit.8: continuity (spec 07 §F) — a booted session id is recorded on the bee for the CURRENT generation only; stale/no-bee evidence is skipped (39.259483ms)
+✔ budget.5: immediate-exit runtime → bounded revives with backoff, spawn_failed at the budget, no further wakes (40.765922ms)
+✔ budget.5auth: pre-init agy auth exits consume the budget and suppress churn (51.463556ms)
+✔ budget.5a: prompt-less spawn boot failures still retry to the visible bounded terminal (39.781367ms)
+✔ budget.5b: a driver that THROWS from start (cell provisioning failed) is a spawn failure on the B5 table — retried with backoff, spawn_failed at the budget, never a wedged command or a loop error (41.72647ms)
+✔ budget.6: an explicit operator revive retries regardless of spawn_failed and clears it on success; the mail then flows (49.519716ms)
+✔ budget.7: a runtime that reached running/idle and then crashed is not a spawn failure — revive is immediate and uncounted (39.589447ms)
+✔ budget.7b: repeated boot hangs exhaust one budget and issue one stop per generation (51.823148ms)
+✔ budget.8 (soak regression): readyAtSpawn instant death — the synthetic booted must NOT reset the budget; exactly maxAttempts generations, backoff, spawn_failed, wakes suppressed (49.308727ms)
+✔ budget.9 (I1): a message that never reaches a real runtime violates while the loop retries, and the spawn_failed flag is the legal terminal that suspends the clock (43.323531ms)
+✔ budget.9b (I1, idle urgency): pre-fix the churn re-based the idle clock forever — post-fix the bee lands flagged (the 'or the bee is flagged' arm) (37.768458ms)
+✔ budget.10: real evidence (the late init a readyAtSpawn harness emits) resets the counter — a generation that spoke and then crashed is a normal post-running crash (114.2588ms)
+✔ budget.11 (end-to-end repro): a REAL readyAtSpawn process that spawns fine, emits zero output and dies after observed readiness — bounded generations; fixed harness + operator revive recovers (1891.197942ms)
+✔ unit.9 (spec 08 swap): a `stop {thenRevive}` command revives the NEXT generation once the runtime is observed stopped — durable, once, and never while a wake is already pending; the account policy hook sees every applied evidence (59.039604ms)
+✔ D05 boot command probes avoid full history and keep strict thenRevive and future-wake behavior (36.938542ms)
+✔ D05 pending-stop probe treats a future retry as pending and remains a repeated-step no-op (39.991164ms)
+✔ unit.10 (spec 08): the onFlagEvidence hook fires after each applied evidence and a throwing hook never stalls the loop (33.458765ms)
+✔ sandbox tmp evidence owns only its own resource_blocked row and never reaches account policy (33.503826ms)
+✔ runtime policy: a running turn is never stopped because time elapsed (31.128781ms)
+✔ recovered completion checkpoints last, preserves output, and unlocks idle mail (32.33338ms)
+✔ recovery applies completion followed by a newer turn start in journal order (30.169235ms)
+✔ stale-generation recovery observations and cursors cannot touch the current runtime (32.284886ms)
+✔ urgency.d1: `idle` is not delivered while the runtime is running — it lands at turn end (38.556566ms)
+✔ urgency.d2: `now` mid-turn interrupts exactly once, then delivers at the resulting accept point (38.073583ms)
+✔ urgency.d3: `now` to an idle runtime is a plain delivery — no interrupt (35.897169ms)
+✔ urgency.d3a: a confirmed Codex `now` delivery never interrupts the turn it just started (35.029495ms)
+✔ urgency.d3b: a pending Codex `now` delivery never interrupts the turn it just started (36.704988ms)
+✔ urgency.d3c: a distinct later `now` message still interrupts an async-confirmed turn (49.662588ms)
+✔ urgency.d3d: the substrate router forwards the urgent delivery identity (0.595468ms)
+✔ urgency.d4: ordering — urgency governs WHEN a message is eligible; among eligible, enqueue order wins (43.547512ms)
+✔ urgency.d5: `idle` to a stopped bee still revives (revive-on-message unchanged) and delivers once idle (44.262746ms)
+✔ urgency.d6: I1 telemetry — an `idle` message's deadline clock starts at eligibility (turn end), not enqueue (37.971904ms)
+✔ envelope.d1: bee-sent mail is delivered ENVELOPED; operator mail is delivered bare (38.44958ms)
+✔ envelope.d2: a peer `now` that interrupted the turn is delivered with the interrupt notice (42.375944ms)
+✔ envelope.d3: the interrupt notice survives a daemon restart between interrupt and delivery (38.220212ms)
+✔ envelope.d4: operator `now` mail that interrupted the turn is delivered bare (35.097051ms)
+✔ envelope.d5: an operator interrupt delivers nothing and a later peer `now` to the idle bee carries no notice (38.649391ms)
+✔ envelope.d6: an operator interrupt after the delivery interrupt withdraws the notice (38.315551ms)
+✔ envelope.d7: a notice recorded for an earlier generation is not shown to a later one (32.316363ms)
+✔ urgency.d6: idle mail DELIVERS to a synthetic-running fresh revive — no generation churn (2026-08-19 budget.11 discovery) (35.614979ms)
+✔ obs.synthetic-turn_ended: a readyAtSpawn boot-to-ready edge idles the store without an output fact; evidence stays synthetic (2026-09-02 swap-revive stall) (43.798983ms)
+✔ obs.synthetic-turn_ended with mail waiting: the boot-to-ready edge is skipped (mail_pending) — no one-step idle under a turn about to start (42.239931ms)
+✔ unit.flag-expiry: a provider-declared reset lifts resource_blocked at the instant — never before, never by silence (37.463972ms)
+✔ move.claude: no-mail dest idle marks native overlay applied and completes (45.633044ms)
+✔ move.codex: no-mail dest idle completes without a mailbox prefix (46.153906ms)
+✔ move.claude: pending mail keeps overlay pending until prefixed dest deliver (41.151325ms)
+✔ move.stub: dest idle without mail does not auto-complete (59.624747ms)
+✔ move.codex: dest leaving booting (handshake ack) completes no-mail without idle (43.178214ms)
+✔ move.codex: dest crash while starting retries and then completes (36.870337ms)
+✔ move.crash: executor crash after durable admission resumes to complete (40.870305ms)
+✔ z01.a: an outer rollback never loses dedup state and a committed clear follows (39.233953ms)
+✔ z01.b: a live-runtime hive with zero pending still clears (mail-only probe) (32.491707ms)
+✔ z01.c: with I1 disabled an interrupted-then-canceled id is cleared without hydration (31.847172ms)
+✔ z01.d: stopped-target pending mail is retained until the bee is deleted (28.388618ms)
+✔ z01.e: a permanent >1024 backlog sweeps on growth or cadence only, retaining stopped and absent pending (469.541211ms)
+✔ z01.f: the I1-disabled sweep probes tracked ids in bounded chunks, never all pending (52.452531ms)
+✔ z01.g: an outer rollback never lets the sweep forget, and the terminal id prunes once committed (231.702356ms)
+✔ z01.h: retained now-mail stays deduped across revive and cadence sweeps (80.871095ms)
+✔ z01.i: a reentrant onI1Violation step cannot make the outer sweep erase live dedup ids (230.062277ms)
+✔ z01.j: huge pending metadata with a tiny tracked set probes O(tracked), never O(pending) (916.961502ms)
+ℹ tests 174
+ℹ suites 0
+ℹ pass 173
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 1
+ℹ todo 0
+ℹ duration_ms 11800.775931
+✖ gateway reader accepts a live-registry shape and strips identity overrides (3.576177ms)
+✔ gateway reader rejects malformed commands, arguments, and environment (0.516947ms)
+✔ live gateway discovery reads the Honeybee store root, not the v2 daemon data dir (1.674211ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 2
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 124.008756
+
+✖ failing tests:
+
+test at v2/daemon/tests/gateways.test.ts:8:1
+✖ gateway reader accepts a live-registry shape and strips identity overrides (3.576177ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  ... Skipped lines
+  
+    {
+      env: {
+        APIARY_GATEWAY: '/tmp/apiary.json'
+      },
+      envVars: [
+  ...
+      ],
+  +   kind: 'stdio',
+      name: 'apiary',
+      pid: 42,
+      shim: {
+        args: [],
+        command: '/opt/apiary-mcp'
+  
+      at TestContext.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h7-gateway-skills-21329f44dbaa/github-com-honeybeehq-honeybee-a9015b303498-space-21329f44dbaa/v2/daemon/tests/gateways.test.ts:9:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1325:25)
+      at Test.start (node:internal/test_runner/test:1191:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:385:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { kind: 'stdio', name: 'apiary', shim: { command: '/opt/apiary-mcp', args: [] }, env: { APIARY_GATEWAY: '/tmp/apiary.json' }, envVars: [ 'APIARY_GATEWAY_URL', 'APIARY_SESSION_ID', 'APIARY_AGENT_TOKEN' ], pid: 42 },
+    expected: { name: 'apiary', shim: { command: '/opt/apiary-mcp', args: [] }, env: { APIARY_GATEWAY: '/tmp/apiary.json' }, envVars: [ 'APIARY_GATEWAY_URL', 'APIARY_SESSION_ID', 'APIARY_AGENT_TOKEN' ], pid: 42 },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+✔ reconnect RPC/CLI: active-turn acceptance, send race, daemon adoption and authoritative receipt (2026.312451ms)
+✔ idle policy cannot stop reconnect work; racing mail waits durably for completion (64.428368ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2303.95551
+✔ bee.reconfigure RPC admits an active turn, records args, and restarts the stub once it is idle (1527.316838ms)
+✔ args.daemon.1: composeSpawn precedence — claude: spec.args < defaultArgs < bee.args < --resume; later --model wins; boolean idempotent (1.059012ms)
+✔ args.daemon.2: composeSpawn codex — model lifted into thread/start|resume, approval flag absorbed, -c overrides stay on argv after app-server (0.675955ms)
+✔ args.daemon.2f: composeSpawn claude placement overlay is --append-system-prompt after resume (0.220504ms)
+✔ args.daemon.2f-keep: composeSpawn claude dest overlay keeps an existing append-system-prompt (0.24358ms)
+✔ args.daemon.2e: composeSpawn codex placement overlay is thread developerInstructions, not argv (0.440137ms)
+✔ args.daemon.2b: composeSpawn grok — --model/--effort lifted in front of stdio (0.355443ms)
+✔ args.daemon.2c: composeSpawn injects live gateways into Grok session setup (0.488081ms)
+✔ args.daemon.2d: composeSpawn agy keeps model and effort on argv, de-duplicates yolo, and resumes by conversation (0.221305ms)
+✔ args.daemon.3: composeSpawn stub/unknown — verbatim concatenation, no de-dup, no resume; unknown adapter → null (0.284674ms)
+✔ args.daemon.4: config — agents.<name>.defaultArgs parsed; wrong type fails loudly; absent = undefined (3.687532ms)
+✔ args.daemon.5: RPC — spawn args, bee.setArgs (typed errors, idempotency, null clears), revive with replacement args over the real daemon (1396.762014ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3229.081665
+✔ gateway lock timeout identifies the blocked stage safely, then the real seeder recovers (45044.465558ms)
+✔ activation diagnostics never format arbitrary error text, names, or codes (0.86581ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 45298.916184
+✔ daemon fixture isolates HOME and every XDG directory, disables gateway registration and preserves explicit disposable overrides (1081.824498ms)
+✔ fixture child preload rejects a real HOME before child code executes (45.024484ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 2
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1255.037066
+✔ account config import: Claude copies config-only files, merges missing safe values, preserves destination auth and conflicts (31.052583ms)
+✔ account config import: auth-only mixed JSON is skipped and malformed reasons are static (3.202264ms)
+✔ account config import: JSONC comments survive safe extraction and unusable MCP servers do not make a config ready (8.61043ms)
+✔ account config import: Grok and Kimi TOML import safe settings without provider auth (20.670651ms)
+✔ account config import: environment homes win and source symlink escapes are reported without copying (6.735065ms)
+✔ account config import: raw aliases cannot smuggle mixed config, env files, private keys, or destination links (7.84749ms)
+✔ account config import: traversal depth and destination config reads are bounded (5.437291ms)
+✔ account config import: unresolved Kimi default_model is skipped (1.145737ms)
+✔ account config import: unknown harness and equal source/destination are typed refusals (1.048195ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 302.983633
+✔ rpc.accounts.1: CRUD verbs, typed errors, idempotent add, spawn binding (explicit / paused / mismatch / auto / unbound), snapshot + watch carry accounts (1421.200201ms)
+✔ rpc.accounts.fuzzy: one selector works across account verbs, spawn agent shorthand, explicit override, and swap (1028.77048ms)
+✔ rpc account.resetLimits: duplicate keys return one effect; uncertain and wrong-harness failures stay typed (700.716736ms)
+✔ rpc.accounts.2: bee.swapAccount (fake-claude) — same-harness stop → rebind → revive with resume under a NEW session id in the new home; cross-harness refused; stopped bee rebound only (1392.800274ms)
+✔ rpc allocation owner: acquire is authoritative, claim swap is atomic, and all-protected returns account_wait (1908.007261ms)
+✔ rpc allocation owner serializes concurrent node admissions and a remote node consumes one claim once (1656.84817ms)
+✔ rpc allocation owner claim gates active automatic spawn while shadow acquisition remains observational (1345.494673ms)
+✔ rpc.accounts.2b: bee.swapAccount clears stale auth_needed before the replacement generation presents as working (1461.563055ms)
+✔ rpc.accounts.3: automatic rotation on exhaustion (fake-claude @quota:delayed) — swap to the untried account and continue automatically; opt-out honored; no candidate = flagged, no loop; auth_needed evidence → account status (3192.207905ms)
+✔ rpc.accounts.ceiling: past its weekly ceiling an account refuses explicit work, idle bees move off with a note, and stopped bees move off when they wake (2112.307759ms)
+✔ rpc.accounts.f2: add refuses pre-existing credentials by default; importExisting adopts as unverified; health is validation evidence, never file-existence; a fresh add is auth_needed, never ok (620.120861ms)
+✔ rpc.accounts.v18: importExisting imports the MACHINE's vendor home (the field finding); nothing importable is `no_credentials_to_import` naming the paths; snapshot + watch deltas carry credentialHealth; login success flips status (568.3544ms)
+✔ rpc.accounts: Codex usageLimitExceeded persists bee and account boundaries until successful recovery (1253.37826ms)
+✔ rpc central credentials: per-account opt-in/status/lease/disable, idempotent enable, in-place login, native capture fenced, expired and refused candidates rejected (624.349455ms)
+retained @ account and @ label: install/epoch renewal/revoke/reinstall PASS; full id cap210; invalid charset/overflow typed invalid_request
+✔ lease account ids share core validation: retained @ ids renew, revoke and reinstall without suffix rewriting (476.306484ms)
+✔ rpc.accounts.2c: bee.swapAccount (fake-claude) recovers a lost session id from the bee's session log, refuses typed when nothing can be carried, and stays "none" only for a bee that never ran (2169.301383ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 22186.697971
+✔ lease.claude.1: ships .credentials.json with DEEP, EXACT refresh blanking; access token, near-miss keys, and expiry preserved; log secret-free (43.994028ms)
+✔ lease.claude.2: an expired chain is refreshed through the daemon's own refresher first; the NEW refresh token also never ships (41.33484ms)
+✔ lease.claude.4: the 15-minute ship floor — a dying-but-not-expired token is refreshed, never re-shipped; a refresh that stays under the floor refuses (42.547772ms)
+✔ lease.claude.3: typed refusals — no credential; near-expiry chain a live runtime still owns; failed refresh (32.244392ms)
+✔ lease.claude.5: an idle running Claude loses the refresh at the deferral deadline — retried mints from T-15m ship a later expiry with over 5 minutes to spare (39.495911ms)
+✔ lease.claude.6: past the deadline the daemon still yields to a Claude that is refreshing or has refreshed (61.173781ms)
+✔ lease.claude.7: the daemon does not rotate under a running Claude when it cannot publish to the Keychain that Claude reads (26.40302ms)
+✔ lease.claude.8: a rotated chain the Keychain refused is re-published until running Claudes can read it (66.05097ms)
+✔ lease.claude.9: with no Claude running the daemon still rotates only from a readable Keychain (24.848517ms)
+✔ lease.codex.1: ships access+id token with refresh_token blanked (field KEPT); blanking is DEEP (stray refresh keys outside tokens too); a subscription lease's OPENAI_API_KEY is blanked (26.268942ms)
+✔ lease.codex.3: a shipped file always carries refresh_token — present as "" even when the source file lacks the field (codex serde hard-fails without it) (22.323618ms)
+✔ lease.codex.2: a near-expiry token triggers the central rotation and harvests home → vault; a rotation that stays stale is a typed TTL refusal (31.319158ms)
+✔ lease.grok.1: every issuer::client entry's refresh_token blanked; cached keys preserved; expiresAt = the soonest entry expiry; kindNote carries the XAI_API_KEY scrub rule (29.402499ms)
+✔ lease.kimi.1: API-key lease ships (refresh blanked); an OAuth-only account is a durable lease_unsupported refusal (28.442733ms)
+✔ lease.opencode.1: single coding-plan provider filtered out of the multi-provider auth.json; other providers DROPPED, not blanked; none → lease_unsupported (29.677247ms)
+✔ lease.muse.1: a held login requires authority minting and leases only the key, never the bootstrap or profile (77.164243ms)
+✔ lease.muse.2: a static API key has a bounded four-hour delivery lease (23.047558ms)
+✔ lease.muse.3: Keychain, bootstrap, missing and invalid documents have typed refusals (25.962013ms)
+✔ lease.muse.4: a delivered working key imports without any bootstrap on the recipient (26.035557ms)
+✔ lease.muse.5: a Mac holds and mints centrally in its vault; it never publishes a runtime home (44.738128ms)
+✔ lease.flight.1: concurrent mints for one account JOIN a single mint (the rotation runs once) (26.834684ms)
+✔ lease.flight.2: refused while the account's refresher is mid-rotation (42.774626ms)
+✔ lease.strategy.1: harnesses without a lease strategy are a durable typed refusal (23.546706ms)
+✔ rpc.lease.1: account.lease verb — result shape, typed errors, capability tag, and no secret bytes in daemon output or the audit stream (545.832063ms)
+✔ central.claude: idle local runtime does not block rotation; leases and runtime copies never carry refresh tokens (74.778512ms)
+✔ central.foreign-home: a central authority never enrolls or publishes into a home outside homesDir (49.987085ms)
+✔ central.claude: enrollment refuses idle runtimes, and existing accounts retain their behavior (35.934597ms)
+✔ central.claude: an expired candidate is refused before any state change; native copies stay intact (#12) (40.600365ms)
+✔ central.claude: a provider rejection during enrollment aborts with native copies intact and no access-only publication (#12) (44.335691ms)
+✔ central.claude: a lost provider response during enrollment is retried after backoff; a consumed token ends in login_required (#12) (50.739818ms)
+✔ central.claude: an enrollment interrupted mid-rotation is uncertain on resume and resolves on the next refresh (#12) (79.200188ms)
+✔ central.claude: disabling an interrupted enrollment never republishes its unconfirmed refresh token (73.022152ms)
+✔ central.claude: multiple accounts enroll and rotate independently (126.495414ms)
+✔ central.claude: force refresh is coalesced with lease requests and keyed retries survive service restart (83.870562ms)
+✔ central.claude: force refresh re-evaluates after an unrelated ensure rejects (62.807571ms)
+✔ central.claude: saved rotation survives publication failure; an unknown outcome is retried after backoff and recovers (80.600972ms)
+✔ central.claude: uncertain disable remains fenced across failed publication and restart (55.163518ms)
+✔ central.claude: a refused refresh token ends in login_required — auth_needed with the reason, a typed lease refusal, no last-good limits (44.739119ms)
+✔ central.claude: a refresh the provider did not process stays ready, backs off and recovers; last-good limits stay (66.318697ms)
+✔ central.claude: a refresh interrupted by a daemon death resolves on the next tick instead of freezing (71.424691ms)
+✔ central.claude: an uncertain row from before schema v35 has no retry metadata and is still retried by the tick alone (65.587687ms)
+✔ central.claude: a retry that succeeds but cannot publish still ends the doubt once the saved result settles (59.319159ms)
+✔ central.claude: unreadable Keychain blocks enrollment before the validating rotation and preserves the native copy (34.39099ms)
+✔ central.claude: lost authority has a supported disable and login recovery path (40.936598ms)
+✔ central.claude: a foreign native rotation is preserved and blocks provider refresh (42.100203ms)
+✔ central.claude: a foreign login that lands during enrollment is detected before the validating rotation (48.686856ms)
+✔ central.claude: a pending native Keychain seed prevents enrollment (36.679499ms)
+✔ central.claude: a validated rotation is saved before publication; a retry publishes without rotating again (#12) (51.02824ms)
+✔ central.claude: disable restores a validated enrollment result over its older adopted copies (57.258475ms)
+✔ central.claude relogin: login_required logs in place — generation +1, ready, ok, login recorded, copies access-only, running runtime untouched (98.350056ms)
+✔ central.claude relogin: another Anthropic account or an unknown one is refused with nothing changed; replaceAccount allows it (57.01084ms)
+✔ central.claude relogin: an authority with no recorded identity uses the home's Claude Code account record (67.603ms)
+✔ central.claude relogin: a sign-in cancelled while it waited behind a refresh changes nothing (46.840256ms)
+✔ central.claude relogin: an organization that cannot be named is unverified, not a wildcard (115.778038ms)
+✔ central.claude relogin: a login whose expiry the provider did not give clears the previous login's expiry (64.080075ms)
+✔ central.claude early refresh: a failure before the provider is retried with backoff, not on every tick (73.615688ms)
+✔ central.claude relogin: a login saved before publication failed settles on the next tick-driven ensure without a new provider call (70.619586ms)
+✔ central.claude lease minTtlMs: below the requested margin the chain is refreshed first; a just-issued token or an unprocessed refresh still ships (68.362536ms)
+✔ central.claude early refresh: due once no more than the ahead window remains, never within the minimum interval of an issue, quiet after a failure (53.97832ms)
+✔ account mirror: loginDueAt is three days before the provider login ends (28.217991ms)
+✔ peer lease adoption preserves native material and refuses working or operator-paused accounts (55.263304ms)
+✔ peer lease publication uses Claude locks and keeps starts blocked until Keychain publication succeeds (45.285591ms)
+✔ revoked leases retain all account rows and bee bindings, audit once and accept a newer authority epoch (57.944716ms)
+✔ native backups exclude access-only leases, enforce permissions and retain only the latest genuine chain (93.384623ms)
+✔ explicit lease adoption replaces a stopped working native login with a genuine restorable backup, but never a running bee or central authority (68.200752ms)
+✔ explicit adoption checks stopped bees again after awaiting the per-home Keychain read (27.721867ms)
+✔ versioned lease publication: generation is not eligible until home, mirrors and Keychain finish, durable completion marker survives service recreation (54.312772ms)
+✔ auth death eligibility stays harness-keyed; native, Muse, legacy and unpublished leases are excluded (33.482682ms)
+✔ legacy lease renewal after auth death preserves ordinary AuthResume and releases only unclaimed versioned candidates (206.075266ms)
+✔ central lease mint compatibility: Codex and Claude ship valid matching material during refreshing or uncertainty without a generation label (165.679099ms)
+✔ authority instance: actual enable, refresh, restart, disable/remove/re-add/enable scopes minted leases (92.386695ms)
+ℹ tests 71
+ℹ suites 0
+ℹ pass 71
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4745.252733
+✔ update RPC status reads live credential blockers and reserve refuses them (74.089067ms)
+✔ update RPC reserve retries require exact prior epoch and survive reopening SQLite (66.42296ms)
+✔ update RPC cannot release a source daemon even with clean-looking installed evidence (62.834913ms)
+✔ update RPC reports a custom store but refuses to reserve or release it (32.290283ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 514.208299
+✔ Muse serves MSP with yolo, model and effort lifted off argv and gateways in session/start (3.722366ms)
+✔ Muse revives through session/resume on the recorded provider session (0.55146ms)
+✔ Muse usage/changed and a quota terminal from a running bee land on its account's limits row (fake muse serve, real daemon) (1373.360646ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1691.877185
+✔ set-model --apply uses atomic admission and waits out an active turn (1574.936892ms)
+✔ cli.1: help prints and exits 0; unknown command exits 1 (4.631583ms)
+✔ cli.2: reads fall back to the read-only store when the daemon is down — labeled stale (99.56418ms)
+✔ cli.children: stale reads exclude external lineage that collides with a local bee id (50.954403ms)
+✔ cli.3: mutations NEVER fall back — daemon down means a loud, typed failure (44.242093ms)
+✔ cli.3b: a misspelled flag is a LOUD error (never a silent no-op), and spawn takes the agent positionally (7.058549ms)
+✔ cli.send-sender-wire: the real CLI request carries the authority-bound ambient bee id (4.832778ms)
+✔ cli.4: against a live daemon — spawn, list (not stale), send --wait blocks on the delivery mark (1112.7739ms)
+✔ cli.4n: health and daemon status report naming ok, off, or disabled with the reason (1480.49322ms)
+✔ cli.4b: --idempotency-key passes through on spawn and send — replays dedup to the original (880.594471ms)
+✔ cli.4c: per-bee args — `spawn --arg` (repeatable), `bee set-args <bee> -- <args…>` / --clear, `bee args`, `revive --arg`, view/list carry args; stale read shows them too (1636.393057ms)
+✔ cli.4d: cells — `spawn --substrate cell --origin`, `cell capture --onto` (landed / refused as results), `cell remove` (refused-dirty exit 2, --force) (1809.967319ms)
+✔ cli.4e: v6 verbs — rename, tag, interrupt, fork, children, spawn --parent (+ ambient HIVE_BEE_ID), ask/answer/question list, seal create/list/get; stale fallbacks for the reads (2264.176769ms)
+✔ cli.daemon: usage lists restart as a stop+start alias (1.945575ms)
+✔ cli.5: daemon status when nothing runs and no service is installed (2.64825ms)
+✔ cli.6: service glue — label never the live daemon's, exec args env override wins (1258.389186ms)
+✔ cli.urgency: send --urgency passes through to the row; the mailbox read surfaces it; an unknown value is a typed error (1483.669585ms)
+✔ cli.version: --version answers (Apiary's Doctor gates local runs on it) (0.892954ms)
+✔ cli.task: add/ls/done/supply round-trip through the daemon; unknown command is gone (832.29671ms)
+✔ cli.answer-display-label: --by stays local and question rows use plain answered wording (4.069005ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 14778.086901
+✔ missing current history is reconciled once with a verified native committed identity (143.1821ms)
+✔ an already incompatible store refuses before current or service activation changes (210.589436ms)
+✔ history reconciliation refuses an unverified current identity: revision (104.753433ms)
+✔ history reconciliation refuses an unverified current identity: dirty (90.387396ms)
+✔ history reconciliation refuses an unverified current identity: target (85.031233ms)
+✔ a held activation records current without attempting another restore (205.077438ms)
+✔ failed rollback to an unconfirmed activation recovers current and reports its uncertainty (175.435036ms)
+✔ reservation lab: deploy refused while reserved (71.756138ms)
+✔ reservation lab: rollback refused while reserved (60.597904ms)
+✔ reservation lab: deploy and rollback proceed without a held reservation (242.031756ms)
+✔ reservation lab: acquire under deploy lock fences a queued deploy (88.517239ms)
+✔ reservation lab: schema 44 without a reservation permits deploy and rollback (215.325663ms)
+✔ reservation lab: corrupt refuses deploy and rollback (75.431681ms)
+✔ reservation lab: null refuses deploy and rollback (71.510294ms)
+✔ reservation lab: sentinel refuses deploy and rollback (72.348412ms)
+✔ reservation lab: missing-meta refuses deploy and rollback (67.395847ms)
+✔ reservation lab: live schema 44 owner takes precedence over offline reservation (v2/1) (38.787156ms)
+✔ reservation lab: live schema 44 owner takes precedence over offline reservation (v2/2) (31.090522ms)
+✔ reservation lab: unreadable config.json refuses deploy and rollback (45.38692ms)
+✔ reservation lab: unreadable core.sqlite3 refuses deploy and rollback (47.624219ms)
+✔ deploy from clean HEAD installs the version, retargets current, records history, restarts daemon (97.78201ms)
+✔ deploy accepts an explicit sha that is not HEAD (166.631315ms)
+✔ a dirty working tree refuses before building (45.836951ms)
+✔ an untracked file also counts as dirty (45.610578ms)
+✔ a failing build never touches the runtime root, current, or history (158.469264ms)
+✔ an artifact without dist/cli.js is refused before install (72.640297ms)
+✔ rollback retargets current to the previous deploy and restarts the daemon (332.250009ms)
+✔ rollback refuses when there is no previous installed version (115.198485ms)
+✔ prune keeps current, the rollback target, and the last N versions (451.722721ms)
+✔ prune never removes the rollback target even after rolling back (259.553513ms)
+✔ the installed CLI resolves through current and ignores working-tree edits until the next deploy (421.207866ms)
+✔ redeploying the same sha replaces the install without breaking current (200.93616ms)
+✔ deploy history tolerates a missing or foreign deploys.json (3.30873ms)
+✔ ancestry guard: non-descendant refused, descendant allowed, override honored (365.445614ms)
+✔ deploy threads skipTests=false into the build and records its gate (97.440207ms)
+✔ deploy threads skipTests=true into the build and records its gate (99.972127ms)
+✔ failed activation restores current and preserves successful deploy history (262.248376ms)
+✔ failed same-revision activation restores displaced runtime bytes (232.104613ms)
+✔ failed rollback restores the active version without recording success (264.55208ms)
+✔ held reservation fences pinned restart and recovery with an installed runtime: deploy (180.614644ms)
+✔ held reservation fences pinned restart and recovery with an installed runtime: rollback (152.585436ms)
+✔ unadmitted pinned restart refuses a held reservation before pin or service effects (35.031719ms)
+✔ restart recovery capability expires when its admitted hook returns (197.683226ms)
+✔ successful deploy retains an external current absent from history as the next rollback target (304.211429ms)
+✔ external preservation refuses target before installing the candidate (191.474673ms)
+✔ external preservation refuses conflicting-install before installing the candidate (204.107857ms)
+✔ external preservation refuses escaping-link before installing the candidate (148.27859ms)
+✔ same-sha failed activation checks displaced schema before restoring bytes and preserves the previous build (148.81683ms)
+✔ backup refusal leaves current and same-revision runtime bytes untouched (134.681441ms)
+✔ existing store requires a durable validated backup before source deploy activation (166.691057ms)
+✔ a custom environment data directory refuses deploy before the no-store shortcut (62.047906ms)
+✔ custom config store paths refuse before recording a store-absence receipt (62.813851ms)
+ℹ tests 52
+ℹ suites 0
+ℹ pass 52
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8169.6662
+✔ external Apiary current reconciles history and rolls back to an installed history build (72.027112ms)
+✔ external Apiary current reconciles history and restores its exact link on failure (44.609478ms)
+✔ unidentified external runtime refuses with the missing identity path (9.041933ms)
+✔ rollback checks store schema 44 before changing current or history (61.763212ms)
+✔ rollback checks store schema 48 before changing current or history (32.545261ms)
+✔ unknown schema capability refuses: "" (8.746532ms)
+✔ unknown schema capability refuses: "var SCHEMA_VERSION = 48;\nvar SCHEMA_VERSION2 = 48;\n" (7.47574ms)
+✔ unknown schema capability refuses: "var SCHEMA_VERSION = garbage;\n" (7.299034ms)
+✔ schema capability is read across the split cli bundle chunks (20.130197ms)
+✔ schema 29 requires an explicit store restore even when the target schema is newer (20.352724ms)
+✔ rollback from an external current retains it for a second rollback back (56.623326ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 553.970057
+✔ artifact deploy refuses unchecked bytes before switching or restarting (45.680619ms)
+✔ restart admission re-reads live reservation before pin or service effects: apiary-swap (989.797263ms)
+✔ restart admission re-reads live reservation before pin or service effects: absent (1187.515364ms)
+✔ restart admission re-reads live reservation before pin or service effects: own-paired (1115.968653ms)
+✔ restart admission re-reads live reservation before pin or service effects: different-id (1018.776983ms)
+✔ restart admission re-reads live reservation before pin or service effects: different-epoch (907.235281ms)
+✔ restart admission re-reads live reservation before pin or service effects: different-digest (1029.448887ms)
+✔ v2 recovery admits artifact deployment and rollback while preserving the foreign caller (1256.296262ms)
+✔ verified artifact deploy: install (1104.611749ms)
+✔ verified artifact deploy: identity (180.277499ms)
+✔ verified artifact deploy: gate (151.881569ms)
+✔ verified artifact deploy: fence (156.829876ms)
+✔ verified artifact deploy: conflict (1001.166445ms)
+✔ verified artifact deploy: restart (473.442167ms)
+✔ reserved artifact publication retains all recovery artifacts (422.51162ms)
+✔ deploy queued behind reservation release cannot switch current (344.630119ms)
+✔ fresh verified artifact uses v2 activation without a freeze marker (279.780072ms)
+✔ release extraction refuses unsafe File: ../escape  (9.074603ms)
+✔ release extraction refuses unsafe File: /escape  (6.483893ms)
+✔ release extraction refuses unsafe SymbolicLink: dist/link ../../escape (4.932473ms)
+✔ release extraction refuses unsafe Link: dist/link ../escape (5.876525ms)
+✔ release extraction refuses unsafe FIFO: fifo  (6.008893ms)
+✔ reserved deploy resumes exact installed artifact after lost restart acknowledgement (1326.965975ms)
+✔ fresh deploy resumes exact installed artifact after lost restart acknowledgement (641.050214ms)
+✔ release rejects unresolved or escaping symlink graph: x,escape (8.018437ms)
+✔ release rejects unresolved or escaping symlink graph: dangling (6.099863ms)
+✔ release rejects unresolved or escaping symlink graph: a,b (6.173719ms)
+✔ fresh v2 runtime mode survives source deploy and rollback (config) (432.89222ms)
+✔ fresh v2 runtime mode survives source deploy and rollback (receipt upgrade) (415.885515ms)
+✔ runtime mode config rejects corrupt content without routing to legacy (2.171086ms)
+✔ fresh artifact exposes its owner CLI only after restart succeeds and retries interrupted exposure (1829.613963ms)
+✖ reserved artifact restart receives structural admission that expires after the hook (79.007619ms)
+✔ artifact admission refuses an unverified external current target (188.835856ms)
+✔ artifact admission refuses an unverified external current stamp (174.633365ms)
+✔ artifact backup refusal preserves current and never activates the candidate (747.708038ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 34
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17790.286729
+
+✖ failing tests:
+
+test at v2/cli/tests/deploy-artifact.test.ts:396:1
+✖ reserved artifact restart receives structural admission that expires after the hook (79.007619ms)
+  Error [DaemonDownError]: daemon not reachable at /home/trmd/.cache/honeybee/tmp/7e13e1d4-4b3a-4aa3-bcc0-c27341b724b4/hon-pinned-admission-LlKG4E/v2/hived.sock (EINVAL)
+      at Socket.<anonymous> (file:///home/trmd/.hive/v2/cells/rebuild-m-h7-gateway-skills-21329f44dbaa/github-com-honeybeehq-honeybee-a9015b303498-space-21329f44dbaa/v2/cli/src/client.ts:85:16)
+      at Object.onceWrapper (node:events:631:26)
+      at Socket.emit (node:events:509:28)
+      at emitErrorNT (node:internal/streams/destroy:170:8)
+      at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+      at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+    code: 'socket_unreachable',
+    socketPath: '/home/trmd/.cache/honeybee/tmp/7e13e1d4-4b3a-4aa3-bcc0-c27341b724b4/hon-pinned-admission-LlKG4E/v2/hived.sock',
+    reason: 'EINVAL'
+  }
+✔ fresh verified activation executes installed current v2 CLI with scoped data directory (831.790532ms)
+✔ restart after stop failure refuses a still-loaded service (476.94529ms)
+✔ restart after stop failure requires confirmed absence (567.559811ms)
+✔ persisted v2 config selects the v2 service for an ordinary source restart (557.272046ms)
+✔ restart recovery preserves a safe service and pin boundary: after-start (685.804907ms)
+✔ restart recovery preserves a safe service and pin boundary: after-stop (973.384204ms)
+✔ restart recovery preserves a safe service and pin boundary: compatible (676.418148ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4993.54112
+v2 daemon/cli test files failed (2 of 15):
+  v2/daemon/tests/gateways.test.ts (exit 1)
+  v2/cli/tests/deploy-artifact.test.ts (exit 1)
+daemon exit 1

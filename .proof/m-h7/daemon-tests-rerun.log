@@ -1,0 +1,55 @@
+✔ gateway reader accepts a live-registry shape and strips identity overrides (1.946224ms)
+✔ gateway reader rejects malformed commands, arguments, and environment (0.471536ms)
+✔ live gateway discovery reads the Honeybee store root, not the v2 daemon data dir (1.107106ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 115.689301
+✔ artifact deploy refuses unchecked bytes before switching or restarting (54.986322ms)
+✔ restart admission re-reads live reservation before pin or service effects: apiary-swap (1099.592211ms)
+✔ restart admission re-reads live reservation before pin or service effects: absent (1321.835093ms)
+✔ restart admission re-reads live reservation before pin or service effects: own-paired (1189.72464ms)
+✔ restart admission re-reads live reservation before pin or service effects: different-id (832.823232ms)
+✔ restart admission re-reads live reservation before pin or service effects: different-epoch (842.310019ms)
+✔ restart admission re-reads live reservation before pin or service effects: different-digest (861.952943ms)
+✔ v2 recovery admits artifact deployment and rollback while preserving the foreign caller (1401.017463ms)
+✔ verified artifact deploy: install (1132.356384ms)
+✔ verified artifact deploy: identity (220.092857ms)
+✔ verified artifact deploy: gate (163.734927ms)
+✔ verified artifact deploy: fence (159.709729ms)
+✔ verified artifact deploy: conflict (1033.159827ms)
+✔ verified artifact deploy: restart (465.953326ms)
+✔ reserved artifact publication retains all recovery artifacts (453.016169ms)
+✔ deploy queued behind reservation release cannot switch current (493.57632ms)
+✔ fresh verified artifact uses v2 activation without a freeze marker (181.692976ms)
+✔ release extraction refuses unsafe File: ../escape  (6.270049ms)
+✔ release extraction refuses unsafe File: /escape  (4.551138ms)
+✔ release extraction refuses unsafe SymbolicLink: dist/link ../../escape (3.608087ms)
+✔ release extraction refuses unsafe Link: dist/link ../escape (3.585363ms)
+✔ release extraction refuses unsafe FIFO: fifo  (3.516673ms)
+✔ reserved deploy resumes exact installed artifact after lost restart acknowledgement (1016.052614ms)
+✔ fresh deploy resumes exact installed artifact after lost restart acknowledgement (651.703721ms)
+✔ release rejects unresolved or escaping symlink graph: x,escape (8.711057ms)
+✔ release rejects unresolved or escaping symlink graph: dangling (5.502271ms)
+✔ release rejects unresolved or escaping symlink graph: a,b (6.092161ms)
+✔ fresh v2 runtime mode survives source deploy and rollback (config) (363.121831ms)
+✔ fresh v2 runtime mode survives source deploy and rollback (receipt upgrade) (347.334968ms)
+✔ runtime mode config rejects corrupt content without routing to legacy (2.53291ms)
+✔ fresh artifact exposes its owner CLI only after restart succeeds and retries interrupted exposure (1971.442923ms)
+✔ reserved artifact restart receives structural admission that expires after the hook (466.60962ms)
+✔ artifact admission refuses an unverified external current target (199.400444ms)
+✔ artifact admission refuses an unverified external current stamp (232.929409ms)
+✔ artifact backup refusal preserves current and never activates the candidate (624.007532ms)
+ℹ tests 35
+ℹ suites 0
+ℹ pass 35
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18051.223651
+daemon rerun exit 0

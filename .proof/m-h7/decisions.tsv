@@ -1,0 +1,4 @@
+at	what	why	evidence	result
+2026-11-05T07:46:11Z	Base on origin/main 6a51b3f6 (H6 landed, schema v56); take v57	orchestrator message 07:38Z	git log origin/main -1	branch m-h7 at 6a51b3f6
+2026-11-05T07:46:28Z	npx tsc fetched the unrelated npm package tsc@2.0.4 into the npx cache (not the repo); security rule slip, nothing executed from it beyond its banner	ran npx before checking node_modules/.bin	npx warning in the shell output	use node_modules/.bin/tsc and npm run v2:check only; cache entry removed
+2026-11-05T08:03:32Z	Bumped the literal SCHEMA_VERSION pins in 12 core test files to 57 (11 were already stale at 55 since H6 moved to 56) and the gateway reader expectation gains kind:"stdio"	deliberate contract changes; same mechanical pin update H6 made	core-tests.log first run: 13 failures, all "57 !== 55/56"; gateways.test deepEqual	re-run after daemon tests finish

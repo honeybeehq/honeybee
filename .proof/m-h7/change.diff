@@ -1,0 +1,1395 @@
+diff --git a/v2/cli/src/help.ts b/v2/cli/src/help.ts
+index 4b403e6a..f5920e37 100644
+--- a/v2/cli/src/help.ts
++++ b/v2/cli/src/help.ts
+@@ -101,6 +101,8 @@ export const GROUPS: Group[] = [
+       ["swap-account", "<bee> <account>", "move a bee to another account of the SAME harness"],
+       ["account", "limits [<selector>]", "refresh + show provider limits (feeds auto; rr uses registration order)"],
+       ["account", "import [--root ~/.hive]", "import the old vault · account backfill [--dry-run]"],
++      ["gateway", "register <url> [--name apiary]", "register the Apiary MCP endpoint; Honeybee writes gateways/<name>.json and seeds every home with it · gateway list"],
++      ["skills", "install <dir>", "install a content-hashed skill tree into every Honeybee-owned home · skills status"],
+     ],
+   },
+   {
+diff --git a/v2/cli/src/main.ts b/v2/cli/src/main.ts
+index 59c975a0..567c1fb0 100644
+--- a/v2/cli/src/main.ts
++++ b/v2/cli/src/main.ts
+@@ -136,7 +136,8 @@ import { filterMailbox, INBOX_AGENT, isInboxAgent, TASK_STATUSES, type AuditRow,
+ import { matchAccount } from "../../core/src/accountMatch.ts";
+ import { publicAuditRow, publicEnvRecords } from "../../core/src/envRedaction.ts";
+ import { hostname } from "node:os";
+-import type { AuditTailResult } from "../../daemon/src/protocol.ts";
++import type { AuditTailResult, DeployInfoResult, GatewayRegisterResult, SkillsInstallResult } from "../../daemon/src/protocol.ts";
++import { readSkillTreeFromDirectory } from "../../daemon/src/skills.ts";
+ import type { TranscriptTurnStream } from "../../driver-tmux/src/transcripts.ts";
+ import {
+   agyArgGrammar,
+@@ -235,6 +236,7 @@ const VALUE_FLAGS = new Set([
+   "--retained-generation",
+   "--out",
+   "--dir",
++  "--token-issuer",
+   "--id",
+   "--idempotency-key",
+   "--method",
+@@ -1526,6 +1528,60 @@ async function cmdTag(ctx: CliContext, parsed: Parsed): Promise<number> {
+   });
+ }
+ 
++const GATEWAY_USAGE = "usage: hive gateway register <url> [--name apiary] [--token-issuer <issuer>] [--idempotency-key key] [--register] [--json] | hive gateway list";
++const SKILLS_USAGE = "usage: hive skills install <dir> [--idempotency-key key] [--register] [--json] | hive skills status";
++
++async function cmdGateway(ctx: CliContext, parsed: Parsed): Promise<number> {
++  const action = parsed.positional[1];
++  if (action === "list") {
++    const info = await withClient(ctx, (c) => c.request<DeployInfoResult>("deployInfo"));
++    const gateways = info.gateways ?? [];
++    emit(ctx, gateways.length === 0 ? ["no registered gateways"] : gateways.map((g) => `${g.name}  ${g.url}${g.tokenIssuer ? `  issuer=${g.tokenIssuer}` : ""}  registered ${new Date(g.registeredAt).toISOString()}`), { gateways }, false);
++    return 0;
++  }
++  const url = parsed.positional[2];
++  if (action !== "register" || !url) throw new Error(GATEWAY_USAGE);
++  const name = parsed.flags.get("--name");
++  const tokenIssuer = parsed.flags.get("--token-issuer");
++  const key = parsed.flags.get("--idempotency-key");
++  const r = await withClient(ctx, async (c) => {
++    if (!c.capabilities.includes("gateway.register.v1")) throw new RpcError("capability_missing", "Update Honeybee: gateway.register.v1 is required.");
++    if (parsed.flags.get("--register") === true) await registerLocalTrust(ctx, c);
++    return c.request<GatewayRegisterResult>("gateway.register", {
++      url,
++      ...(typeof name === "string" ? { name } : {}),
++      ...(typeof tokenIssuer === "string" ? { tokenIssuer } : {}),
++      ...(typeof key === "string" ? { idempotencyKey: key } : {}),
++    });
++  });
++  emit(ctx, [confirm("ok", r.changed ? "registered" : "already registered", `gateway ${r.gateway.name} at ${r.gateway.url}; file ${tildify(r.file)}`, r.deduped)], r, false);
++  return 0;
++}
++
++async function cmdSkills(ctx: CliContext, parsed: Parsed): Promise<number> {
++  const action = parsed.positional[1];
++  if (action === "status") {
++    const info = await withClient(ctx, (c) => c.request<DeployInfoResult>("deployInfo"));
++    const tree = info.skills ?? null;
++    emit(ctx, [tree ? `skill tree ${tree.digest}  ${tree.files} files, ${tree.bytes} bytes, installed ${new Date(tree.installedAt).toISOString()}` : "no skill tree installed"], { skills: tree }, false);
++    return 0;
++  }
++  const dir = parsed.positional[2];
++  if (action !== "install" || !dir) throw new Error(SKILLS_USAGE);
++  const tree = readSkillTreeFromDirectory(resolve(dir));
++  const key = parsed.flags.get("--idempotency-key");
++  const r = await withClient(ctx, async (c) => {
++    if (!c.capabilities.includes("skills.install.v1")) throw new RpcError("capability_missing", "Update Honeybee: skills.install.v1 is required.");
++    if (parsed.flags.get("--register") === true) await registerLocalTrust(ctx, c);
++    return c.request<SkillsInstallResult>("skills.install", { tree, ...(typeof key === "string" ? { idempotencyKey: key } : {}) }, 300_000);
++  });
++  emit(ctx, [
++    confirm("ok", r.changed ? "installed" : "already installed", `skill tree ${r.tree.digest} (${r.tree.files} files, ${r.tree.bytes} bytes)`, r.deduped),
++    ...r.homes.map((home) => `  ${home.status === "installed" ? "+" : "="} ${home.account}  ${tildify(home.home)}`),
++  ], r, false);
++  return 0;
++}
++
+ async function cmdReconnectTools(ctx: CliContext, parsed: Parsed): Promise<number> {
+   const needle = parsed.positional[1];
+   if (!needle) throw new Error("usage: hive reconnect-tools <bee> [--idempotency-key k] | hive reconnect-tools <bee> --command-id <id>");
+@@ -5044,6 +5100,10 @@ export async function runV2Cli(argv: string[], io: CliIo = defaultIo): Promise<n
+         return await cmdCell(ctx, parsed);
+       case "account":
+         return await cmdAccount(ctx, parsed);
++      case "gateway":
++        return await cmdGateway(ctx, parsed);
++      case "skills":
++        return await cmdSkills(ctx, parsed);
+       case "x":
+         return await cmdX(ctx, parsed);
+       case "xa":
+diff --git a/v2/core/src/audit.ts b/v2/core/src/audit.ts
+index eedca92a..d0757217 100644
+--- a/v2/core/src/audit.ts
++++ b/v2/core/src/audit.ts
+@@ -732,6 +732,8 @@ export function replayAudit(rows: AuditRow[]): StateDump {
+       case "rpc.local_registered":
+       case "account.lease.exported":
+       case "account.lease.granted":
++      case "gateway.registered":
++      case "skills.installed":
+       case "account.credentials.instance":
+       case "auth_death.released":
+       case "auth_death.released_legacy":
+diff --git a/v2/core/src/schema.ts b/v2/core/src/schema.ts
+index 4c3dd934..9cf945d0 100644
+--- a/v2/core/src/schema.ts
++++ b/v2/core/src/schema.ts
+@@ -164,8 +164,11 @@
+  * v55 — H6a bee durability: `bee_resume_bundles` (encrypted harness-state bundles in the object store)
+  * and `bee_epochs` (import fence); additive CREATE TABLE IF NOT EXISTS.
+  * v56 — H6 account authority: `accounts.share_id` and `accounts.share_epoch` (the credential share
+- * and its authority epoch, owned by Honeybee); additive; migration = ALTER TABLE ADD COLUMN ×2. */
+-export const SCHEMA_VERSION = 56;
++ * and its authority epoch, owned by Honeybee); additive; migration = ALTER TABLE ADD COLUMN ×2.
++ * v57 — H7 gateways and skills: `gateways` (the MCP endpoints Apiary registers; Honeybee writes
++ * `<storeRoot>/gateways/<name>.json` from these rows) and `skill_tree` (the one content-hashed skill
++ * tree installed into every Honeybee-owned home); additive CREATE TABLE IF NOT EXISTS ×2. */
++export const SCHEMA_VERSION = 57;
+ 
+ export const QUESTIONS_TABLE_SQL = `
+ CREATE TABLE IF NOT EXISTS questions (
+@@ -1090,6 +1093,25 @@ CREATE TABLE IF NOT EXISTS champion_home_objects (
+ CREATE INDEX IF NOT EXISTS champion_home_objects_champion ON champion_home_objects(champion_id, closed_at);
+ `;
+ 
++export const GATEWAYS_SQL = `
++CREATE TABLE IF NOT EXISTS gateways (
++  name          TEXT PRIMARY KEY,
++  url           TEXT NOT NULL,
++  token_issuer  TEXT,
++  principal     TEXT NOT NULL,
++  registered_at INTEGER NOT NULL,
++  updated_at    INTEGER NOT NULL
++) STRICT;
++CREATE TABLE IF NOT EXISTS skill_tree (
++  id           INTEGER PRIMARY KEY CHECK (id = 1),
++  digest       TEXT NOT NULL,
++  files        INTEGER NOT NULL,
++  bytes        INTEGER NOT NULL,
++  principal    TEXT NOT NULL,
++  installed_at INTEGER NOT NULL
++) STRICT;
++`;
++
+ export const BEE_RESUME_BUNDLES_SQL = `
+ CREATE TABLE IF NOT EXISTS bee_resume_bundles (
+   id                  TEXT PRIMARY KEY,
+diff --git a/v2/core/src/store.ts b/v2/core/src/store.ts
+index 2d2b8a22..8fbe3ce9 100644
+--- a/v2/core/src/store.ts
++++ b/v2/core/src/store.ts
+@@ -108,6 +108,8 @@ import {
+   type TranscriptSegmentRow,
+   type TranscriptSegmentObjectRow,
+   type ChampionRow,
++  type GatewayRow,
++  type SkillTreeRow,
+   type ChampionHomeObjectRow,
+   type BeeResumeBundleRow,
+   type BeeEpochRow,
+@@ -220,7 +222,7 @@ import {
+   TASK_TRANSITIONS,
+ } from "./tasks.ts";
+ import { deliveredSenderKind } from "./automation.ts";
+-import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
++import { ACCOUNT_CREDENTIAL_ATTENTION_TABLE_SQL, QUESTIONS_TABLE_SQL, ACTIONS_TABLE_SQL, AUTH_INTERRUPTIONS_TABLE_SQL, ACCOUNT_ADMISSIONS_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_TABLE_SQL, ACCOUNT_CREDENTIAL_AUTHORITIES_V27_COLUMNS, ACCOUNT_LIMITS_TABLE_SQL, ACCOUNTS_NATIVE_INDEX_SQL, BEES_ADDITIVE_COLUMNS, BEES_ACTIVE_MOVE_INDEX_SQL, BEES_ACTIVE_HANDOFF_INDEX_SQL, BEE_HANDOFFS_TABLE_SQL, TRANSCRIPT_SEGMENTS_TABLE_SQL, TRANSCRIPT_SEGMENT_OBJECTS_SQL, CHAMPIONS_SQL, GATEWAYS_SQL, BEE_RESUME_BUNDLES_SQL, MAILBOX_PENDING_METADATA_INDEX_SQL, BEE_MOVES_TABLE_SQL, CELLS_TABLE_SQL, CELLS_V22_COLUMNS, CELLS_ADDITIVE_COLUMNS, CELL_OPS_TABLE_SQL, FLAGS_ADDITIVE_COLUMNS, FLAGS_EXPIRY_INDEX_SQL, HANDLE_INDEX_SQL, IDEMPOTENCY_INDEX_SQL, MAILBOX_ADDITIVE_COLUMNS, MAIL_HISTORY_INDEX_SQL, MAIL_HISTORY_PROJECTION_SQL, RUNTIMES_ADDITIVE_COLUMNS, SCHEMA_SQL, SCHEMA_VERSION } from "./schema.ts";
+ import { beeMoveReviveKey, beeMoveStopKey, beeMoveTransitionLegal, toBeeMoveView } from "./cellMove.ts";
+ import {
+   ACTION_DISPATCH_SENDER,
+@@ -1745,6 +1747,10 @@ function mailPendingMessage(row: Row): MailPendingMessage {
+   };
+ }
+ 
++function gatewayRowOf(row: Row): GatewayRow {
++  return { name: String(row.name), url: String(row.url), tokenIssuer: row.token_issuer == null ? null : String(row.token_issuer), principal: String(row.principal), registeredAt: Number(row.registered_at), updatedAt: Number(row.updated_at) };
++}
++
+ export class CoreStore {
+   readonly path: string;
+   private readonly effectLedger: EffectLedger;
+@@ -2211,6 +2217,7 @@ export class CoreStore {
+     this.db.exec(TRANSCRIPT_SEGMENTS_TABLE_SQL);
+     this.db.exec(TRANSCRIPT_SEGMENT_OBJECTS_SQL);
+     this.db.exec(CHAMPIONS_SQL);
++    this.db.exec(GATEWAYS_SQL);
+     this.db.exec(BEE_RESUME_BUNDLES_SQL);
+     // v24: the action queue tables are additive (CREATE IF NOT EXISTS).
+     this.db.exec(ACTIONS_TABLE_SQL);
+@@ -9831,6 +9838,47 @@ export class CoreStore {
+     });
+   }
+ 
++  listGateways(): GatewayRow[] {
++    return (this.stmt("SELECT name, url, token_issuer, principal, registered_at, updated_at FROM gateways ORDER BY name").all() as Row[]).map(gatewayRowOf);
++  }
++
++  getGateway(name: string): GatewayRow | null {
++    const row = this.stmt("SELECT name, url, token_issuer, principal, registered_at, updated_at FROM gateways WHERE name = ?").get(name) as Row | undefined;
++    return row ? gatewayRowOf(row) : null;
++  }
++
++  /** Upsert one registered gateway; a row that already says the same thing is left alone and audits nothing. */
++  putGateway(input: { name: string; url: string; tokenIssuer: string | null; principal: string }): { gateway: GatewayRow; changed: boolean; replaced: GatewayRow | null } {
++    return this.tx(() => {
++      const existing = this.getGateway(input.name);
++      if (existing && existing.url === input.url && existing.tokenIssuer === input.tokenIssuer) return { gateway: existing, changed: false, replaced: null };
++      const now = this.now();
++      this.stmt("INSERT INTO gateways(name, url, token_issuer, principal, registered_at, updated_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET url = excluded.url, token_issuer = excluded.token_issuer, principal = excluded.principal, updated_at = excluded.updated_at")
++        .run(input.name, input.url, input.tokenIssuer, input.principal, existing?.registeredAt ?? now, now);
++      const gateway = this.getGateway(input.name)!;
++      this.audit("gateway.registered", null, { name: gateway.name, url: gateway.url, tokenIssuer: gateway.tokenIssuer, replaced: existing ? { url: existing.url, tokenIssuer: existing.tokenIssuer } : null });
++      return { gateway, changed: true, replaced: existing };
++    });
++  }
++
++  skillTree(): SkillTreeRow | null {
++    const row = this.stmt("SELECT digest, files, bytes, principal, installed_at FROM skill_tree WHERE id = 1").get() as Row | undefined;
++    return row ? { digest: String(row.digest), files: Number(row.files), bytes: Number(row.bytes), principal: String(row.principal), installedAt: Number(row.installed_at) } : null;
++  }
++
++  /** Make one tree the node's current skill tree; the same digest again changes nothing and audits nothing. */
++  putSkillTree(input: { digest: string; files: number; bytes: number; principal: string; homes: number }): { tree: SkillTreeRow; changed: boolean; replaced: SkillTreeRow | null } {
++    return this.tx(() => {
++      const existing = this.skillTree();
++      if (existing && existing.digest === input.digest) return { tree: existing, changed: false, replaced: null };
++      this.stmt("INSERT INTO skill_tree(id, digest, files, bytes, principal, installed_at) VALUES(1, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET digest = excluded.digest, files = excluded.files, bytes = excluded.bytes, principal = excluded.principal, installed_at = excluded.installed_at")
++        .run(input.digest, input.files, input.bytes, input.principal, this.now());
++      const tree = this.skillTree()!;
++      this.audit("skills.installed", null, { digest: tree.digest, files: tree.files, bytes: tree.bytes, homes: input.homes, replaced: existing?.digest ?? null });
++      return { tree, changed: true, replaced: existing };
++    });
++  }
++
+   nodeId(): string {
+     const birth = this.nodeIdBirth();
+     const row = this.stmt("SELECT value FROM meta WHERE key = 'node_id'").get() as Row | undefined;
+diff --git a/v2/core/src/types.ts b/v2/core/src/types.ts
+index bbd90926..a87ce859 100644
+--- a/v2/core/src/types.ts
++++ b/v2/core/src/types.ts
+@@ -1107,6 +1107,26 @@ export interface ChampionRow {
+   fencedAt: number | null;
+ }
+ 
++/** H7: an MCP gateway Apiary registered through `gateway.register`; Honeybee writes its file. */
++export interface GatewayRow {
++  name: string;
++  url: string;
++  /** Opaque until C6 defines the per-bee token issuer contract; echoed in the gateway file. */
++  tokenIssuer: string | null;
++  principal: string;
++  registeredAt: number;
++  updatedAt: number;
++}
++
++/** H7: the one content-hashed skill tree installed into every Honeybee-owned home. */
++export interface SkillTreeRow {
++  digest: string;
++  files: number;
++  bytes: number;
++  principal: string;
++  installedAt: number;
++}
++
+ export interface ChampionHomeObjectRow {
+   id: string;
+   championId: string;
+diff --git a/v2/core/tests/accounts.test.ts b/v2/core/tests/accounts.test.ts
+index 10ba8aa8..bc1ffdba 100644
+--- a/v2/core/tests/accounts.test.ts
++++ b/v2/core/tests/accounts.test.ts
+@@ -540,7 +540,7 @@ test("v7.migration: a v6 store opens as v7 — bees.account added, accounts/acco
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 56);
++      assert.equal(SCHEMA_VERSION, 57);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("account"));
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/actions.test.ts b/v2/core/tests/actions.test.ts
+index f10ab813..9c48d94a 100644
+--- a/v2/core/tests/actions.test.ts
++++ b/v2/core/tests/actions.test.ts
+@@ -406,7 +406,7 @@ test("actions.8: audit replay reproduces the action tables; the store reopens at
+   const h = harness();
+   try {
+     let store = h.open();
+-    assert.equal(SCHEMA_VERSION, 55);
++    assert.equal(SCHEMA_VERSION, 57);
+     const bee = liveBee(store);
+     const { actions } = shipSequence(store, bee.id);
+     const { messageId } = store.dispatchAgentAction(actions[0]!.id);
+diff --git a/v2/core/tests/auth-interruption.test.ts b/v2/core/tests/auth-interruption.test.ts
+index faaa44fd..36f7e638 100644
+--- a/v2/core/tests/auth-interruption.test.ts
++++ b/v2/core/tests/auth-interruption.test.ts
+@@ -189,7 +189,7 @@ test("auth interruption: a v32 store gains the table and the auth.resume mail or
+     raw.close();
+ 
+     store = h.open();
+-    assert.equal(SCHEMA_VERSION, 55);
++    assert.equal(SCHEMA_VERSION, 57);
+     const row = interrupt(store, bee.id);
+     store.restoreAuthInterruption(row.id, { revision: "rev-2", by: "credentials_restored" });
+     store.resumeAuthInterruption(row.id, AUTH_CONTINUE_BODY);
+diff --git a/v2/core/tests/bee-args.test.ts b/v2/core/tests/bee-args.test.ts
+index 9f5b9f63..88ec72ff 100644
+--- a/v2/core/tests/bee-args.test.ts
++++ b/v2/core/tests/bee-args.test.ts
+@@ -262,7 +262,7 @@ test("args.2: a v4-shaped store (spawn_failures, no args column) migrates additi
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("args"));
+       assert.ok(cols.includes("spawn_failures"));
+diff --git a/v2/core/tests/cell-move.test.ts b/v2/core/tests/cell-move.test.ts
+index 995cd352..15ede02c 100644
+--- a/v2/core/tests/cell-move.test.ts
++++ b/v2/core/tests/cell-move.test.ts
+@@ -336,7 +336,7 @@ test(`cell-move.schema v${previousVersion} store migrates to v22`, () => {
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("placement_version"));
+       assert.ok(cols.includes("active_move_id"));
+diff --git a/v2/core/tests/cell-retention.test.ts b/v2/core/tests/cell-retention.test.ts
+index 3e60a8e2..086b4cd0 100644
+--- a/v2/core/tests/cell-retention.test.ts
++++ b/v2/core/tests/cell-retention.test.ts
+@@ -139,7 +139,7 @@ test("cell-retention.schema: a v30 store's cells table is rebuilt with the evict
+     const check = new DatabaseSync(h.path, { readOnly: true });
+     try {
+       assert.equal(Number((check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name = 'cells_v30'").get(), undefined, "scratch table dropped");
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('cells')").all() as Array<{ name: string }>).map((c) => c.name);
+       assert.ok(cols.includes("evicted_at") && cols.includes("evicted_head"));
+diff --git a/v2/core/tests/external-parent.test.ts b/v2/core/tests/external-parent.test.ts
+index 6074fa33..bec50218 100644
+--- a/v2/core/tests/external-parent.test.ts
++++ b/v2/core/tests/external-parent.test.ts
+@@ -193,7 +193,7 @@ test("a v20 store migrates existing parent edges to local lineage at the current
+         value: string;
+       };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       const column = migrated.prepare(
+         "SELECT name FROM pragma_table_info('bees') WHERE name = 'parent_external'",
+       ).get() as { name: string } | undefined;
+diff --git a/v2/core/tests/handles.test.ts b/v2/core/tests/handles.test.ts
+index 645e7420..d027fbc9 100644
+--- a/v2/core/tests/handles.test.ts
++++ b/v2/core/tests/handles.test.ts
+@@ -96,7 +96,7 @@ test("handles.4: v9-shaped store backfills on open — an old pretty id becomes
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       const idx = check.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='bees_handle'").get();
+       assert.ok(idx, "unique handle index exists");
+     } finally {
+diff --git a/v2/core/tests/phone-origin.test.ts b/v2/core/tests/phone-origin.test.ts
+index 9069a144..61889a56 100644
+--- a/v2/core/tests/phone-origin.test.ts
++++ b/v2/core/tests/phone-origin.test.ts
+@@ -38,7 +38,7 @@ test("phone data, shadow, history, audit replay and key bindings survive reopen
+       store.recordRpcResult("k", "send", sent.wakeCommand?.id ?? null, { commandId: sent.wakeCommand?.id ?? null, unarchived: sent.unarchived, messageId: sent.message.id });
+       return sent.message;
+     });
+-    assert.equal(SCHEMA_VERSION, 55);
++    assert.equal(SCHEMA_VERSION, 57);
+     assert.equal(message.body, renderPhoneInput(body));
+     assert.equal(message.phoneInput?.originalContent, body);
+     assert.equal(message.phoneInput?.envelope.contentDigest, phoneDigest(body));
+diff --git a/v2/core/tests/preflip-verbs.test.ts b/v2/core/tests/preflip-verbs.test.ts
+index 4801e5ea..095d0d98 100644
+--- a/v2/core/tests/preflip-verbs.test.ts
++++ b/v2/core/tests/preflip-verbs.test.ts
+@@ -322,7 +322,7 @@ test("v6.migration: a v5 store opens as v6 — parent_id/forked_from/fork_seed a
+     try {
+       const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+       assert.equal(Number(version.value), SCHEMA_VERSION);
+-      assert.equal(SCHEMA_VERSION, 55);
++      assert.equal(SCHEMA_VERSION, 57);
+       const cols = (check.prepare("SELECT name FROM pragma_table_info('bees')").all() as Array<{ name: string }>).map((c) => c.name);
+       for (const c of ["parent_id", "parent_external", "forked_from", "fork_seed", "args", "spawn_failures"]) assert.ok(cols.includes(c), c);
+       const tables = (check.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string }>).map((t) => t.name);
+diff --git a/v2/core/tests/question-withdraw.test.ts b/v2/core/tests/question-withdraw.test.ts
+index be851041..087297d3 100644
+--- a/v2/core/tests/question-withdraw.test.ts
++++ b/v2/core/tests/question-withdraw.test.ts
+@@ -84,8 +84,8 @@ test("schema 44 legacy questions migrate additively without extra-table refusal"
+     assert.deepEqual(replayAudit(store.auditRows()), store.dumpState());
+     store.close();
+     const check = new DatabaseSync(f.path);
+-    assert.equal(SCHEMA_VERSION, 55);
+-    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "55");
++    assert.equal(SCHEMA_VERSION, 57);
++    assert.equal(check.prepare("SELECT value FROM meta WHERE key='schema_version'").get()!.value, "57");
+     assert.equal(check.prepare("PRAGMA integrity_check").get()!.integrity_check, "ok");
+     assert.deepEqual(check.prepare("PRAGMA foreign_key_check").all(), []);
+     assert.equal(check.prepare("SELECT count(*) AS n FROM question_withdraw_receipts").get()!.n, 1);
+diff --git a/v2/core/tests/urgency.test.ts b/v2/core/tests/urgency.test.ts
+index 375f72ab..6fecd6de 100644
+--- a/v2/core/tests/urgency.test.ts
++++ b/v2/core/tests/urgency.test.ts
+@@ -157,7 +157,7 @@ test("urgency.5: v8 migration — a v7 store opens as v8: mailbox.urgency added,
+   try {
+     const version = check.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string };
+     assert.equal(Number(version.value), SCHEMA_VERSION);
+-    assert.equal(SCHEMA_VERSION, 55);
++    assert.equal(SCHEMA_VERSION, 57);
+     const cols = (check.prepare("SELECT name FROM pragma_table_info('mailbox')").all() as Array<{ name: string }>).map((c) => c.name);
+     assert.ok(cols.includes("urgency"));
+     assert.ok(cols.includes("priority"));
+diff --git a/v2/daemon/src/accountsService.ts b/v2/daemon/src/accountsService.ts
+index 0132ab08..dd3b9760 100644
+--- a/v2/daemon/src/accountsService.ts
++++ b/v2/daemon/src/accountsService.ts
+@@ -28,9 +28,9 @@ import { defaultClaudeRefreshTransport, describeRefreshFailure, sanitizeProvider
+ import { CodexCredentialAuthority, CODEX_CREDENTIAL_CODEC, readCodexCredentialCopy, defaultCodexRefreshTransport } from "./codexCredentialAuthority.ts";
+ import { MuseCredentialAuthority, MUSE_CREDENTIAL_CODEC, MUSE_DEFAULT_KEY_TTL_MS, museMeta, museWorkingDocument, defaultMuseKeyTransport } from "./museCredentialAuthority.ts";
+ import { GrokCredentialAuthority, GROK_CREDENTIAL_CODEC, grokAccessOnly, grokCredentialEntry, defaultGrokRefreshTransport } from "./grokCredentialAuthority.ts";
+-import { liveGateways } from "./gateways.ts";
++import { liveGateways, type LiveGateway } from "./gateways.ts";
+ import { withFileLock } from "../../core/src/lock.ts";
+-import { seedGatewayMcp, type GatewayMcpSeedResult } from "./gatewayMcpSeed.ts";
++import { seedGatewayMcp, type GatewayMcpGateway, type GatewayMcpSeedResult } from "./gatewayMcpSeed.ts";
+ import {
+   AUTO_PICK_DEBIT_PERCENT,
+   DEFAULT_ACCOUNT_ADMISSION_POLICY,
+@@ -195,6 +195,10 @@ export interface AccountsServiceOptions {
+   codexLeaseRefresh?: (homePath: string) => Promise<void>;
+   /** Common native MCP reconciler; injected so activation tests stay hermetic. */
+   gatewayMcpSeeder?: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
++  /** The gateways a home is seeded with: registered HTTP endpoints plus the stdio shim files. Default: the files only. */
++  gateways?: () => LiveGateway[];
++  /** H7: install the node's current skill tree into an owned home at activation; absent = no tree. */
++  skillsSync?: (homePath: string) => { status: "installed" | "unchanged" | "none"; digest?: string };
+   /** The provider just accepted this account's credential: a rotation it issued, or a probe it answered. */
+   onCredentialValidated?: (accountId: string, by: "refresh" | "limits_probe") => void;
+ }
+@@ -951,6 +955,8 @@ export class AccountsService {
+   private readonly nativeKeychainSeeds = new Map<string, Set<Promise<unknown>>>();
+   private readonly codexLeaseRefresh: (homePath: string) => Promise<void>;
+   private readonly gatewayMcpSeeder: (homePath: string, harness: string) => Promise<GatewayMcpSeedResult>;
++  private readonly gateways: () => LiveGateway[];
++  private readonly skillsSync: (homePath: string) => { status: "installed" | "unchanged" | "none"; digest?: string };
+   private readonly onCredentialValidated: (accountId: string, by: "refresh" | "limits_probe") => void;
+ 
+   constructor(opts: AccountsServiceOptions) {
+@@ -1218,8 +1224,17 @@ export class AccountsService {
+       ...opts.providerHttp,
+     };
+     this.codexLeaseRefresh = opts.codexLeaseRefresh ?? defaultCodexLeaseRefresh(this.cfg.agents.codex?.command ?? "codex");
++    this.gateways = opts.gateways ?? (() => liveGateways());
++    this.skillsSync = opts.skillsSync ?? (() => ({ status: "none" }));
+     this.gatewayMcpSeeder = opts.gatewayMcpSeeder
+-      ?? ((homePath, harness) => seedGatewayMcp(homePath, harness, { gateways: liveGateways(), disabled: process.env.HIVE_GATEWAYS_DISABLE === "1", failOnError: true }));
++      ?? ((homePath, harness) => seedGatewayMcp(homePath, harness, { ...this.seedGateways(), failOnError: true }));
++  }
++
++  private seedGateways(): { gateways: GatewayMcpGateway[]; disabled: boolean } {
++    const gateways = this.gateways().map((gateway) => gateway.kind === "http"
++      ? { name: gateway.name, url: gateway.url }
++      : { name: gateway.name, shim: gateway.shim, env: gateway.env, ...(gateway.envVars ? { envVars: gateway.envVars } : {}) });
++    return { gateways, disabled: process.env.HIVE_GATEWAYS_DISABLE === "1" && !this.gateways().some((gateway) => gateway.kind === "http") };
+   }
+ 
+   // -------------------------------------------------------------------------
+@@ -4395,7 +4410,7 @@ export class AccountsService {
+    */
+   async reconnectGatewayTools(home: string, afterSeed: (targets: string[]) => Promise<void>): Promise<void> {
+     const result = await seedGatewayMcp(home, "codex", {
+-      gateways: liveGateways(), disabled: process.env.HIVE_GATEWAYS_DISABLE === "1", failOnError: true,
++      ...this.seedGateways(), failOnError: true,
+       afterSeed,
+     });
+     if (result.status !== "seeded") throw new Error(`Gateway config reconciliation refused: ${result.reason ?? "unknown"}`);
+@@ -4422,6 +4437,8 @@ export class AccountsService {
+     } else if (gatewaySeed.status === "skipped") {
+       this.log(`account.activate.gateways account=${account.id} skipped=${JSON.stringify(gatewaySeed.reason ?? "unknown")}`);
+     }
++    const skills = this.skillsSync(account.homePath);
++    if (skills.status === "installed") this.log(`account.activate.skills account=${account.id} digest=${skills.digest}`);
+     return result;
+   }
+ 
+diff --git a/v2/daemon/src/confinedPeer.ts b/v2/daemon/src/confinedPeer.ts
+index d6a9b31c..5c1d269a 100644
+--- a/v2/daemon/src/confinedPeer.ts
++++ b/v2/daemon/src/confinedPeer.ts
+@@ -101,7 +101,7 @@ export function bwrapMode(searchPath = process.env.PATH ?? ""): {path: string |
+   return {path: null, setuid: false};
+ }
+ export function assertConfinedVerb(verb: string, confinement: Confinement): void {
+-  if (confinement === "confined" && (verb.startsWith("account.credentials.") || verb === "account.lease.export" || verb === "account.lease.grant" || verb === "account.lease.batch" || verb === "account.import" || verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register")) {
++  if (confinement === "confined" && (verb.startsWith("account.credentials.") || verb === "account.lease.export" || verb === "account.lease.grant" || verb === "account.lease.batch" || verb === "account.import" || verb === "gateway.register" || verb === "skills.install" || verb === "rpc.localTrust.challenge" || verb === "rpc.localTrust.register")) {
+     throw new RpcError("confined_peer_refused", "Confined callers cannot acquire service authority or access host credentials");
+   }
+ }
+diff --git a/v2/daemon/src/daemon.ts b/v2/daemon/src/daemon.ts
+index 9aa439f6..f46b35ef 100644
+--- a/v2/daemon/src/daemon.ts
++++ b/v2/daemon/src/daemon.ts
+@@ -244,7 +244,8 @@ import {
+   type HarnessAdapter,
+   type GrokMcpServerStdio,
+ } from "../../adapters/src/index.ts";
+-import { liveGateways, type LiveGateway } from "./gateways.ts";
++import { GATEWAY_NAME, MAX_TOKEN_ISSUER_LENGTH, gatewayUrlRefusal, httpGateway, liveGateways, writeGatewayFile, type LiveGateway } from "./gateways.ts";
++import { installSkillTreeIntoHome, parseSkillTree, readSkillsManifest, skillTreeDir, storeSkillTree } from "./skills.ts";
+ import { DaemonCore, type BootReport, type I1ViolationEvent } from "./loops.ts";
+ import { QuotaRecovery } from "./quotaRecovery.ts";
+ import { AuthResume, type CredentialValidatedReceipt } from "./authResume.ts";
+@@ -314,6 +315,8 @@ import { BEE_IMPORT_BUNDLE_BYTES_MAX,
+   type AccountLeaseGrant,
+   type AccountLeaseGrantParams,
+   type AccountLeaseGrantResult,
++  type GatewayRegisterResult,
++  type SkillsInstallResult,
+   type AccountLeaseBatchItemResult,
+   type AccountLeaseBatchResult,
+   DEFAULT_LEASE_GRANT_TTL_MS,
+@@ -713,13 +716,13 @@ type AccountActivationState = {
+ 
+ 
+ function gatewayActivationRevision(gateways: readonly LiveGateway[]): string {
+-  const namesOnly = gateways.map((gateway) => ({
++  const namesOnly = gateways.map((gateway) => gateway.kind === "http" ? { name: gateway.name, url: gateway.url } : {
+     name: gateway.name,
+     command: gateway.shim.command,
+     args: gateway.shim.args,
+     envNames: Object.keys(gateway.env).sort(),
+     envVars: gateway.envVars ?? [],
+-  }));
++  });
+   return createHash("sha256").update(JSON.stringify(namesOnly)).digest("hex");
+ }
+ 
+@@ -953,6 +956,8 @@ export class HiveDaemon {
+       keychainWriter: this.deps.keychainWriter,
+       fetchers: this.deps.fetchers,
+       ...(this.deps.gatewayMcpSeeder ? { gatewayMcpSeeder: this.deps.gatewayMcpSeeder } : {}),
++      gateways: () => this.gateways(),
++      skillsSync: (homePath) => this.syncSkillsIntoHome(homePath),
+       onCredentialValidated: (accountId, by) => this.credentialValidatedQuietly(accountId, by),
+     });
+     const accounts = this.accounts;
+@@ -1089,6 +1094,13 @@ export class HiveDaemon {
+     for (const warning of this.cfg.transcriptSegments.warnings) this.log(`config.transcripts.invalid ${warning}`);
+     for (const warning of this.cfg.champions.warnings) this.log(`config.champions.invalid ${warning}`);
+     if (this.cfg.champions.enabled) this.log(`champions.enabled homes=${this.cfg.champions.homesDir} home_sync=${this.cfg.champions.homeSync} store=${this.cfg.transcriptSegments.storeDir}`);
++    for (const gateway of store.listGateways()) {
++      try {
++        this.log(`gateway.file name=${gateway.name} path=${await writeGatewayFile(gateway)}`);
++      } catch (error) {
++        this.log(`gateway.file_unavailable name=${gateway.name} error=${error instanceof Error ? error.message : String(error)}`);
++      }
++    }
+     for (const warning of this.cfg.durability.warnings) this.log(`config.durability.invalid ${warning}`);
+     if (this.cfg.durability.resumeBundle.enabled) {
+       const keyFile = this.cfg.durability.resumeBundle.keyFile;
+@@ -1425,7 +1437,7 @@ export class HiveDaemon {
+       return;
+     }
+     if (this.activationRevisionEpoch !== this.tickEpoch) {
+-      this.gatewayActivationRevision = gatewayActivationRevision(liveGateways());
++      this.gatewayActivationRevision = gatewayActivationRevision(this.gateways());
+       this.activationRevisionEpoch = this.tickEpoch;
+     }
+ 
+@@ -1795,12 +1807,12 @@ export class HiveDaemon {
+     if (fence.fencedAt != null) throw new Error(`resolve: bee ${beeId} is fenced at epoch ${fence.epoch}; another executor owns it`);
+     const adapterName = spec.adapter ?? bee.agent;
+     const grokMcpServers: GrokMcpServerStdio[] = adapterName === "grok" || adapterName === "kimi" || adapterName === "muse"
+-      ? liveGateways().map((gateway) => ({
++      ? this.gateways().flatMap((gateway) => gateway.kind === "stdio" ? [{
+         name: gateway.name,
+         command: gateway.shim.command,
+         args: [...gateway.shim.args],
+         env: Object.entries(gateway.env).map(([name, value]) => ({ name, value })),
+-      }))
++      }] : [])
+       : [];
+     const instructionMove = store.placementInstructionMove(beeId);
+     const placementInstruction = instructionMove
+@@ -2376,6 +2388,10 @@ export class HiveDaemon {
+         return this.rpcAccountLeaseGrant(params);
+       case "account.lease.batch":
+         return this.rpcAccountLeaseBatch(params, conn);
++      case "gateway.register":
++        return this.rpcGatewayRegister(params, conn);
++      case "skills.install":
++        return this.rpcSkillsInstall(params, conn);
+       case "account.activity":
+         return this.rpcAccountActivity(params);
+       case "account.admission.acquire":
+@@ -6948,7 +6964,7 @@ export class HiveDaemon {
+       pid: process.pid,
+       startedAt: this.startedAt,
+       instanceId: this.instanceId,
+-      ...(this.store ? { nodeId: this.store.nodeId() } : {}),
++      ...(this.store ? { nodeId: this.store.nodeId(), gateways: this.store.listGateways(), skills: this.store.skillTree() } : {}),
+       dataDir: this.cfg.dataDir,
+       socketPath: this.cfg.socketPath,
+       storePath: this.cfg.storePath,
+@@ -7825,6 +7841,66 @@ export class HiveDaemon {
+     return this.mintLeaseGrant(this.leaseGrantParams(params));
+   }
+ 
++  /** Registered HTTP gateways own their name; stdio shim files fill in the rest. */
++  private gateways(): LiveGateway[] {
++    const registered = this.store?.listGateways().map(httpGateway) ?? [];
++    const names = new Set(registered.map((gateway) => gateway.name));
++    return [...registered, ...liveGateways().filter((gateway) => !names.has(gateway.name))];
++  }
++
++  private rpcGatewayRegister(params: Record<string, unknown>, conn: RpcConn): Promise<GatewayRegisterResult> {
++    const name = params.name === undefined || params.name === null ? "apiary" : params.name;
++    if (typeof name !== "string" || !GATEWAY_NAME.test(name)) throw new RpcError("invalid_request", "gateway.register: name must be 1-64 lower-case letters, digits, - or _", { reason: "name" });
++    const urlRefusal = gatewayUrlRefusal(params.url);
++    if (urlRefusal) throw new RpcError("invalid_request", `gateway.register: ${urlRefusal}`, { reason: "url" });
++    const tokenIssuer = params.tokenIssuer === undefined || params.tokenIssuer === null ? null : params.tokenIssuer;
++    if (tokenIssuer !== null && (typeof tokenIssuer !== "string" || tokenIssuer.length === 0 || tokenIssuer.length > MAX_TOKEN_ISSUER_LENGTH || /[\u0000-\u001f\u007f]/u.test(tokenIssuer))) {
++      throw new RpcError("invalid_request", `gateway.register: tokenIssuer, when given, must be a string of at most ${MAX_TOKEN_ISSUER_LENGTH} characters without control characters`, { reason: "token_issuer" });
++    }
++    return this.withAsyncIdempotency("gateway.register", params, async () => {
++      const put = this.mustStore().putGateway({ name, url: params.url as string, tokenIssuer, principal: conn.authorityPrincipal ?? "-" });
++      const file = await writeGatewayFile(put.gateway);
++      this.log(`gateway.register name=${name} url=${put.gateway.url} changed=${put.changed} file=${file}`);
++      return { gateway: put.gateway, file, changed: put.changed, replaced: put.replaced ? { url: put.replaced.url, tokenIssuer: put.replaced.tokenIssuer } : null };
++    });
++  }
++
++  private skillsRoot(): string {
++    return join(this.cfg.dataDir, "skills");
++  }
++
++  /** Activation hook: an owned home gets the node's current tree when its manifest names another digest or none. */
++  private syncSkillsIntoHome(homePath: string): { status: "installed" | "unchanged" | "none"; digest?: string } {
++    const tree = this.store?.skillTree();
++    if (!tree) return { status: "none" };
++    const dir = skillTreeDir(this.skillsRoot(), tree.digest);
++    if (readSkillsManifest(dir)?.digest !== tree.digest) {
++      this.log(`skills.copy_missing digest=${tree.digest} dir=${dir}`);
++      return { status: "none" };
++    }
++    const result = installSkillTreeIntoHome(dir, homePath);
++    return { status: result.status, digest: result.digest };
++  }
++
++  private rpcSkillsInstall(params: Record<string, unknown>, conn: RpcConn): Promise<SkillsInstallResult> {
++    const tree = parseSkillTree(params.tree);
++    return this.withAsyncIdempotency("skills.install", params, async () => {
++      const store = this.mustStore();
++      const accounts = this.mustAccounts();
++      const dir = storeSkillTree(this.skillsRoot(), tree);
++      const homes: SkillsInstallResult["homes"] = [];
++      for (const account of store.listAccounts()) {
++        if (accounts.isNative(account) || !existsSync(account.homePath)) continue;
++        const installed = installSkillTreeIntoHome(dir, account.homePath);
++        homes.push({ account: account.id, home: account.homePath, status: installed.status });
++      }
++      const put = store.putSkillTree({ digest: tree.digest, files: tree.files.length, bytes: tree.bytes, principal: conn.authorityPrincipal ?? "-", homes: homes.filter((home) => home.status === "installed").length });
++      if (put.replaced && put.replaced.digest !== tree.digest) rmSync(skillTreeDir(this.skillsRoot(), put.replaced.digest), { recursive: true, force: true });
++      this.log(`skills.install digest=${tree.digest} files=${tree.files.length} bytes=${tree.bytes} homes=${homes.map((home) => `${home.account}:${home.status}`).join(",") || "-"} changed=${put.changed}`);
++      return { tree: put.tree, changed: put.changed, replaced: put.replaced?.digest ?? null, homes };
++    });
++  }
++
+   private async rpcAccountLeaseBatch(params: Record<string, unknown>, conn: RpcConn): Promise<AccountLeaseBatchResult> {
+     const key = this.idempotencyKeyOf(params);
+     if (!Array.isArray(params.items) || params.items.length === 0 || params.items.length > 500) throw new RpcError("invalid_request", "account.lease.batch: items must hold 1 to 500 operations.");
+diff --git a/v2/daemon/src/gatewayMcpSeed.ts b/v2/daemon/src/gatewayMcpSeed.ts
+index 2a536bbe..db0a92f4 100644
+--- a/v2/daemon/src/gatewayMcpSeed.ts
++++ b/v2/daemon/src/gatewayMcpSeed.ts
+@@ -8,18 +8,15 @@ function tomlLines(input: string): string[] {
+   return trimmed.length === 0 ? [] : trimmed.split(/\r?\n/u);
+ }
+ 
+-export type GatewayMcpGateway = {
+-  name: string;
+-  shim: { command: string; args: string[] };
+-  env: Record<string, string>;
+-  envVars?: string[];
+-};
++export type GatewayMcpGateway =
++  | { name: string; shim: { command: string; args: string[] }; env: Record<string, string>; envVars?: string[] }
++  | { name: string; url: string };
+ 
+ const STAMP_FILE = ".hive-gateways.json";
+ const STAMP_SCHEMA = 1;
+ const GATEWAY_IDENTITY_ENV_VARS = ["HIVE_BEE", "HIVE_BEE_ID"] as const;
+ 
+-type McpEntry = { command: string; args: string[]; envVars?: string[] };
++type McpEntry = { command: string; args: string[]; envVars?: string[] } | { url: string };
+ type McpDialectKind = "claude-json" | "toml-mcp-servers" | "opencode-json";
+ type McpDialect = { file: string; kind: McpDialectKind; forwardEnvVars: boolean };
+ 
+@@ -36,6 +33,7 @@ export type GatewayMcpSeedResult = {
+ 
+ export type SeedGatewayMcpOptions = {
+   gateways: GatewayMcpGateway[];
++  /** File discovery is off (HIVE_GATEWAYS_DISABLE=1) and nothing is registered: leave the home's seed state untouched. */
+   disabled?: boolean;
+   /** Let a readiness gate retry transient lock/filesystem failures. */
+   failOnError?: boolean;
+@@ -85,7 +83,7 @@ export function nativeGatewayHome(harness: string, env: NodeJS.ProcessEnv = proc
+ }
+ 
+ function desiredEntries(gateways: GatewayMcpGateway[], dialect: McpDialect): Record<string, McpEntry> {
+-  return Object.fromEntries(gateways.map((gateway) => [gateway.name, {
++  return Object.fromEntries(gateways.map((gateway) => [gateway.name, "url" in gateway ? { url: gateway.url } : {
+     command: gateway.shim.command,
+     args: [...gateway.shim.args],
+     ...(dialect.forwardEnvVars
+@@ -101,6 +99,7 @@ function desiredEntries(gateways: GatewayMcpGateway[], dialect: McpDialect): Rec
+ function isMcpEntry(value: unknown): value is McpEntry {
+   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+   const entry = value as Record<string, unknown>;
++  if (typeof entry.url === "string") return entry.command === undefined && entry.args === undefined && entry.envVars === undefined;
+   return typeof entry.command === "string"
+     && Array.isArray(entry.args)
+     && entry.args.every((arg) => typeof arg === "string")
+@@ -108,6 +107,23 @@ function isMcpEntry(value: unknown): value is McpEntry {
+       || (Array.isArray(entry.envVars) && entry.envVars.every((name) => typeof name === "string")));
+ }
+ 
++function copyEntry(entry: McpEntry): McpEntry {
++  return "url" in entry ? { url: entry.url } : { command: entry.command, args: [...entry.args], ...(entry.envVars ? { envVars: [...entry.envVars] } : {}) };
++}
++
++/** The claude-json shape on disk: a stdio entry is `{command, args}`; an HTTP gateway is `{type: "http", url}`. */
++function claudeOnDisk(entry: McpEntry): Record<string, unknown> {
++  return "url" in entry ? { type: "http", url: entry.url } : entry;
++}
++
++function claudeFromDisk(value: unknown): McpEntry | null {
++  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
++  const record = value as Record<string, unknown>;
++  if (record.type === "http" && typeof record.url === "string" && record.command === undefined) return { url: record.url };
++  if (record.type !== undefined) return null;
++  return isMcpEntry(record) ? record : null;
++}
++
+ async function readStamp(homePath: string): Promise<StampRead> {
+   const path = join(homePath, STAMP_FILE);
+   let raw: string;
+@@ -131,11 +147,7 @@ async function readStamp(homePath: string): Promise<StampRead> {
+       const parsedEntries: Record<string, McpEntry> = {};
+       for (const [name, entry] of Object.entries(entries)) {
+         if (!isMcpEntry(entry)) return { status: "invalid" };
+-        parsedEntries[name] = {
+-          command: entry.command,
+-          args: [...entry.args],
+-          ...(entry.envVars ? { envVars: [...entry.envVars] } : {}),
+-        };
++        parsedEntries[name] = copyEntry(entry);
+       }
+       files[file] = parsedEntries;
+     }
+@@ -182,7 +194,9 @@ async function kitClaimsTarget(homePath: string, targetFile: string): Promise<"c
+ }
+ 
+ function sameEntry(left: unknown, right: McpEntry): boolean {
+-  if (!isMcpEntry(left) || left.command !== right.command) return false;
++  if (!isMcpEntry(left)) return false;
++  if ("url" in right || "url" in left) return "url" in right && "url" in left && left.url === right.url;
++  if (left.command !== right.command) return false;
+   if (left.args.length !== right.args.length || !left.args.every((arg, index) => arg === right.args[index])) return false;
+   const leftEnvVars = left.envVars ?? [];
+   const rightEnvVars = right.envVars ?? [];
+@@ -325,22 +339,22 @@ function reconcileClaude(
+     const current = servers[name];
+     const next = desired[name];
+     if (next) {
+-      if (!sameEntry(current, next)) changed = true;
+-      servers[name] = next;
++      if (!sameEntry(claudeFromDisk(current), next)) changed = true;
++      servers[name] = claudeOnDisk(next);
+       nextOwned[name] = next;
+       continue;
+     }
+     if (current === undefined) {
+       continue;
+     }
+-    if (!sameEntry(current, prior)) continue;
++    if (!sameEntry(claudeFromDisk(current), prior)) continue;
+     delete servers[name];
+     changed = true;
+   }
+ 
+   for (const [name, entry] of Object.entries(desired)) {
+-    if (name in owned || sameEntry(servers[name], entry)) continue;
+-    servers[name] = entry;
++    if (name in owned || sameEntry(claudeFromDisk(servers[name]), entry)) continue;
++    servers[name] = claudeOnDisk(entry);
+     nextOwned[name] = entry;
+     changed = true;
+   }
+@@ -356,6 +370,7 @@ function opencodeEnvTemplate(name: string): string {
+ }
+ 
+ function opencodeOnDisk(entry: McpEntry): Record<string, unknown> {
++  if ("url" in entry) return { type: "remote", url: entry.url, enabled: true };
+   const command = [entry.command, ...entry.args];
+   const environment = entry.envVars
+     ? Object.fromEntries(entry.envVars.map((name) => [name, opencodeEnvTemplate(name)]))
+@@ -371,6 +386,7 @@ function opencodeOnDisk(entry: McpEntry): Record<string, unknown> {
+ function opencodeFromDisk(value: unknown): McpEntry | null {
+   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+   const record = value as Record<string, unknown>;
++  if (record.type === "remote") return typeof record.url === "string" ? { url: record.url } : null;
+   if (record.type !== "local" || !Array.isArray(record.command) || record.command.length === 0) return null;
+   if (!record.command.every((part) => typeof part === "string")) return null;
+   const command = record.command[0] as string;
+@@ -446,7 +462,7 @@ function renderCodexEntry(name: string, entry: McpEntry, previous?: string): str
+     const lines = previous.split("\n").slice(1);
+     for (let index = 0; index < lines.length; index++) {
+       const line = lines[index]!;
+-      const owned = /^\s*(?:command|args|env_vars|["'](?:command|args|env_vars)["'])\s*=/.test(line);
++      const owned = /^\s*(?:command|args|env_vars|url|["'](?:command|args|env_vars|url)["'])\s*=/.test(line);
+       const assignment = /^\s*[^=]+=(.*)$/.exec(line);
+       let balance = assignment ? scanTomlValue(assignment[1]!, { square: 0, curly: 0 }) : null;
+       if (!owned) extra.push(line);
+@@ -460,11 +476,13 @@ function renderCodexEntry(name: string, entry: McpEntry, previous?: string): str
+   }
+   return [
+     `[mcp_servers.${tomlKey(name)}]`,
+-    `command = ${JSON.stringify(entry.command)}`,
+-    `args = [${entry.args.map((arg) => JSON.stringify(arg)).join(", ")}]`,
+-    ...(entry.envVars
+-      ? [`env_vars = [${entry.envVars.map((envVar) => JSON.stringify(envVar)).join(", ")}]`]
+-      : []),
++    ...("url" in entry ? [`url = ${JSON.stringify(entry.url)}`] : [
++      `command = ${JSON.stringify(entry.command)}`,
++      `args = [${entry.args.map((arg) => JSON.stringify(arg)).join(", ")}]`,
++      ...(entry.envVars
++        ? [`env_vars = [${entry.envVars.map((envVar) => JSON.stringify(envVar)).join(", ")}]`]
++        : []),
++    ]),
+     ...extra,
+   ].join("\n");
+ }
+diff --git a/v2/daemon/src/gateways.ts b/v2/daemon/src/gateways.ts
+index 09516ff7..0aed1df5 100644
+--- a/v2/daemon/src/gateways.ts
++++ b/v2/daemon/src/gateways.ts
+@@ -1,9 +1,17 @@
+-/** Read-only v2 daemon view of live operator MCP gateway registrations. */
++/**
++ * MCP gateways a bee's harness is pointed at. Two shapes: a stdio shim record
++ * Apiary writes under `<storeRoot>/gateways/` (gatewayRev 1, until C6) and an
++ * HTTP endpoint registered through `gateway.register` (gatewayRev 2), which
++ * Honeybee stores and writes to the same directory itself.
++ */
+ import { accessSync, constants, readFileSync, readdirSync } from "node:fs";
+ import { homedir } from "node:os";
+ import { isAbsolute, join } from "node:path";
++import { atomicWriteFile } from "../../core/src/fsx.ts";
++import type { GatewayRow } from "../../core/src/types.ts";
+ 
+-export interface LiveGateway {
++export interface StdioGateway {
++  kind: "stdio";
+   name: string;
+   shim: { command: string; args: string[] };
+   env: Record<string, string>;
+@@ -12,6 +20,65 @@ export interface LiveGateway {
+   stateless?: boolean;
+ }
+ 
++export interface HttpGateway {
++  kind: "http";
++  name: string;
++  url: string;
++  tokenIssuer: string | null;
++}
++
++export type LiveGateway = StdioGateway | HttpGateway;
++
++export const GATEWAY_NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/u;
++export const MAX_GATEWAY_URL_LENGTH = 2048;
++export const MAX_TOKEN_ISSUER_LENGTH = 1024;
++
++/** The endpoint shape `gateway.register` accepts: an absolute http(s) URL with no credentials or fragment. */
++export function gatewayUrlRefusal(url: unknown): string | null {
++  if (typeof url !== "string" || url.length === 0) return "url must be a non-empty string";
++  if (url.length > MAX_GATEWAY_URL_LENGTH) return `url must be at most ${MAX_GATEWAY_URL_LENGTH} characters`;
++  if (/[\u0000-\u0020\u007f]/u.test(url)) return "url must not contain control characters or spaces";
++  let parsed: URL;
++  try {
++    parsed = new URL(url);
++  } catch {
++    return "url must be an absolute URL";
++  }
++  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "url must use http or https";
++  if (parsed.username || parsed.password) return "url must not carry credentials";
++  if (parsed.hash) return "url must not carry a fragment";
++  return null;
++}
++
++export function httpGateway(row: Pick<GatewayRow, "name" | "url" | "tokenIssuer">): HttpGateway {
++  return { kind: "http", name: row.name, url: row.url, tokenIssuer: row.tokenIssuer };
++}
++
++export function gatewayFilePath(name: string, storeRoot = process.env.HIVE_STORE_ROOT ?? join(homedir(), ".hive")): string {
++  return join(storeRoot, "gateways", `${name}.json`);
++}
++
++/** Honeybee's own record of a registered gateway: the file it writes beside Apiary's stdio records. */
++export function gatewayFileText(row: GatewayRow): string {
++  return `${JSON.stringify({
++    name: row.name,
++    protocol: "mcp",
++    gatewayRev: 2,
++    transport: "http",
++    url: row.url,
++    tokenIssuer: row.tokenIssuer,
++    registeredAt: new Date(row.registeredAt).toISOString(),
++    updatedAt: new Date(row.updatedAt).toISOString(),
++    writtenBy: "hived",
++  }, null, 2)}\n`;
++}
++
++export async function writeGatewayFile(row: GatewayRow, storeRoot?: string): Promise<string> {
++  const path = gatewayFilePath(row.name, storeRoot);
++  await atomicWriteFile(path, gatewayFileText(row), { mode: 0o600 });
++  return path;
++}
++
+ const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+ const PROTECTED_ENV = new Set(["HIVE_BEE", "HIVE_BEE_ID", "HIVE_PARENT", "HIVE_COMB"]);
+ 
+@@ -24,6 +91,12 @@ export function parseGatewayRecord(raw: string): LiveGateway | null {
+   }
+   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+   const record = value as Record<string, unknown>;
++  if (record.gatewayRev === 2) {
++    if (typeof record.name !== "string" || !GATEWAY_NAME.test(record.name)) return null;
++    if (record.protocol !== "mcp" || record.transport !== "http" || gatewayUrlRefusal(record.url) !== null) return null;
++    if (record.tokenIssuer !== undefined && record.tokenIssuer !== null && (typeof record.tokenIssuer !== "string" || record.tokenIssuer.length > MAX_TOKEN_ISSUER_LENGTH)) return null;
++    return { kind: "http", name: record.name, url: record.url as string, tokenIssuer: typeof record.tokenIssuer === "string" ? record.tokenIssuer : null };
++  }
+   const shim = record.shim;
+   if (!shim || typeof shim !== "object" || Array.isArray(shim)) return null;
+   const shimRecord = shim as Record<string, unknown>;
+@@ -48,6 +121,7 @@ export function parseGatewayRecord(raw: string): LiveGateway | null {
+   if (!stateless && (!Number.isSafeInteger(record.pid) || Number(record.pid) <= 0)) return null;
+   if (record.pid !== undefined && (!Number.isSafeInteger(record.pid) || Number(record.pid) <= 0)) return null;
+   return {
++    kind: "stdio",
+     name: record.name,
+     shim: { command: shimRecord.command, args: [...shimRecord.args] as string[] },
+     env: Object.fromEntries(envEntries.filter(([key]) => !PROTECTED_ENV.has(key))) as Record<string, string>,
+@@ -89,9 +163,10 @@ export function liveGateways(storeRoot = process.env.HIVE_STORE_ROOT ?? join(hom
+     try {
+       const record = parseGatewayRecord(readFileSync(join(storeRoot, "gateways", name), "utf8"));
+       if (!record) return [];
+-      const live = record.stateless === true
+-        ? executable(record.shim.command)
+-        : record.pid !== undefined && processIsLive(record.pid);
++      const live = record.kind === "http"
++        || (record.stateless === true
++          ? executable(record.shim.command)
++          : record.pid !== undefined && processIsLive(record.pid));
+       return live ? [record] : [];
+     } catch {
+       return [];
+diff --git a/v2/daemon/src/protocol.ts b/v2/daemon/src/protocol.ts
+index 293763d9..709774dd 100644
+--- a/v2/daemon/src/protocol.ts
++++ b/v2/daemon/src/protocol.ts
+@@ -25,6 +25,8 @@ import type { ThreadOperationView } from "../../core/src/threadOperation.ts";
+ import type {
+   AccountStatus,
+   AccountLeaseEnrolment,
++  GatewayRow,
++  SkillTreeRow,
+   AuthInterruptionRow,
+   ActionDefinition,
+   ActionQueueView,
+@@ -291,6 +293,19 @@ export const DAEMON_CAPABILITIES = [
+    * account without touching it. Schema v56.
+    */
+   "account.share.v1",
++  /**
++   * 2026-11-05 (H7, additive, schema v57): `gateway.register {url, tokenIssuer?}` —
++   * Apiary registers its MCP endpoint; Honeybee stores the row and writes
++   * `<storeRoot>/gateways/<name>.json` itself; a spawned bee's native MCP
++   * config points at the registered URL. Audit kind `gateway.registered`.
++   */
++  "gateway.register.v1",
++  /**
++   * 2026-11-05 (H7, additive): `skills.install {tree}` — one content-hashed
++   * skill tree installed into every Honeybee-owned home now and into every
++   * home activated later. Audit kind `skills.installed`.
++   */
++  "skills.install.v1",
+ ] as const;
+ export type DaemonCapability = (typeof DAEMON_CAPABILITIES)[number];
+ 
+@@ -697,6 +712,8 @@ export const RPC_VERBS = [
+   "account.lease.remove",
+   "account.lease.grant",
+   "account.lease.batch",
++  "gateway.register",
++  "skills.install",
+   "account.admission.acquire",
+   "account.admission.confirm",
+   "account.admission.release",
+@@ -799,6 +816,70 @@ export interface DedupMarkers {
+   status?: CommandStatus;
+ }
+ 
++/**
++ * `gateway.register {name?, url, tokenIssuer?, idempotencyKey?}` (capability
++ * `gateway.register.v1`) — the registered local Apiary authority on a direct
++ * Unix socket registers its MCP endpoint (streamable HTTP; target.md W4).
++ * `name` defaults to `apiary`. Honeybee owns the row and writes
++ * `<storeRoot>/gateways/<name>.json` from it, at register and at every boot;
++ * every home activated from then on seeds `{type: "http", url}` (claude, pi),
++ * `url = …` (codex, grok config.toml) or `{type: "remote", url}` (opencode)
++ * for that name. `tokenIssuer` is stored and echoed in the file; the per-bee
++ * token contract is C6's, so nothing here mints or forwards a token.
++ * Refusals: `caller_not_trusted`, `confined_peer_refused`, `invalid_request`
++ * (`details.reason`: `name` | `url` | `token_issuer`).
++ */
++export interface GatewayRegisterParams {
++  name?: string;
++  url: string;
++  tokenIssuer?: string | null;
++  idempotencyKey?: string;
++}
++
++export interface GatewayRegisterResult extends DedupMarkers {
++  gateway: GatewayRow;
++  /** The file Honeybee wrote for this registration. */
++  file: string;
++  /** False when the row already said the same thing (the file is still rewritten). */
++  changed: boolean;
++  replaced: { url: string; tokenIssuer: string | null } | null;
++}
++
++/** One file of a skill tree on the wire; `content` is base64 and must hash to `sha256`. */
++export interface SkillTreeEntry {
++  path: string;
++  sha256: string;
++  size: number;
++  executable?: boolean;
++  content: string;
++}
++
++/**
++ * `skills.install {tree: {digest, entries}, idempotencyKey?}` (capability
++ * `skills.install.v1`) — the registered local Apiary authority installs one
++ * content-hashed skill tree. `digest` is sha256 over the entries sorted by
++ * path, one line each `<sha256> <x|-> <path>`; a mismatch anywhere is
++ * `invalid_request` with `details.reason` (`digest` | `sha256` | `size` |
++ * `path` | `content` | `entries` | `bytes`) and `details.index`. The node
++ * keeps its own copy under `<dataDir>/skills/<digest>/`, writes the tree into
++ * `<home>/skills/` of every Honeybee-owned account home that exists (native
++ * vendor homes are never written), and installs it into every home activated
++ * later. `<home>/skills/.hive-skills.json` records the digest and the files
++ * Honeybee owns there; files it never listed are left alone.
++ */
++export interface SkillsInstallParams {
++  tree: { digest: string; entries: SkillTreeEntry[] };
++  idempotencyKey?: string;
++}
++
++export interface SkillsInstallResult extends DedupMarkers {
++  tree: SkillTreeRow;
++  /** False when this digest was already the node's tree. */
++  changed: boolean;
++  replaced: string | null;
++  homes: Array<{ account: string; home: string; status: "installed" | "unchanged" }>;
++}
++
+ export interface SpawnResult extends DedupMarkers {
+   phoneAdmission?: import("../../core/src/phoneOrigin.ts").PhoneAdmissionReceipt;
+   requestBinding?: import("../../core/src/phoneOrigin.ts").PhoneRequestBinding;
+@@ -2030,6 +2111,9 @@ export interface DeployInfoResult {
+   capabilities: readonly DaemonCapability[];
+   /** Additive: this node's durable id (the `authorityNodeId` / `nodeId` the lease verbs accept for it). */
+   nodeId?: string;
++  /** Additive (H7): the gateways registered through `gateway.register` and the installed skill tree. */
++  gateways?: GatewayRow[];
++  skills?: SkillTreeRow | null;
+   daemonVersion: string;
+   nodeVersion: string;
+   pid: number;
+diff --git a/v2/daemon/src/rpc.ts b/v2/daemon/src/rpc.ts
+index 6b7961f2..fc99ee69 100644
+--- a/v2/daemon/src/rpc.ts
++++ b/v2/daemon/src/rpc.ts
+@@ -93,6 +93,8 @@ export interface RpcConn {
+   readonly secretExecutionNodeId?: string;
+   /** Set by the lease-grant gate: the registered caller a batch idempotency key is bound to. */
+   readonly leasePrincipal?: string;
++  /** Set by the gateway/skills gate: the registered local Apiary authority that called. */
++  readonly authorityPrincipal?: string;
+   readonly humanChat?: HumanChatAdmission;
+   readonly humanPolicyAuthority?: true;
+   readonly automationAuthority?: true;
+@@ -570,6 +572,11 @@ export class RpcServer {
+           this.trust.require(peer, conn.ingress);
+           return this.opts.dispatch(verb, params, { ...conn, leasePrincipal: `${peer.peer.uid}:${this.trust.nodeId ?? "-"}` });
+         }
++        if (verb === "gateway.register" || verb === "skills.install") {
++          if (!peer || peer.state !== "verified" || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null) throw new RpcError("caller_not_trusted", `${verb} requires the registered direct local Apiary authority`);
++          this.trust.require(peer, conn.ingress);
++          return this.opts.dispatch(verb, params, { ...conn, authorityPrincipal: `${peer.peer.uid}:${this.trust.nodeId ?? "-"}` });
++        }
+         if (params.automationReference !== undefined) throw new RpcError("automation_unauthorized","Reference admission belongs in protected context");
+         if (params.automationKind !== undefined || params.automationRef !== undefined || automationContext?.automationReference !== undefined) {
+           if (verb !== "send" || !peer || !this.trust.enabled || conn.ingress !== "local_unix" || conn.relayLane !== null
+diff --git a/v2/daemon/src/rpcAccess.ts b/v2/daemon/src/rpcAccess.ts
+index 352b27f4..660696c3 100644
+--- a/v2/daemon/src/rpcAccess.ts
++++ b/v2/daemon/src/rpcAccess.ts
+@@ -162,6 +162,8 @@ export const RPC_ACCESS = {
+   "account.lease.export": "mutate",
+   "account.lease.remove": "mutate",
+   "account.lease.grant": "mutate",
++  "gateway.register": "mutate",
++  "skills.install": "mutate",
+   "account.lease.batch": "mutate",
+   "account.admission.acquire": "mutate",
+   "account.admission.confirm": "mutate",
+diff --git a/v2/daemon/src/skills.ts b/v2/daemon/src/skills.ts
+new file mode 100644
+index 00000000..ad87af5b
+--- /dev/null
++++ b/v2/daemon/src/skills.ts
+@@ -0,0 +1,218 @@
++import { createHash } from "node:crypto";
++import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
++import { dirname, join, resolve, sep } from "node:path";
++import { RpcError } from "./protocol.ts";
++
++export const SKILLS_MANIFEST = ".hive-skills.json";
++export const MAX_SKILL_TREE_ENTRIES = 10_000;
++export const MAX_SKILL_TREE_BYTES = 64 * 1024 * 1024;
++export const MAX_SKILL_PATH_LENGTH = 512;
++
++export interface SkillTreeFile {
++  path: string;
++  sha256: string;
++  size: number;
++  executable: boolean;
++}
++
++export interface ParsedSkillTree {
++  digest: string;
++  files: SkillTreeFile[];
++  bytes: number;
++  contents: Map<string, Buffer>;
++}
++
++export interface SkillsManifest {
++  schema: 1;
++  digest: string;
++  files: SkillTreeFile[];
++}
++
++const SHA256_HEX = /^[0-9a-f]{64}$/u;
++
++/** The content hash of a tree: sha256 over its sorted entries, one line each: `<sha256> <x|-> <path>`. */
++export function skillTreeDigest(files: readonly SkillTreeFile[]): string {
++  const hash = createHash("sha256");
++  for (const file of [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
++    hash.update(`${file.sha256} ${file.executable ? "x" : "-"} ${file.path}\n`);
++  }
++  return hash.digest("hex");
++}
++
++export function skillPathRefusal(path: unknown): string | null {
++  if (typeof path !== "string" || path.length === 0) return "path must be a non-empty string";
++  if (path.length > MAX_SKILL_PATH_LENGTH) return `path must be at most ${MAX_SKILL_PATH_LENGTH} characters`;
++  if (path.includes("\0") || path.includes("\\")) return "path must not contain NUL or backslash";
++  if (path.startsWith("/")) return "path must be relative";
++  const segments = path.split("/");
++  for (const segment of segments) {
++    if (segment.length === 0 || segment === "." || segment === "..") return "path must not contain empty, . or .. segments";
++    if (segment.startsWith(".hive-")) return "path must not use the .hive- prefix Honeybee reserves";
++  }
++  return null;
++}
++
++function refuse(reason: string, message: string, index?: number): never {
++  throw new RpcError("invalid_request", `skills.install: ${message}`, { reason, ...(index === undefined ? {} : { index }) });
++}
++
++/** Validate the wire tree: every entry's bytes hash to its sha256 and the tree digest is the digest of those entries. */
++export function parseSkillTree(raw: unknown): ParsedSkillTree {
++  if (!raw || typeof raw !== "object" || Array.isArray(raw)) refuse("tree", "tree must be an object");
++  const tree = raw as Record<string, unknown>;
++  if (typeof tree.digest !== "string" || !SHA256_HEX.test(tree.digest)) refuse("digest", "tree.digest must be a lower-case sha256 hex digest");
++  if (!Array.isArray(tree.entries)) refuse("entries", "tree.entries must be an array");
++  if (tree.entries.length > MAX_SKILL_TREE_ENTRIES) refuse("entries", `tree.entries must hold at most ${MAX_SKILL_TREE_ENTRIES} files`);
++  const files: SkillTreeFile[] = [];
++  const contents = new Map<string, Buffer>();
++  let bytes = 0;
++  tree.entries.forEach((entry, index) => {
++    if (!entry || typeof entry !== "object" || Array.isArray(entry)) refuse("entry", `entry ${index} must be an object`, index);
++    const record = entry as Record<string, unknown>;
++    const pathRefusal = skillPathRefusal(record.path);
++    if (pathRefusal) refuse("path", `entry ${index}: ${pathRefusal}`, index);
++    const path = record.path as string;
++    if (contents.has(path)) refuse("path", `entry ${index}: ${path} appears twice`, index);
++    if (typeof record.sha256 !== "string" || !SHA256_HEX.test(record.sha256)) refuse("sha256", `entry ${index}: sha256 must be a lower-case sha256 hex digest`, index);
++    if (record.executable !== undefined && typeof record.executable !== "boolean") refuse("executable", `entry ${index}: executable must be a boolean`, index);
++    if (typeof record.content !== "string") refuse("content", `entry ${index}: content must be a base64 string`, index);
++    const content = Buffer.from(record.content, "base64");
++    if (content.toString("base64").replace(/=+$/u, "") !== record.content.replace(/=+$/u, "")) refuse("content", `entry ${index}: content is not valid base64`, index);
++    if (typeof record.size !== "number" || !Number.isSafeInteger(record.size) || record.size < 0 || record.size !== content.length) refuse("size", `entry ${index}: size must equal the decoded content length (${content.length})`, index);
++    const actual = createHash("sha256").update(content).digest("hex");
++    if (actual !== record.sha256) refuse("sha256", `entry ${index}: content hashes to ${actual}, not ${record.sha256}`, index);
++    bytes += content.length;
++    if (bytes > MAX_SKILL_TREE_BYTES) refuse("bytes", `tree exceeds ${MAX_SKILL_TREE_BYTES} bytes`);
++    files.push({ path, sha256: record.sha256, size: content.length, executable: record.executable === true });
++    contents.set(path, content);
++  });
++  const digest = skillTreeDigest(files);
++  if (digest !== tree.digest) refuse("digest", `tree.digest ${tree.digest} does not match the entries, which hash to ${digest}`);
++  files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
++  return { digest, files, bytes, contents };
++}
++
++export function skillTreeDir(skillsRoot: string, digest: string): string {
++  return join(skillsRoot, digest);
++}
++
++function manifestText(digest: string, files: readonly SkillTreeFile[]): string {
++  return `${JSON.stringify({ schema: 1, digest, files: [...files] } satisfies SkillsManifest, null, 2)}\n`;
++}
++
++export function readSkillsManifest(dir: string): SkillsManifest | null {
++  let raw: string;
++  try {
++    raw = readFileSync(join(dir, SKILLS_MANIFEST), "utf8");
++  } catch {
++    return null;
++  }
++  try {
++    const value = JSON.parse(raw) as unknown;
++    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
++    const record = value as Record<string, unknown>;
++    if (record.schema !== 1 || typeof record.digest !== "string" || !SHA256_HEX.test(record.digest) || !Array.isArray(record.files)) return null;
++    const files: SkillTreeFile[] = [];
++    for (const entry of record.files) {
++      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
++      const file = entry as Record<string, unknown>;
++      if (skillPathRefusal(file.path) !== null || typeof file.sha256 !== "string" || !SHA256_HEX.test(file.sha256) || typeof file.size !== "number" || typeof file.executable !== "boolean") return null;
++      files.push({ path: file.path as string, sha256: file.sha256, size: file.size, executable: file.executable });
++    }
++    return { schema: 1, digest: record.digest, files };
++  } catch {
++    return null;
++  }
++}
++
++function writeFileAtomically(path: string, data: Buffer | string, executable: boolean): void {
++  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
++  const tmp = join(dirname(path), `.hive-tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`);
++  writeFileSync(tmp, data, { mode: executable ? 0o700 : 0o600 });
++  renameSync(tmp, path);
++}
++
++/** Keep the node's own copy of a tree under `<skillsRoot>/<digest>/` so a home activated later gets it without Apiary. */
++export function storeSkillTree(skillsRoot: string, tree: ParsedSkillTree): string {
++  const dir = skillTreeDir(skillsRoot, tree.digest);
++  if (readSkillsManifest(dir)?.digest === tree.digest) return dir;
++  mkdirSync(skillsRoot, { recursive: true, mode: 0o700 });
++  const staging = `${dir}.staging.${process.pid}.${Date.now()}`;
++  rmSync(staging, { recursive: true, force: true });
++  mkdirSync(staging, { recursive: true, mode: 0o700 });
++  for (const file of tree.files) writeFileAtomically(join(staging, file.path), tree.contents.get(file.path)!, file.executable);
++  writeFileAtomically(join(staging, SKILLS_MANIFEST), manifestText(tree.digest, tree.files), false);
++  rmSync(dir, { recursive: true, force: true });
++  renameSync(staging, dir);
++  return dir;
++}
++
++function removeEmptyParents(path: string, stopAt: string): void {
++  let dir = dirname(path);
++  while (dir.startsWith(stopAt + sep) && dir !== stopAt) {
++    try {
++      if (readdirSync(dir).length > 0) return;
++      rmdirSync(dir);
++    } catch {
++      return;
++    }
++    dir = dirname(dir);
++  }
++}
++
++/**
++ * Install the stored tree into `<homePath>/skills`: every file of the tree is
++ * written (atomically, content from the node's copy), files the previous
++ * manifest installed but the tree no longer has are removed, anything the
++ * manifest never listed is left alone, and the manifest records the digest.
++ * A home whose manifest already names the digest is left untouched.
++ */
++export function installSkillTreeIntoHome(treeDir: string, homePath: string): { status: "installed" | "unchanged"; digest: string; files: number } {
++  const stored = readSkillsManifest(treeDir);
++  if (!stored) throw new Error(`skills: stored tree at ${treeDir} has no manifest`);
++  const skillsDir = join(homePath, "skills");
++  const current = readSkillsManifest(skillsDir);
++  if (current?.digest === stored.digest) return { status: "unchanged", digest: stored.digest, files: stored.files.length };
++  mkdirSync(skillsDir, { recursive: true, mode: 0o700 });
++  const root = resolve(skillsDir);
++  const keep = new Set(stored.files.map((file) => file.path));
++  for (const file of stored.files) {
++    const target = resolve(root, file.path);
++    const same = current?.files.find((prior) => prior.path === file.path);
++    if (same && same.sha256 === file.sha256 && same.executable === file.executable && existsSync(target)) {
++      try {
++        const stat = statSync(target);
++        if (stat.isFile() && stat.size === file.size) continue;
++      } catch {}
++    }
++    writeFileAtomically(target, readFileSync(join(treeDir, file.path)), file.executable);
++    if (!file.executable) chmodSync(target, 0o600);
++  }
++  for (const prior of current?.files ?? []) {
++    if (keep.has(prior.path)) continue;
++    const target = resolve(root, prior.path);
++    rmSync(target, { force: true });
++    removeEmptyParents(target, root);
++  }
++  writeFileAtomically(join(skillsDir, SKILLS_MANIFEST), manifestText(stored.digest, stored.files), false);
++  return { status: "installed", digest: stored.digest, files: stored.files.length };
++}
++
++/** Read a directory into the wire tree shape (the CLI edge and callers that hold the tree on disk). */
++export function readSkillTreeFromDirectory(dir: string): { digest: string; entries: Array<{ path: string; sha256: string; size: number; executable: boolean; content: string }> } {
++  const entries: Array<{ path: string; sha256: string; size: number; executable: boolean; content: string }> = [];
++  const walk = (rel: string): void => {
++    for (const name of readdirSync(join(dir, rel), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
++      const relPath = rel ? `${rel}/${name.name}` : name.name;
++      if (name.name === SKILLS_MANIFEST && !rel) continue;
++      if (name.isDirectory()) walk(relPath);
++      else if (name.isFile()) {
++        const content = readFileSync(join(dir, relPath));
++        const executable = (statSync(join(dir, relPath)).mode & 0o100) !== 0;
++        entries.push({ path: relPath, sha256: createHash("sha256").update(content).digest("hex"), size: content.length, executable, content: content.toString("base64") });
++      }
++    }
++  };
++  walk("");
++  return { digest: skillTreeDigest(entries), entries };
++}
+diff --git a/v2/daemon/tests/gateways.test.ts b/v2/daemon/tests/gateways.test.ts
+index 3cdcffc3..0495bd3d 100644
+--- a/v2/daemon/tests/gateways.test.ts
++++ b/v2/daemon/tests/gateways.test.ts
+@@ -17,6 +17,7 @@ test("gateway reader accepts a live-registry shape and strips identity overrides
+     startedAt: "2026-08-21T00:00:00.000Z",
+     gatewayRev: 1,
+   })), {
++    kind: "stdio",
+     name: "apiary",
+     shim: { command: "/opt/apiary-mcp", args: [] },
+     env: { APIARY_GATEWAY: "/tmp/apiary.json" },
